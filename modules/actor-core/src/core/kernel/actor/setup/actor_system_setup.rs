@@ -12,10 +12,7 @@ use crate::core::kernel::{
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
     props::MailboxConfig,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::TickDriverConfig,
-    },
+    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemConfig, BootstrapSetup},
   },
   dispatch::dispatcher::MessageDispatcherConfigurator,

@@ -1,10 +1,7 @@
 use core::time::Duration;
 
 use crate::core::kernel::{
-  actor::{
-    actor_path::GuardianKind as PathGuardianKind,
-    setup::ActorSystemConfig,
-  },
+  actor::{actor_path::GuardianKind as PathGuardianKind, setup::ActorSystemConfig},
   dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
   pattern::{CircuitBreaker, CircuitBreakerShared, CircuitBreakerSharedFactory, CircuitBreakerState, Clock},
   system::remote::RemotingConfig,
@@ -114,8 +111,8 @@ impl CircuitBreakerSharedFactory<FakeClock> for BuiltinCircuitBreakerFactory {
 
 #[test]
 fn test_actor_system_config_circuit_breaker_shared_factory_uses_registered_provider() {
-  let config = ActorSystemConfig::default()
-    .with_circuit_breaker_shared_factory::<FakeClock, _>(BuiltinCircuitBreakerFactory);
+  let config =
+    ActorSystemConfig::default().with_circuit_breaker_shared_factory::<FakeClock, _>(BuiltinCircuitBreakerFactory);
 
   let shared = config
     .circuit_breaker_shared_factory::<FakeClock>()

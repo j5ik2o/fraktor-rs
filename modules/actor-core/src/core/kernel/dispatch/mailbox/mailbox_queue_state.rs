@@ -9,6 +9,7 @@ use fraktor_utils_core_rs::core::{
   },
   sync::{SharedLock, SpinSyncMutex},
 };
+
 use super::UserQueueShared;
 
 /// Maintains shared queue state and wait queues for asynchronous offers/polls.

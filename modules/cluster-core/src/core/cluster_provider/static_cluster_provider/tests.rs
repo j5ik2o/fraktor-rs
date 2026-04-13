@@ -1,10 +1,8 @@
 use alloc::{string::String, vec, vec::Vec};
 
-use fraktor_actor_core_rs::core::kernel::{
-  event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
-  },
+use fraktor_actor_core_rs::core::kernel::event::stream::{
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+  subscriber_handle_with_shared_factory,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 

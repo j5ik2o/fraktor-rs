@@ -202,7 +202,8 @@ impl ActorCell {
       // this actor cell. The invoker holds a weak reference to the cell to
       // break the ActorCell → Mailbox → Invoker → ActorCell ownership cycle.
       let mailbox_handle = cell.mailbox();
-      let invoker: MessageInvokerShared = MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
+      let invoker: MessageInvokerShared =
+        MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
       mailbox_handle.install_invoker(invoker);
       // Late-bind the weak actor handle to the mailbox so `Mailbox::run` can
       // early-return after the cell drops, and so detach paths can call

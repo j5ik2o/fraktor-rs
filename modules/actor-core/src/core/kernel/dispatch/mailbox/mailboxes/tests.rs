@@ -7,9 +7,7 @@ use crate::core::kernel::{
     messaging::AnyMessage,
     props::{MailboxConfigError, MailboxRequirement},
   },
-  dispatch::mailbox::{
-    Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError,
-  },
+  dispatch::mailbox::{Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
 };
 
 #[test]

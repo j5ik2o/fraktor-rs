@@ -84,8 +84,7 @@ fn dead_letter_event_is_published_when_send_fails() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let subscriber = subscriber_handle_with_shared_factory(RecordingSubscriber::new(events.clone()),
-  );
+  let subscriber = subscriber_handle_with_shared_factory(RecordingSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   wait_until(|| child_slot.lock().is_some());

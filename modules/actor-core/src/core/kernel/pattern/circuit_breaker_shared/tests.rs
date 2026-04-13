@@ -7,8 +7,7 @@ use core::{
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use crate::core::kernel::pattern::{
-  CircuitBreaker, CircuitBreakerCallError, CircuitBreakerShared, CircuitBreakerState,
-  Clock,
+  CircuitBreaker, CircuitBreakerCallError, CircuitBreakerShared, CircuitBreakerState, Clock,
 };
 
 /// A deterministic clock for unit tests that does not depend on `std::time`.

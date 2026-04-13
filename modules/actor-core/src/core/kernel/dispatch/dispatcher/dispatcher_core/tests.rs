@@ -7,8 +7,7 @@ use core::{
 
 use super::DispatcherCore;
 use crate::core::kernel::dispatch::dispatcher::{
-  DispatcherSettings, ExecuteError, Executor, ExecutorShared, TrampolineState,
-  shutdown_schedule::ShutdownSchedule,
+  DispatcherSettings, ExecuteError, Executor, ExecutorShared, TrampolineState, shutdown_schedule::ShutdownSchedule,
 };
 
 struct StubExecutor {

@@ -17,9 +17,9 @@ use crate::core::kernel::{
     ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
     tick_driver::{
       AutoDriverMetadata, AutoProfileKind, HardwareKind, HardwareTickDriver, ManualTestDriver, SchedulerTickExecutor,
-      TickDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverError,
-      TickDriverHandle, TickDriverId, TickDriverKind, TickDriverProvisioningContext, TickExecutorPump,
-      TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
+      TickDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverError, TickDriverHandle,
+      TickDriverId, TickDriverKind, TickDriverProvisioningContext, TickExecutorPump, TickExecutorSignal, TickFeed,
+      TickFeedHandle, TickPulseHandler, TickPulseSource,
     },
   },
   event::{
@@ -217,10 +217,7 @@ impl TickDriver for RuntimeTestDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     *self.started_feed.lock() = Some(feed.clone());
     let control: Box<dyn TickDriverControl> = Box::new(NoopTickDriverControl);
     let control = TickDriverControlShared::new(control);
@@ -310,8 +307,7 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   let config = hardware_test_config(handler, Duration::from_millis(2));
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
-  let (mut bundle, _) =
-    TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
+  let (mut bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   handle.trigger();
   let resolution = ctx.scheduler().with_read(|s| s.config().resolution());
@@ -351,8 +347,7 @@ fn run_hardware_driver_watchdog_marks_inactive_on_shutdown() {
   let config = hardware_test_config(handler, Duration::from_millis(2));
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
-  let (mut bundle, _) =
-    TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
+  let (mut bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   handle.trigger();
   let feed = bundle.feed().expect("feed").clone();
@@ -422,8 +417,7 @@ fn embedded_quickstart_template_runs_ticks() {
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let config = hardware_test_config(handler, Duration::from_millis(2));
-  let (mut bundle, _) =
-    TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
+  let (mut bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   let scheduler = ctx.scheduler();
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -493,8 +487,7 @@ fn driver_metadata_records_driver_activation() {
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
 
-  let (bundle, snapshot) =
-    TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
+  let (bundle, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
   assert_eq!(snapshot.metadata.driver_id, bundle.driver().id());
 
   let events = events.lock().clone();
@@ -514,8 +507,7 @@ fn driver_snapshot_exposed_via_provisioning() {
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
 
-  let (mut bundle, snapshot) =
-    TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
+  let (mut bundle, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   assert_eq!(snapshot.metadata.driver_id, bundle.driver().id());
   assert_eq!(snapshot.kind, TickDriverKind::Hardware { source: HardwareKind::Custom });
@@ -556,8 +548,7 @@ fn bootstrap_runtime_wiring_path_builds_core_tick_components() {
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
 
-  let (mut bundle, snapshot) =
-    TickDriverBootstrap::provision(&config, &ctx).expect("runtime bundle");
+  let (mut bundle, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime bundle");
 
   assert_eq!(spawn_calls.load(Ordering::SeqCst), 1);
   assert_eq!(snapshot.kind, TickDriverKind::Auto);
@@ -578,8 +569,7 @@ fn bootstrap_runtime_wiring_path_starts_driver_with_core_feed() {
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
 
-  let (bundle, _) =
-    TickDriverBootstrap::provision(&config, &ctx).expect("runtime bundle");
+  let (bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime bundle");
   let captured_feed = started_feed.lock().clone().expect("driver feed");
   let bundle_feed = bundle.feed().expect("bundle feed");
 

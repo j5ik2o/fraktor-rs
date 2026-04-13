@@ -9,10 +9,7 @@ use crate::core::{
   kernel::{
     actor::{
       Pid,
-      actor_ref::{
-        ActorRef, ActorRefSender, SendOutcome,
-        dead_letter::DeadLetterReason,
-      },
+      actor_ref::{ActorRef, ActorRefSender, SendOutcome, dead_letter::DeadLetterReason},
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::AnyMessage,
@@ -34,12 +31,14 @@ use crate::core::{
 };
 
 struct TestExtension {
-  value: u32}
+  value: u32,
+}
 
 impl Extension for TestExtension {}
 
 struct TestExtensionId {
-  initial_value: u32}
+  initial_value: u32,
+}
 
 impl ExtensionId for TestExtensionId {
   type Ext = TestExtension;
@@ -50,7 +49,8 @@ impl ExtensionId for TestExtensionId {
 }
 
 struct RecordingSubscriber {
-  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>}
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
+}
 
 impl RecordingSubscriber {
   fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
@@ -65,7 +65,8 @@ impl EventStreamSubscriber for RecordingSubscriber {
 }
 
 struct CollectorSender {
-  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>}
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
+}
 
 impl CollectorSender {
   fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
@@ -639,7 +640,6 @@ fn event_stream_supports_subscribe_and_unsubscribe_commands() {
 
   system.terminate().expect("terminate");
 }
-
 
 #[test]
 fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscribe_state() {

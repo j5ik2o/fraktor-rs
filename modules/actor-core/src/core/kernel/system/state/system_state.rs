@@ -60,10 +60,7 @@ use crate::core::kernel::{
   },
   event::{
     logging::{LogEvent, LogLevel},
-    stream::{
-      EventStream, EventStreamEvent, EventStreamShared, RemoteAuthorityEvent,
-      TickDriverSnapshot,
-    },
+    stream::{EventStream, EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
   system::{RegisterExtraTopLevelError, ReservationPolicy},
   util::futures::ActorFutureShared,
@@ -130,8 +127,7 @@ impl SystemState {
     let mailboxes = config.mailboxes().clone();
     let scheduler_config = *config.scheduler_config();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream_shared.clone());
-    let tick_driver_bundle =
-      Self::default_tick_driver_bundle(scheduler_config.resolution());
+    let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -185,8 +181,7 @@ impl SystemState {
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
-    let tick_driver_bundle =
-      Self::default_tick_driver_bundle(scheduler_config.resolution());
+    let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
     let mut state = Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -250,9 +245,8 @@ impl SystemState {
     let tick_driver_config = config
       .tick_driver_config()
       .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
-    let (runtime, snapshot) =
-      TickDriverBootstrap::provision(tick_driver_config, &provisioning)
-        .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
+    let (runtime, snapshot) = TickDriverBootstrap::provision(tick_driver_config, &provisioning)
+      .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
     state.tick_driver_bundle = runtime;
     state.tick_driver_snapshot = Some(snapshot);
 

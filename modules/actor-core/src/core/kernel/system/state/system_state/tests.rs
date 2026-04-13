@@ -23,16 +23,16 @@ use crate::core::kernel::{
     scheduler::{
       SchedulerConfig,
       tick_driver::{
-        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
-        TickExecutorPump, TickFeedHandle,
+        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError,
+        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
       },
     },
     setup::ActorSystemConfig,
   },
   dispatch::{
     dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor,
-      MessageDispatcherConfigurator, TrampolineState,
+      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, MessageDispatcherConfigurator,
+      TrampolineState,
     },
     mailbox::MailboxMessage,
   },
@@ -134,10 +134,7 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    _feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     use crate::core::kernel::actor::scheduler::tick_driver::TickDriverControlShared;
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = TickDriverControlShared::new(control);

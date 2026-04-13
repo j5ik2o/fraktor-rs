@@ -37,6 +37,12 @@ impl SharedMessageQueue {
   }
 }
 
+impl Default for SharedMessageQueue {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl Clone for SharedMessageQueue {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }

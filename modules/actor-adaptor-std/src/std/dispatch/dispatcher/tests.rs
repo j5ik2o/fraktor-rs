@@ -28,24 +28,17 @@ use std::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, ReceiveTimeoutState, ReceiveTimeoutStateShared,
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared},
+    Actor, ActorContext,
+    actor_ref::ActorRef,
     error::ActorError,
-    messaging::{
-      AnyMessage, AnyMessageView,
-      message_invoker::{MessageInvoker, MessageInvokerShared},
-    },
+    messaging::{AnyMessage, AnyMessageView},
     props::Props,
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
     BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings,
-    ExecuteError, Executor, ExecutorFactory, ExecutorShared, MessageDispatcher,
-    MessageDispatcherConfigurator, MessageDispatcherShared,
+    ExecuteError, Executor, ExecutorFactory, ExecutorShared, MessageDispatcherConfigurator,
     PinnedDispatcherConfigurator, SharedMessageQueue, TrampolineState,
-  },
-  event::stream::{
-    EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
   },
   system::ActorSystem,
 };
@@ -70,7 +63,6 @@ impl Executor for NoopExecutor {
 
   fn shutdown(&mut self) {}
 }
-
 
 struct CountingActor {
   per_actor: Arc<AtomicUsize>,
@@ -120,19 +112,14 @@ fn build_system() -> ActorSystem {
   let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
   let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
-  let default_configurator: Box<dyn MessageDispatcherConfigurator> = Box::new(DefaultDispatcherConfigurator::new(
-    &default_settings,
-    default_executor,
-  ));
+  let default_configurator: Box<dyn MessageDispatcherConfigurator> =
+    Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
 
   let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
   let balancing_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
-  let balancing_configurator: Box<dyn MessageDispatcherConfigurator> = Box::new(BalancingDispatcherConfigurator::new(
-    &balancing_settings,
-    balancing_executor,
-    shared_queue,
-  ));
+  let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
+    Box::new(BalancingDispatcherConfigurator::new(&balancing_settings, balancing_executor, shared_queue));
 
   let config = config
     .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
@@ -149,11 +136,11 @@ fn spawn_team(
   let total = Arc::new(AtomicUsize::new(0));
   let per_actor: Vec<Arc<AtomicUsize>> = (0..team_size).map(|_| Arc::new(AtomicUsize::new(0))).collect();
   let mut refs = Vec::with_capacity(team_size);
-  for index in 0..team_size {
+  for counter in &per_actor {
     let (reply_tx, reply_rx): (SyncSender<ActorRef>, Receiver<ActorRef>) = sync_channel(1);
     let command = SpawnTeamMember {
       reply_to:      reply_tx,
-      per_actor:     per_actor[index].clone(),
+      per_actor:     counter.clone(),
       total:         total.clone(),
       dispatcher_id: dispatcher_id.to_string(),
     };
@@ -222,11 +209,7 @@ fn balancing_dispatcher_configurator_creates_dispatcher_with_shared_queue() {
   let settings = DispatcherSettings::with_defaults("balancing-test");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
-  let configurator = BalancingDispatcherConfigurator::new(
-    &settings,
-    executor,
-    shared_queue,
-  );
+  let configurator = BalancingDispatcherConfigurator::new(&settings, executor, shared_queue);
 
   let _dispatcher = configurator.dispatcher();
 }

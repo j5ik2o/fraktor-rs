@@ -201,9 +201,10 @@ impl ClusterExtension {
     let self_address = core.startup_address();
     let grain_metrics = if core.metrics_enabled() { Some(GrainMetricsShared::new(GrainMetrics::new())) } else { None };
     let self_member_status = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
-    let status_subscriber = subscriber_handle_with_shared_factory(
-      SelfMemberStatusTrackerSubscriber::new(self_address, self_member_status.clone()),
-    );
+    let status_subscriber = subscriber_handle_with_shared_factory(SelfMemberStatusTrackerSubscriber::new(
+      self_address,
+      self_member_status.clone(),
+    ));
     let self_member_status_subscription = event_stream.subscribe_no_replay(&status_subscriber);
     let locked = SharedLock::new_with_driver::<SpinSyncMutex<_>>(core);
     let subscription = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
@@ -433,13 +434,12 @@ impl ClusterExtension {
     let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusSubscriberState::new());
     let callback_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusCallbackState::new(callback));
     let subscriber = subscriber_handle_with_shared_factory(MemberStatusSubscriber::new(
-        target,
-        self_address.clone(),
-        callback_state.clone(),
-        state.clone(),
-        self.event_stream.clone(),
-      ),
-    );
+      target,
+      self_address.clone(),
+      callback_state.clone(),
+      state.clone(),
+      self.event_stream.clone(),
+    ));
     let subscription = self.event_stream.subscribe_no_replay(&subscriber);
     let subscription_id = subscription.id();
     state.with_lock(|guard| {

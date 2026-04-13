@@ -121,7 +121,6 @@ impl Actor for NoopActor {
   }
 }
 
-
 /// Builds an ActorRef with an associated SystemState.
 ///
 /// Returns both the ActorRef and the SystemStateShared to keep the system state alive.

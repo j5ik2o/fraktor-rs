@@ -21,7 +21,7 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
     subscriber_handle_with_shared_factory,
   },
-  system::{ActorSystem, TerminationSignal, },
+  system::{ActorSystem, TerminationSignal},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SpinSyncMutex},
@@ -171,9 +171,11 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(move |system: &ActorSystem| {
-      let actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(
-        TestActorRefProvider::new(system.clone(), send_counter.clone(), send_behavior),
-      );
+      let actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(TestActorRefProvider::new(
+        system.clone(),
+        send_counter.clone(),
+        send_behavior,
+      ));
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);

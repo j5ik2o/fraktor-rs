@@ -67,10 +67,7 @@ impl TickDriver for TokioTickDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     let resolution = self.resolution;
     let tick_task = handle.spawn(async move {

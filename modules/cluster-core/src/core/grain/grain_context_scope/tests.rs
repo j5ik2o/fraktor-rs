@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  system::{ActorSystem, TerminationSignal, },
+  system::{ActorSystem, TerminationSignal},
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 

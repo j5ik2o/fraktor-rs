@@ -7,7 +7,8 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
   HardwareKind, TickDriver, TickDriverControl, TickDriverControlShared, TickDriverError, TickDriverHandle,
-  TickDriverId, TickDriverKind, TickFeedHandle, TickPulseHandler, TickPulseSource, tick_driver_trait::next_tick_driver_id,
+  TickDriverId, TickDriverKind, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  tick_driver_trait::next_tick_driver_id,
 };
 
 /// Tick driver that bridges hardware pulse sources into tick feeds.
@@ -44,10 +45,7 @@ impl TickDriver for HardwareTickDriver {
     self.pulse.resolution()
   }
 
-  fn start(
-    &mut self,
-    feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let context = Box::new(PulseContext { feed: feed.clone() });
     let ptr = Box::into_raw(context) as *mut c_void;
     let handler = TickPulseHandler { func: pulse_trampoline, ctx: ptr };

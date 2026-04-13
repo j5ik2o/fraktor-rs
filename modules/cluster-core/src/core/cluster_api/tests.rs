@@ -6,13 +6,11 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorContext,
-    ActorShared, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
+    Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, Pid, ReceiveTimeoutState,
+    ReceiveTimeoutStateShared,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-    actor_ref_provider::{
-      ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider,
-    },
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
     context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
@@ -23,9 +21,7 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
-      tick_driver::{
-        ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared,
-      },
+      tick_driver::{ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared},
     },
     setup::ActorSystemConfig,
   },
@@ -39,13 +35,10 @@ use fraktor_actor_core_rs::core::kernel::{
     },
   },
   event::stream::{
-    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber,
-    EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamSubscription, subscriber_handle_with_shared_factory,
   },
-  system::{
-    ActorSystem, TerminationSignal,
-    },
+  system::{ActorSystem, TerminationSignal},
   util::futures::{ActorFuture, ActorFutureShared},
 };
 use fraktor_utils_core_rs::core::{
@@ -71,10 +64,7 @@ struct CountingSubscriberLockProvider {
 impl CountingSubscriberLockProvider {
   fn new() -> (ArcShared<AtomicUsize>, Self) {
     let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
-    let provider = Self {
-      
-      event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
-    };
+    let provider = Self { event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
     (event_stream_subscriber_shared, provider)
   }
 }
@@ -496,7 +486,6 @@ fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_pr
   let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
     .with_tick_driver(tick_driver)
-    
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
       let actor_ref_provider_handle_shared =

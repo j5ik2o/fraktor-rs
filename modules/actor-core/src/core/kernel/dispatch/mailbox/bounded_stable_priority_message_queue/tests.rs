@@ -6,8 +6,8 @@ use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::mailbox::{
-    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared,
-    MailboxOverflowStrategy, MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
+    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared, MailboxOverflowStrategy,
+    MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
   },
 };
 

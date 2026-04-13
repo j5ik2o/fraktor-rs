@@ -28,10 +28,7 @@ impl TickDriver for RuntimeTestDriver {
     Duration::from_millis(1)
   }
 
-  fn start(
-    &mut self,
-    _feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = TickDriverControlShared::new(control);
     Ok(TickDriverHandle::new(self.id(), self.kind(), self.resolution(), control))

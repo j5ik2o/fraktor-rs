@@ -21,8 +21,7 @@ impl MessagePriorityGenerator for PayloadPriorityGenerator {
 #[test]
 fn dequeues_in_priority_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let state_shared =
-    UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
+  let state_shared = UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
   let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).unwrap();
@@ -42,8 +41,7 @@ fn dequeues_in_priority_order() {
 #[test]
 fn dequeue_empty_returns_none() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let state_shared =
-    UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
+  let state_shared = UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
   let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
   assert!(queue.dequeue().is_none());
 }
@@ -51,8 +49,7 @@ fn dequeue_empty_returns_none() {
 #[test]
 fn number_of_messages_tracks_count() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let state_shared =
-    UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
+  let state_shared = UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
   let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   assert_eq!(queue.number_of_messages(), 0);
@@ -68,8 +65,7 @@ fn number_of_messages_tracks_count() {
 #[test]
 fn clean_up_removes_all_messages() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let state_shared =
-    UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
+  let state_shared = UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
   let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_i32))).unwrap();
@@ -85,8 +81,7 @@ fn clean_up_removes_all_messages() {
 #[test]
 fn has_messages_reflects_queue_state() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let state_shared =
-    UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
+  let state_shared = UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
   let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   assert!(!queue.has_messages());
@@ -99,8 +94,7 @@ fn has_messages_reflects_queue_state() {
 #[test]
 fn struct_based_priority_generator_dequeues_in_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let state_shared =
-    UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
+  let state_shared = UnboundedPriorityMessageQueueStateShared::new(UnboundedPriorityMessageQueueState::new());
   let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   queue.enqueue(Envelope::new(AnyMessage::new(50_i32))).expect("enqueue 50");

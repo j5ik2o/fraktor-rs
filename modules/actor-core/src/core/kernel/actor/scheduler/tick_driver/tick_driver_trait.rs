@@ -33,8 +33,5 @@ pub trait TickDriver: Send + 'static {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when the driver fails to initialize.
-  fn start(
-    &mut self,
-    feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError>;
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError>;
 }

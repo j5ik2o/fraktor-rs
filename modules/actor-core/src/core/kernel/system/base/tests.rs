@@ -29,8 +29,8 @@ use crate::core::{
         task_run::{TaskRunError, TaskRunPriority},
         tick_driver::{
           AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig,
-          TickDriverControl, TickDriverControlShared, TickDriverError, TickDriverHandle, TickDriverId,
-          TickDriverKind, TickExecutorPump, TickFeedHandle,
+          TickDriverControl, TickDriverControlShared, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
+          TickExecutorPump, TickFeedHandle,
         },
       },
       setup::ActorSystemConfig,
@@ -179,10 +179,7 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    _feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = TickDriverControlShared::new(control);
     Ok(TickDriverHandle::new(self.id, self.kind, self.resolution, control))

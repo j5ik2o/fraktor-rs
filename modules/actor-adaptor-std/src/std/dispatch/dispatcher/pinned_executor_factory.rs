@@ -5,9 +5,7 @@ extern crate std;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::string::String;
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{
-  ExecutorFactory, ExecutorShared, TrampolineState,
-};
+use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecutorFactory, ExecutorShared, TrampolineState};
 
 use super::pinned_executor::PinnedExecutor;
 
@@ -24,10 +22,7 @@ impl PinnedExecutorFactory {
   /// Creates a factory using the supplied thread name prefix.
   #[must_use]
   pub fn new(thread_name_prefix: impl Into<String>) -> Self {
-    Self {
-      thread_name_prefix: thread_name_prefix.into(),
-      counter:            AtomicUsize::new(0),
-    }
+    Self { thread_name_prefix: thread_name_prefix.into(), counter: AtomicUsize::new(0) }
   }
 
   fn allocate_name(&self, dispatcher_id: &str) -> String {

@@ -9,9 +9,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{ActorCell, messaging::AnyMessage},
-  dispatch::dispatcher::{
-    DispatcherSettings, ExecuteError, Executor, ExecutorShared, TrampolineState,
-  },
+  dispatch::dispatcher::{DispatcherSettings, ExecuteError, Executor, ExecutorShared, TrampolineState},
 };
 
 struct InlineExec;

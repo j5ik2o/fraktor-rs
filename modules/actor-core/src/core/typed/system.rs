@@ -89,7 +89,7 @@ impl EventStreamRefEndpoint {
 }
 
 impl EventStreamRefSender {
-  fn new(event_stream: EventStreamShared) -> Self {
+  const fn new(event_stream: EventStreamShared) -> Self {
     Self { event_stream, subscriptions: Vec::new() }
   }
 
@@ -130,11 +130,8 @@ impl ExtensionId for EventStreamRefId {
 
   fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
     let state = system.state();
-    let actor_ref = ActorRef::with_system(
-      EVENT_STREAM_FACADE_PID,
-      EventStreamRefSender::new(system.event_stream()),
-      &state,
-    );
+    let actor_ref =
+      ActorRef::with_system(EVENT_STREAM_FACADE_PID, EventStreamRefSender::new(system.event_stream()), &state);
     EventStreamRefEndpoint::new(actor_ref)
   }
 }

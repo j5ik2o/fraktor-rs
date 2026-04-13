@@ -166,10 +166,7 @@ impl TickDriverControl for CompositeTickDriverControl {
   }
 }
 
-fn compose_runtime_handle(
-  handle: &TickDriverHandle,
-  executor_control: Box<dyn TickDriverControl>,
-) -> TickDriverHandle {
+fn compose_runtime_handle(handle: &TickDriverHandle, executor_control: Box<dyn TickDriverControl>) -> TickDriverHandle {
   let executor_control = TickDriverControlShared::new(executor_control);
   let control: Box<dyn TickDriverControl> =
     Box::new(CompositeTickDriverControl::new(handle.control(), executor_control));

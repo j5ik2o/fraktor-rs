@@ -26,13 +26,10 @@ use fraktor_actor_core_rs::core::kernel::{
     },
   },
   event::stream::{
-    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber,
-    EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamSubscription, subscriber_handle_with_shared_factory,
   },
-  system::{
-    ActorSystem,
-    },
+  system::ActorSystem,
   util::futures::{ActorFuture, ActorFutureShared},
 };
 use fraktor_utils_core_rs::core::{
@@ -59,10 +56,7 @@ struct CountingSubscriberLockProvider {
 impl CountingSubscriberLockProvider {
   fn new() -> (ArcShared<AtomicUsize>, Self) {
     let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
-    let provider = Self {
-      
-      event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
-    };
+    let provider = Self { event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
     (event_stream_subscriber_shared, provider)
   }
 }

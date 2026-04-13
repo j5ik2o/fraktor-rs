@@ -232,10 +232,7 @@ impl TickDriver for TokioDemoTickDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    feed: TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let handle = TokioHandle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     let resolution = self.resolution;
     let tick_task = handle.spawn(async move {

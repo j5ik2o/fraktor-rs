@@ -38,10 +38,9 @@ impl BoundedStablePriorityMailboxType {
 
 impl MailboxType for BoundedStablePriorityMailboxType {
   fn create(&self) -> Box<dyn MessageQueue> {
-    let state_shared =
-      BoundedStablePriorityMessageQueueStateShared::new(BoundedStablePriorityMessageQueueState::with_capacity(
-        self.capacity,
-      ));
+    let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
+      BoundedStablePriorityMessageQueueState::with_capacity(self.capacity),
+    );
     Box::new(BoundedStablePriorityMessageQueue::new(self.generator.clone(), state_shared, self.capacity, self.overflow))
   }
 }

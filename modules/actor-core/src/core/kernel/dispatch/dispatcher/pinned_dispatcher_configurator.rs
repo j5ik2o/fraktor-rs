@@ -16,8 +16,8 @@ use super::{
 
 /// Configurator that produces a fresh [`PinnedDispatcher`] per call.
 pub struct PinnedDispatcherConfigurator {
-  settings: DispatcherSettings,
-  executor_factory: ArcShared<Box<dyn ExecutorFactory>>,
+  settings:           DispatcherSettings,
+  executor_factory:   ArcShared<Box<dyn ExecutorFactory>>,
   thread_name_prefix: String,
 }
 

@@ -23,9 +23,9 @@ use crate::core::kernel::{
 
 /// Dispatcher that load-balances actors over a shared message queue.
 pub struct BalancingDispatcher {
-  core: DispatcherCore,
+  core:         DispatcherCore,
   shared_queue: SharedMessageQueue,
-  team: Vec<WeakShared<ActorCell>>,
+  team:         Vec<WeakShared<ActorCell>>,
 }
 
 impl BalancingDispatcher {

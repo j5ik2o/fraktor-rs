@@ -9,8 +9,8 @@ use core::{
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::actor::scheduler::tick_driver::{
-  AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverControl, TickDriverControlShared,
-  TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+  AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverControl, TickDriverControlShared, TickDriverHandle,
+  TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
 };
 
 struct RecordingControl {

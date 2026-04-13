@@ -12,8 +12,6 @@ pub trait EventStreamSubscriber: Send + Sync + 'static {
 
 /// Wraps a subscriber into a shared handle using direct construction.
 #[must_use]
-pub fn subscriber_handle_with_shared_factory(
-  subscriber: impl EventStreamSubscriber,
-) -> EventStreamSubscriberShared {
+pub fn subscriber_handle_with_shared_factory(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
   EventStreamSubscriberShared::new(Box::new(subscriber))
 }

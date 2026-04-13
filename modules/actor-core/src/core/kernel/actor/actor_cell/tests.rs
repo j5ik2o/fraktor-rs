@@ -9,8 +9,7 @@ use crate::core::kernel::{
     Actor, ActorContext, Pid, ReceiveTimeoutState,
     error::ActorError,
     messaging::{
-      ActorIdentity, AnyMessage, AnyMessageView, Identify,
-      message_invoker::MessageInvoker,
+      ActorIdentity, AnyMessage, AnyMessageView, Identify, message_invoker::MessageInvoker,
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},

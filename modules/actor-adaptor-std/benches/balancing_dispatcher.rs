@@ -121,31 +121,25 @@ impl DispatcherBenchSystem {
   fn new() -> Self {
     let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
     let handle = runtime.handle().clone();
-    let system =
-      runtime.block_on(async {
-        let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
-        let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-        let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
-        let default_configurator: Box<dyn MessageDispatcherConfigurator> = Box::new(
-          DefaultDispatcherConfigurator::new(&default_settings, default_executor),
-        );
+    let system = runtime.block_on(async {
+      let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
+      let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+      let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
+      let default_configurator: Box<dyn MessageDispatcherConfigurator> =
+        Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
 
-        let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
-        let balancing_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
-        let shared_queue = SharedMessageQueue::new();
-        let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
-          Box::new(BalancingDispatcherConfigurator::new(
-            &balancing_settings,
-            balancing_executor,
-            shared_queue,
-          ));
+      let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
+      let balancing_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
+      let shared_queue = SharedMessageQueue::new();
+      let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
+        Box::new(BalancingDispatcherConfigurator::new(&balancing_settings, balancing_executor, shared_queue));
 
-        let config = config
-          .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
-          .with_dispatcher_configurator(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
-        let props = Props::from_fn(|| TeamGuardian);
-        ActorSystem::new_with_config(&props, &config).expect("actor system")
-      });
+      let config = config
+        .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
+        .with_dispatcher_configurator(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
+      let props = Props::from_fn(|| TeamGuardian);
+      ActorSystem::new_with_config(&props, &config).expect("actor system")
+    });
     Self { runtime, system }
   }
 

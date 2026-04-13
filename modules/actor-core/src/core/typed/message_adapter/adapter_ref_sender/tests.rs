@@ -3,15 +3,17 @@ use alloc::vec::Vec;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
-  kernel::actor::{
-    Pid,
-    actor_ref::{ActorRefSender, ActorRefSenderShared},
-    error::SendError,
-    messaging::AnyMessage,
+  kernel::{
+    actor::{
+      Pid,
+      actor_ref::{ActorRefSender, ActorRefSenderShared},
+      error::SendError,
+      messaging::AnyMessage,
+    },
+    system::ActorSystem,
   },
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender, adapter_ref_sender::SendOutcome},
 };
-use crate::core::kernel::system::ActorSystem;
 
 struct ProbeSender {
   messages: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,

@@ -65,10 +65,8 @@ fn nz(value: usize) -> NonZeroUsize {
 
 #[test]
 fn shared_query_methods_delegate_to_inner() {
-  let executor = ExecutorShared::new(
-    Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
-    TrampolineState::new(),
-  );
+  let executor =
+    ExecutorShared::new(Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }), TrampolineState::new());
   let settings = DispatcherSettings::new("shared", nz(11), Some(Duration::from_millis(7)), Duration::from_secs(2));
   let dispatcher = DefaultDispatcher::new(&settings, executor);
   let shared = MessageDispatcherShared::new(Box::new(dispatcher));
@@ -81,10 +79,8 @@ fn shared_query_methods_delegate_to_inner() {
 
 #[test]
 fn clone_shares_inner_state() {
-  let executor = ExecutorShared::new(
-    Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
-    TrampolineState::new(),
-  );
+  let executor =
+    ExecutorShared::new(Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }), TrampolineState::new());
   let settings = DispatcherSettings::with_defaults("clone-test");
   let dispatcher = DefaultDispatcher::new(&settings, executor);
   let shared = MessageDispatcherShared::new(Box::new(dispatcher));
@@ -95,10 +91,8 @@ fn clone_shares_inner_state() {
 
 #[test]
 fn shutdown_invokes_inner_shutdown() {
-  let executor = ExecutorShared::new(
-    Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
-    TrampolineState::new(),
-  );
+  let executor =
+    ExecutorShared::new(Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }), TrampolineState::new());
   let settings = DispatcherSettings::with_defaults("shutdown");
   let dispatcher = DefaultDispatcher::new(&settings, executor);
   let shared = MessageDispatcherShared::new(Box::new(dispatcher));
@@ -138,10 +132,8 @@ fn dispatch_drives_user_message_through_actor_invoker() {
   let cell = ActorCell::create(state.clone(), pid, None, "drive-test".into(), &props).expect("create cell");
   state.register_cell(cell.clone());
 
-  let executor = ExecutorShared::new(
-    Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
-    TrampolineState::new(),
-  );
+  let executor =
+    ExecutorShared::new(Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }), TrampolineState::new());
   let settings = DispatcherSettings::new("dispatch-drive", nz(8), None, Duration::from_secs(1));
   let dispatcher = DefaultDispatcher::new(&settings, executor);
   let shared = MessageDispatcherShared::new(Box::new(dispatcher));
