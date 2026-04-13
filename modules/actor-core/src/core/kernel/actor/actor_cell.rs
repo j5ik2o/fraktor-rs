@@ -208,7 +208,7 @@ impl ActorCell {
       // Late-bind the weak actor handle to the mailbox so `Mailbox::run` can
       // early-return after the cell drops, and so detach paths can call
       // `Mailbox::clean_up` without re-deriving the back-reference.
-      let _previous_actor = mailbox_handle.install_actor(cell.downgrade());
+      mailbox_handle.install_actor(cell.downgrade());
     }
 
     // Register the new dispatcher attach so the inhabitants counter matches the
