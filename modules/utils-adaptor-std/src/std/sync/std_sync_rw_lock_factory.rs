@@ -1,6 +1,6 @@
 use fraktor_utils_core_rs::core::sync::RwLockDriverFactory;
 
-use super::StdSyncRwLock;
+use super::std_sync_rwlock::StdSyncRwLock;
 
 /// Factory for [`StdSyncRwLock`](super::StdSyncRwLock).
 pub struct StdSyncRwLockFactory;
