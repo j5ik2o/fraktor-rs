@@ -9,7 +9,11 @@
 mod tests;
 
 use core::mem::ManuallyDrop;
-use std::{sync::Mutex, thread};
+use std::{
+  sync::Mutex,
+  thread,
+  thread::ThreadId,
+};
 
 use super::{LockDriver, checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard, spin_sync_mutex::SpinSyncMutex};
 
@@ -21,7 +25,7 @@ use super::{LockDriver, checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard
 pub struct CheckedSpinSyncMutex<T> {
   pub(super) inner: SpinSyncMutex<T>,
   /// `None` = unlocked, `Some(id)` = thread `id` holds the lock.
-  pub(super) owner: Mutex<Option<thread::ThreadId>>,
+  pub(super) owner: Mutex<Option<ThreadId>>,
 }
 
 unsafe impl<T: Send> Send for CheckedSpinSyncMutex<T> {}

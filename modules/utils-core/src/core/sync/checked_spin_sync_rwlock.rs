@@ -9,7 +9,11 @@
 mod tests;
 
 use core::mem::ManuallyDrop;
-use std::{sync::Mutex, thread};
+use std::{
+  sync::Mutex,
+  thread,
+  thread::ThreadId,
+};
 
 use super::{
   RwLockDriver, checked_rw_lock_read_guard::CheckedRwLockReadGuard,
@@ -27,7 +31,7 @@ pub(super) enum ThreadLockState {
 
 /// Per-thread lock ownership record.
 pub(super) struct OwnerRecord {
-  thread_id: thread::ThreadId,
+  thread_id: ThreadId,
   state:     ThreadLockState,
 }
 
