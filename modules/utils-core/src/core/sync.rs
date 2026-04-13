@@ -1,3 +1,9 @@
+/// Re-entry detecting spin mutex (no_std compatible).
+#[allow(clippy::disallowed_types)]
+mod checked_spin_sync_mutex;
+/// Re-entry detecting spin rwlock (no_std compatible).
+#[allow(clippy::disallowed_types)]
+mod checked_spin_sync_rwlock;
 #[allow(clippy::disallowed_types)]
 mod arc_shared;
 mod lock_driver;
@@ -22,6 +28,8 @@ mod weak_shared;
 mod weak_shared_lock;
 mod weak_shared_rw_lock;
 
+pub use checked_spin_sync_mutex::{CheckedSpinSyncMutex, CheckedSpinSyncMutexGuard};
+pub use checked_spin_sync_rwlock::{CheckedRwLockReadGuard, CheckedRwLockWriteGuard, CheckedSpinSyncRwLock};
 pub use arc_shared::ArcShared;
 pub use lock_driver::LockDriver;
 pub use lock_driver_factory::LockDriverFactory;
@@ -38,3 +46,19 @@ pub use spin_sync_rwlock_factory::SpinSyncRwLockFactory;
 pub use weak_shared::WeakShared;
 pub use weak_shared_lock::WeakSharedLock;
 pub use weak_shared_rw_lock::WeakSharedRwLock;
+
+/// Default mutex backend. Resolves to [`SpinSyncMutex`] in production
+/// and [`CheckedSpinSyncMutex`] when the `debug-locks` feature is enabled.
+#[cfg(not(feature = "debug-locks"))]
+pub type DefaultMutex<T> = SpinSyncMutex<T>;
+/// Default mutex backend with re-entry detection (debug-locks enabled).
+#[cfg(feature = "debug-locks")]
+pub type DefaultMutex<T> = CheckedSpinSyncMutex<T>;
+
+/// Default rwlock backend. Resolves to [`SpinSyncRwLock`] in production
+/// and [`CheckedSpinSyncRwLock`] when the `debug-locks` feature is enabled.
+#[cfg(not(feature = "debug-locks"))]
+pub type DefaultRwLock<T> = SpinSyncRwLock<T>;
+/// Default rwlock backend with re-entry detection (debug-locks enabled).
+#[cfg(feature = "debug-locks")]
+pub type DefaultRwLock<T> = CheckedSpinSyncRwLock<T>;
