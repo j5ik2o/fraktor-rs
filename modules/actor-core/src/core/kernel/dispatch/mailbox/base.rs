@@ -35,7 +35,16 @@ pub struct Mailbox {
   policy:          MailboxPolicy,
   system:          SystemQueue,
   user:            Box<dyn MessageQueue>,
-  user_queue_lock: MailboxLocked<()>,
+  /// Compound-op lock (Pekko `putLock` equivalent).
+  ///
+  /// Protects multi-step operations that must be atomic with respect to
+  /// `finalize_cleanup`: `enqueue_envelope_locked` (is_closed + enqueue),
+  /// `prepend_user_messages_deque_locked` (is_closed + O(k) prepend), and
+  /// `finalize_cleanup` itself (drain + clean_up + finish_cleanup).
+  ///
+  /// Single-step operations (dequeue, metrics reads) do **not** acquire
+  /// this lock — the inner queue mutex provides sufficient synchronization.
+  put_lock:        MailboxLocked<()>,
   state:           MailboxScheduleState,
   /// Write-once instrumentation hooks. Set once via
   /// [`set_instrumentation`](Self::set_instrumentation), read lock-free thereafter via
@@ -115,7 +124,7 @@ impl Mailbox {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: shared_set.user_queue_lock(),
+      put_lock: shared_set.put_lock(),
       state: MailboxScheduleState::new(),
       instrumentation: Once::new(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
@@ -147,7 +156,7 @@ impl Mailbox {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: shared_set.user_queue_lock(),
+      put_lock: shared_set.put_lock(),
       state: MailboxScheduleState::new(),
       instrumentation: Once::new(),
       cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
@@ -185,7 +194,7 @@ impl Mailbox {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: shared_set.user_queue_lock(),
+      put_lock: shared_set.put_lock(),
       state: MailboxScheduleState::new(),
       instrumentation: Once::new(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
@@ -415,13 +424,13 @@ impl Mailbox {
 
   /// Locked critical section of [`Self::enqueue_envelope`].
   ///
-  /// Acquires `user_queue_lock` and performs the authoritative close
+  /// Acquires `put_lock` and performs the authoritative close
   /// re-check before handing the envelope to the underlying queue. This
   /// must only be called from [`Self::enqueue_envelope`] in production
   /// code; the fast path preceding this method is what makes the common
   /// closed / suspended paths lock-free.
   fn enqueue_envelope_locked(&self, envelope: Envelope) -> Result<(), SendError> {
-    let enqueue_result = self.user_queue_lock.with_lock(|_| {
+    let enqueue_result = self.put_lock.with_lock(|_| {
       // Authoritative re-check under lock: cleanup may have won the lock
       // race between the fast path and this acquisition. Without this, a
       // producer could phantom-enqueue into a drained queue.
@@ -478,7 +487,7 @@ impl Mailbox {
 
   /// Locked critical section of [`Self::prepend_user_messages_deque`].
   ///
-  /// Acquires `user_queue_lock`, performs the authoritative close re-check,
+  /// Acquires `put_lock`, performs the authoritative close re-check,
   /// and prepends in O(k). Must only be called
   /// from [`Self::prepend_user_messages_deque`] after the fast path has cleared.
   fn prepend_user_messages_deque_locked(
@@ -487,7 +496,7 @@ impl Mailbox {
     messages: &VecDeque<AnyMessage>,
     first_message: AnyMessage,
   ) -> Result<(), SendError> {
-    self.user_queue_lock.with_lock(|_| {
+    self.put_lock.with_lock(|_| {
       // Authoritative re-check under lock: cleanup may have won the lock race
       // between the fast path and this acquisition.
       if self.is_closed() {
@@ -527,12 +536,7 @@ impl Mailbox {
       return None;
     }
 
-    let result = self.user_queue_lock.with_lock(|_| {
-      if self.state.is_close_requested() {
-        return None;
-      }
-      self.user.dequeue().map(MailboxMessage::User)
-    });
+    let result = if self.state.is_close_requested() { None } else { self.user.dequeue().map(MailboxMessage::User) };
     if result.is_some() {
       self.publish_metrics();
     }
@@ -617,7 +621,7 @@ impl Mailbox {
   fn finalize_cleanup(&self) {
     let pid = self.pid();
     let system_state = self.system_state();
-    let user_len_after_cleanup = self.user_queue_lock.with_lock(|_| {
+    let user_len_after_cleanup = self.put_lock.with_lock(|_| {
       if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
         while let Some(envelope) = self.user.dequeue() {
           if let Some(ref state) = system_state {
@@ -648,7 +652,7 @@ impl Mailbox {
   /// Returns the number of user messages awaiting processing.
   #[must_use]
   pub(crate) fn user_len(&self) -> usize {
-    self.user_queue_lock.with_read(|_| self.user.number_of_messages())
+    self.user.number_of_messages()
   }
 
   /// Returns the number of system messages awaiting processing.
@@ -664,8 +668,7 @@ impl Mailbox {
   }
 
   fn publish_metrics(&self) {
-    let user_len = self.user_queue_lock.with_read(|_| self.user.number_of_messages());
-    self.publish_metrics_with_user_len(user_len);
+    self.publish_metrics_with_user_len(self.user.number_of_messages());
   }
 
   fn publish_metrics_with_user_len(&self, user_len: usize) {

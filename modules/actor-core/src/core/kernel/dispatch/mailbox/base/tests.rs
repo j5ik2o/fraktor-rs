@@ -590,7 +590,7 @@ fn mailbox_prepend_user_messages_deque_returns_closed_after_mailbox_close() {
 /// critical section must observe the authoritative `is_closed()` re-check
 /// when cleanup has closed the state.
 ///
-/// The test thread takes `user_queue_lock`, starts a producer, waits until the
+/// The test thread takes `put_lock`, starts a producer, waits until the
 /// producer is blocked on the same lock, then closes and cleans the mailbox
 /// while still holding the lock. Once the lock is released, the producer must
 /// observe the under-lock `is_closed()` re-check and fail with `Closed`.
@@ -607,7 +607,7 @@ fn cleanup_close_wins_against_inflight_enqueue() {
   let (release_lock_tx, release_lock_rx) = mpsc::channel();
   let mailbox_for_lock = Arc::clone(&mailbox);
   let lock_handle = thread::spawn(move || {
-    mailbox_for_lock.user_queue_lock.with_lock(|_| {
+    mailbox_for_lock.put_lock.with_lock(|_| {
       lock_held_tx.send(()).expect("lock 取得シグナルが送信されるべき");
       release_lock_rx.recv().expect("lock 解放シグナルを受信できるべき");
     });
@@ -623,10 +623,7 @@ fn cleanup_close_wins_against_inflight_enqueue() {
   });
 
   started_rx.recv().expect("enqueue スレッドが起動するべき");
-  assert!(
-    result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
-    "producer は user_queue_lock 上でブロックされるべき",
-  );
+  assert!(result_rx.recv_timeout(Duration::from_millis(200)).is_err(), "producer は put_lock 上でブロックされるべき",);
 
   assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
   mailbox.user.clean_up();
@@ -660,7 +657,7 @@ fn cleanup_close_wins_against_inflight_prepend() {
   let (release_lock_tx, release_lock_rx) = mpsc::channel();
   let mailbox_for_lock = Arc::clone(&mailbox);
   let lock_handle = thread::spawn(move || {
-    mailbox_for_lock.user_queue_lock.with_lock(|_| {
+    mailbox_for_lock.put_lock.with_lock(|_| {
       lock_held_tx.send(()).expect("lock 取得シグナルが送信されるべき");
       release_lock_rx.recv().expect("lock 解放シグナルを受信できるべき");
     });
@@ -678,10 +675,7 @@ fn cleanup_close_wins_against_inflight_prepend() {
   });
 
   started_rx.recv().expect("prepend スレッドが起動するべき");
-  assert!(
-    result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
-    "prepend は user_queue_lock 上でブロックされるべき",
-  );
+  assert!(result_rx.recv_timeout(Duration::from_millis(200)).is_err(), "prepend は put_lock 上でブロックされるべき",);
 
   assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
   mailbox.user.clean_up();
