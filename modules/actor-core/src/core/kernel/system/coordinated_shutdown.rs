@@ -20,6 +20,7 @@ use fraktor_utils_core_rs::core::{
   timing::delay::DelayProvider,
 };
 use futures::future::{Either, join_all, poll_fn, select};
+use spin::Once;
 
 use super::{coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_id::CoordinatedShutdownId};
 use crate::core::kernel::{
@@ -69,7 +70,7 @@ pub struct CoordinatedShutdown {
   tasks:          SharedLock<BTreeMap<String, Vec<ShutdownTask>>>,
   run_started:    AtomicBool,
   run_done:       AtomicBool,
-  reason:         SharedLock<Option<CoordinatedShutdownReason>>,
+  reason:         Once<CoordinatedShutdownReason>,
   delay_provider: Option<SharedLock<Box<dyn DelayProvider>>>,
 }
 
@@ -213,7 +214,7 @@ impl CoordinatedShutdown {
       tasks: SharedLock::new_with_driver::<DefaultMutex<_>>(BTreeMap::new()),
       run_started: AtomicBool::new(false),
       run_done: AtomicBool::new(false),
-      reason: SharedLock::new_with_driver::<DefaultMutex<_>>(None),
+      reason: Once::new(),
       delay_provider: delay_provider.map(SharedLock::new_with_driver::<DefaultMutex<_>>),
     })
   }
@@ -270,7 +271,7 @@ impl CoordinatedShutdown {
   /// Returns the shutdown reason if the shutdown has been started.
   #[must_use]
   pub fn shutdown_reason(&self) -> Option<CoordinatedShutdownReason> {
-    self.reason.with_read(Clone::clone)
+    self.reason.get().cloned()
   }
 
   /// Returns `true` if the shutdown sequence has been started.
@@ -315,7 +316,7 @@ impl CoordinatedShutdown {
     }
     let _done_guard = DoneGuard(&self.run_done);
 
-    self.reason.with_write(|stored_reason| *stored_reason = Some(reason));
+    self.reason.call_once(|| reason);
 
     for phase_name in &self.ordered {
       let Some(phase_config) = self.phases.get(phase_name) else {
