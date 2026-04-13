@@ -1,52 +1,25 @@
 use alloc::string::ToString;
-use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext,
-    ActorLockFactory, ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
-    ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorContext, Pid,
     actor_path::ActorPathScheme,
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome},
-    actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
-    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     error::{ActorError, SendError},
-    messaging::{
-      AnyMessage, AnyMessageView, AskResult,
-      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
-    },
+    messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::{
       SchedulerConfig,
-      tick_driver::{
-        ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory,
-      },
+      tick_driver::{ManualTestDriver, TickDriverConfig},
     },
     setup::ActorSystemConfig,
   },
-  dispatch::{
-    dispatcher::{
-      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
-      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
-    },
-    mailbox::{
-      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
-      BoundedPriorityMessageQueueStateSharedFactory, UnboundedPriorityMessageQueueState,
-      UnboundedPriorityMessageQueueStateShared, UnboundedPriorityMessageQueueStateSharedFactory,
-    },
-  },
-  event::stream::{
-    EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
-    EventStreamSubscriberSharedFactory,
-  },
   system::{
     remote::RemotingConfig,
-    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
     state::{SystemStateShared, system_state::SystemState},
   },
-  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
 struct TestSender;
@@ -148,152 +121,6 @@ impl Actor for NoopActor {
   }
 }
 
-struct CountingAskSharedFactory {
-  inner: BuiltinSpinSharedFactory,
-  actor_ref_sender_shared_calls: ArcShared<AtomicUsize>,
-  actor_future_shared_calls: ArcShared<AtomicUsize>,
-}
-
-impl CountingAskSharedFactory {
-  fn new() -> (ArcShared<AtomicUsize>, ArcShared<AtomicUsize>, Self) {
-    let actor_ref_sender_shared_calls = ArcShared::new(AtomicUsize::new(0));
-    let actor_future_shared_calls = ArcShared::new(AtomicUsize::new(0));
-    let provider = Self {
-      inner: BuiltinSpinSharedFactory::new(),
-      actor_ref_sender_shared_calls: actor_ref_sender_shared_calls.clone(),
-      actor_future_shared_calls: actor_future_shared_calls.clone(),
-    };
-    (actor_ref_sender_shared_calls, actor_future_shared_calls, provider)
-  }
-}
-
-impl ActorLockFactory for CountingAskSharedFactory {
-  fn create_lock<T>(&self, value: T) -> SharedLock<T>
-  where
-    T: Send + 'static, {
-    self.inner.create_lock(value)
-  }
-}
-
-impl MessageDispatcherSharedFactory for CountingAskSharedFactory {
-  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
-    MessageDispatcherSharedFactory::create_message_dispatcher_shared(&self.inner, dispatcher)
-  }
-}
-
-impl ExecutorSharedFactory for CountingAskSharedFactory {
-  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
-    ExecutorSharedFactory::create_executor_shared(&self.inner, executor, trampoline)
-  }
-}
-
-impl ActorRefSenderSharedFactory for CountingAskSharedFactory {
-  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    self.actor_ref_sender_shared_calls.fetch_add(1, Ordering::SeqCst);
-    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&self.inner, sender)
-  }
-}
-
-impl ActorSharedFactory for CountingAskSharedFactory {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
-    ActorSharedFactory::create(&self.inner, actor)
-  }
-}
-
-impl BoundedPriorityMessageQueueStateSharedFactory for CountingAskSharedFactory {
-  fn create_bounded_priority_message_queue_state_shared(
-    &self,
-    state: BoundedPriorityMessageQueueState,
-  ) -> BoundedPriorityMessageQueueStateShared {
-    BoundedPriorityMessageQueueStateSharedFactory::create_bounded_priority_message_queue_state_shared(
-      &self.inner,
-      state,
-    )
-  }
-}
-
-impl UnboundedPriorityMessageQueueStateSharedFactory for CountingAskSharedFactory {
-  fn create_unbounded_priority_message_queue_state_shared(
-    &self,
-    state: UnboundedPriorityMessageQueueState,
-  ) -> UnboundedPriorityMessageQueueStateShared {
-    UnboundedPriorityMessageQueueStateSharedFactory::create_unbounded_priority_message_queue_state_shared(
-      &self.inner,
-      state,
-    )
-  }
-}
-
-impl ActorCellStateSharedFactory for CountingAskSharedFactory {
-  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
-    ActorCellStateSharedFactory::create_actor_cell_state_shared(&self.inner, state)
-  }
-}
-
-impl ReceiveTimeoutStateSharedFactory for CountingAskSharedFactory {
-  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
-    ReceiveTimeoutStateSharedFactory::create_receive_timeout_state_shared(&self.inner, state)
-  }
-}
-
-impl MessageInvokerSharedFactory for CountingAskSharedFactory {
-  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
-    MessageInvokerSharedFactory::create(&self.inner, invoker)
-  }
-}
-
-impl SharedMessageQueueFactory for CountingAskSharedFactory {
-  fn create(&self) -> SharedMessageQueue {
-    SharedMessageQueueFactory::create(&self.inner)
-  }
-}
-
-impl EventStreamSharedFactory for CountingAskSharedFactory {
-  fn create(&self, stream: EventStream) -> EventStreamShared {
-    EventStreamSharedFactory::create(&self.inner, stream)
-  }
-}
-
-impl EventStreamSubscriberSharedFactory for CountingAskSharedFactory {
-  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
-    EventStreamSubscriberSharedFactory::create(&self.inner, subscriber)
-  }
-}
-
-impl MailboxSharedSetFactory for CountingAskSharedFactory {
-  fn create(&self) -> MailboxSharedSet {
-    MailboxSharedSetFactory::create(&self.inner)
-  }
-}
-
-impl ActorFutureSharedFactory<AskResult> for CountingAskSharedFactory {
-  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
-    self.actor_future_shared_calls.fetch_add(1, Ordering::SeqCst);
-    ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
-  }
-}
-
-impl TickDriverControlSharedFactory for CountingAskSharedFactory {
-  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
-    TickDriverControlSharedFactory::create_tick_driver_control_shared(&self.inner, control)
-  }
-}
-
-impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingAskSharedFactory {
-  fn create_actor_ref_provider_handle_shared(
-    &self,
-    provider: LocalActorRefProvider,
-  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
-    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
-  }
-}
-
-impl ContextPipeWakerHandleSharedFactory for CountingAskSharedFactory {
-  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
-    ContextPipeWakerHandleSharedFactory::create_context_pipe_waker_handle_shared(&self.inner, handle)
-  }
-}
-
 /// Builds an ActorRef with an associated SystemState.
 ///
 /// Returns both the ActorRef and the SystemStateShared to keep the system state alive.
@@ -358,15 +185,13 @@ fn canonical_path_is_none_without_system_state() {
 }
 
 #[test]
-fn ask_without_path_aware_reply_uses_system_sender_factory_when_system_is_available() {
-  let (sender_calls, future_calls, provider) = CountingAskSharedFactory::new();
+fn ask_creates_reply_sender_and_future_when_system_is_available() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::default()
-    .with_system_name("ask-shared-factory")
+    .with_system_name("ask-direct")
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
-    .with_shared_factory(provider);
+    .with_tick_driver(tick_driver);
   let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
 
   let props = Props::from_fn(|| NoopActor);
@@ -375,19 +200,7 @@ fn ask_without_path_aware_reply_uses_system_sender_factory_when_system_is_availa
   state.register_cell(cell.clone());
   let mut reference = cell.actor_ref();
 
-  let sender_before = sender_calls.load(Ordering::SeqCst);
-  let future_before = future_calls.load(Ordering::SeqCst);
-
-  let _response = reference.ask(AnyMessage::new("ask-payload"));
-
-  assert_eq!(
-    sender_calls.load(Ordering::SeqCst),
-    sender_before + 1,
-    "ask reply refs should materialize sender shared handles via the system's configured factory"
-  );
-  assert_eq!(
-    future_calls.load(Ordering::SeqCst),
-    future_before + 1,
-    "ask futures should materialize via the system's configured factory"
-  );
+  let response = reference.ask(AnyMessage::new("ask-payload"));
+  // Verify that the ask response was created successfully by checking the sender
+  assert_ne!(response.sender().pid(), pid, "ask reply sender should have a different pid from the target");
 }

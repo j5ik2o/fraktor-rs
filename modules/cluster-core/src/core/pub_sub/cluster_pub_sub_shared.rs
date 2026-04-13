@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::cluster_pub_sub::ClusterPubSub;
 
@@ -19,7 +19,7 @@ impl ClusterPubSubShared {
   /// Creates a new shared wrapper around the given pub/sub implementation.
   #[must_use]
   pub fn new(pub_sub: Box<dyn ClusterPubSub>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(pub_sub) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(pub_sub) }
   }
 }
 

@@ -1,6 +1,6 @@
 //! Shared wrapper for `GrainMetrics`.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::GrainMetrics;
 
@@ -13,7 +13,7 @@ impl GrainMetricsShared {
   /// Creates a new shared wrapper around grain metrics.
   #[must_use]
   pub fn new(metrics: GrainMetrics) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(metrics) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(metrics) }
   }
 }
 

@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
@@ -209,7 +209,7 @@ impl ProducerController {
       };
 
       let state =
-        SharedLock::new_with_driver::<SpinSyncMutex<_>>(ProducerControllerState::<A>::new(producer_id.clone()));
+        SharedLock::new_with_driver::<DefaultMutex<_>>(ProducerControllerState::<A>::new(producer_id.clone()));
       let load_state_adapter = if durable_queue_behavior.is_some() {
         match ctx.message_adapter(|loaded: DurableProducerQueueState<A>| {
           Ok(ProducerControllerCommand::durable_queue_loaded(loaded))

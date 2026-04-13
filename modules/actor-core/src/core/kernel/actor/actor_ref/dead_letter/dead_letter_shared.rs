@@ -7,7 +7,7 @@
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
 
 use crate::core::kernel::{
   actor::{
@@ -50,10 +50,7 @@ impl DeadLetterShared {
   /// Creates a shared deadletter store with the specified capacity.
   #[must_use]
   pub fn with_capacity(event_stream: EventStreamShared, capacity: usize) -> Self {
-    Self {
-      inner: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(DeadLetter::with_capacity(capacity)),
-      event_stream,
-    }
+    Self { inner: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(DeadLetter::with_capacity(capacity)), event_stream }
   }
 
   /// Creates a shared deadletter store with the default capacity.

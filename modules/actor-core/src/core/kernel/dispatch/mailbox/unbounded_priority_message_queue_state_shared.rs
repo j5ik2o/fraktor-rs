@@ -1,6 +1,6 @@
 //! Shared wrapper for unbounded priority message queue state.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::unbounded_priority_message_queue_state::UnboundedPriorityMessageQueueState;
 
@@ -10,6 +10,12 @@ pub struct UnboundedPriorityMessageQueueStateShared {
 }
 
 impl UnboundedPriorityMessageQueueStateShared {
+  /// Creates a new shared wrapper using the builtin spin lock backend.
+  #[must_use]
+  pub fn new(state: UnboundedPriorityMessageQueueState) -> Self {
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(state))
+  }
+
   /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
   pub const fn from_shared_lock(inner: SharedLock<UnboundedPriorityMessageQueueState>) -> Self {

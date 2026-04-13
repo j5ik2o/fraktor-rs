@@ -19,7 +19,7 @@ use crate::core::{
       Actor, ActorCell, ActorContext, Pid,
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
       actor_ref::ActorRef,
-      actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory, ActorRefResolveError},
+      actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, ActorRefResolveError},
       error::ActorError,
       lifecycle::LifecycleStage,
       messaging::{AnyMessageView, system_message::SystemMessage},
@@ -29,23 +29,22 @@ use crate::core::{
         task_run::{TaskRunError, TaskRunPriority},
         tick_driver::{
           AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig,
-          TickDriverControl, TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverId,
-          TickDriverKind, TickExecutorPump, TickFeedHandle,
+          TickDriverControl, TickDriverControlShared, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
+          TickExecutorPump, TickFeedHandle,
         },
       },
       setup::ActorSystemConfig,
       spawn::SpawnError,
     },
     dispatch::dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
-      MessageDispatcherConfigurator, MessageDispatcherSharedFactory, TrampolineState,
+      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+      MessageDispatcherConfigurator, TrampolineState,
     },
     event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
     system::{
       TerminationSignal,
       base::LogLevel,
       remote::RemotingConfig,
-      shared_factory::BuiltinSpinSharedFactory,
       state::{SystemStateShared, system_state::SystemState},
     },
   },
@@ -142,12 +141,10 @@ impl Executor for NoopExecutor {
 }
 
 fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults("noop");
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
+  let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
   ArcShared::new(configurator)
 }
 
@@ -182,13 +179,9 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    _feed: TickFeedHandle,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+    let control = TickDriverControlShared::new(control);
     Ok(TickDriverHandle::new(self.id, self.kind, self.resolution, control))
   }
 }
@@ -848,9 +841,8 @@ fn resolve_actor_ref_injects_canonical_authority() {
   let system = ActorSystem::from_state(SystemStateShared::new(state));
 
   let recorded = ArcShared::new(SpinSyncMutex::new(None));
-  let shared_factory = BuiltinSpinSharedFactory::new();
   let actor_ref_provider_handle_shared =
-    shared_factory.create_actor_ref_provider_handle_shared(DummyActorRefProvider::new(recorded.clone()));
+    ActorRefProviderHandleShared::new(DummyActorRefProvider::new(recorded.clone()));
   system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared).expect("register provider");
   system.state().mark_root_started();
 

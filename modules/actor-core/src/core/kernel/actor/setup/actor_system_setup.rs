@@ -9,29 +9,13 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
-    ActorCellStateSharedFactory, ActorLockFactory, ActorSharedFactory, ReceiveTimeoutStateSharedFactory,
-    actor_ref::ActorRefSenderSharedFactory,
-    actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
-    context_pipe::ContextPipeWakerHandleSharedFactory,
+    actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
-    messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{TickDriverConfig, TickDriverControlSharedFactory},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemConfig, BootstrapSetup},
   },
-  dispatch::{
-    dispatcher::{
-      ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory, SharedMessageQueueFactory,
-    },
-    mailbox::{BoundedPriorityMessageQueueStateSharedFactory, UnboundedPriorityMessageQueueStateSharedFactory},
-  },
-  event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
-  pattern::{CircuitBreakerSharedFactory, Clock},
-  system::shared_factory::MailboxSharedSetFactory,
-  util::futures::ActorFutureSharedFactory,
+  dispatch::dispatcher::MessageDispatcherConfigurator,
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -84,41 +68,6 @@ impl ActorSystemSetup {
   where
     P: ActorRefProviderInstaller + 'static, {
     Self { config: self.config.with_actor_ref_provider_installer(installer) }
-  }
-
-  /// Overrides the actor-system scoped shared factory.
-  #[must_use]
-  pub fn with_shared_factory<P>(self, provider: P) -> Self
-  where
-    P: ActorLockFactory
-      + ExecutorSharedFactory
-      + MessageDispatcherSharedFactory
-      + SharedMessageQueueFactory
-      + ActorRefSenderSharedFactory
-      + ActorSharedFactory
-      + ActorCellStateSharedFactory
-      + ReceiveTimeoutStateSharedFactory
-      + MessageInvokerSharedFactory
-      + ActorFutureSharedFactory<AskResult>
-      + TickDriverControlSharedFactory
-      + ActorRefProviderHandleSharedFactory<LocalActorRefProvider>
-      + EventStreamSharedFactory
-      + EventStreamSubscriberSharedFactory
-      + MailboxSharedSetFactory
-      + ContextPipeWakerHandleSharedFactory
-      + BoundedPriorityMessageQueueStateSharedFactory
-      + UnboundedPriorityMessageQueueStateSharedFactory
-      + 'static, {
-    Self { config: self.config.with_shared_factory(provider) }
-  }
-
-  /// Registers a circuit-breaker shared factory for the supplied clock type.
-  #[must_use]
-  pub fn with_circuit_breaker_shared_factory<C, F>(self, factory: F) -> Self
-  where
-    C: Clock + 'static,
-    F: CircuitBreakerSharedFactory<C> + 'static, {
-    Self { config: self.config.with_circuit_breaker_shared_factory::<C, F>(factory) }
   }
 
   /// Registers a dispatcher configurator under the supplied id.

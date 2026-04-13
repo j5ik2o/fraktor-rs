@@ -8,12 +8,11 @@ use alloc::{format, string::String, vec::Vec};
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberSharedFactory,
-    EventStreamSubscription, subscriber_handle_with_shared_factory,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
   system::{ActorSystem, ActorSystemWeak},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use crate::core::{
   ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,
@@ -183,7 +182,6 @@ impl EventStreamSubscriber for NoopMemberStatusSubscriber {
 pub struct ClusterExtension {
   core: SharedLock<ClusterCore>,
   event_stream: EventStreamShared,
-  event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   grain_metrics: Option<GrainMetricsShared>,
   subscription: SharedLock<Option<EventStreamSubscription>>,
   terminated: SharedLock<bool>,
@@ -199,22 +197,18 @@ impl ClusterExtension {
   #[must_use]
   pub fn new(system: &ActorSystem, core: ClusterCore) -> Self {
     let event_stream = system.event_stream();
-    let event_stream_subscriber_shared_factory = system.state().event_stream_subscriber_shared_factory();
     let self_address = core.startup_address();
     let grain_metrics = if core.metrics_enabled() { Some(GrainMetricsShared::new(GrainMetrics::new())) } else { None };
-    let self_member_status = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
-    let status_subscriber = subscriber_handle_with_shared_factory(
-      &event_stream_subscriber_shared_factory,
-      SelfMemberStatusTrackerSubscriber::new(self_address, self_member_status.clone()),
-    );
+    let self_member_status = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
+    let status_subscriber =
+      subscriber_handle(SelfMemberStatusTrackerSubscriber::new(self_address, self_member_status.clone()));
     let self_member_status_subscription = event_stream.subscribe_no_replay(&status_subscriber);
-    let locked = SharedLock::new_with_driver::<SpinSyncMutex<_>>(core);
-    let subscription = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
-    let terminated = SharedLock::new_with_driver::<SpinSyncMutex<_>>(false);
+    let locked = SharedLock::new_with_driver::<DefaultMutex<_>>(core);
+    let subscription = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
+    let terminated = SharedLock::new_with_driver::<DefaultMutex<_>>(false);
     Self {
       core: locked,
       event_stream,
-      event_stream_subscriber_shared_factory,
       grain_metrics,
       subscription,
       terminated,
@@ -252,8 +246,7 @@ impl ClusterExtension {
     // ClusterCore への共有参照を持つ subscriber を作成
     let subscriber: ClusterTopologySubscriber =
       ClusterTopologySubscriber::new(self.core.clone(), self.event_stream.clone());
-    let subscriber_handle =
-      subscriber_handle_with_shared_factory(&self.event_stream_subscriber_shared_factory, subscriber);
+    let subscriber_handle = subscriber_handle(subscriber);
     let sub = self.event_stream.subscribe(&subscriber_handle);
     self.subscription.with_lock(|subscription| *subscription = Some(sub));
   }
@@ -435,18 +428,15 @@ impl ClusterExtension {
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
     let self_address = self.core.with_lock(|core| core.startup_address());
-    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusSubscriberState::new());
-    let callback_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusCallbackState::new(callback));
-    let subscriber = subscriber_handle_with_shared_factory(
-      &self.event_stream_subscriber_shared_factory,
-      MemberStatusSubscriber::new(
-        target,
-        self_address.clone(),
-        callback_state.clone(),
-        state.clone(),
-        self.event_stream.clone(),
-      ),
-    );
+    let state = SharedLock::new_with_driver::<DefaultMutex<_>>(MemberStatusSubscriberState::new());
+    let callback_state = SharedLock::new_with_driver::<DefaultMutex<_>>(MemberStatusCallbackState::new(callback));
+    let subscriber = subscriber_handle(MemberStatusSubscriber::new(
+      target,
+      self_address.clone(),
+      callback_state.clone(),
+      state.clone(),
+      self.event_stream.clone(),
+    ));
     let subscription = self.event_stream.subscribe_no_replay(&subscriber);
     let subscription_id = subscription.id();
     state.with_lock(|guard| {
@@ -467,8 +457,7 @@ impl ClusterExtension {
   }
 
   fn already_unsubscribed_subscription(&self) -> EventStreamSubscription {
-    let subscriber =
-      subscriber_handle_with_shared_factory(&self.event_stream_subscriber_shared_factory, NoopMemberStatusSubscriber);
+    let subscriber = subscriber_handle(NoopMemberStatusSubscriber);
     let subscription = self.event_stream.subscribe(&subscriber);
     self.event_stream.unsubscribe(subscription.id());
     subscription

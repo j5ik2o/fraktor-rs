@@ -4,9 +4,7 @@ use core::{sync::atomic::Ordering, time::Duration};
 
 use portable_atomic::AtomicU64;
 
-use super::{
-  TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle,
-};
+use super::{TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle};
 
 static NEXT_DRIVER_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -35,9 +33,5 @@ pub trait TickDriver: Send + 'static {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when the driver fails to initialize.
-  fn start(
-    &mut self,
-    feed: TickFeedHandle,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
-  ) -> Result<TickDriverHandle, TickDriverError>;
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError>;
 }

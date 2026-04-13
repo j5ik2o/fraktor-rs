@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme, PathSegment},
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
@@ -19,9 +19,9 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    subscriber_handle,
   },
-  system::{ActorSystem, TerminationSignal, shared_factory::BuiltinSpinSharedFactory},
+  system::{ActorSystem, TerminationSignal},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SpinSyncMutex},
@@ -171,10 +171,11 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(move |system: &ActorSystem| {
-      let shared_factory = BuiltinSpinSharedFactory::new();
-      let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(
-        TestActorRefProvider::new(system.clone(), send_counter.clone(), send_behavior),
-      );
+      let actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(TestActorRefProvider::new(
+        system.clone(),
+        send_counter.clone(),
+        send_behavior,
+      ));
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
@@ -224,11 +225,7 @@ fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEv
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let lock_provider: ArcShared<
-    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
-  > = provider;
-  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
+  subscriber_handle(subscriber)
 }
 
 struct TestGuardian;

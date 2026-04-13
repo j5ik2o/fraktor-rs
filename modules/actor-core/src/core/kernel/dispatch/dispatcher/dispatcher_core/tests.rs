@@ -6,12 +6,8 @@ use core::{
 };
 
 use super::DispatcherCore;
-use crate::core::kernel::{
-  dispatch::dispatcher::{
-    DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, TrampolineState,
-    shutdown_schedule::ShutdownSchedule,
-  },
-  system::shared_factory::BuiltinSpinSharedFactory,
+use crate::core::kernel::dispatch::dispatcher::{
+  DispatcherSettings, ExecuteError, Executor, ExecutorShared, TrampolineState, shutdown_schedule::ShutdownSchedule,
 };
 
 struct StubExecutor {
@@ -34,8 +30,8 @@ fn nz(value: usize) -> NonZeroUsize {
 
 fn make_core() -> (DispatcherCore, Arc<AtomicUsize>) {
   let shutdowns = Arc::new(AtomicUsize::new(0));
-  let executor = BuiltinSpinSharedFactory::new()
-    .create_executor_shared(Box::new(StubExecutor { shutdowns: Arc::clone(&shutdowns) }), TrampolineState::new());
+  let executor =
+    ExecutorShared::new(Box::new(StubExecutor { shutdowns: Arc::clone(&shutdowns) }), TrampolineState::new());
   let settings = DispatcherSettings::new("test", nz(5), Some(Duration::from_millis(10)), Duration::from_secs(1));
   (DispatcherCore::new(&settings, executor), shutdowns)
 }

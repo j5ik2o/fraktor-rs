@@ -31,7 +31,7 @@ impl Executor for TokioExecutor {
     // `spawn_blocking` returns a `JoinHandle` which we deliberately drop:
     // task lifetime is owned by Tokio's blocking pool, and the dispatcher
     // does not need to await completion to keep its scheduling guarantees.
-    let _ = self.handle.spawn_blocking(task);
+    drop(self.handle.spawn_blocking(task));
     Ok(())
   }
 

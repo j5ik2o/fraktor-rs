@@ -7,7 +7,7 @@ use fraktor_utils_core_rs::core::{
     queue::{OfferOutcome, QueueError, SyncQueue, backend::VecDequeBackend},
     wait::{WaitError, WaitQueue, WaitShared},
   },
-  sync::{SharedLock, SpinSyncMutex},
+  sync::{DefaultMutex, SharedLock},
 };
 
 use super::UserQueueShared;
@@ -79,5 +79,5 @@ pub(crate) fn queue_state_shared<T>(queue: SyncQueue<T, VecDequeBackend<T>>) -> 
 where
   T: Send + 'static, {
   let queue = UserQueueShared::new_with_builtin_lock(queue);
-  SharedLock::new_with_driver::<SpinSyncMutex<_>>(QueueState::new(queue))
+  SharedLock::new_with_driver::<DefaultMutex<_>>(QueueState::new(queue))
 }

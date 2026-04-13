@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::identity_lookup::IdentityLookup;
 
@@ -19,7 +19,7 @@ impl IdentityLookupShared {
   /// Creates a new shared wrapper around the given identity lookup.
   #[must_use]
   pub fn new(identity_lookup: Box<dyn IdentityLookup>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(identity_lookup) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(identity_lookup) }
   }
 }
 

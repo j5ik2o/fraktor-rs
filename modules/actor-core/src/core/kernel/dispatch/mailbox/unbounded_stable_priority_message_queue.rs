@@ -8,7 +8,7 @@ mod tests;
 
 use alloc::collections::BinaryHeap;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::{envelope::Envelope, message_queue::MessageQueue, stable_priority_entry::StablePriorityEntry};
 use crate::core::kernel::{
@@ -38,7 +38,7 @@ impl UnboundedStablePriorityMessageQueue {
   #[must_use]
   pub fn new(generator: ArcShared<dyn MessagePriorityGenerator>) -> Self {
     Self {
-      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Inner {
+      inner: SharedLock::new_with_driver::<DefaultMutex<_>>(Inner {
         heap:     BinaryHeap::with_capacity(DEFAULT_CAPACITY),
         sequence: 0,
       }),

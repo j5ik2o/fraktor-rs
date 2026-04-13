@@ -1,6 +1,6 @@
 //! Shared wrapper for actor future.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::ActorFuture;
 
@@ -42,6 +42,12 @@ impl<T> ActorFutureShared<T>
 where
   T: Send + 'static,
 {
+  /// Creates a new shared wrapper using the builtin spin lock backend.
+  #[must_use]
+  pub fn new(future: ActorFuture<T>) -> Self {
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(future))
+  }
+
   /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
   pub const fn from_shared_lock(inner: SharedLock<ActorFuture<T>>) -> Self {

@@ -18,7 +18,6 @@ mod bounded_priority_mailbox_type;
 mod bounded_priority_message_queue;
 mod bounded_priority_message_queue_state;
 mod bounded_priority_message_queue_state_shared;
-mod bounded_priority_message_queue_state_shared_factory;
 /// Bounded stable-priority mailbox type factory.
 mod bounded_stable_priority_mailbox_type;
 /// Bounded stable-priority message queue with capacity control and FIFO ordering within equal
@@ -26,7 +25,6 @@ mod bounded_stable_priority_mailbox_type;
 mod bounded_stable_priority_message_queue;
 mod bounded_stable_priority_message_queue_state;
 mod bounded_stable_priority_message_queue_state_shared;
-mod bounded_stable_priority_message_queue_state_shared_factory;
 mod capacity;
 /// Opt-in deque capability for message queue implementations.
 mod deque_message_queue;
@@ -72,7 +70,6 @@ mod unbounded_priority_mailbox_type;
 mod unbounded_priority_message_queue;
 mod unbounded_priority_message_queue_state;
 mod unbounded_priority_message_queue_state_shared;
-mod unbounded_priority_message_queue_state_shared_factory;
 /// Unbounded stable-priority mailbox type factory.
 mod unbounded_stable_priority_mailbox_type;
 /// Unbounded stable-priority message queue with FIFO ordering within equal priorities.
@@ -86,12 +83,10 @@ pub use bounded_priority_mailbox_type::BoundedPriorityMailboxType;
 pub use bounded_priority_message_queue::BoundedPriorityMessageQueue;
 pub use bounded_priority_message_queue_state::BoundedPriorityMessageQueueState;
 pub use bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared;
-pub use bounded_priority_message_queue_state_shared_factory::BoundedPriorityMessageQueueStateSharedFactory;
 pub use bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType;
 pub use bounded_stable_priority_message_queue::BoundedStablePriorityMessageQueue;
 pub use bounded_stable_priority_message_queue_state::BoundedStablePriorityMessageQueueState;
 pub use bounded_stable_priority_message_queue_state_shared::BoundedStablePriorityMessageQueueStateShared;
-pub use bounded_stable_priority_message_queue_state_shared_factory::BoundedStablePriorityMessageQueueStateSharedFactory;
 pub use capacity::MailboxCapacity;
 pub use deque_message_queue::DequeMessageQueue;
 pub use envelope::Envelope;
@@ -120,7 +115,6 @@ pub use unbounded_priority_mailbox_type::UnboundedPriorityMailboxType;
 pub use unbounded_priority_message_queue::UnboundedPriorityMessageQueue;
 pub use unbounded_priority_message_queue_state::UnboundedPriorityMessageQueueState;
 pub use unbounded_priority_message_queue_state_shared::UnboundedPriorityMessageQueueStateShared;
-pub use unbounded_priority_message_queue_state_shared_factory::UnboundedPriorityMessageQueueStateSharedFactory;
 pub use unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxType;
 pub use unbounded_stable_priority_message_queue::UnboundedStablePriorityMessageQueue;
 

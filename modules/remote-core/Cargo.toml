@@ -24,5 +24,8 @@ bytes = { workspace = true }
 hashbrown = { workspace = true, default-features = false }
 libm = { workspace = true }
 
+[dev-dependencies]
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+
 [lints]
 workspace = true

@@ -3,228 +3,41 @@
 use alloc::{
   boxed::Box,
   string::{String, ToString},
-  vec::Vec,
 };
-use core::{
-  any::{Any, TypeId},
-  marker::PhantomData,
-  time::Duration,
-};
+use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
-    ActorCellStateSharedFactory, ActorLockFactory, ActorSharedFactory, ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
-    actor_ref::ActorRefSenderSharedFactory,
-    actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
-    context_pipe::ContextPipeWakerHandleSharedFactory,
+    actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
-    messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{TickDriverConfig, TickDriverControlSharedFactory},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
-    dispatcher::{
-      Dispatchers, ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
-      SharedMessageQueueFactory,
-    },
-    mailbox::{
-      BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueState,
-      BoundedStablePriorityMessageQueueStateShared, BoundedStablePriorityMessageQueueStateSharedFactory, Mailboxes,
-      UnboundedPriorityMessageQueueState, UnboundedPriorityMessageQueueStateShared,
-      UnboundedPriorityMessageQueueStateSharedFactory,
-    },
+    dispatcher::{Dispatchers, MessageDispatcherConfigurator},
+    mailbox::Mailboxes,
   },
-  event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
-  pattern::{CircuitBreaker, CircuitBreakerShared, CircuitBreakerSharedFactory, Clock},
-  system::{
-    remote::RemotingConfig,
-    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSetFactory},
-  },
-  util::futures::ActorFutureSharedFactory,
+  system::remote::RemotingConfig,
 };
 
 #[cfg(test)]
 mod tests;
 
-trait ErasedCircuitBreakerSharedFactoryEntry: Send + Sync {
-  fn clock_type_id(&self) -> TypeId;
-  fn create_boxed(&self, circuit_breaker: Box<dyn Any + Send>) -> Option<Box<dyn Any + Send>>;
-}
-
-struct TypedCircuitBreakerSharedFactoryEntry<C, F>
-where
-  C: Clock + 'static,
-  F: CircuitBreakerSharedFactory<C> + 'static, {
-  factory: F,
-  _marker: PhantomData<fn() -> C>,
-}
-
-impl<C, F> ErasedCircuitBreakerSharedFactoryEntry for TypedCircuitBreakerSharedFactoryEntry<C, F>
-where
-  C: Clock + 'static,
-  F: CircuitBreakerSharedFactory<C> + 'static,
-{
-  fn clock_type_id(&self) -> TypeId {
-    TypeId::of::<C>()
-  }
-
-  fn create_boxed(&self, circuit_breaker: Box<dyn Any + Send>) -> Option<Box<dyn Any + Send>> {
-    let circuit_breaker = circuit_breaker.downcast::<CircuitBreaker<C>>().ok()?;
-    Some(Box::new(self.factory.create_circuit_breaker_shared(*circuit_breaker)))
-  }
-}
-
-#[derive(Default)]
-struct CircuitBreakerSharedFactoryRegistry {
-  entries: Vec<Box<dyn ErasedCircuitBreakerSharedFactoryEntry>>,
-}
-
-impl CircuitBreakerSharedFactoryRegistry {
-  fn register<C, F>(&mut self, factory: F)
-  where
-    C: Clock + 'static,
-    F: CircuitBreakerSharedFactory<C> + 'static, {
-    let entry: Box<dyn ErasedCircuitBreakerSharedFactoryEntry> =
-      Box::new(TypedCircuitBreakerSharedFactoryEntry::<C, F> { factory, _marker: PhantomData });
-    let clock_type_id = TypeId::of::<C>();
-    if let Some(index) = self.entries.iter().position(|current| current.clock_type_id() == clock_type_id) {
-      self.entries[index] = entry;
-    } else {
-      self.entries.push(entry);
-    }
-  }
-
-  fn contains<C>(&self) -> bool
-  where
-    C: Clock + 'static, {
-    let clock_type_id = TypeId::of::<C>();
-    self.entries.iter().any(|entry| entry.clock_type_id() == clock_type_id)
-  }
-
-  fn create<C>(&self, circuit_breaker: CircuitBreaker<C>) -> Option<CircuitBreakerShared<C>>
-  where
-    C: Clock + 'static, {
-    let clock_type_id = TypeId::of::<C>();
-    let entry = self.entries.iter().find(|entry| entry.clock_type_id() == clock_type_id)?;
-    let shared = entry.create_boxed(Box::new(circuit_breaker))?;
-    shared.downcast::<CircuitBreakerShared<C>>().ok().map(|shared| *shared)
-  }
-}
-
-struct ActorSystemConfigCircuitBreakerSharedFactory<'a, C>
-where
-  C: Clock + 'static, {
-  registry: &'a CircuitBreakerSharedFactoryRegistry,
-  _marker:  PhantomData<fn() -> C>,
-}
-
-struct ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric<P>
-where
-  P: ActorLockFactory + Send + Sync + 'static, {
-  actor_lock_factory: ArcShared<P>,
-}
-
-struct ActorSystemConfigUnboundedPriorityMessageQueueStateSharedFactoryGeneric<P>
-where
-  P: ActorLockFactory + Send + Sync + 'static, {
-  actor_lock_factory: ArcShared<P>,
-}
-
-impl<P> ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric<P>
-where
-  P: ActorLockFactory + Send + Sync + 'static,
-{
-  const fn new(actor_lock_factory: ArcShared<P>) -> Self {
-    Self { actor_lock_factory }
-  }
-}
-
-impl<P> ActorSystemConfigUnboundedPriorityMessageQueueStateSharedFactoryGeneric<P>
-where
-  P: ActorLockFactory + Send + Sync + 'static,
-{
-  const fn new(actor_lock_factory: ArcShared<P>) -> Self {
-    Self { actor_lock_factory }
-  }
-}
-
-impl<P> BoundedStablePriorityMessageQueueStateSharedFactory
-  for ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric<P>
-where
-  P: ActorLockFactory + Send + Sync + 'static,
-{
-  fn create_bounded_stable_priority_message_queue_state_shared(
-    &self,
-    state: BoundedStablePriorityMessageQueueState,
-  ) -> BoundedStablePriorityMessageQueueStateShared {
-    BoundedStablePriorityMessageQueueStateShared::from_shared_lock(self.actor_lock_factory.create_lock(state))
-  }
-}
-
-impl<P> UnboundedPriorityMessageQueueStateSharedFactory
-  for ActorSystemConfigUnboundedPriorityMessageQueueStateSharedFactoryGeneric<P>
-where
-  P: ActorLockFactory + Send + Sync + 'static,
-{
-  fn create_unbounded_priority_message_queue_state_shared(
-    &self,
-    state: UnboundedPriorityMessageQueueState,
-  ) -> UnboundedPriorityMessageQueueStateShared {
-    UnboundedPriorityMessageQueueStateShared::from_shared_lock(self.actor_lock_factory.create_lock(state))
-  }
-}
-
-impl<C> CircuitBreakerSharedFactory<C> for ActorSystemConfigCircuitBreakerSharedFactory<'_, C>
-where
-  C: Clock + 'static,
-{
-  fn create_circuit_breaker_shared(&self, circuit_breaker: CircuitBreaker<C>) -> CircuitBreakerShared<C> {
-    match self.registry.create(circuit_breaker) {
-      | Some(shared) => shared,
-      | None => panic!("circuit breaker shared factory should be registered for the requested clock type"),
-    }
-  }
-}
-
 /// Configuration for the actor system.
 pub struct ActorSystemConfig {
-  system_name: String,
-  default_guardian: PathGuardianKind,
-  remoting_config: Option<RemotingConfig>,
-  scheduler_config: SchedulerConfig,
-  tick_driver_config: Option<TickDriverConfig>,
+  system_name:          String,
+  default_guardian:     PathGuardianKind,
+  remoting_config:      Option<RemotingConfig>,
+  scheduler_config:     SchedulerConfig,
+  tick_driver_config:   Option<TickDriverConfig>,
   extension_installers: Option<ExtensionInstallers>,
-  provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  executor_shared_factory: ArcShared<dyn ExecutorSharedFactory>,
-  message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory>,
-  shared_message_queue_factory: ArcShared<dyn SharedMessageQueueFactory>,
-  actor_ref_sender_shared_factory: ArcShared<dyn ActorRefSenderSharedFactory>,
-  actor_shared_factory: ArcShared<dyn ActorSharedFactory>,
-  actor_cell_state_shared_factory: ArcShared<dyn ActorCellStateSharedFactory>,
-  receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory>,
-  message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory>,
-  actor_future_shared_factory: ArcShared<dyn ActorFutureSharedFactory<AskResult>>,
-  tick_driver_control_shared_factory: ArcShared<dyn TickDriverControlSharedFactory>,
-  local_actor_ref_provider_handle_shared_factory:
-    ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>>,
-  event_stream_shared_factory: ArcShared<dyn EventStreamSharedFactory>,
-  event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
-  mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
-  context_pipe_waker_handle_shared_factory: ArcShared<dyn ContextPipeWakerHandleSharedFactory>,
-  bounded_priority_message_queue_state_shared_factory: ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
-  unbounded_priority_message_queue_state_shared_factory: ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory>,
-  bounded_stable_priority_message_queue_state_shared_factory:
-    ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
-  circuit_breaker_shared_factories: CircuitBreakerSharedFactoryRegistry,
-  dispatchers: Dispatchers,
-  mailboxes: Mailboxes,
-  start_time: Option<Duration>,
+  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  dispatchers:          Dispatchers,
+  mailboxes:            Mailboxes,
+  start_time:           Option<Duration>,
 }
 
 impl ActorSystemConfig {
@@ -276,66 +89,6 @@ impl ActorSystemConfig {
   where
     P: ActorRefProviderInstaller + 'static, {
     self.provider_installer = Some(ArcShared::new(installer));
-    self
-  }
-
-  /// Overrides the actor-system scoped shared factory.
-  #[must_use]
-  pub fn with_shared_factory<P>(mut self, provider: P) -> Self
-  where
-    P: ActorLockFactory
-      + ExecutorSharedFactory
-      + MessageDispatcherSharedFactory
-      + SharedMessageQueueFactory
-      + ActorRefSenderSharedFactory
-      + ActorSharedFactory
-      + ActorCellStateSharedFactory
-      + ReceiveTimeoutStateSharedFactory
-      + MessageInvokerSharedFactory
-      + ActorFutureSharedFactory<AskResult>
-      + TickDriverControlSharedFactory
-      + ActorRefProviderHandleSharedFactory<LocalActorRefProvider>
-      + EventStreamSharedFactory
-      + EventStreamSubscriberSharedFactory
-      + MailboxSharedSetFactory
-      + ContextPipeWakerHandleSharedFactory
-      + BoundedPriorityMessageQueueStateSharedFactory
-      + UnboundedPriorityMessageQueueStateSharedFactory
-      + 'static, {
-    let provider = ArcShared::new(provider);
-    self.executor_shared_factory = provider.clone();
-    self.message_dispatcher_shared_factory = provider.clone();
-    self.shared_message_queue_factory = provider.clone();
-    self.actor_ref_sender_shared_factory = provider.clone();
-    self.actor_shared_factory = provider.clone();
-    self.actor_cell_state_shared_factory = provider.clone();
-    self.receive_timeout_state_shared_factory = provider.clone();
-    self.message_invoker_shared_factory = provider.clone();
-    self.actor_future_shared_factory = provider.clone();
-    self.tick_driver_control_shared_factory = provider.clone();
-    self.local_actor_ref_provider_handle_shared_factory = provider.clone();
-    self.event_stream_shared_factory = provider.clone();
-    self.event_stream_subscriber_shared_factory = provider.clone();
-    self.mailbox_shared_set_factory = provider.clone();
-    self.context_pipe_waker_handle_shared_factory = provider.clone();
-    self.bounded_priority_message_queue_state_shared_factory = provider.clone();
-    self.unbounded_priority_message_queue_state_shared_factory =
-      ArcShared::new(ActorSystemConfigUnboundedPriorityMessageQueueStateSharedFactoryGeneric::new(provider.clone()));
-    self.bounded_stable_priority_message_queue_state_shared_factory =
-      ArcShared::new(ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric::new(provider));
-    self
-      .dispatchers
-      .replace_default_inline_with_factories(&self.message_dispatcher_shared_factory, &self.executor_shared_factory);
-    self
-  }
-
-  /// Registers a circuit-breaker shared factory for the supplied clock type.
-  #[must_use]
-  pub fn with_circuit_breaker_shared_factory<C, F>(mut self, factory: F) -> Self
-  where
-    C: Clock + 'static,
-    F: CircuitBreakerSharedFactory<C> + 'static, {
-    self.circuit_breaker_shared_factories.register::<C, F>(factory);
     self
   }
 
@@ -433,133 +186,6 @@ impl ActorSystemConfig {
     self.provider_installer.take()
   }
 
-  /// Returns the executor shared factory.
-  #[must_use]
-  pub const fn executor_shared_factory(&self) -> &ArcShared<dyn ExecutorSharedFactory> {
-    &self.executor_shared_factory
-  }
-
-  /// Returns the message-dispatcher shared factory.
-  #[must_use]
-  pub const fn message_dispatcher_shared_factory(&self) -> &ArcShared<dyn MessageDispatcherSharedFactory> {
-    &self.message_dispatcher_shared_factory
-  }
-
-  /// Returns the shared-message-queue factory.
-  #[must_use]
-  pub const fn shared_message_queue_factory(&self) -> &ArcShared<dyn SharedMessageQueueFactory> {
-    &self.shared_message_queue_factory
-  }
-
-  /// Returns the actor-ref sender shared factory.
-  #[must_use]
-  pub const fn actor_ref_sender_shared_factory(&self) -> &ArcShared<dyn ActorRefSenderSharedFactory> {
-    &self.actor_ref_sender_shared_factory
-  }
-
-  /// Returns the actor shared factory.
-  #[must_use]
-  pub const fn actor_shared_factory(&self) -> &ArcShared<dyn ActorSharedFactory> {
-    &self.actor_shared_factory
-  }
-
-  /// Returns the actor-cell-state shared factory.
-  #[must_use]
-  pub const fn actor_cell_state_shared_factory(&self) -> &ArcShared<dyn ActorCellStateSharedFactory> {
-    &self.actor_cell_state_shared_factory
-  }
-
-  /// Returns the receive-timeout-state shared factory.
-  #[must_use]
-  pub const fn receive_timeout_state_shared_factory(&self) -> &ArcShared<dyn ReceiveTimeoutStateSharedFactory> {
-    &self.receive_timeout_state_shared_factory
-  }
-
-  /// Returns the message-invoker shared factory.
-  #[must_use]
-  pub const fn message_invoker_shared_factory(&self) -> &ArcShared<dyn MessageInvokerSharedFactory> {
-    &self.message_invoker_shared_factory
-  }
-
-  /// Returns the actor-future shared factory used by ask flows.
-  #[must_use]
-  pub const fn actor_future_shared_factory(&self) -> &ArcShared<dyn ActorFutureSharedFactory<AskResult>> {
-    &self.actor_future_shared_factory
-  }
-
-  /// Returns the tick-driver-control shared factory.
-  #[must_use]
-  pub const fn tick_driver_control_shared_factory(&self) -> &ArcShared<dyn TickDriverControlSharedFactory> {
-    &self.tick_driver_control_shared_factory
-  }
-
-  /// Returns the local actor-ref-provider handle shared factory.
-  #[must_use]
-  pub const fn local_actor_ref_provider_handle_shared_factory(
-    &self,
-  ) -> &ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>> {
-    &self.local_actor_ref_provider_handle_shared_factory
-  }
-
-  /// Returns the event-stream shared factory.
-  #[must_use]
-  pub const fn event_stream_shared_factory(&self) -> &ArcShared<dyn EventStreamSharedFactory> {
-    &self.event_stream_shared_factory
-  }
-
-  /// Returns the event-stream-subscriber shared factory.
-  #[must_use]
-  pub const fn event_stream_subscriber_shared_factory(&self) -> &ArcShared<dyn EventStreamSubscriberSharedFactory> {
-    &self.event_stream_subscriber_shared_factory
-  }
-
-  /// Returns the mailbox shared-set factory.
-  #[must_use]
-  pub const fn mailbox_shared_set_factory(&self) -> &ArcShared<dyn MailboxSharedSetFactory> {
-    &self.mailbox_shared_set_factory
-  }
-
-  /// Returns the context-pipe-waker-handle shared factory.
-  #[must_use]
-  pub const fn context_pipe_waker_handle_shared_factory(&self) -> &ArcShared<dyn ContextPipeWakerHandleSharedFactory> {
-    &self.context_pipe_waker_handle_shared_factory
-  }
-
-  /// Returns the bounded priority message-queue-state shared factory.
-  #[must_use]
-  pub const fn bounded_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> {
-    &self.bounded_priority_message_queue_state_shared_factory
-  }
-
-  /// Returns the unbounded priority message-queue-state shared factory.
-  #[must_use]
-  pub const fn unbounded_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> &ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory> {
-    &self.unbounded_priority_message_queue_state_shared_factory
-  }
-
-  /// Returns the bounded stable-priority message-queue-state shared factory.
-  #[must_use]
-  pub const fn bounded_stable_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
-    &self.bounded_stable_priority_message_queue_state_shared_factory
-  }
-
-  /// Returns the circuit-breaker shared factory for the supplied clock type.
-  #[must_use]
-  pub fn circuit_breaker_shared_factory<C>(&self) -> Option<impl CircuitBreakerSharedFactory<C> + '_>
-  where
-    C: Clock + 'static, {
-    self.circuit_breaker_shared_factories.contains::<C>().then_some(ActorSystemConfigCircuitBreakerSharedFactory::<C> {
-      registry: &self.circuit_breaker_shared_factories,
-      _marker:  PhantomData,
-    })
-  }
-
   /// Returns the dispatcher registry configured for the system.
   #[must_use]
   pub const fn dispatchers(&self) -> &Dispatchers {
@@ -583,11 +209,8 @@ impl ActorSystemConfig {
 
 impl Default for ActorSystemConfig {
   fn default() -> Self {
-    let shared_factory = ArcShared::new(BuiltinSpinSharedFactory::new());
     let mut dispatchers = Dispatchers::new();
-    let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = shared_factory.clone();
-    let executor_shared_factory: ArcShared<dyn ExecutorSharedFactory> = shared_factory.clone();
-    dispatchers.ensure_default_inline(&message_dispatcher_shared_factory, &executor_shared_factory);
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
@@ -598,29 +221,6 @@ impl Default for ActorSystemConfig {
       tick_driver_config: None,
       extension_installers: None,
       provider_installer: None,
-      executor_shared_factory,
-      message_dispatcher_shared_factory,
-      shared_message_queue_factory: shared_factory.clone(),
-      actor_ref_sender_shared_factory: shared_factory.clone(),
-      actor_shared_factory: shared_factory.clone(),
-      actor_cell_state_shared_factory: shared_factory.clone(),
-      receive_timeout_state_shared_factory: shared_factory.clone(),
-      message_invoker_shared_factory: shared_factory.clone(),
-      actor_future_shared_factory: shared_factory.clone(),
-      tick_driver_control_shared_factory: shared_factory.clone(),
-      local_actor_ref_provider_handle_shared_factory: shared_factory.clone(),
-      event_stream_shared_factory: shared_factory.clone(),
-      event_stream_subscriber_shared_factory: shared_factory.clone(),
-      mailbox_shared_set_factory: shared_factory.clone(),
-      context_pipe_waker_handle_shared_factory: shared_factory.clone(),
-      bounded_priority_message_queue_state_shared_factory: shared_factory.clone(),
-      unbounded_priority_message_queue_state_shared_factory: ArcShared::new(
-        ActorSystemConfigUnboundedPriorityMessageQueueStateSharedFactoryGeneric::new(shared_factory.clone()),
-      ),
-      bounded_stable_priority_message_queue_state_shared_factory: ArcShared::new(
-        ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric::new(shared_factory),
-      ),
-      circuit_breaker_shared_factories: CircuitBreakerSharedFactoryRegistry::default(),
       dispatchers,
       mailboxes,
       start_time: None,

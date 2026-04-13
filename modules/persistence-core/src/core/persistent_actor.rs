@@ -7,7 +7,7 @@ use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_core_rs::core::kernel::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -84,7 +84,7 @@ where
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(handler);
-    let shared_handler = SharedLock::new_with_driver::<SpinSyncMutex<_>>(handler_box);
+    let shared_handler = SharedLock::new_with_driver::<DefaultMutex<_>>(handler_box);
 
     for event in events {
       let handler_clone = shared_handler.clone();
@@ -106,7 +106,7 @@ where
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(handler);
-    let shared_handler = SharedLock::new_with_driver::<SpinSyncMutex<_>>(handler_box);
+    let shared_handler = SharedLock::new_with_driver::<DefaultMutex<_>>(handler_box);
 
     for event in events {
       let handler_clone = shared_handler.clone();

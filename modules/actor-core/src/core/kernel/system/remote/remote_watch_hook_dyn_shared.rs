@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{RemoteWatchHook, noop_remote_watch_hook::NoopRemoteWatchHook};
 use crate::core::kernel::actor::Pid;
@@ -26,7 +26,7 @@ impl RemoteWatchHookDynShared {
   /// Creates a new shared wrapper around the provided hook.
   #[must_use]
   pub(crate) fn new(hook: Box<dyn RemoteWatchHook>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(hook) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(hook) }
   }
 
   /// Creates a new shared wrapper with the default no-op hook.

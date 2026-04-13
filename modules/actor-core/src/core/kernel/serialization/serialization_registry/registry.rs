@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedRwLock, SpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultRwLock, SharedRwLock};
 use hashbrown::{HashMap, hash_map::Entry};
 
 use super::SerializerResolutionOrigin;
@@ -37,11 +37,11 @@ impl SerializationRegistry {
     manifest_routes
       .extend(setup.manifest_routes_ref().iter().map(|(manifest, routes)| (manifest.clone(), routes.clone())));
     Self {
-      serializers:     SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(serializers),
-      bindings:        SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(bindings),
-      binding_names:   SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(binding_names),
-      manifest_routes: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(manifest_routes),
-      cache:           SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(HashMap::with_hasher(RandomState::new())),
+      serializers:     SharedRwLock::new_with_driver::<DefaultRwLock<_>>(serializers),
+      bindings:        SharedRwLock::new_with_driver::<DefaultRwLock<_>>(bindings),
+      binding_names:   SharedRwLock::new_with_driver::<DefaultRwLock<_>>(binding_names),
+      manifest_routes: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(manifest_routes),
+      cache:           SharedRwLock::new_with_driver::<DefaultRwLock<_>>(HashMap::with_hasher(RandomState::new())),
       fallback:        setup.fallback_serializer(),
     }
   }

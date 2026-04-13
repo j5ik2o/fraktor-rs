@@ -13,7 +13,7 @@ use crate::core::{
     actor::{
       Address, Pid,
       actor_ref::{
-        ActorRef, ActorRefSender, SendOutcome,
+        ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome,
         dead_letter::{DeadLetterEntry, DeadLetterReason},
       },
       error::SendError,
@@ -27,7 +27,7 @@ use crate::core::{
       logging::LogLevel,
       stream::{
         ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamShared, EventStreamSubscriberShared,
-        EventStreamSubscription, subscriber_handle_with_shared_factory,
+        EventStreamSubscription,
       },
     },
     system::{ActorSystem, TerminationSignal, state::SystemStateShared},
@@ -52,9 +52,7 @@ struct EventStreamRefEndpoint {
 }
 
 struct EventStreamRefSender {
-  event_stream: EventStreamShared,
-  event_stream_subscriber_shared_factory:
-    ArcShared<dyn crate::core::kernel::event::stream::EventStreamSubscriberSharedFactory>,
+  event_stream:  EventStreamShared,
   subscriptions: Vec<EventStreamActorSubscription>,
 }
 
@@ -91,23 +89,16 @@ impl EventStreamRefEndpoint {
 }
 
 impl EventStreamRefSender {
-  fn new(
-    event_stream: EventStreamShared,
-    event_stream_subscriber_shared_factory: ArcShared<
-      dyn crate::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
-    >,
-  ) -> Self {
-    Self { event_stream, event_stream_subscriber_shared_factory, subscriptions: Vec::new() }
+  const fn new(event_stream: EventStreamShared) -> Self {
+    Self { event_stream, subscriptions: Vec::new() }
   }
 
   fn subscribe_actor(&mut self, subscriber: &ActorRef) {
     if self.subscriptions.iter().any(|entry| entry.pid == subscriber.pid()) {
       return;
     }
-    let subscriber_handle = subscriber_handle_with_shared_factory(
-      &self.event_stream_subscriber_shared_factory,
-      ActorRefEventStreamSubscriber::new(subscriber.clone()),
-    );
+    let subscriber_handle =
+      EventStreamSubscriberShared::new(Box::new(ActorRefEventStreamSubscriber::new(subscriber.clone())));
     let subscription = self.event_stream.subscribe(&subscriber_handle);
     self.subscriptions.push(EventStreamActorSubscription::new(subscriber.pid(), subscription));
   }
@@ -139,11 +130,8 @@ impl ExtensionId for EventStreamRefId {
 
   fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
     let state = system.state();
-    let actor_ref = ActorRef::with_system(
-      EVENT_STREAM_FACADE_PID,
-      EventStreamRefSender::new(system.event_stream(), state.event_stream_subscriber_shared_factory()),
-      &state,
-    );
+    let actor_ref =
+      ActorRef::with_system(EVENT_STREAM_FACADE_PID, EventStreamRefSender::new(system.event_stream()), &state);
     EventStreamRefEndpoint::new(actor_ref)
   }
 }
@@ -322,7 +310,7 @@ where
   where
     U: Send + Sync + 'static, {
     let state = self.inner.state();
-    let sender = state.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(IgnoreRefSender));
+    let sender = ActorRefSenderShared::new(Box::new(IgnoreRefSender));
     TypedActorRef::from_untyped(ActorRef::from_shared(IGNORE_FACADE_PID, sender, &state))
   }
 

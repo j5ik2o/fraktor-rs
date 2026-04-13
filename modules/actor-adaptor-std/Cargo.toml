@@ -26,6 +26,7 @@ tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 # Override the prod dep to pull in `test-support` (which transitively enables
 # `critical-section/std`) so the lib's `#[cfg(any(test, feature = "test-support"))]`
 # items are visible to integration tests and benches in this crate. Without

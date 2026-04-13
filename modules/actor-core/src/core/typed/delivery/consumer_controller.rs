@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
@@ -130,7 +130,7 @@ impl ConsumerController {
   pub fn behavior_with_settings<A>(settings: ConsumerControllerSettings) -> Behavior<ConsumerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(ConsumerControllerState::<A>::new(settings));
+    let state = SharedLock::new_with_driver::<DefaultMutex<_>>(ConsumerControllerState::<A>::new(settings));
 
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();

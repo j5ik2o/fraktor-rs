@@ -7,7 +7,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::hash::Hash;
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 use hashbrown::HashMap;
 
 use crate::core::typed::{behavior::Behavior, dsl::Behaviors};
@@ -59,7 +59,7 @@ where
       assert!(prev.is_none(), "FsmBuilder: duplicate transition for same state");
     }
     let transitions = ArcShared::new(transition_map);
-    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(self.initial_state);
+    let state = SharedLock::new_with_driver::<DefaultMutex<_>>(self.initial_state);
 
     Behaviors::receive_message(move |_ctx, message| {
       let current_state = state.with_lock(|state| state.clone());

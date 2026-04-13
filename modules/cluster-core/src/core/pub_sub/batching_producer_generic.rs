@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
 };
 use fraktor_utils_core_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
+  sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock},
 };
 
 use super::{
@@ -40,7 +40,7 @@ impl BatchingProducer {
   ) -> Self {
     let state = BatchingProducerState::new(config.max_queue_size);
     let inner = BatchingProducerInner {
-      state: SharedLock::new_with_driver::<SpinSyncMutex<_>>(state),
+      state: SharedLock::new_with_driver::<DefaultMutex<_>>(state),
       topic,
       publisher,
       scheduler,

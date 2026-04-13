@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::core::typed::message_adapter::{AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload};
 
@@ -29,7 +29,7 @@ where
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let payload = AdapterPayload::new(value);
     let entry = ArcShared::new(AdapterEntry::<M>::new::<U, F>(TypeId::of::<U>(), adapter));
-    let storage = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Some(payload));
+    let storage = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(payload));
     Self { entry, payload: storage }
   }
 

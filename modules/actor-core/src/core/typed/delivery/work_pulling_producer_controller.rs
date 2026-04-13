@@ -10,7 +10,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::core::{
   kernel::{
@@ -346,7 +346,7 @@ impl WorkPullingProducerController {
       subscribe_to_receptionist(ctx, &worker_service_key, &listing_adapter);
 
       let state =
-        SharedLock::new_with_driver::<SpinSyncMutex<_>>(WorkPullingState::<A>::new(producer_id.clone(), buffer_size));
+        SharedLock::new_with_driver::<DefaultMutex<_>>(WorkPullingState::<A>::new(producer_id.clone(), buffer_size));
       let load_state_adapter = if durable_queue_behavior.is_some() {
         match ctx.message_adapter(|loaded: DurableProducerQueueState<A>| {
           Ok(WorkPullingProducerControllerCommand::durable_queue_loaded(loaded))

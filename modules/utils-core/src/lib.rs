@@ -54,6 +54,10 @@
 
 //! Utilities for the fraktor actor runtime.
 
+#[cfg(feature = "std")]
+#[allow(cfg_std_forbid)]
+extern crate std;
+
 extern crate alloc;
 
 /// Core utilities shared across runtimes.

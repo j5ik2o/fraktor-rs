@@ -20,7 +20,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    subscriber_handle,
   },
   system::ActorSystem,
   util::futures::ActorFutureShared,
@@ -186,11 +186,7 @@ impl ClusterApi {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
     let event_type_set = to_event_type_set(event_types);
-    let lock_provider = self.system.state().event_stream_subscriber_shared_factory();
-    let filtered = subscriber_handle_with_shared_factory(
-      &lock_provider,
-      ClusterEventFilterSubscriber::new(subscriber.clone(), event_type_set),
-    );
+    let filtered = subscriber_handle(ClusterEventFilterSubscriber::new(subscriber.clone(), event_type_set));
     let event_stream = self.system.event_stream();
 
     match initial_state_mode {
@@ -232,11 +228,8 @@ impl ClusterApi {
   ) -> EventStreamSubscription {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
-    let lock_provider = self.system.state().event_stream_subscriber_shared_factory();
-    let filtered = subscriber_handle_with_shared_factory(
-      &lock_provider,
-      ClusterEventFilterSubscriber::new(subscriber.clone(), to_event_type_set(event_types)),
-    );
+    let filtered =
+      subscriber_handle(ClusterEventFilterSubscriber::new(subscriber.clone(), to_event_type_set(event_types)));
     let event_stream = self.system.event_stream();
     let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
     EventStreamSubscription::new(event_stream, subscription_id)

@@ -1,7 +1,6 @@
-//! Mailbox lock bundle materialized by a
-//! [`MailboxSharedSetFactory`](super::MailboxSharedSetFactory).
+//! Mailbox lock bundle for shared mailbox state.
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex, WeakShared};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock, WeakShared};
 
 use crate::core::kernel::{
   actor::{ActorCell, messaging::message_invoker::MessageInvokerShared},
@@ -31,10 +30,10 @@ impl MailboxSharedSet {
 
   pub(crate) fn builtin() -> Self {
     Self::new(
-      MailboxLocked::new_with_driver::<SpinSyncMutex<()>>(()),
-      MailboxLocked::new_with_driver::<SpinSyncMutex<Option<MailboxInstrumentation>>>(None),
-      MailboxLocked::new_with_driver::<SpinSyncMutex<Option<MessageInvokerShared>>>(None),
-      MailboxLocked::new_with_driver::<SpinSyncMutex<Option<WeakShared<ActorCell>>>>(None),
+      MailboxLocked::new_with_driver::<DefaultMutex<()>>(()),
+      MailboxLocked::new_with_driver::<DefaultMutex<Option<MailboxInstrumentation>>>(None),
+      MailboxLocked::new_with_driver::<DefaultMutex<Option<MessageInvokerShared>>>(None),
+      MailboxLocked::new_with_driver::<DefaultMutex<Option<WeakShared<ActorCell>>>>(None),
     )
   }
 

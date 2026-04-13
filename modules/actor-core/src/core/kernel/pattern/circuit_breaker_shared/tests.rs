@@ -6,13 +6,8 @@ use core::{
 
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
-use crate::core::kernel::{
-  actor::setup::ActorSystemConfig,
-  pattern::{
-    CircuitBreaker, CircuitBreakerCallError, CircuitBreakerShared, CircuitBreakerSharedFactory, CircuitBreakerState,
-    Clock,
-  },
-  system::shared_factory::BuiltinSpinSharedFactory,
+use crate::core::kernel::pattern::{
+  CircuitBreaker, CircuitBreakerCallError, CircuitBreakerShared, CircuitBreakerState, Clock,
 };
 
 /// A deterministic clock for unit tests that does not depend on `std::time`.
@@ -49,12 +44,7 @@ impl Clock for FakeClock {
 }
 
 fn shared_with_clock(max_failures: u32, reset_timeout: Duration, clock: FakeClock) -> CircuitBreakerShared<FakeClock> {
-  let config =
-    ActorSystemConfig::default().with_circuit_breaker_shared_factory::<FakeClock, _>(BuiltinSpinSharedFactory::new());
-  config
-    .circuit_breaker_shared_factory::<FakeClock>()
-    .expect("circuit breaker shared factory should be registered for FakeClock")
-    .create_circuit_breaker_shared(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))
+  CircuitBreakerShared::new(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))
 }
 
 #[test]
@@ -65,13 +55,8 @@ fn new_starts_closed() {
 }
 
 #[test]
-fn builtin_spin_shared_factory_wraps_circuit_breaker() {
-  let config =
-    ActorSystemConfig::default().with_circuit_breaker_shared_factory::<FakeClock, _>(BuiltinSpinSharedFactory::new());
-  let cb = config
-    .circuit_breaker_shared_factory::<FakeClock>()
-    .expect("circuit breaker shared factory should be registered for FakeClock")
-    .create_circuit_breaker_shared(CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new()));
+fn builtin_spin_shared_wraps_circuit_breaker() {
+  let cb = CircuitBreakerShared::new(CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new()));
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
 }
@@ -94,7 +79,7 @@ async fn call_succeeds_in_closed() {
   let result = cb.call(|| async { Ok::<_, &str>(42) }).await;
   match result {
     | Ok(value) => assert_eq!(value, 42),
-    | Err(err) => panic!("期待値: Ok(42), 実際: Err({err:?})"),
+    | Err(err) => panic!("expected Ok(42), got Err({err:?})"),
   }
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
 }
@@ -133,7 +118,7 @@ async fn call_recovers_after_reset_timeout() {
   let result = cb.call(|| async { Ok::<_, &str>(99) }).await;
   match result {
     | Ok(value) => assert_eq!(value, 99),
-    | Err(err) => panic!("期待値: Ok(99), 実際: Err({err:?})"),
+    | Err(err) => panic!("expected Ok(99), got Err({err:?})"),
   }
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
 }

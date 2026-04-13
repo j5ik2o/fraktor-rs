@@ -6,12 +6,11 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    subscriber_handle,
   },
   serialization::{
     builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistry,
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 use fraktor_cluster_core_rs::core::{
   BlockListProvider, ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
@@ -61,11 +60,7 @@ fn subscribe_recorder(event_stream: &EventStreamShared) -> (EventCollector, Even
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let lock_provider: ArcShared<
-    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
-  > = provider;
-  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
+  subscriber_handle(subscriber)
 }
 
 fn collect_pubsub_events(events: &[EventStreamEvent]) -> Vec<PubSubEvent> {

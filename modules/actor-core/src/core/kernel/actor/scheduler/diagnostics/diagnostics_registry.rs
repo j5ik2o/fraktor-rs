@@ -1,7 +1,7 @@
 use alloc::{collections::VecDeque, vec::Vec};
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::SchedulerDiagnosticsEvent;
 
@@ -23,7 +23,7 @@ pub(crate) struct DiagnosticsBuffer {
 #[allow(dead_code)]
 impl DiagnosticsBuffer {
   pub(crate) fn new(capacity: usize) -> Self {
-    Self { queue: SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::new()), capacity, _marker: PhantomData }
+    Self { queue: SharedLock::new_with_driver::<DefaultMutex<_>>(VecDeque::new()), capacity, _marker: PhantomData }
   }
 
   pub(crate) fn push(&self, event: &SchedulerDiagnosticsEvent) -> bool {
@@ -57,7 +57,7 @@ impl Clone for DiagnosticsRegistry {
 #[allow(dead_code)]
 impl DiagnosticsRegistry {
   pub(crate) fn new() -> Self {
-    Self { entries: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new()), _marker: PhantomData }
+    Self { entries: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()), _marker: PhantomData }
   }
 
   pub(crate) fn register(&self, id: u64, capacity: usize) -> ArcShared<DiagnosticsBuffer> {

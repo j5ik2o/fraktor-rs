@@ -1,7 +1,7 @@
 //! Shared wrapper for WaitNode enabling interior mutability.
 
 use super::node::WaitNode;
-use crate::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use crate::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 /// Shared wrapper for [`WaitNode`] enabling interior mutability.
 ///
@@ -16,7 +16,7 @@ impl<E: Send + 'static> WaitNodeShared<E> {
   /// Creates a new shared wrapper around a fresh WaitNode.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(WaitNode::new()) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(WaitNode::new()) }
   }
 }
 

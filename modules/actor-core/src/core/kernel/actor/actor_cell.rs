@@ -141,13 +141,6 @@ impl ActorCell {
     let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
       SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
-    let actor_ref_sender_shared_factory = system.actor_ref_sender_shared_factory();
-    let actor_shared_factory = system.actor_shared_factory();
-    let actor_cell_state_shared_factory = system.actor_cell_state_shared_factory();
-    let receive_timeout_state_shared_factory = system.receive_timeout_state_shared_factory();
-    let message_invoker_shared_factory = system.message_invoker_shared_factory();
-    let mailbox_shared_set_factory = system.mailbox_shared_set_factory();
-
     // Give the dispatcher a chance to supply its own mailbox (e.g.,
     // `BalancingDispatcher` hands out sharing mailboxes that all wrap its
     // single team queue). Dispatchers that want per-actor queues return
@@ -157,19 +150,11 @@ impl ActorCell {
     } else if let Some(id) = mailbox_id {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
-      let shared_set = mailbox_shared_set_factory.create();
-      ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_config.policy(), queue, &shared_set))
+      ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
     } else {
-      let shared_set = mailbox_shared_set_factory.create();
       ArcShared::new(
-        Mailbox::new_from_config_with_shared_set(
-          &mailbox_config,
-          &shared_set,
-          &system.bounded_priority_message_queue_state_shared_factory(),
-          &system.unbounded_priority_message_queue_state_shared_factory(),
-          &system.bounded_stable_priority_message_queue_state_shared_factory(),
-        )
-        .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
+        Mailbox::new_from_config(&mailbox_config)
+          .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
       )
     };
     {
@@ -183,14 +168,14 @@ impl ActorCell {
       let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    let actor_ref_sender_shared = actor_ref_sender_shared_factory
-      .create_actor_ref_sender_shared(Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone())));
+    let actor_ref_sender_shared =
+      ActorRefSenderShared::new(Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone())));
     let Some(actor_factory_shared) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
-    let actor_shared = actor_shared_factory.create(actor_factory_shared.with_write(|f| f.create()));
-    let receive_timeout_shared = receive_timeout_state_shared_factory.create_receive_timeout_state_shared(None);
-    let actor_cell_state_shared = actor_cell_state_shared_factory.create_actor_cell_state_shared(ActorCellState::new());
+    let actor_shared = ActorShared::new(actor_factory_shared.with_write(|f| f.create()));
+    let receive_timeout_shared = ReceiveTimeoutStateShared::new(None);
+    let actor_cell_state_shared = ActorCellStateShared::new(ActorCellState::new());
 
     let tags = props.tags().clone();
     let cell = ArcShared::new(Self {
@@ -218,7 +203,7 @@ impl ActorCell {
       // break the ActorCell → Mailbox → Invoker → ActorCell ownership cycle.
       let mailbox_handle = cell.mailbox();
       let invoker: MessageInvokerShared =
-        message_invoker_shared_factory.create(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
+        MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
       mailbox_handle.install_invoker(invoker);
       // Late-bind the weak actor handle to the mailbox so `Mailbox::run` can
       // early-return after the cell drops, and so detach paths can call

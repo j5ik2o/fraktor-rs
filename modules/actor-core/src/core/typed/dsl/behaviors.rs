@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::BTreeMap, string::String};
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use super::{AbstractBehavior, receive::Receive, supervise::Supervise};
 use crate::core::{
@@ -418,7 +418,7 @@ impl Behaviors {
       let self_ref = ctx.self_ref();
       let scheduler = ctx.system().raw_scheduler();
       let timers = TimerScheduler::new(self_ref, scheduler);
-      let shared = SharedLock::new_with_driver::<SpinSyncMutex<_>>(timers);
+      let shared = SharedLock::new_with_driver::<DefaultMutex<_>>(timers);
       let shared_for_stop = shared.clone();
       factory(shared).compose_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::PostStop => {
@@ -554,7 +554,7 @@ impl Behaviors {
     F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> A + Send + Sync + 'static, {
     Behaviors::setup(move |ctx| {
       let ab = factory(ctx);
-      let shared = SharedLock::new_with_driver::<SpinSyncMutex<_>>(ab);
+      let shared = SharedLock::new_with_driver::<DefaultMutex<_>>(ab);
       let shared_msg = shared.clone();
       let shared_sig = shared;
       Behaviors::receive_message(move |ctx, msg| shared_msg.with_lock(|behavior| behavior.on_message(ctx, msg)))
@@ -578,7 +578,7 @@ where
     }
 
     let state = InterceptState { interceptor, inner };
-    let shared = SharedLock::new_with_driver::<SpinSyncMutex<_>>(state);
+    let shared = SharedLock::new_with_driver::<DefaultMutex<_>>(state);
 
     let shared_msg = shared.clone();
     let shared_sig = shared;

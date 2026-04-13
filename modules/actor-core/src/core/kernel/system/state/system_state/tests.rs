@@ -23,17 +23,16 @@ use crate::core::kernel::{
     scheduler::{
       SchedulerConfig,
       tick_driver::{
-        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl,
-        TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
-        TickExecutorPump, TickFeedHandle,
+        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError,
+        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
       },
     },
     setup::ActorSystemConfig,
   },
   dispatch::{
     dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
-      MessageDispatcherConfigurator, MessageDispatcherSharedFactory, TrampolineState,
+      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, MessageDispatcherConfigurator,
+      TrampolineState,
     },
     mailbox::MailboxMessage,
   },
@@ -42,7 +41,6 @@ use crate::core::kernel::{
     RegisterExtraTopLevelError, TerminationSignal,
     guardian::GuardianKind,
     remote::RemotingConfig,
-    shared_factory::BuiltinSpinSharedFactory,
     state::{AuthorityState, SystemStateShared, system_state::LogLevel},
   },
 };
@@ -136,13 +134,10 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    _feed: TickFeedHandle,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+    use crate::core::kernel::actor::scheduler::tick_driver::TickDriverControlShared;
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+    let control = TickDriverControlShared::new(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
   }
 }
@@ -445,14 +440,10 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use crate::core::kernel::{
-    system::shared_factory::BuiltinSpinSharedFactory,
-    util::futures::{ActorFuture, ActorFutureSharedFactory},
-  };
+  use crate::core::kernel::util::futures::{ActorFuture, ActorFutureShared};
 
   let mut state = build_state();
-  let future =
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future = ActorFutureShared::new(ActorFuture::new());
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();
@@ -882,12 +873,11 @@ impl Executor for NoopExecutor {
 }
 
 fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
+  use crate::core::kernel::dispatch::dispatcher::ExecutorShared;
   let settings = DispatcherSettings::with_defaults("noop");
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
+  let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
   ArcShared::new(configurator)
 }
 

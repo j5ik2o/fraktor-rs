@@ -377,15 +377,52 @@ start_parallel_phase() {
 
 wait_parallel_cargo() {
   local failed=0
-  local idx
-  for idx in "${!PARALLEL_PIDS[@]}"; do
-    local pid="${PARALLEL_PIDS[${idx}]}"
-    local label="${PARALLEL_LABELS[${idx}]}"
-    if ! wait "${pid}"; then
-      echo "error: 並行ジョブ失敗: ${label}" >&2
-      failed=1
+  local failed_label=""
+
+  # ポーリングで全ジョブの完了を監視し、最初の失敗で他を kill する
+  while true; do
+    local still_running=0
+    local idx
+    for idx in "${!PARALLEL_PIDS[@]}"; do
+      local pid="${PARALLEL_PIDS[${idx}]}"
+      [[ -n "${pid}" ]] || continue
+      if ! kill -0 "${pid}" 2>/dev/null; then
+        # プロセス終了済み — 終了コードを回収
+        if ! wait "${pid}" 2>/dev/null; then
+          echo "error: 並行ジョブ失敗: ${PARALLEL_LABELS[${idx}]}" >&2
+          failed=1
+          failed_label="${PARALLEL_LABELS[${idx}]}"
+          PARALLEL_PIDS[${idx}]=""
+        else
+          PARALLEL_PIDS[${idx}]=""
+        fi
+      else
+        still_running=1
+      fi
+    done
+
+    if [[ ${failed} -ne 0 ]]; then
+      # 残りのジョブを kill
+      for idx in "${!PARALLEL_PIDS[@]}"; do
+        local pid="${PARALLEL_PIDS[${idx}]}"
+        [[ -n "${pid}" ]] || continue
+        kill "${pid}" 2>/dev/null || true
+      done
+      # zombie 回収
+      for idx in "${!PARALLEL_PIDS[@]}"; do
+        local pid="${PARALLEL_PIDS[${idx}]}"
+        [[ -n "${pid}" ]] || continue
+        wait "${pid}" 2>/dev/null || true
+      done
+      break
     fi
+
+    if [[ ${still_running} -eq 0 ]]; then
+      break
+    fi
+    sleep 0.2
   done
+
   PARALLEL_PIDS=()
   PARALLEL_LABELS=()
 

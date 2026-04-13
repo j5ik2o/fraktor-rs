@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::core::{
   kernel::actor::{error::ActorError, supervision::SupervisorStrategyConfig},
@@ -353,7 +353,7 @@ where
       let final_supervisor_override = inner.supervisor_override().cloned();
       let outer_directive = inner.directive();
 
-      let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(inner);
+      let state = SharedLock::new_with_driver::<DefaultMutex<_>>(inner);
       let state_msg = state.clone();
       let state_sig = state;
       let mapper_msg = mapper.clone();
