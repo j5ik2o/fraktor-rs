@@ -1,4 +1,4 @@
-use crate::core::sync::{CheckedSpinSyncRwLock, RwLockDriver, SharedAccess, SharedRwLock};
+use crate::core::sync::{CheckedSpinSyncRwLock, RwLockDriver, SharedRwLock};
 
 #[test]
 fn normal_read_write_cycle() {
