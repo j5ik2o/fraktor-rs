@@ -1,8 +1,10 @@
 //! Read guard for [`CheckedSpinSyncRwLock`](super::CheckedSpinSyncRwLock).
+#![allow(cfg_std_forbid)]
 
 use core::{mem::ManuallyDrop, ops::Deref};
 
 use spin::RwLockReadGuard;
+use std::thread;
 
 use super::checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
 
@@ -23,6 +25,13 @@ impl<T> Deref for CheckedRwLockReadGuard<'_, T> {
 impl<T> Drop for CheckedRwLockReadGuard<'_, T> {
   fn drop(&mut self) {
     unsafe { ManuallyDrop::drop(&mut self.guard) };
-    *self.parent.owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    let current = thread::current().id();
+    let mut state = self.parent.owner.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(count) = state.reader_counts.get_mut(&current) {
+      *count -= 1;
+      if *count == 0 {
+        state.reader_counts.remove(&current);
+      }
+    }
   }
 }

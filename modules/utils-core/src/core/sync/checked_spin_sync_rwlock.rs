@@ -9,31 +9,36 @@
 mod tests;
 
 use core::mem::ManuallyDrop;
-use std::{sync::Mutex, thread, thread::ThreadId};
+
+use std::{
+  collections::HashMap,
+  sync::Mutex,
+  thread,
+  thread::ThreadId,
+};
 
 use super::{
   RwLockDriver, checked_rw_lock_read_guard::CheckedRwLockReadGuard,
   checked_rw_lock_write_guard::CheckedRwLockWriteGuard, spin_sync_rwlock::SpinSyncRwLock,
 };
 
-/// Lock state for a single thread.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ThreadLockState {
-  /// Holding a read lock.
-  Read,
-  /// Holding a write lock.
-  Write,
+/// Tracks per-thread read counts and an exclusive write owner.
+pub(super) struct OwnerState {
+  /// Number of active read guards per thread.
+  pub(super) reader_counts: HashMap<ThreadId, usize>,
+  /// The thread holding the write lock, if any.
+  pub(super) write_owner: Option<ThreadId>,
 }
 
-/// Per-thread lock ownership record.
-pub(super) struct OwnerRecord {
-  thread_id: ThreadId,
-  state:     ThreadLockState,
+impl OwnerState {
+  fn new() -> Self {
+    Self { reader_counts: HashMap::new(), write_owner: None }
+  }
 }
 
 /// Spin-based rwlock with thread-aware re-entry detection.
 ///
-/// Wraps [`SpinSyncRwLock`] and records the owning thread's lock state.
+/// Wraps [`SpinSyncRwLock`] and tracks per-thread lock ownership.
 /// Panics on:
 /// - write re-entry (same thread calls `write()` while holding write)
 /// - read→write upgrade (same thread calls `write()` while holding read)
@@ -43,8 +48,8 @@ pub(super) struct OwnerRecord {
 /// `spin::RwLock` supports concurrent/recursive readers.
 pub struct CheckedSpinSyncRwLock<T> {
   pub(super) inner: SpinSyncRwLock<T>,
-  /// Tracks which thread (if any) holds the lock and in what mode.
-  pub(super) owner: Mutex<Option<OwnerRecord>>,
+  /// Tracks per-thread read counts and exclusive write ownership.
+  pub(super) owner: Mutex<OwnerState>,
 }
 
 unsafe impl<T: Send> Send for CheckedSpinSyncRwLock<T> {}
@@ -54,7 +59,7 @@ impl<T> CheckedSpinSyncRwLock<T> {
   /// Creates a new checked rwlock.
   #[must_use]
   pub fn new(value: T) -> Self {
-    Self { inner: SpinSyncRwLock::new(value), owner: Mutex::new(None) }
+    Self { inner: SpinSyncRwLock::new(value), owner: Mutex::new(OwnerState::new()) }
   }
 
   /// Acquires a shared read guard.
@@ -65,16 +70,16 @@ impl<T> CheckedSpinSyncRwLock<T> {
   pub fn read(&self) -> CheckedRwLockReadGuard<'_, T> {
     let current = thread::current().id();
     {
-      let owner = self.owner.lock().unwrap_or_else(|e| e.into_inner());
-      if let Some(record) = owner.as_ref() {
-        if record.thread_id == current && record.state == ThreadLockState::Write {
-          panic!("CheckedSpinSyncRwLock: read lock while write lock held");
-        }
+      let state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+      if state.write_owner == Some(current) {
+        panic!("CheckedSpinSyncRwLock: read lock while write lock held");
       }
     }
     let guard = self.inner.read();
-    *self.owner.lock().unwrap_or_else(|e| e.into_inner()) =
-      Some(OwnerRecord { thread_id: current, state: ThreadLockState::Read });
+    {
+      let mut state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+      *state.reader_counts.entry(current).or_insert(0) += 1;
+    }
     CheckedRwLockReadGuard { parent: self, guard: ManuallyDrop::new(guard) }
   }
 
@@ -86,20 +91,19 @@ impl<T> CheckedSpinSyncRwLock<T> {
   pub fn write(&self) -> CheckedRwLockWriteGuard<'_, T> {
     let current = thread::current().id();
     {
-      let owner = self.owner.lock().unwrap_or_else(|e| e.into_inner());
-      if let Some(record) = owner.as_ref() {
-        if record.thread_id == current {
-          let msg = match record.state {
-            | ThreadLockState::Read => "write lock while read lock held",
-            | ThreadLockState::Write => "re-entrant write lock detected",
-          };
-          panic!("CheckedSpinSyncRwLock: {msg}");
-        }
+      let state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+      if state.write_owner == Some(current) {
+        panic!("CheckedSpinSyncRwLock: re-entrant write lock detected");
+      }
+      if state.reader_counts.get(&current).copied().unwrap_or(0) > 0 {
+        panic!("CheckedSpinSyncRwLock: write lock while read lock held");
       }
     }
     let guard = self.inner.write();
-    *self.owner.lock().unwrap_or_else(|e| e.into_inner()) =
-      Some(OwnerRecord { thread_id: current, state: ThreadLockState::Write });
+    {
+      let mut state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+      state.write_owner = Some(current);
+    }
     CheckedRwLockWriteGuard { parent: self, guard: ManuallyDrop::new(guard) }
   }
 

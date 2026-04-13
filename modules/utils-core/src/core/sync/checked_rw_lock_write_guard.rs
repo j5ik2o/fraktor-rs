@@ -1,4 +1,5 @@
 //! Write guard for [`CheckedSpinSyncRwLock`](super::CheckedSpinSyncRwLock).
+#![allow(cfg_std_forbid)]
 
 use core::{
   mem::ManuallyDrop,
@@ -32,6 +33,7 @@ impl<T> DerefMut for CheckedRwLockWriteGuard<'_, T> {
 impl<T> Drop for CheckedRwLockWriteGuard<'_, T> {
   fn drop(&mut self) {
     unsafe { ManuallyDrop::drop(&mut self.guard) };
-    *self.parent.owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    let mut state = self.parent.owner.lock().unwrap_or_else(|e| e.into_inner());
+    state.write_owner = None;
   }
 }
