@@ -9,7 +9,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    subscriber_handle,
   },
   system::{ActorSystem, ActorSystemWeak},
 };
@@ -201,7 +201,7 @@ impl ClusterExtension {
     let self_address = core.startup_address();
     let grain_metrics = if core.metrics_enabled() { Some(GrainMetricsShared::new(GrainMetrics::new())) } else { None };
     let self_member_status = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
-    let status_subscriber = subscriber_handle_with_shared_factory(SelfMemberStatusTrackerSubscriber::new(
+    let status_subscriber = subscriber_handle(SelfMemberStatusTrackerSubscriber::new(
       self_address,
       self_member_status.clone(),
     ));
@@ -249,7 +249,7 @@ impl ClusterExtension {
     // ClusterCore への共有参照を持つ subscriber を作成
     let subscriber: ClusterTopologySubscriber =
       ClusterTopologySubscriber::new(self.core.clone(), self.event_stream.clone());
-    let subscriber_handle = subscriber_handle_with_shared_factory(subscriber);
+    let subscriber_handle = subscriber_handle(subscriber);
     let sub = self.event_stream.subscribe(&subscriber_handle);
     self.subscription.with_lock(|subscription| *subscription = Some(sub));
   }
@@ -433,7 +433,7 @@ impl ClusterExtension {
     let self_address = self.core.with_lock(|core| core.startup_address());
     let state = SharedLock::new_with_driver::<DefaultMutex<_>>(MemberStatusSubscriberState::new());
     let callback_state = SharedLock::new_with_driver::<DefaultMutex<_>>(MemberStatusCallbackState::new(callback));
-    let subscriber = subscriber_handle_with_shared_factory(MemberStatusSubscriber::new(
+    let subscriber = subscriber_handle(MemberStatusSubscriber::new(
       target,
       self_address.clone(),
       callback_state.clone(),
@@ -460,7 +460,7 @@ impl ClusterExtension {
   }
 
   fn already_unsubscribed_subscription(&self) -> EventStreamSubscription {
-    let subscriber = subscriber_handle_with_shared_factory(NoopMemberStatusSubscriber);
+    let subscriber = subscriber_handle(NoopMemberStatusSubscriber);
     let subscription = self.event_stream.subscribe(&subscriber);
     self.event_stream.unsubscribe(subscription.id());
     subscription

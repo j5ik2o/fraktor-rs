@@ -41,14 +41,6 @@ pub struct ActorRef {
 static ASK_REPLY_FALLBACK_PID: AtomicU64 = AtomicU64::new(u64::MAX / 2);
 
 impl ActorRef {
-  fn create_builtin_actor_ref_sender_shared(sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    ActorRefSenderShared::new(sender)
-  }
-
-  fn create_builtin_actor_future_shared(future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
-    ActorFutureShared::new(future)
-  }
-
   fn complete_ask_future_with_error(future: &ActorFutureShared<AskResult>, error: &SendError) {
     let waker = future.with_write(|inner| inner.complete(Err(AskError::from(error))));
     if let Some(waker) = waker {
@@ -72,7 +64,7 @@ impl ActorRef {
       let sender = ActorRefSenderShared::new(Box::new(reply_sender));
       return if path_aware_reply { Self::from_shared(pid, sender, system) } else { Self::new(pid, sender) };
     }
-    let sender = Self::create_builtin_actor_ref_sender_shared(Box::new(reply_sender));
+    let sender = ActorRefSenderShared::new(Box::new(reply_sender));
     Self::new(pid, sender)
   }
 
@@ -106,7 +98,7 @@ impl ActorRef {
   fn new_with_builtin_lock_impl<T>(pid: Pid, sender: T) -> Self
   where
     T: ActorRefSender + 'static, {
-    let sender = Self::create_builtin_actor_ref_sender_shared(Box::new(sender));
+    let sender = ActorRefSenderShared::new(Box::new(sender));
     Self { pid, sender, system: None }
   }
 
@@ -159,7 +151,7 @@ impl ActorRef {
   where
     F: FnOnce(ActorRef) -> AnyMessage, {
     let system = self.system_state();
-    let future = Self::create_builtin_actor_future_shared(ActorFuture::new());
+    let future = ActorFutureShared::new(ActorFuture::new());
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = Self::build_ask_reply_ref(system.as_ref(), path_aware_reply, reply_sender);
     let message = build(reply_ref.clone());
@@ -251,7 +243,7 @@ impl ActorRef {
   /// Creates a placeholder reference that rejects all messages.
   #[must_use]
   pub fn null() -> Self {
-    let sender = Self::create_builtin_actor_ref_sender_shared(Box::new(NullSender));
+    let sender = ActorRefSenderShared::new(Box::new(NullSender));
     Self::new(Pid::new(0, 0), sender)
   }
 

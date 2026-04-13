@@ -31,7 +31,7 @@ pub use correlation_id::CorrelationId;
 pub use event_stream_event::EventStreamEvent;
 pub(crate) use event_stream_events::EventStreamEvents;
 pub use event_stream_shared::EventStreamShared;
-pub use event_stream_subscriber::{EventStreamSubscriber, subscriber_handle_with_shared_factory};
+pub use event_stream_subscriber::{EventStreamSubscriber, subscriber_handle};
 pub(crate) use event_stream_subscriber_entries::EventStreamSubscriberEntries;
 pub(crate) use event_stream_subscriber_entry::EventStreamSubscriberEntry;
 pub use event_stream_subscriber_shared::EventStreamSubscriberShared;

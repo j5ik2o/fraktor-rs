@@ -54,7 +54,7 @@ impl EventStreamShared {
   /// Creates a shared event stream with the specified buffer capacity.
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
-    Self::from_shared_lock(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(EventStream::with_capacity(capacity)))
+    Self::new(EventStream::with_capacity(capacity))
   }
 
   /// Subscribes and replays buffered events to the subscriber.

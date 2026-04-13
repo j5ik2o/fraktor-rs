@@ -14,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::{
       TickFeedHandle, next_tick_driver_id,
     },
   },
-  event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle_with_shared_factory},
+  event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess},
@@ -210,7 +210,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let event_stream = EventStreamShared::default();
   let events = ArcShared::new(Mutex::new(Vec::new()));
 
-  let subscriber = subscriber_handle_with_shared_factory(RecordingSubscriber::new(events.clone()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = event_stream.subscribe(&subscriber);
 
   let config =

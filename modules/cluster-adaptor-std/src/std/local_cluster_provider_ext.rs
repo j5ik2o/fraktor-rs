@@ -5,7 +5,7 @@
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{
   EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-  RemotingLifecycleEvent, subscriber_handle_with_shared_factory,
+  RemotingLifecycleEvent, subscriber_handle,
 };
 use fraktor_cluster_core_rs::core::cluster_provider::{LocalClusterProvider, LocalClusterProviderShared};
 use fraktor_utils_core_rs::core::sync::SharedAccess;
@@ -49,7 +49,7 @@ pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) {
   // event_stream への参照を取得
   let event_stream = provider.with_read(|p| p.event_stream().clone());
   let handler = RemotingEventHandler { provider: provider.clone() };
-  let subscriber: EventStreamSubscriberShared = subscriber_handle_with_shared_factory(handler);
+  let subscriber: EventStreamSubscriberShared = subscriber_handle(handler);
   let _subscription: EventStreamSubscription = event_stream.subscribe(&subscriber);
   // Note: subscription は provider のライフタイムに依存するので、
   // provider がドロップされるまで有効

@@ -5,7 +5,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    subscriber_handle,
   },
   serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
 };
@@ -50,7 +50,7 @@ impl EventStreamSubscriber for TestSubscriber {
 
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (TestSubscriber, EventStreamSubscription) {
   let subscriber = TestSubscriber::new();
-  let handle = subscriber_handle_with_shared_factory(subscriber.clone());
+  let handle = subscriber_handle(subscriber.clone());
   let subscription = event_stream.subscribe(&handle);
   (subscriber, subscription)
 }

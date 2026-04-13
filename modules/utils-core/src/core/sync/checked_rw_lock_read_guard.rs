@@ -24,7 +24,7 @@ impl<T> Deref for CheckedRwLockReadGuard<'_, T> {
 
 impl<T> Drop for CheckedRwLockReadGuard<'_, T> {
   fn drop(&mut self) {
-    // Decrement the reader count while still holding the inner lock.
+    // inner ロックを保持中にリーダーカウントを減算する。
     let current = thread::current().id();
     let mut state = self.parent.owner.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(count) = state.reader_counts.get_mut(&current) {
@@ -34,7 +34,7 @@ impl<T> Drop for CheckedRwLockReadGuard<'_, T> {
       }
     }
     drop(state);
-    // SAFETY: Drop is called exactly once and the guard is still valid.
+    // SAFETY: drop は一度だけ呼ばれ、guard はまだ有効。
     unsafe { ManuallyDrop::drop(&mut self.guard) };
   }
 }

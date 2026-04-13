@@ -32,12 +32,12 @@ impl<T> DerefMut for CheckedRwLockWriteGuard<'_, T> {
 
 impl<T> Drop for CheckedRwLockWriteGuard<'_, T> {
   fn drop(&mut self) {
-    // Clear the owner while still holding the inner lock so that another
-    // thread acquiring inner right after cannot have its owner overwritten.
+    // inner ロックを保持中に所有者をクリアする。
+    // 解放直後に別スレッドが inner を取得しても owner が上書きされない。
     let mut state = self.parent.owner.lock().unwrap_or_else(|e| e.into_inner());
     state.write_owner = None;
     drop(state);
-    // SAFETY: Drop is called exactly once and the guard is still valid.
+    // SAFETY: drop は一度だけ呼ばれ、guard はまだ有効。
     unsafe { ManuallyDrop::drop(&mut self.guard) };
   }
 }

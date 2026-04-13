@@ -5,7 +5,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_shared_factory,
+    subscriber_handle,
   },
   system::ActorSystem,
 };
@@ -27,7 +27,7 @@ use crate::core::{
 };
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  subscriber_handle_with_shared_factory(subscriber)
+  subscriber_handle(subscriber)
 }
 
 fn build_update(
