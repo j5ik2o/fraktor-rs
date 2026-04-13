@@ -1,10 +1,10 @@
 //! Read guard for [`CheckedSpinSyncRwLock`](super::CheckedSpinSyncRwLock).
 
-use core::{mem::ManuallyDrop, ops::Deref, sync::atomic::Ordering};
+use core::{mem::ManuallyDrop, ops::Deref};
 
 use spin::RwLockReadGuard;
 
-use super::checked_spin_sync_rwlock::{CheckedSpinSyncRwLock, STATE_FREE};
+use super::checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
 
 /// Read guard for [`CheckedSpinSyncRwLock`].
 pub struct CheckedRwLockReadGuard<'a, T> {
@@ -23,6 +23,6 @@ impl<T> Deref for CheckedRwLockReadGuard<'_, T> {
 impl<T> Drop for CheckedRwLockReadGuard<'_, T> {
   fn drop(&mut self) {
     unsafe { ManuallyDrop::drop(&mut self.guard) };
-    self.parent.state.store(STATE_FREE, Ordering::Release);
+    *self.parent.owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
   }
 }

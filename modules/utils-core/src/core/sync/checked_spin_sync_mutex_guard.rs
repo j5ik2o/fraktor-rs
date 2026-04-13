@@ -3,7 +3,6 @@
 use core::{
   mem::ManuallyDrop,
   ops::{Deref, DerefMut},
-  sync::atomic::Ordering,
 };
 
 use spin::MutexGuard;
@@ -32,9 +31,9 @@ impl<T> DerefMut for CheckedSpinSyncMutexGuard<'_, T> {
 
 impl<T> Drop for CheckedSpinSyncMutexGuard<'_, T> {
   fn drop(&mut self) {
-    // Release the real lock first, then clear the flag.
+    // Release the real lock first, then clear the owner.
     // SAFETY: Drop is called exactly once and the guard is still valid.
     unsafe { ManuallyDrop::drop(&mut self.guard) };
-    self.parent.locked.store(false, Ordering::Release);
+    *self.parent.owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
   }
 }

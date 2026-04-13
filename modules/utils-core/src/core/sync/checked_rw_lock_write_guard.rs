@@ -3,12 +3,11 @@
 use core::{
   mem::ManuallyDrop,
   ops::{Deref, DerefMut},
-  sync::atomic::Ordering,
 };
 
 use spin::RwLockWriteGuard;
 
-use super::checked_spin_sync_rwlock::{CheckedSpinSyncRwLock, STATE_FREE};
+use super::checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
 
 /// Write guard for [`CheckedSpinSyncRwLock`].
 pub struct CheckedRwLockWriteGuard<'a, T> {
@@ -33,6 +32,6 @@ impl<T> DerefMut for CheckedRwLockWriteGuard<'_, T> {
 impl<T> Drop for CheckedRwLockWriteGuard<'_, T> {
   fn drop(&mut self) {
     unsafe { ManuallyDrop::drop(&mut self.guard) };
-    self.parent.state.store(STATE_FREE, Ordering::Release);
+    *self.parent.owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
   }
 }

@@ -1,16 +1,24 @@
 #[allow(clippy::disallowed_types)]
 mod arc_shared;
 /// Read guard for the checked spin rwlock.
+#[cfg(feature = "debug-locks")]
+#[allow(cfg_std_forbid)]
 mod checked_rw_lock_read_guard;
 /// Write guard for the checked spin rwlock.
+#[cfg(feature = "debug-locks")]
+#[allow(cfg_std_forbid)]
 mod checked_rw_lock_write_guard;
-/// Re-entry detecting spin mutex (no_std compatible).
-#[allow(clippy::disallowed_types)]
+/// Re-entry detecting spin mutex (requires std for thread-id based detection).
+#[cfg(feature = "debug-locks")]
+#[allow(clippy::disallowed_types, cfg_std_forbid)]
 mod checked_spin_sync_mutex;
 /// Guard for the checked spin mutex.
+#[cfg(feature = "debug-locks")]
+#[allow(cfg_std_forbid)]
 mod checked_spin_sync_mutex_guard;
-/// Re-entry detecting spin rwlock (no_std compatible).
-#[allow(clippy::disallowed_types)]
+/// Re-entry detecting spin rwlock (requires std for thread-id based detection).
+#[cfg(feature = "debug-locks")]
+#[allow(clippy::disallowed_types, cfg_std_forbid)]
 mod checked_spin_sync_rwlock;
 mod lock_driver;
 mod lock_driver_factory;
@@ -35,10 +43,15 @@ mod weak_shared_lock;
 mod weak_shared_rw_lock;
 
 pub use arc_shared::ArcShared;
+#[cfg(feature = "debug-locks")]
 pub use checked_rw_lock_read_guard::CheckedRwLockReadGuard;
+#[cfg(feature = "debug-locks")]
 pub use checked_rw_lock_write_guard::CheckedRwLockWriteGuard;
+#[cfg(feature = "debug-locks")]
 pub use checked_spin_sync_mutex::CheckedSpinSyncMutex;
+#[cfg(feature = "debug-locks")]
 pub use checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard;
+#[cfg(feature = "debug-locks")]
 pub use checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
 pub use lock_driver::LockDriver;
 pub use lock_driver_factory::LockDriverFactory;

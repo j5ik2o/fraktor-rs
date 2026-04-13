@@ -1,27 +1,28 @@
-//! Re-entry detecting spin-based mutex for debug/test instrumentation (no_std compatible).
+//! Re-entry detecting spin-based mutex for debug/test instrumentation.
+//!
+//! Requires the `debug-locks` feature (which implies `std`) so that
+//! `std::thread::current().id()` can distinguish same-thread re-entry
+//! from legitimate cross-thread contention.
 
 #[cfg(test)]
 mod tests;
 
-use core::{
-  mem::ManuallyDrop,
-  sync::atomic::{AtomicBool, Ordering},
-};
+use core::mem::ManuallyDrop;
+
+use std::sync::Mutex;
+use std::thread;
 
 use super::{LockDriver, checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard, spin_sync_mutex::SpinSyncMutex};
 
-/// Spin-based mutex with re-entry detection.
+/// Spin-based mutex with thread-aware re-entry detection.
 ///
-/// Wraps [`SpinSyncMutex`] and adds an `AtomicBool` flag that panics if `lock()`
-/// is called while the mutex is already held. This catches recursive / re-entrant
-/// locking that would otherwise deadlock silently on `spin::Mutex`.
-///
-/// Unlike [`DebugSpinSyncMutex`](fraktor_utils_adaptor_std_rs) this variant
-/// does **not** require `std::thread` and works in `no_std` environments.
-/// The trade-off is that the panic message cannot include the owning thread ID.
+/// Wraps [`SpinSyncMutex`] and records the owning thread ID. If `lock()`
+/// is called from the same thread that already holds the lock, it panics
+/// immediately instead of deadlocking.
 pub struct CheckedSpinSyncMutex<T> {
-  pub(super) inner:  SpinSyncMutex<T>,
-  pub(super) locked: AtomicBool,
+  pub(super) inner: SpinSyncMutex<T>,
+  /// `None` = unlocked, `Some(id)` = thread `id` holds the lock.
+  pub(super) owner: Mutex<Option<thread::ThreadId>>,
 }
 
 unsafe impl<T: Send> Send for CheckedSpinSyncMutex<T> {}
@@ -30,18 +31,26 @@ unsafe impl<T: Send> Sync for CheckedSpinSyncMutex<T> {}
 impl<T> CheckedSpinSyncMutex<T> {
   /// Creates a new checked mutex.
   #[must_use]
-  pub const fn new(value: T) -> Self {
-    Self { inner: SpinSyncMutex::new(value), locked: AtomicBool::new(false) }
+  pub fn new(value: T) -> Self {
+    Self { inner: SpinSyncMutex::new(value), owner: Mutex::new(None) }
   }
 
-  /// Acquires the mutex, panicking on re-entry.
+  /// Acquires the mutex, panicking on same-thread re-entry.
   ///
   /// # Panics
   ///
-  /// Panics if the mutex is already held (re-entrant lock detected).
+  /// Panics if the calling thread already holds this lock.
   pub fn lock(&self) -> CheckedSpinSyncMutexGuard<'_, T> {
-    assert!(!self.locked.swap(true, Ordering::Acquire), "CheckedSpinSyncMutex: re-entrant lock detected");
+    let current = thread::current().id();
+    {
+      let owner = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+      if *owner == Some(current) {
+        panic!("CheckedSpinSyncMutex: re-entrant lock detected (thread {:?})", current);
+      }
+    }
+    // Not a re-entry — wait for the real lock.
     let guard = self.inner.lock();
+    *self.owner.lock().unwrap_or_else(|e| e.into_inner()) = Some(current);
     CheckedSpinSyncMutexGuard { parent: self, guard: ManuallyDrop::new(guard) }
   }
 
