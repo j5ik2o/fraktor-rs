@@ -3,14 +3,13 @@
 //! Requires the `debug-locks` feature (which implies `std`) so that
 //! `std::thread::current().id()` can distinguish same-thread re-entry
 //! from legitimate cross-thread contention.
+#![allow(cfg_std_forbid)]
 
 #[cfg(test)]
 mod tests;
 
 use core::mem::ManuallyDrop;
-
-use std::sync::Mutex;
-use std::thread;
+use std::{sync::Mutex, thread};
 
 use super::{
   RwLockDriver, checked_rw_lock_read_guard::CheckedRwLockReadGuard,
