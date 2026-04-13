@@ -52,14 +52,19 @@ pub type DefaultMutex<T> = SpinSyncMutex<T>;
 - `std-locks` を優先する: テスト時に再入検知が無効になるため不採用
 - 両方有効を禁止する: Cargo の feature unification では制御困難なため不採用
 
-### 3. StdSyncMutex / StdSyncRwLock は utils-core に新設する（utils-adaptor-std とは別）
+### 3. StdSyncMutex / StdSyncRwLock は utils-core に新設し、utils-adaptor-std は re-export にする
 
-utils-adaptor-std の既存 `StdSyncMutex` は utils-core の `LockDriver` を実装しているため、同じコードを utils-core に `cfg` ゲートで新設する。utils-adaptor-std 版は残す（既存コードの互換性維持）。
+utils-core に `StdSyncMutex` / `StdSyncRwLock` を `cfg(feature = "std-locks")` で新設する。utils-adaptor-std の既存実装は削除し、utils-core からの re-export に置き換える。依存方向は utils-adaptor-std → utils-core なので re-export は可能。
 
-将来的に utils-adaptor-std 版を utils-core 版の re-export に置き換えることは可能だが、今回は scope 外。
+```rust
+// utils-adaptor-std/src/std/sync/std_sync_mutex.rs
+pub use fraktor_utils_core_rs::core::sync::StdSyncMutex;
+```
+
+これにより型の二重定義を回避し、実体を utils-core に一本化する。
 
 代替案:
-- utils-adaptor-std 版を移動する: 下流の import パスが壊れるため今回は不採用
+- 両方に実体を残す: 二重定義になりメンテナンス負荷が増えるため不採用
 - utils-core 版を utils-adaptor-std から re-export する: 依存方向が逆（core が adaptor を知る）なので不可能
 
 ### 4. actor-adaptor-std が utils-core の std-locks を有効化する
