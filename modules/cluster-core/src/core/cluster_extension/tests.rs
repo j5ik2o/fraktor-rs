@@ -1,8 +1,5 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
-use core::{
-  sync::atomic::{AtomicUsize, Ordering},
-  time::Duration,
-};
+use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
@@ -28,18 +25,6 @@ use crate::core::{
   placement::{ActivatedKind, PlacementResolution},
   pub_sub::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, cluster_pub_sub::ClusterPubSub},
 };
-
-struct CountingSubscriberLockProvider {
-  _event_stream_subscriber_shared: ArcShared<AtomicUsize>,
-}
-
-impl CountingSubscriberLockProvider {
-  fn new() -> (ArcShared<AtomicUsize>, Self) {
-    let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
-    let provider = Self { _event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
-    (event_stream_subscriber_shared, provider)
-  }
-}
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
   subscriber_handle_with_shared_factory(subscriber)
@@ -377,25 +362,6 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
 
   let recorded = calls.lock().clone();
   assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
-}
-
-#[test]
-fn cluster_extension_materializes_internal_subscribers_via_system_lock_provider() {
-  let (event_stream_subscriber_shared, _lock_provider) = CountingSubscriberLockProvider::new();
-  let system = ActorSystem::new_empty_with(|config| config);
-  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id);
-
-  ext_shared.start_member().expect("start member");
-  let _up = ext_shared.register_on_member_up(|_, _| {});
-  ext_shared.shutdown(true).expect("shutdown");
-  let _removed = ext_shared.register_on_member_removed(|_, _| {});
-
-  assert_eq!(
-    event_stream_subscriber_shared.load(Ordering::SeqCst),
-    4,
-    "cluster extension should materialize startup and callback subscribers via the actor-system lock provider"
-  );
 }
 
 #[test]

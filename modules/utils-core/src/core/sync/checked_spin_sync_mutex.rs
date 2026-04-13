@@ -9,11 +9,7 @@
 mod tests;
 
 use core::mem::ManuallyDrop;
-use std::{
-  sync::Mutex,
-  thread,
-  thread::ThreadId,
-};
+use std::{sync::Mutex, thread, thread::ThreadId};
 
 use super::{LockDriver, checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard, spin_sync_mutex::SpinSyncMutex};
 

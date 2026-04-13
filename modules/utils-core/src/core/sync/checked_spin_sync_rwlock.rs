@@ -9,11 +9,7 @@
 mod tests;
 
 use core::mem::ManuallyDrop;
-use std::{
-  sync::Mutex,
-  thread,
-  thread::ThreadId,
-};
+use std::{sync::Mutex, thread, thread::ThreadId};
 
 use super::{
   RwLockDriver, checked_rw_lock_read_guard::CheckedRwLockReadGuard,

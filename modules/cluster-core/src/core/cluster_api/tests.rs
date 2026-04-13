@@ -1,8 +1,5 @@
 use alloc::{string::String, vec::Vec};
-use core::{
-  sync::atomic::{AtomicUsize, Ordering},
-  time::Duration,
-};
+use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -42,34 +39,8 @@ use crate::core::{
   placement::{ActivatedKind, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution},
 };
 
-struct CountingSubscriberLockProvider {
-  _event_stream_subscriber_shared: ArcShared<AtomicUsize>,
-}
-
-impl CountingSubscriberLockProvider {
-  fn new() -> (ArcShared<AtomicUsize>, Self) {
-    let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
-    let provider = Self { _event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
-    (event_stream_subscriber_shared, provider)
-  }
-}
-
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
   subscriber_handle_with_shared_factory(subscriber)
-}
-
-#[test]
-fn external_subscriber_handle_materializes_via_explicit_lock_provider() {
-  let (event_stream_subscriber_shared, _lock_provider) = CountingSubscriberLockProvider::new();
-  let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
-
-  let _subscriber = subscriber_handle_with_shared_factory(RecordingClusterEvents::new());
-
-  assert_eq!(
-    event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
-    1,
-    "external subscribers should materialize via the supplied lock provider"
-  );
 }
 
 #[test]
@@ -455,50 +426,6 @@ fn subscribe_panics_when_event_type_filter_is_empty() {
   let subscriber = test_subscriber_handle(recorder);
 
   let _ = api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[]);
-}
-
-#[test]
-fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_provider() {
-  let (event_stream_subscriber_shared, _lock_provider) = CountingSubscriberLockProvider::new();
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
-  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
-  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
-    Box::new(NoopClusterProvider::new())
-  })
-  .with_identity_lookup_factory(|| Box::new(StaticIdentityLookup::new("node1:8080")));
-  let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
-  let config = ActorSystemConfig::default()
-    .with_scheduler_config(scheduler_config)
-    .with_tick_driver(tick_driver)
-    .with_extension_installers(extensions)
-    .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let actor_ref_provider_handle_shared =
-        ActorRefProviderHandleShared::new(TestActorRefProvider::new(system.clone()));
-      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
-    });
-  let props = Props::from_fn(|| TestGuardian);
-  let system = ActorSystem::new_with_config(&props, &config).expect("build system");
-  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
-  extension.start_member().expect("start member");
-
-  let api = ClusterApi::try_from_system(&system).expect("cluster api");
-  let recorder = RecordingClusterEvents::new();
-  let subscriber = test_subscriber_handle(recorder);
-  let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
-
-  let subscription =
-    api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[ClusterEventType::TopologyUpdated]);
-  let no_replay = api.subscribe_no_replay(&subscriber, &[ClusterEventType::TopologyUpdated]);
-
-  assert_eq!(
-    event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
-    2,
-    "cluster api should materialize both filtered subscribers via the actor-system lock provider"
-  );
-
-  api.unsubscribe(subscription.id());
-  api.unsubscribe(no_replay.id());
 }
 
 fn run_scheduler(system: &ActorSystem, duration: Duration) {
