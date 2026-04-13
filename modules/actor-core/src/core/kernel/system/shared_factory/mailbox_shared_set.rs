@@ -1,56 +1,31 @@
 //! Mailbox lock bundle for shared mailbox state.
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock, WeakShared};
-
-use crate::core::kernel::{
-  actor::{ActorCell, messaging::message_invoker::MessageInvokerShared},
-  dispatch::mailbox::MailboxInstrumentation,
-};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 /// Lock bundle used by mailbox hot-path state.
+///
+/// Currently holds only the `user_queue_lock` barrier. The former
+/// `invoker` / `actor` / `instrumentation` fields were write-once and are now
+/// stored directly in [`Mailbox`](crate::core::kernel::dispatch::mailbox::Mailbox)
+/// as `spin::Once<T>` for lock-free reads on the hot path.
 #[derive(Clone)]
 pub struct MailboxSharedSet {
   user_queue_lock: MailboxLocked<()>,
-  instrumentation: MailboxLocked<Option<MailboxInstrumentation>>,
-  invoker:         MailboxLocked<Option<MessageInvokerShared>>,
-  actor:           MailboxLocked<Option<WeakShared<ActorCell>>>,
 }
 
 impl MailboxSharedSet {
-  /// Creates a mailbox lock bundle from already materialized shared locks.
+  /// Creates a mailbox lock bundle from an already materialized shared lock.
   #[must_use]
-  pub const fn new(
-    user_queue_lock: MailboxLocked<()>,
-    instrumentation: MailboxLocked<Option<MailboxInstrumentation>>,
-    invoker: MailboxLocked<Option<MessageInvokerShared>>,
-    actor: MailboxLocked<Option<WeakShared<ActorCell>>>,
-  ) -> Self {
-    Self { user_queue_lock, instrumentation, invoker, actor }
+  pub(crate) const fn new(user_queue_lock: MailboxLocked<()>) -> Self {
+    Self { user_queue_lock }
   }
 
   pub(crate) fn builtin() -> Self {
-    Self::new(
-      MailboxLocked::new_with_driver::<DefaultMutex<()>>(()),
-      MailboxLocked::new_with_driver::<DefaultMutex<Option<MailboxInstrumentation>>>(None),
-      MailboxLocked::new_with_driver::<DefaultMutex<Option<MessageInvokerShared>>>(None),
-      MailboxLocked::new_with_driver::<DefaultMutex<Option<WeakShared<ActorCell>>>>(None),
-    )
+    Self::new(MailboxLocked::new_with_driver::<DefaultMutex<()>>(()))
   }
 
   pub(crate) fn user_queue_lock(&self) -> MailboxLocked<()> {
     self.user_queue_lock.clone()
-  }
-
-  pub(crate) fn instrumentation(&self) -> MailboxLocked<Option<MailboxInstrumentation>> {
-    self.instrumentation.clone()
-  }
-
-  pub(crate) fn invoker(&self) -> MailboxLocked<Option<MessageInvokerShared>> {
-    self.invoker.clone()
-  }
-
-  pub(crate) fn actor(&self) -> MailboxLocked<Option<WeakShared<ActorCell>>> {
-    self.actor.clone()
   }
 }
 

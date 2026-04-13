@@ -7,6 +7,7 @@ use alloc::{boxed::Box, collections::VecDeque, string::String};
 use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{SharedAccess, WeakShared};
+use spin::Once;
 
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
@@ -36,13 +37,17 @@ pub struct Mailbox {
   user:            Box<dyn MessageQueue>,
   user_queue_lock: MailboxLocked<()>,
   state:           MailboxScheduleState,
-  instrumentation: MailboxLocked<Option<MailboxInstrumentation>>,
+  /// Write-once instrumentation hooks. Set once via
+  /// [`set_instrumentation`](Self::set_instrumentation), read lock-free thereafter via
+  /// `spin::Once::get()`.
+  instrumentation: Once<MailboxInstrumentation>,
   cleanup_policy:  MailboxCleanupPolicy,
-  invoker:         MailboxLocked<Option<MessageInvokerShared>>,
-  /// Weak handle to the owning actor cell. Set by [`Mailbox::with_actor`] and
-  /// observed by [`Mailbox::run`] so the drain loop can early-return when the
-  /// cell has been dropped.
-  actor:           MailboxLocked<Option<WeakShared<ActorCell>>>,
+  /// Write-once message invoker. Set once via [`install_invoker`](Self::install_invoker),
+  /// read lock-free thereafter via `spin::Once::get()`.
+  invoker:         Once<MessageInvokerShared>,
+  /// Write-once weak handle to the owning actor cell. Set by [`Mailbox::with_actor`]
+  /// or [`install_actor`](Self::install_actor), read lock-free thereafter.
+  actor:           Once<WeakShared<ActorCell>>,
 }
 
 unsafe impl Send for Mailbox {}
@@ -112,10 +117,10 @@ impl Mailbox {
       user: queue,
       user_queue_lock: shared_set.user_queue_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: shared_set.instrumentation(),
+      instrumentation: Once::new(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: shared_set.invoker(),
-      actor: shared_set.actor(),
+      invoker: Once::new(),
+      actor: Once::new(),
     }
   }
 
@@ -144,10 +149,10 @@ impl Mailbox {
       user: queue,
       user_queue_lock: shared_set.user_queue_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: shared_set.instrumentation(),
+      instrumentation: Once::new(),
       cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
-      invoker: shared_set.invoker(),
-      actor: shared_set.actor(),
+      invoker: Once::new(),
+      actor: Once::new(),
     }
   }
 
@@ -182,30 +187,30 @@ impl Mailbox {
       user: queue,
       user_queue_lock: shared_set.user_queue_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: shared_set.instrumentation(),
+      instrumentation: Once::new(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: shared_set.invoker(),
+      invoker: Once::new(),
       actor: {
-        let actor_slot = shared_set.actor();
-        actor_slot.with_lock(|slot| *slot = Some(actor));
-        actor_slot
+        let once = Once::new();
+        once.call_once(|| actor);
+        once
       },
     }
   }
 
-  /// Replaces the weak actor handle, returning the previous one.
+  /// Installs the weak actor handle (write-once).
   ///
   /// `ActorCell::create` calls this once the cell `ArcShared` is materialised
   /// so the legacy `Mailbox::new(policy)` constructor (which does not yet
   /// know the cell) can be late-bound to its owner.
-  pub fn install_actor(&self, actor: WeakShared<ActorCell>) -> Option<WeakShared<ActorCell>> {
-    self.actor.with_lock(|slot| slot.replace(actor))
+  pub fn install_actor(&self, actor: WeakShared<ActorCell>) {
+    self.actor.call_once(|| actor);
   }
 
   /// Returns a clone of the weak actor handle if one is installed.
   #[must_use]
   pub fn actor(&self) -> Option<WeakShared<ActorCell>> {
-    self.actor.with_read(|slot| slot.clone())
+    self.actor.get().cloned()
   }
 
   /// Installs the message invoker that [`run`](Self::run) drives.
@@ -214,7 +219,7 @@ impl Mailbox {
   /// drain the mailbox without needing a back-reference to the dispatcher
   /// itself.
   pub fn install_invoker(&self, invoker: MessageInvokerShared) {
-    self.invoker.with_lock(|slot| *slot = Some(invoker));
+    self.invoker.call_once(|| invoker);
   }
 
   /// Drains the mailbox up to `throughput` messages, invoking each one through the installed
@@ -245,7 +250,7 @@ impl Mailbox {
     }
 
     let close_requested_at_start = self.state.is_close_requested();
-    let invoker = self.invoker.with_read(|slot| slot.clone());
+    let invoker = self.invoker.get().cloned();
     // invoker 不在で通常の drain path は早期終了してよい。ただし close が既に
     // 要求済みなら、これ以上 user/system delivery ができなくても terminal
     // cleanup を完了させるために run loop へ入る必要がある。
@@ -256,10 +261,7 @@ impl Mailbox {
     // Phase 9.2: bail out if the owning actor cell has been dropped. The
     // weak handle is optional so legacy `Mailbox::new(policy)` callers (which
     // never installed an actor) keep their existing semantics.
-    let actor_alive = self.actor.with_read(|slot| match slot.as_ref() {
-      | Some(weak) => weak.upgrade().is_some(),
-      | None => true,
-    });
+    let actor_alive = self.actor.get().is_none_or(|weak| weak.upgrade().is_some());
     if !actor_alive && !close_requested_at_start {
       return false;
     }
@@ -344,23 +346,23 @@ impl Mailbox {
 
   /// Installs instrumentation hooks for metrics emission.
   pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
-    self.instrumentation.with_lock(|slot| *slot = Some(instrumentation));
+    self.instrumentation.call_once(|| instrumentation);
   }
 
   /// Returns the system state handle if instrumentation has been installed.
   pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
-    self.instrumentation.with_read(|slot| slot.as_ref().and_then(|inst| inst.system_state()))
+    self.instrumentation.get().and_then(|inst| inst.system_state())
   }
 
   /// Returns the actor pid associated with this mailbox when instrumentation is installed.
   #[must_use]
   pub(crate) fn pid(&self) -> Option<Pid> {
-    self.instrumentation.with_read(|slot| slot.as_ref().map(|inst| inst.pid()))
+    self.instrumentation.get().map(|inst| inst.pid())
   }
 
   /// Emits a log message tagged with this mailbox pid.
   pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
-    if let Some(instrumentation) = self.instrumentation.with_read(|slot| slot.clone()) {
+    if let Some(instrumentation) = self.instrumentation.get() {
       instrumentation.emit_log(level, message);
     }
   }
@@ -667,7 +669,7 @@ impl Mailbox {
   }
 
   fn publish_metrics_with_user_len(&self, user_len: usize) {
-    if let Some(instrumentation) = self.instrumentation.with_read(|slot| slot.clone()) {
+    if let Some(instrumentation) = self.instrumentation.get() {
       instrumentation.publish(user_len, self.system_len());
     }
   }
