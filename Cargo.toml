@@ -55,7 +55,6 @@ libraries = [
     { path = "lints/rustdoc-lint" },
     { path = "lints/cfg-std-forbid-lint" },
     { path = "lints/ambiguous-suffix-lint" },
-    { path = "lints/actor-lock-construction-lint" },
 ]
 
 [workspace.lints.rust]
