@@ -31,9 +31,10 @@ impl<T> DerefMut for CheckedSpinSyncMutexGuard<'_, T> {
 
 impl<T> Drop for CheckedSpinSyncMutexGuard<'_, T> {
   fn drop(&mut self) {
-    // Release the real lock first, then clear the owner.
+    // Clear the owner while still holding the inner lock so that another
+    // thread acquiring inner right after cannot have its owner overwritten.
+    *self.parent.owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
     // SAFETY: Drop is called exactly once and the guard is still valid.
     unsafe { ManuallyDrop::drop(&mut self.guard) };
-    *self.parent.owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
   }
 }
