@@ -15,7 +15,7 @@ pub struct ContextPipeWakerHandleShared {
 impl ContextPipeWakerHandleShared {
   /// Creates a new shared wrapper storing the handle directly.
   #[must_use]
-  pub fn new(handle: ContextPipeWakerHandle) -> Self {
+  pub const fn new(handle: ContextPipeWakerHandle) -> Self {
     Self { inner: handle }
   }
 
