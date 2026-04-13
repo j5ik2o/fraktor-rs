@@ -5,35 +5,15 @@ use core::{
 };
 
 use fraktor_actor_core_rs::core::kernel::{
-  actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorShared, ReceiveTimeoutState, ReceiveTimeoutStateShared,
-    actor_ref::{ActorRefSender, ActorRefSenderShared},
-    actor_ref_provider::{ActorRefProviderHandleShared, LocalActorRefProvider},
-    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared},
-    messaging::{
-      AnyMessage, AskResult,
-      message_invoker::{MessageInvoker, MessageInvokerShared},
-    },
-    scheduler::tick_driver::{TickDriverControl, TickDriverControlShared},
-  },
-  dispatch::{
-    dispatcher::{
-      Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue, TrampolineState,
-    },
-    mailbox::{
-      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared, UnboundedPriorityMessageQueueState,
-      UnboundedPriorityMessageQueueStateShared,
-    },
-  },
+  actor::messaging::AnyMessage,
   event::stream::{
-    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
     EventStreamSubscription, subscriber_handle_with_shared_factory,
   },
   system::ActorSystem,
-  util::futures::{ActorFuture, ActorFutureShared},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedLock, SpinSyncMutex},
+  sync::{ArcShared, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -50,13 +30,13 @@ use crate::core::{
 };
 
 struct CountingSubscriberLockProvider {
-  event_stream_subscriber_shared: ArcShared<AtomicUsize>,
+  _event_stream_subscriber_shared: ArcShared<AtomicUsize>,
 }
 
 impl CountingSubscriberLockProvider {
   fn new() -> (ArcShared<AtomicUsize>, Self) {
     let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
-    let provider = Self { event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
+    let provider = Self { _event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
     (event_stream_subscriber_shared, provider)
   }
 }
@@ -401,7 +381,7 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
 
 #[test]
 fn cluster_extension_materializes_internal_subscribers_via_system_lock_provider() {
-  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let (event_stream_subscriber_shared, _lock_provider) = CountingSubscriberLockProvider::new();
   let system = ActorSystem::new_empty_with(|config| config);
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id);

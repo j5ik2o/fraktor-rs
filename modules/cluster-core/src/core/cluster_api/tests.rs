@@ -6,43 +6,28 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, Pid, ReceiveTimeoutState,
-    ReceiveTimeoutStateShared,
+    Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
-    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
-    messaging::{
-      AnyMessage, AnyMessageView, AskResult,
-      message_invoker::{MessageInvoker, MessageInvokerShared},
-    },
+    messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
-      tick_driver::{ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared},
+      tick_driver::{ManualTestDriver, TickDriverConfig},
     },
     setup::ActorSystemConfig,
   },
-  dispatch::{
-    dispatcher::{
-      Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue, TrampolineState,
-    },
-    mailbox::{
-      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared, UnboundedPriorityMessageQueueState,
-      UnboundedPriorityMessageQueueStateShared,
-    },
-  },
   event::stream::{
-    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
     EventStreamSubscription, subscriber_handle_with_shared_factory,
   },
   system::{ActorSystem, TerminationSignal},
-  util::futures::{ActorFuture, ActorFutureShared},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -58,13 +43,13 @@ use crate::core::{
 };
 
 struct CountingSubscriberLockProvider {
-  event_stream_subscriber_shared: ArcShared<AtomicUsize>,
+  _event_stream_subscriber_shared: ArcShared<AtomicUsize>,
 }
 
 impl CountingSubscriberLockProvider {
   fn new() -> (ArcShared<AtomicUsize>, Self) {
     let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
-    let provider = Self { event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
+    let provider = Self { _event_stream_subscriber_shared: event_stream_subscriber_shared.clone() };
     (event_stream_subscriber_shared, provider)
   }
 }
@@ -75,7 +60,7 @@ fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStream
 
 #[test]
 fn external_subscriber_handle_materializes_via_explicit_lock_provider() {
-  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let (event_stream_subscriber_shared, _lock_provider) = CountingSubscriberLockProvider::new();
   let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
 
   let _subscriber = subscriber_handle_with_shared_factory(RecordingClusterEvents::new());
@@ -474,7 +459,7 @@ fn subscribe_panics_when_event_type_filter_is_empty() {
 
 #[test]
 fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_provider() {
-  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let (event_stream_subscriber_shared, _lock_provider) = CountingSubscriberLockProvider::new();
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
