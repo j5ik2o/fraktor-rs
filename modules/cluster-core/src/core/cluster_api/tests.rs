@@ -21,8 +21,8 @@ use fraktor_actor_core_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
-    EventStreamSubscription, subscriber_handle_with_shared_factory,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+    subscriber_handle_with_shared_factory,
   },
   system::{ActorSystem, TerminationSignal},
 };
