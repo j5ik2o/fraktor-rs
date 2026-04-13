@@ -8,7 +8,7 @@ publish = false
 # 基本依存（全 example 共通）
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
-fraktor-utils-core-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["std-locks"] }
 fraktor-stream-core-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }

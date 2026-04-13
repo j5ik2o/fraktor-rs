@@ -3,9 +3,12 @@ mod tests;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use fraktor_utils_core_rs::core::sync::LockDriver;
+use crate::core::sync::LockDriver;
 
 /// Standard-library-backed mutex driver.
+///
+/// Wraps [`std::sync::Mutex`] and absorbs poison errors so that a panicked
+/// thread does not permanently lock out other threads.
 pub struct StdSyncMutex<T>(Mutex<T>);
 
 impl<T> StdSyncMutex<T> {

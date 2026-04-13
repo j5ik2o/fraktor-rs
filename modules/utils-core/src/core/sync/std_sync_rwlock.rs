@@ -3,9 +3,12 @@ mod tests;
 
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use fraktor_utils_core_rs::core::sync::RwLockDriver;
+use crate::core::sync::RwLockDriver;
 
 /// Standard-library-backed rwlock driver.
+///
+/// Wraps [`std::sync::RwLock`] and absorbs poison errors so that a panicked
+/// thread does not permanently lock out other threads.
 pub struct StdSyncRwLock<T>(RwLock<T>);
 
 impl<T> StdSyncRwLock<T> {

@@ -1,6 +1,6 @@
 use fraktor_utils_core_rs::core::sync::LockDriverFactory;
 
-use super::std_sync_mutex::StdSyncMutex;
+use super::StdSyncMutex;
 
 /// Factory for [`StdSyncMutex`](super::StdSyncMutex).
 pub struct StdSyncFactory;
