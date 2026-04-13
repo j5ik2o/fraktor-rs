@@ -8,8 +8,7 @@ use alloc::{format, string::String, vec::Vec};
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription,
-    subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
   system::{ActorSystem, ActorSystemWeak},
 };
@@ -201,10 +200,8 @@ impl ClusterExtension {
     let self_address = core.startup_address();
     let grain_metrics = if core.metrics_enabled() { Some(GrainMetricsShared::new(GrainMetrics::new())) } else { None };
     let self_member_status = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
-    let status_subscriber = subscriber_handle(SelfMemberStatusTrackerSubscriber::new(
-      self_address,
-      self_member_status.clone(),
-    ));
+    let status_subscriber =
+      subscriber_handle(SelfMemberStatusTrackerSubscriber::new(self_address, self_member_status.clone()));
     let self_member_status_subscription = event_stream.subscribe_no_replay(&status_subscriber);
     let locked = SharedLock::new_with_driver::<DefaultMutex<_>>(core);
     let subscription = SharedLock::new_with_driver::<DefaultMutex<_>>(None);

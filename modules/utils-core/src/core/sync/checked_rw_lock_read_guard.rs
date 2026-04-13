@@ -2,9 +2,9 @@
 #![allow(cfg_std_forbid)]
 
 use core::{mem::ManuallyDrop, ops::Deref};
+use std::thread;
 
 use spin::RwLockReadGuard;
-use std::thread;
 
 use super::checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
 

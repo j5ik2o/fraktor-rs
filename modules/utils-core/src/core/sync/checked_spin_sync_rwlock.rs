@@ -9,13 +9,7 @@
 mod tests;
 
 use core::mem::ManuallyDrop;
-
-use std::{
-  collections::HashMap,
-  sync::Mutex,
-  thread,
-  thread::ThreadId,
-};
+use std::{collections::HashMap, sync::Mutex, thread, thread::ThreadId};
 
 use super::{
   RwLockDriver, checked_rw_lock_read_guard::CheckedRwLockReadGuard,
@@ -27,7 +21,7 @@ pub(super) struct OwnerState {
   /// Number of active read guards per thread.
   pub(super) reader_counts: HashMap<ThreadId, usize>,
   /// The thread holding the write lock, if any.
-  pub(super) write_owner: Option<ThreadId>,
+  pub(super) write_owner:   Option<ThreadId>,
 }
 
 impl OwnerState {
