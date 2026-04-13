@@ -43,6 +43,7 @@ critical-section = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
 fraktor-utils-adaptor-std-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 
 [[test]]
 name = "actor_path_e2e"

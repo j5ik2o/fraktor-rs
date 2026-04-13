@@ -19,7 +19,7 @@
 
 ## 4. dev-dependencies と検証
 
-- [ ] 4.1 各クレートの `[dev-dependencies]` に `fraktor-utils-core-rs = { ..., features = ["debug-locks"] }` を追加する
-- [ ] 4.2 `cargo check --lib --workspace` が `debug-locks` なしでクリーンにビルドされることを確認する
-- [ ] 4.3 `cargo check --tests --workspace` が `debug-locks` ありでクリーンにビルドされることを確認する
-- [ ] 4.4 no_std ターゲット（`thumbv8m.main-none-eabi`）で `debug-locks` なしのビルドが通ることを確認する
+- [x] 4.1 各クレートの `[dev-dependencies]` に `fraktor-utils-core-rs = { ..., features = ["debug-locks"] }` を追加する
+- [x] 4.2 `cargo check --lib --workspace` が `debug-locks` なしでクリーンにビルドされることを確認する
+- [x] 4.3 `cargo check --tests --workspace` が `debug-locks` ありでクリーンにビルドされることを確認する
+- [x] 4.4 no_std ターゲット（`thumbv8m.main-none-eabi`）で `debug-locks` なしのビルドが通ることを確認する
