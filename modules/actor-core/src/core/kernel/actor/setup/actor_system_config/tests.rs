@@ -1,19 +1,25 @@
 use core::time::Duration;
 
 use crate::core::kernel::{
-  actor::{actor_path::GuardianKind as PathGuardianKind, setup::ActorSystemConfig},
+  actor::{
+    Actor, ActorContext,
+    actor_path::GuardianKind as PathGuardianKind,
+    error::ActorError,
+    messaging::AnyMessageView,
+    setup::ActorSystemConfig,
+  },
   dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
   system::remote::RemotingConfig,
 };
 
 struct NoopActor;
 
-impl crate::core::kernel::actor::Actor for NoopActor {
+impl Actor for NoopActor {
   fn receive(
     &mut self,
-    _ctx: &mut crate::core::kernel::actor::ActorContext<'_>,
-    _message: crate::core::kernel::actor::messaging::AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+    _ctx: &mut ActorContext<'_>,
+    _message: AnyMessageView<'_>,
+  ) -> Result<(), ActorError> {
     Ok(())
   }
 }

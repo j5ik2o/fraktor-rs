@@ -1,10 +1,6 @@
 //! Read guard for [`CheckedSpinSyncRwLock`](super::CheckedSpinSyncRwLock).
 
-use core::{
-  mem::ManuallyDrop,
-  ops::Deref,
-  sync::atomic::Ordering,
-};
+use core::{mem::ManuallyDrop, ops::Deref, sync::atomic::Ordering};
 
 use spin::RwLockReadGuard;
 

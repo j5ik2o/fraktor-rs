@@ -1,14 +1,14 @@
 #[allow(clippy::disallowed_types)]
 mod arc_shared;
+/// Read guard for the checked spin rwlock.
+mod checked_rw_lock_read_guard;
+/// Write guard for the checked spin rwlock.
+mod checked_rw_lock_write_guard;
 /// Re-entry detecting spin mutex (no_std compatible).
 #[allow(clippy::disallowed_types)]
 mod checked_spin_sync_mutex;
 /// Guard for the checked spin mutex.
 mod checked_spin_sync_mutex_guard;
-/// Read guard for the checked spin rwlock.
-mod checked_rw_lock_read_guard;
-/// Write guard for the checked spin rwlock.
-mod checked_rw_lock_write_guard;
 /// Re-entry detecting spin rwlock (no_std compatible).
 #[allow(clippy::disallowed_types)]
 mod checked_spin_sync_rwlock;
