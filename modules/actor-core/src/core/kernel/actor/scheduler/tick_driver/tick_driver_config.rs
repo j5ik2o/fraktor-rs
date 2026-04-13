@@ -6,7 +6,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
@@ -31,8 +31,8 @@ impl TickDriverConfig {
   #[must_use]
   pub fn runtime(driver: Box<dyn TickDriver>, executor_pump: Box<dyn TickExecutorPump>) -> Self {
     Self::Runtime {
-      driver:        SharedLock::new_with_driver::<SpinSyncMutex<_>>(driver),
-      executor_pump: SharedLock::new_with_driver::<SpinSyncMutex<_>>(executor_pump),
+      driver:        SharedLock::new_with_driver::<DefaultMutex<_>>(driver),
+      executor_pump: SharedLock::new_with_driver::<DefaultMutex<_>>(executor_pump),
     }
   }
 

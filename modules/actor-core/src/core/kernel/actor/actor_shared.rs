@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::actor_lifecycle::Actor;
 
@@ -20,7 +20,7 @@ impl ActorShared {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
   pub fn new(actor: Box<dyn Actor + Send>) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(actor))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(actor))
   }
 
   /// Creates an `ActorShared` wrapper from an existing shared lock.

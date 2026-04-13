@@ -1,6 +1,6 @@
 //! Shared wrapper for actor cell registry.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::cells::Cells;
 
@@ -17,7 +17,7 @@ impl CellsShared {
   /// Creates a new shared wrapper around the provided registry.
   #[must_use]
   pub(crate) fn new(cells: Cells) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(cells) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(cells) }
   }
 }
 

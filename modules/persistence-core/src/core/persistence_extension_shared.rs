@@ -1,7 +1,7 @@
 //! Shared wrapper for persistence extension instance.
 
 use fraktor_actor_core_rs::core::kernel::actor::extension::Extension;
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use crate::core::persistence_extension::PersistenceExtension;
 
@@ -14,7 +14,7 @@ impl PersistenceExtensionShared {
   /// Creates a new shared wrapper around the provided extension instance.
   #[must_use]
   pub fn new(extension: PersistenceExtension) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(extension) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(extension) }
   }
 }
 

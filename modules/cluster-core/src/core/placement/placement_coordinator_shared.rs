@@ -1,6 +1,6 @@
 //! Shared wrapper for PlacementCoordinatorCore.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::placement_coordinator::PlacementCoordinatorCore;
 
@@ -13,7 +13,7 @@ impl PlacementCoordinatorShared {
   /// Wraps a placement coordinator in a shared lock.
   #[must_use]
   pub fn new(coordinator: PlacementCoordinatorCore) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(coordinator) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(coordinator) }
   }
 }
 

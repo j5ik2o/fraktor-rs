@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::Gossiper;
 
@@ -19,7 +19,7 @@ impl GossiperShared {
   /// Creates a new shared wrapper around the given gossiper.
   #[must_use]
   pub fn new(gossiper: Box<dyn Gossiper>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(gossiper) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(gossiper) }
   }
 }
 

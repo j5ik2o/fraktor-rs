@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 use crate::core::{
   journal::Journal, journal_actor::JournalActor, persistence_error::PersistenceError, snapshot_actor::SnapshotActor,
@@ -92,7 +92,7 @@ where
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
 {
   fn new(journal: J) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(JournalActor::new(journal)) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(JournalActor::new(journal)) }
   }
 }
 
@@ -120,7 +120,7 @@ where
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
   fn new(snapshot_store: S) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(SnapshotActor::new(snapshot_store)) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(SnapshotActor::new(snapshot_store)) }
   }
 }
 

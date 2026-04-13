@@ -13,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::{ActorSystem, ActorSystemWeak},
 };
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use crate::core::{
   ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,
@@ -200,15 +200,15 @@ impl ClusterExtension {
     let event_stream = system.event_stream();
     let self_address = core.startup_address();
     let grain_metrics = if core.metrics_enabled() { Some(GrainMetricsShared::new(GrainMetrics::new())) } else { None };
-    let self_member_status = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
+    let self_member_status = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
     let status_subscriber = subscriber_handle_with_shared_factory(SelfMemberStatusTrackerSubscriber::new(
       self_address,
       self_member_status.clone(),
     ));
     let self_member_status_subscription = event_stream.subscribe_no_replay(&status_subscriber);
-    let locked = SharedLock::new_with_driver::<SpinSyncMutex<_>>(core);
-    let subscription = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
-    let terminated = SharedLock::new_with_driver::<SpinSyncMutex<_>>(false);
+    let locked = SharedLock::new_with_driver::<DefaultMutex<_>>(core);
+    let subscription = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
+    let terminated = SharedLock::new_with_driver::<DefaultMutex<_>>(false);
     Self {
       core: locked,
       event_stream,
@@ -431,8 +431,8 @@ impl ClusterExtension {
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
     let self_address = self.core.with_lock(|core| core.startup_address());
-    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusSubscriberState::new());
-    let callback_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusCallbackState::new(callback));
+    let state = SharedLock::new_with_driver::<DefaultMutex<_>>(MemberStatusSubscriberState::new());
+    let callback_state = SharedLock::new_with_driver::<DefaultMutex<_>>(MemberStatusCallbackState::new(callback));
     let subscriber = subscriber_handle_with_shared_factory(MemberStatusSubscriber::new(
       target,
       self_address.clone(),

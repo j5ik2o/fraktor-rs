@@ -3,7 +3,7 @@
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex};
 use portable_atomic::{AtomicU64, Ordering};
 
 use super::resizer::Resizer;
@@ -174,7 +174,7 @@ where
       let props_for_resize = resizer.as_ref().map(|_| props.clone());
 
       let routee_count = routee_vec.len();
-      let routees = SharedLock::new_with_driver::<SpinSyncMutex<_>>(routee_vec);
+      let routees = SharedLock::new_with_driver::<DefaultMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
 
@@ -205,7 +205,7 @@ where
           })
         },
         | PoolRouteStrategy::SmallestMailbox => {
-          let dispatch_counts = SharedLock::new_with_driver::<SpinSyncMutex<_>>(vec![0_usize; routee_count]);
+          let dispatch_counts = SharedLock::new_with_driver::<DefaultMutex<_>>(vec![0_usize; routee_count]);
           dispatch_counts_for_sig = Some(dispatch_counts.clone());
           dispatch_counts_for_msg = Some(dispatch_counts.clone());
           ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {

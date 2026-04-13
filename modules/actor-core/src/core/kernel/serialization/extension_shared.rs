@@ -1,6 +1,6 @@
 //! Shared wrapper for serialization extension instance.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::extension::SerializationExtension;
 use crate::core::kernel::actor::extension::Extension;
@@ -18,7 +18,7 @@ impl SerializationExtensionShared {
   /// Creates a new shared wrapper around the provided extension instance.
   #[must_use]
   pub fn new(extension: SerializationExtension) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(extension) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(extension) }
   }
 }
 

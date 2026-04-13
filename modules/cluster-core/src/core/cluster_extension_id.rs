@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex};
 
 use crate::core::{
   ClusterCore, ClusterExtension, ClusterExtensionConfig, ClusterProviderShared,
@@ -55,7 +55,7 @@ impl ClusterExtensionId {
     identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
     let provider = ClusterProviderShared::new(provider);
-    let downing_provider = SharedLock::new_with_driver::<SpinSyncMutex<_>>(downing_provider);
+    let downing_provider = SharedLock::new_with_driver::<DefaultMutex<_>>(downing_provider);
     let gossiper = GossiperShared::new(gossiper);
     let pubsub = ClusterPubSubShared::new(pubsub);
     let identity_lookup = IdentityLookupShared::new(identity_lookup);

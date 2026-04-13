@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::DeliveryEndpoint;
 
@@ -16,7 +16,7 @@ impl DeliveryEndpointShared {
   /// Creates a new shared wrapper around the given endpoint.
   #[must_use]
   pub fn new(endpoint: Box<dyn DeliveryEndpoint>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(endpoint) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(endpoint) }
   }
 }
 

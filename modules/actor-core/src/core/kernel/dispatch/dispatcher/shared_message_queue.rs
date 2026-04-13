@@ -11,7 +11,7 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use crate::core::kernel::{
   actor::error::SendError,
@@ -27,7 +27,7 @@ impl SharedMessageQueue {
   /// Creates a new empty shared queue using the builtin spin lock backend.
   #[must_use]
   pub fn new() -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::new()))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(VecDeque::new()))
   }
 
   /// Creates a shared queue from an already materialized shared lock.

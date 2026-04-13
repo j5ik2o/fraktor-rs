@@ -1,6 +1,6 @@
 //! Shared wrapper for MembershipCoordinator.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::MembershipCoordinator;
 
@@ -13,7 +13,7 @@ impl MembershipCoordinatorShared {
   /// Wraps a membership coordinator in a shared lock.
   #[must_use]
   pub fn new(coordinator: MembershipCoordinator) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(coordinator) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(coordinator) }
   }
 }
 

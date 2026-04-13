@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, DefaultRwLock};
 
 use super::middleware::MessageInvokerMiddleware;
 
@@ -20,7 +20,7 @@ impl MiddlewareShared {
   #[must_use]
   #[allow(dead_code)] // Used in tests
   pub(crate) fn new(middleware: Box<dyn MessageInvokerMiddleware>) -> Self {
-    Self { inner: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(middleware) }
+    Self { inner: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(middleware) }
   }
 }
 

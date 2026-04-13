@@ -1,6 +1,6 @@
 //! Shared wrapper for LocalClusterProvider implementations.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::LocalClusterProvider;
 
@@ -17,7 +17,7 @@ impl LocalClusterProviderShared {
   /// Creates a new shared wrapper around the provided provider.
   #[must_use]
   pub fn new(provider: LocalClusterProvider) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(provider) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(provider) }
   }
 }
 

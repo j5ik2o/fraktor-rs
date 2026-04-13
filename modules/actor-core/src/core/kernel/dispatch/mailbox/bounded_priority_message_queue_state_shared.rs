@@ -1,6 +1,6 @@
 //! Shared wrapper for bounded priority message queue state.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::bounded_priority_message_queue_state::BoundedPriorityMessageQueueState;
 
@@ -13,7 +13,7 @@ impl BoundedPriorityMessageQueueStateShared {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
   pub fn new(state: BoundedPriorityMessageQueueState) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(state))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(state))
   }
 
   /// Creates a shared wrapper from an existing shared lock.

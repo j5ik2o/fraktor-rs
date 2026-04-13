@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 use super::TickDriverControl;
 
@@ -15,7 +15,7 @@ impl TickDriverControlShared {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
   pub fn new(control: Box<dyn TickDriverControl>) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(control))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(control))
   }
 
   /// Creates a shared wrapper from an existing shared lock.

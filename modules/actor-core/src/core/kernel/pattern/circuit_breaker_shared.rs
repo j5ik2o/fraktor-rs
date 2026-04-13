@@ -2,7 +2,7 @@
 
 use core::future::Future;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::{
   circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
@@ -31,7 +31,7 @@ impl<C: Clock + 'static> CircuitBreakerShared<C> {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
   pub fn new(circuit_breaker: CircuitBreaker<C>) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(circuit_breaker))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(circuit_breaker))
   }
 
   /// Creates a shared wrapper from an existing shared lock.

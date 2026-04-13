@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use crate::core::cluster_provider::ClusterProvider;
 
@@ -26,7 +26,7 @@ impl ClusterProviderShared {
   /// Creates a new shared wrapper around the given provider.
   #[must_use]
   pub fn new(provider: Box<dyn ClusterProvider>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(provider) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(provider) }
   }
 }
 

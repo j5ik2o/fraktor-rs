@@ -4,7 +4,7 @@
 //! that subscriber callbacks are executed without holding the event stream lock,
 //! preventing potential deadlocks.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, DefaultRwLock};
 
 use crate::core::kernel::event::stream::{
   EventStream, EventStreamEvent, EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,
@@ -42,7 +42,7 @@ impl EventStreamShared {
   /// Creates a new shared wrapper using the builtin spin rw-lock backend.
   #[must_use]
   pub fn new(stream: EventStream) -> Self {
-    Self::from_shared_lock(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(stream))
+    Self::from_shared_lock(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(stream))
   }
 
   /// Creates a shared wrapper from an already materialized event-stream lock.
@@ -54,7 +54,7 @@ impl EventStreamShared {
   /// Creates a shared event stream with the specified buffer capacity.
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
-    Self::from_shared_lock(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(EventStream::with_capacity(capacity)))
+    Self::from_shared_lock(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(EventStream::with_capacity(capacity)))
   }
 
   /// Subscribes and replays buffered events to the subscriber.

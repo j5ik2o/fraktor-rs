@@ -6,7 +6,7 @@ use core::{
   task::Waker,
 };
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 /// Tracks actor system termination as the single source of truth.
 ///
@@ -27,7 +27,7 @@ impl TerminationState {
     Self {
       terminating: AtomicBool::new(false),
       terminated:  AtomicBool::new(false),
-      wakers:      SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new()),
+      wakers:      SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
     }
   }
 

@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::{any::TypeId, marker::PhantomData};
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::{ActorRefProvider, ActorRefProviderHandle};
 use crate::core::kernel::{
@@ -40,7 +40,7 @@ impl<P: ActorRefProvider + 'static> ActorRefProviderHandleShared<P> {
   #[must_use]
   pub fn new(provider: P) -> Self {
     let schemes = provider.supported_schemes();
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(ActorRefProviderHandle::new(
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(ActorRefProviderHandle::new(
       provider, schemes,
     )))
   }

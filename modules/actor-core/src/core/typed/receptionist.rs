@@ -12,7 +12,7 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
 pub use deregistered::Deregistered;
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex, shared::Shared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex, shared::Shared};
 pub use listing::Listing;
 pub use receptionist_command::ReceptionistCommand;
 pub use registered::Registered;
@@ -84,7 +84,7 @@ impl ExtensionId for ReceptionistExtensionId {
 
 impl Receptionist {
   fn empty_state() -> SharedLock<ReceptionistState> {
-    SharedLock::new_with_driver::<SpinSyncMutex<_>>(ReceptionistState {
+    SharedLock::new_with_driver::<DefaultMutex<_>>(ReceptionistState {
       registrations: BTreeMap::new(),
       subscribers:   BTreeMap::new(),
     })

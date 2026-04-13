@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
@@ -127,7 +127,7 @@ where
         return Behaviors::stopped();
       }
 
-      let routees = SharedLock::new_with_driver::<SpinSyncMutex<_>>(routee_vec);
+      let routees = SharedLock::new_with_driver::<DefaultMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
       let create_request = create_request.clone();
@@ -303,7 +303,7 @@ where
         );
       }
 
-      let current_index = SharedLock::new_with_driver::<SpinSyncMutex<_>>(1_usize);
+      let current_index = SharedLock::new_with_driver::<DefaultMutex<_>>(1_usize);
       let routees = routees.clone();
       let message = message.clone();
       let create_request = create_request.clone();

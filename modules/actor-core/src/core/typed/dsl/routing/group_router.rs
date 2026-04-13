@@ -3,7 +3,7 @@
 use alloc::{format, string::String, vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex};
 use portable_atomic::AtomicU64;
 
 use crate::core::{
@@ -85,7 +85,7 @@ where
   ) -> Behavior<M> {
     let key = self.service_key;
     let strategy = self.strategy;
-    let routees = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::<TypedActorRef<M>>::new());
+    let routees = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::<TypedActorRef<M>>::new());
     let routees_for_listing = routees.clone();
     let routees_for_message = routees;
 
@@ -95,7 +95,7 @@ where
       else {
         return Behaviors::stopped();
       };
-      let receptionist = SharedLock::new_with_driver::<SpinSyncMutex<_>>(receptionist_ref);
+      let receptionist = SharedLock::new_with_driver::<DefaultMutex<_>>(receptionist_ref);
 
       let routees_updater = routees_for_listing.clone();
       let listing_factory = ArcShared::new(move || -> Behavior<Listing> {

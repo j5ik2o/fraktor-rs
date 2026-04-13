@@ -1,6 +1,6 @@
 //! Shared wrapper for context-pipe waker handles.
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 use crate::core::kernel::actor::{
   context_pipe::context_pipe_waker_handle::ContextPipeWakerHandle, messaging::system_message::SystemMessage,
@@ -15,7 +15,7 @@ impl ContextPipeWakerHandleShared {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
   pub fn new(handle: ContextPipeWakerHandle) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(handle))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(handle))
   }
 
   /// Creates a shared wrapper from an already materialized shared lock.

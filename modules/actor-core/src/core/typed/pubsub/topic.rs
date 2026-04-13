@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 use super::{
   topic_command::{TopicCommand, TopicCommandKind},
@@ -59,7 +59,7 @@ impl Topic {
     M: Clone + Send + Sync + 'static, {
     let topic_name = topic_name.into();
     let topic_key = ServiceKey::<TopicCommand<M>>::new(topic_name);
-    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(TopicState {
+    let state = SharedLock::new_with_driver::<DefaultMutex<_>>(TopicState {
       topic_instances:   Vec::new(),
       local_subscribers: Vec::new(),
     });

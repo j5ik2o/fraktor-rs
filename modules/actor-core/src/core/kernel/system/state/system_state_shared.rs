@@ -15,7 +15,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedRwLock, SpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedRwLock, DefaultRwLock};
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandleShared, AuthorityState, CellsShared, GuardianKind,
@@ -117,7 +117,7 @@ impl SystemStateShared {
     let delay_provider = state.delay_provider();
     let tick_driver_bundle = state.tick_driver_bundle();
     let start_time = state.start_time();
-    let inner = SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(state);
+    let inner = SharedRwLock::new_with_driver::<DefaultRwLock<_>>(state);
     Self {
       inner,
       system_name,

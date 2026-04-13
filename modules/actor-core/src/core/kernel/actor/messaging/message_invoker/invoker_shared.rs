@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, DefaultRwLock};
 
 use super::invoker_trait::MessageInvoker;
 
@@ -25,7 +25,7 @@ impl MessageInvokerShared {
   /// Creates a new shared wrapper around the provided invoker.
   #[must_use]
   pub fn new(invoker: Box<dyn MessageInvoker>) -> Self {
-    Self::from_shared_lock(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(invoker))
+    Self::from_shared_lock(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(invoker))
   }
 }
 

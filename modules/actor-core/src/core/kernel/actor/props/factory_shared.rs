@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::factory::ActorFactory;
 
@@ -19,7 +19,7 @@ impl ActorFactoryShared {
   /// Creates a new shared wrapper around the provided actor factory.
   #[must_use]
   pub fn new(factory: Box<dyn ActorFactory>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(factory) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(factory) }
   }
 }
 

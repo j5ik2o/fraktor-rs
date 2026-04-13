@@ -15,10 +15,10 @@ use super::Scheduler;
 ///
 /// ```compile_fail
 /// use fraktor_actor_core_rs::core::kernel::actor::scheduler::{Scheduler, SchedulerConfig, SchedulerShared};
-/// use fraktor_utils_core_rs::core::sync::{SharedRwLock, SpinSyncRwLock};
+/// use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedRwLock};
 ///
 /// let scheduler = Scheduler::new(SchedulerConfig::default());
-/// let _ = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
+/// let _ = SchedulerShared::new(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(scheduler));
 /// ```
 pub struct SchedulerShared {
   inner: SharedRwLock<Scheduler>,

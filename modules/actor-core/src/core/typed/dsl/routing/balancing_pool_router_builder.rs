@@ -9,7 +9,7 @@ mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex};
 
 use crate::core::{
   kernel::{
@@ -191,7 +191,7 @@ where
     let behavior_factory = self.behavior_factory;
 
     Behaviors::setup(move |ctx| {
-      let queue = SharedLock::new_with_driver::<SpinSyncMutex<_>>(SharedWorkQueue::new());
+      let queue = SharedLock::new_with_driver::<DefaultMutex<_>>(SharedWorkQueue::new());
 
       let mut routee_pids: Vec<Pid> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
@@ -228,7 +228,7 @@ where
 
       let queue_for_msg = queue.clone();
       let queue_for_sig = queue;
-      let routee_pids = SharedLock::new_with_driver::<SpinSyncMutex<_>>(routee_pids);
+      let routee_pids = SharedLock::new_with_driver::<DefaultMutex<_>>(routee_pids);
       let routee_pids_for_sig = routee_pids;
 
       Behaviors::receive_message(move |_ctx, message: &M| {

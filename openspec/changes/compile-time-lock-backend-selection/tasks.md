@@ -12,10 +12,10 @@
 
 ## 3. production code の置換
 
-- [ ] 3.1 `modules/utils-core/src/` 内の `SpinSyncMutex` 直書き call site を `DefaultMutex` に置換する（2 箇所）
-- [ ] 3.2 `modules/actor-core/src/` 内の `SpinSyncMutex` / `SpinSyncRwLock` 直書き call site を `DefaultMutex` / `DefaultRwLock` に置換する（71 箇所。テストファイルはそのまま残す）
-- [ ] 3.3 `modules/cluster-core/src/` 内の call site を置換する（20 箇所。テストファイルはそのまま残す）
-- [ ] 3.4 `modules/persistence-core/src/` 内の call site を置換する（2 箇所）
+- [x] 3.1 `modules/utils-core/src/` 内の `SpinSyncMutex` 直書き call site を `DefaultMutex` に置換する（2 箇所）
+- [x] 3.2 `modules/actor-core/src/` 内の `SpinSyncMutex` / `SpinSyncRwLock` 直書き call site を `DefaultMutex` / `DefaultRwLock` に置換する（71 箇所。テストファイルはそのまま残す）
+- [x] 3.3 `modules/cluster-core/src/` 内の call site を置換する（20 箇所。テストファイルはそのまま残す）
+- [x] 3.4 `modules/persistence-core/src/` 内の call site を置換する（2 箇所）
 
 ## 4. dev-dependencies と検証
 

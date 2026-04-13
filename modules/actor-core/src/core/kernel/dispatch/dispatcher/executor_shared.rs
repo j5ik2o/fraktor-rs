@@ -27,7 +27,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, DefaultMutex};
 
 use super::{execute_error::ExecuteError, executor::Executor, trampoline_state::TrampolineState};
 
@@ -50,8 +50,8 @@ impl ExecutorShared {
   #[must_use]
   pub fn new(executor: Box<dyn Executor>, trampoline: TrampolineState) -> Self {
     Self::from_shared_lock(
-      SharedLock::new_with_driver::<SpinSyncMutex<_>>(executor),
-      SharedLock::new_with_driver::<SpinSyncMutex<_>>(trampoline),
+      SharedLock::new_with_driver::<DefaultMutex<_>>(executor),
+      SharedLock::new_with_driver::<DefaultMutex<_>>(trampoline),
     )
   }
 

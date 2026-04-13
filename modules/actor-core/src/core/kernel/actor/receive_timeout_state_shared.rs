@@ -1,6 +1,6 @@
 //! Shared wrapper for receive-timeout runtime state.
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 use crate::core::kernel::actor::ReceiveTimeoutState;
 
@@ -14,7 +14,7 @@ impl ReceiveTimeoutStateShared {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
   pub fn new(state: Option<ReceiveTimeoutState>) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(state))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(state))
   }
 
   /// Creates a shared wrapper from an existing shared lock.

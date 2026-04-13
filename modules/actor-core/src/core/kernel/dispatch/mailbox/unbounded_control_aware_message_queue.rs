@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
 
 use super::{envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::actor::error::SendError;
@@ -33,7 +33,7 @@ impl UnboundedControlAwareMessageQueue {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Inner {
+      inner: SharedLock::new_with_driver::<DefaultMutex<_>>(Inner {
         control_queue: VecDeque::with_capacity(DEFAULT_CAPACITY),
         normal_queue:  VecDeque::with_capacity(DEFAULT_CAPACITY),
       }),

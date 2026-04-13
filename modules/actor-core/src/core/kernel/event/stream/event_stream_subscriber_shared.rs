@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 use crate::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber};
 
@@ -15,7 +15,7 @@ impl EventStreamSubscriberShared {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
   pub fn new(subscriber: Box<dyn EventStreamSubscriber>) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(subscriber))
+    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(subscriber))
   }
 
   /// Creates a shared wrapper from an already materialized shared lock.

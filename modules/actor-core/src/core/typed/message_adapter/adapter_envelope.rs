@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
 
 use crate::core::{kernel::actor::actor_ref::ActorRef, typed::message_adapter::AdapterPayload};
 
@@ -21,7 +21,7 @@ impl AdapterEnvelope {
   #[must_use]
   pub(crate) fn new(payload: AdapterPayload, sender: Option<ActorRef>) -> Self {
     let type_id = payload.type_id();
-    let storage = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Some(payload));
+    let storage = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(payload));
     Self { type_id, payload: storage, sender }
   }
 

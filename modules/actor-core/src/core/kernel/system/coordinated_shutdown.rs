@@ -16,7 +16,7 @@ use core::{
 };
 
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SharedLock, DefaultMutex},
   timing::delay::DelayProvider,
 };
 use futures::future::{Either, join_all, poll_fn, select};
@@ -210,11 +210,11 @@ impl CoordinatedShutdown {
       phases,
       ordered,
       known_phases,
-      tasks: SharedLock::new_with_driver::<SpinSyncMutex<_>>(BTreeMap::new()),
+      tasks: SharedLock::new_with_driver::<DefaultMutex<_>>(BTreeMap::new()),
       run_started: AtomicBool::new(false),
       run_done: AtomicBool::new(false),
-      reason: SharedLock::new_with_driver::<SpinSyncMutex<_>>(None),
-      delay_provider: delay_provider.map(SharedLock::new_with_driver::<SpinSyncMutex<_>>),
+      reason: SharedLock::new_with_driver::<DefaultMutex<_>>(None),
+      delay_provider: delay_provider.map(SharedLock::new_with_driver::<DefaultMutex<_>>),
     })
   }
 
