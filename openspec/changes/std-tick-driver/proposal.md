@@ -98,3 +98,4 @@ TypedActorSystem::create_with_config(&props, config)?;
   - 旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` を削除する
   - 旧 `default_tick_driver_config` / `tick_driver_config_with_resolution` ヘルパー関数を削除する
   - `TickDriverKind` に `#[non_exhaustive]` を付与し `Std` / `Tokio` variant を追加する
+  - `TickDriverError` に `UnsupportedRuntime` variant を追加する（`TokioTickDriver` が current-thread runtime を拒否するために使用）

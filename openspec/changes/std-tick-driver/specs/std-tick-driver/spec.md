@@ -161,7 +161,7 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 #### Scenario: TokioTickDriver はデフォルト 10ms 解像度で動作する
 
 - **GIVEN** `TokioTickDriver::default()` が生成される
-- **WHEN** Tokio runtime 内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
+- **WHEN** multi-thread Tokio runtime 内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
 - **THEN** `Handle::try_current()` で Tokio runtime handle を取得する
 - **AND** `handle.spawn` で tick 生成 async task と executor 駆動 async task が起動される
 - **AND** tick task は `tokio::time::interval(resolution)` で feed に tick を積む（`MissedTickBehavior::Delay` を設定）
@@ -171,7 +171,7 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 #### Scenario: TokioTickDriver はカスタム解像度で動作する
 
 - **GIVEN** `TokioTickDriver::new(Duration::from_millis(50))` が生成される
-- **WHEN** Tokio runtime 内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
+- **WHEN** multi-thread Tokio runtime 内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
 - **THEN** tick 生成 task が 50ms 間隔で feed に tick を積む
 - **AND** `resolution` は `Duration::from_millis(50)` が返される
 
@@ -182,6 +182,14 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **THEN** `Handle::try_current()` が失敗する
 - **AND** `Err(TickDriverError::HandleUnavailable)` が返される
 
+#### Scenario: TokioTickDriver は current-thread runtime で UnsupportedRuntime エラーを返す
+
+- **GIVEN** `TokioTickDriver::default()` が生成される
+- **WHEN** current-thread Tokio runtime（`Builder::new_current_thread()`）内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
+- **THEN** `Handle::runtime_flavor()` が `CurrentThread` を返す
+- **AND** `Err(TickDriverError::UnsupportedRuntime)` が返される
+- **AND** デッドロックは発生しない（provision 時点で早期拒否されるため）
+
 #### Scenario: TokioTickDriver は auto_metadata を返す
 
 - **GIVEN** `TokioTickDriver::default()` が生成される
@@ -191,7 +199,7 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 
 #### Scenario: TokioTickDriverStopper は全タスクの完了を待って停止する
 
-- **GIVEN** `TokioTickDriver` が provision 済みで 2 つの async task が稼働中
+- **GIVEN** multi-thread Tokio runtime 上で `TokioTickDriver` が provision 済みで 2 つの async task が稼働中
 - **WHEN** `stopper.stop()` が呼ばれる
 - **THEN** `AtomicBool` 停止フラグが false に設定される
 - **AND** 両 async task がフラグを検知してループを抜ける

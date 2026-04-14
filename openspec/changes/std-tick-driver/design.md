@@ -420,6 +420,11 @@ impl TickDriver for TokioTickDriver {
     let id = next_tick_driver_id();
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
 
+    // current-thread runtime では stop() の recv() がデッドロックするため拒否
+    if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::CurrentThread {
+      return Err(TickDriverError::UnsupportedRuntime);
+    }
+
     let running = Arc::new(AtomicBool::new(true));
     let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
 
@@ -493,12 +498,19 @@ impl TickDriverStopper for TokioTickDriverStopper {
 - 旧: `TickDriverControl::shutdown(&self)` で abort のみ（完了待ちなし） → 新: `TickDriverStopper::stop(self: Box<Self>)` で所有権消費 + 停止フラグ + 完了待ち
 - 旧: `default_tick_driver_config()` / `tick_driver_config_with_resolution()` ヘルパー関数 → 新: `TokioTickDriver::default()` / `TokioTickDriver::new(resolution)` で直接構築
 
+**current-thread runtime 非対応の理由:**
+
+`TokioTickDriverStopper::stop()` は `std::sync::mpsc::Receiver::recv()` で呼び出しスレッドをブロックして async task の完了を待つ。current-thread runtime（`tokio::runtime::Builder::new_current_thread()`）では `handle.spawn` された async task が呼び出しスレッド上でしか進行できないため、`recv()` がスレッドをブロックすると spawned task が進行不能になりデッドロックする。multi-thread runtime では spawned task がワーカースレッドプールで独立に進行するためこの問題は発生しない。
+
+`provision()` 時に `Handle::runtime_flavor()` で検出し、`TickDriverError::UnsupportedRuntime` を返すことで、デッドロックを未然に防ぐ。
+
 ## Risks / Trade-offs
 
 - [Risk] `self: Box<Self>` により stack-allocated driver から直接 `provision` を呼べない → Mitigation: 呼ぶ場面がない。config が `with_tick_driver(impl TickDriver)` で常に Box 化する
 - [Risk] `TickDriverKind` に `Std` variant を追加すると、`#[non_exhaustive]` でないため下流 crate の網羅的 `match` が壊れる → Mitigation: `TickDriverKind` に `#[non_exhaustive]` を付与してから variant を追加する。これ自体が破壊的変更だが、一度行えば以後の variant 追加は非破壊になる
 - [Risk] `thread::sleep` の精度はプラットフォーム依存 → Mitigation: デフォルト 10ms は実用上十分。高精度が必要なら Tokio adapter を使用
-- [Decision] `TickDriverError` は既存の variant をそのまま使う。新 `provision` メソッドの失敗は既存の `SpawnFailed` / `HandleUnavailable` でカバーできる。不足が判明した場合に variant を追加する
+- [Risk] `TokioTickDriverStopper::stop()` の `recv()` は呼び出しスレッドをブロックするため、current-thread Tokio runtime ではデッドロックする → Mitigation: `provision()` 時に `Handle::runtime_flavor()` で検出し `UnsupportedRuntime` エラーで早期拒否する。アクターシステムの用途では multi-thread runtime が標準であり、実用上の制約にはならない
+- [Decision] `TickDriverError` に `UnsupportedRuntime` variant を追加する。current-thread runtime の拒否に使用する。既存の `HandleUnavailable`（runtime 自体が存在しない）とは意味が異なるため別 variant とする
 - [Decision] `StdTickDriverStopper::stop` のログ出力は `eprintln!` を使用する。`actor-adaptor-std` は `tracing` を必須依存に持たないため、std のみで完結させる
 
 ## Resolved Questions

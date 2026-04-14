@@ -4,8 +4,9 @@
 - [ ] 1.2 `TickDriverStopper` trait を定義する（`stop(self: Box<Self>)` — join 可能な停止契約）
 - [ ] 1.3 `TickDriverProvision` 構造体を定義する（`resolution`, `id`, `kind`, `stopper`, `auto_metadata` — snapshot 互換）
 - [ ] 1.4 `TickDriverKind` に `#[non_exhaustive]` を付与し、`Std` / `Tokio` variant を追加する
-- [ ] 1.5 `next_tick_driver_id()` を `tick_driver_trait.rs` から `tick_driver_id.rs` に移動する
-- [ ] 1.6 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` を削除する（Tokio 実装の `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` は 4.5 で削除）
+- [ ] 1.5 `TickDriverError` に `UnsupportedRuntime` variant を追加する（current-thread Tokio runtime 拒否用）
+- [ ] 1.6 `next_tick_driver_id()` を `tick_driver_trait.rs` から `tick_driver_id.rs` に移動する
+- [ ] 1.7 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` を削除する（Tokio 実装の `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` は 4.5 で削除）
 
 ## 2. ActorSystemConfig + ActorSystem + ActorSystemSetup API 置き換え
 
@@ -31,7 +32,7 @@
 ## 4. TokioTickDriver 新設（旧 Tokio 実装の新 trait 移行）
 
 - [ ] 4.1 `modules/actor-adaptor-std/src/std/tick_driver/tokio_tick_driver.rs` を新設する（`#[cfg(feature = "tokio-executor")]`）
-- [ ] 4.2 `TokioTickDriver` を実装する（`impl TickDriver` — `tokio::time::interval` で tick 生成 + `tokio::time::sleep` で executor 駆動）
+- [ ] 4.2 `TokioTickDriver` を実装する（`impl TickDriver` — `tokio::time::interval` で tick 生成 + `tokio::time::sleep` で executor 駆動。`provision` で `Handle::runtime_flavor()` を検査し current-thread runtime なら `UnsupportedRuntime` エラーを返す）
 - [ ] 4.3 `TokioTickDriverStopper` を実装する（`AtomicBool` 停止フラグ + `std::sync::mpsc::Receiver` で全タスク完了待ち）
 - [ ] 4.4 `tick_driver.rs`（既存モジュールファイル）に `mod tokio_tick_driver` と re-export を追加する
 - [ ] 4.5 旧 Tokio 実装（`TokioTickDriver`（旧 `TickDriver` trait 実装） / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` / `default_tick_driver_config` / `tick_driver_config_with_resolution`）を `tick_driver.rs` から削除する
