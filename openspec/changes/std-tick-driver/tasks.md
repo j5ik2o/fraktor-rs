@@ -130,9 +130,9 @@
 - [ ] 6.64 `modules/stream-core/src/core/materialization/actor_materializer/tests.rs` を新 API に移行する
 - [ ] 6.65 `modules/stream-core/src/core/dsl/topic_pub_sub/tests.rs` を新 API に移行する
 
-### 6.H 旧 adaptor-std re-export 削除
+### 6.H adaptor-std re-export 更新
 
-- [ ] 6.66 `modules/actor-adaptor-std/src/std.rs` の旧 re-export（`default_tick_driver_config` / `tick_driver_config_with_resolution`）を `TokioTickDriver` の re-export に置き換える
+- [ ] 6.66 `modules/actor-adaptor-std/src/std.rs` の旧 re-export（`default_tick_driver_config` / `tick_driver_config_with_resolution`）を削除し、`StdTickDriver` を無条件で re-export、`TokioTickDriver` を `#[cfg(feature = "tokio-executor")]` で re-export する
 
 ## 7. 検証
 

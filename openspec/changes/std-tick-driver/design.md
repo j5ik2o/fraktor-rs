@@ -419,6 +419,18 @@ impl TickDriverStopper for StdTickDriverStopper {
 }
 ```
 
+**公開面（re-export）:**
+
+現行の `actor-adaptor-std` では `src/std.rs` から `tick_driver` モジュールは非公開（`mod tick_driver`）で、外部公開は re-export のみ。新設計でもこの構造を維持し、`std.rs` で以下を re-export する:
+
+```rust
+pub use tick_driver::StdTickDriver;
+#[cfg(feature = "tokio-executor")]
+pub use tick_driver::TokioTickDriver;
+```
+
+旧 `default_tick_driver_config` / `tick_driver_config_with_resolution` の re-export は削除する。ユーザは `fraktor_actor_adaptor_std_rs::std::StdTickDriver` で import できる。
+
 ### 13. `TokioTickDriver` — `tokio::time::interval` ベース
 
 現行の `actor-adaptor-std` にある旧 `TickDriver` / `TickExecutorPump` / `TickDriverControl` の Tokio 実装を、新 `TickDriver` trait の単一実装に置き換える。旧実装は `#[cfg(feature = "tokio-executor")]` で guard されており、新実装も同じ feature gate を維持する:
