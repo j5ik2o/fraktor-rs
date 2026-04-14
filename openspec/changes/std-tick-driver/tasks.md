@@ -32,7 +32,7 @@
 
 - [ ] 4.1 `modules/actor-adaptor-std/src/std/tick_driver/tokio_tick_driver.rs` を新設する（`#[cfg(feature = "tokio-executor")]`）
 - [ ] 4.2 `TokioTickDriver` を実装する（`impl TickDriver` — `tokio::time::interval` で tick 生成 + `tokio::time::sleep` で executor 駆動）
-- [ ] 4.3 `TokioTickDriverStopper` を実装する（`JoinHandle::abort()` で停止）
+- [ ] 4.3 `TokioTickDriverStopper` を実装する（`AtomicBool` 停止フラグ + `std::sync::mpsc::Receiver` で全タスク完了待ち）
 - [ ] 4.4 `tick_driver.rs`（既存モジュールファイル）に `mod tokio_tick_driver` と re-export を追加する
 - [ ] 4.5 旧 Tokio 実装（`TokioTickDriver` / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` / `default_tick_driver_config` / `tick_driver_config_with_resolution`）を `tick_driver.rs` から削除する
 

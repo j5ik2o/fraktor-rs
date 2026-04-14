@@ -82,7 +82,7 @@ pub trait TickDriverStopper: Send + 'static {
 }
 ```
 
-`stop(self: Box<Self>)` で所有権を取るため、内部で `JoinHandle::join()` まで実行できる。旧 `TickDriverControl` は本 change で削除する。
+`stop(self: Box<Self>)` で所有権を取るため、内部で thread join やタスク完了通知の受信まで実行できる。Std は `JoinHandle::join()`、Tokio は停止フラグ + `mpsc::Receiver` による完了通知で、いずれも `stop` が返った時点で全スレッド/タスクが停止済みであることを保証する。旧 `TickDriverControl` は本 change で削除する。
 
 ### 4. `TickDriverKind` の拡張
 
@@ -346,23 +346,38 @@ impl TickDriver for TokioTickDriver {
     let id = next_tick_driver_id();
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
 
+    let running = Arc::new(AtomicBool::new(true));
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+
     // tick 生成 async task
-    let tick_task = handle.spawn(async move {
+    let tick_running = running.clone();
+    let tick_done = done_tx.clone();
+    let _tick_task = handle.spawn(async move {
       let mut ticker = interval(resolution);
       ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
       loop {
         ticker.tick().await;
+        if !tick_running.load(Ordering::Acquire) {
+          break;
+        }
         feed.enqueue(1);
       }
+      let _ = tick_done.send(());
     });
 
     // executor 駆動 async task
+    let exec_running = running.clone();
+    let exec_done = done_tx;
     let exec_interval = resolution / 10;
-    let exec_task = handle.spawn(async move {
+    let _exec_task = handle.spawn(async move {
       loop {
+        if !exec_running.load(Ordering::Acquire) {
+          break;
+        }
         executor.drive_pending();
         tokio::time::sleep(exec_interval).await;
       }
+      let _ = exec_done.send(());
     });
 
     Ok(TickDriverProvision {
@@ -370,8 +385,8 @@ impl TickDriver for TokioTickDriver {
       id,
       kind: TickDriverKind::Tokio,
       stopper: Box::new(TokioTickDriverStopper {
-        tick_task: Some(tick_task),
-        exec_task: Some(exec_task),
+        running,
+        done_rx,
       }),
       auto_metadata: Some(AutoDriverMetadata {
         profile: AutoProfileKind::Tokio,
@@ -384,26 +399,24 @@ impl TickDriver for TokioTickDriver {
 
 #[cfg(feature = "tokio-executor")]
 struct TokioTickDriverStopper {
-  tick_task: Option<JoinHandle<()>>,
-  exec_task: Option<JoinHandle<()>>,
+  running: Arc<AtomicBool>,
+  done_rx: std::sync::mpsc::Receiver<()>,
 }
 
 #[cfg(feature = "tokio-executor")]
 impl TickDriverStopper for TokioTickDriverStopper {
-  fn stop(mut self: Box<Self>) {
-    if let Some(h) = self.tick_task.take() {
-      h.abort();
-    }
-    if let Some(h) = self.exec_task.take() {
-      h.abort();
-    }
+  fn stop(self: Box<Self>) {
+    self.running.store(false, Ordering::Release);
+    // 両タスクの完了通知を待つ
+    let _ = self.done_rx.recv(); // tick task 完了
+    let _ = self.done_rx.recv(); // executor task 完了
   }
 }
 ```
 
 旧実装との主な差異:
 - 旧: `TickDriver` + `TickExecutorPump` + 2 つの `TickDriverControl` 実装 → 新: `TokioTickDriver` 1 型で `provision` 1 メソッドに統合
-- 旧: `TickDriverControl::shutdown(&self)` で abort のみ → 新: `TickDriverStopper::stop(self: Box<Self>)` で所有権消費 + abort
+- 旧: `TickDriverControl::shutdown(&self)` で abort のみ（完了待ちなし） → 新: `TickDriverStopper::stop(self: Box<Self>)` で所有権消費 + 停止フラグ + 完了待ち
 - 旧: `default_tick_driver_config()` / `tick_driver_config_with_resolution()` ヘルパー関数 → 新: `TokioTickDriver::default()` / `TokioTickDriver::new(resolution)` で直接構築
 
 ## Risks / Trade-offs

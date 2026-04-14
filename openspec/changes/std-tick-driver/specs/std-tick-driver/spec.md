@@ -164,12 +164,15 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **THEN** `auto_metadata` は `Some(AutoDriverMetadata { profile: AutoProfileKind::Tokio, ... })` を含む
 - **AND** `driver_id` と `resolution` が正しく設定される
 
-#### Scenario: TokioTickDriverStopper は async task を abort して停止する
+#### Scenario: TokioTickDriverStopper は全タスクの完了を待って停止する
 
 - **GIVEN** `TokioTickDriver` が provision 済みで 2 つの async task が稼働中
 - **WHEN** `stopper.stop()` が呼ばれる
-- **THEN** tick task と executor task の `JoinHandle::abort()` が呼ばれる
-- **AND** `stop` が返った時点で両 task は abort 済み
+- **THEN** `AtomicBool` 停止フラグが false に設定される
+- **AND** 両 async task がフラグを検知してループを抜ける
+- **AND** `std::sync::mpsc::Receiver` で両タスクの完了通知を受信して返る
+- **AND** `stop` が返った時点で両 task は完全に停止済み
+- **AND** 返却後に feed / executor へのアクセスは一切発生しない
 
 #### Scenario: 旧 Tokio 実装が存在しない
 
