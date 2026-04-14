@@ -19,9 +19,9 @@ let system = TypedActorSystem::new(&props, tick_driver_config)?;
 let config = ActorSystemConfig::new(StdTickDriver::default())
     .with_dispatcher_configurator(id, configurator);
 
-// ActorSystem（untyped）
+// untyped API
 ActorSystem::create_with_config(&props, config)?;
-// TypedActorSystem（showcase で主に使用）
+// または typed API（showcase で主に使用）
 TypedActorSystem::create_with_config(&props, config)?;
 ```
 

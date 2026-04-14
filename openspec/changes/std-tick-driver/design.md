@@ -221,7 +221,79 @@ where
 
 ### 11. テスト用 driver の新設
 
-旧 `ManualTestDriver`（`modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/manual_test_driver.rs`）を削除し、同ディレクトリに新 `TickDriver` trait 用のテスト driver（`test_tick_driver.rs`）を新設して置き換える。`ManualTestDriver` 固有の special path（`build_from_config` 内の `runner_api_enabled` 自動有効化）も新 API 側で独立に実装する。
+旧 `ManualTestDriver`（`modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/manual_test_driver.rs`）を削除し、同ディレクトリに新 `TickDriver` trait 用のテスト driver（`test_tick_driver.rs`）を新設して置き換える。
+
+```rust
+/// テスト用の tick driver。`std::thread` + `sleep` で駆動する。
+/// `TickDriverKind::Manual` を返すことで、`build_from_owned_config` が
+/// `runner_api_enabled` を自動有効化する。
+pub struct TestTickDriver {
+  resolution: Duration,
+}
+
+impl Default for TestTickDriver {
+  fn default() -> Self {
+    Self { resolution: Duration::from_millis(10) }
+  }
+}
+
+impl TickDriver for TestTickDriver {
+  fn provision(
+    self: Box<Self>,
+    feed: TickFeedHandle,
+    executor: SchedulerTickExecutor,
+  ) -> Result<TickDriverProvision, TickDriverError> {
+    let resolution = self.resolution;
+    let id = next_tick_driver_id();
+    let running = Arc::new(AtomicBool::new(true));
+
+    // StdTickDriver と同じ駆動方式（std::thread + sleep）
+    let tick_flag = running.clone();
+    let tick_thread = thread::spawn(move || {
+      loop {
+        thread::sleep(resolution);
+        if !tick_flag.load(Ordering::Acquire) { break; }
+        feed.enqueue(1);
+      }
+    });
+
+    let exec_flag = running.clone();
+    let exec_interval = resolution / 10;
+    let exec_thread = thread::spawn(move || {
+      loop {
+        if !exec_flag.load(Ordering::Acquire) { break; }
+        executor.drive_pending();
+        thread::sleep(exec_interval);
+      }
+    });
+
+    Ok(TickDriverProvision {
+      resolution,
+      id,
+      kind: TickDriverKind::Manual,  // ← Manual を返す
+      stopper: Box::new(TestTickDriverStopper {
+        running,
+        tick_thread: Some(tick_thread),
+        exec_thread: Some(exec_thread),
+      }),
+      auto_metadata: None,
+    })
+  }
+}
+```
+
+`runner_api_enabled` の自動有効化は `build_from_owned_config` 側で実装する。`provision` の戻り値 `kind` が `TickDriverKind::Manual` の場合に `runner_api_enabled = true` を設定する:
+
+```rust
+// build_from_owned_config 内
+let provision = driver.provision(feed, executor)?;
+if provision.kind == TickDriverKind::Manual {
+  // テスト用 driver — runner_api_enabled を自動有効化
+  config.set_runner_api_enabled(true);
+}
+```
+
+`TestTickDriverStopper` は `StdTickDriverStopper` と同じ構造（`AtomicBool` + `JoinHandle::join()`）。
 
 ### 12. `StdTickDriver` — `std::thread` ベース
 
@@ -251,22 +323,26 @@ impl TickDriver for StdTickDriver {
     let resolution = self.resolution;
     let id = next_tick_driver_id();
 
+    let running = Arc::new(AtomicBool::new(true));
+
     // tick 生成 thread
-    let tick_running = Arc::new(AtomicBool::new(true));
-    let tick_flag = tick_running.clone();
+    // ループ順序: sleep → check → enqueue（TokioTickDriver と統一）
+    // check を enqueue の直前に置くことで、停止フラグ後の余分な enqueue を防ぐ。
+    let tick_flag = running.clone();
     let tick_thread = thread::spawn(move || {
-      while tick_flag.load(Ordering::Acquire) {
+      loop {
         thread::sleep(resolution);
+        if !tick_flag.load(Ordering::Acquire) { break; }
         feed.enqueue(1);
       }
     });
 
     // executor 駆動 thread
-    let exec_running = Arc::new(AtomicBool::new(true));
-    let exec_flag = exec_running.clone();
+    let exec_flag = running.clone();
     let exec_interval = resolution / 10;
     let exec_thread = thread::spawn(move || {
-      while exec_flag.load(Ordering::Acquire) {
+      loop {
+        if !exec_flag.load(Ordering::Acquire) { break; }
         executor.drive_pending();
         thread::sleep(exec_interval);
       }
@@ -277,9 +353,8 @@ impl TickDriver for StdTickDriver {
       id,
       kind: TickDriverKind::Std,
       stopper: Box::new(StdTickDriverStopper {
-        tick_running,
+        running,
         tick_thread: Some(tick_thread),
-        exec_running,
         exec_thread: Some(exec_thread),
       }),
       auto_metadata: None,
@@ -288,16 +363,14 @@ impl TickDriver for StdTickDriver {
 }
 
 struct StdTickDriverStopper {
-  tick_running: Arc<AtomicBool>,
+  running: Arc<AtomicBool>,
   tick_thread:  Option<thread::JoinHandle<()>>,
-  exec_running: Arc<AtomicBool>,
   exec_thread:  Option<thread::JoinHandle<()>>,
 }
 
 impl TickDriverStopper for StdTickDriverStopper {
   fn stop(mut self: Box<Self>) {
-    self.tick_running.store(false, Ordering::Release);
-    self.exec_running.store(false, Ordering::Release);
+    self.running.store(false, Ordering::Release);
     if let Some(h) = self.tick_thread.take() {
       if h.join().is_err() {
         eprintln!("warn: tick driver tick thread panicked during shutdown");
@@ -428,9 +501,6 @@ impl TickDriverStopper for TokioTickDriverStopper {
 - [Decision] `TickDriverError` は既存の variant をそのまま使う。新 `provision` メソッドの失敗は既存の `SpawnFailed` / `HandleUnavailable` でカバーできる。不足が判明した場合に variant を追加する
 - [Decision] `StdTickDriverStopper::stop` のログ出力は `eprintln!` を使用する。`actor-adaptor-std` は `tracing` を必須依存に持たないため、std のみで完結させる
 
-## Open Questions
+## Resolved Questions
 
-- executor thread の駆動方式。現在の設計は `sleep(resolution / 10)` による polling だが、3 つの選択肢がある:
-  - **A. sleep polling**: `sleep(resolution / 10)` → `drive_pending()` → ループ。CPU 負荷低だが最大 `resolution/10` の遅延
-  - **B. yield busy loop**: `yield_now()` → `drive_pending()` → ループ。遅延最小だが CPU 100% 消費
-  - **C. tick 駆動（通知ベース）**: tick thread が `feed.enqueue` 後に executor thread を `unpark` / `CondVar::notify` で起こす。executor thread は work がなければ `park` / `CondVar::wait` で休眠。CPU 負荷低かつ遅延最小だが、tick thread と executor thread の結合度が上がる
+- **executor thread の駆動方式** — **A. sleep polling を採用**。`sleep(resolution / 10)` → `drive_pending()` → ループ。CPU 負荷低で実装が単純。最大 `resolution/10`（デフォルト 1ms）の遅延はアクターフレームワークの用途では実用上問題にならない。B（yield busy loop）は CPU 100% 消費、C（通知ベース）は tick thread と executor thread の結合度が上がるため、現時点では A が最適。性能要件が変わった場合に C への移行を検討する

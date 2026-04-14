@@ -25,7 +25,7 @@
 
 - [ ] 3.1 `modules/actor-adaptor-std/src/std/tick_driver/std_tick_driver.rs` を新設する
 - [ ] 3.2 `StdTickDriver` を実装する（`impl TickDriver` — `std::thread` + `sleep` で tick 生成 + executor 駆動）
-- [ ] 3.3 `StdTickDriverStopper` を実装する（`AtomicBool` + `JoinHandle::join()` で完全停止）
+- [ ] 3.3 `StdTickDriverStopper` を実装する（単一 `AtomicBool` 停止フラグ + `JoinHandle::join()` で完全停止）
 - [ ] 3.4 `tick_driver.rs`（既存モジュールファイル）に `mod std_tick_driver` と re-export を追加する
 
 ## 4. TokioTickDriver 新設（旧 Tokio 実装の新 trait 移行）
