@@ -88,6 +88,7 @@ ActorSystem::create_with_config(&props, config)?;
   - `modules/actor-core/src/core/kernel/actor/setup/actor_system_setup.rs` — `with_tick_driver` を新シグネチャに置き換え + `create_with_setup` 追加
   - `modules/actor-adaptor-std/src/std/tick_driver/std_tick_driver.rs` — 新設
   - `modules/actor-adaptor-std/src/std/tick_driver/tokio_tick_driver.rs` — 新設（旧 Tokio 実装を新 trait に移行）
+  - `modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/test_tick_driver.rs` — 新設（旧 `manual_test_driver.rs` を置き換え）
 - 破壊的変更:
   - 旧 API（`new` / `new_with_config` / `new_with_config_and` / `new_with_setup`）を削除する
   - 旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` を削除する

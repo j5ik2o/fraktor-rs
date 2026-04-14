@@ -105,7 +105,7 @@ pub enum TickDriverKind {
 
 - `tick_driver_trait.rs` の旧 `TickDriver` trait を新 trait に置き換える
 - `next_tick_driver_id()` は旧 trait と無関係な独立関数であるため、`tick_driver_id.rs` に移動する
-- 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` を削除する
+- 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` を削除する
 
 ### 6. 旧 API の削除と新 API への置き換え
 
@@ -220,7 +220,7 @@ where
 
 ### 11. テスト用 driver の新設
 
-旧 `ManualTestDriver` を削除し、新 `TickDriver` trait 用のテスト driver で置き換える。`ManualTestDriver` 固有の special path（`build_from_config` 内の `runner_api_enabled` 自動有効化）も新 API 側で独立に実装する。
+旧 `ManualTestDriver`（`modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/manual_test_driver.rs`）を削除し、同ディレクトリに新 `TickDriver` trait 用のテスト driver（`test_tick_driver.rs`）を新設して置き換える。`ManualTestDriver` 固有の special path（`build_from_config` 内の `runner_api_enabled` 自動有効化）も新 API 側で独立に実装する。
 
 ### 12. `StdTickDriver` — `std::thread` ベース
 

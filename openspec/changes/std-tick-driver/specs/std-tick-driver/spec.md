@@ -86,7 +86,7 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 
 ### Requirement: 旧 API は本 change で削除する
 
-旧 `ActorSystem::new(props, TickDriverConfig)`, `new_with_config(&props, &config)`, `new_with_config_and(&props, &config, f)`, `new_with_setup(&props, &setup)` を削除しなければならない（MUST）。旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` も削除しなければならない（MUST）。
+旧 `ActorSystem::new(props, TickDriverConfig)`, `new_with_config(&props, &config)`, `new_with_config_and(&props, &config, f)`, `new_with_setup(&props, &setup)` を削除しなければならない（MUST）。旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` / `default_tick_driver_config` / `tick_driver_config_with_resolution` も削除しなければならない（MUST）。
 
 #### Scenario: 旧 API が存在しない
 
@@ -110,6 +110,8 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **WHEN** `provision(self: Box<Self>, feed, executor)` が呼ばれる
 - **THEN** `std::thread::spawn` で tick 生成スレッドと executor 駆動スレッドが起動される
 - **AND** `resolution` は `Duration::from_millis(10)` が返される
+- **AND** `kind` は `TickDriverKind::Std` が返される
+- **AND** `auto_metadata` は `None` が返される
 - **AND** `TickPulseSource::set_callback` は使用されない
 
 #### Scenario: StdTickDriver はカスタム解像度で動作する
@@ -137,7 +139,7 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **WHEN** Tokio runtime 内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
 - **THEN** `Handle::try_current()` で Tokio runtime handle を取得する
 - **AND** `handle.spawn` で tick 生成 async task と executor 駆動 async task が起動される
-- **AND** tick task は `tokio::time::interval(resolution)` で feed に tick を積む
+- **AND** tick task は `tokio::time::interval(resolution)` で feed に tick を積む（`MissedTickBehavior::Delay` を設定）
 - **AND** `resolution` は `Duration::from_millis(10)` が返される
 - **AND** `kind` は `TickDriverKind::Tokio` が返される
 

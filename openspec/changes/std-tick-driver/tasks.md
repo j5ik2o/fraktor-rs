@@ -38,7 +38,7 @@
 
 ## 5. テスト用 driver 新設
 
-- [ ] 5.1 新 `TickDriver` trait 用のテスト driver を新設する
+- [ ] 5.1 `modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/test_tick_driver.rs` に新 `TickDriver` trait 用のテスト driver を新設する（旧 `manual_test_driver.rs` を置き換え）
 - [ ] 5.2 テスト driver 用の `runner_api_enabled` 自動有効化パスを新 API 側に実装する
 
 ## 6. showcase + テスト群 + bench の新 API 移行
