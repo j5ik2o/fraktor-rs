@@ -138,7 +138,7 @@ impl ActorSystem {
     let system = Self::from_state(SystemStateShared::new(state));
     system.bootstrap(user_guardian_props, configure)?;
 
-    // Install extensions and provider after bootstrap
+    // bootstrap 完了後に拡張とプロバイダを登録する。初期化順序上、依存リソースがこの時点で揃うため。
     if let Some(installers) = extension_installers {
       installers.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
