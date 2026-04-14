@@ -7,11 +7,11 @@ ActorSystem の Scheduler は「定期的な tick 生成」と「溜まったタ
 **Goals:**
 - tick 生成と executor 駆動を 1 つの `TickDriver` trait に統合
 - `ActorSystemConfig` の builder パターンに統一的に組み込む
-- `StdTickDriver` を `actor-adaptor-std` に提供
+- `StdTickDriver` を `actor-adaptor-std` に提供（`std::thread` ベース）
+- `TokioTickDriver` を `actor-adaptor-std` に提供（`tokio::time::interval` ベース、旧 Tokio 実装の新 trait 移行）
 - テスト用 driver を新設
 
 **Non-Goals:**
-- `TokioTickDriver` の新 trait 移行（本 change では std adapter のみ。Tokio adapter は別 change）
 - `TypedActorSystem::create_with_setup`（現行にも `new_with_setup` がないため不要。必要になった場合に別途検討）
 
 ## Decisions
@@ -84,7 +84,22 @@ pub trait TickDriverStopper: Send + 'static {
 
 `stop(self: Box<Self>)` で所有権を取るため、内部で `JoinHandle::join()` まで実行できる。旧 `TickDriverControl` は本 change で削除する。
 
-### 4. 旧 `TickDriver` trait の置き換え
+### 4. `TickDriverKind` の拡張
+
+`TickDriverKind` に `#[non_exhaustive]` を付与し、`Std` と `Tokio` variant を追加する:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TickDriverKind {
+  Auto,
+  Manual,
+  Std,
+  Tokio,
+}
+```
+
+### 5. 旧 `TickDriver` trait の置き換え
 
 現行コードの `tick_driver_trait.rs` に旧 `TickDriver` trait が定義されている。本 change で旧 trait を削除し、新 trait で置き換える:
 
@@ -92,7 +107,7 @@ pub trait TickDriverStopper: Send + 'static {
 - `next_tick_driver_id()` は旧 trait と無関係な独立関数であるため、`tick_driver_id.rs` に移動する
 - 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` を削除する
 
-### 5. 旧 API の削除と新 API への置き換え
+### 6. 旧 API の削除と新 API への置き換え
 
 旧 API を削除し、新 API に一本化する:
 
@@ -102,6 +117,8 @@ pub trait TickDriverStopper: Send + 'static {
   ActorSystem::new_with_config(&props, &config)
   ActorSystem::new_with_config_and(&props, &config, f)
   ActorSystem::new_with_setup(&props, &setup)
+  default_tick_driver_config()
+  tick_driver_config_with_resolution()
 
 新設:
   ActorSystem::create_with_config_and(props, config, f)  ← core メソッド、config を消費
@@ -111,7 +128,7 @@ pub trait TickDriverStopper: Send + 'static {
 
 showcase + テスト群も新 API に移行する。
 
-### 6. `ActorSystemConfig` — `Option<Box<dyn TickDriver>>` で格納
+### 7. `ActorSystemConfig` — `Option<Box<dyn TickDriver>>` で格納
 
 ```rust
 pub struct ActorSystemConfig {
@@ -140,7 +157,7 @@ impl ActorSystemConfig {
 
 旧 `tick_driver_config: Option<TickDriverConfig>` フィールドと旧 `with_tick_driver(TickDriverConfig)` メソッドは削除する。`create_with_config` は config を消費（move）し、`tick_driver` を `.take()` して `provision` で消費する。
 
-### 7. `ActorSystemSetup` — 新 API 対応
+### 8. `ActorSystemSetup` — 新 API 対応
 
 旧 `with_tick_driver(TickDriverConfig)` を削除し、新 API に置き換える:
 
@@ -159,7 +176,7 @@ impl ActorSystemSetup {
 
 **`TypedActorSystem::create_with_setup` は本 change のスコープ外とする。** 現行 `TypedActorSystem` にも `new_with_setup` は存在しないため、`create_with_setup` も追加しない。必要になった場合は別途検討する。
 
-### 8. bootstrap 新経路の統合
+### 9. bootstrap 新経路の統合
 
 現行の `SystemState::build_from_config(config: &ActorSystemConfig)` は config を借用で受け取る。新 `create_with_config` は config を move で消費するため、旧メソッドを削除し新しい build 関数で置き換える:
 
@@ -181,7 +198,7 @@ pub(crate) fn build_from_owned_config(mut config: ActorSystemConfig) -> Result<S
 
 `ActorSystem::create_with_config` → `SystemState::build_from_owned_config` に委譲する。旧 `build_from_config(&ActorSystemConfig)` は削除する。
 
-### 9. `create_with_config_and` — 拡張コールバック付き API
+### 10. `create_with_config_and` — 拡張コールバック付き API
 
 現行の `new_with_config_and<F>` は `configure: F` コールバックで extension 登録等を行う core メソッドであり、他の `new_*` メソッドが全てこれに委譲している。新 API でも同等の拡張点を提供する:
 
@@ -201,11 +218,11 @@ where
 
 `create_with_config` と `create_with_setup` はこのメソッドに委譲する。
 
-### 10. テスト用 driver の新設
+### 11. テスト用 driver の新設
 
 旧 `ManualTestDriver` を削除し、新 `TickDriver` trait 用のテスト driver で置き換える。`ManualTestDriver` 固有の special path（`build_from_config` 内の `runner_api_enabled` 自動有効化）も新 API 側で独立に実装する。
 
-### 11. `StdTickDriver` — `std::thread` ベース
+### 12. `StdTickDriver` — `std::thread` ベース
 
 ```rust
 pub struct StdTickDriver {
@@ -293,6 +310,101 @@ impl TickDriverStopper for StdTickDriverStopper {
   }
 }
 ```
+
+### 13. `TokioTickDriver` — `tokio::time::interval` ベース
+
+現行の `actor-adaptor-std` にある旧 `TickDriver` / `TickExecutorPump` / `TickDriverControl` の Tokio 実装を、新 `TickDriver` trait の単一実装に置き換える。旧実装は `#[cfg(feature = "tokio-executor")]` で guard されており、新実装も同じ feature gate を維持する:
+
+```rust
+#[cfg(feature = "tokio-executor")]
+pub struct TokioTickDriver {
+  resolution: Duration,
+}
+
+#[cfg(feature = "tokio-executor")]
+impl TokioTickDriver {
+  pub fn new(resolution: Duration) -> Self {
+    Self { resolution }
+  }
+}
+
+#[cfg(feature = "tokio-executor")]
+impl Default for TokioTickDriver {
+  fn default() -> Self {
+    Self { resolution: Duration::from_millis(10) }
+  }
+}
+
+#[cfg(feature = "tokio-executor")]
+impl TickDriver for TokioTickDriver {
+  fn provision(
+    self: Box<Self>,
+    feed: TickFeedHandle,
+    executor: SchedulerTickExecutor,
+  ) -> Result<TickDriverProvision, TickDriverError> {
+    let resolution = self.resolution;
+    let id = next_tick_driver_id();
+    let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
+
+    // tick 生成 async task
+    let tick_task = handle.spawn(async move {
+      let mut ticker = interval(resolution);
+      ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+      loop {
+        ticker.tick().await;
+        feed.enqueue(1);
+      }
+    });
+
+    // executor 駆動 async task
+    let exec_interval = resolution / 10;
+    let exec_task = handle.spawn(async move {
+      loop {
+        executor.drive_pending();
+        tokio::time::sleep(exec_interval).await;
+      }
+    });
+
+    Ok(TickDriverProvision {
+      resolution,
+      id,
+      kind: TickDriverKind::Tokio,
+      stopper: Box::new(TokioTickDriverStopper {
+        tick_task: Some(tick_task),
+        exec_task: Some(exec_task),
+      }),
+      auto_metadata: Some(AutoDriverMetadata {
+        profile: AutoProfileKind::Tokio,
+        driver_id: id,
+        resolution,
+      }),
+    })
+  }
+}
+
+#[cfg(feature = "tokio-executor")]
+struct TokioTickDriverStopper {
+  tick_task: Option<JoinHandle<()>>,
+  exec_task: Option<JoinHandle<()>>,
+}
+
+#[cfg(feature = "tokio-executor")]
+impl TickDriverStopper for TokioTickDriverStopper {
+  fn stop(mut self: Box<Self>) {
+    if let Some(h) = self.tick_task.take() {
+      h.abort();
+    }
+    if let Some(h) = self.exec_task.take() {
+      h.abort();
+    }
+  }
+}
+```
+
+旧実装との主な差異:
+- 旧: `TickDriver` + `TickExecutorPump` + 2 つの `TickDriverControl` 実装 → 新: `TokioTickDriver` 1 型で `provision` 1 メソッドに統合
+- 旧: `TickDriverControl::shutdown(&self)` で abort のみ → 新: `TickDriverStopper::stop(self: Box<Self>)` で所有権消費 + abort
+- 旧: `default_tick_driver_config()` / `tick_driver_config_with_resolution()` ヘルパー関数 → 新: `TokioTickDriver::default()` / `TokioTickDriver::new(resolution)` で直接構築
 
 ## Risks / Trade-offs
 

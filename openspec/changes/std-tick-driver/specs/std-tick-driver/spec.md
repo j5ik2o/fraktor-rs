@@ -111,3 +111,101 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **THEN** `std::thread::spawn` で tick 生成スレッドと executor 駆動スレッドが起動される
 - **AND** `resolution` は `Duration::from_millis(10)` が返される
 - **AND** `TickPulseSource::set_callback` は使用されない
+
+#### Scenario: StdTickDriver はカスタム解像度で動作する
+
+- **GIVEN** `StdTickDriver::new(Duration::from_millis(50))` が生成される
+- **WHEN** `provision(self: Box<Self>, feed, executor)` が呼ばれる
+- **THEN** tick 生成スレッドが 50ms 間隔で feed に tick を積む
+- **AND** `resolution` は `Duration::from_millis(50)` が返される
+
+#### Scenario: StdTickDriverStopper は全スレッドを join して停止する
+
+- **GIVEN** `StdTickDriver` が provision 済みで 2 つのスレッドが稼働中
+- **WHEN** `stopper.stop()` が呼ばれる
+- **THEN** `AtomicBool` flag が false に設定される
+- **AND** tick スレッドと executor スレッドが `JoinHandle::join()` で完了を待たれる
+- **AND** `stop` が返った時点で両スレッドは完全に停止済み
+
+### Requirement: actor-adaptor-std は TokioTickDriver を提供する
+
+`actor-adaptor-std` は `tokio::time::interval` ベースの `TickDriver` 実装を `#[cfg(feature = "tokio-executor")]` で提供しなければならない（MUST）。旧 `TickDriver` / `TickExecutorPump` / `TickDriverControl` の Tokio 実装を削除し、新 `TickDriver` trait の単一実装に置き換えなければならない（MUST）。
+
+#### Scenario: TokioTickDriver はデフォルト 10ms 解像度で動作する
+
+- **GIVEN** `TokioTickDriver::default()` が生成される
+- **WHEN** Tokio runtime 内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
+- **THEN** `Handle::try_current()` で Tokio runtime handle を取得する
+- **AND** `handle.spawn` で tick 生成 async task と executor 駆動 async task が起動される
+- **AND** tick task は `tokio::time::interval(resolution)` で feed に tick を積む
+- **AND** `resolution` は `Duration::from_millis(10)` が返される
+- **AND** `kind` は `TickDriverKind::Tokio` が返される
+
+#### Scenario: TokioTickDriver はカスタム解像度で動作する
+
+- **GIVEN** `TokioTickDriver::new(Duration::from_millis(50))` が生成される
+- **WHEN** Tokio runtime 内で `provision(self: Box<Self>, feed, executor)` が呼ばれる
+- **THEN** tick 生成 task が 50ms 間隔で feed に tick を積む
+- **AND** `resolution` は `Duration::from_millis(50)` が返される
+
+#### Scenario: TokioTickDriver は Tokio runtime 外で HandleUnavailable エラーを返す
+
+- **GIVEN** `TokioTickDriver::default()` が生成される
+- **WHEN** Tokio runtime 外で `provision(self: Box<Self>, feed, executor)` が呼ばれる
+- **THEN** `Handle::try_current()` が失敗する
+- **AND** `Err(TickDriverError::HandleUnavailable)` が返される
+
+#### Scenario: TokioTickDriver は auto_metadata を返す
+
+- **GIVEN** `TokioTickDriver::default()` が生成される
+- **WHEN** `provision` が成功する
+- **THEN** `auto_metadata` は `Some(AutoDriverMetadata { profile: AutoProfileKind::Tokio, ... })` を含む
+- **AND** `driver_id` と `resolution` が正しく設定される
+
+#### Scenario: TokioTickDriverStopper は async task を abort して停止する
+
+- **GIVEN** `TokioTickDriver` が provision 済みで 2 つの async task が稼働中
+- **WHEN** `stopper.stop()` が呼ばれる
+- **THEN** tick task と executor task の `JoinHandle::abort()` が呼ばれる
+- **AND** `stop` が返った時点で両 task は abort 済み
+
+#### Scenario: 旧 Tokio 実装が存在しない
+
+- **GIVEN** 本 change が適用された状態
+- **WHEN** 旧 `TokioTickDriver`（旧 `TickDriver` trait 実装）、`TokioTickExecutorPump`、`TokioTickDriverControl`、`TokioTickExecutorControl`、`default_tick_driver_config()`、`tick_driver_config_with_resolution()` を参照するコードをコンパイルする
+- **THEN** コンパイルエラーになる（型・関数が存在しない）
+
+### Requirement: 新 TickDriver trait 用のテスト driver を提供する
+
+旧 `ManualTestDriver` を削除し、新 `TickDriver` trait 用のテスト driver で置き換えなければならない（MUST）。テスト driver は `runner_api_enabled` の自動有効化パスを新 API 側に実装しなければならない（MUST）。
+
+#### Scenario: テスト driver で ActorSystem を起動できる
+
+- **GIVEN** 新テスト driver が生成される
+- **WHEN** `ActorSystemConfig::new(test_driver)` + `create_with_config` でシステムを起動する
+- **THEN** システムが正常に起動する
+- **AND** テスト用の制御 API（tick 手動進行等）が利用可能
+
+#### Scenario: テスト driver は runner_api_enabled を自動有効化する
+
+- **GIVEN** テスト driver を使用してシステムを起動する
+- **WHEN** bootstrap が実行される
+- **THEN** `runner_api_enabled` が自動的に有効化される
+- **AND** 旧 `ManualTestDriver` の special path と同等の機能が提供される
+
+#### Scenario: 旧 ManualTestDriver が存在しない
+
+- **GIVEN** 本 change が適用された状態
+- **WHEN** `ManualTestDriver` を参照するコードをコンパイルする
+- **THEN** コンパイルエラーになる（型が存在しない）
+
+### Requirement: TickDriverKind は non_exhaustive で Std と Tokio variant を持つ
+
+`TickDriverKind` に `#[non_exhaustive]` を付与し、`Std` と `Tokio` variant を追加しなければならない（MUST）。これにより下流 crate が新 variant 追加時に壊れない。
+
+#### Scenario: TickDriverKind に Std と Tokio が含まれる
+
+- **GIVEN** 本 change が適用された状態
+- **WHEN** `TickDriverKind` の variant を列挙する
+- **THEN** `Auto`, `Manual`, `Std`, `Tokio` の 4 variant が存在する
+- **AND** `#[non_exhaustive]` により `match` 文にワイルドカードアームが必須となる
