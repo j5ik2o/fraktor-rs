@@ -525,6 +525,13 @@ fn assert_split_when_surface(cancel_strategy: SubstreamCancelStrategy) {
     }
     thread::sleep(Duration::from_millis(10));
   }
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if matches!(materialized.materialized().poll(), Completion::Ready(_)) {
+      break;
+    }
+    thread::sleep(Duration::from_millis(10));
+  }
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*upstream_pulls.lock(), expected_pulls);
 }
@@ -552,6 +559,13 @@ fn assert_split_after_surface(cancel_strategy: SubstreamCancelStrategy) {
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
     if *upstream_pulls.lock() >= expected_pulls {
+      break;
+    }
+    thread::sleep(Duration::from_millis(10));
+  }
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if matches!(materialized.materialized().poll(), Completion::Ready(_)) {
       break;
     }
     thread::sleep(Duration::from_millis(10));
