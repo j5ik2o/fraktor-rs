@@ -14,7 +14,7 @@ use crate::core::kernel::{
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
     props::MailboxConfig,
-    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
+    scheduler::{SchedulerConfig, tick_driver::TickDriver},
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherConfigurator},
@@ -32,7 +32,7 @@ pub struct ActorSystemConfig {
   default_guardian:     PathGuardianKind,
   remoting_config:      Option<RemotingConfig>,
   scheduler_config:     SchedulerConfig,
-  tick_driver_config:   Option<TickDriverConfig>,
+  tick_driver:          Option<Box<dyn TickDriver>>,
   extension_installers: Option<ExtensionInstallers>,
   provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
   dispatchers:          Dispatchers,
@@ -41,6 +41,12 @@ pub struct ActorSystemConfig {
 }
 
 impl ActorSystemConfig {
+  /// Creates a new configuration with the provided tick driver.
+  #[must_use]
+  pub fn new(driver: impl TickDriver + 'static) -> Self {
+    Self::default().with_tick_driver(driver)
+  }
+
   /// Sets the actor system name.
   #[must_use]
   pub fn with_system_name(mut self, name: impl Into<String>) -> Self {
@@ -69,10 +75,10 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Sets the tick driver configuration.
+  /// Sets the tick driver.
   #[must_use]
-  pub fn with_tick_driver(mut self, config: TickDriverConfig) -> Self {
-    self.tick_driver_config = Some(config);
+  pub fn with_tick_driver(mut self, driver: impl TickDriver + 'static) -> Self {
+    self.tick_driver = Some(Box::new(driver));
     self
   }
 
@@ -150,16 +156,16 @@ impl ActorSystemConfig {
     &self.scheduler_config
   }
 
-  /// Returns the tick driver configuration if set.
+  /// Returns `true` if a tick driver has been set.
   #[must_use]
-  pub const fn tick_driver_config(&self) -> Option<&TickDriverConfig> {
-    self.tick_driver_config.as_ref()
+  pub const fn has_tick_driver(&self) -> bool {
+    self.tick_driver.is_some()
   }
 
-  /// Takes the tick driver configuration.
+  /// Takes the tick driver out of the configuration.
   #[must_use]
-  pub const fn take_tick_driver_config(&mut self) -> Option<TickDriverConfig> {
-    self.tick_driver_config.take()
+  pub fn take_tick_driver(&mut self) -> Option<Box<dyn TickDriver>> {
+    self.tick_driver.take()
   }
 
   /// Returns the extension installers if set.
@@ -218,7 +224,7 @@ impl Default for ActorSystemConfig {
       default_guardian: PathGuardianKind::User,
       remoting_config: None,
       scheduler_config: SchedulerConfig::default(),
-      tick_driver_config: None,
+      tick_driver: None,
       extension_installers: None,
       provider_installer: None,
       dispatchers,

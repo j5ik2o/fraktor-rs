@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use core::any::TypeId;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
@@ -47,7 +48,7 @@ fn adapter_sender_wraps_payload_into_envelope() {
   let captured = messages_clone.lock().clone();
   assert_eq!(captured.len(), 1);
   let envelope = captured[0].payload().downcast_ref::<AdapterEnvelope>().expect("envelope");
-  assert_eq!(envelope.type_id(), core::any::TypeId::of::<u32>());
+  assert_eq!(envelope.type_id(), TypeId::of::<u32>());
 }
 
 #[test]

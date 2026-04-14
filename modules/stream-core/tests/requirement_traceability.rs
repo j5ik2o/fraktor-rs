@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, time::Duration};
+use std::{
+  collections::BTreeSet,
+  thread,
+  time::{Duration, Instant},
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -6,10 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::AnyMessageView,
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::ActorSystem,
@@ -48,9 +49,8 @@ impl Actor for TraceabilityGuardianActor {
 fn build_system() -> ActorSystem {
   let props = Props::from_fn(|| TraceabilityGuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
-  ActorSystem::new_with_config(&props, &config).expect("system should build")
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
+  ActorSystem::create_with_config(&props, config).expect("system should build")
 }
 
 const ALL_REQUIREMENT_IDS: &[&str] = &[
@@ -500,7 +500,6 @@ fn assert_group_by_surface() {
 
 fn assert_split_when_surface(cancel_strategy: SubstreamCancelStrategy) {
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("start");
@@ -515,19 +514,23 @@ fn assert_split_when_surface(cancel_strategy: SubstreamCancelStrategy) {
     .merge_substreams()
     .run_with(Sink::head(), &mut materializer)
     .expect("run_with");
-  for _ in 0..5 {
-    controller.inject_and_drive(1);
+  let expected_pulls = match cancel_strategy {
+    | SubstreamCancelStrategy::Drain => 3_u32,
+    | SubstreamCancelStrategy::Propagate => 2_u32,
+  };
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if *upstream_pulls.lock() >= expected_pulls {
+      break;
+    }
+    thread::sleep(Duration::from_millis(10));
   }
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
-  match cancel_strategy {
-    | SubstreamCancelStrategy::Drain => assert_eq!(*upstream_pulls.lock(), 3_u32),
-    | SubstreamCancelStrategy::Propagate => assert_eq!(*upstream_pulls.lock(), 2_u32),
-  }
+  assert_eq!(*upstream_pulls.lock(), expected_pulls);
 }
 
 fn assert_split_after_surface(cancel_strategy: SubstreamCancelStrategy) {
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("start");
@@ -542,14 +545,19 @@ fn assert_split_after_surface(cancel_strategy: SubstreamCancelStrategy) {
     .merge_substreams()
     .run_with(Sink::head(), &mut materializer)
     .expect("run_with");
-  for _ in 0..5 {
-    controller.inject_and_drive(1);
+  let expected_pulls = match cancel_strategy {
+    | SubstreamCancelStrategy::Drain => 3_u32,
+    | SubstreamCancelStrategy::Propagate => 1_u32,
+  };
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if *upstream_pulls.lock() >= expected_pulls {
+      break;
+    }
+    thread::sleep(Duration::from_millis(10));
   }
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
-  match cancel_strategy {
-    | SubstreamCancelStrategy::Drain => assert_eq!(*upstream_pulls.lock(), 3_u32),
-    | SubstreamCancelStrategy::Propagate => assert_eq!(*upstream_pulls.lock(), 1_u32),
-  }
+  assert_eq!(*upstream_pulls.lock(), expected_pulls);
 }
 
 fn requirement_id_set() -> BTreeSet<&'static str> {

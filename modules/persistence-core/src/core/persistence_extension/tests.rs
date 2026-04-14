@@ -4,10 +4,7 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::AnyMessageView,
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::ActorSystem,
@@ -29,10 +26,9 @@ impl Actor for NoopActor {
 #[test]
 fn persistence_extension_creates_actor_refs() {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
   let journal = InMemoryJournal::new();
   let snapshot = InMemorySnapshotStore::new();
 

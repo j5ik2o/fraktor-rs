@@ -19,7 +19,8 @@ use crate::core::{
       actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
       error::ActorError,
       messaging::AnyMessage,
-      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      scheduler::tick_driver::TestTickDriver,
+      setup::ActorSystemConfig,
       supervision::{
         BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
         SupervisorStrategyKind,
@@ -106,8 +107,9 @@ impl TypedActor<CounterMessage> for CounterActor {
 #[test]
 fn typed_actor_system_handles_basic_flow() {
   let props = TypedProps::<CounterMessage>::new(CounterActor::new);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<CounterMessage>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(2));
@@ -127,8 +129,9 @@ fn typed_actor_system_handles_basic_flow() {
 fn typed_props_with_blocking_dispatcher_selector_should_spawn() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0))
     .with_dispatcher_selector(DispatcherSelector::Blocking);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<CounterMessage>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   system.terminate().expect("terminate");
 }
@@ -185,8 +188,9 @@ fn typed_props_with_mailbox_unbounded_overrides_bounded_selector() {
 #[test]
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<CounterMessage>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(3));
@@ -205,8 +209,9 @@ fn typed_behaviors_handle_recursive_state() {
 #[test]
 fn typed_behaviors_ignore_keeps_current_state() {
   let props = TypedProps::<IgnoreCommand>::from_behavior_factory(|| ignore_gate(0));
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<IgnoreCommand>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<IgnoreCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut gate = system.user_guardian_ref();
 
   gate.tell(IgnoreCommand::Add(1));
@@ -226,8 +231,9 @@ fn typed_behaviors_ignore_keeps_current_state() {
 #[test]
 fn typed_behaviors_stash_buffered_messages_across_transition() {
   let props = TypedProps::<StashCommand>::from_behavior_factory(|| stash_behavior(0)).with_stash_mailbox();
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<StashCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   actor.tell(StashCommand::Buffer(4));
@@ -248,8 +254,9 @@ fn typed_behaviors_with_stash_limits_capacity() {
     stash_behavior_with_capacity_limit(0, Arc::clone(&overflow_probe))
   })
   .with_stash_mailbox();
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<StashCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   actor.tell(StashCommand::Buffer(4));
@@ -271,8 +278,9 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
     move || adapter_stash_behavior(0, &slot)
   })
   .with_stash_mailbox();
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<StashCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
@@ -292,8 +300,11 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
 fn typed_behaviors_unstash_replays_before_already_queued_messages() {
   let props =
     TypedProps::<StashOrderCommand>::from_behavior_factory(|| stash_order_behavior(Vec::new())).with_stash_mailbox();
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<StashOrderCommand>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<StashOrderCommand>::create_with_config(
+    &props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut actor = system.user_guardian_ref();
 
   actor.tell(StashOrderCommand::Buffer(String::from("stashed")));
@@ -319,8 +330,9 @@ fn typed_behaviors_receive_signal_notifications() {
   let props = TypedProps::<LifecycleCommand>::from_behavior_factory(move || {
     signal_probe_behavior(&start_probe, &post_stop_probe)
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<LifecycleCommand>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<LifecycleCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   system.terminate().expect("terminate");
   system.as_untyped().run_until_terminated(&SpinBlocker);
 
@@ -387,8 +399,9 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
 #[test]
 fn typed_ask_reports_type_mismatch() {
   let props = TypedProps::<MismatchCommand>::new(|| MismatchActor);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<MismatchCommand>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<MismatchCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   let response = actor.ask::<i32, _>(|reply_to| MismatchCommand::Trigger { reply_to });
@@ -404,8 +417,11 @@ fn typed_ask_reports_type_mismatch() {
 #[test]
 fn typed_context_exposes_scheduler() {
   let props = TypedProps::<SchedulerProbeCommand>::new(|| SchedulerProbeActor);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SchedulerProbeCommand>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SchedulerProbeCommand>::create_with_config(
+    &props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut actor = system.user_guardian_ref();
 
   let response = actor.ask::<bool, _>(|reply_to| SchedulerProbeCommand::Check { reply_to });
@@ -687,8 +703,11 @@ fn behaviors_supervise_restarts_children() {
     SupervisorDirective::Restart
   });
   let parent_props = supervised_parent_props(restart_strategy, child);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+    &parent_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -709,8 +728,11 @@ fn intercepted_behavior_survives_supervised_restart() {
     SupervisorDirective::Restart
   });
   let parent_props = supervised_parent_props(restart_strategy, child);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+    &parent_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -735,8 +757,11 @@ fn behaviors_supervise_stops_children() {
     SupervisorDirective::Stop
   });
   let parent_props = supervised_parent_props(stop_strategy, child);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+    &parent_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -761,8 +786,11 @@ fn backoff_strategy_via_supervise_on_failure() {
     let behavior = supervised_parent_behavior(child.clone());
     Behaviors::supervise(behavior).on_failure(backoff.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+    &parent_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -819,8 +847,11 @@ fn message_adapter_converts_external_messages() {
     let slot = adapter_slot.clone();
     move || adapter_counter_behavior(&slot)
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_with_config(
+    &props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut actor = system.user_guardian_ref();
 
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
@@ -848,8 +879,11 @@ fn adapter_not_found_routes_to_dead_letter() {
       counter_behavior(0)
     })
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_with_config(
+    &props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let actor = system.user_guardian_ref();
   let mut untyped = actor.as_untyped().clone();
 
@@ -880,8 +914,11 @@ fn pipe_to_self_converts_messages_via_adapter() {
       counter_behavior(0)
     })
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_with_config(
+    &props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
   let mut actor = system.user_guardian_ref();
   wait_until(|| read_counter_value(&mut actor) == 6);
   system.terminate().expect("terminate");

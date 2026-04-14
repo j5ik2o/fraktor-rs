@@ -5,7 +5,7 @@ use fraktor_utils_core_rs::core::sync::shared::Shared;
 use crate::core::{
   kernel::actor::{
     extension::{Extension, ExtensionInstallers},
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    scheduler::tick_driver::TestTickDriver,
     setup::ActorSystemConfig,
   },
   typed::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors, extension_setup::ActorSystem},
@@ -40,11 +40,9 @@ fn extension_setup_registers_custom_factory_during_bootstrap() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let installers = ExtensionInstallers::default()
     .with_extension_installer(ExtensionSetup::new(ProbeExtensionId, |_system| ProbeExtension::new("custom")));
-  let config = ActorSystemConfig::default()
-    .with_extension_installers(installers)
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_extension_installers(installers);
 
-  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
   let extension = system
     .as_untyped()
     .extended()

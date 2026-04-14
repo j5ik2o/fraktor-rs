@@ -12,7 +12,8 @@ use fraktor_actor_core_rs::core::kernel::{
     lifecycle::LifecycleStage,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    scheduler::tick_driver::TestTickDriver,
+    setup::ActorSystemConfig,
   },
   event::{
     logging::LogLevel,
@@ -54,8 +55,8 @@ impl Actor for Guardian {
 #[test]
 fn lifecycle_and_log_events_are_published() {
   let props = Props::from_fn(|| Guardian);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });

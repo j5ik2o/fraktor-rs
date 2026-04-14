@@ -11,7 +11,8 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::{MailboxConfig, Props},
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    scheduler::tick_driver::TestTickDriver,
+    setup::ActorSystemConfig,
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
@@ -80,8 +81,8 @@ fn dead_letter_event_is_published_when_send_fails() {
     let child_props = child_props.clone();
     move || TestGuardian::new(child_slot.clone(), child_props.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));

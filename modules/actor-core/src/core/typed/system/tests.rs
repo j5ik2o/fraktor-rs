@@ -13,7 +13,7 @@ use crate::core::{
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::AnyMessage,
-      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      scheduler::tick_driver::TestTickDriver,
       setup::ActorSystemConfig,
     },
     event::{
@@ -85,9 +85,8 @@ impl ActorRefSender for CollectorSender {
 
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default().with_start_time(Duration::from_secs(1)).with_tick_driver(tick_driver);
-  TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system")
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(Duration::from_secs(1));
+  TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system")
 }
 
 // --- T5: Extension facade tests ---
@@ -184,10 +183,8 @@ fn register_extension_is_idempotent() {
 fn name_returns_configured_system_name() {
   // Given: a typed actor system with a custom name
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let config = ActorSystemConfig::default()
-    .with_system_name("my-actor-system")
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("my-actor-system");
+  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
 
   // When: name() is called
   let name = system.name();
@@ -231,10 +228,8 @@ fn start_time_returns_configured_value() {
   // Given: a typed actor system with an explicit start_time
   let expected_start = Duration::from_secs(1_700_000_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let config = ActorSystemConfig::default()
-    .with_start_time(expected_start)
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(expected_start);
+  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
 
   // When: start_time() is called
   let start_time = system.start_time();
@@ -250,10 +245,8 @@ fn uptime_returns_elapsed_since_start() {
   // Given: a system with a known start_time
   let start = Duration::from_secs(1_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let config = ActorSystemConfig::default()
-    .with_start_time(start)
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(start);
+  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
 
   // When: uptime is calculated with a known "now"
   let now = Duration::from_secs(1_042);
@@ -270,10 +263,8 @@ fn uptime_saturates_when_now_is_before_start() {
   // Given: a system with a start_time
   let start = Duration::from_secs(1_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let config = ActorSystemConfig::default()
-    .with_start_time(start)
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(start);
+  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
 
   // When: now is before start_time (edge case)
   let now = Duration::from_secs(500);
@@ -405,10 +396,8 @@ fn address_returns_local_address_with_system_name() {
 fn address_returns_local_address_with_custom_name() {
   // Given: a typed actor system with a custom name
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let config = ActorSystemConfig::default()
-    .with_system_name("custom-system")
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("custom-system");
+  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
 
   // When: address() is called
   let address = system.address();
@@ -845,10 +834,10 @@ fn system_actor_of_spawns_actor_under_system_guardian() {
 fn typed_actor_system_new_rejects_empty_guardian_props() {
   // 前提: factory 未設定の empty guardian props
   let guardian_props = TypedProps::<u32>::empty();
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
 
   // 実行: typed actor system を bootstrap する
-  let result = TypedActorSystem::<u32>::new(&guardian_props, tick_driver);
+  let result =
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()));
 
   // 検証: invalid props として明示的に失敗する
   assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));

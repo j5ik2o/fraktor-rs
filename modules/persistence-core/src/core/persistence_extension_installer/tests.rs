@@ -5,10 +5,7 @@ use fraktor_actor_core_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::AnyMessageView,
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::ActorSystem,
@@ -35,13 +32,11 @@ fn installer_registers_persistence_extension() {
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   let extension = system.extended().extension_by_type::<PersistenceExtensionShared>();
 

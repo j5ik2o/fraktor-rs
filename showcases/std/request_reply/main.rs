@@ -12,12 +12,11 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_adaptor_std_rs::std::StdBlocker;
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
-  kernel::actor::error::ActorError,
+  kernel::actor::{error::ActorError, setup::ActorSystemConfig},
   typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
 };
-use fraktor_showcases_std::support;
 
 // --- メッセージ定義 ---
 
@@ -90,8 +89,8 @@ fn main() {
   let done = Arc::new(AtomicBool::new(false));
   let done_clone = done.clone();
   let props = TypedProps::from_behavior_factory(move || requester(done_clone.clone()));
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   // ask リクエストを開始

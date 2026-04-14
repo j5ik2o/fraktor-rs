@@ -4,7 +4,7 @@ use core::hint::spin_loop;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
-  kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  kernel::actor::{scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
   typed::{
     behavior::Behavior,
     dsl::{Behaviors, routing::Routers},
@@ -78,8 +78,9 @@ fn balancing_pool_distributes_to_idle_workers() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut guardian = system.user_guardian_ref();
 
   // Send multiple work items.
@@ -156,8 +157,9 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut guardian = system.user_guardian_ref();
 
   // Send 3 messages: both routees will stop after 1 each.
@@ -219,8 +221,9 @@ fn balancing_pool_stops_when_all_routees_terminate() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut guardian = system.user_guardian_ref();
 
   // Send 2 messages to consume both routees (they each stop after 1 message).
@@ -272,8 +275,9 @@ fn balancing_pool_routee_stopped_on_start_does_not_receive_work() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut guardian = system.user_guardian_ref();
 
   // Send a message; no routee should process it since all stopped at start.

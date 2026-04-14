@@ -1,22 +1,13 @@
 //! Stream materializer support for std-based examples.
 //!
-//! Provides a `ManualTestDriver`-based materializer suitable for
-//! demonstrating stream pipelines without heavyweight async runtimes.
+//! Provides a `StdTickDriver`-based materializer suitable for
+//! demonstrating stream pipelines.
 
 use std::time::Duration;
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
-  actor::{
-    Actor, ActorContext,
-    error::ActorError,
-    messaging::AnyMessageView,
-    props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
-    setup::ActorSystemConfig,
-  },
+  actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, setup::ActorSystemConfig},
   system::ActorSystem,
 };
 use fraktor_stream_core_rs::core::{
@@ -32,35 +23,31 @@ impl Actor for GuardianActor {
   }
 }
 
-/// Creates an `ActorMaterializer` backed by a manual test driver.
+/// Creates an `ActorMaterializer` backed by `StdTickDriver`.
 ///
-/// Returns the materializer (already started) and the driver handle
-/// that can be used with [`drive_until_ready`] to step execution.
-pub fn start_materializer() -> (ActorMaterializer, ManualTestDriver) {
+/// Returns the materializer (already started).
+pub fn start_materializer() -> ActorMaterializer {
   let props = Props::from_fn(|| GuardianActor);
-  let driver = ManualTestDriver::new();
-  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(driver.clone());
-  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
-  let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
+  let config = ActorSystemConfig::new(StdTickDriver::default());
+  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("materializer start");
-  (materializer, driver)
+  materializer
 }
 
-/// Drives the manual test driver until the stream completes or the tick budget is exhausted.
+/// Polls the stream completion until it resolves or the iteration budget is exhausted.
+///
+/// Each iteration sleeps for 1 ms to yield time to the `StdTickDriver` background thread.
 pub fn drive_until_ready<T: Clone>(
-  driver: &ManualTestDriver,
   completion: &StreamCompletion<T>,
   max_ticks: usize,
 ) -> Option<Result<T, StreamError>> {
-  let controller = driver.controller();
   for _ in 0..max_ticks {
-    controller.inject_and_drive(1);
     if let Completion::Ready(result) = completion.poll() {
       return Some(result);
     }
+    std::thread::sleep(Duration::from_millis(1));
   }
   None
 }

@@ -1,10 +1,12 @@
 //! Tick driver trait and identifier helpers.
 
-use core::{sync::atomic::Ordering, time::Duration};
+use alloc::boxed::Box;
+use core::sync::atomic::Ordering;
 
 use portable_atomic::AtomicU64;
 
-use super::{TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle};
+use super::{TickDriverError, TickDriverId, TickDriverKind, TickDriverProvision, TickFeedHandle};
+use crate::core::kernel::actor::scheduler::tick_driver::SchedulerTickExecutor;
 
 static NEXT_DRIVER_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -16,22 +18,24 @@ pub fn next_tick_driver_id() -> TickDriverId {
 
 /// Common contract implemented by environment-specific tick drivers.
 ///
-/// # Interior Mutability Removed
-///
-/// This trait no longer assumes interior mutability. The `start` method now
-/// requires `&mut self`. If shared access is needed, wrap implementations in
-/// an external synchronization primitive (e.g., `Mutex<Box<dyn TickDriver>>`).
+/// The driver consumes itself (`Box<Self>`) during provisioning so that
+/// ownership of all resources is transferred into [`TickDriverProvision`].
 pub trait TickDriver: Send + 'static {
-  /// Unique identifier assigned to the driver instance.
-  fn id(&self) -> TickDriverId;
   /// Kind classification for observability purposes.
   fn kind(&self) -> TickDriverKind;
-  /// Tick resolution produced by this driver.
-  fn resolution(&self) -> Duration;
-  /// Starts the driver and returns a handle that can be used to stop it later.
+
+  /// Provisions the driver and returns its running state.
+  ///
+  /// The driver receives a [`TickFeedHandle`] for injecting ticks and a
+  /// [`SchedulerTickExecutor`] for driving the scheduler executor from a
+  /// background thread or task.
   ///
   /// # Errors
   ///
-  /// Returns [`TickDriverError`] when the driver fails to initialize.
-  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError>;
+  /// Returns [`TickDriverError`] when provisioning fails.
+  fn provision(
+    self: Box<Self>,
+    feed: TickFeedHandle,
+    executor: SchedulerTickExecutor,
+  ) -> Result<TickDriverProvision, TickDriverError>;
 }

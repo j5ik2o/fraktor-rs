@@ -11,10 +11,7 @@ use fraktor_actor_core_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{
-      SchedulerConfig, SchedulerShared,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, SchedulerShared, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   event::stream::{
@@ -156,7 +153,6 @@ fn build_system_with_extension_config<F>(
 ) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config =
     ClusterExtensionConfig::new().with_advertised_address("node1:8080").with_metrics_enabled(metrics_enabled);
@@ -166,9 +162,8 @@ where
   .with_identity_lookup_factory(identity_lookup_factory);
   let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
   let send_counter = send_counter.cloned();
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler_config)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(move |system: &ActorSystem| {
       let actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(TestActorRefProvider::new(
@@ -179,7 +174,7 @@ where
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
-  let system = ActorSystem::new_with_config(&props, &config).expect("build system");
+  let system = ActorSystem::create_with_config(&props, config).expect("build system");
   let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   (system, extension)
 }

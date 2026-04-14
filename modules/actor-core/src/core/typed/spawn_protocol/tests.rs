@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::core::{
-  kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  kernel::actor::{scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
   typed::{SpawnProtocol, TypedActorRef, dsl::Behaviors, props::TypedProps, system::TypedActorSystem},
 };
 
@@ -57,8 +57,9 @@ fn wait_until(predicate: impl Fn() -> bool) {
 fn spawn_protocol_spawns_named_children() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut parent = system.user_guardian_ref();
 
   let response = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
@@ -78,8 +79,9 @@ fn spawn_protocol_spawns_named_children() {
 fn spawn_protocol_spawns_anonymous_children() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut parent = system.user_guardian_ref();
 
   let response = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
@@ -100,8 +102,9 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
   let first_start_count = Arc::new(AtomicUsize::new(0));
   let second_start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut parent = system.user_guardian_ref();
 
   let first = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
@@ -128,8 +131,9 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
 fn spawn_protocol_survives_duplicate_named_spawn_failure() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut parent = system.user_guardian_ref();
 
   // First spawn with name "probe" succeeds.

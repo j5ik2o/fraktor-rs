@@ -5,6 +5,10 @@ mod test_utils;
 extern crate alloc;
 
 use alloc::vec::Vec;
+use std::{
+  thread,
+  time::{Duration, Instant},
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -14,10 +18,7 @@ use fraktor_actor_core_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::ActorSystem,
@@ -126,34 +127,36 @@ fn batch_flow_applies_all_events() {
   let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn({
     let value = value.clone();
     let child_refs = child_refs.clone();
     move || Guardian::new(value.clone(), child_refs.clone())
   });
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
-  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
-  for _ in 0..20 {
-    controller.inject_and_drive(1);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
     if !child_refs.lock().is_empty() {
       break;
     }
+    thread::sleep(Duration::from_millis(10));
   }
 
   if let Some(mut child) = child_refs.lock().first().cloned() {
     child.tell(AnyMessage::new(Command::AddAll(vec![1, 2, 3])));
   }
 
-  for _ in 0..10 {
-    controller.inject_and_drive(1);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if *value.lock() == 6 {
+      break;
+    }
+    thread::sleep(Duration::from_millis(10));
   }
 
   assert_eq!(*value.lock(), 6);

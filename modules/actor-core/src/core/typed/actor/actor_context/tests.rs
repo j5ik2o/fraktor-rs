@@ -7,7 +7,8 @@ use crate::core::{
   kernel::{
     actor::{
       error::ActorError,
-      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      scheduler::tick_driver::TestTickDriver,
+      setup::ActorSystemConfig,
       supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
     },
     event::{
@@ -60,7 +61,8 @@ impl EventStreamSubscriber for RecordingLogSubscriber {
 fn delegate_returns_delegatee_when_behavior_reports_same() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let outer_count = ArcShared::new(SpinSyncMutex::new(0_usize));
   let inner_count = ArcShared::new(SpinSyncMutex::new(0_usize));
@@ -163,9 +165,11 @@ impl AbstractBehavior<AnonymousRestartChildMsg> for AnonymousRestartCrashBehavio
 #[test]
 fn ask_sends_request_and_delivers_adapted_response() {
   let guardian_props = TypedProps::<RequesterMsg>::from_behavior_factory(Behaviors::ignore);
-  let system =
-    TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
-      .expect("system");
+  let system = TypedActorSystem::<RequesterMsg>::create_with_config(
+    &guardian_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
 
   let received = ArcShared::new(SpinSyncMutex::new(0_u32));
   let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
@@ -242,9 +246,11 @@ fn ask_sends_request_and_delivers_adapted_response() {
 #[test]
 fn ask_with_status_sends_request_and_delivers_adapted_success() {
   let guardian_props = TypedProps::<RequesterMsg>::from_behavior_factory(Behaviors::ignore);
-  let system =
-    TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
-      .expect("system");
+  let system = TypedActorSystem::<RequesterMsg>::create_with_config(
+    &guardian_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
 
   let received = ArcShared::new(SpinSyncMutex::new(0_u32));
   let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
@@ -316,9 +322,11 @@ fn ask_with_status_sends_request_and_delivers_adapted_success() {
 #[test]
 fn ask_timeout_delivers_error_to_actor() {
   let guardian_props = TypedProps::<RequesterMsg>::from_behavior_factory(Behaviors::ignore);
-  let manual = ManualTestDriver::new();
-  let system =
-    TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(manual.clone())).expect("system");
+  let system = TypedActorSystem::<RequesterMsg>::create_with_config(
+    &guardian_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
 
   let got_failure = ArcShared::new(SpinSyncMutex::new(false));
   let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
@@ -383,9 +391,11 @@ fn ask_timeout_delivers_error_to_actor() {
 #[test]
 fn ask_concurrent_same_response_type_delivers_both() {
   let guardian_props = TypedProps::<RequesterMsg>::from_behavior_factory(Behaviors::ignore);
-  let system =
-    TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
-      .expect("system");
+  let system = TypedActorSystem::<RequesterMsg>::create_with_config(
+    &guardian_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
 
   let total_received = ArcShared::new(SpinSyncMutex::new(0_u32));
   let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
@@ -520,9 +530,10 @@ fn forward_preserves_sender_through_typed_context() {
 fn schedule_once_registers_command_in_scheduler() {
   use fraktor_utils_core_rs::core::sync::SharedAccess;
 
-  let manual = ManualTestDriver::new();
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let system = TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(manual.clone())).expect("system");
+  let system =
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   // Access the scheduler via the system to verify schedule_once registers a command.
   let scheduler_shared = system.as_untyped().scheduler();
@@ -547,9 +558,11 @@ fn schedule_once_registers_command_in_scheduler() {
 #[test]
 fn ask_with_status_error_preserves_failure_reason() {
   let guardian_props = TypedProps::<RequesterMsg>::from_behavior_factory(Behaviors::ignore);
-  let system =
-    TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
-      .expect("system");
+  let system = TypedActorSystem::<RequesterMsg>::create_with_config(
+    &guardian_props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
 
   let captured_reason = ArcShared::new(SpinSyncMutex::new(String::new()));
   let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
@@ -797,7 +810,8 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
 fn spawn_anonymous_creates_child_actor_that_receives_messages() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let received = ArcShared::new(SpinSyncMutex::new(0_u32));
 
@@ -836,7 +850,8 @@ fn spawn_anonymous_creates_child_actor_that_receives_messages() {
 fn spawn_anonymous_child_has_no_explicit_name() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let child_pid_slot: ArcShared<SpinSyncMutex<Option<Pid>>> = ArcShared::new(SpinSyncMutex::new(None));
 
@@ -873,7 +888,8 @@ fn spawn_anonymous_child_has_no_explicit_name() {
 fn spawn_anonymous_multiple_children_are_independent() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let count = ArcShared::new(SpinSyncMutex::new(0_u32));
 
@@ -923,7 +939,8 @@ fn spawn_anonymous_multiple_children_are_independent() {
 fn spawn_anonymous_can_spawn_same_from_abstract_behavior_twice() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let count = ArcShared::new(SpinSyncMutex::new(0_u32));
 
@@ -960,9 +977,9 @@ fn spawn_anonymous_can_spawn_same_from_abstract_behavior_twice() {
 #[test]
 fn spawn_anonymous_child_restarts_under_supervision() {
   let guardian_props = TypedProps::<AnonymousRestartParentMsg>::from_behavior_factory(Behaviors::ignore);
-  let system = TypedActorSystem::<AnonymousRestartParentMsg>::new(
+  let system = TypedActorSystem::<AnonymousRestartParentMsg>::create_with_config(
     &guardian_props,
-    TickDriverConfig::manual(ManualTestDriver::new()),
+    ActorSystemConfig::new(TestTickDriver::default()),
   )
   .expect("system");
 
@@ -1014,9 +1031,9 @@ fn spawn_anonymous_child_restarts_under_supervision() {
 #[test]
 fn spawn_anonymous_narrowed_child_restarts_under_supervision() {
   let guardian_props = TypedProps::<AnonymousRestartParentMsg>::from_behavior_factory(Behaviors::ignore);
-  let system = TypedActorSystem::<AnonymousRestartParentMsg>::new(
+  let system = TypedActorSystem::<AnonymousRestartParentMsg>::create_with_config(
     &guardian_props,
-    TickDriverConfig::manual(ManualTestDriver::new()),
+    ActorSystemConfig::new(TestTickDriver::default()),
   )
   .expect("system");
 
@@ -1080,7 +1097,8 @@ fn typed_context_set_logger_name_delegates_to_untyped() {
 
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let actor_props = TypedProps::<u32>::from_behavior_factory({
     let observed = observed_name_clone;
@@ -1115,7 +1133,8 @@ fn typed_context_logger_name_initially_none() {
 
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let actor_props = TypedProps::<u32>::from_behavior_factory({
     let observed = observed_name_clone;
@@ -1149,7 +1168,8 @@ fn typed_pipe_to_delivers_ok_result_to_external_target() {
   // Given: a system with a sender actor and a receiver actor
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({
@@ -1200,7 +1220,8 @@ fn typed_pipe_to_delivers_err_result_to_external_target() {
   // Given: a system with a sender actor and a receiver actor
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({
@@ -1246,7 +1267,8 @@ fn typed_pipe_to_delivers_err_result_to_external_target() {
 fn typed_pipe_to_drops_message_and_logs_when_map_ok_returns_adapter_error() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({
@@ -1307,7 +1329,8 @@ fn typed_pipe_to_drops_message_and_logs_when_map_ok_returns_adapter_error() {
 fn typed_pipe_to_drops_message_and_logs_when_map_err_returns_adapter_error() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({

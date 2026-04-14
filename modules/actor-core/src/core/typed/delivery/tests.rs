@@ -6,10 +6,7 @@ use core::time::Duration;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use crate::core::{
-  kernel::actor::{
-    Pid,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  },
+  kernel::actor::{Pid, scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
   typed::{
     Behavior, TypedActorRef, TypedActorSystem, TypedProps,
     delivery::{
@@ -37,8 +34,8 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 /// Helper to create a test actor system.
 fn test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system")
+  TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    .expect("system")
 }
 
 fn durable_queue_probe_behavior<A>(

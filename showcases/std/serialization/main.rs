@@ -13,7 +13,7 @@ use std::{
   borrow::Cow,
 };
 
-use fraktor_actor_adaptor_std_rs::std::StdBlocker;
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
@@ -26,7 +26,6 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_showcases_std::support;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 use serde::{Deserialize, Serialize};
 
@@ -258,9 +257,8 @@ fn main() {
   });
 
   let props = Props::from_fn(|| NullActor).with_name("serialization-demo");
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config).with_extension_installers(installers);
-  let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
+  let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
+  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
 
   let serialization: SerializationExtensionShared =
     (*system.extended().extension(&serialization_id).expect("extension registered")).clone();

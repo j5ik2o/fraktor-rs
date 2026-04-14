@@ -4,10 +4,8 @@ pub mod dispatch;
 pub mod event;
 mod std_blocker;
 /// Tick driver bindings for the standard toolbox.
-mod tick_driver;
+pub mod tick_driver;
 /// Time bindings for the standard toolbox.
 pub mod time;
 
 pub use std_blocker::StdBlocker;
-#[cfg(feature = "tokio-executor")]
-pub use tick_driver::{default_tick_driver_config, tick_driver_config_with_resolution};

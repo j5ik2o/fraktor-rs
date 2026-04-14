@@ -11,7 +11,8 @@ use crate::core::{
       actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
       error::{ActorError, SendError},
       messaging::AnyMessage,
-      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      scheduler::tick_driver::TestTickDriver,
+      setup::ActorSystemConfig,
     },
     event::{
       logging::LogLevel,
@@ -74,8 +75,8 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system")
+  TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    .expect("system")
 }
 
 fn subscribe_log_recorder(

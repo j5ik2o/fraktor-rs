@@ -31,10 +31,7 @@ use crate::core::{
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
-      scheduler::{
-        SchedulerBackedDelayProvider, SchedulerShared,
-        tick_driver::{TickDriverBundle, TickDriverConfig},
-      },
+      scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverBundle},
       setup::{ActorSystemConfig, ActorSystemSetup},
       spawn::SpawnError,
     },
@@ -85,16 +82,11 @@ impl ActorSystem {
   pub fn new_empty_with<F>(configure: F) -> Self
   where
     F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
-    use crate::core::kernel::actor::scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    };
+    use crate::core::kernel::actor::scheduler::tick_driver::TestTickDriver;
 
-    let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-    let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
-    let config = ActorSystemConfig::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
+    let config = ActorSystemConfig::new(TestTickDriver::default());
     let config = configure(config);
-    let state = match SystemState::build_from_config(&config) {
+    let state = match SystemState::build_from_owned_config(config) {
       | Ok(state) => state,
       | Err(error) => panic!("default test-support config should always build: {error:?}"),
     };
@@ -110,41 +102,13 @@ impl ActorSystem {
     Self { state, settings }
   }
 
-  /// Creates a new actor system and runs the provided configuration callback before startup.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when guardian initialization or configuration fails.
-  pub fn new_with<F>(user_guardian_props: &Props, configure: F) -> Result<Self, SpawnError>
-  where
-    F: FnOnce(&ActorSystem) -> Result<(), SpawnError>, {
-    Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), configure)
-  }
-
-  /// Creates an actor system with the required tick driver configuration.
-  ///
-  /// This is the recommended way to create an actor system with minimal configuration.
-  ///
-  /// # Arguments
-  ///
-  /// * `user_guardian_props` - Properties for the user guardian actor
-  /// * `tick_driver_config` - Tick driver configuration (required)
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when guardian initialization or tick driver setup fails.
-  pub fn new(user_guardian_props: &Props, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
-    let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config);
-    Self::new_with_config(user_guardian_props, &config)
-  }
-
   /// Creates an actor system with the provided configuration.
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new_with_config(user_guardian_props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
-    Self::new_with_config_and(user_guardian_props, config, |_| Ok(()))
+  pub fn create_with_config(user_guardian_props: &Props, config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    Self::create_with_config_and(user_guardian_props, config, |_| Ok(()))
   }
 
   /// Creates a new actor system from a Pekko-style setup facade.
@@ -152,8 +116,8 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization or bootstrap fails.
-  pub fn new_with_setup(user_guardian_props: &Props, setup: &ActorSystemSetup) -> Result<Self, SpawnError> {
-    Self::new_with_config(user_guardian_props, setup.as_actor_system_config())
+  pub fn create_with_setup(user_guardian_props: &Props, setup: ActorSystemSetup) -> Result<Self, SpawnError> {
+    Self::create_with_config(user_guardian_props, setup.into_actor_system_config())
   }
 
   /// Creates an actor system with configuration and a bootstrap callback.
@@ -161,23 +125,25 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization or configuration fails.
-  pub fn new_with_config_and<F>(
+  pub fn create_with_config_and<F>(
     user_guardian_props: &Props,
-    config: &ActorSystemConfig,
+    mut config: ActorSystemConfig,
     configure: F,
   ) -> Result<Self, SpawnError>
   where
     F: FnOnce(&ActorSystem) -> Result<(), SpawnError>, {
-    let state = SystemState::build_from_config(config)?;
+    let extension_installers = config.take_extension_installers();
+    let provider_installer = config.take_provider_installer();
+    let state = SystemState::build_from_owned_config(config)?;
     let system = Self::from_state(SystemStateShared::new(state));
     system.bootstrap(user_guardian_props, configure)?;
 
     // Install extensions and provider after bootstrap
-    if let Some(installers) = config.extension_installers() {
+    if let Some(installers) = extension_installers {
       installers.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 
-    if let Some(installer) = config.provider_installer() {
+    if let Some(installer) = provider_installer {
       installer.install(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 

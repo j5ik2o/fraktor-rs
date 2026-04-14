@@ -9,9 +9,11 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example state_management`
 
-use fraktor_actor_adaptor_std_rs::std::StdBlocker;
-use fraktor_actor_core_rs::core::typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors};
-use fraktor_showcases_std::support;
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_rs::core::{
+  kernel::actor::setup::ActorSystemConfig,
+  typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
+};
 
 // =============================================================================
 // パート 1: カウンターアクター（イミュータブルな状態遷移）
@@ -104,8 +106,8 @@ fn run_counter() {
   use std::thread;
 
   let props = TypedProps::from_behavior_factory(|| counter(0));
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut counter_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
@@ -132,8 +134,8 @@ fn run_gate() {
   use std::thread;
 
   let props = TypedProps::from_behavior_factory(|| locked(0));
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut gate = system.user_guardian_ref();
   let termination = system.when_terminated();
 

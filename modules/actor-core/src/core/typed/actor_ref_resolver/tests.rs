@@ -5,13 +5,8 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use super::ActorRefResolver;
 use crate::core::{
   kernel::actor::{
-    Actor, ActorCell, ActorContext, Pid,
-    error::ActorError,
-    extension::ExtensionInstallers,
-    messaging::AnyMessageView,
-    props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-    setup::ActorSystemConfig,
+    Actor, ActorCell, ActorContext, Pid, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView,
+    props::Props, scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig,
   },
   typed::{ActorRefResolverSetup, TypedActorSystem, TypedProps, actor_ref_resolver::ActorSystem, dsl::Behaviors},
 };
@@ -65,11 +60,10 @@ fn actor_ref_resolver_setup_overrides_default_extension_factory() {
       ActorRefResolver::new(system)
     }
   });
-  let config = ActorSystemConfig::default()
-    .with_extension_installers(ExtensionInstallers::default().with_extension_installer(setup))
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let config = ActorSystemConfig::new(TestTickDriver::default())
+    .with_extension_installers(ExtensionInstallers::default().with_extension_installer(setup));
 
-  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
   assert!(ActorRefResolver::get(&system).is_some());
   assert!(*invoked.lock(), "custom resolver factory should be invoked");
   system.terminate().expect("terminate");

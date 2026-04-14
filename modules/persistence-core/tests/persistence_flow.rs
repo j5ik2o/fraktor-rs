@@ -9,6 +9,10 @@ use core::{
   future::Future,
   task::{Context, Poll, Waker},
 };
+use std::{
+  thread,
+  time::{Duration, Instant},
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -18,10 +22,7 @@ use fraktor_actor_core_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::ActorSystem,
@@ -181,26 +182,24 @@ fn recovery_flow_snapshot_then_replay() {
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn({
     let setups = setups.clone();
     let refs = refs.clone();
     move || Guardian::new(setups.clone(), refs.clone())
   });
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
-  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
-  for _ in 0..50 {
-    controller.inject_and_drive(1);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
     if *recovery_complete.lock() {
       break;
     }
+    thread::sleep(Duration::from_millis(10));
   }
 
   assert!(*recovery_complete.lock());
@@ -231,23 +230,24 @@ fn persist_flow_keeps_values_independent() {
   let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn({
     let setups = setups.clone();
     let refs = refs.clone();
     move || Guardian::new(setups.clone(), refs.clone())
   });
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
-  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
-  for _ in 0..5 {
-    controller.inject_and_drive(1);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if refs.lock().len() >= 2 {
+      break;
+    }
+    thread::sleep(Duration::from_millis(10));
   }
 
   let mut refs_guard = refs.lock();
@@ -256,8 +256,12 @@ fn persist_flow_keeps_values_independent() {
   refs_guard[1].tell(AnyMessage::new(Command::Add(5)));
   drop(refs_guard);
 
-  for _ in 0..10 {
-    controller.inject_and_drive(1);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if *value_a.lock() == 2 && *value_b.lock() == 5 {
+      break;
+    }
+    thread::sleep(Duration::from_millis(10));
   }
 
   assert_eq!(*value_a.lock(), 2);

@@ -3,13 +3,14 @@
 use core::time::Duration;
 use std::{thread, vec::Vec};
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    setup::ActorSystemConfig,
   },
   system::ActorSystem,
 };
@@ -45,17 +46,15 @@ impl Actor for TimerActor {
 }
 
 fn main() {
-  let driver = ManualTestDriver::new();
-  let controller = driver.controller();
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let props = Props::from_fn({
     let events = events.clone();
     move || TimerActor::new(events.clone())
   });
-  let system = ActorSystem::new(&props, TickDriverConfig::manual(driver)).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
-  controller.inject_and_drive(1);
 
   wait_until(|| events.with_lock(|events| !events.is_empty()));
   assert_eq!(events.with_lock(|events| events.clone()), vec!["tick"]);

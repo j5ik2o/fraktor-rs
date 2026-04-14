@@ -44,11 +44,11 @@ use crate::core::kernel::{
     },
     props::MailboxConfig,
     scheduler::{
-      SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerShared,
+      SchedulerBackedDelayProvider, SchedulerContext, SchedulerShared,
       task_run::TaskRunSummary,
       tick_driver::{
-        TickDriverBundle, TickDriverControl, TickDriverControlShared, TickDriverHandle, TickDriverKind,
-        TickDriverProvisioningContext, TickExecutorSignal, TickFeed, next_tick_driver_id,
+        TickDriverBundle, TickDriverKind, TickDriverProvisioningContext, TickDriverStopper, TickExecutorSignal,
+        TickFeed, next_tick_driver_id,
       },
     },
     spawn::{NameRegistryError, SpawnError},
@@ -111,6 +111,7 @@ pub struct SystemState {
   scheduler_context: SchedulerContext,
   tick_driver_snapshot: Option<TickDriverSnapshot>,
   tick_driver_bundle: TickDriverBundle,
+  tick_driver_stopper: Option<Box<dyn TickDriverStopper>>,
   start_time: Duration,
 }
 
@@ -164,11 +165,12 @@ impl SystemState {
       scheduler_context,
       tick_driver_snapshot: None,
       tick_driver_bundle,
+      tick_driver_stopper: None,
       start_time: Duration::ZERO,
     }
   }
 
-  pub(crate) fn build_from_config(config: &ActorSystemConfig) -> Result<Self, SpawnError> {
+  pub(crate) fn build_from_owned_config(mut config: ActorSystemConfig) -> Result<Self, SpawnError> {
     use crate::core::kernel::actor::scheduler::tick_driver::TickDriverBootstrap;
 
     const DEAD_LETTER_CAPACITY: usize = 512;
@@ -179,7 +181,7 @@ impl SystemState {
     dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
-    let scheduler_config = SchedulerConfig::default();
+    let scheduler_config = *config.scheduler_config();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
     let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
     let mut state = Self {
@@ -218,53 +220,40 @@ impl SystemState {
       scheduler_context,
       tick_driver_snapshot: None,
       tick_driver_bundle,
+      tick_driver_stopper: None,
       start_time: Duration::ZERO,
     };
     state.start_time = config.start_time().unwrap_or_else(|| state.monotonic_now());
-    state.apply_actor_system_config(config);
+    state.apply_actor_system_config(&config);
 
-    let event_stream = state.event_stream();
-    let scheduler_config = *config.scheduler_config();
-    #[cfg(any(test, feature = "test-support"))]
-    let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
-      && matches!(
-        tick_driver_config,
-        crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::ManualTest(_)
-      )
-      && !scheduler_config.runner_api_enabled()
-    {
+    let driver =
+      config.take_tick_driver().ok_or_else(|| SpawnError::SystemBuildError("tick driver is required".into()))?;
+
+    // Auto-enable runner_api for Manual tick drivers.
+    let scheduler_config = if driver.kind() == TickDriverKind::Manual && !scheduler_config.runner_api_enabled() {
       scheduler_config.with_runner_api_enabled(true)
     } else {
       scheduler_config
     };
 
+    let event_stream = state.event_stream();
     let context = SchedulerContext::with_event_stream(scheduler_config, event_stream);
     let provisioning = TickDriverProvisioningContext::from_scheduler_context(&context);
     state.scheduler_context = context;
 
-    let tick_driver_config = config
-      .tick_driver_config()
-      .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
-    let (runtime, snapshot) = TickDriverBootstrap::provision(tick_driver_config, &provisioning)
+    let result = TickDriverBootstrap::provision(driver, &provisioning)
       .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
-    state.tick_driver_bundle = runtime;
-    state.tick_driver_snapshot = Some(snapshot);
+    state.tick_driver_bundle = result.bundle;
+    state.tick_driver_stopper = Some(result.stopper);
+    state.tick_driver_snapshot = Some(result.snapshot);
 
     Ok(state)
   }
 
   fn default_tick_driver_bundle(resolution: Duration) -> TickDriverBundle {
-    struct NoopDriverControl;
-
-    impl TickDriverControl for NoopDriverControl {
-      fn shutdown(&self) {}
-    }
-
     let signal = TickExecutorSignal::new();
     let feed = TickFeed::new(resolution, 1, signal);
-    let control = TickDriverControlShared::new(Box::new(NoopDriverControl));
-    let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
-    TickDriverBundle::new(handle, feed)
+    TickDriverBundle::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, feed)
   }
 
   /// Allocates a new unique [`Pid`] for an actor.
@@ -1092,7 +1081,9 @@ impl SystemState {
 
 impl Drop for SystemState {
   fn drop(&mut self) {
-    self.tick_driver_bundle.shutdown();
+    if let Some(stopper) = self.tick_driver_stopper.take() {
+      stopper.stop();
+    }
   }
 }
 

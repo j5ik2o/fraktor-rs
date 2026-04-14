@@ -184,11 +184,6 @@ impl TickFeed {
     self.driver_alive.store(true, Ordering::Release);
   }
 
-  /// Marks the driver as inactive (used on shutdown).
-  pub(crate) fn mark_driver_inactive(&self) {
-    self.driver_alive.store(false, Ordering::Release);
-  }
-
   /// Indicates whether the driver recently signaled activity.
   #[must_use]
   pub fn driver_active(&self) -> bool {
