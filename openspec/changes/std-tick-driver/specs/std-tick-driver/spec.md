@@ -128,6 +128,7 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **THEN** `AtomicBool` flag が false に設定される
 - **AND** tick スレッドと executor スレッドが `JoinHandle::join()` で完了を待たれる
 - **AND** `stop` が返った時点で両スレッドは完全に停止済み
+- **AND** 返却後に feed / executor へのアクセスは一切発生しない
 
 ### Requirement: actor-adaptor-std は TokioTickDriver を提供する
 

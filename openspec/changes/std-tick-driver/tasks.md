@@ -86,38 +86,52 @@
 - [ ] 6.33 `modules/actor-core/src/core/typed/actor_ref_resolver/tests.rs` を新 API に移行する（旧 `TypedActorSystem::new_with_config` → `create_with_config`）
 - [ ] 6.34 `modules/actor-core/src/core/typed/extension_setup/tests.rs` を新 API に移行する（旧 `TypedActorSystem::new_with_config` → `create_with_config`）
 - [ ] 6.35 `modules/actor-core/src/core/kernel/actor/setup/actor_system_setup/tests.rs` を新 API に移行する（旧 `ActorSystemSetup::with_tick_driver(TickDriverConfig)` → `with_tick_driver(新テスト driver)` + `create_with_setup`）
+- [ ] 6.36 `modules/actor-core/src/core/typed/tests.rs` を新 API に移行する（旧 `ManualTestDriver` / `TickDriverConfig` → 新テスト driver + `create_with_config`）
+- [ ] 6.37 `modules/actor-core/src/core/typed/receptionist/tests.rs` を新 API に移行する
+- [ ] 6.38 `modules/actor-core/src/core/typed/dsl/routing/group_router/tests.rs` を新 API に移行する
+- [ ] 6.39 `modules/actor-core/src/core/typed/actor/actor_context/tests.rs` を新 API に移行する
+- [ ] 6.40 `modules/actor-core/src/core/kernel/serialization/extension/tests.rs` を新 API に移行する
+- [ ] 6.41 `modules/actor-core/src/core/typed/delivery/tests.rs` を新 API に移行する
+- [ ] 6.42 `modules/actor-core/src/core/typed/pubsub/topic/tests.rs` を新 API に移行する
+- [ ] 6.43 `modules/actor-core/src/core/typed/spawn_protocol/tests.rs` を新 API に移行する
+- [ ] 6.44 `modules/actor-core/src/core/typed/dsl/ask_pattern/tests.rs` を新 API に移行する
+- [ ] 6.45 `modules/actor-core/src/core/typed/dsl/routing/tail_chopping_router_builder/tests.rs` を新 API に移行する
+- [ ] 6.46 `modules/actor-core/src/core/typed/dsl/routing/pool_router/tests.rs` を新 API に移行する
+- [ ] 6.47 `modules/actor-core/src/core/typed/dsl/routing/scatter_gather_first_completed_router_builder/tests.rs` を新 API に移行する
+- [ ] 6.48 `modules/actor-core/src/core/typed/dsl/routing/balancing_pool_router_builder/tests.rs` を新 API に移行する
+- [ ] 6.49 `modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/tests.rs` を新 API に移行する（旧 TickDriver trait テスト → 新 trait テスト）
 
 ### 6.D actor-adaptor-std テスト + bench 移行
 
-- [ ] 6.36 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/tests.rs` を新 API に移行する（旧 `default_tick_driver_config` → `TokioTickDriver`）
-- [ ] 6.37 `modules/actor-adaptor-std/src/std/tick_driver/tests.rs` を新 API に移行する（旧 trait テスト → 新 `TokioTickDriver` テスト）
-- [ ] 6.38 `modules/actor-adaptor-std/benches/actor_baseline.rs` を新 API に移行する（旧 `with_tick_driver(default_tick_driver_config())` / `new_with_config` → `TokioTickDriver` + `create_with_config`）
-- [ ] 6.39 `modules/actor-adaptor-std/benches/balancing_dispatcher.rs` を新 API に移行する
+- [ ] 6.50 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/tests.rs` を新 API に移行する（旧 `default_tick_driver_config` → `TokioTickDriver`）
+- [ ] 6.51 `modules/actor-adaptor-std/src/std/tick_driver/tests.rs` を新 API に移行する（旧 trait テスト → 新 `TokioTickDriver` テスト）
+- [ ] 6.52 `modules/actor-adaptor-std/benches/actor_baseline.rs` を新 API に移行する（旧 `with_tick_driver(default_tick_driver_config())` / `new_with_config` → `TokioTickDriver` + `create_with_config`）
+- [ ] 6.53 `modules/actor-adaptor-std/benches/balancing_dispatcher.rs` を新 API に移行する
 
 ### 6.E persistence-core テスト移行
 
-- [ ] 6.40 `modules/persistence-core/src/core/persistent_actor_adapter/tests.rs` を新 API に移行する（旧 `ManualTestDriver` / `TickDriverConfig::manual` / `new_with_config` → 新テスト driver + `create_with_config`）
-- [ ] 6.41 `modules/persistence-core/src/core/persistence_extension/tests.rs` を新 API に移行する
-- [ ] 6.42 `modules/persistence-core/src/core/persistence_extension_installer/tests.rs` を新 API に移行する
-- [ ] 6.43 `modules/persistence-core/tests/persistence_flow.rs` を新 API に移行する
-- [ ] 6.44 `modules/persistence-core/tests/persistent_actor_example.rs` を新 API に移行する
+- [ ] 6.54 `modules/persistence-core/src/core/persistent_actor_adapter/tests.rs` を新 API に移行する（旧 `ManualTestDriver` / `TickDriverConfig::manual` / `new_with_config` → 新テスト driver + `create_with_config`）
+- [ ] 6.55 `modules/persistence-core/src/core/persistence_extension/tests.rs` を新 API に移行する
+- [ ] 6.56 `modules/persistence-core/src/core/persistence_extension_installer/tests.rs` を新 API に移行する
+- [ ] 6.57 `modules/persistence-core/tests/persistence_flow.rs` を新 API に移行する
+- [ ] 6.58 `modules/persistence-core/tests/persistent_actor_example.rs` を新 API に移行する
 
 ### 6.F cluster-core テスト移行
 
-- [ ] 6.45 `modules/cluster-core/src/core/cluster_api/tests.rs` を新 API に移行する（旧 `with_tick_driver` / `new_with_config` → 新テスト driver + `create_with_config`）
-- [ ] 6.46 `modules/cluster-core/src/core/grain/grain_ref/tests.rs` を新 API に移行する
-- [ ] 6.47 `modules/cluster-core/src/core/grain/grain_context_scope/tests.rs` を新 API に移行する
-- [ ] 6.48 `modules/cluster-core/src/core/grain/grain_context_generic/tests.rs` を新 API に移行する
+- [ ] 6.59 `modules/cluster-core/src/core/cluster_api/tests.rs` を新 API に移行する（旧 `with_tick_driver` / `new_with_config` → 新テスト driver + `create_with_config`）
+- [ ] 6.60 `modules/cluster-core/src/core/grain/grain_ref/tests.rs` を新 API に移行する
+- [ ] 6.61 `modules/cluster-core/src/core/grain/grain_context_scope/tests.rs` を新 API に移行する
+- [ ] 6.62 `modules/cluster-core/src/core/grain/grain_context_generic/tests.rs` を新 API に移行する
 
 ### 6.G stream-core テスト移行
 
-- [ ] 6.49 `modules/stream-core/tests/requirement_traceability.rs` を新 API に移行する
-- [ ] 6.50 `modules/stream-core/src/core/materialization/actor_materializer/tests.rs` を新 API に移行する
-- [ ] 6.51 `modules/stream-core/src/core/dsl/topic_pub_sub/tests.rs` を新 API に移行する
+- [ ] 6.63 `modules/stream-core/tests/requirement_traceability.rs` を新 API に移行する
+- [ ] 6.64 `modules/stream-core/src/core/materialization/actor_materializer/tests.rs` を新 API に移行する
+- [ ] 6.65 `modules/stream-core/src/core/dsl/topic_pub_sub/tests.rs` を新 API に移行する
 
 ### 6.H 旧 adaptor-std re-export 削除
 
-- [ ] 6.52 `modules/actor-adaptor-std/src/std.rs` の旧 re-export（`default_tick_driver_config` / `tick_driver_config_with_resolution`）を `TokioTickDriver` の re-export に置き換える
+- [ ] 6.66 `modules/actor-adaptor-std/src/std.rs` の旧 re-export（`default_tick_driver_config` / `tick_driver_config_with_resolution`）を `TokioTickDriver` の re-export に置き換える
 
 ## 7. 検証
 
