@@ -45,22 +45,12 @@ mod tokio_tests {
   use core::time::Duration;
 
   use fraktor_actor_core_rs::core::kernel::{
-    actor::{
-      Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig,
-      setup::ActorSystemConfig,
-    },
+    actor::{Props, scheduler::SchedulerConfig, setup::ActorSystemConfig},
     system::ActorSystem,
   };
 
+  use super::GuardianActor;
   use crate::std::tick_driver::TokioTickDriver;
-
-  struct GuardianActor;
-
-  impl Actor for GuardianActor {
-    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-      Ok(())
-    }
-  }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
   async fn tokio_tick_driver_boots_actor_system() {
