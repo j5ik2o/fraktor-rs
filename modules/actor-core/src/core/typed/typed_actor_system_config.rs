@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::time::Duration;
 
-/// Immutable config snapshot exposed by [`TypedActorSystem::config`].
+/// Immutable config snapshot exposed by [`TypedActorSystem::settings`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypedActorSystemConfig {
   system_name: String,
@@ -11,7 +11,7 @@ pub struct TypedActorSystemConfig {
 }
 
 impl TypedActorSystemConfig {
-  /// Creates a new settings snapshot.
+  /// Creates a new config snapshot.
   #[must_use]
   pub(crate) const fn new(system_name: String, start_time: Duration) -> Self {
     Self { system_name, start_time }

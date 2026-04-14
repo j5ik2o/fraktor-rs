@@ -105,20 +105,20 @@ fn default_matches_new() {
   assert_eq!(from_new.max_fixed_buffer_size(), from_default.max_fixed_buffer_size());
 }
 
-// --- SubscriptionTimeoutConfig ---
+// --- SubscriptionTimeoutConfig のテスト ---
 
 #[test]
 fn subscription_timeout_config_new_stores_fields() {
-  let settings = SubscriptionTimeoutConfig::new(SubscriptionTimeoutMode::Noop, 42);
-  assert_eq!(settings.mode(), SubscriptionTimeoutMode::Noop);
-  assert_eq!(settings.timeout_ticks(), 42);
+  let config = SubscriptionTimeoutConfig::new(SubscriptionTimeoutMode::Noop, 42);
+  assert_eq!(config.mode(), SubscriptionTimeoutMode::Noop);
+  assert_eq!(config.timeout_ticks(), 42);
 }
 
 #[test]
 fn subscription_timeout_config_default_is_cancel_5000() {
-  let settings = SubscriptionTimeoutConfig::default();
-  assert_eq!(settings.mode(), SubscriptionTimeoutMode::Cancel);
-  assert_eq!(settings.timeout_ticks(), 5000);
+  let config = SubscriptionTimeoutConfig::default();
+  assert_eq!(config.mode(), SubscriptionTimeoutMode::Cancel);
+  assert_eq!(config.timeout_ticks(), 5000);
 }
 
 #[test]
@@ -130,8 +130,8 @@ fn subscription_timeout_mode_variants_are_distinct() {
 
 #[test]
 fn subscription_timeout_config_is_copy() {
-  let settings = SubscriptionTimeoutConfig::new(SubscriptionTimeoutMode::Warn, 10);
-  let copied = settings;
-  assert_eq!(settings.mode(), copied.mode());
-  assert_eq!(settings.timeout_ticks(), copied.timeout_ticks());
+  let config = SubscriptionTimeoutConfig::new(SubscriptionTimeoutMode::Warn, 10);
+  let copied = config;
+  assert_eq!(config.mode(), copied.mode());
+  assert_eq!(config.timeout_ticks(), copied.timeout_ticks());
 }

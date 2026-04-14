@@ -26,7 +26,7 @@ mod io_result;
 pub mod materialization;
 /// Result of offering an element into a source queue.
 mod queue_offer_result;
-/// Restart and backoff configuration settings.
+/// Restart and backoff configuration.
 mod restart_config;
 /// Restart log configuration.
 mod restart_log_config;

@@ -1,6 +1,6 @@
 use super::SubscriptionTimeoutMode;
 
-/// Settings for subscription timeout behavior.
+/// Configuration for subscription timeout behavior.
 ///
 /// Controls what happens when a stream subscription is not consumed
 /// within a configured number of ticks.
@@ -11,7 +11,7 @@ pub struct SubscriptionTimeoutConfig {
 }
 
 impl SubscriptionTimeoutConfig {
-  /// Creates new subscription timeout settings.
+  /// Creates new subscription timeout config.
   #[must_use]
   pub const fn new(mode: SubscriptionTimeoutMode, timeout_ticks: usize) -> Self {
     Self { mode, timeout_ticks }

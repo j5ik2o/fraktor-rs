@@ -9,32 +9,32 @@ use crate::core::ClusterRouterGroupConfig;
 
 /// Group router that maps hash keys to configured routee paths.
 pub struct ClusterRouterGroup {
-  settings: ClusterRouterGroupConfig,
+  config: ClusterRouterGroupConfig,
 }
 
 impl ClusterRouterGroup {
-  /// Creates a group router from settings.
+  /// Creates a group router from config.
   #[must_use]
-  pub const fn new(settings: ClusterRouterGroupConfig) -> Self {
-    Self { settings }
+  pub const fn new(config: ClusterRouterGroupConfig) -> Self {
+    Self { config }
   }
 
-  /// Returns router settings.
+  /// Returns router config.
   #[must_use]
-  pub const fn settings(&self) -> &ClusterRouterGroupConfig {
-    &self.settings
+  pub const fn config(&self) -> &ClusterRouterGroupConfig {
+    &self.config
   }
 
   /// Returns configured routee paths.
   #[must_use]
   pub fn routee_paths(&self) -> &[String] {
-    self.settings.routee_paths()
+    self.config.routee_paths()
   }
 
   /// Selects a routee path for the provided hash key.
   #[must_use]
   pub fn routee_for_key(&self, key: u64) -> Option<&str> {
-    let routees = self.settings.routee_paths();
+    let routees = self.config.routee_paths();
     if routees.is_empty() {
       return None;
     }

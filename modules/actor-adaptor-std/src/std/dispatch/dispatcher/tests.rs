@@ -195,10 +195,10 @@ async fn tokio_executor_factory_creates_executor_shared() {
 
 #[test]
 fn pinned_dispatcher_configurator_creates_fresh_dispatcher_per_call() {
-  let settings = DispatcherConfig::with_defaults("pinned-test");
+  let config = DispatcherConfig::with_defaults("pinned-test");
   let executor_factory: ArcShared<Box<dyn ExecutorFactory>> =
     ArcShared::new(Box::new(PinnedExecutorFactory::new("pinned-test")));
-  let configurator = PinnedDispatcherConfigurator::new(settings, executor_factory, "pinned-test");
+  let configurator = PinnedDispatcherConfigurator::new(config, executor_factory, "pinned-test");
 
   let _first = configurator.dispatcher();
   let _second = configurator.dispatcher();

@@ -20,8 +20,8 @@ const DEFAULT_ACK_RECEIVE_WINDOW: u32 = 1024;
 
 /// Typed remote subsystem configuration.
 ///
-/// Modeled after Pekko Artery's `RemoteSettings`, but expressed as a pure Rust
-/// struct with a `self`-consuming builder API (see Decision 11). The
+/// Modeled after Pekko Artery's `RemoteSettings` (`RemoteConfig` in fraktor-rs), expressed as a
+/// pure Rust struct with a `self`-consuming builder API (see Decision 11). The
 /// `ack_send_window` / `ack_receive_window` fields were added in Phase B
 /// together with the ack-based redelivery runtime in the `std` adapter.
 #[derive(Clone, Debug, PartialEq, Eq)]

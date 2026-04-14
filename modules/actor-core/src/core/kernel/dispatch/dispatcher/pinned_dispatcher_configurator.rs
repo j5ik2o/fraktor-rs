@@ -16,7 +16,7 @@ use super::{
 
 /// Configurator that produces a fresh [`PinnedDispatcher`] per call.
 pub struct PinnedDispatcherConfigurator {
-  settings:           DispatcherConfig,
+  config:             DispatcherConfig,
   executor_factory:   ArcShared<Box<dyn ExecutorFactory>>,
   thread_name_prefix: String,
 }
@@ -25,11 +25,11 @@ impl PinnedDispatcherConfigurator {
   /// Builds a new pinned configurator.
   #[must_use]
   pub fn new(
-    settings: DispatcherConfig,
+    config: DispatcherConfig,
     executor_factory: ArcShared<Box<dyn ExecutorFactory>>,
     thread_name_prefix: impl Into<String>,
   ) -> Self {
-    Self { settings, executor_factory, thread_name_prefix: thread_name_prefix.into() }
+    Self { config, executor_factory, thread_name_prefix: thread_name_prefix.into() }
   }
 
   /// Returns the thread name prefix configured for new dispatcher instances.
@@ -41,8 +41,8 @@ impl PinnedDispatcherConfigurator {
 
 impl MessageDispatcherConfigurator for PinnedDispatcherConfigurator {
   fn dispatcher(&self) -> MessageDispatcherShared {
-    let executor = self.executor_factory.create(self.settings.id());
-    let dispatcher = PinnedDispatcher::new(&self.settings, executor);
+    let executor = self.executor_factory.create(self.config.id());
+    let dispatcher = PinnedDispatcher::new(&self.config, executor);
     MessageDispatcherShared::new(Box::new(dispatcher))
   }
 }
