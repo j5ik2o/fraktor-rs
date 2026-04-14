@@ -23,7 +23,7 @@ use super::{
   RepeatSourceLogic, UnboundedQueueSourceLogic,
 };
 use crate::core::{
-  BoundedSourceQueue, DynValue, OverflowStrategy, QueueOfferResult, RestartSettings, SharedKillSwitch, SourceLogic,
+  BoundedSourceQueue, DynValue, OverflowStrategy, QueueOfferResult, RestartConfig, SharedKillSwitch, SourceLogic,
   StageDefinition, StreamDslError, StreamError, SubstreamCancelStrategy, ThrottleMode,
   attributes::{Attributes, DispatcherAttribute},
   dsl::{RunnableGraph, Sink, Source},
@@ -2246,7 +2246,7 @@ fn source_with_backoff_and_context_alias_keeps_single_path_behavior() {
 
 #[test]
 fn source_restart_with_settings_keeps_single_path_behavior() {
-  let settings = RestartSettings::new(1, 4, 3)
+  let settings = RestartConfig::new(1, 4, 3)
     .with_random_factor_permille(250)
     .with_max_restarts_within_ticks(16)
     .with_jitter_seed(11);

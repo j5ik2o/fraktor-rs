@@ -1,4 +1,4 @@
-//! Typed `RemoteSettings` with a `self`-consuming builder API.
+//! Typed `RemoteConfig` with a `self`-consuming builder API.
 
 use alloc::string::String;
 use core::time::Duration;
@@ -25,7 +25,7 @@ const DEFAULT_ACK_RECEIVE_WINDOW: u32 = 1024;
 /// `ack_send_window` / `ack_receive_window` fields were added in Phase B
 /// together with the ack-based redelivery runtime in the `std` adapter.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RemoteSettings {
+pub struct RemoteConfig {
   canonical_host:           String,
   canonical_port:           Option<u16>,
   handshake_timeout:        Duration,
@@ -35,8 +35,8 @@ pub struct RemoteSettings {
   ack_receive_window:       u32,
 }
 
-impl RemoteSettings {
-  /// Creates a new [`RemoteSettings`] with the given canonical host and default values
+impl RemoteConfig {
+  /// Creates a new [`RemoteConfig`] with the given canonical host and default values
   /// for every other field.
   #[must_use]
   pub fn new(canonical_host: impl Into<String>) -> Self {

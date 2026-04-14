@@ -19,8 +19,8 @@ mod runnable_graph;
 mod stream_completion;
 mod stream_done;
 mod stream_not_used;
+mod subscription_timeout_config;
 mod subscription_timeout_mode;
-mod subscription_timeout_settings;
 
 pub use actor_materializer::ActorMaterializer;
 pub use actor_materializer_config::ActorMaterializerConfig;
@@ -39,5 +39,5 @@ pub use runnable_graph::RunnableGraph;
 pub use stream_completion::StreamCompletion;
 pub use stream_done::StreamDone;
 pub use stream_not_used::StreamNotUsed;
+pub use subscription_timeout_config::SubscriptionTimeoutConfig;
 pub use subscription_timeout_mode::SubscriptionTimeoutMode;
-pub use subscription_timeout_settings::SubscriptionTimeoutSettings;

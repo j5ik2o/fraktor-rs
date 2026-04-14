@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use crate::core::{
   SupervisionStrategy,
-  materialization::{ActorMaterializerConfig, SubscriptionTimeoutMode, SubscriptionTimeoutSettings},
+  materialization::{ActorMaterializerConfig, SubscriptionTimeoutConfig, SubscriptionTimeoutMode},
 };
 
 // --- default values ---
@@ -49,7 +49,7 @@ fn with_supervision_strategy_round_trip() {
 
 #[test]
 fn with_subscription_timeout_round_trip() {
-  let timeout = SubscriptionTimeoutSettings::new(SubscriptionTimeoutMode::Warn, 100);
+  let timeout = SubscriptionTimeoutConfig::new(SubscriptionTimeoutMode::Warn, 100);
   let config = ActorMaterializerConfig::new().with_subscription_timeout(timeout);
   assert_eq!(config.subscription_timeout().mode(), SubscriptionTimeoutMode::Warn);
   assert_eq!(config.subscription_timeout().timeout_ticks(), 100);
@@ -105,18 +105,18 @@ fn default_matches_new() {
   assert_eq!(from_new.max_fixed_buffer_size(), from_default.max_fixed_buffer_size());
 }
 
-// --- SubscriptionTimeoutSettings ---
+// --- SubscriptionTimeoutConfig ---
 
 #[test]
-fn subscription_timeout_settings_new_stores_fields() {
-  let settings = SubscriptionTimeoutSettings::new(SubscriptionTimeoutMode::Noop, 42);
+fn subscription_timeout_config_new_stores_fields() {
+  let settings = SubscriptionTimeoutConfig::new(SubscriptionTimeoutMode::Noop, 42);
   assert_eq!(settings.mode(), SubscriptionTimeoutMode::Noop);
   assert_eq!(settings.timeout_ticks(), 42);
 }
 
 #[test]
-fn subscription_timeout_settings_default_is_cancel_5000() {
-  let settings = SubscriptionTimeoutSettings::default();
+fn subscription_timeout_config_default_is_cancel_5000() {
+  let settings = SubscriptionTimeoutConfig::default();
   assert_eq!(settings.mode(), SubscriptionTimeoutMode::Cancel);
   assert_eq!(settings.timeout_ticks(), 5000);
 }
@@ -129,8 +129,8 @@ fn subscription_timeout_mode_variants_are_distinct() {
 }
 
 #[test]
-fn subscription_timeout_settings_is_copy() {
-  let settings = SubscriptionTimeoutSettings::new(SubscriptionTimeoutMode::Warn, 10);
+fn subscription_timeout_config_is_copy() {
+  let settings = SubscriptionTimeoutConfig::new(SubscriptionTimeoutMode::Warn, 10);
   let copied = settings;
   assert_eq!(settings.mode(), copied.mode());
   assert_eq!(settings.timeout_ticks(), copied.timeout_ticks());

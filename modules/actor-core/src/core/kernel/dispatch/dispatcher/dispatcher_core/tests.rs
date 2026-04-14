@@ -7,7 +7,7 @@ use core::{
 
 use super::DispatcherCore;
 use crate::core::kernel::dispatch::dispatcher::{
-  DispatcherSettings, ExecuteError, Executor, ExecutorShared, TrampolineState, shutdown_schedule::ShutdownSchedule,
+  DispatcherConfig, ExecuteError, Executor, ExecutorShared, TrampolineState, shutdown_schedule::ShutdownSchedule,
 };
 
 struct StubExecutor {
@@ -32,7 +32,7 @@ fn make_core() -> (DispatcherCore, Arc<AtomicUsize>) {
   let shutdowns = Arc::new(AtomicUsize::new(0));
   let executor =
     ExecutorShared::new(Box::new(StubExecutor { shutdowns: Arc::clone(&shutdowns) }), TrampolineState::new());
-  let settings = DispatcherSettings::new("test", nz(5), Some(Duration::from_millis(10)), Duration::from_secs(1));
+  let settings = DispatcherConfig::new("test", nz(5), Some(Duration::from_millis(10)), Duration::from_secs(1));
   (DispatcherCore::new(&settings, executor), shutdowns)
 }
 

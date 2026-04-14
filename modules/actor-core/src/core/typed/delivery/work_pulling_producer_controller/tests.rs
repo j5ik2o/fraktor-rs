@@ -24,8 +24,8 @@ use crate::core::{
     actor::TypedActorContext,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, MessageSent, ProducerControllerCommand,
-      ProducerControllerRequestNext, ProducerControllerSettings, StoreMessageSentAck, WorkPullingProducerController,
-      WorkPullingProducerControllerCommand, WorkPullingProducerControllerSettings,
+      ProducerControllerConfig, ProducerControllerRequestNext, StoreMessageSentAck, WorkPullingProducerController,
+      WorkPullingProducerControllerCommand, WorkPullingProducerControllerConfig,
     },
     receptionist::{Listing, ServiceKey},
   },
@@ -87,7 +87,7 @@ fn work_pulling_producer_controller_factory_methods_compile() {
 #[test]
 fn work_pulling_producer_controller_with_settings_compiles() {
   let key = ServiceKey::<ConsumerControllerCommand<u32>>::new("test-workers");
-  let settings = WorkPullingProducerControllerSettings::new();
+  let settings = WorkPullingProducerControllerConfig::new();
   let _behavior = WorkPullingProducerController::behavior_with_settings::<u32>("test-producer", key, &settings, None);
 }
 
@@ -223,7 +223,7 @@ fn worker_removal_replays_unconfirmed_messages_to_self() {
     &listing,
     "test-producer",
     &self_ref,
-    &ProducerControllerSettings::new(),
+    &ProducerControllerConfig::new(),
     &mut deferred,
   );
 
@@ -249,7 +249,7 @@ fn worker_spawn_propagates_nested_producer_controller_settings() {
   let worker_ref = ActorRef::new_with_builtin_lock(Pid::new(11, 0), NullSender);
   let listing = Listing::new("test-workers", TypeId::of::<ConsumerControllerCommand<u32>>(), vec![worker_ref]);
   let mut deferred = Vec::new();
-  let producer_settings = ProducerControllerSettings::new().with_durable_queue_retry_attempts(3);
+  let producer_settings = ProducerControllerConfig::new().with_durable_queue_retry_attempts(3);
 
   collect_on_worker_listing(&mut state, &listing, "test-producer", &self_ref, &producer_settings, &mut deferred);
 

@@ -27,9 +27,9 @@ use crate::core::{
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, DurableProducerQueueState, MessageSent,
-      ProducerController, ProducerControllerCommand, ProducerControllerRequestNext, ProducerControllerSettings,
-      StoreMessageSentAck, WorkPullingProducerControllerCommand, WorkPullingProducerControllerRequestNext,
-      WorkPullingProducerControllerSettings, WorkerStats,
+      ProducerController, ProducerControllerCommand, ProducerControllerConfig, ProducerControllerRequestNext,
+      StoreMessageSentAck, WorkPullingProducerControllerCommand, WorkPullingProducerControllerConfig,
+      WorkPullingProducerControllerRequestNext, WorkerStats,
       work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
     },
     dsl::Behaviors,
@@ -71,7 +71,7 @@ where
     worker_ref:                   ActorRef,
     producer_id:                  String,
     demand_adapter:               TypedActorRef<ProducerControllerRequestNext<A>>,
-    producer_controller_settings: ProducerControllerSettings,
+    producer_controller_settings: ProducerControllerConfig,
   },
   LogDropped {
     total_seq_nr: u64,
@@ -261,7 +261,7 @@ impl WorkPullingProducerController {
     Self::behavior_with_settings(
       producer_id,
       worker_service_key,
-      &WorkPullingProducerControllerSettings::new(),
+      &WorkPullingProducerControllerConfig::new(),
       durable_queue,
     )
   }
@@ -275,7 +275,7 @@ impl WorkPullingProducerController {
   ) -> Behavior<WorkPullingProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(producer_id, worker_service_key, &WorkPullingProducerControllerSettings::new(), None)
+    Self::behavior_with_settings(producer_id, worker_service_key, &WorkPullingProducerControllerConfig::new(), None)
   }
 
   /// Creates the work-pulling producer controller behavior with custom
@@ -284,7 +284,7 @@ impl WorkPullingProducerController {
   pub fn behavior_with_settings<A>(
     producer_id: impl Into<String>,
     worker_service_key: ServiceKey<ConsumerControllerCommand<A>>,
-    settings: &WorkPullingProducerControllerSettings,
+    settings: &WorkPullingProducerControllerConfig,
     durable_queue_behavior: Option<Behavior<DurableProducerQueueCommand<A>>>,
   ) -> Behavior<WorkPullingProducerControllerCommand<A>>
   where
@@ -590,7 +590,7 @@ fn collect_on_worker_listing<A>(
   listing: &Listing,
   producer_id: &str,
   self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
-  producer_controller_settings: &ProducerControllerSettings,
+  producer_controller_settings: &ProducerControllerConfig,
   deferred: &mut Vec<WppcDeferredAction<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
@@ -1054,7 +1054,7 @@ fn spawn_worker_actor<A>(
   ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   worker_ref: &ActorRef,
   pc_producer_id: &str,
-  producer_controller_settings: &ProducerControllerSettings,
+  producer_controller_settings: &ProducerControllerConfig,
 ) -> Option<SpawnedWorker<A>>
 where
   A: Clone + Send + Sync + 'static, {

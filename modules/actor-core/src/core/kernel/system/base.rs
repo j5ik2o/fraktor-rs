@@ -46,7 +46,7 @@ use crate::core::{
     util::futures::ActorFutureShared,
   },
   typed::{
-    ActorRefResolver, TypedActorSystemSettings, TypedProps,
+    ActorRefResolver, TypedActorSystemConfig, TypedProps,
     receptionist::{Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
   },
 };
@@ -57,7 +57,7 @@ const CREATE_SEND_FAILED: &str = "create system message delivery failed";
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystem {
   state:    SystemStateShared,
-  settings: TypedActorSystemSettings,
+  settings: TypedActorSystemConfig,
 }
 
 impl ActorSystem {
@@ -98,7 +98,7 @@ impl ActorSystem {
   /// Creates an actor system from an existing system state.
   #[must_use]
   pub fn from_state(state: SystemStateShared) -> Self {
-    let settings = TypedActorSystemSettings::new(state.system_name(), state.start_time());
+    let settings = TypedActorSystemConfig::new(state.system_name(), state.start_time());
     Self { state, settings }
   }
 
@@ -403,7 +403,7 @@ impl ActorSystem {
 
   /// Returns the immutable settings snapshot preserved by this actor system.
   #[must_use]
-  pub fn settings(&self) -> TypedActorSystemSettings {
+  pub fn settings(&self) -> TypedActorSystemConfig {
     self.settings.clone()
   }
 

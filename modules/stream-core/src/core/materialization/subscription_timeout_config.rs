@@ -5,12 +5,12 @@ use super::SubscriptionTimeoutMode;
 /// Controls what happens when a stream subscription is not consumed
 /// within a configured number of ticks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SubscriptionTimeoutSettings {
+pub struct SubscriptionTimeoutConfig {
   mode:          SubscriptionTimeoutMode,
   timeout_ticks: usize,
 }
 
-impl SubscriptionTimeoutSettings {
+impl SubscriptionTimeoutConfig {
   /// Creates new subscription timeout settings.
   #[must_use]
   pub const fn new(mode: SubscriptionTimeoutMode, timeout_ticks: usize) -> Self {
@@ -30,7 +30,7 @@ impl SubscriptionTimeoutSettings {
   }
 }
 
-impl Default for SubscriptionTimeoutSettings {
+impl Default for SubscriptionTimeoutConfig {
   fn default() -> Self {
     Self { mode: SubscriptionTimeoutMode::Cancel, timeout_ticks: 5000 }
   }

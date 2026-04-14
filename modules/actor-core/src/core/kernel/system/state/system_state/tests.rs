@@ -31,7 +31,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, MessageDispatcherConfigurator,
+      DefaultDispatcherConfigurator, DispatcherConfig, ExecuteError, Executor, MessageDispatcherConfigurator,
       TrampolineState,
     },
     mailbox::MailboxMessage,
@@ -842,7 +842,7 @@ impl Executor for NoopExecutor {
 
 fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
   use crate::core::kernel::dispatch::dispatcher::ExecutorShared;
-  let settings = DispatcherSettings::with_defaults("noop");
+  let settings = DispatcherConfig::with_defaults("noop");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor));

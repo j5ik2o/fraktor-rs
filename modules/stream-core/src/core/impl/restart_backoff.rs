@@ -1,8 +1,8 @@
-use crate::core::RestartSettings;
+use crate::core::RestartConfig;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RestartBackoff {
-  settings:              RestartSettings,
+  settings:              RestartConfig,
   restart_count:         usize,
   cooldown_ticks:        u32,
   pending:               bool,
@@ -13,10 +13,10 @@ pub(crate) struct RestartBackoff {
 
 impl RestartBackoff {
   pub(crate) fn new(min_backoff_ticks: u32, max_restarts: usize) -> Self {
-    Self::from_settings(RestartSettings::new(min_backoff_ticks, min_backoff_ticks, max_restarts))
+    Self::from_settings(RestartConfig::new(min_backoff_ticks, min_backoff_ticks, max_restarts))
   }
 
-  pub(crate) const fn from_settings(settings: RestartSettings) -> Self {
+  pub(crate) const fn from_settings(settings: RestartConfig) -> Self {
     let min_backoff_ticks = settings.min_backoff_ticks();
     let jitter_seed = settings.jitter_seed();
     Self {

@@ -9,7 +9,7 @@ use crate::core::kernel::{
     Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, spawn::SpawnError,
   },
   dispatch::dispatcher::{
-    DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcher, TrampolineState,
+    DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcher, TrampolineState,
   },
   system::ActorSystem,
 };
@@ -39,7 +39,7 @@ fn nz(value: usize) -> NonZeroUsize {
 fn make_dispatcher() -> PinnedDispatcher {
   // Note the throughput value here is intentionally small; PinnedDispatcher must
   // override it to usize::MAX so we can verify the normalisation.
-  let settings = DispatcherSettings::new("pinned-id", nz(3), Some(Duration::from_millis(50)), Duration::from_secs(1));
+  let settings = DispatcherConfig::new("pinned-id", nz(3), Some(Duration::from_millis(50)), Duration::from_secs(1));
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   PinnedDispatcher::new(&settings, executor)
 }

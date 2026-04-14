@@ -14,7 +14,7 @@ use core::{
 
 use super::{
   BoundedSourceQueue, DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer,
-  OverflowStrategy, RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue,
+  OverflowStrategy, RestartBackoff, RestartConfig, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue,
   SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamCompletion,
   StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow::{
@@ -1501,7 +1501,7 @@ where
 
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
-  pub fn restart_source_with_settings(mut self, settings: RestartSettings) -> Source<Out, Mat> {
+  pub fn restart_source_with_settings(mut self, settings: RestartConfig) -> Source<Out, Mat> {
     self.graph.set_source_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }

@@ -5,11 +5,11 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use crate::core::ClusterRouterPoolSettings;
+use crate::core::ClusterRouterPoolConfig;
 
 /// Round-robin pool router for cluster routees.
 pub struct ClusterRouterPool {
-  settings:   ClusterRouterPoolSettings,
+  settings:   ClusterRouterPoolConfig,
   routees:    Vec<String>,
   next_index: usize,
 }
@@ -17,13 +17,13 @@ pub struct ClusterRouterPool {
 impl ClusterRouterPool {
   /// Creates a pool router with settings and initial routees.
   #[must_use]
-  pub const fn new(settings: ClusterRouterPoolSettings, routees: Vec<String>) -> Self {
+  pub const fn new(settings: ClusterRouterPoolConfig, routees: Vec<String>) -> Self {
     Self { settings, routees, next_index: 0 }
   }
 
   /// Returns the router settings.
   #[must_use]
-  pub const fn settings(&self) -> &ClusterRouterPoolSettings {
+  pub const fn settings(&self) -> &ClusterRouterPoolConfig {
     &self.settings
   }
 
@@ -41,7 +41,7 @@ impl ClusterRouterPool {
 
   /// Selects the next routee authority using round-robin.
   ///
-  /// The effective pool is capped at [`ClusterRouterPoolSettings::total_instances`].
+  /// The effective pool is capped at [`ClusterRouterPoolConfig::total_instances`].
   #[must_use]
   pub fn next_routee(&mut self) -> Option<&str> {
     if self.routees.is_empty() {

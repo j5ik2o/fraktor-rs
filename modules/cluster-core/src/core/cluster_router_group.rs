@@ -5,23 +5,23 @@ mod tests;
 
 use alloc::string::String;
 
-use crate::core::ClusterRouterGroupSettings;
+use crate::core::ClusterRouterGroupConfig;
 
 /// Group router that maps hash keys to configured routee paths.
 pub struct ClusterRouterGroup {
-  settings: ClusterRouterGroupSettings,
+  settings: ClusterRouterGroupConfig,
 }
 
 impl ClusterRouterGroup {
   /// Creates a group router from settings.
   #[must_use]
-  pub const fn new(settings: ClusterRouterGroupSettings) -> Self {
+  pub const fn new(settings: ClusterRouterGroupConfig) -> Self {
     Self { settings }
   }
 
   /// Returns router settings.
   #[must_use]
-  pub const fn settings(&self) -> &ClusterRouterGroupSettings {
+  pub const fn settings(&self) -> &ClusterRouterGroupConfig {
     &self.settings
   }
 

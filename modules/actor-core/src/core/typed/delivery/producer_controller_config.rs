@@ -18,14 +18,14 @@ const DEFAULT_CHUNK_LARGE_MESSAGES_BYTES: usize = 0;
 ///
 /// Corresponds to Pekko's `ProducerController.Settings`.
 #[derive(Debug, Clone)]
-pub struct ProducerControllerSettings {
+pub struct ProducerControllerConfig {
   durable_queue_request_timeout:       Duration,
   durable_queue_retry_attempts:        u32,
   durable_queue_resend_first_interval: Duration,
   chunk_large_messages_bytes:          usize,
 }
 
-impl ProducerControllerSettings {
+impl ProducerControllerConfig {
   /// Creates default settings.
   #[must_use]
   pub const fn new() -> Self {
@@ -88,7 +88,7 @@ impl ProducerControllerSettings {
   }
 }
 
-impl Default for ProducerControllerSettings {
+impl Default for ProducerControllerConfig {
   fn default() -> Self {
     Self::new()
   }

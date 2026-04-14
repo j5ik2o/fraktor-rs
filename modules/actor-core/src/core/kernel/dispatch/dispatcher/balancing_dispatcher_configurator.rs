@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use super::{
-  balancing_dispatcher::BalancingDispatcher, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
+  balancing_dispatcher::BalancingDispatcher, dispatcher_config::DispatcherConfig, executor_shared::ExecutorShared,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
   shared_message_queue::SharedMessageQueue,
 };
@@ -20,7 +20,7 @@ pub struct BalancingDispatcherConfigurator {
 impl BalancingDispatcherConfigurator {
   /// Builds a new configurator from the supplied settings and executor.
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
+  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
     let dispatcher = BalancingDispatcher::new(settings, executor, shared_queue);
     Self { shared: MessageDispatcherShared::new(Box::new(dispatcher)) }
   }

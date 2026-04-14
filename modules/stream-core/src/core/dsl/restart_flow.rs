@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{RestartSettings, flow::Flow};
+use super::{RestartConfig, flow::Flow};
 
 /// Thin DSL wrapper mirroring Pekko-style `RestartFlow` entry points.
 pub struct RestartFlow;
@@ -24,7 +24,7 @@ impl RestartFlow {
 
   /// Applies restart settings to a flow.
   #[must_use]
-  pub fn with_settings<In, Out, Mat>(flow: Flow<In, Out, Mat>, settings: RestartSettings) -> Flow<In, Out, Mat>
+  pub fn with_settings<In, Out, Mat>(flow: Flow<In, Out, Mat>, settings: RestartConfig) -> Flow<In, Out, Mat>
   where
     In: Send + Sync + 'static,
     Out: Send + Sync + 'static, {

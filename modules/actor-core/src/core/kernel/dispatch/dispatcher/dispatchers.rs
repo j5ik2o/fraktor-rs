@@ -23,7 +23,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{
-  default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_settings::DispatcherSettings,
+  default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_config::DispatcherConfig,
   dispatchers_error::DispatchersError, executor_shared::ExecutorShared, inline_executor::InlineExecutor,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
   trampoline_state::TrampolineState,
@@ -139,7 +139,7 @@ impl Dispatchers {
   }
 
   fn build_default_inline_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-    let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+    let settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
     let executor = ExecutorShared::new(Box::new(InlineExecutor::new()), TrampolineState::new());
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));

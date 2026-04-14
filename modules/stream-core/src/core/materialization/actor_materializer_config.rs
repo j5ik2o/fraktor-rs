@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use super::SubscriptionTimeoutSettings;
+use super::SubscriptionTimeoutConfig;
 use crate::core::{SupervisionStrategy, r#impl::fusing::StreamBufferConfig};
 
 #[cfg(test)]
@@ -11,7 +11,7 @@ pub struct ActorMaterializerConfig {
   drive_interval:        Duration,
   buffer_config:         StreamBufferConfig,
   supervision_strategy:  SupervisionStrategy,
-  subscription_timeout:  SubscriptionTimeoutSettings,
+  subscription_timeout:  SubscriptionTimeoutConfig,
   debug_logging:         bool,
   output_burst_limit:    usize,
   max_fixed_buffer_size: usize,
@@ -25,7 +25,7 @@ impl ActorMaterializerConfig {
       drive_interval:        Duration::from_millis(10),
       buffer_config:         StreamBufferConfig::default(),
       supervision_strategy:  SupervisionStrategy::Stop,
-      subscription_timeout:  SubscriptionTimeoutSettings::default(),
+      subscription_timeout:  SubscriptionTimeoutConfig::default(),
       debug_logging:         false,
       output_burst_limit:    1000,
       max_fixed_buffer_size: 1_000_000_000,
@@ -52,7 +52,7 @@ impl ActorMaterializerConfig {
 
   /// Returns the configured subscription timeout settings.
   #[must_use]
-  pub const fn subscription_timeout(&self) -> SubscriptionTimeoutSettings {
+  pub const fn subscription_timeout(&self) -> SubscriptionTimeoutConfig {
     self.subscription_timeout
   }
 
@@ -97,7 +97,7 @@ impl ActorMaterializerConfig {
 
   /// Updates the subscription timeout settings.
   #[must_use]
-  pub const fn with_subscription_timeout(mut self, subscription_timeout: SubscriptionTimeoutSettings) -> Self {
+  pub const fn with_subscription_timeout(mut self, subscription_timeout: SubscriptionTimeoutConfig) -> Self {
     self.subscription_timeout = subscription_timeout;
     self
   }

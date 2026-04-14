@@ -1,19 +1,19 @@
-//! Minimal settings for cluster router group behavior.
+//! Minimal config for cluster router group behavior.
 
 #[cfg(test)]
 mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-/// Settings for group-style cluster routing.
+/// Config for group-style cluster routing.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClusterRouterGroupSettings {
+pub struct ClusterRouterGroupConfig {
   routee_paths:        Vec<String>,
   allow_local_routees: bool,
 }
 
-impl ClusterRouterGroupSettings {
-  /// Creates settings with explicit routee paths.
+impl ClusterRouterGroupConfig {
+  /// Creates config with explicit routee paths.
   #[must_use]
   pub const fn new(routee_paths: Vec<String>) -> Self {
     Self { routee_paths, allow_local_routees: true }

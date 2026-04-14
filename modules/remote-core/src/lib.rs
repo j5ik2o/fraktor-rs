@@ -72,7 +72,7 @@
 //! | [`failure_detector`] | `akka.remote.PhiAccrualFailureDetector` |
 //! | [`instrument`]       | `akka.remote.artery.RemoteInstrument` + `FlightRecorder` |
 //! | [`provider`]         | `akka.remote.RemoteActorRefProvider` (remote path portion) |
-//! | [`settings`]         | `akka.remote.RemoteSettings` |
+//! | [`config`]           | `akka.remote.RemoteSettings` |
 //! | [`transport`]        | `akka.remote.artery.RemoteTransport` |
 //! | [`watcher`]          | `akka.remote.RemoteWatcher` (state portion only) |
 //! | [`wire`]             | `akka.remote.artery.Codecs` (independent binary format) |
@@ -101,12 +101,12 @@ extern crate alloc;
 
 pub mod address;
 pub mod association;
+pub mod config;
 pub mod envelope;
 pub mod extension;
 pub mod failure_detector;
 pub mod instrument;
 pub mod provider;
-pub mod settings;
 pub mod transport;
 pub mod watcher;
 pub mod wire;

@@ -13,7 +13,7 @@ use fraktor_utils_core_rs::core::{
 
 use crate::core::{
   Attributes, DynValue, FailureAction, FlowDefinition, FlowLogic, KillSwitchState, KillSwitchStateHandle,
-  OverflowStrategy, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
+  OverflowStrategy, RestartConfig, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
   StageDefinition, StreamError, StreamPlan, SubstreamCancelStrategy, SupervisionStrategy,
   dsl::{Flow, Sink, Source},
   r#impl::{
@@ -1859,9 +1859,7 @@ fn source_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     mat_combine: MatCombine::Right,
     logic:       Box::new(AlwaysFailSourceLogic),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(
-      RestartSettings::new(0, 0, 1).with_complete_on_max_restarts(false),
-    )),
+    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
     attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
@@ -1968,9 +1966,7 @@ fn flow_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     mat_combine: MatCombine::Left,
     logic:       Box::new(RestartCounterFlowLogic { restart_calls: ArcShared::new(SpinSyncMutex::new(0_u32)) }),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(
-      RestartSettings::new(0, 0, 1).with_complete_on_max_restarts(false),
-    )),
+    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
     attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
@@ -2034,9 +2030,7 @@ fn sink_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     mat_combine: MatCombine::Right,
     logic:       Box::new(AlwaysFailCollectSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(
-      RestartSettings::new(0, 0, 1).with_complete_on_max_restarts(false),
-    )),
+    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
     attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(

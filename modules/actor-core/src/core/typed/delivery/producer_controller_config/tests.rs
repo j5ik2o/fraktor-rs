@@ -1,10 +1,10 @@
 use core::time::Duration;
 
-use super::ProducerControllerSettings;
+use super::ProducerControllerConfig;
 
 #[test]
 fn default_settings_can_be_created() {
-  let settings = ProducerControllerSettings::new();
+  let settings = ProducerControllerConfig::new();
   assert_eq!(settings.durable_queue_request_timeout(), Duration::from_secs(3));
   assert_eq!(settings.durable_queue_retry_attempts(), 10);
   assert_eq!(settings.durable_queue_resend_first_interval(), Duration::from_secs(1));
@@ -13,7 +13,7 @@ fn default_settings_can_be_created() {
 
 #[test]
 fn builder_methods_override_and_preserve_other_fields() {
-  let settings = ProducerControllerSettings::new()
+  let settings = ProducerControllerConfig::new()
     .with_durable_queue_request_timeout(Duration::from_millis(25))
     .with_durable_queue_retry_attempts(4)
     .with_durable_queue_resend_first_interval(Duration::from_millis(7))

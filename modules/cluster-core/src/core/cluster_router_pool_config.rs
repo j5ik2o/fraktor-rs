@@ -1,17 +1,17 @@
-//! Minimal settings for cluster router pool behavior.
+//! Minimal config for cluster router pool behavior.
 
 #[cfg(test)]
 mod tests;
 
-/// Settings for pool-style cluster routing.
+/// Config for pool-style cluster routing.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClusterRouterPoolSettings {
+pub struct ClusterRouterPoolConfig {
   total_instances:     usize,
   allow_local_routees: bool,
 }
 
-impl ClusterRouterPoolSettings {
-  /// Creates settings with the provided total instance count.
+impl ClusterRouterPoolConfig {
+  /// Creates config with the provided total instance count.
   ///
   /// # Panics
   ///

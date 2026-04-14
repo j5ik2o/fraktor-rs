@@ -14,7 +14,7 @@ use crate::core::{
     actor::TypedActorContext,
     behavior::Behavior,
     delivery::{
-      ConsumerControllerCommand, ConsumerControllerConfirmed, ConsumerControllerDelivery, ConsumerControllerSettings,
+      ConsumerControllerCommand, ConsumerControllerConfig, ConsumerControllerConfirmed, ConsumerControllerDelivery,
       ProducerControllerCommand, SeqNr, SequencedMessage, consumer_controller_command::ConsumerControllerCommandKind,
     },
     dsl::Behaviors,
@@ -32,7 +32,7 @@ where
 struct ConsumerControllerState<A>
 where
   A: Clone + Send + Sync + 'static, {
-  settings:            ConsumerControllerSettings,
+  settings:            ConsumerControllerConfig,
   received_seq_nr:     SeqNr,
   delivered_seq_nr:    SeqNr,
   confirmed_seq_nr:    SeqNr,
@@ -48,7 +48,7 @@ impl<A> ConsumerControllerState<A>
 where
   A: Clone + Send + Sync + 'static,
 {
-  const fn new(settings: ConsumerControllerSettings) -> Self {
+  const fn new(settings: ConsumerControllerConfig) -> Self {
     Self {
       settings,
       received_seq_nr: 0,
@@ -122,12 +122,12 @@ impl ConsumerController {
   pub fn behavior<A>() -> Behavior<ConsumerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(ConsumerControllerSettings::new())
+    Self::behavior_with_settings(ConsumerControllerConfig::new())
   }
 
   /// Creates the consumer controller behavior with custom settings.
   #[must_use]
-  pub fn behavior_with_settings<A>(settings: ConsumerControllerSettings) -> Behavior<ConsumerControllerCommand<A>>
+  pub fn behavior_with_settings<A>(settings: ConsumerControllerConfig) -> Behavior<ConsumerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
     let state = SharedLock::new_with_driver::<DefaultMutex<_>>(ConsumerControllerState::<A>::new(settings));
