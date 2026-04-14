@@ -14,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
 };
 use tokio::{
-  runtime::Handle,
+  runtime::{Handle, RuntimeFlavor},
   task::JoinHandle,
   time::{MissedTickBehavior, interval},
 };
@@ -55,7 +55,7 @@ impl TickDriver for TokioTickDriver {
     let id = next_tick_driver_id();
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
 
-    if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::CurrentThread {
+    if handle.runtime_flavor() == RuntimeFlavor::CurrentThread {
       return Err(TickDriverError::UnsupportedRuntime);
     }
 
