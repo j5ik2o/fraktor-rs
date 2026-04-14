@@ -51,6 +51,9 @@ impl TickDriver for TestTickDriver {
     executor: SchedulerTickExecutor,
   ) -> Result<TickDriverProvision, TickDriverError> {
     let resolution = self.resolution;
+    if resolution.is_zero() {
+      return Err(TickDriverError::InvalidResolution);
+    }
     let id = next_tick_driver_id();
     let running = ArcShared::new(AtomicBool::new(true));
 
@@ -66,7 +69,7 @@ impl TickDriver for TestTickDriver {
     });
 
     let exec_flag = running.clone();
-    let exec_interval = resolution / 10;
+    let exec_interval = (resolution / 10).max(Duration::from_millis(1));
     let mut executor = executor;
     let exec_thread = thread::spawn(move || {
       loop {
