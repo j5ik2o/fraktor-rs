@@ -84,6 +84,30 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **THEN** 内部の `ActorSystemConfig` に `Box<dyn TickDriver>` として格納される
 - **AND** `ActorSystem::create_with_setup(props, setup)` で setup を消費してシステムが起動する
 
+### Requirement: TypedActorSystem::create_with_config を提供する
+
+`TypedActorSystem::create_with_config(props, config)` を提供しなければならない（MUST）。内部で `ActorSystem::create_with_config` に委譲する薄いラッパーとする。
+
+#### Scenario: TypedActorSystem を create_with_config で起動できる
+
+- **GIVEN** `ActorSystemConfig::new(StdTickDriver::default())` で config が生成される
+- **WHEN** `TypedActorSystem::create_with_config(&props, config)` が呼ばれる
+- **THEN** 内部で `ActorSystem::create_with_config` に委譲してシステムが構築される
+- **AND** `TypedActorSystem` として型安全な API が利用可能
+
+### Requirement: SystemState::build_from_owned_config は config を move で消費する
+
+旧 `SystemState::build_from_config(&ActorSystemConfig)` を削除し、`build_from_owned_config(config: ActorSystemConfig)` に置き換えなければならない（MUST）。config を move で受け取り、内部で `tick_driver.take()` → `provision` で driver を起動する。
+
+#### Scenario: build_from_owned_config が tick driver を provision する
+
+- **GIVEN** `ActorSystemConfig::new(StdTickDriver::default())` で config が生成される
+- **WHEN** `SystemState::build_from_owned_config(config)` が呼ばれる
+- **THEN** config が move で消費される
+- **AND** `tick_driver.take()` で driver が取り出される
+- **AND** `driver.provision(feed, executor)` で tick 駆動が開始される
+- **AND** driver が `None` の場合は `SpawnError::SystemBuildError` が返される
+
 ### Requirement: 旧 API は本 change で削除する
 
 旧 `ActorSystem::new(props, TickDriverConfig)`, `new_with_config(&props, &config)`, `new_with_config_and(&props, &config, f)`, `new_with_setup(&props, &setup)` を削除しなければならない（MUST）。旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` / `default_tick_driver_config` / `tick_driver_config_with_resolution` も削除しなければならない（MUST）。

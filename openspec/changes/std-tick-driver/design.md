@@ -106,6 +106,7 @@ pub enum TickDriverKind {
 - `tick_driver_trait.rs` の旧 `TickDriver` trait を新 trait に置き換える
 - `next_tick_driver_id()` は旧 trait と無関係な独立関数であるため、`tick_driver_id.rs` に移動する
 - 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` を削除する
+- showcase 内部の旧 driver 関連型（`DemoPulse` / `StdTickExecutorPump` 等）も `StdTickDriver` への移行に伴い削除する
 
 ### 6. 旧 API の削除と新 API への置き換え
 
@@ -172,7 +173,7 @@ impl ActorSystemSetup {
 }
 ```
 
-`ActorSystem::create_with_setup(props, setup)` を追加。内部で `setup.into_actor_system_config()` → `create_with_config` に委譲。
+`ActorSystem::create_with_setup(props, setup)` を追加。内部で `setup.into_actor_system_config()` → `create_with_config_and` に委譲。
 
 **`TypedActorSystem::create_with_setup` は本 change のスコープ外とする。** 現行 `TypedActorSystem` にも `new_with_setup` は存在しないため、`create_with_setup` も追加しない。必要になった場合は別途検討する。
 

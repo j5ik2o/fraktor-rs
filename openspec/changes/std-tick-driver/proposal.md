@@ -19,7 +19,10 @@ let system = TypedActorSystem::new(&props, tick_driver_config)?;
 let config = ActorSystemConfig::new(StdTickDriver::default())
     .with_dispatcher_configurator(id, configurator);
 
+// ActorSystem（untyped）
 ActorSystem::create_with_config(&props, config)?;
+// TypedActorSystem（showcase で主に使用）
+TypedActorSystem::create_with_config(&props, config)?;
 ```
 
 `ActorSystemConfig::new(driver)` で TickDriver を必須引数にし、推奨パスを明示する。actor-core は no_std のためデフォルトの TickDriver を提供できない。dispatcher や extension は builder メソッドで追加。
@@ -83,9 +86,10 @@ ActorSystem::create_with_config(&props, config)?;
 - 対象コード:
   - `modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/` — 新 trait 定義（`TickDriver`, `TickDriverStopper`, `TickDriverProvision`）
   - `modules/actor-core/src/core/kernel/system/base.rs` — `create_with_config_and` / `create_with_config` / `create_with_setup` 追加
+  - `modules/actor-core/src/core/kernel/system/state/system_state.rs` — 旧 `build_from_config(&ActorSystemConfig)` を `build_from_owned_config(config: ActorSystemConfig)` に置き換え
   - `modules/actor-core/src/core/typed/system.rs` — `create_with_config` 追加
   - `modules/actor-core/src/core/kernel/actor/setup/actor_system_config.rs` — `with_tick_driver(impl TickDriver + 'static)` + `tick_driver: Option<Box<dyn TickDriver>>` に置き換え
-  - `modules/actor-core/src/core/kernel/actor/setup/actor_system_setup.rs` — `with_tick_driver` を新シグネチャに置き換え + `create_with_setup` 追加
+  - `modules/actor-core/src/core/kernel/actor/setup/actor_system_setup.rs` — `with_tick_driver` を新シグネチャに置き換え
   - `modules/actor-adaptor-std/src/std/tick_driver/std_tick_driver.rs` — 新設
   - `modules/actor-adaptor-std/src/std/tick_driver/tokio_tick_driver.rs` — 新設（旧 Tokio 実装を新 trait に移行）
   - `modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/test_tick_driver.rs` — 新設（旧 `manual_test_driver.rs` を置き換え）
