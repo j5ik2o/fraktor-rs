@@ -45,7 +45,7 @@ mod tokio_tests {
   use core::time::Duration;
 
   use fraktor_actor_core_rs::core::kernel::{
-    actor::{Props, scheduler::SchedulerConfig, setup::ActorSystemConfig},
+    actor::{props::Props, scheduler::SchedulerConfig, setup::ActorSystemConfig},
     system::ActorSystem,
   };
 
