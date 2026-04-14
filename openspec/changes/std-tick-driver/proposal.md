@@ -35,7 +35,7 @@ TypedActorSystem::create_with_config(&props, config)?;
 
 1. **actor-core に新しい `TickDriver` trait を定義する**
 
-   `provision(self: Box<Self>, feed, executor) -> Result<TickDriverProvision, _>` — 単一メソッド、`Box<Self>` で所有権消費かつ object-safe。tick 生成と executor 駆動をどう orchestrate するかは実装者の自由。
+   `kind(&self) -> TickDriverKind` で provision 前の種別判定を提供し、`provision(self: Box<Self>, feed, executor) -> Result<TickDriverProvision, _>` で所有権を消費して駆動を開始する。`Box<Self>` で object-safe。tick 生成と executor 駆動をどう orchestrate するかは実装者の自由。
 
 2. **`TickDriverStopper` trait を新設する**
 

@@ -20,6 +20,14 @@ ActorSystem の Scheduler は「定期的な tick 生成」と「溜まったタ
 
 ```rust
 pub trait TickDriver: Send + 'static {
+  /// Driver の分類を返す（observability + bootstrap 判定用）。
+  ///
+  /// provision 前に呼べる query メソッド。bootstrap は
+  /// SchedulerContext 構築前にこの値を参照して `runner_api_enabled`
+  /// の自動有効化等を判定する。provision 後に返す
+  /// `TickDriverProvision::kind` と同じ値を返さなければならない。
+  fn kind(&self) -> TickDriverKind;
+
   /// Scheduler の駆動を開始する。
   ///
   /// `self: Box<Self>` で所有権を消費し、駆動結果を返す。
@@ -41,6 +49,11 @@ pub trait TickDriver: Send + 'static {
   ) -> Result<TickDriverProvision, TickDriverError>;
 }
 ```
+
+`kind(&self)` を provision 前 query として追加する理由:
+- 現行 bootstrap は `SchedulerContext` 構築前（provision 前）に driver 種別を参照して `runner_api_enabled` を判定している
+- `Box<dyn TickDriver>` は型消去されるため、`kind()` query なしでは provision 前に種別判定できない
+- provision 後に `TickDriverProvision::kind` でも同じ値が返るため、一貫性は保たれる
 
 `self: Box<Self>` にする理由:
 - `ActorSystemConfig` は `Box<dyn TickDriver>` で型消去して格納する
@@ -184,16 +197,27 @@ impl ActorSystemSetup {
 ```rust
 // 新メソッド（config を move で受け取る）
 pub(crate) fn build_from_owned_config(mut config: ActorSystemConfig) -> Result<Self, SpawnError> {
-  // 新 tick driver を .take() で取り出す
-  let driver = config.take_tick_driver();
+  // 新 tick driver を .take() で取り出す（まだ provision しない）
+  let driver = config.take_tick_driver()
+    .ok_or_else(|| SpawnError::SystemBuildError("tick driver is required".into()))?;
 
-  // 以下は build_from_config と同様の初期化処理...
-  // driver が Some の場合: driver.provision(feed, executor) で起動
-  // driver が None の場合: SpawnError::SystemBuildError
+  // provision 前に kind() で runner_api_enabled を判定する。
+  // 現行 bootstrap と同じタイミング（SchedulerContext 構築前）。
+  #[cfg(any(test, feature = "test-support"))]
+  let scheduler_config = if driver.kind() == TickDriverKind::Manual
+    && !scheduler_config.runner_api_enabled()
+  {
+    scheduler_config.with_runner_api_enabled(true)
+  } else {
+    scheduler_config
+  };
 
-  // ManualTest 自動検出（#[cfg(any(test, feature = "test-support"))]）:
-  // 新 API では新テスト driver を使うため、旧 ManualTest 検出ロジックは不要。
-  // 新テスト driver は明示的に runner_api_enabled を有効化する API を持つ。
+  // SchedulerContext 構築（runner_api_enabled 反映済み）
+  let context = SchedulerContext::with_event_stream(scheduler_config, event_stream);
+
+  // provision 実行（SchedulerContext 構築後）
+  let provision = driver.provision(feed, executor)?;
+  // provision.kind と driver.kind() は同じ値を返す（trait 契約）
 }
 ```
 
@@ -238,6 +262,10 @@ impl Default for TestTickDriver {
 }
 
 impl TickDriver for TestTickDriver {
+  fn kind(&self) -> TickDriverKind {
+    TickDriverKind::Manual
+  }
+
   fn provision(
     self: Box<Self>,
     feed: TickFeedHandle,
@@ -270,7 +298,7 @@ impl TickDriver for TestTickDriver {
     Ok(TickDriverProvision {
       resolution,
       id,
-      kind: TickDriverKind::Manual,  // ← Manual を返す
+      kind: TickDriverKind::Manual,  // kind() と一致
       stopper: Box::new(TestTickDriverStopper {
         running,
         tick_thread: Some(tick_thread),
@@ -282,15 +310,17 @@ impl TickDriver for TestTickDriver {
 }
 ```
 
-`runner_api_enabled` の自動有効化は `build_from_owned_config` 側で実装する。`provision` の戻り値 `kind` が `TickDriverKind::Manual` の場合に `runner_api_enabled = true` を設定する:
+`runner_api_enabled` の自動有効化は `build_from_owned_config` 側で、provision 前に `driver.kind()` を参照して実装する（D9 参照）。現行 bootstrap と同じく `SchedulerContext` 構築前に `runner_api_enabled` を確定させる:
 
 ```rust
-// build_from_owned_config 内
-let provision = driver.provision(feed, executor)?;
-if provision.kind == TickDriverKind::Manual {
-  // テスト用 driver — runner_api_enabled を自動有効化
-  config.set_runner_api_enabled(true);
-}
+// build_from_owned_config 内（provision 前）
+#[cfg(any(test, feature = "test-support"))]
+let scheduler_config = if driver.kind() == TickDriverKind::Manual {
+  scheduler_config.with_runner_api_enabled(true)
+} else {
+  scheduler_config
+};
+// → SchedulerContext 構築 → provision 実行
 ```
 
 `TestTickDriverStopper` は `StdTickDriverStopper` と同じ構造（`AtomicBool` + `JoinHandle::join()`）。
@@ -315,6 +345,10 @@ impl Default for StdTickDriver {
 }
 
 impl TickDriver for StdTickDriver {
+  fn kind(&self) -> TickDriverKind {
+    TickDriverKind::Std
+  }
+
   fn provision(
     self: Box<Self>,
     feed: TickFeedHandle,
@@ -411,6 +445,10 @@ impl Default for TokioTickDriver {
 
 #[cfg(feature = "tokio-executor")]
 impl TickDriver for TokioTickDriver {
+  fn kind(&self) -> TickDriverKind {
+    TickDriverKind::Tokio
+  }
+
   fn provision(
     self: Box<Self>,
     feed: TickFeedHandle,

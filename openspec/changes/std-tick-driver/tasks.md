@@ -1,6 +1,6 @@
 ## 1. 新 TickDriver trait 定義 + 旧 trait 置き換え
 
-- [ ] 1.1 `tick_driver_trait.rs` の旧 `TickDriver` trait を新 trait に置き換える（`provision(self: Box<Self>, feed, executor) -> Result<TickDriverProvision, _>`）
+- [ ] 1.1 `tick_driver_trait.rs` の旧 `TickDriver` trait を新 trait に置き換える（`kind(&self) -> TickDriverKind` + `provision(self: Box<Self>, feed, executor) -> Result<TickDriverProvision, _>`）
 - [ ] 1.2 `TickDriverStopper` trait を定義する（`stop(self: Box<Self>)` — join 可能な停止契約）
 - [ ] 1.3 `TickDriverProvision` 構造体を定義する（`resolution`, `id`, `kind`, `stopper`, `auto_metadata` — snapshot 互換）
 - [ ] 1.4 `TickDriverKind` に `#[non_exhaustive]` を付与し、`Std` / `Tokio` variant を追加する
@@ -19,7 +19,7 @@
 - [ ] 2.7 `TypedActorSystem::create_with_config` を追加する（薄い皮）
 - [ ] 2.8 旧 `ActorSystemSetup::with_tick_driver(TickDriverConfig)` を `with_tick_driver(impl TickDriver + 'static)` に置き換える
 - [ ] 2.9 `ActorSystem::create_with_setup(props, setup: ActorSystemSetup)` を追加する（`create_with_config_and` に委譲）
-- [ ] 2.10 旧 `SystemState::build_from_config(&ActorSystemConfig)` を `build_from_owned_config(config: ActorSystemConfig)` に置き換える（config を move で受け取り、`tick_driver.take()` → `provision` で起動）
+- [ ] 2.10 旧 `SystemState::build_from_config(&ActorSystemConfig)` を `build_from_owned_config(config: ActorSystemConfig)` に置き換える（config を move で受け取り、`tick_driver.take()` → `driver.kind()` で provision 前判定（`runner_api_enabled` 等）→ `SchedulerContext` 構築 → `provision` で起動）
 - [ ] 2.11 旧 API を削除する（`ActorSystem::new` / `new_with_config` / `new_with_config_and` / `new_with_setup`）
 
 ## 3. StdTickDriver 新設

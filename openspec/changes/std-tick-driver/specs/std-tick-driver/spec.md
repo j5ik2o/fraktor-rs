@@ -2,14 +2,16 @@
 
 ### Requirement: TickDriver trait は provision(self: Box<Self>) 1 メソッドで object-safe に消費する
 
-`TickDriver` trait は `provision(self: Box<Self>, feed, executor)` メソッド 1 つで tick 生成と executor 駆動の両方を開始しなければならない（MUST）。`self: Box<Self>` により object safety を維持しつつ所有権を消費する。`provision_boxed` のような 2 メソッド構成にしてはならない（MUST NOT）。
+`TickDriver` trait は `kind(&self)` と `provision(self: Box<Self>, feed, executor)` の 2 メソッドで構成しなければならない（MUST）。`kind()` は provision 前に呼べる query で、driver の分類を返す。`provision` は `self: Box<Self>` により object safety を維持しつつ所有権を消費し、tick 生成と executor 駆動の両方を開始する。`provision` が返す `TickDriverProvision::kind` は `kind()` と同じ値でなければならない（MUST）。
 
-#### Scenario: Box<dyn TickDriver> から provision を呼べる
+#### Scenario: Box<dyn TickDriver> から kind と provision を呼べる
 
 - **GIVEN** `ActorSystemConfig` に `Box<dyn TickDriver>` として格納された driver
-- **WHEN** bootstrap が `driver.provision(feed, executor)` を呼ぶ
-- **THEN** `self: Box<Self>` dispatch により object-safe に呼び出せる
+- **WHEN** bootstrap が `driver.kind()` で種別を取得し、その後 `driver.provision(feed, executor)` を呼ぶ
+- **THEN** `kind()` は provision 前に object-safe に呼び出せる
+- **AND** `provision` は `self: Box<Self>` dispatch により object-safe に呼び出せる
 - **AND** provision 後に driver は消費済みで再利用不可
+- **AND** `provision` が返す `TickDriverProvision::kind` は事前の `kind()` と同じ値
 
 ### Requirement: TickDriverProvision は snapshot 互換の情報を返す
 
@@ -105,7 +107,8 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **WHEN** `SystemState::build_from_owned_config(config)` が呼ばれる
 - **THEN** config が move で消費される
 - **AND** `tick_driver.take()` で driver が取り出される
-- **AND** `driver.provision(feed, executor)` で tick 駆動が開始される
+- **AND** `driver.kind()` で driver 種別を取得し、`SchedulerContext` 構築前に `runner_api_enabled` 等を判定する
+- **AND** `SchedulerContext` 構築後に `driver.provision(feed, executor)` で tick 駆動が開始される
 - **AND** driver が `None` の場合は `SpawnError::SystemBuildError` が返される
 
 ### Requirement: 旧 API は本 change で削除する
@@ -227,9 +230,10 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 #### Scenario: テスト driver は runner_api_enabled を自動有効化する
 
 - **GIVEN** テスト driver を使用してシステムを起動する
-- **WHEN** bootstrap が実行される
-- **THEN** `runner_api_enabled` が自動的に有効化される
-- **AND** 旧 `ManualTestDriver` の special path と同等の機能が提供される
+- **WHEN** `build_from_owned_config` 内で provision 前に `driver.kind()` が呼ばれる
+- **THEN** `TickDriverKind::Manual` が返される
+- **AND** `SchedulerContext` 構築前に `runner_api_enabled` が自動的に有効化される
+- **AND** provision は `runner_api_enabled` 反映済みの `SchedulerContext` の後に実行される
 
 #### Scenario: 旧 ManualTestDriver が存在しない
 
