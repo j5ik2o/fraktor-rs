@@ -1,4 +1,7 @@
+extern crate std;
+
 use core::time::Duration;
+use std::time::Instant;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -6,10 +9,7 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::AnyMessageView,
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::{ActorSystem, remote::RemotingConfig},
@@ -33,9 +33,8 @@ impl Actor for GuardianActor {
 fn build_system() -> ActorSystem {
   let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
-  ActorSystem::new_with_config(&props, &config).expect("system should build")
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
+  ActorSystem::create_with_config(&props, config).expect("system should build")
 }
 
 #[test]
@@ -57,15 +56,18 @@ fn materialize_requires_start() {
 #[test]
 fn actor_materializer_drives_stream() {
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("start");
   let graph =
     Source::single(1_u32).map(|value| value + 1).into_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight);
   let materialized = graph.run(&mut materializer).expect("materialize");
-  for _ in 0..5 {
-    controller.inject_and_drive(1);
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if matches!(materialized.materialized().poll(), Completion::Ready(_)) {
+      break;
+    }
+    std::thread::yield_now();
   }
   assert_eq!(materialized.handle().state(), StreamState::Completed);
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(2)));
@@ -86,13 +88,10 @@ fn shutdown_blocks_materialize() {
 fn start_with_remoting_config() {
   let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let remoting = RemotingConfig::default().with_canonical_host("127.0.0.1").with_canonical_port(2552);
-  let config = ActorSystemConfig::default()
-    .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
-    .with_remoting_config(remoting);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system should build");
+  let config =
+    ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler).with_remoting_config(remoting);
+  let system = ActorSystem::create_with_config(&props, config).expect("system should build");
   let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
   materializer.start().expect("start");
 }
@@ -214,7 +213,6 @@ fn snapshot_reflects_running_state_after_start() {
 fn snapshot_total_materialized_increments_on_successful_materialize() {
   // Given: a running materializer
   let system = build_system();
-  let _controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("start");

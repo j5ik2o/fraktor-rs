@@ -21,7 +21,7 @@ use std::{
 };
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use fraktor_actor_adaptor_std_rs::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
+use fraktor_actor_adaptor_std_rs::std::{dispatch::dispatcher::TokioExecutor, tick_driver::TokioTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -122,7 +122,7 @@ impl DispatcherBenchSystem {
     let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
-      let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
+      let config = ActorSystemConfig::new(TokioTickDriver::default());
       let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
       let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
       let default_configurator: Box<dyn MessageDispatcherConfigurator> =
@@ -138,7 +138,7 @@ impl DispatcherBenchSystem {
         .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
         .with_dispatcher_configurator(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
       let props = Props::from_fn(|| TeamGuardian);
-      ActorSystem::new_with_config(&props, &config).expect("actor system")
+      ActorSystem::create_with_config(&props, config).expect("actor system")
     });
     Self { runtime, system }
   }

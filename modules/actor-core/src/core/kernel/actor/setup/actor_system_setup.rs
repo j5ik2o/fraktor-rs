@@ -12,7 +12,7 @@ use crate::core::kernel::{
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
     props::MailboxConfig,
-    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
+    scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::{ActorSystemConfig, BootstrapSetup},
   },
   dispatch::dispatcher::MessageDispatcherConfigurator,
@@ -52,8 +52,8 @@ impl ActorSystemSetup {
 
   /// Configures the tick driver.
   #[must_use]
-  pub fn with_tick_driver(self, config: TickDriverConfig) -> Self {
-    Self { config: self.config.with_tick_driver(config) }
+  pub fn with_tick_driver(self, driver: impl TickDriver + 'static) -> Self {
+    Self { config: self.config.with_tick_driver(driver) }
   }
 
   /// Registers extension installers.

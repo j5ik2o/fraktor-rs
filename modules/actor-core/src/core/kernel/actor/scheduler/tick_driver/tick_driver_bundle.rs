@@ -3,42 +3,31 @@
 #[cfg(test)]
 mod tests;
 
-#[cfg(any(test, feature = "test-support"))]
-use super::manual_tick_controller::ManualTickController;
-use super::{AutoDriverMetadata, TickDriverHandle, TickFeedHandle};
+use core::time::Duration;
+
+use super::{AutoDriverMetadata, TickDriverId, TickDriverKind, TickFeedHandle};
 
 /// Bundle of assets produced after provisioning a tick driver.
+#[derive(Clone)]
 pub struct TickDriverBundle {
-  driver:        TickDriverHandle,
+  id:            TickDriverId,
+  kind:          TickDriverKind,
+  resolution:    Duration,
   feed:          Option<TickFeedHandle>,
   auto_metadata: Option<AutoDriverMetadata>,
-  #[cfg(any(test, feature = "test-support"))]
-  manual:        Option<ManualTickController>,
-}
-
-impl Clone for TickDriverBundle {
-  fn clone(&self) -> Self {
-    Self {
-      driver: self.driver.clone(),
-      feed: self.feed.clone(),
-      auto_metadata: self.auto_metadata.clone(),
-      #[cfg(any(test, feature = "test-support"))]
-      manual: self.manual.clone(),
-    }
-  }
 }
 
 impl TickDriverBundle {
-  /// Creates a new bundle for automatic/hardware drivers.
+  /// Creates a new bundle for a provisioned driver.
   #[must_use]
-  pub const fn new(driver: TickDriverHandle, feed: TickFeedHandle) -> Self {
-    Self {
-      driver,
-      feed: Some(feed),
-      auto_metadata: None,
-      #[cfg(any(test, feature = "test-support"))]
-      manual: None,
-    }
+  pub const fn new(id: TickDriverId, kind: TickDriverKind, resolution: Duration, feed: TickFeedHandle) -> Self {
+    Self { id, kind, resolution, feed: Some(feed), auto_metadata: None }
+  }
+
+  /// Creates a noop bundle (no feed) for default state.
+  #[must_use]
+  pub const fn noop(id: TickDriverId, kind: TickDriverKind, resolution: Duration) -> Self {
+    Self { id, kind, resolution, feed: None, auto_metadata: None }
   }
 
   /// Annotates the bundle with auto driver metadata.
@@ -48,17 +37,22 @@ impl TickDriverBundle {
     self
   }
 
-  /// Creates a manual-driver bundle.
-  #[cfg(any(test, feature = "test-support"))]
+  /// Returns the unique identifier of the running driver.
   #[must_use]
-  pub const fn new_manual(driver: TickDriverHandle, controller: ManualTickController) -> Self {
-    Self { driver, feed: None, auto_metadata: None, manual: Some(controller) }
+  pub const fn id(&self) -> TickDriverId {
+    self.id
   }
 
-  /// Returns the driver handle.
+  /// Returns the kind classification of the running driver.
   #[must_use]
-  pub const fn driver(&self) -> &TickDriverHandle {
-    &self.driver
+  pub const fn kind(&self) -> TickDriverKind {
+    self.kind
+  }
+
+  /// Returns the tick resolution of the running driver.
+  #[must_use]
+  pub const fn resolution(&self) -> Duration {
+    self.resolution
   }
 
   /// Returns the shared tick feed handle when present.
@@ -71,17 +65,5 @@ impl TickDriverBundle {
   #[must_use]
   pub const fn auto_metadata(&self) -> Option<&AutoDriverMetadata> {
     self.auto_metadata.as_ref()
-  }
-
-  /// Returns the manual tick controller if available.
-  #[cfg(any(test, feature = "test-support"))]
-  #[must_use]
-  pub const fn manual_controller(&self) -> Option<&ManualTickController> {
-    self.manual.as_ref()
-  }
-
-  /// Shuts down the underlying driver.
-  pub fn shutdown(&mut self) {
-    self.driver.shutdown();
   }
 }

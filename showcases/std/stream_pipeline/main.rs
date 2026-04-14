@@ -15,13 +15,13 @@ use fraktor_stream_core_rs::core::{
 
 #[allow(clippy::print_stdout)]
 fn main() {
-  let (mut mat, driver) = support::start_materializer();
+  let mut mat = support::start_materializer();
 
   // Part 1: Source → Map → Sink::head
   println!("=== Part 1: minimal pipeline (map + head) ===");
   let graph = Source::single(41_u32).map(|v| v + 1).into_mat(Sink::head(), KeepRight);
   let materialized = graph.run(&mut mat).expect("run");
-  let result = support::drive_until_ready(&driver, materialized.materialized(), 8);
+  let result = support::drive_until_ready(materialized.materialized(), 8);
   match result {
     | Some(Ok(value)) => println!("result: {value}"),
     | Some(Err(error)) => println!("failed: {error}"),
@@ -34,7 +34,7 @@ fn main() {
     .flat_map_concat(|v| Source::single(v + 3))
     .into_mat(Sink::fold(10_u32, |acc, v| acc + v), KeepRight);
   let materialized = graph.run(&mut mat).expect("run");
-  let result = support::drive_until_ready(&driver, materialized.materialized(), 8);
+  let result = support::drive_until_ready(materialized.materialized(), 8);
   match result {
     | Some(Ok(sum)) => println!("fold result: {sum}"),
     | Some(Err(error)) => println!("failed: {error}"),
@@ -53,7 +53,7 @@ fn main() {
     KeepRight,
   );
   let materialized = graph.run(&mut mat).expect("run");
-  let result = support::drive_until_ready(&driver, materialized.materialized(), 8);
+  let result = support::drive_until_ready(materialized.materialized(), 8);
   match result {
     | Some(Ok(values)) => println!("filtered values: {values:?}"),
     | Some(Err(error)) => println!("failed: {error}"),

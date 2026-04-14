@@ -1,3 +1,5 @@
+use core::any::TypeId;
+
 use crate::core::typed::receptionist::ServiceKey;
 
 #[test]
@@ -30,5 +32,5 @@ fn should_clone() {
 #[test]
 fn should_have_correct_type_id() {
   let key = ServiceKey::<String>::new("typed");
-  assert_eq!(key.type_id(), core::any::TypeId::of::<String>());
+  assert_eq!(key.type_id(), TypeId::of::<String>());
 }

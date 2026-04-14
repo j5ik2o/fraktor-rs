@@ -1,66 +1,41 @@
 //! Tick driver bundle unit tests.
 
-use alloc::boxed::Box;
-use core::{
-  sync::atomic::{AtomicBool, AtomicUsize, Ordering},
-  time::Duration,
-};
-
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use core::time::Duration;
 
 use crate::core::kernel::actor::scheduler::tick_driver::{
-  AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverControl, TickDriverControlShared, TickDriverHandle,
-  TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+  AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
 };
 
-struct RecordingControl {
-  shutdown_calls: ArcShared<AtomicUsize>,
-  did_shutdown:   AtomicBool,
-}
-
-impl RecordingControl {
-  fn new(shutdown_calls: ArcShared<AtomicUsize>) -> Self {
-    Self { shutdown_calls, did_shutdown: AtomicBool::new(false) }
-  }
-}
-
-impl TickDriverControl for RecordingControl {
-  fn shutdown(&self) {
-    if !self.did_shutdown.swap(true, Ordering::SeqCst) {
-      self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
-    }
-  }
-}
-
-fn runtime_bundle(shutdown_calls: ArcShared<AtomicUsize>) -> TickDriverBundle {
-  let control: Box<dyn TickDriverControl> = Box::new(RecordingControl::new(shutdown_calls));
-  let control = TickDriverControlShared::new(control);
-  let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
+fn runtime_bundle() -> TickDriverBundle {
   let feed = TickFeed::new(Duration::from_millis(1), 1, TickExecutorSignal::new());
   let metadata = AutoDriverMetadata {
     profile:    AutoProfileKind::Custom,
     driver_id:  TickDriverId::new(1),
     resolution: Duration::from_millis(1),
   };
-  TickDriverBundle::new(handle, feed).with_auto_metadata(metadata)
-}
-
-#[test]
-fn shutdown_delegates_to_driver_control() {
-  let shutdown_calls = ArcShared::new(AtomicUsize::new(0));
-  let mut bundle = runtime_bundle(shutdown_calls.clone());
-
-  bundle.shutdown();
-
-  assert_eq!(shutdown_calls.load(Ordering::SeqCst), 1);
+  TickDriverBundle::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), feed)
+    .with_auto_metadata(metadata)
 }
 
 #[test]
 fn clone_preserves_feed_and_auto_metadata() {
-  let shutdown_calls = ArcShared::new(AtomicUsize::new(0));
-  let bundle = runtime_bundle(shutdown_calls);
+  let bundle = runtime_bundle();
   let cloned = bundle.clone();
 
   assert!(cloned.feed().is_some());
   assert_eq!(cloned.auto_metadata().map(|metadata| metadata.profile), Some(AutoProfileKind::Custom));
+}
+
+#[test]
+fn noop_bundle_has_no_feed() {
+  let bundle = TickDriverBundle::noop(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1));
+  assert!(bundle.feed().is_none());
+}
+
+#[test]
+fn getters_return_correct_values() {
+  let bundle = runtime_bundle();
+  assert_eq!(bundle.id(), TickDriverId::new(1));
+  assert_eq!(bundle.kind(), TickDriverKind::Auto);
+  assert_eq!(bundle.resolution(), Duration::from_millis(1));
 }

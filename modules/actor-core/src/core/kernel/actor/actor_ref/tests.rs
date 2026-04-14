@@ -10,10 +10,7 @@ use crate::core::kernel::{
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::{
@@ -127,16 +124,15 @@ impl Actor for NoopActor {
 /// Since ActorRef now uses weak references to SystemState, the returned SystemStateShared
 /// must be kept alive for the ActorRef's path methods to work.
 fn build_actor_ref_with_system(remoting: Option<RemotingConfig>) -> (ActorRef, SystemStateShared) {
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let mut config = ActorSystemConfig::default()
     .with_system_name("canonical-test")
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver);
+    .with_tick_driver(TestTickDriver::default());
   if let Some(remoting_config) = remoting {
     config = config.with_remoting_config(remoting_config);
   }
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
 
   let props = Props::from_fn(|| NoopActor);
   let root_pid = state.allocate_pid();
@@ -186,13 +182,12 @@ fn canonical_path_is_none_without_system_state() {
 
 #[test]
 fn ask_creates_reply_sender_and_future_when_system_is_available() {
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::default()
     .with_system_name("ask-direct")
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver);
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+    .with_tick_driver(TestTickDriver::default());
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
 
   let props = Props::from_fn(|| NoopActor);
   let pid = state.allocate_pid();

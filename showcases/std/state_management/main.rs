@@ -9,9 +9,13 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example state_management`
 
-use fraktor_actor_adaptor_std_rs::std::StdBlocker;
-use fraktor_actor_core_rs::core::typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors};
-use fraktor_showcases_std::support;
+use core::time::Duration;
+
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_rs::core::{
+  kernel::actor::setup::ActorSystemConfig,
+  typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
+};
 
 // =============================================================================
 // パート 1: カウンターアクター（イミュータブルな状態遷移）
@@ -101,11 +105,11 @@ fn main() {
 }
 
 fn run_counter() {
-  use std::thread;
+  use std::{thread, time::Instant};
 
   let props = TypedProps::from_behavior_factory(|| counter(0));
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut counter_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
@@ -114,8 +118,13 @@ fn run_counter() {
 
   let response = counter_ref.ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to });
   let mut future = response.future().clone();
+  let started_at = Instant::now();
+  let timeout = Duration::from_secs(5);
   while !future.is_ready() {
-    thread::yield_now();
+    if started_at.elapsed() >= timeout {
+      panic!("timed out waiting for counter Read future.is_ready() after {:?}", timeout);
+    }
+    thread::sleep(Duration::from_millis(1));
   }
   if let Some(result) = future.try_take() {
     match result {
@@ -129,11 +138,11 @@ fn run_counter() {
 }
 
 fn run_gate() {
-  use std::thread;
+  use std::{thread, time::Instant};
 
   let props = TypedProps::from_behavior_factory(|| locked(0));
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut gate = system.user_guardian_ref();
   let termination = system.when_terminated();
 
@@ -148,8 +157,13 @@ fn run_gate() {
 
   let response = gate.ask::<u32, _>(|reply_to| GateCommand::ReadPassCount { reply_to });
   let mut future = response.future().clone();
+  let started_at = Instant::now();
+  let timeout = Duration::from_secs(5);
   while !future.is_ready() {
-    thread::yield_now();
+    if started_at.elapsed() >= timeout {
+      panic!("timed out waiting for gate ReadPassCount future.is_ready() after {:?}", timeout);
+    }
+    thread::sleep(Duration::from_millis(1));
   }
   if let Some(result) = future.try_take() {
     match result {

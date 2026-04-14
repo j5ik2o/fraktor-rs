@@ -7,11 +7,14 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example stash`
 
-use fraktor_actor_core_rs::core::typed::{
-  Behavior, TypedActorRef, TypedActorSystem, TypedProps,
-  dsl::{Behaviors, StashBuffer},
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_core_rs::core::{
+  kernel::actor::setup::ActorSystemConfig,
+  typed::{
+    Behavior, TypedActorRef, TypedActorSystem, TypedProps,
+    dsl::{Behaviors, StashBuffer},
+  },
 };
-use fraktor_showcases_std::support;
 
 // --- メッセージ定義 ---
 
@@ -78,8 +81,8 @@ fn main() {
   };
 
   let props = TypedProps::from_behavior_factory(|| buffering(0)).with_stash_mailbox();
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut actor = system.user_guardian_ref();
 
   // closed 状態で Buffer メッセージを送信（stash される）

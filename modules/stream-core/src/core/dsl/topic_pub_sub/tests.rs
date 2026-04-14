@@ -11,10 +11,7 @@ use fraktor_actor_core_rs::core::{
       error::ActorError,
       messaging::AnyMessageView,
       props::Props,
-      scheduler::{
-        SchedulerConfig,
-        tick_driver::{ManualTestDriver, TickDriverConfig},
-      },
+      scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
       setup::ActorSystemConfig,
     },
     system::ActorSystem,
@@ -48,9 +45,8 @@ impl Actor for GuardianActor {
 fn build_system() -> ActorSystem {
   let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
-  ActorSystem::new_with_config(&props, &config).expect("system should build")
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
+  ActorSystem::create_with_config(&props, config).expect("system should build")
 }
 
 fn spawn_topic<T>(system: &ActorSystem, name: &str) -> TypedActorRef<TopicCommand<T>>
@@ -79,7 +75,6 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn topic_pub_sub_source_should_materialize_without_error_after_publish() {
   // Given: topic と PubSub source を Sink::collect に接続して materialize
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
   let mut topic = spawn_topic::<u32>(&system, "test-source");
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
@@ -93,9 +88,7 @@ fn topic_pub_sub_source_should_materialize_without_error_after_publish() {
   topic.tell(Topic::publish(2_u32));
   topic.tell(Topic::publish(3_u32));
 
-  for _ in 0..20 {
-    controller.inject_and_drive(1);
-  }
+  // Pending のままであることを確認（有限 source でないので完了しない）
   assert!(matches!(materialized.materialized().poll(), Completion::Pending));
 
   system.terminate().expect("terminate");
@@ -123,7 +116,6 @@ fn topic_pub_sub_source_should_be_constructible_and_connectable_to_sink() {
 #[test]
 fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
   let mut topic = spawn_topic::<u32>(&system, "test-cleanup");
 
   let graph =
@@ -132,29 +124,21 @@ fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
   materializer.start().expect("start materializer");
   let _materialized = graph.run(&mut materializer).expect("run");
 
-  for _ in 0..5 {
-    controller.inject_and_drive(1);
-  }
-
   topic.tell(Topic::publish(7_u32));
-  for _ in 0..50 {
-    controller.inject_and_drive(1);
-  }
-
-  for _ in 0..20 {
-    controller.inject_and_drive(1);
-  }
 
   let mut subscriber_count = None;
-  for _ in 0..20 {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
     let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats);
-    for _ in 0..10 {
-      controller.inject_and_drive(1);
+    let ask_deadline = Instant::now() + Duration::from_millis(200);
+    while Instant::now() < ask_deadline {
       if stats.future().is_ready() {
         break;
       }
+      thread::yield_now();
     }
     if !stats.future().is_ready() {
+      thread::yield_now();
       continue;
     }
     let mut stats_future = stats.future().clone();
@@ -163,6 +147,7 @@ fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
     if stats.local_subscriber_count() == 0 {
       break;
     }
+    thread::yield_now();
   }
   assert_eq!(subscriber_count, Some(0));
 
@@ -173,7 +158,6 @@ fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
 fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow() {
   // Given: 小バッファ (2) + Fail 戦略の PubSub source
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
   let mut topic = spawn_topic::<u32>(&system, "test-overflow");
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 2, OverflowStrategy::Fail, &system);
@@ -188,8 +172,13 @@ fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow()
     topic.tell(Topic::publish(i));
   }
 
-  for _ in 0..20 {
-    controller.inject_and_drive(1);
+  // バッファ超過の結果を待つ（エラーになるか Pending のまま）
+  let deadline = Instant::now() + Duration::from_secs(2);
+  while Instant::now() < deadline {
+    if matches!(materialized.materialized().poll(), Completion::Ready(_)) {
+      break;
+    }
+    thread::yield_now();
   }
 
   // Then: materialize 成功。ストリームはエラーまたは継続中のいずれか
@@ -208,7 +197,6 @@ fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow()
 fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
   // Given: 単一 topic に対して PubSub source を materialize
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
   let mut topic = spawn_topic::<u32>(&system, "test-multi-pub");
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
@@ -222,10 +210,7 @@ fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
   topic.tell(Topic::publish(100_u32));
   topic2.tell(Topic::publish(200_u32));
 
-  for _ in 0..20 {
-    controller.inject_and_drive(1);
-  }
-
+  // Pending のままであることを確認（無限 source なので完了しない）
   assert!(matches!(materialized.materialized().poll(), Completion::Pending));
 
   system.terminate().expect("terminate");
@@ -237,7 +222,6 @@ fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
 fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
   // Given: a topic actor with a subscriber, and a PubSub sink connected to a source
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
   let mut topic = spawn_topic::<u32>(&system, "test-sink");
 
   // Set up a subscriber to receive messages published via the sink
@@ -257,9 +241,26 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
 
   topic.tell(Topic::subscribe(subscriber_ref));
 
-  // Allow subscription to propagate
-  for _ in 0..5 {
-    controller.inject_and_drive(1);
+  // Allow subscription to propagate: poll until subscriber count is 1
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats);
+    let ask_deadline = Instant::now() + Duration::from_millis(200);
+    while Instant::now() < ask_deadline {
+      if stats.future().is_ready() {
+        break;
+      }
+      thread::yield_now();
+    }
+    if stats.future().is_ready() {
+      let mut sf = stats.future().clone();
+      if let Some(Ok(s)) = sf.try_take() {
+        if s.local_subscriber_count() >= 1 {
+          break;
+        }
+      }
+    }
+    thread::yield_now();
   }
 
   // When: running a stream that publishes elements through PubSub.sink
@@ -270,10 +271,7 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
   let materialized = graph.run(&mut materializer).expect("run");
 
   // Then: the subscriber should receive all published messages
-  wait_until(|| {
-    controller.inject_and_drive(1);
-    matches!(materialized.materialized().poll(), Completion::Ready(Ok(_)))
-  });
+  wait_until(|| matches!(materialized.materialized().poll(), Completion::Ready(Ok(_))));
 
   wait_until(|| received.lock().len() >= 3);
   let mut values = received.lock().clone();
@@ -287,7 +285,6 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
 fn topic_pub_sub_sink_should_complete_normally_when_source_finishes() {
   // Given: a PubSub sink connected to a finite source
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
   let topic = spawn_topic::<u32>(&system, "test-sink-complete");
 
   let sink: Sink<u32, StreamCompletion<StreamDone>> = TopicPubSub::sink(topic.clone());
@@ -296,10 +293,8 @@ fn topic_pub_sub_sink_should_complete_normally_when_source_finishes() {
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
 
-  // When: driving the stream to completion
-  for _ in 0..20 {
-    controller.inject_and_drive(1);
-  }
+  // When: waiting for the stream to complete
+  wait_until(|| matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
 
   // Then: the stream should complete successfully
   assert!(matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
@@ -311,7 +306,6 @@ fn topic_pub_sub_sink_should_complete_normally_when_source_finishes() {
 fn topic_pub_sub_sink_should_handle_empty_source() {
   // Given: a PubSub sink connected to an empty source
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
   let topic = spawn_topic::<u32>(&system, "test-sink-empty");
 
   let sink: Sink<u32, StreamCompletion<StreamDone>> = TopicPubSub::sink(topic.clone());
@@ -320,10 +314,8 @@ fn topic_pub_sub_sink_should_handle_empty_source() {
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
 
-  // When: driving the stream
-  for _ in 0..10 {
-    controller.inject_and_drive(1);
-  }
+  // When: waiting for the stream to complete
+  wait_until(|| matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
 
   // Then: the stream should complete successfully with no messages published
   assert!(matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
@@ -337,8 +329,7 @@ fn topic_pub_sub_sink_should_handle_empty_source() {
 fn topic_pub_sub_source_and_sink_should_materialize_pipeline_without_error() {
   // Given: topic に対して source と sink の両方を materialize
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
-  let topic = spawn_topic::<u32>(&system, "test-pipeline");
+  let mut topic = spawn_topic::<u32>(&system, "test-pipeline");
 
   // PubSub source（subscriber）をセットアップ
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
@@ -347,9 +338,26 @@ fn topic_pub_sub_source_and_sink_should_materialize_pipeline_without_error() {
   materializer.start().expect("start materializer");
   let source_materialized = graph.run(&mut materializer).expect("run source");
 
-  // 購読の伝播を待つ
-  for _ in 0..5 {
-    controller.inject_and_drive(1);
+  // 購読の伝播を待つ: subscriber_count が 1 になるまでスピン
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats);
+    let ask_deadline = Instant::now() + Duration::from_millis(200);
+    while Instant::now() < ask_deadline {
+      if stats.future().is_ready() {
+        break;
+      }
+      thread::yield_now();
+    }
+    if stats.future().is_ready() {
+      let mut sf = stats.future().clone();
+      if let Some(Ok(s)) = sf.try_take() {
+        if s.local_subscriber_count() >= 1 {
+          break;
+        }
+      }
+    }
+    thread::yield_now();
   }
 
   // When: PubSub sink 経由で publish
@@ -357,11 +365,9 @@ fn topic_pub_sub_source_and_sink_should_materialize_pipeline_without_error() {
   let graph = Source::from_array([42_u32, 43_u32]).into_mat(sink, KeepRight);
   let sink_materialized = graph.run(&mut materializer).expect("run sink");
 
-  for _ in 0..30 {
-    controller.inject_and_drive(1);
-  }
-
   // Then: sink は有限 source なので完了する
+  wait_until(|| matches!(sink_materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+
   assert!(
     matches!(sink_materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))),
     "sink ストリームは有限 source の完了後に正常終了すべき"

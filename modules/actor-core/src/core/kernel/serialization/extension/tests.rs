@@ -20,7 +20,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::AnyMessageView,
     props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    scheduler::tick_driver::TestTickDriver,
     setup::ActorSystemConfig,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
@@ -152,12 +152,11 @@ impl Actor for NoopActor {
 }
 
 fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &str) -> ActorSystem {
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let mut config = ActorSystemConfig::default().with_system_name(system_name.to_string()).with_tick_driver(tick_driver);
+  let mut config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name(system_name.to_string());
   if let Some(remoting) = remoting {
     config = config.with_remoting_config(remoting);
   }
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
   ActorSystem::from_state(state)
 }
 

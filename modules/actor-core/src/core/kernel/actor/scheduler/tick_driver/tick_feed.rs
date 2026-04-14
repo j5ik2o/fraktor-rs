@@ -32,7 +32,7 @@ pub struct TickFeed {
   capacity:            usize,
   signal:              TickExecutorSignal,
   handle:              SchedulerTickHandleOwned,
-  resolution:          Duration,
+  resolution_nanos:    AtomicU64,
   enqueued_total:      AtomicU64,
   dropped_total:       AtomicU64,
   window_enqueued:     AtomicU64,
@@ -53,7 +53,7 @@ impl TickFeed {
       capacity: bounded_capacity,
       signal,
       handle: SchedulerTickHandleOwned::new(),
-      resolution,
+      resolution_nanos: AtomicU64::new(resolution.as_nanos().min(u64::MAX as u128) as u64),
       enqueued_total: AtomicU64::new(0),
       dropped_total: AtomicU64::new(0),
       window_enqueued: AtomicU64::new(0),
@@ -62,6 +62,17 @@ impl TickFeed {
       driver_alive: AtomicBool::new(false),
     };
     ArcShared::new(feed)
+  }
+
+  /// Updates the resolution after provisioning reveals the driver's actual tick interval.
+  pub(crate) fn set_resolution(&self, resolution: Duration) {
+    let nanos = resolution.as_nanos().min(u64::MAX as u128) as u64;
+    self.resolution_nanos.store(nanos, Ordering::Release);
+  }
+
+  /// Returns the current resolution.
+  fn resolution(&self) -> Duration {
+    Duration::from_nanos(self.resolution_nanos.load(Ordering::Acquire))
   }
 
   /// Enqueues ticks supplied by a driver.
@@ -114,7 +125,7 @@ impl TickFeed {
     let ticks_per_sec = if elapsed_ticks == 0 {
       window_enqueued.min(u32::MAX as u64) as u32
     } else {
-      let elapsed_ns = self.resolution.as_nanos().saturating_mul(u128::from(elapsed_ticks));
+      let elapsed_ns = self.resolution().as_nanos().saturating_mul(u128::from(elapsed_ticks));
       if elapsed_ns == 0 {
         0
       } else {
@@ -133,7 +144,7 @@ impl TickFeed {
         None
       } else {
         let magnitude = if diff < 0 { diff.saturating_neg() as u128 } else { diff as u128 };
-        Some(duration_from_ticks(magnitude, self.resolution))
+        Some(duration_from_ticks(magnitude, self.resolution()))
       }
     };
 
@@ -182,11 +193,6 @@ impl TickFeed {
 
   fn record_driver_activity(&self) {
     self.driver_alive.store(true, Ordering::Release);
-  }
-
-  /// Marks the driver as inactive (used on shutdown).
-  pub(crate) fn mark_driver_inactive(&self) {
-    self.driver_alive.store(false, Ordering::Release);
   }
 
   /// Indicates whether the driver recently signaled activity.

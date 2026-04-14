@@ -14,7 +14,8 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    scheduler::tick_driver::TestTickDriver,
+    setup::ActorSystemConfig,
   },
   system::{ActorSystem, SpinBlocker},
 };
@@ -25,8 +26,8 @@ struct Start;
 #[test]
 fn terminate_signals_future() {
   let props = Props::from_fn(|| IdleGuardian);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
   system.run_until_terminated(&SpinBlocker);
@@ -41,8 +42,8 @@ fn stop_self_propagates_to_children() {
     move || ParentGuardian::new(child_states.clone())
   });
 
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = Instant::now() + Duration::from_millis(20);

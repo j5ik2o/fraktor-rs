@@ -19,7 +19,7 @@ use crate::core::{
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::{AnyMessage, AskResult},
-      scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
+      scheduler::SchedulerBackedDelayProvider,
       setup::ActorSystemConfig,
       spawn::SpawnError,
     },
@@ -192,30 +192,13 @@ where
     Self { inner, cached_address, event_stream_ref, marker: PhantomData }
   }
 
-  /// Creates a new typed actor system with the required tick driver configuration.
-  ///
-  /// # Arguments
-  ///
-  /// * `guardian` - Typed properties for the user guardian actor
-  /// * `tick_driver_config` - Tick driver configuration (required)
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
-  pub fn new(guardian: &TypedProps<M>, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
-    let inner = ActorSystem::new(guardian.to_untyped(), tick_driver_config)?;
-    let cached_address = Address::local(inner.name());
-    let event_stream_ref = build_event_stream_ref(&inner);
-    Ok(Self { inner, cached_address, event_stream_ref, marker: PhantomData })
-  }
-
   /// Creates a typed actor system using the supplied configuration.
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError`] if guardian initialization fails.
-  pub fn new_with_config(guardian: &TypedProps<M>, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
-    let inner = ActorSystem::new_with_config(guardian.to_untyped(), config)?;
+  pub fn create_with_config(guardian: &TypedProps<M>, config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    let inner = ActorSystem::create_with_config(guardian.to_untyped(), config)?;
     let cached_address = Address::local(inner.name());
     let event_stream_ref = build_event_stream_ref(&inner);
     Ok(Self { inner, cached_address, event_stream_ref, marker: PhantomData })

@@ -12,15 +12,15 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_adaptor_std_rs::std::StdBlocker;
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
   kernel::actor::{
     error::ActorError,
+    setup::ActorSystemConfig,
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
   typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal},
 };
-use fraktor_showcases_std::support;
 
 // --- メッセージ定義 ---
 
@@ -113,8 +113,8 @@ fn main() {
   use std::thread;
 
   let props = TypedProps::from_behavior_factory(parent);
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   // 親アクターにメッセージを送信して子ライフサイクルのデモを開始

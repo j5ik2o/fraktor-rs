@@ -1,13 +1,12 @@
+extern crate std;
+
 use alloc::vec::Vec;
-use core::{hint::spin_loop, time::Duration};
+use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
-  kernel::actor::{
-    actor_ref::ActorRef,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  },
+  kernel::actor::{actor_ref::ActorRef, scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
   typed::{
     TypedActorRef,
     behavior::Behavior,
@@ -29,11 +28,11 @@ struct TestReply {
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..50_000 {
+  for _ in 0..1_000 {
     if condition() {
       return;
     }
-    spin_loop();
+    std::thread::sleep(Duration::from_millis(1));
   }
   assert!(condition(), "wait_until timed out");
 }
@@ -185,8 +184,9 @@ fn scatter_gather_returns_first_reply() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut guardian = system.user_guardian_ref();
 
   let dummy_reply_to = TypedActorRef::from_untyped(ActorRef::no_sender());
@@ -269,21 +269,15 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let manual_driver = ManualTestDriver::new();
-  let controller = manual_driver.controller();
-  let tick_driver = TickDriverConfig::manual(manual_driver);
-  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut guardian = system.user_guardian_ref();
 
   let dummy_reply_to = TypedActorRef::from_untyped(ActorRef::no_sender());
   guardian.tell(TestReq::Query { id: 99, reply_to: dummy_reply_to });
 
-  // メッセージ伝播を待ち、スケジューラを駆動してタイムアウトを発火させる
-  for _ in 0..20 {
-    spin_loop();
-  }
-  controller.inject_and_drive(200);
-
+  // TestTickDriver が自動でティックを駆動するのでタイムアウト発火を待つ
   wait_until(|| !replies_for_check.lock().is_empty());
 
   let got = replies_for_check.lock();
@@ -343,8 +337,9 @@ fn scatter_gather_stops_when_all_routees_terminate() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   // routee が即座に停止するため、Terminated シグナルでルーターも停止する
   wait_until(|| *router_stopped_check.lock());
@@ -403,8 +398,9 @@ fn scatter_gather_stops_when_all_routee_spawns_fail() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   // spawn 失敗により routee_vec が空 → build 直後に Behaviors::stopped() → ルーター終了
   wait_until(|| *router_stopped_check.lock());
@@ -477,8 +473,9 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut guardian = system.user_guardian_ref();
 
   let dummy_reply_to = TypedActorRef::from_untyped(ActorRef::no_sender());

@@ -8,10 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvokerPipeline},
     props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
+    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::{
@@ -217,13 +214,11 @@ fn adapter_pre_start_binds_context() {
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -242,13 +237,11 @@ fn adapter_pre_start_schedules_recovery_timeout() {
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -266,13 +259,11 @@ fn adapter_pre_start_rejects_persistence_id_mismatch() {
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = MismatchPersistentActor::new();
@@ -289,13 +280,11 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -379,13 +368,11 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default()
+  let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
-    .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();

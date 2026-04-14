@@ -1,14 +1,15 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{boxed::Box, string::String, thread, vec::Vec};
+use std::{boxed::Box, string::String, thread, time::Duration, vec::Vec};
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    setup::ActorSystemConfig,
   },
   event::{
     logging::{ActorLogMarker, ActorLogging, DiagnosticActorLogging, LogLevel, LoggingReceive},
@@ -67,7 +68,8 @@ fn main() {
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let subscriber = test_subscriber_handle(RecordingSubscriber::new(events.clone()));
   let props = Props::from_fn(|| LoggingActor);
-  let system = ActorSystem::new(&props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
@@ -101,11 +103,11 @@ fn main() {
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..10_000 {
+  for _ in 0..1_000 {
     if condition() {
       return;
     }
-    thread::yield_now();
+    thread::sleep(Duration::from_millis(1));
   }
   assert!(condition());
 }

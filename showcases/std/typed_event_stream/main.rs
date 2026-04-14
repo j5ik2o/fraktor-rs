@@ -3,6 +3,7 @@
 use core::time::Duration;
 use std::vec::Vec;
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::{
   kernel::{
     actor::{
@@ -10,7 +11,7 @@ use fraktor_actor_core_rs::core::{
       actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
       error::SendError,
       messaging::AnyMessage,
-      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      setup::ActorSystemConfig,
     },
     event::{
       logging::{LogEvent, LogLevel},
@@ -43,8 +44,9 @@ impl ActorRefSender for CollectorSender {
 
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
 
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let collector_sender = ActorRefSenderShared::from_shared_lock(SharedLock::new_with_driver::<

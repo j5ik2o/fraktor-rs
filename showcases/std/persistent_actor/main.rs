@@ -6,7 +6,7 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
 
-use fraktor_actor_adaptor_std_rs::std::StdBlocker;
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -22,8 +22,6 @@ use fraktor_persistence_core_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
-use fraktor_showcases_std::support;
-
 // --- メッセージ定義 ---
 
 struct Start;
@@ -127,10 +125,9 @@ fn main() {
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
 
   let props = Props::from_fn(|| GuardianActor);
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config).with_extension_installers(installers);
+  let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
 
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));

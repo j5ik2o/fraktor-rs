@@ -1,10 +1,10 @@
 #![cfg(not(target_os = "none"))]
 
-use core::hint::spin_loop;
-use std::vec::Vec;
+use std::{thread, time::Duration, vec::Vec};
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::{
-  kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  kernel::actor::setup::ActorSystemConfig,
   typed::{
     ActorTags, SupervisorStrategy, TypedActorSystem, TypedProps,
     dsl::{Behaviors, routing::Routers},
@@ -14,19 +14,20 @@ use fraktor_actor_core_rs::core::{
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..10_000 {
+  for _ in 0..1_000 {
     if condition() {
       return;
     }
-    spin_loop();
+    thread::sleep(Duration::from_millis(1));
   }
   assert!(condition());
 }
 
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
 
   let key = ServiceKey::<u32>::new("typed-receptionist-router-example");
   let records = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());

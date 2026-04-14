@@ -11,7 +11,8 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    scheduler::tick_driver::TestTickDriver,
+    setup::ActorSystemConfig,
   },
   system::ActorSystem,
 };
@@ -265,8 +266,8 @@ fn death_watch_notifies_parent_on_child_stop() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
@@ -289,8 +290,8 @@ fn death_watch_unwatch_suppresses_notifications() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));
@@ -312,8 +313,8 @@ fn death_watch_handles_multiple_watchers() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(primary_log.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(SpawnSecondaryWatcherMessage { log: secondary_log.clone() }));
@@ -338,8 +339,8 @@ fn watch_after_stop_triggers_immediate_notification() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
@@ -360,8 +361,8 @@ fn spawn_child_watched_notifies_on_stop() {
     let terminated = terminated.clone();
     move || SpawnWatchedGuardian::new(terminated.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   let observed = wait_until(200, &|| !terminated.lock().is_empty());
@@ -386,8 +387,8 @@ fn terminated_and_user_messages_are_both_processed() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(QueueUserEvent));
@@ -409,8 +410,8 @@ fn cyclic_watchers_do_not_deadlock() {
     let log_b = log_b.clone();
     move || CycleGuardian::new(log_a.clone(), log_b.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(StartCycle));
 
@@ -491,8 +492,8 @@ fn watch_with_delivers_custom_message_instead_of_on_terminated() {
     let child_slot = child_slot.clone();
     move || WatchWithHarness::new(custom_log.clone(), terminated_log.clone(), child_slot.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
@@ -515,8 +516,8 @@ fn watch_with_unwatch_clears_custom_message_registration() {
     let child_slot = child_slot.clone();
     move || WatchWithHarness::new(custom_log.clone(), terminated_log.clone(), child_slot.clone())
   });
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system =
+    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));

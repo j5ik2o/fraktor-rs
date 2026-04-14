@@ -14,7 +14,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    scheduler::tick_driver::TestTickDriver,
     setup::ActorSystemConfig,
   },
   system::{
@@ -54,9 +54,8 @@ impl Actor for SelectionProbeActor {
 
 fn build_selection_system() -> ActorSystem {
   let props = Props::from_fn(|| NoopActor).with_name("selection-root");
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default().with_system_name("selection-spec").with_tick_driver(tick_driver);
-  ActorSystem::new_with_config(&props, &config).expect("system")
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("selection-spec");
+  ActorSystem::create_with_config(&props, config).expect("system")
 }
 
 fn spawn_selection_probe(

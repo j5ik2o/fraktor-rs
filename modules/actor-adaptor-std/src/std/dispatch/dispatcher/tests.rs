@@ -46,8 +46,8 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::Handle;
 
 use crate::std::{
-  default_tick_driver_config,
   dispatch::dispatcher::{PinnedExecutorFactory, TokioExecutor, TokioExecutorFactory},
+  tick_driver::TokioTickDriver,
 };
 
 const BALANCING_DISPATCHER_ID: &str = "balancing-contention";
@@ -109,7 +109,7 @@ fn build_system() -> ActorSystem {
   // re-schedules itself across throughput boundaries, so a 1000-envelope
   // batch drains correctly even though each `mailbox.run` invocation only
   // processes a small slice.
-  let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
+  let config = ActorSystemConfig::new(TokioTickDriver::default());
   let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
   let default_configurator: Box<dyn MessageDispatcherConfigurator> =
@@ -125,7 +125,7 @@ fn build_system() -> ActorSystem {
     .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
     .with_dispatcher_configurator(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
   let props = Props::from_fn(|| TeamGuardian);
-  ActorSystem::new_with_config(&props, &config).expect("actor system")
+  ActorSystem::create_with_config(&props, config).expect("actor system")
 }
 
 fn spawn_team(

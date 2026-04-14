@@ -7,11 +7,14 @@
 
 use std::time::{Duration, Instant};
 
-use fraktor_actor_core_rs::core::typed::{
-  TypedActorRef, TypedActorSystem, TypedProps,
-  dsl::{Behaviors, routing::Routers},
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_core_rs::core::{
+  kernel::actor::setup::ActorSystemConfig,
+  typed::{
+    TypedActorRef, TypedActorSystem, TypedProps,
+    dsl::{Behaviors, routing::Routers},
+  },
 };
-use fraktor_showcases_std::support;
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 // --- メッセージ定義 ---
@@ -67,8 +70,8 @@ fn main() {
   let next_routee_index = SharedLock::new_with_driver::<SpinSyncMutex<_>>(0_usize);
 
   let props = router_guardian(records, next_routee_index);
-  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
-  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let system =
+    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut router = system.user_guardian_ref();
 
   // 4つのワークメッセージを送信（2つのルーティーに分配される）

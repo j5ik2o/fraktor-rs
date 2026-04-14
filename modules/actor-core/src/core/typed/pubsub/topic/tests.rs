@@ -4,7 +4,7 @@ use core::hint::spin_loop;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
-  kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  kernel::actor::{scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
     dsl::Behaviors,
@@ -25,8 +25,9 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 #[test]
 fn topic_should_publish_to_subscribers_and_report_stats() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+  let system =
+    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
 
   let topic_props = TypedProps::<TopicCommand<u32>>::from_behavior_factory(|| Topic::behavior("numbers"));
   let topic = system.as_untyped().spawn(topic_props.to_untyped()).expect("spawn topic");

@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::{
-  sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+  sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
 
@@ -23,8 +23,8 @@ use crate::core::kernel::{
     scheduler::{
       SchedulerConfig,
       tick_driver::{
-        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError,
-        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
+        SchedulerTickExecutor, TestTickDriver, TickDriver, TickDriverError, TickDriverKind, TickDriverProvision,
+        TickDriverStopper, TickFeedHandle, next_tick_driver_id,
       },
     },
     setup::ActorSystemConfig,
@@ -82,7 +82,7 @@ fn system_state_build_from_config_provides_scheduler_and_tick_driver_bundle() {
   let scheduler = state.scheduler();
   let resolution = scheduler.with_read(|s| s.config().resolution());
   let bundle = state.tick_driver_bundle();
-  assert_eq!(bundle.driver().resolution(), resolution);
+  assert_eq!(bundle.resolution(), resolution);
 }
 
 #[test]
@@ -92,13 +92,12 @@ fn system_state_build_from_config_sets_non_zero_start_time_by_default() {
 }
 
 fn base_config() -> ActorSystemConfig {
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver)
+  ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler)
 }
 
 fn build_state() -> SystemState {
-  SystemState::build_from_config(&base_config()).expect("state")
+  SystemState::build_from_owned_config(base_config()).expect("state")
 }
 
 fn build_shared_state() -> SystemStateShared {
@@ -107,83 +106,52 @@ fn build_shared_state() -> SystemStateShared {
 
 fn build_shared_state_with_noop_dispatcher() -> SystemStateShared {
   let config = base_config().with_dispatcher_configurator("noop", noop_dispatcher_configurator());
-  SystemStateShared::new(SystemState::build_from_config(&config).expect("state"))
+  SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"))
 }
 
-struct NoopControl;
-
-impl TickDriverControl for NoopControl {
-  fn shutdown(&self) {}
+struct StopCountingStopper {
+  stop_calls: ArcShared<AtomicUsize>,
 }
 
-struct StaticTickDriver {
-  id:         TickDriverId,
-  resolution: Duration,
-}
-
-impl TickDriver for StaticTickDriver {
-  fn id(&self) -> TickDriverId {
-    self.id
+impl TickDriverStopper for StopCountingStopper {
+  fn stop(self: Box<Self>) {
+    self.stop_calls.fetch_add(1, Ordering::SeqCst);
   }
+}
 
+struct StopCountingDriver {
+  stop_calls: ArcShared<AtomicUsize>,
+}
+
+impl TickDriver for StopCountingDriver {
   fn kind(&self) -> TickDriverKind {
     TickDriverKind::Auto
   }
 
-  fn resolution(&self) -> Duration {
-    self.resolution
-  }
-
-  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
-    use crate::core::kernel::actor::scheduler::tick_driver::TickDriverControlShared;
-    let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = TickDriverControlShared::new(control);
-    Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
-  }
-}
-
-struct ShutdownRecordingControl {
-  shutdown_calls: ArcShared<AtomicUsize>,
-  did_shutdown:   AtomicBool,
-}
-
-impl ShutdownRecordingControl {
-  fn new(shutdown_calls: ArcShared<AtomicUsize>) -> Self {
-    Self { shutdown_calls, did_shutdown: AtomicBool::new(false) }
-  }
-}
-
-impl TickDriverControl for ShutdownRecordingControl {
-  fn shutdown(&self) {
-    if !self.did_shutdown.swap(true, Ordering::SeqCst) {
-      self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
-    }
-  }
-}
-
-struct ShutdownRecordingPump {
-  shutdown_calls: ArcShared<AtomicUsize>,
-}
-
-impl TickExecutorPump for ShutdownRecordingPump {
-  fn spawn(&mut self, _executor: SchedulerTickExecutor) -> Result<Box<dyn TickDriverControl>, TickDriverError> {
-    Ok(Box::new(ShutdownRecordingControl::new(self.shutdown_calls.clone())))
+  fn provision(
+    self: Box<Self>,
+    _feed: TickFeedHandle,
+    _executor: SchedulerTickExecutor,
+  ) -> Result<TickDriverProvision, TickDriverError> {
+    Ok(TickDriverProvision {
+      resolution:    Duration::from_millis(1),
+      id:            next_tick_driver_id(),
+      kind:          TickDriverKind::Auto,
+      stopper:       Box::new(StopCountingStopper { stop_calls: self.stop_calls }),
+      auto_metadata: None,
+    })
   }
 }
 
 #[test]
 fn system_state_drop_shuts_down_executor_once() {
-  let executor_calls = ArcShared::new(AtomicUsize::new(0));
-  let tick_driver = TickDriverConfig::runtime(
-    Box::new(StaticTickDriver { id: TickDriverId::new(1), resolution: Duration::from_millis(1) }),
-    Box::new(ShutdownRecordingPump { shutdown_calls: executor_calls.clone() }),
-  );
-
-  let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
-  let state = SystemState::build_from_config(&config).expect("state");
+  let stop_calls = ArcShared::new(AtomicUsize::new(0));
+  let driver = StopCountingDriver { stop_calls: stop_calls.clone() };
+  let config = ActorSystemConfig::new(driver);
+  let state = SystemState::build_from_owned_config(config).expect("state");
   drop(state);
 
-  assert_eq!(executor_calls.load(Ordering::SeqCst), 1);
+  assert_eq!(stop_calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -269,7 +237,7 @@ fn system_state_remove_cell_reserves_uid() {
 fn system_state_registers_canonical_uri_with_config() {
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
   let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting);
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
@@ -291,7 +259,7 @@ fn system_state_registers_canonical_uri_with_config() {
 fn system_state_prefers_advertise_authority_for_canonical_path() {
   let remoting = RemotingConfig::default().with_canonical_host("public.example.com").with_canonical_port(4100);
   let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting);
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
@@ -313,7 +281,7 @@ fn system_state_prefers_advertise_authority_for_canonical_path() {
 fn system_state_refuses_canonical_without_port() {
   let remoting = RemotingConfig::default().with_canonical_host("missing-port.example");
   let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting);
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
@@ -335,7 +303,7 @@ fn system_state_refuses_canonical_without_port() {
 #[test]
 fn system_state_remoting_config_is_none_when_disabled() {
   let config = base_config().with_system_name("fraktor-system");
-  let state = SystemState::build_from_config(&config).expect("state");
+  let state = SystemState::build_from_owned_config(config).expect("state");
   assert!(state.remoting_config().is_none());
 }
 
@@ -346,7 +314,7 @@ fn system_state_remoting_config_matches_config_when_enabled() {
     .with_canonical_port(2552)
     .with_quarantine_duration(Duration::from_secs(10));
   let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting.clone());
-  let state = SystemState::build_from_config(&config).expect("state");
+  let state = SystemState::build_from_owned_config(config).expect("state");
 
   assert_eq!(state.remoting_config(), Some(remoting));
 }
@@ -357,7 +325,7 @@ fn system_state_remoting_config_retains_partial_authority() {
     .with_canonical_host("missing-port.example")
     .with_quarantine_duration(Duration::from_secs(10));
   let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting.clone());
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
 
   assert_eq!(state.remoting_config(), Some(remoting));
   assert!(state.canonical_authority_components().is_none());
@@ -367,7 +335,7 @@ fn system_state_remoting_config_retains_partial_authority() {
 #[test]
 fn system_state_honors_default_guardian_config() {
   let config = base_config().with_system_name("sys-guardian").with_default_guardian(PathGuardianKind::System);
-  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
