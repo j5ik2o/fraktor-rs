@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: TickDriver trait は provision(self: Box<Self>) 1 メソッドで object-safe に消費する
+### Requirement: TickDriver trait は kind() と provision(self: Box<Self>) の 2 メソッドで object-safe に消費する
 
 `TickDriver` trait は `kind(&self)` と `provision(self: Box<Self>, feed, executor)` の 2 メソッドで構成しなければならない（MUST）。`kind()` は provision 前に呼べる query で、driver の分類を返す。`provision` は `self: Box<Self>` により object safety を維持しつつ所有権を消費し、tick 生成と executor 駆動の両方を開始する。`provision` が返す `TickDriverProvision::kind` は `kind()` と同じ値でなければならない（MUST）。
 
