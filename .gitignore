@@ -66,6 +66,6 @@ Cargo.lock
 /.codex*/state*.sqlite*
 /.codex*/tmp/
 /.codex*/version.json
-/.codex*/skills/.system
 /.codex*/logs*
 /.codex*/plugins/
+/.codex*/skills/
