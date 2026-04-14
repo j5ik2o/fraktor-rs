@@ -109,8 +109,9 @@ impl TickDriverStopper for TokioTickDriverStopper {
     self.running.store(false, Ordering::Release);
     self.tick_task.abort();
     self.exec_task.abort();
-    // Block until both tasks have fully stopped.
-    // Use a dedicated thread because block_on panics inside a tokio runtime context.
+    // abort() だけでは停止要求を出すだけで、task が完全に終了したことまでは確認できない。
+    // 両 task の終了を待って stop() 復帰時の停止完了を保証するため、JoinHandle を最後まで待機する。
+    // Tokio runtime 内で直接 block_on すると panic するため、専用スレッドで待機する。
     let handle = self.handle;
     let tick_task = self.tick_task;
     let exec_task = self.exec_task;
