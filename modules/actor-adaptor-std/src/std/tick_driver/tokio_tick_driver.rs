@@ -91,7 +91,7 @@ impl TickDriver for TokioTickDriver {
       resolution,
       id,
       kind: TickDriverKind::Tokio,
-      stopper: Box::new(TokioTickDriverStopper { running, tick_task, exec_task }),
+      stopper: Box::new(TokioTickDriverStopper { running, handle: handle.clone(), tick_task, exec_task }),
       auto_metadata: Some(AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id: id, resolution }),
     })
   }
@@ -99,6 +99,7 @@ impl TickDriver for TokioTickDriver {
 
 struct TokioTickDriverStopper {
   running:   Arc<AtomicBool>,
+  handle:    Handle,
   tick_task: JoinHandle<()>,
   exec_task: JoinHandle<()>,
 }
@@ -108,5 +109,15 @@ impl TickDriverStopper for TokioTickDriverStopper {
     self.running.store(false, Ordering::Release);
     self.tick_task.abort();
     self.exec_task.abort();
+    // Block until both tasks have fully stopped.
+    // Use a dedicated thread because block_on panics inside a tokio runtime context.
+    let handle = self.handle;
+    let tick_task = self.tick_task;
+    let exec_task = self.exec_task;
+    let join = std::thread::spawn(move || {
+      let _ = handle.block_on(tick_task);
+      let _ = handle.block_on(exec_task);
+    });
+    let _ = join.join();
   }
 }
