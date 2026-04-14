@@ -9,6 +9,8 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example state_management`
 
+use core::time::Duration;
+
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
   kernel::actor::setup::ActorSystemConfig,
@@ -117,7 +119,7 @@ fn run_counter() {
   let response = counter_ref.ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to });
   let mut future = response.future().clone();
   while !future.is_ready() {
-    thread::yield_now();
+    thread::sleep(Duration::from_millis(1));
   }
   if let Some(result) = future.try_take() {
     match result {
@@ -151,7 +153,7 @@ fn run_gate() {
   let response = gate.ask::<u32, _>(|reply_to| GateCommand::ReadPassCount { reply_to });
   let mut future = response.future().clone();
   while !future.is_ready() {
-    thread::yield_now();
+    thread::sleep(Duration::from_millis(1));
   }
   if let Some(result) = future.try_take() {
     match result {

@@ -99,7 +99,7 @@ fn main() {
 
   // ask の完了をフラグで待機
   while !done.load(Ordering::Acquire) {
-    thread::yield_now();
+    thread::sleep(Duration::from_millis(1));
   }
 
   system.terminate().expect("terminate");

@@ -1,7 +1,6 @@
 #![cfg(not(target_os = "none"))]
 
-use core::hint::spin_loop;
-use std::vec::Vec;
+use std::{thread, time::Duration, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::{
@@ -15,11 +14,11 @@ use fraktor_actor_core_rs::core::{
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..10_000 {
+  for _ in 0..1_000 {
     if condition() {
       return;
     }
-    spin_loop();
+    thread::sleep(Duration::from_millis(1));
   }
   assert!(condition());
 }

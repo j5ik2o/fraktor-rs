@@ -1,6 +1,6 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{boxed::Box, string::String, thread, vec::Vec};
+use std::{boxed::Box, string::String, thread, time::Duration, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
@@ -103,11 +103,11 @@ fn main() {
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..10_000 {
+  for _ in 0..1_000 {
     if condition() {
       return;
     }
-    thread::yield_now();
+    thread::sleep(Duration::from_millis(1));
   }
   assert!(condition());
 }

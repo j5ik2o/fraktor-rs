@@ -63,11 +63,11 @@ fn main() {
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..10_000 {
+  for _ in 0..1_000 {
     if condition() {
       return;
     }
-    thread::yield_now();
+    thread::sleep(Duration::from_millis(1));
   }
   assert!(condition());
 }
