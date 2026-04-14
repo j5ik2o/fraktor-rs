@@ -139,5 +139,7 @@
 - [ ] 7.1 `cargo check --lib --workspace` がクリーンにビルドされることを確認する
 - [ ] 7.2 `cargo check --tests --workspace` がクリーンにビルドされることを確認する
 - [ ] 7.3 `cargo check --benches --workspace` がクリーンにビルドされることを確認する
-- [ ] 7.4 全 showcase が新 API で動作することを確認する
-- [ ] 7.5 `./scripts/ci-check.sh` が全パスすることを確認する
+- [ ] 7.4 `TickDriverError::UnsupportedRuntime` 追加に伴う既存 `match` の網羅性エラーがないことを確認する（7.1/7.2 で検出可能）
+- [ ] 7.5 `std.rs` の re-export が設計どおり `StdTickDriver`（無条件）+ `TokioTickDriver`（`#[cfg(feature = "tokio-executor")]`）になっていることを確認する（7.1 で検出可能）
+- [ ] 7.6 全 showcase が新 API で動作することを確認する
+- [ ] 7.7 `./scripts/ci-check.sh` が全パスすることを確認する
