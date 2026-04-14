@@ -51,6 +51,9 @@ impl TickDriver for TokioTickDriver {
     executor: SchedulerTickExecutor,
   ) -> Result<TickDriverProvision, TickDriverError> {
     let resolution = self.resolution;
+    if resolution.is_zero() {
+      return Err(TickDriverError::InvalidResolution);
+    }
     let id = next_tick_driver_id();
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
 
@@ -78,7 +81,7 @@ impl TickDriver for TokioTickDriver {
 
     let exec_running = running.clone();
     let exec_done = done_tx;
-    let exec_interval = resolution / 10;
+    let exec_interval = (resolution / 10).max(Duration::from_millis(1));
     let mut executor = executor;
     let _exec_task = handle.spawn(async move {
       loop {
