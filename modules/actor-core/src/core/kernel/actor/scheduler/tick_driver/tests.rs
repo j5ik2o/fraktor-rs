@@ -34,7 +34,7 @@ impl EventStreamSubscriber for RecordingSubscriber {
   }
 }
 
-/// シンプルなテスト用ドライバー: スレッドを使わずにインライン実行
+// シンプルなテスト用ドライバー: スレッドを使わずにインライン実行
 struct InlineTestDriver {
   id:         TickDriverId,
   resolution: Duration,

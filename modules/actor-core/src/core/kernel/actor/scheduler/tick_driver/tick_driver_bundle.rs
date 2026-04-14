@@ -8,24 +8,13 @@ use core::time::Duration;
 use super::{AutoDriverMetadata, TickDriverId, TickDriverKind, TickFeedHandle};
 
 /// Bundle of assets produced after provisioning a tick driver.
+#[derive(Clone)]
 pub struct TickDriverBundle {
   id:            TickDriverId,
   kind:          TickDriverKind,
   resolution:    Duration,
   feed:          Option<TickFeedHandle>,
   auto_metadata: Option<AutoDriverMetadata>,
-}
-
-impl Clone for TickDriverBundle {
-  fn clone(&self) -> Self {
-    Self {
-      id:            self.id,
-      kind:          self.kind,
-      resolution:    self.resolution,
-      feed:          self.feed.clone(),
-      auto_metadata: self.auto_metadata.clone(),
-    }
-  }
 }
 
 impl TickDriverBundle {

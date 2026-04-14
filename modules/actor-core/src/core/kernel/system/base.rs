@@ -88,7 +88,7 @@ impl ActorSystem {
     let config = configure(config);
     let state = match SystemState::build_from_owned_config(config) {
       | Ok(state) => state,
-      | Err(error) => panic!("default test-support config should always build: {error:?}"),
+      | Err(error) => panic!("test-support config failed to build in new_empty_with: {error:?}"),
     };
     let system = Self::from_state(SystemStateShared::new(state));
     system.state.mark_root_started();
