@@ -105,7 +105,7 @@ fn main() {
 }
 
 fn run_counter() {
-  use std::thread;
+  use std::{thread, time::Instant};
 
   let props = TypedProps::from_behavior_factory(|| counter(0));
   let system =
@@ -118,7 +118,12 @@ fn run_counter() {
 
   let response = counter_ref.ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to });
   let mut future = response.future().clone();
+  let started_at = Instant::now();
+  let timeout = Duration::from_secs(5);
   while !future.is_ready() {
+    if started_at.elapsed() >= timeout {
+      panic!("timed out waiting for counter Read future.is_ready() after {:?}", timeout);
+    }
     thread::sleep(Duration::from_millis(1));
   }
   if let Some(result) = future.try_take() {
@@ -133,7 +138,7 @@ fn run_counter() {
 }
 
 fn run_gate() {
-  use std::thread;
+  use std::{thread, time::Instant};
 
   let props = TypedProps::from_behavior_factory(|| locked(0));
   let system =
@@ -152,7 +157,12 @@ fn run_gate() {
 
   let response = gate.ask::<u32, _>(|reply_to| GateCommand::ReadPassCount { reply_to });
   let mut future = response.future().clone();
+  let started_at = Instant::now();
+  let timeout = Duration::from_secs(5);
   while !future.is_ready() {
+    if started_at.elapsed() >= timeout {
+      panic!("timed out waiting for gate ReadPassCount future.is_ready() after {:?}", timeout);
+    }
     thread::sleep(Duration::from_millis(1));
   }
   if let Some(result) = future.try_take() {

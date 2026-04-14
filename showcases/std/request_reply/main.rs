@@ -84,7 +84,7 @@ fn requester(done: Arc<AtomicBool>) -> Behavior<RequesterMsg> {
 
 #[allow(clippy::print_stdout)]
 fn main() {
-  use std::thread;
+  use std::{thread, time::Instant};
 
   let done = Arc::new(AtomicBool::new(false));
   let done_clone = done.clone();
@@ -98,7 +98,11 @@ fn main() {
   guardian.try_tell(RequesterMsg::Start).expect("enqueue RequesterMsg::Start");
 
   // ask の完了をフラグで待機
+  let deadline = Instant::now() + Duration::from_secs(5);
   while !done.load(Ordering::Acquire) {
+    if Instant::now() >= deadline {
+      panic!("timed out waiting for request_reply done flag after {:?}", Duration::from_secs(5));
+    }
     thread::sleep(Duration::from_millis(1));
   }
 
