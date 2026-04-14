@@ -16,18 +16,19 @@ let system = TypedActorSystem::new(&props, tick_driver_config)?;
 ### あるべきユーザ体験
 
 ```rust
-let config = ActorSystemConfig::default()
-    .with_new_tick_driver(StdTickDriver::default())
+let config = ActorSystemConfig::new(StdTickDriver::default())
     .with_dispatcher_configurator(id, configurator);
 
 ActorSystem::create_with_config(&props, config)?;
 ```
 
-tick driver も dispatcher も extension も全部 `ActorSystemConfig` の builder 経由。特別扱いなし。
+`ActorSystemConfig::new(driver)` で TickDriver を必須引数にし、推奨パスを明示する。actor-core は no_std のためデフォルトの TickDriver を提供できない。dispatcher や extension は builder メソッドで追加。
 
-## What Changes
+## What Changes（すべて本 change のスコープ）
 
-### Phase 1: 新 port 契約 + std adapter + 新 API（本 change のスコープ）
+実装順序に沿って以下のステップで進める。すべて単一の change で完結する。
+
+### Step 1: 新 trait 定義
 
 1. **actor-core に新しい `TickDriver` trait を定義する**
 
@@ -37,9 +38,11 @@ tick driver も dispatcher も extension も全部 `ActorSystemConfig` の build
 
    `stop(self: Box<Self>)` — 所有権を取って join 可能。旧 `TickDriverControl::shutdown(&self)` では thread join を待てない問題を解決。
 
-3. **`ActorSystem::create_with_config` を新設する**
+### Step 2: 新 API + StdTickDriver
 
-   `create_with_config(props, config: ActorSystemConfig)` — config を消費する。`Option<Box<dyn TickDriver>>` を `.take()` で取り出して move で消費。旧 `new_with_config(&props, &config)` は残す。tick driver だけ別引数にする shortcut は設けない — config 経由に統一。
+3. **`ActorSystemConfig::new(driver)` + `ActorSystem::create_with_config` を新設する**
+
+   `ActorSystemConfig::new(driver)` で TickDriver を必須引数にする推奨コンストラクタを追加。`create_with_config(props, config)` で config を消費する。tick driver だけ別引数にする shortcut は設けない — config 経由に統一。
 
 4. **actor-adaptor-std に `StdTickDriver` を新設する**
 
@@ -47,18 +50,17 @@ tick driver も dispatcher も extension も全部 `ActorSystemConfig` の build
 
 5. **テスト用 driver を新設する**
 
-   旧 `ManualTestDriver` は触らない。新 `TickDriver` trait 用のテスト driver を新しく作る。
+   新 `TickDriver` trait 用のテスト driver を新しく作る。
 
-### Phase 2: 移行（別 change）
+### Step 3: 移行 + 旧設計の削除
 
-- showcase + テスト群を新 API に移行
-- 旧 API を deprecated 化
+6. **showcase + テスト群を新 API に移行する**
 
-### Phase 3: 旧設計の削除（別 change）
+   `showcases/std/` 配下の全 showcase を新 API（`ActorSystemConfig::new(StdTickDriver::default())` + `create_with_config`）に書き換える。テスト群も新 API に移行する。
 
-- 旧 `TickDriver` trait / `TickExecutorPump` trait / `TickDriverConfig` enum の削除
-- `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` の削除
-- 旧 `new` / `new_with_config` の削除
+7. **旧設計を削除する**
+
+   旧 `TickDriver` trait / `TickExecutorPump` trait / `TickDriverConfig` enum / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / 旧 `new` / `new_with_config` を削除する。旧 `support::hardware_tick_driver_config()` の `DemoPulse` 等も削除する。
 
 ## Capabilities
 
@@ -76,9 +78,10 @@ tick driver も dispatcher も extension も全部 `ActorSystemConfig` の build
   - `modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/` — 新 trait 定義（`TickDriver`, `TickDriverStopper`, `TickDriverProvision`）
   - `modules/actor-core/src/core/kernel/system/base.rs` — `create_with_config` / `create_with_setup` 追加
   - `modules/actor-core/src/core/typed/system.rs` — `create_with_config` 追加
-  - `modules/actor-core/src/core/kernel/actor/setup/actor_system_config.rs` — `with_tick_driver(impl TickDriver)` + `tick_driver: Option<Box<dyn TickDriver>>` 追加
-  - `modules/actor-core/src/core/kernel/actor/setup/actor_system_setup.rs` — `with_new_tick_driver` + `create_with_setup` 追加
+  - `modules/actor-core/src/core/kernel/actor/setup/actor_system_config.rs` — `with_tick_driver(impl TickDriver + 'static)` + `tick_driver: Option<Box<dyn TickDriver>>` に置き換え
+  - `modules/actor-core/src/core/kernel/actor/setup/actor_system_setup.rs` — `with_tick_driver` を新シグネチャに置き換え + `create_with_setup` 追加
   - `modules/actor-adaptor-std/src/std/tick_driver/std_tick_driver.rs` — 新設
 - 破壊的変更:
-  - Phase 1 は基本的に additive だが、`TickDriverKind` への `#[non_exhaustive]` 付与 + `Std` variant 追加は既存の網羅的 `match` を壊す破壊的変更。旧 API の名前・シグネチャは変更しない
-  - Phase 3 で旧 API を削除する際に破壊的変更となる
+  - 旧 API（`new` / `new_with_config` / `new_with_setup`）を削除する
+  - 旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` を削除する
+  - `TickDriverKind` に `#[non_exhaustive]` を付与し `Std` variant を追加する

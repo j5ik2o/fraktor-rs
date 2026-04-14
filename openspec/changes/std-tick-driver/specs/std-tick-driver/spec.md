@@ -35,13 +35,23 @@
 
 ### Requirement: ActorSystemConfig の builder に統一的に組み込む
 
-tick driver は `ActorSystemConfig::with_new_tick_driver(impl TickDriver + 'static)` で config に格納しなければならない（MUST）。tick driver だけ別引数にしてはならない（MUST NOT）。旧 `with_tick_driver(TickDriverConfig)` の名前・シグネチャは Phase 1 で変更してはならない（MUST NOT）。
+tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)` で config に格納しなければならない（MUST）。tick driver だけ別引数にしてはならない（MUST NOT）。
 
 #### Scenario: config builder で tick driver を設定する
 
-- **WHEN** `ActorSystemConfig::default().with_new_tick_driver(StdTickDriver::default())` が呼ばれる
+- **WHEN** `ActorSystemConfig::default().with_tick_driver(StdTickDriver::default())` が呼ばれる
 - **THEN** config 内に `Box<dyn TickDriver>` として格納される
 - **AND** `create_with_config(props, config)` で config を消費し、内部で `.take()` して driver を move できる
+
+### Requirement: ActorSystemConfig::new(driver) で推奨パスを提供する
+
+`ActorSystemConfig::new(impl TickDriver + 'static)` コンストラクタを提供しなければならない（MUST）。actor-core は no_std のためデフォルトの TickDriver を提供できないため、ユーザに environment adapter を渡させる推奨パスとする。
+
+#### Scenario: new(driver) で config を生成する
+
+- **WHEN** `ActorSystemConfig::new(StdTickDriver::default())` が呼ばれる
+- **THEN** config 内に `Box<dyn TickDriver>` として格納される
+- **AND** 他のフィールドはデフォルト値で初期化される
 
 ### Requirement: ActorSystemSetup も新 tick driver を受け付ける
 
@@ -49,19 +59,25 @@ tick driver は `ActorSystemConfig::with_new_tick_driver(impl TickDriver + 'stat
 
 #### Scenario: setup facade で新 tick driver を設定する
 
-- **WHEN** `ActorSystemSetup::default().with_new_tick_driver(StdTickDriver::default())` が呼ばれる
+- **WHEN** `ActorSystemSetup::default().with_tick_driver(StdTickDriver::default())` が呼ばれる
 - **THEN** 内部の `ActorSystemConfig` に `Box<dyn TickDriver>` として格納される
 - **AND** `ActorSystem::create_with_setup(props, setup)` で setup を消費してシステムが起動する
 
-### Requirement: 旧 API は Phase 1 で残す
+### Requirement: 旧 API は本 change で削除する
 
-Phase 1 では旧 `ActorSystem::new(props, TickDriverConfig)`, `new_with_config(&props, &config)`, `new_with_setup(&props, &setup)` を削除してはならない（MUST NOT）。新 API は `create_with_config` / `create_with_setup` として並行追加する。
+旧 `ActorSystem::new(props, TickDriverConfig)`, `new_with_config(&props, &config)`, `new_with_config_and(&props, &config, f)`, `new_with_setup(&props, &setup)` を削除しなければならない（MUST）。旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` も削除しなければならない（MUST）。
 
-#### Scenario: 旧 API のテストが Phase 1 でそのまま通る
+#### Scenario: 旧 API が存在しない
 
-- **GIVEN** Phase 1 の変更が適用された状態
+- **GIVEN** 本 change が適用された状態
+- **WHEN** `ActorSystem::new` や `new_with_config` を呼ぶコードをコンパイルする
+- **THEN** コンパイルエラーになる（メソッドが存在しない）
+
+#### Scenario: 全テスト・showcase が新 API で通る
+
+- **GIVEN** 本 change が適用された状態
 - **WHEN** `cargo check --tests --workspace` を実行する
-- **THEN** 旧 API を使う既存テストが全てコンパイル・通過する
+- **THEN** 全テストがコンパイル・通過する（新 API に移行済み）
 
 ### Requirement: actor-adaptor-std は StdTickDriver を提供する
 
