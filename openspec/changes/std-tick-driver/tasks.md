@@ -33,7 +33,7 @@
 
 - [x] 4.1 `modules/actor-adaptor-std/src/std/tick_driver/tokio_tick_driver.rs` を新設する（`#[cfg(feature = "tokio-executor")]`）
 - [x] 4.2 `TokioTickDriver` を実装する（`impl TickDriver` — `tokio::time::interval` で tick 生成 + `tokio::time::sleep` で executor 駆動。`provision` で `Handle::runtime_flavor()` を検査し current-thread runtime なら `UnsupportedRuntime` エラーを返す）
-- [x] 4.3 `TokioTickDriverStopper` を実装する（`AtomicBool` 停止フラグ + `std::sync::mpsc::Receiver` で全タスク完了待ち）
+- [x] 4.3 `TokioTickDriverStopper` を実装する（`AtomicBool` 停止フラグで停止要求を出し、`Handle` + `JoinHandle` を使って両 task の完全停止まで待機する）
 - [x] 4.4 `tick_driver.rs`（既存モジュールファイル）に `mod tokio_tick_driver` と re-export を追加する
 - [x] 4.5 旧 Tokio 実装（`TokioTickDriver`（旧 `TickDriver` trait 実装） / `TokioTickExecutorPump` / `TokioTickDriverControl` / `TokioTickExecutorControl` / `default_tick_driver_config` / `tick_driver_config_with_resolution`）を `tick_driver.rs` から削除する
 
@@ -130,9 +130,9 @@
 - [x] 6.64 `modules/stream-core/src/core/materialization/actor_materializer/tests.rs` を新 API に移行する
 - [x] 6.65 `modules/stream-core/src/core/dsl/topic_pub_sub/tests.rs` を新 API に移行する
 
-### 6.H adaptor-std re-export 更新
+### 6.H adaptor-std 公開面更新
 
-- [x] 6.66 `modules/actor-adaptor-std/src/std.rs` の旧 re-export（`default_tick_driver_config` / `tick_driver_config_with_resolution`）を削除し、`StdTickDriver` を無条件で re-export、`TokioTickDriver` を `#[cfg(feature = "tokio-executor")]` で re-export する
+- [x] 6.66 `modules/actor-adaptor-std/src/std/tick_driver.rs` を `StdTickDriver` / `TokioTickDriver` の公開面として維持し、`modules/actor-adaptor-std/src/std.rs` からは旧 re-export（`default_tick_driver_config` / `tick_driver_config_with_resolution`）を削除する
 
 ## 7. 検証
 
