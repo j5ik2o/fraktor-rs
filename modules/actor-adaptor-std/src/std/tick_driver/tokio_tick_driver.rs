@@ -7,17 +7,15 @@ use core::{
   sync::atomic::{AtomicBool, Ordering},
   time::Duration,
 };
-use std::sync::{
-  Arc,
-  mpsc::{Receiver, channel},
-};
+use std::sync::Arc;
 
 use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind,
   TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
 };
 use tokio::{
-  runtime::{Handle, RuntimeFlavor},
+  runtime::Handle,
+  task::JoinHandle,
   time::{MissedTickBehavior, interval},
 };
 
@@ -57,16 +55,14 @@ impl TickDriver for TokioTickDriver {
     let id = next_tick_driver_id();
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
 
-    if handle.runtime_flavor() == RuntimeFlavor::CurrentThread {
+    if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::CurrentThread {
       return Err(TickDriverError::UnsupportedRuntime);
     }
 
     let running = Arc::new(AtomicBool::new(true));
-    let (done_tx, done_rx) = channel::<()>();
 
     let tick_running = running.clone();
-    let tick_done = done_tx.clone();
-    let _tick_task = handle.spawn(async move {
+    let tick_task = handle.spawn(async move {
       let mut ticker = interval(resolution);
       ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
       loop {
@@ -76,14 +72,12 @@ impl TickDriver for TokioTickDriver {
         }
         feed.enqueue(1);
       }
-      let _ = tick_done.send(());
     });
 
     let exec_running = running.clone();
-    let exec_done = done_tx;
     let exec_interval = (resolution / 10).max(Duration::from_millis(1));
     let mut executor = executor;
-    let _exec_task = handle.spawn(async move {
+    let exec_task = handle.spawn(async move {
       loop {
         if !exec_running.load(Ordering::Acquire) {
           break;
@@ -91,28 +85,28 @@ impl TickDriver for TokioTickDriver {
         executor.drive_pending();
         tokio::time::sleep(exec_interval).await;
       }
-      let _ = exec_done.send(());
     });
 
     Ok(TickDriverProvision {
       resolution,
       id,
       kind: TickDriverKind::Tokio,
-      stopper: Box::new(TokioTickDriverStopper { running, done_rx }),
+      stopper: Box::new(TokioTickDriverStopper { running, tick_task, exec_task }),
       auto_metadata: Some(AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id: id, resolution }),
     })
   }
 }
 
 struct TokioTickDriverStopper {
-  running: Arc<AtomicBool>,
-  done_rx: Receiver<()>,
+  running:   Arc<AtomicBool>,
+  tick_task: JoinHandle<()>,
+  exec_task: JoinHandle<()>,
 }
 
 impl TickDriverStopper for TokioTickDriverStopper {
   fn stop(self: Box<Self>) {
     self.running.store(false, Ordering::Release);
-    let _ = self.done_rx.recv();
-    let _ = self.done_rx.recv();
+    self.tick_task.abort();
+    self.exec_task.abort();
   }
 }
