@@ -161,7 +161,7 @@ impl ActorSystemSetup {
 
 ### 8. bootstrap 新経路の統合
 
-現行の `SystemState::build_from_config(config: &ActorSystemConfig)` は config を借用で受け取る。新 `create_with_config` は config を move で消費するため、新しい build 関数を追加する:
+現行の `SystemState::build_from_config(config: &ActorSystemConfig)` は config を借用で受け取る。新 `create_with_config` は config を move で消費するため、旧メソッドを削除し新しい build 関数で置き換える:
 
 ```rust
 // 新メソッド（config を move で受け取る）

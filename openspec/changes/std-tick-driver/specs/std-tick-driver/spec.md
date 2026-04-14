@@ -53,6 +53,27 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 - **THEN** config 内に `Box<dyn TickDriver>` として格納される
 - **AND** 他のフィールドはデフォルト値で初期化される
 
+### Requirement: create_with_config_and が新 API の core メソッドである
+
+`ActorSystem::create_with_config_and(props, config, configure)` を提供しなければならない（MUST）。`create_with_config` と `create_with_setup` はこのメソッドに委譲しなければならない（MUST）。`configure` コールバックで extension 登録等の拡張点を提供する。
+
+#### Scenario: create_with_config_and で拡張コールバックを実行できる
+
+- **GIVEN** `ActorSystemConfig::new(StdTickDriver::default())` で config が生成される
+- **WHEN** `ActorSystem::create_with_config_and(props, config, |system| { /* extension 登録 */ Ok(()) })` が呼ばれる
+- **THEN** config を消費してシステムが構築される
+- **AND** `configure` コールバックが実行される
+
+#### Scenario: create_with_config は create_with_config_and に委譲する
+
+- **WHEN** `ActorSystem::create_with_config(props, config)` が呼ばれる
+- **THEN** 内部で `create_with_config_and(props, config, |_| Ok(()))` に委譲される
+
+#### Scenario: create_with_setup は create_with_config_and に委譲する
+
+- **WHEN** `ActorSystem::create_with_setup(props, setup)` が呼ばれる
+- **THEN** 内部で `setup.into_actor_system_config()` → `create_with_config_and` に委譲される
+
 ### Requirement: ActorSystemSetup も新 tick driver を受け付ける
 
 `ActorSystemSetup` にも新 `TickDriver` を設定するメソッドを提供しなければならない（MUST）。Pekko 互換の setup 経路が旧設計に取り残されてはならない。

@@ -60,7 +60,7 @@ ActorSystem::create_with_config(&props, config)?;
 
 7. **旧設計を削除する**
 
-   旧 `TickDriver` trait / `TickExecutorPump` trait / `TickDriverConfig` enum / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / 旧 `new` / `new_with_config` を削除する。旧 `support::hardware_tick_driver_config()` の `DemoPulse` 等も削除する。
+   旧 `TickDriver` trait / `TickExecutorPump` trait / `TickDriverConfig` enum / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` / 旧 `new` / `new_with_config` / `new_with_config_and` / `new_with_setup` を削除する。旧 `support::hardware_tick_driver_config()` の `DemoPulse` 等も削除する。
 
 ## Capabilities
 
@@ -82,6 +82,6 @@ ActorSystem::create_with_config(&props, config)?;
   - `modules/actor-core/src/core/kernel/actor/setup/actor_system_setup.rs` — `with_tick_driver` を新シグネチャに置き換え + `create_with_setup` 追加
   - `modules/actor-adaptor-std/src/std/tick_driver/std_tick_driver.rs` — 新設
 - 破壊的変更:
-  - 旧 API（`new` / `new_with_config` / `new_with_setup`）を削除する
-  - 旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` を削除する
+  - 旧 API（`new` / `new_with_config` / `new_with_config_and` / `new_with_setup`）を削除する
+  - 旧 `TickDriver` trait / `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` を削除する
   - `TickDriverKind` に `#[non_exhaustive]` を付与し `Std` variant を追加する
