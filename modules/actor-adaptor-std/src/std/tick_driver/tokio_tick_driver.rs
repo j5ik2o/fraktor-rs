@@ -8,7 +8,7 @@ use core::{
   time::Duration,
 };
 use std::sync::{
-  Arc, Mutex,
+  Arc,
   mpsc::{Receiver, channel},
 };
 
@@ -98,7 +98,7 @@ impl TickDriver for TokioTickDriver {
       resolution,
       id,
       kind: TickDriverKind::Tokio,
-      stopper: Box::new(TokioTickDriverStopper { running, done_rx: Mutex::new(done_rx) }),
+      stopper: Box::new(TokioTickDriverStopper { running, done_rx }),
       auto_metadata: Some(AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id: id, resolution }),
     })
   }
@@ -106,15 +106,13 @@ impl TickDriver for TokioTickDriver {
 
 struct TokioTickDriverStopper {
   running: Arc<AtomicBool>,
-  done_rx: Mutex<Receiver<()>>,
+  done_rx: Receiver<()>,
 }
 
 impl TickDriverStopper for TokioTickDriverStopper {
   fn stop(self: Box<Self>) {
     self.running.store(false, Ordering::Release);
-    if let Ok(rx) = self.done_rx.into_inner() {
-      let _ = rx.recv();
-      let _ = rx.recv();
-    }
+    let _ = self.done_rx.recv();
+    let _ = self.done_rx.recv();
   }
 }
