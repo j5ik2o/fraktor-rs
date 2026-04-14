@@ -63,6 +63,7 @@ impl TickDriverBootstrap {
     let executor = SchedulerTickExecutor::new(scheduler, feed_handle.clone(), signal);
     let provision = driver.provision(feed_handle.clone(), executor)?;
     let resolution = provision.resolution;
+    feed_handle.set_resolution(resolution);
     let id = provision.id;
     let kind = provision.kind;
     let auto_metadata = provision.auto_metadata.clone();
