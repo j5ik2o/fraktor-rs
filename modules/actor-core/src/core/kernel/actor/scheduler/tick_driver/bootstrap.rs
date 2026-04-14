@@ -45,19 +45,11 @@ impl TickDriverBootstrap {
     driver: Box<dyn TickDriver>,
     ctx: &TickDriverProvisioningContext,
   ) -> Result<BootstrapProvisionResult, TickDriverError> {
-    let start_instant = {
+    let (start_instant, capacity, resolution) = {
       let scheduler = ctx.scheduler();
-      scheduler.with_read(|s| s.clock().now())
-    };
-    let capacity = {
-      let scheduler = ctx.scheduler();
-      scheduler.with_read(|s| s.config().profile().tick_buffer_quota())
+      scheduler.with_read(|s| (s.clock().now(), s.config().profile().tick_buffer_quota(), s.config().resolution()))
     };
     let signal = TickExecutorSignal::new();
-    let resolution = {
-      let scheduler = ctx.scheduler();
-      scheduler.with_read(|s| s.config().resolution())
-    };
     let feed_handle: TickFeedHandle = TickFeed::new(resolution, capacity, signal.clone());
     let scheduler = ctx.scheduler();
     let executor = SchedulerTickExecutor::new(scheduler, feed_handle.clone(), signal);
