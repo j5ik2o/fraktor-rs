@@ -90,7 +90,7 @@ pub trait TickDriverStopper: Send + 'static {
 
 - `tick_driver_trait.rs` の旧 `TickDriver` trait を新 trait に置き換える
 - `next_tick_driver_id()` は旧 trait と無関係な独立関数であるため、`tick_driver_id.rs` に移動する
-- 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` を削除する
+- 旧 `TickDriverConfig` / `TickExecutorPump` / `HardwareTickDriver` / `TickPulseSource` / `ManualTestDriver` / `TickDriverControl` を削除する
 
 ### 5. 旧 API の削除と新 API への置き換え
 
