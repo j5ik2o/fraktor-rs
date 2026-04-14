@@ -8,7 +8,7 @@
 mod tests;
 
 use super::{
-  dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
+  dispatcher_config::DispatcherConfig, dispatcher_core::DispatcherCore, executor_shared::ExecutorShared,
   message_dispatcher::MessageDispatcher,
 };
 
@@ -20,7 +20,7 @@ pub struct DefaultDispatcher {
 impl DefaultDispatcher {
   /// Constructs a new `DefaultDispatcher` with the given settings and executor.
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
     Self { core: DispatcherCore::new(settings, executor) }
   }
 }

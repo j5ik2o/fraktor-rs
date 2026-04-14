@@ -8,7 +8,7 @@ use core::{
 };
 
 use super::{
-  DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, RestartBackoff, RestartSettings, SinkDecision,
+  DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, RestartBackoff, RestartConfig, SinkDecision,
   SinkDefinition, SinkLogic, StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError,
   StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value,
   flow::{Flow, broadcast_definition},
@@ -536,7 +536,7 @@ where
 
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
-  pub fn restart_sink_with_settings(mut self, settings: RestartSettings) -> Self {
+  pub fn restart_sink_with_settings(mut self, settings: RestartConfig) -> Self {
     self.graph.set_sink_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }

@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use crate::core::typed::delivery::ProducerControllerSettings;
+use crate::core::typed::delivery::ProducerControllerConfig;
 
 #[cfg(test)]
 mod tests;
@@ -13,25 +13,25 @@ const DEFAULT_BUFFER_SIZE: u32 = 1000;
 /// Default internal ask timeout.
 const DEFAULT_INTERNAL_ASK_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Settings for
+/// Configuration for
 /// [`WorkPullingProducerController`](super::WorkPullingProducerController).
 ///
 /// Corresponds to Pekko's `WorkPullingProducerController.Settings`.
 #[derive(Debug, Clone)]
-pub struct WorkPullingProducerControllerSettings {
+pub struct WorkPullingProducerControllerConfig {
   buffer_size:                  u32,
   internal_ask_timeout:         Duration,
-  producer_controller_settings: ProducerControllerSettings,
+  producer_controller_settings: ProducerControllerConfig,
 }
 
-impl WorkPullingProducerControllerSettings {
-  /// Creates default settings.
+impl WorkPullingProducerControllerConfig {
+  /// Creates default config.
   #[must_use]
   pub const fn new() -> Self {
     Self {
       buffer_size:                  DEFAULT_BUFFER_SIZE,
       internal_ask_timeout:         DEFAULT_INTERNAL_ASK_TIMEOUT,
-      producer_controller_settings: ProducerControllerSettings::new(),
+      producer_controller_settings: ProducerControllerConfig::new(),
     }
   }
 
@@ -42,7 +42,7 @@ impl WorkPullingProducerControllerSettings {
     self.buffer_size
   }
 
-  /// Returns a new settings with the given buffer size.
+  /// Returns a new config with the given buffer size.
   ///
   /// Corresponds to Pekko's `WorkPullingProducerController.Settings.withBufferSize`.
   #[must_use]
@@ -58,7 +58,7 @@ impl WorkPullingProducerControllerSettings {
     self.internal_ask_timeout
   }
 
-  /// Returns a new settings with the given internal ask timeout.
+  /// Returns a new config with the given internal ask timeout.
   ///
   /// Corresponds to Pekko's `WorkPullingProducerController.Settings.withInternalAskTimeout`.
   #[must_use]
@@ -66,22 +66,21 @@ impl WorkPullingProducerControllerSettings {
     Self { internal_ask_timeout: timeout, ..self }
   }
 
-  /// Returns the nested producer-controller settings applied to spawned worker
+  /// Returns the nested producer-controller config applied to spawned worker
   /// controllers and durable-queue retries.
   #[must_use]
-  pub const fn producer_controller_settings(&self) -> &ProducerControllerSettings {
+  pub const fn producer_controller_settings(&self) -> &ProducerControllerConfig {
     &self.producer_controller_settings
   }
 
-  /// Returns a new settings value with the given nested producer-controller
-  /// settings.
+  /// Returns a new config with the given nested producer-controller config.
   #[must_use]
-  pub const fn with_producer_controller_settings(self, settings: ProducerControllerSettings) -> Self {
+  pub const fn with_producer_controller_settings(self, settings: ProducerControllerConfig) -> Self {
     Self { producer_controller_settings: settings, ..self }
   }
 }
 
-impl Default for WorkPullingProducerControllerSettings {
+impl Default for WorkPullingProducerControllerConfig {
   fn default() -> Self {
     Self::new()
   }

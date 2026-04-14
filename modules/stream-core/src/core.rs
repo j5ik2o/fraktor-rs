@@ -26,12 +26,12 @@ mod io_result;
 pub mod materialization;
 /// Result of offering an element into a source queue.
 mod queue_offer_result;
+/// Restart and backoff configuration.
+mod restart_config;
+/// Restart log configuration.
+mod restart_log_config;
 /// Restart log level enum.
 mod restart_log_level;
-/// Restart log settings.
-mod restart_log_settings;
-/// Restart and backoff configuration settings.
-mod restart_settings;
 /// Stream reference serialization support.
 mod serialization;
 /// Stream topology shapes and connection points.
@@ -74,9 +74,9 @@ pub use kill_switches::KillSwitches;
 use materialization::MatCombine;
 pub use overflow_strategy::OverflowStrategy;
 pub use queue_offer_result::QueueOfferResult;
+pub use restart_config::RestartConfig;
+pub use restart_log_config::RestartLogConfig;
 pub use restart_log_level::RestartLogLevel;
-pub use restart_log_settings::RestartLogSettings;
-pub use restart_settings::RestartSettings;
 use shape::PortId;
 pub use shared_kill_switch::SharedKillSwitch;
 pub use sink_decision::SinkDecision;

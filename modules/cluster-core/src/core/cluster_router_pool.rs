@@ -5,26 +5,26 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use crate::core::ClusterRouterPoolSettings;
+use crate::core::ClusterRouterPoolConfig;
 
 /// Round-robin pool router for cluster routees.
 pub struct ClusterRouterPool {
-  settings:   ClusterRouterPoolSettings,
+  config:     ClusterRouterPoolConfig,
   routees:    Vec<String>,
   next_index: usize,
 }
 
 impl ClusterRouterPool {
-  /// Creates a pool router with settings and initial routees.
+  /// Creates a pool router with config and initial routees.
   #[must_use]
-  pub const fn new(settings: ClusterRouterPoolSettings, routees: Vec<String>) -> Self {
-    Self { settings, routees, next_index: 0 }
+  pub const fn new(config: ClusterRouterPoolConfig, routees: Vec<String>) -> Self {
+    Self { config, routees, next_index: 0 }
   }
 
-  /// Returns the router settings.
+  /// Returns the router config.
   #[must_use]
-  pub const fn settings(&self) -> &ClusterRouterPoolSettings {
-    &self.settings
+  pub const fn config(&self) -> &ClusterRouterPoolConfig {
+    &self.config
   }
 
   /// Returns the current routees.
@@ -41,13 +41,13 @@ impl ClusterRouterPool {
 
   /// Selects the next routee authority using round-robin.
   ///
-  /// The effective pool is capped at [`ClusterRouterPoolSettings::total_instances`].
+  /// The effective pool is capped at [`ClusterRouterPoolConfig::total_instances`].
   #[must_use]
   pub fn next_routee(&mut self) -> Option<&str> {
     if self.routees.is_empty() {
       return None;
     }
-    let effective_count = self.routees.len().min(self.settings.total_instances());
+    let effective_count = self.routees.len().min(self.config.total_instances());
     let index = self.next_index % effective_count;
     self.next_index = (self.next_index + 1) % effective_count;
     Some(self.routees[index].as_str())

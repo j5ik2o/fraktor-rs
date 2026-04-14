@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use super::{
-  default_dispatcher::DefaultDispatcher, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
+  default_dispatcher::DefaultDispatcher, dispatcher_config::DispatcherConfig, executor_shared::ExecutorShared,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
 };
 
@@ -18,7 +18,7 @@ pub struct DefaultDispatcherConfigurator {
 impl DefaultDispatcherConfigurator {
   /// Builds a new configurator from the supplied settings and executor.
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
     let dispatcher = DefaultDispatcher::new(settings, executor);
     Self { shared: MessageDispatcherShared::new(Box::new(dispatcher)) }
   }

@@ -18,14 +18,14 @@ const DEFAULT_RESEND_INTERVAL_MAX: Duration = Duration::from_secs(30);
 ///
 /// Corresponds to Pekko's `ConsumerController.Settings`.
 #[derive(Debug, Clone)]
-pub struct ConsumerControllerSettings {
+pub struct ConsumerControllerConfig {
   flow_control_window: u32,
   only_flow_control:   bool,
   resend_interval_min: Duration,
   resend_interval_max: Duration,
 }
 
-impl ConsumerControllerSettings {
+impl ConsumerControllerConfig {
   /// Creates default settings for in-memory reliable delivery.
   #[must_use]
   pub const fn new() -> Self {
@@ -98,7 +98,7 @@ impl ConsumerControllerSettings {
   }
 }
 
-impl Default for ConsumerControllerSettings {
+impl Default for ConsumerControllerConfig {
   fn default() -> Self {
     Self::new()
   }

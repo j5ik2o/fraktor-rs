@@ -13,8 +13,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcher, SharedMessageQueue,
-      TrampolineState,
+      DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcher, SharedMessageQueue, TrampolineState,
     },
     mailbox::{Envelope, MailboxCleanupPolicy},
   },
@@ -44,7 +43,7 @@ fn nz(value: usize) -> NonZeroUsize {
 }
 
 fn make_dispatcher() -> BalancingDispatcher {
-  let settings = DispatcherSettings::new("balancing-id", nz(5), None, Duration::from_secs(1));
+  let settings = DispatcherConfig::new("balancing-id", nz(5), None, Duration::from_secs(1));
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
   BalancingDispatcher::new(&settings, executor, shared_queue)
@@ -178,7 +177,7 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
 
   let configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
     let executor = ExecutorShared::new(Box::new(InlineExec), TrampolineState::new());
-    let settings = DispatcherSettings::new("balancing-load", nz(8), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new("balancing-load", nz(8), None, Duration::from_secs(1));
     let shared_queue = SharedMessageQueue::new();
     let inner: Box<dyn MessageDispatcherConfigurator> =
       Box::new(BalancingDispatcherConfigurator::new(&settings, executor, shared_queue));

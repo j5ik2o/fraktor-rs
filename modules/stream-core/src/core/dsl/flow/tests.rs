@@ -14,8 +14,8 @@ use super::{
   SecondarySourceBridge, StatefulMapConcatLogic, StatefulMapLogic, ZipLogic, ZipWithIndexLogic,
 };
 use crate::core::{
-  DynValue, FlowLogic, OverflowStrategy, QueueOfferResult, RestartSettings, SourceLogic, StageDefinition,
-  StreamDslError, StreamError, SubstreamCancelStrategy, ThrottleMode,
+  DynValue, FlowLogic, OverflowStrategy, QueueOfferResult, RestartConfig, SourceLogic, StageDefinition, StreamDslError,
+  StreamError, SubstreamCancelStrategy, ThrottleMode,
   attributes::{Attributes, DispatcherAttribute},
   dsl::{Flow, FlowMonitorImpl, Sink, Source, TailSource},
   r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, fusing::StreamBufferConfig, materialization::Stream},
@@ -2285,7 +2285,7 @@ fn with_backoff_and_context_alias_keeps_single_path_behavior() {
 
 #[test]
 fn restart_flow_with_settings_keeps_single_path_behavior() {
-  let settings = RestartSettings::new(1, 4, 3)
+  let settings = RestartConfig::new(1, 4, 3)
     .with_random_factor_permille(250)
     .with_max_restarts_within_ticks(16)
     .with_jitter_seed(17);

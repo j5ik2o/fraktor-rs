@@ -5,7 +5,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, Dispatchers, DispatchersError};
 use crate::core::kernel::dispatch::dispatcher::{
-  DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+  DefaultDispatcherConfigurator, DispatcherConfig, ExecuteError, Executor, ExecutorShared,
   MessageDispatcherConfigurator, TrampolineState,
 };
 
@@ -20,7 +20,7 @@ impl Executor for NoopExecutor {
 }
 
 fn make_default_configurator(id: &str) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-  let settings = DispatcherSettings::with_defaults(id).with_shutdown_timeout(Duration::from_secs(2));
+  let settings = DispatcherConfig::with_defaults(id).with_shutdown_timeout(Duration::from_secs(2));
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor));

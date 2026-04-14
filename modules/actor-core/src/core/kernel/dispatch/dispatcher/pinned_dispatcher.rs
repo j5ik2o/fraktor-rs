@@ -12,7 +12,7 @@ use core::num::NonZeroUsize;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{
-  dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
+  dispatcher_config::DispatcherConfig, dispatcher_core::DispatcherCore, executor_shared::ExecutorShared,
   message_dispatcher::MessageDispatcher,
 };
 use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
@@ -20,7 +20,7 @@ use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
 /// Dispatcher dedicated to a single actor.
 ///
 /// Construction normalises throughput to `usize::MAX` and clears the throughput
-/// deadline regardless of the supplied [`DispatcherSettings`], matching Pekko's
+/// deadline regardless of the supplied [`DispatcherConfig`], matching Pekko's
 /// behaviour for `PinnedDispatcher`.
 pub struct PinnedDispatcher {
   core:  DispatcherCore,
@@ -33,7 +33,7 @@ impl PinnedDispatcher {
   /// The settings are normalised to `throughput = usize::MAX`,
   /// `throughput_deadline = None` before being handed to [`DispatcherCore`].
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
     // SAFETY: `usize::MAX` is non-zero on every supported target.
     let max_throughput = unsafe { NonZeroUsize::new_unchecked(usize::MAX) };
     let normalised = settings.clone().with_throughput(max_throughput).with_throughput_deadline(None);

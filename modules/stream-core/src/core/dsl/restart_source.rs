@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{RestartSettings, source::Source};
+use super::{RestartConfig, source::Source};
 
 /// Thin DSL wrapper mirroring Pekko-style `RestartSource` entry points.
 pub struct RestartSource;
@@ -23,7 +23,7 @@ impl RestartSource {
 
   /// Applies restart settings to a source.
   #[must_use]
-  pub fn with_settings<Out, Mat>(source: Source<Out, Mat>, settings: RestartSettings) -> Source<Out, Mat>
+  pub fn with_settings<Out, Mat>(source: Source<Out, Mat>, settings: RestartConfig) -> Source<Out, Mat>
   where
     Out: Send + Sync + 'static, {
     source.restart_source_with_settings(settings)

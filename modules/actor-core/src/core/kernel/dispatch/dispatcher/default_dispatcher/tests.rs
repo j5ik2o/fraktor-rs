@@ -3,7 +3,7 @@ use core::{num::NonZeroUsize, time::Duration};
 
 use super::DefaultDispatcher;
 use crate::core::kernel::dispatch::dispatcher::{
-  DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcher, TrampolineState,
+  DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcher, TrampolineState,
 };
 
 struct NoopExecutor;
@@ -21,7 +21,7 @@ fn nz(value: usize) -> NonZeroUsize {
 }
 
 fn make_dispatcher() -> DefaultDispatcher {
-  let settings = DispatcherSettings::new("default-id", nz(7), None, Duration::from_secs(1));
+  let settings = DispatcherConfig::new("default-id", nz(7), None, Duration::from_secs(1));
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   DefaultDispatcher::new(&settings, executor)
 }

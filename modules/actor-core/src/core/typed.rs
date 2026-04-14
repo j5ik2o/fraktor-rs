@@ -58,10 +58,10 @@ mod spawn_protocol;
 mod supervisor_strategy;
 /// Typed actor system interface.
 mod system;
+/// Immutable metadata snapshot for typed actor systems.
+mod typed_actor_system_config;
 /// System-level log handle for typed actor systems.
 mod typed_actor_system_log;
-/// Immutable metadata snapshot for typed actor systems.
-mod typed_actor_system_settings;
 pub use abstract_extension_setup::AbstractExtensionSetup;
 pub use actor_ref::TypedActorRef;
 pub use actor_ref_resolver::ActorRefResolver;
@@ -82,7 +82,7 @@ pub use scheduler::Scheduler;
 pub use spawn_protocol::SpawnProtocol;
 pub use supervisor_strategy::SupervisorStrategy;
 pub use system::TypedActorSystem;
+pub use typed_actor_system_config::TypedActorSystemConfig;
 pub use typed_actor_system_log::TypedActorSystemLog;
-pub use typed_actor_system_settings::TypedActorSystemSettings;
 #[cfg(test)]
 mod tests;

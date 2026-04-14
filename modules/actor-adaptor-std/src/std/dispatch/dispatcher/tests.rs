@@ -36,7 +36,7 @@ use fraktor_actor_core_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings,
+    BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherConfig,
     ExecuteError, Executor, ExecutorFactory, ExecutorShared, MessageDispatcherConfigurator,
     PinnedDispatcherConfigurator, SharedMessageQueue, TrampolineState,
   },
@@ -110,12 +110,12 @@ fn build_system() -> ActorSystem {
   // batch drains correctly even though each `mailbox.run` invocation only
   // processes a small slice.
   let config = ActorSystemConfig::new(TokioTickDriver::default());
-  let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+  let default_settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
   let default_configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
 
-  let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
+  let balancing_settings = DispatcherConfig::with_defaults(BALANCING_DISPATCHER_ID);
   let balancing_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
   let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
@@ -195,10 +195,10 @@ async fn tokio_executor_factory_creates_executor_shared() {
 
 #[test]
 fn pinned_dispatcher_configurator_creates_fresh_dispatcher_per_call() {
-  let settings = DispatcherSettings::with_defaults("pinned-test");
+  let config = DispatcherConfig::with_defaults("pinned-test");
   let executor_factory: ArcShared<Box<dyn ExecutorFactory>> =
     ArcShared::new(Box::new(PinnedExecutorFactory::new("pinned-test")));
-  let configurator = PinnedDispatcherConfigurator::new(settings, executor_factory, "pinned-test");
+  let configurator = PinnedDispatcherConfigurator::new(config, executor_factory, "pinned-test");
 
   let _first = configurator.dispatcher();
   let _second = configurator.dispatcher();
@@ -206,7 +206,7 @@ fn pinned_dispatcher_configurator_creates_fresh_dispatcher_per_call() {
 
 #[test]
 fn balancing_dispatcher_configurator_creates_dispatcher_with_shared_queue() {
-  let settings = DispatcherSettings::with_defaults("balancing-test");
+  let settings = DispatcherConfig::with_defaults("balancing-test");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
   let configurator = BalancingDispatcherConfigurator::new(&settings, executor, shared_queue);

@@ -16,7 +16,7 @@
 
 // Bridge imports from core level for children
 use super::{
-  BoundedSourceQueue, DynValue, FlowDefinition, FlowLogic, OverflowStrategy, RestartSettings, SinkDecision,
+  BoundedSourceQueue, DynValue, FlowDefinition, FlowLogic, OverflowStrategy, RestartConfig, SinkDecision,
   SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition, StreamDslError, StreamError,
   SupervisionStrategy, ThrottleMode, downcast_value,
   r#impl::{

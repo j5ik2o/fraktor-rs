@@ -2,7 +2,7 @@ use core::fmt::{self, Formatter, Result as FmtResult};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
-use super::RestartLogSettings;
+use super::RestartLogConfig;
 use crate::core::r#impl::StreamError;
 
 #[cfg(test)]
@@ -12,7 +12,7 @@ type RestartPredicate = dyn Fn(&StreamError) -> bool + Send + Sync;
 
 /// Restart and backoff configuration for stream stages.
 #[derive(Clone)]
-pub struct RestartSettings {
+pub struct RestartConfig {
   min_backoff_ticks:         u32,
   max_backoff_ticks:         u32,
   random_factor_permille:    u16,
@@ -21,15 +21,15 @@ pub struct RestartSettings {
   complete_on_max_restarts:  bool,
   jitter_seed:               u64,
   restart_on:                Option<ArcShared<RestartPredicate>>,
-  log_settings:              RestartLogSettings,
+  log_settings:              RestartLogConfig,
 }
 
 // PartialEq/Eq は restart_on (クロージャ) を含むため正確な等値比較ができず削除。
-// should_restart() の結果が異なる RestartSettings 同士が == になる問題を防ぐ。
+// should_restart() の結果が異なる RestartConfig 同士が == になる問題を防ぐ。
 
-impl fmt::Debug for RestartSettings {
+impl fmt::Debug for RestartConfig {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-    f.debug_struct("RestartSettings")
+    f.debug_struct("RestartConfig")
       .field("min_backoff_ticks", &self.min_backoff_ticks)
       .field("max_backoff_ticks", &self.max_backoff_ticks)
       .field("random_factor_permille", &self.random_factor_permille)
@@ -43,7 +43,7 @@ impl fmt::Debug for RestartSettings {
   }
 }
 
-impl RestartSettings {
+impl RestartConfig {
   /// Creates restart settings with required fields.
   #[must_use]
   pub fn new(min_backoff_ticks: u32, max_backoff_ticks: u32, max_restarts: usize) -> Self {
@@ -58,7 +58,7 @@ impl RestartSettings {
       complete_on_max_restarts: true,
       jitter_seed: 0,
       restart_on: None,
-      log_settings: RestartLogSettings::default(),
+      log_settings: RestartLogConfig::default(),
     }
   }
 
@@ -103,7 +103,7 @@ impl RestartSettings {
 
   /// Sets log settings for restart event diagnostics.
   #[must_use]
-  pub const fn with_log_settings(mut self, log_settings: RestartLogSettings) -> Self {
+  pub const fn with_log_settings(mut self, log_settings: RestartLogConfig) -> Self {
     self.log_settings = log_settings;
     self
   }
@@ -163,7 +163,7 @@ impl RestartSettings {
 
   /// Returns log settings for restart event diagnostics.
   #[must_use]
-  pub const fn log_settings(&self) -> &RestartLogSettings {
+  pub const fn log_settings(&self) -> &RestartLogConfig {
     &self.log_settings
   }
 }

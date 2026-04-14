@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::{
   system::ActorSystem,
 };
 use fraktor_stream_core_rs::core::{
-  RestartSettings, SharedKillSwitch, SubstreamCancelStrategy, UniqueKillSwitch,
+  RestartConfig, SharedKillSwitch, SubstreamCancelStrategy, UniqueKillSwitch,
   dsl::{BroadcastHub, Flow, MergeHub, PartitionHub, Sink, Source},
   r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, StreamDslError, StreamError},
   materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, StreamNotUsed},
@@ -427,7 +427,7 @@ fn verify_kill_switch_surface() {
 }
 
 fn verify_restart_supervision_surface() {
-  let settings = RestartSettings::new(1, 4, 2)
+  let settings = RestartConfig::new(1, 4, 2)
     .with_random_factor_permille(300)
     .with_max_restarts_within_ticks(32)
     .with_jitter_seed(31);

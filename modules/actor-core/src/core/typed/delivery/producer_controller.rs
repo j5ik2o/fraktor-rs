@@ -15,7 +15,7 @@ use crate::core::{
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, DurableProducerQueueState, MessageSent, NO_QUALIFIER,
-      ProducerControllerCommand, ProducerControllerRequestNext, ProducerControllerSettings, SeqNr, SequencedMessage,
+      ProducerControllerCommand, ProducerControllerConfig, ProducerControllerRequestNext, SeqNr, SequencedMessage,
       StoreMessageSentAck, producer_controller_command::ProducerControllerCommandKind,
     },
     dsl::Behaviors,
@@ -149,7 +149,7 @@ impl ProducerController {
   pub fn behavior<A>(producer_id: impl Into<String>) -> Behavior<ProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(producer_id, &ProducerControllerSettings::new(), None)
+    Self::behavior_with_settings(producer_id, &ProducerControllerConfig::new(), None)
   }
 
   /// Creates the producer controller behavior with an optional durable
@@ -172,14 +172,14 @@ impl ProducerController {
   ) -> Behavior<ProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(producer_id, &ProducerControllerSettings::new(), durable_queue)
+    Self::behavior_with_settings(producer_id, &ProducerControllerConfig::new(), durable_queue)
   }
 
   /// Creates the producer controller behavior with custom settings.
   #[must_use]
   pub fn behavior_with_settings<A>(
     producer_id: impl Into<String>,
-    settings: &ProducerControllerSettings,
+    settings: &ProducerControllerConfig,
     durable_queue_behavior: Option<Behavior<super::DurableProducerQueueCommand<A>>>,
   ) -> Behavior<ProducerControllerCommand<A>>
   where
@@ -424,7 +424,7 @@ impl ProducerController {
 
 fn maybe_schedule_resend_first<A>(
   state: &mut ProducerControllerState<A>,
-  settings: &ProducerControllerSettings,
+  settings: &ProducerControllerConfig,
   self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
   ctx: &TypedActorContext<'_, ProducerControllerCommand<A>>,
 ) where
@@ -584,7 +584,7 @@ fn collect_on_durable_queue_message_stored<A>(
 fn execute_deferred<A>(
   ctx: &mut TypedActorContext<'_, ProducerControllerCommand<A>>,
   actions: Vec<DeferredAction<A>>,
-  settings: &ProducerControllerSettings,
+  settings: &ProducerControllerConfig,
   self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {

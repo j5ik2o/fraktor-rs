@@ -18,7 +18,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings, ExecutorShared,
+      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherConfig, ExecutorShared,
       MessageDispatcherConfigurator, TrampolineState,
     },
     mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
@@ -137,7 +137,7 @@ impl TokioBenchSystem {
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let config = ActorSystemConfig::new(TokioTickDriver::default());
-      let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+      let settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
       let executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
       let configurator: Box<dyn MessageDispatcherConfigurator> =
         Box::new(DefaultDispatcherConfigurator::new(&settings, executor));

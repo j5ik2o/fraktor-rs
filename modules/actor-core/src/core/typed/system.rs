@@ -34,7 +34,7 @@ use crate::core::{
     util::futures::ActorFutureShared,
   },
   typed::{
-    TypedActorRef, TypedActorSystemLog, TypedActorSystemSettings,
+    TypedActorRef, TypedActorSystemConfig, TypedActorSystemLog,
     actor::TypedChildRef,
     dispatchers::Dispatchers,
     eventstream::EventStreamCommand,
@@ -360,11 +360,11 @@ where
     now.saturating_sub(self.start_time())
   }
 
-  /// Returns the immutable settings snapshot preserved by the underlying actor system.
+  /// Returns the immutable config snapshot preserved by the underlying actor system.
   ///
   /// Corresponds to Pekko's `ActorSystem.settings`.
   #[must_use]
-  pub fn settings(&self) -> TypedActorSystemSettings {
+  pub fn settings(&self) -> TypedActorSystemConfig {
     self.inner.settings()
   }
 

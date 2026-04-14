@@ -14,7 +14,7 @@ use core::{
 
 use super::{
   DelayStrategy, FlowDefinition, FlowLogic, KeepLeft, KeepRight, MatCombine, MatCombineRule, OverflowStrategy,
-  RestartBackoff, RestartSettings, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamBufferConfig,
+  RestartBackoff, RestartConfig, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamBufferConfig,
   StreamCompletion, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow_group_by_sub_flow::FlowGroupBySubFlow,
   flow_monitor_impl::FlowMonitorImpl,
@@ -784,7 +784,7 @@ where
 
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
-  pub fn restart_flow_with_settings(mut self, settings: RestartSettings) -> Flow<In, Out, Mat> {
+  pub fn restart_flow_with_settings(mut self, settings: RestartConfig) -> Flow<In, Out, Mat> {
     self.graph.set_flow_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }

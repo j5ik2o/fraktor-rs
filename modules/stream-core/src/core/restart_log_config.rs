@@ -4,13 +4,13 @@ use super::RestartLogLevel;
 ///
 /// Controls how restart events are logged at different severity levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RestartLogSettings {
+pub struct RestartLogConfig {
   log_level:                RestartLogLevel,
   critical_log_level:       RestartLogLevel,
   critical_log_level_after: usize,
 }
 
-impl RestartLogSettings {
+impl RestartLogConfig {
   /// Creates log settings with explicit values.
   #[must_use]
   pub const fn new(
@@ -40,7 +40,7 @@ impl RestartLogSettings {
   }
 }
 
-impl Default for RestartLogSettings {
+impl Default for RestartLogConfig {
   fn default() -> Self {
     Self {
       log_level:                RestartLogLevel::Warning,

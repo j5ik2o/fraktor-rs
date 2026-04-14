@@ -13,7 +13,7 @@ use alloc::string::{String, ToString};
 use core::{num::NonZeroUsize, time::Duration};
 
 use super::{
-  dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared, shutdown_schedule::ShutdownSchedule,
+  dispatcher_config::DispatcherConfig, executor_shared::ExecutorShared, shutdown_schedule::ShutdownSchedule,
 };
 
 /// Identifier-keyed dispatcher state shared by concrete dispatcher types.
@@ -30,7 +30,7 @@ pub struct DispatcherCore {
 impl DispatcherCore {
   /// Constructs the core from an immutable settings bundle and an executor.
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
     Self {
       id: settings.id().to_string(),
       throughput: settings.throughput(),

@@ -14,19 +14,19 @@ const DEFAULT_DURABLE_QUEUE_RESEND_FIRST_INTERVAL: Duration = Duration::from_sec
 /// Default chunk size. `0` disables chunking.
 const DEFAULT_CHUNK_LARGE_MESSAGES_BYTES: usize = 0;
 
-/// Settings for [`ProducerController`](super::ProducerController).
+/// Configuration for [`ProducerController`](super::ProducerController).
 ///
 /// Corresponds to Pekko's `ProducerController.Settings`.
 #[derive(Debug, Clone)]
-pub struct ProducerControllerSettings {
+pub struct ProducerControllerConfig {
   durable_queue_request_timeout:       Duration,
   durable_queue_retry_attempts:        u32,
   durable_queue_resend_first_interval: Duration,
   chunk_large_messages_bytes:          usize,
 }
 
-impl ProducerControllerSettings {
-  /// Creates default settings.
+impl ProducerControllerConfig {
+  /// Creates default config.
   #[must_use]
   pub const fn new() -> Self {
     Self {
@@ -43,7 +43,7 @@ impl ProducerControllerSettings {
     self.durable_queue_request_timeout
   }
 
-  /// Returns a new settings value with the given durable queue request timeout.
+  /// Returns a new config with the given durable queue request timeout.
   #[must_use]
   pub const fn with_durable_queue_request_timeout(self, timeout: Duration) -> Self {
     Self { durable_queue_request_timeout: timeout, ..self }
@@ -55,7 +55,7 @@ impl ProducerControllerSettings {
     self.durable_queue_retry_attempts
   }
 
-  /// Returns a new settings value with the given durable queue retry budget.
+  /// Returns a new config with the given durable queue retry budget.
   #[must_use]
   pub const fn with_durable_queue_retry_attempts(self, attempts: u32) -> Self {
     Self { durable_queue_retry_attempts: attempts, ..self }
@@ -67,7 +67,7 @@ impl ProducerControllerSettings {
     self.durable_queue_resend_first_interval
   }
 
-  /// Returns a new settings value with the given resend-first interval.
+  /// Returns a new config with the given resend-first interval.
   #[must_use]
   pub const fn with_durable_queue_resend_first_interval(self, interval: Duration) -> Self {
     Self { durable_queue_resend_first_interval: interval, ..self }
@@ -81,14 +81,14 @@ impl ProducerControllerSettings {
     self.chunk_large_messages_bytes
   }
 
-  /// Returns a new settings value with the given chunk size.
+  /// Returns a new config with the given chunk size.
   #[must_use]
   pub const fn with_chunk_large_messages_bytes(self, chunk_size: usize) -> Self {
     Self { chunk_large_messages_bytes: chunk_size, ..self }
   }
 }
 
-impl Default for ProducerControllerSettings {
+impl Default for ProducerControllerConfig {
   fn default() -> Self {
     Self::new()
   }

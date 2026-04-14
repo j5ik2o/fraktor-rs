@@ -12,9 +12,9 @@ use crate::core::{
     delivery::{
       ConsumerController, ConsumerControllerCommand, ConsumerControllerConfirmed, ConsumerControllerDelivery,
       DurableProducerQueueCommand, DurableProducerQueueState, MessageSent, ProducerController,
-      ProducerControllerCommand, ProducerControllerRequestNext, ProducerControllerSettings, StoreMessageSentAck,
-      WorkPullingProducerController, WorkPullingProducerControllerCommand, WorkPullingProducerControllerRequestNext,
-      WorkPullingProducerControllerSettings, WorkerStats,
+      ProducerControllerCommand, ProducerControllerConfig, ProducerControllerRequestNext, StoreMessageSentAck,
+      WorkPullingProducerController, WorkPullingProducerControllerCommand, WorkPullingProducerControllerConfig,
+      WorkPullingProducerControllerRequestNext, WorkerStats,
     },
     dsl::Behaviors,
     receptionist::{Receptionist, ServiceKey},
@@ -340,16 +340,16 @@ fn producer_controller_with_durable_queue_persists_sent_and_confirmed_flow() {
 
 #[test]
 fn consumer_controller_settings_accessors() {
-  use crate::core::typed::delivery::ConsumerControllerSettings;
+  use crate::core::typed::delivery::ConsumerControllerConfig;
 
-  let settings = ConsumerControllerSettings::new().with_flow_control_window(100).with_only_flow_control(true);
+  let settings = ConsumerControllerConfig::new().with_flow_control_window(100).with_only_flow_control(true);
   assert_eq!(settings.flow_control_window(), 100);
   assert!(settings.only_flow_control());
 }
 
 #[test]
 fn producer_controller_settings_accessors() {
-  let settings = ProducerControllerSettings::new()
+  let settings = ProducerControllerConfig::new()
     .with_durable_queue_request_timeout(Duration::from_millis(15))
     .with_durable_queue_retry_attempts(2)
     .with_durable_queue_resend_first_interval(Duration::from_millis(9));
@@ -361,15 +361,15 @@ fn producer_controller_settings_accessors() {
 
 #[test]
 fn producer_controller_behavior_with_settings_is_publicly_usable() {
-  let settings = ProducerControllerSettings::new();
+  let settings = ProducerControllerConfig::new();
   let _behavior = ProducerController::behavior_with_settings::<u32>("public-producer", &settings, None);
 }
 
 #[test]
 fn work_pulling_producer_controller_settings_accessors() {
-  let settings = WorkPullingProducerControllerSettings::new()
+  let settings = WorkPullingProducerControllerConfig::new()
     .with_internal_ask_timeout(Duration::from_millis(21))
-    .with_producer_controller_settings(ProducerControllerSettings::new().with_durable_queue_retry_attempts(4));
+    .with_producer_controller_settings(ProducerControllerConfig::new().with_durable_queue_retry_attempts(4));
   assert_eq!(settings.buffer_size(), 1000);
   assert_eq!(settings.internal_ask_timeout(), Duration::from_millis(21));
   assert_eq!(settings.producer_controller_settings().durable_queue_retry_attempts(), 4);
@@ -378,7 +378,7 @@ fn work_pulling_producer_controller_settings_accessors() {
 #[test]
 fn work_pulling_behavior_with_settings_is_publicly_usable() {
   let worker_key = ServiceKey::<ConsumerControllerCommand<u32>>::new("public-workers");
-  let settings = WorkPullingProducerControllerSettings::new().with_buffer_size(8);
+  let settings = WorkPullingProducerControllerConfig::new().with_buffer_size(8);
   let _behavior =
     WorkPullingProducerController::behavior_with_settings::<u32>("public-wppc", worker_key, &settings, None);
 }
@@ -564,10 +564,10 @@ fn work_pulling_durable_queue_timeout_uses_nested_producer_settings() {
   let system = test_system();
   let worker_key = ServiceKey::<ConsumerControllerCommand<u32>>::new("timeout-workers");
   let durable_events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
-  let settings = WorkPullingProducerControllerSettings::new()
+  let settings = WorkPullingProducerControllerConfig::new()
     .with_internal_ask_timeout(Duration::from_millis(10))
     .with_producer_controller_settings(
-      ProducerControllerSettings::new()
+      ProducerControllerConfig::new()
         .with_durable_queue_request_timeout(Duration::from_millis(30))
         .with_durable_queue_retry_attempts(1),
     );

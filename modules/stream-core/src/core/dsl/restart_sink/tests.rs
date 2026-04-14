@@ -1,6 +1,6 @@
 use super::RestartSink;
 use crate::core::{
-  RestartSettings,
+  RestartConfig,
   dsl::{Sink, Source},
   r#impl::{fusing::StreamBufferConfig, interpreter::GraphInterpreter, materialization::StreamState},
   materialization::{Completion, KeepRight, StreamDone},
@@ -21,7 +21,7 @@ fn restart_sink_with_backoff_keeps_data_path_behavior() {
 
 #[test]
 fn restart_sink_with_settings_keeps_data_path_behavior() {
-  let settings = RestartSettings::new(1, 2, 3);
+  let settings = RestartConfig::new(1, 2, 3);
   let sink = RestartSink::with_settings(Sink::<u32, _>::ignore(), settings);
   let graph = Source::single(2_u32).into_mat(sink, KeepRight);
   let (plan, completion) = graph.into_parts();

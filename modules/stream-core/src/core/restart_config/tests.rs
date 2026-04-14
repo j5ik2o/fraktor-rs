@@ -1,24 +1,24 @@
-use crate::core::{RestartLogLevel, RestartLogSettings, RestartSettings, StreamError};
+use crate::core::{RestartConfig, RestartLogConfig, RestartLogLevel, StreamError};
 
 #[test]
-fn restart_settings_normalizes_max_backoff() {
-  let settings = RestartSettings::new(5, 1, 3);
+fn restart_config_normalizes_max_backoff() {
+  let settings = RestartConfig::new(5, 1, 3);
   assert_eq!(settings.min_backoff_ticks(), 5);
   assert_eq!(settings.max_backoff_ticks(), 5);
 }
 
 #[test]
-fn restart_settings_clamps_random_factor_permille() {
-  let settings = RestartSettings::new(1, 8, 3).with_random_factor_permille(1500);
+fn restart_config_clamps_random_factor_permille() {
+  let settings = RestartConfig::new(1, 8, 3).with_random_factor_permille(1500);
   assert_eq!(settings.random_factor_permille(), 1000);
 }
 
 // --- restart_on tests ---
 
 #[test]
-fn restart_settings_should_restart_returns_true_when_no_predicate_set() {
+fn restart_config_should_restart_returns_true_when_no_predicate_set() {
   // Given: default settings without restart_on predicate
-  let settings = RestartSettings::new(1, 8, 3);
+  let settings = RestartConfig::new(1, 8, 3);
 
   // When: checking if any error should trigger restart
   let error = StreamError::Failed;
@@ -28,9 +28,9 @@ fn restart_settings_should_restart_returns_true_when_no_predicate_set() {
 }
 
 #[test]
-fn restart_settings_with_restart_on_filters_errors() {
+fn restart_config_with_restart_on_filters_errors() {
   // Given: settings with a predicate that only restarts on BufferOverflow errors
-  let settings = RestartSettings::new(1, 8, 3).with_restart_on(|error| matches!(error, StreamError::BufferOverflow));
+  let settings = RestartConfig::new(1, 8, 3).with_restart_on(|error| matches!(error, StreamError::BufferOverflow));
 
   // When: checking different error types
   let overflow_error = StreamError::BufferOverflow;
@@ -42,9 +42,9 @@ fn restart_settings_with_restart_on_filters_errors() {
 }
 
 #[test]
-fn restart_settings_with_restart_on_preserves_other_fields() {
+fn restart_config_with_restart_on_preserves_other_fields() {
   // Given: settings with various fields configured
-  let settings = RestartSettings::new(2, 10, 5).with_random_factor_permille(500).with_restart_on(|_| true);
+  let settings = RestartConfig::new(2, 10, 5).with_random_factor_permille(500).with_restart_on(|_| true);
 
   // Then: other fields are preserved
   assert_eq!(settings.min_backoff_ticks(), 2);
@@ -54,9 +54,9 @@ fn restart_settings_with_restart_on_preserves_other_fields() {
 }
 
 #[test]
-fn restart_settings_with_restart_on_is_cloneable() {
+fn restart_config_with_restart_on_is_cloneable() {
   // Given: settings with restart_on predicate (contains Arc, not Copy)
-  let settings = RestartSettings::new(1, 8, 3).with_restart_on(|_| false);
+  let settings = RestartConfig::new(1, 8, 3).with_restart_on(|_| false);
 
   // When: cloning the settings
   let cloned = settings.clone();
@@ -69,9 +69,9 @@ fn restart_settings_with_restart_on_is_cloneable() {
 // --- log_settings tests ---
 
 #[test]
-fn restart_log_settings_default_values() {
-  // Given: default RestartLogSettings
-  let log_settings = RestartLogSettings::default();
+fn restart_log_config_default_values() {
+  // Given: default RestartLogConfig
+  let log_settings = RestartLogConfig::default();
 
   // Then: defaults match Pekko convention
   assert_eq!(log_settings.log_level(), RestartLogLevel::Warning);
@@ -80,9 +80,9 @@ fn restart_log_settings_default_values() {
 }
 
 #[test]
-fn restart_log_settings_with_custom_values() {
+fn restart_log_config_with_custom_values() {
   // Given: custom log settings
-  let log_settings = RestartLogSettings::new(RestartLogLevel::Debug, RestartLogLevel::Warning, 5);
+  let log_settings = RestartLogConfig::new(RestartLogLevel::Debug, RestartLogLevel::Warning, 5);
 
   // Then: custom values are preserved
   assert_eq!(log_settings.log_level(), RestartLogLevel::Debug);
@@ -91,9 +91,9 @@ fn restart_log_settings_with_custom_values() {
 }
 
 #[test]
-fn restart_settings_default_log_settings() {
-  // Given: default RestartSettings
-  let settings = RestartSettings::new(1, 8, 3);
+fn restart_config_default_log_config() {
+  // Given: default RestartConfig
+  let settings = RestartConfig::new(1, 8, 3);
 
   // Then: log_settings uses default values
   let log_settings = settings.log_settings();
@@ -102,12 +102,12 @@ fn restart_settings_default_log_settings() {
 }
 
 #[test]
-fn restart_settings_with_log_settings_replaces_defaults() {
+fn restart_config_with_log_config_replaces_defaults() {
   // Given: custom log settings
-  let custom_log = RestartLogSettings::new(RestartLogLevel::Info, RestartLogLevel::Error, 10);
+  let custom_log = RestartLogConfig::new(RestartLogLevel::Info, RestartLogLevel::Error, 10);
 
   // When: applying custom log settings
-  let settings = RestartSettings::new(1, 8, 3).with_log_settings(custom_log);
+  let settings = RestartConfig::new(1, 8, 3).with_log_settings(custom_log);
 
   // Then: custom log settings are used
   assert_eq!(settings.log_settings().log_level(), RestartLogLevel::Info);

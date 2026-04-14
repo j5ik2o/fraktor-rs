@@ -12,7 +12,7 @@ use alloc::{boxed::Box, vec::Vec};
 use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
 
 use super::{
-  dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
+  dispatcher_config::DispatcherConfig, dispatcher_core::DispatcherCore, executor_shared::ExecutorShared,
   message_dispatcher::MessageDispatcher, shared_message_queue::SharedMessageQueue,
 };
 use crate::core::kernel::{
@@ -35,7 +35,7 @@ impl BalancingDispatcher {
   /// attaches via
   /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
+  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
     Self { core: DispatcherCore::new(settings, executor), shared_queue, team: Vec::new() }
   }
 

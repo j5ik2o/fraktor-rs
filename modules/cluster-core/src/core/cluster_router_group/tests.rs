@@ -1,12 +1,12 @@
 use alloc::{string::String, vec};
 
-use crate::core::{ClusterRouterGroup, ClusterRouterGroupSettings};
+use crate::core::{ClusterRouterGroup, ClusterRouterGroupConfig};
 
 #[test]
 fn routee_for_key_maps_consistently() {
-  let settings =
-    ClusterRouterGroupSettings::new(vec![String::from("/user/a"), String::from("/user/b"), String::from("/user/c")]);
-  let router = ClusterRouterGroup::new(settings);
+  let config =
+    ClusterRouterGroupConfig::new(vec![String::from("/user/a"), String::from("/user/b"), String::from("/user/c")]);
+  let router = ClusterRouterGroup::new(config);
 
   assert_eq!(router.routee_for_key(0), Some("/user/a"));
   assert_eq!(router.routee_for_key(1), Some("/user/b"));

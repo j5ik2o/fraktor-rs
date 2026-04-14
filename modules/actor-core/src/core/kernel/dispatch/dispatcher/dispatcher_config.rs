@@ -1,6 +1,6 @@
 //! Immutable settings bundle passed to dispatcher constructors.
 //!
-//! `DispatcherSettings` is the new dispatcher-side settings record introduced
+//! `DispatcherConfig` is the new dispatcher-side settings record introduced
 //! by the dispatcher-pekko-1n-redesign change. It is intentionally smaller than
 //! the legacy version: `schedule_adapter` is gone (the `ScheduleAdapter` family
 //! has been removed), and `starvation_deadline` is dropped from the initial
@@ -16,14 +16,14 @@ use core::{num::NonZeroUsize, time::Duration};
 ///
 /// Cloned freely between configurators and concrete dispatcher constructors.
 #[derive(Clone, Debug)]
-pub struct DispatcherSettings {
+pub struct DispatcherConfig {
   id:                  String,
   throughput:          NonZeroUsize,
   throughput_deadline: Option<Duration>,
   shutdown_timeout:    Duration,
 }
 
-impl DispatcherSettings {
+impl DispatcherConfig {
   /// Creates a settings record with the supplied values.
   #[must_use]
   pub fn new(
@@ -94,7 +94,7 @@ impl DispatcherSettings {
   }
 }
 
-impl DispatcherSettings {
+impl DispatcherConfig {
   /// Returns a builder seeded with `id` and conservative defaults.
   ///
   /// Defaults are:

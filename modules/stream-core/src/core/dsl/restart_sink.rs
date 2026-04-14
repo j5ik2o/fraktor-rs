@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{RestartSettings, sink::Sink};
+use super::{RestartConfig, sink::Sink};
 
 /// Thin DSL wrapper mirroring Pekko-style `RestartSink` entry points.
 pub struct RestartSink;
@@ -19,7 +19,7 @@ impl RestartSink {
 
   /// Applies restart settings to a sink.
   #[must_use]
-  pub fn with_settings<In, Mat>(sink: Sink<In, Mat>, settings: RestartSettings) -> Sink<In, Mat>
+  pub fn with_settings<In, Mat>(sink: Sink<In, Mat>, settings: RestartConfig) -> Sink<In, Mat>
   where
     In: Send + Sync + 'static, {
     sink.restart_sink_with_settings(settings)

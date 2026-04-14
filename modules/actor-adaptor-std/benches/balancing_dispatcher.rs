@@ -32,7 +32,7 @@ use fraktor_actor_core_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings,
+    BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherConfig,
     ExecutorShared, MessageDispatcherConfigurator, SharedMessageQueue, TrampolineState,
   },
   system::ActorSystem,
@@ -123,12 +123,12 @@ impl DispatcherBenchSystem {
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let config = ActorSystemConfig::new(TokioTickDriver::default());
-      let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+      let default_settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
       let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
       let default_configurator: Box<dyn MessageDispatcherConfigurator> =
         Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
 
-      let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
+      let balancing_settings = DispatcherConfig::with_defaults(BALANCING_DISPATCHER_ID);
       let balancing_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
       let shared_queue = SharedMessageQueue::new();
       let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
