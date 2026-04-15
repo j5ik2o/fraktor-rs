@@ -1,5 +1,5 @@
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use core::time::Duration;
+use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
@@ -19,10 +19,13 @@ use crate::core::{
     TypedActorRef,
     actor::TypedActorContext,
     delivery::{
-      ConsumerControllerCommand, DurableProducerQueueCommand, ProducerControllerCommand, StoreMessageSentAck,
+      ConsumerControllerCommand, DurableProducerQueueCommand, MessageSent, ProducerControllerCommand,
+      ProducerControllerConfig, ProducerControllerRequestNext, StoreMessageSentAck,
       WorkPullingProducerControllerCommand, WorkPullingProducerControllerConfig,
+      producer_controller_command::ProducerControllerCommandKind,
+      work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
     },
-    receptionist::ServiceKey,
+    receptionist::{Listing, ServiceKey},
   },
 };
 
@@ -147,10 +150,163 @@ fn durable_queue_store_ack_keeps_replayable_payload_in_flight() {
     [WppcDeferredAction::TellWorker {
       worker_key,
       worker_local_seq_nr,
-      message: ProducerControllerCommand(_),
+      message: ProducerControllerCommand(command),
       ..
     }]
-      if *worker_key == 10 && *worker_local_seq_nr == 2
+      if *worker_key == 10
+        && *worker_local_seq_nr == 2
+        && matches!(command, ProducerControllerCommandKind::Msg { .. })
+  ));
+}
+
+#[test]
+fn direct_worker_delivery_tracks_worker_ack_timeout() {
+  let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
+  state.workers.insert(10, WorkerEntry {
+    producer_id:         "test-producer-worker-10".to_string(),
+    producer_controller: make_typed_ref::<ProducerControllerCommand<u32>>(),
+    next_seq_nr:         1,
+    confirmed_seq_nr:    0,
+    in_flight:           BTreeMap::new(),
+    has_demand:          true,
+  });
+
+  let mut deferred = Vec::new();
+  collect_on_msg(&mut state, 42_u32, &mut deferred);
+
+  assert!(matches!(
+    deferred.as_slice(),
+    [WppcDeferredAction::TellWorker {
+      worker_key,
+      worker_local_seq_nr,
+      message: ProducerControllerCommand(command),
+      ..
+    }]
+      if *worker_key == 10
+        && *worker_local_seq_nr == 1
+        && matches!(command, ProducerControllerCommandKind::Msg { .. })
+  ));
+  let inflight = state
+    .workers
+    .get(&10)
+    .and_then(|entry| entry.in_flight.get(&1))
+    .expect("worker entry should track in-flight delivery after collect_on_msg");
+  assert_eq!(inflight.seq_nr(), 1);
+  assert_eq!(*inflight.message(), 42_u32);
+}
+
+#[test]
+fn internal_demand_confirm_updates_durable_queue() {
+  let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
+  state.durable_queue = Some(make_typed_ref::<DurableProducerQueueCommand<u32>>());
+  state.pending_stores.insert(3, PendingDurableStore {
+    message:                7_u32,
+    worker_key:             10,
+    worker_local_seq_nr:    2,
+    confirmation_qualifier: "test-producer-worker-10".to_string(),
+    replay_confirmation_of: None,
+  });
+  state.workers.insert(10, WorkerEntry {
+    producer_id:         "test-producer-worker-10".to_string(),
+    producer_controller: make_typed_ref::<ProducerControllerCommand<u32>>(),
+    next_seq_nr:         3,
+    confirmed_seq_nr:    0,
+    in_flight:           BTreeMap::from([
+      (1_u64, MessageSent::new(1_u64, 5_u32, false, "test-producer-worker-10".to_string(), 0)),
+      (2_u64, MessageSent::new(3_u64, 7_u32, false, "test-producer-worker-10".to_string(), 0)),
+    ]),
+    has_demand:          false,
+  });
+
+  let request =
+    ProducerControllerRequestNext::new("test-producer-worker-10".to_string(), 3, 2, make_typed_ref::<u32>());
+  let mut deferred = Vec::new();
+  collect_on_internal_demand(&mut state, &request, &mut deferred);
+
+  assert!(matches!(
+    deferred
+      .iter()
+      .find(|action| matches!(
+        action,
+        WppcDeferredAction::TellDurableQueue {
+          message: DurableProducerQueueCommand::StoreMessageConfirmed { .. },
+          ..
+        }
+      )),
+    Some(WppcDeferredAction::TellDurableQueue {
+      message: DurableProducerQueueCommand::StoreMessageConfirmed { seq_nr, confirmation_qualifier, .. },
+      ..
+    })
+      if *seq_nr == 3 && confirmation_qualifier == "test-producer-worker-10"
+  ));
+}
+
+#[test]
+fn worker_removal_replays_unconfirmed_messages_to_self() {
+  let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
+  let worker_ref = ActorRef::new_with_builtin_lock(Pid::new(10, 0), NullSender);
+  let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
+  let listing = Listing::new("test-workers", TypeId::of::<ConsumerControllerCommand<u32>>(), vec![]);
+  state.workers.insert(worker_ref.pid().value(), WorkerEntry {
+    producer_id:         "test-producer-worker-10".to_string(),
+    producer_controller: make_typed_ref::<ProducerControllerCommand<u32>>(),
+    next_seq_nr:         3,
+    confirmed_seq_nr:    0,
+    in_flight:           BTreeMap::from([
+      (1_u64, MessageSent::new(11_u64, 41_u32, false, "test-producer-worker-10".to_string(), 0)),
+      (2_u64, MessageSent::new(12_u64, 42_u32, false, "test-producer-worker-10".to_string(), 0)),
+    ]),
+    has_demand:          false,
+  });
+
+  let mut deferred = Vec::new();
+  collect_on_worker_listing(
+    &mut state,
+    &listing,
+    "test-producer",
+    &self_ref,
+    &ProducerControllerConfig::new(),
+    &mut deferred,
+  );
+
+  assert!(state.workers.is_empty());
+  assert!(matches!(deferred.first(), Some(WppcDeferredAction::StopWorkerPc(_))));
+  assert!(matches!(
+    deferred.get(1),
+    Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
+      if matches!(
+        command,
+        WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+          if sent.message() == &41_u32
+      )
+  ));
+  assert!(matches!(
+    deferred.get(2),
+    Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
+      if matches!(
+        command,
+        WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+          if sent.message() == &42_u32
+      )
+  ));
+}
+
+#[test]
+fn worker_spawn_propagates_nested_producer_controller_settings() {
+  let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
+  state.demand_adapter = Some(make_typed_ref::<ProducerControllerRequestNext<u32>>());
+  let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
+  let worker_ref = ActorRef::new_with_builtin_lock(Pid::new(11, 0), NullSender);
+  let listing = Listing::new("test-workers", TypeId::of::<ConsumerControllerCommand<u32>>(), vec![worker_ref]);
+  let mut deferred = Vec::new();
+  let producer_settings = ProducerControllerConfig::new().with_durable_queue_retry_attempts(3);
+
+  collect_on_worker_listing(&mut state, &listing, "test-producer", &self_ref, &producer_settings, &mut deferred);
+
+  assert!(matches!(
+    deferred.last(),
+    Some(WppcDeferredAction::SpawnWorker { producer_controller_settings, .. })
+      if producer_controller_settings.durable_queue_retry_attempts() == 3
   ));
 }
 
