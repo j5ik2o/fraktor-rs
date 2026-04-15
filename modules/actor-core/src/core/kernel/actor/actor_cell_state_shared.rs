@@ -6,20 +6,20 @@ use crate::core::kernel::actor::ActorCellState;
 
 /// Stable shared wrapper for actor-cell runtime state.
 #[derive(Clone)]
-pub struct ActorCellStateShared {
+pub(crate) struct ActorCellStateShared {
   inner: SharedLock<ActorCellState>,
 }
 
 impl ActorCellStateShared {
   /// Creates a new shared wrapper using the builtin spin lock backend.
   #[must_use]
-  pub fn new(state: ActorCellState) -> Self {
+  pub(crate) fn new(state: ActorCellState) -> Self {
     Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(state))
   }
 
   /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
-  pub const fn from_shared_lock(inner: SharedLock<ActorCellState>) -> Self {
+  pub(crate) const fn from_shared_lock(inner: SharedLock<ActorCellState>) -> Self {
     Self { inner }
   }
 

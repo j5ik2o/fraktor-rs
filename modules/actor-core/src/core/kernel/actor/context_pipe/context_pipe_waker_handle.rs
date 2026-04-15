@@ -6,7 +6,7 @@ use crate::core::kernel::{
 };
 
 /// Runtime handle identifying the task that a context-pipe waker should resume.
-pub struct ContextPipeWakerHandle {
+pub(crate) struct ContextPipeWakerHandle {
   pub(crate) system: SystemStateShared,
   pub(crate) pid:    Pid,
   pub(crate) task:   ContextPipeTaskId,
@@ -15,7 +15,7 @@ pub struct ContextPipeWakerHandle {
 impl ContextPipeWakerHandle {
   /// Creates a new handle for the provided actor system, actor pid, and task id.
   #[must_use]
-  pub const fn new(system: SystemStateShared, pid: Pid, task: ContextPipeTaskId) -> Self {
+  pub(crate) const fn new(system: SystemStateShared, pid: Pid, task: ContextPipeTaskId) -> Self {
     Self { system, pid, task }
   }
 }
