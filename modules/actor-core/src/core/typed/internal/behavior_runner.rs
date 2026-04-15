@@ -1,21 +1,24 @@
 //! Executes typed behaviors inside the actor runtime.
 
 use alloc::string::ToString;
+use core::convert::Infallible;
 
 use crate::core::{
   kernel::{
     actor::{
       Pid,
+      actor_ref::{ActorRef, NullSender},
       error::{ActorError, ActorErrorReason},
       supervision::SupervisorStrategyConfig,
     },
     event::stream::{AdapterFailureEvent, EventStreamEvent, TypedUnhandledMessageEvent},
   },
   typed::{
+    TypedActorRef,
     actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
     message_adapter::AdapterError,
-    message_and_signals::{BehaviorSignal, DeathPactError},
+    message_and_signals::{BehaviorSignal, ChildFailed, DeathPactError, MessageAdaptionFailure, Terminated},
   },
 };
 
@@ -104,6 +107,13 @@ where
     .map(|_| self.update_supervisor_override(override_strategy))
   }
 
+  fn terminated_actor_ref(ctx: &TypedActorContext<'_, M>, pid: Pid) -> TypedActorRef<Infallible> {
+    let system = ctx.system().as_untyped().clone();
+    let actor_ref =
+      system.actor_ref_by_pid(pid).unwrap_or_else(|| ActorRef::with_system(pid, NullSender, &system.state()));
+    TypedActorRef::from_untyped(actor_ref)
+  }
+
   /// Dispatches a signal and applies the resulting transition.
   ///
   /// Returns the directive of the behavior returned by the signal handler,
@@ -114,7 +124,7 @@ where
     signal: &BehaviorSignal,
   ) -> Result<BehaviorDirective, ActorError> {
     if let BehaviorSignal::MessageAdaptionFailure(failure) = signal {
-      let event = Self::adapter_failure_event(ctx, failure);
+      let event = Self::adapter_failure_event(ctx, failure.error());
       ctx.system().publish_event(&EventStreamEvent::AdapterFailure(event));
     }
     let next = self.current.handle_signal(ctx, signal)?;
@@ -155,7 +165,8 @@ where
     // シグナルハンドラが Terminated を実際に処理したかを判定する。
     // has_signal_handler() だけでは不十分 — ハンドラが Unhandled を返す場合も
     // DeathPactError を発行する必要がある (Pekko 互換)。
-    let directive = self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))?;
+    let signal = BehaviorSignal::from(Terminated::new(Self::terminated_actor_ref(ctx, terminated)));
+    let directive = self.dispatch_signal(ctx, &signal)?;
     if matches!(directive, BehaviorDirective::Unhandled) || !self.current.has_signal_handler() {
       let ex = DeathPactError::new(terminated);
       Err(ActorError::recoverable_typed::<DeathPactError>(ex.to_string()))
@@ -175,7 +186,8 @@ where
     child: Pid,
     error: &ActorError,
   ) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })?;
+    let signal = BehaviorSignal::from(ChildFailed::new(Self::terminated_actor_ref(ctx, child), error.clone()));
+    self.dispatch_signal(ctx, &signal)?;
     Ok(())
   }
 
@@ -188,7 +200,8 @@ where
     ctx: &mut TypedActorContext<'_, M>,
     failure: AdapterError,
   ) -> Result<(), ActorError> {
-    let directive = self.dispatch_signal(ctx, &BehaviorSignal::MessageAdaptionFailure(failure))?;
+    let signal = BehaviorSignal::from(MessageAdaptionFailure::new(failure));
+    let directive = self.dispatch_signal(ctx, &signal)?;
     if matches!(directive, BehaviorDirective::Unhandled) || !self.current.has_signal_handler() {
       Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
     } else {

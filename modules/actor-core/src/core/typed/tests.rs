@@ -5,6 +5,7 @@ use alloc::{
   vec::Vec,
 };
 use core::{
+  convert::Infallible,
   hint::spin_loop,
   num::NonZeroUsize,
   sync::atomic::{AtomicUsize, Ordering},
@@ -29,12 +30,14 @@ use crate::core::{
     system::SpinBlocker,
   },
   typed::{
-    Behavior, DispatcherSelector, TypedActorRef,
+    Behavior, DispatcherSelector, ExtensibleBehavior, TypedActorRef,
     actor::{TypedActor, TypedActorContext},
     behavior_interceptor::BehaviorInterceptor,
     dsl::{Behaviors, StashBuffer, TypedAskError},
     message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
-    message_and_signals::{BehaviorSignal, PostStop, PreRestart, Signal},
+    message_and_signals::{
+      BehaviorSignal, ChildFailed, MessageAdaptionFailure, PostStop, PreRestart, Signal, Terminated,
+    },
     props::TypedProps,
     system::TypedActorSystem,
   },
@@ -76,6 +79,18 @@ enum AdapterCounterCommand {
 
 struct CounterActor {
   total: i32,
+}
+
+struct RootExtensibleBehaviorProbe;
+
+impl ExtensibleBehavior<LifecycleCommand> for RootExtensibleBehaviorProbe {
+  fn receive(
+    &mut self,
+    _ctx: &mut TypedActorContext<'_, LifecycleCommand>,
+    _message: &LifecycleCommand,
+  ) -> Result<Behavior<LifecycleCommand>, ActorError> {
+    Ok(Behaviors::same())
+  }
 }
 
 impl CounterActor {
@@ -615,7 +630,7 @@ fn signal_probe_behavior(started: &Arc<AtomicUsize>, post_stop: &Arc<AtomicUsize
         },
         | BehaviorSignal::Terminated(_)
         | BehaviorSignal::MessageAdaptionFailure(_)
-        | BehaviorSignal::ChildFailed { .. }
+        | BehaviorSignal::ChildFailed(_)
         | BehaviorSignal::PreRestart => {},
       }
       Ok(Behaviors::same())
@@ -947,15 +962,44 @@ fn read_stash_order_log(actor: &mut TypedActorRef<StashOrderCommand>) -> Vec<Str
 
 fn assert_signal_type<T: Signal>() {}
 
+fn assert_extensible_behavior_type<T: ExtensibleBehavior<LifecycleCommand>>() {}
+
+fn assert_terminated_actor_ref_type(_actor_ref: &TypedActorRef<Infallible>) {}
+
 #[test]
 fn public_signal_types_implement_signal_marker_trait() {
   assert_signal_type::<BehaviorSignal>();
   assert_signal_type::<PreRestart>();
   assert_signal_type::<PostStop>();
+  assert_signal_type::<Terminated>();
+  assert_signal_type::<ChildFailed>();
+  assert_signal_type::<MessageAdaptionFailure>();
+}
+
+#[test]
+fn typed_root_reexports_extensible_behavior_trait() {
+  assert_extensible_behavior_type::<RootExtensibleBehaviorProbe>();
 }
 
 #[test]
 fn dedicated_signal_types_convert_into_behavior_signal_variants() {
+  let system = TypedActorSystem::<()>::new_empty();
+  let terminated_ref = system.ignore_ref::<Infallible>();
+  let child_ref = system.ignore_ref::<Infallible>();
+  let terminated = Terminated::new(terminated_ref.clone());
+  let child_failed = ChildFailed::new(child_ref.clone(), ActorError::recoverable("boom"));
+
+  assert_terminated_actor_ref_type(terminated.actor_ref());
+  assert_terminated_actor_ref_type(child_failed.actor_ref());
+
   assert_eq!(BehaviorSignal::from(PreRestart), BehaviorSignal::PreRestart);
   assert_eq!(BehaviorSignal::from(PostStop), BehaviorSignal::PostStop);
+  assert_eq!(BehaviorSignal::from(terminated.clone()), { BehaviorSignal::Terminated(terminated) });
+  assert_eq!(BehaviorSignal::from(child_failed.clone()), BehaviorSignal::ChildFailed(child_failed),);
+  assert_eq!(
+    BehaviorSignal::from(MessageAdaptionFailure::new(AdapterError::Custom(String::from("bad adapter")))),
+    BehaviorSignal::MessageAdaptionFailure(MessageAdaptionFailure::new(AdapterError::Custom(String::from(
+      "bad adapter",
+    )))),
+  );
 }
