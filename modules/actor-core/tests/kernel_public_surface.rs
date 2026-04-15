@@ -29,7 +29,7 @@ const ROUTING_CUSTOM_ROUTER_CONFIG_SOURCE: &str =
 
 #[test]
 fn official_kernel_public_api_compiles_from_external_crate() {
-  // Given/When/Then
+  // 公式公開 API がクレート外からコンパイルできることを保証する
   assert_fixture_build("kernel-public-api", PUBLIC_API_SOURCE, true);
 }
 
@@ -125,6 +125,10 @@ fn assert_fixture_build_failure_contains(name: &str, source: &str, expected_symb
     rendered.contains(expected_symbol),
     "fixture should fail because `{expected_symbol}` is not public:\n{rendered}"
   );
+  assert!(
+    rendered.contains("private") || rendered.contains("unresolved import"),
+    "fixture should report a visibility diagnostic for `{expected_symbol}`:\n{rendered}"
+  );
 
   if let Err(error) = cleanup_result {
     panic!("fixture directory cleanup should succeed: {error}");
@@ -163,7 +167,11 @@ fn unique_crate_dir(name: &str) -> PathBuf {
     | Ok(duration) => duration.as_nanos(),
     | Err(error) => panic!("system clock should be after unix epoch: {error}"),
   };
-  env::temp_dir().join(format!("fraktor-actor-core-rs-{name}-{}-{timestamp}", std::process::id()))
+  let dir = env::temp_dir().join(format!("fraktor-actor-core-rs-{name}-{}-{timestamp}", std::process::id()));
+  if let Err(error) = fs::create_dir_all(&dir) {
+    panic!("unique crate directory should be created: {error}");
+  }
+  dir
 }
 
 fn render_output(output: &Output) -> String {

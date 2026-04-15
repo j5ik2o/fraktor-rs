@@ -177,8 +177,8 @@ where
   }
 
   /// Returns the number of registered workers.
-  fn worker_count(&self) -> u32 {
-    self.workers.len() as u32
+  fn worker_count(&self) -> usize {
+    self.workers.len()
   }
 
   /// Finds a worker key that has demand, using round-robin starting from

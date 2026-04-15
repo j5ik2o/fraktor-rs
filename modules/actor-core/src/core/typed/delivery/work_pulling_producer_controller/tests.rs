@@ -3,10 +3,13 @@ use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
-use super::super::internal::{
-  PendingDurableStore, WorkPullingState, WorkerEntry, WppcDeferredAction, WppcDurableQueueTimeout,
-  collect_on_internal_demand, collect_on_worker_listing, collect_wppc_on_durable_queue_message_stored,
-  collect_wppc_on_msg, execute_wppc_deferred,
+use super::super::{
+  internal::{
+    PendingDurableStore, WorkPullingState, WorkerEntry, WppcDeferredAction, WppcDurableQueueTimeout,
+    collect_on_internal_demand, collect_on_worker_listing, collect_wppc_on_durable_queue_message_stored,
+    collect_wppc_on_msg, execute_wppc_deferred,
+  },
+  work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
 };
 use crate::core::{
   kernel::{
@@ -234,7 +237,7 @@ fn worker_removal_replays_unconfirmed_messages_to_self() {
     Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
       if matches!(
         command,
-        super::super::work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+        WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
           if sent.message() == &41_u32
       )
   ));
@@ -243,7 +246,7 @@ fn worker_removal_replays_unconfirmed_messages_to_self() {
     Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
       if matches!(
         command,
-        super::super::work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+        WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
           if sent.message() == &42_u32
       )
   ));

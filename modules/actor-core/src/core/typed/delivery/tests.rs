@@ -399,7 +399,7 @@ fn work_pulling_start_and_get_worker_stats() {
     TypedActorRef::<WorkPullingProducerControllerCommand<u32>>::from_untyped(wppc_cell.into_actor_ref());
 
   // ワーカー統計のレスポンスを追跡する。
-  let stats_received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let stats_received = ArcShared::new(SpinSyncMutex::new(Vec::<usize>::new()));
   let stats_received_clone = stats_received.clone();
 
   // 統計収集アクターを生成する。

@@ -165,9 +165,11 @@ where
     // シグナルハンドラが Terminated を実際に処理したかを判定する。
     // has_signal_handler() だけでは不十分 — ハンドラが Unhandled を返す場合も
     // DeathPactError を発行する必要がある (Pekko 互換)。
+    // dispatch_signal が current を置き換える可能性があるため、事前にキャプチャする。
+    let had_handler = self.current.has_signal_handler();
     let signal = BehaviorSignal::from(Terminated::new(Self::terminated_actor_ref(ctx, terminated)));
     let directive = self.dispatch_signal(ctx, &signal)?;
-    if matches!(directive, BehaviorDirective::Unhandled) || !self.current.has_signal_handler() {
+    if matches!(directive, BehaviorDirective::Unhandled) || !had_handler {
       let ex = DeathPactError::new(terminated);
       Err(ActorError::recoverable_typed::<DeathPactError>(ex.to_string()))
     } else {
@@ -200,9 +202,11 @@ where
     ctx: &mut TypedActorContext<'_, M>,
     failure: AdapterError,
   ) -> Result<(), ActorError> {
+    // dispatch_signal が current を置き換える可能性があるため、事前にキャプチャする。
+    let had_handler = self.current.has_signal_handler();
     let signal = BehaviorSignal::from(MessageAdaptionFailure::new(failure));
     let directive = self.dispatch_signal(ctx, &signal)?;
-    if matches!(directive, BehaviorDirective::Unhandled) || !self.current.has_signal_handler() {
+    if matches!(directive, BehaviorDirective::Unhandled) || !had_handler {
       Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
     } else {
       Ok(())

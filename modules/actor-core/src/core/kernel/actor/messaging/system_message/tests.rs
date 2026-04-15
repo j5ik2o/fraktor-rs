@@ -37,25 +37,16 @@ fn poison_pill_message_round_trips_through_any_message() {
 
 #[test]
 fn poison_pill_public_message_converts_to_system_message() {
-  // Given: 利用者が public auto-receive message を直接送る
-  let payload = PoisonPill;
-
-  // When: runtime 用の SystemMessage へ変換する
-  let converted = SystemMessage::from(payload);
-
-  // Then: 変換先は PoisonPill になる
+  // public PoisonPill が runtime の SystemMessage::PoisonPill へ正しくマッピングされることを保証する
+  let converted = SystemMessage::from(PoisonPill);
   assert_eq!(converted, SystemMessage::PoisonPill);
 }
 
 #[test]
 fn poison_pill_public_message_is_stored_as_distinct_payload_in_any_message() {
-  // Given: 利用者が public auto-receive message を直接送る
+  // AnyMessage は public 型をそのまま保持し、SystemMessage へ暗黙変換しないことを保証する
   let stored = AnyMessage::new(PoisonPill);
-
-  // When: AnyMessage から payload を参照する
   let view = stored.as_view();
-
-  // Then: payload は alias 化されず public 型のまま保持される
   assert!(view.downcast_ref::<PoisonPill>().is_some());
   assert!(view.downcast_ref::<SystemMessage>().is_none());
 }
@@ -71,25 +62,16 @@ fn kill_message_round_trips_through_any_message() {
 
 #[test]
 fn kill_public_message_converts_to_system_message() {
-  // Given: 利用者が public auto-receive message を直接送る
-  let payload = Kill;
-
-  // When: runtime 用の SystemMessage へ変換する
-  let converted = SystemMessage::from(payload);
-
-  // Then: 変換先は Kill になる
+  // public Kill が runtime の SystemMessage::Kill へ正しくマッピングされることを保証する
+  let converted = SystemMessage::from(Kill);
   assert_eq!(converted, SystemMessage::Kill);
 }
 
 #[test]
 fn kill_public_message_is_stored_as_distinct_payload_in_any_message() {
-  // Given: 利用者が public auto-receive message を直接送る
+  // AnyMessage は public 型をそのまま保持し、SystemMessage へ暗黙変換しないことを保証する
   let stored = AnyMessage::new(Kill);
-
-  // When: AnyMessage から payload を参照する
   let view = stored.as_view();
-
-  // Then: payload は alias 化されず public 型のまま保持される
   assert!(view.downcast_ref::<Kill>().is_some());
   assert!(view.downcast_ref::<SystemMessage>().is_none());
 }

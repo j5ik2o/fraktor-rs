@@ -9,18 +9,18 @@ mod tests;
 /// [`GetWorkerStats`](super::WorkPullingProducerControllerCommand) query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkerStats {
-  number_of_workers: u32,
+  number_of_workers: usize,
 }
 
 impl WorkerStats {
   /// Creates a new `WorkerStats`.
-  pub(crate) const fn new(number_of_workers: u32) -> Self {
+  pub(crate) const fn new(number_of_workers: usize) -> Self {
     Self { number_of_workers }
   }
 
   /// Returns the number of currently registered workers.
   #[must_use]
-  pub const fn number_of_workers(&self) -> u32 {
+  pub const fn number_of_workers(&self) -> usize {
     self.number_of_workers
   }
 }

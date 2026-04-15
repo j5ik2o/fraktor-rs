@@ -116,10 +116,6 @@ impl Receptionist {
   where
     M: Send + Sync + 'static, {
     let registered = Self::ensure_extension(system);
-    let extension_id = ReceptionistExtensionId::new();
-    if let Some(existing) = system.extension(&extension_id) {
-      debug_assert!(ArcShared::ptr_eq(&registered, &existing));
-    }
     registered.with_ref(|receptionist: &Receptionist| receptionist.clone())
   }
 
