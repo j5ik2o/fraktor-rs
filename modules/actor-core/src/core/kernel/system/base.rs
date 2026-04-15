@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{
+  collections::BTreeMap,
   format,
   string::{String, ToString},
   vec::Vec,
@@ -32,7 +33,7 @@ use crate::core::{
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
       scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverBundle},
-      setup::{ActorSystemConfig, ActorSystemSetup},
+      setup::{ActorSystemConfig, ActorSystemSetup, CircuitBreakerSettings},
       spawn::SpawnError,
     },
     event::{
@@ -274,6 +275,24 @@ impl ActorSystem {
   #[must_use]
   pub fn remoting_config(&self) -> Option<RemotingConfig> {
     self.state.remoting_config()
+  }
+
+  /// Returns the default circuit-breaker settings configured for this actor system.
+  #[must_use]
+  pub fn default_circuit_breaker_settings(&self) -> CircuitBreakerSettings {
+    self.state.inner.with_read(|inner| inner.default_circuit_breaker_settings())
+  }
+
+  /// Returns the configured named circuit-breaker overrides.
+  #[must_use]
+  pub fn named_circuit_breaker_settings(&self) -> BTreeMap<String, CircuitBreakerSettings> {
+    self.state.inner.with_read(|inner| inner.named_circuit_breaker_settings())
+  }
+
+  /// Resolves circuit-breaker settings for the provided logical id.
+  #[must_use]
+  pub fn circuit_breaker_settings(&self, id: &str) -> CircuitBreakerSettings {
+    self.state.inner.with_read(|inner| inner.circuit_breaker_settings(id))
   }
 
   /// Returns an extended view that exposes privileged runtime operations.

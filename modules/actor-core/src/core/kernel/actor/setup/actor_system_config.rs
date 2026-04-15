@@ -2,6 +2,7 @@
 
 use alloc::{
   boxed::Box,
+  collections::BTreeMap,
   string::{String, ToString},
 };
 use core::time::Duration;
@@ -15,6 +16,7 @@ use crate::core::kernel::{
     extension::ExtensionInstallers,
     props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
+    setup::CircuitBreakerSettings,
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherConfigurator},
@@ -28,16 +30,18 @@ mod tests;
 
 /// Configuration for the actor system.
 pub struct ActorSystemConfig {
-  system_name:          String,
-  default_guardian:     PathGuardianKind,
-  remoting_config:      Option<RemotingConfig>,
-  scheduler_config:     SchedulerConfig,
-  tick_driver:          Option<Box<dyn TickDriver>>,
+  system_name: String,
+  default_guardian: PathGuardianKind,
+  remoting_config: Option<RemotingConfig>,
+  scheduler_config: SchedulerConfig,
+  tick_driver: Option<Box<dyn TickDriver>>,
   extension_installers: Option<ExtensionInstallers>,
-  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  dispatchers:          Dispatchers,
-  mailboxes:            Mailboxes,
-  start_time:           Option<Duration>,
+  provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  dispatchers: Dispatchers,
+  mailboxes: Mailboxes,
+  default_circuit_breaker_settings: CircuitBreakerSettings,
+  named_circuit_breaker_settings: BTreeMap<String, CircuitBreakerSettings>,
+  start_time: Option<Duration>,
 }
 
 impl ActorSystemConfig {
@@ -118,6 +122,24 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_mailbox(mut self, id: impl Into<String>, config: MailboxConfig) -> Self {
     self.mailboxes.register_or_update(id, config);
+    self
+  }
+
+  /// Replaces the default circuit-breaker settings.
+  #[must_use]
+  pub const fn with_default_circuit_breaker_settings(mut self, settings: CircuitBreakerSettings) -> Self {
+    self.default_circuit_breaker_settings = settings;
+    self
+  }
+
+  /// Registers circuit-breaker settings for a named logical id.
+  #[must_use]
+  pub fn with_named_circuit_breaker_settings(
+    mut self,
+    id: impl Into<String>,
+    settings: CircuitBreakerSettings,
+  ) -> Self {
+    self.named_circuit_breaker_settings.insert(id.into(), settings);
     self
   }
 
@@ -204,6 +226,24 @@ impl ActorSystemConfig {
     &self.mailboxes
   }
 
+  /// Returns the default circuit-breaker settings.
+  #[must_use]
+  pub const fn default_circuit_breaker_settings(&self) -> CircuitBreakerSettings {
+    self.default_circuit_breaker_settings
+  }
+
+  /// Returns the named circuit-breaker overrides.
+  #[must_use]
+  pub const fn named_circuit_breaker_settings(&self) -> &BTreeMap<String, CircuitBreakerSettings> {
+    &self.named_circuit_breaker_settings
+  }
+
+  /// Resolves circuit-breaker settings for `id`, falling back to the default.
+  #[must_use]
+  pub fn circuit_breaker_settings(&self, id: &str) -> CircuitBreakerSettings {
+    self.named_circuit_breaker_settings.get(id).copied().unwrap_or(self.default_circuit_breaker_settings)
+  }
+
   /// Returns the configured start time, or `None` if not set.
   ///
   /// Corresponds to Pekko's `ActorSystem.startTime`.
@@ -229,6 +269,8 @@ impl Default for ActorSystemConfig {
       provider_installer: None,
       dispatchers,
       mailboxes,
+      default_circuit_breaker_settings: CircuitBreakerSettings::default(),
+      named_circuit_breaker_settings: BTreeMap::new(),
       start_time: None,
     }
   }
