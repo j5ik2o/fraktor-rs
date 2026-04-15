@@ -1,7 +1,11 @@
 use core::time::Duration;
 
 use super::{FailurePayload, SystemMessage};
-use crate::core::kernel::actor::{Pid, error::ActorError, messaging::AnyMessage};
+use crate::core::kernel::actor::{
+  Pid,
+  error::ActorError,
+  messaging::{AnyMessage, Kill, PoisonPill},
+};
 
 #[test]
 fn watch_message_round_trips_through_any_message() {
@@ -32,12 +36,62 @@ fn poison_pill_message_round_trips_through_any_message() {
 }
 
 #[test]
+fn poison_pill_public_message_converts_to_system_message() {
+  // Given: 利用者が public auto-receive message を直接送る
+  let payload = PoisonPill;
+
+  // When: runtime 用の SystemMessage へ変換する
+  let converted = SystemMessage::from(payload);
+
+  // Then: 変換先は PoisonPill になる
+  assert_eq!(converted, SystemMessage::PoisonPill);
+}
+
+#[test]
+fn poison_pill_public_message_is_stored_as_distinct_payload_in_any_message() {
+  // Given: 利用者が public auto-receive message を直接送る
+  let stored = AnyMessage::new(PoisonPill);
+
+  // When: AnyMessage から payload を参照する
+  let view = stored.as_view();
+
+  // Then: payload は alias 化されず public 型のまま保持される
+  assert!(view.downcast_ref::<PoisonPill>().is_some());
+  assert!(view.downcast_ref::<SystemMessage>().is_none());
+}
+
+#[test]
 fn kill_message_round_trips_through_any_message() {
   let payload = SystemMessage::Kill;
   let stored: AnyMessage = payload.clone().into();
   let view = stored.as_view();
   let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
   assert_eq!(recovered, &payload);
+}
+
+#[test]
+fn kill_public_message_converts_to_system_message() {
+  // Given: 利用者が public auto-receive message を直接送る
+  let payload = Kill;
+
+  // When: runtime 用の SystemMessage へ変換する
+  let converted = SystemMessage::from(payload);
+
+  // Then: 変換先は Kill になる
+  assert_eq!(converted, SystemMessage::Kill);
+}
+
+#[test]
+fn kill_public_message_is_stored_as_distinct_payload_in_any_message() {
+  // Given: 利用者が public auto-receive message を直接送る
+  let stored = AnyMessage::new(Kill);
+
+  // When: AnyMessage から payload を参照する
+  let view = stored.as_view();
+
+  // Then: payload は alias 化されず public 型のまま保持される
+  assert!(view.downcast_ref::<Kill>().is_some());
+  assert!(view.downcast_ref::<SystemMessage>().is_none());
 }
 
 #[test]
