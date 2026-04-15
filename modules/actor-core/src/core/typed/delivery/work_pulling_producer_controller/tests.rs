@@ -3,10 +3,10 @@ use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
-use super::{
+use super::super::internal::{
   PendingDurableStore, WorkPullingState, WorkerEntry, WppcDeferredAction, WppcDurableQueueTimeout,
-  collect_on_durable_queue_message_stored, collect_on_internal_demand, collect_on_msg, collect_on_worker_listing,
-  execute_wppc_deferred,
+  collect_on_internal_demand, collect_on_worker_listing, collect_wppc_on_durable_queue_message_stored,
+  collect_wppc_on_msg, execute_wppc_deferred,
 };
 use crate::core::{
   kernel::{
@@ -106,7 +106,7 @@ fn durable_queue_store_is_triggered_before_worker_delivery() {
   });
 
   let mut deferred = Vec::new();
-  collect_on_msg(&mut state, 42_u32, &mut deferred);
+  collect_wppc_on_msg(&mut state, 42_u32, &mut deferred);
 
   assert_eq!(state.current_seq_nr, 2);
   assert!(state.pending_stores.contains_key(&1));
@@ -130,7 +130,7 @@ fn direct_worker_delivery_tracks_worker_ack_timeout() {
   });
 
   let mut deferred = Vec::new();
-  collect_on_msg(&mut state, 42_u32, &mut deferred);
+  collect_wppc_on_msg(&mut state, 42_u32, &mut deferred);
 
   assert!(matches!(
     deferred.as_slice(),
@@ -232,12 +232,20 @@ fn worker_removal_replays_unconfirmed_messages_to_self() {
   assert!(matches!(
     deferred.get(1),
     Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
-      if matches!(command, super::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } if sent.message() == &41_u32)
+      if matches!(
+        command,
+        super::super::work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+          if sent.message() == &41_u32
+      )
   ));
   assert!(matches!(
     deferred.get(2),
     Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
-      if matches!(command, super::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } if sent.message() == &42_u32)
+      if matches!(
+        command,
+        super::super::work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+          if sent.message() == &42_u32
+      )
   ));
 }
 
@@ -281,7 +289,7 @@ fn durable_queue_store_ack_keeps_replayable_payload_in_flight() {
   });
 
   let mut deferred = Vec::new();
-  collect_on_durable_queue_message_stored(&mut state, &StoreMessageSentAck::new(9), &self_ref, &mut deferred);
+  collect_wppc_on_durable_queue_message_stored(&mut state, &StoreMessageSentAck::new(9), &self_ref, &mut deferred);
 
   let stored = state
     .workers

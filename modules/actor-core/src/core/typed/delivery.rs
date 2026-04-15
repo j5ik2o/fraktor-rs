@@ -41,6 +41,8 @@ mod durable_producer_queue;
 mod durable_producer_queue_command;
 /// Durable producer queue state for crash recovery.
 mod durable_producer_queue_state;
+/// Internal implementation details for delivery controllers.
+mod internal;
 /// Persisted fact representing a sent message.
 mod message_sent;
 /// Acknowledgment for a stored message sent event.

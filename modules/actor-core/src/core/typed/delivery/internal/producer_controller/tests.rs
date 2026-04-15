@@ -1,8 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use super::super::internal::{
-  DeferredAction, DurableQueueTimeout, ProducerControllerState, collect_on_durable_queue_message_stored, collect_on_msg,
-};
+use super::*;
 use crate::core::{
   kernel::actor::{
     Pid,
@@ -11,8 +9,8 @@ use crate::core::{
   typed::{
     TypedActorRef,
     delivery::{
-      ConsumerControllerCommand, DurableProducerQueueCommand, ProducerController, ProducerControllerCommand,
-      ProducerControllerRequestNext, StoreMessageSentAck,
+      ConsumerControllerCommand, DurableProducerQueueCommand, ProducerControllerCommand, ProducerControllerRequestNext,
+      StoreMessageSentAck,
     },
   },
 };
@@ -26,13 +24,11 @@ fn producer_controller_factory_methods_compile() {
   fn _assert_clone<T: Clone>() {}
   _assert_clone::<ProducerControllerCommand<String>>();
 
-  // 具体的な型でビヘイビアファクトリがコンパイルできることを確認する。
   let _behavior = ProducerController::behavior::<u32>("test-producer");
 }
 
 #[test]
 fn behavior_with_durable_queue_none_compiles() {
-  // durable_queue が None の場合は behavior() と同等の動作であること。
   let _behavior = ProducerController::behavior_with_durable_queue::<u32>("test-producer", None);
 }
 

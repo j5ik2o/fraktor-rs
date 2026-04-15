@@ -1,9 +1,8 @@
 use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex, shared::Shared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock, SpinSyncMutex, shared::Shared};
 
-use super::{ReceptionistExtensionId, handle_command};
 use crate::core::{
   kernel::{
     actor::{
@@ -23,7 +22,10 @@ use crate::core::{
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
     dsl::Behaviors,
-    receptionist::{Deregistered, Listing, Receptionist, ReceptionistCommand, Registered, ServiceKey},
+    receptionist::{
+      Deregistered, Listing, Receptionist, ReceptionistCommand, Registered, ServiceKey,
+      runtime::{ReceptionistExtensionId, ReceptionistState, handle_command},
+    },
   },
 };
 
@@ -99,6 +101,13 @@ fn find_listing(receptionist: &mut TypedActorRef<ReceptionistCommand>, key: &Ser
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("find result").expect("listing payload")
+}
+
+fn empty_state() -> SharedLock<ReceptionistState> {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(ReceptionistState {
+    registrations: Default::default(),
+    subscribers:   Default::default(),
+  })
 }
 
 #[test]
@@ -318,7 +327,7 @@ fn register_without_ack_still_works() {
 #[test]
 fn register_returns_error_and_does_not_store_registration_when_watch_fails() {
   let system = ActorSystem::new_empty();
-  let state = Receptionist::empty_state();
+  let state = empty_state();
   let key = ServiceKey::<u32>::new("watch-fail-register");
   let routee = ActorRef::new_with_builtin_lock(Pid::new(701, 0), NullSender);
   let command = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
@@ -335,7 +344,7 @@ fn register_returns_error_and_does_not_store_registration_when_watch_fails() {
 #[test]
 fn subscribe_returns_error_and_does_not_store_subscriber_when_watch_fails() {
   let system = ActorSystem::new_empty();
-  let state = Receptionist::empty_state();
+  let state = empty_state();
   let key = ServiceKey::<u32>::new("watch-fail-subscriber");
   let listings = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::new_with_builtin_lock(
@@ -359,7 +368,7 @@ fn subscribe_returns_error_and_does_not_store_subscriber_when_watch_fails() {
 fn subscribe_logs_warn_and_preserves_subscriber_when_initial_listing_delivery_fails() {
   let system = ActorSystem::new_empty();
   let (events, _subscription) = subscribe_log_recorder(&system);
-  let state = Receptionist::empty_state();
+  let state = empty_state();
   let key = ServiceKey::<u32>::new("closed-subscriber");
   let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::null());
   let command = Receptionist::subscribe(&key, subscriber.clone());
@@ -379,7 +388,7 @@ fn subscribe_logs_warn_and_preserves_subscriber_when_initial_listing_delivery_fa
 fn register_logs_warn_and_preserves_registration_when_notifying_closed_subscriber_fails() {
   let system = ActorSystem::new_empty();
   let (events, _subscription) = subscribe_log_recorder(&system);
-  let state = Receptionist::empty_state();
+  let state = empty_state();
   let key = ServiceKey::<u32>::new("notify-fail");
   let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::null());
   let subscribe = Receptionist::subscribe(&key, subscriber);
@@ -402,7 +411,7 @@ fn register_logs_warn_and_preserves_registration_when_notifying_closed_subscribe
 fn register_with_ack_logs_warn_and_preserves_registration_when_reply_target_is_closed() {
   let system = ActorSystem::new_empty();
   let (events, _subscription) = subscribe_log_recorder(&system);
-  let state = Receptionist::empty_state();
+  let state = empty_state();
   let key = ServiceKey::<u32>::new("ack-fail-register");
   let routee = ActorRef::new_with_builtin_lock(Pid::new(703, 0), NullSender);
   let reply_to = TypedActorRef::from_untyped(ActorRef::null());
@@ -422,7 +431,7 @@ fn register_with_ack_logs_warn_and_preserves_registration_when_reply_target_is_c
 fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_closed() {
   let system = ActorSystem::new_empty();
   let (events, _subscription) = subscribe_log_recorder(&system);
-  let state = Receptionist::empty_state();
+  let state = empty_state();
   let key = ServiceKey::<u32>::new("ack-fail-deregister");
   let routee = ActorRef::new_with_builtin_lock(Pid::new(704, 0), NullSender);
 
@@ -447,7 +456,7 @@ fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_c
 fn find_logs_warn_and_returns_ok_when_reply_target_is_closed() {
   let system = ActorSystem::new_empty();
   let (events, _subscription) = subscribe_log_recorder(&system);
-  let state = Receptionist::empty_state();
+  let state = empty_state();
   let key = ServiceKey::<u32>::new("find-closed-reply");
   let command = Receptionist::find(&key, TypedActorRef::from_untyped(ActorRef::null()));
 
