@@ -28,6 +28,8 @@ mod dispatchers;
 pub mod dsl;
 /// Typed event stream package for subscribing and publishing to the system event stream.
 pub mod eventstream;
+/// Public extension point for custom typed behavior implementations.
+mod extensible_behavior;
 /// Generic setup wrapper for configuring extensions during system bootstrap.
 mod extension_setup;
 /// Internal implementation types (BehaviorRunner, TypedActorAdapter, scheduler internals).
@@ -72,6 +74,7 @@ pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use dispatcher_selector::DispatcherSelector;
 pub use dispatchers::Dispatchers;
+pub use extensible_behavior::ExtensibleBehavior;
 pub use extension_setup::ExtensionSetup;
 pub use log_options::LogOptions;
 pub use mailbox_selector::MailboxSelector;
