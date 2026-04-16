@@ -59,7 +59,7 @@ use crate::core::kernel::{
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
-    logging::{LogEvent, LogLevel},
+    logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
     stream::{EventStream, EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -112,6 +112,7 @@ pub struct SystemState {
   tick_driver_snapshot: Option<TickDriverSnapshot>,
   tick_driver_bundle: TickDriverBundle,
   tick_driver_stopper: Option<Box<dyn TickDriverStopper>>,
+  logging_filter: Box<dyn LoggingFilter>,
   default_circuit_breaker_config: CircuitBreakerConfig,
   named_circuit_breaker_config: BTreeMap<String, CircuitBreakerConfig>,
   start_time: Duration,
@@ -168,6 +169,7 @@ impl SystemState {
       tick_driver_snapshot: None,
       tick_driver_bundle,
       tick_driver_stopper: None,
+      logging_filter: Box::new(DefaultLoggingFilter::default()),
       default_circuit_breaker_config: CircuitBreakerConfig::default(),
       named_circuit_breaker_config: BTreeMap::new(),
       start_time: Duration::ZERO,
@@ -225,6 +227,7 @@ impl SystemState {
       tick_driver_snapshot: None,
       tick_driver_bundle,
       tick_driver_stopper: None,
+      logging_filter: Box::new(DefaultLoggingFilter::default()),
       default_circuit_breaker_config: CircuitBreakerConfig::default(),
       named_circuit_breaker_config: BTreeMap::new(),
       start_time: Duration::ZERO,
@@ -731,10 +734,26 @@ impl SystemState {
     self.event_stream.publish(event);
   }
 
+  /// Returns `true` when the current logging filter accepts the event.
+  #[must_use]
+  pub(crate) fn should_publish_log_event(&self, event: &LogEvent) -> bool {
+    self.logging_filter.should_publish(event)
+  }
+
+  /// Replaces the current pre-publish logging filter.
+  pub fn set_logging_filter<F>(&mut self, filter: F)
+  where
+    F: LoggingFilter + 'static, {
+    self.logging_filter = Box::new(filter);
+  }
+
   /// Emits a log event via the event stream.
   pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>, logger_name: Option<String>) {
     let timestamp = self.monotonic_now();
     let event = LogEvent::new(level, message, timestamp, origin, logger_name);
+    if !self.should_publish_log_event(&event) {
+      return;
+    }
     self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 

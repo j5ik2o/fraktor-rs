@@ -8,7 +8,11 @@ use portable_atomic::{AtomicU64, Ordering};
 
 use super::resizer::Resizer;
 use crate::core::{
-  kernel::event::logging::LogLevel,
+  kernel::{
+    actor::messaging::AnyMessage,
+    event::logging::LogLevel,
+    routing::{ConsistentHashingRoutingLogic, Routee, RoutingLogic, SmallestMailboxRoutingLogic},
+  },
   typed::{TypedActorRef, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal, props::TypedProps},
 };
 
@@ -200,7 +204,7 @@ where
         },
         | PoolRouteStrategy::ConsistentHash { hash_fn } => {
           ArcShared::new(move |guard: &[TypedActorRef<M>], message: &M| {
-            let idx = (hash_fn(message) as usize) % guard.len();
+            let idx = select_consistent_hash_index(guard, message, &*hash_fn);
             vec![guard[idx].clone()]
           })
         },
@@ -349,43 +353,59 @@ pub(super) const fn pseudo_random_index(seed: u64, len: usize) -> usize {
   (mixed as usize) % len
 }
 
+pub(super) fn select_consistent_hash_index<M>(
+  routees: &[TypedActorRef<M>],
+  message: &M,
+  hash_fn: &(dyn Fn(&M) -> u64 + Send + Sync),
+) -> usize
+where
+  M: Send + Sync + Clone + 'static, {
+  let hash_key = hash_fn(message);
+  let logic = ConsistentHashingRoutingLogic::new(move |_message: &AnyMessage| hash_key);
+  let routees = routees.iter().map(|routee| Routee::ActorRef(routee.as_untyped().clone())).collect::<Vec<_>>();
+  let selected = logic.select(&AnyMessage::new(message.clone()), &routees);
+  find_selected_routee_index(routees.as_slice(), selected)
+}
+
 pub(super) fn select_smallest_mailbox_index<M>(
   routees: &[TypedActorRef<M>],
   dispatch_counts: &SharedLock<Vec<usize>>,
 ) -> usize
 where
   M: Send + Sync + Clone + 'static, {
+  let routees = routees.iter().map(|routee| Routee::ActorRef(routee.as_untyped().clone())).collect::<Vec<_>>();
+  if let Some(selected) = SmallestMailboxRoutingLogic::select_observed(routees.as_slice()) {
+    return find_selected_routee_index(routees.as_slice(), selected);
+  }
+
   let routee_count = routees.len();
-  let mut best_index = 0_usize;
-  let mut best_len = usize::MAX;
-  for (index, routee) in routees.iter().enumerate() {
-    let mailbox_len = routee
-      .as_untyped()
-      .system_state()
-      .and_then(|system| system.cell(&routee.pid()))
-      .map_or(usize::MAX, |cell| cell.mailbox().user_len());
-    if mailbox_len < best_len {
-      best_len = mailbox_len;
-      best_index = index;
+  dispatch_counts.with_lock(|counts| {
+    let mut selected = 0_usize;
+    let mut selected_count = usize::MAX;
+    for (index, count) in counts.iter().enumerate().take(routee_count) {
+      if *count < selected_count {
+        selected = index;
+        selected_count = *count;
+      }
     }
-  }
+    if let Some(entry) = counts.get_mut(selected) {
+      *entry = entry.saturating_add(1);
+    }
+    selected
+  })
+}
 
-  if best_len == usize::MAX {
-    return dispatch_counts.with_lock(|counts| {
-      let mut selected = 0_usize;
-      let mut selected_count = usize::MAX;
-      for (index, count) in counts.iter().enumerate().take(routee_count) {
-        if *count < selected_count {
-          selected = index;
-          selected_count = *count;
-        }
-      }
-      if let Some(entry) = counts.get_mut(selected) {
-        *entry = entry.saturating_add(1);
-      }
-      selected
-    });
-  }
+fn find_selected_routee_index(routees: &[Routee], selected: &Routee) -> usize {
+  let Routee::ActorRef(selected_actor_ref) = selected else {
+    panic!("selected routee must be an actor ref");
+  };
 
-  best_index
+  let Some(index) = routees.iter().position(|routee| match routee {
+    | Routee::ActorRef(routee_actor_ref) => routee_actor_ref.pid() == selected_actor_ref.pid(),
+    | Routee::NoRoutee | Routee::Several(_) => false,
+  }) else {
+    panic!("selected routee must originate from input slice");
+  };
+
+  index
 }
