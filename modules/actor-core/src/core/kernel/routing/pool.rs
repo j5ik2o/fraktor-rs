@@ -17,7 +17,8 @@ pub trait Pool: RouterConfig {
 
   /// Whether this pool has a dynamic resizer attached.
   ///
-  /// When `true`, [`stop_router_when_all_routees_removed`](RouterConfig::stop_router_when_all_routees_removed)
+  /// When `true`,
+  /// [`stop_router_when_all_routees_removed`](RouterConfig::stop_router_when_all_routees_removed)
   /// defaults to `false` (the resizer may create new routees later).
   fn has_resizer(&self) -> bool {
     false
