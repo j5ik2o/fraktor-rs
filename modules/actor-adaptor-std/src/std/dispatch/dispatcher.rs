@@ -8,6 +8,8 @@
 #[cfg(all(test, feature = "tokio-executor"))]
 mod tests;
 
+mod affinity_executor;
+mod affinity_executor_factory;
 mod pinned_executor;
 mod pinned_executor_factory;
 mod threaded_executor;
@@ -16,6 +18,8 @@ mod tokio_executor;
 #[cfg(feature = "tokio-executor")]
 mod tokio_executor_factory;
 
+pub use affinity_executor::AffinityExecutor;
+pub use affinity_executor_factory::AffinityExecutorFactory;
 pub use pinned_executor::PinnedExecutor;
 pub use pinned_executor_factory::PinnedExecutorFactory;
 pub use threaded_executor::ThreadedExecutor;
