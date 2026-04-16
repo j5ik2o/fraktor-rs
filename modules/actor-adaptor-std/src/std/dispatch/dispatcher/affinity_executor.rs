@@ -96,26 +96,20 @@ impl AffinityExecutor {
 impl Executor for AffinityExecutor {
   /// Submits a task to the worker thread identified by the task's affinity key.
   ///
-  /// The affinity key is obtained from the `task` pointer hash and mapped to a
-  /// queue index via `key % parallelism`. This provides a stable distribution:
-  /// the same closure address will always route to the same worker, and when the
-  /// dispatcher reuses the same mailbox closure, it ends up on the same thread.
+  /// The `affinity_key` (typically the mailbox PID value) is mapped to a queue
+  /// index via `key % parallelism`, guaranteeing that the same actor's tasks
+  /// always execute on the same worker thread.
   ///
   /// # Errors
   ///
   /// - [`ExecuteError::Shutdown`] if the executor has been shut down.
   /// - [`ExecuteError::Rejected`] if the target queue is full.
-  fn execute(&mut self, task: Task) -> Result<(), ExecuteError> {
+  fn execute(&mut self, task: Task, affinity_key: u64) -> Result<(), ExecuteError> {
     if self.state.load(Ordering::Acquire) != RUNNING {
       return Err(ExecuteError::Shutdown);
     }
 
-    // Use the task closure's pointer address as an affinity key.
-    // In practice the dispatcher submits the same mailbox-drain closure,
-    // so the pointer value is stable per mailbox and provides the desired
-    // thread-stickiness.
-    let key = &*task as *const dyn FnOnce() as *const () as usize as u64;
-    let idx = (key % self.senders.len() as u64) as usize;
+    let idx = (affinity_key % self.senders.len() as u64) as usize;
 
     let Some(sender) = self.senders[idx].as_ref() else {
       return Err(ExecuteError::Shutdown);

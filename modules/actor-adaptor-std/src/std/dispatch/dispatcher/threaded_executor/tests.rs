@@ -17,10 +17,13 @@ fn execute_runs_each_task_on_a_new_thread() {
   let count_clone = Arc::clone(&count);
   let barrier_clone = Arc::clone(&barrier);
   executor
-    .execute(Box::new(move || {
-      count_clone.fetch_add(1, Ordering::SeqCst);
-      barrier_clone.wait();
-    }))
+    .execute(
+      Box::new(move || {
+        count_clone.fetch_add(1, Ordering::SeqCst);
+        barrier_clone.wait();
+      }),
+      0,
+    )
     .expect("execute should succeed");
   barrier.wait();
   assert_eq!(count.load(Ordering::SeqCst), 1);

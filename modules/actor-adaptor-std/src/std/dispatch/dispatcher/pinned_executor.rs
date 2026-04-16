@@ -50,7 +50,7 @@ impl PinnedExecutor {
 }
 
 impl Executor for PinnedExecutor {
-  fn execute(&mut self, task: Task) -> Result<(), ExecuteError> {
+  fn execute(&mut self, task: Task, _affinity_key: u64) -> Result<(), ExecuteError> {
     let Some(sender) = self.sender.as_ref() else {
       return Err(ExecuteError::Shutdown);
     };

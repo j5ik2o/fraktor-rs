@@ -1,8 +1,12 @@
 extern crate std;
 
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc;
+use std::{
+  collections::HashSet,
+  sync::{Mutex, mpsc},
+  thread::{self, ThreadId},
+};
 
 use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
 
@@ -14,14 +18,17 @@ fn tasks_execute_on_worker_threads() {
   let count = Arc::new(AtomicUsize::new(0));
   let (tx, rx) = mpsc::channel();
 
-  for _ in 0..4 {
+  for i in 0..4_u64 {
     let c = Arc::clone(&count);
     let done = tx.clone();
     executor
-      .execute(Box::new(move || {
-        c.fetch_add(1, Ordering::SeqCst);
-        let _ = done.send(());
-      }))
+      .execute(
+        Box::new(move || {
+          c.fetch_add(1, Ordering::SeqCst);
+          let _ = done.send(());
+        }),
+        i,
+      )
       .expect("submit must succeed");
   }
 
@@ -36,7 +43,7 @@ fn tasks_execute_on_worker_threads() {
 fn execute_after_shutdown_returns_error() {
   let mut executor = AffinityExecutor::new("affinity-shutdown", 2, 16);
   executor.shutdown();
-  let result = executor.execute(Box::new(|| {}));
+  let result = executor.execute(Box::new(|| {}), 0);
   assert!(matches!(result, Err(ExecuteError::Shutdown)));
 }
 
@@ -62,10 +69,13 @@ fn rejected_when_queue_full() {
   // Submit a task that blocks the worker until we signal.
   let ack = ack_tx.clone();
   executor
-    .execute(Box::new(move || {
-      let _ = ack.send(());
-      let _ = hold_rx.recv(); // block until main releases
-    }))
+    .execute(
+      Box::new(move || {
+        let _ = ack.send(());
+        let _ = hold_rx.recv(); // block until main releases
+      }),
+      0,
+    )
     .expect("first submission");
 
   // Wait for the blocking task to start executing.
@@ -75,7 +85,7 @@ fn rejected_when_queue_full() {
   // eventually fail with Rejected.
   let mut saw_rejected = false;
   for _ in 0..8 {
-    match executor.execute(Box::new(|| {})) {
+    match executor.execute(Box::new(|| {}), 0) {
       | Ok(()) => {},
       | Err(ExecuteError::Rejected) => {
         saw_rejected = true;
@@ -90,5 +100,68 @@ fn rejected_when_queue_full() {
 
   assert!(saw_rejected, "expected at least one Rejected error from bounded queue");
 
+  executor.shutdown();
+}
+
+#[test]
+fn same_affinity_key_routes_to_same_worker() {
+  let mut executor = AffinityExecutor::new("affinity-sticky", 4, 64);
+  let thread_ids: Arc<Mutex<Vec<ThreadId>>> = Arc::new(Mutex::new(Vec::new()));
+  let (tx, rx) = mpsc::channel();
+
+  // Submit 8 tasks all with the same affinity key; they must land on the same worker.
+  for _ in 0..8 {
+    let ids = Arc::clone(&thread_ids);
+    let done = tx.clone();
+    executor
+      .execute(
+        Box::new(move || {
+          ids.lock().expect("lock").push(thread::current().id());
+          let _ = done.send(());
+        }),
+        42,
+      )
+      .expect("submit must succeed");
+  }
+
+  for _ in 0..8 {
+    rx.recv().expect("task must complete");
+  }
+
+  let ids = thread_ids.lock().expect("lock");
+  let first = ids[0];
+  assert!(ids.iter().all(|id| *id == first), "all tasks with the same affinity key must run on the same thread");
+  executor.shutdown();
+}
+
+#[test]
+fn different_affinity_keys_distribute_across_workers() {
+  let mut executor = AffinityExecutor::new("affinity-dist", 4, 64);
+  let thread_ids: Arc<Mutex<Vec<(u64, ThreadId)>>> = Arc::new(Mutex::new(Vec::new()));
+  let (tx, rx) = mpsc::channel();
+
+  // Submit tasks with 4 different affinity keys (0..4).
+  for key in 0..4_u64 {
+    let ids = Arc::clone(&thread_ids);
+    let done = tx.clone();
+    executor
+      .execute(
+        Box::new(move || {
+          ids.lock().expect("lock").push((key, thread::current().id()));
+          let _ = done.send(());
+        }),
+        key,
+      )
+      .expect("submit must succeed");
+  }
+
+  for _ in 0..4 {
+    rx.recv().expect("task must complete");
+  }
+
+  let ids = thread_ids.lock().expect("lock");
+  let unique_threads: HashSet<_> = ids.iter().map(|(_, tid)| *tid).collect();
+  // With 4 workers and keys 0..4, each key maps to a different worker.
+  assert_eq!(unique_threads.len(), 4, "4 distinct keys with 4 workers should use all 4 workers");
   executor.shutdown();
 }

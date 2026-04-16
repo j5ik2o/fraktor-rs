@@ -9,7 +9,7 @@ use crate::core::kernel::dispatch::dispatcher::{
 struct NoopExecutor;
 
 impl Executor for NoopExecutor {
-  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     Ok(())
   }
 

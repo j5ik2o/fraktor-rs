@@ -27,7 +27,7 @@ impl TokioExecutor {
 }
 
 impl Executor for TokioExecutor {
-  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     // `spawn_blocking` returns a `JoinHandle` which we deliberately drop:
     // task lifetime is owned by Tokio's blocking pool, and the dispatcher
     // does not need to await completion to keep its scheduling guarantees.

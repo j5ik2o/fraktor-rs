@@ -15,7 +15,7 @@ use crate::core::kernel::{
 struct InlineExec;
 
 impl Executor for InlineExec {
-  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     task();
     Ok(())
   }

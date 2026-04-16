@@ -8,7 +8,7 @@ struct CountingExecutor {
 }
 
 impl Executor for CountingExecutor {
-  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     self.count.fetch_add(1, Ordering::SeqCst);
     task();
     Ok(())
@@ -22,7 +22,7 @@ impl Executor for CountingExecutor {
 struct RejectingExecutor;
 
 impl Executor for RejectingExecutor {
-  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     Err(ExecuteError::Rejected)
   }
 
@@ -36,9 +36,12 @@ fn execute_delegates_to_inner() {
   let observed = Arc::new(AtomicUsize::new(0));
   let observed_clone = Arc::clone(&observed);
   shared
-    .execute(Box::new(move || {
-      observed_clone.store(1, Ordering::SeqCst);
-    }))
+    .execute(
+      Box::new(move || {
+        observed_clone.store(1, Ordering::SeqCst);
+      }),
+      0,
+    )
     .expect("execute should succeed");
   assert_eq!(count.load(Ordering::SeqCst), 1);
   assert_eq!(observed.load(Ordering::SeqCst), 1);
@@ -47,7 +50,7 @@ fn execute_delegates_to_inner() {
 #[test]
 fn execute_propagates_errors() {
   let shared = ExecutorShared::new(Box::new(RejectingExecutor), TrampolineState::new());
-  let result = shared.execute(Box::new(|| {}));
+  let result = shared.execute(Box::new(|| {}), 0);
   assert!(matches!(result, Err(ExecuteError::Rejected)));
 }
 
@@ -55,7 +58,7 @@ fn execute_propagates_errors() {
 fn shutdown_invokes_inner_shutdown() {
   let count = Arc::new(AtomicUsize::new(0));
   let shared = ExecutorShared::new(Box::new(CountingExecutor { count: Arc::clone(&count) }), TrampolineState::new());
-  shared.execute(Box::new(|| {})).expect("execute should succeed");
+  shared.execute(Box::new(|| {}), 0).expect("execute should succeed");
   assert_eq!(count.load(Ordering::SeqCst), 1);
   shared.shutdown();
   assert_eq!(count.load(Ordering::SeqCst), 0);
@@ -66,7 +69,7 @@ fn clone_shares_inner_state() {
   let count = Arc::new(AtomicUsize::new(0));
   let shared = ExecutorShared::new(Box::new(CountingExecutor { count: Arc::clone(&count) }), TrampolineState::new());
   let cloned = shared.clone();
-  shared.execute(Box::new(|| {})).expect("execute should succeed");
-  cloned.execute(Box::new(|| {})).expect("execute should succeed");
+  shared.execute(Box::new(|| {}), 0).expect("execute should succeed");
+  cloned.execute(Box::new(|| {}), 0).expect("execute should succeed");
   assert_eq!(count.load(Ordering::SeqCst), 2);
 }

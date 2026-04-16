@@ -31,7 +31,7 @@ impl Actor for ProbeActor {
 struct NoopExecutor;
 
 impl Executor for NoopExecutor {
-  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     Ok(())
   }
 
@@ -156,7 +156,7 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   struct InlineExec;
 
   impl Executor for InlineExec {
-    fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+    fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
       task();
       Ok(())
     }

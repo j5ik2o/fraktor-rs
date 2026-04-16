@@ -1,4 +1,7 @@
-use core::{any::Any, future::{Pending, Ready, pending, ready}};
+use core::{
+  any::Any,
+  future::{Pending, Ready, pending, ready},
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
