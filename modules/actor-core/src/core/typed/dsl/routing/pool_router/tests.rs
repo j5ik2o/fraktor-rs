@@ -14,7 +14,6 @@ use crate::core::{
       scheduler::tick_driver::TestTickDriver,
       setup::ActorSystemConfig,
     },
-    routing::{Routee, SmallestMailboxRoutingLogic},
     system::ActorSystem,
   },
   typed::{
@@ -326,51 +325,6 @@ fn select_consistent_hash_index_routes_same_message_to_same_routee() {
   let second = select_consistent_hash_index(&routees, &7_u32, &|message| u64::from(*message));
 
   assert_eq!(first, second);
-}
-
-#[test]
-fn find_selected_routee_index_returns_index_for_observed_routee() {
-  let system = ActorSystem::new_empty();
-
-  let pid0 = system.allocate_pid();
-  let pid1 = system.allocate_pid();
-  let pid2 = system.allocate_pid();
-  let cell0 = register_routee_cell(&system, pid0, "routee-0");
-  let cell1 = register_routee_cell(&system, pid1, "routee-1");
-  let cell2 = register_routee_cell(&system, pid2, "routee-2");
-
-  cell0.mailbox().enqueue_user(AnyMessage::new(1_u32)).expect("enqueue");
-  cell0.mailbox().enqueue_user(AnyMessage::new(2_u32)).expect("enqueue");
-  cell1.mailbox().enqueue_user(AnyMessage::new(3_u32)).expect("enqueue");
-
-  let routees =
-    vec![Routee::ActorRef(cell0.actor_ref()), Routee::ActorRef(cell1.actor_ref()), Routee::ActorRef(cell2.actor_ref())];
-  let selected = SmallestMailboxRoutingLogic::select_observed(routees.as_slice()).expect("selected routee");
-
-  let index = super::find_selected_routee_index(routees.as_slice(), selected);
-
-  assert_eq!(index, 2);
-}
-
-#[test]
-#[should_panic(expected = "selected routee must originate from input slice")]
-fn find_selected_routee_index_panics_for_routee_outside_input_slice() {
-  let system = ActorSystem::new_empty();
-
-  let pid0 = system.allocate_pid();
-  let pid1 = system.allocate_pid();
-  let pid2 = system.allocate_pid();
-  let pid3 = system.allocate_pid();
-  let cell0 = register_routee_cell(&system, pid0, "routee-0");
-  let cell1 = register_routee_cell(&system, pid1, "routee-1");
-  let cell2 = register_routee_cell(&system, pid2, "routee-2");
-  let outsider = register_routee_cell(&system, pid3, "routee-3");
-
-  let routees =
-    vec![Routee::ActorRef(cell0.actor_ref()), Routee::ActorRef(cell1.actor_ref()), Routee::ActorRef(cell2.actor_ref())];
-  let outsider = Routee::ActorRef(outsider.actor_ref());
-
-  let _ = super::find_selected_routee_index(routees.as_slice(), &outsider);
 }
 
 #[test]

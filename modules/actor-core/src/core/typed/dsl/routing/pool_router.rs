@@ -9,9 +9,8 @@ use portable_atomic::{AtomicU64, Ordering};
 use super::resizer::Resizer;
 use crate::core::{
   kernel::{
-    actor::messaging::AnyMessage,
     event::logging::LogLevel,
-    routing::{ConsistentHashingRoutingLogic, Routee, RoutingLogic, SmallestMailboxRoutingLogic},
+    routing::{FNV_OFFSET_BASIS, mix_hash, rendezvous_score},
   },
   typed::{TypedActorRef, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal, props::TypedProps},
 };
@@ -360,11 +359,20 @@ pub(super) fn select_consistent_hash_index<M>(
 ) -> usize
 where
   M: Send + Sync + Clone + 'static, {
-  let hash_key = hash_fn(message);
-  let logic = ConsistentHashingRoutingLogic::new(move |_message: &AnyMessage| hash_key);
-  let routees = routees.iter().map(|routee| Routee::ActorRef(routee.as_untyped().clone())).collect::<Vec<_>>();
-  let selected = logic.select(&AnyMessage::new(message.clone()), &routees);
-  find_selected_routee_index(routees.as_slice(), selected)
+  assert!(!routees.is_empty(), "routees must not be empty");
+  let key_hash = hash_fn(message);
+  routees
+    .iter()
+    .enumerate()
+    .max_by_key(|(_, routee)| {
+      let pid = routee.pid();
+      let hash = mix_hash(FNV_OFFSET_BASIS, &[0]);
+      let hash = mix_hash(hash, &pid.value().to_le_bytes());
+      let routee_hash = mix_hash(hash, &pid.generation().to_le_bytes());
+      rendezvous_score(key_hash, routee_hash)
+    })
+    .map(|(index, _)| index)
+    .unwrap_or(0)
 }
 
 pub(super) fn select_smallest_mailbox_index<M>(
@@ -373,11 +381,34 @@ pub(super) fn select_smallest_mailbox_index<M>(
 ) -> usize
 where
   M: Send + Sync + Clone + 'static, {
-  let routees = routees.iter().map(|routee| Routee::ActorRef(routee.as_untyped().clone())).collect::<Vec<_>>();
-  if let Some(selected) = SmallestMailboxRoutingLogic::select_observed(routees.as_slice()) {
-    return find_selected_routee_index(routees.as_slice(), selected);
+  // Try to find the routee with the smallest observable mailbox.
+  let mut best_observed_index = None;
+  let mut best_observed_len = usize::MAX;
+
+  for (index, routee) in routees.iter().enumerate() {
+    let Some(mailbox_len) = routee
+      .as_untyped()
+      .system_state()
+      .and_then(|system| system.cell(&routee.pid()))
+      .map(|cell| cell.mailbox().user_len())
+    else {
+      continue;
+    };
+
+    if mailbox_len < best_observed_len {
+      best_observed_len = mailbox_len;
+      best_observed_index = Some(index);
+      if mailbox_len == 0 {
+        break;
+      }
+    }
   }
 
+  if let Some(index) = best_observed_index {
+    return index;
+  }
+
+  // Fallback: use dispatch counts when no mailbox metrics are observable.
   let routee_count = routees.len();
   dispatch_counts.with_lock(|counts| {
     let mut selected = 0_usize;
@@ -393,19 +424,4 @@ where
     }
     selected
   })
-}
-
-fn find_selected_routee_index(routees: &[Routee], selected: &Routee) -> usize {
-  let Routee::ActorRef(selected_actor_ref) = selected else {
-    panic!("selected routee must be an actor ref");
-  };
-
-  let Some(index) = routees.iter().position(|routee| match routee {
-    | Routee::ActorRef(routee_actor_ref) => routee_actor_ref.pid() == selected_actor_ref.pid(),
-    | Routee::NoRoutee | Routee::Several(_) => false,
-  }) else {
-    panic!("selected routee must originate from input slice");
-  };
-
-  index
 }

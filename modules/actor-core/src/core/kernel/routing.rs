@@ -20,7 +20,7 @@ mod routing_logic;
 mod smallest_mailbox_routing_logic;
 
 pub use broadcast::Broadcast;
-pub(crate) use consistent_hashing_routing_logic::ConsistentHashingRoutingLogic;
+pub(crate) use consistent_hashing_routing_logic::{FNV_OFFSET_BASIS, mix_hash, rendezvous_score};
 pub use custom_router_config::CustomRouterConfig;
 pub use group::Group;
 pub use pool::Pool;
@@ -32,4 +32,3 @@ pub use router_command::RouterCommand;
 pub use router_config::RouterConfig;
 pub use router_response::RouterResponse;
 pub use routing_logic::RoutingLogic;
-pub(crate) use smallest_mailbox_routing_logic::SmallestMailboxRoutingLogic;
