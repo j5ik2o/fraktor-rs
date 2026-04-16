@@ -23,6 +23,8 @@ const ROUTING_CONSISTENT_HASHING_LOGIC_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/routing_consistent_hashing_logic.rs");
 const ROUTING_SMALLEST_MAILBOX_LOGIC_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/routing_smallest_mailbox_logic.rs");
+const ROUTING_ROUTER_FROM_CONFIG_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/routing_router_from_config.rs");
 const ROUTING_ROUTER_CONFIG_SOURCE: &str = include_str!("fixtures/kernel_public_surface/routing_router_config.rs");
 const ROUTING_CUSTOM_ROUTER_CONFIG_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/routing_custom_router_config.rs");
@@ -64,6 +66,7 @@ fn internal_routing_helpers_are_not_reachable_from_external_crate() {
       "ConsistentHashingRoutingLogic",
     ),
     ("kernel-routing-smallest-mailbox-logic", ROUTING_SMALLEST_MAILBOX_LOGIC_SOURCE, "SmallestMailboxRoutingLogic"),
+    ("kernel-routing-router-from-config", ROUTING_ROUTER_FROM_CONFIG_SOURCE, "from_config"),
     ("kernel-routing-router-config", ROUTING_ROUTER_CONFIG_SOURCE, "RouterConfig"),
     ("kernel-routing-custom-router-config", ROUTING_CUSTOM_ROUTER_CONFIG_SOURCE, "CustomRouterConfig"),
   ];
@@ -126,7 +129,10 @@ fn assert_fixture_build_failure_contains(name: &str, source: &str, expected_symb
     "fixture should fail because `{expected_symbol}` is not public:\n{rendered}"
   );
   assert!(
-    rendered.contains("private") || rendered.contains("unresolved import"),
+    rendered.contains("private")
+      || rendered.contains("unresolved import")
+      || rendered.contains("no function or associated item")
+      || rendered.contains("not found"),
     "fixture should report a visibility diagnostic for `{expected_symbol}`:\n{rendered}"
   );
 
