@@ -7,10 +7,7 @@ use alloc::{borrow::ToOwned, collections::BTreeMap, string::String};
 
 use crate::core::kernel::{
   actor::{ActorContext, Pid},
-  event::{
-    logging::{ActorLogMarker, LogEvent, LogLevel},
-    stream::EventStreamEvent,
-  },
+  event::logging::{ActorLogMarker, LogEvent, LogLevel},
   system::ActorSystem,
 };
 
@@ -90,8 +87,8 @@ impl LoggingAdapter {
 
   /// Emits a log event using the provided severity.
   pub fn log(&self, level: LogLevel, message: impl Into<String>) {
-    let mut event =
-      LogEvent::new(level, message.into(), self.system.state().monotonic_now(), self.origin, self.logger_name.clone());
+    let state = self.system.state();
+    let mut event = LogEvent::new(level, message.into(), state.monotonic_now(), self.origin, self.logger_name.clone());
 
     if let Some(marker) = &self.marker {
       event = event.with_marker(marker.name().to_owned(), marker.properties().clone());
@@ -100,6 +97,6 @@ impl LoggingAdapter {
       event = event.with_mdc(self.mdc.clone());
     }
 
-    self.system.publish_event(&EventStreamEvent::Log(event));
+    state.publish_log_event(event);
   }
 }
