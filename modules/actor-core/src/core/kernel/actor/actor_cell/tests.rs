@@ -9,7 +9,7 @@ use crate::core::kernel::{
     Actor, ActorContext, Pid, ReceiveTimeoutState,
     error::ActorError,
     messaging::{
-      ActorIdentity, AnyMessage, AnyMessageView, Identify, message_invoker::MessageInvoker,
+      ActorIdentity, AnyMessage, AnyMessageView, Identify, Kill, PoisonPill, message_invoker::MessageInvoker,
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
@@ -374,6 +374,30 @@ fn poison_pill_system_message_invokes_post_stop() {
 }
 
 #[test]
+fn poison_pill_public_message_invokes_post_stop() {
+  // Given: 起動済み actor に public PoisonPill payload を直接送る
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(420, 0), None, "probe".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+
+  // When: public message を通常 user message 経路で配送する
+  invoker.invoke_user_message(AnyMessage::new(PoisonPill)).expect("poison pill");
+
+  // Then: SystemMessage alias ではなくても auto-receive として停止処理が走る
+  let snapshot = log.lock().clone();
+  assert_eq!(snapshot, vec!["pre_start", "post_stop"]);
+}
+
+#[test]
 fn kill_system_message_reports_fatal_failure() {
   let state = ActorSystem::new_empty().state();
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -389,6 +413,29 @@ fn kill_system_message_reports_fatal_failure() {
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
   let error = invoker.invoke_system_message(SystemMessage::Kill).expect_err("kill should report failure");
 
+  assert_eq!(error, ActorError::fatal("Kill"));
+}
+
+#[test]
+fn kill_public_message_reports_fatal_failure() {
+  // Given: 起動済み actor に public Kill payload を直接送る
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(421, 0), None, "probe".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+
+  // When: public message を通常 user message 経路で配送する
+  let error = invoker.invoke_user_message(AnyMessage::new(Kill)).expect_err("kill should fail");
+
+  // Then: runtime は public payload を fatal kill として扱う
   assert_eq!(error, ActorError::fatal("Kill"));
 }
 

@@ -237,10 +237,11 @@ where
         Ok(Behaviors::same())
       })
       .receive_signal(move |_ctx, signal| match signal {
-        | BehaviorSignal::Terminated(pid) => {
-          queue_for_sig.with_lock(|queue| queue.remove_worker(pid));
+        | BehaviorSignal::Terminated(terminated) => {
+          let pid = terminated.pid();
+          queue_for_sig.with_lock(|queue| queue.remove_worker(&pid));
           let is_empty = routee_pids_for_sig.with_lock(|pids| {
-            if let Some(pos) = pids.iter().position(|p| p == pid) {
+            if let Some(pos) = pids.iter().position(|p| *p == pid) {
               pids.remove(pos);
             }
             pids.is_empty()

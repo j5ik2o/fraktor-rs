@@ -1,5 +1,47 @@
 provider: claude
-model: claude-opus-4-6[1m]
+model: claude-opus-4-6
 concurrency: 1
 base_branch: main
 submodules: all
+
+persona_providers:
+  planner:
+    provider: codex
+    model: gpt-5.4
+  coder:
+    provider: claude
+    model: gpt-5.4
+  cc-sdd-requirements-analyst:
+    provider: codex
+    model: gpt-5.4
+  ai-antipattern-reviewer:
+    provider: codex
+    model: gpt-5.4
+  architecture-reviewer:
+    provider: codex
+    model: gpt-5.4
+  security-reviewer:
+    provider: codex
+    model: gpt-5.4
+  qa-reviewer:
+    provider: codex
+    model: gpt-5.4
+  requirements-reviewer:
+    provider: codex
+    model: gpt-5.4
+  supervisor:
+    provider: codex
+    model: gpt-5.4
+  package-structure-analyst:
+    provider: codex
+    model: gpt-5.4
+  dual-supervisor:
+    provider: codex
+    model: gpt-5.4
+  pekko-porting-qa-reviewer:
+    provider: codex
+    model: gpt-5.4
+  pekko-porting-compat-reviewer:
+    provider: codex
+    model: gpt-5.4
+

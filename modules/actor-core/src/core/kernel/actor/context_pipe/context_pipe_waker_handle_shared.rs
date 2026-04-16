@@ -8,14 +8,14 @@ use crate::core::kernel::actor::{
 ///
 /// The handle is immutable after construction — no lock or atomic
 /// indirection is needed on the read path.
-pub struct ContextPipeWakerHandleShared {
+pub(crate) struct ContextPipeWakerHandleShared {
   inner: ContextPipeWakerHandle,
 }
 
 impl ContextPipeWakerHandleShared {
   /// Creates a new shared wrapper storing the handle directly.
   #[must_use]
-  pub const fn new(handle: ContextPipeWakerHandle) -> Self {
+  pub(crate) const fn new(handle: ContextPipeWakerHandle) -> Self {
     Self { inner: handle }
   }
 

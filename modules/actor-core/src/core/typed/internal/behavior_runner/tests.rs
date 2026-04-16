@@ -1,16 +1,20 @@
 use alloc::{string::String, sync::Arc};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+  convert::Infallible,
+  sync::atomic::{AtomicBool, Ordering},
+};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::BehaviorRunner;
 use crate::core::{
   kernel::{
-    actor::{ActorContext, error::ActorError},
+    actor::{Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props},
     event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
     system::ActorSystem,
   },
   typed::{
+    TypedActorRef,
     actor::{TypedActor, TypedActorContext},
     behavior::Behavior,
     dsl::Behaviors,
@@ -21,6 +25,8 @@ use crate::core::{
 };
 
 struct ProbeMessage;
+
+struct SilentActor;
 
 struct RecordingUnhandledSubscriber {
   events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
@@ -58,6 +64,12 @@ impl EventStreamSubscriber for RecordingAdapterFailureSubscriber {
   }
 }
 
+impl Actor for SilentActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
 fn build_context() -> (ActorContext<'static>, MessageAdapterRegistry<ProbeMessage>) {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -69,6 +81,17 @@ fn build_context_with_pids(count: usize) -> (ActorSystem, Vec<Pid>) {
   let system = ActorSystem::new_empty();
   let pids: Vec<_> = (0..count).map(|_| system.allocate_pid()).collect();
   (system, pids)
+}
+
+fn build_context_with_watched_actor() -> (ActorSystem, Pid, TypedActorRef<Infallible>) {
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let watched_pid = system.allocate_pid();
+  let props = Props::from_fn(|| SilentActor);
+  let cell =
+    ActorCell::create(system.state(), watched_pid, None, "watched".into(), &props).expect("create watched actor");
+  system.state().register_cell(cell.clone());
+  (system, watcher_pid, TypedActorRef::from_untyped(cell.actor_ref()))
 }
 
 fn signal_probe_behavior(
@@ -95,12 +118,25 @@ fn behavior_runner_escalates_without_signal_handler() {
 
 #[test]
 fn behavior_runner_allows_handled_adapter_failure() {
+  // Given: adapter failure を public signal payload として受け取る behavior がある
   let handled = Arc::new(AtomicBool::new(false));
-  let behavior = signal_probe_behavior(|s| matches!(s, BehaviorSignal::MessageAdaptionFailure(_)), handled.clone());
+  let handled_for_signal = handled.clone();
+  let behavior = Behaviors::receive_signal(move |_, signal| match signal {
+    | BehaviorSignal::MessageAdaptionFailure(failure) => {
+      assert_eq!(failure.error(), &AdapterError::Custom(String::from("oops")));
+      handled_for_signal.store(true, Ordering::SeqCst);
+      Ok(Behaviors::same())
+    },
+    | _ => Ok(Behaviors::unhandled()),
+  });
   let mut runner = BehaviorRunner::new(behavior);
   let (mut ctx, mut registry) = build_context();
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  // When: adapter failure を dispatch する
   let result = runner.on_adapter_failure(&mut typed_ctx, AdapterError::Custom(String::from("oops")));
+
+  // Then: signal handler は public payload 型として受け取り、処理成功になる
   assert!(result.is_ok());
   assert!(handled.load(Ordering::SeqCst));
 }
@@ -297,15 +333,32 @@ fn behavior_runner_pre_start_does_not_mark_stopping_when_stop_self_fails() {
 
 #[test]
 fn behavior_runner_dispatches_child_failed_signal() {
+  // Given: child failure を public signal payload として受け取る behavior がある
   let received = Arc::new(AtomicBool::new(false));
-  let behavior = signal_probe_behavior(|s| matches!(s, BehaviorSignal::ChildFailed { .. }), received.clone());
+  let received_for_signal = received.clone();
+  let (system, watcher_pid, watched_ref) = build_context_with_watched_actor();
+  let watched_ref_for_signal = watched_ref.clone();
+  let error = ActorError::recoverable("child boom");
+  let error_for_signal = error.clone();
+  let behavior = Behaviors::receive_signal(move |_, signal| match signal {
+    | BehaviorSignal::ChildFailed(child_failed) => {
+      assert_eq!(child_failed.actor_ref(), &watched_ref_for_signal);
+      assert_eq!(child_failed.pid(), watched_ref_for_signal.pid());
+      assert_eq!(child_failed.error(), &error_for_signal);
+      received_for_signal.store(true, Ordering::SeqCst);
+      Ok(Behaviors::same())
+    },
+    | _ => Ok(Behaviors::unhandled()),
+  });
   let mut runner = BehaviorRunner::new(behavior);
-  let (system, pids) = build_context_with_pids(2);
-  let mut ctx = ActorContext::new(&system, pids[0]);
+  let mut ctx = ActorContext::new(&system, watcher_pid);
   let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
-  let error = ActorError::recoverable("child boom");
-  let result = runner.on_child_failed(&mut typed_ctx, pids[1], &error);
+
+  // When: child failure を dispatch する
+  let result = runner.on_child_failed(&mut typed_ctx, watched_ref.pid(), &error);
+
+  // Then: signal handler は public payload 型として受け取り、処理成功になる
   assert!(result.is_ok());
   assert!(received.load(Ordering::SeqCst));
 }
@@ -326,14 +379,29 @@ fn behavior_runner_death_pact_errors_without_signal_handler() {
 
 #[test]
 fn behavior_runner_death_pact_succeeds_with_signal_handler() {
+  // Given: terminated を public signal payload として受け取る behavior がある
   let received = Arc::new(AtomicBool::new(false));
-  let behavior = signal_probe_behavior(|s| matches!(s, BehaviorSignal::Terminated(_)), received.clone());
+  let received_for_signal = received.clone();
+  let (system, watcher_pid, watched_ref) = build_context_with_watched_actor();
+  let watched_ref_for_signal = watched_ref.clone();
+  let behavior = Behaviors::receive_signal(move |_, signal| match signal {
+    | BehaviorSignal::Terminated(terminated) => {
+      assert_eq!(terminated.actor_ref(), &watched_ref_for_signal);
+      assert_eq!(terminated.pid(), watched_ref_for_signal.pid());
+      received_for_signal.store(true, Ordering::SeqCst);
+      Ok(Behaviors::same())
+    },
+    | _ => Ok(Behaviors::unhandled()),
+  });
   let mut runner = BehaviorRunner::new(behavior);
-  let (system, pids) = build_context_with_pids(2);
-  let mut ctx = ActorContext::new(&system, pids[0]);
+  let mut ctx = ActorContext::new(&system, watcher_pid);
   let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
-  let result = runner.on_terminated(&mut typed_ctx, pids[1]);
+
+  // When: terminated signal を dispatch する
+  let result = runner.on_terminated(&mut typed_ctx, watched_ref.pid());
+
+  // Then: death pact にはならず public payload 型として処理される
   assert!(result.is_ok());
   assert!(received.load(Ordering::SeqCst));
 }

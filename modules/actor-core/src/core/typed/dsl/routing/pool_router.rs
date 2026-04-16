@@ -298,9 +298,10 @@ where
         Ok(Behaviors::same())
       })
       .receive_signal(move |_ctx, signal| match signal {
-        | BehaviorSignal::Terminated(pid) => {
+        | BehaviorSignal::Terminated(terminated) => {
+          let pid = terminated.pid();
           let is_empty = routees_for_sig.with_lock(|guard| {
-            if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
+            if let Some(pos) = guard.iter().position(|r| r.pid() == pid) {
               guard.remove(pos);
               if let Some(ref dc) = dispatch_counts_for_sig {
                 dc.with_lock(|counts| {

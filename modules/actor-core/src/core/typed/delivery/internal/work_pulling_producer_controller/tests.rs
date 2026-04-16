@@ -3,11 +3,7 @@ use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
-use super::{
-  PendingDurableStore, WorkPullingState, WorkerEntry, WppcDeferredAction, WppcDurableQueueTimeout,
-  collect_on_durable_queue_message_stored, collect_on_internal_demand, collect_on_msg, collect_on_worker_listing,
-  execute_wppc_deferred,
-};
+use super::*;
 use crate::core::{
   kernel::{
     actor::{
@@ -24,8 +20,10 @@ use crate::core::{
     actor::TypedActorContext,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, MessageSent, ProducerControllerCommand,
-      ProducerControllerConfig, ProducerControllerRequestNext, StoreMessageSentAck, WorkPullingProducerController,
+      ProducerControllerConfig, ProducerControllerRequestNext, StoreMessageSentAck,
       WorkPullingProducerControllerCommand, WorkPullingProducerControllerConfig,
+      producer_controller_command::ProducerControllerCommandKind,
+      work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
     },
     receptionist::{Listing, ServiceKey},
   },
@@ -118,6 +116,50 @@ fn durable_queue_store_is_triggered_before_worker_delivery() {
 }
 
 #[test]
+fn durable_queue_store_ack_keeps_replayable_payload_in_flight() {
+  let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
+  let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
+  state.pending_stores.insert(9, PendingDurableStore {
+    message:                99_u32,
+    worker_key:             10,
+    worker_local_seq_nr:    2,
+    confirmation_qualifier: "test-producer-worker-10".to_string(),
+    replay_confirmation_of: None,
+  });
+  state.workers.insert(10, WorkerEntry {
+    producer_id:         "test-producer-worker-10".to_string(),
+    producer_controller: make_typed_ref::<ProducerControllerCommand<u32>>(),
+    next_seq_nr:         3,
+    confirmed_seq_nr:    0,
+    in_flight:           BTreeMap::new(),
+    has_demand:          false,
+  });
+
+  let mut deferred = Vec::new();
+  collect_on_durable_queue_message_stored(&mut state, &StoreMessageSentAck::new(9), &self_ref, &mut deferred);
+
+  let stored = state
+    .workers
+    .get(&10)
+    .and_then(|entry| entry.in_flight.get(&2))
+    .expect("stored payload should remain replayable until confirmation");
+  assert_eq!(stored.seq_nr(), 9);
+  assert_eq!(stored.message(), &99_u32);
+  assert!(matches!(
+    deferred.as_slice(),
+    [WppcDeferredAction::TellWorker {
+      worker_key,
+      worker_local_seq_nr,
+      message: ProducerControllerCommand(command),
+      ..
+    }]
+      if *worker_key == 10
+        && *worker_local_seq_nr == 2
+        && matches!(command, ProducerControllerCommandKind::Msg { .. })
+  ));
+}
+
+#[test]
 fn direct_worker_delivery_tracks_worker_ack_timeout() {
   let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
   state.workers.insert(10, WorkerEntry {
@@ -142,7 +184,7 @@ fn direct_worker_delivery_tracks_worker_ack_timeout() {
     }]
       if *worker_key == 10
         && *worker_local_seq_nr == 1
-        && matches!(command, super::super::producer_controller_command::ProducerControllerCommandKind::Msg { .. })
+        && matches!(command, ProducerControllerCommandKind::Msg { .. })
   ));
   let inflight = state
     .workers
@@ -232,12 +274,20 @@ fn worker_removal_replays_unconfirmed_messages_to_self() {
   assert!(matches!(
     deferred.get(1),
     Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
-      if matches!(command, super::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } if sent.message() == &41_u32)
+      if matches!(
+        command,
+        WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+          if sent.message() == &41_u32
+      )
   ));
   assert!(matches!(
     deferred.get(2),
     Some(WppcDeferredAction::TellSelf(_, WorkPullingProducerControllerCommand(command)))
-      if matches!(command, super::WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } if sent.message() == &42_u32)
+      if matches!(
+        command,
+        WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent }
+          if sent.message() == &42_u32
+      )
   ));
 }
 
@@ -257,50 +307,6 @@ fn worker_spawn_propagates_nested_producer_controller_settings() {
     deferred.last(),
     Some(WppcDeferredAction::SpawnWorker { producer_controller_settings, .. })
       if producer_controller_settings.durable_queue_retry_attempts() == 3
-  ));
-}
-
-#[test]
-fn durable_queue_store_ack_keeps_replayable_payload_in_flight() {
-  let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
-  let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
-  state.pending_stores.insert(9, PendingDurableStore {
-    message:                99_u32,
-    worker_key:             10,
-    worker_local_seq_nr:    2,
-    confirmation_qualifier: "test-producer-worker-10".to_string(),
-    replay_confirmation_of: None,
-  });
-  state.workers.insert(10, WorkerEntry {
-    producer_id:         "test-producer-worker-10".to_string(),
-    producer_controller: make_typed_ref::<ProducerControllerCommand<u32>>(),
-    next_seq_nr:         3,
-    confirmed_seq_nr:    0,
-    in_flight:           BTreeMap::new(),
-    has_demand:          false,
-  });
-
-  let mut deferred = Vec::new();
-  collect_on_durable_queue_message_stored(&mut state, &StoreMessageSentAck::new(9), &self_ref, &mut deferred);
-
-  let stored = state
-    .workers
-    .get(&10)
-    .and_then(|entry| entry.in_flight.get(&2))
-    .expect("stored payload should remain replayable until confirmation");
-  assert_eq!(stored.seq_nr(), 9);
-  assert_eq!(stored.message(), &99_u32);
-  assert!(matches!(
-    deferred.as_slice(),
-    [WppcDeferredAction::TellWorker {
-      worker_key,
-      worker_local_seq_nr,
-      message: ProducerControllerCommand(command),
-      ..
-    }]
-      if *worker_key == 10
-        && *worker_local_seq_nr == 2
-        && matches!(command, super::super::producer_controller_command::ProducerControllerCommandKind::Msg { .. })
   ));
 }
 

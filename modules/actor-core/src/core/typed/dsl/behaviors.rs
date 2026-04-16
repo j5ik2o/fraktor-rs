@@ -15,7 +15,7 @@ use crate::core::{
     event::logging::LogLevel,
   },
   typed::{
-    LogOptions, TypedActorRef,
+    ExtensibleBehavior, LogOptions, TypedActorRef,
     actor::TypedActorContext,
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
@@ -559,6 +559,26 @@ impl Behaviors {
       let shared_sig = shared;
       Behaviors::receive_message(move |ctx, msg| shared_msg.with_lock(|behavior| behavior.on_message(ctx, msg)))
         .receive_signal(move |ctx, signal| shared_sig.with_lock(|behavior| behavior.on_signal(ctx, signal)))
+    })
+  }
+
+  /// Creates a behavior from an [`ExtensibleBehavior`] factory.
+  ///
+  /// The factory receives the actor context and returns the initial
+  /// `ExtensibleBehavior` instance. Corresponds to Pekko's pattern:
+  /// `Behaviors.setup(ctx => new MyBehavior(ctx))`.
+  pub fn from_extensible<M, E, F>(factory: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    E: ExtensibleBehavior<M>,
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> E + Send + Sync + 'static, {
+    Behaviors::setup(move |ctx| {
+      let extensible = factory(ctx);
+      let shared = SharedLock::new_with_driver::<DefaultMutex<_>>(extensible);
+      let shared_msg = shared.clone();
+      let shared_sig = shared;
+      Behaviors::receive_message(move |ctx, msg| shared_msg.with_lock(|behavior| behavior.receive(ctx, msg)))
+        .receive_signal(move |ctx, signal| shared_sig.with_lock(|behavior| behavior.receive_signal(ctx, signal)))
     })
   }
 }

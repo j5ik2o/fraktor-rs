@@ -27,7 +27,7 @@ use crate::core::{
       error::{ActorError, PipeSpawnError},
       lifecycle::{LifecycleEvent, LifecycleStage},
       messaging::{
-        ActorIdentity, AnyMessage, Identify,
+        ActorIdentity, AnyMessage, Identify, Kill, PoisonPill,
         message_invoker::{MessageInvoker, MessageInvokerPipeline, MessageInvokerShared},
         system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
       },
@@ -1052,6 +1052,13 @@ impl MessageInvoker for ActorCellInvoker {
     };
     if cell.is_terminated() {
       return Ok(());
+    }
+    if message.payload().downcast_ref::<PoisonPill>().is_some() {
+      return cell.handle_stop();
+    }
+    if message.payload().downcast_ref::<Kill>().is_some() {
+      let snapshot = FailureMessageSnapshot::from_message(&message);
+      return cell.handle_kill(Some(snapshot));
     }
     if let Some(system_message) = message.payload().downcast_ref::<SystemMessage>() {
       match system_message {

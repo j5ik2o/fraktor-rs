@@ -1,7 +1,11 @@
 use core::time::Duration;
 
 use super::{FailurePayload, SystemMessage};
-use crate::core::kernel::actor::{Pid, error::ActorError, messaging::AnyMessage};
+use crate::core::kernel::actor::{
+  Pid,
+  error::ActorError,
+  messaging::{AnyMessage, Kill, PoisonPill},
+};
 
 #[test]
 fn watch_message_round_trips_through_any_message() {
@@ -32,12 +36,44 @@ fn poison_pill_message_round_trips_through_any_message() {
 }
 
 #[test]
+fn poison_pill_public_message_converts_to_system_message() {
+  // public PoisonPill が runtime の SystemMessage::PoisonPill へ正しくマッピングされることを保証する
+  let converted = SystemMessage::from(PoisonPill);
+  assert_eq!(converted, SystemMessage::PoisonPill);
+}
+
+#[test]
+fn poison_pill_public_message_is_stored_as_distinct_payload_in_any_message() {
+  // AnyMessage は public 型をそのまま保持し、SystemMessage へ暗黙変換しないことを保証する
+  let stored = AnyMessage::new(PoisonPill);
+  let view = stored.as_view();
+  assert!(view.downcast_ref::<PoisonPill>().is_some());
+  assert!(view.downcast_ref::<SystemMessage>().is_none());
+}
+
+#[test]
 fn kill_message_round_trips_through_any_message() {
   let payload = SystemMessage::Kill;
   let stored: AnyMessage = payload.clone().into();
   let view = stored.as_view();
   let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
   assert_eq!(recovered, &payload);
+}
+
+#[test]
+fn kill_public_message_converts_to_system_message() {
+  // public Kill が runtime の SystemMessage::Kill へ正しくマッピングされることを保証する
+  let converted = SystemMessage::from(Kill);
+  assert_eq!(converted, SystemMessage::Kill);
+}
+
+#[test]
+fn kill_public_message_is_stored_as_distinct_payload_in_any_message() {
+  // AnyMessage は public 型をそのまま保持し、SystemMessage へ暗黙変換しないことを保証する
+  let stored = AnyMessage::new(Kill);
+  let view = stored.as_view();
+  assert!(view.downcast_ref::<Kill>().is_some());
+  assert!(view.downcast_ref::<SystemMessage>().is_none());
 }
 
 #[test]

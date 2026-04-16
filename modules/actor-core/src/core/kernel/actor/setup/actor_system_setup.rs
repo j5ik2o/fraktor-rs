@@ -13,7 +13,7 @@ use crate::core::kernel::{
     extension::ExtensionInstallers,
     props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
-    setup::{ActorSystemConfig, BootstrapSetup},
+    setup::{ActorSystemConfig, BootstrapSetup, CircuitBreakerConfig},
   },
   dispatch::dispatcher::MessageDispatcherConfigurator,
 };
@@ -84,6 +84,18 @@ impl ActorSystemSetup {
   #[must_use]
   pub fn with_mailbox(self, id: impl Into<String>, config: MailboxConfig) -> Self {
     Self { config: self.config.with_mailbox(id, config) }
+  }
+
+  /// Replaces the default circuit-breaker configuration.
+  #[must_use]
+  pub fn with_default_circuit_breaker_config(self, config: CircuitBreakerConfig) -> Self {
+    Self { config: self.config.with_default_circuit_breaker_config(config) }
+  }
+
+  /// Registers circuit-breaker configuration for a named logical id.
+  #[must_use]
+  pub fn with_named_circuit_breaker_config(self, id: impl Into<String>, config: CircuitBreakerConfig) -> Self {
+    Self { config: self.config.with_named_circuit_breaker_config(id, config) }
   }
 
   /// Returns the underlying actor-system config.

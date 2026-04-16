@@ -88,11 +88,11 @@ fn parent() -> Behavior<ParentCommand> {
     })
     .receive_signal(|_ctx, signal| {
       match signal {
-        | BehaviorSignal::Terminated(pid) => {
-          println!("[parent] 子アクター {:?} の停止を検知 (Terminated)", pid);
+        | BehaviorSignal::Terminated(terminated) => {
+          println!("[parent] 子アクター {:?} の停止を検知 (Terminated)", terminated.pid());
         },
-        | BehaviorSignal::ChildFailed { pid, error } => {
-          println!("[parent] 子アクター {:?} が失敗: {:?}", pid, error);
+        | BehaviorSignal::ChildFailed(child_failed) => {
+          println!("[parent] 子アクター {:?} が失敗: {:?}", child_failed.pid(), child_failed.error());
         },
         | BehaviorSignal::PreRestart => {
           println!("[parent] PreRestart シグナル受信");

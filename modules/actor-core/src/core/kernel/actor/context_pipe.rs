@@ -8,8 +8,8 @@ mod task;
 mod task_id;
 mod waker;
 
-pub use context_pipe_waker_handle::ContextPipeWakerHandle;
-pub use context_pipe_waker_handle_shared::ContextPipeWakerHandleShared;
+pub(crate) use context_pipe_waker_handle::ContextPipeWakerHandle;
+pub(crate) use context_pipe_waker_handle_shared::ContextPipeWakerHandleShared;
 pub(crate) use task::{ContextPipeFuture, ContextPipeTask};
 pub use task_id::ContextPipeTaskId;
 pub(crate) use waker::ContextPipeWaker;
