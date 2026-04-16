@@ -5,6 +5,8 @@ use core::fmt::{Display, Formatter, Result as FmtResult};
 use fraktor_actor_core_rs::core::kernel::actor::error::ActorError;
 use fraktor_remote_core_rs::provider::ProviderError;
 
+use std::error::Error;
+
 /// Errors produced by [`crate::provider::StdRemoteActorRefProvider`].
 ///
 /// The variant set deliberately distinguishes:
@@ -50,11 +52,11 @@ impl Display for StdRemoteActorRefProviderError {
   }
 }
 
-impl std::error::Error for StdRemoteActorRefProviderError {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl Error for StdRemoteActorRefProviderError {
+  fn source(&self) -> Option<&(dyn Error + 'static)> {
     match self {
       | StdRemoteActorRefProviderError::CoreProvider(err) => Some(err),
-      // `actor_core::ActorError` does not implement `std::error::Error`,
+      // `actor_core::ActorError` does not implement `Error`,
       // so we cannot return it as a source. Its details are surfaced via
       // `Display` (which uses the `Debug` representation).
       | _ => None,

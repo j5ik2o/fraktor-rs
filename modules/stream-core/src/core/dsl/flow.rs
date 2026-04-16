@@ -28,7 +28,7 @@ use super::{
 };
 use crate::core::{
   DynValue, KillSwitchStateHandle, SharedKillSwitch, SourceLogic, SubstreamCancelStrategy, attributes::Attributes,
-  r#impl::materialization::Stream, materialization::DriveOutcome, stage::StreamStage,
+  r#impl::materialization::Stream, materialization::DriveOutcome, stage::{GraphStage, StreamStage},
 };
 
 #[cfg(test)]
@@ -128,7 +128,7 @@ where
   #[allow(clippy::needless_pass_by_value)] // API consistency: Pekko's fromGraph consumes the stage
   pub fn from_graph_stage<S>(stage: S) -> Self
   where
-    S: crate::core::stage::GraphStage<In, Out, Mat> + Send + 'static, {
+    S: GraphStage<In, Out, Mat> + Send + 'static, {
     use crate::core::r#impl::GraphStageFlowAdapter;
 
     let mut logic = stage.create_logic();

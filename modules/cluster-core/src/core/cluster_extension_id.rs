@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, system:
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::core::{
-  ClusterCore, ClusterExtension, ClusterExtensionConfig, ClusterProviderShared,
+  BlockListProvider, ClusterCore, ClusterExtension, ClusterExtensionConfig, ClusterProviderShared,
   cluster_provider::ClusterProvider,
   downing_provider::DowningProvider,
   grain::KindRegistry,
@@ -19,7 +19,7 @@ use crate::core::{
 pub struct ClusterExtensionId {
   config:              ClusterExtensionConfig,
   provider:            ClusterProviderShared,
-  block_list_provider: ArcShared<dyn crate::core::BlockListProvider>,
+  block_list_provider: ArcShared<dyn BlockListProvider>,
   downing_provider:    SharedLock<Box<dyn DowningProvider>>,
   gossiper:            GossiperShared,
   pubsub:              ClusterPubSubShared,
@@ -48,7 +48,7 @@ impl ClusterExtensionId {
   pub fn new(
     config: ClusterExtensionConfig,
     provider: Box<dyn ClusterProvider>,
-    block_list_provider: ArcShared<dyn crate::core::BlockListProvider>,
+    block_list_provider: ArcShared<dyn BlockListProvider>,
     downing_provider: Box<dyn DowningProvider>,
     gossiper: Box<dyn Gossiper>,
     pubsub: Box<dyn ClusterPubSub>,

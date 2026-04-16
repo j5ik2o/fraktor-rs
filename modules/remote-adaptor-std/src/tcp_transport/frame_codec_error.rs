@@ -1,6 +1,7 @@
 //! Error type produced by [`crate::tcp_transport::WireFrameCodec`].
 
 use std::{
+  error::Error,
   fmt::{Display, Formatter, Result as FmtResult},
   io::Error as IoError,
 };
@@ -32,8 +33,8 @@ impl Display for FrameCodecError {
   }
 }
 
-impl std::error::Error for FrameCodecError {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl Error for FrameCodecError {
+  fn source(&self) -> Option<&(dyn Error + 'static)> {
     match self {
       | FrameCodecError::Io(err) => Some(err),
       | FrameCodecError::Wire(err) => Some(err),

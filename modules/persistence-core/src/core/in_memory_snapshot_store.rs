@@ -8,7 +8,10 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::future::{Ready, ready};
+use core::{
+  any::Any,
+  future::{Ready, ready},
+};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -68,7 +71,7 @@ impl SnapshotStore for InMemorySnapshotStore {
   fn save_snapshot<'a>(
     &'a mut self,
     metadata: SnapshotMetadata,
-    snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
+    snapshot: ArcShared<dyn Any + Send + Sync>,
   ) -> Self::SaveFuture<'a> {
     let entry = self.snapshots.entry(metadata.persistence_id().to_string()).or_default();
     entry.push(Snapshot::new(metadata, snapshot));
