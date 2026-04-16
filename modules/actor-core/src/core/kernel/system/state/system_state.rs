@@ -70,7 +70,7 @@ mod failure_outcome;
 
 pub(crate) use failure_outcome::FailureOutcome;
 
-use crate::core::kernel::actor::setup::{ActorSystemConfig, CircuitBreakerSettings};
+use crate::core::kernel::actor::setup::{ActorSystemConfig, CircuitBreakerConfig};
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
 
@@ -112,8 +112,8 @@ pub struct SystemState {
   tick_driver_snapshot: Option<TickDriverSnapshot>,
   tick_driver_bundle: TickDriverBundle,
   tick_driver_stopper: Option<Box<dyn TickDriverStopper>>,
-  default_circuit_breaker_settings: CircuitBreakerSettings,
-  named_circuit_breaker_settings: BTreeMap<String, CircuitBreakerSettings>,
+  default_circuit_breaker_config: CircuitBreakerConfig,
+  named_circuit_breaker_config: BTreeMap<String, CircuitBreakerConfig>,
   start_time: Duration,
 }
 
@@ -168,8 +168,8 @@ impl SystemState {
       tick_driver_snapshot: None,
       tick_driver_bundle,
       tick_driver_stopper: None,
-      default_circuit_breaker_settings: CircuitBreakerSettings::default(),
-      named_circuit_breaker_settings: BTreeMap::new(),
+      default_circuit_breaker_config: CircuitBreakerConfig::default(),
+      named_circuit_breaker_config: BTreeMap::new(),
       start_time: Duration::ZERO,
     }
   }
@@ -225,8 +225,8 @@ impl SystemState {
       tick_driver_snapshot: None,
       tick_driver_bundle,
       tick_driver_stopper: None,
-      default_circuit_breaker_settings: CircuitBreakerSettings::default(),
-      named_circuit_breaker_settings: BTreeMap::new(),
+      default_circuit_breaker_config: CircuitBreakerConfig::default(),
+      named_circuit_breaker_config: BTreeMap::new(),
       start_time: Duration::ZERO,
     };
     state.start_time = config.start_time().unwrap_or_else(|| state.monotonic_now());
@@ -275,8 +275,8 @@ impl SystemState {
     self.path_identity.guardian_kind = config.default_guardian();
     self.dispatchers = config.dispatchers().clone();
     self.mailboxes = config.mailboxes().clone();
-    self.default_circuit_breaker_settings = config.default_circuit_breaker_settings();
-    self.named_circuit_breaker_settings = config.named_circuit_breaker_settings().clone();
+    self.default_circuit_breaker_config = config.default_circuit_breaker_config();
+    self.named_circuit_breaker_config = config.named_circuit_breaker_config().clone();
     if let Some(remoting) = config.remoting_config() {
       self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
       self.path_identity.canonical_port = remoting.canonical_port();
@@ -364,22 +364,22 @@ impl SystemState {
     self.path_identity.quarantine_duration
   }
 
-  /// Returns the default circuit-breaker settings configured for this system.
+  /// Returns the default circuit-breaker configuration for this system.
   #[must_use]
-  pub const fn default_circuit_breaker_settings(&self) -> CircuitBreakerSettings {
-    self.default_circuit_breaker_settings
+  pub const fn default_circuit_breaker_config(&self) -> CircuitBreakerConfig {
+    self.default_circuit_breaker_config
   }
 
   /// Returns the configured named circuit-breaker overrides.
   #[must_use]
-  pub fn named_circuit_breaker_settings(&self) -> BTreeMap<String, CircuitBreakerSettings> {
-    self.named_circuit_breaker_settings.clone()
+  pub fn named_circuit_breaker_config(&self) -> BTreeMap<String, CircuitBreakerConfig> {
+    self.named_circuit_breaker_config.clone()
   }
 
-  /// Resolves circuit-breaker settings for the provided logical id.
+  /// Resolves circuit-breaker configuration for the provided logical id.
   #[must_use]
-  pub fn circuit_breaker_settings(&self, id: &str) -> CircuitBreakerSettings {
-    self.named_circuit_breaker_settings.get(id).copied().unwrap_or(self.default_circuit_breaker_settings)
+  pub fn circuit_breaker_config(&self, id: &str) -> CircuitBreakerConfig {
+    self.named_circuit_breaker_config.get(id).copied().unwrap_or(self.default_circuit_breaker_config)
   }
 
   fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {

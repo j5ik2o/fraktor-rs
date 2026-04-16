@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use fraktor_actor_adaptor_std_rs::std::pattern::{CircuitBreakersRegistry, CircuitBreakersRegistryId};
 use fraktor_actor_core_rs::core::kernel::{
-  actor::{extension::ExtensionId, setup::CircuitBreakerSettings},
+  actor::{extension::ExtensionId, setup::CircuitBreakerConfig},
   pattern::CircuitBreakerState,
   system::ActorSystem,
 };
@@ -69,8 +69,8 @@ async fn different_names_return_independent_breakers() {
 fn extension_uses_actor_system_default_and_named_settings() {
   let system = ActorSystem::new_empty_with(|config| {
     config
-      .with_default_circuit_breaker_settings(CircuitBreakerSettings::new(3, Duration::from_secs(10)))
-      .with_named_circuit_breaker_settings("payments", CircuitBreakerSettings::new(7, Duration::from_secs(45)))
+      .with_default_circuit_breaker_config(CircuitBreakerConfig::new(3, Duration::from_secs(10)))
+      .with_named_circuit_breaker_config("payments", CircuitBreakerConfig::new(7, Duration::from_secs(45)))
   });
   let extension_id = CircuitBreakersRegistryId::new();
   let registry = system.extended().register_extension(&extension_id);

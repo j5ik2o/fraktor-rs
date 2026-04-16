@@ -2,7 +2,7 @@ extern crate std;
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::{actor::setup::CircuitBreakerSettings, pattern::CircuitBreakerState};
+use fraktor_actor_core_rs::core::kernel::{actor::setup::CircuitBreakerConfig, pattern::CircuitBreakerState};
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::CircuitBreakersRegistry;
@@ -36,8 +36,8 @@ async fn get_creates_independent_breakers_for_different_names() {
 
 #[test]
 fn get_resolves_named_override_before_creating_breaker() {
-  let registry = CircuitBreakersRegistry::with_settings(CircuitBreakerSettings::new(3, Duration::from_secs(10)))
-    .with_named_settings("payments", CircuitBreakerSettings::new(7, Duration::from_secs(45)));
+  let registry = CircuitBreakersRegistry::with_config(CircuitBreakerConfig::new(3, Duration::from_secs(10)))
+    .with_named_config("payments", CircuitBreakerConfig::new(7, Duration::from_secs(45)));
 
   let payments = registry.get("payments");
   let inventory = registry.get("inventory");

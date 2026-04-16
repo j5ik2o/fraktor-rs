@@ -3,7 +3,7 @@ use core::time::Duration;
 use crate::core::kernel::{
   actor::{
     actor_path::GuardianKind as PathGuardianKind,
-    setup::{ActorSystemConfig, CircuitBreakerSettings},
+    setup::{ActorSystemConfig, CircuitBreakerConfig},
   },
   dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
   system::remote::RemotingConfig,
@@ -74,14 +74,14 @@ fn test_actor_system_config_default_resolves_default_dispatcher() {
 }
 
 #[test]
-fn test_actor_system_config_resolves_named_circuit_breaker_settings() {
-  let default_settings = CircuitBreakerSettings::new(3, Duration::from_secs(10));
-  let payments_settings = CircuitBreakerSettings::new(7, Duration::from_secs(45));
+fn test_actor_system_config_resolves_named_circuit_breaker_config() {
+  let default_cfg = CircuitBreakerConfig::new(3, Duration::from_secs(10));
+  let payments_cfg = CircuitBreakerConfig::new(7, Duration::from_secs(45));
   let config = ActorSystemConfig::default()
-    .with_default_circuit_breaker_settings(default_settings)
-    .with_named_circuit_breaker_settings("payments", payments_settings);
+    .with_default_circuit_breaker_config(default_cfg)
+    .with_named_circuit_breaker_config("payments", payments_cfg);
 
-  assert_eq!(config.default_circuit_breaker_settings(), default_settings);
-  assert_eq!(config.circuit_breaker_settings("payments"), payments_settings);
-  assert_eq!(config.circuit_breaker_settings("inventory"), default_settings);
+  assert_eq!(config.default_circuit_breaker_config(), default_cfg);
+  assert_eq!(config.circuit_breaker_config("payments"), payments_cfg);
+  assert_eq!(config.circuit_breaker_config("inventory"), default_cfg);
 }

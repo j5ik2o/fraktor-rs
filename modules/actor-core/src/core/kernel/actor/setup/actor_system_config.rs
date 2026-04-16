@@ -16,7 +16,7 @@ use crate::core::kernel::{
     extension::ExtensionInstallers,
     props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
-    setup::CircuitBreakerSettings,
+    setup::CircuitBreakerConfig,
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherConfigurator},
@@ -39,8 +39,8 @@ pub struct ActorSystemConfig {
   provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller>>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
-  default_circuit_breaker_settings: CircuitBreakerSettings,
-  named_circuit_breaker_settings: BTreeMap<String, CircuitBreakerSettings>,
+  default_circuit_breaker_config: CircuitBreakerConfig,
+  named_circuit_breaker_config: BTreeMap<String, CircuitBreakerConfig>,
   start_time: Option<Duration>,
 }
 
@@ -125,21 +125,17 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Replaces the default circuit-breaker settings.
+  /// Replaces the default circuit-breaker configuration.
   #[must_use]
-  pub const fn with_default_circuit_breaker_settings(mut self, settings: CircuitBreakerSettings) -> Self {
-    self.default_circuit_breaker_settings = settings;
+  pub const fn with_default_circuit_breaker_config(mut self, config: CircuitBreakerConfig) -> Self {
+    self.default_circuit_breaker_config = config;
     self
   }
 
-  /// Registers circuit-breaker settings for a named logical id.
+  /// Registers circuit-breaker configuration for a named logical id.
   #[must_use]
-  pub fn with_named_circuit_breaker_settings(
-    mut self,
-    id: impl Into<String>,
-    settings: CircuitBreakerSettings,
-  ) -> Self {
-    self.named_circuit_breaker_settings.insert(id.into(), settings);
+  pub fn with_named_circuit_breaker_config(mut self, id: impl Into<String>, config: CircuitBreakerConfig) -> Self {
+    self.named_circuit_breaker_config.insert(id.into(), config);
     self
   }
 
@@ -226,22 +222,22 @@ impl ActorSystemConfig {
     &self.mailboxes
   }
 
-  /// Returns the default circuit-breaker settings.
+  /// Returns the default circuit-breaker configuration.
   #[must_use]
-  pub const fn default_circuit_breaker_settings(&self) -> CircuitBreakerSettings {
-    self.default_circuit_breaker_settings
+  pub const fn default_circuit_breaker_config(&self) -> CircuitBreakerConfig {
+    self.default_circuit_breaker_config
   }
 
   /// Returns the named circuit-breaker overrides.
   #[must_use]
-  pub const fn named_circuit_breaker_settings(&self) -> &BTreeMap<String, CircuitBreakerSettings> {
-    &self.named_circuit_breaker_settings
+  pub const fn named_circuit_breaker_config(&self) -> &BTreeMap<String, CircuitBreakerConfig> {
+    &self.named_circuit_breaker_config
   }
 
-  /// Resolves circuit-breaker settings for `id`, falling back to the default.
+  /// Resolves circuit-breaker configuration for `id`, falling back to the default.
   #[must_use]
-  pub fn circuit_breaker_settings(&self, id: &str) -> CircuitBreakerSettings {
-    self.named_circuit_breaker_settings.get(id).copied().unwrap_or(self.default_circuit_breaker_settings)
+  pub fn circuit_breaker_config(&self, id: &str) -> CircuitBreakerConfig {
+    self.named_circuit_breaker_config.get(id).copied().unwrap_or(self.default_circuit_breaker_config)
   }
 
   /// Returns the configured start time, or `None` if not set.
@@ -269,8 +265,8 @@ impl Default for ActorSystemConfig {
       provider_installer: None,
       dispatchers,
       mailboxes,
-      default_circuit_breaker_settings: CircuitBreakerSettings::default(),
-      named_circuit_breaker_settings: BTreeMap::new(),
+      default_circuit_breaker_config: CircuitBreakerConfig::default(),
+      named_circuit_breaker_config: BTreeMap::new(),
       start_time: None,
     }
   }

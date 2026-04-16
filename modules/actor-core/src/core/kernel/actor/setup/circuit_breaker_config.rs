@@ -1,19 +1,19 @@
-//! Circuit-breaker settings carried by actor-system bootstrap configuration.
+//! Circuit-breaker configuration carried by actor-system bootstrap.
 
 #[cfg(test)]
 mod tests;
 
 use core::time::Duration;
 
-/// Pekko-compatible circuit-breaker settings resolved by actor-system name.
+/// Pekko-compatible circuit-breaker configuration resolved by actor-system name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CircuitBreakerSettings {
+pub struct CircuitBreakerConfig {
   max_failures:  u32,
   reset_timeout: Duration,
 }
 
-impl CircuitBreakerSettings {
-  /// Creates circuit-breaker settings with the provided thresholds.
+impl CircuitBreakerConfig {
+  /// Creates circuit-breaker configuration with the provided thresholds.
   ///
   /// # Panics
   ///
@@ -53,7 +53,7 @@ impl CircuitBreakerSettings {
   }
 }
 
-impl Default for CircuitBreakerSettings {
+impl Default for CircuitBreakerConfig {
   fn default() -> Self {
     Self::new(5, Duration::from_secs(30))
   }

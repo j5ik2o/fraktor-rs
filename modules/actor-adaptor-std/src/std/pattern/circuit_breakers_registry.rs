@@ -7,7 +7,7 @@ use alloc::collections::BTreeMap;
 use std::{collections::HashMap, string::ToString};
 
 use fraktor_actor_core_rs::core::kernel::{
-  actor::{extension::Extension, setup::CircuitBreakerSettings},
+  actor::{extension::Extension, setup::CircuitBreakerConfig},
   pattern::{CircuitBreaker, CircuitBreakerShared},
   system::ActorSystem,
 };
@@ -23,60 +23,60 @@ mod tests;
 /// The registry is installed as an actor-system extension so every caller in
 /// the same system resolves the same breaker instance for the same key.
 pub struct CircuitBreakersRegistry {
-  default_settings: CircuitBreakerSettings,
-  named_settings:   BTreeMap<String, CircuitBreakerSettings>,
-  breakers:         SharedLock<HashMap<String, CircuitBreakerShared<StdClock>>>,
+  default_config: CircuitBreakerConfig,
+  named_configs:  BTreeMap<String, CircuitBreakerConfig>,
+  breakers:       SharedLock<HashMap<String, CircuitBreakerShared<StdClock>>>,
 }
 
 impl CircuitBreakersRegistry {
-  /// Creates an empty registry with the built-in default breaker settings.
+  /// Creates an empty registry with the built-in default breaker configuration.
   #[must_use]
   pub fn new() -> Self {
-    Self::with_settings(CircuitBreakerSettings::default())
+    Self::with_config(CircuitBreakerConfig::default())
   }
 
-  /// Creates a registry with the supplied default settings.
+  /// Creates a registry with the supplied default configuration.
   #[must_use]
-  pub fn with_settings(default_settings: CircuitBreakerSettings) -> Self {
+  pub fn with_config(default_config: CircuitBreakerConfig) -> Self {
     Self {
-      default_settings,
-      named_settings: BTreeMap::new(),
+      default_config,
+      named_configs: BTreeMap::new(),
       breakers: SharedLock::new_with_driver::<DefaultMutex<_>>(HashMap::new()),
     }
   }
 
-  /// Creates a registry by resolving settings from the provided actor system.
+  /// Creates a registry by resolving configuration from the provided actor system.
   #[must_use]
   pub fn from_actor_system(system: &ActorSystem) -> Self {
     Self {
-      default_settings: system.default_circuit_breaker_settings(),
-      named_settings:   system.named_circuit_breaker_settings(),
-      breakers:         SharedLock::new_with_driver::<DefaultMutex<_>>(HashMap::new()),
+      default_config: system.default_circuit_breaker_config(),
+      named_configs:  system.named_circuit_breaker_config(),
+      breakers:       SharedLock::new_with_driver::<DefaultMutex<_>>(HashMap::new()),
     }
   }
 
   /// Registers a named circuit-breaker override.
   #[must_use]
-  pub fn with_named_settings(mut self, id: impl Into<String>, settings: CircuitBreakerSettings) -> Self {
-    self.named_settings.insert(id.into(), settings);
+  pub fn with_named_config(mut self, id: impl Into<String>, config: CircuitBreakerConfig) -> Self {
+    self.named_configs.insert(id.into(), config);
     self
   }
 
-  fn circuit_breaker_settings(&self, id: &str) -> CircuitBreakerSettings {
-    self.named_settings.get(id).copied().unwrap_or(self.default_settings)
+  fn circuit_breaker_config(&self, id: &str) -> CircuitBreakerConfig {
+    self.named_configs.get(id).copied().unwrap_or(self.default_config)
   }
 
   /// Returns the shared circuit breaker bound to `id`.
   #[must_use]
   pub fn get(&self, id: &str) -> CircuitBreakerShared<StdClock> {
-    let settings = self.circuit_breaker_settings(id);
+    let config = self.circuit_breaker_config(id);
     self.breakers.with_write(|breakers| {
-      breakers.entry(id.to_string()).or_insert_with(|| Self::create_circuit_breaker(settings)).clone()
+      breakers.entry(id.to_string()).or_insert_with(|| Self::create_circuit_breaker(config)).clone()
     })
   }
 
-  fn create_circuit_breaker(settings: CircuitBreakerSettings) -> CircuitBreakerShared<StdClock> {
-    let breaker = CircuitBreaker::new_with_clock(settings.max_failures(), settings.reset_timeout(), StdClock);
+  fn create_circuit_breaker(config: CircuitBreakerConfig) -> CircuitBreakerShared<StdClock> {
+    let breaker = CircuitBreaker::new_with_clock(config.max_failures(), config.reset_timeout(), StdClock);
     CircuitBreakerShared::new(breaker)
   }
 }
