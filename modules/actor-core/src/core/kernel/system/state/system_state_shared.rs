@@ -48,7 +48,7 @@ use crate::core::kernel::{
     mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
-    logging::{LogEvent, LogLevel},
+    logging::{LogEvent, LogLevel, LoggingFilter},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
   system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal},
@@ -552,7 +552,7 @@ impl SystemStateShared {
   /// Replaces the current pre-publish logging filter.
   pub fn set_logging_filter<F>(&self, filter: F)
   where
-    F: crate::core::kernel::event::logging::LoggingFilter + 'static, {
+    F: LoggingFilter + 'static, {
     self.inner.with_write(move |inner| inner.set_logging_filter(filter));
   }
 
