@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+use core::any::Any;
+
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
@@ -101,7 +103,7 @@ where
   fn save_snapshot<'a>(
     &'a mut self,
     metadata: SnapshotMetadata,
-    snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
+    snapshot: ArcShared<dyn Any + Send + Sync>,
   ) -> Self::SaveFuture<'a> {
     self.snapshot_store.save_snapshot(metadata, snapshot)
   }

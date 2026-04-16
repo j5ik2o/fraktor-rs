@@ -5,6 +5,7 @@ mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
 use core::{
+  any::Any,
   ops::Deref,
   sync::atomic::{AtomicU32, Ordering},
 };
@@ -129,7 +130,7 @@ impl<A: 'static> PersistenceContext<A> {
   }
 
   /// Adds an event to the batch.
-  pub fn add_to_event_batch<E: core::any::Any + Send + Sync + 'static>(
+  pub fn add_to_event_batch<E: Any + Send + Sync + 'static>(
     &mut self,
     event: E,
     stashing: bool,
@@ -142,7 +143,7 @@ impl<A: 'static> PersistenceContext<A> {
   }
 
   /// Adds a deferred handler invocation executed after successful batch persistence.
-  pub fn add_deferred_handler<E: core::any::Any + Send + Sync + 'static>(
+  pub fn add_deferred_handler<E: Any + Send + Sync + 'static>(
     &mut self,
     event: E,
     stashing: bool,
@@ -554,7 +555,7 @@ impl<A: 'static> PersistenceContext<A> {
     adapted.into_events().into_iter().map(|adapted_payload| Self::repr_with_payload(repr, adapted_payload)).collect()
   }
 
-  fn repr_with_payload(repr: &PersistentRepr, payload: ArcShared<dyn core::any::Any + Send + Sync>) -> PersistentRepr {
+  fn repr_with_payload(repr: &PersistentRepr, payload: ArcShared<dyn Any + Send + Sync>) -> PersistentRepr {
     let updated = PersistentRepr::new(repr.persistence_id(), repr.sequence_nr(), payload)
       .with_manifest(repr.manifest())
       .with_writer_uuid(repr.writer_uuid())
