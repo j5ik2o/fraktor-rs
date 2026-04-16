@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{boxed::Box, collections::BTreeMap, string::String};
-use core::marker::PhantomData;
+use core::{fmt::Debug, marker::PhantomData};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
@@ -115,7 +115,7 @@ where
 
 impl<M> BehaviorInterceptor<M, M> for LogMessagesInterceptor
 where
-  M: Send + Sync + core::fmt::Debug + 'static,
+  M: Send + Sync + Debug + 'static,
 {
   fn around_receive(
     &mut self,
@@ -338,7 +338,7 @@ impl Behaviors {
   #[must_use]
   pub fn log_messages<M>(behavior: Behavior<M>) -> Behavior<M>
   where
-    M: Send + Sync + core::fmt::Debug + 'static, {
+    M: Send + Sync + Debug + 'static, {
     Self::log_messages_with_opts(LogOptions::default(), behavior)
   }
 
@@ -346,7 +346,7 @@ impl Behaviors {
   #[must_use]
   pub fn log_messages_with_opts<M>(opts: LogOptions, behavior: Behavior<M>) -> Behavior<M>
   where
-    M: Send + Sync + core::fmt::Debug + 'static, {
+    M: Send + Sync + Debug + 'static, {
     Self::intercept_behavior(move || Box::new(LogMessagesInterceptor { options: opts.clone() }), behavior)
   }
 
@@ -684,7 +684,7 @@ where
 
 fn log_received_message<M>(options: &LogOptions, pid: Pid, message: &M)
 where
-  M: core::fmt::Debug, {
+  M: Debug, {
   if !options.enabled() {
     return;
   }
