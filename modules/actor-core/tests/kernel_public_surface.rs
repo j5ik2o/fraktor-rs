@@ -17,17 +17,12 @@ const CONTEXT_PIPE_WAKER_HANDLE_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/context_pipe_waker_handle.rs");
 const CONTEXT_PIPE_WAKER_HANDLE_SHARED_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/context_pipe_waker_handle_shared.rs");
-const ROUTING_GROUP_SOURCE: &str = include_str!("fixtures/kernel_public_surface/routing_group.rs");
-const ROUTING_POOL_SOURCE: &str = include_str!("fixtures/kernel_public_surface/routing_pool.rs");
 const ROUTING_CONSISTENT_HASHING_LOGIC_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/routing_consistent_hashing_logic.rs");
 const ROUTING_SMALLEST_MAILBOX_LOGIC_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/routing_smallest_mailbox_logic.rs");
 const ROUTING_ROUTER_FROM_CONFIG_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/routing_router_from_config.rs");
-const ROUTING_ROUTER_CONFIG_SOURCE: &str = include_str!("fixtures/kernel_public_surface/routing_router_config.rs");
-const ROUTING_CUSTOM_ROUTER_CONFIG_SOURCE: &str =
-  include_str!("fixtures/kernel_public_surface/routing_custom_router_config.rs");
 
 #[test]
 fn official_kernel_public_api_compiles_from_external_crate() {
@@ -58,8 +53,6 @@ fn internal_actor_helpers_are_not_reachable_from_external_crate() {
 #[test]
 fn internal_routing_helpers_are_not_reachable_from_external_crate() {
   let fixtures = [
-    ("kernel-routing-group", ROUTING_GROUP_SOURCE, "Group"),
-    ("kernel-routing-pool", ROUTING_POOL_SOURCE, "Pool"),
     (
       "kernel-routing-consistent-hashing-logic",
       ROUTING_CONSISTENT_HASHING_LOGIC_SOURCE,
@@ -67,8 +60,6 @@ fn internal_routing_helpers_are_not_reachable_from_external_crate() {
     ),
     ("kernel-routing-smallest-mailbox-logic", ROUTING_SMALLEST_MAILBOX_LOGIC_SOURCE, "SmallestMailboxRoutingLogic"),
     ("kernel-routing-router-from-config", ROUTING_ROUTER_FROM_CONFIG_SOURCE, "from_config"),
-    ("kernel-routing-router-config", ROUTING_ROUTER_CONFIG_SOURCE, "RouterConfig"),
-    ("kernel-routing-custom-router-config", ROUTING_CUSTOM_ROUTER_CONFIG_SOURCE, "CustomRouterConfig"),
   ];
 
   for (name, source, expected_symbol) in fixtures {

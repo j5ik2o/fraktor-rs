@@ -8,7 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
   },
   dispatch::mailbox::Mailbox,
-  routing::{Broadcast, RoundRobinRoutingLogic, Routee, Router},
+  routing::{Broadcast, CustomRouterConfig, Group, Pool, RandomRoutingLogic, RoundRobinRoutingLogic, Routee, Router, RouterCommand, RouterConfig, RouterResponse, RoutingLogic},
   system::{ActorSystem, CoordinatedShutdown, CoordinatedShutdownPhase, shared_factory::MailboxSharedSet},
 };
 
@@ -33,6 +33,14 @@ fn main() {
   let _ = core::any::type_name::<Broadcast>();
   let _ = core::any::type_name::<Routee>();
   let _ = core::any::type_name::<Router<RoundRobinRoutingLogic>>();
+  let _ = core::any::type_name::<dyn RouterConfig<Logic = RoundRobinRoutingLogic>>();
+  let _ = core::any::type_name::<dyn Pool<Logic = RoundRobinRoutingLogic>>();
+  let _ = core::any::type_name::<dyn Group<Logic = RoundRobinRoutingLogic>>();
+  let _ = core::any::type_name::<dyn CustomRouterConfig<Logic = RoundRobinRoutingLogic>>();
+  let _ = core::any::type_name::<RandomRoutingLogic>();
+  let _ = core::any::type_name::<dyn RoutingLogic>();
+  let _ = core::any::type_name::<RouterCommand>();
+  let _ = core::any::type_name::<RouterResponse>();
   let _ = core::any::type_name::<ActorSystem>();
   let _ = core::any::type_name::<CoordinatedShutdown>();
   let _ = core::any::type_name::<CoordinatedShutdownPhase>();
