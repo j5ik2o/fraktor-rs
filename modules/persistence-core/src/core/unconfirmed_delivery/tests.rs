@@ -1,4 +1,4 @@
-use core::time::Duration;
+use core::{any::Any, time::Duration};
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
 use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
@@ -7,7 +7,7 @@ use crate::core::unconfirmed_delivery::UnconfirmedDelivery;
 
 #[test]
 fn unconfirmed_delivery_accessors_return_values() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_u32);
   let destination = ActorRef::null();
   let sender = ActorRef::null();
   let timestamp = TimerInstant::from_ticks(10, Duration::from_secs(1));

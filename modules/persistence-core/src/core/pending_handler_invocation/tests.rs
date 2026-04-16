@@ -1,3 +1,5 @@
+use core::any::Any;
+
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{pending_handler_invocation::PendingHandlerInvocation, persistent_repr::PersistentRepr};
@@ -8,7 +10,7 @@ struct Counter {
 
 #[test]
 fn pending_handler_invocation_invoke_stashing() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 1, payload);
   let mut counter = Counter { calls: 0 };
 
@@ -24,7 +26,7 @@ fn pending_handler_invocation_invoke_stashing() {
 
 #[test]
 fn pending_handler_invocation_invoke_async() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 1, payload);
   let mut counter = Counter { calls: 0 };
 
@@ -40,7 +42,7 @@ fn pending_handler_invocation_invoke_async() {
 
 #[test]
 fn pending_handler_invocation_deferred_flag_is_true_for_defer_variants() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 1, payload.clone());
 
   let stashing = PendingHandlerInvocation::stashing_deferred(repr.clone(), |_actor: &mut Counter, _| {});
@@ -52,7 +54,7 @@ fn pending_handler_invocation_deferred_flag_is_true_for_defer_variants() {
 
 #[test]
 fn pending_handler_invocation_exposes_sequence_nr() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 42, payload);
   let invocation = PendingHandlerInvocation::async_handler(repr, |_actor: &mut Counter, _| {});
 

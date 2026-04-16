@@ -1,4 +1,4 @@
-use core::time::Duration;
+use core::{any::Any, time::Duration};
 
 use fraktor_actor_core_rs::core::kernel::actor::{
   Pid,
@@ -60,7 +60,7 @@ fn delivery_ids_increment_and_confirm() {
   let id1 = delivery.next_delivery_id();
   let id2 = delivery.next_delivery_id();
 
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_u32);
   let timestamp = TimerInstant::from_ticks(0, Duration::from_secs(1));
   let unconfirmed = UnconfirmedDelivery::new(id1, ActorRef::null(), payload, None, timestamp, 0);
   delivery.add_unconfirmed(unconfirmed);
@@ -75,7 +75,7 @@ fn delivery_ids_increment_and_confirm() {
 #[test]
 fn delivery_snapshot_roundtrip() {
   let mut delivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new("data");
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new("data");
   let timestamp = TimerInstant::from_ticks(1, Duration::from_secs(1));
   let id = delivery.next_delivery_id();
   delivery.add_unconfirmed(UnconfirmedDelivery::new(id, ActorRef::null(), payload, None, timestamp, 9));
@@ -124,7 +124,7 @@ fn deliver_rejects_when_max_unconfirmed_exceeded() {
 fn deliveries_to_redeliver_respects_burst_limit() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 5);
   let mut delivery = AtLeastOnceDelivery::new(config);
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_u32);
   let timestamp = TimerInstant::from_ticks(0, Duration::from_secs(1));
 
   for id in 1..=3 {
@@ -146,7 +146,7 @@ fn redelivery_tick_detection() {
 fn redelivery_tick_emits_warning_only_when_attempt_reaches_threshold() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
   let mut delivery = AtLeastOnceDelivery::new(config);
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_u32);
   let (destination, _store) = create_sender();
   let resolution = Duration::from_secs(1);
   let timestamp = TimerInstant::from_ticks(0, resolution);
@@ -169,7 +169,7 @@ fn delivery_snapshot_restore_restarts_warning_counter() {
   let resolution = Duration::from_secs(1);
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
   let mut original = AtLeastOnceDelivery::new(config.clone());
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_u32);
   let (destination, _store) = create_sender();
   original.add_unconfirmed(UnconfirmedDelivery::new(
     1,
@@ -200,7 +200,7 @@ fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_
   let resolution = Duration::from_secs(1);
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(10), 10, 2, 5);
   let mut original = AtLeastOnceDelivery::new(config.clone());
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_u32);
   let (destination, store) = create_sender();
   original.add_unconfirmed(UnconfirmedDelivery::new(
     1,
@@ -228,7 +228,7 @@ fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_
 fn redelivery_tick_does_not_advance_attempt_when_send_fails() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
   let mut delivery = AtLeastOnceDelivery::new(config);
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_u32);
   let resolution = Duration::from_secs(1);
   let timestamp = TimerInstant::from_ticks(0, resolution);
   delivery.add_unconfirmed(UnconfirmedDelivery::new(1, create_failing_sender(), payload, None, timestamp, 1));

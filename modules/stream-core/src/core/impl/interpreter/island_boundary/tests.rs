@@ -3,6 +3,8 @@
 //! NOTE: These tests will not compile until the production implementation is in place.
 //! They define the expected behavioral contract for Gate 0, step C-1.
 
+use core::any::Any;
+
 use super::{BoundaryState, IslandBoundary, IslandBoundaryShared};
 use crate::core::r#impl::StreamError;
 
@@ -55,7 +57,7 @@ fn push_then_pull_returns_same_value() {
   let mut boundary = IslandBoundary::new(16);
 
   // When: pushing a value
-  let value: Box<dyn core::any::Any + Send + 'static> = Box::new(42_u32);
+  let value: Box<dyn Any + Send + 'static> = Box::new(42_u32);
   let result = boundary.try_push(value);
 
   // Then: push succeeds
@@ -92,7 +94,7 @@ fn elements_are_delivered_in_fifo_order() {
   let mut boundary = IslandBoundary::new(16);
 
   for i in 0_u32..5 {
-    let value: Box<dyn core::any::Any + Send + 'static> = Box::new(i);
+    let value: Box<dyn Any + Send + 'static> = Box::new(i);
     boundary.try_push(value).expect("push");
   }
 
@@ -112,14 +114,14 @@ fn push_to_full_boundary_returns_err_with_value() {
   let mut boundary = IslandBoundary::new(2);
 
   // Fill it up
-  let v1: Box<dyn core::any::Any + Send + 'static> = Box::new(1_u32);
-  let v2: Box<dyn core::any::Any + Send + 'static> = Box::new(2_u32);
+  let v1: Box<dyn Any + Send + 'static> = Box::new(1_u32);
+  let v2: Box<dyn Any + Send + 'static> = Box::new(2_u32);
   boundary.try_push(v1).expect("push 1");
   boundary.try_push(v2).expect("push 2");
   assert_eq!(boundary.len(), 2);
 
   // When: pushing a third value
-  let v3: Box<dyn core::any::Any + Send + 'static> = Box::new(3_u32);
+  let v3: Box<dyn Any + Send + 'static> = Box::new(3_u32);
   let result = boundary.try_push(v3);
 
   // Then: push fails, returning the value back
@@ -134,12 +136,12 @@ fn push_to_full_boundary_returns_err_with_value() {
 fn push_succeeds_after_pull_frees_capacity() {
   // Given: a full boundary (capacity 1)
   let mut boundary = IslandBoundary::new(1);
-  let v1: Box<dyn core::any::Any + Send + 'static> = Box::new(1_u32);
+  let v1: Box<dyn Any + Send + 'static> = Box::new(1_u32);
   boundary.try_push(v1).expect("push");
 
   // When: pulling frees a slot, then pushing again
   let _ = boundary.try_pull().expect("pull");
-  let v2: Box<dyn core::any::Any + Send + 'static> = Box::new(2_u32);
+  let v2: Box<dyn Any + Send + 'static> = Box::new(2_u32);
   let result = boundary.try_push(v2);
 
   // Then: push succeeds
@@ -178,7 +180,7 @@ fn pull_from_empty_completed_boundary_indicates_completion() {
 fn remaining_elements_are_drained_after_complete() {
   // Given: a boundary with elements, then completed
   let mut boundary = IslandBoundary::new(16);
-  let v1: Box<dyn core::any::Any + Send + 'static> = Box::new(10_u32);
+  let v1: Box<dyn Any + Send + 'static> = Box::new(10_u32);
   boundary.try_push(v1).expect("push");
   boundary.complete();
 
@@ -216,7 +218,7 @@ fn fail_transitions_state_to_failed() {
 fn remaining_elements_are_drained_before_error() {
   // Given: a boundary with elements, then failed
   let mut boundary = IslandBoundary::new(16);
-  let v1: Box<dyn core::any::Any + Send + 'static> = Box::new(42_u32);
+  let v1: Box<dyn Any + Send + 'static> = Box::new(42_u32);
   boundary.try_push(v1).expect("push");
   boundary.fail(StreamError::Failed);
 
@@ -258,7 +260,7 @@ fn push_after_complete_is_rejected() {
   boundary.complete();
 
   // 実行: push を試みる
-  let v: Box<dyn core::any::Any + Send + 'static> = Box::new(1_u32);
+  let v: Box<dyn Any + Send + 'static> = Box::new(1_u32);
   let result = boundary.try_push(v);
 
   // 検証: push が拒否され、元の値がそのまま返却される
@@ -282,7 +284,7 @@ fn shared_boundary_is_clone() {
   let shared2 = shared.clone();
 
   // Then: both references point to the same boundary (push on one, pull on other)
-  let v: Box<dyn core::any::Any + Send + 'static> = Box::new(99_u32);
+  let v: Box<dyn Any + Send + 'static> = Box::new(99_u32);
   shared.try_push_with_state(v).expect("push");
   let (pulled, state) = shared2.try_pull_with_state();
   let value = *pulled.expect("pull").downcast::<u32>().expect("downcast");

@@ -1,11 +1,10 @@
 //! Error type returned by [`crate::provider::StdRemoteActorRefProvider`].
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
+use std::error::Error;
 
 use fraktor_actor_core_rs::core::kernel::actor::error::ActorError;
 use fraktor_remote_core_rs::provider::ProviderError;
-
-use std::error::Error;
 
 /// Errors produced by [`crate::provider::StdRemoteActorRefProvider`].
 ///

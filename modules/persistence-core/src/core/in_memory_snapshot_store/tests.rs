@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 use core::{
+  any::Any,
   future::Future,
   task::{Context, Poll, Waker},
 };
@@ -21,7 +22,7 @@ fn poll_ready<F: Future>(future: F) -> F::Output {
   }
 }
 
-fn payload(value: i32) -> ArcShared<dyn core::any::Any + Send + Sync> {
+fn payload(value: i32) -> ArcShared<dyn Any + Send + Sync> {
   ArcShared::new(value)
 }
 

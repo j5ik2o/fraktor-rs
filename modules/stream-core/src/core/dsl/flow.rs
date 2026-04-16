@@ -27,8 +27,11 @@ use super::{
   validate_positive_argument,
 };
 use crate::core::{
-  DynValue, KillSwitchStateHandle, SharedKillSwitch, SourceLogic, SubstreamCancelStrategy, attributes::Attributes,
-  r#impl::materialization::Stream, materialization::DriveOutcome, stage::{GraphStage, StreamStage},
+  DynValue, KillSwitchStateHandle, SharedKillSwitch, SourceLogic, SubstreamCancelStrategy,
+  attributes::Attributes,
+  r#impl::materialization::Stream,
+  materialization::DriveOutcome,
+  stage::{GraphStage, StreamStage},
 };
 
 #[cfg(test)]

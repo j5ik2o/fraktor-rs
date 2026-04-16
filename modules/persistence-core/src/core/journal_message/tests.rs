@@ -1,4 +1,5 @@
 use alloc::vec;
+use core::any::Any;
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -8,7 +9,7 @@ use crate::core::{journal_message::JournalMessage, persistent_repr::PersistentRe
 #[test]
 fn journal_message_write_messages_fields() {
   let sender = ActorRef::null();
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 1, payload);
 
   let message = JournalMessage::WriteMessages {

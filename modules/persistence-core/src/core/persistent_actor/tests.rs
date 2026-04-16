@@ -1,3 +1,5 @@
+use core::any::Any;
+
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -243,7 +245,7 @@ fn persistent_actor_save_snapshot_sends_message() {
   let mut ctx = build_context();
   let mut actor = DummyPersistentActor::new_with_refs(journal_ref, snapshot_ref);
 
-  let snapshot: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(123_u32);
+  let snapshot: ArcShared<dyn Any + Send + Sync> = ArcShared::new(123_u32);
   actor.save_snapshot(&mut ctx, snapshot).expect("save_snapshot failed");
 
   let messages = snapshot_store.lock();

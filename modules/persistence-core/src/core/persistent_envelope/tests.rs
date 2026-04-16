@@ -1,3 +1,5 @@
+use core::any::Any;
+
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
@@ -8,7 +10,7 @@ struct Counter;
 
 #[test]
 fn persistent_envelope_into_repr() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(5_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(5_i32);
   let envelope = PersistentEnvelope::new(payload.clone(), 3, Box::new(|_actor: &mut Counter, _| {}), true, None);
 
   assert!(envelope.is_stashing());

@@ -4,6 +4,7 @@ use alloc::{borrow::ToOwned, collections::BTreeMap, format, string::String, vec:
 use core::time::Duration;
 use std::{
   fmt,
+  fmt::Debug,
   sync::{Arc, Mutex},
 };
 
@@ -194,7 +195,7 @@ impl Visit for EventVisitor {
     }
   }
 
-  fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+  fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
     if field.name() == "message" && self.message.is_none() {
       self.message = Some(format_value(value));
     } else if field.name() == "origin" && self.origin.is_none() {
@@ -207,7 +208,7 @@ impl Visit for EventVisitor {
   }
 }
 
-fn format_value(value: &dyn fmt::Debug) -> String {
+fn format_value(value: &dyn Debug) -> String {
   let rendered = format!("{value:?}");
   rendered.trim_matches('"').to_owned()
 }
