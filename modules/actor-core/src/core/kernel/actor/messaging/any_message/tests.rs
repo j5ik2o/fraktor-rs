@@ -46,14 +46,14 @@ fn control_message_supports_sender() {
 
 #[test]
 fn from_erased_preserves_control_flag_true() {
-  let payload = ArcShared::new(42_u32) as ArcShared<dyn core::any::Any + Send + Sync>;
+  let payload = ArcShared::new(42_u32) as ArcShared<dyn Any + Send + Sync>;
   let message = AnyMessage::from_erased(payload, None, true);
   assert!(message.is_control());
 }
 
 #[test]
 fn from_erased_preserves_control_flag_false() {
-  let payload = ArcShared::new(42_u32) as ArcShared<dyn core::any::Any + Send + Sync>;
+  let payload = ArcShared::new(42_u32) as ArcShared<dyn Any + Send + Sync>;
   let message = AnyMessage::from_erased(payload, None, false);
   assert!(!message.is_control());
 }

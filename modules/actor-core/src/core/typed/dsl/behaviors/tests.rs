@@ -1,5 +1,5 @@
 use alloc::{borrow::ToOwned, collections::BTreeMap, string::String, vec::Vec};
-use core::time::Duration;
+use core::{fmt::Debug, time::Duration};
 use std::sync::{Arc, Mutex, Once};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
@@ -754,7 +754,7 @@ impl Visit for EventVisitor {
     }
   }
 
-  fn record_debug(&mut self, _field: &Field, _value: &dyn core::fmt::Debug) {}
+  fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
 }
 
 #[derive(Clone, Debug)]

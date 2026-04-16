@@ -6,6 +6,7 @@ extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
 use core::{
+  any::Any,
   future::Future,
   task::{Context, Poll, Waker},
 };
@@ -176,7 +177,7 @@ fn recovery_flow_snapshot_then_replay() {
 
   let mut snapshot_store = InMemorySnapshotStore::new();
   let snapshot_metadata = SnapshotMetadata::new("pid-1", 2, 0);
-  let snapshot_payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(10_i32);
+  let snapshot_payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(10_i32);
   let _ = drive_ready(snapshot_store.save_snapshot(snapshot_metadata, snapshot_payload));
 
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
