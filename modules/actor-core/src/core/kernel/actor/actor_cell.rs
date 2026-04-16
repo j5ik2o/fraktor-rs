@@ -12,7 +12,7 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::{mem, task::Poll, time::Duration};
+use core::{any::Any, mem, task::Poll, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, WeakShared};
 use portable_atomic::{AtomicBool, Ordering};
@@ -1104,7 +1104,7 @@ impl MessageInvoker for ActorCellInvoker {
     match message {
       | SystemMessage::PoisonPill => cell.handle_stop(),
       | SystemMessage::Kill => {
-        let payload: ArcShared<dyn core::any::Any + Send + Sync + 'static> = ArcShared::new(SystemMessage::Kill);
+        let payload: ArcShared<dyn Any + Send + Sync + 'static> = ArcShared::new(SystemMessage::Kill);
         let snapshot = FailureMessageSnapshot::new(payload, None);
         cell.handle_kill(Some(snapshot))
       },

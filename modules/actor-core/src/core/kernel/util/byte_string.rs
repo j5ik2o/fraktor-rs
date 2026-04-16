@@ -6,6 +6,7 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
+  hash::{Hash, Hasher},
   str::Utf8Error,
 };
 
@@ -163,8 +164,8 @@ impl PartialEq for ByteString {
 
 impl Eq for ByteString {}
 
-impl core::hash::Hash for ByteString {
-  fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl Hash for ByteString {
+  fn hash<H: Hasher>(&self, state: &mut H) {
     self.as_slice().hash(state);
   }
 }

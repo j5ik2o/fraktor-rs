@@ -19,7 +19,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultRwLock, SharedAccess, 
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandleShared, AuthorityState, CellsShared, GuardianKind,
-  RemoteAuthorityError, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
+  RemoteAuthorityError, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
   system_state::{FailureOutcome, SystemState},
 };
 use crate::core::kernel::{
@@ -649,7 +649,7 @@ impl SystemStateShared {
   }
 
   /// Registers a remote watch hook.
-  pub fn register_remote_watch_hook(&self, hook: Box<dyn super::RemoteWatchHook>) {
+  pub fn register_remote_watch_hook(&self, hook: Box<dyn RemoteWatchHook>) {
     self.remote_watch_hook.replace(hook);
   }
 
