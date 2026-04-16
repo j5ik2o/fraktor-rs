@@ -3,7 +3,6 @@ extern crate std;
 use alloc::{borrow::ToOwned, collections::BTreeMap, format, string::String, vec::Vec};
 use core::time::Duration;
 use std::{
-  fmt,
   fmt::Debug,
   sync::{Arc, Mutex},
 };
