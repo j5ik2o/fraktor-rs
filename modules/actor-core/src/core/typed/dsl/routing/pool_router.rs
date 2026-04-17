@@ -372,7 +372,7 @@ where
       rendezvous_score(key_hash, routee_hash)
     })
     .map(|(index, _)| index)
-    .expect("non-empty routees guaranteed by preceding assert")
+    .unwrap_or(0)
 }
 
 pub(super) fn select_smallest_mailbox_index<M>(
