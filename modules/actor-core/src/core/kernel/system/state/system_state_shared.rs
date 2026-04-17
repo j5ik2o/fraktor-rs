@@ -558,15 +558,19 @@ impl SystemStateShared {
 
   /// Publishes the log event when the current filter accepts it.
   ///
-  /// The filter check and publish run inside the same read lock to
-  /// prevent a concurrent `set_logging_filter` from racing between
-  /// the two operations.
+  /// The filter decision is captured under the read lock and the
+  /// publish happens after releasing it. Holding the lock across
+  /// `event_stream.publish` would deadlock any subscriber that
+  /// acquires the same lock (for example via `set_logging_filter`
+  /// or a recursive log emission). The narrow race where a
+  /// concurrent `set_logging_filter` replaces the filter between
+  /// the check and the publish is acceptable for best-effort
+  /// logging filter semantics.
   pub(crate) fn publish_log_event(&self, event: LogEvent) {
-    self.inner.with_read(|inner| {
-      if inner.should_publish_log_event(&event) {
-        self.event_stream.publish(&EventStreamEvent::Log(event));
-      }
-    });
+    let should_publish = self.inner.with_read(|inner| inner.should_publish_log_event(&event));
+    if should_publish {
+      self.event_stream.publish(&EventStreamEvent::Log(event));
+    }
   }
 
   /// Emits a log event via the event stream.
