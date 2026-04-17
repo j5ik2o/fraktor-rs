@@ -49,7 +49,7 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 
 - takt ワークフロー実行中に生成するレポート・計画・分析・決定ログ等の中間アーティファクトは **`.takt/` 配下にのみ**配置すること
 - プロジェクトルート直下やソースツリー内（`reports/`, `docs/plans/` 等）に中間アーティファクトを書き出してはならない
-- ソースコードの編集（`modules/`, `showcases-std/` 等）はこの制約の対象外
+- ソースコードの編集（`modules/`, `showcases/std/` 等）はこの制約の対象外
 
 ## REJECT 基準
 
