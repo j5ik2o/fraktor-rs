@@ -5,7 +5,10 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use super::{broadcast::Broadcast, routee::Routee, routing_logic::RoutingLogic};
+use super::{
+  broadcast::Broadcast, consistent_hashable_envelope::ConsistentHashableEnvelope, routee::Routee,
+  routing_logic::RoutingLogic,
+};
 use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Routes messages to one or more routees using a configured [`RoutingLogic`].
@@ -40,8 +43,13 @@ impl<L: RoutingLogic> Router<L> {
   /// Routes a message through this router.
   ///
   /// If the message payload is a [`Broadcast`], the inner message is sent to
-  /// all routees. Otherwise, the configured [`RoutingLogic`] selects a single
-  /// routee for delivery.
+  /// all routees — even when that inner message is itself a
+  /// [`ConsistentHashableEnvelope`], because Broadcast takes precedence over
+  /// envelope unwrapping. Otherwise, the configured [`RoutingLogic`] selects
+  /// a single routee for delivery. When the outer payload is a
+  /// `ConsistentHashableEnvelope`, the selected routee receives the inner
+  /// message rather than the envelope itself, matching Pekko's
+  /// `RouterEnvelope` contract.
   ///
   /// If no routees are registered, this method returns `Ok(())` and drops
   /// the message. Integrate observability outside this method if that drop
@@ -53,7 +61,9 @@ impl<L: RoutingLogic> Router<L> {
   /// rejects the message.
   pub fn route(&mut self, message: AnyMessage) -> Result<(), SendError> {
     if let Some(broadcast) = message.downcast_ref::<Broadcast>() {
-      // Broadcast: clone the inner message to every routee.
+      // Broadcast wins over envelope unwrap: deliver the inner message as-is
+      // to every routee, even if that inner message is a
+      // ConsistentHashableEnvelope.
       let inner = broadcast.0.clone();
       let mut first_error = None;
       for routee in &mut self.routees {
@@ -85,7 +95,13 @@ impl<L: RoutingLogic> Router<L> {
     };
 
     if let Some(i) = idx {
-      self.routees[i].send(message)?;
+      // RouterEnvelope contract: if the message is a ConsistentHashableEnvelope,
+      // strip it and deliver the inner message to the selected routee.
+      let delivered = match message.downcast_ref::<ConsistentHashableEnvelope>() {
+        | Some(envelope) => envelope.message().clone(),
+        | None => message,
+      };
+      self.routees[i].send(delivered)?;
     }
 
     Ok(())
