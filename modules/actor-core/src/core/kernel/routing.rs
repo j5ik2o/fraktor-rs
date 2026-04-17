@@ -5,6 +5,7 @@
 //! layer.
 
 mod broadcast;
+mod consistent_hashable;
 mod consistent_hashable_envelope;
 mod consistent_hashing_pool;
 mod consistent_hashing_routing_logic;
@@ -27,6 +28,7 @@ mod smallest_mailbox_routing_logic;
 mod with_listeners;
 
 pub use broadcast::Broadcast;
+pub use consistent_hashable::ConsistentHashable;
 pub use consistent_hashable_envelope::ConsistentHashableEnvelope;
 pub use consistent_hashing_pool::ConsistentHashingPool;
 pub use consistent_hashing_routing_logic::ConsistentHashingRoutingLogic;

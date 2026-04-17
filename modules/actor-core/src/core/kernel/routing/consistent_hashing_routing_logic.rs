@@ -5,7 +5,10 @@ mod tests;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
-use super::{routee::Routee, routing_logic::RoutingLogic};
+use super::{
+  consistent_hashable::ConsistentHashable, consistent_hashable_envelope::ConsistentHashableEnvelope, routee::Routee,
+  routing_logic::RoutingLogic,
+};
 use crate::core::kernel::actor::messaging::AnyMessage;
 
 // メッセージからハッシュキーを抽出するマッパー型。
@@ -18,6 +21,50 @@ pub(crate) const FNV_PRIME: u64 = 1099511628211;
 /// Selects a routee via rendezvous hashing derived from each message.
 ///
 /// Corresponds to Pekko's `org.apache.pekko.routing.ConsistentHashingRoutingLogic`.
+///
+/// # Pekko contract
+///
+/// This logic upholds the four user-visible contracts Pekko guarantees:
+///
+/// 1. **Stable mapping** — the same hash key is always routed to the same routee as long as the
+///    routee set does not change.
+/// 2. **Minimal disruption** — when a routee is added or removed, only the keys that would newly
+///    prefer the added routee (or previously preferred the removed one) migrate. The expected
+///    migration ratio is `1/(n+1)` on addition and `1/n` on removal.
+/// 3. **Hash key precedence** — `ConsistentHashableEnvelope` takes precedence over
+///    `ConsistentHashable`, which takes precedence over the user-supplied `hash_key_mapper`
+///    fallback.
+/// 4. **Empty routees** — returns [`Routee::NoRoutee`] without panicking.
+///
+/// # Design notes
+///
+/// The selection algorithm uses rendezvous hashing (HRW; Thaler & Ravishankar
+/// 1998) instead of Pekko's sorted hash ring. Rendezvous hashing picks the
+/// routee with the maximum combined hash of `(key, routee_identity)`, which is
+/// provably equivalent to the ring approach for contracts 1–4 while allowing
+/// a **stateless** `&self` implementation. This intentionally diverges from
+/// Pekko's internal data structures for the following reasons:
+///
+/// - **No `ConsistentHash<T>` / `MurmurHash` public utilities.** Pekko exposes these as the ring's
+///   building blocks. Rendezvous hashing needs neither a sorted map nor Murmur; the 64-bit FNV mix
+///   in [`mix_hash`] is sufficient to hash `(key, routee_identity)` pairs deterministically.
+///   Re-exposing Pekko's internal helpers would be a Rust copy of an implementation detail (cf.
+///   YAGNI in `.agents/rules/rust/reference-implementation.md`).
+/// - **No `virtualNodesFactor` parameter.** The ring uses virtual nodes to spread load more evenly
+///   across a small sorted map. Rendezvous hashing is already uniform by construction and has no
+///   ring to tune, so the parameter would be a no-op knob that misleads users.
+/// - **No `AtomicReference` routees cache.** Pekko caches the last-seen `(routees, ring)` pair
+///   because rebuilding a sorted ring is `O(n · v)`. Rendezvous selection is `O(n)` per call with
+///   no structure to reuse, so the cache is unnecessary — and it would require interior mutability,
+///   which is banned by `.agents/rules/rust/immutability-policy.md`.
+/// - **No `ConsistentRoutee` wrapper.** Pekko wraps each routee with the `selfAddress` of the node
+///   owning it so cluster-remote routees compare correctly. The fraktor-rs [`Routee::ActorRef`]
+///   already embeds a unique [`Pid`](crate::core::kernel::actor::Pid) (`value + generation`),
+///   making the wrapper unnecessary at this layer.
+/// - **`hash_key_mapper` instead of `ConsistentHashMapping`.** Pekko's `ConsistentHashMapping` is
+///   `PartialFunction[Any, Any]`; the fraktor-rs equivalent is the `hash_key_mapper:
+///   Fn(&AnyMessage) -> u64` closure stored here. It provides the same user-facing hook with a
+///   Rust-native signature.
 ///
 /// The implementation is stateless and therefore safe to call via `&self`
 /// from multiple threads concurrently.
@@ -36,13 +83,28 @@ impl ConsistentHashingRoutingLogic {
 }
 
 impl RoutingLogic for ConsistentHashingRoutingLogic {
+  /// Selects a routee deterministically from the message's hash key.
+  ///
+  /// Extracts the hash key with the following precedence (matching Pekko):
+  ///
+  /// 1. [`ConsistentHashableEnvelope`] carried by the message.
+  /// 2. The user-supplied `hash_key_mapper` fallback.
+  ///
+  /// The routee with the maximum rendezvous score is returned; an empty
+  /// `routees` slice yields [`Routee::NoRoutee`] per contract 4.
   fn select<'a>(&self, message: &AnyMessage, routees: &'a [Routee]) -> &'a Routee {
     static NO_ROUTEE: Routee = Routee::NoRoutee;
     if routees.is_empty() {
       return &NO_ROUTEE;
     }
 
-    let key_hash = (self.hash_key_mapper)(message);
+    // Envelope has precedence over the mapper: Pekko's ConsistentHashable /
+    // ConsistentHashableEnvelope contract supplies the hash key directly.
+    let key_hash = if let Some(envelope) = message.downcast_ref::<ConsistentHashableEnvelope>() {
+      <ConsistentHashableEnvelope as ConsistentHashable>::consistent_hash_key(envelope)
+    } else {
+      (self.hash_key_mapper)(message)
+    };
     let Some((selected_index, _)) =
       routees.iter().enumerate().max_by_key(|(_, routee)| rendezvous_score(key_hash, routee_identity_hash(routee)))
     else {
