@@ -557,11 +557,16 @@ impl SystemStateShared {
   }
 
   /// Publishes the log event when the current filter accepts it.
+  ///
+  /// The filter check and publish run inside the same read lock to
+  /// prevent a concurrent `set_logging_filter` from racing between
+  /// the two operations.
   pub(crate) fn publish_log_event(&self, event: LogEvent) {
-    let should_publish = self.inner.with_read(|inner| inner.should_publish_log_event(&event));
-    if should_publish {
-      self.event_stream.publish(&EventStreamEvent::Log(event));
-    }
+    self.inner.with_read(|inner| {
+      if inner.should_publish_log_event(&event) {
+        self.event_stream.publish(&EventStreamEvent::Log(event));
+      }
+    });
   }
 
   /// Emits a log event via the event stream.
