@@ -361,13 +361,14 @@ where
   M: Send + Sync + Clone + 'static, {
   assert!(!routees.is_empty(), "routees must not be empty");
   let key_hash = hash_fn(message);
+  // kernel 側 routee_identity_hash の ActorRef タグ ([0]) と一致させるためのシード
+  let actor_ref_seed = mix_hash(FNV_OFFSET_BASIS, &[0]);
   routees
     .iter()
     .enumerate()
     .max_by_key(|(_, routee)| {
       let pid = routee.pid();
-      let hash = mix_hash(FNV_OFFSET_BASIS, &[0]);
-      let hash = mix_hash(hash, &pid.value().to_le_bytes());
+      let hash = mix_hash(actor_ref_seed, &pid.value().to_le_bytes());
       let routee_hash = mix_hash(hash, &pid.generation().to_le_bytes());
       rendezvous_score(key_hash, routee_hash)
     })
@@ -404,21 +405,23 @@ where
     }
   }
 
-  if let Some(index) = best_observed_index {
-    return index;
-  }
-
-  // フォールバック: メールボックスメトリクスが観測できない場合はディスパッチ回数を使用する。
+  // 観測パス・フォールバックパスどちらでも dispatch_counts を更新する
   let routee_count = routees.len();
   dispatch_counts.with_lock(|counts| {
-    let mut selected = 0_usize;
-    let mut selected_count = usize::MAX;
-    for (index, count) in counts.iter().enumerate().take(routee_count) {
-      if *count < selected_count {
-        selected = index;
-        selected_count = *count;
+    let selected = if let Some(index) = best_observed_index {
+      index
+    } else {
+      // フォールバック: メールボックスメトリクスが観測できない場合はディスパッチ回数を使用する。
+      let mut fallback = 0_usize;
+      let mut fallback_count = usize::MAX;
+      for (index, count) in counts.iter().enumerate().take(routee_count) {
+        if *count < fallback_count {
+          fallback = index;
+          fallback_count = *count;
+        }
       }
-    }
+      fallback
+    };
     if let Some(entry) = counts.get_mut(selected) {
       *entry = entry.saturating_add(1);
     }
