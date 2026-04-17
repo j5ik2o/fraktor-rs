@@ -293,9 +293,13 @@ fn optimize_moves_half_way_toward_best_size() {
   let resizer = OptimalSizeExploringResizer::new(1, 30, clock, SEED).with_exploration_probability(0.0);
 
   // 既定 optimization_range=16 → numOfSizesEachSide=8
-  // currentSize=10 の window = [10-8, 10+8] = [2, 18]、currentSize 自体は除外
-  // performance_log: {10→100ms(除外), 12→200ms, 14→50ms}
-  // 最速サイズ = 14 (50ms), movement = 14 - 10 = 4, ceil(4/2) = 2
+  // currentSize=10 の window = [left=min(<10,adjacency).take(8).last→unset→10,
+  //                             right=max(>=10,adjacency).take(8).last→14]
+  // performance_log: {10→100ms, 12→200ms, 14→50ms}
+  // 左側には 10 未満のサイズがないため left_boundary は fallback の currentSize=10
+  // 右側候補 {10, 12, 14} から adjacency 順に全て取って右境界=14
+  // window = [10, 14] に絞り込み、最速 = 14 (50ms)
+  // movement = (14 - 10) / 2 = 2.0 → ceil(2.0) = 2
   {
     let mut guard = resizer.state.lock();
     guard.performance_log = BTreeMap::from([
@@ -307,4 +311,83 @@ fn optimize_moves_half_way_toward_best_size() {
 
   let delta = resizer.resize(&[0; 10]);
   assert_eq!(delta, 2, "optimize は最速サイズ (14, 50ms) に向け ceil(movement/2)=ceil(4/2)=2 で半歩移動");
+}
+
+/// Pekko `OptimalSizeExploringResizer.scala:293-296` の境界フィルタは
+/// 左を `filter(_ < currentSize)`（strict less-than）、右を `filter(_ >= currentSize)`
+/// と非対称に定義している。そのため `current_size` が `performance_log` に含まれる
+/// ケース（`report_message_count` が毎 tick で現サイズを記録する運用下では common case）
+/// で、`current_size` は右境界の候補にのみ数えられ、右の枠を 1 つ消費する。
+///
+/// 本テストは境界フィルタの `<` / `>=` 非対称性を fraktor-rs 側で固定し、Pekko との
+/// 互換が将来的にドリフトしないよう garde する。
+#[test]
+fn optimize_window_matches_pekko_boundary_asymmetry() {
+  let clock = FakeClock::new();
+  // optimization_range = 4 → num_each_side = 2
+  let resizer =
+    OptimalSizeExploringResizer::new(1, 30, clock, SEED).with_exploration_probability(0.0).with_optimization_range(4);
+
+  // performance_log: {8, 10, 11, 12, 15}、current_size = 10
+  //
+  // Pekko 境界計算:
+  //   lower = filter(< 10) = {8}、adjacency 順 [8]、take(2).last -> 8
+  //   upper = filter(>= 10) = {10, 11, 12, 15}、adjacency 順 [10, 11, 12, 15]、
+  //                take(2).last -> 11  ← `current_size` が右枠を 1 つ消費
+  //   window = [8, 11] のみで 12 と 15 は除外される
+  //
+  // 速度は 12 を最速に設定しているが window 外なので、window 内の最速 11 (30ms) が勝つ。
+  // もし左境界を `<=` に変えると lower = {8, 10} → [10, 8] → last=8 で同じだが、
+  // 右境界は変わらず 11。差分を効かせるには右側で `current_size` を含めない実装に
+  // 変えた場合を考える必要があるが、Pekko 準拠であれば下記の期待値が成立する。
+  //
+  // movement = (11 - 10) / 2 = 0.5 → ceil(0.5) = 1
+  {
+    let mut guard = resizer.state.lock();
+    guard.performance_log = BTreeMap::from([
+      (8_usize, Duration::from_millis(100)),
+      (10_usize, Duration::from_millis(50)),
+      (11_usize, Duration::from_millis(30)),
+      (12_usize, Duration::from_millis(10)), // window 外（より速いが採用されない）
+      (15_usize, Duration::from_millis(5)),  // window 外
+    ]);
+  }
+
+  let delta = resizer.resize(&[0; 10]);
+  assert_eq!(
+    delta, 1,
+    "Pekko 境界 (< / >=) で window=[8,11] となり window 外の 12/15 は無視、window 内最速 11 へ半歩移動",
+  );
+}
+
+/// 右境界の `filter(_ >= current_size)` によって `current_size` 自身が `num_each_side`
+/// の 1 枠を消費することを、より狭い window で直接観測する回帰テスト。
+///
+/// optimization_range = 2 → num_each_side = 1。右側候補が `{current, current+1, ...}`
+/// のとき、adjacency ソートで先頭は `current` なので take(1).last = `current`。つまり
+/// 右境界は自身に閉じ、`current+1` 以上は window 外となる。
+#[test]
+fn optimize_right_boundary_closes_at_current_size_when_num_each_side_is_one() {
+  let clock = FakeClock::new();
+  let resizer =
+    OptimalSizeExploringResizer::new(1, 30, clock, SEED).with_exploration_probability(0.0).with_optimization_range(2);
+
+  // performance_log: {9, 10, 11}、current_size = 10
+  // lower = filter(< 10) = {9}、take(1).last -> 9
+  // upper = filter(>= 10) = {10, 11}、adjacency 順 [10, 11]、take(1).last -> 10
+  // window = [9, 10]。11 は除外。
+  // 速度: {9→10ms (fastest), 10→50ms, 11→1ms (window 外)}
+  // window 内最速 = 9 (10ms)
+  // movement = (9 - 10) / 2.0 = -0.5 → floor(-0.5) = -1
+  {
+    let mut guard = resizer.state.lock();
+    guard.performance_log = BTreeMap::from([
+      (9_usize, Duration::from_millis(10)),
+      (10_usize, Duration::from_millis(50)),
+      (11_usize, Duration::from_millis(1)), // window 外
+    ]);
+  }
+
+  let delta = resizer.resize(&[0; 10]);
+  assert_eq!(delta, -1, "右境界は >= フィルタで current_size に閉じ、11 は window 外として除外される");
 }
