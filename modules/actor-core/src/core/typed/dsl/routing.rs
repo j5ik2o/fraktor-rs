@@ -3,6 +3,7 @@
 mod balancing_pool_router_builder;
 mod default_resizer;
 mod group_router;
+mod optimal_size_exploring_resizer;
 mod pool_router;
 mod resizer;
 mod routers;
@@ -12,6 +13,7 @@ mod tail_chopping_router_builder;
 pub use balancing_pool_router_builder::BalancingPoolRouterBuilder;
 pub use default_resizer::DefaultResizer;
 pub use group_router::GroupRouter;
+pub use optimal_size_exploring_resizer::OptimalSizeExploringResizer;
 pub use pool_router::PoolRouter;
 pub use resizer::Resizer;
 pub use routers::Routers;

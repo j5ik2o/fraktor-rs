@@ -15,7 +15,7 @@ Piece ContextのReport Directory内のファイルのみ参照すること。
    - `- [ ]` → `- [x]`
 
 **注意: テストについて**
-- このピースはテスト先行が不要なタスク（package/module構造変更、examples作成、ドキュメント更新等）向け
+- このピースはテスト先行が不要なタスク（package/module構造変更、showcases作成、ドキュメント更新等）向け
 - 単体テストの追加・更新は不要
 - ただし構造変更や module 配線の破綻を早期に検出するため、`cargo build` ではなく `./scripts/ci-check.sh ai dylint` を必須とする
 
@@ -38,7 +38,7 @@ Piece ContextのReport Directory内のファイルのみ参照すること。
 ## 変更予定
 | 種別 | ファイル |
 |------|---------|
-| 作成 | `showcases-std/getting_started/main.rs` |
+| 作成 | `showcases/std/getting_started/main.rs` |
 | 変更 | `Cargo.toml` |
 
 ## 推定規模

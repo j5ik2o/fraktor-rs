@@ -19,7 +19,7 @@ Pekko に似ていても、Rust として不自然な設計は採用しない。
 |------|------|
 | Pekko APIに対応するメソッドが欠落（タスク指示に含まれる場合） | REJECT |
 | 型パラメータの対応が不正確 | REJECT |
-| no_std互換でない実装がcoreに配置 | REJECT |
+| no_std互換でない実装を `{domain}-core` のプロダクトコードに AI が独断で追加（人間の明示指示がない場合、テストコードは対象外） | REJECT |
 | `&self`/`&mut self` の使い分けがCQS原則に違反 | REJECT |
 | 禁止サフィックス（Manager, Service等）の使用 | REJECT |
 | テストが欠落 | REJECT |

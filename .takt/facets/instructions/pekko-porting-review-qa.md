@@ -8,23 +8,29 @@
 - ログとモニタリング
 - 保守性
 
-### モジュール構成
+### モジュール構成（クレート分離）
 
-- コアロジックである`core`モジュール(`modules/*/src/core`)は`no_std`で記述すること
-- プラットフォーム依存部分は`std`モジュール(`modules/*/src/std`)や`embedded`(`modules/*/src/embedded`)に記述すること
-  - `std`モジュール: std依存APIやtokioなど
-  - `embedded`モジュール: マイコンやIoT向けのAPIなど
+- fraktor-rs はドメインごとに別クレートへ分離されている
+  - コアクレート: `modules/{domain}-core/`（原則 `no_std` + Sans I/O、純粋ロジック層）
+    - 中身は `src/core/` に配置（untyped kernel / typed ラッパー）
+    - **AI は std 依存の例外を追加してはならない**（例外の導入は **人間の明示指示** がある場合のみ）
+    - **テストコードは std 依存 OK**（`tests.rs` / `tests/` は Sans I/O 制約の対象外）
+  - std アダプタクレート: `modules/{domain}-adaptor-std/`（std / tokio 依存）
+    - 中身は `src/std/` に配置
+  - embedded アダプタクレート: `modules/{domain}-adaptor-embedded/`（存在する場合のみ）
+- 各クレートは独立した `Cargo.toml` を持ち、`{domain}-core` は他アダプタに依存しない
 
 たとえば、
 
-- 本来coreモジュールに実装できるロジックがstdモジュールなどに配置されていないか？
-- coreモジュールに実装できるロジックがstdモジュールなどに配置されていないか？
+- 本来 core クレート（`modules/{domain}-core/`）に実装できるロジックが `-adaptor-std` クレートに置かれていないか？
+- std/embedded 依存の無いポート定義（trait）が core クレート側に正しく配置されているか？
+- core クレートのプロダクトコードに std 依存が AI の独断で新規追加されていないか？（人間の指示なしの新規 std 依存は REJECT）
 
-### examplesの網羅性
+### showcasesの網羅性
 
-- `examples`の網羅性は十分か、利用者の視点で考える
-- `modules/*/src/**/*.rs`に対応する`examples/*/src/**/*.rs`が存在すること
-- `example`のコードを書いてみて、複雑で長いコードを書かざるを得ない場合は、プロダクトコードのインターフェイスや設計が不十分である可能性が高いため、コードを簡潔にできるように設計を見直さなければならない
+- `showcases`の網羅性は十分か、利用者の視点で考える
+- `modules/{domain}-core/src/**/*.rs` や `modules/{domain}-adaptor-std/src/**/*.rs` に対応する `showcases/std/**/*.rs` が存在すること
+- `showcases`のコードを書いてみて、複雑で長いコードを書かざるを得ない場合は、プロダクトコードのインターフェイスや設計が不十分である可能性が高いため、コードを簡潔にできるように設計を見直さなければならない
 
 ### 公開APIの最小化
 
@@ -52,14 +58,16 @@
 ### feature flagの整合性
 
 - `std` / `no_std` の feature flag 設定が正しいか
-- `core` モジュール（`modules/*/src/core`）が意図せず `std` に依存していないか
+- コアクレート `modules/{domain}-core/` のプロダクトコードに、AI の独断で新たな `std` 依存が持ち込まれていないか（人間の指示がない例外追加は REJECT）
 - `cfg-std-forbid` lint と合わせて、feature gate の漏れがないか
+- テストコードでの std 依存は許容（Sans I/O 制約はプロダクトコードのみに適用）
 
 ### 依存クレートの妥当性
 
 - 不要な外部クレート依存が追加されていないか
 - 既存の依存で代替できる機能に対して新規クレートが追加されていないか
-- `no_std` 互換でないクレートが `core` モジュールの依存に含まれていないか
+- `no_std` 互換でないクレートがコアクレート `modules/{domain}-core/` の **プロダクト依存**（`[dependencies]`）に AI の独断で追加されていないか（人間の指示なしの追加は REJECT）
+- テスト用 `[dev-dependencies]` に std 依存クレートが含まれるのは許容
 
 ※これら以外にレビューに使えるスキルがあれば探して発動させること
 

@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use alloc::vec::Vec;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};

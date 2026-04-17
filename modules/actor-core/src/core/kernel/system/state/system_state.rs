@@ -740,6 +740,12 @@ impl SystemState {
     self.logging_filter.should_publish(event)
   }
 
+  /// Returns `true` when the current logging filter would accept events of the given `level`.
+  #[must_use]
+  pub fn is_log_level_enabled(&self, level: LogLevel) -> bool {
+    self.logging_filter.is_level_enabled(level)
+  }
+
   /// Replaces the current pre-publish logging filter.
   pub fn set_logging_filter<F>(&mut self, filter: F)
   where

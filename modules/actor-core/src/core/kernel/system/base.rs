@@ -412,6 +412,15 @@ impl ActorSystem {
     self.state.emit_log(level, message.into(), origin, logger_name);
   }
 
+  /// Returns `true` when the configured logging filter would accept events of the given `level`.
+  ///
+  /// Callers that build log payloads lazily should use this to skip expensive
+  /// argument evaluation when the level is disabled.
+  #[must_use]
+  pub fn is_log_level_enabled(&self, level: LogLevel) -> bool {
+    self.state.is_log_level_enabled(level)
+  }
+
   /// Returns the configured actor system name.
   ///
   /// Corresponds to Pekko's `ActorSystem.name`.

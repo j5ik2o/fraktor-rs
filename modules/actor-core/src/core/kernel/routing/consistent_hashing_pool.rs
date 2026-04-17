@@ -22,6 +22,18 @@ type HashKeyMapper = dyn Fn(&AnyMessage) -> u64 + Send + Sync;
 /// the routee with the highest rendezvous score is selected. This provides
 /// stable routing — a given key consistently maps to the same routee as long
 /// as the routee set does not change.
+///
+/// # Parameters not ported from Pekko
+///
+/// Pekko's `ConsistentHashingPool` exposes a `virtualNodesFactor` parameter
+/// that controls how many virtual nodes each routee occupies on the sorted
+/// hash ring. This constructor intentionally does **not** expose
+/// `with_virtual_nodes_factor` because the underlying
+/// [`ConsistentHashingRoutingLogic`] uses rendezvous hashing rather than a
+/// sorted ring. Rendezvous hashing is uniform by construction and has no ring
+/// to tune, so `virtualNodesFactor` would be a no-op knob that misleads users.
+/// See the `# Design notes` section on [`ConsistentHashingRoutingLogic`] for
+/// the full rationale.
 pub struct ConsistentHashingPool {
   nr_of_instances:   usize,
   hash_key_mapper:   ArcShared<HashKeyMapper>,

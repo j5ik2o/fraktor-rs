@@ -13,7 +13,7 @@
 
 | 項目 | 値 |
 |------|-----|
-| 対象クレート／パス | {例: modules/stream/src/core} |
+| 対象クレート／パス | {例: modules/stream-core/src/core または modules/stream-adaptor-std/src/std} |
 | 参照タスク／Issue | {リンクまたは要約} |
 | 分析日時 | {任意} |
 

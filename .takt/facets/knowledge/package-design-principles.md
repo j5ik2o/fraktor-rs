@@ -88,7 +88,10 @@
 
 - **2018 パス方式**: `mod.rs` は使わない。`foo.rs` + `foo/` が基本
 - **1 公開型 1 ファイル**: Dylint `type-per-file` 準拠。ディレクトリ移動時は `mod` 宣言と再エクスポートを一貫させる
-- **core / std**: `modules/*/src/core` は no_std 志向、`std` はアダプタ。構造変更でこの向きを壊さない
+- **クレート分離**: `modules/{domain}-core/` は原則 `no_std` + Sans I/O（純粋ロジック層、ポート定義）。`modules/{domain}-adaptor-std/` は std/tokio 依存のアダプタ。依存は `{domain}-adaptor-std → {domain}-core` の片方向。構造変更でこの向きを壊さない
+  - **AI は例外を実装してはならない**: `{domain}-core` のプロダクトコードに std 依存を新規導入することは AI の判断では禁止。既存コードに std 依存が残っている箇所は過去に **人間の指示** で入った例外であり、AI が同じ理由で拡大してはならない
+  - **例外追加には人間の明示指示が必須**: 新たに std 依存を入れたい場合は、必ず人間に相談してから実装する
+  - **テストコードは std 依存 OK**: `{domain}-core/**/tests.rs` や `tests/` では std を使ってよい（Sans I/O 制約はプロダクトコードのみに適用）
 - **参照実装**: `references/pekko` の `stream` は `scaladsl` / `impl` / `stage` 等で層が分かれる。機械生成（boilerplate）はテンプレートで一括生成する例がある（例: `FanInShapeN`）
 
 ## リファクタリング時の優先度（目安）

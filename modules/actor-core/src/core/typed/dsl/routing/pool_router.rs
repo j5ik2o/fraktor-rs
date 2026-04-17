@@ -215,9 +215,20 @@ where
       Behaviors::receive_message(move |ctx, message: &M| {
         if let Some(ref resizer) = resizer_for_msg {
           let counter = message_counter.fetch_add(1, Ordering::Relaxed);
+          // Pekko `ResizablePoolCell` 相当の順序で呼び出す:
+          // 1. `is_time_for_resize` を先にチェック（軽量、通常 false）
+          // 2. true の場合のみ mailbox スナップショットを取り、`report_message_count` → `resize` を
+          //    **同じスナップショット** で実行する。
+          //
+          // `report_message_count` は内部で `check_time` を更新するため、先に
+          // 呼んでしまうと `is_time_for_resize` の時刻差判定が常にゼロとなり
+          // resize が発火しなくなる（Pekko も同様の順序制約を持つ。
+          // 参照: `OptimalSizeExploringResizer.scala:201-203, 262` および
+          // `Resizer.scala:286-309`）。
           if resizer.is_time_for_resize(counter) {
-            let current_count = routees_for_msg.with_lock(|routees| routees.len());
-            let delta = resizer.resize(current_count);
+            let mailbox_sizes = routees_for_msg.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
+            resizer.report_message_count(&mailbox_sizes, counter);
+            let delta = resizer.resize(&mailbox_sizes);
             if delta > 0 {
               if let Some(ref resize_props) = props_for_resize {
                 let mut new_routees = Vec::new();
@@ -239,6 +250,8 @@ where
               }
             } else if delta < 0 {
               let abs_delta = (-delta) as usize;
+              // Pekko 原典 (`Resizer.scala:305` の `currentRoutees.drop(...)`) と同じく
+              // 末尾の routee を停止対象にする。
               let to_stop: Vec<TypedActorRef<M>> = {
                 routees_for_msg.with_lock(|guard| {
                   let remove_count = abs_delta.min(guard.len().saturating_sub(1));
@@ -350,6 +363,32 @@ where
     })
     .map(|(index, _)| index)
     .unwrap_or(0)
+}
+
+/// Observes current mailbox pending counts for each routee.
+///
+/// Returns a `Vec<usize>` of the same length as `routees`, where element `i`
+/// is the number of pending user messages in routee `i`'s mailbox. When the
+/// underlying system or cell cannot be resolved (e.g., the actor has
+/// terminated), the entry is `0` — treating unreachable routees as empty
+/// matches Pekko's `OptimalSizeExploringResizer` contract, which reasons
+/// over observable mailbox pressure.
+pub(super) fn observe_routee_mailbox_sizes<M>(routees: &[TypedActorRef<M>]) -> Vec<usize>
+where
+  M: Send + Sync + Clone + 'static, {
+  routees
+    .iter()
+    .map(|routee| {
+      let actor_ref = routee.as_untyped();
+      let Some(system) = actor_ref.system_state() else {
+        return 0;
+      };
+      let Some(cell) = system.cell(&actor_ref.pid()) else {
+        return 0;
+      };
+      cell.mailbox().user_len()
+    })
+    .collect()
 }
 
 /// Selects the smallest-mailbox routee index.

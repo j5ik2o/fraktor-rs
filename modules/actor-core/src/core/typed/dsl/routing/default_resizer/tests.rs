@@ -59,27 +59,27 @@ fn is_time_for_resize_rejects_zero_counter() {
 #[test]
 fn resize_returns_positive_delta_when_below_lower_bound() {
   let resizer = DefaultResizer::new(3, 10, 1);
-  assert_eq!(resizer.resize(1), 2);
-  assert_eq!(resizer.resize(2), 1);
+  assert_eq!(resizer.resize(&[0; 1]), 2);
+  assert_eq!(resizer.resize(&[0; 2]), 1);
 }
 
 #[test]
 fn resize_returns_negative_delta_when_above_upper_bound() {
   let resizer = DefaultResizer::new(2, 5, 1);
-  assert_eq!(resizer.resize(7), -2);
-  assert_eq!(resizer.resize(6), -1);
+  assert_eq!(resizer.resize(&[0; 7]), -2);
+  assert_eq!(resizer.resize(&[0; 6]), -1);
 }
 
 #[test]
 fn resize_returns_zero_when_within_bounds() {
   let resizer = DefaultResizer::new(2, 5, 1);
-  assert_eq!(resizer.resize(2), 0);
-  assert_eq!(resizer.resize(3), 0);
-  assert_eq!(resizer.resize(5), 0);
+  assert_eq!(resizer.resize(&[0; 2]), 0);
+  assert_eq!(resizer.resize(&[0; 3]), 0);
+  assert_eq!(resizer.resize(&[0; 5]), 0);
 }
 
 #[test]
 fn resize_returns_zero_at_exact_bounds() {
   let resizer = DefaultResizer::new(3, 3, 1);
-  assert_eq!(resizer.resize(3), 0);
+  assert_eq!(resizer.resize(&[0; 3]), 0);
 }

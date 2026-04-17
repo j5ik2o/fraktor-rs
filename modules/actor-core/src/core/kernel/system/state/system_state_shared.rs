@@ -556,6 +556,12 @@ impl SystemStateShared {
     self.inner.with_write(move |inner| inner.set_logging_filter(filter));
   }
 
+  /// Returns `true` when the current logging filter would accept events of the given `level`.
+  #[must_use]
+  pub fn is_log_level_enabled(&self, level: LogLevel) -> bool {
+    self.inner.with_read(|inner| inner.is_log_level_enabled(level))
+  }
+
   /// Publishes the log event when the current filter accepts it.
   ///
   /// The filter decision is captured under the read lock and the

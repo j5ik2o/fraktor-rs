@@ -20,7 +20,7 @@
    - レポートから、実装 movement が `./scripts/ci-check.sh ai dylint` を編集単位で実施しているか確認する
 
 **注意: テストについて**
-- このピースはテスト先行が不要なタスク（package/module構造変更、examples作成等）向け
+- このピースはテスト先行が不要なタスク（package/module構造変更、showcases作成等）向け
 - テスト実行ではなく、構造変更に適した `./scripts/ci-check.sh ai dylint` による確認を行う
 - `final-ci` 以外では `./scripts/ci-check.sh ai all` を実行してはならない
 

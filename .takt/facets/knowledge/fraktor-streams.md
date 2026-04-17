@@ -62,5 +62,5 @@ gap-analysis セクション5「完全未実装ギャップ」より:
 - tick ベース同期実行モデル（`process_tick` で1要素ずつ処理）
 - `StreamNotUsed` = Mat のデフォルト型
 - `MatCombineRule` trait でマテリアライゼーション合成
-- テストは `modules/stream/src/core/stage/{type}/tests.rs`
+- テストは `modules/stream-core/src/core/stage/{type}/tests.rs`
 - `CLAUDE.md` と `.claude/rules/rust/` のルールに必ず従うこと

@@ -15,8 +15,7 @@ mod logging_adapter;
 mod logging_filter;
 mod logging_receive;
 mod no_logging;
-#[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use actor_log_marker::ActorLogMarker;
 pub use actor_logging::ActorLogging;

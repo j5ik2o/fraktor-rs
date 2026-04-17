@@ -3,7 +3,10 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
-use super::super::{broadcast::Broadcast, routee::Routee, router::Router, routing_logic::RoutingLogic};
+use super::super::{
+  broadcast::Broadcast, consistent_hashable_envelope::ConsistentHashableEnvelope, routee::Routee, router::Router,
+  routing_logic::RoutingLogic,
+};
 use crate::core::kernel::actor::{
   Pid,
   actor_ref::{ActorRef, ActorRefSender, SendOutcome},
@@ -330,4 +333,84 @@ fn route_with_noroutee_selected_returns_ok() {
   // Then: returns Ok and no routee receives a message
   assert!(result.is_ok());
   assert_eq!(c0.load(Ordering::Relaxed), 0);
+}
+
+// ---------------------------------------------------------------------------
+// ConsistentHashableEnvelope unwrap（Pekko の RouterEnvelope 契約）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn route_envelope_delivers_inner_message_stripped() {
+  // Given: 3 つの routee と、常に index 0 を選ぶロジック
+  let c0 = ArcShared::new(AtomicUsize::new(0));
+  let c1 = ArcShared::new(AtomicUsize::new(0));
+  let c2 = ArcShared::new(AtomicUsize::new(0));
+  let m0 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let m1 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let m2 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let routees = vec![
+    make_counting_routee(Pid::new(1, 0), &c0, &m0),
+    make_counting_routee(Pid::new(2, 0), &c1, &m1),
+    make_counting_routee(Pid::new(3, 0), &c2, &m2),
+  ];
+  let mut router = Router::new(FixedIndexLogic(0), routees);
+
+  // When: Envelope を route
+  let inner = AnyMessage::new(777_u32);
+  let envelope = ConsistentHashableEnvelope::new(inner, 42_u64);
+  let result = router.route(AnyMessage::new(envelope));
+
+  // Then: index 0 の routee のみが「内部 payload（u32=777）」を受け取る。
+  //       Envelope 自体は届かない（Pekko の RouterEnvelope 契約）。
+  assert!(result.is_ok());
+  assert_eq!(c0.load(Ordering::Relaxed), 1);
+  assert_eq!(c1.load(Ordering::Relaxed), 0);
+  assert_eq!(c2.load(Ordering::Relaxed), 0);
+
+  let deliveries = m0.lock();
+  assert_eq!(deliveries.len(), 1);
+  // 受信側は内部メッセージ（u32）を直接 downcast できる
+  assert_eq!(deliveries[0].downcast_ref::<u32>(), Some(&777_u32));
+  // 受信側は Envelope そのものとしては downcast できない
+  assert!(deliveries[0].downcast_ref::<ConsistentHashableEnvelope>().is_none());
+}
+
+#[test]
+fn route_broadcast_wrapping_envelope_sends_envelope_to_all_routees() {
+  // Given: 3 つの routee
+  let c0 = ArcShared::new(AtomicUsize::new(0));
+  let c1 = ArcShared::new(AtomicUsize::new(0));
+  let c2 = ArcShared::new(AtomicUsize::new(0));
+  let m0 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let m1 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let m2 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let routees = vec![
+    make_counting_routee(Pid::new(1, 0), &c0, &m0),
+    make_counting_routee(Pid::new(2, 0), &c1, &m1),
+    make_counting_routee(Pid::new(3, 0), &c2, &m2),
+  ];
+  let mut router = Router::new(FixedIndexLogic(0), routees);
+
+  // When: Broadcast(Envelope(...)) を route
+  //   Pekko の仕様: Broadcast と Envelope が組み合わさった場合は Broadcast が優先。
+  //   Router は Broadcast の内部メッセージ（＝ Envelope 自体）を全 routee に配送し、
+  //   Envelope の unwrap はこの経路では行わない。
+  let envelope = ConsistentHashableEnvelope::new(AnyMessage::new(99_u32), 1_u64);
+  let broadcast = Broadcast(AnyMessage::new(envelope));
+  let result = router.route(AnyMessage::new(broadcast));
+
+  // Then: 全 routee が受信し、届いたものは Envelope そのもの
+  assert!(result.is_ok());
+  assert_eq!(c0.load(Ordering::Relaxed), 1);
+  assert_eq!(c1.load(Ordering::Relaxed), 1);
+  assert_eq!(c2.load(Ordering::Relaxed), 1);
+  for messages in [&m0, &m1, &m2] {
+    let deliveries = messages.lock();
+    assert_eq!(deliveries.len(), 1);
+    let envelope_ref = deliveries[0]
+      .downcast_ref::<ConsistentHashableEnvelope>()
+      .expect("Broadcast wraps Envelope: routee should receive the Envelope itself");
+    assert_eq!(envelope_ref.hash_key(), 1_u64);
+    assert_eq!(envelope_ref.message().downcast_ref::<u32>(), Some(&99_u32));
+  }
 }

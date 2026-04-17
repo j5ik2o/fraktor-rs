@@ -10,7 +10,7 @@ Piece Context に示された Report Directory 内のファイルのみ参照す
 - 各ステップのあと **コンパイル可能な状態** を維持する。no-shim で維持できないなら、Phase が大きすぎるので `plan` / `design` に戻す
 - **ロジック変更は最小**。パッケージ移行が主目的のとき、挙動変更は plan に明示されていない限り行わない
 - **後方互換・移行用の暫定レイヤを持ち込まない**
-- fraktor-rs 規約: `core`/`std` 境界、1 ファイル 1 公開型、Dylint、`mod.rs` 不使用
+- fraktor-rs 規約: クレート境界（`modules/{domain}-core/` と `modules/{domain}-adaptor-std/` を別クレートとして分離）、1 ファイル 1 公開型、Dylint、`mod.rs` 不使用
 
 ## 禁止事項
 
