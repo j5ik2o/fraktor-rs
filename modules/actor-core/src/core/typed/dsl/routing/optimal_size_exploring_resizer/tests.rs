@@ -143,7 +143,7 @@ fn report_message_count_updates_performance_log_on_fully_utilized() {
   );
 }
 
-// Regression for ai-review-batch4-001:
+// ai-review-batch4-001 の回帰テスト:
 // サンプル間にキューが拡大（`queue_size_change` が負）し、受信メッセージ数で
 // それを相殺できない場合、Pekko 原典は `totalProcessed <= 0` で perf_log 更新を
 // スキップする。Rust 側の `saturating_sub` 実装では `queue_size_change` が 0 に
@@ -187,10 +187,11 @@ fn resize_downsizes_after_underutilized_period() {
   clock.advance(Duration::from_millis(1500));
 
   // currentSize=5, highest_utilization=1, downsize_ratio=0.8
-  // → target = ceil(1 * 0.8) = 1, delta = 1 - 5 = -4
-  // 境界 [1,30] 内で維持
+  // → Pekko の Double.toInt 相当で raw target = (1 * 0.8).toInt = 0
+  // → proposed delta = 0 - 5 = -5 だが lower_bound=1 への clamp で 5 + (-5) → 1 になり、
+  //    最終 delta = 1 - 5 = -4
   let delta = resizer.resize(&[0; 5]);
-  assert_eq!(delta, -4, "未活用連続期間経過で highest_utilization(1)*downsize_ratio(0.8)=1 へ縮小 (delta=-4)");
+  assert_eq!(delta, -4, "未活用連続期間経過で lower_bound=1 までクランプされ delta=-4");
 }
 
 // ==========================================================================
@@ -313,14 +314,14 @@ fn optimize_moves_half_way_toward_best_size() {
   assert_eq!(delta, 2, "optimize は最速サイズ (14, 50ms) に向け ceil(movement/2)=ceil(4/2)=2 で半歩移動");
 }
 
-/// Pekko `OptimalSizeExploringResizer.scala:293-296` の境界フィルタは
-/// 左を `filter(_ < currentSize)`（strict less-than）、右を `filter(_ >= currentSize)`
-/// と非対称に定義している。そのため `current_size` が `performance_log` に含まれる
-/// ケース（`report_message_count` が毎 tick で現サイズを記録する運用下では common case）
-/// で、`current_size` は右境界の候補にのみ数えられ、右の枠を 1 つ消費する。
-///
-/// 本テストは境界フィルタの `<` / `>=` 非対称性を fraktor-rs 側で固定し、Pekko との
-/// 互換が将来的にドリフトしないよう garde する。
+// Pekko `OptimalSizeExploringResizer.scala:293-296` の境界フィルタは
+// 左を `filter(_ < currentSize)`（strict less-than）、右を `filter(_ >= currentSize)`
+// と非対称に定義している。そのため `current_size` が `performance_log` に含まれる
+// ケース（`report_message_count` が毎 tick で現サイズを記録する運用下では common case）
+// で、`current_size` は右境界の候補にのみ数えられ、右の枠を 1 つ消費する。
+//
+// 本テストは境界フィルタの `<` / `>=` 非対称性を fraktor-rs 側で固定し、Pekko との
+// 互換が将来的にドリフトしないよう garde する。
 #[test]
 fn optimize_window_matches_pekko_boundary_asymmetry() {
   let clock = FakeClock::new();
@@ -360,12 +361,12 @@ fn optimize_window_matches_pekko_boundary_asymmetry() {
   );
 }
 
-/// 右境界の `filter(_ >= current_size)` によって `current_size` 自身が `num_each_side`
-/// の 1 枠を消費することを、より狭い window で直接観測する回帰テスト。
-///
-/// optimization_range = 2 → num_each_side = 1。右側候補が `{current, current+1, ...}`
-/// のとき、adjacency ソートで先頭は `current` なので take(1).last = `current`。つまり
-/// 右境界は自身に閉じ、`current+1` 以上は window 外となる。
+// 右境界の `filter(_ >= current_size)` によって `current_size` 自身が `num_each_side`
+// の 1 枠を消費することを、より狭い window で直接観測する回帰テスト。
+//
+// optimization_range = 2 → num_each_side = 1。右側候補が `{current, current+1, ...}`
+// のとき、adjacency ソートで先頭は `current` なので take(1).last = `current`。つまり
+// 右境界は自身に閉じ、`current+1` 以上は window 外となる。
 #[test]
 fn optimize_right_boundary_closes_at_current_size_when_num_each_side_is_one() {
   let clock = FakeClock::new();

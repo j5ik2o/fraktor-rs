@@ -64,20 +64,16 @@ fn make_closed_ref(id: u64) -> ActorRef {
 
 #[test]
 fn new_creates_empty_listeners() {
-  // Given/When
   let listeners = Listeners::new();
 
-  // Then: 初期状態は空
   assert!(listeners.is_empty());
   assert_eq!(listeners.len(), 0);
 }
 
 #[test]
 fn default_equals_new() {
-  // Given/When
   let listeners = Listeners::default();
 
-  // Then
   assert!(listeners.is_empty());
   assert_eq!(listeners.len(), 0);
 }
@@ -88,15 +84,12 @@ fn default_equals_new() {
 
 #[test]
 fn handle_listen_adds_actor_ref() {
-  // Given: 空の Listeners と Listen メッセージ
   let mut listeners = Listeners::new();
   let listener = make_null_ref(1);
   let message = AnyMessage::new(Listen(listener));
 
-  // When: handle に渡す
   let handled = listeners.handle(&message.as_view());
 
-  // Then: 処理済みとして true を返し、登録数が 1
   assert!(handled);
   assert_eq!(listeners.len(), 1);
   assert!(!listeners.is_empty());
@@ -104,7 +97,6 @@ fn handle_listen_adds_actor_ref() {
 
 #[test]
 fn handle_listen_with_duplicate_pid_is_idempotent() {
-  // Given: 同じ pid を持つ ActorRef を 2 回 Listen
   let mut listeners = Listeners::new();
   let first = make_null_ref(7);
   let second = make_null_ref(7);
@@ -112,26 +104,21 @@ fn handle_listen_with_duplicate_pid_is_idempotent() {
   let first_msg = AnyMessage::new(Listen(first));
   let second_msg = AnyMessage::new(Listen(second));
 
-  // When
   assert!(listeners.handle(&first_msg.as_view()));
   assert!(listeners.handle(&second_msg.as_view()));
 
-  // Then: 重複登録されない
   assert_eq!(listeners.len(), 1);
 }
 
 #[test]
 fn handle_listen_with_distinct_pids_adds_each() {
-  // Given: 異なる pid を 3 つ
   let mut listeners = Listeners::new();
 
-  // When
   for id in [10_u64, 20, 30] {
     let msg = AnyMessage::new(Listen(make_null_ref(id)));
     assert!(listeners.handle(&msg.as_view()));
   }
 
-  // Then: 3 件全て登録される
   assert_eq!(listeners.len(), 3);
 }
 
@@ -141,18 +128,15 @@ fn handle_listen_with_distinct_pids_adds_each() {
 
 #[test]
 fn handle_deafen_removes_matching_listener() {
-  // Given: 登録済みの listener
   let mut listeners = Listeners::new();
   let target = make_null_ref(1);
   let add_msg = AnyMessage::new(Listen(target.clone()));
   assert!(listeners.handle(&add_msg.as_view()));
   assert_eq!(listeners.len(), 1);
 
-  // When: 同じ pid で Deafen
   let remove_msg = AnyMessage::new(Deafen(target));
   let handled = listeners.handle(&remove_msg.as_view());
 
-  // Then
   assert!(handled);
   assert_eq!(listeners.len(), 0);
   assert!(listeners.is_empty());
@@ -160,22 +144,18 @@ fn handle_deafen_removes_matching_listener() {
 
 #[test]
 fn handle_deafen_on_missing_pid_is_noop_but_handled() {
-  // Given: 登録されていない pid
   let mut listeners = Listeners::new();
   let stranger = make_null_ref(42);
   let remove_msg = AnyMessage::new(Deafen(stranger));
 
-  // When
   let handled = listeners.handle(&remove_msg.as_view());
 
-  // Then: 型としては Listener メッセージなので true を返すが、状態は変わらない
   assert!(handled);
   assert_eq!(listeners.len(), 0);
 }
 
 #[test]
 fn handle_deafen_removes_only_matching_pid() {
-  // Given: 3 件登録
   let mut listeners = Listeners::new();
   for id in [1_u64, 2, 3] {
     let msg = AnyMessage::new(Listen(make_null_ref(id)));
@@ -183,11 +163,9 @@ fn handle_deafen_removes_only_matching_pid() {
   }
   assert_eq!(listeners.len(), 3);
 
-  // When: pid=2 を Deafen
   let remove_msg = AnyMessage::new(Deafen(make_null_ref(2)));
   assert!(listeners.handle(&remove_msg.as_view()));
 
-  // Then: 2 件残る
   assert_eq!(listeners.len(), 2);
 }
 
@@ -197,7 +175,6 @@ fn handle_deafen_removes_only_matching_pid() {
 
 #[test]
 fn handle_with_listeners_invokes_callback_for_each_registered_listener() {
-  // Given: 3 件登録
   let mut listeners = Listeners::new();
   let pids = [Pid::new(11, 0), Pid::new(22, 0), Pid::new(33, 0)];
   for pid in pids {
@@ -205,7 +182,6 @@ fn handle_with_listeners_invokes_callback_for_each_registered_listener() {
     assert!(listeners.handle(&msg.as_view()));
   }
 
-  // When: WithListeners で callback を発火
   let visited = ArcShared::new(SpinSyncMutex::new(Vec::<Pid>::new()));
   let visited_clone = visited.clone();
   let with = WithListeners::new(move |actor_ref: &ActorRef| {
@@ -214,7 +190,6 @@ fn handle_with_listeners_invokes_callback_for_each_registered_listener() {
   let msg = AnyMessage::new(with);
   let handled = listeners.handle(&msg.as_view());
 
-  // Then: 全 listener に対して callback が呼ばれる（順序は登録順）
   assert!(handled);
   let collected = visited.lock().clone();
   assert_eq!(collected, vec![Pid::new(11, 0), Pid::new(22, 0), Pid::new(33, 0)]);
@@ -222,10 +197,8 @@ fn handle_with_listeners_invokes_callback_for_each_registered_listener() {
 
 #[test]
 fn handle_with_listeners_on_empty_invokes_callback_zero_times() {
-  // Given: 空の Listeners
   let mut listeners = Listeners::new();
 
-  // When: WithListeners を handle
   let visited = ArcShared::new(AtomicUsize::new(0));
   let visited_clone = visited.clone();
   let with = WithListeners::new(move |_actor_ref: &ActorRef| {
@@ -234,7 +207,6 @@ fn handle_with_listeners_on_empty_invokes_callback_zero_times() {
   let msg = AnyMessage::new(with);
   let handled = listeners.handle(&msg.as_view());
 
-  // Then: handled は true だが callback は 1 度も呼ばれない
   assert!(handled);
   assert_eq!(visited.load(Ordering::Relaxed), 0);
 }
@@ -245,30 +217,24 @@ fn handle_with_listeners_on_empty_invokes_callback_zero_times() {
 
 #[test]
 fn handle_returns_false_for_unrelated_message() {
-  // Given: 無関係な u32 メッセージ
   let mut listeners = Listeners::new();
   let unrelated = AnyMessage::new(123_u32);
 
-  // When
   let handled = listeners.handle(&unrelated.as_view());
 
-  // Then: Listeners は処理せず false を返し、状態も変わらない
   assert!(!handled);
   assert_eq!(listeners.len(), 0);
 }
 
 #[test]
 fn handle_returns_false_for_unrelated_message_with_registered_listeners() {
-  // Given: 登録済み listener ありの状態で、別種のメッセージを渡す
   let mut listeners = Listeners::new();
   let listen = AnyMessage::new(Listen(make_null_ref(1)));
   assert!(listeners.handle(&listen.as_view()));
   let unrelated = AnyMessage::new("hello");
 
-  // When
   let handled = listeners.handle(&unrelated.as_view());
 
-  // Then: false を返し、登録状態は維持される
   assert!(!handled);
   assert_eq!(listeners.len(), 1);
 }
@@ -279,7 +245,6 @@ fn handle_returns_false_for_unrelated_message_with_registered_listeners() {
 
 #[test]
 fn gossip_delivers_to_all_listeners_and_returns_ok() {
-  // Given: 3 件の受信可能な listener
   let c1 = ArcShared::new(AtomicUsize::new(0));
   let c2 = ArcShared::new(AtomicUsize::new(0));
   let c3 = ArcShared::new(AtomicUsize::new(0));
@@ -293,10 +258,8 @@ fn gossip_delivers_to_all_listeners_and_returns_ok() {
     assert!(listeners.handle(&msg.as_view()));
   }
 
-  // When: gossip で送信
   let result = listeners.gossip(AnyMessage::new(42_u32));
 
-  // Then: 全リスナーが受信、Ok が返る
   assert!(result.is_ok());
   assert_eq!(c1.load(Ordering::Relaxed), 1);
   assert_eq!(c2.load(Ordering::Relaxed), 1);
@@ -310,19 +273,15 @@ fn gossip_delivers_to_all_listeners_and_returns_ok() {
 
 #[test]
 fn gossip_on_empty_returns_ok() {
-  // Given: 空の Listeners
   let mut listeners = Listeners::new();
 
-  // When
   let result = listeners.gossip(AnyMessage::new(1_u32));
 
-  // Then
   assert!(result.is_ok());
 }
 
 #[test]
 fn gossip_continues_after_first_send_error_and_returns_it() {
-  // Given: 先頭が Closed、後続は健全
   let c2 = ArcShared::new(AtomicUsize::new(0));
   let c3 = ArcShared::new(AtomicUsize::new(0));
   let m2 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -342,7 +301,6 @@ fn gossip_continues_after_first_send_error_and_returns_it() {
     assert!(listeners.handle(&msg.as_view()));
   }
 
-  // When: gossip
   let result = listeners.gossip(AnyMessage::new(99_u32));
 
   // Then: first-error を Err として返しつつ、後続リスナーには配送される

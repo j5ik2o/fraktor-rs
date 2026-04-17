@@ -15,9 +15,9 @@ use crate::core::kernel::{
   system::ActorSystem,
 };
 
-/// `Display` 実装のたびに counter をインクリメントするヘルパー。
-/// lazy formatting 契約（level 無効時は `Arguments` を評価しない）を
-/// 観測可能にするために使用する。
+// `Display` 実装のたびに counter をインクリメントするヘルパー。
+// lazy formatting 契約（level 無効時は `Arguments` を評価しない）を
+// 観測可能にするために使用する。
 struct CountingDisplay<'a> {
   counter: &'a AtomicUsize,
   payload: &'a str,
@@ -40,9 +40,9 @@ fn recorded_log_messages(events: &[EventStreamEvent], level: LogLevel) -> Vec<St
     .collect()
 }
 
-/// subscriber を system に紐付けて購読を確立する。
-/// 戻り値の `EventStreamSubscription` は drop 時に購読解除されるため、
-/// 呼び出し側でテスト関数の終端まで保持する必要がある。
+// subscriber を system に紐付けて購読を確立する。
+// 戻り値の `EventStreamSubscription` は drop 時に購読解除されるため、
+// 呼び出し側でテスト関数の終端まで保持する必要がある。
 fn new_subscribed_system() -> (ActorSystem, ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>, EventStreamSubscription) {
   let system = ActorSystem::new_empty();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));

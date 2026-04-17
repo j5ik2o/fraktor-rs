@@ -591,7 +591,7 @@ mod optimal_size_exploring_resizer_smoke {
     },
   };
 
-  /// smoke test 専用の最小 `Clock` 実装（実時間に触れない）。
+  // smoke test 専用の最小 `Clock` 実装（実時間に触れない）。
   #[derive(Clone)]
   struct FakeClock {
     offset_millis: Arc<AtomicU64>,
@@ -602,7 +602,7 @@ mod optimal_size_exploring_resizer_smoke {
       Self { offset_millis: Arc::new(AtomicU64::new(0)) }
     }
 
-    /// 現在時刻を `by` 分だけ進める（テスト用）。
+    // 現在時刻を `by` 分だけ進める（テスト用）。
     fn advance(&self, by: Duration) {
       self.offset_millis.fetch_add(by.as_millis() as u64, Ordering::SeqCst);
     }
@@ -634,16 +634,16 @@ mod optimal_size_exploring_resizer_smoke {
     let _behavior: Behavior<u32> = builder.into();
   }
 
-  /// 回帰テスト: Pekko `ResizablePoolCell` 相当の呼び出し順
-  /// (`is_time_for_resize` → `report_message_count` → `resize`) が
-  /// 守られていること。
-  ///
-  /// 以前の実装では `report_message_count` を `is_time_for_resize` より先に
-  /// 呼び出しており、`report_message_count` が更新する `check_time = now` に
-  /// より、直後の `is_time_for_resize` での経過時間判定が常にゼロとなって
-  /// resize が永遠に発火しないバグがあった (Bugbot 指摘)。本テストは
-  /// 「`action_interval` を超えた時刻のメッセージ到着で実際に resize が
-  /// 発火し、pool が `lower_bound` まで拡大する」ことで回帰を防止する。
+  // 回帰テスト: Pekko `ResizablePoolCell` 相当の呼び出し順
+  // (`is_time_for_resize` → `report_message_count` → `resize`) が
+  // 守られていること。
+  //
+  // 以前の実装では `report_message_count` を `is_time_for_resize` より先に
+  // 呼び出しており、`report_message_count` が更新する `check_time = now` に
+  // より、直後の `is_time_for_resize` での経過時間判定が常にゼロとなって
+  // resize が永遠に発火しないバグがあった (Bugbot 指摘)。本テストは
+  // 「`action_interval` を超えた時刻のメッセージ到着で実際に resize が
+  // 発火し、pool が `lower_bound` まで拡大する」ことで回帰を防止する。
   #[test]
   fn pool_router_with_optimal_size_exploring_resizer_triggers_resize_after_action_interval() {
     let initial_pool_size = 2_usize;

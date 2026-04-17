@@ -30,11 +30,11 @@ pub(crate) const FNV_PRIME: u64 = 1099511628211;
 ///    migration ratio is `1/(n+1)` on addition and `1/n` on removal.
 /// 3. **Hash key precedence** — a [`ConsistentHashableEnvelope`] carried by the message takes
 ///    precedence over the user-supplied `hash_key_mapper` fallback. Types implementing
-///    [`ConsistentHashable`] directly (without wrapping in an envelope) are not picked up by this
-///    dispatcher because [`AnyMessage`] is only downcast to the concrete envelope type; users that
-///    need trait-object dispatch on `ConsistentHashable` should wrap the payload in a
-///    `ConsistentHashableEnvelope` at the call site, or supply a `hash_key_mapper` that performs
-///    the downcast. Native trait-object dispatch may be added in a future revision.
+///    [`ConsistentHashable`](super::ConsistentHashable) directly (without wrapping in an envelope)
+///    are not picked up by this dispatcher because [`AnyMessage`] is only downcast to the concrete
+///    envelope type; users that need trait-object dispatch on `ConsistentHashable` should wrap the
+///    payload in a `ConsistentHashableEnvelope` at the call site, or supply a `hash_key_mapper`
+///    that performs the downcast. Native trait-object dispatch may be added in a future revision.
 /// 4. **Empty routees** — returns [`Routee::NoRoutee`] without panicking.
 ///
 /// # Design notes
@@ -91,8 +91,8 @@ impl RoutingLogic for ConsistentHashingRoutingLogic {
   /// 1. [`ConsistentHashableEnvelope`] carried by the message.
   /// 2. The user-supplied `hash_key_mapper` fallback.
   ///
-  /// Types implementing [`ConsistentHashable`] directly are not probed here
-  /// (see the precedence notes on [`ConsistentHashingRoutingLogic`]); wrap
+  /// Types implementing [`ConsistentHashable`](super::ConsistentHashable) directly are not probed
+  /// here (see the precedence notes on [`ConsistentHashingRoutingLogic`]); wrap
   /// them in a `ConsistentHashableEnvelope` or handle the downcast inside
   /// `hash_key_mapper`.
   ///
@@ -104,7 +104,6 @@ impl RoutingLogic for ConsistentHashingRoutingLogic {
       return &NO_ROUTEE;
     }
 
-    // Envelope-carried keys take precedence over the configured mapper.
     let key_hash = if let Some(envelope) = message.downcast_ref::<ConsistentHashableEnvelope>() {
       envelope.hash_key()
     } else {
