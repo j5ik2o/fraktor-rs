@@ -5,10 +5,7 @@ mod tests;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
-use super::{
-  consistent_hashable::ConsistentHashable, consistent_hashable_envelope::ConsistentHashableEnvelope, routee::Routee,
-  routing_logic::RoutingLogic,
-};
+use super::{consistent_hashable_envelope::ConsistentHashableEnvelope, routee::Routee, routing_logic::RoutingLogic};
 use crate::core::kernel::actor::messaging::AnyMessage;
 
 // メッセージからハッシュキーを抽出するマッパー型。
@@ -31,9 +28,13 @@ pub(crate) const FNV_PRIME: u64 = 1099511628211;
 /// 2. **Minimal disruption** — when a routee is added or removed, only the keys that would newly
 ///    prefer the added routee (or previously preferred the removed one) migrate. The expected
 ///    migration ratio is `1/(n+1)` on addition and `1/n` on removal.
-/// 3. **Hash key precedence** — `ConsistentHashableEnvelope` takes precedence over
-///    `ConsistentHashable`, which takes precedence over the user-supplied `hash_key_mapper`
-///    fallback.
+/// 3. **Hash key precedence** — a [`ConsistentHashableEnvelope`] carried by the message takes
+///    precedence over the user-supplied `hash_key_mapper` fallback. Types implementing
+///    [`ConsistentHashable`] directly (without wrapping in an envelope) are not picked up by this
+///    dispatcher because [`AnyMessage`] is only downcast to the concrete envelope type; users that
+///    need trait-object dispatch on `ConsistentHashable` should wrap the payload in a
+///    `ConsistentHashableEnvelope` at the call site, or supply a `hash_key_mapper` that performs
+///    the downcast. Native trait-object dispatch may be added in a future revision.
 /// 4. **Empty routees** — returns [`Routee::NoRoutee`] without panicking.
 ///
 /// # Design notes
@@ -85,10 +86,15 @@ impl ConsistentHashingRoutingLogic {
 impl RoutingLogic for ConsistentHashingRoutingLogic {
   /// Selects a routee deterministically from the message's hash key.
   ///
-  /// Extracts the hash key with the following precedence (matching Pekko):
+  /// Extracts the hash key with the following precedence:
   ///
   /// 1. [`ConsistentHashableEnvelope`] carried by the message.
   /// 2. The user-supplied `hash_key_mapper` fallback.
+  ///
+  /// Types implementing [`ConsistentHashable`] directly are not probed here
+  /// (see the precedence notes on [`ConsistentHashingRoutingLogic`]); wrap
+  /// them in a `ConsistentHashableEnvelope` or handle the downcast inside
+  /// `hash_key_mapper`.
   ///
   /// The routee with the maximum rendezvous score is returned; an empty
   /// `routees` slice yields [`Routee::NoRoutee`] per contract 4.
@@ -98,10 +104,9 @@ impl RoutingLogic for ConsistentHashingRoutingLogic {
       return &NO_ROUTEE;
     }
 
-    // Envelope has precedence over the mapper: Pekko's ConsistentHashable /
-    // ConsistentHashableEnvelope contract supplies the hash key directly.
+    // Envelope-carried keys take precedence over the configured mapper.
     let key_hash = if let Some(envelope) = message.downcast_ref::<ConsistentHashableEnvelope>() {
-      <ConsistentHashableEnvelope as ConsistentHashable>::consistent_hash_key(envelope)
+      envelope.hash_key()
     } else {
       (self.hash_key_mapper)(message)
     };

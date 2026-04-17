@@ -67,11 +67,8 @@ fn custom_marker_filter_rejects_different_marker_name() {
 
 #[test]
 fn default_is_level_enabled_returns_true_for_every_level() {
-  // Given
   let filter = AlwaysAcceptFilter;
 
-  // When / Then
-  // Trait の default 実装が `true` を返すことを全 level で確認する。
   assert!(filter.is_level_enabled(LogLevel::Trace));
   assert!(filter.is_level_enabled(LogLevel::Debug));
   assert!(filter.is_level_enabled(LogLevel::Info));

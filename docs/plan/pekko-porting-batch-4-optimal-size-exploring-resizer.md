@@ -116,7 +116,7 @@ Rust / no_std / `immutability-policy.md` 準拠の下ではいくつかは採用
 
 ### ファイル構成
 
-```
+```text
 modules/actor-core/src/core/typed/dsl/routing/
 ├── resizer.rs                                 # trait 拡張（署名変更 + report_message_count 追加）
 ├── default_resizer.rs                         # 新 resize 署名への追従（挙動不変）

@@ -34,13 +34,12 @@ impl Lcg {
 
   /// Returns a uniformly distributed integer in `[0, bound)`.
   ///
-  /// Returns `0` when `bound == 0` (matching our caller's contract — Pekko's
-  /// `Random.nextInt(0)` would throw, which we avoid by treating zero as a
-  /// degenerate range).
+  /// The caller must ensure `bound > 0`; passing zero yields an arithmetic
+  /// panic, matching Pekko's `Random.nextInt(0)` (which throws
+  /// `IllegalArgumentException`). Uses the high 32 bits of `next_u64` to avoid
+  /// the well-known low-bit correlation weakness of an LCG, matching the
+  /// high-bit extraction done by [`next_f64`](Self::next_f64).
   pub(crate) const fn next_u32_bounded(&mut self, bound: u32) -> u32 {
-    if bound == 0 {
-      return 0;
-    }
-    (self.next_u64() as u32) % bound
+    ((self.next_u64() >> 32) as u32) % bound
   }
 }

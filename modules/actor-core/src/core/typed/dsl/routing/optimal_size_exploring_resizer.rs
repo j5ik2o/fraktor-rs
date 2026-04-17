@@ -132,14 +132,17 @@ impl<C: Clock> OptimalSizeExploringResizer<C> {
 
   /// Overrides the fractional step size used when exploring a new pool size.
   ///
-  /// Must be `>= 0.0`.
+  /// Must be `> 0.0` (matches Pekko's `checkParamAsPositiveNum`). With this
+  /// bound, `ceil(current_size * explore_step_size) >= 1`, so the caller of
+  /// [`Lcg::next_u32_bounded`](self::lcg::Lcg::next_u32_bounded) never reaches
+  /// the zero-bound panic branch.
   ///
   /// # Panics
   ///
-  /// Panics if `value < 0.0`.
+  /// Panics if `value <= 0.0`.
   #[must_use]
   pub fn with_explore_step_size(mut self, value: f64) -> Self {
-    assert!(value >= 0.0, "explore_step_size must be >= 0.0");
+    assert!(value > 0.0, "explore_step_size must be > 0.0");
     self.explore_step_size = value;
     self
   }
@@ -292,8 +295,8 @@ impl<C: Clock> Resizer for OptimalSizeExploringResizer<C> {
 /// Picks a random step within `[1, ceil(current_size * explore_step_size)]`
 /// and flips its sign according to `chance_of_scaling_down_when_full`.
 fn explore(rng: &mut Lcg, current_size: usize, explore_step_size: f64, chance_of_scaling_down_when_full: f64) -> i32 {
-  // `current_size: usize` と `with_explore_step_size` で検証済みの
-  // `explore_step_size >= 0.0` により、積は常に非負で `libm_ceil` も非負を返す。
+  // `with_explore_step_size` で `explore_step_size > 0.0` を保証しているため、
+  // `current_size >= 1` と合わせて `libm_ceil(...)` は必ず `>= 1` を返す。
   let bound = libm_ceil(current_size as f64 * explore_step_size) as u32;
   let raw = rng.next_u32_bounded(bound);
   let change = raw.max(1) as i32;
@@ -326,8 +329,8 @@ fn optimize(perf_log: &BTreeMap<usize, Duration>, current_size: usize, optimizat
   if movement < 0.0 { libm_floor(movement) as i32 } else { libm_ceil(movement) as i32 }
 }
 
-// `core::f64::ceil` / `floor` require `std`; reproduce them manually to stay
-// `no_std`-clean.
+// `core::f64::ceil` / `floor` は `std` 依存のため、`no_std` でビルドできるよう
+// 符号付き整数キャストを用いて等価な挙動を手実装する。
 fn libm_ceil(x: f64) -> f64 {
   let truncated = x as i64 as f64;
   if x > truncated { truncated + 1.0 } else { truncated }

@@ -1,19 +1,14 @@
 //! Tests for `OptimalSizeExploringResizer`.
 //!
-//! NOTE: これらのテストは write_tests ステップで作成された orphan テストである。
-//! `OptimalSizeExploringResizer` 型および `Resizer::report_message_count` /
-//! `Resizer::resize(&[usize])` の新署名は implement ステップで導入されるため、
-//! 本ファイルは implement ステップ完了までコンパイルエラーを意図的に発生させる。
-//!
-//! テスト戦略（plan.4 §6.9）:
-//! - 1〜5: パラメータバリデーション (`#[should_panic]`)
-//! - 6:    契約 2（actionInterval 経過ベースのリサイズ判定）
-//! - 7〜8: 契約 3（フル稼働時のみ performance_log 更新）
-//! - 9:    契約 4（downsizeAfterUnderutilizedFor 経過後の縮小）
-//! - 10〜11: 契約 5（lower_bound / upper_bound クランプ）
-//! - 12:   short-circuit（perf_log 空 + 未活用なし）
-//! - 13〜14: explore の確率分岐
-//! - 15:   optimize の半歩移動
+//! Test strategy (plan.4 §6.9):
+//! - 1..5:  parameter validation (`#[should_panic]`)
+//! - 6:     contract 2 — `action_interval`-based resize gating
+//! - 7..8:  contract 3 — only fully-utilized samples update `performance_log`
+//! - 9:     contract 4 — downsize after the under-utilized period elapses
+//! - 10..11: contract 5 — bounds clamping (`lower_bound` / `upper_bound`)
+//! - 12:    short-circuit path (empty perf_log + no under-utilization)
+//! - 13..14: explore probability branches
+//! - 15:    optimize half-step movement
 
 use alloc::{collections::BTreeMap, sync::Arc};
 use core::{
@@ -24,7 +19,7 @@ use core::{
 use super::OptimalSizeExploringResizer;
 use crate::core::{kernel::pattern::Clock, typed::dsl::routing::Resizer};
 
-/// テスト専用の決定論的時計（`circuit_breaker/tests.rs` と同一のパターン）。
+// テスト専用の決定論的時計（`circuit_breaker/tests.rs` と同一のパターン）。
 #[derive(Clone)]
 struct FakeClock {
   offset_millis: Arc<AtomicU64>,
@@ -56,7 +51,7 @@ impl Clock for FakeClock {
   }
 }
 
-/// 全テスト共通の決定論的 RNG シード。
+// 全テスト共通の決定論的 RNG シード。
 const SEED: u64 = 42;
 
 // ==========================================================================
@@ -148,11 +143,11 @@ fn report_message_count_updates_performance_log_on_fully_utilized() {
   );
 }
 
-/// Regression for ai-review-batch4-001:
-/// サンプル間にキューが拡大（`queue_size_change` が負）し、受信メッセージ数で
-/// それを相殺できない場合、Pekko 原典は `totalProcessed <= 0` で perf_log 更新を
-/// スキップする。Rust 側の `saturating_sub` 実装では `queue_size_change` が 0 に
-/// クランプされ、受信メッセージ数が誤って perf_log に記録されてしまっていた。
+// Regression for ai-review-batch4-001:
+// サンプル間にキューが拡大（`queue_size_change` が負）し、受信メッセージ数で
+// それを相殺できない場合、Pekko 原典は `totalProcessed <= 0` で perf_log 更新を
+// スキップする。Rust 側の `saturating_sub` 実装では `queue_size_change` が 0 に
+// クランプされ、受信メッセージ数が誤って perf_log に記録されてしまっていた。
 #[test]
 fn report_message_count_skips_perf_log_when_queue_grew_faster_than_intake() {
   let clock = FakeClock::new();

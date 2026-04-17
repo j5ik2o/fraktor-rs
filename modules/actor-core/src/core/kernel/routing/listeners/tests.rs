@@ -18,7 +18,7 @@ use crate::core::kernel::actor::{
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// 受信メッセージを記録する送信器。
+// 受信メッセージを記録する送信器。
 struct CountingSender {
   count:    ArcShared<AtomicUsize>,
   messages: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
@@ -32,7 +32,7 @@ impl ActorRefSender for CountingSender {
   }
 }
 
-/// 常に Closed エラーを返す送信器。
+// 常に Closed エラーを返す送信器。
 struct ClosedSender;
 
 impl ActorRefSender for ClosedSender {

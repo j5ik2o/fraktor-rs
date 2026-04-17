@@ -250,6 +250,8 @@ where
               }
             } else if delta < 0 {
               let abs_delta = (-delta) as usize;
+              // Pekko 原典 (`Resizer.scala:305` の `currentRoutees.drop(...)`) と同じく
+              // 末尾の routee を停止対象にする。
               let to_stop: Vec<TypedActorRef<M>> = {
                 routees_for_msg.with_lock(|guard| {
                   let remove_count = abs_delta.min(guard.len().saturating_sub(1));

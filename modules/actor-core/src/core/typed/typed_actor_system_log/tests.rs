@@ -172,7 +172,7 @@ fn fmt_does_not_publish_when_level_is_below_filter_threshold() {
   // Given
   let (system, events, _subscription) = new_subscribed_system();
   system.state().set_logging_filter(DefaultLoggingFilter::new(LogLevel::Warn));
-  let log = TypedActorSystemLog::new(system.clone());
+  let log = TypedActorSystemLog::new(system);
 
   // When
   log.trace_fmt(format_args!("filtered trace"));
