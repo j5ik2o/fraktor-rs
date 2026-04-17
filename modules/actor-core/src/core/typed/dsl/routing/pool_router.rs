@@ -381,7 +381,7 @@ pub(super) fn select_smallest_mailbox_index<M>(
 ) -> usize
 where
   M: Send + Sync + Clone + 'static, {
-  // Try to find the routee with the smallest observable mailbox.
+  // 観測可能なメールボックスが最小の routee を探す。
   let mut best_observed_index = None;
   let mut best_observed_len = usize::MAX;
 
@@ -408,7 +408,7 @@ where
     return index;
   }
 
-  // Fallback: use dispatch counts when no mailbox metrics are observable.
+  // フォールバック: メールボックスメトリクスが観測できない場合はディスパッチ回数を使用する。
   let routee_count = routees.len();
   dispatch_counts.with_lock(|counts| {
     let mut selected = 0_usize;
