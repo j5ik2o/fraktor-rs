@@ -164,20 +164,25 @@ pub trait Resizer: Send + Sync {
 
 ```rust
 // pool_router.rs 内のメッセージ受信側
-let mailbox_sizes =
-  routees_for_msg.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
-resizer.report_message_count(&mailbox_sizes, counter);
 if resizer.is_time_for_resize(counter) {
+  let mailbox_sizes =
+    routees_for_msg.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
+  resizer.report_message_count(&mailbox_sizes, counter);
   let delta = resizer.resize(&mailbox_sizes);
   ...
 }
 ```
 
-- 同一メッセージ内で `report_message_count` と `resize` が同じ mailbox snapshot を共有する
-  ことで、Pekko `ResizablePoolCell.sendMessage` が `preSendMessage` → `handleMessage` の間で
-  observation を持ち越すロジックと挙動を合わせる。
-- `report_message_count` は **毎メッセージ呼ぶ**（Pekko 準拠）。default no-op のため
-  `DefaultResizer` ユーザーへの性能影響は関数呼び出し 1 回ぶん（インライン化想定）。
+- Pekko `ResizablePoolCell.sendMessage` は `isTimeForResize` が真のときにだけ
+  `self ! Resize` を行い、その `Resize` ハンドラ内で `tryReportMessageCount()` → `resizer.resize(...)` の順に進める
+  （`Resizer.scala:286-309`、`OptimalSizeExploringResizer.scala:205-262`）。同じ順序で
+  `is_time_for_resize` → `report_message_count` → `resize` を呼び、同一スナップショットを共有する。
+- この順序に従う必要がある: `report_message_count` 内部で `check_time = now` が更新されるため、
+  先に呼んでしまうと直後の `is_time_for_resize` の経過時間判定が常にゼロ付近となり resize が発火しない。
+  resize tick 内でのみ呼ぶ仕様も Pekko 原典と一致。
+- `is_time_for_resize` が false のときは mailbox スナップショットを取得しないため、非リサイズ経路の
+  per-message オーバーヘッドは `is_time_for_resize` 呼び出し 1 回のみ（`DefaultResizer` は modulo 比較、
+  `OptimalSizeExploringResizer` は lock を取って `elapsed_since(check_time)` を比較）。
 - `observe_routee_mailbox_sizes` は `smallest_mailbox_routing_logic::observe_actor_ref`
   のロジックを流用。mailbox が取れない（routee が既に停止している等）場合は `0` で埋める。
   unreachable routee には traffic を呼び込まないのが Pekko の挙動であり、Pekko-parity。
