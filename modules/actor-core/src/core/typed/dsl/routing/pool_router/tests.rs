@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeSet, string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{pseudo_random_index, select_consistent_hash_index, select_smallest_mailbox_index};
 use crate::core::{
@@ -347,9 +347,8 @@ fn pool_router_with_smallest_mailbox_selects_lowest_queue() {
     TypedActorRef::<u32>::from_untyped(cell1.actor_ref()),
     TypedActorRef::<u32>::from_untyped(cell2.actor_ref()),
   ];
-  let dispatch_counts = SharedLock::new_with_driver::<SpinSyncMutex<_>>(vec![0_usize; routees.len()]);
 
-  let selected = select_smallest_mailbox_index(&routees, &dispatch_counts);
+  let selected = select_smallest_mailbox_index(&routees);
   assert_eq!(selected, 2);
 }
 
