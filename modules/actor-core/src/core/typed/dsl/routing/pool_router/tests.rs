@@ -584,7 +584,7 @@ mod optimal_size_exploring_resizer_smoke {
       behavior::Behavior,
       dsl::{
         Behaviors,
-        routing::{PoolRouter, optimal_size_exploring_resizer::OptimalSizeExploringResizer},
+        routing::{OptimalSizeExploringResizer, PoolRouter},
       },
       props::TypedProps,
       system::TypedActorSystem,

@@ -6,17 +6,124 @@ use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
 
-use self::{lcg::Lcg, resize_record::ResizeRecord, state::State, under_utilization_streak::UnderUtilizationStreak};
 use super::resizer::Resizer;
 use crate::core::kernel::pattern::Clock;
 
-mod lcg;
-mod resize_record;
-mod state;
-mod under_utilization_streak;
-
 #[cfg(test)]
 mod tests;
+
+// ---------------------------------------------------------------------------
+// Private support types
+// ---------------------------------------------------------------------------
+//
+// 以下の 4 型は Pekko `OptimalSizeExploringResizer` の内部補助型に対応する
+// `pub(crate)` 専用実装である。それぞれ独立ファイルに分けると
+// `optimal_size_exploring_resizer` モジュールがサブモジュールを持つことになり、
+// `routing.rs` 側で `pub use optimal_size_exploring_resizer::OptimalSizeExploringResizer;`
+// を書くと `no-parent-reexport` lint に抵触する。型サイズがいずれも数十行で
+// 公開 API には寄与しないため、公開 API 一貫性を優先して本体ファイルに inline する。
+
+// --- LCG (Numerical Recipes MMIX constants) -------------------------------
+
+/// Linear congruential generator with 64-bit state.
+///
+/// Replaces Pekko's `ThreadLocalRandom` in the `OptimalSizeExploringResizer`
+/// algorithm so that explore / optimize branching is deterministic under a
+/// fixed seed.
+pub(crate) struct Lcg {
+  state: u64,
+}
+
+impl Lcg {
+  /// Creates a new generator seeded with `seed`.
+  pub(crate) const fn new(seed: u64) -> Self {
+    Self { state: seed }
+  }
+
+  /// Advances the state and returns the raw 64-bit value.
+  const fn next_u64(&mut self) -> u64 {
+    // Numerical Recipes MMIX constants.
+    self.state = self.state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+    self.state
+  }
+
+  /// Returns a uniformly distributed value in `[0, 1)`.
+  ///
+  /// Uses the top 53 bits of the internal state, matching the precision of
+  /// `f64` mantissa.
+  pub(crate) fn next_f64(&mut self) -> f64 {
+    let bits = self.next_u64() >> 11;
+    let denom = (1_u64 << 53) as f64;
+    bits as f64 / denom
+  }
+
+  /// Returns a uniformly distributed integer in `[0, bound)`.
+  ///
+  /// The caller must ensure `bound > 0`; passing zero yields an arithmetic
+  /// panic, matching Pekko's `Random.nextInt(0)` (which throws
+  /// `IllegalArgumentException`). Uses the high 32 bits of `next_u64` to avoid
+  /// the well-known low-bit correlation weakness of an LCG, matching the
+  /// high-bit extraction done by [`next_f64`](Self::next_f64).
+  pub(crate) const fn next_u32_bounded(&mut self, bound: u32) -> u32 {
+    ((self.next_u64() >> 32) as u32) % bound
+  }
+}
+
+// --- Under-utilization streak ---------------------------------------------
+
+/// Tracks a contiguous period during which the pool was not fully utilized.
+///
+/// Corresponds to Pekko's `OptimalSizeExploringResizer.UnderUtilizationStreak`.
+/// The streak is reset (set back to `None`) whenever the pool becomes fully
+/// utilized, and extended otherwise.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct UnderUtilizationStreak<I> {
+  /// Timestamp when the streak started.
+  pub(crate) start:               I,
+  /// Highest number of busy routees observed during the streak.
+  pub(crate) highest_utilization: usize,
+}
+
+// --- Resize record --------------------------------------------------------
+
+/// Snapshot of router statistics retained between `report_message_count` calls.
+///
+/// Corresponds to Pekko's `OptimalSizeExploringResizer.ResizeRecord`. Pekko
+/// uses `checkTime = 0L` as a sentinel meaning "no baseline has been recorded
+/// yet". Because our [`Clock`] abstraction makes `Instant` an associated type,
+/// an `Instant` value of "zero" is not necessarily invalid. Instead we carry
+/// an explicit [`has_recorded`](Self::has_recorded) flag alongside a real
+/// [`check_time`](Self::check_time) initialized at construction.
+pub(crate) struct ResizeRecord<I> {
+  /// Active under-utilization streak, if any.
+  pub(crate) under_utilization_streak: Option<UnderUtilizationStreak<I>>,
+  /// Cumulative message counter observed at the previous sample.
+  pub(crate) message_count:            u64,
+  /// Total pending mailbox size observed at the previous sample.
+  pub(crate) total_queue_length:       u64,
+  /// `true` once at least one sample has been recorded. Replaces Pekko's
+  /// `checkTime > 0` gate that prevents perf_log updates from using an
+  /// uninitialized baseline.
+  pub(crate) has_recorded:             bool,
+  /// Instant at which the previous sample was recorded.
+  pub(crate) check_time:               I,
+}
+
+// --- Mutable state --------------------------------------------------------
+
+/// Mutable bookkeeping protected by the resizer's spin mutex.
+///
+/// Exposed at `pub(crate)` visibility so that the parent resizer type, its
+/// tests, and the crate-internal routing machinery can mutate fields via
+/// `SpinSyncMutex::lock`.
+pub(crate) struct State<I> {
+  /// Historical mean processing time per pool size.
+  pub(crate) performance_log: BTreeMap<usize, Duration>,
+  /// Snapshot of the previous sample.
+  pub(crate) record:          ResizeRecord<I>,
+  /// Seedable pseudo-random source used for explore / optimize branching.
+  pub(crate) rng:             Lcg,
+}
 
 /// Throughput-optimizing pool resizer.
 ///
