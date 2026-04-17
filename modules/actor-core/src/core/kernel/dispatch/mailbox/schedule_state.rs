@@ -114,6 +114,11 @@ impl MailboxScheduleState {
     self.current_suspend_count() > 0
   }
 
+  /// Returns `true` while the drain loop is actively running.
+  pub(crate) fn is_running(&self) -> bool {
+    self.state.load(Ordering::Acquire) & FLAG_RUNNING != 0
+  }
+
   /// Requests terminal close and attempts to elect the cleanup finalizer.
   pub(crate) fn request_close(&self) -> CloseRequestOutcome {
     loop {
