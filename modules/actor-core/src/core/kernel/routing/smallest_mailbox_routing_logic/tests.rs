@@ -189,6 +189,48 @@ fn select_score_zero_short_circuits_on_first_idle_empty() {
 }
 
 #[test]
+fn select_prefers_idle_with_messages_over_processing_with_fewer_messages_of_same_penalty() {
+  // Pekko 準拠: 処理中ペナルティ(+1) は件数にも加算される。
+  // routee0: idle + 3 msgs → score = 0 + 3 = 3
+  // routee1: processing + 2 msgs → score = 1 + 2 = 3 (tie)
+  // routee2: processing + 1 msg → score = 1 + 1 = 2 ← 最小
+  // => 2 ルーティーが同点ならば最初に見つかった routee が勝つ（Pekko 仕様: `<` 比較）
+  //    今回は routee2 が唯一の score=2 のため選ばれる
+  let system = ActorSystem::new_empty();
+  let pid0 = system.allocate_pid();
+  let pid1 = system.allocate_pid();
+  let pid2 = system.allocate_pid();
+  let routee0 = register_routee(&system, pid0, "idle-3");
+  let routee1 = register_routee(&system, pid1, "processing-2");
+  let routee2 = register_routee(&system, pid2, "processing-1");
+  let routees = [routee0, routee1, routee2];
+  let logic = SmallestMailboxRoutingLogic::new();
+  let message = AnyMessage::new(24_u32);
+
+  let cell0 = system.state().cell(&pid0).expect("cell-0");
+  let cell1 = system.state().cell(&pid1).expect("cell-1");
+  let cell2 = system.state().cell(&pid2).expect("cell-2");
+  for i in 0..3_u32 {
+    cell0.mailbox().enqueue_user(AnyMessage::new(i)).expect("enqueue");
+  }
+  for i in 0..2_u32 {
+    cell1.mailbox().enqueue_user(AnyMessage::new(i + 10)).expect("enqueue");
+  }
+  cell1.mailbox().set_running();
+  cell2.mailbox().enqueue_user(AnyMessage::new(100_u32)).expect("enqueue");
+  cell2.mailbox().set_running();
+
+  // When
+  let selected = logic.select(&message, &routees);
+
+  // Then: routee2 (processing + 1 msg, score 2) wins over routee0 (score 3) and routee1 (score 3)
+  match selected {
+    | Routee::ActorRef(actor_ref) => assert_eq!(actor_ref.pid(), pid2),
+    | Routee::NoRoutee | Routee::Several(_) => panic!("expected ActorRef routee"),
+  }
+}
+
+#[test]
 fn select_prefers_fewest_messages_on_deep_pass() {
   // Given: all routees have at least 1 message. Second pass picks lowest count.
   let system = ActorSystem::new_empty();

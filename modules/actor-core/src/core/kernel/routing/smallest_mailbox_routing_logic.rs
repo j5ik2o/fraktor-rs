@@ -15,13 +15,20 @@ const SCORE_PROCESSING_PENALTY: u64 = 1;
 /// Routes messages to the non-suspended routee with the fewest pending messages.
 ///
 /// Corresponds to Pekko's `org.apache.pekko.routing.SmallestMailboxRoutingLogic`.
-/// Selection priority (low score wins):
+/// Score formula (low score wins):
 ///
-/// 1. An idle routee with an empty mailbox (`score == 0`, short-circuits selection)
-/// 2. A processing routee with an empty mailbox (`score == 1`)
-/// 3. A routee with the fewest observable messages (`score == count`)
-/// 4. A routee whose message count cannot be observed (`score == u64::MAX - 3`)
-/// 5. A suspended routee (`score == u64::MAX - 1`)
+/// ```text
+/// if suspended:              u64::MAX - 1
+/// else:                      processing_penalty + message_component
+///   processing_penalty:      1 if is_running else 0
+///   message_component:       0                  if !has_messages
+///                            count              if deep=true and count > 0
+///                            u64::MAX - 3       otherwise (unknown / shallow)
+/// ```
+///
+/// This matches Pekko's `selectNext` verbatim: the processing penalty is also
+/// added to the message-count score, so a processing routee with 3 messages
+/// scores 4 (1 + 3), while an idle routee with 3 messages scores 3.
 ///
 /// A two-pass search is performed: the first pass only inspects `has_messages`
 /// (equivalent to Pekko's `deep=false`) so a score-0 routee short-circuits the
