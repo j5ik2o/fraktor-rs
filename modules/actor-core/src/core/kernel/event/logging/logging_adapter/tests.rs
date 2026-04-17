@@ -20,17 +20,6 @@ impl LoggingFilter for MarkerOnlyFilter {
   }
 }
 
-fn assert_logging_filter(_filter: &impl LoggingFilter) {}
-
-#[test]
-fn default_logging_filter_implements_logging_filter() {
-  // Given
-  let filter = DefaultLoggingFilter::new(LogLevel::Warn);
-
-  // When / Then
-  assert_logging_filter(&filter);
-}
-
 #[test]
 fn logging_adapter_emits_marker_and_mdc_metadata_via_event_stream() {
   let system = ActorSystem::new_empty();
