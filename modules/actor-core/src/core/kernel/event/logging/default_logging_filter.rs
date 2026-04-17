@@ -28,4 +28,8 @@ impl LoggingFilter for DefaultLoggingFilter {
   fn should_publish(&self, event: &LogEvent) -> bool {
     event.level() >= self.minimum_level
   }
+
+  fn is_level_enabled(&self, level: LogLevel) -> bool {
+    level >= self.minimum_level
+  }
 }

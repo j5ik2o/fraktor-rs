@@ -19,6 +19,17 @@ impl LoggingFilter for MarkerNameFilter {
   }
 }
 
+/// Filter that relies on the trait's default `is_level_enabled` implementation
+/// to verify the contract that implementers opting out of level gating retain
+/// the "accept all levels" semantics.
+struct AlwaysAcceptFilter;
+
+impl LoggingFilter for AlwaysAcceptFilter {
+  fn should_publish(&self, _event: &LogEvent) -> bool {
+    true
+  }
+}
+
 fn assert_logging_filter(_filter: &impl LoggingFilter) {}
 
 #[test]
@@ -52,4 +63,18 @@ fn custom_marker_filter_rejects_different_marker_name() {
 
   // When / Then
   assert!(!filter.should_publish(&event));
+}
+
+#[test]
+fn default_is_level_enabled_returns_true_for_every_level() {
+  // Given
+  let filter = AlwaysAcceptFilter;
+
+  // When / Then
+  // Trait の default 実装が `true` を返すことを全 level で確認する。
+  assert!(filter.is_level_enabled(LogLevel::Trace));
+  assert!(filter.is_level_enabled(LogLevel::Debug));
+  assert!(filter.is_level_enabled(LogLevel::Info));
+  assert!(filter.is_level_enabled(LogLevel::Warn));
+  assert!(filter.is_level_enabled(LogLevel::Error));
 }
