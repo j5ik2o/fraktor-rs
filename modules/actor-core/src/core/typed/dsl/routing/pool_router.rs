@@ -177,7 +177,6 @@ where
 
       let props_for_resize = resizer.as_ref().map(|_| props.clone());
 
-      let _ = routee_vec.len();
       let routees = SharedLock::new_with_driver::<DefaultMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
