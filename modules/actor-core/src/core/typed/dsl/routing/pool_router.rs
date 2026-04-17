@@ -9,7 +9,6 @@ use portable_atomic::{AtomicU64, Ordering};
 use super::resizer::Resizer;
 use crate::core::{
   kernel::{
-    actor::messaging::AnyMessage,
     event::logging::LogLevel,
     routing::{FNV_OFFSET_BASIS, Routee, RoutingLogic, SmallestMailboxRoutingLogic, mix_hash, rendezvous_score},
   },
@@ -353,18 +352,20 @@ where
     .unwrap_or(0)
 }
 
+/// Selects the smallest-mailbox routee index.
+///
+/// # Panics
+///
+/// Panics if `routees` is empty. Callers must guard against empty routees
+/// (pool_router's message handler does this at the call site).
 pub(super) fn select_smallest_mailbox_index<M>(routees: &[TypedActorRef<M>]) -> usize
 where
   M: Send + Sync + Clone + 'static, {
+  assert!(!routees.is_empty(), "select_smallest_mailbox_index requires non-empty routees");
   // kernel `SmallestMailboxRoutingLogic` に Pekko 互換のスコアリング判定を委譲する。
+  // `select_index` は `AnyMessage` の dummy を受け取らず、usize を直接返すため
+  // 従来の `AnyMessage::new(())` と pid position 探索を排除できる。
   let untyped_routees: Vec<Routee> = routees.iter().map(|r| Routee::ActorRef(r.as_untyped().clone())).collect();
   let logic = SmallestMailboxRoutingLogic::new();
-  // select は `AnyMessage` 引数を参照しないため、ダミー値を渡す。
-  let dummy = AnyMessage::new(());
-  let selected = logic.select(&dummy, &untyped_routees);
-  let Routee::ActorRef(actor_ref) = selected else {
-    return 0;
-  };
-  let selected_pid = actor_ref.pid();
-  routees.iter().position(|r| r.pid() == selected_pid).unwrap_or(0)
+  logic.select_index(&untyped_routees)
 }
