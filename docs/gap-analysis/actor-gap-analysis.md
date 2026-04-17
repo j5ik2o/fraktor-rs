@@ -23,8 +23,8 @@
 | Pekko 公開型数（parity 対象） | 102 |
 | fraktor-rs 対応実装数 | 93（うち完全実装 92 / 部分実装 1） |
 | カバレッジ（型単位） | 93/102 ≈ 91% |
-| ギャップ数 | 10（core/kernel: 7, core/typed: 2, std: 1） |
-| 部分実装ギャップ | 1（kernel 側 `ConsistentHashingRoutingLogic`。型は存在するが Pekko 互換の挙動が欠落） |
+| ギャップ数 | 10（未対応 9 + 部分実装 1、core/kernel: 7, core/typed: 2, std: 1） |
+| 部分実装ギャップ | 1（kernel 側 `ConsistentHashingRoutingLogic`。型は存在するが Pekko 互換の挙動が欠落。**本項目は「実装数 93」と「ギャップ数 10」の両方に計上される**ため `93 + 10 ≠ 102` になる点に注意。未対応分は 102 − 93 = 9） |
 | n/a 除外数 | 約 60（Java DSL, IO, japi, internal, JVM 固有） |
 
 enumerated gaps (カテゴリ別ギャップから再掲):

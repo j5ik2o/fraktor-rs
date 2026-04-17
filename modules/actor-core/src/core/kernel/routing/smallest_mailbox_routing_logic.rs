@@ -177,8 +177,10 @@ fn score_of_deep(routee: &Routee) -> u64 {
     return processing_score;
   }
 
-  let message_score = observation.message_count.max(1) as u64;
-  processing_score.saturating_add(message_score)
+  // `observe_actor_ref` は `has_messages` と `message_count` を同一の `user_len()`
+  // スナップショットから導出しているため、`has_messages == true` のときは必ず
+  // `message_count >= 1` が成立する。追加のクランプは不要。
+  processing_score.saturating_add(observation.message_count as u64)
 }
 
 struct ActorRefObservation {
