@@ -215,9 +215,15 @@ where
       Behaviors::receive_message(move |ctx, message: &M| {
         if let Some(ref resizer) = resizer_for_msg {
           let counter = message_counter.fetch_add(1, Ordering::Relaxed);
+          // Observe routee mailbox sizes once per message so that both
+          // `report_message_count` and `resize` share the same snapshot.
+          let mailbox_sizes = routees_for_msg.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
+          // `report_message_count` has a no-op default and is only meaningful
+          // for `OptimalSizeExploringResizer`; call it on every message to
+          // match Pekko's `ResizablePoolCell.sendMessage` ordering.
+          resizer.report_message_count(&mailbox_sizes, counter);
           if resizer.is_time_for_resize(counter) {
-            let current_count = routees_for_msg.with_lock(|routees| routees.len());
-            let delta = resizer.resize(current_count);
+            let delta = resizer.resize(&mailbox_sizes);
             if delta > 0 {
               if let Some(ref resize_props) = props_for_resize {
                 let mut new_routees = Vec::new();
@@ -350,6 +356,32 @@ where
     })
     .map(|(index, _)| index)
     .unwrap_or(0)
+}
+
+/// Observes current mailbox pending counts for each routee.
+///
+/// Returns a `Vec<usize>` of the same length as `routees`, where element `i`
+/// is the number of pending user messages in routee `i`'s mailbox. When the
+/// underlying system or cell cannot be resolved (e.g., the actor has
+/// terminated), the entry is `0` — treating unreachable routees as empty
+/// matches Pekko's `OptimalSizeExploringResizer` contract, which reasons
+/// over observable mailbox pressure.
+pub(super) fn observe_routee_mailbox_sizes<M>(routees: &[TypedActorRef<M>]) -> Vec<usize>
+where
+  M: Send + Sync + Clone + 'static, {
+  routees
+    .iter()
+    .map(|routee| {
+      let actor_ref = routee.as_untyped();
+      let Some(system) = actor_ref.system_state() else {
+        return 0;
+      };
+      let Some(cell) = system.cell(&actor_ref.pid()) else {
+        return 0;
+      };
+      cell.mailbox().user_len()
+    })
+    .collect()
 }
 
 /// Selects the smallest-mailbox routee index.

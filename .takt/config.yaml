@@ -1,5 +1,5 @@
 provider: claude
-model: claude-opus-4-7[1m]
+model: claude-opus-4-7
 concurrency: 1
 base_branch: main
 submodules: all

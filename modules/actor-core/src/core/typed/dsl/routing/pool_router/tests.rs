@@ -557,3 +557,67 @@ fn pool_router_with_routee_props_can_chain_with_other_builders() {
   // Then: build succeeds (all builder steps compose)
   let _behavior: Behavior<u32> = builder.into();
 }
+
+// ==========================================================================
+// Batch 4: `OptimalSizeExploringResizer` 装着のスモークテスト
+// ==========================================================================
+// アルゴリズム検証は `optimal_size_exploring_resizer/tests.rs` 側で網羅する。
+// 本 smoke test は「`with_resizer` 経由で Behavior が組み立てられる」配線の
+// 最小確認のみを行う (plan.4 §6.8)。
+
+mod optimal_size_exploring_resizer_smoke {
+  use alloc::sync::Arc;
+  use core::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+  };
+
+  use crate::core::{
+    kernel::pattern::Clock,
+    typed::{
+      behavior::Behavior,
+      dsl::{
+        Behaviors,
+        routing::{PoolRouter, optimal_size_exploring_resizer::OptimalSizeExploringResizer},
+      },
+    },
+  };
+
+  /// smoke test 専用の最小 `Clock` 実装（実時間に触れない）。
+  #[derive(Clone)]
+  struct FakeClock {
+    offset_millis: Arc<AtomicU64>,
+  }
+
+  impl FakeClock {
+    fn new() -> Self {
+      Self { offset_millis: Arc::new(AtomicU64::new(0)) }
+    }
+  }
+
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+  struct FakeInstant(u64);
+
+  impl Clock for FakeClock {
+    type Instant = FakeInstant;
+
+    fn now(&self) -> Self::Instant {
+      FakeInstant(self.offset_millis.load(Ordering::SeqCst))
+    }
+
+    fn elapsed_since(&self, earlier: Self::Instant) -> Duration {
+      let now = self.offset_millis.load(Ordering::SeqCst);
+      Duration::from_millis(now.saturating_sub(earlier.0))
+    }
+  }
+
+  #[test]
+  fn pool_router_with_optimal_size_exploring_resizer_builds_behavior() {
+    // Given: `OptimalSizeExploringResizer` を装着した pool router builder
+    let resizer = OptimalSizeExploringResizer::new(2, 10, FakeClock::new(), 42);
+    let builder = PoolRouter::new(3, Behaviors::ignore).with_resizer(resizer);
+
+    // Then: Behavior への変換が成功する（`Resizer + 'static` 制約を満たす）
+    let _behavior: Behavior<u32> = builder.into();
+  }
+}

@@ -55,7 +55,8 @@ impl Resizer for DefaultResizer {
     message_counter > 0 && message_counter.is_multiple_of(self.messages_per_resize)
   }
 
-  fn resize(&self, current_routee_count: usize) -> i32 {
+  fn resize(&self, mailbox_sizes: &[usize]) -> i32 {
+    let current_routee_count = mailbox_sizes.len();
     if current_routee_count < self.lower_bound {
       let diff = self.lower_bound - current_routee_count;
       i32::try_from(diff).unwrap_or(i32::MAX)

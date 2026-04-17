@@ -3,6 +3,7 @@
 mod balancing_pool_router_builder;
 mod default_resizer;
 mod group_router;
+pub mod optimal_size_exploring_resizer;
 mod pool_router;
 mod resizer;
 mod routers;
