@@ -34,6 +34,22 @@ const SCORE_PROCESSING_PENALTY: u64 = 1;
 /// (equivalent to Pekko's `deep=false`) so a score-0 routee short-circuits the
 /// lookup. If no score-0 routee exists, the second pass computes exact message
 /// counts (`deep=true`) to break ties.
+///
+/// # Inherited Pekko behaviour: index-0 bias on equal scores
+///
+/// Iteration always starts from index 0 (matches Pekko's `selectNext` with
+/// `at: Int = 0`, `SmallestMailbox.scala:68`). When multiple routees share the
+/// best score — most commonly when all routees are idle with empty mailboxes —
+/// the routee at the lowest index always wins, producing a hot-spot on
+/// `routees[0]` under low load.
+///
+/// Pekko exhibits the same property; randomisation (e.g. `ThreadLocalRandom`)
+/// is only used in one specific path: selecting a random terminated-fallback
+/// when the proposed target ends up terminated (`SmallestMailbox.scala:74`).
+/// Introducing a rotating / random start index would distribute load more
+/// evenly but diverge from Pekko semantics, so it is intentionally **not**
+/// done here. Pekko-parity is the primary goal; any rebalancing optimisation
+/// is deferred until the full Pekko contract is satisfied.
 pub struct SmallestMailboxRoutingLogic;
 
 impl SmallestMailboxRoutingLogic {
