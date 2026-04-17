@@ -13,17 +13,12 @@ use crate::core::kernel::actor::messaging::AnyMessage;
 /// Only routees whose mailbox length can be observed through the local system
 /// state participate in the mailbox comparison. Other routees remain valid
 /// fallbacks when no observable routee exists.
-// SmallestMailboxRoutingLogic is the canonical RoutingLogic impl for the
-// kernel router layer.  The typed layer now computes mailbox selection
-// directly, so no non-test call site exists yet.
-#[allow(dead_code)]
-pub(crate) struct SmallestMailboxRoutingLogic;
+pub struct SmallestMailboxRoutingLogic;
 
 impl SmallestMailboxRoutingLogic {
   /// Creates a new smallest-mailbox routing logic.
   #[must_use]
-  #[allow(dead_code)]
-  pub(crate) const fn new() -> Self {
+  pub const fn new() -> Self {
     Self
   }
 
@@ -32,8 +27,8 @@ impl SmallestMailboxRoutingLogic {
   /// This keeps the classic kernel decision logic reusable from typed
   /// wrappers that may want their own fallback when no mailbox metrics are
   /// observable.
-  #[allow(dead_code)]
-  pub(crate) fn select_observed(routees: &[Routee]) -> Option<&Routee> {
+  #[must_use]
+  pub fn select_observed(routees: &[Routee]) -> Option<&Routee> {
     let mut best_observed_index = None;
     let mut best_observed_len = usize::MAX;
 
@@ -72,7 +67,7 @@ impl RoutingLogic for SmallestMailboxRoutingLogic {
   }
 }
 
-#[allow(dead_code)]
+// Routee のメールボックス長を取得する。ActorRef 以外は観測不可。
 fn observed_mailbox_len(routee: &Routee) -> Option<usize> {
   let Routee::ActorRef(actor_ref) = routee else {
     return None;

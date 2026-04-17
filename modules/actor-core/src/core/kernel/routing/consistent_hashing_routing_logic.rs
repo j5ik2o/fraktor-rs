@@ -8,11 +8,8 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::{routee::Routee, routing_logic::RoutingLogic};
 use crate::core::kernel::actor::messaging::AnyMessage;
 
-// ConsistentHashingRoutingLogic is the canonical RoutingLogic impl for the
-// kernel router layer.  The typed layer now computes rendezvous hashing
-// directly, so no non-test call site exists yet, but the kernel router will
-// use this once wired up.
-#[allow(dead_code)]
+// メッセージからハッシュキーを抽出するマッパー型。
+// ConsistentHashingPool::create_router 経由で使用される。
 type HashKeyMapper = dyn Fn(&AnyMessage) -> u64 + Send + Sync;
 
 pub(crate) const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
@@ -24,16 +21,14 @@ pub(crate) const FNV_PRIME: u64 = 1099511628211;
 ///
 /// The implementation is stateless and therefore safe to call via `&self`
 /// from multiple threads concurrently.
-#[allow(dead_code)]
-pub(crate) struct ConsistentHashingRoutingLogic {
+pub struct ConsistentHashingRoutingLogic {
   hash_key_mapper: ArcShared<HashKeyMapper>,
 }
 
 impl ConsistentHashingRoutingLogic {
   /// Creates a new consistent-hashing routing logic.
   #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn new<F>(hash_key_mapper: F) -> Self
+  pub fn new<F>(hash_key_mapper: F) -> Self
   where
     F: Fn(&AnyMessage) -> u64 + Send + Sync + 'static, {
     Self { hash_key_mapper: ArcShared::new(hash_key_mapper) }
@@ -62,7 +57,6 @@ pub(crate) fn rendezvous_score(key_hash: u64, routee_hash: u64) -> u64 {
   mix_hash(key_hash, &routee_hash.to_le_bytes())
 }
 
-#[allow(dead_code)]
 fn routee_identity_hash(routee: &Routee) -> u64 {
   match routee {
     | Routee::ActorRef(actor_ref) => {

@@ -51,16 +51,21 @@ fn internal_actor_helpers_are_not_reachable_from_external_crate() {
 }
 
 #[test]
-fn internal_routing_helpers_are_not_reachable_from_external_crate() {
+fn public_routing_types_compile_from_external_crate() {
+  // ConsistentHashingRoutingLogic / SmallestMailboxRoutingLogic は公開 API
   let fixtures = [
-    (
-      "kernel-routing-consistent-hashing-logic",
-      ROUTING_CONSISTENT_HASHING_LOGIC_SOURCE,
-      "ConsistentHashingRoutingLogic",
-    ),
-    ("kernel-routing-smallest-mailbox-logic", ROUTING_SMALLEST_MAILBOX_LOGIC_SOURCE, "SmallestMailboxRoutingLogic"),
-    ("kernel-routing-router-from-config", ROUTING_ROUTER_FROM_CONFIG_SOURCE, "from_config"),
+    ("kernel-routing-consistent-hashing-logic", ROUTING_CONSISTENT_HASHING_LOGIC_SOURCE),
+    ("kernel-routing-smallest-mailbox-logic", ROUTING_SMALLEST_MAILBOX_LOGIC_SOURCE),
   ];
+
+  for (name, source) in fixtures {
+    assert_fixture_build(name, source, true);
+  }
+}
+
+#[test]
+fn internal_routing_helpers_are_not_reachable_from_external_crate() {
+  let fixtures = [("kernel-routing-router-from-config", ROUTING_ROUTER_FROM_CONFIG_SOURCE, "from_config")];
 
   for (name, source, expected_symbol) in fixtures {
     assert_fixture_build_failure_contains(name, source, expected_symbol);

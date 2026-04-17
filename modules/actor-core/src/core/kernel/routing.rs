@@ -5,6 +5,7 @@
 //! layer.
 
 mod broadcast;
+mod consistent_hashing_pool;
 mod consistent_hashing_routing_logic;
 mod custom_router_config;
 mod group;
@@ -17,9 +18,12 @@ mod router_command;
 mod router_config;
 mod router_response;
 mod routing_logic;
+mod smallest_mailbox_pool;
 mod smallest_mailbox_routing_logic;
 
 pub use broadcast::Broadcast;
+pub use consistent_hashing_pool::ConsistentHashingPool;
+pub use consistent_hashing_routing_logic::ConsistentHashingRoutingLogic;
 pub(crate) use consistent_hashing_routing_logic::{FNV_OFFSET_BASIS, mix_hash, rendezvous_score};
 pub use custom_router_config::CustomRouterConfig;
 pub use group::Group;
@@ -32,3 +36,5 @@ pub use router_command::RouterCommand;
 pub use router_config::RouterConfig;
 pub use router_response::RouterResponse;
 pub use routing_logic::RoutingLogic;
+pub use smallest_mailbox_pool::SmallestMailboxPool;
+pub use smallest_mailbox_routing_logic::SmallestMailboxRoutingLogic;
