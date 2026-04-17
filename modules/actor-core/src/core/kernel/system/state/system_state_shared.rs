@@ -19,7 +19,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultRwLock, SharedAccess, 
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandleShared, AuthorityState, CellsShared, GuardianKind,
-  RemoteAuthorityError, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
+  RemoteAuthorityError, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
   system_state::{FailureOutcome, SystemState},
 };
 use crate::core::kernel::{
@@ -48,7 +48,7 @@ use crate::core::kernel::{
     mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
-    logging::{LogEvent, LogLevel},
+    logging::{LogEvent, LogLevel, LoggingFilter},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
   system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal},
@@ -549,11 +549,35 @@ impl SystemStateShared {
     self.event_stream.publish(event);
   }
 
+  /// Replaces the current pre-publish logging filter.
+  pub fn set_logging_filter<F>(&self, filter: F)
+  where
+    F: LoggingFilter + 'static, {
+    self.inner.with_write(move |inner| inner.set_logging_filter(filter));
+  }
+
+  /// Publishes the log event when the current filter accepts it.
+  ///
+  /// The filter decision is captured under the read lock and the
+  /// publish happens after releasing it. Holding the lock across
+  /// `event_stream.publish` would deadlock any subscriber that
+  /// acquires the same lock (for example via `set_logging_filter`
+  /// or a recursive log emission). The narrow race where a
+  /// concurrent `set_logging_filter` replaces the filter between
+  /// the check and the publish is acceptable for best-effort
+  /// logging filter semantics.
+  pub(crate) fn publish_log_event(&self, event: LogEvent) {
+    let should_publish = self.inner.with_read(|inner| inner.should_publish_log_event(&event));
+    if should_publish {
+      self.event_stream.publish(&EventStreamEvent::Log(event));
+    }
+  }
+
   /// Emits a log event via the event stream.
   pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>, logger_name: Option<String>) {
     let timestamp = self.monotonic_now();
     let event = LogEvent::new(level, message, timestamp, origin, logger_name);
-    self.event_stream.publish(&EventStreamEvent::Log(event));
+    self.publish_log_event(event);
   }
 
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
@@ -634,7 +658,7 @@ impl SystemStateShared {
   }
 
   /// Registers a remote watch hook.
-  pub fn register_remote_watch_hook(&self, hook: Box<dyn super::RemoteWatchHook>) {
+  pub fn register_remote_watch_hook(&self, hook: Box<dyn RemoteWatchHook>) {
     self.remote_watch_hook.replace(hook);
   }
 

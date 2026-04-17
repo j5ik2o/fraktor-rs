@@ -8,7 +8,10 @@ use portable_atomic::{AtomicU64, Ordering};
 
 use super::resizer::Resizer;
 use crate::core::{
-  kernel::event::logging::LogLevel,
+  kernel::{
+    event::logging::LogLevel,
+    routing::{FNV_OFFSET_BASIS, mix_hash, rendezvous_score},
+  },
   typed::{TypedActorRef, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal, props::TypedProps},
 };
 
@@ -200,7 +203,7 @@ where
         },
         | PoolRouteStrategy::ConsistentHash { hash_fn } => {
           ArcShared::new(move |guard: &[TypedActorRef<M>], message: &M| {
-            let idx = (hash_fn(message) as usize) % guard.len();
+            let idx = select_consistent_hash_index(guard, message, &*hash_fn);
             vec![guard[idx].clone()]
           })
         },
@@ -349,43 +352,81 @@ pub(super) const fn pseudo_random_index(seed: u64, len: usize) -> usize {
   (mixed as usize) % len
 }
 
+pub(super) fn select_consistent_hash_index<M>(
+  routees: &[TypedActorRef<M>],
+  message: &M,
+  hash_fn: &(dyn Fn(&M) -> u64 + Send + Sync),
+) -> usize
+where
+  M: Send + Sync + Clone + 'static, {
+  assert!(!routees.is_empty(), "routees must not be empty");
+  let key_hash = hash_fn(message);
+  // kernel 側 routee_identity_hash の ActorRef タグ ([0]) と一致させるためのシード
+  let actor_ref_seed = mix_hash(FNV_OFFSET_BASIS, &[0]);
+  routees
+    .iter()
+    .enumerate()
+    .max_by_key(|(_, routee)| {
+      let pid = routee.pid();
+      let hash = mix_hash(actor_ref_seed, &pid.value().to_le_bytes());
+      let routee_hash = mix_hash(hash, &pid.generation().to_le_bytes());
+      rendezvous_score(key_hash, routee_hash)
+    })
+    .map(|(index, _)| index)
+    .unwrap_or(0)
+}
+
 pub(super) fn select_smallest_mailbox_index<M>(
   routees: &[TypedActorRef<M>],
   dispatch_counts: &SharedLock<Vec<usize>>,
 ) -> usize
 where
   M: Send + Sync + Clone + 'static, {
-  let routee_count = routees.len();
-  let mut best_index = 0_usize;
-  let mut best_len = usize::MAX;
+  // 観測可能なメールボックスが最小の routee を探す。
+  let mut best_observed_index = None;
+  let mut best_observed_len = usize::MAX;
+
   for (index, routee) in routees.iter().enumerate() {
-    let mailbox_len = routee
+    let Some(mailbox_len) = routee
       .as_untyped()
       .system_state()
       .and_then(|system| system.cell(&routee.pid()))
-      .map_or(usize::MAX, |cell| cell.mailbox().user_len());
-    if mailbox_len < best_len {
-      best_len = mailbox_len;
-      best_index = index;
+      .map(|cell| cell.mailbox().user_len())
+    else {
+      continue;
+    };
+
+    if mailbox_len < best_observed_len {
+      best_observed_len = mailbox_len;
+      best_observed_index = Some(index);
+      // Pekko 互換ではない簡略実装: 空メールボックスが複数あっても最小 index 側に偏る。
+      // Pekko 互換化の TODO は docs/plan/20260417-smallest-mailbox-pekko-compat-todo.md 参照。
+      if mailbox_len == 0 {
+        break;
+      }
     }
   }
 
-  if best_len == usize::MAX {
-    return dispatch_counts.with_lock(|counts| {
-      let mut selected = 0_usize;
-      let mut selected_count = usize::MAX;
+  // 観測パス・フォールバックパスどちらでも dispatch_counts を更新する
+  let routee_count = routees.len();
+  dispatch_counts.with_lock(|counts| {
+    let selected = if let Some(index) = best_observed_index {
+      index
+    } else {
+      // フォールバック: メールボックスメトリクスが観測できない場合はディスパッチ回数を使用する。
+      let mut fallback = 0_usize;
+      let mut fallback_count = usize::MAX;
       for (index, count) in counts.iter().enumerate().take(routee_count) {
-        if *count < selected_count {
-          selected = index;
-          selected_count = *count;
+        if *count < fallback_count {
+          fallback = index;
+          fallback_count = *count;
         }
       }
-      if let Some(entry) = counts.get_mut(selected) {
-        *entry = entry.saturating_add(1);
-      }
-      selected
-    });
-  }
-
-  best_index
+      fallback
+    };
+    if let Some(entry) = counts.get_mut(selected) {
+      *entry = entry.saturating_add(1);
+    }
+    selected
+  })
 }

@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{
+  any::Any,
   future::Future,
   task::{Context, Poll, Waker},
 };
@@ -23,7 +24,7 @@ fn poll_ready<F: Future>(future: F) -> F::Output {
 fn build_messages(persistence_id: &str, start: u64, count: u64) -> Vec<PersistentRepr> {
   (0..count)
     .map(|offset| {
-      let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new((start + offset) as i32);
+      let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new((start + offset) as i32);
       PersistentRepr::new(persistence_id, start + offset, payload)
     })
     .collect()

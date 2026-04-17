@@ -29,7 +29,11 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
-use super::{execute_error::ExecuteError, executor::Executor, trampoline_state::TrampolineState};
+use super::{
+  execute_error::ExecuteError,
+  executor::Executor,
+  trampoline_state::{QueuedTask, TrampolineState},
+};
 
 type BoxedTask = Box<dyn FnOnce() + Send + 'static>;
 
@@ -70,9 +74,9 @@ impl ExecutorShared {
   /// # Errors
   ///
   /// Returns [`ExecuteError`] when the underlying executor rejects the task.
-  pub fn execute(&self, task: BoxedTask) -> Result<(), ExecuteError> {
+  pub fn execute(&self, task: BoxedTask, affinity_key: u64) -> Result<(), ExecuteError> {
     // Phase 1: queue the task.
-    self.trampoline.with_lock(|state| state.pending.push_back(task));
+    self.trampoline.with_lock(|state| state.pending.push_back(QueuedTask { task, affinity_key }));
 
     // Phase 2: become the drain owner. If someone else is already draining,
     // we simply return after queuing — they will pick up our task.
@@ -87,8 +91,8 @@ impl ExecutorShared {
     loop {
       let next = self.trampoline.with_lock(|state| state.pending.pop_front());
       match next {
-        | Some(task) => {
-          let result = self.with_write(|inner| inner.execute(task));
+        | Some(queued) => {
+          let result = self.with_write(|inner| inner.execute(queued.task, queued.affinity_key));
           if let Err(err) = result {
             last_err = Some(err);
             // Drop remaining queued tasks: the executor is in a bad state.
@@ -114,8 +118,8 @@ impl ExecutorShared {
       loop {
         let next = self.trampoline.with_lock(|state| state.pending.pop_front());
         match next {
-          | Some(task) => {
-            let result = self.with_write(|inner| inner.execute(task));
+          | Some(queued) => {
+            let result = self.with_write(|inner| inner.execute(queued.task, queued.affinity_key));
             if let Err(err) = result {
               last_err = Some(err);
               self.trampoline.with_lock(|state| state.pending.clear());

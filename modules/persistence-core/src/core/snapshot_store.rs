@@ -1,6 +1,6 @@
 //! Snapshot store abstraction.
 
-use core::future::Future;
+use core::{any::Any, future::Future};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -35,7 +35,7 @@ pub trait SnapshotStore: Send + Sync + 'static {
   fn save_snapshot<'a>(
     &'a mut self,
     metadata: SnapshotMetadata,
-    snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
+    snapshot: ArcShared<dyn Any + Send + Sync>,
   ) -> Self::SaveFuture<'a>;
 
   /// Loads a snapshot using the provided criteria.

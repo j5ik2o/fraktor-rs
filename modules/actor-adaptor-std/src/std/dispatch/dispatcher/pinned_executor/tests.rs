@@ -16,10 +16,13 @@ fn execute_runs_tasks_serially_on_worker_thread() {
   let count_clone = Arc::clone(&count);
   let barrier_clone = Arc::clone(&barrier);
   executor
-    .execute(Box::new(move || {
-      count_clone.fetch_add(1, Ordering::SeqCst);
-      barrier_clone.wait();
-    }))
+    .execute(
+      Box::new(move || {
+        count_clone.fetch_add(1, Ordering::SeqCst);
+        barrier_clone.wait();
+      }),
+      0,
+    )
     .expect("first submission");
   barrier.wait();
   assert_eq!(count.load(Ordering::SeqCst), 1);
@@ -30,6 +33,6 @@ fn execute_runs_tasks_serially_on_worker_thread() {
 fn execute_after_shutdown_returns_error() {
   let mut executor = PinnedExecutor::with_name("pinned-test-shutdown");
   executor.shutdown();
-  let result = executor.execute(Box::new(|| {}));
+  let result = executor.execute(Box::new(|| {}), 0);
   assert!(matches!(result, Err(ExecuteError::Shutdown)));
 }

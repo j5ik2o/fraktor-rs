@@ -1,16 +1,37 @@
+use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::SystemStateShared;
 use crate::core::kernel::{
   actor::{actor_ref::ActorRef, error::ActorError, messaging::system_message::FailurePayload},
+  event::{
+    logging::{DefaultLoggingFilter, LogLevel},
+    stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
+  },
   system::{
     RegisterExtraTopLevelError,
     guardian::GuardianKind,
     state::system_state::{FailureOutcome, SystemState},
   },
 };
+
+struct LogRecorder {
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
+}
+
+impl LogRecorder {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl EventStreamSubscriber for LogRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    self.events.lock().push(event.clone());
+  }
+}
 
 fn assert_operation_does_not_block_on_read_lock(
   shared: SystemStateShared,
@@ -312,4 +333,26 @@ fn failure_accounting_does_not_block_on_read_lock() {
     let payload = FailurePayload::from_error(child, &ActorError::recoverable("boom"), None, Duration::ZERO);
     shared.report_failure(payload);
   });
+}
+
+#[test]
+fn emit_log_respects_default_logging_filter_threshold() {
+  let shared = SystemStateShared::new(SystemState::new());
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(LogRecorder::new(events.clone()));
+  let _subscription = shared.event_stream().subscribe(&subscriber);
+  let pid = shared.allocate_pid();
+
+  shared.set_logging_filter(DefaultLoggingFilter::new(LogLevel::Error));
+
+  shared.emit_log(LogLevel::Warn, "filtered warn".into(), Some(pid), None);
+  shared.emit_log(LogLevel::Error, "accepted error".into(), Some(pid), None);
+
+  let events = events.lock().clone();
+  assert!(!events.iter().any(|event| {
+    matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn && log.message() == "filtered warn")
+  }));
+  assert!(events.iter().any(|event| {
+    matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Error && log.message() == "accepted error")
+  }));
 }

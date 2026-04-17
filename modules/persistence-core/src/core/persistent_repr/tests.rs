@@ -32,7 +32,7 @@ impl ReadEventAdapter for IdentityReadAdapter {
 
 #[test]
 fn persistent_repr_new_and_accessors() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(7_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(7_i32);
   let repr = PersistentRepr::new("pid-1", 3, payload);
 
   assert_eq!(repr.persistence_id(), "pid-1");
@@ -50,8 +50,8 @@ fn persistent_repr_new_and_accessors() {
 
 #[test]
 fn persistent_repr_with_fields() {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
-  let metadata: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new("meta".to_string());
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_i32);
+  let metadata: ArcShared<dyn Any + Send + Sync> = ArcShared::new("meta".to_string());
   let mut adapters = EventAdapters::new();
   let write_adapter: ArcShared<dyn WriteEventAdapter> = ArcShared::new(AddOneWriteAdapter);
   let read_adapter: ArcShared<dyn ReadEventAdapter> = ArcShared::new(IdentityReadAdapter);

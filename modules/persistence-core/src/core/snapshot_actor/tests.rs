@@ -1,4 +1,7 @@
-use core::future::{Pending, Ready, pending, ready};
+use core::{
+  any::Any,
+  future::{Pending, Ready, pending, ready},
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -94,7 +97,7 @@ impl crate::core::snapshot_store::SnapshotStore for PendingSnapshotStore {
   fn save_snapshot<'a>(
     &'a mut self,
     _metadata: SnapshotMetadata,
-    _snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
+    _snapshot: ArcShared<dyn Any + Send + Sync>,
   ) -> Self::SaveFuture<'a> {
     pending()
   }
@@ -151,7 +154,7 @@ impl crate::core::snapshot_store::SnapshotStore for RetrySnapshotStore {
   fn save_snapshot<'a>(
     &'a mut self,
     _metadata: SnapshotMetadata,
-    _snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
+    _snapshot: ArcShared<dyn Any + Send + Sync>,
   ) -> Self::SaveFuture<'a> {
     if self.failures_left > 0 {
       self.failures_left -= 1;

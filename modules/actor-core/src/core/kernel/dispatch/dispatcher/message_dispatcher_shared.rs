@@ -258,6 +258,9 @@ impl MessageDispatcherShared {
     let throughput_deadline = self.throughput_deadline();
     let executor = self.executor();
     let mbox_clone = mailbox.clone();
+    // Use the mailbox PID as a stable affinity key so that affinity-aware
+    // executors always route the same mailbox to the same worker thread.
+    let affinity_key = mailbox.pid().map_or(0, |pid| pid.value());
     // Capture a clone of the dispatcher so the post-drain reschedule path
     // can re-call `register_for_execution` if more work arrived during the
     // drain. Without this, `Mailbox::run` would consume the
@@ -266,21 +269,24 @@ impl MessageDispatcherShared {
     // come — e.g. when the producer has already submitted the entire batch
     // before the receiver finished its first throughput-limited drain).
     let dispatcher = self.clone();
-    let result = executor.execute(Box::new(move || {
-      let needs_reschedule = mbox_clone.run(throughput, throughput_deadline);
-      if needs_reschedule && !dispatcher.register_for_execution(&mbox_clone, true, true) {
-        // Re-arm the schedule. We don't know whether the pending work is a
-        // user message or a system message at this point, so signal both
-        // hint flags conservatively. A `false` return is best-effort and
-        // safe: it means another path already scheduled the mailbox
-        // (request_schedule CAS lost) or the mailbox is closed, both of
-        // which leave a future drain pass guaranteed by some other path.
-        tracing::trace!(
-          target: "fraktor::dispatcher",
-          "post-drain reschedule observed mailbox already scheduled or closed"
-        );
-      }
-    }));
+    let result = executor.execute(
+      Box::new(move || {
+        let needs_reschedule = mbox_clone.run(throughput, throughput_deadline);
+        if needs_reschedule && !dispatcher.register_for_execution(&mbox_clone, true, true) {
+          // Re-arm the schedule. We don't know whether the pending work is a
+          // user message or a system message at this point, so signal both
+          // hint flags conservatively. A `false` return is best-effort and
+          // safe: it means another path already scheduled the mailbox
+          // (request_schedule CAS lost) or the mailbox is closed, both of
+          // which leave a future drain pass guaranteed by some other path.
+          tracing::trace!(
+            target: "fraktor::dispatcher",
+            "post-drain reschedule observed mailbox already scheduled or closed"
+          );
+        }
+      }),
+      affinity_key,
+    );
 
     match result {
       | Ok(()) => true,

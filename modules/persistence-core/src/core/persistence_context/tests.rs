@@ -690,7 +690,7 @@ fn write_message_success_with_mismatched_instance_id_is_ignored() {
 fn should_stash_commands_only_when_stashing_invocation_exists() {
   let mut context = DummyContext::new("pid-1".to_string());
   context.state = PersistentActorState::PersistingEvents;
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 1, payload.clone());
 
   context.pending_invocations.push_back(PendingHandlerInvocation::async_handler(repr.clone(), |_, _| {}));

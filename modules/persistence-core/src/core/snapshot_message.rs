@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::string::String;
+use core::any::Any;
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -18,7 +19,7 @@ pub enum SnapshotMessage {
     /// Snapshot metadata.
     metadata: SnapshotMetadata,
     /// Snapshot payload.
-    snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
+    snapshot: ArcShared<dyn Any + Send + Sync>,
     /// Request sender.
     sender:   ActorRef,
   },

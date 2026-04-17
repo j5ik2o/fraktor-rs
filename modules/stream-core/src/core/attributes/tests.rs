@@ -1,4 +1,5 @@
 use alloc::{boxed::Box, string::String};
+use core::any::Any;
 
 use super::Attributes;
 use crate::core::attributes::{
@@ -61,7 +62,7 @@ fn get_returns_none_for_unrelated_type() {
   #[derive(Debug, Clone)]
   struct UnrelatedAttr;
   impl Attribute for UnrelatedAttr {
-    fn as_any(&self) -> &dyn core::any::Any {
+    fn as_any(&self) -> &dyn Any {
       self
     }
 
@@ -69,7 +70,7 @@ fn get_returns_none_for_unrelated_type() {
       Box::new(self.clone())
     }
 
-    fn eq_attr(&self, _other: &dyn core::any::Any) -> bool {
+    fn eq_attr(&self, _other: &dyn Any) -> bool {
       false
     }
   }

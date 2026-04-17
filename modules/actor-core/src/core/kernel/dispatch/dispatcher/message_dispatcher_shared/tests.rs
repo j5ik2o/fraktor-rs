@@ -25,7 +25,7 @@ struct CountingExecutor {
 }
 
 impl Executor for CountingExecutor {
-  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     self.submits.fetch_add(1, Ordering::SeqCst);
     task();
     Ok(())

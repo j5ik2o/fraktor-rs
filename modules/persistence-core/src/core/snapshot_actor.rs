@@ -5,6 +5,7 @@ mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{
+  any::Any,
   future::Future,
   pin::Pin,
   task::{Context, Poll, Waker},
@@ -30,7 +31,7 @@ enum SnapshotInFlight {
   Save {
     future:      Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>,
     metadata:    SnapshotMetadata,
-    snapshot:    ArcShared<dyn core::any::Any + Send + Sync>,
+    snapshot:    ArcShared<dyn Any + Send + Sync>,
     sender:      ActorRef,
     retry_count: u32,
   },

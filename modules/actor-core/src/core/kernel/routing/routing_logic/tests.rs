@@ -1,4 +1,7 @@
-use super::super::{routee::Routee, routing_logic::RoutingLogic};
+use super::super::{
+  consistent_hashing_routing_logic::ConsistentHashingRoutingLogic, routee::Routee, routing_logic::RoutingLogic,
+  smallest_mailbox_routing_logic::SmallestMailboxRoutingLogic,
+};
 use crate::core::kernel::actor::messaging::AnyMessage;
 
 // ---------------------------------------------------------------------------
@@ -18,6 +21,8 @@ impl RoutingLogic for FirstRoutingLogic {
     }
   }
 }
+
+fn assert_routing_logic(_logic: &impl RoutingLogic) {}
 
 // ---------------------------------------------------------------------------
 // テスト
@@ -49,4 +54,24 @@ fn select_returns_reference_to_slice_element() {
 
   // 確認: 返却参照は配列の同じ要素を指す
   assert!(core::ptr::eq(selected, &routees[0]));
+}
+
+#[test]
+fn consistent_hashing_logic_implements_routing_logic() {
+  // 前提
+  let logic = ConsistentHashingRoutingLogic::new(|message: &AnyMessage| {
+    u64::from(*message.downcast_ref::<u32>().expect("u32 message"))
+  });
+
+  // 実行/確認
+  assert_routing_logic(&logic);
+}
+
+#[test]
+fn smallest_mailbox_logic_implements_routing_logic() {
+  // 前提
+  let logic = SmallestMailboxRoutingLogic::new();
+
+  // 実行/確認
+  assert_routing_logic(&logic);
 }

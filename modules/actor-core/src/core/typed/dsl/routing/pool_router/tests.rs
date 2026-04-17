@@ -3,7 +3,7 @@ use core::hint::spin_loop;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
-use super::{pseudo_random_index, select_smallest_mailbox_index};
+use super::{pseudo_random_index, select_consistent_hash_index, select_smallest_mailbox_index};
 use crate::core::{
   kernel::{
     actor::{
@@ -289,11 +289,42 @@ fn pool_router_with_consistent_hash_routes_to_hash_bucket() {
   }
   wait_until(|| records.lock().len() == messages.len());
 
+  let mut first_routee_by_message = [None; 6];
   for (routee_index, message) in records.lock().iter().copied() {
-    assert_eq!(routee_index, (message as usize) % pool_size);
+    let slot = &mut first_routee_by_message[message as usize];
+    if let Some(expected_routee_index) = slot {
+      assert_eq!(routee_index, *expected_routee_index);
+    } else {
+      *slot = Some(routee_index);
+    }
   }
+  let unique_routees = first_routee_by_message.into_iter().flatten().collect::<BTreeSet<_>>();
+  assert!(unique_routees.len() >= 2);
 
   system.terminate().expect("terminate");
+}
+
+#[test]
+fn select_consistent_hash_index_routes_same_message_to_same_routee() {
+  let system = ActorSystem::new_empty();
+
+  let pid0 = system.allocate_pid();
+  let pid1 = system.allocate_pid();
+  let pid2 = system.allocate_pid();
+  let cell0 = register_routee_cell(&system, pid0, "routee-0");
+  let cell1 = register_routee_cell(&system, pid1, "routee-1");
+  let cell2 = register_routee_cell(&system, pid2, "routee-2");
+
+  let routees = vec![
+    TypedActorRef::<u32>::from_untyped(cell0.actor_ref()),
+    TypedActorRef::<u32>::from_untyped(cell1.actor_ref()),
+    TypedActorRef::<u32>::from_untyped(cell2.actor_ref()),
+  ];
+
+  let first = select_consistent_hash_index(&routees, &7_u32, &|message| u64::from(*message));
+  let second = select_consistent_hash_index(&routees, &7_u32, &|message| u64::from(*message));
+
+  assert_eq!(first, second);
 }
 
 #[test]

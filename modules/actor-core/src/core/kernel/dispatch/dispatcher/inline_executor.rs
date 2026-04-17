@@ -54,7 +54,7 @@ unsafe impl Send for InlineExecutor {}
 unsafe impl Sync for InlineExecutor {}
 
 impl Executor for InlineExecutor {
-  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
     {
       let mut state = self.state.borrow_mut();
       state.pending.push_back(task);

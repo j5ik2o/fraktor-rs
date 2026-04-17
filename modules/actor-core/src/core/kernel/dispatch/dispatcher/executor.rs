@@ -24,11 +24,16 @@ use super::execute_error::ExecuteError;
 pub trait Executor: Send + Sync {
   /// Submits the task closure for asynchronous execution.
   ///
+  /// `affinity_key` is a stable identifier (typically the mailbox PID value)
+  /// that affinity-aware executors use to route the task to a deterministic
+  /// worker thread. Executors that do not support thread affinity ignore this
+  /// parameter.
+  ///
   /// # Errors
   ///
   /// Returns [`ExecuteError`] when the backend cannot accept the task. Callers
   /// must roll back the mailbox CAS state when this happens.
-  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError>;
+  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, affinity_key: u64) -> Result<(), ExecuteError>;
 
   /// Shuts the executor down, releasing the underlying worker resources.
   fn shutdown(&mut self);

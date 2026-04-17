@@ -14,10 +14,13 @@ async fn execute_runs_task_via_blocking_pool() {
   let waited = Arc::new(Notify::new());
   let waited_clone = Arc::clone(&waited);
   executor
-    .execute(Box::new(move || {
-      count_clone.fetch_add(1, Ordering::SeqCst);
-      waited_clone.notify_one();
-    }))
+    .execute(
+      Box::new(move || {
+        count_clone.fetch_add(1, Ordering::SeqCst);
+        waited_clone.notify_one();
+      }),
+      0,
+    )
     .expect("execute should succeed");
   waited.notified().await;
   assert_eq!(count.load(Ordering::SeqCst), 1);

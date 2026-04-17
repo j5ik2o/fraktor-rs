@@ -1,9 +1,11 @@
+use core::any::Any;
+
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{journal_error::JournalError, journal_response::JournalResponse, persistent_repr::PersistentRepr};
 
 fn repr(sequence_nr: u64) -> PersistentRepr {
-  let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(sequence_nr as i32);
+  let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(sequence_nr as i32);
   PersistentRepr::new("pid-1", sequence_nr, payload)
 }
 
