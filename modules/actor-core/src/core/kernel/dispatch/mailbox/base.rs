@@ -645,8 +645,17 @@ impl Mailbox {
 
   /// Indicates whether the mailbox is currently suspended.
   #[must_use]
-  pub(crate) fn is_suspended(&self) -> bool {
+  pub fn is_suspended(&self) -> bool {
     self.state.is_suspended()
+  }
+
+  /// Returns `true` while the drain loop is actively running.
+  ///
+  /// Used by routing logic to approximate Pekko's `isProcessingMessage` — a
+  /// running mailbox indicates the actor is currently handling a message.
+  #[must_use]
+  pub fn is_running(&self) -> bool {
+    self.state.is_running()
   }
 
   /// Returns the number of user messages awaiting processing.

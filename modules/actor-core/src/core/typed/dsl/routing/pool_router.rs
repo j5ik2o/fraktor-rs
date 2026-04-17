@@ -10,7 +10,7 @@ use super::resizer::Resizer;
 use crate::core::{
   kernel::{
     event::logging::LogLevel,
-    routing::{FNV_OFFSET_BASIS, mix_hash, rendezvous_score},
+    routing::{FNV_OFFSET_BASIS, Routee, RoutingLogic, SmallestMailboxRoutingLogic, mix_hash, rendezvous_score},
   },
   typed::{TypedActorRef, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal, props::TypedProps},
 };
@@ -176,13 +176,9 @@ where
 
       let props_for_resize = resizer.as_ref().map(|_| props.clone());
 
-      let routee_count = routee_vec.len();
       let routees = SharedLock::new_with_driver::<DefaultMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
-
-      let mut dispatch_counts_for_sig: Option<SharedLock<Vec<usize>>> = None;
-      let mut dispatch_counts_for_msg: Option<SharedLock<Vec<usize>>> = None;
 
       let select_targets: ArcShared<RouteSelector<M>> = match strategy.clone() {
         | PoolRouteStrategy::RoundRobin => {
@@ -207,20 +203,14 @@ where
             vec![guard[idx].clone()]
           })
         },
-        | PoolRouteStrategy::SmallestMailbox => {
-          let dispatch_counts = SharedLock::new_with_driver::<DefaultMutex<_>>(vec![0_usize; routee_count]);
-          dispatch_counts_for_sig = Some(dispatch_counts.clone());
-          dispatch_counts_for_msg = Some(dispatch_counts.clone());
-          ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
-            let idx = select_smallest_mailbox_index(guard, &dispatch_counts);
-            vec![guard[idx].clone()]
-          })
-        },
+        | PoolRouteStrategy::SmallestMailbox => ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
+          let idx = select_smallest_mailbox_index(guard);
+          vec![guard[idx].clone()]
+        }),
       };
 
       let broadcast_predicate_for_message = broadcast_predicate.clone();
       let resizer_for_msg = resizer.clone();
-      let dispatch_counts_for_resize = dispatch_counts_for_msg;
       let message_counter = AtomicU64::new(0);
       Behaviors::receive_message(move |ctx, message: &M| {
         if let Some(ref resizer) = resizer_for_msg {
@@ -244,9 +234,6 @@ where
                 if !new_routees.is_empty() {
                   routees_for_msg.with_lock(|guard| {
                     guard.extend(new_routees);
-                    if let Some(ref dc) = dispatch_counts_for_resize {
-                      dc.with_lock(|counts| counts.resize(guard.len(), 0));
-                    }
                   });
                 }
               }
@@ -256,11 +243,7 @@ where
                 routees_for_msg.with_lock(|guard| {
                   let remove_count = abs_delta.min(guard.len().saturating_sub(1));
                   let split_at = guard.len() - remove_count;
-                  let removed = guard.split_off(split_at);
-                  if let Some(ref dc) = dispatch_counts_for_resize {
-                    dc.with_lock(|counts| counts.truncate(guard.len()));
-                  }
-                  removed
+                  guard.split_off(split_at)
                 })
               };
               for routee in &to_stop {
@@ -306,13 +289,6 @@ where
           let is_empty = routees_for_sig.with_lock(|guard| {
             if let Some(pos) = guard.iter().position(|r| r.pid() == pid) {
               guard.remove(pos);
-              if let Some(ref dc) = dispatch_counts_for_sig {
-                dc.with_lock(|counts| {
-                  if pos < counts.len() {
-                    counts.remove(pos);
-                  }
-                });
-              }
             }
             guard.is_empty()
           });
@@ -376,57 +352,20 @@ where
     .unwrap_or(0)
 }
 
-pub(super) fn select_smallest_mailbox_index<M>(
-  routees: &[TypedActorRef<M>],
-  dispatch_counts: &SharedLock<Vec<usize>>,
-) -> usize
+/// Selects the smallest-mailbox routee index.
+///
+/// # Panics
+///
+/// Panics if `routees` is empty. Callers must guard against empty routees
+/// (pool_router's message handler does this at the call site).
+pub(super) fn select_smallest_mailbox_index<M>(routees: &[TypedActorRef<M>]) -> usize
 where
   M: Send + Sync + Clone + 'static, {
-  // 観測可能なメールボックスが最小の routee を探す。
-  let mut best_observed_index = None;
-  let mut best_observed_len = usize::MAX;
-
-  for (index, routee) in routees.iter().enumerate() {
-    let Some(mailbox_len) = routee
-      .as_untyped()
-      .system_state()
-      .and_then(|system| system.cell(&routee.pid()))
-      .map(|cell| cell.mailbox().user_len())
-    else {
-      continue;
-    };
-
-    if mailbox_len < best_observed_len {
-      best_observed_len = mailbox_len;
-      best_observed_index = Some(index);
-      // Pekko 互換ではない簡略実装: 空メールボックスが複数あっても最小 index 側に偏る。
-      // Pekko 互換化の TODO は docs/plan/20260417-smallest-mailbox-pekko-compat-todo.md 参照。
-      if mailbox_len == 0 {
-        break;
-      }
-    }
-  }
-
-  // 観測パス・フォールバックパスどちらでも dispatch_counts を更新する
-  let routee_count = routees.len();
-  dispatch_counts.with_lock(|counts| {
-    let selected = if let Some(index) = best_observed_index {
-      index
-    } else {
-      // フォールバック: メールボックスメトリクスが観測できない場合はディスパッチ回数を使用する。
-      let mut fallback = 0_usize;
-      let mut fallback_count = usize::MAX;
-      for (index, count) in counts.iter().enumerate().take(routee_count) {
-        if *count < fallback_count {
-          fallback = index;
-          fallback_count = *count;
-        }
-      }
-      fallback
-    };
-    if let Some(entry) = counts.get_mut(selected) {
-      *entry = entry.saturating_add(1);
-    }
-    selected
-  })
+  assert!(!routees.is_empty(), "select_smallest_mailbox_index requires non-empty routees");
+  // kernel `SmallestMailboxRoutingLogic` に Pekko 互換のスコアリング判定を委譲する。
+  // `select_index` は `AnyMessage` の dummy を受け取らず、usize を直接返すため
+  // 従来の `AnyMessage::new(())` と pid position 探索を排除できる。
+  let untyped_routees: Vec<Routee> = routees.iter().map(|r| Routee::ActorRef(r.as_untyped().clone())).collect();
+  let logic = SmallestMailboxRoutingLogic::new();
+  logic.select_index(&untyped_routees)
 }
