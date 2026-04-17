@@ -189,6 +189,42 @@ fn select_score_zero_short_circuits_on_first_idle_empty() {
 }
 
 #[test]
+fn select_prefers_processing_empty_over_idle_with_messages_regardless_of_index_order() {
+  // Pekko 仕様: empty mailbox は has_messages より優先される
+  // (documented priority 6 > 5)。ペナルティ込みの deep score が同値になる
+  // (A: processing+empty=1, B: idle+1msg=1) 場合でも、empty mailbox 側が
+  // 勝つことを保証する。
+  //
+  // routee の順序に関係なく A が選ばれることを確認するため、A を index 1 に
+  // 配置する（index 0 に B を配置）。pass 1 の shallow score で A=1 が B=MAX-3
+  // を下回るため best=A となり、pass 2 でも引き継がれて A が返る。
+  let system = ActorSystem::new_empty();
+  let pid_b = system.allocate_pid();
+  let pid_a = system.allocate_pid();
+  let routee_b = register_routee(&system, pid_b, "idle-1msg");
+  let routee_a = register_routee(&system, pid_a, "processing-empty");
+  // 順序: B (index 0), A (index 1)
+  let routees = [routee_b, routee_a];
+  let logic = SmallestMailboxRoutingLogic::new();
+  let message = AnyMessage::new(30_u32);
+
+  let cell_b = system.state().cell(&pid_b).expect("cell-b");
+  cell_b.mailbox().enqueue_user(AnyMessage::new(777_u32)).expect("enqueue");
+  let cell_a = system.state().cell(&pid_a).expect("cell-a");
+  cell_a.mailbox().set_running();
+
+  // When
+  let selected = logic.select(&message, &routees);
+
+  // Then: A (processing+empty, index 1) が Pekko 仕様で勝つ。
+  // 1 パス目追跡を欠く実装では B (idle+1msg, index 0) が勝ってしまう。
+  match selected {
+    | Routee::ActorRef(actor_ref) => assert_eq!(actor_ref.pid(), pid_a),
+    | Routee::NoRoutee | Routee::Several(_) => panic!("expected ActorRef routee"),
+  }
+}
+
+#[test]
 fn select_prefers_idle_with_messages_over_processing_with_fewer_messages_of_same_penalty() {
   // Pekko 準拠: 処理中ペナルティ(+1) は件数にも加算される。
   // routee0: idle + 3 msgs → score = 0 + 3 = 3

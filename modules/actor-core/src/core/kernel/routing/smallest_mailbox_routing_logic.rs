@@ -83,22 +83,40 @@ impl RoutingLogic for SmallestMailboxRoutingLogic {
 }
 
 // 2 パス探索で最小スコア routee の index を返す。呼び出し元が非空を保証する前提。
+//
+// Pekko の `selectNext` (`SmallestMailbox.scala:64-92`) と同じく、1 パス目の
+// best_index / best_score は 2 パス目に引き継がれる。これにより「empty mailbox
+// (pass-1 score=1) を優先する」という Pekko documented priority が保たれる。
+//
+// 例: A=processing+empty (pass-1 score=1, pass-2 score=1)、
+//     B=idle+1msg (pass-1 score=SCORE_UNKNOWN, pass-2 score=1) の場合、
+//   - pass 1 で best=A (score 1) を確定
+//   - pass 2 で A / B ともに deep score = 1。best_score=1 なので `< 1` の比較で どちらも skip され
+//     A が保持される
+//   これは routee の index 順に依存せず A が選ばれる Pekko 仕様に一致する。
 fn select_index_internal(routees: &[Routee]) -> usize {
   debug_assert!(!routees.is_empty(), "select_index_internal requires non-empty routees");
 
   // 1 パス目: hasMessages の真偽のみで判定し、score=0（idle + 空メールボックス）が
-  // 見つかれば即 return する。Pekko の selectNext と同じく score>0 のルーティーは
-  // 2 パス目で改めて最小スコアを探索するため、ここでは best_index/best_score の
-  // 更新は行わない。
+  // 見つかれば即 return する。score>0 の場合でも best_index/best_score を追跡し、
+  // 2 パス目に引き継ぐ（Pekko の `proposedTarget` / `currentScore` 引継ぎに相当）。
+  let mut best_index = 0_usize;
+  let mut best_score = u64::MAX;
   for (index, routee) in routees.iter().enumerate() {
-    if score_of_shallow(routee) == 0 {
+    let score = score_of_shallow(routee);
+    if score == 0 {
       return index;
+    }
+    if score < best_score {
+      best_score = score;
+      best_index = index;
     }
   }
 
-  // 2 パス目: 実メッセージ件数を取得して最小スコアの routee を決定する。
-  let mut best_index = 0_usize;
-  let mut best_score = u64::MAX;
+  // 2 パス目: 実メッセージ件数を取得し、pass 1 の best_score を下回る routee があれば更新する。
+  // best_score を u64::MAX にリセットせずに引き継ぐことで、pass 1 で選ばれた
+  // 「empty mailbox」ルーティーが pass 2 の「has messages」ルーティーにタイブレーク
+  // で負けないようにする。
   for (index, routee) in routees.iter().enumerate() {
     let score = score_of_deep(routee);
     if score < best_score {
