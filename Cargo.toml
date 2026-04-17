@@ -63,6 +63,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fraktor_disable_tell)'] }
 
 [workspace.lints.clippy]
 let_underscore_must_use = "deny"
+let_underscore_future = "deny"
 
 [workspace.dependencies]
 fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.2.11" }
