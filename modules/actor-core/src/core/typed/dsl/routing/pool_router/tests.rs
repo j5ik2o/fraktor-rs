@@ -572,14 +572,22 @@ mod optimal_size_exploring_resizer_smoke {
     time::Duration,
   };
 
+  use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+
+  use super::{RouteRecord, recording_routee_behavior, wait_until};
   use crate::core::{
-    kernel::pattern::Clock,
+    kernel::{
+      actor::{scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
+      pattern::Clock,
+    },
     typed::{
       behavior::Behavior,
       dsl::{
         Behaviors,
         routing::{PoolRouter, optimal_size_exploring_resizer::OptimalSizeExploringResizer},
       },
+      props::TypedProps,
+      system::TypedActorSystem,
     },
   };
 
@@ -592,6 +600,11 @@ mod optimal_size_exploring_resizer_smoke {
   impl FakeClock {
     fn new() -> Self {
       Self { offset_millis: Arc::new(AtomicU64::new(0)) }
+    }
+
+    /// 現在時刻を `by` 分だけ進める（テスト用）。
+    fn advance(&self, by: Duration) {
+      self.offset_millis.fetch_add(by.as_millis() as u64, Ordering::SeqCst);
     }
   }
 
@@ -619,5 +632,83 @@ mod optimal_size_exploring_resizer_smoke {
 
     // Then: Behavior への変換が成功する（`Resizer + 'static` 制約を満たす）
     let _behavior: Behavior<u32> = builder.into();
+  }
+
+  /// 回帰テスト: Pekko `ResizablePoolCell` 相当の呼び出し順
+  /// (`is_time_for_resize` → `report_message_count` → `resize`) が
+  /// 守られていること。
+  ///
+  /// 以前の実装では `report_message_count` を `is_time_for_resize` より先に
+  /// 呼び出しており、`report_message_count` が更新する `check_time = now` に
+  /// より、直後の `is_time_for_resize` での経過時間判定が常にゼロとなって
+  /// resize が永遠に発火しないバグがあった (Bugbot 指摘)。本テストは
+  /// 「`action_interval` を超えた時刻のメッセージ到着で実際に resize が
+  /// 発火し、pool が `lower_bound` まで拡大する」ことで回帰を防止する。
+  #[test]
+  fn pool_router_with_optimal_size_exploring_resizer_triggers_resize_after_action_interval() {
+    let initial_pool_size = 2_usize;
+    let lower_bound = 4_usize;
+    let upper_bound = 10_usize;
+    let action_interval = Duration::from_millis(10);
+    let clock = FakeClock::new();
+
+    let records: ArcShared<SpinSyncMutex<Vec<RouteRecord>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+    let next_routee_index = ArcShared::new(SpinSyncMutex::new(0_usize));
+
+    let props = TypedProps::<u32>::from_behavior_factory({
+      let records = records.clone();
+      let next_routee_index = next_routee_index.clone();
+      let clock = clock.clone();
+      move || {
+        let routee_factory = {
+          let records = records.clone();
+          let next_routee_index = next_routee_index.clone();
+          move || {
+            let routee_index = {
+              let mut guard = next_routee_index.lock();
+              let current = *guard;
+              *guard += 1;
+              current
+            };
+            recording_routee_behavior(routee_index, records.clone())
+          }
+        };
+        let resizer = OptimalSizeExploringResizer::new(lower_bound, upper_bound, clock.clone(), 42)
+          .with_action_interval(action_interval);
+        PoolRouter::new(initial_pool_size, routee_factory).with_resizer(resizer)
+      }
+    });
+
+    let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
+    let mut router = system.user_guardian_ref();
+
+    // 1 通目: 時刻未進行で is_time_for_resize は false。pool は初期サイズのまま。
+    router.tell(0);
+    wait_until(|| records.lock().len() >= 1);
+    assert_eq!(
+      *next_routee_index.lock(),
+      initial_pool_size,
+      "`action_interval` 未経過では resize が発火してはならない",
+    );
+
+    // action_interval を超えるまで clock を進める。
+    clock.advance(Duration::from_millis(20));
+
+    // 以降のメッセージ送信で is_time_for_resize が true になり、
+    // resize が下限まで拡大を行うことを期待する。
+    // 現 routee 数 < lower_bound なので、proposed_change=0 でも clamp により
+    // delta=lower_bound-current が返る。
+    for msg in 1_u32..8 {
+      router.tell(msg);
+    }
+    wait_until(|| *next_routee_index.lock() >= lower_bound);
+    assert_eq!(
+      *next_routee_index.lock(),
+      lower_bound,
+      "`action_interval` 経過後のメッセージで pool が lower_bound まで拡大するべき",
+    );
+
+    system.terminate().expect("terminate");
   }
 }

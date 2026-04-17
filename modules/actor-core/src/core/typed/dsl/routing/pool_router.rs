@@ -215,14 +215,19 @@ where
       Behaviors::receive_message(move |ctx, message: &M| {
         if let Some(ref resizer) = resizer_for_msg {
           let counter = message_counter.fetch_add(1, Ordering::Relaxed);
-          // Observe routee mailbox sizes once per message so that both
-          // `report_message_count` and `resize` share the same snapshot.
-          let mailbox_sizes = routees_for_msg.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
-          // `report_message_count` has a no-op default and is only meaningful
-          // for `OptimalSizeExploringResizer`; call it on every message to
-          // match Pekko's `ResizablePoolCell.sendMessage` ordering.
-          resizer.report_message_count(&mailbox_sizes, counter);
+          // Pekko `ResizablePoolCell` 相当の順序で呼び出す:
+          // 1. `is_time_for_resize` を先にチェック（軽量、通常 false）
+          // 2. true の場合のみ mailbox スナップショットを取り、`report_message_count` → `resize` を
+          //    **同じスナップショット** で実行する。
+          //
+          // `report_message_count` は内部で `check_time` を更新するため、先に
+          // 呼んでしまうと `is_time_for_resize` の時刻差判定が常にゼロとなり
+          // resize が発火しなくなる（Pekko も同様の順序制約を持つ。
+          // 参照: `OptimalSizeExploringResizer.scala:201-203, 262` および
+          // `Resizer.scala:286-309`）。
           if resizer.is_time_for_resize(counter) {
+            let mailbox_sizes = routees_for_msg.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
+            resizer.report_message_count(&mailbox_sizes, counter);
             let delta = resizer.resize(&mailbox_sizes);
             if delta > 0 {
               if let Some(ref resize_props) = props_for_resize {
