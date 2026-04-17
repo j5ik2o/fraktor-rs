@@ -40,6 +40,8 @@ impl SmallestMailboxRoutingLogic {
       if mailbox_len < best_observed_len {
         best_observed_len = mailbox_len;
         best_observed_index = Some(index);
+        // Pekko 互換ではない簡略実装: 空メールボックスが複数あっても最小 index 側に偏る。
+        // Pekko 互換化の TODO は docs/plan/20260417-smallest-mailbox-pekko-compat-todo.md 参照。
         if mailbox_len == 0 {
           break;
         }
