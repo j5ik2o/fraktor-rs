@@ -1,5 +1,6 @@
 {
   "alwaysThinkingEnabled": true,
+  "showThinkingSummaries": true,
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "codex",
@@ -10,9 +11,7 @@
     "CLAUDE_AUTO_BACKGROUND_TASKS": "1",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "60",
     "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
-    "CLAUDE_CODE_EFFORT_LEVEL": "max",
     "CLAUDE_CODE_DEBUG_LOG_LEVEL": "info",
-    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
     "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
@@ -28,7 +27,6 @@
     "USE_BUILTIN_RIPGREP": "0"
   },
   "language": "japanese",
-  "model": "opus",
   "permissions": {
     "allow": [
       "Bash(cat:*)",
@@ -37,7 +35,6 @@
     "ask": [],
     "deny": []
   },
-  "showThinkingSummaries": true,
   "statusLine": {
     "type": "command",
     "command": "~/.claude/statusline.sh"
