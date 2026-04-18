@@ -94,11 +94,14 @@ impl Gossiper for TokioGossiper {
 
   fn stop(&mut self) -> Result<(), &'static str> {
     let shutdown = self.shutdown.take().ok_or("not started")?;
+    // must-ignore: shutdown best-effort。receiver 先行 drop の Result<(), ()> 失敗は意図どおり。
     let _ = shutdown.send(());
     if let Some(task) = self.task.take() {
-      let _ = self.runtime.spawn(async move {
+      // spawn は JoinHandle を返すが、join 不要の fire-and-forget shutdown 経路のため破棄する。
+      drop(self.runtime.spawn(async move {
+        // must-ignore: task 終了理由 (Ok/Err/Cancelled) は後片付けパスでは参照しない。
         let _ = task.await;
-      });
+      }));
     }
     Ok(())
   }

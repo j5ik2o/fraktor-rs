@@ -278,7 +278,9 @@ where
         )));
       }
       if self.should_unstash_after_journal_response(response, current_instance_id) {
-        let _ = ctx.unstash_all()?;
+        // unstash_all は Result<usize, ActorError>。`?` でエラーを伝播したうえで
+        // 件数 usize は分岐に不要なため捨てる (式文扱い)。
+        ctx.unstash_all()?;
       }
       return Ok(());
     }
