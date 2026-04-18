@@ -24,16 +24,16 @@ use super::{
     drop_definition, drop_while_definition, expand_definition, filter_definition, flat_map_concat_definition,
     flat_map_merge_definition, flat_map_prefix_definition, group_by_definition, grouped_definition,
     grouped_weighted_definition, idle_timeout_definition, initial_delay_definition, initial_timeout_definition,
-    interleave_definition, intersperse_definition, log_definition, map_async_definition, map_concat_definition,
-    map_option_definition, merge_definition, merge_latest_definition, merge_preferred_definition,
-    merge_prioritized_definition, merge_sorted_definition, merge_substreams_definition,
+    interleave_definition, intersperse_definition, keep_alive_definition, log_definition, map_async_definition,
+    map_concat_definition, map_option_definition, merge_definition, merge_latest_definition,
+    merge_preferred_definition, merge_prioritized_definition, merge_sorted_definition, merge_substreams_definition,
     merge_substreams_with_parallelism_definition, or_else_definition, partition_definition, prepend_definition,
     prepend_lazy_definition, sample_definition, scan_definition, sliding_definition, split_after_definition,
     split_after_definition_with_cancel_strategy, split_when_definition, split_when_definition_with_cancel_strategy,
     stateful_map_concat_accumulator_definition, stateful_map_concat_definition, stateful_map_definition,
-    stateful_map_with_on_complete_definition, take_definition, take_until_definition, take_while_definition,
-    take_within_definition, throttle_definition, unzip_definition, unzip_with_definition, watch_termination_definition,
-    zip_all_definition, zip_definition, zip_with_index_definition,
+    stateful_map_with_on_complete_definition, switch_map_definition, take_definition, take_until_definition,
+    take_while_definition, take_within_definition, throttle_definition, unzip_definition, unzip_with_definition,
+    watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
@@ -857,13 +857,20 @@ where
     Source::from_graph(graph, mat)
   }
 
-  /// Adds an also-to-all compatibility stage.
+  /// Attaches multiple sinks so that every element is broadcast to all of them
+  /// while continuing downstream.
+  ///
+  /// This mirrors `alsoToAll` in Apache Pekko (`Flow.scala:3996`).
+  /// Each element is delivered to every sink in `sinks` **and** passed through
+  /// to the downstream consumer.  An empty iterator leaves the source unchanged.
   #[must_use]
   pub fn also_to_all<Mat2, I>(self, sinks: I) -> Source<Out, Mat>
   where
+    Out: Clone,
     I: IntoIterator<Item = Sink<Out, Mat2>>, {
-    let _ = sinks.into_iter().count();
-    self
+    // Pekkoの alsoToAll は Broadcast(N+1) で全sinkに配信しつつ本流も継続する。
+    // 各sinkへ also_to を fold することで同等のセマンティクスを実現する。
+    sinks.into_iter().fold(self, |source, sink| source.also_to(sink))
   }
 
   /// Adds a divert-to stage that routes elements matching the predicate to a sink.
@@ -1783,21 +1790,28 @@ where
     Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Applies a keep-alive compatibility stage.
+  /// Injects a keep-alive element when no element arrives within `ticks`.
   ///
-  /// Mirrors [`Flow::keep_alive`] on the Source DSL. When the upstream emits regularly within
-  /// `ticks`, elements flow through unchanged (matching Pekko `keepAlive` no-idle semantics);
-  /// dedicated idle-based injection using `value` is deferred until a timer-driven stage is
-  /// available in this runtime.
+  /// Mirrors [`Flow::keep_alive`] on the Source DSL.
+  /// This mirrors `keepAlive` in Apache Pekko (`Flow.scala:3080`).
+  /// When the upstream is idle for `ticks` ticks, `value` is injected downstream.
+  /// Normal elements pass through unchanged and reset the idle timer.
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `ticks` is zero.
-  pub fn keep_alive(self, ticks: usize, _value: Out) -> Result<Source<Out, Mat>, StreamDslError>
+  pub fn keep_alive(mut self, ticks: usize, value: Out) -> Result<Source<Out, Mat>, StreamDslError>
   where
     Out: Clone, {
-    validate_positive_argument("ticks", ticks)?;
-    Ok(self)
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = keep_alive_definition::<Out>(ticks as u64, value);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a wire-tap compatibility stage that observes each element without altering the data
@@ -1847,20 +1861,30 @@ where
     self.log(name).add_attributes(Attributes::named(marker))
   }
 
-  /// Adds a switch-map compatibility stage.
+  /// Cancels the previous inner source and starts a new one for each outer element.
   ///
-  /// Mirrors [`Flow::switch_map`] on the Source DSL. Only the most recently emitted inner source
-  /// is consumed (modeled via `flat_map_merge(1, func)`).
+  /// Mirrors [`Flow::switch_map`] on the Source DSL.
+  /// This mirrors `switchMap` in Apache Pekko (`Flow.scala:3002`).
+  /// Unlike `flat_map_concat` / `flat_map_merge(1, …)`, which wait for the current
+  /// inner source to finish, `switch_map` **immediately** discards the in-progress
+  /// inner source when a new outer element arrives.
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when switch-map configuration is invalid.
-  pub fn switch_map<T, Mat2, F>(self, func: F) -> Result<Source<T, Mat>, StreamDslError>
+  pub fn switch_map<T, Mat2, F>(mut self, func: F) -> Result<Source<T, Mat>, StreamDslError>
   where
     T: Send + Sync + 'static,
     Mat2: Send + Sync + 'static,
     F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
-    self.flat_map_merge(1, func)
+    let definition = switch_map_definition::<Out, T, Mat2, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a merge-latest stage that emits a `Vec<Out>` snapshot whenever any input is updated.

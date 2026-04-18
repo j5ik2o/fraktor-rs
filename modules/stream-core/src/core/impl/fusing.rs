@@ -75,6 +75,8 @@ mod initial_timeout_logic;
 mod interleave_logic;
 /// Intersperse logic.
 mod intersperse_logic;
+/// Keep-alive injection logic.
+mod keep_alive_logic;
 /// Kill-switch pass-through logic.
 mod kill_switch_logic;
 /// Lazy flow instantiation logic.
@@ -143,6 +145,8 @@ mod strategy_delay_logic;
 mod stream_buffer;
 /// Internal stream buffer configuration.
 mod stream_buffer_config;
+/// Switch-map logic.
+mod switch_map_logic;
 /// Take (first N) logic.
 mod take_logic;
 /// Take-until logic.
@@ -200,6 +204,7 @@ pub(in crate::core) use idle_timeout_logic::*;
 pub(in crate::core) use initial_timeout_logic::*;
 pub(in crate::core) use interleave_logic::*;
 pub(in crate::core) use intersperse_logic::*;
+pub(in crate::core) use keep_alive_logic::*;
 pub(in crate::core) use kill_switch_logic::*;
 pub(in crate::core) use lazy_flow_logic::*;
 pub(in crate::core) use limit_weighted_logic::*;
@@ -234,6 +239,7 @@ pub(in crate::core) use stateful_map_with_on_complete_logic::*;
 pub(in crate::core) use strategy_delay_logic::*;
 pub(in crate::core) use stream_buffer::StreamBuffer;
 pub(crate) use stream_buffer_config::StreamBufferConfig;
+pub(in crate::core) use switch_map_logic::*;
 pub(in crate::core) use take_logic::*;
 pub(in crate::core) use take_until_logic::*;
 pub(in crate::core) use take_while_logic::*;

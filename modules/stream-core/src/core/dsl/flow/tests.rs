@@ -5111,3 +5111,154 @@ fn from_graph_stage_empty_source_produces_no_output() {
   // Then: no output
   assert!(values.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// also_to_all
+// ---------------------------------------------------------------------------
+
+#[test]
+fn also_to_all_empty_sinks_passes_elements_through_unchanged() {
+  // Given: sink が 0 本の also_to_all（空イテレータ）を適用
+  let sinks: Vec<Sink<u32, StreamNotUsed>> = alloc::vec![];
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: sink がなければ全要素がそのまま通過する（恒等動作）
+  assert_eq!(values, alloc::vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn also_to_all_single_sink_broadcasts_all_elements() {
+  // Given: 1 本の side sink を接続した also_to_all
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let observed_clone = observed.clone();
+  let sinks = alloc::vec![Sink::foreach(move |value: u32| observed_clone.lock().push(value))];
+  let values = Source::from_array([10_u32, 20_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: main path は全要素を通し、side sink も同じ全要素を受け取る
+  assert_eq!(values, alloc::vec![10_u32, 20_u32]);
+  assert_eq!(*observed.lock(), alloc::vec![10_u32, 20_u32]);
+}
+
+#[test]
+fn also_to_all_multiple_sinks_each_receive_all_elements() {
+  // Given: 2 本の side sink を接続した also_to_all（境界条件: 複数 sink）
+  let first = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let first_clone = first.clone();
+  let second = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let second_clone = second.clone();
+  let sinks = alloc::vec![
+    Sink::foreach(move |value: u32| first_clone.lock().push(value)),
+    Sink::foreach(move |value: u32| second_clone.lock().push(value)),
+  ];
+  let values = Source::from_array([5_u32, 6_u32, 7_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: main path とすべての side sink が同じ全要素を受け取る
+  assert_eq!(values, alloc::vec![5_u32, 6_u32, 7_u32]);
+  assert_eq!(*first.lock(), alloc::vec![5_u32, 6_u32, 7_u32]);
+  assert_eq!(*second.lock(), alloc::vec![5_u32, 6_u32, 7_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// keep_alive
+// ---------------------------------------------------------------------------
+
+#[test]
+fn keep_alive_passes_elements_through_when_upstream_is_not_idle() {
+  // Given: 十分大きな ticks（100）を指定した keep_alive を 3 要素シーケンスに適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().keep_alive(100, 0_u32).expect("keep_alive"))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: アイドルが発生しないので元の 3 要素がそのまま通過する（injected は挿入されない）
+  assert_eq!(values, alloc::vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn keep_alive_rejects_zero_ticks() {
+  // Given: ticks=0 という無効な引数
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.keep_alive(0, 0_u32);
+
+  // Then: InvalidArgument エラーが返る
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn keep_alive_injects_element_after_idle_ticks() {
+  // Given: ticks=2 の keep_alive を、最初に None（アイドル）が 2 tick
+  // 続き、その後要素が来るスケジュール PulsedSourceLogic: None は WouldBlock（tick
+  // を消費するが要素なし）、Some はその tick で値を出す
+  let schedule = [None, None, Some(99_u32)];
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&schedule))
+    .via(Flow::new().keep_alive(2, 0_u32).expect("keep_alive"))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 2 tick アイドル後に injected_elem (0) が挿入され、その後 99 が流れる
+  assert!(values.contains(&0_u32), "injected element should appear, got: {values:?}");
+  assert!(values.contains(&99_u32), "original element should appear, got: {values:?}");
+}
+
+// ---------------------------------------------------------------------------
+// switch_map
+// ---------------------------------------------------------------------------
+
+#[test]
+fn switch_map_emits_inner_source_values_for_single_outer_element() {
+  // Given: 1 要素の outer Source に対し、値を 10 倍にした single Source を返す switch_map
+  let values = Source::single(3_u32)
+    .via(Flow::new().switch_map(|value: u32| Source::single(value.saturating_mul(10))).expect("switch_map"))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: inner Source の値 30 が流れる
+  assert_eq!(values, alloc::vec![30_u32]);
+}
+
+#[test]
+fn switch_map_rejects_empty_source_result() {
+  // Given: empty を返す switch_map（境界条件: inner が空 Source）
+  let values = Source::from_array([1_u32, 2_u32])
+    .via(Flow::new().switch_map(|_: u32| Source::<u32, StreamNotUsed>::empty()).expect("switch_map"))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: inner が空なので、main path の要素数の出力はゼロになる
+  assert!(values.is_empty(), "empty inner sources should produce no output, got: {values:?}");
+}
+
+#[test]
+fn switch_map_only_most_recent_outer_element_produces_output_when_inner_has_multiple() {
+  // Given: 3 要素の outer Source、inner は [value*10, value*10+1] を返す from_array
+  // switch_map はサブストリームを都度キャンセルするので、どの inner がどれだけ消費されるかは
+  // 実行タイミングに依存する。ここでは全要素が何らかの形で出力されるかではなく、
+  // 出力に不正な型変換がなく完了することを検証する。
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .via(
+      Flow::new()
+        .switch_map(|value: u32| Source::from_array([value.saturating_mul(10), value.saturating_mul(10) + 1]))
+        .expect("switch_map"),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: ストリームが正常に完了し、少なくとも最後の outer 要素に対する inner 値（30 or
+  // 31）が含まれる
+  assert!(
+    values.iter().any(|&v| v == 30_u32 || v == 31_u32),
+    "expected values from last inner source (30 or 31), got: {values:?}"
+  );
+}

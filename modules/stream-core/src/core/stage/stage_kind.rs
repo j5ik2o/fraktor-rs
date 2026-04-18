@@ -126,6 +126,10 @@ pub enum StageKind {
   FlowSample,
   /// Flow stage that taps each element to a side output without back-pressuring main.
   FlowWireTap,
+  /// Flow stage that injects a keep-alive element when the upstream is idle.
+  FlowKeepAlive,
+  /// Flow stage that cancels the previous inner source when a new outer element arrives.
+  FlowSwitchMap,
   /// Sink that ignores elements.
   SinkIgnore,
   /// Sink that folds elements.

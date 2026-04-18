@@ -2088,17 +2088,29 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds a switch-map compatibility stage.
+  /// Cancels the previous inner source and starts a new one for each outer element.
+  ///
+  /// This mirrors `switchMap` in Apache Pekko (`Flow.scala:3002`).
+  /// Unlike `flat_map_concat` / `flat_map_merge(1, …)`, which wait for the current
+  /// inner source to finish before starting the next, `switch_map` **immediately**
+  /// discards (cancels) the in-progress inner source when a new outer element arrives.
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when switch-map configuration is invalid.
-  pub fn switch_map<T, Mat2, F>(self, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  pub fn switch_map<T, Mat2, F>(mut self, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     T: Send + Sync + 'static,
     Mat2: Send + Sync + 'static,
     F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
-    self.flat_map_merge(1, func)
+    let definition = switch_map_definition::<Out, T, Mat2, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Fails the stream when downstream backpressure exceeds `ticks`.
@@ -2185,16 +2197,27 @@ where
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Applies a keep-alive compatibility stage.
+  /// Injects a keep-alive element when no upstream element arrives within `ticks`.
+  ///
+  /// This mirrors `keepAlive` in Apache Pekko (`Flow.scala:3080`).
+  /// When the upstream is idle for `ticks` ticks, `value` is injected downstream.
+  /// Normal elements pass through unchanged and reset the idle timer.
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `ticks` is zero.
-  pub fn keep_alive(self, ticks: usize, value: Out) -> Result<Flow<In, Out, Mat>, StreamDslError>
+  pub fn keep_alive(mut self, ticks: usize, value: Out) -> Result<Flow<In, Out, Mat>, StreamDslError>
   where
     Out: Clone, {
-    validate_positive_argument("ticks", ticks)?;
-    Ok(self.intersperse(value.clone(), value.clone(), value))
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = keep_alive_definition::<Out>(ticks as u64, value);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a merge-sequence compatibility stage.
@@ -2817,13 +2840,20 @@ where
     Flow::from_graph(graph, mat)
   }
 
-  /// Adds an also-to-all compatibility stage.
+  /// Attaches multiple sinks so that every element is broadcast to all of them
+  /// while continuing downstream.
+  ///
+  /// This mirrors `alsoToAll` in Apache Pekko (`Flow.scala:3996`).
+  /// Each element is delivered to every sink in `sinks` **and** passed through
+  /// to the downstream consumer.  An empty iterator leaves the flow unchanged.
   #[must_use]
   pub fn also_to_all<Mat2, I>(self, sinks: I) -> Flow<In, Out, Mat>
   where
+    Out: Clone,
     I: IntoIterator<Item = Sink<Out, Mat2>>, {
-    let _ = sinks.into_iter().count();
-    self
+    // Pekkoの alsoToAll は Broadcast(N+1) で全sinkに配信しつつ本流も継続する。
+    // 各sinkへ also_to を fold することで同等のセマンティクスを実現する。
+    sinks.into_iter().fold(self, |flow, sink| flow.also_to(sink))
   }
 
   /// Adds a divert-to stage that routes elements matching the predicate to a sink.
@@ -5257,6 +5287,50 @@ pub(in crate::core) fn combine_mat<Left, Right, C>(left: Left, right: Right) -> 
 where
   C: MatCombineRule<Left, Right>, {
   C::combine(left, right)
+}
+
+pub(in crate::core) fn keep_alive_definition<In>(max_idle_ticks: u64, injected_elem: In) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic =
+    KeepAliveLogic::<In> { max_idle_ticks, last_active_tick: 0, tick_count: 0, injected_elem, pending_injected: None };
+  FlowDefinition {
+    kind:        StageKind::FlowKeepAlive,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::Left,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+    attributes:  Attributes::new(),
+  }
+}
+
+pub(in crate::core) fn switch_map_definition<In, Out, Mat2, F>(func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = SwitchMapLogic::<In, Out, Mat2, F> { func, active_inner: None, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowSwitchMap,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::Left,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+    attributes:  Attributes::new(),
+  }
 }
 
 /// Creates a flow definition that retries elements through inner logics with
