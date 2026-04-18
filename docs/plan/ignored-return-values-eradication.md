@@ -320,5 +320,5 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 
 ### 11.4 既知の lint 制約 (後続 PR で改善候補)
 
-- `// must-ignore:` コメントは **1 行である必要がある** (直前行のみ参照)。複数行にまたがる説明が必要な場合は、コメントチェーン解析を lint 側に追加する検討対象
+- `// must-ignore:` コメントは **1 行である必要がある** (直前行のみ参照)。rustfmt の `wrap_comments = true` + `comment_width = 100` で折り返されると lint が認識しないため、pilot PR では全ての must-ignore コメントを 100 文字以内の 1 行に収めた。複数行にまたがる説明が必要な場合は、コメントチェーン解析を lint 側に追加する検討対象 (follow-up PR)
 - 本プロジェクト外部環境で `lints/*/tests/ui/` の `cargo test --test ui` が libgit2 / cargo-platform 依存で失敗する。ci-check.sh の L770-774 経由では動作するが、手動 `cargo test` では再現性がない。UI テストの充実は現環境制約の解決と同時に対応
