@@ -59,7 +59,7 @@ impl MessageQueue for BoundedPriorityMessageQueue {
         },
         | MailboxOverflowStrategy::DropOldest => {
           // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
-          let _ = state.heap_mut().pop();
+          drop(state.heap_mut().pop());
           state.heap_mut().push(entry);
           Ok(())
         },

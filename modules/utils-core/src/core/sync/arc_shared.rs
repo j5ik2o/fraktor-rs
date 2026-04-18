@@ -100,10 +100,9 @@ impl<T: ?Sized> ArcShared<T> {
   ///
   /// Always panics because the `unsize` feature enables implicit coercion and this method must not
   /// be used directly.
-  pub fn into_dyn<U: ?Sized, F>(self, cast: F) -> ArcShared<U>
+  pub fn into_dyn<U: ?Sized, F>(self, _cast: F) -> ArcShared<U>
   where
     F: FnOnce(&T) -> &U, {
-    let _ = cast;
     panic!("ArcShared::into_dyn is disabled when the `unsize` feature is enabled; rely on implicit coercion instead.");
   }
 }

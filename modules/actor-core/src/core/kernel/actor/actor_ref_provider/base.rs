@@ -110,8 +110,7 @@ pub trait ActorRefProvider: Send + Sync {
   /// # Errors
   ///
   /// Returns an error when the provider cannot generate a valid prefixed temp path.
-  fn temp_path_with_prefix(&self, prefix: &str) -> Result<ActorPath, ActorError> {
-    let _ = prefix;
+  fn temp_path_with_prefix(&self, _prefix: &str) -> Result<ActorPath, ActorError> {
     Err(ActorError::fatal("temporary prefixed actor path is not supported by this provider"))
   }
 

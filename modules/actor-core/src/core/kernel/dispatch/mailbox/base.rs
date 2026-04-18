@@ -253,7 +253,7 @@ impl Mailbox {
   /// installed an actor) and when the drain finishes cleanly with no
   /// pending reschedule.
   #[must_use]
-  pub fn run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>) -> bool {
+  pub fn run(&self, throughput: NonZeroUsize, _throughput_deadline: Option<Duration>) -> bool {
     if self.state.is_cleanup_done() {
       return false;
     }
@@ -278,7 +278,7 @@ impl Mailbox {
     self.set_running();
     let mut processed: usize = 0;
     let limit = throughput.get();
-    let _ = throughput_deadline; // Deadline support is added in a follow-up change.
+    // Deadline support is added in a follow-up change.
 
     while processed < limit {
       match self.dequeue() {

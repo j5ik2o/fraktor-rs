@@ -143,7 +143,8 @@ impl SystemQueue {
   unsafe fn free_chain(mut head: *mut Node) {
     while !head.is_null() {
       let next = unsafe { (*head).next };
-      let _ = unsafe { Box::from_raw(head) };
+      // into_raw で渡されたポインタを Box::from_raw で取り戻し、ただちに drop して解放する。
+      drop(unsafe { Box::from_raw(head) });
       head = next;
     }
   }

@@ -80,7 +80,7 @@ impl<T> VecDequeBackend<T> {
         Ok(OfferOutcome::DroppedNewest { count: 1 })
       },
       | OverflowPolicy::DropOldest => {
-        let _ = self.pop_front();
+        drop(self.pop_front());
         self.push_back(item);
         Ok(OfferOutcome::DroppedOldest { count: 1 })
       },
