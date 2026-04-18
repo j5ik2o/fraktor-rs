@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use rustc_hir::{ExprKind, LetStmt, PatKind, Stmt, StmtKind};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_span::{FileName, RealFileName, Span, source_map::SourceMap};
+use rustc_span::{FileName, RealFileName, Span, source_map::SourceMap, sym};
 
 dylint_linting::impl_late_lint! {
   pub LET_UNDERSCORE_FORBID,
@@ -57,6 +57,10 @@ impl<'tcx> LateLintPass<'tcx> for LetUnderscoreForbid {
 
   fn check_stmt(&mut self, cx: &LateContext<'tcx>, stmt: &Stmt<'tcx>) {
     // D2: `<expr>.ok();` の式文 (レシーバが Result)。
+    // typeck_results を触る前に cheap な from_expansion() で弾いてコストを抑える。
+    if stmt.span.from_expansion() {
+      return;
+    }
     let StmtKind::Semi(expr) = stmt.kind else {
       return;
     };
@@ -64,9 +68,6 @@ impl<'tcx> LateLintPass<'tcx> for LetUnderscoreForbid {
       return;
     };
     if path_segment.ident.name.as_str() != "ok" || !args.is_empty() {
-      return;
-    }
-    if stmt.span.from_expansion() {
       return;
     }
 
@@ -152,13 +153,14 @@ fn has_must_ignore_comment(sm: &SourceMap, span: Span) -> bool {
 }
 
 fn is_result_ty<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+  // 診断アイテム API を使うと pretty-print の変動 (`core::result::Result` 等)
+  // に左右されず、`#[rustc_diagnostic_item = "Result"]` が付いた型を直接判定できる。
+  // Clippy 本体と同じ方式。
   let ty = ty.peel_refs();
-  if let rustc_middle::ty::Adt(adt_def, _) = ty.kind() {
-    let did = adt_def.did();
-    let path = cx.tcx.def_path_str(did);
-    return path == "core::result::Result" || path == "std::result::Result" || path == "Result";
-  }
-  false
+  let rustc_middle::ty::Adt(adt_def, _) = ty.kind() else {
+    return false;
+  };
+  cx.tcx.get_diagnostic_item(sym::Result) == Some(adt_def.did())
 }
 
 fn should_ignore(path: &Path) -> bool {
@@ -170,18 +172,9 @@ fn should_ignore(path: &Path) -> bool {
   }
   // `lints/*/tests/ui/` のフィクスチャ自身は検査対象外にする（ambiguous-suffix-lint と同様）。
   // ただし workspace 本体の `tests/` は検査対象に残す必要がある点に注意。
-  let components: Vec<_> = path.components().collect();
-  for (i, c) in components.iter().enumerate() {
-    if c.as_os_str() == "lints" {
-      // `lints/*/tests/ui/...` を除外
-      if components.get(i + 2).is_some_and(|x| x.as_os_str() == "tests")
-        && components.get(i + 3).is_some_and(|x| x.as_os_str() == "ui")
-      {
-        return true;
-      }
-    }
-  }
-  false
+  // 4 連続コンポーネントで `lints / <crate> / tests / ui` を判定する。
+  let components: Vec<_> = path.components().map(|c| c.as_os_str().to_owned()).collect();
+  components.windows(4).any(|w| w[0] == "lints" && w[2] == "tests" && w[3] == "ui")
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {

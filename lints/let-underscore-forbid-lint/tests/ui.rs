@@ -19,10 +19,12 @@ fn library_path() -> PathBuf {
   let plain_name = format!("{}{}{}", std::env::consts::DLL_PREFIX, crate_name, std::env::consts::DLL_SUFFIX);
   let plain_path = target_dir.join(&plain_name);
 
-  assert!(
-    Command::new("cargo").args(["build"]).current_dir(&manifest_dir).status().expect("cargo build failed").success(),
-    "cargo build failed"
-  );
+  let status = Command::new("cargo")
+    .args(["build", "--lib"])
+    .current_dir(&manifest_dir)
+    .status()
+    .expect("failed to spawn cargo");
+  assert!(status.success(), "cargo build --lib failed");
 
   let toolchain = std::env::var("RUSTUP_TOOLCHAIN").expect("missing RUSTUP_TOOLCHAIN");
   let toolchain_name = format!(

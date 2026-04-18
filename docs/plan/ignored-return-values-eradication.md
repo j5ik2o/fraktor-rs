@@ -296,12 +296,21 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 
 **目的**: lint 本体の準備と、比較的影響が浅い `utils-core` / `actor-core` の違反を全件解消する。後続 PR で CI 配線 + 他 crate 修正を行う。
 
+件数サマリ (合計 **21 件**):
+
+| カテゴリ | 合計 | utils-core | actor-core |
+|----------|-----:|-----------:|-----------:|
+| **A** (`// must-ignore:`) | 6 | 0 | 6 |
+| **B** (仮引数リネーム `_foo`) | 7 | 1 | 6 |
+| **C** (`drop(...)` 明示) | 4 | 0 | 4 |
+| **D** (`drop(xs.pop())` で `Vec::pop` / `BinaryHeap::pop` の `Option<T>` を破棄) | 4 | 2 | 2 |
+
 修正済み crate:
-- `utils-core` (3 件): `arc_shared.rs:106` (引数リネーム), `binary_heap_priority_backend.rs:81` (Option を `drop(...)`), `vec_deque_backend.rs:83` (同上)
-- `actor-core` (14 件):
+- `utils-core` (3 件): `arc_shared.rs:106` (B), `binary_heap_priority_backend.rs:81` (D), `vec_deque_backend.rs:83` (D)
+- `actor-core` (18 件):
   - B: 仮引数リネーム — `actor_ref_provider/base.rs:114`, `message_dispatcher.rs` x4, `mailbox/base.rs:256` (引数 `_throughput_deadline`)
   - C: `drop(...)` 明示 — `context_pipe/waker.rs:54`, `failure_message_snapshot.rs:60/61`, `system_queue.rs:146`
-  - D: `drop(Option::pop)` — `bounded_priority_message_queue.rs:62`, `bounded_stable_priority_message_queue.rs:67`
+  - D: `drop(xs.pop())` — `bounded_priority_message_queue.rs:62`, `bounded_stable_priority_message_queue.rs:67`
   - A: `// must-ignore:` コメント付与 — `scheduler/delay_provider.rs:48`, `scheduler_core.rs:242/351/445`, `mailbox_queue_state.rs:64/68`
 
 ### 11.3 Phase 1: 後続 PR のスコープ
@@ -318,7 +327,10 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
   - `stream-adaptor-std`
 - 残テストコード (約 500 件) の修正
 
-### 11.4 既知の lint 制約 (後続 PR で改善候補)
+### 11.4 確定仕様: `// must-ignore:` は 1 行固定
 
-- `// must-ignore:` コメントは **1 行である必要がある** (直前行のみ参照)。rustfmt の `wrap_comments = true` + `comment_width = 100` で折り返されると lint が認識しないため、pilot PR では全ての must-ignore コメントを 100 文字以内の 1 行に収めた。複数行にまたがる説明が必要な場合は、コメントチェーン解析を lint 側に追加する検討対象 (follow-up PR)
+- `// must-ignore:` コメントは **1 行で記述することが仕様として確定** している。lint は違反行の直前 1 行のみを参照する
+- 根拠: ルール §29 の許容例外は 1 文で書ける粒度を前提としており、複数行必須な説明が必要なら設計自体を見直すべきサイン
+- rustfmt の `wrap_comments = true` + `comment_width = 100` で自動折り返されないよう、インデント込みで 100 文字以内に収める
+- 100 文字を超えて説明したいケースは、コードを分割するか、別途 `///` ドキュメントコメントで補足する
 - 本プロジェクト外部環境で `lints/*/tests/ui/` の `cargo test --test ui` が libgit2 / cargo-platform 依存で失敗する。ci-check.sh の L770-774 経由では動作するが、手動 `cargo test` では再現性がない。UI テストの充実は現環境制約の解決と同時に対応
