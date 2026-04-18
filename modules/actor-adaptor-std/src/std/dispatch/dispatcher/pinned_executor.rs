@@ -62,7 +62,7 @@ impl Executor for PinnedExecutor {
     let same_thread = self.thread_id.is_some_and(|id| id == thread::current().id());
     if same_thread {
       // Cannot join from inside the worker thread; release the handle.
-      let _ = self.join.take();
+      drop(self.join.take());
       return;
     }
     if let Some(join) = self.join.take() {

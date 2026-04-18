@@ -462,7 +462,7 @@ impl<A: 'static> PersistenceContext<A> {
       .iter()
       .position(|invocation| !invocation.is_deferred() && invocation.sequence_nr() == sequence_nr)
     {
-      let _ = self.pending_invocations.remove(index);
+      drop(self.pending_invocations.remove(index));
     }
   }
 
