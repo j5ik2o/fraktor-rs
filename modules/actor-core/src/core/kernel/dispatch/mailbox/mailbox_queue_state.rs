@@ -61,10 +61,12 @@ where
   }
 
   fn notify_producer_waiter(&mut self) {
+    // must-ignore: notify_success の bool (待機者有無) は通知者側で分岐に使わないため破棄する。
     let _ = self.producer_waiters.notify_success();
   }
 
   fn notify_consumer_waiter(&mut self) {
+    // must-ignore: notify_success の bool (待機者有無) は通知者側で分岐に使わないため破棄する。
     let _ = self.consumer_waiters.notify_success();
   }
 

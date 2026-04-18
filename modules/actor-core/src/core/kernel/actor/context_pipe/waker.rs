@@ -51,7 +51,8 @@ impl ContextPipeWaker {
   }
 
   unsafe fn drop(ptr: *const ()) {
-    let _ = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerHandleShared) };
+    // ArcShared::from_raw で参照カウントを戻し、戻り値は即座に drop して解放する。
+    drop(unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerHandleShared) });
   }
 }
 

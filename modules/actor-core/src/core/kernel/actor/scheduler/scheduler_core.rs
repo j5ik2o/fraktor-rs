@@ -239,6 +239,7 @@ impl Scheduler {
         return false;
       }
       if let Some(job) = self.jobs.remove(&handle.raw()) {
+        // must-ignore: registry / jobs から削除済みの handle に対する wheel.cancel の bool は参照不要。
         let _ = self.wheel.cancel(job.wheel_id);
       }
       self.registry.remove(handle.raw());
@@ -348,6 +349,7 @@ impl Scheduler {
   /// Advances the scheduler by the specified number of ticks.
   pub(crate) fn run_for_ticks(&mut self, ticks: u64) {
     let now = self.deadline_from_ticks(ticks);
+    // must-ignore: run_due の戻り値はヘルパーでは参照不要、メトリクス側で集計済み。
     let _ = self.run_due(now);
   }
 
@@ -442,6 +444,7 @@ impl Scheduler {
         self.metrics.decrement_active();
       }
       if let Some(job) = self.jobs.remove(&handle_id) {
+        // must-ignore: registry / jobs は削除済みで整合済み、wheel.cancel の bool は不要。
         let _ = self.wheel.cancel(job.wheel_id);
       }
       self.record_cancel_event(handle_id);

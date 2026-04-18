@@ -45,6 +45,7 @@ impl SchedulerBackedDelayProvider {
     let scheduler = self.scheduler.clone();
     trigger.set_cancel_hook(move || {
       scheduler.with_write(|s| {
+        // must-ignore: cancel hook は fire-and-forget で bool 戻り値は伝播不可。
         let _ = s.cancel(&handle);
       });
     });

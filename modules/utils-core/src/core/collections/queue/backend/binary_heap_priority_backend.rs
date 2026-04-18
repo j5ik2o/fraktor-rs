@@ -78,7 +78,7 @@ impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBacke
       | OverflowPolicy::DropOldest => {
         let sequence = self.allocate_sequence();
         let entry = PriorityEntry::new(priority, sequence, item);
-        let _ = self.entries.pop();
+        drop(self.entries.pop());
         self.push_entry(entry);
         Ok(OfferOutcome::DroppedOldest { count: 1 })
       },

@@ -118,8 +118,7 @@ pub trait MessageDispatcher: Send + Sync {
   /// Returns [`SpawnError`] when the dispatcher refuses the actor (for
   /// example, `PinnedDispatcher` rejects a second owner with
   /// `SpawnError::DispatcherAlreadyOwned`).
-  fn register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {
-    let _ = actor;
+  fn register_actor(&mut self, _actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {
     self.core_mut().mark_attach();
     Ok(())
   }
@@ -128,8 +127,7 @@ pub trait MessageDispatcher: Send + Sync {
   ///
   /// The default implementation decrements the inhabitants counter via
   /// [`DispatcherCore::mark_detach`].
-  fn unregister_actor(&mut self, actor: &ArcShared<ActorCell>) {
-    let _ = actor;
+  fn unregister_actor(&mut self, _actor: &ArcShared<ActorCell>) {
     self.core_mut().mark_detach();
   }
 
@@ -173,14 +171,10 @@ pub trait MessageDispatcher: Send + Sync {
   }
 
   /// Suspends `actor` from receiving further user messages.
-  fn suspend(&mut self, actor: &ArcShared<ActorCell>) {
-    let _ = actor;
-  }
+  fn suspend(&mut self, _actor: &ArcShared<ActorCell>) {}
 
   /// Resumes `actor` after a previous [`suspend`](Self::suspend) call.
-  fn resume(&mut self, actor: &ArcShared<ActorCell>) {
-    let _ = actor;
-  }
+  fn resume(&mut self, _actor: &ArcShared<ActorCell>) {}
 
   /// Shuts the dispatcher down.
   ///

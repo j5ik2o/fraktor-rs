@@ -57,8 +57,9 @@ impl PartialEq for FailureMessageSnapshot {
     let right_ptr = ArcShared::into_raw(other.payload.clone());
     let equal = ptr::eq(left_ptr, right_ptr) && self.sender == other.sender;
     unsafe {
-      let _ = ArcShared::from_raw(left_ptr);
-      let _ = ArcShared::from_raw(right_ptr);
+      // into_raw で増やした参照カウントを戻すために from_raw の戻り値を即座に drop する。
+      drop(ArcShared::from_raw(left_ptr));
+      drop(ArcShared::from_raw(right_ptr));
     }
     equal
   }
