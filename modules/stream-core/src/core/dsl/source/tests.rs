@@ -3181,6 +3181,30 @@ fn source_also_to_all_passes_main_path_elements_through() {
   assert_eq!(values, vec![3_u32, 4_u32]);
 }
 
+#[test]
+fn source_also_to_all_multiple_sinks_each_receive_elements_exactly_once() {
+  // Given: also_to_all で 3 本の sink を接続
+  // 単一 Broadcast(4) を使うため各 sink へは 1 回だけ clone される（linear）。
+  let first = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let first_clone = first.clone();
+  let second = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let second_clone = second.clone();
+  let third = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let third_clone = third.clone();
+  let sinks = alloc::vec![
+    Sink::foreach(move |value: u32| first_clone.lock().push(value)),
+    Sink::foreach(move |value: u32| second_clone.lock().push(value)),
+    Sink::foreach(move |value: u32| third_clone.lock().push(value)),
+  ];
+  let values = Source::from_array([10_u32, 20_u32]).also_to_all(sinks).collect_values().expect("collect_values");
+
+  // Then: main path と 3 つの side sink がそれぞれ重複なく全要素を 1 回だけ受け取る
+  assert_eq!(values, vec![10_u32, 20_u32]);
+  assert_eq!(*first.lock(), vec![10_u32, 20_u32]);
+  assert_eq!(*second.lock(), vec![10_u32, 20_u32]);
+  assert_eq!(*third.lock(), vec![10_u32, 20_u32]);
+}
+
 // ---------------------------------------------------------------------------
 // Source DSL ミラー: divert_to / divert_to_mat
 // ---------------------------------------------------------------------------

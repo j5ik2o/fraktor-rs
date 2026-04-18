@@ -5167,6 +5167,35 @@ fn also_to_all_multiple_sinks_each_receive_all_elements() {
   assert_eq!(*second.lock(), alloc::vec![5_u32, 6_u32, 7_u32]);
 }
 
+#[test]
+fn also_to_all_three_sinks_each_receive_elements_exactly_once() {
+  // Given: 3 本の side sink を接続した also_to_all
+  // 単一 Broadcast(4) を使うため各 sink へは 1 回だけ clone される（linear）。
+  // fold で Broadcast(2) を縦積みした場合は quadratic clone が発生し、最初の sink が
+  // 重複した値を受け取ることになる（この挙動がないことを確認する）。
+  let first = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let first_clone = first.clone();
+  let second = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let second_clone = second.clone();
+  let third = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let third_clone = third.clone();
+  let sinks = alloc::vec![
+    Sink::foreach(move |value: u32| first_clone.lock().push(value)),
+    Sink::foreach(move |value: u32| second_clone.lock().push(value)),
+    Sink::foreach(move |value: u32| third_clone.lock().push(value)),
+  ];
+  let values = Source::from_array([1_u32, 2_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: main path と 3 つの side sink がそれぞれ重複なく全要素を 1 回だけ受け取る
+  assert_eq!(values, alloc::vec![1_u32, 2_u32]);
+  assert_eq!(*first.lock(), alloc::vec![1_u32, 2_u32]);
+  assert_eq!(*second.lock(), alloc::vec![1_u32, 2_u32]);
+  assert_eq!(*third.lock(), alloc::vec![1_u32, 2_u32]);
+}
+
 // ---------------------------------------------------------------------------
 // keep_alive
 // ---------------------------------------------------------------------------
