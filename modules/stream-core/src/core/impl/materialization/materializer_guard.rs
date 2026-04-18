@@ -1,7 +1,9 @@
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::{StreamHandleId, StreamState, materializer_session::StreamShared};
-use crate::core::{SharedKillSwitch, StreamError, UniqueKillSwitch, materialization::DriveOutcome};
+use crate::core::{
+  SharedKillSwitch, StreamError, UniqueKillSwitch, materialization::DriveOutcome, snapshot::StreamSnapshot,
+};
 
 /// Handle owning the lifecycle of a stream execution.
 pub struct StreamHandleImpl {
@@ -59,5 +61,11 @@ impl StreamHandleImpl {
   pub fn shared_kill_switch(&self) -> SharedKillSwitch {
     let state = self.shared.with_read(|stream| stream.kill_switch_state());
     SharedKillSwitch::from_state(state)
+  }
+
+  /// Returns a diagnostic snapshot of the stream behind this handle.
+  #[must_use]
+  pub fn snapshot(&self) -> StreamSnapshot {
+    self.shared.with_read(|stream| stream.snapshot())
   }
 }

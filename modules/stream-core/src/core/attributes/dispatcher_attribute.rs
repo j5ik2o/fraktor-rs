@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String};
 use core::any::Any;
 
-use super::Attribute;
+use super::{Attribute, MandatoryAttribute};
 
 /// Specifies which dispatcher an async island should use.
 ///
@@ -41,3 +41,5 @@ impl Attribute for DispatcherAttribute {
     other.downcast_ref::<Self>() == Some(self)
   }
 }
+
+impl MandatoryAttribute for DispatcherAttribute {}

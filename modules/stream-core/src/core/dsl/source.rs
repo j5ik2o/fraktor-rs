@@ -18,19 +18,22 @@ use super::{
   SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamCompletion,
   StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow::{
-    Flow, async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
-    concat_definition, concat_lazy_definition, concat_substreams_definition, debounce_definition, delay_definition,
-    drop_definition, drop_while_definition, filter_definition, flat_map_concat_definition, flat_map_merge_definition,
-    flat_map_prefix_definition, group_by_definition, grouped_definition, initial_delay_definition,
-    interleave_definition, intersperse_definition, map_async_definition, map_concat_definition, map_option_definition,
-    merge_definition, merge_latest_definition, merge_preferred_definition, merge_prioritized_definition,
-    merge_sorted_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition,
-    partition_definition, prepend_definition, prepend_lazy_definition, sample_definition, scan_definition,
-    sliding_definition, split_after_definition, split_after_definition_with_cancel_strategy, split_when_definition,
-    split_when_definition_with_cancel_strategy, stateful_map_concat_accumulator_definition,
-    stateful_map_concat_definition, stateful_map_definition, stateful_map_with_on_complete_definition, take_definition,
-    take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
-    unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
+    Flow, async_boundary_definition, backpressure_timeout_definition, balance_definition, batch_definition,
+    broadcast_definition, buffer_definition, completion_timeout_definition, concat_definition, concat_lazy_definition,
+    concat_substreams_definition, conflate_with_seed_definition, debounce_definition, delay_definition,
+    drop_definition, drop_while_definition, expand_definition, filter_definition, flat_map_concat_definition,
+    flat_map_merge_definition, flat_map_prefix_definition, group_by_definition, grouped_definition,
+    grouped_weighted_definition, idle_timeout_definition, initial_delay_definition, initial_timeout_definition,
+    interleave_definition, intersperse_definition, keep_alive_definition, log_definition, map_async_definition,
+    map_concat_definition, map_option_definition, merge_definition, merge_latest_definition,
+    merge_preferred_definition, merge_prioritized_definition, merge_sorted_definition, merge_substreams_definition,
+    merge_substreams_with_parallelism_definition, or_else_definition, partition_definition, prepend_definition,
+    prepend_lazy_definition, sample_definition, scan_definition, sliding_definition, split_after_definition,
+    split_after_definition_with_cancel_strategy, split_when_definition, split_when_definition_with_cancel_strategy,
+    stateful_map_concat_accumulator_definition, stateful_map_concat_definition, stateful_map_definition,
+    stateful_map_with_on_complete_definition, switch_map_definition, take_definition, take_until_definition,
+    take_while_definition, take_within_definition, throttle_definition, unzip_definition, unzip_with_definition,
+    watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
@@ -769,6 +772,200 @@ where
     Source { graph: self.graph, mat, _pd: PhantomData }
   }
 
+  /// Watches stream termination and discards the completion handle (KeepLeft variant).
+  ///
+  /// Elements are passed through unchanged. The materialized value of the
+  /// upstream source is preserved verbatim.
+  #[must_use]
+  pub fn watch_termination(self) -> Source<Out, Mat> {
+    self.watch_termination_mat(KeepLeft)
+  }
+
+  /// Falls back to a secondary source when the primary source emits no elements.
+  #[must_use]
+  pub fn or_else<Mat2>(mut self, secondary: Source<Out, Mat2>) -> Source<Out, Mat>
+  where
+    Mat2: Send + Sync + 'static, {
+    let definition = or_else_definition::<Out, Mat2>(secondary);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Falls back to a secondary source when the primary source emits no elements
+  /// and combines materialized values.
+  #[must_use]
+  pub fn or_else_mat<Mat2, C>(mut self, secondary: Source<Out, Mat2>, _combine: C) -> Source<Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (secondary_graph, right_mat) = secondary.into_parts();
+    let definition =
+      or_else_definition::<Out, StreamNotUsed>(Source::from_graph(secondary_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Source { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Adds an also-to compatibility stage.
+  #[must_use]
+  pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> Source<Out, Mat>
+  where
+    Out: Clone, {
+    self.also_to_mat(sink, KeepLeft)
+  }
+
+  /// Adds an also-to stage and combines materialized values.
+  #[must_use]
+  pub fn also_to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, _combine: C) -> Source<Out, C::Out>
+  where
+    Out: Clone,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (mut graph, left_mat) = self.into_parts();
+    let (mut sink_graph, right_mat) = sink.into_parts();
+    let broadcast = broadcast_definition::<Out>(2);
+    let broadcast_inlet = broadcast.inlet;
+    let broadcast_outlet = broadcast.outlet;
+    let upstream_outlet = graph.tail_outlet();
+    graph.push_stage(StageDefinition::Flow(broadcast));
+    if let Some(upstream_outlet) = upstream_outlet {
+      graph.connect_or_panic(
+        &Outlet::<Out>::from_id(upstream_outlet),
+        &Inlet::<Out>::from_id(broadcast_inlet),
+        MatCombine::Left,
+      );
+    }
+    let passthrough = map_definition::<Out, Out, _>(|value| value);
+    let passthrough_inlet = passthrough.inlet;
+    sink_graph.push_stage(StageDefinition::Flow(passthrough));
+    graph.append(sink_graph);
+    graph.connect_or_panic(
+      &Outlet::<Out>::from_id(broadcast_outlet),
+      &Inlet::<Out>::from_id(passthrough_inlet),
+      MatCombine::Left,
+    );
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Source::from_graph(graph, mat)
+  }
+
+  /// Attaches multiple sinks so that every element is broadcast to all of them
+  /// while continuing downstream.
+  ///
+  /// Uses a single `Broadcast(N+1)` stage where N is the number of sinks and
+  /// +1 is the downstream main path.  This mirrors `alsoToAll` in Apache Pekko
+  /// (`Flow.scala:3996`) and delivers exactly one clone to each sink and one to
+  /// the downstream consumer (linear clone cost), unlike chaining `also_to` N
+  /// times which would produce quadratic clones via nested `Broadcast(2)` stages.
+  ///
+  /// An empty iterator leaves the source unchanged.
+  #[must_use]
+  pub fn also_to_all<Mat2, I>(self, sinks: I) -> Source<Out, Mat>
+  where
+    Out: Clone,
+    I: IntoIterator<Item = Sink<Out, Mat2>>, {
+    // 単一の Broadcast(N+1) を使い、各 sink と downstream の本流に 1 回ずつ clone する。
+    // これにより clone 回数が O(N) になり、fold による Broadcast(2) の縦積み（O(N^2)）を避ける。
+    let sinks: Vec<Sink<Out, Mat2>> = sinks.into_iter().collect();
+    if sinks.is_empty() {
+      // sink が 0 本の場合は no-op
+      return self;
+    }
+    let n = sinks.len();
+    let fan_out = n + 1; // N sinks + 1 downstream passthrough
+    let (mut graph, mat) = self.into_parts();
+    let broadcast = broadcast_definition::<Out>(fan_out);
+    let broadcast_inlet = broadcast.inlet;
+    let broadcast_outlet = broadcast.outlet;
+    let upstream_outlet = graph.tail_outlet();
+    graph.push_stage(StageDefinition::Flow(broadcast));
+    // 上流の outlet を broadcast の inlet に接続する
+    if let Some(upstream_outlet) = upstream_outlet {
+      graph.connect_or_panic(
+        &Outlet::<Out>::from_id(upstream_outlet),
+        &Inlet::<Out>::from_id(broadcast_inlet),
+        MatCombine::Left,
+      );
+    }
+    // 各 sink の graph を unwired で追加し、broadcast outlet から sink 入口へ接続する
+    for sink in sinks {
+      let (sink_graph, _sink_mat) = sink.into_parts();
+      if let Some(sink_head_inlet) = sink_graph.head_inlet() {
+        graph.append_unwired(sink_graph);
+        graph.connect_or_panic(
+          &Outlet::<Out>::from_id(broadcast_outlet),
+          &Inlet::<Out>::from_id(sink_head_inlet),
+          MatCombine::Left,
+        );
+      }
+    }
+    // 本流（downstream）継続用の passthrough を末尾に追加して broadcast の N+1 本目に接続する
+    let passthrough = map_definition::<Out, Out, _>(|value| value);
+    let passthrough_inlet = passthrough.inlet;
+    graph.push_stage(StageDefinition::Flow(passthrough));
+    graph.connect_or_panic(
+      &Outlet::<Out>::from_id(broadcast_outlet),
+      &Inlet::<Out>::from_id(passthrough_inlet),
+      MatCombine::Left,
+    );
+    Source::from_graph(graph, mat)
+  }
+
+  /// Adds a divert-to stage that routes elements matching the predicate to a sink.
+  ///
+  /// Elements matching `predicate` are sent to `sink`; non-matching elements
+  /// continue downstream.
+  #[must_use]
+  pub fn divert_to<Mat2, F>(self, predicate: F, sink: Sink<Out, Mat2>) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    self.divert_to_mat(predicate, sink, KeepLeft)
+  }
+
+  /// Adds a divert-to stage and combines materialized values.
+  ///
+  /// Elements matching `predicate` are sent to `sink`; non-matching elements
+  /// continue downstream.
+  #[must_use]
+  pub fn divert_to_mat<Mat2, F, C>(self, predicate: F, sink: Sink<Out, Mat2>, _combine: C) -> Source<Out, C::Out>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (mut graph, left_mat) = self.into_parts();
+    let (mut sink_graph, right_mat) = sink.into_parts();
+    let partition = partition_definition::<Out, F>(predicate);
+    let partition_inlet = partition.inlet;
+    let partition_outlet = partition.outlet;
+    let upstream_outlet = graph.tail_outlet();
+    graph.push_stage(StageDefinition::Flow(partition));
+    if let Some(upstream_outlet) = upstream_outlet {
+      graph.connect_or_panic(
+        &Outlet::<Out>::from_id(upstream_outlet),
+        &Inlet::<Out>::from_id(partition_inlet),
+        MatCombine::Left,
+      );
+    }
+    let passthrough = map_definition::<Out, Out, _>(|value| value);
+    let passthrough_inlet = passthrough.inlet;
+    sink_graph.push_stage(StageDefinition::Flow(passthrough));
+    graph.append(sink_graph);
+    graph.connect_or_panic(
+      &Outlet::<Out>::from_id(partition_outlet),
+      &Inlet::<Out>::from_id(passthrough_inlet),
+      MatCombine::Left,
+    );
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Source::from_graph(graph, mat)
+  }
+
   /// Connects this source to a sink.
   #[must_use]
   pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> RunnableGraph<Mat> {
@@ -1460,6 +1657,314 @@ where
   pub fn batch(mut self, size: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError> {
     let size = validate_positive_argument("size", size)?;
     let definition = batch_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Aggregates elements with boundary semantics (alias for [`Self::batch`]).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn aggregate_with_boundary(self, size: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError> {
+    self.batch(size)
+  }
+
+  /// Batches elements with weighted semantics.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `max_weight` is zero.
+  pub fn batch_weighted<FW>(
+    mut self,
+    max_weight: usize,
+    weight_fn: FW,
+  ) -> Result<Source<Vec<Out>, Mat>, StreamDslError>
+  where
+    FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
+    let max_weight = validate_positive_argument("max_weight", max_weight)?;
+    let definition = grouped_weighted_definition::<Out, FW>(max_weight, weight_fn);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Conflates upstream elements by repeatedly aggregating all emitted values.
+  #[must_use]
+  pub fn conflate<FA>(self, aggregate: FA) -> Source<Out, Mat>
+  where
+    Out: Send + Sync + 'static,
+    FA: FnMut(Out, Out) -> Out + Send + Sync + 'static, {
+    self.conflate_with_seed(|value| value, aggregate)
+  }
+
+  /// Adds a conflate-with-seed stage.
+  #[must_use]
+  pub fn conflate_with_seed<T, FS, FA>(mut self, seed: FS, aggregate: FA) -> Source<T, Mat>
+  where
+    Out: 'static,
+    T: Send + Sync + 'static,
+    FS: FnMut(Out) -> T + Send + Sync + 'static,
+    FA: FnMut(T, Out) -> T + Send + Sync + 'static, {
+    let definition = conflate_with_seed_definition::<Out, T, FS, FA>(seed, aggregate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Expands each input element and extrapolates on idle ticks while upstream is active.
+  #[must_use]
+  pub fn expand<F, I>(mut self, expander: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = Out> + 'static,
+    <I as IntoIterator>::IntoIter: Send, {
+    let definition = expand_definition::<Out, F, I>(expander);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Extrapolates elements with the same behavior as [`Self::expand`].
+  #[must_use]
+  pub fn extrapolate<F, I>(self, expander: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = Out> + 'static,
+    <I as IntoIterator>::IntoIter: Send, {
+    self.expand(expander)
+  }
+
+  /// Fails the stream when downstream backpressure exceeds `ticks`.
+  ///
+  /// Mirrors [`Flow::backpressure_timeout`] on the Source DSL. After the first element arrives, if
+  /// no subsequent `apply` call occurs within `ticks` ticks, the stream fails with
+  /// [`StreamError::Timeout`].
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn backpressure_timeout(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = backpressure_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Fails the stream when it does not complete within `ticks`.
+  ///
+  /// Mirrors [`Flow::completion_timeout`] on the Source DSL. The tick counter starts at stream
+  /// start. If the stream has not completed by the time `tick_count` exceeds `ticks`, the stream
+  /// fails with [`StreamError::Timeout`].
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn completion_timeout(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = completion_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Fails the stream when no element arrives within `ticks`.
+  ///
+  /// Mirrors [`Flow::idle_timeout`] on the Source DSL. The tick counter starts at stream start and
+  /// resets on every element. If the gap between successive elements (or between start and the
+  /// first element) exceeds `ticks`, the stream fails with [`StreamError::Timeout`].
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn idle_timeout(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = idle_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Fails the stream when the first element does not arrive within `ticks`.
+  ///
+  /// Mirrors [`Flow::initial_timeout`] on the Source DSL. If `tick_count` exceeds `ticks` before
+  /// the first `apply` call, the stream fails with [`StreamError::Timeout`]. Once the first element
+  /// arrives, this stage becomes a pure pass-through.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn initial_timeout(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = initial_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Injects a keep-alive element when no element arrives within `ticks`.
+  ///
+  /// Mirrors [`Flow::keep_alive`] on the Source DSL.
+  /// This mirrors `keepAlive` in Apache Pekko (`Flow.scala:3080`).
+  /// When the upstream is idle for `ticks` ticks, `value` is injected downstream.
+  /// Normal elements pass through unchanged and reset the idle timer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn keep_alive(mut self, ticks: usize, value: Out) -> Result<Source<Out, Mat>, StreamDslError>
+  where
+    Out: Clone, {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = keep_alive_definition::<Out>(ticks as u64, value);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a wire-tap compatibility stage that observes each element without altering the data
+  /// path.
+  ///
+  /// Mirrors [`Flow::wire_tap`] on the Source DSL. The `callback` is invoked for each element
+  /// before it continues downstream; the data path is unaffected.
+  #[must_use]
+  pub fn wire_tap<F>(self, mut callback: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) + Send + Sync + 'static, {
+    self.map(move |value| {
+      callback(&value);
+      value
+    })
+  }
+
+  /// Adds a monitor compatibility stage that pairs each element with its zero-based index.
+  ///
+  /// Mirrors [`Flow::monitor`] on the Source DSL. Each element is emitted as `(index, value)`.
+  #[must_use]
+  pub fn monitor(self) -> Source<(u64, Out), Mat> {
+    self.zip_with_index().map(|(value, index)| (index, value))
+  }
+
+  /// Adds a logging stage and metadata while passing each element through unchanged.
+  ///
+  /// Mirrors [`Flow::log`] on the Source DSL.
+  #[must_use]
+  pub fn log(mut self, name: &'static str) -> Source<Out, Mat> {
+    let definition = log_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named(name))
+  }
+
+  /// Adds a marker-tagged logging stage and marker metadata while passing each element through
+  /// unchanged.
+  ///
+  /// Mirrors [`Flow::log_with_marker`] on the Source DSL.
+  #[must_use]
+  pub fn log_with_marker(self, name: &'static str, marker: &'static str) -> Source<Out, Mat> {
+    self.log(name).add_attributes(Attributes::named(marker))
+  }
+
+  /// Cancels the previous inner source and starts a new one for each outer element.
+  ///
+  /// Mirrors [`Flow::switch_map`] on the Source DSL.
+  /// This mirrors `switchMap` in Apache Pekko (`Flow.scala:3002`).
+  /// Unlike `flat_map_concat` / `flat_map_merge(1, …)`, which wait for the current
+  /// inner source to finish, `switch_map` **immediately** discards the in-progress
+  /// inner source when a new outer element arrives.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when switch-map configuration is invalid.
+  pub fn switch_map<T, Mat2, F>(mut self, func: F) -> Result<Source<T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
+    let definition = switch_map_definition::<Out, T, Mat2, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a merge-latest stage that emits a `Vec<Out>` snapshot whenever any input is updated.
+  ///
+  /// Mirrors [`Flow::merge_latest`] on the Source DSL. No output is produced until every input has
+  /// delivered at least one element.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_latest(mut self, fan_in: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError>
+  where
+    Out: Clone, {
+    validate_positive_argument("fan_in", fan_in)?;
+    let definition = merge_latest_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a merge-preferred stage that prioritizes slot 0 (preferred) input.
+  ///
+  /// Mirrors [`Flow::merge_preferred`] on the Source DSL.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_preferred(mut self, fan_in: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    validate_positive_argument("fan_in", fan_in)?;
+    let definition = merge_preferred_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

@@ -6,7 +6,11 @@ use super::{
   KillSwitch, StreamError,
   unique_kill_switch::{KillSwitchState, KillSwitchStateHandle},
 };
-use crate::core::{attributes::Attributes, dsl::Flow, materialization::StreamNotUsed};
+use crate::core::{
+  attributes::Attributes,
+  dsl::{BidiFlow, Flow},
+  materialization::StreamNotUsed,
+};
 
 #[cfg(test)]
 mod tests;
@@ -56,6 +60,25 @@ impl SharedKillSwitch {
       | Some(name) => flow.add_attributes(Attributes::named(name)),
       | None => flow,
     }
+  }
+
+  /// Returns a bidirectional pass-through flow bound to this shared kill switch.
+  ///
+  /// When the switch carries a debug name, that name is attached as an `Attributes::named`
+  /// attribute on both the top and bottom flow fragments, but not on the combined BidiFlow
+  /// itself.
+  #[must_use]
+  pub fn bidi_flow<T1, T2>(&self) -> BidiFlow<T1, T1, T2, T2, SharedKillSwitch>
+  where
+    T1: Send + Sync + 'static,
+    T2: Send + Sync + 'static, {
+    let top = Flow::<T1, T1, StreamNotUsed>::from_kill_switch_state(self.state_handle());
+    let bottom = Flow::<T2, T2, StreamNotUsed>::from_kill_switch_state(self.state_handle());
+    let (top, bottom) = match self.name.as_deref() {
+      | Some(name) => (top.add_attributes(Attributes::named(name)), bottom.add_attributes(Attributes::named(name))),
+      | None => (top, bottom),
+    };
+    BidiFlow::from_flows_mat(top, bottom, self.clone())
   }
 
   /// Requests graceful shutdown.

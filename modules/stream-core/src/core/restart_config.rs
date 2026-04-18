@@ -62,6 +62,44 @@ impl RestartConfig {
     }
   }
 
+  /// Sets minimum backoff ticks.
+  ///
+  /// Pekko parity: `RestartSettings.withMinBackoff`. When the new `ticks` is
+  /// greater than the current `max_backoff_ticks`, the `max_backoff_ticks` is
+  /// normalized to the same value to maintain the invariant
+  /// `min_backoff_ticks <= max_backoff_ticks`.
+  #[must_use]
+  pub const fn with_min_backoff_ticks(mut self, ticks: u32) -> Self {
+    self.min_backoff_ticks = ticks;
+    if self.max_backoff_ticks < ticks {
+      self.max_backoff_ticks = ticks;
+    }
+    self
+  }
+
+  /// Sets maximum backoff ticks.
+  ///
+  /// Pekko parity: `RestartSettings.withMaxBackoff`. When the new `ticks` is
+  /// smaller than the current `min_backoff_ticks`, the `max_backoff_ticks` is
+  /// normalized to `min_backoff_ticks` to maintain the invariant
+  /// `min_backoff_ticks <= max_backoff_ticks`.
+  #[must_use]
+  pub const fn with_max_backoff_ticks(mut self, ticks: u32) -> Self {
+    self.max_backoff_ticks = if ticks < self.min_backoff_ticks { self.min_backoff_ticks } else { ticks };
+    self
+  }
+
+  /// Sets the maximum restart count and the rolling window simultaneously.
+  ///
+  /// Pekko parity: `RestartSettings.withMaxRestarts(count, within)`. Replaces
+  /// both `max_restarts` and `max_restarts_within_ticks` in a single call.
+  #[must_use]
+  pub const fn with_max_restarts(mut self, count: usize, within_ticks: u32) -> Self {
+    self.max_restarts = count;
+    self.max_restarts_within_ticks = within_ticks;
+    self
+  }
+
   /// Sets random factor as permille (`1000` means 100% jitter).
   #[must_use]
   pub const fn with_random_factor_permille(mut self, random_factor_permille: u16) -> Self {

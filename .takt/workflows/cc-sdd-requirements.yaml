@@ -1,6 +1,6 @@
 name: cc-sdd-requirements
 description: SDD Phase 1 - EARS形式の要件ドキュメントを生成する
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

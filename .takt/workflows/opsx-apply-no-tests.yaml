@@ -1,6 +1,6 @@
 name: opsx-apply-no-tests
 description: OpenSpec Apply (テストなし) - バッチ実装とレビューによる変更タスクの実装。テスト先行が不要なタスク（package/module構造変更、examples作成、ドキュメント更新等）向け。
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

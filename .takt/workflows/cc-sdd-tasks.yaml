@@ -1,6 +1,6 @@
 name: cc-sdd-tasks
 description: SDD Phase 3 - 要件と設計に基づく実装タスクリストを生成する
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

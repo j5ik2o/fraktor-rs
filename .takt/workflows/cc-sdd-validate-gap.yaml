@@ -1,6 +1,6 @@
 name: cc-sdd-validate-gap
 description: SDD（オプション）- 要件と既存コードベースのギャップ分析
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

@@ -1,6 +1,6 @@
 name: package-refactoring
 description: パッケージ／モジュール構造のリファクタリング専用（分析→設計→計画→実装→AIレビュー→arch+QA→監督）
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

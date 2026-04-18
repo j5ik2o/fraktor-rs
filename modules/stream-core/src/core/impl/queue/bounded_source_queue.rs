@@ -59,7 +59,11 @@ impl<T> BoundedSourceQueue<T> {
     }
 
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => QueueOfferResult::Failure(StreamError::WouldBlock),
+      // Pekko parity: `EmitEarly.isBackpressure = true`. The bounded queue
+      // does not host a delay stage, so EmitEarly degrades to backpressure.
+      | OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly => {
+        QueueOfferResult::Failure(StreamError::WouldBlock)
+      },
       | OverflowStrategy::DropHead => {
         let _ = guard.values.pop_front();
         guard.values.push_back(value);
@@ -74,6 +78,12 @@ impl<T> BoundedSourceQueue<T> {
         guard.values.clear();
         guard.values.push_back(value);
         QueueOfferResult::Enqueued
+      },
+      | OverflowStrategy::DropNew => {
+        // Pekko parity: `OverflowStrategy.dropNew` rejects the newly arrived
+        // element while leaving the existing buffer contents intact.
+        drop(value);
+        QueueOfferResult::Dropped
       },
       | OverflowStrategy::Fail => {
         let error = StreamError::BufferOverflow;

@@ -24,6 +24,12 @@ impl<Mat> Materialized<Mat> {
     &self.materialized
   }
 
+  /// Consumes this handle and returns the owned materialized value.
+  #[must_use]
+  pub fn into_materialized(self) -> Mat {
+    self.materialized
+  }
+
   /// Returns a unique kill switch bound to this materialized stream.
   #[must_use]
   pub fn unique_kill_switch(&self) -> UniqueKillSwitch {

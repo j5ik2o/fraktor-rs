@@ -176,6 +176,82 @@ fn source_queue_with_complete_should_allow_configured_number_of_pending_offers()
 }
 
 #[test]
+fn source_queue_with_complete_emit_early_should_wait_for_space_like_backpressure() {
+  // Pekko parity: `DelayOverflowStrategy.emitEarly` has `isBackpressure = true`,
+  // so in non-delay contexts (SourceQueueWithComplete) it must behave like Backpressure.
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::EmitEarly, 1);
+
+  assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
+  let mut waiting_offer = pin!(queue.offer(2_u32));
+  let (waker, wake_counter) = tracking_waker();
+  let mut context = Context::from_waker(&waker);
+  assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(wake_counter.wake_count(), 0);
+  assert_eq!(queue.poll().expect("poll"), Some(1_u32));
+  assert_eq!(wake_counter.wake_count(), 1);
+  assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+  assert_eq!(queue.poll().expect("poll"), Some(2_u32));
+  assert_eq!(queue.poll().expect("poll"), None);
+}
+
+#[test]
+fn source_queue_with_complete_emit_early_should_honor_pending_offer_limit() {
+  // Pekko parity: EmitEarly follows Backpressure semantics for pending offer capacity.
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::EmitEarly, 1);
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+
+  assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
+
+  let mut first_pending_offer = pin!(queue.offer(2_u32));
+  assert_eq!(first_pending_offer.as_mut().poll(&mut context), Poll::Pending);
+
+  assert_eq!(poll_ready(queue.offer(3_u32)), QueueOfferResult::Failure(StreamError::WouldBlock));
+
+  assert_eq!(queue.poll().expect("poll"), Some(1_u32));
+  assert_eq!(first_pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+  assert_eq!(queue.poll().expect("poll"), Some(2_u32));
+  assert_eq!(queue.poll().expect("poll"), None);
+}
+
+#[test]
+fn source_queue_with_complete_drop_new_should_reject_new_offer_when_buffer_is_full() {
+  // Pekko parity: OverflowStrategy.dropNew drops the newly arrived element
+  // when the buffer is full, keeping the existing buffered values intact.
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::DropNew, 1);
+
+  // Given: 容量まで詰めた状態
+  assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
+
+  // When: バッファが満杯の状態で新しい要素を offer
+  // Then: 新しい要素は Dropped で即時返却され、既存値はそのまま残る
+  assert_eq!(poll_ready(queue.offer(2_u32)), QueueOfferResult::Dropped);
+  assert_eq!(queue.poll().expect("poll"), Some(1_u32));
+  assert_eq!(queue.poll().expect("poll"), None);
+}
+
+#[test]
+fn source_queue_with_complete_drop_new_should_reject_offer_when_zero_capacity_has_no_slot() {
+  // Pekko parity: capacity=0 + DropNew で pending offer 枠も埋まっている場合、
+  // 新しい offer は Dropped で即時返却される（DropTail と同じ振る舞い）。
+  let mut queue = SourceQueueWithComplete::new(0, OverflowStrategy::DropNew, 1);
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+
+  // Given: pending offer 枠を 1 つ占有
+  let mut pending_offer = pin!(queue.offer(1_u32));
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Pending);
+
+  // When: pending offer 枠が満杯の状態で新規 offer
+  // Then: 新規 offer は Dropped で即時返却され、既存 pending は保持される
+  assert_eq!(poll_ready(queue.offer(2_u32)), QueueOfferResult::Dropped);
+
+  // 既存 pending offer は poll でドレインできる
+  assert_eq!(queue.poll().expect("poll"), Some(1_u32));
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+}
+
+#[test]
 fn source_queue_with_complete_close_for_cancel_should_resolve_pending_offer_and_completion() {
   let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let completion = queue.watch_completion();

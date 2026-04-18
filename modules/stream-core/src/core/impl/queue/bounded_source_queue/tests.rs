@@ -154,3 +154,24 @@ fn bounded_source_queue_close_for_cancel_should_discard_buffered_values() {
   assert!(queue.is_drained());
   assert_eq!(queue.offer(3_u32), QueueOfferResult::QueueClosed);
 }
+
+#[test]
+fn bounded_source_queue_should_drop_new_when_configured() {
+  // Pekko parity: OverflowStrategy.dropNew rejects the **newly arrived** element
+  // when the buffer is full, leaving the buffered elements unchanged.
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropNew);
+
+  // Given: 容量まで詰めた状態
+  assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
+
+  // When: さらに新しい要素を提供
+  // Then: 新しい要素が Dropped となり、既存バッファは保持される
+  assert_eq!(queue.offer(3_u32), QueueOfferResult::Dropped);
+  assert_eq!(queue.len(), 2);
+
+  // 既存の値が順序通り取り出せる
+  assert_eq!(queue.poll().expect("poll"), Some(1_u32));
+  assert_eq!(queue.poll().expect("poll"), Some(2_u32));
+  assert_eq!(queue.poll().expect("poll"), None);
+}

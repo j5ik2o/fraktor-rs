@@ -24,7 +24,10 @@ where
     }
 
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => Ok(()),
+      // Pekko parity: `EmitEarly.isBackpressure = true`. Inside this generic
+      // `buffer` stage (no upstream delay), EmitEarly behaves like
+      // `Backpressure`: hold the element until downstream catches up.
+      | OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly => Ok(()),
       | OverflowStrategy::DropHead => {
         let _ = self.pending.pop_front();
         self.pending.push_back(value);
@@ -38,6 +41,13 @@ where
       | OverflowStrategy::DropBuffer => {
         self.pending.clear();
         self.pending.push_back(value);
+        Ok(())
+      },
+      | OverflowStrategy::DropNew => {
+        // Pekko parity: `OverflowStrategy.dropNew` rejects the newly arrived
+        // element when the buffer is full. The incoming `value` is discarded
+        // silently; the pending buffer stays intact.
+        drop(value);
         Ok(())
       },
       | OverflowStrategy::Fail => Err(StreamError::BufferOverflow),
@@ -62,14 +72,20 @@ where
 
   fn can_accept_input(&self) -> bool {
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => self.pending.len() < self.capacity,
-      | _ => true,
+      // EmitEarly mirrors Backpressure here (Pekko `isBackpressure = true`).
+      | OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly => self.pending.len() < self.capacity,
+      | OverflowStrategy::DropHead
+      | OverflowStrategy::DropTail
+      | OverflowStrategy::DropBuffer
+      | OverflowStrategy::DropNew
+      | OverflowStrategy::Fail => true,
     }
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
     let can_emit_on_backpressure =
-      matches!(self.overflow_strategy, OverflowStrategy::Backpressure) && self.pending.len() >= self.capacity;
+      matches!(self.overflow_strategy, OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly)
+        && self.pending.len() >= self.capacity;
     if !self.source_done && !can_emit_on_backpressure {
       return Ok(Vec::new());
     }

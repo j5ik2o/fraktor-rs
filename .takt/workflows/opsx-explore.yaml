@@ -1,6 +1,6 @@
 name: opsx-explore
 description: OpenSpec Explore - アイデアの思考、問題の調査、要件の明確化
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

@@ -1,9 +1,10 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{borrow::Cow, boxed::Box, string::String};
 use core::any::Any;
 
 use super::Attributes;
 use crate::core::attributes::{
   AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
+  MandatoryAttribute, Name, SourceLocation,
 };
 
 #[test]
@@ -435,3 +436,231 @@ mod pending_attributes_api {
     assert_eq!(*attributes.get::<CancellationStrategyKind>().unwrap(), CancellationStrategyKind::PropagateFailure);
   }
 } // mod pending_attributes_api
+
+// --- Name attribute (Pekko parity: Attributes.Name) ---
+
+#[test]
+fn name_is_constructible_with_string_payload() {
+  // Given/When: building a Name attribute directly
+  //   Pekko reference: final case class Name(n: String) extends Attribute
+  let name = Name(String::from("stage-a"));
+
+  // Then: the inner string is exposed via the public field
+  assert_eq!(name.0, "stage-a");
+}
+
+#[test]
+fn name_clone_preserves_payload() {
+  // Given: a Name attribute
+  let original = Name(String::from("stage-a"));
+
+  // When: cloning
+  let cloned = original.clone();
+
+  // Then: the cloned Name carries the same payload
+  assert_eq!(cloned.0, "stage-a");
+}
+
+#[test]
+fn name_implements_attribute_trait_with_typed_eq() {
+  // Given: two Names with identical payloads and an unrelated payload
+  let a: Box<dyn Attribute> = Box::new(Name(String::from("foo")));
+  let b: Box<dyn Attribute> = Box::new(Name(String::from("foo")));
+  let c: Box<dyn Attribute> = Box::new(Name(String::from("bar")));
+
+  // Then: Attribute::eq_attr distinguishes them by payload
+  assert!(a.eq_attr(b.as_any()));
+  assert!(!a.eq_attr(c.as_any()));
+}
+
+#[test]
+fn named_factory_also_stores_typed_name_attribute() {
+  // Given: attributes constructed via the named() factory
+  //   Pekko parity: Attributes(Name(n)) — Name is the canonical typed payload.
+  //   fraktor-rs additionally retains the legacy `names: Vec<String>` API.
+  let attributes = Attributes::named("stage-a");
+
+  // Then: the typed Name attribute is retrievable via get::<Name>()
+  let name = attributes.get::<Name>();
+  assert!(name.is_some(), "named() should also store a typed Name attribute");
+  assert_eq!(name.unwrap().0, "stage-a");
+}
+
+#[test]
+fn named_factory_preserves_legacy_names_accessor() {
+  // Given: attributes constructed via the named() factory
+  let attributes = Attributes::named("stage-a");
+
+  // Then: the legacy names() accessor still returns the configured name
+  //   (regression guard — adding a typed Name must not break the existing API)
+  assert_eq!(attributes.names(), &[String::from("stage-a")]);
+}
+
+#[test]
+fn and_appends_typed_name_attributes_for_each_named_call() {
+  // Given: two named attribute sets merged together
+  let attributes = Attributes::named("left").and(Attributes::named("right"));
+
+  // When: collecting all typed Name attributes
+  let names = attributes.get_all::<Name>();
+
+  // Then: both Name instances are preserved in order
+  assert_eq!(names.len(), 2);
+  assert_eq!(names[0].0, "left");
+  assert_eq!(names[1].0, "right");
+}
+
+// --- MandatoryAttribute marker trait (Pekko parity: sealed trait MandatoryAttribute) ---
+
+#[test]
+fn mandatory_attribute_returns_none_for_empty_attributes() {
+  // Given: empty attributes
+  let attributes = Attributes::new();
+
+  // When: requesting a mandatory typed attribute
+  let result = attributes.mandatory_attribute::<InputBuffer>();
+
+  // Then: returns None
+  assert!(result.is_none());
+}
+
+#[test]
+fn mandatory_attribute_returns_input_buffer_when_stored() {
+  // Given: attributes containing an InputBuffer
+  //   Pekko reference: InputBuffer extends MandatoryAttribute
+  let attributes = Attributes::input_buffer(8, 32);
+
+  // When: requesting via mandatory_attribute helper
+  let result = attributes.mandatory_attribute::<InputBuffer>();
+
+  // Then: the InputBuffer is returned with its configured values
+  assert!(result.is_some());
+  let buffer = result.unwrap();
+  assert_eq!(buffer.initial, 8);
+  assert_eq!(buffer.max, 32);
+}
+
+#[test]
+fn mandatory_attribute_returns_dispatcher_attribute_when_stored() {
+  // Given: attributes containing a DispatcherAttribute
+  //   Pekko reference: Dispatcher extends MandatoryAttribute
+  let attributes = Attributes::dispatcher("custom-dispatcher");
+
+  // When: requesting via mandatory_attribute helper
+  let result = attributes.mandatory_attribute::<DispatcherAttribute>();
+
+  // Then: the dispatcher is returned with its configured name
+  assert!(result.is_some());
+  assert_eq!(result.unwrap().name(), "custom-dispatcher");
+}
+
+#[test]
+fn mandatory_attribute_returns_cancellation_strategy_when_stored() {
+  // Given: attributes containing a CancellationStrategyKind
+  //   Pekko reference: CancellationStrategy extends MandatoryAttribute
+  let attributes = Attributes::cancellation_strategy(CancellationStrategyKind::FailStage);
+
+  // When: requesting via mandatory_attribute helper
+  let result = attributes.mandatory_attribute::<CancellationStrategyKind>();
+
+  // Then: the strategy is returned with the configured kind
+  assert!(result.is_some());
+  assert_eq!(*result.unwrap(), CancellationStrategyKind::FailStage);
+}
+
+#[test]
+fn mandatory_attribute_marker_is_implemented_for_pekko_parity_set() {
+  // Given/When: requiring T: MandatoryAttribute statically for each existing type
+  //   This compile-time assertion mirrors Pekko's `extends MandatoryAttribute`
+  //   declarations on InputBuffer, Dispatcher, and CancellationStrategy.
+  fn assert_mandatory<T: MandatoryAttribute + 'static>() {}
+  assert_mandatory::<InputBuffer>();
+  assert_mandatory::<DispatcherAttribute>();
+  assert_mandatory::<CancellationStrategyKind>();
+}
+
+// --- SourceLocation attribute (Pekko parity: Attributes.SourceLocation) ---
+
+#[test]
+fn source_location_is_constructible_with_callsite_components() {
+  // Given/When: constructing a SourceLocation
+  //   Pekko reference: final class SourceLocation(lambda: AnyRef) extends Attribute
+  //   Rust translation: callsite components (file, line, column) replace the JVM lambda ref.
+  let location = SourceLocation::new(Cow::Borrowed("foo.rs"), 42, 10);
+
+  // Then: the components are recoverable via location_name()
+  assert_eq!(location.location_name(), "foo.rs:42:10");
+}
+
+#[test]
+fn source_location_clone_preserves_components() {
+  // Given: a SourceLocation
+  let original = SourceLocation::new(Cow::Borrowed("foo.rs"), 42, 10);
+
+  // When: cloning
+  let cloned = original.clone();
+
+  // Then: the cloned location renders identically
+  assert_eq!(cloned.location_name(), "foo.rs:42:10");
+}
+
+#[test]
+fn source_location_implements_attribute_trait_with_typed_eq() {
+  // Given: two equal SourceLocations and one differing
+  let a: Box<dyn Attribute> = Box::new(SourceLocation::new(Cow::Borrowed("foo.rs"), 42, 10));
+  let b: Box<dyn Attribute> = Box::new(SourceLocation::new(Cow::Borrowed("foo.rs"), 42, 10));
+  let c: Box<dyn Attribute> = Box::new(SourceLocation::new(Cow::Borrowed("foo.rs"), 43, 10));
+
+  // Then: Attribute::eq_attr distinguishes by callsite components
+  assert!(a.eq_attr(b.as_any()));
+  assert!(!a.eq_attr(c.as_any()));
+}
+
+// --- Attributes::source_location() factory ---
+
+#[test]
+fn source_location_factory_creates_non_empty_attributes() {
+  // Given/When: creating attributes with source_location factory
+  let attributes = Attributes::source_location("foo.rs", 42, 10);
+
+  // Then: the attributes are not empty
+  assert!(!attributes.is_empty());
+}
+
+#[test]
+fn source_location_factory_stores_typed_attribute() {
+  // Given: attributes created with source_location factory
+  let attributes = Attributes::source_location("foo.rs", 42, 10);
+
+  // When: requesting the SourceLocation attribute
+  let result = attributes.get::<SourceLocation>();
+
+  // Then: the typed SourceLocation is retrievable with the configured callsite
+  assert!(result.is_some());
+  assert_eq!(result.unwrap().location_name(), "foo.rs:42:10");
+}
+
+#[test]
+fn source_location_factory_accepts_owned_string() {
+  // Given/When: constructing with an owned String (Into<Cow<'static, str>> path)
+  let attributes = Attributes::source_location(String::from("dynamic.rs"), 7, 3);
+
+  // Then: the typed SourceLocation is retrievable
+  let location = attributes.get::<SourceLocation>();
+  assert!(location.is_some());
+  assert_eq!(location.unwrap().location_name(), "dynamic.rs:7:3");
+}
+
+#[test]
+fn source_location_clone_preserves_typed_attribute() {
+  // Given: attributes with a SourceLocation
+  let original = Attributes::source_location("foo.rs", 42, 10);
+
+  // When: cloning
+  let cloned = original.clone();
+
+  // Then: the typed SourceLocation is preserved
+  let location = cloned.get::<SourceLocation>();
+  assert!(location.is_some());
+  assert_eq!(location.unwrap().location_name(), "foo.rs:42:10");
+}

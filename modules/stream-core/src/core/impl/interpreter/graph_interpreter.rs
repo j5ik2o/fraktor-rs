@@ -1,4 +1,4 @@
-use alloc::{vec, vec::Vec};
+use alloc::{format, vec, vec::Vec};
 
 #[cfg(test)]
 mod tests;
@@ -12,6 +12,7 @@ use crate::core::{
   },
   materialization::{DriveOutcome, MatCombine},
   shape::PortId,
+  snapshot::{ConnectionSnapshot, ConnectionState, LogicSnapshot, RunningInterpreter},
 };
 
 /// Executes a stream graph using a port-driven runtime.
@@ -94,6 +95,47 @@ impl GraphInterpreter {
   #[must_use]
   pub(in crate::core) const fn state(&self) -> StreamState {
     self.state
+  }
+
+  /// Builds a diagnostic snapshot of this interpreter.
+  ///
+  /// Corresponds to Pekko `GraphInterpreterShell.toSnapshot` when the
+  /// interpreter is in the running phase: collects one [`LogicSnapshot`] per
+  /// stage, derives [`ConnectionSnapshot`]s from the current edge runtime, and
+  /// reports the number of logics still alive.
+  #[must_use]
+  pub(in crate::core) fn snapshot(&self) -> RunningInterpreter {
+    let logics: Vec<LogicSnapshot> = self
+      .stages
+      .iter()
+      .enumerate()
+      .map(|(index, stage)| LogicSnapshot::new(index as u32, format!("{:?}", stage.kind()), stage.attributes().clone()))
+      .collect();
+
+    let connections: Vec<ConnectionSnapshot> = self
+      .edges
+      .iter()
+      .enumerate()
+      .filter_map(|(edge_index, edge)| {
+        let in_index = self.stage_index_for_outlet(edge.from)?;
+        let out_index = self.stage_index_for_inlet(edge.to)?;
+        let in_logic = logics.get(in_index).cloned()?;
+        let out_logic = logics.get(out_index).cloned()?;
+        let state = if edge.closed {
+          ConnectionState::Closed
+        } else if edge.buffer.is_empty() {
+          ConnectionState::ShouldPull
+        } else {
+          ConnectionState::ShouldPush
+        };
+        Some(ConnectionSnapshot::new(edge_index as u32, in_logic, out_logic, state))
+      })
+      .collect();
+
+    let running_logics_count = self.stages.len() as u32;
+    let stopped_logics: Vec<LogicSnapshot> = Vec::new();
+
+    RunningInterpreter::new(logics, connections, running_logics_count, stopped_logics)
   }
 
   /// Cancels the stream.

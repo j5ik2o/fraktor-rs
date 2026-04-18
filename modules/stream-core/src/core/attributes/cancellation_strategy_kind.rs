@@ -4,7 +4,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::any::Any;
 
-use super::Attribute;
+use super::{Attribute, MandatoryAttribute};
 
 /// Strategy applied when a stage receives a cancellation signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,3 +30,5 @@ impl Attribute for CancellationStrategyKind {
     other.downcast_ref::<Self>() == Some(self)
   }
 }
+
+impl MandatoryAttribute for CancellationStrategyKind {}

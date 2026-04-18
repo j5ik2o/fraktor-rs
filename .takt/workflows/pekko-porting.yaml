@@ -1,6 +1,6 @@
 name: pekko-porting
 description: Pekko互換仕様をRustでテスト先行実装するための開発ワークフロー（ギャップ分析→テスト作成→実装→並列レビュー（QA＋Pekko互換＋テスト品質）→監督）
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

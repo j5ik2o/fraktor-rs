@@ -1,6 +1,6 @@
 name: cc-sdd-impl
 description: SDD Phase 4 - タスクに基づくテスト先行の適応型バッチ実装を実行する
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

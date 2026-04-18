@@ -297,6 +297,8 @@ impl StreamGraph {
             | StageKind::FlowDebounce
             | StageKind::FlowSample
             | StageKind::FlowWireTap
+            | StageKind::FlowKeepAlive
+            | StageKind::FlowSwitchMap
             | StageKind::Custom
         )
       },

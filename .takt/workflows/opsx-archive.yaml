@@ -1,6 +1,6 @@
 name: opsx-archive
 description: OpenSpec Archive - 完了した変更をアーカイブ
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

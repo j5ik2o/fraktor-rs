@@ -1,7 +1,10 @@
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{KillSwitch, StreamError};
-use crate::core::{dsl::Flow, materialization::StreamNotUsed};
+use crate::core::{
+  dsl::{BidiFlow, Flow},
+  materialization::StreamNotUsed,
+};
 
 #[cfg(test)]
 mod tests;
@@ -33,6 +36,17 @@ impl UniqueKillSwitch {
   where
     T: Send + Sync + 'static, {
     Flow::<T, T, StreamNotUsed>::from_kill_switch_state(self.state_handle()).map_materialized_value(|_| self.clone())
+  }
+
+  /// Returns a bidirectional pass-through flow bound to this unique kill switch.
+  #[must_use]
+  pub fn bidi_flow<T1, T2>(&self) -> BidiFlow<T1, T1, T2, T2, UniqueKillSwitch>
+  where
+    T1: Send + Sync + 'static,
+    T2: Send + Sync + 'static, {
+    let top = Flow::<T1, T1, StreamNotUsed>::from_kill_switch_state(self.state_handle());
+    let bottom = Flow::<T2, T2, StreamNotUsed>::from_kill_switch_state(self.state_handle());
+    BidiFlow::from_flows_mat(top, bottom, self.clone())
   }
 
   /// Requests graceful shutdown.

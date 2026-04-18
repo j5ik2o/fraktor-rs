@@ -11,26 +11,53 @@ use super::StreamError;
 
 /// Async callback queue for stage logic.
 mod async_callback;
+/// Eagerly propagates upstream termination events.
+mod eager_terminate_input;
+/// Eagerly propagates downstream cancellation events.
+mod eager_terminate_output;
 /// Graph stage definition.
 mod graph_stage;
 /// Graph stage processing logic.
 mod graph_stage_logic;
+/// Swallows upstream completion while propagating failures.
+mod ignore_terminate_input;
+/// Swallows downstream cancellation events.
+mod ignore_terminate_output;
+/// Input-side stage handler trait.
+mod in_handler;
+/// Kill-switch-aware stage logic mixin.
+mod killable_graph_stage_logic;
+/// Output-side stage handler trait.
+mod out_handler;
 /// Stage execution context.
 mod stage_context;
 /// Built-in stage kinds.
 mod stage_kind;
+/// Stage-level logging facade.
+mod stage_logging;
 /// Stream stage trait.
 mod stream_stage;
 /// Timer helper for stage logic.
 mod timer_graph_stage_logic;
+/// Absorbs every upstream event including failures.
+mod totally_ignorant_input;
 
 pub use async_callback::AsyncCallback;
+pub use eager_terminate_input::EagerTerminateInput;
+pub use eager_terminate_output::EagerTerminateOutput;
 pub use graph_stage::GraphStage;
 pub use graph_stage_logic::GraphStageLogic;
+pub use ignore_terminate_input::IgnoreTerminateInput;
+pub use ignore_terminate_output::IgnoreTerminateOutput;
+pub use in_handler::InHandler;
+pub use killable_graph_stage_logic::KillableGraphStageLogic;
+pub use out_handler::OutHandler;
 pub use stage_context::StageContext;
 pub use stage_kind::StageKind;
+pub use stage_logging::StageLogging;
 pub use stream_stage::StreamStage;
 pub use timer_graph_stage_logic::TimerGraphStageLogic;
+pub use totally_ignorant_input::TotallyIgnorantInput;
 
 /// Extracts the last context and collects values from a context-value pair sequence.
 ///

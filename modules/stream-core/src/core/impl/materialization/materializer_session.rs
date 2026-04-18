@@ -7,6 +7,7 @@ use crate::core::{
   KillSwitchState, KillSwitchStateHandle, StreamError, StreamPlan,
   r#impl::{fusing::StreamBufferConfig, interpreter::GraphInterpreter},
   materialization::DriveOutcome,
+  snapshot::StreamSnapshot,
 };
 
 /// Internal stream execution state.
@@ -54,6 +55,12 @@ impl Stream {
 
   pub(in crate::core) fn kill_switch_state(&self) -> KillSwitchStateHandle {
     self.kill_switch_state.clone()
+  }
+
+  /// Returns a diagnostic snapshot of the stream's interpreter.
+  pub(in crate::core) fn snapshot(&self) -> StreamSnapshot {
+    let active = self.interpreter.snapshot();
+    StreamSnapshot::new(alloc::vec![active], Vec::new())
   }
 
   fn abort_error_from_kill_switches(&self) -> Option<StreamError> {

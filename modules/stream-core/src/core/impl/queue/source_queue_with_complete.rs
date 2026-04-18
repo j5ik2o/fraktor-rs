@@ -114,7 +114,10 @@ impl<T> SourceQueueWithComplete<T> {
     }
 
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => {
+      // Pekko parity: `EmitEarly.isBackpressure = true`. Outside of a delay
+      // stage there is no "early emit" target, so the strategy collapses to
+      // the same backpressure semantics as `Backpressure`.
+      | OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly => {
         if guard.pending_offers.len() < self.max_concurrent_offers {
           guard.pending_offers.push_back(PendingOffer { value, completion: completion.clone() });
         } else {
@@ -135,6 +138,12 @@ impl<T> SourceQueueWithComplete<T> {
         guard.values.clear();
         guard.values.push_back(value);
         completion.complete(Ok(QueueOfferResult::Enqueued));
+      },
+      | OverflowStrategy::DropNew => {
+        // Pekko parity: `OverflowStrategy.dropNew` rejects the newly arrived
+        // element when the buffer is full. The existing values stay intact.
+        drop(value);
+        completion.complete(Ok(QueueOfferResult::Dropped));
       },
       | OverflowStrategy::Fail => {
         self.fail_with_guard(&mut guard, StreamError::BufferOverflow);
@@ -157,7 +166,9 @@ impl<T> SourceQueueWithComplete<T> {
     }
 
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => {
+      // Pekko parity: `EmitEarly.isBackpressure = true`. Without a delay stage
+      // backing the queue, EmitEarly degrades to the same Backpressure path.
+      | OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly => {
         completion.complete(Ok(QueueOfferResult::Failure(StreamError::WouldBlock)));
       },
       | OverflowStrategy::DropHead => {
@@ -174,6 +185,12 @@ impl<T> SourceQueueWithComplete<T> {
           pending_offer.completion.complete(Ok(QueueOfferResult::Dropped));
         }
         guard.pending_offers.push_back(PendingOffer { value, completion: completion.clone() });
+      },
+      | OverflowStrategy::DropNew => {
+        // Pekko parity: zero-capacity + full pending slot rejects the newly
+        // arrived element (symmetric to DropTail on the pending-offer path).
+        drop(value);
+        completion.complete(Ok(QueueOfferResult::Dropped));
       },
       | OverflowStrategy::Fail => {
         self.fail_with_guard(guard, StreamError::BufferOverflow);
