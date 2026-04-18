@@ -21,3 +21,6 @@ fraktor-stream-core-rs = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
