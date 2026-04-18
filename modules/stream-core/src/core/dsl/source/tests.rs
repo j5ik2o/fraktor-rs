@@ -1474,6 +1474,20 @@ fn source_buffer_rejects_zero_capacity() {
 }
 
 #[test]
+fn source_buffer_drop_new_keeps_single_path_behavior() {
+  // Pekko parity: Source.buffer(_, OverflowStrategy.dropNew) must construct without
+  // error and forward elements that fit within capacity. Buffer overflow semantics
+  // (rejecting newly arrived elements) are exercised at queue layer; here we only
+  // ensure the new variant is accepted by the buffer stage's strategy match arms.
+  let values = Source::single(5_u32)
+    .buffer(2, OverflowStrategy::DropNew)
+    .expect("buffer")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
 fn source_async_keeps_single_path_behavior() {
   let values = Source::single(5_u32).r#async().collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
@@ -2017,7 +2031,7 @@ fn source_group_by_fails_when_unique_key_count_exceeds_limit() {
     .expect("group_by")
     .merge_substreams()
     .collect_values();
-  assert_eq!(result, Err(StreamError::SubstreamLimitExceeded { max_substreams: 2 }));
+  assert_eq!(result, Err(StreamError::TooManySubstreamsOpen { max_substreams: 2 }));
 }
 
 #[test]
@@ -3090,4 +3104,657 @@ fn source_async_with_dispatcher_marks_node_with_dispatcher_attribute() {
   let dispatcher = attrs.get::<DispatcherAttribute>();
   assert!(dispatcher.is_some());
   assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
+}
+
+// ---------------------------------------------------------------------------
+// Source DSL ミラー: also_to / also_to_mat / also_to_all
+// ---------------------------------------------------------------------------
+
+#[test]
+fn source_also_to_passes_main_path_elements_through() {
+  // Given: single-element source に also_to(Sink::ignore) を装着
+  let values =
+    Source::single(1_u32).map(|value: u32| value + 1).also_to(Sink::ignore()).collect_values().expect("collect_values");
+
+  // Then: main path では変換後の値が保持される
+  assert_eq!(values, vec![2_u32]);
+}
+
+#[test]
+fn source_also_to_mat_combines_materialized_values() {
+  // Given: also_to_mat(Sink::head(), KeepBoth) の materialized
+  let (graph, (left_mat, right_mat)) = Source::<u32, _>::empty().also_to_mat(Sink::head(), KeepBoth).into_parts();
+  let _ = graph;
+
+  // Then: 左は StreamNotUsed、右は Sink::head() の Pending completion
+  assert_eq!(left_mat, StreamNotUsed::new());
+  assert_eq!(right_mat.poll(), Completion::Pending);
+}
+
+#[test]
+fn source_also_to_mat_keeps_main_path_behavior() {
+  // Given: also_to_mat(Sink::ignore(), KeepBoth) を挿入
+  let values = Source::single(1_u32)
+    .map(|value: u32| value + 1)
+    .also_to_mat(Sink::ignore(), KeepBoth)
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: main path は map 後の値を出す
+  assert_eq!(values, vec![2_u32]);
+}
+
+#[test]
+fn source_also_to_mat_routes_elements_to_side_sink() {
+  // Given: also_to_mat(Sink::head(), KeepRight) で右の completion を取り出す
+  let (mut graph, side_completion) = Source::single(9_u32).also_to_mat(Sink::head(), KeepRight).into_parts();
+  let (sink_graph, downstream_completion) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+  let mut idle_budget = 1024_usize;
+
+  // When: stream を完了まで駆動
+  while !stream.state().is_terminal() {
+    match stream.drive() {
+      | DriveOutcome::Progressed => idle_budget = 1024,
+      | DriveOutcome::Idle => {
+        assert!(idle_budget > 0, "stream stalled");
+        idle_budget = idle_budget.saturating_sub(1);
+      },
+    }
+  }
+
+  // Then: side sink は 9 を受け取り、main path は StreamDone で終わる
+  assert_eq!(side_completion.poll(), Completion::Ready(Ok(9_u32)));
+  assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn source_also_to_all_passes_main_path_elements_through() {
+  // Given: also_to_all で 2 本の sink を接続
+  let sinks: Vec<Sink<u32, StreamCompletion<StreamDone>>> = alloc::vec![Sink::ignore(), Sink::ignore()];
+  let values = Source::from_array([3_u32, 4_u32]).also_to_all(sinks).collect_values().expect("collect_values");
+
+  // Then: main path は元の値をそのまま出す
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// Source DSL ミラー: divert_to / divert_to_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn source_divert_to_routes_matching_and_passes_rest() {
+  // Given: predicate で偶数を divert、奇数は main path
+  let diverted = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let diverted_ref = diverted.clone();
+  let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
+    .divert_to(
+      |value: &u32| (*value).is_multiple_of(2),
+      Sink::<u32, StreamCompletion<StreamDone>>::foreach(move |value| {
+        diverted_ref.lock().push(value);
+      }),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: main path は奇数、divert 側は偶数を受け取る
+  assert_eq!(values, vec![1_u32, 3_u32]);
+  assert_eq!(*diverted.lock(), vec![2_u32, 4_u32]);
+}
+
+#[test]
+fn source_divert_to_mat_combines_materialized_values() {
+  // Given: divert_to_mat で sink の materialized 値 23 を右に束ねる
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 23_u32);
+  let source = Source::<u32, StreamNotUsed>::empty().map_materialized_value(|_| 19_u32).divert_to_mat(
+    |value: &u32| (*value).is_multiple_of(2),
+    sink,
+    KeepRight,
+  );
+
+  // When: 取り出し
+  let (_graph, materialized) = source.into_parts();
+
+  // Then: KeepRight は右の 23 を保持
+  assert_eq!(materialized, 23_u32);
+}
+
+#[test]
+fn source_divert_to_mat_preserves_main_path_behavior() {
+  // Given: divert_to_mat(KeepLeft) で main path の偶数を排除
+  let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
+    .divert_to_mat(
+      |value: &u32| (*value).is_multiple_of(2),
+      Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 1_u32),
+      KeepLeft,
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: main path は奇数のみ
+  assert_eq!(values, vec![1_u32, 3_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// Source DSL ミラー: or_else / or_else_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn source_or_else_uses_secondary_when_primary_is_empty() {
+  // Given: 空の primary + 非空の secondary
+  let values =
+    Source::<u32, _>::empty().or_else(Source::from_array([5_u32, 6_u32])).collect_values().expect("collect_values");
+
+  // Then: secondary の値が出る
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn source_or_else_ignores_secondary_when_primary_emits() {
+  // Given: 非空 primary + 非空 secondary
+  let values = Source::from_array([7_u32, 8_u32])
+    .or_else(Source::from_array([1_u32, 2_u32]))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: primary の値のみ
+  assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn source_or_else_mat_combines_materialized_values() {
+  // Given: KeepBoth で primary / secondary の materialized を両方保持
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 17_u32);
+  let source = Source::<u32, StreamNotUsed>::empty().map_materialized_value(|_| 3_u32).or_else_mat(secondary, KeepBoth);
+
+  // When: 取り出し
+  let (_graph, materialized) = source.into_parts();
+
+  // Then: tuple が返る
+  assert_eq!(materialized, (3_u32, 17_u32));
+}
+
+#[test]
+fn source_or_else_mat_preserves_main_path_behavior() {
+  // Given: empty primary + 非空 secondary + KeepLeft
+  let values = Source::<u32, _>::empty()
+    .or_else_mat(Source::from_array([5_u32, 6_u32]).map_materialized_value(|_| 77_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: secondary の要素が流れる
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// Source DSL ミラー: watch_termination (非 mat、keep-left)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn source_watch_termination_passes_elements_through() {
+  // Given: single-element source に watch_termination を装着
+  let values = Source::single(42_u32).watch_termination().collect_values().expect("collect_values");
+
+  // Then: 要素は透過される
+  assert_eq!(values, vec![42_u32]);
+}
+
+#[test]
+fn source_watch_termination_keeps_left_materialized_value() {
+  // Given: primary の materialized を 7 にして watch_termination を装着
+  let (_graph, materialized) =
+    Source::<u32, StreamNotUsed>::empty().map_materialized_value(|_| 7_u32).watch_termination().into_parts();
+
+  // Then: KeepLeft 相当で元の 7 が残る
+  assert_eq!(materialized, 7_u32);
+}
+
+// ---------------------------------------------------------------------------
+// Source DSL ミラー: aggregate_with_boundary / batch_weighted /
+//                  conflate / conflate_with_seed / expand / extrapolate
+// ---------------------------------------------------------------------------
+
+#[test]
+fn source_aggregate_with_boundary_emits_fixed_size_chunks() {
+  // Given: 5 要素の Source に aggregate_with_boundary(2) を装着
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
+    .aggregate_with_boundary(2)
+    .expect("aggregate_with_boundary")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: batch と同じく size=2 の Vec チャンクで出力される（残余を含む）
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
+}
+
+#[test]
+fn source_aggregate_with_boundary_rejects_zero_size() {
+  // Given: size=0 を指定
+  let result = Source::single(1_u32).aggregate_with_boundary(0);
+
+  // Then: validate_positive_argument により InvalidArgument(name="size") を返す
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_batch_weighted_uses_weight_budget() {
+  // Given: weight=値そのものとして max_weight=3 を指定（Flow 側 batch_weighted_uses_weight_budget
+  // と等価）
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 1, 2]))
+    .batch_weighted(3, |value| *value as usize)
+    .expect("batch_weighted")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: weight 合計が 3 を超えない範囲で詰めて出力される
+  assert_eq!(values, vec![vec![2_u32, 1_u32], vec![2_u32]]);
+}
+
+#[test]
+fn source_batch_weighted_rejects_zero_max_weight() {
+  // Given: max_weight=0 を指定
+  let result = Source::single(1_u32).batch_weighted(0, |value: &u32| *value as usize);
+
+  // Then: validate_positive_argument により InvalidArgument(name="max_weight") を返す
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "max_weight", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_conflate_preserves_elements_when_upstream_is_not_bursty() {
+  // Given: 非バースティな入力 [1, 2, 3] に conflate を装着
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .conflate(|acc, value| acc + value)
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 集約は発生せず、各要素がそのまま流れる（Flow 側等価テスト準拠）
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_conflate_aggregates_bursty_upstream_values() {
+  // Given: map_concat で各値をバースト [v, v*10] に展開し、その後 conflate
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .map_concat(|value: u32| alloc::vec![value, value.saturating_mul(10)])
+    .conflate(|acc, value| acc + value)
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 同一バースト内の値が合算される（1+10=11, 2+20=22）
+  assert_eq!(values, vec![11_u32, 22_u32]);
+}
+
+#[test]
+fn source_conflate_with_seed_applies_seed_and_aggregate() {
+  // Given: 非バースティな入力 [1, 2, 3] に conflate_with_seed(+10, +) を装着
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .conflate_with_seed(|value| value + 10, |acc, value| acc + value)
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 各要素は seed のみ適用され（+10）、集約は発生しない
+  assert_eq!(values, vec![11_u32, 12_u32, 13_u32]);
+}
+
+#[test]
+fn source_conflate_with_seed_aggregates_bursty_upstream_values() {
+  // Given: バースト化した上で conflate_with_seed(+100, +) を適用（Flow 側等価テスト準拠）
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .map_concat(|value: u32| alloc::vec![value, value.saturating_mul(10)])
+    .conflate_with_seed(|value| value + 100, |acc, value| acc + value)
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 各バーストの先頭に seed を適用し、後続を集約する（101+10=111, 102+20=122）
+  assert_eq!(values, vec![111_u32, 122_u32]);
+}
+
+#[test]
+fn source_expand_emits_initial_values_for_each_input() {
+  // Given: 各値を [v, v*10] に展開する expand を装着
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .expand(|value: &u32| alloc::vec![*value, value.saturating_mul(10)])
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: idle が無い場合は各入力の先頭値のみが出力される（Flow 側
+  // expand_and_extrapolate_share_expand_behavior 準拠）
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_extrapolate_shares_expand_behavior() {
+  // Given: 同一入力に対して expand と extrapolate を別々に適用
+  let expand_values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .expand(|value: &u32| alloc::vec![*value, value.saturating_mul(10)])
+    .collect_values()
+    .expect("collect_values");
+  let extrapolate_values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .extrapolate(|value: &u32| alloc::vec![*value, value.saturating_mul(10)])
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: extrapolate は expand と同一挙動（Flow 側等価テスト準拠）
+  assert_eq!(expand_values, vec![1_u32, 2_u32]);
+  assert_eq!(expand_values, extrapolate_values);
+}
+
+// ---------------------------------------------------------------------------
+// Batch 7 — Task S: 12 Source DSL operator mirrors
+// ---------------------------------------------------------------------------
+//
+// Flow 側で既に確立されたシグネチャ（引数順・命名・`Result` 形・型境界）を
+// Source 側でも完全に踏襲する。境界値検証（`validate_positive_argument`）が
+// Flow 側にあるものは Source 側でも同一エラーを返すこと。タイムアウト発火は
+// Flow 側で既に PulsedSourceLogic による統合テストがあるため、Source 側は
+// happy path と zero rejection に絞る（Batch 6 の DropNew と同方針）。
+
+// --- backpressure_timeout ---
+
+#[test]
+fn source_backpressure_timeout_keeps_single_path_behavior() {
+  // Given: 3 要素シーケンスに十分余裕のある ticks を付けた backpressure_timeout を適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .backpressure_timeout(100)
+    .expect("backpressure_timeout")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 全要素がそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_backpressure_timeout_rejects_zero_ticks() {
+  // Given: ticks=0 を渡す
+  let result = Source::single(1_u32).backpressure_timeout(0);
+
+  // Then: Flow 側と同じエラーシェイプで失敗する
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- completion_timeout ---
+
+#[test]
+fn source_completion_timeout_keeps_single_path_behavior() {
+  // Given: 3 要素シーケンスに十分余裕のある ticks を付けた completion_timeout を適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .completion_timeout(100)
+    .expect("completion_timeout")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 全要素がそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_completion_timeout_rejects_zero_ticks() {
+  // Given: ticks=0 を渡す
+  let result = Source::single(1_u32).completion_timeout(0);
+
+  // Then: Flow 側と同じエラーシェイプで失敗する
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- idle_timeout ---
+
+#[test]
+fn source_idle_timeout_keeps_single_path_behavior() {
+  // Given: 3 要素シーケンスに十分余裕のある ticks を付けた idle_timeout を適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .idle_timeout(100)
+    .expect("idle_timeout")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 全要素がそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_idle_timeout_rejects_zero_ticks() {
+  // Given: ticks=0 を渡す
+  let result = Source::single(1_u32).idle_timeout(0);
+
+  // Then: Flow 側と同じエラーシェイプで失敗する
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- initial_timeout ---
+
+#[test]
+fn source_initial_timeout_keeps_single_path_behavior() {
+  // Given: 3 要素シーケンスに十分余裕のある ticks を付けた initial_timeout を適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .initial_timeout(100)
+    .expect("initial_timeout")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 全要素がそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_initial_timeout_rejects_zero_ticks() {
+  // Given: ticks=0 を渡す
+  let result = Source::single(1_u32).initial_timeout(0);
+
+  // Then: Flow 側と同じエラーシェイプで失敗する
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- keep_alive ---
+
+#[test]
+fn source_keep_alive_keeps_single_path_behavior() {
+  // Given: 3 要素シーケンスに十分余裕のある ticks を付けた keep_alive を適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .keep_alive(100, 0_u32)
+    .expect("keep_alive")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: idle が発生しない場合、元の 3 要素がそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_keep_alive_rejects_zero_ticks() {
+  // Given: ticks=0 を渡す
+  let result = Source::single(1_u32).keep_alive(0, 0_u32);
+
+  // Then: Flow 側と同じエラーシェイプで失敗する
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- wire_tap ---
+
+#[test]
+fn source_wire_tap_observes_each_element_without_altering_data_path() {
+  // Given: 共有可変バッファを捕捉するコールバックを wire_tap に登録
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let observed_clone = observed.clone();
+
+  // When: main path に 3 要素を流す
+  let values = Source::from_array([10_u32, 20_u32, 30_u32])
+    .wire_tap(move |value| {
+      observed_clone.lock().push(*value);
+    })
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: main path は変更されず、tap も全要素を観測する
+  assert_eq!(values, vec![10_u32, 20_u32, 30_u32]);
+  assert_eq!(*observed.lock(), vec![10_u32, 20_u32, 30_u32]);
+}
+
+// --- monitor ---
+
+#[test]
+fn source_monitor_emits_indexed_pairs_for_each_element() {
+  // Given: 3 要素シーケンスに monitor を適用
+  let values = Source::from_array([100_u32, 200_u32, 300_u32]).monitor().collect_values().expect("collect_values");
+
+  // Then: 各要素に 0 始まりのインデックスが付与され (index, value) タプルが流れる
+  assert_eq!(values, vec![(0_u64, 100_u32), (1_u64, 200_u32), (2_u64, 300_u32)]);
+}
+
+// --- log ---
+
+#[test]
+fn source_log_passes_elements_through_unchanged() {
+  // Given: 3 要素シーケンスに log を適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .log("source-log")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 全要素がそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_log_inserts_flow_log_stage_and_stores_name_attribute() {
+  // Given: log を適用した Source をパイプライン化
+  let source = Source::single(7_u32).log("source-log-stage");
+  let (mut graph, _mat) = source.into_parts();
+
+  // When: プランに展開して stage の属性を確認する
+  let attribute_names = graph.attributes().names().to_vec();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: FlowLog stage が 1 つ挿入され、名前属性が記録されている
+  assert!(
+    plan.stages.iter().any(|stage| matches!(
+      stage,
+      StageDefinition::Flow(definition) if definition.kind == StageKind::FlowLog
+    )),
+    "expected FlowLog stage in plan"
+  );
+  assert!(
+    attribute_names.iter().any(|name| name == "source-log-stage"),
+    "expected source-log-stage name attribute, got {attribute_names:?}"
+  );
+}
+
+// --- log_with_marker ---
+
+#[test]
+fn source_log_with_marker_passes_elements_through_unchanged() {
+  // Given: 3 要素シーケンスに log_with_marker を適用
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .log_with_marker("source-log", "marker")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 全要素がそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_log_with_marker_stores_both_name_and_marker_attributes() {
+  // Given: log_with_marker を適用した Source をグラフ化
+  let source = Source::single(7_u32).log_with_marker("source-log-stage", "source-marker");
+  let (graph, _mat) = source.into_parts();
+
+  // Then: 属性リストに name / marker の双方が記録されている（Flow 側と同順）
+  let attribute_names = graph.attributes().names().to_vec();
+  assert!(
+    attribute_names.iter().any(|name| name == "source-log-stage"),
+    "expected source-log-stage name attribute, got {attribute_names:?}"
+  );
+  assert!(
+    attribute_names.iter().any(|name| name == "source-marker"),
+    "expected source-marker marker attribute, got {attribute_names:?}"
+  );
+}
+
+// --- switch_map ---
+
+#[test]
+fn source_switch_map_emits_inner_source_values_for_each_outer_element() {
+  // Given: 外側の 2 要素に対し、内側で single Source を生成する switch_map を適用
+  let values = Source::from_array([1_u32, 2_u32])
+    .switch_map(|value: u32| Source::single(value.saturating_mul(10)))
+    .expect("switch_map")
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: 各外側要素の内側 Source の値が順番に流れる
+  assert_eq!(values, vec![10_u32, 20_u32]);
+}
+
+// --- merge_latest ---
+
+#[test]
+fn source_merge_latest_wraps_single_path_value_into_vec() {
+  // Given: fan_in=1 の merge_latest を single Source に適用
+  let values = Source::single(7_u32).merge_latest(1).expect("merge_latest").collect_values().expect("collect_values");
+
+  // Then: 単一要素が Vec でラップされて流れる（Flow 側等価テスト準拠）
+  assert_eq!(values, vec![vec![7_u32]]);
+}
+
+#[test]
+fn source_merge_latest_rejects_zero_fan_in() {
+  // Given: fan_in=0 を渡す
+  let result = Source::single(1_u32).merge_latest(0);
+
+  // Then: Flow 側と同じエラーシェイプで失敗する
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "fan_in", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- merge_preferred ---
+
+#[test]
+fn source_merge_preferred_keeps_single_path_behavior() {
+  // Given: fan_in=1 の merge_preferred を single Source に適用
+  let values =
+    Source::single(7_u32).merge_preferred(1).expect("merge_preferred").collect_values().expect("collect_values");
+
+  // Then: 単一要素がそのまま流れる（Flow 側等価テスト準拠）
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn source_merge_preferred_rejects_zero_fan_in() {
+  // Given: fan_in=0 を渡す
+  let result = Source::single(1_u32).merge_preferred(0);
+
+  // Then: Flow 側と同じエラーシェイプで失敗する
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "fan_in", value: 0, reason: "must be greater than zero" })
+  ));
 }

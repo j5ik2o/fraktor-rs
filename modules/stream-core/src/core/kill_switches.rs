@@ -1,10 +1,7 @@
 use alloc::string::String;
 
 use super::{SharedKillSwitch, unique_kill_switch::UniqueKillSwitch};
-use crate::core::{
-  dsl::{BidiFlow, Flow},
-  materialization::StreamNotUsed,
-};
+use crate::core::dsl::{BidiFlow, Flow};
 
 #[cfg(test)]
 mod tests;
@@ -33,10 +30,6 @@ impl KillSwitches {
   where
     T1: Send + Sync + 'static,
     T2: Send + Sync + 'static, {
-    let switch = UniqueKillSwitch::new();
-    let top = switch.flow::<T1>().map_materialized_value(|_| StreamNotUsed::new());
-    let bottom = switch.flow::<T2>().map_materialized_value(|_| StreamNotUsed::new());
-
-    BidiFlow::from_flows_mat(top, bottom, switch)
+    UniqueKillSwitch::new().bidi_flow::<T1, T2>()
   }
 }

@@ -4,7 +4,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::any::Any;
 
-use super::Attribute;
+use super::{Attribute, MandatoryAttribute};
 
 /// Configures the input buffer size for a stream stage.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,3 +36,5 @@ impl Attribute for InputBuffer {
     other.downcast_ref::<Self>() == Some(self)
   }
 }
+
+impl MandatoryAttribute for InputBuffer {}

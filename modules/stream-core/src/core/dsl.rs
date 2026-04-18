@@ -38,6 +38,7 @@ mod bidi_flow;
 mod broadcast_hub;
 #[cfg(feature = "compression")]
 mod compression;
+mod coupled_termination_flow;
 mod delay_strategy;
 mod draining_control;
 mod fixed_delay;
@@ -77,6 +78,7 @@ pub use bidi_flow::BidiFlow;
 pub use broadcast_hub::BroadcastHub;
 #[cfg(feature = "compression")]
 pub use compression::Compression;
+pub use coupled_termination_flow::CoupledTerminationFlow;
 pub use delay_strategy::DelayStrategy;
 pub use draining_control::DrainingControl;
 pub use fixed_delay::FixedDelay;
@@ -98,7 +100,7 @@ pub use restart_sink::RestartSink;
 pub use restart_source::RestartSource;
 pub use retry_flow::RetryFlow;
 pub use sink::Sink;
-pub use sink_queue::SinkQueue;
+pub use sink_queue::{SinkQueue, SinkQueueWithCancel};
 pub use source::Source;
 pub use source_group_by_sub_flow::SourceGroupBySubFlow;
 pub use source_queue::SourceQueue;

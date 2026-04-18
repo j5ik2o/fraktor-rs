@@ -32,8 +32,6 @@ mod restart_config;
 mod restart_log_config;
 /// Restart log level enum.
 mod restart_log_level;
-/// Stream reference serialization support.
-mod serialization;
 /// Stream topology shapes and connection points.
 pub mod shape;
 /// Shared kill switch for multi-stream control.
@@ -47,6 +45,8 @@ pub mod stage;
 /// Unique kill switch for single-stream control.
 mod unique_kill_switch;
 // stateful_map_concat_accumulator moved to dsl/stateful_map_concat_accumulator
+/// Termination mode for stream subscription timeout.
+mod stream_subscription_timeout_termination_mode;
 /// `split_when` / `split_after` substream cancellation strategy.
 mod substream_cancel_strategy;
 /// Supervision strategy definitions.
@@ -90,6 +90,7 @@ pub type StreamDslError = ImplStreamDslError;
 /// Public alias for stream execution errors.
 pub type StreamError = ImplStreamError;
 // StatefulMapConcatAccumulator re-exported via dsl::StatefulMapConcatAccumulator
+pub use stream_subscription_timeout_termination_mode::StreamSubscriptionTimeoutTerminationMode;
 pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;

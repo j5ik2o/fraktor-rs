@@ -33,6 +33,7 @@ pub struct ActorMaterializer {
   drive_actor:        Option<ChildRef>,
   tick_handle:        Option<SchedulerHandle>,
   total_materialized: u64,
+  handles:            Vec<StreamHandleImpl>,
 }
 
 impl ActorMaterializer {
@@ -46,6 +47,7 @@ impl ActorMaterializer {
       drive_actor: None,
       tick_handle: None,
       total_materialized: 0,
+      handles: Vec::new(),
     }
   }
 
@@ -59,6 +61,7 @@ impl ActorMaterializer {
       drive_actor: None,
       tick_handle: None,
       total_materialized: 0,
+      handles: Vec::new(),
     }
   }
 
@@ -146,6 +149,17 @@ impl ActorMaterializer {
   pub const fn is_stopped(&self) -> bool {
     matches!(self.state, MaterializerLifecycleState::Stopped)
   }
+
+  /// Returns the registered stream handles.
+  ///
+  /// Used by [`crate::core::snapshot::MaterializerState::stream_snapshots`] to
+  /// collect diagnostic snapshots from all active streams. The slice reflects
+  /// the order in which handles were materialized, and is cleared on
+  /// [`shutdown`](Self::shutdown).
+  #[must_use]
+  pub(in crate::core) fn handles(&self) -> &[StreamHandleImpl] {
+    &self.handles
+  }
 }
 
 impl Materializer for ActorMaterializer {
@@ -186,6 +200,7 @@ impl Materializer for ActorMaterializer {
       let shared = StreamShared::new(stream);
       let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
       Self::register_handle(drive_actor, handle.clone())?;
+      self.handles.push(handle.clone());
       self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     } else {
@@ -221,6 +236,7 @@ impl Materializer for ActorMaterializer {
         Self::register_handle(drive_actor, handle.clone())?;
       }
       let handle = handles.first().cloned().ok_or(StreamError::Failed)?;
+      self.handles.extend(handles);
       self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     }
@@ -238,6 +254,7 @@ impl Materializer for ActorMaterializer {
     // succeed. Rolling back to Running after partial teardown (e.g. tick
     // cancelled but drive actor still alive) would leave a worse inconsistency.
     self.state = MaterializerLifecycleState::Stopped;
+    self.handles.clear();
 
     let system = self.system()?;
     // cancel returns false when the job already fired or was not registered;

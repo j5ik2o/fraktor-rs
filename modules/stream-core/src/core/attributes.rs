@@ -6,25 +6,49 @@ mod tests;
 mod async_boundary_attr;
 mod attribute;
 mod cancellation_strategy_kind;
+mod debug_logging;
 mod dispatcher_attribute;
+mod fuzzing_mode;
 mod input_buffer;
 mod log_level;
 mod log_levels;
+mod mandatory_attribute;
+mod max_fixed_buffer_size;
+mod name;
+mod nested_materialization_cancellation_policy;
+mod output_burst_limit;
+mod source_location;
+mod stream_subscription_timeout;
+mod sync_processing_limit;
 
 pub use async_boundary_attr::AsyncBoundaryAttr;
 pub use attribute::Attribute;
 pub use cancellation_strategy_kind::CancellationStrategyKind;
+pub use debug_logging::DebugLogging;
 pub use dispatcher_attribute::DispatcherAttribute;
+pub use fuzzing_mode::FuzzingMode;
 pub use input_buffer::InputBuffer;
 pub use log_level::LogLevel;
 pub use log_levels::LogLevels;
+pub use mandatory_attribute::MandatoryAttribute;
+pub use max_fixed_buffer_size::MaxFixedBufferSize;
+pub use name::Name;
+pub use nested_materialization_cancellation_policy::NestedMaterializationCancellationPolicy;
+pub use output_burst_limit::OutputBurstLimit;
+pub use source_location::SourceLocation;
+pub use stream_subscription_timeout::StreamSubscriptionTimeout;
+pub use sync_processing_limit::SyncProcessingLimit;
 
 mod collection {
-  use alloc::{boxed::Box, string::String, vec::Vec};
+  use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 
   use super::{
-    AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
+    AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DebugLogging, DispatcherAttribute, FuzzingMode,
+    InputBuffer, LogLevel, LogLevels, MandatoryAttribute, MaxFixedBufferSize, Name,
+    NestedMaterializationCancellationPolicy, OutputBurstLimit, SourceLocation, StreamSubscriptionTimeout,
+    SyncProcessingLimit,
   };
+  use crate::core::stream_subscription_timeout_termination_mode::StreamSubscriptionTimeoutTerminationMode;
 
   /// Immutable collection of stream attributes.
   ///
@@ -44,9 +68,13 @@ mod collection {
     }
 
     /// Creates attributes containing a single stage name.
+    ///
+    /// Stores the name both in the legacy `names` accessor and as a typed
+    /// [`Name`] attribute, mirroring Pekko's `Attributes(Name(n))`.
     #[must_use]
     pub fn named(name: impl Into<String>) -> Self {
-      Self { names: alloc::vec![name.into()], attrs: Vec::new() }
+      let name_string = name.into();
+      Self { names: alloc::vec![name_string.clone()], attrs: alloc::vec![Box::new(Name(name_string))] }
     }
 
     /// Creates attributes with an [`InputBuffer`] configuration.
@@ -87,6 +115,19 @@ mod collection {
       }
     }
 
+    /// Creates attributes containing a [`SourceLocation`] callsite.
+    ///
+    /// Mirrors Pekko's `SourceLocation.forLambda`, with the JVM lambda
+    /// reference replaced by the Rust-native callsite triple
+    /// `(file, line, column)`.
+    #[must_use]
+    pub fn source_location(file: impl Into<Cow<'static, str>>, line: u32, column: u32) -> Self {
+      Self {
+        names: alloc::vec![String::from("source-location")],
+        attrs: alloc::vec![Box::new(SourceLocation::new(file.into(), line, column))],
+      }
+    }
+
     /// Appends names and typed attributes from another collection.
     #[must_use]
     pub fn and(mut self, other: Self) -> Self {
@@ -115,10 +156,99 @@ mod collection {
       self.attrs.iter().filter_map(|attr| attr.as_any().downcast_ref::<T>()).collect()
     }
 
+    /// Retrieves a mandatory typed attribute by its concrete type.
+    ///
+    /// Restricts `T` to [`MandatoryAttribute`] implementers, mirroring
+    /// Pekko's `mandatoryAttribute[T <: MandatoryAttribute]` at compile
+    /// time instead of the runtime hierarchy check.
+    #[must_use]
+    pub fn mandatory_attribute<T: MandatoryAttribute + 'static>(&self) -> Option<&T> {
+      self.get::<T>()
+    }
+
     /// Creates attributes containing a [`CancellationStrategyKind`].
     #[must_use]
     pub fn cancellation_strategy(strategy: CancellationStrategyKind) -> Self {
       Self { names: alloc::vec![String::from("cancellation-strategy")], attrs: alloc::vec![Box::new(strategy)] }
+    }
+
+    /// Creates attributes containing a [`NestedMaterializationCancellationPolicy`].
+    ///
+    /// Mirrors Pekko's `Attributes(NestedMaterializationCancellationPolicy(...))`
+    /// factory helper.
+    #[must_use]
+    pub fn nested_materialization_cancellation_policy(policy: NestedMaterializationCancellationPolicy) -> Self {
+      Self {
+        names: alloc::vec![String::from("nested-materialization-cancellation-policy")],
+        attrs: alloc::vec![Box::new(policy)],
+      }
+    }
+
+    /// Creates attributes containing a [`DebugLogging`] flag.
+    ///
+    /// Mirrors Pekko's `Attributes(DebugLogging(enabled))`.
+    #[must_use]
+    pub fn debug_logging(enabled: bool) -> Self {
+      Self {
+        names: alloc::vec![String::from("debug-logging")],
+        attrs: alloc::vec![Box::new(DebugLogging::new(enabled))],
+      }
+    }
+
+    /// Creates attributes containing a [`FuzzingMode`] flag.
+    ///
+    /// Mirrors Pekko's `Attributes(FuzzingMode(enabled))`.
+    #[must_use]
+    pub fn fuzzing_mode(enabled: bool) -> Self {
+      Self { names: alloc::vec![String::from("fuzzing-mode")], attrs: alloc::vec![Box::new(FuzzingMode::new(enabled))] }
+    }
+
+    /// Creates attributes containing a [`MaxFixedBufferSize`].
+    ///
+    /// Mirrors Pekko's `Attributes(MaxFixedBufferSize(size))`.
+    #[must_use]
+    pub fn max_fixed_buffer_size(size: usize) -> Self {
+      Self {
+        names: alloc::vec![String::from("max-fixed-buffer-size")],
+        attrs: alloc::vec![Box::new(MaxFixedBufferSize::new(size))],
+      }
+    }
+
+    /// Creates attributes containing an [`OutputBurstLimit`].
+    ///
+    /// Mirrors Pekko's `Attributes(OutputBurstLimit(limit))`.
+    #[must_use]
+    pub fn output_burst_limit(limit: usize) -> Self {
+      Self {
+        names: alloc::vec![String::from("output-burst-limit")],
+        attrs: alloc::vec![Box::new(OutputBurstLimit::new(limit))],
+      }
+    }
+
+    /// Creates attributes containing a [`StreamSubscriptionTimeout`].
+    ///
+    /// Mirrors Pekko's `Attributes(StreamSubscriptionTimeout(timeout, mode))`.
+    /// The `timeout_ticks` value is expressed in scheduler ticks (no_std).
+    #[must_use]
+    pub fn stream_subscription_timeout(
+      timeout_ticks: u32,
+      termination_mode: StreamSubscriptionTimeoutTerminationMode,
+    ) -> Self {
+      Self {
+        names: alloc::vec![String::from("stream-subscription-timeout")],
+        attrs: alloc::vec![Box::new(StreamSubscriptionTimeout::new(timeout_ticks, termination_mode))],
+      }
+    }
+
+    /// Creates attributes containing a [`SyncProcessingLimit`].
+    ///
+    /// Mirrors Pekko's `Attributes(SyncProcessingLimit(limit))`.
+    #[must_use]
+    pub fn sync_processing_limit(limit: usize) -> Self {
+      Self {
+        names: alloc::vec![String::from("sync-processing-limit")],
+        attrs: alloc::vec![Box::new(SyncProcessingLimit::new(limit))],
+      }
     }
 
     /// Returns all configured stage names.

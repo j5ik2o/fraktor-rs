@@ -3347,7 +3347,7 @@ where
   }
 }
 
-fn log_definition<In>() -> FlowDefinition
+pub(in crate::core) fn log_definition<In>() -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();

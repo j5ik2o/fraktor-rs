@@ -9,6 +9,8 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::actor::error::SendError;
 
+use super::{CancellationCause, CancellationKind, FramingErrorKind};
+
 /// Errors returned by stream operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamError {
@@ -25,6 +27,8 @@ pub enum StreamError {
     remaining: u64,
   },
   /// Indicates a queue overflow or backpressure failure.
+  ///
+  /// Pekko parity: `pekko.stream.BufferOverflowException`.
   BufferOverflow,
   /// Indicates the materializer has not been started.
   MaterializerNotStarted,
@@ -62,13 +66,24 @@ pub enum StreamError {
     partition_count: usize,
   },
   /// Indicates that observed substream keys exceeded the configured limit.
-  SubstreamLimitExceeded {
-    /// Maximum allowed substream count.
+  ///
+  /// Pekko parity: `pekko.stream.TooManySubstreamsOpenException`.
+  /// The Pekko exception carries no payload, but fraktor-rs retains
+  /// `max_substreams` for Debug/diagnostic purposes (not surfaced by
+  /// [`fmt::Display`]).
+  TooManySubstreamsOpen {
+    /// Maximum allowed substream count (preserved for diagnostics only).
     max_substreams: usize,
   },
   /// Indicates that a timeout condition was reached.
+  ///
+  /// Pekko parity mapping for `kind`:
+  /// - `"initial"` → `InitialTimeoutException`
+  /// - `"completion"` → `CompletionTimeoutException`
+  /// - `"idle"` → `StreamIdleTimeoutException`
+  /// - `"backpressure"` → `BackpressureTimeoutException`
   Timeout {
-    /// Timeout kind identifier.
+    /// Timeout kind identifier (see Pekko parity mapping above).
     kind:  &'static str,
     /// Configured tick threshold.
     ticks: u64,
@@ -76,6 +91,8 @@ pub enum StreamError {
   /// Downstream canceled without triggering lazy source materialization.
   NeverMaterialized,
   /// Stream is terminated. Materialized value is detached.
+  ///
+  /// Pekko parity: `pekko.stream.StreamDetachedException`.
   StreamDetached,
   /// Indicates an IO operation failed.
   IoError {
@@ -83,6 +100,52 @@ pub enum StreamError {
     kind:    String,
     /// Human-readable description of the error.
     message: String,
+  },
+  /// Indicates that a configured stream element limit has been reached.
+  ///
+  /// Pekko parity: `pekko.stream.StreamLimitReachedException(n)`.
+  StreamLimitReached {
+    /// Limit value (`n`) that was reached.
+    limit: u64,
+  },
+  /// Indicates that an actor watched by a stream stage has terminated.
+  ///
+  /// Pekko parity: `pekko.stream.WatchedActorTerminatedException`.
+  WatchedActorTerminated {
+    /// Stage name that was watching the actor (e.g. `"ask"`, `"watch"`).
+    watching_stage_name: Cow<'static, str>,
+    /// Address/path of the actor that terminated.
+    actor_path:          Cow<'static, str>,
+  },
+  /// Indicates that a stream terminated abruptly (e.g. materializer shutdown).
+  ///
+  /// Pekko parity: `pekko.stream.AbruptStreamTerminationException`.
+  AbruptStreamTermination {
+    /// Human-readable description of the termination context.
+    message: Cow<'static, str>,
+  },
+  /// Indicates that an individual graph stage was terminated abruptly.
+  ///
+  /// Pekko parity: `pekko.stream.AbruptStageTerminationException`.
+  AbruptStageTermination {
+    /// Stage logic name that was terminated.
+    stage_name: Cow<'static, str>,
+  },
+  /// Indicates a framing failure when decoding delimited byte streams.
+  ///
+  /// Pekko parity: `pekko.stream.scaladsl.Framing.FramingException`. The inner
+  /// [`FramingErrorKind`] discriminates the specific cause (oversized frame
+  /// versus malformed byte sequence) without requiring string parsing.
+  Framing {
+    /// Inner sub-classification of the framing failure.
+    kind: FramingErrorKind,
+  },
+  /// Indicates a non-failure cancellation event tagged with its cause.
+  ///
+  /// Pekko parity: `pekko.stream.SubscriptionWithCancelException.NonFailureCancellation`.
+  CancellationCause {
+    /// Cause discriminator distinguishing the cancellation reason.
+    cause: CancellationCause,
   },
 }
 
@@ -147,8 +210,8 @@ impl fmt::Display for StreamError {
       | Self::InvalidRoute { route, partition_count } => {
         write!(f, "invalid partition route: route={route} partition_count={partition_count}")
       },
-      | Self::SubstreamLimitExceeded { max_substreams } => {
-        write!(f, "substream limit exceeded: max_substreams={max_substreams}")
+      | Self::TooManySubstreamsOpen { .. } => {
+        write!(f, "Cannot open a new substream as there are too many substreams open")
       },
       | Self::Timeout { kind, ticks } => {
         write!(f, "{kind} timeout after {ticks} ticks")
@@ -161,6 +224,22 @@ impl fmt::Display for StreamError {
       },
       | Self::IoError { kind, message } => {
         write!(f, "IO error ({kind}): {message}")
+      },
+      | Self::StreamLimitReached { limit } => write!(f, "limit of {limit} reached"),
+      | Self::WatchedActorTerminated { watching_stage_name, actor_path } => {
+        write!(f, "Actor watched by [{watching_stage_name}] has terminated! Was: {actor_path}")
+      },
+      | Self::AbruptStreamTermination { message } => write!(f, "{message}"),
+      | Self::AbruptStageTermination { stage_name } => {
+        write!(
+          f,
+          "GraphStage [{stage_name}] terminated abruptly, caused by for example materializer or actor system termination."
+        )
+      },
+      | Self::Framing { kind } => write!(f, "{kind}"),
+      | Self::CancellationCause { cause } => match cause.kind() {
+        | CancellationKind::NoMoreElementsNeeded => write!(f, "NoMoreElementsNeeded"),
+        | CancellationKind::StageWasCompleted => write!(f, "StageWasCompleted"),
       },
     }
   }

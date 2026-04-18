@@ -31,7 +31,7 @@ where
     let key = (self.key_fn)(&value);
     if !self.seen_keys.contains(&key) {
       if self.seen_keys.len() >= self.max_substreams {
-        return Err(StreamError::SubstreamLimitExceeded { max_substreams: self.max_substreams });
+        return Err(StreamError::TooManySubstreamsOpen { max_substreams: self.max_substreams });
       }
       self.seen_keys.push(key.clone());
     }

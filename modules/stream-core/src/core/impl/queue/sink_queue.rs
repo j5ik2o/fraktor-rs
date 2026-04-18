@@ -14,6 +14,11 @@ struct SinkQueueInner<T> {
 ///
 /// Elements pushed into the sink can be pulled from this handle.
 /// Supports cancellation via [`cancel`](Self::cancel).
+///
+/// Pekko parity: this single type covers the surface of both
+/// `pekko.stream.scaladsl.SinkQueue[T]` and
+/// `pekko.stream.scaladsl.SinkQueueWithCancel[T]`. See the
+/// [`crate::core::dsl::SinkQueueWithCancel`] alias re-exported from the DSL.
 pub struct SinkQueue<T> {
   inner: ArcShared<SpinSyncMutex<SinkQueueInner<T>>>,
 }
