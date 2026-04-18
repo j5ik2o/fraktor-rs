@@ -2,7 +2,7 @@ name: pekko-gap-analysis
 description: >-
   指定モジュールとApache Pekko参照実装を3層（API抽出→インターフェース比較→設計比較）で
   ギャップ分析を実施する。統合→レビュー→修正の閉ループで品質を担保する。
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

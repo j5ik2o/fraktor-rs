@@ -1,6 +1,6 @@
 name: cc-sdd-validate-impl
 description: SDD Phase 5 - 実装が要件・設計・タスクに合致しているかを検証する。不合格時は自動修正→再検証ループ
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

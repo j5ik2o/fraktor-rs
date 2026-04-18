@@ -1,6 +1,6 @@
 name: issue-resolve
 description: 複数の GitHub Issue を起点に要件整理・実装・レビュー・完了判定・Issue単位コミットまでを実行する
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

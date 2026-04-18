@@ -1,6 +1,6 @@
 name: cc-sdd-design
 description: SDD Phase 2 - 要件に基づく技術設計と発見ログを生成する
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

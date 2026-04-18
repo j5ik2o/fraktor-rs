@@ -1,6 +1,6 @@
 name: refactoring
 description: 大規模リファクタリング用ピース（Phase管理対応、計画→テスト作成→実装→AIレビュー→arch+QAレビュー→監督）
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

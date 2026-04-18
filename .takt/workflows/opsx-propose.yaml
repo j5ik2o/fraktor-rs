@@ -1,6 +1,6 @@
 name: opsx-propose
 description: OpenSpec Propose - 変更を作成し全アーティファクトを生成
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

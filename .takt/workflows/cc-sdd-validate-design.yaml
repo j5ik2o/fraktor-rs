@@ -1,6 +1,6 @@
 name: cc-sdd-validate-design
 description: SDD（オプション）- 技術設計の品質レビューとGO/NO-GO判定。NO-GO時は自動修正→再検証ループ
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

@@ -1,6 +1,6 @@
 name: critical-bug-fix
 description: 既存コードの致命的バグ（ロジック・セキュリティ・並行処理）を検出し自動修正する
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

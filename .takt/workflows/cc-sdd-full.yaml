@@ -1,6 +1,6 @@
 name: cc-sdd-full
 description: Spec-Driven Development（フルオート）- 要件→設計→タスク→テスト先行実装→検証を自動遷移で実行する
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true

@@ -1,6 +1,6 @@
 name: opsx-full
 description: OpenSpec フルワークフロー - 提案、実装、レビュー、アーカイブを一括実行
-piece_config:
+workflow_config:
   provider_options:
     codex:
       network_access: true
