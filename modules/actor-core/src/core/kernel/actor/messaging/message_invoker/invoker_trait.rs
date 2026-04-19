@@ -25,7 +25,8 @@ pub trait MessageInvoker: Send + Sync {
   /// Returns an error if message processing fails.
   fn invoke(&mut self, message: AnyMessage) -> Result<(), ActorError>;
 
-  /// Processes a system message, mirroring Pekko `ActorCell.scala:480` `systemInvoke(SystemMessage)`.
+  /// Processes a system message, mirroring Pekko `ActorCell.scala:480`
+  /// `systemInvoke(SystemMessage)`.
   ///
   /// # Errors
   ///
