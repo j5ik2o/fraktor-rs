@@ -15,9 +15,9 @@ impl From<&ActorError> for FailureClassification {
   fn from(value: &ActorError) -> Self {
     match value {
       | ActorError::Recoverable(_) => FailureClassification::Recoverable,
-      // SP-H1: `Panic` は supervisor で Escalate されるが、ローカル failure 分類上は回復不能として
-      // `Fatal` と同等に扱う（計画書 §実装ガイドライン）。
-      | ActorError::Fatal(_) | ActorError::Panic(_) => FailureClassification::Fatal,
+      // SP-H1: `Escalate` は supervisor で親にエスカレーションされるが、ローカル failure 分類上は
+      // 回復不能として `Fatal` と同等に扱う（計画書 §実装ガイドライン）。
+      | ActorError::Fatal(_) | ActorError::Escalate(_) => FailureClassification::Fatal,
     }
   }
 }

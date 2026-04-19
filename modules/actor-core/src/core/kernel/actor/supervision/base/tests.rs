@@ -128,30 +128,32 @@ fn with_log_level_sets_value() {
 }
 
 #[test]
-fn default_decider_returns_escalate_for_panic() {
-  // SP-H1: `with_decider` が構築する strategy 経路全体で Panic → Escalate が網羅的に扱われることを確認する。
-  // 内部の `default_decider` は `dyn_decider` に shadow されるため、ユーザクロージャを `ActorError` の
-  // 全 variant を網羅する形で渡すことで、`Panic` variant 追加と decider 網羅性を強制する。
+fn default_decider_escalates_for_escalate_variant() {
+  // SP-H1: `with_decider` が構築する strategy 経路全体で `Escalate` variant → Escalate directive が
+  // 網羅的に扱われることを確認する。内部の `default_decider` は `dyn_decider` に shadow されるため、
+  // ユーザクロージャを `ActorError` の全 variant を網羅する形で渡すことで、`Escalate` variant 追加と
+  // decider 網羅性を強制する。
   let strategy = SupervisorStrategy::with_decider(|error| match error {
     | ActorError::Recoverable(_) => SupervisorDirective::Restart,
     | ActorError::Fatal(_) => SupervisorDirective::Stop,
-    | ActorError::Panic(_) => SupervisorDirective::Escalate,
+    | ActorError::Escalate(_) => SupervisorDirective::Escalate,
   });
-  assert_eq!(strategy.decide(&ActorError::panic("boom")), SupervisorDirective::Escalate);
+  assert_eq!(strategy.decide(&ActorError::escalate("boom")), SupervisorDirective::Escalate);
 }
 
 #[test]
-fn default_strategy_decider_returns_escalate_for_panic() {
+fn default_strategy_escalates_for_escalate_variant() {
   // SP-H1: `Default for SupervisorStrategy` の内部 `decider`（fn ポインタ）で
-  // Panic → Escalate にマップされることを確認する。`decide()` は `dyn_decider` が
-  // `None` の場合に fn ポインタを直接呼ぶため、`default()` 経由で観測可能。
+  // `Escalate` variant → Escalate directive にマップされることを確認する。
+  // `decide()` は `dyn_decider` が `None` の場合に fn ポインタを直接呼ぶため、
+  // `default()` 経由で観測可能。
   let strategy = SupervisorStrategy::default();
-  assert_eq!(strategy.decide(&ActorError::panic("boom")), SupervisorDirective::Escalate);
+  assert_eq!(strategy.decide(&ActorError::escalate("boom")), SupervisorDirective::Escalate);
 }
 
 #[test]
 fn default_decider_preserves_existing_mappings() {
-  // SP-H1: `Panic` variant 追加で既存の `Recoverable → Restart` / `Fatal → Stop`
+  // SP-H1: `Escalate` variant 追加で既存の `Recoverable → Restart` / `Fatal → Stop`
   // マッピングが回帰しないことを明示的にアサートする（回帰防止）。
   let strategy = SupervisorStrategy::default();
   assert_eq!(

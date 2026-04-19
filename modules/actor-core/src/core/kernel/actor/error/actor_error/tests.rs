@@ -21,10 +21,10 @@ fn accepts_custom_reason() {
 }
 
 #[test]
-fn panic_constructor_preserves_reason_message() {
-  // SP-H1: Pekko の defaultDecider における JVM Error 相当を表す `Panic` variant。
-  // `ActorError::panic` が `Panic` variant を構築し、理由メッセージが保持されることを確認する。
-  let error = ActorError::panic("boom");
-  assert!(matches!(error, ActorError::Panic(_)));
+fn escalate_constructor_preserves_reason_message() {
+  // SP-H1: Pekko の defaultDecider における JVM Error 相当を表す `Escalate` variant。
+  // `ActorError::escalate` が `Escalate` variant を構築し、理由メッセージが保持されることを確認する。
+  let error = ActorError::escalate("boom");
+  assert!(matches!(error, ActorError::Escalate(_)));
   assert_eq!(error.reason().as_str(), "boom");
 }

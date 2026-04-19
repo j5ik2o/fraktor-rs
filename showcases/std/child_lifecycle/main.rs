@@ -66,7 +66,7 @@ fn parent() -> Behavior<ParentCommand> {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Restart,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
-      | ActorError::Panic(_) => SupervisorDirective::Escalate,
+      | ActorError::Escalate(_) => SupervisorDirective::Escalate,
     });
 
   let inner = Behaviors::setup(move |ctx| {
