@@ -1,6 +1,6 @@
 # stream モジュール ギャップ分析
 
-更新日: 2026-04-18 (7th edition)
+更新日: 2026-04-19 (8th edition)
 
 ## 前提と集計範囲
 
@@ -17,333 +17,237 @@
 - **除外**: `javadsl/`, `impl/` 配下の内部実装, `private[...]` 修飾付き, `stream-testkit/`, `stream-typed/`
 - fraktor-rs 側は **`core/typed` 層が存在しない**。typed ラッパーは `0/0` として扱う。
 - オペレーターは型ではなくメソッドで比較する (fraktor-rs は `impl Flow` / `impl Source` / `impl Sink` に集約しているため)。
+- 7th edition (2026-04-18) から Phase 1 (Batch 1-11) と Bugbot 対応まで完了しており、カバレッジは 72% → **89%** に向上。
 
 ## サマリー
 
-| 指標 | 値 |
-|------|-----|
-| Pekko 公開 API 数 (13 カテゴリ合計) | 約 267 件 |
-| fraktor-rs 公開型数 | 151 (core: 146 / std: 5) |
-| fraktor-rs 公開メソッド数 | 671 (core: 661 / std: 10) |
-| カテゴリ単位の推定カバレッジ | 約 **72%** |
-| ギャップ数 (medium+) | 36 (core: 30 / std: 6) |
-| ギャップ数 (hard) | 6 |
+| 指標 | 7th edition | 8th edition | 差分 |
+|------|------------:|------------:|-----:|
+| Pekko 公開 API 数 (13 カテゴリ合計) | 約 267 | 約 267 | — |
+| fraktor-rs 公開型数 | 151 (core 146 / std 5) | **208** (core 201 / std 7) | +57 |
+| fraktor-rs 公開メソッド数 | 671 | **726** (core 712 / std 14) | +55 |
+| カテゴリ単位の推定カバレッジ | 約 72% | **約 89%** | +17pt |
+| ギャップ数 (medium+) | 36 | 20 | −16 |
+| ギャップ数 (hard) | 6 | 5 | −1 |
 
-**要約**: 基本 DSL (Source/Flow/Sink と主要オペレーター) はほぼ完成。重点的なギャップは以下 6 領域。
+**要約**: Phase 1 完走により型・Shape / Snapshot / Stage Authoring / Attributes / エラー処理が大幅充実。残る 5 本柱の hard 領域と medium オペレーター群が次の焦点。
 
-1. **StreamRef (SinkRef/SourceRef)** — 分散 stream 参照 API が未実装 (remote-core との連携必須)
-2. **Tcp / TLS** — tokio ネットワークソース/フロー/シンクが adaptor-std に未配備
-3. **Graph DSL の明示化** — `GraphDSL.create` / `~>` 相当の配線 DSL が未整備 (Flow メソッドに圧縮)
-4. **MaterializerState スナップショット** — 実行中 interpreter の可視化 API が未実装
-5. **Stage Authoring の補助型** — `SubSinkInlet/SubSourceOutlet`, 標準 Handler (EagerTerminate*/IgnoreTerminate*), `StageActorRef` が欠損
-6. **Pekko 固有オペレーター** — `conflate` / `expand` / `extrapolate` / `intersperse` / `alsoTo` / `orElse` / `switchMap` / `mergeLatest` / `*_timeout` / `keepAlive` 等が未実装
+1. **StreamRef (SinkRef/SourceRef + StreamRefResolver)** — 分散 stream 参照、remote-core 連携必須
+2. **Tcp / TLS** — tokio::net / rustls 依存の adaptor-std 追加
+3. **Graph DSL の明示化** — `GraphDSL.create` + `~>` 相当の配線 DSL
+4. **StageActorRef** — ステージ内 ActorRef (actor-core 連携)
+5. **Pekko 固有 medium オペレーター** — `conflate` / `expand` / `extrapolate` / `*_timeout` 群 / `aggregateWithBoundary` / `mapAsyncPartitioned` (Flow 単体) / `GraphStageWithMaterializedValue` / `SubSinkInlet` / `SubSourceOutlet` 等
 
 ## 層別カバレッジ
 
 | 層 | Pekko 対応数 | fraktor-rs 実装数 | カバレッジ |
 |----|-------------|-------------------|-----------|
-| core / untyped kernel | 約 247 | 146 型 + 661 メソッド | 約 75% |
+| core / untyped kernel | 約 247 | 201 型 + 712 メソッド | 約 91% |
 | core / typed ラッパー | 該当層なし (Pekko 側も `stream-typed` は別モジュール) | 0 | 0/0 |
-| std / アダプタ | 約 20 (IO/Tcp/TLS/Snapshot) | 5 型 / 10 メソッド | 約 35% |
+| std / アダプタ | 約 20 (IO/Tcp/TLS/Snapshot) | 7 型 / 14 メソッド | 約 55% (Tcp/TLS 未対応で頭打ち) |
 
 ## カテゴリ別ギャップ
 
 各カテゴリ見出しに **実装済み / Pekko 総数 (カバレッジ%)** を付記。ギャップ (未対応・部分実装・n/a) のみ表に列挙する。
 
-### 1. 型・トレイト　✅ 実装済み 15/22 (68%)
+### 1. 型・トレイト　✅ 実装済み 18/22 (82%)
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
-| `FlowOpsMat` | `scaladsl/Flow.scala:4106` | 別経路で実装 | core | n/a | Rust では `impl Flow` のメソッド内で `Mat` 合成を扱い trait は不要 |
-| `FlowWithContextOps` | `scaladsl/FlowWithContextOps.scala:1` | 別経路で実装 | core | n/a | Rust では `FlowWithContext` / `SourceWithContext` のメソッドで直接提供 |
-| `SinkRef[In]` | `stream/StreamRefs.scala:55` | 未対応 | core + std | hard | 分散 stream 参照。remote-core のシリアライザと連携必須 |
+| `FlowOpsMat` | `scaladsl/Flow.scala:4106` | 別経路で実装 | core | n/a | Rust は `impl Flow` で吸収、trait 不要 |
+| `FlowWithContextOps` | `scaladsl/FlowWithContextOps.scala:1` | 別経路で実装 | core | n/a | Rust では `FlowWithContext` / `SourceWithContext` 直接提供 |
+| `SinkRef[In]` | `stream/StreamRefs.scala:55` | 未対応 | core + std | hard | remote-core のシリアライザと連携必須 |
 | `SourceRef[T]` | `stream/StreamRefs.scala:89` | 未対応 | core + std | hard | 同上 |
 | `StreamRefResolver` | `stream/StreamRefs.scala:133` | 未対応 | core | medium | StreamRef の文字列シリアライズ |
-| `SourceQueueWithComplete[T]` | `scaladsl/Queue.scala:63` | 型エイリアスあり | core | trivial | 完了通知付き SourceQueue。契約の仕上げが必要 |
-| `SinkQueueWithCancel[T]` | `scaladsl/Queue.scala:136` | 未対応 | core | easy | キャンセル付き SinkQueue |
 
-### 2. オペレーター　✅ 実装済み 70/85+ (82%)
+### 2. オペレーター　✅ 実装済み 推定 ~85/95 (~89%)
 
-fraktor-rs は 661 メソッドを実装済みで、Pekko の 85+ 主要オペレーターのほとんどをカバー。下記は Pekko 固有の未実装オペレーター。
+Phase 1 で `alsoToAll` / `keepAlive` / `switchMap` / `mergeLatest` / `mergePreferred` / `distinct` / `distinct_by` 等が正しいセマンティクスで実装済み。残る Pekko 固有オペレーターは:
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
-| `conflate` | `FlowOps.scala` | 未対応 | core | medium | 需要不足時に要素を畳み込むバックプレッシャ回避。Graph stage 実装が必要 |
+| `conflate` | `FlowOps.scala` | 未対応 | core | medium | 需要不足時に要素を畳み込む。Graph stage が必要 |
 | `conflateWithSeed` | `FlowOps.scala` | 未対応 | core | medium | 初期値付き conflate |
 | `expand` | `FlowOps.scala` | 未対応 | core | medium | 需要超過時にイテレータで補完 |
 | `extrapolate` | `FlowOps.scala` | 未対応 | core | medium | expand の静的初期値版 |
 | `intersperse` | `FlowOps.scala` | 未対応 | core | easy | 要素間に区切り要素を挿入 |
-| `alsoTo` | `FlowOps.scala` | 未対応 | core | easy | Sink に分岐しつつ本流にも流す |
-| `alsoToAll` | `FlowOps.scala` | 未対応 | core | easy | N Sink 全てに分岐 |
-| `divertTo` | `FlowOps.scala` | 未対応 | core | easy | 条件付き Sink 分岐 |
 | `orElse` | `FlowOps.scala` | 未対応 | core | easy | 先行 Source が空なら代替 Source |
-| `switchMap` | `scaladsl/Flow.scala:1440` | 未対応 | core | medium | 新要素到着で前のサブストリームをキャンセル |
-| `mergeLatest` | `scaladsl/MergeLatest.scala` | 未対応 | core | medium | 全入力の最新値をリスト出力 |
-| `mergePreferred` | `scaladsl/Graph.scala:120` | 未対応 | core | medium | 優先ポート付きマージ |
-| `mapAsyncPartitioned` | `scaladsl/Flow.scala:975` | 未対応 | core | medium | パーティション別並列実行 |
 | `aggregateWithBoundary` | `FlowOps.scala` | 未対応 | core | medium | 境界述語でバッチ集約 |
-| `backpressureTimeout` | `FlowOps.scala` | 未対応 | core | easy | 下流需要不足のタイムアウト |
+| `backpressureTimeout` | `FlowOps.scala` | 未対応 | core | easy | 下流需要不足のタイムアウト (StreamTimeoutException 利用) |
 | `completionTimeout` | `FlowOps.scala` | 未対応 | core | easy | 全体完了のタイムアウト |
 | `idleTimeout` | `FlowOps.scala` | 未対応 | core | easy | アイドル時間でタイムアウト |
 | `initialTimeout` | `FlowOps.scala` | 未対応 | core | easy | 初回要素までのタイムアウト |
-| `keepAlive` | `FlowOps.scala` | 未対応 | core | easy | アイドル時に代替要素を注入 |
+| `mapAsyncPartitioned` | `scaladsl/Flow.scala:975` (Flow 単体) | 部分実装 | core | medium | `FlowWithContext` / `SourceWithContext` には実装済み、Flow 単体に未対応 |
+| `RetryFlow.withBackoffAndContext` | `RetryFlow.scala:80` | 未対応 | core | medium | コンテキスト付きバックオフ再試行 |
 
 ### 3. マテリアライゼーション　✅ 実装済み 12/12 (100%)
 
-ギャップなし。fraktor-rs 側は `MatCombine` (enum) / `KeepLeft/Right/Both/None` (struct) / `MatCombineRule` (trait) で Pekko の `Keep` object を代替。`ActorMaterializer` / `ActorMaterializerConfig` / `RunnableGraph` / `Materialized` / `StreamCompletion` を備え、追加で `SubscriptionTimeoutConfig` / `MaterializerLifecycleState` を提供している。
+ギャップなし。`MatCombine` / `KeepLeft/Right/Both/None` / `MatCombineRule` / `ActorMaterializer` / `RunnableGraph` / `StreamCompletion` / `SubscriptionTimeoutConfig` / `MaterializerLifecycleState` 完備。
 
-### 4. Graph DSL　✅ 実装済み 12/18 (67%)
+### 4. Graph DSL　✅ 実装済み 14/18 (78%)
 
-fraktor-rs は GraphDSL を独立 API として持たず、配線を `Flow::merge` / `Flow::broadcast` / `Flow::balance` / `Source::combine` / `Source::zip_n` 等のメソッドに統合している。
-このため型・メソッド単位では大半をカバーしているが、**任意の有向グラフを構築する DSL (GraphDSL.create + `~>`) は未整備**。
+fraktor-rs は配線を Flow/Source のメソッドに統合。`broadcast` / `balance` / `merge` / `zip` / `concat` / `interleave` / `zip_all` / `merge_sorted` / `merge_latest` / `merge_preferred` / `Unzip` (`Flow::unzip`) 等は実装済み。残る:
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
-| `GraphDSL.create` | `scaladsl/Graph.scala:1590` | 部分実装 | core | hard | `GraphDSLBuilder` (impl 内) はあるが公開 DSL にならず。型安全な配線 API が未整備 |
-| `GraphDSL.Implicits` / `~>` 演算子 | `scaladsl/Graph.scala:1721` | 未対応 | core | hard | Rust では演算子オーバーロード制約あり。代替 API (`.wire_to(port)` 等) の設計が必要 |
-| `MergePreferred[In]` | `scaladsl/Graph.scala:120` | 未対応 | core | medium | 優先ポート付きマージ stage |
+| `GraphDSL.create` | `scaladsl/Graph.scala:1590` | 部分実装 | core | hard | `GraphDSLBuilder` は impl 内。型安全な配線 API が未整備 |
+| `GraphDSL.Implicits` / `~>` 演算子 | `scaladsl/Graph.scala:1721` | 未対応 | core | hard | Rust 代替 API (`.wire_to(port)` 等) の設計が必要 |
 | `MergeSequence[A]` | `scaladsl/Graph.scala:1200` | 未対応 | core | medium | シーケンス番号順マージ |
-| `Unzip[A,B]` | `scaladsl/Graph.scala:950` | 未対応 | core | easy | ペアを 2 出力に分解 (Flow::unzip で代替あるが型不明瞭) |
 | `ZipLatest[A,B]` / `ZipLatestWith` | `scaladsl/Graph.scala:820` | 未対応 | core | medium | 最新値での Zip |
 
-### 5. ライフサイクル　✅ 実装済み 10/14 (71%)
+### 5. ライフサイクル　✅ 実装済み 13/14 (93%)
 
-fraktor-rs は `KillSwitches` / `UniqueKillSwitch` / `SharedKillSwitch` / `KillSwitch` trait / `RestartSource/Flow/Sink` / `RestartConfig` (Pekko の RestartSettings 相当) / `MergeHub` / `BroadcastHub` / `PartitionHub` / `DrainingControl` を実装済み。以下はまだ不足。
+`KillSwitches` / `UniqueKillSwitch` / `SharedKillSwitch` / `KillableGraphStageLogic` / `RestartSource/Flow/Sink` / `RestartConfig` / `MergeHub` / `BroadcastHub` / `PartitionHub` / `DrainingControl` / `CompletionStrategy` 完備。
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
-| `KillableGraphStageLogic` | `KillSwitch.scala:65` | 未対応 | core | medium | KillSwitch 連携ステージ基底。GraphStage 側と同時設計 |
 | `watchTermination` メソッド | Flow / Source | 部分実装 | core | easy | `watch_termination_mat` はあるが契約 (Future<Done>) の統一が必要 |
-| `SharedKillSwitch.flow[T]` / `flow[Bidi]` | `KillSwitch.scala:220` | 部分実装 | core | easy | fraktor-rs は `KillSwitches::shared` だが bidi 版が未確認 |
-| `RestartSettings.withMaxBackoff` 詳細 API | `RestartSettings.scala` | 部分実装 | core | trivial | `RestartConfig` の builder メソッド差分 |
 
-### 6. エラー処理　✅ 実装済み 9/16 (56%)
+### 6. エラー処理　✅ 実装済み 14/16 (88%)
+
+`StreamError` に `StreamLimitReached` / `WatchedActorTerminated` / `AbruptStreamTermination` / `CancellationCause` / `CancellationKind` / `NeverMaterialized` / `StreamDetached` / `BufferOverflow` / `Timeout` / `TooManySubstreamsOpen` を実装済み。`SupervisionStrategy` enum (Stop/Resume/Restart) で Pekko `Supervision.Directive` を代替。残り:
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
-| `AbruptStreamTerminationException` | `ActorMaterializer.scala:50` | 未対応 | core | easy | `StreamDslError` に variant 追加 |
-| `AbruptStageTerminationException` | `ActorMaterializer.scala:65` | 未対応 | core | easy | 同上 |
-| `StreamLimitReachedException` | `StreamLimitReachedException.scala:1` | 未対応 | core | easy | `limit` / `limitWeighted` 超過用 |
-| `StreamTimeoutException` | `StreamTimeoutException.scala:1` | 未対応 | core | easy | `*_timeout` オペレーター導入時に必要 |
-| `NeverMaterializedException` | `NeverMaterializedException.scala:1` | 未対応 | core | easy | マテリアライズされなかった Mat 値アクセス用 |
-| `WatchedActorTerminatedException` | `WatchedActorTerminatedException.scala:1` | 未対応 | core | easy | ActorRef watch 終了用 |
-| `TooManySubstreamsOpenException` | `TooManySubstreamsOpenException.scala:1` | 未対応 | core | easy | `groupBy` 上限超過 |
-| `Supervision.Directive` | `Supervision.scala:22` | 別名で実装済み | core | n/a | `SupervisionStrategy` enum (Stop/Resume/Restart) で代替 |
-| `RetryFlow.withBackoffAndContext` | `RetryFlow.scala:80` | 未対応 | core | medium | コンテキスト付きバックオフ再試行 |
+| `AbruptStageTerminationException` | `ActorMaterializer.scala:65` | 未対応 | core | easy | `StreamError` variant 追加 |
+| `RetryFlow.withBackoffAndContext` | `RetryFlow.scala:80` | 未対応 | core | medium | コンテキスト付きバックオフ再試行 (オペレーター側と同項目) |
 
-### 7. Stage Authoring　✅ 実装済み 9/18 (50%)
+### 7. Stage Authoring　✅ 実装済み 16/18 (89%)
 
-fraktor-rs は `GraphStage` / `GraphStageLogic` / `StageContext` / `StreamStage` / `StageKind` / `TimerGraphStageLogic` / `AsyncCallback` / `DemandTracker` / `StreamBufferConfig` を実装済み。Pekko の Handler 系と Sub 系、StageActorRef 連携、標準ロガーが未整備。
+Phase 1 で `InHandler` / `OutHandler` trait / `StageLogging` / `MaterializerLoggingProvider` / 5 種類の Eager/Ignore/TotallyIgnorant 標準ハンドラが追加。残る:
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
 | `GraphStageWithMaterializedValue[S,M]` | `stage/GraphStage.scala:52` | 未対応 | core | medium | Mat 値付きステージ。materializer 拡張が必要 |
-| `InHandler` (trait) | `stage/GraphStage.scala:1870` | 部分実装 | core | easy | Rust 側は関数ポインタで扱っているが trait に統一する必要 |
-| `OutHandler` (trait) | `stage/GraphStage.scala:1895` | 部分実装 | core | easy | 同上 |
-| `StageActorRef` | `stage/GraphStage.scala:241` | 未対応 | core | hard | ステージ内 actor ref。actor-core との双方向連携が必要 |
 | `SubSinkInlet[T]` | `stage/GraphStage.scala:1451` | 未対応 | core | medium | ネストグラフ入力 |
 | `SubSourceOutlet[T]` | `stage/GraphStage.scala:1532` | 未対応 | core | medium | ネストグラフ出力 |
-| `StageLogging` | `stage/StageLogging.scala:32` | 未対応 | core | easy | Logger mixin |
-| `EagerTerminateInput` | `stage/GraphStage.scala:1880` | 未対応 | core | trivial | 標準 InHandler |
-| `IgnoreTerminateInput` | `stage/GraphStage.scala:1883` | 未対応 | core | trivial | 標準 InHandler |
-| `TotallyIgnorantInput` | `stage/GraphStage.scala:1886` | 未対応 | core | trivial | 標準 InHandler |
-| `EagerTerminateOutput` | `stage/GraphStage.scala:1910` | 未対応 | core | trivial | 標準 OutHandler |
-| `IgnoreTerminateOutput` | `stage/GraphStage.scala:1913` | 未対応 | core | trivial | 標準 OutHandler |
-| `MaterializerLoggingProvider` | `MaterializerLoggingProvider.scala:1` | 未対応 | core | easy | Materializer のロガー抽象 |
+| `StageActorRef` | `stage/GraphStage.scala:241` | 未対応 | core | hard | actor-core との双方向連携必須 |
 
-### 8. Attributes　✅ 実装済み 10/16 (63%)
+### 8. Attributes　✅ 実装済み 15/16 (94%)
 
-| Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|---------|--------|------|
-| `Attributes.Name` | `Attributes.scala:330` | 部分実装 | core | trivial | `Flow::named` はあるが Attribute としての公開型が不明瞭 |
-| `Attributes.MandatoryAttribute` | `Attributes.scala:325` | 未対応 | core | easy | 必須属性のマーカー trait |
-| `Attributes.NestedMaterializationCancellationPolicy` | `Attributes.scala:520` | 未対応 | core | medium | ネストマテリアライズのキャンセルポリシー |
-| `Attributes.SourceLocation` | `Attributes.scala:340` | 未対応 | core | easy | デバッグ用ソース位置 |
-| `ActorAttributes.SupervisionStrategy` | `Attributes.scala:760` | 別名で実装済み | core | n/a | fraktor-rs は `SupervisionStrategy` enum で代替 (attribute 化はしていない) |
-| `StreamSubscriptionTimeoutSettings` | `ActorMaterializer.scala:90` | 部分実装 | core | trivial | `SubscriptionTimeoutConfig` で近似。API 名前合わせ |
-| `StreamSubscriptionTimeoutTerminationMode` | `ActorMaterializer.scala:110` | 別名で実装済み | core | n/a | `SubscriptionTimeoutMode` enum で代替 |
+Phase 1 で `Name` / `MandatoryAttribute` / `SourceLocation` / `NestedMaterializationCancellationPolicy` / `StreamSubscriptionTimeout` / `StreamSubscriptionTimeoutTerminationMode` を追加。ギャップなし (Pekko の `ActorAttributes.SupervisionStrategy` は `SupervisionStrategy` enum で代替済み)。
 
-### 9. Shape　✅ 実装済み 14/16 (88%)
+### 9. Shape　✅ 実装済み 16/16 (100%) + boilerplate 完全展開
 
-fraktor-rs は FanInShape2〜22 (20 種) / UniformFanInShape / UniformFanOutShape / BidiShape / FanOutShape2 を備える。ギャップ:
-
-| Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|---------|--------|------|
-| `FanInShape1[-T0,+O]` | `FanInShapeN.scala.template` | 未対応 | core | trivial | 実質 FlowShape と同等だが契約整合のため |
-| `FanOutShape3〜22` | `FanOutShapeN.scala.template` | 未対応 | core | easy | FanOutShape2 のパターンを 3〜22 まで拡張 (ボイラープレート) |
+`FanInShape1`〜`FanInShape22` (22 種) / `FanOutShape2`〜`FanOutShape22` (21 種) / `UniformFanInShape` / `UniformFanOutShape` / `BidiShape` / `SourceShape` / `SinkShape` / `FlowShape` / `StreamShape` / `ClosedShape` / `Inlet` / `Outlet` / `PortId` / `Shape` trait 全て完備。Pekko のボイラープレート展開分も完全カバー。
 
 ### 10. IO　✅ 実装済み 15/20 (75%)
 
-fraktor-rs 側:
-- `stream-core`: `IOResult`, `Compression`, `Source::from_path`, `Sink::to_path`, `Source::from_input_stream`, `Sink::into_output_stream` 等
-- `stream-adaptor-std`: `FileIO` (from_path / from_path_with_options / to_path / to_path_with_options / to_path_with_position), `StreamConverters` (from_reader / to_writer), `SourceFactory`
+**stream-core**: `IOResult`, `Compression` (gzip/gunzip/deflate/inflate), `Framing`, `JsonFraming`, `Source::from_path`, `Sink::to_path`
+**stream-adaptor-std**: `FileIO` (from_path / from_path_with_options / to_path / to_path_with_options / to_path_with_position), `StreamConverters` (from_input_stream / from_output_stream / **as_input_stream** / **as_output_stream**), `StreamInputStream`, `StreamOutputStream`, `SourceFactory`
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
-| `StreamConverters.fromInputStream` | `scaladsl/StreamConverters.scala:45` | 部分実装 | std | trivial | `from_reader` はあるが `InputStream` と契約が違う (API 名寄せ) |
-| `StreamConverters.asOutputStream` | `scaladsl/StreamConverters.scala:70` | 未対応 | std | easy | OutputStream として書き込む Sink |
-| `StreamConverters.fromOutputStream` | `scaladsl/StreamConverters.scala:100` | 未対応 | std | easy | OutputStream からの Source |
-| `StreamConverters.asInputStream` | `scaladsl/StreamConverters.scala:120` | 未対応 | std | easy | InputStream として読む Sink |
 | `StreamConverters.javaCollector` | `scaladsl/StreamConverters.scala:145` | n/a | — | n/a | Java Collector 互換 (JVM 固有) |
 | `StreamConverters.asJavaStream` | `scaladsl/StreamConverters.scala:180` | n/a | — | n/a | Java Stream 変換 (JVM 固有) |
 | `StreamConverters.fromJavaStream` | `scaladsl/StreamConverters.scala:200` | n/a | — | n/a | Java Stream 取込 (JVM 固有) |
 
-### 11. Snapshot / Serialization　✅ 実装済み 2/10 (20%)
+### 11. Snapshot / Serialization　✅ 実装済み 9/10 (90%)
 
-fraktor-rs は `MaterializerSnapshot` 型が存在するのみ。Pekko の `MaterializerState` API 群による実行中 interpreter の状態取得は未整備。
-
-| Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|---------|--------|------|
-| `MaterializerState.streamSnapshots(system)` | `snapshot/MaterializerState.scala:45` | 未対応 | core + std | hard | ActorSystem から全ストリームのスナップショットを採集。actor-core との連携必須 |
-| `MaterializerState.streamSnapshots(mat)` | `snapshot/MaterializerState.scala:55` | 未対応 | core | medium | 単一 materializer 版 |
-| `StreamSnapshot` | `snapshot/MaterializerState.scala:93` | 未対応 | core | easy | スナップショット基底 |
-| `InterpreterSnapshot` | `snapshot/MaterializerState.scala:113` | 未対応 | core | easy | interpreter 状態 |
-| `RunningInterpreter` | `snapshot/MaterializerState.scala:129` | 未対応 | core | medium | 実行中 interpreter のランタイム情報 (stages/ports/handlers) |
-| `UninitializedInterpreter` | `snapshot/MaterializerState.scala:123` | 未対応 | core | easy | 未初期化 interpreter |
-| `LogicSnapshot` | `snapshot/MaterializerState.scala:156` | 未対応 | core | easy | ステージロジック単位のスナップショット |
-| `ConnectionSnapshot` | `snapshot/MaterializerState.scala:162` | 未対応 | core | easy | ポート接続状態 |
-| `StreamRefSerializer` | `serialization/StreamRefSerializer.scala:1` | 部分実装 | core + std | medium | 内部実装はあるが公開 API 化されていない。StreamRef 実装と同時に必要 |
-
-### 12. Testing / Probes　✅ 実装済み 3/2 (100%)
-
-Pekko 本体 (non-testkit) には Testing API はほぼない (StreamRefs ファクトリと StreamRefResolver のみ)。
-fraktor-rs は独自に `TestSinkProbe` / `TestSourceProbe` / `StreamFuzzRunner` を core に持っており、Pekko より充実している。
-ギャップなし (むしろ Pekko の `stream-testkit` モジュール分まで含んでいる)。
-
-### 13. その他　✅ 実装済み 14/18 (78%)
+Phase 1 で `StreamSnapshot` / `InterpreterSnapshot` trait / `UninitializedInterpreter` / `RunningInterpreter` / `LogicSnapshot` / `ConnectionSnapshot` / `ConnectionState` / `MaterializerState::stream_snapshots` (materializer 単体版) を実装。残り:
 
 | Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|---------|--------|------|
-| `Tcp` (object) | `scaladsl/Tcp.scala:1` | 未対応 | std | hard | TCP bind/outgoing/connection の Source/Flow/Sink。tokio::net 依存 |
+| `MaterializerState.streamSnapshots(system)` | `snapshot/MaterializerState.scala:45` | 未対応 | std | hard | ActorSystem 全体からの採集。actor-core extension 連携 |
+| `StreamRefSerializer` | `serialization/StreamRefSerializer.scala:1` | 未対応 | core + std | medium | StreamRef 実装と同時公開化 |
+| `ConnectionSnapshot::ConnectionState::ShouldPush` (対応) | `snapshot/MaterializerState.scala:162` | 部分実装 | core | trivial | fraktor-rs は `Ready` variant。Pekko の `ShouldPush` にリネームが望ましい |
+
+### 12. Testing / Probes　✅ 実装済み 3/2 (100%+)
+
+fraktor-rs は `TestSinkProbe` / `TestSourceProbe` / `StreamFuzzRunner` を core に備え、Pekko 本体 (non-testkit) より充実。ギャップなし。
+
+### 13. その他　✅ 実装済み 15/18 (83%)
+
+`CoupledTerminationFlow` / `DelayOverflowStrategy::EmitEarly` / `SubstreamCancelStrategy` / `ThrottleMode` / `FlowMonitor` / `FlowMonitorState` / `DelayStrategy` / `FixedDelay` / `LinearIncreasingDelay` / `OverflowStrategy` / `QueueOfferResult` / `StatefulMapConcatAccumulator` / Framing 例外等を実装済み。残り:
+
+| Pekko API | Pekko 参照 | fraktor 対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|---------|--------|------|
+| `Tcp` (object) | `scaladsl/Tcp.scala:1` | 未対応 | std | hard | TCP bind/outgoing/connection。tokio::net 依存 |
 | `TLS` (object) | `scaladsl/TLS.scala:1` | 未対応 | std | hard | TLS セッション管理。rustls/native-tls 依存 |
-| `CoupledTerminationFlow` | `scaladsl/CoupledTerminationFlow.scala:1` | 未対応 | core | easy | 入出力の終了を連動 |
-| `DelayOverflowStrategy` | `OverflowStrategy.scala:28` | 部分実装 | core | trivial | `OverflowStrategy` に variant 追加のみ |
-| `BufferOverflowException` | `OverflowStrategy.scala:34` | 未対応 | core | trivial | `StreamDslError` に variant 追加 |
-| `SubscriptionWithCancelException` | `SubscriptionWithCancelException.scala:1` | 未対応 | core | trivial | 同上 |
-| `StreamDetachedException` | `StreamDetachedException.scala:1` | 未対応 | core | trivial | 同上 |
-| `FramingException` | `scaladsl/Framing.scala:159` | 部分実装 | core | trivial | `StreamDslError::Framing(...)` 等がある可能性。命名整合 |
 | `StreamTcpException` | `StreamTcpException.scala:1` | 未対応 | std | trivial | Tcp 実装時に同時追加 |
 | `TargetRefNotInitializedException` | `stream/StreamRefs.scala:100` | 未対応 | core | trivial | SinkRef 実装時に同時追加 |
 | `StreamRefSubscriptionTimeoutException` | `stream/StreamRefs.scala:108` | 未対応 | core | trivial | 同上 |
 
 ## 内部モジュール構造ギャップ
 
-**今回は API ギャップが支配的なため省略**。判定理由:
-- カテゴリ単位の平均カバレッジ 72% (閾値 80% 未満)
-- hard ギャップが 6 件 (閾値 5 件超過): StreamRef × 2, Tcp, TLS, GraphDSL core, MaterializerState スナップショット, StageActorRef
-- Stage Authoring / Snapshot の基盤カテゴリが 50% 以下 (致命的カテゴリで 2 件以上欠落)
+API カバレッジ 89% と判定基準 (80%) を超えたが、**hard 5 件 + medium 15 件超** が残るため API ギャップ支配は継続。構造比較は Phase 3 の 5 本柱が収束するまでの次フェーズで実施する方針。
 
-構造比較は StreamRef / Tcp / MaterializerState / Stage Authoring が parity 達成した後の後続フェーズで実施する。
+唯一、本編と平行して検討すべき候補:
+
+| 構造ギャップ候補 | Pekko 側の根拠 | fraktor-rs 側の現状 | 推奨アクション | 難易度 | 緊急度 |
+|-----------------|----------------|--------------------|----------------|--------|--------|
+| `snapshot/` と `impl/materialization/` の境界 | Pekko `snapshot/MaterializerState.scala` は `impl/fusing/GraphInterpreter` と分離 | fraktor-rs は `core/snapshot/` に dto を集めたが、interpreter 側から snapshot への書き出し経路が明示的でない | interpreter → snapshot の採集 trait を切り出し | medium | low |
+| `core/impl/` の水平サイズ | Pekko `impl/fusing/` は Stage 単位で細粒化 | fraktor-rs は 1 file 1 logic で整理済だが、`default_operator_catalog` 経由の登録が肥大化中 | 登録を領域別 (aggregation / timing / transform 等) にサブ分類 | medium | low |
 
 ## 実装優先度
 
 分類ルール:
-- Phase 1: trivial / easy。既存設計の範囲で API surface や placeholder を埋められるもの
-- Phase 2: medium。追加ロジックは要るが、既存の core / std 境界の中で閉じるもの
-- Phase 3: hard。新規基盤やアーキテクチャ変更を要するもの
+- Phase 1: trivial / easy — 既存設計の範囲で API surface を埋める
+- Phase 2: medium — 追加ロジック要だが既存 core / std 境界内で閉じる
+- Phase 3: hard — 新規基盤やアーキテクチャ変更を要する
 
-### Phase 1 (trivial / easy) — 既存設計の拡張
-
-**Stage Authoring 補助 (core)**:
-- `EagerTerminateInput` / `IgnoreTerminateInput` / `TotallyIgnorantInput` (trivial)
-- `EagerTerminateOutput` / `IgnoreTerminateOutput` (trivial)
-- `InHandler` / `OutHandler` を trait 化 (easy)
-- `StageLogging` / `MaterializerLoggingProvider` (easy)
+### Phase 1 (trivial / easy) — 残項目は少数
 
 **オペレーター (core)**:
-- `intersperse` / `alsoTo` / `alsoToAll` / `divertTo` / `orElse` (easy)
-- `backpressureTimeout` / `completionTimeout` / `idleTimeout` / `initialTimeout` / `keepAlive` (easy、`StreamTimeoutException` と同時導入)
-
-**Shape (core)**:
-- `FanInShape1` (trivial)
-- `FanOutShape3〜22` ボイラープレート拡張 (easy)
+- `intersperse` (easy)
+- `orElse` (easy)
+- `backpressureTimeout` / `completionTimeout` / `idleTimeout` / `initialTimeout` (easy、`StreamTimeoutException` 既存)
 
 **エラー型 (core)**:
-- `AbruptStreamTerminationException` / `AbruptStageTerminationException` / `StreamLimitReachedException` / `StreamTimeoutException` / `NeverMaterializedException` / `WatchedActorTerminatedException` / `TooManySubstreamsOpenException` を `StreamDslError` に variant として追加 (easy)
-- `BufferOverflowException` / `SubscriptionWithCancelException` / `StreamDetachedException` / `FramingException` の命名整合 (trivial)
-
-**Attributes (core)**:
-- `Attributes.Name` を公開型として整理 (trivial)
-- `Attributes.MandatoryAttribute` trait (easy)
-- `Attributes.SourceLocation` (easy)
-
-**IO (std)**:
-- `StreamConverters.fromInputStream` の命名整合 (trivial)
-- `StreamConverters.asOutputStream` / `fromOutputStream` / `asInputStream` (easy)
+- `AbruptStageTerminationException` を `StreamError` に variant 追加 (easy)
+- `TargetRefNotInitializedException` / `StreamRefSubscriptionTimeoutException` の型骨格 (trivial、StreamRef 本実装と同時にする場合は Phase 3 側へ)
+- `StreamTcpException` (trivial、Tcp 本実装と同時にする場合は Phase 3 側へ)
 
 **Snapshot (core)**:
-- `StreamSnapshot` / `InterpreterSnapshot` / `UninitializedInterpreter` / `LogicSnapshot` / `ConnectionSnapshot` の型骨格 (easy)
+- `ConnectionState::Ready` を `ShouldPush` にリネーム (Pekko 整合、trivial)
 
 **ライフサイクル (core)**:
-- `SharedKillSwitch.flow` の bidi 版 (easy)
-- `RestartSettings` の builder API 差分 (trivial)
 - `watchTermination` 契約の Future<Done> 整合 (easy)
 
-**型・トレイト (core)**:
-- `SourceQueueWithComplete[T]` の契約仕上げ (trivial)
-- `SinkQueueWithCancel[T]` (easy)
-
-**その他 (core)**:
-- `CoupledTerminationFlow` (easy)
-- `DelayOverflowStrategy` variant 追加 (trivial)
-
-### Phase 2 (medium) — 新規ロジック・既存境界内
+### Phase 2 (medium) — 追加ロジックだが境界内
 
 **オペレーター (core)**:
-- `conflate` / `conflateWithSeed` (medium)
+- `conflate` / `conflateWithSeed` (medium、Graph stage)
 - `expand` / `extrapolate` (medium)
-- `switchMap` (medium)
-- `mergeLatest` (medium)
-- `mergePreferred` (medium)
-- `mapAsyncPartitioned` (medium)
 - `aggregateWithBoundary` (medium)
+- `mapAsyncPartitioned` の Flow 単体版 (medium、`FlowWithContext` 実装を Flow に展開)
 
 **Graph DSL (core)**:
-- `MergeSequence` (medium)
-- `Unzip` (easy だが GraphDSL 整備と同時対応が望ましく Phase 2 に配置)
+- `MergeSequence` (medium、シーケンス番号順マージ)
 - `ZipLatest` / `ZipLatestWith` (medium)
 
 **Stage Authoring (core)**:
-- `GraphStageWithMaterializedValue[S,M]` (medium)
-- `SubSinkInlet[T]` / `SubSourceOutlet[T]` (medium)
-
-**Snapshot (core)**:
-- `MaterializerState.streamSnapshots(mat)` 単一 materializer 版 (medium)
-- `RunningInterpreter` の詳細ランタイム情報 (medium)
-- `StreamRefSerializer` の公開 API 化 (medium)
+- `GraphStageWithMaterializedValue[S,M]` (medium、materializer 拡張)
+- `SubSinkInlet[T]` (medium、ネストグラフ入力)
+- `SubSourceOutlet[T]` (medium、ネストグラフ出力)
 
 **エラー処理 (core)**:
 - `RetryFlow.withBackoffAndContext` (medium)
 
-**Attributes (core)**:
-- `Attributes.NestedMaterializationCancellationPolicy` (medium)
-
-**ライフサイクル (core)**:
-- `KillableGraphStageLogic` (medium、Stage Authoring と同時設計)
-
 **StreamRef 基盤 (core)**:
-- `StreamRefResolver` (medium) — シリアライザ層だけ先行
+- `StreamRefResolver` (medium、シリアライザ先行)
+- `StreamRefSerializer` の公開 API 化 (medium、StreamRef 本体と同時)
 
-### Phase 3 (hard) — 新基盤・アーキテクチャ変更
+### Phase 3 (hard) — 新基盤・アーキテクチャ変更 (parity 5 本柱)
 
-- **`SinkRef[In]` / `SourceRef[T]`** (core + std, hard) — 分散 stream 参照。remote-core のワイヤープロトコルとシリアライザに依存。`StreamRefSerializer` の公開化と bootstrapping が必要
+- **`SinkRef[In]` / `SourceRef[T]`** (core + std, hard) — 分散 stream 参照。remote-core のワイヤープロトコルとシリアライザに依存
 - **`Tcp` (std, hard)** — tokio::net 依存。`Tcp.bind` / `outgoingConnection` / `IncomingConnection` / `OutgoingConnection` の Source/Flow/Sink
 - **`TLS` (std, hard)** — rustls / native-tls 依存。Tcp と連携した SessionBidiFlow
-- **`GraphDSL.create` / `~>` 相当の公開配線 DSL (core, hard)** — 型安全かつ Rust イディオム準拠の配線 API 設計。Pekko の implicit + case class + SyntaxBuilder 依存を Rust trait + builder に落とし込む必要
-- **`MaterializerState.streamSnapshots(system)` (core + std, hard)** — ActorSystem 全体のストリーム採集。actor-core の extension 機構と interpreter 側の snapshot 同期が必要
-- **`StageActorRef` (core, hard)** — ステージ内 actor ref。actor-core の ActorCell / TypedActorRef と Stage Authoring の双方向連携
+- **`GraphDSL.create` / `~>` 相当の公開配線 DSL (core, hard)** — Rust イディオム準拠の型安全配線 API 設計
+- **`StageActorRef` (core, hard)** — ステージ内 actor ref、actor-core の ActorCell / TypedActorRef と双方向連携
+- **`MaterializerState.streamSnapshots(system)` (std, hard)** — ActorSystem 全体のストリーム採集、actor-core 拡張機構利用
 
 ### Phase 対象外 (n/a)
 
 - `FlowOps` / `FlowOpsMat` / `FlowWithContextOps` (Scala trait 階層固有、Rust は `impl Flow` で等価)
 - `ActorAttributes.SupervisionStrategy` (`SupervisionStrategy` enum で代替済み)
-- `StreamSubscriptionTimeoutTerminationMode` (`SubscriptionTimeoutMode` enum で代替済み)
-- `Supervision.Directive` (`SupervisionStrategy` enum で代替済み)
+- `StreamSubscriptionTimeoutTerminationMode` (代替済み)
+- `Supervision.Directive` (代替済み)
 - `StreamConverters.javaCollector` / `asJavaStream` / `fromJavaStream` (JVM 固有)
 
 ## まとめ
 
-- **全体カバレッジ 約 72%**。Source / Flow / Sink の基本 DSL と主要オペレーター (map / filter / scan / fold / merge / zip / concat / flatMap / groupBy / restart / retry) はほぼ実装済み。fraktor-rs 側の公開メソッド数は 671 件で Pekko のオペレーター総数 (約 140) を大きく上回り、実用的な API surface は既に充実している。
-- **parity を低コストで前進できる領域 (Phase 1〜2)**: Pekko 固有オペレーター (`conflate` / `expand` / `intersperse` / `alsoTo` / `orElse` / `switchMap` / `*_timeout` / `keepAlive`) の追加、Stage Authoring 標準 Handler (`EagerTerminate*` / `IgnoreTerminate*`)、Shape のボイラープレート拡張 (`FanOutShape3〜22`)、エラー型の `StreamDslError` variant 充実、`SubSinkInlet` / `SubSourceOutlet` による Stage authoring の底上げ。ここで 15〜20% のカバレッジ上昇が見込める。
-- **parity 上の主要ギャップ (Phase 3)**: StreamRef (SinkRef/SourceRef) による分散 stream 参照、Tcp/TLS ネットワーク IO、明示的 GraphDSL、MaterializerState 実行中スナップショット API、StageActorRef による actor-stream 連携の 5 本柱。いずれも remote-core / actor-core / std アダプタとの協調設計が必要で、fraktor-rs の他モジュール parity と並走する形で進める必要がある。
-- **次のボトルネックは内部構造ではなく API ギャップ**。カバレッジが 80% を超えるまでは、公開 API 追加と Stage Authoring 基盤の強化を優先する。内部 `impl/fusing` / `impl/interpreter` / `impl/materialization` の責務境界レビューは Phase 3 完了後に実施することを推奨する。
+- **全体カバレッジ 約 89%** (7th 72% → 8th 89%、Phase 1 消化で +17pt)。Source / Flow / Sink 基本 DSL、Shape 全展開、Snapshot 階層、Attributes、Stage Authoring 標準ハンドラ、主要エラー variants、`alsoToAll` / `keepAlive` / `switchMap` / `mergeLatest` / `mergePreferred` / `distinct` 等の Pekko 固有オペレーターまで実装済み。
+- **parity を低コストで前進できる領域 (Phase 1〜2)**: `intersperse` / `orElse` / `*_timeout` 群 (easy)、`conflate` / `expand` / `extrapolate` / `aggregateWithBoundary` / `mapAsyncPartitioned` (medium)、`SubSinkInlet` / `SubSourceOutlet` / `GraphStageWithMaterializedValue` (medium)、`ZipLatest` / `MergeSequence` (medium)、`ConnectionState::Ready → ShouldPush` 改名 (trivial)。ここで 5〜7pt のカバレッジ上昇が見込める。
+- **parity 上の主要ギャップ (Phase 3)**: StreamRef (SinkRef/SourceRef) による分散 stream 参照、Tcp/TLS ネットワーク IO、明示的 GraphDSL (`.create` + `~>`)、MaterializerState.streamSnapshots(system) (ActorSystem 全体採集)、StageActorRef による actor-stream 連携の **5 本柱**。いずれも remote-core / actor-core / std アダプタとの協調設計が必要で、fraktor-rs の他モジュール parity と並走する形で進める必要がある。
+- **API ギャップは依然支配的** (hard 5 + medium 15 超)。内部構造ギャップ分析は Phase 3 5 本柱の進捗と合わせて次フェーズで実施。ただし現時点の候補として `snapshot/` ↔ `impl/materialization/` の採集境界、`default_operator_catalog` の肥大化対応が挙げられる (いずれも緊急度 low)。
