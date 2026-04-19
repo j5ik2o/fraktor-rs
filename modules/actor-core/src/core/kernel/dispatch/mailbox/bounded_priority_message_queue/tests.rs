@@ -66,8 +66,13 @@ fn drop_newest_rejects_when_full() {
   assert_eq!(queue.number_of_messages(), 2);
 
   let result = queue.enqueue(Envelope::new(AnyMessage::new(5_i32)));
-  let Err(SendError::Full(payload)) = result else {
-    panic!("DropNewest overflow must return SendError::Full, got {result:?}");
+  let Err(enqueue_error) = result else {
+    panic!("DropNewest overflow must return Err, got {result:?}");
+  };
+  assert!(enqueue_error.evicted().is_none(), "DropNewest overflow must not surface an evicted envelope");
+  let (send_error, _) = enqueue_error.into_parts();
+  let SendError::Full(payload) = send_error else {
+    panic!("DropNewest overflow must wrap SendError::Full, got {send_error:?}");
   };
   assert_eq!(
     payload.payload().downcast_ref::<i32>().copied(),

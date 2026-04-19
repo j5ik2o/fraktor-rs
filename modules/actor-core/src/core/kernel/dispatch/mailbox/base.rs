@@ -11,8 +11,9 @@ use spin::Once;
 
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
-  enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy,
-  mailbox_instrumentation::MailboxInstrumentation, message_queue::MessageQueue,
+  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
+  mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_instrumentation::MailboxInstrumentation,
+  message_queue::MessageQueue,
 };
 use crate::core::kernel::{
   actor::{
@@ -508,7 +509,7 @@ impl Mailbox {
       // race between the fast path and this acquisition. Without this, a
       // producer could phantom-enqueue into a drained queue.
       if self.is_closed() {
-        return Err(SendError::closed(envelope.into_payload()));
+        return Err(EnqueueError::new(SendError::closed(envelope.into_payload())));
       }
       self.user.enqueue(envelope)
     });
@@ -528,17 +529,27 @@ impl Mailbox {
         self.publish_metrics();
         Ok(())
       },
-      | Err(SendError::Full(payload)) => {
-        // Pekko 互換: DropNewest で拒否された envelope を MailboxFull として
-        // DeadLetter に通知した上で、dispatcher 側のリトライ／バックプレッシャ
-        // 判定に必要なので `SendError::Full` を伝播する。`AnyMessage::clone` は
-        // 内部 `ArcShared` の参照カウントのみで安価。
-        if let Some(state) = self.system_state() {
-          state.record_dead_letter(payload.clone(), DeadLetterReason::MailboxFull, self.pid());
+      | Err(enqueue_error) => {
+        let (send_error, evicted) = enqueue_error.into_parts();
+        // 病的ケースで DropOldest が eviction を発行した直後に offer が失敗した
+        // 場合、evicted をロストさせず DeadLetter へ転送する。
+        if let (Some(evicted_envelope), Some(state)) = (evicted, self.system_state()) {
+          state.record_dead_letter(evicted_envelope.into_payload(), DeadLetterReason::MailboxFull, self.pid());
         }
-        Err(SendError::Full(payload))
+        match send_error {
+          | SendError::Full(payload) => {
+            // Pekko 互換: DropNewest で拒否された envelope を MailboxFull として
+            // DeadLetter に通知した上で、dispatcher 側のリトライ／バックプレッシャ
+            // 判定に必要なので `SendError::Full` を伝播する。`AnyMessage::clone` は
+            // 内部 `ArcShared` の参照カウントのみで安価。
+            if let Some(state) = self.system_state() {
+              state.record_dead_letter(payload.clone(), DeadLetterReason::MailboxFull, self.pid());
+            }
+            Err(SendError::Full(payload))
+          },
+          | error => Err(error),
+        }
       },
-      | Err(error) => Err(error),
     }
   }
 

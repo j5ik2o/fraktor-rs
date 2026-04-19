@@ -2,6 +2,7 @@
 
 /// Result of a drop-oldest offer operation that surfaces the evicted element so
 /// callers (mailbox layer) can forward it to dead letters.
+#[derive(Debug)]
 pub(crate) enum DropOldestOutcome<T> {
   /// The new element was offered without evicting an existing entry.
   Accepted,

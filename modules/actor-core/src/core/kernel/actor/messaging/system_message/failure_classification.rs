@@ -2,22 +2,23 @@
 
 use crate::core::kernel::actor::error::ActorError;
 
-/// Indicates how the actor classified the failure (recoverable/fatal).
+/// Indicates how the actor classified the failure (recoverable/fatal/escalate).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailureClassification {
   /// Indicates a recoverable failure that may be addressed via restart.
   Recoverable,
   /// Indicates a fatal error requiring supervisor escalation or stop.
   Fatal,
+  /// Indicates an explicit request to delegate the supervision decision to the parent.
+  Escalate,
 }
 
 impl From<&ActorError> for FailureClassification {
   fn from(value: &ActorError) -> Self {
     match value {
       | ActorError::Recoverable(_) => FailureClassification::Recoverable,
-      // SP-H1: `Escalate` は supervisor で親にエスカレーションされるが、ローカル failure 分類上は
-      // 回復不能として `Fatal` と同等に扱う（計画書 §実装ガイドライン）。
-      | ActorError::Fatal(_) | ActorError::Escalate(_) => FailureClassification::Fatal,
+      | ActorError::Fatal(_) => FailureClassification::Fatal,
+      | ActorError::Escalate(_) => FailureClassification::Escalate,
     }
   }
 }

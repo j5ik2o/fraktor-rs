@@ -8,6 +8,7 @@ use fraktor_utils_core_rs::core::{
 };
 
 use super::{
+  drop_oldest_error::DropOldestError,
   drop_oldest_outcome::DropOldestOutcome,
   mailbox_queue_state::{QueueState, queue_state_shared},
 };
@@ -69,7 +70,7 @@ where
     &self,
     message: T,
     capacity: usize,
-  ) -> Result<DropOldestOutcome<T>, QueueError<T>> {
+  ) -> Result<DropOldestOutcome<T>, DropOldestError<T>> {
     self.state.with_write(|state| {
       // Pekko 互換: キューが既に容量上限に達している場合、最古の要素を evict
       // して呼び出し元に返却し、サイレントに破棄せず dead-letter 宛先へ転送
@@ -86,11 +87,18 @@ where
       } else {
         None
       };
-      state.offer(message)?;
-      Ok(match evicted {
-        | Some(item) => DropOldestOutcome::Evicted(item),
-        | None => DropOldestOutcome::Accepted,
-      })
+      match state.offer(message) {
+        | Ok(_) => Ok(match evicted {
+          | Some(item) => DropOldestOutcome::Evicted(item),
+          | None => DropOldestOutcome::Accepted,
+        }),
+        // `poll` で既に evict 済みの要素があった場合、`offer` が失敗しても
+        // evicted を失わず呼び出し元が dead-letter へ転送できるよう、
+        // `DropOldestError` 経由で返却する。`poll` で queue 内に空きを作った
+        // 直後なので `Closed` 以外の `offer` 失敗は VecDeque backend では
+        // 発生しない (同一 write lock 内で状態は変化しないため)。
+        | Err(error) => Err(DropOldestError { error, evicted }),
+      }
     })
   }
 

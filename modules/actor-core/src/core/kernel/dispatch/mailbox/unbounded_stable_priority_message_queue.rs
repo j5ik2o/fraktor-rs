@@ -11,12 +11,10 @@ use alloc::collections::BinaryHeap;
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
-  enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
+  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
   stable_priority_entry::StablePriorityEntry,
 };
-use crate::core::kernel::{
-  actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
-};
+use crate::core::kernel::dispatch::mailbox::message_priority_generator::MessagePriorityGenerator;
 
 /// Initial capacity hint for the backing binary heap.
 const DEFAULT_CAPACITY: usize = 11;
@@ -51,7 +49,7 @@ impl UnboundedStablePriorityMessageQueue {
 }
 
 impl MessageQueue for UnboundedStablePriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     let priority = self.generator.priority(envelope.payload());
     self.inner.with_write(|inner| {
       let sequence = inner.sequence;

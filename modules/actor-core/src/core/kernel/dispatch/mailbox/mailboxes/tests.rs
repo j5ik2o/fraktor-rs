@@ -44,7 +44,11 @@ fn create_message_queue_uses_registered_mailbox_policy() {
 
   let queue = registry.create_message_queue("bounded").expect("create queue");
   assert!(queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).is_ok());
-  assert!(matches!(queue.enqueue(Envelope::new(AnyMessage::new(2_u32))), Err(SendError::Full(_))));
+  let overflow_result = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
+  let Err(enqueue_error) = overflow_result else {
+    panic!("DropNewest overflow must return Err, got {overflow_result:?}");
+  };
+  assert!(matches!(enqueue_error.error(), SendError::Full(_)));
 }
 
 #[test]

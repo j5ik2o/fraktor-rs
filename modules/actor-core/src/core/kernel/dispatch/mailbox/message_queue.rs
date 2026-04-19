@@ -1,7 +1,9 @@
 //! Abstraction over user message queue implementations.
 
-use super::{deque_message_queue::DequeMessageQueue, enqueue_outcome::EnqueueOutcome, envelope::Envelope};
-use crate::core::kernel::actor::error::SendError;
+use super::{
+  deque_message_queue::DequeMessageQueue, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome,
+  envelope::Envelope,
+};
 
 /// Pluggable user message queue interface inspired by Pekko's `MessageQueue`.
 ///
@@ -22,8 +24,14 @@ pub trait MessageQueue: Send + Sync {
   ///
   /// # Errors
   ///
-  /// Returns [`SendError`] if the envelope cannot be accepted (full, closed, etc.).
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError>;
+  /// Returns an [`EnqueueError`] if the envelope cannot be accepted (full,
+  /// closed, etc.). The error may also carry an evicted envelope surfaced by
+  /// [`MailboxOverflowStrategy::DropOldest`] when an eviction happened before
+  /// the offer failed; the mailbox layer must still forward such an evicted
+  /// envelope to dead letters.
+  ///
+  /// [`MailboxOverflowStrategy::DropOldest`]: super::overflow_strategy::MailboxOverflowStrategy
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError>;
 
   /// Dequeues the next user envelope, if available.
   fn dequeue(&self) -> Option<Envelope>;

@@ -39,8 +39,13 @@ fn should_reject_when_full_with_drop_newest() {
   // 拒否された envelope は識別可能な payload を保持しており、dispatcher が
   // 情報を失うことなく DeadLetters へ転送できる。
   let result = queue.enqueue(Envelope::new(AnyMessage::new(3_u32)));
-  let Err(SendError::Full(payload)) = result else {
-    panic!("DropNewest overflow must return SendError::Full, got {result:?}");
+  let Err(enqueue_error) = result else {
+    panic!("DropNewest overflow must return Err, got {result:?}");
+  };
+  assert!(enqueue_error.evicted().is_none(), "DropNewest overflow must not surface an evicted envelope");
+  let (send_error, _) = enqueue_error.into_parts();
+  let SendError::Full(payload) = send_error else {
+    panic!("DropNewest overflow must wrap SendError::Full, got {send_error:?}");
   };
   assert_eq!(
     payload.payload().downcast_ref::<u32>().copied(),

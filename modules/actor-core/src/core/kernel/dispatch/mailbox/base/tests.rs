@@ -19,7 +19,7 @@ use crate::core::kernel::{
     },
   },
   dispatch::mailbox::{
-    CloseRequestOutcome, DequeMessageQueue, EnqueueOutcome, Envelope, Mailbox, MailboxInstrumentation,
+    CloseRequestOutcome, DequeMessageQueue, EnqueueError, EnqueueOutcome, Envelope, Mailbox, MailboxInstrumentation,
     MailboxOverflowStrategy, MailboxPolicy, MessageQueue, UnboundedDequeMessageQueue,
   },
   system::ActorSystem,
@@ -63,7 +63,7 @@ impl ScriptedMessageQueue {
 }
 
 impl MessageQueue for ScriptedMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     let outcome = self.outcomes.with_lock(|outcomes| outcomes.pop_front()).expect("enqueue outcome must be configured");
     match outcome {
       | ScriptedEnqueue::Enqueued => {
@@ -75,9 +75,9 @@ impl MessageQueue for ScriptedMessageQueue {
           hook.before_error_tx.send(()).expect("full hook notification must be delivered");
           hook.resume_rx.recv().expect("full hook resume signal must be delivered");
         }
-        Err(SendError::full(envelope.into_payload()))
+        Err(EnqueueError::new(SendError::full(envelope.into_payload())))
       },
-      | ScriptedEnqueue::Closed => Err(SendError::closed(envelope.into_payload())),
+      | ScriptedEnqueue::Closed => Err(EnqueueError::new(SendError::closed(envelope.into_payload()))),
     }
   }
 
@@ -121,7 +121,7 @@ impl ScriptedDequeMessageQueue {
 }
 
 impl MessageQueue for ScriptedDequeMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     let outcome = self
       .enqueue_outcomes
       .with_lock(|enqueue_outcomes| enqueue_outcomes.pop_front())
@@ -131,8 +131,8 @@ impl MessageQueue for ScriptedDequeMessageQueue {
         self.messages.with_lock(|messages| messages.push_back(envelope));
         Ok(EnqueueOutcome::Accepted)
       },
-      | ScriptedEnqueue::Full => Err(SendError::full(envelope.into_payload())),
-      | ScriptedEnqueue::Closed => Err(SendError::closed(envelope.into_payload())),
+      | ScriptedEnqueue::Full => Err(EnqueueError::new(SendError::full(envelope.into_payload()))),
+      | ScriptedEnqueue::Closed => Err(EnqueueError::new(SendError::closed(envelope.into_payload()))),
     }
   }
 
@@ -271,7 +271,7 @@ impl CleanupCountingQueue {
 }
 
 impl MessageQueue for CleanupCountingQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     self.messages.with_lock(|messages| messages.push_back(envelope));
     Ok(EnqueueOutcome::Accepted)
   }

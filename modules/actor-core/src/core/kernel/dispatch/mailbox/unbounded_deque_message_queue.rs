@@ -8,8 +8,8 @@ use alloc::collections::VecDeque;
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
-  deque_message_queue::DequeMessageQueue, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
-  message_queue::MessageQueue,
+  deque_message_queue::DequeMessageQueue, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome,
+  envelope::Envelope, message_queue::MessageQueue,
 };
 use crate::core::kernel::actor::error::SendError;
 
@@ -40,7 +40,7 @@ impl Default for UnboundedDequeMessageQueue {
 }
 
 impl MessageQueue for UnboundedDequeMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     self.inner.with_write(|inner| inner.push_back(envelope));
     Ok(EnqueueOutcome::Accepted)
   }

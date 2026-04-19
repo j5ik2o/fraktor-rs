@@ -101,6 +101,8 @@ fn failure_payload_to_actor_error_preserves_classification() {
   let recoverable =
     FailurePayload::from_error(Pid::new(10, 0), &ActorError::recoverable("ok"), None, Duration::from_secs(1));
   let fatal = FailurePayload::from_error(Pid::new(11, 0), &ActorError::fatal("bad"), None, Duration::from_secs(2));
+  let escalate =
+    FailurePayload::from_error(Pid::new(12, 0), &ActorError::escalate("boom"), None, Duration::from_secs(3));
 
   if let ActorError::Recoverable(_) = recoverable.to_actor_error() {
   } else {
@@ -110,6 +112,14 @@ fn failure_payload_to_actor_error_preserves_classification() {
   if let ActorError::Fatal(_) = fatal.to_actor_error() {
   } else {
     panic!("expected fatal");
+  }
+
+  // SP-H1 regression: escalate must round-trip as ActorError::Escalate so the
+  // supervisor reconstruction path can still escalate to the parent instead
+  // of collapsing to Fatal and being stopped by default deciders.
+  if let ActorError::Escalate(_) = escalate.to_actor_error() {
+  } else {
+    panic!("expected escalate");
   }
 }
 

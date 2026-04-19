@@ -12,7 +12,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
   bounded_stable_priority_message_queue_state_shared::BoundedStablePriorityMessageQueueStateShared,
-  enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
+  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
   overflow_strategy::MailboxOverflowStrategy, stable_priority_entry::StablePriorityEntry,
 };
 use crate::core::kernel::{
@@ -47,7 +47,7 @@ impl BoundedStablePriorityMessageQueue {
 }
 
 impl MessageQueue for BoundedStablePriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     let priority = self.generator.priority(envelope.payload());
     self.state_shared.with_write(|state| {
       let sequence = state.next_sequence();
@@ -62,7 +62,7 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
         | MailboxOverflowStrategy::DropNewest => {
           // 容量上限に達したため到着 envelope を拒否する。mailbox 層は
           // `SendError::Full` 経由で DeadLetters へ転送できる。
-          Err(SendError::full(entry.envelope.into_payload()))
+          Err(EnqueueError::new(SendError::full(entry.envelope.into_payload())))
         },
         | MailboxOverflowStrategy::DropOldest => {
           // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ、同 priority 時は

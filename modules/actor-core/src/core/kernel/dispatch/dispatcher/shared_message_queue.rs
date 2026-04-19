@@ -13,10 +13,7 @@ use alloc::collections::VecDeque;
 
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
-use crate::core::kernel::{
-  actor::error::SendError,
-  dispatch::mailbox::{DequeMessageQueue, EnqueueOutcome, Envelope, MessageQueue},
-};
+use crate::core::kernel::dispatch::mailbox::{DequeMessageQueue, EnqueueError, EnqueueOutcome, Envelope, MessageQueue};
 
 /// Thread-safe FIFO queue shared by all actors of a `BalancingDispatcher`.
 pub struct SharedMessageQueue {
@@ -50,7 +47,7 @@ impl Clone for SharedMessageQueue {
 }
 
 impl MessageQueue for SharedMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     self.inner.with_write(|inner| inner.push_back(envelope));
     Ok(EnqueueOutcome::Accepted)
   }

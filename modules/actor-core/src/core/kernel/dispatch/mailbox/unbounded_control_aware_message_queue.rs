@@ -7,8 +7,9 @@ use alloc::collections::VecDeque;
 
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
-use super::{enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue};
-use crate::core::kernel::actor::error::SendError;
+use super::{
+  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
+};
 
 /// Initial capacity hint for each backing deque.
 const DEFAULT_CAPACITY: usize = 16;
@@ -48,7 +49,7 @@ impl Default for UnboundedControlAwareMessageQueue {
 }
 
 impl MessageQueue for UnboundedControlAwareMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     self.inner.with_write(|inner| {
       if envelope.payload().is_control() {
         inner.control_queue.push_back(envelope);

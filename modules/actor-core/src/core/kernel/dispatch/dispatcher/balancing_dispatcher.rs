@@ -17,7 +17,7 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
-  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MessageQueue},
+  dispatch::mailbox::{EnqueueError, EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MessageQueue},
   system::shared_factory::MailboxSharedSet,
 };
 
@@ -126,7 +126,12 @@ impl MessageDispatcher for BalancingDispatcher {
     receiver: &ArcShared<ActorCell>,
     envelope: Envelope,
   ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
-    self.shared_queue.enqueue(envelope)?;
+    // SharedMessageQueue::enqueue は Err 分岐を持たない (push_back は常に成功) ので
+    // EnqueueError を伝播する手続きは必要ない。防御的に send_error のみ抽出する。
+    if let Err(enqueue_error) = self.shared_queue.enqueue(envelope) {
+      let (send_error, _) = enqueue_error.into_parts();
+      return Err(send_error);
+    }
     let primary_mailbox = receiver.mailbox();
     let primary_pid = receiver.pid();
     Ok(self.collect_team_mailboxes(primary_mailbox, primary_pid))
@@ -147,7 +152,7 @@ impl MessageDispatcher for BalancingDispatcher {
 struct SharedMessageQueueBox(SharedMessageQueue);
 
 impl MessageQueue for SharedMessageQueueBox {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     self.0.enqueue(envelope)
   }
 
