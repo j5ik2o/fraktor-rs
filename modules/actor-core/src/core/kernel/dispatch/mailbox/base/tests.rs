@@ -466,11 +466,11 @@ fn mailbox_prepend_user_messages_deque_returns_closed_when_closed_and_suspended(
 }
 
 /// MB-H2: Pekko's `Mailbox.cleanUp` drains **both** the user and the system
-/// queues into the deadLetterMailbox. `finalize_cleanup` currently only
-/// drains the user queue, so `Terminated` / `Watch` / `Create` / `Stop`
-/// accumulated during shutdown are silently discarded. The fix must route
-/// them through the dead-letter sink so operators can observe lost system
-/// messages.
+/// queues into the deadLetterMailbox. Before this fix, `finalize_cleanup`
+/// drained only the user queue, so `Terminated` / `Watch` / `Create` /
+/// `Stop` accumulated during shutdown were silently discarded. The current
+/// contract routes them through the dead-letter sink so operators can
+/// observe lost system messages, and this test pins that behaviour.
 ///
 /// Reference: Apache Pekko `Mailbox.scala#cleanUp` (L288-352).
 #[test]
@@ -880,12 +880,13 @@ fn mailbox_run_drains_system_before_user() {
   mailbox.install_invoker(MessageInvokerShared::new(Box::new(OrderRecordingInvoker { log: Arc::clone(&order) })));
 
   let throughput = NonZeroUsize::new(10).unwrap();
-  let _ = mailbox.run(throughput, None);
+  let needs_reschedule = mailbox.run(throughput, None);
 
   let observed = order.lock().clone();
   assert_eq!(observed.first(), Some(&"system"), "system drain must precede user processing: {observed:?}");
   assert_eq!(observed.iter().filter(|k| **k == "system").count(), 1);
   assert_eq!(observed.iter().filter(|k| **k == "user").count(), 1);
+  assert!(!needs_reschedule, "single system + user drain should leave no pending work");
 }
 
 #[test]
@@ -1425,16 +1426,25 @@ fn can_be_scheduled_for_execution_while_suspended_with_system_work() {
   );
 
   // `has_system_messages` hint alone is sufficient (Pekko contract).
-  mailbox.dequeue_system();
+  assert!(
+    matches!(mailbox.dequeue_system(), Some(SystemMessage::Resume)),
+    "the enqueued Resume must be the exact envelope drained here",
+  );
   assert!(
     mailbox.can_be_scheduled_for_execution(ScheduleHints { has_system_messages: true, ..Default::default() }),
     "system-message hint must make a suspended mailbox schedulable",
   );
 
-  // Resume: with no work hints / queues empty, scheduling is idle again.
+  // Resume: drain the pending user message enqueued earlier so the queue
+  // is truly empty, then verify the mailbox is idle (not schedulable
+  // without hints).
   mailbox.resume();
-  let _ = mailbox.dequeue();
-  assert!(!mailbox.can_be_scheduled_for_execution(ScheduleHints::default()));
+  let drained_user = mailbox.dequeue().expect("the user envelope enqueued while suspended must remain queued");
+  assert_eq!(drained_user.payload().downcast_ref::<&str>().copied(), Some("u1"));
+  assert!(
+    !mailbox.can_be_scheduled_for_execution(ScheduleHints::default()),
+    "idle resumed mailbox with empty queues must not be schedulable without hints",
+  );
 
   // Closed: never schedulable.
   mailbox.become_closed();

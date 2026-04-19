@@ -179,10 +179,10 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
 
   let mailbox = cell.mailbox();
   mailbox.enqueue_user(AnyMessage::new(1_u32)).expect("first enqueue fits the bounded capacity");
-  // DropNewest overflow is routed to DeadLetters by the mailbox layer and
-  // reported as success (Pekko void-on-success contract). The queue must
-  // therefore stay at capacity 1, proving the registered bounded policy —
-  // not the unbounded one in Props — is the active configuration.
+  // DropNewest overflow は mailbox 層で DeadLetters へ転送され、Pekko の
+  // void-on-success 契約として成功扱いになる。queue は capacity 1 のままなので、
+  // Props の unbounded 設定ではなく登録済み bounded policy が有効であることを
+  // 検証できる。
   mailbox
     .enqueue_user(AnyMessage::new(2_u32))
     .expect("DropNewest overflow reports success after routing to DeadLetters");

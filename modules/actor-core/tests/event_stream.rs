@@ -103,10 +103,10 @@ fn dead_letter_event_is_published_when_send_fails() {
   let entries = system.dead_letters();
   assert!(!entries.is_empty());
 
-  // Regression: the rejected `ping-2` must reach the dead-letter sink exactly
-  // once. MB-H3 makes the mailbox layer the sole DL recorder for
-  // `SendError::Full`; `ActorRef::try_tell` must therefore NOT re-record on
-  // `Full`, otherwise the same envelope appears twice.
+  // Regression: reject された `ping-2` が dead-letter sink に 1 回だけ届くことを保証する。
+  // MB-H3 では mailbox 層が overflow (MailboxFull) の唯一の DL 記録元になり
+  // `EnqueueOutcome::Rejected` として成功扱いで返すため、`ActorRef::try_tell`
+  // 側で `record_send_error` が二重に呼ばれることはない (Pekko 完全準拠)。
   let ping2_entries =
     entries.iter().filter(|entry| entry.message().downcast_ref::<&str>().copied() == Some("ping-2")).count();
   assert_eq!(ping2_entries, 1, "DropNewest-rejected envelope must be recorded once (got {ping2_entries}): {entries:?}");

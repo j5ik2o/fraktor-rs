@@ -114,9 +114,9 @@ fn failure_payload_to_actor_error_preserves_classification() {
     panic!("expected fatal");
   }
 
-  // SP-H1 regression: escalate must round-trip as ActorError::Escalate so the
-  // supervisor reconstruction path can still escalate to the parent instead
-  // of collapsing to Fatal and being stopped by default deciders.
+  // SP-H1 regression: Escalate が ActorError::Escalate として round-trip し、
+  // supervisor 再構成経路で Fatal に潰れて default decider により停止されず、
+  // 親へ escalation できることを保証する。
   if let ActorError::Escalate(_) = escalate.to_actor_error() {
   } else {
     panic!("expected escalate");

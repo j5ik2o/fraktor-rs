@@ -466,8 +466,13 @@ impl Mailbox {
   ///
   /// # Errors
   ///
-  /// Returns an error if the mailbox is closed or the underlying queue
-  /// rejects the envelope (e.g. bounded overflow).
+  /// Returns an error only for true enqueue failures (the mailbox is closed,
+  /// or the underlying queue surfaces a non-overflow rejection such as
+  /// `Closed` / `Timeout` / `Suspended`). Bounded overflow
+  /// (`DropNewest` / `DropOldest`) is handled internally: the evicted /
+  /// rejected envelope is routed to the dead-letter sink by the mailbox
+  /// layer and the caller observes `Ok(())` (Pekko `BoundedMailbox.enqueue`
+  /// void-on-success parity).
   #[cfg_attr(not(test), doc(hidden))]
   pub fn enqueue_user(&self, message: AnyMessage) -> Result<(), SendError> {
     self.enqueue_envelope(Envelope::new(message))
@@ -484,8 +489,13 @@ impl Mailbox {
   ///
   /// # Errors
   ///
-  /// Returns an error if the mailbox is closed or the underlying queue
-  /// rejects the envelope (e.g. bounded overflow).
+  /// Returns an error only for true enqueue failures (the mailbox is closed,
+  /// or the underlying queue surfaces a non-overflow rejection such as
+  /// `Closed` / `Timeout` / `Suspended`). Bounded overflow
+  /// (`DropNewest` / `DropOldest`) is handled internally: the evicted /
+  /// rejected envelope is routed to the dead-letter sink by the mailbox
+  /// layer and the caller observes `Ok(())` (Pekko
+  /// `BoundedNodeMessageQueue.enqueue` void-on-success parity).
   pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<(), SendError> {
     // Fast path: closed mailboxes are terminal and reject enqueues.
     // Suspension is intentionally NOT checked here — Pekko's contract keeps

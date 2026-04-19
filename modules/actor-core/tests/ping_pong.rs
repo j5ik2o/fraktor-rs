@@ -138,15 +138,15 @@ fn tell_respects_mailbox_backpressure() {
   let mailbox: Mailbox =
     Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None));
 
-  // Pekko parity: `BoundedMailbox.enqueue` reports void on both acceptance
-  // and overflow — overflow is routed to `deadLetters` internally. The
-  // mailbox layer is the sole dead-letter recorder for `MailboxFull`, so
-  // the caller observes `Ok(())` whether or not the queue had room.
+  // Pekko 互換: `BoundedMailbox.enqueue` は受理時も overflow 時も呼び出し元へ
+  // 成功として見せ、overflow は内部で `deadLetters` へ転送される。`MailboxFull`
+  // の dead-letter 記録元は mailbox 層だけなので、queue に空きがなくても
+  // 呼び出し元は `Ok(())` を観測する。
   //
-  // Queue-level backpressure semantics (capacity cap, DropNewest drop) are
-  // verified by unit tests in `bounded_message_queue` / mailbox `base` —
-  // integration callers only need to observe that `enqueue_user` never
-  // raises an overflow-triggered error.
+  // queue レベルの backpressure セマンティクス (capacity 上限、DropNewest の
+  // 破棄挙動) は `bounded_message_queue` / mailbox `base` のユニットテストで
+  // 検証されている。integration 呼び出し元が確認すべき契約は
+  // "`enqueue_user` が overflow を原因として Err を返さない" ことだけ。
   assert!(mailbox.enqueue_user(AnyMessage::new("first")).is_ok());
   assert!(
     mailbox.enqueue_user(AnyMessage::new("second")).is_ok(),

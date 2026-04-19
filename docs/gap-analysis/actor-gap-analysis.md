@@ -2,6 +2,7 @@
 
 ## 前提
 
+- Pekko互換仕様の実現+Rustらしい設計を目指す。
 - 比較対象:
   - fraktor-rs core/kernel: `modules/actor-core/src/core/kernel/`
   - fraktor-rs core/typed: `modules/actor-core/src/core/typed/`
