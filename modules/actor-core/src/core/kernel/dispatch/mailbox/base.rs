@@ -399,6 +399,15 @@ impl Mailbox {
   /// branch of the legacy `dequeue()` (Pekko `MessageQueue.dequeue`): rejects the
   /// pop when the mailbox is closed or suspended, and publishes metrics on a
   /// successful pop so observers see the queue-length drop immediately.
+  ///
+  /// The closed / suspended guards intentionally duplicate the check performed
+  /// by `should_process_message` in the caller's loop condition. This is a
+  /// TOCTOU guard: `Suspend` / `Close` can be delivered by another thread
+  /// between the `should_process_message()` evaluation and the `self.user.dequeue()`
+  /// call, so re-checking here ensures no user message is consumed after a
+  /// state transition that the caller already decided to honour. Do not remove
+  /// the duplication even though it reads as redundant on the single-threaded
+  /// happy path.
   fn dequeue_user_only(&self) -> Option<Envelope> {
     if self.state.is_close_requested() || self.is_suspended() {
       return None;
