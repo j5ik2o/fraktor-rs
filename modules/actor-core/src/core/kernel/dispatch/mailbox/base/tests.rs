@@ -857,9 +857,9 @@ fn mailbox_dequeue_user_message() {
   assert!(mailbox.dequeue().is_some(), "enqueued user message must be dequeuable");
 }
 
-/// Pekko `processMailbox` / `processAllSystemMessages` の契約を run() 越しに pin する。
-/// system message と user message が enqueue 済みでも、system drain が user より **先に**
-/// 呼ばれることを invoker のイベント順で確認する。
+/// Pins Pekko's `processMailbox` / `processAllSystemMessages` contract through
+/// `run()`: when both system and user messages are enqueued, the system drain
+/// must fire **before** any user message, as observed via invoker event order.
 #[test]
 fn mailbox_run_drains_system_before_user() {
   use core::num::NonZeroUsize;
@@ -1392,8 +1392,8 @@ fn ac_h1_t5_resume_in_system_flush_reenables_next_user() {
 
 /// Test-only access to the system queue that mirrors Pekko `Mailbox.systemQueueGet()`.
 /// Production code drives system drain through [`Mailbox::run`] /
-/// `process_all_system_messages`; this helper is exposed only so integration tests
-/// can assert per-message contracts without installing an invoker.
+/// `process_all_system_messages`; this helper is exposed only so module-local
+/// tests can assert per-message contracts without installing an invoker.
 impl Mailbox {
   pub(crate) fn dequeue_system(&self) -> Option<SystemMessage> {
     self.system.pop()
