@@ -677,10 +677,28 @@ impl Mailbox {
 
   /// Returns `true` when the mailbox is currently eligible for scheduling.
   ///
-  /// Pekko-style alias mirroring `Mailbox.canBeScheduledForExecution`.
+  /// Pekko-style alias mirroring `Mailbox.canBeScheduledForExecution`
+  /// (Mailbox.scala:148-155). The scheduling gate follows the same
+  /// status-dependent rule as Pekko:
+  ///
+  /// - `Closed`: never schedulable.
+  /// - `Open` / `Scheduled` (not suspended): schedulable whenever either queue has work or the
+  ///   caller provides a hint.
+  /// - Suspended: schedulable only when system work exists (the hint or actual pending system
+  ///   messages), because system messages such as `Resume`, `Terminate`, `Watch`, and failure
+  ///   handling must be delivered even while the user side is suspended. This is required after
+  ///   MB-H1: since `enqueue_envelope` now accepts user messages while suspended, we must still be
+  ///   able to schedule the mailbox to drain the system queue (e.g. process `Resume`) so the newly
+  ///   accepted user messages can be drained once resumed.
   #[must_use]
-  pub fn can_be_scheduled_for_execution(&self, _hints: ScheduleHints) -> bool {
-    !self.is_closed() && !self.is_suspended()
+  pub fn can_be_scheduled_for_execution(&self, hints: ScheduleHints) -> bool {
+    if self.is_closed() {
+      return false;
+    }
+    if self.is_suspended() {
+      return hints.has_system_messages || self.system_len() > 0;
+    }
+    hints.has_system_messages || hints.has_user_messages || self.system_len() > 0 || self.user_len() > 0
   }
 
   /// Transitions the mailbox to the closed terminal state, drains the user

@@ -20,7 +20,7 @@ use crate::core::kernel::{
   },
   dispatch::mailbox::{
     CloseRequestOutcome, DequeMessageQueue, EnqueueError, EnqueueOutcome, Envelope, Mailbox, MailboxInstrumentation,
-    MailboxOverflowStrategy, MailboxPolicy, MessageQueue, UnboundedDequeMessageQueue,
+    MailboxOverflowStrategy, MailboxPolicy, MessageQueue, ScheduleHints, UnboundedDequeMessageQueue,
   },
   system::ActorSystem,
 };
@@ -1398,4 +1398,57 @@ impl Mailbox {
   pub(crate) fn dequeue_system(&self) -> Option<SystemMessage> {
     self.system.pop()
   }
+}
+
+/// MB-H1 follow-up: a suspended mailbox must remain schedulable while system
+/// work is pending.
+///
+/// After MB-H1 allowed `enqueue_envelope` to accept user messages while
+/// suspended, the scheduling gate had to match Pekko's
+/// `Mailbox.canBeScheduledForExecution` (Mailbox.scala:148-155): when
+/// suspended, the mailbox is still schedulable as long as there are system
+/// messages (or a hint indicating so), otherwise `Resume` / `Terminate` could
+/// never be delivered and newly accepted user messages would sit unprocessed.
+#[test]
+fn can_be_scheduled_for_execution_while_suspended_with_system_work() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+
+  // Baseline: empty + not suspended ⇒ not schedulable without hints.
+  assert!(!mailbox.can_be_scheduled_for_execution(ScheduleHints::default()));
+
+  // When suspended and no system work exists, scheduling must still be gated.
+  mailbox.suspend();
+  mailbox.enqueue_user(AnyMessage::new("u1")).expect("enqueue user while suspended");
+  assert!(
+    !mailbox.can_be_scheduled_for_execution(ScheduleHints::default()),
+    "suspended mailbox with only user work must NOT be schedulable (Pekko parity)",
+  );
+
+  // When system work is pending, the suspended mailbox must be schedulable so
+  // that Resume / Terminate / Watch can be processed.
+  mailbox.enqueue_system(SystemMessage::Resume).expect("enqueue system while suspended");
+  assert!(
+    mailbox.can_be_scheduled_for_execution(ScheduleHints::default()),
+    "suspended mailbox with pending system work MUST be schedulable",
+  );
+
+  // `has_system_messages` hint alone is sufficient (Pekko contract).
+  mailbox.dequeue_system();
+  assert!(
+    mailbox.can_be_scheduled_for_execution(ScheduleHints { has_system_messages: true, ..Default::default() }),
+    "system-message hint must make a suspended mailbox schedulable",
+  );
+
+  // Resume: with no work hints / queues empty, scheduling is idle again.
+  mailbox.resume();
+  let _ = mailbox.dequeue();
+  assert!(!mailbox.can_be_scheduled_for_execution(ScheduleHints::default()));
+
+  // Closed: never schedulable.
+  mailbox.become_closed();
+  assert!(!mailbox.can_be_scheduled_for_execution(ScheduleHints {
+    has_system_messages: true,
+    has_user_messages:   true,
+    backpressure_active: true,
+  }));
 }
