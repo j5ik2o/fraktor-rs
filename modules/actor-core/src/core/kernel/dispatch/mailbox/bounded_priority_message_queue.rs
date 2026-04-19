@@ -9,8 +9,9 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
   bounded_priority_message_queue_state::BoundedPriorityMessageQueueEntry,
-  bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared, envelope::Envelope,
-  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared,
+  enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
+  overflow_strategy::MailboxOverflowStrategy,
 };
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
@@ -43,30 +44,39 @@ impl BoundedPriorityMessageQueue {
 }
 
 impl MessageQueue for BoundedPriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     let priority = self.generator.priority(envelope.payload());
     let entry = BoundedPriorityMessageQueueEntry::new(priority, envelope);
     self.state_shared.with_write(|state| {
       if state.heap().len() < self.capacity {
         state.heap_mut().push(entry);
-        return Ok(());
+        return Ok(EnqueueOutcome::Accepted);
       }
 
       match self.overflow {
         | MailboxOverflowStrategy::DropNewest => {
-          // Capacity full — drop the incoming envelope.
+          // Capacity full — reject the incoming envelope so the mailbox
+          // layer can forward it to dead letters via `SendError::Full`.
           Err(SendError::full(entry.into_envelope().into_payload()))
         },
         | MailboxOverflowStrategy::DropOldest => {
-          // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
-          drop(state.heap_mut().pop());
+          // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除し、
+          // evict した envelope を `EnqueueOutcome::Evicted` として呼び出し元
+          // (mailbox 層) に通知する。呼び出し元は DeadLetter に転送する。
+          let evicted = state.heap_mut().pop().map(BoundedPriorityMessageQueueEntry::into_envelope);
           state.heap_mut().push(entry);
-          Ok(())
+          match evicted {
+            | Some(envelope) => Ok(EnqueueOutcome::Evicted(envelope)),
+            // Heap was full but `pop` returned `None` — impossible under
+            // the write lock with `len >= capacity >= 1`. Fall through as
+            // `Accepted` defensively.
+            | None => Ok(EnqueueOutcome::Accepted),
+          }
         },
         | MailboxOverflowStrategy::Grow => {
           // Ignore the bound and grow.
           state.heap_mut().push(entry);
-          Ok(())
+          Ok(EnqueueOutcome::Accepted)
         },
       }
     })

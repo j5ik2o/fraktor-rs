@@ -8,7 +8,8 @@ use core::num::NonZeroUsize;
 use fraktor_utils_core_rs::core::collections::queue::QueueError;
 
 use super::{
-  QueueStateHandle, envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  QueueStateHandle, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
+  mailbox_queue_handles::DropOldestOutcome, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
   policy::MailboxPolicy,
 };
 use crate::core::kernel::actor::error::SendError;
@@ -31,7 +32,7 @@ impl BoundedMessageQueue {
 }
 
 impl MessageQueue for BoundedMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     match self.overflow {
       | MailboxOverflowStrategy::DropNewest => self.offer_if_room(envelope),
       | MailboxOverflowStrategy::DropOldest => self.offer_after_dropping_oldest(envelope),
@@ -57,23 +58,24 @@ impl MessageQueue for BoundedMessageQueue {
 }
 
 impl BoundedMessageQueue {
-  fn offer(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn offer(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     match self.handle.offer(envelope) {
-      | Ok(_) => Ok(()),
+      | Ok(_) => Ok(EnqueueOutcome::Accepted),
       | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }
 
-  fn offer_if_room(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn offer_if_room(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     match self.handle.offer_if_room(envelope, self.capacity) {
-      | Ok(_) => Ok(()),
+      | Ok(_) => Ok(EnqueueOutcome::Accepted),
       | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }
 
-  fn offer_after_dropping_oldest(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn offer_after_dropping_oldest(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     match self.handle.drop_oldest_and_offer(envelope, self.capacity) {
-      | Ok(_) => Ok(()),
+      | Ok(DropOldestOutcome::Accepted) => Ok(EnqueueOutcome::Accepted),
+      | Ok(DropOldestOutcome::Evicted(envelope)) => Ok(EnqueueOutcome::Evicted(envelope)),
       | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }

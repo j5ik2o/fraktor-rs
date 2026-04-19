@@ -207,3 +207,13 @@ fn backoff_effective_log_level_delegates_threshold_logic() {
   assert_eq!(backoff.effective_log_level(3), LogLevel::Warn);
   assert_eq!(backoff.effective_log_level(10), LogLevel::Warn);
 }
+
+#[test]
+fn backoff_decide_returns_escalate_for_panic() {
+  // SP-H1: `backoff_decide` で Panic → Escalate にマップされることを確認する。
+  // `backoff_decide` は private `const fn` のため、`SupervisorStrategyConfig::Backoff(...).decide(..)`
+  // 経由で呼び出して観測する。
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  let config = SupervisorStrategyConfig::Backoff(backoff);
+  assert_eq!(config.decide(&ActorError::panic("boom")), SupervisorDirective::Escalate);
+}

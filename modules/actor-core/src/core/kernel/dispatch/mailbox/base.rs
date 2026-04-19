@@ -11,9 +11,11 @@ use spin::Once;
 
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
-  envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_instrumentation::MailboxInstrumentation,
-  mailbox_message::MailboxMessage, message_queue::MessageQueue,
+  enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy,
+  mailbox_instrumentation::MailboxInstrumentation, message_queue::MessageQueue,
 };
+#[cfg(test)]
+use super::mailbox_message::MailboxMessage;
 use crate::core::kernel::{
   actor::{
     ActorCell, Pid,
@@ -276,45 +278,24 @@ impl Mailbox {
     }
 
     self.set_running();
-    let mut processed: usize = 0;
-    let limit = throughput.get();
-    // Deadline support is added in a follow-up change.
 
-    while processed < limit {
-      match self.dequeue() {
-        | Some(MailboxMessage::System(msg)) => {
-          // Suspend / Resume are mailbox-local commands; everything else delegates to the invoker.
-          match msg {
-            | SystemMessage::Suspend => self.suspend(),
-            | SystemMessage::Resume => self.resume(),
-            | other => {
-              // `install_invoker` 前に mailbox が早期 close された edge case では
-              // invoker が未設定のままなので、そのままループを抜けてよい。
-              let Some(ref invoker) = invoker else {
-                break;
-              };
-              if let Err(error) = invoker.with_write(|i| i.invoke_system_message(other)) {
-                self.emit_log(LogLevel::Error, alloc::format!("failed to invoke system message: {error:?}"));
-              }
-            },
-          }
-          processed += 1;
-        },
-        | Some(MailboxMessage::User(envelope)) => {
-          // `install_invoker` 前に mailbox が早期 close された edge case では
-          // invoker が未設定のままなので、そのままループを抜けてよい。
-          let Some(ref invoker) = invoker else {
-            break;
-          };
-          let payload = envelope.into_payload();
-          if let Err(error) = invoker.with_write(|i| i.invoke_user_message(payload)) {
-            self.emit_log(LogLevel::Error, alloc::format!("failed to invoke user message: {error:?}"));
-          }
-          processed += 1;
-        },
-        | None => break,
-      }
+    // Pekko `Mailbox.run()` 準拠（Mailbox.scala:228-238）:
+    //   if (!isClosed) { processAllSystemMessages(); processMailbox() }
+    //
+    // close が既に要求されている場合は処理段階をスキップし、finish_run()
+    // 以降の終端経路（FinalizeNow → finalize_cleanup）に直接進む。MB-H2 が
+    // finalize_cleanup 内で残余 system/user を DL 送りするため、ここで追加
+    // dequeue する必要はない（close_request_does_not_dequeue_additional_system_messages
+    // が検証）。
+    // invoker 不在かつ close 要求済みの場合も同様に処理段階をスキップし、
+    // finish_run() → FinalizeNow を通して finalize_cleanup に到達させる。
+    if !close_requested_at_start
+      && let Some(ref invoker) = invoker
+    {
+      self.process_all_system_messages(invoker);
+      self.process_mailbox(invoker, throughput);
     }
+    // Deadline support is added in a follow-up change (MB-M1, Phase A3).
     // Surface the "needs reschedule" signal to the caller. The signal is
     // a union of two independent sources:
     //
@@ -345,6 +326,90 @@ impl Mailbox {
       },
       | RunFinishOutcome::Closed => false,
     }
+  }
+
+  /// Drains the entire system-message queue through the invoker, mirroring Pekko
+  /// `processAllSystemMessages()` (Mailbox.scala:287-299).
+  ///
+  /// System messages are **unmetered** with respect to throughput: each call keeps
+  /// popping until the queue is empty or a close request is observed mid-drain.
+  /// Pekko relies on `actor.systemInvoke` for every message; fraktor-rs keeps
+  /// `Suspend`/`Resume` mailbox-local so the schedule-state transitions do not
+  /// round-trip through the invoker (see plan §「実装アプローチ」).
+  ///
+  /// The inner `is_close_requested` check on every iteration is load-bearing for
+  /// the `close_request_does_not_dequeue_additional_system_messages` contract:
+  /// once close is requested mid-drain, we stop issuing `systemInvoke` calls and
+  /// let `finalize_cleanup` (MB-H2) redirect any remaining system messages to the
+  /// dead-letter sink.
+  fn process_all_system_messages(&self, invoker: &MessageInvokerShared) {
+    while !self.state.is_close_requested() {
+      let Some(message) = self.system.pop() else {
+        break;
+      };
+      self.publish_metrics();
+      match message {
+        | SystemMessage::Suspend => self.suspend(),
+        | SystemMessage::Resume => self.resume(),
+        | other => {
+          if let Err(error) = invoker.with_write(|i| i.invoke_system_message(other)) {
+            self.emit_log(LogLevel::Error, alloc::format!("failed to invoke system message: {error:?}"));
+          }
+        },
+      }
+    }
+  }
+
+  /// Processes up to `throughput` user messages, interleaving a full system-message
+  /// drain after every user invocation. Pekko mirror of `processMailbox()`
+  /// (Mailbox.scala:261-278).
+  ///
+  /// The throughput counter is **user-only**: system-message drains inside this
+  /// loop do not decrement it. Any `Suspend` arriving via `process_all_system_messages`
+  /// between two user messages flips `should_process_message` to `false` on the
+  /// next iteration, gating the remaining user messages until a later `run()` call
+  /// observes a `Resume` (AC-H1-T2 / T5).
+  fn process_mailbox(&self, invoker: &MessageInvokerShared, throughput: NonZeroUsize) {
+    let mut left = throughput.get();
+    while left > 0 && self.should_process_message() {
+      let Some(envelope) = self.dequeue_user_only() else {
+        break;
+      };
+      let payload = envelope.into_payload();
+      if let Err(error) = invoker.with_write(|i| i.invoke_user_message(payload)) {
+        self.emit_log(LogLevel::Error, alloc::format!("failed to invoke user message: {error:?}"));
+      }
+      // Pekko: `actor.invoke(next); processAllSystemMessages()` — each user
+      // message is followed by a full system drain so Suspend / Resume /
+      // Stop arriving mid-run are reflected before the next user message.
+      self.process_all_system_messages(invoker);
+      left -= 1;
+    }
+  }
+
+  /// Pekko `shouldProcessMessage` (Mailbox.scala:126) — true while the mailbox
+  /// can legitimately process another user message.
+  ///
+  /// `cleanup_done` is included so we bail out immediately if `finish_run()` has
+  /// already transitioned the state machine (defensive; not expected during a
+  /// single `run()`).
+  fn should_process_message(&self) -> bool {
+    !self.is_suspended() && !self.state.is_close_requested() && !self.state.is_cleanup_done()
+  }
+
+  /// User-only dequeue helper used by `process_mailbox`. Mirrors the user-side
+  /// branch of the legacy `dequeue()` (Pekko `MessageQueue.dequeue`): rejects the
+  /// pop when the mailbox is closed or suspended, and publishes metrics on a
+  /// successful pop so observers see the queue-length drop immediately.
+  fn dequeue_user_only(&self) -> Option<Envelope> {
+    if self.state.is_close_requested() || self.is_suspended() {
+      return None;
+    }
+    let result = self.user.dequeue();
+    if result.is_some() {
+      self.publish_metrics();
+    }
+    result
   }
 
   /// Returns the cleanup policy configured for this mailbox.
@@ -407,17 +472,20 @@ impl Mailbox {
   /// This is the dispatcher-side dispatch path used by the
   /// `MessageDispatcher` family.
   ///
+  /// Pekko parity: suspension only blocks **dequeue**; enqueue always
+  /// accepts the envelope so that suspended actors still buffer inbound
+  /// messages and observe them once resumed.
+  ///
   /// # Errors
   ///
-  /// Returns an error if the mailbox is suspended, full, or closed.
+  /// Returns an error if the mailbox is closed or the underlying queue
+  /// rejects the envelope (e.g. bounded overflow).
   pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<(), SendError> {
-    // Fast path: reject closed before suspended. `Closed` is terminal, so a
-    // mailbox observed as both closed and suspended MUST return `Closed`.
+    // Fast path: closed mailboxes are terminal and reject enqueues.
+    // Suspension is intentionally NOT checked here — Pekko's contract keeps
+    // the enqueue path open while suspended and only gates dequeue.
     if self.is_closed() {
       return Err(SendError::closed(envelope.into_payload()));
-    }
-    if self.is_suspended() {
-      return Err(SendError::suspended(envelope.into_payload()));
     }
     self.enqueue_envelope_locked(envelope)
   }
@@ -441,9 +509,29 @@ impl Mailbox {
     });
 
     match enqueue_result {
-      | Ok(()) => {
+      | Ok(EnqueueOutcome::Accepted) => {
         self.publish_metrics();
         Ok(())
+      },
+      | Ok(EnqueueOutcome::Evicted(evicted)) => {
+        // Pekko 互換: DropOldest で押し出された envelope を MailboxFull として
+        // DeadLetter に通知する。エンキュー自体は成功したので呼び出し元には
+        // Ok(()) を返す（Pekko `BoundedNodeMessageQueue.enqueue` 相当）。
+        if let Some(state) = self.system_state() {
+          state.record_dead_letter(evicted.into_payload(), DeadLetterReason::MailboxFull, self.pid());
+        }
+        self.publish_metrics();
+        Ok(())
+      },
+      | Err(SendError::Full(payload)) => {
+        // Pekko 互換: DropNewest で拒否された envelope を MailboxFull として
+        // DeadLetter に通知した上で、dispatcher 側のリトライ／バックプレッシャ
+        // 判定に必要なので `SendError::Full` を伝播する。`AnyMessage::clone` は
+        // 内部 `ArcShared` の参照カウントのみで安価。
+        if let Some(state) = self.system_state() {
+          state.record_dead_letter(payload.clone(), DeadLetterReason::MailboxFull, self.pid());
+        }
+        Err(SendError::Full(payload))
       },
       | Err(error) => Err(error),
     }
@@ -461,9 +549,12 @@ impl Mailbox {
   /// capability is passed back into the locked prepend path so the lock responsibility remains
   /// with `Mailbox`.
   ///
+  /// Pekko parity: suspension only blocks dequeue; prepends are accepted
+  /// while suspended so the buffered order is preserved until resume.
+  ///
   /// # Errors
   ///
-  /// Returns an error if the mailbox is closed, suspended, or the underlying deque rejects the
+  /// Returns an error if the mailbox is closed or the underlying deque rejects the
   /// prepend.
   pub(crate) fn prepend_user_messages_deque(
     &self,
@@ -474,13 +565,11 @@ impl Mailbox {
       return Ok(());
     };
 
-    // Fast path: reject closed before suspended (same rationale as
-    // `enqueue_envelope`).
+    // Fast path: closed mailboxes reject prepends. Suspension is intentionally
+    // NOT checked here — enqueue / prepend accept while suspended and only
+    // dequeue is gated.
     if self.is_closed() {
       return Err(SendError::closed(first_message));
-    }
-    if self.is_suspended() {
-      return Err(SendError::suspended(first_message));
     }
     self.prepend_user_messages_deque_locked(resolved_deque, messages, first_message)
   }
@@ -521,6 +610,13 @@ impl Mailbox {
   }
 
   /// Dequeues the next available message, prioritising system queue.
+  ///
+  /// Test-only black-box helper. Production code now uses
+  /// [`Self::process_all_system_messages`] and [`Self::dequeue_user_only`]
+  /// through [`Self::run`]; the combined `MailboxMessage` wrapper is retained
+  /// only so integration tests can assert FIFO priority without reaching into
+  /// the underlying queues.
+  #[cfg(test)]
   #[must_use]
   pub(crate) fn dequeue(&self) -> Option<MailboxMessage> {
     if self.state.is_close_requested() {
@@ -626,6 +722,18 @@ impl Mailbox {
         while let Some(envelope) = self.user.dequeue() {
           if let Some(ref state) = system_state {
             state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
+          }
+        }
+        // Pekko parity: `cleanUp()` drains the system queue as well so
+        // pending `Watch` / `Terminated` / `Create` / `Stop` envelopes are
+        // observed as dead letters instead of silently dropped.
+        //
+        // `LeaveSharedQueue` is excluded so sharing mailboxes (Balancing
+        // dispatcher) do not double-report system messages that still live
+        // in the shared system queue.
+        while let Some(sys_msg) = self.system.pop() {
+          if let Some(ref state) = system_state {
+            state.record_dead_letter(AnyMessage::new(sys_msg), DeadLetterReason::Dropped, pid);
           }
         }
       }

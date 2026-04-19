@@ -14,6 +14,16 @@ use crate::core::kernel::dispatch::mailbox::{
 
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
 
+/// Result of [`QueueStateHandle::drop_oldest_and_offer`] that surfaces the
+/// evicted element so callers (mailbox layer) can forward it to dead letters.
+pub(crate) enum DropOldestOutcome<T> {
+  /// The new element was offered without evicting an existing entry.
+  Accepted,
+  /// The new element was offered after evicting the oldest entry, which
+  /// is returned so the caller can forward it to dead letters.
+  Evicted(T),
+}
+
 /// Internal handles wrapping queue producers/consumers.
 pub(crate) struct QueueStateHandle<T>
 where
@@ -62,13 +72,34 @@ where
     })
   }
 
-  pub(crate) fn drop_oldest_and_offer(&self, message: T, capacity: usize) -> Result<OfferOutcome, QueueError<T>> {
+  pub(crate) fn drop_oldest_and_offer(
+    &self,
+    message: T,
+    capacity: usize,
+  ) -> Result<DropOldestOutcome<T>, QueueError<T>> {
     self.state.with_write(|state| {
-      if state.len() >= capacity {
-        // Intentionally discard the oldest element to make room for the new message.
-        let _oldest = state.poll();
-      }
-      state.offer(message)
+      // Pekko parity: when the queue is already at capacity, evict the
+      // oldest element and surface it so the caller can forward it to the
+      // dead-letter destination instead of silently dropping it.
+      let evicted = if state.len() >= capacity {
+        match state.poll() {
+          | Ok(item) => Some(item),
+          // Under the same write lock, `len >= capacity >= 1` guarantees
+          // at least one element is present, so `poll` cannot return
+          // `Empty` here. We still fall through with `None` defensively;
+          // other error variants would be pathological for a VecDeque
+          // backend and are handled identically by the caller (no
+          // eviction surfaced).
+          | Err(_) => None,
+        }
+      } else {
+        None
+      };
+      state.offer(message)?;
+      Ok(match evicted {
+        | Some(item) => DropOldestOutcome::Evicted(item),
+        | None => DropOldestOutcome::Accepted,
+      })
     })
   }
 

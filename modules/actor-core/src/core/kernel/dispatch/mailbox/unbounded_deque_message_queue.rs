@@ -7,7 +7,10 @@ use alloc::collections::VecDeque;
 
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
-use super::{deque_message_queue::DequeMessageQueue, envelope::Envelope, message_queue::MessageQueue};
+use super::{
+  deque_message_queue::DequeMessageQueue, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
+  message_queue::MessageQueue,
+};
 use crate::core::kernel::actor::error::SendError;
 
 /// Initial capacity hint for the backing deque.
@@ -37,9 +40,9 @@ impl Default for UnboundedDequeMessageQueue {
 }
 
 impl MessageQueue for UnboundedDequeMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     self.inner.with_write(|inner| inner.push_back(envelope));
-    Ok(())
+    Ok(EnqueueOutcome::Accepted)
   }
 
   fn dequeue(&self) -> Option<Envelope> {

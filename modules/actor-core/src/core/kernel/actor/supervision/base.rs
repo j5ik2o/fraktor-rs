@@ -85,6 +85,7 @@ impl SupervisorStrategy {
       match error {
         | ActorError::Recoverable(_) => SupervisorDirective::Restart,
         | ActorError::Fatal(_) => SupervisorDirective::Stop,
+        | ActorError::Panic(_) => SupervisorDirective::Escalate,
       }
     }
     Self {
@@ -238,6 +239,7 @@ impl Default for SupervisorStrategy {
       match error {
         | ActorError::Recoverable(_) => SupervisorDirective::Restart,
         | ActorError::Fatal(_) => SupervisorDirective::Stop,
+        | ActorError::Panic(_) => SupervisorDirective::Escalate,
       }
     }
 
