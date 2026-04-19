@@ -1045,7 +1045,7 @@ impl ActorCellInvoker {
 }
 
 impl MessageInvoker for ActorCellInvoker {
-  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), ActorError> {
+  fn invoke(&mut self, message: AnyMessage) -> Result<(), ActorError> {
     let Some(cell) = self.cell() else {
       // ActorCell has been dropped, silently ignore the message
       return Ok(());
@@ -1093,7 +1093,7 @@ impl MessageInvoker for ActorCellInvoker {
     result
   }
 
-  fn invoke_system_message(&mut self, message: SystemMessage) -> Result<(), ActorError> {
+  fn system_invoke(&mut self, message: SystemMessage) -> Result<(), ActorError> {
     let Some(cell) = self.cell() else {
       // ActorCell has been dropped, silently ignore the message
       return Ok(());

@@ -213,7 +213,7 @@ impl BlockingInvoker {
 }
 
 impl MessageInvoker for BlockingInvoker {
-  fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
+  fn invoke(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
     let previous = self.user_invocations.fetch_add(1, Ordering::SeqCst);
     if matches!(self.block_kind, BlockingInvocationKind::User) && previous == 0 {
       self.block_once();
@@ -221,7 +221,7 @@ impl MessageInvoker for BlockingInvoker {
     Ok(())
   }
 
-  fn invoke_system_message(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
+  fn system_invoke(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
     let previous = self.system_invocations.fetch_add(1, Ordering::SeqCst);
     if matches!(self.block_kind, BlockingInvocationKind::System) && previous == 0 {
       self.block_once();
@@ -248,12 +248,12 @@ impl CountingInvoker {
 }
 
 impl MessageInvoker for CountingInvoker {
-  fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
+  fn invoke(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
     self.user_invocations.fetch_add(1, Ordering::SeqCst);
     Ok(())
   }
 
-  fn invoke_system_message(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
+  fn system_invoke(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
     self.system_invocations.fetch_add(1, Ordering::SeqCst);
     Ok(())
   }
@@ -413,7 +413,7 @@ fn mailbox_enqueue_envelope_accepts_when_suspended_and_delivers_after_resume() {
 fn mailbox_enqueue_user_returns_closed_when_closed_and_suspended() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   mailbox.suspend();
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   let result = mailbox.enqueue_user(AnyMessage::new("msg"));
 
@@ -456,7 +456,7 @@ fn mailbox_prepend_user_messages_deque_returns_closed_when_closed_and_suspended(
   let queue = Box::new(UnboundedDequeMessageQueue::new());
   let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
   mailbox.suspend();
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   let messages = VecDeque::from([AnyMessage::new("msg")]);
   let user_deque = mailbox.user_deque().expect("deque mailbox should expose deque capability");
@@ -487,7 +487,7 @@ fn finalize_cleanup_drains_system_queue_to_dead_letters() {
   mailbox.enqueue_system(SystemMessage::Create).expect("create must enqueue");
 
   // When: cleanup runs (DrainToDeadLetters policy is the default).
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   // Then: every enqueued system message must appear in DL storage in FIFO
   // order, tagged with the mailbox's pid and `Dropped` reason (reusing the
@@ -522,7 +522,7 @@ fn finalize_cleanup_drains_both_user_and_system_queues_to_dead_letters() {
   mailbox.enqueue_user(AnyMessage::new("u2")).expect("u2");
   mailbox.enqueue_system(SystemMessage::Stop).expect("stop");
 
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   let entries = system_state.dead_letters();
   assert_eq!(entries.len(), 3, "both queues must be drained: {entries:?}");
@@ -567,7 +567,7 @@ fn finalize_cleanup_leave_shared_queue_still_drains_system_queue() {
 
   mailbox.enqueue_system(SystemMessage::Stop).expect("stop");
 
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   let entries = system_state.dead_letters();
   assert_eq!(entries.len(), 1, "LeaveSharedQueue cleanup must still drain the system queue, got {entries:?}");
@@ -589,7 +589,7 @@ fn finalize_cleanup_without_system_state_does_not_panic() {
   mailbox.enqueue_system(SystemMessage::Stop).expect("stop");
   mailbox.enqueue_system(SystemMessage::Create).expect("create");
 
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   assert!(mailbox.is_closed(), "cleanup must complete the close transition");
 }
@@ -869,12 +869,12 @@ fn mailbox_run_drains_system_before_user() {
   }
 
   impl MessageInvoker for OrderRecordingInvoker {
-    fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
+    fn invoke(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
       self.log.lock().push("user");
       Ok(())
     }
 
-    fn invoke_system_message(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
+    fn system_invoke(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
       self.log.lock().push("system");
       Ok(())
     }
@@ -957,14 +957,14 @@ fn mailbox_throughput_limit() {
 fn mailbox_is_closed_after_mailbox_close() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   assert!(!mailbox.is_closed());
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
   assert!(mailbox.is_closed());
 }
 
 #[test]
 fn mailbox_enqueue_envelope_returns_closed_after_mailbox_close() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   let result = mailbox.enqueue_envelope(Envelope::new(AnyMessage::new("msg")));
   assert!(matches!(result, Err(SendError::Closed(_))), "expected Closed, got {result:?}");
@@ -973,7 +973,7 @@ fn mailbox_enqueue_envelope_returns_closed_after_mailbox_close() {
 #[test]
 fn mailbox_enqueue_user_returns_closed_after_mailbox_close() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   let result = mailbox.enqueue_user(AnyMessage::new("msg"));
   assert!(matches!(result, Err(SendError::Closed(_))), "expected Closed, got {result:?}");
@@ -983,7 +983,7 @@ fn mailbox_enqueue_user_returns_closed_after_mailbox_close() {
 fn mailbox_prepend_user_messages_deque_returns_closed_after_mailbox_close() {
   let queue = Box::new(UnboundedDequeMessageQueue::new());
   let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   let messages = VecDeque::from([AnyMessage::new("msg")]);
   let user_deque = mailbox.user_deque().expect("deque mailbox should expose deque capability");
@@ -1124,8 +1124,8 @@ fn runner_finalizer_cleans_up_exactly_once() {
   let run_handle = thread::spawn(move || mailbox_for_run.run(NonZeroUsize::new(8).unwrap(), None));
 
   entered_rx.recv().expect("runner should start first user message");
-  mailbox.become_closed_and_clean_up();
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
+  mailbox.become_closed();
   resume_tx.send(()).expect("resume");
 
   assert!(!run_handle.join().expect("run thread should complete"));
@@ -1158,7 +1158,7 @@ fn close_request_does_not_dequeue_additional_system_messages() {
   let run_handle = thread::spawn(move || mailbox_for_run.run(NonZeroUsize::new(8).unwrap(), None));
 
   entered_rx.recv().expect("system invoker should block on first system message");
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
   resume_tx.send(()).expect("resume");
 
   assert!(!run_handle.join().expect("run thread should complete"));

@@ -288,7 +288,7 @@ fn create_system_message_runs_pre_start() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start"]);
@@ -322,7 +322,7 @@ fn identify_replies_with_actor_identity_without_invoking_actor() {
   let identify = Identify::new(AnyMessage::new("corr"));
   let message = AnyMessage::new(identify).with_sender(reply_to.actor_ref());
 
-  invoker.invoke_user_message(message).expect("identify");
+  invoker.invoke(message).expect("identify");
 
   assert_eq!(*actor_received.lock(), 0, "identify should not reach the actor receive method");
   wait_until(|| reply_replies.lock().len() == 1);
@@ -346,8 +346,8 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
-  invoker.invoke_system_message(SystemMessage::Recreate).expect("recreate");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+  invoker.system_invoke(SystemMessage::Recreate).expect("recreate");
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "post_stop", "pre_start"]);
@@ -366,8 +366,8 @@ fn poison_pill_system_message_invokes_post_stop() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
-  invoker.invoke_system_message(SystemMessage::PoisonPill).expect("poison pill");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+  invoker.system_invoke(SystemMessage::PoisonPill).expect("poison pill");
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "post_stop"]);
@@ -387,10 +387,10 @@ fn poison_pill_public_message_invokes_post_stop() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
 
   // When: public message を通常 user message 経路で配送する
-  invoker.invoke_user_message(AnyMessage::new(PoisonPill)).expect("poison pill");
+  invoker.invoke(AnyMessage::new(PoisonPill)).expect("poison pill");
 
   // Then: SystemMessage alias ではなくても auto-receive として停止処理が走る
   let snapshot = log.lock().clone();
@@ -410,8 +410,8 @@ fn kill_system_message_reports_fatal_failure() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
-  let error = invoker.invoke_system_message(SystemMessage::Kill).expect_err("kill should report failure");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+  let error = invoker.system_invoke(SystemMessage::Kill).expect_err("kill should report failure");
 
   assert_eq!(error, ActorError::fatal("Kill"));
 }
@@ -430,10 +430,10 @@ fn kill_public_message_reports_fatal_failure() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
 
   // When: public message を通常 user message 経路で配送する
-  let error = invoker.invoke_user_message(AnyMessage::new(Kill)).expect_err("kill should fail");
+  let error = invoker.invoke(AnyMessage::new(Kill)).expect_err("kill should fail");
 
   // Then: runtime は public payload を fatal kill として扱う
   assert_eq!(error, ActorError::fatal("Kill"));
@@ -452,7 +452,7 @@ fn poison_pill_user_message_preserves_user_ordering() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
 
   assert!(cell.actor_ref().try_tell(AnyMessage::new(1_u8)).is_ok());
   cell.actor_ref().poison_pill();
@@ -484,8 +484,8 @@ fn kill_user_message_reports_fatal_failure() {
   state.register_cell(cell.clone());
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
-  let error = invoker.invoke_user_message(AnyMessage::new(SystemMessage::Kill)).expect_err("kill should fail");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+  let error = invoker.invoke(AnyMessage::new(SystemMessage::Kill)).expect_err("kill should fail");
   assert_eq!(error, ActorError::fatal("Kill"));
 }
 
@@ -503,10 +503,10 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
   state.register_cell(cell.clone());
 
   let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
-  parent_invoker.invoke_system_message(SystemMessage::Create).expect("create parent");
+  parent_invoker.system_invoke(SystemMessage::Create).expect("create parent");
 
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
-  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  invoker.system_invoke(SystemMessage::Create).expect("create");
 
   let initial_handle = cell
     .receive_timeout
@@ -514,7 +514,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
     .with_lock(|state| state.as_ref().and_then(ReceiveTimeoutState::handle_raw))
     .expect("receive timeout handle should exist after pre_start");
 
-  let error = invoker.invoke_user_message(AnyMessage::new(1_u32)).expect_err("user message should fail");
+  let error = invoker.invoke(AnyMessage::new(1_u32)).expect_err("user message should fail");
   assert_eq!(error, ActorError::recoverable("boom"));
 
   let current_handle = cell

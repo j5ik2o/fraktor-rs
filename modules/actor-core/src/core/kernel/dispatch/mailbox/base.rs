@@ -348,7 +348,7 @@ impl Mailbox {
         | SystemMessage::Suspend => self.suspend(),
         | SystemMessage::Resume => self.resume(),
         | other => {
-          if let Err(error) = invoker.with_write(|i| i.invoke_system_message(other)) {
+          if let Err(error) = invoker.with_write(|i| i.system_invoke(other)) {
             self.emit_log(LogLevel::Error, alloc::format!("failed to invoke system message: {error:?}"));
           }
         },
@@ -372,7 +372,7 @@ impl Mailbox {
         break;
       };
       let payload = envelope.into_payload();
-      if let Err(error) = invoker.with_write(|i| i.invoke_user_message(payload)) {
+      if let Err(error) = invoker.with_write(|i| i.invoke(payload)) {
         self.emit_log(LogLevel::Error, alloc::format!("failed to invoke user message: {error:?}"));
       }
       // Pekko: `actor.invoke(next); processAllSystemMessages()` — each user
@@ -677,11 +677,13 @@ impl Mailbox {
   /// any remaining envelopes to the dead-letter destination when the policy
   /// is [`MailboxCleanupPolicy::DrainToDeadLetters`].
   ///
-  /// Called from `MessageDispatcherShared::detach` so the dispatcher detach
-  /// path mirrors Pekko's `Mailbox.becomeClosed` + `cleanUp` contract: once
-  /// the cell is being torn down, no further executions can be scheduled and
-  /// in-flight envelopes are observed exactly once.
-  pub fn become_closed_and_clean_up(&self) {
+  /// Mirrors Pekko `Mailbox.scala:178` `becomeClosed()` combined with
+  /// `cleanUp()` as an atomic operation: the state transition and queue drain
+  /// are composed under `CloseRequestOutcome` so the finalizer runs exactly
+  /// once. Called from `MessageDispatcherShared::detach` during cell teardown
+  /// to ensure no further executions can be scheduled and in-flight envelopes
+  /// are observed exactly once.
+  pub fn become_closed(&self) {
     match self.state.request_close() {
       | CloseRequestOutcome::CallerOwnsFinalizer => self.finalize_cleanup(),
       | CloseRequestOutcome::RunnerOwnsFinalizer

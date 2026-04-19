@@ -133,7 +133,7 @@ fn sharing_mailbox_close_keeps_shared_queue_contents() {
     dispatcher.try_create_shared_mailbox().expect("balancing dispatcher always hands out a sharing mailbox");
 
   queue.enqueue(Envelope::new(AnyMessage::new(11_u32))).expect("shared enqueue");
-  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed();
 
   assert_eq!(queue.number_of_messages(), 1, "LeaveSharedQueue mailbox must not drain the shared queue");
 }

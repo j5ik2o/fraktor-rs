@@ -15,22 +15,22 @@ use crate::core::kernel::{
 ///
 /// ```text
 /// let invoker = MessageInvokerShared::new(boxed_invoker);
-/// invoker.with_write(|i| i.invoke_user_message(message))?;
+/// invoker.with_write(|i| i.invoke(message))?;
 /// ```
 pub trait MessageInvoker: Send + Sync {
-  /// Processes user messages.
+  /// Processes a user message, mirroring Pekko `ActorCell.scala:548` `invoke(Envelope)`.
   ///
   /// # Errors
   ///
   /// Returns an error if message processing fails.
-  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), ActorError>;
+  fn invoke(&mut self, message: AnyMessage) -> Result<(), ActorError>;
 
-  /// Processes system messages.
+  /// Processes a system message, mirroring Pekko `ActorCell.scala:480` `systemInvoke(SystemMessage)`.
   ///
   /// # Errors
   ///
   /// Returns an error if system message processing fails.
-  fn invoke_system_message(&mut self, message: SystemMessage) -> Result<(), ActorError>;
+  fn system_invoke(&mut self, message: SystemMessage) -> Result<(), ActorError>;
 
   /// Processes mailbox-pressure notifications emitted by dispatcher instrumentation.
   ///

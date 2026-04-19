@@ -133,7 +133,7 @@ impl MessageDispatcherShared {
   /// to register a delayed dispatcher shutdown.
   #[must_use]
   pub fn detach(&self, actor: &ArcShared<ActorCell>) -> ShutdownSchedule {
-    actor.mailbox().become_closed_and_clean_up();
+    actor.mailbox().become_closed();
     self.with_write(|inner| {
       inner.unregister_actor(actor);
       inner.core_mut().schedule_shutdown_if_sensible()
