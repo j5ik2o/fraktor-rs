@@ -25,6 +25,7 @@ Report Directory 内の **`structure-analysis.md`**・**`structure-design.md`** 
 
 - Phase 管理の原則は `plan-refactoring` と同じ: 前 Phase 未完了なら計画上で ABORT 条件を明示する
 - Phase を小さく分けても no-shim で進められない場合は、設計見直しとして `design` に戻す前提を明記する
+- モジュールの責務境界自体を変える必要があるなら、`knowledge/strangler-fig-migration.md` を参照し、差し替え移行（ストラングラーフィグ）に切り替える判断を plan レポートに明記する
 
 ## 必須出力
 
