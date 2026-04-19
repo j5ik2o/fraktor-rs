@@ -946,7 +946,10 @@ impl ActorCell {
     self.system().report_failure(payload);
   }
 
-  fn handle_failure_message(&self, payload: &FailurePayload) {
+  /// Processes a child failure, mirroring Pekko `FaultHandling.scala:305`
+  /// `handleFailure(f: Failed)`: runs the supervisor decision, notifies the
+  /// actor, and applies the directive.
+  fn handle_failure(&self, payload: &FailurePayload) {
     let actor_error = payload.to_actor_error();
     let now = self.system().monotonic_now();
     let payload_ref = &payload;
@@ -1112,7 +1115,7 @@ impl MessageInvoker for ActorCellInvoker {
       | SystemMessage::Create => cell.handle_create(),
       | SystemMessage::Recreate => cell.handle_recreate(),
       | SystemMessage::Failure(ref payload) => {
-        cell.handle_failure_message(payload);
+        cell.handle_failure(payload);
         Ok(())
       },
       | SystemMessage::Suspend => {
