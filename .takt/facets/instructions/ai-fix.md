@@ -10,6 +10,10 @@ AIレビュー指摘に基づき、実装を修正せよ。
    - **修正実施**: 該当ファイルを開き、指摘された問題を修正する
    - **修正不要**: 指摘が誤りである技術的根拠を示す
 5. 修正後、テストを実行して既存テストが壊れていないことを確認する
+6. **`./scripts/ci-check.sh ai dylint` を実行（必須）**
+   - プロジェクト固有 dylint ルール（mod-file / module-wiring / type-per-file / tests-location / use-placement / redundant-fqcn / rustdoc / cfg-std-forbid / ambiguous-suffix / module-examples）をコードベース全体に適用し、エラー 0 件・warning 0 件を確認する
+   - **エラーや warning が出た場合は、このステップ内で必ずコードを修正してから完了報告すること**。lint を `#[allow]` で握りつぶすのは禁止
+   - 終了コード 0 を確認するまで「修正完了」と判定しない
 
 **修正の原則:**
 - レビュー指摘に直接対応する修正のみ行う（スコープを広げない）

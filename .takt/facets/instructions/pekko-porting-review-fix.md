@@ -31,6 +31,10 @@ pekko-compat-review の指摘がある場合は、必ず `references/pekko/` の
 修正後に必ず以下を実行し、全チェックがパスすることを確認してからレポートに記録すること:
 1. 変更範囲に対応する lint / 型チェック（例: `cargo clippy -p <crate> -- -D warnings`）
 2. 変更範囲に対応する最小限のテスト（例: `cargo test -p <crate>`）
+3. **`./scripts/ci-check.sh ai dylint` の実行（必須）**
+   - プロジェクト固有 dylint ルール（mod-file / module-wiring / type-per-file / tests-location / use-placement / redundant-fqcn / rustdoc / cfg-std-forbid / ambiguous-suffix / module-examples）をコードベース全体に適用し、エラー 0 件・warning 0 件を確認する
+   - **エラーや warning が出た場合は、このステップ内で必ずコードを修正してから完了報告すること**。lint を `#[allow]` で握りつぶすのは禁止（`immutability-policy.md` / `naming-conventions.md` / `type-organization.md` 等の規約違反を示唆するため、設計で解消する）
+   - 終了コード 0・FAILED 0 件を確認してから「修正完了」と判定する
 成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
 
 **必須出力（見出しを含める）**
@@ -42,6 +46,8 @@ pekko-compat-review の指摘がある場合は、必ず `references/pekko/` の
 - {ビルド実行結果}
 ## テスト結果
 - {テスト実行コマンドと結果}
+## dylint結果
+- `./scripts/ci-check.sh ai dylint` の実行結果（終了コードと、エラー/warning が出た場合の修正内容）
 ## 実行結果
 - {変更範囲 lint/型チェック と変更範囲テストの成功ログ}
 ## 収束ゲート
