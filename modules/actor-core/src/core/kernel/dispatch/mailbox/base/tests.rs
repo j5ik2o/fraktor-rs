@@ -1,4 +1,4 @@
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{
   Arc,
@@ -19,7 +19,7 @@ use crate::core::kernel::{
     },
   },
   dispatch::mailbox::{
-    CloseRequestOutcome, DequeMessageQueue, EnqueueOutcome, Envelope, Mailbox, MailboxInstrumentation, MailboxMessage,
+    CloseRequestOutcome, DequeMessageQueue, EnqueueOutcome, Envelope, Mailbox, MailboxInstrumentation,
     MailboxOverflowStrategy, MailboxPolicy, MessageQueue, UnboundedDequeMessageQueue,
   },
   system::ActorSystem,
@@ -291,9 +291,7 @@ impl MessageQueue for CleanupCountingQueue {
 }
 
 fn expect_next_user_message(mailbox: &Mailbox, expected: &str) {
-  let Some(MailboxMessage::User(envelope)) = mailbox.dequeue() else {
-    panic!("user message expected");
-  };
+  let envelope = mailbox.dequeue().expect("user message expected");
   assert_eq!(envelope.payload().downcast_ref::<&str>().copied(), Some(expected));
 }
 
@@ -381,8 +379,7 @@ fn mailbox_enqueue_user_accepts_when_suspended() {
   mailbox.resume();
 
   // Then: the buffered message becomes visible for dispatch.
-  let dequeued = mailbox.dequeue().expect("buffered message must be dequeuable after resume");
-  assert!(matches!(dequeued, MailboxMessage::User(_)));
+  let _envelope = mailbox.dequeue().expect("buffered message must be dequeuable after resume");
 }
 
 /// MB-H1: `enqueue_envelope` must also accept envelopes while suspended and
@@ -544,7 +541,7 @@ fn finalize_cleanup_drains_both_user_and_system_queues_to_dead_letters() {
   assert_eq!(system_hits, 1, "Stop must be routed to DL exactly once");
 
   // Both user payloads must appear exactly once, preserving their labels.
-  let user_labels: alloc::vec::Vec<&str> =
+  let user_labels: Vec<&str> =
     entries.iter().filter_map(|entry| entry.message().downcast_ref::<&str>().copied()).collect();
   assert_eq!(user_labels.len(), 2, "both user envelopes must surface in DL");
   assert!(user_labels.contains(&"u1"), "u1 must surface: {user_labels:?}");
@@ -703,9 +700,7 @@ fn mailbox_enqueue_drop_oldest_records_dead_letter_for_evicted_envelope() {
 
   // And: the accepted message is queued and is the one that dequeues.
   assert_eq!(mailbox.user_len(), 1);
-  let Some(MailboxMessage::User(envelope)) = mailbox.dequeue() else {
-    panic!("accepted envelope must be dequeuable");
-  };
+  let envelope = mailbox.dequeue().expect("accepted envelope must be dequeuable");
   assert_eq!(envelope.payload().downcast_ref::<&str>().copied(), Some("accepted"));
 }
 
@@ -850,8 +845,8 @@ fn mailbox_prepend_user_messages_deque_preserves_front_insertion_order() {
 #[test]
 fn mailbox_dequeue_empty() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let result = mailbox.dequeue();
-  assert!(result.is_none());
+  assert!(mailbox.dequeue().is_none(), "empty mailbox must yield no user message");
+  assert_eq!(mailbox.system_len(), 0, "empty mailbox must have no system messages");
 }
 
 #[test]
@@ -859,23 +854,46 @@ fn mailbox_dequeue_user_message() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let message = AnyMessage::new(42_u32);
   mailbox.enqueue_user(message).unwrap();
-  let result = mailbox.dequeue();
-  assert!(result.is_some());
+  assert!(mailbox.dequeue().is_some(), "enqueued user message must be dequeuable");
 }
 
+/// Pekko `processMailbox` / `processAllSystemMessages` の契約を run() 越しに pin する。
+/// system message と user message が enqueue 済みでも、system drain が user より **先に**
+/// 呼ばれることを invoker のイベント順で確認する。
 #[test]
-fn mailbox_dequeue_system_message_priority() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let user_message = AnyMessage::new(1_u32);
-  mailbox.enqueue_user(user_message).unwrap();
-  let system_message = SystemMessage::Stop;
-  mailbox.enqueue_system(system_message).unwrap();
+fn mailbox_run_drains_system_before_user() {
+  use core::num::NonZeroUsize;
 
-  let result = mailbox.dequeue();
-  assert!(result.is_some());
-  if let Some(msg) = result {
-    assert!(matches!(msg, crate::core::kernel::dispatch::mailbox::MailboxMessage::System(_)));
+  struct OrderRecordingInvoker {
+    log: Arc<SpinSyncMutex<Vec<&'static str>>>,
   }
+
+  impl MessageInvoker for OrderRecordingInvoker {
+    fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
+      self.log.lock().push("user");
+      Ok(())
+    }
+
+    fn invoke_system_message(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
+      self.log.lock().push("system");
+      Ok(())
+    }
+  }
+
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  mailbox.enqueue_user(AnyMessage::new(1_u32)).unwrap();
+  mailbox.enqueue_system(SystemMessage::Stop).unwrap();
+
+  let order = Arc::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(OrderRecordingInvoker { log: Arc::clone(&order) })));
+
+  let throughput = NonZeroUsize::new(10).unwrap();
+  let _ = mailbox.run(throughput, None);
+
+  let observed = order.lock().clone();
+  assert_eq!(observed.first(), Some(&"system"), "system drain must precede user processing: {observed:?}");
+  assert_eq!(observed.iter().filter(|k| **k == "system").count(), 1);
+  assert_eq!(observed.iter().filter(|k| **k == "user").count(), 1);
 }
 
 #[test]
@@ -884,8 +902,7 @@ fn mailbox_dequeue_suspended() {
   let message = AnyMessage::new(42_u32);
   mailbox.enqueue_user(message).unwrap();
   mailbox.suspend();
-  let result = mailbox.dequeue();
-  assert!(result.is_none());
+  assert!(mailbox.dequeue().is_none(), "suspended mailbox must not yield user messages");
 }
 
 #[test]
@@ -918,7 +935,7 @@ fn mailbox_system_len() {
   assert_eq!(mailbox.system_len(), 1);
   mailbox.enqueue_system(SystemMessage::Stop).unwrap();
   assert_eq!(mailbox.system_len(), 2);
-  assert!(mailbox.dequeue().is_some());
+  assert!(mailbox.dequeue_system().is_some());
   assert_eq!(mailbox.system_len(), 1);
 }
 
@@ -1371,4 +1388,14 @@ fn ac_h1_t5_resume_in_system_flush_reenables_next_user() {
   assert_eq!(mailbox.user_len(), 0, "user queue must be empty after draining both u1 and u2");
   assert_eq!(mailbox.system_len(), 0, "system queue must be empty after the post-user flush");
   assert!(!needs_reschedule, "run() must return false when both queues are drained");
+}
+
+/// Test-only access to the system queue that mirrors Pekko `Mailbox.systemQueueGet()`.
+/// Production code drives system drain through [`Mailbox::run`] /
+/// `process_all_system_messages`; this helper is exposed only so integration tests
+/// can assert per-message contracts without installing an invoker.
+impl Mailbox {
+  pub(crate) fn dequeue_system(&self) -> Option<SystemMessage> {
+    self.system.pop()
+  }
 }

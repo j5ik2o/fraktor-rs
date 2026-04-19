@@ -9,8 +9,6 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_core_rs::core::sync::{SharedAccess, WeakShared};
 use spin::Once;
 
-#[cfg(test)]
-use super::mailbox_message::MailboxMessage;
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
   enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy,
@@ -333,7 +331,7 @@ impl Mailbox {
   /// popping until the queue is empty or a close request is observed mid-drain.
   /// Pekko relies on `actor.systemInvoke` for every message; fraktor-rs keeps
   /// `Suspend`/`Resume` mailbox-local so the schedule-state transitions do not
-  /// round-trip through the invoker (see plan §「実装アプローチ」).
+  /// round-trip through the invoker.
   ///
   /// The inner `is_close_requested` check on every iteration is load-bearing for
   /// the `close_request_does_not_dequeue_additional_system_messages` contract:
@@ -370,7 +368,7 @@ impl Mailbox {
   fn process_mailbox(&self, invoker: &MessageInvokerShared, throughput: NonZeroUsize) {
     let mut left = throughput.get();
     while left > 0 && self.should_process_message() {
-      let Some(envelope) = self.dequeue_user_only() else {
+      let Some(envelope) = self.dequeue() else {
         break;
       };
       let payload = envelope.into_payload();
@@ -395,10 +393,10 @@ impl Mailbox {
     !self.is_suspended() && !self.state.is_close_requested() && !self.state.is_cleanup_done()
   }
 
-  /// User-only dequeue helper used by `process_mailbox`. Mirrors the user-side
-  /// branch of the legacy `dequeue()` (Pekko `MessageQueue.dequeue`): rejects the
-  /// pop when the mailbox is closed or suspended, and publishes metrics on a
-  /// successful pop so observers see the queue-length drop immediately.
+  /// Pops the next user envelope, mirroring Pekko `Mailbox.dequeue()`
+  /// (Mailbox.scala:115). Rejects the pop when the mailbox is closed or
+  /// suspended, and publishes metrics on a successful pop so observers see
+  /// the queue-length drop immediately.
   ///
   /// The closed / suspended guards intentionally duplicate the check performed
   /// by `should_process_message` in the caller's loop condition. This is a
@@ -408,7 +406,7 @@ impl Mailbox {
   /// state transition that the caller already decided to honour. Do not remove
   /// the duplication even though it reads as redundant on the single-threaded
   /// happy path.
-  fn dequeue_user_only(&self) -> Option<Envelope> {
+  pub(crate) fn dequeue(&self) -> Option<Envelope> {
     if self.state.is_close_requested() || self.is_suspended() {
       return None;
     }
@@ -617,35 +615,6 @@ impl Mailbox {
   }
 
   /// Dequeues the next available message, prioritising system queue.
-  ///
-  /// Test-only black-box helper. Production code now uses
-  /// [`Self::process_all_system_messages`] and [`Self::dequeue_user_only`]
-  /// through [`Self::run`]; the combined `MailboxMessage` wrapper is retained
-  /// only so integration tests can assert FIFO priority without reaching into
-  /// the underlying queues.
-  #[cfg(test)]
-  #[must_use]
-  pub(crate) fn dequeue(&self) -> Option<MailboxMessage> {
-    if self.state.is_close_requested() {
-      return None;
-    }
-
-    if let Some(system) = self.system.pop() {
-      self.publish_metrics();
-      return Some(MailboxMessage::System(system));
-    }
-
-    if self.is_suspended() {
-      return None;
-    }
-
-    let result = if self.state.is_close_requested() { None } else { self.user.dequeue().map(MailboxMessage::User) };
-    if result.is_some() {
-      self.publish_metrics();
-    }
-    result
-  }
-
   /// Suspends user message consumption.
   pub(crate) fn suspend(&self) {
     self.state.suspend();

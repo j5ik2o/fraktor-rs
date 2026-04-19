@@ -29,12 +29,9 @@ use crate::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  dispatch::{
-    dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherConfig, ExecuteError, Executor, MessageDispatcherConfigurator,
-      TrampolineState,
-    },
-    mailbox::MailboxMessage,
+  dispatch::dispatcher::{
+    DefaultDispatcherConfigurator, DispatcherConfig, ExecuteError, Executor, MessageDispatcherConfigurator,
+    TrampolineState,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   system::{
@@ -626,10 +623,10 @@ fn watch_on_missing_guardian_sends_terminated_to_watcher() {
 
   let mailbox_snapshot = state.cell(&watcher_pid).expect("watcher cell").mailbox();
   assert_eq!(mailbox_snapshot.system_len(), 1);
-  let dequeued = mailbox_snapshot.dequeue().expect("dequeue system");
+  let dequeued = mailbox_snapshot.dequeue_system().expect("dequeue system");
   match dequeued {
-    | MailboxMessage::System(SystemMessage::Terminated(pid)) => assert_eq!(pid, target_pid),
-    | other => panic!("unexpected mailbox message: {:?}", other),
+    | SystemMessage::Terminated(pid) => assert_eq!(pid, target_pid),
+    | other => panic!("unexpected system message: {:?}", other),
   }
 }
 
@@ -675,10 +672,10 @@ fn remote_watch_hook_non_consuming_watch_runs_fallback() {
 
   let mailbox_snapshot = state.cell(&watcher_pid).expect("watcher cell").mailbox();
   assert_eq!(mailbox_snapshot.system_len(), 1);
-  let dequeued = mailbox_snapshot.dequeue().expect("dequeue system");
+  let dequeued = mailbox_snapshot.dequeue_system().expect("dequeue system");
   match dequeued {
-    | MailboxMessage::System(SystemMessage::Terminated(pid)) => assert_eq!(pid, target_pid),
-    | other => panic!("unexpected mailbox message: {:?}", other),
+    | SystemMessage::Terminated(pid) => assert_eq!(pid, target_pid),
+    | other => panic!("unexpected system message: {:?}", other),
   }
 
   let calls = calls.lock();

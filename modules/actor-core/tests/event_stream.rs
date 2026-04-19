@@ -92,8 +92,12 @@ fn dead_letter_event_is_published_when_send_fails() {
   let mut child = child_slot.lock().clone().expect("child");
 
   child.suspend().expect("suspend child");
-  // tell is fire-and-forget; the suspended message is routed to dead letters internally
-  child.tell(AnyMessage::new("ping"));
+  // MB-H1 (Pekko parity): サスペンド中もエンキュー自体は受理される。
+  // DeadLetters へ流すには容量超過 (DropNewest) を発生させる必要がある。
+  // 容量 1 の bounded mailbox に 2 通送り、2 通目が DropNewest で弾かれて
+  // DeadLetters に流れることを検証する。
+  child.tell(AnyMessage::new("ping-1"));
+  child.tell(AnyMessage::new("ping-2"));
 
   wait_until(|| !system.dead_letters().is_empty());
   let entries = system.dead_letters();
