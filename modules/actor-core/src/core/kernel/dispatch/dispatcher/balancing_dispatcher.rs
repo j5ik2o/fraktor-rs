@@ -17,7 +17,7 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
-  dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
+  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MessageQueue},
   system::shared_factory::MailboxSharedSet,
 };
 
@@ -147,7 +147,7 @@ impl MessageDispatcher for BalancingDispatcher {
 struct SharedMessageQueueBox(SharedMessageQueue);
 
 impl MessageQueue for SharedMessageQueueBox {
-  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     self.0.enqueue(envelope)
   }
 

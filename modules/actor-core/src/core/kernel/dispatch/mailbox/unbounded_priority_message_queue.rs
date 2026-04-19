@@ -6,7 +6,7 @@ mod tests;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
-  envelope::Envelope, message_queue::MessageQueue,
+  enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
   unbounded_priority_message_queue_state::UnboundedPriorityMessageQueueEntry,
   unbounded_priority_message_queue_state_shared::UnboundedPriorityMessageQueueStateShared,
 };
@@ -35,12 +35,12 @@ impl UnboundedPriorityMessageQueue {
 }
 
 impl MessageQueue for UnboundedPriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     let priority = self.generator.priority(envelope.payload());
     self
       .state_shared
       .with_write(|state| state.heap_mut().push(UnboundedPriorityMessageQueueEntry::new(priority, envelope)));
-    Ok(())
+    Ok(EnqueueOutcome::Accepted)
   }
 
   fn dequeue(&self) -> Option<Envelope> {

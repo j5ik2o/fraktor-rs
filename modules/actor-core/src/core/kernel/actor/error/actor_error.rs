@@ -14,6 +14,9 @@ pub enum ActorError {
   Recoverable(ActorErrorReason),
   /// Fatal failure that stops the actor and propagates to supervisors.
   Fatal(ActorErrorReason),
+  /// Escalation request delegating the supervision decision to the parent supervisor
+  /// (Pekko parity: mirrors `Error` escalation in `defaultDecider`).
+  Escalate(ActorErrorReason),
 }
 
 impl ActorError {
@@ -29,11 +32,18 @@ impl ActorError {
     Self::Fatal(reason.into())
   }
 
+  /// Creates an escalation request that delegates the supervision decision to the parent
+  /// supervisor.
+  #[must_use]
+  pub fn escalate(reason: impl Into<ActorErrorReason>) -> Self {
+    Self::Escalate(reason.into())
+  }
+
   /// Returns the underlying reason regardless of classification.
   #[must_use]
   pub const fn reason(&self) -> &ActorErrorReason {
     match self {
-      | ActorError::Recoverable(reason) | ActorError::Fatal(reason) => reason,
+      | ActorError::Recoverable(reason) | ActorError::Fatal(reason) | ActorError::Escalate(reason) => reason,
     }
   }
 
@@ -41,7 +51,9 @@ impl ActorError {
   #[must_use]
   pub fn into_fatal(self) -> Self {
     match self {
-      | ActorError::Recoverable(reason) | ActorError::Fatal(reason) => ActorError::Fatal(reason),
+      | ActorError::Recoverable(reason) | ActorError::Fatal(reason) | ActorError::Escalate(reason) => {
+        ActorError::Fatal(reason)
+      },
     }
   }
 
@@ -49,7 +61,9 @@ impl ActorError {
   #[must_use]
   pub fn into_recoverable(self) -> Self {
     match self {
-      | ActorError::Recoverable(reason) | ActorError::Fatal(reason) => ActorError::Recoverable(reason),
+      | ActorError::Recoverable(reason) | ActorError::Fatal(reason) | ActorError::Escalate(reason) => {
+        ActorError::Recoverable(reason)
+      },
     }
   }
 
