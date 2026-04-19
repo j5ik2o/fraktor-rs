@@ -6,6 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
+    claude:
+      effort: high
 max_steps: 100
 initial_step: plan
 
@@ -461,6 +463,7 @@ steps:
       - fraktor-coding
     provider_options:
       claude:
+        effort: low
         allowed_tools:
           - Read
           - Glob
