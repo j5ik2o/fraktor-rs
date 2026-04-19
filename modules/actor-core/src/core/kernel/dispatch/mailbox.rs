@@ -28,10 +28,13 @@ mod bounded_stable_priority_message_queue_state_shared;
 mod capacity;
 /// Opt-in deque capability for message queue implementations.
 mod deque_message_queue;
+mod drop_oldest_error;
+mod drop_oldest_outcome;
+mod enqueue_error;
+mod enqueue_outcome;
 mod envelope;
 mod mailbox_cleanup_policy;
 mod mailbox_instrumentation;
-mod mailbox_message;
 mod mailbox_poll_future;
 mod mailbox_queue_handles;
 mod mailbox_queue_state;
@@ -89,10 +92,11 @@ pub use bounded_stable_priority_message_queue_state::BoundedStablePriorityMessag
 pub use bounded_stable_priority_message_queue_state_shared::BoundedStablePriorityMessageQueueStateShared;
 pub use capacity::MailboxCapacity;
 pub use deque_message_queue::DequeMessageQueue;
+pub use enqueue_error::EnqueueError;
+pub use enqueue_outcome::EnqueueOutcome;
 pub use envelope::Envelope;
 pub use mailbox_cleanup_policy::MailboxCleanupPolicy;
 pub use mailbox_instrumentation::MailboxInstrumentation;
-pub use mailbox_message::MailboxMessage;
 pub use mailbox_poll_future::MailboxPollFuture;
 pub(crate) use mailbox_queue_handles::QueueStateHandle;
 pub use mailbox_registry_error::MailboxRegistryError;

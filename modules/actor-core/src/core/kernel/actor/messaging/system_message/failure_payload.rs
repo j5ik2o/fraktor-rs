@@ -88,6 +88,7 @@ impl FailurePayload {
     match self.classification {
       | FailureClassification::Recoverable => ActorError::recoverable(self.reason.clone()),
       | FailureClassification::Fatal => ActorError::fatal(self.reason.clone()),
+      | FailureClassification::Escalate => ActorError::escalate(self.reason.clone()),
     }
   }
 

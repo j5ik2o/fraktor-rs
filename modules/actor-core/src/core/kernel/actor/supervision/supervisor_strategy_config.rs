@@ -141,10 +141,12 @@ impl From<BackoffSupervisorStrategy> for SupervisorStrategyConfig {
   }
 }
 
-/// Default backoff error→directive mapping: recoverable → Restart, fatal → Stop.
+/// Default backoff error→directive mapping: recoverable → Restart, fatal → Stop, escalate →
+/// Escalate.
 const fn backoff_decide(error: &ActorError) -> SupervisorDirective {
   match error {
     | ActorError::Recoverable(_) => SupervisorDirective::Restart,
     | ActorError::Fatal(_) => SupervisorDirective::Stop,
+    | ActorError::Escalate(_) => SupervisorDirective::Escalate,
   }
 }

@@ -6,8 +6,8 @@ use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::mailbox::{
-    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared, MailboxOverflowStrategy,
-    MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
+    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared, EnqueueOutcome,
+    MailboxOverflowStrategy, MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
   },
 };
 
@@ -33,7 +33,8 @@ fn dequeues_in_priority_order() {
   let queue =
     BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(10), MailboxOverflowStrategy::DropNewest);
 
-  queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
+  let r1 = queue.enqueue(Envelope::new(AnyMessage::new(30_i32)));
+  assert!(matches!(r1, Ok(EnqueueOutcome::Accepted)), "within-capacity must be Accepted, got {r1:?}");
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
   queue.enqueue(Envelope::new(AnyMessage::new(20_i32))).expect("enqueue 20");
 
@@ -70,6 +71,9 @@ fn equal_priority_preserves_insertion_order() {
   assert_eq!(*third.payload().downcast_ref::<&str>().expect("downcast"), "third");
 }
 
+/// MB-H3: DropNewest overflow must surface the rejected envelope via
+/// `EnqueueOutcome::Rejected(payload)` so the mailbox can route it to
+/// DeadLetters. The Pekko contract is "enqueue is void-on-success".
 #[test]
 fn drop_newest_rejects_when_full() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
@@ -84,12 +88,23 @@ fn drop_newest_rejects_when_full() {
   assert_eq!(queue.number_of_messages(), 2);
 
   let result = queue.enqueue(Envelope::new(AnyMessage::new(5_i32)));
-  assert!(result.is_err());
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("DropNewest overflow must return Ok(Rejected(_)), got {result:?}");
+  };
+  assert_eq!(
+    rejected.payload().downcast_ref::<i32>().copied(),
+    Some(5_i32),
+    "rejected payload must be the incoming envelope (not an existing heap entry)",
+  );
   assert_eq!(queue.number_of_messages(), 2);
 }
 
+/// MB-H3: DropOldest on a stable-priority heap must evict the heap top
+/// (the next envelope to be dequeued, i.e. highest priority, breaking ties
+/// by insertion order). The evicted envelope must be surfaced through
+/// `EnqueueOutcome::Evicted(_)` so DeadLetters receive it.
 #[test]
-fn drop_oldest_evicts_earliest_inserted_message() {
+fn drop_oldest_returns_evicted_outcome_with_heap_top_envelope() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
   let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(2)),
@@ -97,11 +112,20 @@ fn drop_oldest_evicts_earliest_inserted_message() {
   let queue =
     BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::DropOldest);
 
+  // ヒープ: {10, 30}。10 が top (最高優先度、値が小さいほど優先度が高い)。
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   assert_eq!(queue.number_of_messages(), 2);
 
-  queue.enqueue(Envelope::new(AnyMessage::new(20_i32))).expect("enqueue 20");
+  let result = queue.enqueue(Envelope::new(AnyMessage::new(20_i32)));
+  let Ok(EnqueueOutcome::Evicted(evicted)) = result else {
+    panic!("DropOldest overflow must return Ok(Evicted(_)), got {result:?}");
+  };
+  assert_eq!(
+    evicted.payload().downcast_ref::<i32>().copied(),
+    Some(10_i32),
+    "DropOldest on a stable-priority heap must evict the heap top",
+  );
   assert_eq!(queue.number_of_messages(), 2);
 
   let first = queue.dequeue().expect("dequeue 1st").into_payload();
@@ -113,8 +137,12 @@ fn drop_oldest_evicts_earliest_inserted_message() {
   assert!(queue.dequeue().is_none());
 }
 
+/// MB-H3: When every queued message has equal priority, the DropOldest
+/// eviction target is the entry with the smallest insertion sequence — the
+/// FIFO "oldest" envelope. That evicted envelope must be carried by
+/// `Evicted(_)` for DL forwarding.
 #[test]
-fn drop_oldest_with_equal_priority_evicts_earliest() {
+fn drop_oldest_with_equal_priority_evicts_earliest_and_returns_evicted() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
   let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(2)),
@@ -122,9 +150,19 @@ fn drop_oldest_with_equal_priority_evicts_earliest() {
   let queue =
     BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::DropOldest);
 
+  // 全エントリは default priority i32::MAX (非 i32 payload) となり、優先度が等しい。
   queue.enqueue(Envelope::new(AnyMessage::new("a"))).expect("enqueue a");
   queue.enqueue(Envelope::new(AnyMessage::new("b"))).expect("enqueue b");
-  queue.enqueue(Envelope::new(AnyMessage::new("c"))).expect("enqueue c");
+
+  let result = queue.enqueue(Envelope::new(AnyMessage::new("c")));
+  let Ok(EnqueueOutcome::Evicted(evicted)) = result else {
+    panic!("DropOldest overflow must return Ok(Evicted(_)), got {result:?}");
+  };
+  assert_eq!(
+    evicted.payload().downcast_ref::<&str>().copied(),
+    Some("a"),
+    "equal-priority DropOldest must evict the earliest insertion ('a')",
+  );
   assert_eq!(queue.number_of_messages(), 2);
 
   let first = queue.dequeue().expect("dequeue 1st").into_payload();
@@ -134,6 +172,9 @@ fn drop_oldest_with_equal_priority_evicts_earliest() {
   assert_eq!(*second.payload().downcast_ref::<&str>().expect("downcast"), "c");
 }
 
+/// MB-H3: Grow keeps accepting envelopes past nominal capacity; every
+/// enqueue must return `Accepted` — no DL emissions should occur on this
+/// path.
 #[test]
 fn grow_ignores_capacity() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
@@ -144,7 +185,8 @@ fn grow_ignores_capacity() {
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
-  queue.enqueue(Envelope::new(AnyMessage::new(20_i32))).expect("enqueue 20");
+  let result = queue.enqueue(Envelope::new(AnyMessage::new(20_i32)));
+  assert!(matches!(result, Ok(EnqueueOutcome::Accepted)), "Grow must keep reporting Accepted, got {result:?}");
   assert_eq!(queue.number_of_messages(), 3);
 
   let first = queue.dequeue().expect("dequeue 1st").into_payload();

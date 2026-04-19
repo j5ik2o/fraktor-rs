@@ -9,12 +9,11 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
   bounded_priority_message_queue_state::BoundedPriorityMessageQueueEntry,
-  bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared, envelope::Envelope,
-  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared, enqueue_error::EnqueueError,
+  enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
+  overflow_strategy::MailboxOverflowStrategy,
 };
-use crate::core::kernel::{
-  actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
-};
+use crate::core::kernel::dispatch::mailbox::message_priority_generator::MessagePriorityGenerator;
 
 /// Bounded message queue that dequeues envelopes in priority order.
 ///
@@ -43,30 +42,40 @@ impl BoundedPriorityMessageQueue {
 }
 
 impl MessageQueue for BoundedPriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     let priority = self.generator.priority(envelope.payload());
     let entry = BoundedPriorityMessageQueueEntry::new(priority, envelope);
     self.state_shared.with_write(|state| {
       if state.heap().len() < self.capacity {
         state.heap_mut().push(entry);
-        return Ok(());
+        return Ok(EnqueueOutcome::Accepted);
       }
 
       match self.overflow {
         | MailboxOverflowStrategy::DropNewest => {
-          // Capacity full — drop the incoming envelope.
-          Err(SendError::full(entry.into_envelope().into_payload()))
+          // Pekko 互換: 容量上限に達したため到着 envelope を拒否する。
+          // mailbox 層が `EnqueueOutcome::Rejected` を DeadLetters へ転送する
+          // ので、ここでは成功として返す (Pekko `BoundedPriorityMailbox` 相当)。
+          Ok(EnqueueOutcome::Rejected(entry.into_envelope()))
         },
         | MailboxOverflowStrategy::DropOldest => {
-          // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
-          drop(state.heap_mut().pop());
+          // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除し、
+          // evict した envelope を `EnqueueOutcome::Evicted` として呼び出し元
+          // (mailbox 層) に通知する。呼び出し元は DeadLetter に転送する。
+          let evicted = state.heap_mut().pop().map(BoundedPriorityMessageQueueEntry::into_envelope);
           state.heap_mut().push(entry);
-          Ok(())
+          match evicted {
+            | Some(envelope) => Ok(EnqueueOutcome::Evicted(envelope)),
+            // ヒープが満杯であるにもかかわらず `pop` が `None` を返すケースは
+            // `len >= capacity >= 1` を write lock 下で保証しているため発生しない。
+            // 防御的に `Accepted` を返す。
+            | None => Ok(EnqueueOutcome::Accepted),
+          }
         },
         | MailboxOverflowStrategy::Grow => {
-          // Ignore the bound and grow.
+          // 容量境界を無視して拡張する。
           state.heap_mut().push(entry);
-          Ok(())
+          Ok(EnqueueOutcome::Accepted)
         },
       }
     })

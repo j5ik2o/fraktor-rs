@@ -16,6 +16,7 @@ fn should_store_type_id_and_name() {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Restart,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
+      | ActorError::Escalate(_) => SupervisorDirective::Escalate,
     });
   let handler = FailureHandler::new::<MyError>(strategy);
 

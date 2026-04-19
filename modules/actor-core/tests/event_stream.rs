@@ -92,12 +92,24 @@ fn dead_letter_event_is_published_when_send_fails() {
   let mut child = child_slot.lock().clone().expect("child");
 
   child.suspend().expect("suspend child");
-  // tell is fire-and-forget; the suspended message is routed to dead letters internally
-  child.tell(AnyMessage::new("ping"));
+  // MB-H1 (Pekko parity): サスペンド中もエンキュー自体は受理される。
+  // DeadLetters へ流すには容量超過 (DropNewest) を発生させる必要がある。
+  // 容量 1 の bounded mailbox に 2 通送り、2 通目が DropNewest で弾かれて
+  // DeadLetters に流れることを検証する。
+  child.tell(AnyMessage::new("ping-1"));
+  child.tell(AnyMessage::new("ping-2"));
 
   wait_until(|| !system.dead_letters().is_empty());
   let entries = system.dead_letters();
   assert!(!entries.is_empty());
+
+  // Regression: reject された `ping-2` が dead-letter sink に 1 回だけ届くことを保証する。
+  // MB-H3 では mailbox 層が overflow (MailboxFull) の唯一の DL 記録元になり
+  // `EnqueueOutcome::Rejected` として成功扱いで返すため、`ActorRef::try_tell`
+  // 側で `record_send_error` が二重に呼ばれることはない (Pekko 完全準拠)。
+  let ping2_entries =
+    entries.iter().filter(|entry| entry.message().downcast_ref::<&str>().copied() == Some("ping-2")).count();
+  assert_eq!(ping2_entries, 1, "DropNewest-rejected envelope must be recorded once (got {ping2_entries}): {entries:?}");
 
   wait_until(|| events.lock().iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_))));
 

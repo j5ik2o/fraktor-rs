@@ -371,6 +371,7 @@ impl Actor for SupervisorActor {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Escalate,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
+      | ActorError::Escalate(_) => SupervisorDirective::Escalate,
     })
     .into()
   }

@@ -1,7 +1,9 @@
 //! Abstraction over user message queue implementations.
 
-use super::{deque_message_queue::DequeMessageQueue, envelope::Envelope};
-use crate::core::kernel::actor::error::SendError;
+use super::{
+  deque_message_queue::DequeMessageQueue, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome,
+  envelope::Envelope,
+};
 
 /// Pluggable user message queue interface inspired by Pekko's `MessageQueue`.
 ///
@@ -15,10 +17,31 @@ use crate::core::kernel::actor::error::SendError;
 pub trait MessageQueue: Send + Sync {
   /// Enqueues a user envelope into the queue.
   ///
+  /// Returns one of the success outcomes:
+  /// - [`EnqueueOutcome::Accepted`] when the envelope was stored without displacing anything.
+  /// - [`EnqueueOutcome::Evicted`] when an existing message was displaced to make room (e.g.
+  ///   [`MailboxOverflowStrategy::DropOldest`]).
+  /// - [`EnqueueOutcome::Rejected`] when the incoming envelope itself was rejected because the
+  ///   queue is at capacity (e.g. [`MailboxOverflowStrategy::DropNewest`]).
+  ///
+  /// The mailbox layer is responsible for routing both evicted and rejected
+  /// envelopes to the dead-letter sink. From the caller's perspective all
+  /// three outcomes are "success" (Pekko `BoundedMailbox.enqueue`
+  /// void-on-success parity).
+  ///
   /// # Errors
   ///
-  /// Returns [`SendError`] if the envelope cannot be accepted (full, closed, etc.).
-  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError>;
+  /// Returns an [`EnqueueError`] only for true enqueue failures that are
+  /// **not** overflow: the underlying queue is closed, a non-overflow
+  /// rejection is raised (timeout, alloc failure, …). The error may also
+  /// carry an evicted envelope surfaced by
+  /// [`MailboxOverflowStrategy::DropOldest`] when an eviction happened
+  /// before the offer failed; the mailbox layer must still forward such an
+  /// evicted envelope to dead letters.
+  ///
+  /// [`MailboxOverflowStrategy::DropOldest`]: super::overflow_strategy::MailboxOverflowStrategy
+  /// [`MailboxOverflowStrategy::DropNewest`]: super::overflow_strategy::MailboxOverflowStrategy
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError>;
 
   /// Dequeues the next user envelope, if available.
   fn dequeue(&self) -> Option<Envelope>;

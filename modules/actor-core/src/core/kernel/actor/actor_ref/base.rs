@@ -182,7 +182,13 @@ impl ActorRef {
   /// [`tell`](Self::tell) remains the fire-and-forget variant.
   ///
   /// On failure the error is also recorded via the system's observation path
-  /// when the reference is path-aware.
+  /// when the reference is path-aware. Mailbox-overflow events (DropNewest /
+  /// DropOldest) are NOT surfaced here — the mailbox layer owns those as
+  /// `EnqueueOutcome::{Evicted, Rejected}` and records the dead-letter
+  /// internally (Pekko `BoundedNodeMessageQueue.enqueue` parity), reporting
+  /// success upward. Errors that reach this function are true failures
+  /// (closed mailbox, timeout, missing recipient, serialization failure)
+  /// that no lower layer has recorded to the dead-letter sink.
   ///
   /// # Errors
   ///
