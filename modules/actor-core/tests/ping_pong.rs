@@ -9,7 +9,7 @@ use std::{
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, ChildRef,
-    error::{ActorError, SendError},
+    error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick_driver::TestTickDriver,
@@ -138,9 +138,20 @@ fn tell_respects_mailbox_backpressure() {
   let mailbox: Mailbox =
     Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None));
 
+  // Pekko parity: `BoundedMailbox.enqueue` reports void on both acceptance
+  // and overflow — overflow is routed to `deadLetters` internally. The
+  // mailbox layer is the sole dead-letter recorder for `MailboxFull`, so
+  // the caller observes `Ok(())` whether or not the queue had room.
+  //
+  // Queue-level backpressure semantics (capacity cap, DropNewest drop) are
+  // verified by unit tests in `bounded_message_queue` / mailbox `base` —
+  // integration callers only need to observe that `enqueue_user` never
+  // raises an overflow-triggered error.
   assert!(mailbox.enqueue_user(AnyMessage::new("first")).is_ok());
-  let result = mailbox.enqueue_user(AnyMessage::new("second"));
-  assert!(matches!(result, Err(SendError::Full(_))));
+  assert!(
+    mailbox.enqueue_user(AnyMessage::new("second")).is_ok(),
+    "DropNewest overflow must be reported as success (Pekko void-on-success)",
+  );
 }
 
 #[test]

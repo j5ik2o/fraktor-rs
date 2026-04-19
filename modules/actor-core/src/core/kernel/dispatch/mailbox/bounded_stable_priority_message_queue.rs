@@ -15,9 +15,7 @@ use super::{
   enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
   overflow_strategy::MailboxOverflowStrategy, stable_priority_entry::StablePriorityEntry,
 };
-use crate::core::kernel::{
-  actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
-};
+use crate::core::kernel::dispatch::mailbox::message_priority_generator::MessagePriorityGenerator;
 
 /// Bounded message queue that dequeues in priority order with stable
 /// (FIFO) ordering among envelopes of equal priority.
@@ -60,9 +58,10 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
 
       match self.overflow {
         | MailboxOverflowStrategy::DropNewest => {
-          // 容量上限に達したため到着 envelope を拒否する。mailbox 層は
-          // `SendError::Full` 経由で DeadLetters へ転送できる。
-          Err(EnqueueError::new(SendError::full(entry.envelope.into_payload())))
+          // Pekko 互換: 容量上限に達したため到着 envelope を拒否する。
+          // mailbox 層が `EnqueueOutcome::Rejected` を DeadLetters へ転送するので
+          // ここでは成功として返す (Pekko `BoundedStablePriorityMailbox` 相当)。
+          Ok(EnqueueOutcome::Rejected(entry.envelope))
         },
         | MailboxOverflowStrategy::DropOldest => {
           // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ、同 priority 時は

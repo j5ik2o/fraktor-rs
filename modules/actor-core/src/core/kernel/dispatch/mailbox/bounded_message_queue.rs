@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::core::collections::queue::QueueError;
 
 use super::{
   QueueStateHandle, drop_oldest_outcome::DropOldestOutcome, enqueue_error::EnqueueError,
-  enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
+  enqueue_outcome::EnqueueOutcome, envelope::Envelope, map_user_envelope_queue_error, message_queue::MessageQueue,
   overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
 };
 
@@ -60,14 +60,19 @@ impl BoundedMessageQueue {
   fn offer(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     match self.handle.offer(envelope) {
       | Ok(_) => Ok(EnqueueOutcome::Accepted),
-      | Err(error) => Err(EnqueueError::new(super::map_user_envelope_queue_error(error))),
+      | Err(error) => Err(EnqueueError::new(map_user_envelope_queue_error(error))),
     }
   }
 
   fn offer_if_room(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
     match self.handle.offer_if_room(envelope, self.capacity) {
       | Ok(_) => Ok(EnqueueOutcome::Accepted),
-      | Err(error) => Err(EnqueueError::new(super::map_user_envelope_queue_error(error))),
+      // Pekko 互換: DropNewest で容量不足の到着 envelope を拒否する。mailbox 層
+      // が `EnqueueOutcome::Rejected` を dead-letter に転送するため、ここでは
+      // "受理扱い" の成功として返却する (Pekko `BoundedMailbox.enqueue` 相当)。
+      | Err(QueueError::Full(rejected) | QueueError::OfferError(rejected)) => Ok(EnqueueOutcome::Rejected(rejected)),
+      // 真の失敗 (closed / timeout / alloc error) は呼び出し元に伝播する。
+      | Err(error) => Err(EnqueueError::new(map_user_envelope_queue_error(error))),
     }
   }
 

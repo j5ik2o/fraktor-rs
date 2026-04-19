@@ -529,6 +529,17 @@ impl Mailbox {
         self.publish_metrics();
         Ok(())
       },
+      | Ok(EnqueueOutcome::Rejected(rejected)) => {
+        // Pekko 互換: DropNewest で拒否された envelope を MailboxFull として
+        // DeadLetter に通知する。mailbox 層が唯一の DL 記録源となり、上流は
+        // 成功 (Ok(())) を観測する (Pekko `BoundedMailbox.enqueue` / `BoundedNodeMessageQueue.enqueue`
+        // の void 返却 + 内部 deadLetters 転送と等価)。
+        if let Some(state) = self.system_state() {
+          state.record_dead_letter(rejected.into_payload(), DeadLetterReason::MailboxFull, self.pid());
+        }
+        self.publish_metrics();
+        Ok(())
+      },
       | Err(enqueue_error) => {
         let (send_error, evicted) = enqueue_error.into_parts();
         // 病的ケースで DropOldest が eviction を発行した直後に offer が失敗した
@@ -536,19 +547,12 @@ impl Mailbox {
         if let (Some(evicted_envelope), Some(state)) = (evicted, self.system_state()) {
           state.record_dead_letter(evicted_envelope.into_payload(), DeadLetterReason::MailboxFull, self.pid());
         }
-        match send_error {
-          | SendError::Full(payload) => {
-            // Pekko 互換: DropNewest で拒否された envelope を MailboxFull として
-            // DeadLetter に通知した上で、dispatcher 側のリトライ／バックプレッシャ
-            // 判定に必要なので `SendError::Full` を伝播する。`AnyMessage::clone` は
-            // 内部 `ArcShared` の参照カウントのみで安価。
-            if let Some(state) = self.system_state() {
-              state.record_dead_letter(payload.clone(), DeadLetterReason::MailboxFull, self.pid());
-            }
-            Err(SendError::Full(payload))
-          },
-          | error => Err(error),
-        }
+        // DropNewest/DropOldest オーバーフローは `Ok(Rejected|Evicted)` として
+        // 成功扱いされるため、ここに到達するのは真の失敗 (Closed / Timeout /
+        // Suspended / NoRecipient / InvalidPayload / backend alloc failure) のみ。
+        // これらは mailbox 層では DL 記録せず、上流で `record_send_error` に
+        // 委ねる (他に DL 記録源がないため)。
+        Err(send_error)
       },
     }
   }

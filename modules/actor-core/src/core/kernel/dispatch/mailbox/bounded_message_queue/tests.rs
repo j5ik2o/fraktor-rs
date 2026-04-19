@@ -1,7 +1,7 @@
 use core::num::NonZeroUsize;
 
 use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{
     EnqueueOutcome, bounded_message_queue::BoundedMessageQueue, envelope::Envelope, message_queue::MessageQueue,
     overflow_strategy::MailboxOverflowStrategy,
@@ -25,9 +25,10 @@ fn should_enqueue_and_dequeue_within_capacity() {
   assert_eq!(queue.number_of_messages(), 2);
 }
 
-/// MB-H3: DropNewest overflow must surface `SendError::Full(payload)` so the
-/// mailbox layer can route the rejected envelope to the dead-letter mailbox
-/// with reason `MailboxFull`.
+/// MB-H3: DropNewest overflow must surface `EnqueueOutcome::Rejected(payload)`
+/// so the mailbox layer can route the rejected envelope to the dead-letter
+/// destination with reason `MailboxFull`. The Pekko contract is "enqueue is
+/// void-on-success" — the queue does not raise an error for overflow.
 #[test]
 fn should_reject_when_full_with_drop_newest() {
   let cap = NonZeroUsize::new(2).unwrap();
@@ -36,19 +37,14 @@ fn should_reject_when_full_with_drop_newest() {
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue 1");
   queue.enqueue(Envelope::new(AnyMessage::new(2_u32))).expect("enqueue 2");
 
-  // 拒否された envelope は識別可能な payload を保持しており、dispatcher が
+  // 拒否された envelope は識別可能な payload を保持しており、mailbox 層が
   // 情報を失うことなく DeadLetters へ転送できる。
   let result = queue.enqueue(Envelope::new(AnyMessage::new(3_u32)));
-  let Err(enqueue_error) = result else {
-    panic!("DropNewest overflow must return Err, got {result:?}");
-  };
-  assert!(enqueue_error.evicted().is_none(), "DropNewest overflow must not surface an evicted envelope");
-  let (send_error, _) = enqueue_error.into_parts();
-  let SendError::Full(payload) = send_error else {
-    panic!("DropNewest overflow must wrap SendError::Full, got {send_error:?}");
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("DropNewest overflow must return Ok(Rejected(_)), got {result:?}");
   };
   assert_eq!(
-    payload.payload().downcast_ref::<u32>().copied(),
+    rejected.payload().downcast_ref::<u32>().copied(),
     Some(3_u32),
     "rejected payload must be the incoming envelope",
   );

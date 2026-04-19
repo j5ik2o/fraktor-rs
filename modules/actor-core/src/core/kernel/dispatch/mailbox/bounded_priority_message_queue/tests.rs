@@ -4,7 +4,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::*;
 use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{
     BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared, EnqueueOutcome, MailboxOverflowStrategy,
     MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
@@ -55,7 +55,8 @@ fn dequeues_in_priority_order() {
 }
 
 /// MB-H3: DropNewest overflow must expose the rejected envelope via
-/// `SendError::Full(payload)` so the mailbox can route it to DeadLetters.
+/// `EnqueueOutcome::Rejected(payload)` so the mailbox can route it to
+/// DeadLetters. The Pekko contract is "enqueue is void-on-success".
 #[test]
 fn drop_newest_rejects_when_full() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
@@ -66,16 +67,11 @@ fn drop_newest_rejects_when_full() {
   assert_eq!(queue.number_of_messages(), 2);
 
   let result = queue.enqueue(Envelope::new(AnyMessage::new(5_i32)));
-  let Err(enqueue_error) = result else {
-    panic!("DropNewest overflow must return Err, got {result:?}");
-  };
-  assert!(enqueue_error.evicted().is_none(), "DropNewest overflow must not surface an evicted envelope");
-  let (send_error, _) = enqueue_error.into_parts();
-  let SendError::Full(payload) = send_error else {
-    panic!("DropNewest overflow must wrap SendError::Full, got {send_error:?}");
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("DropNewest overflow must return Ok(Rejected(_)), got {result:?}");
   };
   assert_eq!(
-    payload.payload().downcast_ref::<i32>().copied(),
+    rejected.payload().downcast_ref::<i32>().copied(),
     Some(5_i32),
     "rejected payload must be the incoming envelope (not an existing heap entry)",
   );

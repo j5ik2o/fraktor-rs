@@ -3,11 +3,10 @@ use core::num::NonZeroUsize;
 use super::*;
 use crate::core::kernel::{
   actor::{
-    error::SendError,
     messaging::AnyMessage,
     props::{MailboxConfigError, MailboxRequirement},
   },
-  dispatch::mailbox::{Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
+  dispatch::mailbox::{EnqueueOutcome, Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
 };
 
 #[test]
@@ -45,10 +44,10 @@ fn create_message_queue_uses_registered_mailbox_policy() {
   let queue = registry.create_message_queue("bounded").expect("create queue");
   assert!(queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).is_ok());
   let overflow_result = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
-  let Err(enqueue_error) = overflow_result else {
-    panic!("DropNewest overflow must return Err, got {overflow_result:?}");
-  };
-  assert!(matches!(enqueue_error.error(), SendError::Full(_)));
+  assert!(
+    matches!(overflow_result, Ok(EnqueueOutcome::Rejected(_))),
+    "DropNewest overflow must surface Ok(Rejected), got {overflow_result:?}",
+  );
 }
 
 #[test]

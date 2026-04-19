@@ -179,9 +179,14 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
 
   let mailbox = cell.mailbox();
   mailbox.enqueue_user(AnyMessage::new(1_u32)).expect("first enqueue fits the bounded capacity");
-  let second = mailbox.enqueue_user(AnyMessage::new(2_u32));
-  assert!(matches!(second, Err(_)), "DropNewest should reject the second enqueue past capacity 1");
-  assert_eq!(mailbox.user_len(), 1);
+  // DropNewest overflow is routed to DeadLetters by the mailbox layer and
+  // reported as success (Pekko void-on-success contract). The queue must
+  // therefore stay at capacity 1, proving the registered bounded policy —
+  // not the unbounded one in Props — is the active configuration.
+  mailbox
+    .enqueue_user(AnyMessage::new(2_u32))
+    .expect("DropNewest overflow reports success after routing to DeadLetters");
+  assert_eq!(mailbox.user_len(), 1, "registered bounded mailbox must reject the second enqueue past capacity 1");
 }
 
 #[test]

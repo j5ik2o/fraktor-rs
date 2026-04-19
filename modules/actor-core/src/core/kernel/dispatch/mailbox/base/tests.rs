@@ -607,11 +607,11 @@ fn mailbox_enqueue_user_bounded() {
 }
 
 /// MB-H3: Pekko's `BoundedNodeMessageQueue.enqueue` routes a DropNewest
-/// rejection through `deadLetters.tell(DeadLetter(...))`. The rejected
-/// envelope must surface on the dead-letter sink with reason `MailboxFull`
-/// so operators observe the loss, and the caller must still receive
-/// `SendError::Full(_)` so the dispatcher's retry / backpressure logic can
-/// react.
+/// rejection through `deadLetters.tell(DeadLetter(...))` and returns void.
+/// The rejected envelope must surface on the dead-letter sink with reason
+/// `MailboxFull` so operators observe the loss, and the caller observes
+/// `Ok(())` because the mailbox is the sole DL recorder for overflow
+/// (Pekko parity — no double recording at upstream layers).
 ///
 /// Reference: Apache Pekko `Mailbox.scala` L426-432 (BoundedNodeMessageQueue).
 #[test]
@@ -634,16 +634,8 @@ fn mailbox_enqueue_drop_newest_records_dead_letter_on_overflow() {
   // When: a second message overflows the bounded queue.
   let result = mailbox.enqueue_user(AnyMessage::new("rejected"));
 
-  // Then: the caller receives `SendError::Full` carrying the rejected
-  // payload — dispatcher needs this signal for retry decisions.
-  let Err(SendError::Full(payload)) = result else {
-    panic!("DropNewest overflow must return SendError::Full, got {result:?}");
-  };
-  assert_eq!(
-    payload.downcast_ref::<&str>().copied(),
-    Some("rejected"),
-    "caller must receive the rejected payload, not a queued envelope",
-  );
+  // Then: the caller observes Ok(()) (Pekko void-on-success contract).
+  assert!(result.is_ok(), "DropNewest overflow must report success (mailbox handles DL internally), got {result:?}");
 
   // And: the rejected envelope must appear in the DL sink with
   // `MailboxFull` so the loss is observable.
