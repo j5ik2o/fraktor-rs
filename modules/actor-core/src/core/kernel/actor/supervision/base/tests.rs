@@ -156,9 +156,6 @@ fn default_decider_preserves_existing_mappings() {
   // SP-H1: `Escalate` variant 追加で既存の `Recoverable → Restart` / `Fatal → Stop`
   // マッピングが回帰しないことを明示的にアサートする（回帰防止）。
   let strategy = SupervisorStrategy::default();
-  assert_eq!(
-    strategy.decide(&ActorError::recoverable("recoverable")),
-    SupervisorDirective::Restart
-  );
+  assert_eq!(strategy.decide(&ActorError::recoverable("recoverable")), SupervisorDirective::Restart);
   assert_eq!(strategy.decide(&ActorError::fatal("fatal")), SupervisorDirective::Stop);
 }

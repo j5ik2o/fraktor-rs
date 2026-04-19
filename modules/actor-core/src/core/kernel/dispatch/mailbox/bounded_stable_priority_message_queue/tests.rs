@@ -111,7 +111,7 @@ fn drop_oldest_returns_evicted_outcome_with_heap_top_envelope() {
   let queue =
     BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // Heap: {10, 30} — 10 is the top (highest priority, lower = higher).
+  // ヒープ: {10, 30}。10 が top (最高優先度、値が小さいほど優先度が高い)。
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   assert_eq!(queue.number_of_messages(), 2);
@@ -149,7 +149,7 @@ fn drop_oldest_with_equal_priority_evicts_earliest_and_returns_evicted() {
   let queue =
     BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // All entries default to priority i32::MAX (non-i32 payload), equal priority.
+  // 全エントリは default priority i32::MAX (非 i32 payload) となり、優先度が等しい。
   queue.enqueue(Envelope::new(AnyMessage::new("a"))).expect("enqueue a");
   queue.enqueue(Envelope::new(AnyMessage::new("b"))).expect("enqueue b");
 

@@ -32,7 +32,8 @@ impl ActorError {
     Self::Fatal(reason.into())
   }
 
-  /// Creates an escalation request that delegates the supervision decision to the parent supervisor.
+  /// Creates an escalation request that delegates the supervision decision to the parent
+  /// supervisor.
   #[must_use]
   pub fn escalate(reason: impl Into<ActorErrorReason>) -> Self {
     Self::Escalate(reason.into())

@@ -60,8 +60,8 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
 
       match self.overflow {
         | MailboxOverflowStrategy::DropNewest => {
-          // Capacity full — reject the incoming envelope so the mailbox
-          // layer can forward it to dead letters via `SendError::Full`.
+          // 容量上限に達したため到着 envelope を拒否する。mailbox 層は
+          // `SendError::Full` 経由で DeadLetters へ転送できる。
           Err(SendError::full(entry.envelope.into_payload()))
         },
         | MailboxOverflowStrategy::DropOldest => {
@@ -72,14 +72,14 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
           state.heap_mut().push(entry);
           match evicted {
             | Some(envelope) => Ok(EnqueueOutcome::Evicted(envelope)),
-            // Heap was full but `pop` returned `None` — impossible under
-            // the write lock with `len >= capacity >= 1`. Fall through as
-            // `Accepted` defensively.
+            // ヒープが満杯であるにもかかわらず `pop` が `None` を返すケースは
+            // `len >= capacity >= 1` を write lock 下で保証しているため発生しない。
+            // 防御的に `Accepted` を返す。
             | None => Ok(EnqueueOutcome::Accepted),
           }
         },
         | MailboxOverflowStrategy::Grow => {
-          // Ignore the bound and grow.
+          // 容量境界を無視して拡張する。
           state.heap_mut().push(entry);
           Ok(EnqueueOutcome::Accepted)
         },

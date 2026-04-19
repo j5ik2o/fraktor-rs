@@ -544,24 +544,23 @@ fn finalize_cleanup_drains_both_user_and_system_queues_to_dead_letters() {
   assert_eq!(system_hits, 1, "Stop must be routed to DL exactly once");
 
   // Both user payloads must appear exactly once, preserving their labels.
-  let user_labels: alloc::vec::Vec<&str> = entries
-    .iter()
-    .filter_map(|entry| entry.message().downcast_ref::<&str>().copied())
-    .collect();
+  let user_labels: alloc::vec::Vec<&str> =
+    entries.iter().filter_map(|entry| entry.message().downcast_ref::<&str>().copied()).collect();
   assert_eq!(user_labels.len(), 2, "both user envelopes must surface in DL");
   assert!(user_labels.contains(&"u1"), "u1 must surface: {user_labels:?}");
   assert!(user_labels.contains(&"u2"), "u2 must surface: {user_labels:?}");
 }
 
-/// MB-H2: Sharing mailboxes use [`MailboxCleanupPolicy::LeaveSharedQueue`];
-/// the user queue is shared across multiple actor cells and must **not** be
-/// drained to DL on a single cell's shutdown. The same restraint must apply
-/// to the system queue drain introduced for MB-H2 — even though every mailbox
-/// owns its own `SystemQueue`, the LeaveSharedQueue policy signals "do not
-/// emit dead-letters during cleanup", and consistently honoring it avoids
-/// double-reporting in balancing dispatcher teardown paths.
+/// MB-H2: Sharing mailboxes use [`MailboxCleanupPolicy::LeaveSharedQueue`].
+/// The `LeaveSharedQueue` policy applies **only** to the user queue
+/// (which is shared across multiple actor cells and must not be drained
+/// on a single cell's shutdown). The system queue, however, is owned
+/// exclusively by each mailbox and must always be drained to dead letters
+/// to preserve observability — Pekko's `Mailbox.cleanUp()` drains the
+/// system queue unconditionally regardless of user-queue sharing policy.
+/// See Bugbot feedback on PR #1594 for the contract clarification.
 #[test]
-fn finalize_cleanup_leave_shared_queue_does_not_drain_system() {
+fn finalize_cleanup_leave_shared_queue_still_drains_system_queue() {
   let queue = Box::new(UnboundedDequeMessageQueue::new());
   let mailbox = Mailbox::new_sharing(MailboxPolicy::unbounded(None), queue);
   let system_state = ActorSystem::new_empty().state();
@@ -574,7 +573,12 @@ fn finalize_cleanup_leave_shared_queue_does_not_drain_system() {
   mailbox.become_closed_and_clean_up();
 
   let entries = system_state.dead_letters();
-  assert!(entries.is_empty(), "LeaveSharedQueue cleanup must not emit DL entries, got {entries:?}");
+  assert_eq!(entries.len(), 1, "LeaveSharedQueue cleanup must still drain the system queue, got {entries:?}");
+  assert_eq!(
+    entries[0].message().downcast_ref::<SystemMessage>(),
+    Some(&SystemMessage::Stop),
+    "the Stop system message must be routed to DL",
+  );
 }
 
 /// MB-H2 safety: without instrumentation (no `system_state` weak ref),
@@ -1152,24 +1156,18 @@ fn close_request_does_not_dequeue_additional_system_messages() {
 // =====================================================================
 // AC-H1: Pekko `Mailbox.run()` parity tests
 // ---------------------------------------------------------------------
-// Pekko's `Mailbox.run()` (Mailbox.scala:228-278) separates user and
-// system processing into two distinct stages:
+// Pekko の `Mailbox.run()` (Mailbox.scala:228-278) は user / system 処理を
+// 以下の 2 段階に分離している:
 //
-//   1. `processAllSystemMessages()` is called **on entry** and again
-//      **after every single user message**. It drains the entire system
-//      queue each time — unbounded by throughput.
-//   2. `processMailbox()` dequeues **one user message at a time** and
-//      decrements a **user-only throughput counter**. Between each user
-//      message it re-runs `processAllSystemMessages()` so
-//      Suspend/Resume/Stop/etc. arriving mid-drain are reflected before
-//      the next user invocation.
+//   1. `processAllSystemMessages()` を **起動時** と **毎 user message 処理後** に呼び出す。
+//      呼ばれるたびに system queue 全体を drain する (throughput に縛られない)。
+//   2. `processMailbox()` は **user message を 1 件ずつ** dequeue し、**user 専用の throughput
+//      カウンタ** を消費する。各 user message 間で `processAllSystemMessages()` を再実行し、
+//      途中到着した Suspend/Resume/Stop 等が次の user 処理の前に反映されるようにする。
 //
-// The AC-H1 tests (T1–T5) pin this contract. T4 fails on the current
-// single-counter implementation because system messages erroneously
-// consume the user throughput budget, letting an adversarial burst of
-// system messages starve user delivery entirely. T1–T3 and T5 pass on
-// both implementations (contract pins), safeguarding the behaviour
-// from future regressions.
+// AC-H1 テスト (T1-T5) はこの契約を pin する。本 PR 適用後は T1-T5 全てが green で、
+// system message が user throughput budget を消費する旧実装 (単一カウンタ) への
+// 回帰を防止する役割を担う。
 // =====================================================================
 
 /// AC-H1-T1: throughput is a user-only counter.

@@ -7,22 +7,15 @@ use fraktor_utils_core_rs::core::{
   sync::{SharedAccess, SharedLock},
 };
 
-use super::mailbox_queue_state::{QueueState, queue_state_shared};
+use super::{
+  drop_oldest_outcome::DropOldestOutcome,
+  mailbox_queue_state::{QueueState, queue_state_shared},
+};
 use crate::core::kernel::dispatch::mailbox::{
   capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
 };
 
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
-
-/// Result of [`QueueStateHandle::drop_oldest_and_offer`] that surfaces the
-/// evicted element so callers (mailbox layer) can forward it to dead letters.
-pub(crate) enum DropOldestOutcome<T> {
-  /// The new element was offered without evicting an existing entry.
-  Accepted,
-  /// The new element was offered after evicting the oldest entry, which
-  /// is returned so the caller can forward it to dead letters.
-  Evicted(T),
-}
 
 /// Internal handles wrapping queue producers/consumers.
 pub(crate) struct QueueStateHandle<T>
@@ -78,18 +71,16 @@ where
     capacity: usize,
   ) -> Result<DropOldestOutcome<T>, QueueError<T>> {
     self.state.with_write(|state| {
-      // Pekko parity: when the queue is already at capacity, evict the
-      // oldest element and surface it so the caller can forward it to the
-      // dead-letter destination instead of silently dropping it.
+      // Pekko 互換: キューが既に容量上限に達している場合、最古の要素を evict
+      // して呼び出し元に返却し、サイレントに破棄せず dead-letter 宛先へ転送
+      // できるようにする。
       let evicted = if state.len() >= capacity {
         match state.poll() {
           | Ok(item) => Some(item),
-          // Under the same write lock, `len >= capacity >= 1` guarantees
-          // at least one element is present, so `poll` cannot return
-          // `Empty` here. We still fall through with `None` defensively;
-          // other error variants would be pathological for a VecDeque
-          // backend and are handled identically by the caller (no
-          // eviction surfaced).
+          // 同じ write lock 下で `len >= capacity >= 1` が保証されているため、
+          // ここで `poll` が `Empty` を返すことはない。防御的に `None` で fall
+          // through する。他のエラーバリアントは VecDeque backend では病的
+          // ケースであり、呼び出し元は同様に扱う (eviction を surface しない)。
           | Err(_) => None,
         }
       } else {

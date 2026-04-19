@@ -28,6 +28,7 @@ mod bounded_stable_priority_message_queue_state_shared;
 mod capacity;
 /// Opt-in deque capability for message queue implementations.
 mod deque_message_queue;
+mod drop_oldest_outcome;
 mod enqueue_outcome;
 mod envelope;
 mod mailbox_cleanup_policy;

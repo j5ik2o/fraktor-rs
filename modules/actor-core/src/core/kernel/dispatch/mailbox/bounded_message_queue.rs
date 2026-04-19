@@ -8,9 +8,8 @@ use core::num::NonZeroUsize;
 use fraktor_utils_core_rs::core::collections::queue::QueueError;
 
 use super::{
-  QueueStateHandle, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
-  mailbox_queue_handles::DropOldestOutcome, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
-  policy::MailboxPolicy,
+  QueueStateHandle, drop_oldest_outcome::DropOldestOutcome, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
+  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
 };
 use crate::core::kernel::actor::error::SendError;
 

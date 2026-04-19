@@ -9,13 +9,13 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_core_rs::core::sync::{SharedAccess, WeakShared};
 use spin::Once;
 
+#[cfg(test)]
+use super::mailbox_message::MailboxMessage;
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
   enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy,
   mailbox_instrumentation::MailboxInstrumentation, message_queue::MessageQueue,
 };
-#[cfg(test)]
-use super::mailbox_message::MailboxMessage;
 use crate::core::kernel::{
   actor::{
     ActorCell, Pid,
@@ -289,9 +289,7 @@ impl Mailbox {
     // が検証）。
     // invoker 不在かつ close 要求済みの場合も同様に処理段階をスキップし、
     // finish_run() → FinalizeNow を通して finalize_cleanup に到達させる。
-    if !close_requested_at_start
-      && let Some(ref invoker) = invoker
-    {
+    if !close_requested_at_start && let Some(ref invoker) = invoker {
       self.process_all_system_messages(invoker);
       self.process_mailbox(invoker, throughput);
     }
@@ -718,22 +716,21 @@ impl Mailbox {
     let pid = self.pid();
     let system_state = self.system_state();
     let user_len_after_cleanup = self.put_lock.with_lock(|_| {
+      // MB-H2 (Pekko parity): `Mailbox.cleanUp()` は user queue のクリーンアップ方針とは無関係に
+      // system queue を必ず DeadLetters へ drain する。各 mailbox は自身専用の `SystemQueue` を
+      // 所有しており共有されないため、`LeaveSharedQueue` であっても pending な
+      // `Watch` / `Terminated` / `Create` / `Stop` envelope を失って観測不能にしてはならない。
+      while let Some(sys_msg) = self.system.pop() {
+        if let Some(ref state) = system_state {
+          state.record_dead_letter(AnyMessage::new(sys_msg), DeadLetterReason::Dropped, pid);
+        }
+      }
+      // user queue の扱いのみ cleanup policy に従う。`DrainToDeadLetters` なら残留 user message を
+      // DeadLetters へ転送、`LeaveSharedQueue` なら共有 queue 側に委ねる。
       if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
         while let Some(envelope) = self.user.dequeue() {
           if let Some(ref state) = system_state {
             state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
-          }
-        }
-        // Pekko parity: `cleanUp()` drains the system queue as well so
-        // pending `Watch` / `Terminated` / `Create` / `Stop` envelopes are
-        // observed as dead letters instead of silently dropped.
-        //
-        // `LeaveSharedQueue` is excluded so sharing mailboxes (Balancing
-        // dispatcher) do not double-report system messages that still live
-        // in the shared system queue.
-        while let Some(sys_msg) = self.system.pop() {
-          if let Some(ref state) = system_state {
-            state.record_dead_letter(AnyMessage::new(sys_msg), DeadLetterReason::Dropped, pid);
           }
         }
       }

@@ -87,12 +87,12 @@ fn drop_oldest_returns_evicted_outcome_with_heap_top_envelope() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
   let queue = queue(pgen, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // Fill the heap with priorities 10 and 30 — heap top is 10 (lower = higher priority).
+  // 優先度 10 と 30 でヒープを埋める。heap top は 10 (値が小さいほど優先度が高い)。
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   assert_eq!(queue.number_of_messages(), 2);
 
-  // Trigger overflow — the heap-top (10) must be evicted and surfaced.
+  // overflow を誘発。heap top (10) が evict されて Outcome として露出されなければならない。
   let result = queue.enqueue(Envelope::new(AnyMessage::new(20_i32)));
   let Ok(EnqueueOutcome::Evicted(evicted)) = result else {
     panic!("DropOldest overflow must return Ok(Evicted(_)), got {result:?}");
@@ -104,7 +104,7 @@ fn drop_oldest_returns_evicted_outcome_with_heap_top_envelope() {
   );
   assert_eq!(queue.number_of_messages(), 2);
 
-  // After eviction the heap now contains {20, 30} — 20 must dequeue first.
+  // evict 後のヒープは {20, 30}。20 が最初に dequeue されなければならない。
   let first = queue.dequeue().expect("dequeue 1st").into_payload();
   assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 20);
 

@@ -36,8 +36,8 @@ fn should_reject_when_full_with_drop_newest() {
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue 1");
   queue.enqueue(Envelope::new(AnyMessage::new(2_u32))).expect("enqueue 2");
 
-  // The rejected envelope carries a recognisable payload so the dispatcher
-  // can forward it to DeadLetters without losing information.
+  // 拒否された envelope は識別可能な payload を保持しており、dispatcher が
+  // 情報を失うことなく DeadLetters へ転送できる。
   let result = queue.enqueue(Envelope::new(AnyMessage::new(3_u32)));
   let Err(SendError::Full(payload)) = result else {
     panic!("DropNewest overflow must return SendError::Full, got {result:?}");
@@ -61,8 +61,8 @@ fn drop_oldest_returns_evicted_outcome_with_oldest_envelope() {
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue 1");
   queue.enqueue(Envelope::new(AnyMessage::new(2_u32))).expect("enqueue 2");
 
-  // BoundedMessageQueue is FIFO — the "oldest" is the first inserted,
-  // i.e. the next envelope that would be dequeued.
+  // BoundedMessageQueue は FIFO — 「最古」は最初に挿入された envelope、
+  // すなわち次に dequeue される対象。
   let result = queue.enqueue(Envelope::new(AnyMessage::new(3_u32)));
   let Ok(EnqueueOutcome::Evicted(evicted)) = result else {
     panic!("DropOldest overflow must return Ok(Evicted(_)), got {result:?}");
@@ -73,8 +73,8 @@ fn drop_oldest_returns_evicted_outcome_with_oldest_envelope() {
     "DropOldest must evict the first-inserted envelope",
   );
 
-  // The new envelope must still be accepted — overflow does not lose the
-  // incoming message; it only evicts the oldest to make room.
+  // 新しい envelope は受理される — overflow は到着メッセージを失わず、
+  // 空きを作るために最古を evict するだけ。
   assert_eq!(queue.number_of_messages(), 2);
   let next = queue.dequeue().expect("dequeue");
   assert_eq!(next.payload().downcast_ref::<u32>().copied(), Some(2_u32));
