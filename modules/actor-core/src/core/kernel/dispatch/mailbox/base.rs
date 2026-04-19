@@ -458,15 +458,15 @@ impl Mailbox {
     Ok(())
   }
 
-  /// Attempts to enqueue a user message; returns a future when blocking is needed.
-  ///
-  /// This is the legacy convenience entry point used by tests and stash paths
-  /// that have an `AnyMessage` in hand. The message is wrapped in an
-  /// [`Envelope`] before being handed to the underlying queue.
+  /// Convenience wrapper around [`Self::enqueue_envelope`] that wraps a bare
+  /// [`AnyMessage`] into an [`Envelope`]. Used by tests, benchmarks, and
+  /// stash paths that do not own an envelope; dispatcher-side code should
+  /// call [`Self::enqueue_envelope`] directly to preserve sender metadata.
   ///
   /// # Errors
   ///
-  /// Returns an error if the mailbox is suspended, full, or closed.
+  /// Returns an error if the mailbox is closed or the underlying queue
+  /// rejects the envelope (e.g. bounded overflow).
   #[cfg_attr(not(test), doc(hidden))]
   pub fn enqueue_user(&self, message: AnyMessage) -> Result<(), SendError> {
     self.enqueue_envelope(Envelope::new(message))

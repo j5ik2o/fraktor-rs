@@ -63,20 +63,6 @@ impl ActorPath {
     Ok(Self::from_parts_and_segments(ActorPathParts::local("cellactor"), validated, None))
   }
 
-  /// Builds a path from segments, panicking on invalid data (legacy API).
-  ///
-  /// # Panics
-  ///
-  /// Panics if any segment is invalid.
-  #[must_use]
-  #[allow(clippy::expect_used)]
-  pub fn from_segments<I, S>(segments: I) -> Self
-  where
-    I: IntoIterator<Item = S>,
-    S: Into<String>, {
-    Self::try_from_segments(segments).expect("invalid actor path segment")
-  }
-
   /// Returns path parts metadata.
   #[must_use]
   pub const fn parts(&self) -> &ActorPathParts {
