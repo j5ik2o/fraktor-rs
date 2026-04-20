@@ -1172,11 +1172,8 @@ impl ActorCell {
       "fault_recreate expects the mailbox to be suspended (AC-H3 precondition)"
     );
 
-    self.state.with_write(|state| {
-      state.deferred_recreate_cause = Some(cause.clone());
-    });
-
     let deferred = self.state.with_write(|state| {
+      state.deferred_recreate_cause = Some(cause.clone());
       state.children_state.set_children_termination_reason(SuspendReason::Recreation(cause.clone()))
     });
 

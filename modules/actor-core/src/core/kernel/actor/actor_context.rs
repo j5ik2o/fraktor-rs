@@ -278,10 +278,7 @@ impl ActorContext<'_> {
         }
       }
     }
-    match first_error {
-      | Some(error) => Err(error),
-      | None => Ok(()),
-    }
+    first_error.map_or(Ok(()), Err)
   }
 
   /// Sends a stop signal to the running actor.
