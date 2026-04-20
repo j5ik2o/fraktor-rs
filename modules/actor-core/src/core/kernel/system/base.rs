@@ -757,9 +757,15 @@ impl ActorSystem {
   }
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell>, pid: Pid) {
-    // Order: tear down parent-side supervision watch first, then `children_state`
-    // registration, then the cell itself. `child_cell.state.watchers` is
-    // implicitly cleared when the cell is removed from the system registry.
+    // Order matters. `rollback_spawn` runs when the spawn handshake failed
+    // before the child ever started emitting `DeathWatchNotification`s, so
+    // `children_state` cleanup cannot rely on the usual notification path
+    // and has to happen here synchronously. `ActorCell::unregister_child`
+    // short-circuits while a supervision watch is live (because the normal
+    // restart flow needs the parent `DeathWatchNotification` handler to
+    // observe the state change), so the supervision watching entry must be
+    // torn down *first*. With the watch gone, `unregister_child` removes the
+    // container entry, and `remove_cell` drops the child cell entirely.
     if let Some(parent_pid) = parent
       && let Some(parent_cell) = self.state.cell(&parent_pid)
     {

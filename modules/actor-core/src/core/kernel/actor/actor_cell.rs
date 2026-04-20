@@ -313,11 +313,19 @@ impl ActorCell {
   /// Removes a child pid from supervision tracking.
   ///
   /// Children still covered by a supervision watch are left in `children_state`
-  /// so that `handle_death_watch_notification` remains the sole consumer of the
-  /// state change returned by `remove_child_and_get_state_change`. Consuming the
-  /// state change here would drop `SuspendReason::Recreation` before the
-  /// `DeathWatchNotification` emitted by `notify_watchers_on_stop` reaches the
-  /// parent, preventing the restart flow from firing.
+  /// on purpose: the parent's `handle_death_watch_notification` is the sole
+  /// consumer of the state change returned by
+  /// `remove_child_and_get_state_change`. Consuming it here would drop
+  /// `SuspendReason::Recreation` before the `DeathWatchNotification` emitted
+  /// by `notify_watchers_on_stop` reaches the parent and the restart flow
+  /// would never fire.
+  ///
+  /// Callers that tear down a child outside the `DeathWatchNotification`
+  /// pipeline (e.g. `rollback_spawn` when the spawn handshake failed before
+  /// the child ever started) are expected to unwire the supervision watch
+  /// via [`ActorCell::unregister_supervision_watching`] *before* invoking
+  /// this method. With the supervision watch gone, `watching_contains_pid`
+  /// returns `false` and the container entry is removed normally.
   pub fn unregister_child(&self, pid: &Pid) {
     self.state.with_write(|state| {
       if state.watching_contains_pid(*pid) {
@@ -471,28 +479,20 @@ impl ActorCell {
     self.state.with_write(|state| state.register_watching(target, WatchKind::User));
   }
 
-  /// Removes user-level watching of `target` and clears any pending
-  /// `terminated_queued` marker (Pekko `DeathWatch.unwatch`).
+  /// Removes user-level watching of `target` (Pekko `DeathWatch.unwatch`
+  /// parity for the `watching` side only).
   ///
   /// Supervision-level watches registered with [`WatchKind::Supervision`] are
   /// preserved so that `finish_recreate` / `finish_terminate` keep firing.
-  pub fn unregister_watching(&self, target: Pid) {
-    self.state.with_write(|state| {
-      state.unregister_watching(target, WatchKind::User);
-      state.terminated_queued.retain(|pid| *pid != target);
-    });
-  }
-
-  /// Removes only the user-level watching of `target` without touching the
-  /// `terminated_queued` dedup marker.
   ///
-  /// `stop_all_children` (AL-H1 pre_restart) uses this to unwatch restart
-  /// siblings without interfering with an in-flight
-  /// `handle_death_watch_notification` that has already pushed `target` into
-  /// `terminated_queued` as a dedup marker. Clearing the marker from a
-  /// concurrent code path could allow a duplicate notification to drive
-  /// `finish_recreate` twice.
-  pub(crate) fn clear_user_watch(&self, target: Pid) {
+  /// Unlike Pekko (which is single-threaded per actor and can safely clear
+  /// `terminatedQueued` here), fraktor-rs leaves the dedup marker alone: a
+  /// concurrent `handle_death_watch_notification` may have just pushed
+  /// `target` into `terminated_queued`, and clearing it from this code path
+  /// would allow a duplicate notification to drive `finish_recreate` twice.
+  /// The marker is removed naturally when the in-flight notification handler
+  /// finishes (see `handle_death_watch_notification`).
+  pub fn unregister_watching(&self, target: Pid) {
     self.state.with_write(|state| state.unregister_watching(target, WatchKind::User));
   }
 
@@ -1116,7 +1116,18 @@ impl ActorCell {
         self.state.with_read(|state| state.deferred_recreate_cause.as_ref().is_none_or(|stored| stored == &cause)),
         "deferred_recreate_cause must match the cause returned by remove_child_and_get_state_change",
       );
-      self.finish_recreate(&cause)?;
+      // Pekko parity: user-callback delivery (on_terminated / try_tell) and
+      // finish_recreate are logically independent. finish_recreate internally
+      // reports its own failure to the supervisor via set_failed_fatally +
+      // report_failure. If the user callback also failed, surface that error
+      // to the caller so the user-visible failure is not silently dropped by
+      // the `?` operator on finish_recreate's Err. When the delivery
+      // succeeded, propagate the finish_recreate result instead.
+      let recreate_result = self.finish_recreate(&cause);
+      return match delivery_result {
+        | Ok(()) => recreate_result,
+        | Err(delivery_error) => Err(delivery_error),
+      };
     }
     // TODO(Phase A3): dispatch `Some(SuspendReason::Termination)` →
     // `finish_terminate(pid)` once that path is ported. `SuspendReason::Creation`

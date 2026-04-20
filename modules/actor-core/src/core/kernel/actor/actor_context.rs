@@ -269,12 +269,7 @@ impl ActorContext<'_> {
       // Pekko `preRestart` unwatches each child before stopping it; mirror
       // that here so a pending DeathWatchNotification does not deliver a
       // user-level `Terminated` after the restart has already been handled.
-      // `clear_user_watch` (not `unregister_watching`) is used on purpose so
-      // the `terminated_queued` dedup marker is preserved — a concurrent
-      // `handle_death_watch_notification` may have just pushed the child pid
-      // as a marker, and clearing it here would let a duplicate notification
-      // drive `finish_recreate` twice.
-      cell.clear_user_watch(child_pid);
+      cell.unregister_watching(child_pid);
       cell.remove_watch_with(child_pid);
       if let Err(error) = state.send_system_message(child_pid, SystemMessage::Stop) {
         state.record_send_error(Some(child_pid), &error);

@@ -694,7 +694,13 @@ impl SystemStateShared {
     }
   }
 
-  /// Removes a child from its parent's supervision registry.
+  /// Removes a child from its parent's supervision registry. Leaves the
+  /// `children_state` entry in place when a supervision watch on the child is
+  /// still live so that the parent's `handle_death_watch_notification` remains
+  /// the sole consumer of the state change. Callers that tear down a child
+  /// outside the `DeathWatchNotification` pipeline must unwire the supervision
+  /// watch via
+  /// [`ActorCell::unregister_supervision_watching`] first.
   pub fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
     if let Some(parent_pid) = parent
       && let Some(cell) = self.cell(&parent_pid)
