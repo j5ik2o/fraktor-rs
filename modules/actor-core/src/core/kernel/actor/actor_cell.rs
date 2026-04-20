@@ -1218,6 +1218,12 @@ impl ActorCell {
         Ok(())
       },
       | Err(error) => {
+        // fault_recreate の AC-H3 precondition により mailbox は既に suspended。
+        // report_failure は supervisor へ報告する前に mailbox.suspend() を呼ぶため、
+        // ここで先に resume して suspend_count を入口時点の値に戻しておかないと、
+        // カウンタが二重に増え、supervisor からの単発 Resume で mailbox が再開
+        // できず永続的に stuck する。
+        self.mailbox().resume();
         self.set_failed_fatally();
         self.report_failure(&error, None);
         Err(error)
