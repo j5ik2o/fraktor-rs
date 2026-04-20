@@ -16,10 +16,11 @@
 //! * `Recreation(cause)` — set by `fault_recreate` via
 //!   [`ChildrenContainer::set_children_termination_reason`] to drive AC-H4 `finish_recreate` once
 //!   all children terminate.
-//! * `Creation` — set during `pre_start` handshake when the parent must finish creating itself
-//!   after its children finish their own `pre_start`. Phase A3.
 //! * `Termination` — set when the parent itself is terminating; transitions the container to
 //!   `Terminated` after the last child dies.
+//!
+//! `Creation` variant は Pekko の `pre_start` ハンドシェイク用 scaffold だが、fraktor-rs
+//! では該当経路を移植する段階で必要になるまで定義しない (YAGNI)。
 
 #[cfg(test)]
 mod tests;
@@ -37,16 +38,6 @@ pub(crate) enum SuspendReason {
   /// The parent is restarting itself and is waiting for its children to die
   /// before re-creating the actor instance. Mixes in `WaitingForChildren`.
   Recreation(ActorErrorReason),
-  /// The parent is still inside `pre_start` and must finish creating itself
-  /// after its children finish their own `pre_start`. Mixes in
-  /// `WaitingForChildren`.
-  ///
-  /// Scaffold for Phase A3 `finish_create` wiring. Retained to preserve the
-  /// Pekko `SuspendReason` hierarchy; pekko-restart-completion itself does not
-  /// construct this variant (see `tasks.md` §6.4 for the parallel
-  /// `FailedInfo::FailedRef` rationale).
-  #[allow(dead_code)]
-  Creation,
   /// The parent is terminating. Once all outstanding children die, the
   /// container transitions to `Terminated`.
   Termination,

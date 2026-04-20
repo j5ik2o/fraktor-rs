@@ -1,8 +1,10 @@
 //! AC-H2 `SuspendReason` の単体テスト。
 //!
 //! Pekko `ChildrenContainer.scala:55-77` の `SuspendReason` を翻訳したもの。
-//! fraktor-rs は `Recreation` / `Termination` のみを保持するため本テストも
-//! その 2 variant の挙動のみを検証する。
+//! fraktor-rs の現行定義は `UserRequest` / `Recreation` / `Termination` の 3 variant
+//! だが、本テストは AC-H4 restart 経路で中心となる `Recreation` / `Termination` の
+//! 等価性契約と cause 保持のみを検証対象とする (`UserRequest` は `shall_die` 経路で
+//! 別途カバー)。
 
 use super::SuspendReason;
 use crate::core::kernel::actor::error::ActorErrorReason;

@@ -311,12 +311,17 @@ impl ActorCell {
   }
 
   /// Removes a child pid from supervision tracking.
+  ///
+  /// supervision watch が残っている子については `remove_child_and_get_state_change`
+  /// を実行せず、親の `DeathWatchNotification` ハンドラ側を唯一の state-change 消費点
+  /// に残す。ここで state-change を先に取ってしまうと、`notify_watchers_on_stop` が
+  /// 発送した `DeathWatchNotification` が親に届く頃には `SuspendReason::Recreation`
+  /// が失われ、restart フローが起動しない。
   pub fn unregister_child(&self, pid: &Pid) {
     self.state.with_write(|state| {
-      // Pekko parity: `removeChildAndGetStateChange` is the only supported
-      // remove path. We drop the returned `Option<SuspendReason>` here because
-      // this call is only used for synchronous unregister bookkeeping — the
-      // supervision state-change is observed separately in `handle_terminated`.
+      if state.watching_contains_pid(*pid) {
+        return;
+      }
       let _ = state.children_state.remove_child_and_get_state_change(*pid);
     });
   }
@@ -1100,8 +1105,8 @@ impl ActorCell {
       self.finish_recreate(&cause)?;
     }
     // TODO(Phase A3): dispatch `Some(SuspendReason::Termination)` →
-    // `finish_terminate(pid)` and `Some(SuspendReason::Creation)` →
-    // `finish_create(pid)` once those paths are ported.
+    // `finish_terminate(pid)` once that path is ported. `SuspendReason::Creation`
+    // (Pekko `pre_start` handshake) は該当経路を移植する段階で variant と共に追加する。
 
     delivery_result
   }
@@ -1198,7 +1203,6 @@ impl ActorCell {
     self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
     self.clear_failed();
-    self.mailbox().resume();
 
     let outcome = {
       let mut ctx = self.make_context();
@@ -1208,6 +1212,10 @@ impl ActorCell {
     };
     match outcome {
       | Ok(()) => {
+        // Pekko `FaultHandling.scala:292` と同様に `post_restart` 成功後に mailbox を
+        // resume する。先に resume してしまうと、dispatcher 実装によっては再初期化前の
+        // actor に user message が配送される可能性がある。
+        self.mailbox().resume();
         self.publish_lifecycle(LifecycleStage::Restarted);
         Ok(())
       },
