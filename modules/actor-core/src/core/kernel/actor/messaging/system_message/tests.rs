@@ -3,7 +3,7 @@ use core::time::Duration;
 use super::{FailurePayload, SystemMessage};
 use crate::core::kernel::actor::{
   Pid,
-  error::ActorError,
+  error::{ActorError, ActorErrorReason},
   messaging::{AnyMessage, Kill, PoisonPill},
 };
 
@@ -78,11 +78,19 @@ fn kill_public_message_is_stored_as_distinct_payload_in_any_message() {
 
 #[test]
 fn recreate_message_round_trips_through_any_message() {
-  let payload = SystemMessage::Recreate;
+  // AC-H4: `SystemMessage::Recreate` は `ActorErrorReason` ペイロードを同梱する。
+  // Pekko `SystemMessage.scala` の `Recreate(cause: Throwable)` を参照し、
+  // round-trip 時にも cause が保持されることを保証する。
+  let cause = ActorErrorReason::new("ac-h4-recreate-round-trip");
+  let payload = SystemMessage::Recreate(cause.clone());
   let stored: AnyMessage = payload.clone().into();
   let view = stored.as_view();
   let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
   assert_eq!(recovered, &payload);
+  match recovered {
+    | SystemMessage::Recreate(restored) => assert_eq!(restored, &cause),
+    | other => panic!("expected SystemMessage::Recreate, got {other:?}"),
+  }
 }
 
 #[test]
@@ -131,4 +139,38 @@ fn terminated_message_carries_pid() {
   } else {
     panic!("unexpected variant");
   }
+}
+
+#[test]
+fn death_watch_notification_round_trips_through_any_message() {
+  // AC-H5: Pekko `DeathWatch.scala` の `DeathWatchNotification(actor)` に相当する
+  // 新 variant `SystemMessage::DeathWatchNotification(Pid)` が AnyMessage 経由で
+  // round-trip 可能であることを保証する。kernel→kernel の watcher 通知に使用され、
+  // user-queue 上の `Terminated` (= 公開 user-level メッセージ) とは別のチャネル。
+  let target = Pid::new(50, 0);
+  let payload = SystemMessage::DeathWatchNotification(target);
+  let stored: AnyMessage = payload.clone().into();
+  let view = stored.as_view();
+  let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
+  assert_eq!(recovered, &payload);
+  match recovered {
+    | SystemMessage::DeathWatchNotification(pid) => assert_eq!(pid, &target),
+    | other => panic!("expected SystemMessage::DeathWatchNotification, got {other:?}"),
+  }
+}
+
+#[test]
+fn death_watch_notification_is_distinct_from_terminated() {
+  // AC-H5: `DeathWatchNotification(Pid)` と `Terminated(Pid)` は別の variant。
+  // 前者は kernel 内部の watcher 通知 system message、後者は user queue へ
+  // 配送されてユーザーの receive で観測される public message。Pekko の
+  // `Terminated` user-level message (`AutoReceivedMessage`) と
+  // `DeathWatchNotification` system message の二層構造をそのまま反映する。
+  let target = Pid::new(51, 0);
+  let dwn = SystemMessage::DeathWatchNotification(target);
+  let terminated = SystemMessage::Terminated(target);
+  assert_ne!(
+    dwn, terminated,
+    "AC-H5: DeathWatchNotification と Terminated は別 variant でなければならない"
+  );
 }

@@ -239,6 +239,31 @@ impl ActorContext<'_> {
     child.stop()
   }
 
+  /// Sends a stop signal to every supervised child (Pekko
+  /// `context.children foreach { child => context.unwatch(child); context.stop(child) }`).
+  ///
+  /// AL-H1: called from the default [`Actor::pre_restart`] implementation to
+  /// mirror Pekko's behaviour. Any `SendError` encountered while enqueueing
+  /// the per-child stop message is recorded via
+  /// [`SystemStateShared::record_send_error`] so that best-effort cleanup
+  /// still proceeds across all children without aborting the restart flow.
+  pub fn stop_all_children(&mut self) {
+    let state = self.system.state();
+    let Some(cell) = state.cell(&self.pid) else {
+      return;
+    };
+    for child_pid in cell.children() {
+      // Pekko `preRestart` unwatches each child before stopping it; mirror
+      // that here so a pending DeathWatchNotification does not deliver a
+      // user-level `Terminated` after the restart has already been handled.
+      cell.unregister_watching(child_pid);
+      cell.remove_watch_with(child_pid);
+      if let Err(error) = state.send_system_message(child_pid, SystemMessage::Stop) {
+        state.record_send_error(Some(child_pid), &error);
+      }
+    }
+  }
+
   /// Sends a stop signal to the running actor.
   ///
   /// # Errors

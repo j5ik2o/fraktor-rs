@@ -3,7 +3,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::kernel::actor::{Pid, context_pipe::ContextPipeTaskId, messaging::AnyMessage};
+use crate::core::kernel::actor::{
+  Pid, context_pipe::ContextPipeTaskId, error::ActorErrorReason, messaging::AnyMessage,
+};
 
 mod failure_classification;
 mod failure_message_snapshot;
@@ -25,7 +27,11 @@ pub enum SystemMessage {
   /// Requests actor initialization via the mailbox pipeline.
   Create,
   /// Recreates the actor instance after a recoverable failure.
-  Recreate,
+  ///
+  /// Carries the failure cause (Pekko `Recreate(cause: Throwable)`).
+  /// AC-H4: the payload is preserved through the restart pipeline and
+  /// delivered to `pre_restart(reason)` / `post_restart(reason)`.
+  Recreate(ActorErrorReason),
   /// Requests the mailbox to suspend user message processing.
   Suspend,
   /// Requests the mailbox to resume user message processing.
@@ -36,7 +42,19 @@ pub enum SystemMessage {
   Unwatch(Pid),
   /// Requests the guardian to stop a specific child actor.
   StopChild(Pid),
+  /// Kernel-internal DeathWatch notification (Pekko
+  /// `DeathWatch.scala:DeathWatchNotification`).
+  ///
+  /// AC-H5: distinct from [`SystemMessage::Terminated`] — the notification
+  /// flows from the terminated actor's kernel to the watcher's kernel, and
+  /// the watcher kernel is responsible for enqueueing a user-facing
+  /// `Terminated` into its user mailbox (subject to dedup via
+  /// `terminated_queued`).
+  DeathWatchNotification(Pid),
   /// Notifies watchers that the referenced actor has terminated.
+  ///
+  /// User-level signal delivered to the watcher's user queue; dispatched to
+  /// [`Actor::on_terminated`] when handled.
   Terminated(Pid),
   /// Reports that a child actor failed and requires supervisor handling.
   Failure(FailurePayload),

@@ -100,6 +100,18 @@ where
     self.post_stop(ctx)
   }
 
+  /// Called after the actor has been restarted by its supervisor.
+  ///
+  /// The default implementation delegates to [`pre_start`](TypedActor::pre_start), matching
+  /// Pekko `aroundPostRestart`'s default of invoking `preStart` to reinitialise actor state.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when post-restart initialisation fails.
+  fn post_restart(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+    self.pre_start(ctx)
+  }
+
   /// Called when a supervised child actor fails.
   ///
   /// # Errors

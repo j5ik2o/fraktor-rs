@@ -478,3 +478,95 @@ fn behavior_runner_post_stop_from_empty_does_not_publish_unhandled_message() {
   assert!(result.is_ok());
   assert!(events.lock().is_empty());
 }
+
+// ====================================================================
+// AL-H1: typed 側 PreStart / PostRestart dispatch 順序
+// --------------------------------------------------------------------
+// AL-H1 forward-looking API surface:
+//   - `TypedActor::post_restart(&mut self, ctx)` を新設し、`BehaviorRunner`
+//     が `BehaviorSignal::PostRestart` を dispatch する。
+//   - Pekko parity: PreStart signal は外部 (公開シグナル) に出ない (現行
+//     `behavior_runner_pre_start_uses_internal_setup_without_public_started_signal`
+//     を維持) 一方、PostRestart は restart の完了通知として確実に dispatch
+//     される。
+//   - `BehaviorSignal::PostRestart` variant が新設される。
+// ====================================================================
+
+#[test]
+fn al_h1_behavior_runner_dispatches_post_restart_signal() {
+  // AL-H1: `TypedActor::post_restart` が `BehaviorSignal::PostRestart` を
+  // signal handler へ dispatch することを保証する。Pekko `aroundPostRestart`
+  // の典型的な responsibility (= 再起動完了通知) を typed 層に保つ。
+  let received = Arc::new(AtomicBool::new(false));
+  let behavior = signal_probe_behavior(|s| matches!(s, BehaviorSignal::PostRestart), received.clone());
+  let mut runner = BehaviorRunner::new(behavior);
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  let result = runner.post_restart(&mut typed_ctx);
+  assert!(result.is_ok(), "AL-H1: post_restart dispatch は成功する");
+  assert!(received.load(Ordering::SeqCst), "AL-H1: PostRestart signal が handler へ届くこと");
+}
+
+#[test]
+fn al_h1_behavior_runner_pre_start_does_not_dispatch_post_restart_signal() {
+  // AL-H1 regression: `pre_start` は restart 経路と区別されるべきで、
+  // PostRestart signal を decoy で発火してはならない。Pekko `aroundPreStart`
+  // と `aroundPostRestart` の境界に対応する。
+  let post_restart_received = Arc::new(AtomicBool::new(false));
+  let post_restart_received_for_signal = post_restart_received.clone();
+
+  let behavior = Behaviors::setup(move |_ctx| {
+    let post_restart_received = post_restart_received_for_signal.clone();
+    Behaviors::receive_signal(move |_ctx, signal| {
+      if matches!(signal, BehaviorSignal::PostRestart) {
+        post_restart_received.store(true, Ordering::SeqCst);
+      }
+      Ok(Behaviors::same())
+    })
+  });
+
+  let mut runner = BehaviorRunner::new(behavior);
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  runner.pre_start(&mut typed_ctx).expect("pre_start");
+
+  assert!(
+    !post_restart_received.load(Ordering::SeqCst),
+    "AL-H1: pre_start は PostRestart signal を dispatch してはならない (Pekko parity)"
+  );
+}
+
+#[test]
+fn al_h1_behavior_runner_post_restart_runs_after_pre_restart_in_restart_sequence() {
+  // AL-H1: restart 経路では PreRestart → (新 instance 構築) → PostRestart の
+  // 順序で signal が dispatch されること。本テストは BehaviorRunner レベルで
+  // 順序のみを検証し、ActorCell 側の fault_recreate / finishRecreate の
+  // 連結は AC-H4 で検証する。
+  let order = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
+  let order_for_signal = order.clone();
+
+  let behavior = Behaviors::receive_signal(move |_ctx, signal| {
+    match signal {
+      | BehaviorSignal::PreRestart => order_for_signal.lock().push("pre_restart"),
+      | BehaviorSignal::PostRestart => order_for_signal.lock().push("post_restart"),
+      | _ => {},
+    }
+    Ok(Behaviors::same())
+  });
+
+  let mut runner = BehaviorRunner::new(behavior);
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  runner.pre_restart(&mut typed_ctx).expect("pre_restart");
+  runner.post_restart(&mut typed_ctx).expect("post_restart");
+
+  let snapshot = order.lock().clone();
+  assert_eq!(
+    snapshot,
+    vec!["pre_restart", "post_restart"],
+    "AL-H1: restart sequence は PreRestart → PostRestart の順で signal を dispatch する"
+  );
+}

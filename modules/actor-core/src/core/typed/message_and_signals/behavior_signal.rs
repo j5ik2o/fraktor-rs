@@ -15,6 +15,8 @@ pub enum BehaviorSignal {
   ChildFailed(ChildFailed),
   /// Indicates that the actor is about to be restarted by its supervisor.
   PreRestart,
+  /// Indicates that the actor has just been restarted by its supervisor.
+  PostRestart,
 }
 
 impl Signal for BehaviorSignal {}

@@ -330,9 +330,15 @@ impl Mailbox {
   ///
   /// System messages are **unmetered** with respect to throughput: each call keeps
   /// popping until the queue is empty or a close request is observed mid-drain.
-  /// Pekko relies on `actor.systemInvoke` for every message; fraktor-rs keeps
-  /// `Suspend`/`Resume` mailbox-local so the schedule-state transitions do not
-  /// round-trip through the invoker.
+  ///
+  /// For `Suspend` / `Resume` the mailbox schedule-state counter is updated
+  /// **before** forwarding the message to the invoker. This is the MB-H1
+  /// contract: the counter update must complete synchronously so that the very
+  /// next `should_process_message` check within this drain cycle observes the
+  /// new state. Forwarding to `system_invoke` is still performed so
+  /// `ActorCell::system_invoke` can run the AC-H3 recursion
+  /// (`suspend_children` / `resume_children`) that propagates the event to
+  /// direct children.
   ///
   /// The inner `is_close_requested` check on every iteration is load-bearing for
   /// the `close_request_does_not_dequeue_additional_system_messages` contract:
@@ -345,14 +351,17 @@ impl Mailbox {
         break;
       };
       self.publish_metrics();
-      match message {
+      // MB-H1: Suspend/Resume の counter 更新は invoker forward より前に同期的に
+      // 行う。これによりこの drain cycle の以降で `shouldProcessMessage` が
+      // 正しく false/true を返すようになる。&message で参照マッチし、後続の
+      // `system_invoke` で所有権を移動させる。
+      match &message {
         | SystemMessage::Suspend => self.suspend(),
         | SystemMessage::Resume => self.resume(),
-        | other => {
-          if let Err(error) = invoker.with_write(|i| i.system_invoke(other)) {
-            self.emit_log(LogLevel::Error, alloc::format!("failed to invoke system message: {error:?}"));
-          }
-        },
+        | _ => {},
+      }
+      if let Err(error) = invoker.with_write(|i| i.system_invoke(message)) {
+        self.emit_log(LogLevel::Error, alloc::format!("failed to invoke system message: {error:?}"));
       }
     }
   }

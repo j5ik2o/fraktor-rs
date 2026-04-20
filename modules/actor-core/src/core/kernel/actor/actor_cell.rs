@@ -20,8 +20,8 @@ use portable_atomic::{AtomicBool, Ordering};
 use crate::core::{
   kernel::{
     actor::{
-      Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, Pid, ReceiveTimeoutStateShared,
-      STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON,
+      Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, FailedInfo, Pid,
+      ReceiveTimeoutStateShared, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON,
       actor_ref::{ActorRef, ActorRefSenderShared},
       context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
       error::{ActorError, PipeSpawnError},
@@ -304,23 +304,25 @@ impl ActorCell {
   /// Registers a child pid for supervision.
   pub fn register_child(&self, pid: Pid) {
     self.state.with_write(|state| {
-      if !state.children.contains(&pid) {
-        state.children.push(pid);
-      }
-      find_or_insert_stats(&mut state.child_stats, pid);
+      // Pekko parity: `Children.scala:initChild` installs the child into the
+      // container and lazily creates the accompanying restart stats.
+      state.children_state.add_child(pid);
     });
   }
 
   /// Removes a child pid from supervision tracking.
   pub fn unregister_child(&self, pid: &Pid) {
     self.state.with_write(|state| {
-      state.children.retain(|child| child != pid);
-      state.child_stats.retain(|(child, _)| child != pid);
+      // Pekko parity: `removeChildAndGetStateChange` is the only supported
+      // remove path. We drop the returned `Option<SuspendReason>` here because
+      // this call is only used for synchronous unregister bookkeeping — the
+      // supervision state-change is observed separately in `handle_terminated`.
+      let _ = state.children_state.remove_child_and_get_state_change(*pid);
     });
   }
 
   fn stop_child(&self, pid: Pid) {
-    let should_stop = self.state.with_read(|state| state.children.contains(&pid));
+    let should_stop = self.state.with_read(|state| state.children_state.children().contains(&pid));
     if should_stop && let Err(send_error) = self.system().send_system_message(pid, SystemMessage::Stop) {
       self.system().record_send_error(Some(pid), &send_error);
     }
@@ -329,13 +331,187 @@ impl ActorCell {
   /// Returns the current child pids supervised by this cell.
   #[must_use]
   pub fn children(&self) -> Vec<Pid> {
-    self.state.with_read(|state| state.children.clone())
+    self.state.with_read(|state| state.children_state.children())
+  }
+
+  /// Returns whether the child-registry container is in the `Normal` or
+  /// `Empty` state (Pekko `ChildrenContainer.isNormal`).
+  ///
+  /// AC-H2: exposed as an observation API so that tests and supervision
+  /// paths can branch on the 4-state machine without reaching into
+  /// `state.children_state` directly.
+  #[must_use]
+  pub fn children_state_is_normal(&self) -> bool {
+    self.state.with_read(|state| state.children_state.is_normal())
+  }
+
+  /// Returns whether the child-registry container is currently `Terminating`
+  /// (with reason `Termination`) or `Terminated` (Pekko
+  /// `ChildrenContainer.isTerminating`).
+  ///
+  /// AC-H2: complements [`children_state_is_normal`] for fault-handling
+  /// branch logic.
+  #[must_use]
+  pub fn children_state_is_terminating(&self) -> bool {
+    self.state.with_read(|state| state.children_state.is_terminating())
+  }
+
+  /// Returns whether the cell currently has a failure recorded (Pekko
+  /// `isFailed`).
+  ///
+  /// AC-H3 extension: both `FailedRef(perpetrator)` and `FailedFatally`
+  /// count as failed; only `NoFailedInfo` returns `false`.
+  #[must_use]
+  pub fn is_failed(&self) -> bool {
+    self.state.with_read(|state| matches!(state.failed, FailedInfo::FailedRef(_) | FailedInfo::FailedFatally))
+  }
+
+  /// Returns whether the cell is currently in the `FailedFatally` state
+  /// (Pekko `isFailedFatally`).
+  ///
+  /// AC-H3 extension: a fatal failure prevents any further restart attempt
+  /// until `clear_failed` is called (e.g. through `finishCreate` /
+  /// `finishRecreate`).
+  #[must_use]
+  pub fn is_failed_fatally(&self) -> bool {
+    self.state.with_read(|state| matches!(state.failed, FailedInfo::FailedFatally))
+  }
+
+  /// Returns the [`Pid`] of the child whose failure is currently being
+  /// processed, if any (Pekko `perpetrator`).
+  ///
+  /// AC-H3 extension: only the `FailedRef(perpetrator)` state yields a pid;
+  /// `NoFailedInfo` and `FailedFatally` both return `None`.
+  #[must_use]
+  pub fn perpetrator(&self) -> Option<Pid> {
+    self.state.with_read(|state| match state.failed {
+      | FailedInfo::FailedRef(pid) => Some(pid),
+      | FailedInfo::NoFailedInfo | FailedInfo::FailedFatally => None,
+    })
+  }
+
+  /// Records a failure with `perpetrator` unless the cell is already in the
+  /// `FailedFatally` state (Pekko `setFailed`).
+  ///
+  /// AC-H3 extension: fatal failures take priority and are never downgraded
+  /// to a `FailedRef` by a subsequent child failure.
+  pub fn set_failed(&self, perpetrator: Pid) {
+    self.state.with_write(|state| {
+      // Pekko parity (`FaultHandling.scala`): `setFailed` guards against
+      // overwriting `FailedFatally`, so a later child failure cannot downgrade
+      // an already-fatal state.
+      if matches!(state.failed, FailedInfo::FailedFatally) {
+        return;
+      }
+      state.failed = FailedInfo::FailedRef(perpetrator);
+    });
+  }
+
+  /// Marks the cell as fatally failed (Pekko `setFailedFatally`).
+  ///
+  /// AC-H3 extension: unconditionally overwrites any prior `FailedRef` state
+  /// with `FailedFatally` so that subsequent `set_failed` calls are ignored.
+  pub fn set_failed_fatally(&self) {
+    self.state.with_write(|state| {
+      state.failed = FailedInfo::FailedFatally;
+    });
+  }
+
+  /// Clears any recorded failure state (Pekko `clearFailed`).
+  ///
+  /// AC-H3 extension: unconditionally resets the cell to `NoFailedInfo`,
+  /// including the `FailedFatally` state — required by the `finishCreate` /
+  /// `finishRecreate` restart completion path.
+  pub fn clear_failed(&self) {
+    self.state.with_write(|state| {
+      state.failed = FailedInfo::NoFailedInfo;
+    });
+  }
+
+  /// Registers `target` into the `watching` set (Pekko
+  /// `DeathWatch.watching += target`).
+  ///
+  /// AC-H5: forward-looking entry point used by tests and the upcoming
+  /// `watch` / `watch_with` wiring. Idempotent for duplicates.
+  pub fn register_watching(&self, target: Pid) {
+    self.state.with_write(|state| {
+      if !state.watching.contains(&target) {
+        state.watching.push(target);
+      }
+    });
+  }
+
+  /// Removes `target` from the `watching` set and from `terminated_queued`
+  /// (Pekko `DeathWatch.unwatch`).
+  ///
+  /// AC-H5: unwatching also clears any pending `Terminated` entry so that a
+  /// race between `unwatch` and a queued `Terminated` cannot deliver the
+  /// signal to the user's `on_terminated`.
+  pub fn unregister_watching(&self, target: Pid) {
+    self.state.with_write(|state| {
+      state.watching.retain(|pid| *pid != target);
+      state.terminated_queued.retain(|pid| *pid != target);
+    });
+  }
+
+  /// Returns whether this cell is currently watching `target` (Pekko
+  /// `watching.contains`).
+  #[must_use]
+  pub fn is_watching(&self, target: Pid) -> bool {
+    self.state.with_read(|state| state.watching.contains(&target))
+  }
+
+  /// Returns a snapshot of the `terminated_queued` set (Pekko
+  /// `terminatedQueued.toSeq`).
+  ///
+  /// AC-H5: exposed so tests can observe dedup behaviour for
+  /// `DeathWatchNotification` delivery.
+  #[must_use]
+  pub fn terminated_queued(&self) -> Vec<Pid> {
+    self.state.with_read(|state| state.terminated_queued.clone())
+  }
+
+  /// Recursively propagates `SystemMessage::Suspend` to every registered child.
+  ///
+  /// Pekko parity: `Children.scala:203-208` `suspendChildren(exceptFor)` — the
+  /// parent iterates its children and asks each of them to suspend. Each child
+  /// mailbox that processes the resulting `Suspend` then propagates to its own
+  /// children through the same `system_invoke` path, which is how grandchildren
+  /// get reached (AC-H3-T3).
+  ///
+  /// Failures from `send_system_message` are logged through
+  /// `record_send_error` (same convention as `handle_failure` / `stop_child`).
+  /// Per `ignored-return-values.md` we observe every failure: a child whose
+  /// mailbox is already closed simply produces a recorded log entry, which is
+  /// the Pekko-equivalent "child already dead" outcome.
+  pub(crate) fn suspend_children(&self) {
+    for pid in self.children() {
+      if let Err(send_error) = self.system().send_system_message(pid, SystemMessage::Suspend) {
+        // Pekko parity: a child that is already stopped is a benign case —
+        // `send_system_message` returns `SendError::MailboxClosed` and the
+        // parent continues with the remaining children.
+        self.system().record_send_error(Some(pid), &send_error);
+      }
+    }
+  }
+
+  /// Recursively propagates `SystemMessage::Resume` to every registered child.
+  ///
+  /// Pekko parity: `Children.scala:210-216` `resumeChildren(cause, perp)` —
+  /// Pekko passes the failing child + cause so a per-child `Resume(cause)` can
+  /// target only the perpetrator. fraktor-rs does not yet carry a cause payload
+  /// on `SystemMessage::Resume` (AC-H4 responsibility), so every child is
+  /// resumed unconditionally, mirroring the simpler case where `perp == null`.
+  pub(crate) fn resume_children(&self) {
+    for pid in self.children() {
+      if let Err(send_error) = self.system().send_system_message(pid, SystemMessage::Resume) {
+        self.system().record_send_error(Some(pid), &send_error);
+      }
+    }
   }
 
   pub(crate) fn snapshot_child_restart_stats(&self, pid: Pid) -> Option<RestartStatistics> {
-    self
-      .state
-      .with_read(|state| state.child_stats.iter().find(|(child, _)| *child == pid).map(|(_, record)| record.clone()))
+    self.state.with_read(|state| state.children_state.stats_for(pid).cloned())
   }
 
   fn mark_terminated(&self) {
@@ -817,6 +993,17 @@ impl ActorCell {
   /// the message is enqueued into the actor mailbox (delivered asynchronously on a later turn).
   /// Otherwise, [`Actor::on_terminated`] is invoked synchronously within this call.
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
+    // Pekko parity (`ActorCell.scala:handleChildTerminated`): drop the child
+    // from the container before dispatching the user callback. The returned
+    // `Option<SuspendReason>` tells us whether the container transitioned out
+    // of `Terminating` (e.g. last-child died). AC-H4 will wire this into
+    // `finishRecreate` / `finishTerminate`; for now we only need the removal
+    // side-effect.
+    //
+    // TODO(AC-H4): consume the returned reason to fire `finishRecreate` /
+    // `finishTerminate` once restart/termination completion is implemented.
+    let _state_change = self.state.with_write(|state| state.children_state.remove_child_and_get_state_change(terminated_pid));
+
     let custom_message = self.take_watch_with_message(terminated_pid);
     if let Some(message) = custom_message {
       self.actor_ref().try_tell(message).map_err(|error| ActorError::from_send_error(&error))?;
@@ -940,7 +1127,13 @@ impl ActorCell {
   }
 
   fn report_failure(&self, error: &ActorError, snapshot: Option<FailureMessageSnapshot>) {
+    // Pekko `FaultHandling.scala:62-67` handleInvokeFailure: suspend self and
+    // all children **before** reporting the failure to the supervisor. AC-H3
+    // requires the parent mailbox and every descendant to be suspended prior
+    // to `system.report_failure` so the supervisor directive sees a fully
+    // quiesced subtree.
     self.mailbox().suspend();
+    self.suspend_children();
     let timestamp = self.system().monotonic_now();
     let payload = FailurePayload::from_error(self.pid, error, snapshot, timestamp);
     self.system().report_failure(payload);
@@ -1119,11 +1312,17 @@ impl MessageInvoker for ActorCellInvoker {
         Ok(())
       },
       | SystemMessage::Suspend => {
-        cell.mailbox().suspend();
+        // Pekko `FaultHandling.scala:124-128` faultSuspend: the mailbox counter
+        // has already been updated inside `Mailbox::process_all_system_messages`
+        // (MB-H1); here we only perform the AC-H3 recursion into the children.
+        cell.suspend_children();
         Ok(())
       },
       | SystemMessage::Resume => {
-        cell.mailbox().resume();
+        // Pekko `FaultHandling.scala:136-153` faultResume: the mailbox counter
+        // has already been decremented by the mailbox layer before forwarding
+        // (MB-H1). This arm only propagates the event to the children.
+        cell.resume_children();
         Ok(())
       },
       | SystemMessage::Watch(pid) => {
@@ -1175,14 +1374,25 @@ impl ActorCell {
 
     let directive = {
       self.state.with_write(|state| {
-        let entry = find_or_insert_stats(&mut state.child_stats, child);
-        strategy.handle_failure(entry, error, now)
+        // Pekko parity (`Children.scala:handleChildTerminated`): obtain the
+        // restart stats from the container, creating a fresh entry if the
+        // child had not been seen yet. `stats_for_mut` returns `None` only on
+        // the `Terminated` state, which is unreachable here — a failed child
+        // necessarily means the parent is still alive.
+        match state.children_state.stats_for_mut(child) {
+          | Some(entry) => strategy.handle_failure(entry, error, now),
+          | None => {
+            // Defensive fallback: if we are somehow in a `Terminated` state,
+            // short-circuit to `Stop` to avoid restarting a dead container.
+            SupervisorDirective::Stop
+          },
+        }
       })
     };
 
     let affected = match strategy.kind() {
       | SupervisorStrategyKind::OneForOne => vec![child],
-      | SupervisorStrategyKind::AllForOne => self.state.with_read(|state| state.children.clone()),
+      | SupervisorStrategyKind::AllForOne => self.state.with_read(|state| state.children_state.children()),
     };
 
     if matches!(directive, SupervisorDirective::Stop) {
@@ -1196,15 +1406,14 @@ impl ActorCell {
     if children.is_empty() {
       return;
     }
-    self.state.with_write(|state| state.child_stats.retain(|(pid, _)| !children.contains(pid)));
+    self.state.with_write(|state| {
+      // Pekko parity: when the strategy directive is `Stop`, affected children
+      // are removed from the container. We drop the returned state-change
+      // reasons — AC-H4 will consume them to drive `finishRecreate` /
+      // `finishTerminate`.
+      for pid in children {
+        let _ = state.children_state.remove_child_and_get_state_change(*pid);
+      }
+    });
   }
-}
-
-fn find_or_insert_stats(entries: &mut Vec<(Pid, RestartStatistics)>, pid: Pid) -> &mut RestartStatistics {
-  if let Some(index) = entries.iter().position(|(child, _)| *child == pid) {
-    return &mut entries[index].1;
-  }
-  let new_index = entries.len();
-  entries.push((pid, RestartStatistics::new()));
-  &mut entries[new_index].1
 }

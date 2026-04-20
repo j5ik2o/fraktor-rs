@@ -6,7 +6,12 @@ mod tests;
 use alloc::boxed::Box;
 
 use crate::core::kernel::{
-  actor::{ActorContext, Pid, error::ActorError, messaging::AnyMessageView, supervision::SupervisorStrategyConfig},
+  actor::{
+    ActorContext, Pid,
+    error::{ActorError, ActorErrorReason},
+    messaging::AnyMessageView,
+    supervision::SupervisorStrategyConfig,
+  },
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
 };
 
@@ -158,13 +163,34 @@ pub trait Actor: Send {
 
   /// Called before the actor is restarted by its supervisor.
   ///
-  /// The default implementation delegates to [`post_stop`](Actor::post_stop).
+  /// Pekko parity (`Actor.scala` `preRestart(reason, message)`): the default
+  /// implementation stops every live child via
+  /// [`ActorContext::stop_all_children`] and then invokes
+  /// [`post_stop`](Actor::post_stop). Override to replace this behaviour
+  /// entirely — the kernel does not re-delegate to the default after the
+  /// override returns.
   ///
   /// # Errors
   ///
   /// Returns an error when pre-restart cleanup fails.
-  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
+    ctx.stop_all_children();
     self.post_stop(ctx)
+  }
+
+  /// Called after the actor has been restarted by its supervisor.
+  ///
+  /// Pekko parity (`Actor.scala` `postRestart(reason)`): the default
+  /// implementation delegates to [`pre_start`](Actor::pre_start). Override
+  /// to replace this behaviour entirely — the kernel does not call
+  /// `pre_start` on the restart path; the override is solely responsible
+  /// for any initialisation work required after a restart.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when post-restart initialisation fails.
+  fn post_restart(&mut self, ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
+    self.pre_start(ctx)
   }
 
   /// Called when a supervised child actor fails.
@@ -214,8 +240,12 @@ where
     (**self).supervisor_strategy(ctx)
   }
 
-  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    (**self).pre_restart(ctx)
+  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>, reason: &ActorErrorReason) -> Result<(), ActorError> {
+    (**self).pre_restart(ctx, reason)
+  }
+
+  fn post_restart(&mut self, ctx: &mut ActorContext<'_>, reason: &ActorErrorReason) -> Result<(), ActorError> {
+    (**self).post_restart(ctx, reason)
   }
 
   fn on_child_failed(&mut self, ctx: &mut ActorContext<'_>, child: Pid, error: &ActorError) -> Result<(), ActorError> {

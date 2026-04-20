@@ -631,7 +631,8 @@ fn signal_probe_behavior(started: &Arc<AtomicUsize>, post_stop: &Arc<AtomicUsize
         | BehaviorSignal::Terminated(_)
         | BehaviorSignal::MessageAdaptionFailure(_)
         | BehaviorSignal::ChildFailed(_)
-        | BehaviorSignal::PreRestart => {},
+        | BehaviorSignal::PreRestart
+        | BehaviorSignal::PostRestart => {},
       }
       Ok(Behaviors::same())
     })

@@ -245,10 +245,15 @@ where
     self.actor.on_mailbox_pressure(&mut typed_ctx, event)
   }
 
-  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
     self.adapters.clear();
     let mut typed_ctx = TypedActorContext::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.pre_restart(&mut typed_ctx)
+  }
+
+  fn post_restart(&mut self, ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
+    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
+    self.actor.post_restart(&mut typed_ctx)
   }
 
   fn on_child_failed(&mut self, ctx: &mut ActorContext<'_>, child: Pid, error: &ActorError) -> Result<(), ActorError> {
