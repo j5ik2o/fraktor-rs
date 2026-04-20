@@ -102,14 +102,17 @@ where
 
   /// Called after the actor has been restarted by its supervisor.
   ///
-  /// The default implementation delegates to [`pre_start`](TypedActor::pre_start), matching
-  /// Pekko `aroundPostRestart`'s default of invoking `preStart` to reinitialise actor state.
+  /// Pekko `aroundPostRestart` の契約は「`postRestart` 実行後に `preStart` を再度呼ぶ」こと。
+  /// `TypedActorAdapter::post_restart` 側がこの 2 段の呼び出しを実行するため、本 trait の
+  /// デフォルト実装は何もしない (`Ok(())`)。`preStart` の再実行を抑止したい実装のみが本
+  /// メソッドを override する。
   ///
   /// # Errors
   ///
-  /// Returns an error when post-restart initialisation fails.
+  /// Returns an error when post-restart work fails.
+  #[allow(unused_variables)]
   fn post_restart(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
-    self.pre_start(ctx)
+    Ok(())
   }
 
   /// Called when a supervised child actor fails.
