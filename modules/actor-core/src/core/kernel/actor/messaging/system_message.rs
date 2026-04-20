@@ -45,17 +45,12 @@ pub enum SystemMessage {
   /// Kernel-internal DeathWatch notification (Pekko
   /// `DeathWatch.scala:DeathWatchNotification`).
   ///
-  /// AC-H5: distinct from [`SystemMessage::Terminated`] — the notification
-  /// flows from the terminated actor's kernel to the watcher's kernel, and
-  /// the watcher kernel is responsible for enqueueing a user-facing
-  /// `Terminated` into its user mailbox (subject to dedup via
-  /// `terminated_queued`).
+  /// AC-H5: this is the sole kernel-internal envelope used to propagate a
+  /// terminated actor's notification to its watchers. The watcher's kernel is
+  /// responsible for applying `watching_contains_pid` / `terminated_queued`
+  /// dedup and then dispatching either a `watch_with` custom message or
+  /// [`Actor::on_terminated`] directly.
   DeathWatchNotification(Pid),
-  /// Notifies watchers that the referenced actor has terminated.
-  ///
-  /// User-level signal delivered to the watcher's user queue; dispatched to
-  /// [`Actor::on_terminated`] when handled.
-  Terminated(Pid),
   /// Reports that a child actor failed and requires supervisor handling.
   Failure(FailurePayload),
   /// Resumes a pending pipe task once its future has been woken.

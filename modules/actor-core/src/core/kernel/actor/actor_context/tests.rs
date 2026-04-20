@@ -966,10 +966,9 @@ fn actor_context_pipe_to_self_still_works_after_pipe_to_added() {
 //
 // AL-H1 forward-looking API surface:
 //   - `ActorContext::stop_all_children(&mut self) -> Result<(), SendError>`
-//   - 仕様: 現在登録されている children に対して `Stop` を送り、
-//     pekko 互換として death watch 登録解除（implicit unwatch）も合わせて
-//     実施する。本テストは AC-H5 の `terminated_queued` 配線後に
-//     unwatch 効果を観測する。
+//   - 仕様: 現在登録されている children に対して `Stop` を送り、 pekko 互換として death watch
+//     登録解除（implicit unwatch）も合わせて 実施する。本テストは AC-H5 の `terminated_queued`
+//     配線後に unwatch 効果を観測する。
 // ====================================================================
 
 #[test]
@@ -1005,11 +1004,15 @@ fn al_h1_stop_all_children_queues_stop_to_each_registered_child() {
   let child_c = context.spawn_child(&child_props).expect("spawn child c");
   assert_eq!(context.children().len(), 3, "前提: 3 child registered");
 
-  context.stop_all_children().expect("AL-H1: stop_all_children Ok");
-
+  // 名前は stop 前に取得する（同期 dispatcher では stop_all_children が
+  // そのまま remove_cell まで走るため、stop 後は `system.state().cell(...)` が
+  // None になる）。
   let child_a_name = system.state().cell(&child_a.pid()).expect("cell a").name().to_owned();
   let child_b_name = system.state().cell(&child_b.pid()).expect("cell b").name().to_owned();
   let child_c_name = system.state().cell(&child_c.pid()).expect("cell c").name().to_owned();
+
+  context.stop_all_children().expect("AL-H1: stop_all_children Ok");
+
   wait_until(|| {
     context.child(&child_a_name).is_none()
       && context.child(&child_b_name).is_none()

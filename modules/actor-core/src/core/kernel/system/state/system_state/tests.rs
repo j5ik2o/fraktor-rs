@@ -609,7 +609,7 @@ fn booting_into_running_fails_when_guardian_missing() {
 }
 
 #[test]
-fn watch_on_missing_guardian_sends_terminated_to_watcher() {
+fn watch_on_missing_guardian_sends_death_watch_notification_to_watcher() {
   let state = build_shared_state_with_noop_dispatcher();
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
@@ -625,7 +625,7 @@ fn watch_on_missing_guardian_sends_terminated_to_watcher() {
   assert_eq!(mailbox_snapshot.system_len(), 1);
   let dequeued = mailbox_snapshot.dequeue_system().expect("dequeue system");
   match dequeued {
-    | SystemMessage::Terminated(pid) => assert_eq!(pid, target_pid),
+    | SystemMessage::DeathWatchNotification(pid) => assert_eq!(pid, target_pid),
     | other => panic!("unexpected system message: {:?}", other),
   }
 }
@@ -674,7 +674,7 @@ fn remote_watch_hook_non_consuming_watch_runs_fallback() {
   assert_eq!(mailbox_snapshot.system_len(), 1);
   let dequeued = mailbox_snapshot.dequeue_system().expect("dequeue system");
   match dequeued {
-    | SystemMessage::Terminated(pid) => assert_eq!(pid, target_pid),
+    | SystemMessage::DeathWatchNotification(pid) => assert_eq!(pid, target_pid),
     | other => panic!("unexpected system message: {:?}", other),
   }
 

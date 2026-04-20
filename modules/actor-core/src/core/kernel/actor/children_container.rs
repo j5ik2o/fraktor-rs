@@ -8,16 +8,15 @@
 //!
 //! Notable deviations from Pekko:
 //!
-//! * Pekko keys children by `String` (the actor name); fraktor-rs keys them by
-//!   [`Pid`] because the kernel layer does not expose actor names to the
-//!   container.
-//! * Pekko stores [`ChildRestartStats`] with additional `uid` / `child` fields;
-//!   fraktor-rs stores a plain [`RestartStatistics`] next to the pid because
-//!   the uid is already part of [`Pid::generation`] and the child reference is
-//!   resolved through the [`SystemStateShared`] registry.
-//! * Pekko's `reserve` / `unreserve` APIs are intentionally not ported here;
-//!   fraktor-rs reserves names through [`SystemStateShared::reserve_name`]
-//!   which is orthogonal to supervision bookkeeping.
+//! * Pekko keys children by `String` (the actor name); fraktor-rs keys them by [`Pid`] because the
+//!   kernel layer does not expose actor names to the container.
+//! * Pekko stores [`ChildRestartStats`] with additional `uid` / `child` fields; fraktor-rs stores a
+//!   plain [`RestartStatistics`] next to the pid because the uid is already part of
+//!   [`Pid::generation`] and the child reference is resolved through the [`SystemStateShared`]
+//!   registry.
+//! * Pekko's `reserve` / `unreserve` APIs are intentionally not ported here; fraktor-rs reserves
+//!   names through [`SystemStateShared::reserve_name`] which is orthogonal to supervision
+//!   bookkeeping.
 //!
 //! [`ChildRestartStats`]: https://github.com/apache/pekko/blob/main/actor/src/main/scala/org/apache/pekko/actor/ChildRestartStats.scala
 //! [`SystemStateShared::reserve_name`]: crate::core::kernel::system::state::SystemStateShared
@@ -27,7 +26,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use crate::core::kernel::actor::{Pid, suspend_reason::SuspendReason, supervision::RestartStatistics};
+use crate::core::kernel::actor::{Pid, supervision::RestartStatistics, suspend_reason::SuspendReason};
 
 /// Child-registry state machine.
 ///
@@ -44,13 +43,12 @@ use crate::core::kernel::actor::{Pid, suspend_reason::SuspendReason, supervision
 /// [`Normal`]: ChildrenContainer::Normal
 /// [`Terminating`]: ChildrenContainer::Terminating
 /// [`Terminated`]: ChildrenContainer::Terminated
-//
-// `Terminating` は AC-H2 で `shall_die` / `set_children_termination_reason`
-// 経由の生成経路を実装しているが、production の呼び出し側 (`handle_recreate` /
-// `finish_terminate`) は AC-H4 で配線される。現時点では test 経由でのみ
-// 到達可能なため `#[allow(dead_code)]` を付与する。plan § バッチ分割で scope
-// 明示済み、`children_container/tests.rs` 全 29 ケースで網羅テスト済み。
-#[allow(dead_code)]
+// AC-H4 で `fault_recreate` / `finish_recreate` および
+// `set_children_termination_reason` 経由の Normal → Terminating 遷移が
+// production 配線済み。`Terminating` / `Terminated` variant はこの change で
+// 参照されるようになったため `#[allow(dead_code)]` を除去している。
+// `finish_terminate` (Phase A3) 配線時に `Terminated` variant も production
+// 経路から到達する予定。
 #[derive(Debug)]
 pub(crate) enum ChildrenContainer {
   /// No children registered. Default state for a freshly spawned actor cell.
@@ -74,7 +72,7 @@ pub(crate) enum ChildrenContainer {
   /// (`ChildrenContainer.scala:163-224`).
   Terminating {
     /// Child registry keyed by pid. Values carry [`RestartStatistics`].
-    c: Vec<(Pid, RestartStatistics)>,
+    c:      Vec<(Pid, RestartStatistics)>,
     /// Pids that were asked to die but whose `Terminated` has not yet arrived.
     to_die: Vec<Pid>,
     /// Reason this transition was initiated.
@@ -98,11 +96,10 @@ impl ChildrenContainer {
   /// Registers `pid` as a supervised child.
   ///
   /// * [`Empty`](Self::Empty) transitions to [`Normal`](Self::Normal).
-  /// * [`Normal`](Self::Normal) / [`Terminating`](Self::Terminating) update
-  ///   their child map in place (idempotent for already-registered pids).
-  /// * [`Terminated`](Self::Terminated) is a no-op — Pekko parity
-  ///   (`ChildrenContainer.scala:106`: `TerminatedChildrenContainer.add =
-  ///   this`).
+  /// * [`Normal`](Self::Normal) / [`Terminating`](Self::Terminating) update their child map in
+  ///   place (idempotent for already-registered pids).
+  /// * [`Terminated`](Self::Terminated) is a no-op — Pekko parity (`ChildrenContainer.scala:106`:
+  ///   `TerminatedChildrenContainer.add = this`).
   pub(crate) fn add_child(&mut self, pid: Pid) {
     match self {
       | Self::Empty => {
@@ -118,20 +115,19 @@ impl ChildrenContainer {
     }
   }
 
-  /// Marks `pid` as scheduled to die, returning the previous reason unchanged.
+  /// Marks `pid` as scheduled to die (Pekko `shallDie`).
   ///
-  /// * [`Empty`](Self::Empty) / [`Terminated`](Self::Terminated) are no-ops —
-  ///   Pekko parity (`ChildrenContainer.scala:87`: `shallDie = this`).
-  /// * [`Normal`](Self::Normal) transitions to
-  ///   [`Terminating`](Self::Terminating) with `reason = UserRequest`.
-  /// * [`Terminating`](Self::Terminating) adds `pid` to the `to_die` set
-  ///   without touching `reason`.
-  //
-  // AC-H4 で `handle_recreate` / `terminate` 経路 (pekko `Children.scala:210`)
-  // と連携して配線予定。AC-H3 は `suspend_children` / `resume_children` による
-  // 子 mailbox 再帰のみを対象とし `shall_die` を使わない。現時点では test
-  // 経由でのみ到達するため `#[allow(dead_code)]` を付与する。
-  #[allow(dead_code)]
+  /// * [`Empty`](Self::Empty) / [`Terminated`](Self::Terminated) are no-ops — Pekko parity
+  ///   (`ChildrenContainer.scala:87`: `shallDie = this`).
+  /// * [`Normal`](Self::Normal) transitions to [`Terminating`](Self::Terminating) with `reason =
+  ///   UserRequest` and `to_die = {pid}`.
+  /// * [`Terminating`](Self::Terminating) adds `pid` to the `to_die` set without touching `reason`.
+  ///
+  /// AC-H2: wired in `ActorContext::stop_child` / `stop_all_children` so that
+  /// user-initiated stop requests match the Pekko `context.stop(child)` flow
+  /// exactly — `set_children_termination_reason(Recreation(cause))` then
+  /// upgrades the existing `Terminating(UserRequest)` state to
+  /// `Terminating(Recreation)` for AC-H4's `fault_recreate` deferral path.
   pub(crate) fn shall_die(&mut self, pid: Pid) {
     match self {
       | Self::Empty | Self::Terminated => {
@@ -154,24 +150,19 @@ impl ChildrenContainer {
   }
 
   /// Replaces the termination reason on a [`Terminating`](Self::Terminating)
-  /// container.
+  /// container (Pekko parity: `Children.scala:178-183`).
   ///
   /// Returns `true` iff the current state is [`Terminating`](Self::Terminating)
-  /// and the reason was updated. Returns `false` in all other states — Pekko
-  /// parity (`Children.scala:178-183`).
-  //
+  /// and the reason was updated. Returns `false` in all other states — caller
+  /// is expected to pre-transition the container via [`Self::shall_die`]
+  /// (or equivalent) when deferral is required.
   // CQS 違反の根拠:
   // Pekko `setChildrenTerminationReason` は `@tailrec` で CAS ループを回し
-  // 成功/失敗（= Terminating だったか否か）を `Boolean` で返す。
-  // fraktor-rs では `SpinSyncMutex` 配下で単発の条件付き書き込みに畳んで
-  // いるが、呼び出し側 (`AC-H4 finish_recreate`) が「遷移が起きたか？」を
-  // 判定する必要があるため、`&mut self` + 戻り値 (`Vec::pop` 相当例外) を
-  // 許容する。`cqs-principle.md` の判定フロー「ロジック上分離不可のため
-  // CQS 違反を許容」に該当し、人間の許可を取得済み (plan § 確認事項)。
-  //
-  // AC-H4 `finish_recreate` / `finish_terminate` で配線予定。現時点では test
-  // 経由でのみ到達するため `#[allow(dead_code)]` を付与する。
-  #[allow(dead_code)]
+  // 成功/失敗（= Terminating だったか否か）を `Boolean` で返す。fraktor-rs では
+  // 単発の条件付き書き込みに畳むが、呼び出し側 (`AC-H4 fault_recreate`) が
+  // 「deferred にすべきか」を単一の bool で判定する必要があるため、
+  // `&mut self` + 戻り値 (`Vec::pop` 相当例外) を許容する。`cqs-principle.md`
+  // の判定フロー「ロジック上分離不可のため CQS 違反を許容」に該当。
   pub(crate) fn set_children_termination_reason(&mut self, reason: SuspendReason) -> bool {
     match self {
       | Self::Terminating { reason: current, .. } => {
@@ -188,19 +179,17 @@ impl ChildrenContainer {
   /// Pekko parity (`Children.scala:240-257`): only
   /// [`Terminating`](Self::Terminating) produces a meaningful return value.
   ///
-  /// * For [`Normal`](Self::Normal) the pid is dropped (Empty if it was the
-  ///   last one) and `None` is returned.
+  /// * For [`Normal`](Self::Normal) the pid is dropped (Empty if it was the last one) and `None` is
+  ///   returned.
   /// * For [`Terminating`](Self::Terminating):
   ///   * If removing `pid` from `to_die` keeps it non-empty, the state stays
   ///     [`Terminating`](Self::Terminating) and `None` is returned.
   ///   * Otherwise:
-  ///     * `reason == Termination` → transition to
-  ///       [`Terminated`](Self::Terminated), return `Some(Termination)`.
-  ///     * `reason != Termination` → transition to
-  ///       [`Normal`](Self::Normal) (or [`Empty`](Self::Empty) if no children
-  ///       remain), return `Some(reason)`.
+  ///     * `reason == Termination` → transition to [`Terminated`](Self::Terminated), return
+  ///       `Some(Termination)`.
+  ///     * `reason != Termination` → transition to [`Normal`](Self::Normal) (or
+  ///       [`Empty`](Self::Empty) if no children remain), return `Some(reason)`.
   /// * [`Empty`](Self::Empty) / [`Terminated`](Self::Terminated) return `None`.
-  //
   // CQS 違反の根拠:
   // Pekko `removeChildAndGetStateChange` は CAS ループ内で状態遷移と
   // 「遷移後に観測された reason」を原子的に返す。fraktor-rs でも呼び出し側
@@ -278,12 +267,11 @@ impl ChildrenContainer {
   /// Returns a mutable reference to the restart statistics registered for
   /// `pid`, inserting a fresh entry if the pid is not yet known.
   ///
-  /// * [`Empty`](Self::Empty) promotes to [`Normal`](Self::Normal) and
-  ///   registers `pid`.
-  /// * [`Normal`](Self::Normal) / [`Terminating`](Self::Terminating) return
-  ///   the existing entry or insert a fresh one.
-  /// * [`Terminated`](Self::Terminated) returns `None` — the container is
-  ///   sealed and the caller must handle the absence explicitly.
+  /// * [`Empty`](Self::Empty) promotes to [`Normal`](Self::Normal) and registers `pid`.
+  /// * [`Normal`](Self::Normal) / [`Terminating`](Self::Terminating) return the existing entry or
+  ///   insert a fresh one.
+  /// * [`Terminated`](Self::Terminated) returns `None` — the container is sealed and the caller
+  ///   must handle the absence explicitly.
   #[must_use]
   pub(crate) fn stats_for_mut(&mut self, pid: Pid) -> Option<&mut RestartStatistics> {
     match self {
@@ -312,14 +300,10 @@ impl ChildrenContainer {
   ///
   /// * [`Empty`](Self::Empty) → `true`
   /// * [`Normal`](Self::Normal) → `true`
-  /// * [`Terminating`](Self::Terminating) → `true` iff
-  ///   `reason == SuspendReason::UserRequest`
+  /// * [`Terminating`](Self::Terminating) → `true` iff `reason == UserRequest`
   /// * [`Terminated`](Self::Terminated) → `false`
-  //
-  // AC-H2 で `ActorCell::children_state_is_normal` / Pekko `handleFailure` の
-  // `!isNormal` 分岐に配線済み。
   #[must_use]
-  pub(crate) fn is_normal(&self) -> bool {
+  pub(crate) const fn is_normal(&self) -> bool {
     match self {
       | Self::Empty | Self::Normal { .. } => true,
       | Self::Terminating { reason, .. } => matches!(reason, SuspendReason::UserRequest),
@@ -330,19 +314,28 @@ impl ChildrenContainer {
   /// Pekko parity (`ChildrenContainer.scala:43`, `109`, `218`):
   ///
   /// * [`Terminated`](Self::Terminated) → `true`
-  /// * [`Terminating`](Self::Terminating) → `true` iff
-  ///   `reason == SuspendReason::Termination`
+  /// * [`Terminating`](Self::Terminating) → `true` iff `reason == Termination`
   /// * Other states → `false`
-  //
-  // AC-H2 で `ActorCell::children_state_is_terminating` / Pekko `terminate` の
-  // 判定経路に配線済み。
   #[must_use]
-  pub(crate) fn is_terminating(&self) -> bool {
+  pub(crate) const fn is_terminating(&self) -> bool {
     match self {
       | Self::Terminated => true,
       | Self::Terminating { reason, .. } => matches!(reason, SuspendReason::Termination),
       | Self::Empty | Self::Normal { .. } => false,
     }
+  }
+
+  /// Returns `true` whenever the container has left the `Empty` / `Normal`
+  /// path — i.e. the state machine is in [`Terminating`](Self::Terminating)
+  /// (for any [`SuspendReason`]) or [`Terminated`](Self::Terminated).
+  ///
+  /// This is a fraktor-rs convenience predicate used by AC-H2 / AC-H4 branches
+  /// that observe whether the parent is "waiting for its children" regardless
+  /// of the specific reason (Pekko's `WaitingForChildren` mixin + `Terminated`
+  /// terminal).
+  #[must_use]
+  pub(crate) const fn is_in_terminating_variant(&self) -> bool {
+    matches!(self, Self::Terminating { .. } | Self::Terminated)
   }
 }
 

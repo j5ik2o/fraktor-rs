@@ -132,9 +132,11 @@ fn failure_payload_to_actor_error_preserves_classification() {
 }
 
 #[test]
-fn terminated_message_carries_pid() {
+fn death_watch_notification_carries_pid() {
+  // AC-H5: `SystemMessage::Terminated(Pid)` variant は削除済みで、kernel 内の
+  // watcher 通知は `DeathWatchNotification(Pid)` のみが担う。
   let target = Pid::new(7, 0);
-  if let SystemMessage::Terminated(pid) = SystemMessage::Terminated(target) {
+  if let SystemMessage::DeathWatchNotification(pid) = SystemMessage::DeathWatchNotification(target) {
     assert_eq!(pid, target);
   } else {
     panic!("unexpected variant");
@@ -160,17 +162,13 @@ fn death_watch_notification_round_trips_through_any_message() {
 }
 
 #[test]
-fn death_watch_notification_is_distinct_from_terminated() {
-  // AC-H5: `DeathWatchNotification(Pid)` と `Terminated(Pid)` は別の variant。
-  // 前者は kernel 内部の watcher 通知 system message、後者は user queue へ
-  // 配送されてユーザーの receive で観測される public message。Pekko の
-  // `Terminated` user-level message (`AutoReceivedMessage`) と
-  // `DeathWatchNotification` system message の二層構造をそのまま反映する。
+fn death_watch_notification_is_distinct_from_watch() {
+  // AC-H5: `DeathWatchNotification(Pid)` は kernel 内の termination 通知専用で、
+  // `Watch(Pid)` (subscribe 要求) とは別 variant。本 change で
+  // `SystemMessage::Terminated(Pid)` は enum から削除済み（kernel 内送信元が
+  // 消えたため未使用 variant を残さない原則に従う）。
   let target = Pid::new(51, 0);
   let dwn = SystemMessage::DeathWatchNotification(target);
-  let terminated = SystemMessage::Terminated(target);
-  assert_ne!(
-    dwn, terminated,
-    "AC-H5: DeathWatchNotification と Terminated は別 variant でなければならない"
-  );
+  let watch = SystemMessage::Watch(target);
+  assert_ne!(dwn, watch, "DeathWatchNotification と Watch は別 variant");
 }

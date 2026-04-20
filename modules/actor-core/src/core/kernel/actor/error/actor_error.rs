@@ -47,6 +47,12 @@ impl ActorError {
     }
   }
 
+  /// Returns a cloned copy of the underlying reason.
+  #[must_use]
+  pub fn to_reason(&self) -> ActorErrorReason {
+    self.reason().clone()
+  }
+
   /// Converts this error into a fatal classification.
   #[must_use]
   pub fn into_fatal(self) -> Self {

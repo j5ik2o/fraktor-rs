@@ -483,12 +483,11 @@ fn behavior_runner_post_stop_from_empty_does_not_publish_unhandled_message() {
 // AL-H1: typed 側 PreStart / PostRestart dispatch 順序
 // --------------------------------------------------------------------
 // AL-H1 forward-looking API surface:
-//   - `TypedActor::post_restart(&mut self, ctx)` を新設し、`BehaviorRunner`
-//     が `BehaviorSignal::PostRestart` を dispatch する。
+//   - `TypedActor::post_restart(&mut self, ctx)` を新設し、`BehaviorRunner` が
+//     `BehaviorSignal::PostRestart` を dispatch する。
 //   - Pekko parity: PreStart signal は外部 (公開シグナル) に出ない (現行
-//     `behavior_runner_pre_start_uses_internal_setup_without_public_started_signal`
-//     を維持) 一方、PostRestart は restart の完了通知として確実に dispatch
-//     される。
+//     `behavior_runner_pre_start_uses_internal_setup_without_public_started_signal` を維持)
+//     一方、PostRestart は restart の完了通知として確実に dispatch される。
 //   - `BehaviorSignal::PostRestart` variant が新設される。
 // ====================================================================
 

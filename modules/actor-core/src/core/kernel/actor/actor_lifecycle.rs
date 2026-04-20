@@ -174,7 +174,9 @@ pub trait Actor: Send {
   ///
   /// Returns an error when pre-restart cleanup fails.
   fn pre_restart(&mut self, ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
-    ctx.stop_all_children();
+    if let Err(error) = ctx.stop_all_children() {
+      return Err(ActorError::from_send_error(&error));
+    }
     self.post_stop(ctx)
   }
 

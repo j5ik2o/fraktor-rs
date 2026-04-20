@@ -813,7 +813,7 @@ impl SystemState {
           if self.forward_remote_watch(pid, watcher) {
             return Ok(());
           }
-          if let Err(e) = self.send_system_message(watcher, SystemMessage::Terminated(pid)) {
+          if let Err(e) = self.send_system_message(watcher, SystemMessage::DeathWatchNotification(pid)) {
             self.record_send_error(Some(watcher), &e);
           }
           Ok(())
@@ -824,7 +824,7 @@ impl SystemState {
           }
           Ok(())
         },
-        | SystemMessage::Terminated(_) => Ok(()),
+        | SystemMessage::DeathWatchNotification(_) => Ok(()),
         | SystemMessage::PipeTask(_) => Ok(()),
         | other => Err(SendError::closed(AnyMessage::new(other))),
       }
@@ -987,8 +987,22 @@ impl SystemState {
     match directive {
       | SupervisorDirective::Restart => {
         let mut escalate_due_to_recreate_failure = false;
+        for target in &affected {
+          // Pekko `SupervisorStrategy.restartChild(..., suspendFirst)`: the
+          // originally failing child already suspended itself via
+          // `report_failure`, but AllForOne siblings must be suspended before
+          // their `Recreate` is delivered so that `fault_recreate` observes
+          // the AC-H3 "suspended mailbox" precondition.
+          if *target != pid
+            && let Some(sibling_cell) = self.cell(target)
+          {
+            sibling_cell.mailbox().suspend();
+            sibling_cell.suspend_children();
+          }
+        }
         for target in affected {
-          if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate) {
+          let cause = error.to_reason();
+          if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate(cause)) {
             self.record_send_error(Some(target), &send_error);
             if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
               self.record_send_error(Some(target), &e);
@@ -997,6 +1011,7 @@ impl SystemState {
           }
         }
         if escalate_due_to_recreate_failure {
+          Self::suspend_for_escalation(&parent_cell);
           self.handle_failure(parent_pid, parent_parent, error);
         }
       },
@@ -1009,6 +1024,13 @@ impl SystemState {
         for target in affected {
           self.stop_actor(target);
         }
+        // Pekko `FaultHandling.scala:62-67` handleInvokeFailure semantics:
+        // escalation throws in the supervisor, which triggers its own
+        // `handleInvokeFailure` → suspend self + children before reporting to
+        // its parent. Replicate that quiescence here so the grandparent's
+        // restart directive finds the supervisor with a suspended mailbox
+        // (AC-H3 precondition for `fault_recreate`).
+        Self::suspend_for_escalation(&parent_cell);
         self.handle_failure(parent_pid, parent_parent, error);
       },
       | SupervisorDirective::Resume => {
@@ -1019,6 +1041,11 @@ impl SystemState {
         }
       },
     }
+  }
+
+  fn suspend_for_escalation(cell: &ActorCell) {
+    cell.mailbox().suspend();
+    cell.suspend_children();
   }
 
   fn stop_actor(&self, pid: Pid) {

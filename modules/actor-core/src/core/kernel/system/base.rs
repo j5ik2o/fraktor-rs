@@ -607,14 +607,36 @@ impl ActorSystem {
     let name = self.state.assign_name(parent, props.name(), pid)?;
     let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
 
+    // AC-H4 TOCTOU-safe order: registration must complete before the `Create`
+    // handshake so that if the child fails in `pre_start`, the parent already
+    // sees the child in `children_state` and in its `state.watching` set. This
+    // guarantees that the subsequent `DeathWatchNotification` drives
+    // `finish_recreate` / `finish_terminate` without dropping state-change
+    // transitions.
     self.state.register_cell(cell.clone());
-    self.perform_create_handshake(parent, pid, &cell)?;
-
     if let Some(parent_pid) = parent {
       self.state.register_child(parent_pid, pid);
+      self.install_supervision_watch(parent_pid, pid, &cell);
     }
+    self.perform_create_handshake(parent, pid, &cell)?;
 
     Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
+  }
+
+  /// Installs the bidirectional supervision watch between `parent` and the
+  /// newly registered child cell.
+  ///
+  /// The `child_cell.state.watchers` gains `(parent, Supervision)` so the
+  /// child's `notify_watchers_on_stop` reaches the parent. The parent cell's
+  /// `state.watching` gains `(pid, Supervision)` so that
+  /// `handle_death_watch_notification` passes the `watching_contains_pid`
+  /// gate and drives `finish_recreate`. Both entries are removed by
+  /// [`Self::rollback_spawn`] if the `Create` handshake subsequently fails.
+  fn install_supervision_watch(&self, parent_pid: Pid, child_pid: Pid, child_cell: &ArcShared<ActorCell>) {
+    child_cell.register_supervision_watcher(parent_pid);
+    if let Some(parent_cell) = self.state.cell(&parent_pid) {
+      parent_cell.register_supervision_watching(child_pid);
+    }
   }
 
   fn bootstrap<F>(&self, user_guardian_props: &Props, configure: F) -> Result<(), SpawnError>
@@ -730,6 +752,14 @@ impl ActorSystem {
   }
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell>, pid: Pid) {
+    // Order: tear down parent-side supervision watch first, then `children_state`
+    // registration, then the cell itself. `child_cell.state.watchers` is
+    // implicitly cleared when the cell is removed from the system registry.
+    if let Some(parent_pid) = parent
+      && let Some(parent_cell) = self.state.cell(&parent_pid)
+    {
+      parent_cell.unregister_supervision_watching(pid);
+    }
     self.state.release_name(parent, cell.name());
     self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {

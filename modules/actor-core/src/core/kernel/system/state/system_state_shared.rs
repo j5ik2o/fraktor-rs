@@ -723,7 +723,7 @@ impl SystemStateShared {
           if self.remote_watch_hook.handle_watch(pid, watcher) {
             return Ok(());
           }
-          if let Err(e) = self.send_system_message(watcher, SystemMessage::Terminated(pid)) {
+          if let Err(e) = self.send_system_message(watcher, SystemMessage::DeathWatchNotification(pid)) {
             self.record_send_error(Some(watcher), &e);
           }
           Ok(())
@@ -734,7 +734,7 @@ impl SystemStateShared {
           }
           Ok(())
         },
-        | SystemMessage::Terminated(_) => Ok(()),
+        | SystemMessage::DeathWatchNotification(_) => Ok(()),
         | SystemMessage::PipeTask(_) => Ok(()),
         | other => Err(SendError::closed(AnyMessage::new(other))),
       }
@@ -772,7 +772,8 @@ impl SystemStateShared {
       | SupervisorDirective::Restart => {
         let mut escalate_due_to_recreate_failure = false;
         for target in affected {
-          if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate) {
+          let cause = error.to_reason();
+          if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate(cause)) {
             self.record_send_error(Some(target), &send_error);
             if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
               self.record_send_error(Some(target), &e);
