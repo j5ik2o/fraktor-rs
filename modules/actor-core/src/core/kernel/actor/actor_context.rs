@@ -243,22 +243,21 @@ impl ActorContext<'_> {
   /// `context.children foreach { child => context.unwatch(child); context.stop(child) }`).
   ///
   /// AL-H1: called from the default [`Actor::pre_restart`] implementation to
-  /// mirror Pekko's behaviour. Per-child `SendError`s are recorded through
-  /// [`SystemStateShared::record_send_error`] so that best-effort cleanup
-  /// continues across all children. The function returns `Ok(())` even when
-  /// individual children could not be stopped — the caller observes partial
-  /// failures through the send-error log, not through the return value.
+  /// mirror Pekko's behaviour. Per-child `SendError` はすべて
+  /// [`SystemStateShared::record_send_error`] に記録した上で、最初の失敗を戻り値で
+  /// 呼び出し元に返す。これにより既定 `pre_restart` の `Err` 伝播が `shall_die` 済み
+  /// の子に対する restart 完了待ち検出を駆動できる。
   ///
   /// # Errors
   ///
-  /// This method currently never returns `Err`. The result type is kept for
-  /// API uniformity with other `ActorContext` operations and to allow a future
-  /// propagation of fatal errors (e.g. registry inaccessibility).
+  /// Returns the first `SendError` encountered when sending `SystemMessage::Stop`
+  /// to any supervised child.
   pub fn stop_all_children(&mut self) -> Result<(), SendError> {
     let state = self.system.state();
     let Some(cell) = state.cell(&self.pid) else {
       return Ok(());
     };
+    let mut first_error: Option<SendError> = None;
     for child_pid in cell.children() {
       // Pekko `ActorCell.stop(actor)`: transition `childrenRefs` via
       // `shallDie(actor)` before sending the stop system message, so a
@@ -272,9 +271,15 @@ impl ActorContext<'_> {
       cell.remove_watch_with(child_pid);
       if let Err(error) = state.send_system_message(child_pid, SystemMessage::Stop) {
         state.record_send_error(Some(child_pid), &error);
+        if first_error.is_none() {
+          first_error = Some(error);
+        }
       }
     }
-    Ok(())
+    match first_error {
+      | Some(error) => Err(error),
+      | None => Ok(()),
+    }
   }
 
   /// Sends a stop signal to the running actor.

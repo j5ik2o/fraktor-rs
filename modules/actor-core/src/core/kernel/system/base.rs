@@ -632,11 +632,15 @@ impl ActorSystem {
   /// `handle_death_watch_notification` passes the `watching_contains_pid`
   /// gate and drives `finish_recreate`. Both entries are removed by
   /// [`Self::rollback_spawn`] if the `Create` handshake subsequently fails.
+  ///
+  /// TOCTOU-safe: 親セルが既に解放されている場合は child 側への登録も行わない
+  /// (片側落ち状態の watcher が残らないようにする)。
   fn install_supervision_watch(&self, parent_pid: Pid, child_pid: Pid, child_cell: &ArcShared<ActorCell>) {
+    let Some(parent_cell) = self.state.cell(&parent_pid) else {
+      return;
+    };
     child_cell.register_supervision_watcher(parent_pid);
-    if let Some(parent_cell) = self.state.cell(&parent_pid) {
-      parent_cell.register_supervision_watching(child_pid);
-    }
+    parent_cell.register_supervision_watching(child_pid);
   }
 
   fn bootstrap<F>(&self, user_guardian_props: &Props, configure: F) -> Result<(), SpawnError>
