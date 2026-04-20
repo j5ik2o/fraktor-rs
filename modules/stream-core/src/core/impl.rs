@@ -14,7 +14,7 @@ mod graph_stage_flow_adapter;
 mod graph_stage_flow_context;
 pub(crate) mod hub;
 pub(crate) mod interpreter;
-mod io;
+pub(crate) mod io;
 pub(crate) mod materialization;
 mod operator_catalog;
 mod operator_contract;
