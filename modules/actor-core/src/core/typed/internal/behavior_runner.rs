@@ -182,6 +182,11 @@ where
     Ok(())
   }
 
+  fn post_restart(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+    self.dispatch_signal(ctx, &BehaviorSignal::PostRestart)?;
+    Ok(())
+  }
+
   fn on_child_failed(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,

@@ -955,3 +955,107 @@ fn actor_context_pipe_to_self_still_works_after_pipe_to_added() {
   wait_until(|| !received.lock().is_empty());
   assert_eq!(received.lock()[0], 77);
 }
+
+// ====================================================================
+// AL-H1: stop_all_children
+// --------------------------------------------------------------------
+// Pekko `ActorCell.stop()` 内で参照される `children foreach stop` 相当の
+// 一括子停止 API が `ActorContext::stop_all_children` として配線される
+// 想定。default `pre_restart` の Pekko 仕様 (= stop all children + post_stop)
+// から呼ばれる。
+//
+// AL-H1 forward-looking API surface:
+//   - `ActorContext::stop_all_children(&mut self) -> Result<(), SendError>`
+//   - 仕様: 現在登録されている children に対して `Stop` を送り、 pekko 互換として death watch
+//     登録解除（implicit unwatch）も合わせて 実施する。本テストは AC-H5 の `terminated_queued`
+//     配線後に unwatch 効果を観測する。
+// ====================================================================
+
+#[test]
+fn al_h1_stop_all_children_with_no_children_is_noop() {
+  // AL-H1: 子が一人もいない状態で `stop_all_children` を呼んでも
+  // エラーにならないことを保証する。Pekko `children foreach stop` は
+  // 空集合に対して noop。
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "al-h1-parent-no-children", &props);
+  let mut context = ActorContext::new(&system, parent_pid);
+
+  assert!(context.children().is_empty(), "前提: 子は登録されていない");
+  context.stop_all_children().expect("AL-H1: 子なし stop_all_children は Ok");
+  assert!(context.children().is_empty(), "AL-H1: 副作用なし");
+}
+
+#[test]
+fn al_h1_stop_all_children_queues_stop_to_each_registered_child() {
+  // AL-H1: 子が複数いる場合、`stop_all_children` がすべての子に対して
+  // `Stop` を配送し、最終的に system から remove_cell されることを保証する。
+  // Pekko `children foreach stop` の挙動と一致する。
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let parent_props = Props::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "al-h1-parent-multi", &parent_props);
+  let mut context = ActorContext::new(&system, parent_pid);
+
+  let child_props = Props::from_fn(|| TestActor);
+  let child_a = context.spawn_child(&child_props).expect("spawn child a");
+  let child_b = context.spawn_child(&child_props).expect("spawn child b");
+  let child_c = context.spawn_child(&child_props).expect("spawn child c");
+  assert_eq!(context.children().len(), 3, "前提: 3 child registered");
+
+  // 名前は stop 前に取得する（同期 dispatcher では stop_all_children が
+  // そのまま remove_cell まで走るため、stop 後は `system.state().cell(...)` が
+  // None になる）。
+  let child_a_name = system.state().cell(&child_a.pid()).expect("cell a").name().to_owned();
+  let child_b_name = system.state().cell(&child_b.pid()).expect("cell b").name().to_owned();
+  let child_c_name = system.state().cell(&child_c.pid()).expect("cell c").name().to_owned();
+
+  context.stop_all_children().expect("AL-H1: stop_all_children Ok");
+
+  wait_until(|| {
+    context.child(&child_a_name).is_none()
+      && context.child(&child_b_name).is_none()
+      && context.child(&child_c_name).is_none()
+  });
+  assert!(context.children().is_empty(), "AL-H1: すべての子が停止し、children() が空になる");
+}
+
+#[test]
+fn al_h1_stop_all_children_unwatches_each_child_before_stopping() {
+  // AL-H1: Pekko `Children.stop` は death watch を解除してから stop する
+  // (= 親が子の Terminated 通知を受け取らないようにする)。本テストは
+  // `spawn_child_watched` で watch を貼ってから `stop_all_children` を
+  // 呼び、親の `terminated_queued` に子の Terminated が積まれない（=
+  // implicit unwatch が効いている）ことを保証する。
+  //
+  // forward-looking: `terminated_queued()` accessor は AC-H5 で
+  // ActorCell に追加される。
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let parent_props = Props::from_fn(|| TestActor);
+  let parent_cell = register_cell(&system, parent_pid, "al-h1-parent-unwatch", &parent_props);
+  let mut context = ActorContext::new(&system, parent_pid);
+
+  let child_props = Props::from_fn(|| TestActor);
+  let child = context.spawn_child_watched(&child_props).expect("spawn watched child");
+  let child_pid = child.pid();
+  assert!(parent_cell.is_watching(child_pid), "前提: 親が子を watch している");
+
+  context.stop_all_children().expect("AL-H1: stop_all_children Ok");
+
+  let child_name = system.state().cell(&child_pid).map(|c| c.name().to_owned()).unwrap_or_default();
+  if !child_name.is_empty() {
+    wait_until(|| context.child(&child_name).is_none());
+  } else {
+    wait_until(|| system.state().cell(&child_pid).is_none());
+  }
+  assert!(
+    !parent_cell.is_watching(child_pid),
+    "AL-H1: stop_all_children は implicit unwatch を行うため、親の watching から子が除去される"
+  );
+  assert!(
+    !parent_cell.terminated_queued().contains(&child_pid),
+    "AL-H1: implicit unwatch 後の Terminated は parent の terminated_queued に積まれない (Pekko parity)"
+  );
+}

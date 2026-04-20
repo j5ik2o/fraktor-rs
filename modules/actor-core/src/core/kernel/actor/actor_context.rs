@@ -239,6 +239,48 @@ impl ActorContext<'_> {
     child.stop()
   }
 
+  /// Sends a stop signal to every supervised child (Pekko
+  /// `context.children foreach { child => context.unwatch(child); context.stop(child) }`).
+  ///
+  /// AL-H1: called from the default [`Actor::pre_restart`] implementation to
+  /// mirror Pekko's behaviour. Every per-child `SendError` is still recorded
+  /// through [`SystemStateShared::record_send_error`] so best-effort cleanup
+  /// continues across all children, but the first failure is also returned to
+  /// the caller so the default `pre_restart`'s `Err` propagation can drive
+  /// restart-completion tracking for children that were already transitioned to
+  /// `shall_die`.
+  ///
+  /// # Errors
+  ///
+  /// Returns the first `SendError` encountered when sending `SystemMessage::Stop`
+  /// to any supervised child.
+  pub fn stop_all_children(&mut self) -> Result<(), SendError> {
+    let state = self.system.state();
+    let Some(cell) = state.cell(&self.pid) else {
+      return Ok(());
+    };
+    let mut first_error: Option<SendError> = None;
+    for child_pid in cell.children() {
+      // Pekko `ActorCell.stop(actor)`: transition `childrenRefs` via
+      // `shallDie(actor)` before sending the stop system message, so a
+      // subsequent `setChildrenTerminationReason(Recreation)` can upgrade the
+      // reason and defer `finish_recreate`.
+      cell.mark_child_dying(child_pid);
+      // Pekko `preRestart` unwatches each child before stopping it; mirror
+      // that here so a pending DeathWatchNotification does not deliver a
+      // user-level `Terminated` after the restart has already been handled.
+      cell.unregister_watching(child_pid);
+      cell.remove_watch_with(child_pid);
+      if let Err(error) = state.send_system_message(child_pid, SystemMessage::Stop) {
+        state.record_send_error(Some(child_pid), &error);
+        if first_error.is_none() {
+          first_error = Some(error);
+        }
+      }
+    }
+    first_error.map_or(Ok(()), Err)
+  }
+
   /// Sends a stop signal to the running actor.
   ///
   /// # Errors
@@ -276,12 +318,19 @@ impl ActorContext<'_> {
       return Ok(());
     }
 
+    // Register the user-level `watching` entry before sending `Watch`, so that
+    // the compensating `DeathWatchNotification` below (when the target is
+    // already closed) passes the watcher's `watching_contains_pid` check.
+    if let Some(cell) = self.system.state().cell(&self.pid) {
+      cell.register_watching(target.pid());
+    }
+
     let state = self.system.state();
     match state.send_system_message(target.pid(), SystemMessage::Watch(self.pid)) {
       | Ok(()) => Ok(()),
       | Err(SendError::Closed(_)) => {
         // Best-effort: target is already closed, so notify self about termination.
-        if let Err(error) = state.send_system_message(self.pid, SystemMessage::Terminated(target.pid())) {
+        if let Err(error) = state.send_system_message(self.pid, SystemMessage::DeathWatchNotification(target.pid())) {
           state.record_send_error(Some(self.pid), &error);
         }
         Ok(())
@@ -302,6 +351,7 @@ impl ActorContext<'_> {
 
     let state = self.system.state();
     if let Some(cell) = state.cell(&self.pid) {
+      cell.unregister_watching(target.pid());
       cell.remove_watch_with(target.pid());
     }
     match state.send_system_message(target.pid(), SystemMessage::Unwatch(self.pid)) {

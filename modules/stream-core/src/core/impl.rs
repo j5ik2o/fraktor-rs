@@ -14,6 +14,7 @@ mod graph_stage_flow_adapter;
 mod graph_stage_flow_context;
 pub(crate) mod hub;
 pub(crate) mod interpreter;
+#[cfg(feature = "compression")]
 mod io;
 pub(crate) mod materialization;
 mod operator_catalog;
@@ -36,6 +37,8 @@ pub use cancellation_kind::CancellationKind;
 pub use default_operator_catalog::DefaultOperatorCatalog;
 pub use framing_error_kind::FramingErrorKind;
 pub(crate) use graph_stage_flow_adapter::GraphStageFlowAdapter;
+#[cfg(feature = "compression")]
+pub use io::Compression;
 pub use operator_catalog::OperatorCatalog;
 pub use operator_contract::OperatorContract;
 pub use operator_coverage::OperatorCoverage;

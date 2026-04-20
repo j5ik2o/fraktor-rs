@@ -607,14 +607,41 @@ impl ActorSystem {
     let name = self.state.assign_name(parent, props.name(), pid)?;
     let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
 
+    // AC-H4 TOCTOU-safe order: registration must complete before the `Create`
+    // handshake so that if the child fails in `pre_start`, the parent already
+    // sees the child in `children_state` and in its `state.watching` set. This
+    // guarantees that the subsequent `DeathWatchNotification` drives
+    // `finish_recreate` / `finish_terminate` without dropping state-change
+    // transitions.
     self.state.register_cell(cell.clone());
-    self.perform_create_handshake(parent, pid, &cell)?;
-
     if let Some(parent_pid) = parent {
       self.state.register_child(parent_pid, pid);
+      self.install_supervision_watch(parent_pid, pid, &cell);
     }
+    self.perform_create_handshake(parent, pid, &cell)?;
 
     Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
+  }
+
+  /// Installs the bidirectional supervision watch between `parent` and the
+  /// newly registered child cell.
+  ///
+  /// The `child_cell.state.watchers` gains `(parent, Supervision)` so the
+  /// child's `notify_watchers_on_stop` reaches the parent. The parent cell's
+  /// `state.watching` gains `(pid, Supervision)` so that
+  /// `handle_death_watch_notification` passes the `watching_contains_pid`
+  /// gate and drives `finish_recreate`. Both entries are removed by
+  /// [`Self::rollback_spawn`] if the `Create` handshake subsequently fails.
+  ///
+  /// TOCTOU-safe: when the parent cell has already been released, the
+  /// child-side registration is skipped as well so that no one-sided stale
+  /// watcher entry survives.
+  fn install_supervision_watch(&self, parent_pid: Pid, child_pid: Pid, child_cell: &ArcShared<ActorCell>) {
+    let Some(parent_cell) = self.state.cell(&parent_pid) else {
+      return;
+    };
+    child_cell.register_supervision_watcher(parent_pid);
+    parent_cell.register_supervision_watching(child_pid);
   }
 
   fn bootstrap<F>(&self, user_guardian_props: &Props, configure: F) -> Result<(), SpawnError>
@@ -730,6 +757,20 @@ impl ActorSystem {
   }
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell>, pid: Pid) {
+    // Order matters. `rollback_spawn` runs when the spawn handshake failed
+    // before the child ever started emitting `DeathWatchNotification`s, so
+    // `children_state` cleanup cannot rely on the usual notification path
+    // and has to happen here synchronously. `ActorCell::unregister_child`
+    // short-circuits while a supervision watch is live (because the normal
+    // restart flow needs the parent `DeathWatchNotification` handler to
+    // observe the state change), so the supervision watching entry must be
+    // torn down *first*. With the watch gone, `unregister_child` removes the
+    // container entry, and `remove_cell` drops the child cell entirely.
+    if let Some(parent_pid) = parent
+      && let Some(parent_cell) = self.state.cell(&parent_pid)
+    {
+      parent_cell.unregister_supervision_watching(pid);
+    }
     self.state.release_name(parent, cell.name());
     self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {

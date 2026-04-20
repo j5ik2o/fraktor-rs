@@ -20,7 +20,7 @@ use crate::core::{
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
       actor_ref::ActorRef,
       actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, ActorRefResolveError},
-      error::ActorError,
+      error::{ActorError, ActorErrorReason},
       lifecycle::LifecycleStage,
       messaging::{AnyMessageView, system_message::SystemMessage},
       props::{MailboxConfig, MailboxRequirement, Props},
@@ -806,7 +806,18 @@ fn lifecycle_events_cover_restart_transitions() {
   let child = system.spawn_with_parent(None, &props).expect("spawn succeeds");
   let pid = child.pid();
 
-  system.state().send_system_message(pid, SystemMessage::Recreate).expect("recreate enqueued");
+  // AC-H4: `handle_recreate` の `start_recreate` 段は Pekko `faultRecreate`
+  // 契約に従い「呼び出し時点で mailbox が suspended である」ことを前提とする
+  // （先行する `report_failure` が suspend する経路が production path）。
+  // この統合テストでは failure を経由しないため、手動で mailbox を suspend
+  // してから Recreate を送る。
+  let cell = system.state().cell(&pid).expect("cell registered");
+  cell.mailbox().suspend();
+
+  system
+    .state()
+    .send_system_message(pid, SystemMessage::Recreate(ActorErrorReason::new("lifecycle-restart-test")))
+    .expect("recreate enqueued");
 
   let snapshot = stages.lock().clone();
   assert_eq!(snapshot, vec![LifecycleStage::Started, LifecycleStage::Stopped, LifecycleStage::Restarted]);

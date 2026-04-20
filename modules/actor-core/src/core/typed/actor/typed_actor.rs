@@ -100,6 +100,22 @@ where
     self.post_stop(ctx)
   }
 
+  /// Called after the actor has been restarted by its supervisor.
+  ///
+  /// Pekko's `aroundPostRestart` contract is "run `postRestart` and then invoke
+  /// `preStart`". `TypedActorAdapter::post_restart` executes that two-step flow
+  /// on behalf of the trait, so the default implementation here is a no-op
+  /// (`Ok(())`). Override this method only when the `preStart` rerun needs to be
+  /// customised or suppressed.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when post-restart work fails.
+  #[allow(unused_variables)]
+  fn post_restart(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
   /// Called when a supervised child actor fails.
   ///
   /// # Errors

@@ -245,10 +245,23 @@ where
     self.actor.on_mailbox_pressure(&mut typed_ctx, event)
   }
 
-  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
     self.adapters.clear();
     let mut typed_ctx = TypedActorContext::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.pre_restart(&mut typed_ctx)
+  }
+
+  fn post_restart(&mut self, ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
+    // AL-H1: Pekko typed における restart 後の初期化契約:
+    //   1. `PostRestart` signal を dispatch (既存 behavior handler へ通知)
+    //   2. 初期 `setup` behavior の `handle_start` を走らせて behavior state を 再構成する (`pre_start`
+    //      と同じ経路)
+    // `recreate_actor` で新しい `BehaviorRunner` が生成された直後にこの流れを
+    // 実行することで、restart 後の child が最初の behavior 構築から再始動する
+    // (typed supervision の restart parity)。
+    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
+    self.actor.post_restart(&mut typed_ctx)?;
+    self.actor.pre_start(&mut typed_ctx)
   }
 
   fn on_child_failed(&mut self, ctx: &mut ActorContext<'_>, child: Pid, error: &ActorError) -> Result<(), ActorError> {
