@@ -243,10 +243,12 @@ impl ActorContext<'_> {
   /// `context.children foreach { child => context.unwatch(child); context.stop(child) }`).
   ///
   /// AL-H1: called from the default [`Actor::pre_restart`] implementation to
-  /// mirror Pekko's behaviour. Per-child `SendError` はすべて
-  /// [`SystemStateShared::record_send_error`] に記録した上で、最初の失敗を戻り値で
-  /// 呼び出し元に返す。これにより既定 `pre_restart` の `Err` 伝播が `shall_die` 済み
-  /// の子に対する restart 完了待ち検出を駆動できる。
+  /// mirror Pekko's behaviour. Every per-child `SendError` is still recorded
+  /// through [`SystemStateShared::record_send_error`] so best-effort cleanup
+  /// continues across all children, but the first failure is also returned to
+  /// the caller so the default `pre_restart`'s `Err` propagation can drive
+  /// restart-completion tracking for children that were already transitioned to
+  /// `shall_die`.
   ///
   /// # Errors
   ///

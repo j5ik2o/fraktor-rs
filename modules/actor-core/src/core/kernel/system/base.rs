@@ -633,8 +633,9 @@ impl ActorSystem {
   /// gate and drives `finish_recreate`. Both entries are removed by
   /// [`Self::rollback_spawn`] if the `Create` handshake subsequently fails.
   ///
-  /// TOCTOU-safe: 親セルが既に解放されている場合は child 側への登録も行わない
-  /// (片側落ち状態の watcher が残らないようにする)。
+  /// TOCTOU-safe: when the parent cell has already been released, the
+  /// child-side registration is skipped as well so that no one-sided stale
+  /// watcher entry survives.
   fn install_supervision_watch(&self, parent_pid: Pid, child_pid: Pid, child_cell: &ArcShared<ActorCell>) {
     let Some(parent_cell) = self.state.cell(&parent_pid) else {
       return;

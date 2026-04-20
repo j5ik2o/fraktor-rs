@@ -312,11 +312,12 @@ impl ActorCell {
 
   /// Removes a child pid from supervision tracking.
   ///
-  /// supervision watch が残っている子については `remove_child_and_get_state_change`
-  /// を実行せず、親の `DeathWatchNotification` ハンドラ側を唯一の state-change 消費点
-  /// に残す。ここで state-change を先に取ってしまうと、`notify_watchers_on_stop` が
-  /// 発送した `DeathWatchNotification` が親に届く頃には `SuspendReason::Recreation`
-  /// が失われ、restart フローが起動しない。
+  /// Children still covered by a supervision watch are left in `children_state`
+  /// so that `handle_death_watch_notification` remains the sole consumer of the
+  /// state change returned by `remove_child_and_get_state_change`. Consuming the
+  /// state change here would drop `SuspendReason::Recreation` before the
+  /// `DeathWatchNotification` emitted by `notify_watchers_on_stop` reaches the
+  /// parent, preventing the restart flow from firing.
   pub fn unregister_child(&self, pid: &Pid) {
     self.state.with_write(|state| {
       if state.watching_contains_pid(*pid) {

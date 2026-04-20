@@ -102,10 +102,11 @@ where
 
   /// Called after the actor has been restarted by its supervisor.
   ///
-  /// Pekko `aroundPostRestart` の契約は「`postRestart` 実行後に `preStart` を再度呼ぶ」こと。
-  /// `TypedActorAdapter::post_restart` 側がこの 2 段の呼び出しを実行するため、本 trait の
-  /// デフォルト実装は何もしない (`Ok(())`)。`preStart` の再実行を抑止したい実装のみが本
-  /// メソッドを override する。
+  /// Pekko's `aroundPostRestart` contract is "run `postRestart` and then invoke
+  /// `preStart`". `TypedActorAdapter::post_restart` executes that two-step flow
+  /// on behalf of the trait, so the default implementation here is a no-op
+  /// (`Ok(())`). Override this method only when the `preStart` rerun needs to be
+  /// customised or suppressed.
   ///
   /// # Errors
   ///

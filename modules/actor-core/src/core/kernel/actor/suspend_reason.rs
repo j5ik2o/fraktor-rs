@@ -19,8 +19,8 @@
 //! * `Termination` — set when the parent itself is terminating; transitions the container to
 //!   `Terminated` after the last child dies.
 //!
-//! `Creation` variant は Pekko の `pre_start` ハンドシェイク用 scaffold だが、fraktor-rs
-//! では該当経路を移植する段階で必要になるまで定義しない (YAGNI)。
+//! Pekko's `Creation` variant (used for the `pre_start` handshake) is intentionally omitted
+//! until the corresponding code path is ported (YAGNI).
 
 #[cfg(test)]
 mod tests;
