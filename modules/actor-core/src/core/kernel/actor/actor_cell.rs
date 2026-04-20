@@ -1208,11 +1208,10 @@ impl ActorCell {
       // Pekko `FaultHandling.scala:294` parity: at this point
       // `children_state` must no longer be Terminating. Two paths reach
       // finish_recreate:
-      //   1. Immediate path from fault_recreate when `set_children_termination_reason`
-      //      returned false — the container was Normal/Empty to begin with.
-      //   2. Deferred path from handle_death_watch_notification —
-      //      `remove_child_and_get_state_change` transitions the container
-      //      out of Terminating once the last `to_die` child dies.
+      //   1. Immediate path from fault_recreate when `set_children_termination_reason` returned false —
+      //      the container was Normal/Empty to begin with.
+      //   2. Deferred path from handle_death_watch_notification — `remove_child_and_get_state_change`
+      //      transitions the container out of Terminating once the last `to_die` child dies.
       // Assert the invariant so a future regression surfaces early.
       debug_assert!(
         !state.children_state.is_in_terminating_variant(),
