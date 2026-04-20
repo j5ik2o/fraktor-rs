@@ -483,6 +483,19 @@ impl ActorCell {
     });
   }
 
+  /// Removes only the user-level watching of `target` without touching the
+  /// `terminated_queued` dedup marker.
+  ///
+  /// `stop_all_children` (AL-H1 pre_restart) uses this to unwatch restart
+  /// siblings without interfering with an in-flight
+  /// `handle_death_watch_notification` that has already pushed `target` into
+  /// `terminated_queued` as a dedup marker. Clearing the marker from a
+  /// concurrent code path could allow a duplicate notification to drive
+  /// `finish_recreate` twice.
+  pub(crate) fn clear_user_watch(&self, target: Pid) {
+    self.state.with_write(|state| state.unregister_watching(target, WatchKind::User));
+  }
+
   /// Returns whether this cell has any watch registered for `target`,
   /// regardless of [`WatchKind`].
   #[must_use]
@@ -1192,6 +1205,19 @@ impl ActorCell {
   pub(crate) fn finish_recreate(&self, cause: &ActorErrorReason) -> Result<(), ActorError> {
     self.state.with_write(|state| {
       state.deferred_recreate_cause.take();
+      // Pekko `FaultHandling.scala:294` parity: at this point
+      // `children_state` must no longer be Terminating. Two paths reach
+      // finish_recreate:
+      //   1. Immediate path from fault_recreate when `set_children_termination_reason`
+      //      returned false — the container was Normal/Empty to begin with.
+      //   2. Deferred path from handle_death_watch_notification —
+      //      `remove_child_and_get_state_change` transitions the container
+      //      out of Terminating once the last `to_die` child dies.
+      // Assert the invariant so a future regression surfaces early.
+      debug_assert!(
+        !state.children_state.is_in_terminating_variant(),
+        "finish_recreate expects children_state to be Normal/Empty/Terminated, not Terminating"
+      );
     });
 
     self.drop_pipe_tasks();
