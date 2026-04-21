@@ -3,8 +3,6 @@
 //! Requires the `debug-locks` feature (which implies `std`) so that
 //! `std::thread::current().id()` can distinguish same-thread re-entry
 //! from legitimate cross-thread contention.
-#![allow(cfg_std_forbid)]
-
 #[cfg(test)]
 mod tests;
 
@@ -30,7 +28,7 @@ unsafe impl<T: Send> Sync for CheckedSpinSyncMutex<T> {}
 impl<T> CheckedSpinSyncMutex<T> {
   /// Creates a new checked mutex.
   #[must_use]
-  pub fn new(value: T) -> Self {
+  pub const fn new(value: T) -> Self {
     Self { inner: SpinSyncMutex::new(value), owner: Mutex::new(None) }
   }
 
@@ -43,9 +41,7 @@ impl<T> CheckedSpinSyncMutex<T> {
     let current = thread::current().id();
     {
       let owner = self.owner.lock().unwrap_or_else(|e| e.into_inner());
-      if *owner == Some(current) {
-        panic!("CheckedSpinSyncMutex: re-entrant lock detected (thread {:?})", current);
-      }
+      assert!(*owner != Some(current), "CheckedSpinSyncMutex: re-entrant lock detected (thread {:?})", current);
     }
     // Not a re-entry — wait for the real lock.
     let guard = self.inner.lock();

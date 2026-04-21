@@ -3,8 +3,6 @@
 //! Requires the `debug-locks` feature (which implies `std`) so that
 //! `std::thread::current().id()` can distinguish same-thread re-entry
 //! from legitimate cross-thread contention.
-#![allow(cfg_std_forbid)]
-
 #[cfg(test)]
 mod tests;
 
@@ -65,9 +63,7 @@ impl<T> CheckedSpinSyncRwLock<T> {
     let current = thread::current().id();
     {
       let state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
-      if state.write_owner == Some(current) {
-        panic!("CheckedSpinSyncRwLock: read lock while write lock held");
-      }
+      assert!(state.write_owner != Some(current), "CheckedSpinSyncRwLock: read lock while write lock held");
     }
     let guard = self.inner.read();
     {
@@ -86,12 +82,11 @@ impl<T> CheckedSpinSyncRwLock<T> {
     let current = thread::current().id();
     {
       let state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
-      if state.write_owner == Some(current) {
-        panic!("CheckedSpinSyncRwLock: re-entrant write lock detected");
-      }
-      if state.reader_counts.get(&current).copied().unwrap_or(0) > 0 {
-        panic!("CheckedSpinSyncRwLock: write lock while read lock held");
-      }
+      assert!(state.write_owner != Some(current), "CheckedSpinSyncRwLock: re-entrant write lock detected");
+      assert!(
+        state.reader_counts.get(&current).copied().unwrap_or(0) == 0,
+        "CheckedSpinSyncRwLock: write lock while read lock held"
+      );
     }
     let guard = self.inner.write();
     {
