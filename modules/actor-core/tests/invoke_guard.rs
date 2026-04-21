@@ -30,8 +30,11 @@ fn noop_invoke_guard_does_not_catch_panic() {
 #[test]
 fn noop_invoke_guard_factory_builds_dyn_compatible_guard() {
   let factory = NoopInvokeGuardFactory::new();
-  let guard: ArcShared<Box<dyn InvokeGuard>> = factory.build();
+  let guard1: ArcShared<dyn InvokeGuard> = factory.build();
+  let guard2: ArcShared<dyn InvokeGuard> = factory.build();
 
-  let result = guard.wrap_receive(&mut || Ok(()));
+  assert!(ArcShared::ptr_eq(&guard1, &guard2));
+
+  let result = guard1.wrap_receive(&mut || Ok(()));
   assert_eq!(result, Ok(()));
 }

@@ -10,7 +10,7 @@ use crate::core::kernel::{
     Actor, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     error::{ActorError, SendError},
-    invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
+    invoke_guard::{InvokeGuard, InvokeGuardFactory, NoopInvokeGuardFactory},
     messaging::{AnyMessage, AnyMessageView},
   },
   system::ActorSystem,
@@ -74,6 +74,14 @@ impl LoggingActor {
 impl Actor for LoggingActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.record("actor");
+    Ok(())
+  }
+}
+
+struct SkippingInvokeGuard;
+
+impl InvokeGuard for SkippingInvokeGuard {
+  fn wrap_receive(&self, _call: &mut dyn FnMut() -> Result<(), ActorError>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -172,4 +180,21 @@ fn middleware_executes_in_expected_order() {
     String::from("b:after"),
     String::from("a:after"),
   ]);
+}
+
+#[test]
+fn pipeline_fails_when_guard_does_not_call_receive() {
+  let system = ActorSystem::new_empty();
+  let pid = Pid::new(50, 0);
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = CaptureActor::new();
+  let guard: ArcShared<dyn InvokeGuard> = ArcShared::new(SkippingInvokeGuard);
+  let pipeline = MessageInvokerPipeline::new_with_guard(guard);
+
+  let result = pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(99_u32));
+
+  assert!(matches!(result, Err(ActorError::Fatal(reason)) if reason.as_str() == "invoke guard did not call receive"));
+  assert!(actor.payloads().is_empty());
+  assert!(actor.replies().is_empty());
+  assert!(ctx.sender().is_none());
 }

@@ -1,6 +1,6 @@
 //! Middleware-enabled pipeline for invoking actors.
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
@@ -16,20 +16,20 @@ use crate::core::kernel::actor::{
 /// Middleware-enabled pipeline used to invoke actor message handlers.
 pub struct MessageInvokerPipeline {
   user_middlewares: Vec<MiddlewareShared>,
-  guard:            ArcShared<Box<dyn InvokeGuard>>,
+  guard:            ArcShared<dyn InvokeGuard>,
 }
 
 impl MessageInvokerPipeline {
   /// Creates a pipeline without any middleware.
   #[must_use]
-  pub fn new_with_guard(guard: ArcShared<Box<dyn InvokeGuard>>) -> Self {
+  pub fn new_with_guard(guard: ArcShared<dyn InvokeGuard>) -> Self {
     Self { user_middlewares: Vec::new(), guard }
   }
 
   /// Builds a pipeline from the provided middleware list.
   #[must_use]
   #[allow(dead_code)] // Used in tests
-  pub(crate) fn from_middlewares(middlewares: Vec<MiddlewareShared>, guard: ArcShared<Box<dyn InvokeGuard>>) -> Self {
+  pub(crate) fn from_middlewares(middlewares: Vec<MiddlewareShared>, guard: ArcShared<dyn InvokeGuard>) -> Self {
     Self { user_middlewares: middlewares, guard }
   }
 
@@ -69,6 +69,9 @@ impl MessageInvokerPipeline {
       | Some(current_view) => actor.receive(ctx, current_view),
       | None => Err(ActorError::fatal("invoke guard called receive more than once")),
     });
+    if guarded_view.is_some() {
+      result = Err(ActorError::fatal("invoke guard did not call receive"));
+    }
 
     let view_after = message.as_view();
     result = self.invoke_after(ctx, &view_after, result);

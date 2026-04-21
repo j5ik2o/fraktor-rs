@@ -8,13 +8,16 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::panic_invoke_guard::PanicInvokeGuard;
 
 /// Produces `PanicInvokeGuard` instances for std-enabled actor systems.
-pub struct PanicInvokeGuardFactory;
+pub struct PanicInvokeGuardFactory {
+  shared_guard: ArcShared<dyn InvokeGuard>,
+}
 
 impl PanicInvokeGuardFactory {
   /// Creates a panic guard factory.
   #[must_use]
-  pub const fn new() -> Self {
-    Self
+  pub fn new() -> Self {
+    let shared_guard: ArcShared<dyn InvokeGuard> = ArcShared::new(PanicInvokeGuard::new());
+    Self { shared_guard }
   }
 
   /// Returns a shared trait-object wrapper of this factory.
@@ -31,7 +34,7 @@ impl Default for PanicInvokeGuardFactory {
 }
 
 impl InvokeGuardFactory for PanicInvokeGuardFactory {
-  fn build(&self) -> ArcShared<Box<dyn InvokeGuard>> {
-    ArcShared::new(Box::new(PanicInvokeGuard::new()) as Box<dyn InvokeGuard>)
+  fn build(&self) -> ArcShared<dyn InvokeGuard> {
+    self.shared_guard.clone()
   }
 }

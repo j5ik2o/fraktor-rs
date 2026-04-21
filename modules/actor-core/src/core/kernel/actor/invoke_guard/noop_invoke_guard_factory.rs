@@ -7,13 +7,16 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::{InvokeGuard, InvokeGuardFactory, NoopInvokeGuard};
 
 /// Produces no-op invoke guards for default actor systems.
-pub struct NoopInvokeGuardFactory;
+pub struct NoopInvokeGuardFactory {
+  shared_guard: ArcShared<dyn InvokeGuard>,
+}
 
 impl NoopInvokeGuardFactory {
   /// Creates a no-op guard factory.
   #[must_use]
-  pub const fn new() -> Self {
-    Self
+  pub fn new() -> Self {
+    let shared_guard: ArcShared<dyn InvokeGuard> = ArcShared::new(NoopInvokeGuard::new());
+    Self { shared_guard }
   }
 
   /// Returns a shared trait-object wrapper of this factory.
@@ -30,7 +33,7 @@ impl Default for NoopInvokeGuardFactory {
 }
 
 impl InvokeGuardFactory for NoopInvokeGuardFactory {
-  fn build(&self) -> ArcShared<Box<dyn InvokeGuard>> {
-    ArcShared::new(Box::new(NoopInvokeGuard::new()) as Box<dyn InvokeGuard>)
+  fn build(&self) -> ArcShared<dyn InvokeGuard> {
+    self.shared_guard.clone()
   }
 }
