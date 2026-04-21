@@ -7,7 +7,7 @@
 use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
 
 use crate::core::kernel::event::stream::{
-  EventStream, EventStreamEvent, EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,
+  ClassifierKey, EventStream, EventStreamEvent, EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,
   event_stream_subscription::EventStreamSubscription,
 };
 
@@ -57,13 +57,18 @@ impl EventStreamShared {
     Self::new(EventStream::with_capacity(capacity))
   }
 
-  /// Subscribes and replays buffered events to the subscriber.
+  /// Subscribes with an explicit classifier and replays matching buffered events
+  /// to the subscriber.
   ///
   /// Events are replayed after releasing the lock to prevent deadlocks.
   #[must_use]
-  pub fn subscribe(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
+  pub fn subscribe_with_key(
+    &self,
+    key: ClassifierKey,
+    subscriber: &EventStreamSubscriberShared,
+  ) -> EventStreamSubscription {
     // Phase 1: Acquire lock, register subscriber, get replay snapshot
-    let (id, snapshot) = self.inner.with_write(|guard| guard.subscribe(subscriber.clone()));
+    let (id, snapshot) = self.inner.with_write(|guard| guard.subscribe_with_key(key, subscriber.clone()));
     // Lock released here!
 
     // Phase 2: Replay buffered events without holding the lock
@@ -72,6 +77,14 @@ impl EventStreamShared {
     }
 
     EventStreamSubscription::new(self.clone(), id)
+  }
+
+  /// Subscribes to all event variants and replays buffered events.
+  ///
+  /// This is sugar for [`Self::subscribe_with_key`] with [`ClassifierKey::All`].
+  #[must_use]
+  pub fn subscribe(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
+    self.subscribe_with_key(ClassifierKey::All, subscriber)
   }
 
   /// Subscribes without replaying buffered events.
@@ -90,7 +103,7 @@ impl EventStreamShared {
   ///
   /// Subscribers are notified after releasing the lock to prevent deadlocks.
   pub fn publish(&self, event: &EventStreamEvent) {
-    // Phase 1: Acquire lock, store event, get subscriber snapshot
+    // Phase 1: Acquire lock, store event, get the filtered subscriber snapshot
     let subscribers = self.inner.with_write(|guard| guard.publish_prepare(event.clone()));
     // Lock released here!
 

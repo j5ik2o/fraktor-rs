@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use crate::core::kernel::event::stream::EventStreamEvent;
+use crate::core::kernel::event::stream::{ClassifierKey, EventStreamEvent};
 
 pub(super) const DEFAULT_CAPACITY: usize = 256;
 
@@ -32,6 +32,16 @@ impl EventStreamEvents {
   #[must_use]
   pub(crate) fn snapshot(&self) -> Vec<EventStreamEvent> {
     self.events.clone()
+  }
+
+  /// Returns buffered events filtered by classifier key.
+  #[must_use]
+  pub(crate) fn snapshot_for_key(&self, key: ClassifierKey) -> Vec<EventStreamEvent> {
+    if key == ClassifierKey::All {
+      return self.snapshot();
+    }
+
+    self.events.iter().filter(|event| ClassifierKey::for_event(event) == key).cloned().collect()
   }
 
   /// Capacity accessor.
