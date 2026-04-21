@@ -40,3 +40,14 @@ fn test_sync_once_const_new() {
   assert_eq!(*value, "ready");
   assert_eq!(ONCE.get(), Some(&"ready"));
 }
+
+#[test]
+fn test_sync_once_with_explicit_driver() {
+  use crate::core::sync::SpinOnce;
+  let once: SyncOnce<i32, SpinOnce<i32>> = SyncOnce::with_driver();
+  assert!(!once.is_completed());
+  let value = once.call_once(|| 21);
+  assert_eq!(*value, 21);
+  assert!(once.is_completed());
+  assert_eq!(once.get(), Some(&21));
+}
