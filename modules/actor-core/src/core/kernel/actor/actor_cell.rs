@@ -186,7 +186,7 @@ impl ActorCell {
       system: system.downgrade(),
       factory: actor_factory_shared,
       actor: actor_shared,
-      pipeline: MessageInvokerPipeline::new(),
+      pipeline: MessageInvokerPipeline::new_with_guard(system.invoke_guard_factory().build()),
       mailbox,
       dispatcher_id,
       new_dispatcher,

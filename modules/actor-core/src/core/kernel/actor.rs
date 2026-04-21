@@ -24,6 +24,7 @@ pub mod error;
 pub mod extension;
 mod failed_info;
 pub mod fsm;
+pub mod invoke_guard;
 pub mod lifecycle;
 pub mod messaging;
 mod pid;

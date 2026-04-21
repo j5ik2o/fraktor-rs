@@ -38,6 +38,7 @@ use crate::core::kernel::{
     },
     deploy::Deployer,
     error::{ActorError, SendError},
+    invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
     messaging::{
       AnyMessage, AskResult,
       system_message::{FailurePayload, SystemMessage},
@@ -102,6 +103,7 @@ pub struct SystemState {
   actor_ref_providers: ActorRefProviders,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallers,
   remote_watch_hook: RemoteWatchHookDynShared,
+  invoke_guard_factory: ArcShared<Box<dyn InvokeGuardFactory>>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   deployer: Deployer,
@@ -158,6 +160,7 @@ impl SystemState {
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
+      invoke_guard_factory: NoopInvokeGuardFactory::shared(),
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -190,6 +193,7 @@ impl SystemState {
     let scheduler_config = *config.scheduler_config();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
     let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
+    let invoke_guard_factory = config.take_invoke_guard_factory();
     let mut state = Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -216,6 +220,7 @@ impl SystemState {
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
+      invoke_guard_factory,
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -867,6 +872,12 @@ impl SystemState {
   #[must_use]
   pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
     self.dispatchers.resolve(id).ok()
+  }
+
+  /// Returns the configured invoke-guard factory.
+  #[must_use]
+  pub fn invoke_guard_factory(&self) -> ArcShared<Box<dyn InvokeGuardFactory>> {
+    self.invoke_guard_factory.clone()
   }
 
   /// Returns the cumulative number of `Dispatchers::resolve` invocations

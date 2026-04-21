@@ -14,6 +14,7 @@ use crate::core::kernel::{
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
+    invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
     props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::CircuitBreakerConfig,
@@ -37,6 +38,7 @@ pub struct ActorSystemConfig {
   tick_driver: Option<Box<dyn TickDriver>>,
   extension_installers: Option<ExtensionInstallers>,
   provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  invoke_guard_factory: Option<ArcShared<Box<dyn InvokeGuardFactory>>>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   default_circuit_breaker_config: CircuitBreakerConfig,
@@ -99,6 +101,13 @@ impl ActorSystemConfig {
   where
     P: ActorRefProviderInstaller + 'static, {
     self.provider_installer = Some(ArcShared::new(installer));
+    self
+  }
+
+  /// Registers a custom invoke-guard factory.
+  #[must_use]
+  pub fn with_invoke_guard_factory(mut self, factory: ArcShared<Box<dyn InvokeGuardFactory>>) -> Self {
+    self.invoke_guard_factory = Some(factory);
     self
   }
 
@@ -210,6 +219,18 @@ impl ActorSystemConfig {
     self.provider_installer.take()
   }
 
+  /// Returns the configured invoke-guard factory or the no-op default.
+  #[must_use]
+  pub fn invoke_guard_factory(&self) -> ArcShared<Box<dyn InvokeGuardFactory>> {
+    self.invoke_guard_factory.clone().unwrap_or_else(NoopInvokeGuardFactory::shared)
+  }
+
+  /// Takes the invoke-guard factory out of the configuration, falling back to the no-op default.
+  #[must_use]
+  pub fn take_invoke_guard_factory(&mut self) -> ArcShared<Box<dyn InvokeGuardFactory>> {
+    self.invoke_guard_factory.take().unwrap_or_else(NoopInvokeGuardFactory::shared)
+  }
+
   /// Returns the dispatcher registry configured for the system.
   #[must_use]
   pub const fn dispatchers(&self) -> &Dispatchers {
@@ -263,6 +284,7 @@ impl Default for ActorSystemConfig {
       tick_driver: None,
       extension_installers: None,
       provider_installer: None,
+      invoke_guard_factory: None,
       dispatchers,
       mailboxes,
       default_circuit_breaker_config: CircuitBreakerConfig::default(),

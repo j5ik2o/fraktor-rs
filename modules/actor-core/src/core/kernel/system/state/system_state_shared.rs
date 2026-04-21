@@ -32,6 +32,7 @@ use crate::core::kernel::{
     },
     deploy::Deployer,
     error::{ActorError, SendError},
+    invoke_guard::InvokeGuardFactory,
     messaging::{
       AnyMessage, AskResult,
       system_message::{FailurePayload, SystemMessage},
@@ -60,41 +61,43 @@ use crate::core::kernel::{
 /// This wrapper uses a read-write lock to provide safe concurrent access
 /// to the underlying system state.
 pub struct SystemStateShared {
-  pub(crate) inner:    SharedRwLock<SystemState>,
-  system_name:         String,
-  guardian_kind:       PathGuardianKind,
-  canonical_host:      Option<String>,
-  canonical_port:      Option<u16>,
+  pub(crate) inner: SharedRwLock<SystemState>,
+  system_name: String,
+  guardian_kind: PathGuardianKind,
+  canonical_host: Option<String>,
+  canonical_port: Option<u16>,
   quarantine_duration: Duration,
-  event_stream:        EventStreamShared,
-  dead_letter:         DeadLetterShared,
-  cells:               CellsShared,
-  termination_signal:  TerminationSignal,
-  remote_watch_hook:   RemoteWatchHookDynShared,
-  scheduler:           SchedulerShared,
-  delay_provider:      SchedulerBackedDelayProvider,
-  tick_driver_bundle:  TickDriverBundle,
-  start_time:          Duration,
+  event_stream: EventStreamShared,
+  dead_letter: DeadLetterShared,
+  cells: CellsShared,
+  termination_signal: TerminationSignal,
+  remote_watch_hook: RemoteWatchHookDynShared,
+  invoke_guard_factory_cached: ArcShared<Box<dyn InvokeGuardFactory>>,
+  scheduler: SchedulerShared,
+  delay_provider: SchedulerBackedDelayProvider,
+  tick_driver_bundle: TickDriverBundle,
+  start_time: Duration,
 }
 
 impl Clone for SystemStateShared {
   fn clone(&self) -> Self {
     Self {
-      inner:               self.inner.clone(),
-      system_name:         self.system_name.clone(),
-      guardian_kind:       self.guardian_kind,
-      canonical_host:      self.canonical_host.clone(),
-      canonical_port:      self.canonical_port,
+      inner: self.inner.clone(),
+      system_name: self.system_name.clone(),
+      guardian_kind: self.guardian_kind,
+      canonical_host: self.canonical_host.clone(),
+      canonical_port: self.canonical_port,
       quarantine_duration: self.quarantine_duration,
-      event_stream:        self.event_stream.clone(),
-      dead_letter:         self.dead_letter.clone(),
-      cells:               self.cells.clone(),
-      termination_signal:  self.termination_signal.clone(),
-      remote_watch_hook:   self.remote_watch_hook.clone(),
-      scheduler:           self.scheduler.clone(),
-      delay_provider:      self.delay_provider.clone(),
-      tick_driver_bundle:  self.tick_driver_bundle.clone(),
-      start_time:          self.start_time,
+      event_stream: self.event_stream.clone(),
+      dead_letter: self.dead_letter.clone(),
+      cells: self.cells.clone(),
+      termination_signal: self.termination_signal.clone(),
+      remote_watch_hook: self.remote_watch_hook.clone(),
+      invoke_guard_factory_cached: self.invoke_guard_factory_cached.clone(),
+      scheduler: self.scheduler.clone(),
+      delay_provider: self.delay_provider.clone(),
+      tick_driver_bundle: self.tick_driver_bundle.clone(),
+      start_time: self.start_time,
     }
   }
 }
@@ -113,6 +116,7 @@ impl SystemStateShared {
     let cells = state.cells_handle();
     let termination_signal = TerminationSignal::new(state.termination_state());
     let remote_watch_hook = state.remote_watch_hook_handle();
+    let invoke_guard_factory_cached = state.invoke_guard_factory();
     let scheduler = state.scheduler();
     let delay_provider = state.delay_provider();
     let tick_driver_bundle = state.tick_driver_bundle();
@@ -130,6 +134,7 @@ impl SystemStateShared {
       cells,
       termination_signal,
       remote_watch_hook,
+      invoke_guard_factory_cached,
       scheduler,
       delay_provider,
       tick_driver_bundle,
@@ -151,6 +156,7 @@ impl SystemStateShared {
       cells,
       termination_signal,
       remote_watch_hook,
+      invoke_guard_factory_cached,
       scheduler,
       delay_provider,
       tick_driver_bundle,
@@ -167,6 +173,7 @@ impl SystemStateShared {
         guard.cells_handle(),
         TerminationSignal::new(guard.termination_state()),
         guard.remote_watch_hook_handle(),
+        guard.invoke_guard_factory(),
         guard.scheduler(),
         guard.delay_provider(),
         guard.tick_driver_bundle(),
@@ -185,6 +192,7 @@ impl SystemStateShared {
       cells,
       termination_signal,
       remote_watch_hook,
+      invoke_guard_factory_cached,
       scheduler,
       delay_provider,
       tick_driver_bundle,
@@ -210,6 +218,12 @@ impl SystemStateShared {
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
     self.inner.with_read(|inner| inner.allocate_pid())
+  }
+
+  /// Returns the configured invoke-guard factory.
+  #[must_use]
+  pub fn invoke_guard_factory(&self) -> ArcShared<Box<dyn InvokeGuardFactory>> {
+    self.invoke_guard_factory_cached.clone()
   }
 
   /// Registers the provided actor cell in the global registry.
