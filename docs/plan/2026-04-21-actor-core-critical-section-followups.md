@@ -35,15 +35,18 @@
 - B: ISR 専用の backend を `DefaultMutex` の feature variant（例: `irq-locks`）として追加し、`enqueue_from_isr` の実装を分岐
 - C: API 名を維持し、ドキュメントで「実装上は `enqueue` と同じ」を明記
 
-### 4. `actor-core/Cargo.toml:36` `spin` 直接依存の Requirement 2 違反
+### 4. `actor-core/Cargo.toml:35` `spin` 直接依存の Requirement 2 違反（解消済み）
 
-本 change で追加した `actor-lock-construction-governance` Requirement 2「`actor-*` の `Cargo.toml` は primitive lock crate を non-optional な直接依存として宣言してはならない」に対し、`actor-core/Cargo.toml:36` の `spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "once"] }` が違反している。
+**解消済み**: `step01-eliminate-actor-core-spin-direct-dep` change（2026-04-21）で対応完了。
 
-本 change のスコープは `critical-section` のみだったため、`spin` 直接依存の解消は別 change として対応する必要がある。検討事項:
+対応内容:
+- `utils-core` に Once 系の 3 段構造（`OnceDriver<T>` trait、`SpinOnce<T>` backend、`SyncOnce<T>` 公開抽象）を新設（既存 `LockDriver` / `SpinSyncMutex` / `SharedLock` パターンと相似形）
+- `actor-core` の `spin::Once` 利用 2 箇所（`coordinated_shutdown.rs`、`mailbox/base.rs`）を `SyncOnce` に置換
+- `actor-core/Cargo.toml` から `spin` 直接依存行を完全削除
+- `actor-core/clippy.toml` の `disallowed-types` に `spin::Once` を追加（safety net 強化）
+- `actor-lock-construction-governance` spec に `spin` 固有 Scenario を追加して検査カバレッジを拡張
 
-- `spin` の利用箇所を `actor-core` 内で grep
-- `utils-core` の `SpinSyncMutex` / `SpinSyncRwLock` 抽象に置き換え可能か検証
-- 置き換え不能なケースがあれば、そのケースだけ allow-list 化
+他 actor-\* クレート（`cluster-*`、`remote-*`、`stream-*`、`persistence-*`、`actor-adaptor-std`）の `spin` 直接依存調査は本 change のスコープ外。必要があれば同じ方針で別 change として対応する。
 
 ### 5. `dev-dependencies` の `critical-section` 直接宣言（解消済み）
 

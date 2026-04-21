@@ -16,11 +16,10 @@ use core::{
 };
 
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock},
+  sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock, SyncOnce},
   timing::delay::DelayProvider,
 };
 use futures::future::{Either, join_all, poll_fn, select};
-use spin::Once;
 
 use super::{coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_id::CoordinatedShutdownId};
 use crate::core::kernel::{
@@ -70,7 +69,7 @@ pub struct CoordinatedShutdown {
   tasks:          SharedLock<BTreeMap<String, Vec<ShutdownTask>>>,
   run_started:    AtomicBool,
   run_done:       AtomicBool,
-  reason:         Once<CoordinatedShutdownReason>,
+  reason:         SyncOnce<CoordinatedShutdownReason>,
   delay_provider: Option<SharedLock<Box<dyn DelayProvider>>>,
 }
 
@@ -214,7 +213,7 @@ impl CoordinatedShutdown {
       tasks: SharedLock::new_with_driver::<DefaultMutex<_>>(BTreeMap::new()),
       run_started: AtomicBool::new(false),
       run_done: AtomicBool::new(false),
-      reason: Once::new(),
+      reason: SyncOnce::new(),
       delay_provider: delay_provider.map(SharedLock::new_with_driver::<DefaultMutex<_>>),
     })
   }

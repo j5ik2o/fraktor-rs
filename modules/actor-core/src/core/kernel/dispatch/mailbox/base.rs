@@ -6,8 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::VecDeque, string::String};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, WeakShared};
-use spin::Once;
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SyncOnce, WeakShared};
 
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
@@ -49,15 +48,15 @@ pub struct Mailbox {
   state:           MailboxScheduleState,
   /// Write-once instrumentation hooks. Set once via
   /// [`set_instrumentation`](Self::set_instrumentation), read lock-free thereafter via
-  /// `spin::Once::get()`.
-  instrumentation: Once<MailboxInstrumentation>,
+  /// `SyncOnce::get()`.
+  instrumentation: SyncOnce<MailboxInstrumentation>,
   cleanup_policy:  MailboxCleanupPolicy,
   /// Write-once message invoker. Set once via [`install_invoker`](Self::install_invoker),
-  /// read lock-free thereafter via `spin::Once::get()`.
-  invoker:         Once<MessageInvokerShared>,
+  /// read lock-free thereafter via `SyncOnce::get()`.
+  invoker:         SyncOnce<MessageInvokerShared>,
   /// Write-once weak handle to the owning actor cell. Set by [`Mailbox::with_actor`]
   /// or [`install_actor`](Self::install_actor), read lock-free thereafter.
-  actor:           Once<WeakShared<ActorCell>>,
+  actor:           SyncOnce<WeakShared<ActorCell>>,
 }
 
 unsafe impl Send for Mailbox {}
@@ -127,10 +126,10 @@ impl Mailbox {
       user: queue,
       put_lock: shared_set.put_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: Once::new(),
+      instrumentation: SyncOnce::new(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: Once::new(),
-      actor: Once::new(),
+      invoker: SyncOnce::new(),
+      actor: SyncOnce::new(),
     }
   }
 
@@ -159,10 +158,10 @@ impl Mailbox {
       user: queue,
       put_lock: shared_set.put_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: Once::new(),
+      instrumentation: SyncOnce::new(),
       cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
-      invoker: Once::new(),
-      actor: Once::new(),
+      invoker: SyncOnce::new(),
+      actor: SyncOnce::new(),
     }
   }
 
@@ -197,11 +196,11 @@ impl Mailbox {
       user: queue,
       put_lock: shared_set.put_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: Once::new(),
+      instrumentation: SyncOnce::new(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: Once::new(),
+      invoker: SyncOnce::new(),
       actor: {
-        let once = Once::new();
+        let once = SyncOnce::new();
         once.call_once(|| actor);
         once
       },
