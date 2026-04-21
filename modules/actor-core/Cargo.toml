@@ -16,12 +16,12 @@ autoexamples = false
 default = []
 alloc = []
 alloc-metrics = []
-test-support = ["critical-section/std"]
+test-support = ["dep:critical-section", "critical-section/std"]
 
 [dependencies]
 async-trait = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
-critical-section = { workspace = true, default-features = false }
+critical-section = { workspace = true, default-features = false, optional = true }
 heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 portable-atomic-util = { workspace = true, default-features = false, features = ["alloc"] }

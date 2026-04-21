@@ -2,15 +2,13 @@
 
 use alloc::collections::VecDeque;
 use core::{
-  cell::RefCell,
   marker::PhantomData,
   sync::atomic::{AtomicBool, Ordering},
   time::Duration,
 };
 
-use critical_section::Mutex;
 use fraktor_utils_core_rs::core::{
-  sync::ArcShared,
+  sync::{ArcShared, DefaultMutex, SharedLock},
   time::{SchedulerTickHandle, TimerInstant},
 };
 use portable_atomic::AtomicU64;
@@ -28,7 +26,7 @@ pub type TickFeedHandle = ArcShared<TickFeed>;
 /// Maintains buffered ticks plus metrics accounting.
 pub struct TickFeed {
   _marker:             PhantomData<()>,
-  queue:               Mutex<RefCell<VecDeque<u32>>>,
+  queue:               SharedLock<VecDeque<u32>>,
   capacity:            usize,
   signal:              TickExecutorSignal,
   handle:              SchedulerTickHandleOwned,
@@ -49,7 +47,7 @@ impl TickFeed {
     let queue = VecDeque::with_capacity(bounded_capacity);
     let feed = Self {
       _marker: PhantomData,
-      queue: Mutex::new(RefCell::new(queue)),
+      queue: SharedLock::new_with_driver::<DefaultMutex<_>>(queue),
       capacity: bounded_capacity,
       signal,
       handle: SchedulerTickHandleOwned::new(),
@@ -154,8 +152,7 @@ impl TickFeed {
   }
 
   fn try_push(&self, ticks: u32) -> bool {
-    critical_section::with(|cs| {
-      let mut queue = self.queue.borrow(cs).borrow_mut();
+    self.queue.with_lock(|queue| {
       if queue.len() >= self.capacity {
         false
       } else {
@@ -166,7 +163,7 @@ impl TickFeed {
   }
 
   fn pop_front(&self) -> Option<u32> {
-    critical_section::with(|cs| self.queue.borrow(cs).borrow_mut().pop_front())
+    self.queue.with_lock(|queue| queue.pop_front())
   }
 
   fn record_enqueue(&self, ticks: u32) {
