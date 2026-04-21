@@ -12,13 +12,13 @@
 
 ### 1. `test-support` feature の責務分離
 
-`actor-core/Cargo.toml:19` の `test-support` feature は現状 3 つの異なる責務を抱えている:
+`actor-core/Cargo.toml:19` の `test-support` feature は当初 3 つの異なる責務を抱えていた:
 
-- 責務 A: `critical-section/std` impl provider 提供（std 環境でリンクを通すため）
-- 責務 B: ダウンストリーム統合テスト用 API 公開（`TestTickDriver`, `new_empty` 等）
-- 責務 C: 内部 API の `pub(crate)` → `pub` 格上げ（`Behavior::handle_message` 等）
+- 責務 A: `critical-section/std` impl provider 提供（std 環境でリンクを通すため） → **完了** (`retire-actor-core-test-support-critical-section-impl` change で各バイナリ側へ移譲、2026-04-21)
+- 責務 B: ダウンストリーム統合テスト用 API 公開（`TestTickDriver`, `new_empty` 等） → 未着手
+- 責務 C: 内部 API の `pub(crate)` → `pub` 格上げ（`Behavior::handle_message` 等） → 未着手
 
-`showcases/std` が `test-support` を `[dependencies]` で常時有効化している事実が、責務の混乱を示している。本来は `std-impl` / `test-support` / `internal-api` のような分離を検討すべき。
+責務 A 退役後、`actor-core/test-support` は `[]`（空配列）になり、責務 B/C のための `#[cfg(any(test, feature = "test-support"))]` がコード側で利用される構造のみが残った。最終的に責務 B/C も退役できれば `test-support` feature 自体を削除できる。
 
 ### 2. `portable-atomic` の `critical-section` feature 再評価
 

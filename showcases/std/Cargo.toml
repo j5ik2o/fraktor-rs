@@ -9,6 +9,7 @@ publish = false
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-core-rs = { workspace = true, features = ["std-locks"] }
+critical-section = { workspace = true, features = ["std"] }
 fraktor-stream-core-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }
