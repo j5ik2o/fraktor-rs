@@ -24,6 +24,7 @@ step01〜step05 を経て `actor-core/test-support` feature が抱えていた 3
 **Non-Goals**:
 - `actor-adaptor-std` 等の他クレートの `test-support` feature 見直し（独自責務を持つため個別判断）
 - `actor-core` の `alloc` / `alloc-metrics` feature の見直し（別スコープ）
+- `actor-core` 内部に残存する `pub(crate)` 限定の `#[cfg(test)]` 専用テストヘルパ（step03 で導入した `tick_driver/tests/test_tick_driver.rs` の `TestTickDriver`、`base/tests.rs` / `typed/system/tests.rs` の `new_empty*` 等）の削除は **対象外**。これらは外部から見えず `test-support` feature とは独立しているため、本 change の feature 削除を妨げない。inline test を統合テストへ移行する形で消すかどうかは別途判断する
 
 ## Capabilities
 
