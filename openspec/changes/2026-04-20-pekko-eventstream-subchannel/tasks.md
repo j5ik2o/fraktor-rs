@@ -44,7 +44,7 @@
   - `subscribers.snapshot_for(key)` で該当購読者のみを返す
 - [x] 3.4 `subscribe_no_replay_with_key` は新設しない（`subscribe_no_replay` は `ClassifierKey::All` のまま据え置き、不要なら本 change でも未対応で良い）
 - [x] 3.5 replay フィルタが効いていることを裏取りするテストを追加する
-  - 例: `es_h1_t5_replay_filters_buffered_events_by_key` として、Log 購読者が `subscribe_with_key(ClassifierKey::Log, ...)` したとき、事前に buffered された Lifecycle event は replay されないことを検証
+  - 例: `replay_filters_buffered_events_by_key` として、Log 購読者が `subscribe_with_key(ClassifierKey::Log, ...)` したとき、事前に buffered された Lifecycle event は replay されないことを検証
 - 注: Pekko `SubchannelClassification` 互換の対象は classifier による配送絞り込みであり、購読時 replay と並行 publish の厳密順序保証までは本 change の対象外とする。既存 `EventStream` の replay 契約は維持する。
 - [x] 3.6 `./scripts/ci-check.sh ai dylint` が exit 0
 
