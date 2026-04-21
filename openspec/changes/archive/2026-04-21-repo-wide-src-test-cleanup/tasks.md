@@ -19,6 +19,11 @@
 
 ## 4. Remaining Cleanup
 
-- [ ] 4.1 `actor-core` の helper-heavy な test module（`system_state_shared`, `mailbox/base`, `backoff_supervisor`, `typed delivery`, `behaviors`, routing builders）を fixture 分離して `tests/` へ移す
-- [ ] 4.2 `stream-core` の helper-heavy な test module（`source`, `materialization/actor_materializer`）を public surface または `tests/fixtures` 経由へ整理して `tests/` へ移す
-- [ ] 4.3 残存候補が本当に non-goal か helper 分離待ちだけになっていることを再棚卸しし、この change を archive 可能な状態にする
+> **Note**: 4.1 / 4.2 は当初「helper-heavy な test module を tests/ へ移す」と記述していたが、spec.md の移設根拠（可視性汚染 / dead_code 誘発）との対応付けが不十分であることが判明した。`#[test]` が多い・helper が多いといった症状は (a) テスト対象モジュールの責務肥大（production 側リファクタ課題）と (b) 共通テストユーティリティ未整備（テストロジック課題）の混在であり、この change の Goal / Non-Goal では切り分けて処理できない。よって本 change では未対応のまま残し、後続 change で整理する。
+>
+> - 引き継ぎ先候補: 別 change `complex-test-modules-refactor`（仮）で (a) production 責務分割と (b) `tests/fixtures` への共通 utility 抽出を扱う
+> - 本 change の archive 条件は 1〜3 の完了とし、4 は後続 change への引き継ぎで閉じる
+
+- [-] 4.1 ~~`actor-core` の helper-heavy な test module（`system_state_shared`, `mailbox/base`, `backoff_supervisor`, `typed delivery`, `behaviors`, routing builders）を fixture 分離して `tests/` へ移す~~ → 別 change へ持ち越し
+- [-] 4.2 ~~`stream-core` の helper-heavy な test module（`source`, `materialization/actor_materializer`）を public surface または `tests/fixtures` 経由へ整理して `tests/` へ移す~~ → 別 change へ持ち越し
+- [x] 4.3 残存候補（4.1 / 4.2 対象）が本 change の Goal / Non-Goal では解けないことを確認し、後続 change に引き継いで本 change を archive 可能な状態にする
