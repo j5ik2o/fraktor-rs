@@ -9,7 +9,7 @@ use core::{
   sync::atomic::{AtomicBool, Ordering},
   time::Duration,
 };
-use std::thread::{self, JoinHandle};
+use std::thread::{self, Builder, JoinHandle};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -50,7 +50,7 @@ impl TickDriver for TestTickDriver {
     let running = ArcShared::new(AtomicBool::new(true));
 
     let tick_flag = running.clone();
-    let tick_thread = thread::Builder::new()
+    let tick_thread = Builder::new()
       .name("test-tick-driver-tick".into())
       .spawn(move || {
         loop {
@@ -66,7 +66,7 @@ impl TickDriver for TestTickDriver {
     let exec_flag = running.clone();
     let exec_interval = (resolution / 10).max(Duration::from_millis(1));
     let mut executor = executor;
-    let exec_thread = match thread::Builder::new().name("test-tick-driver-exec".into()).spawn(move || {
+    let exec_thread = match Builder::new().name("test-tick-driver-exec".into()).spawn(move || {
       loop {
         if !exec_flag.load(Ordering::Acquire) {
           break;
