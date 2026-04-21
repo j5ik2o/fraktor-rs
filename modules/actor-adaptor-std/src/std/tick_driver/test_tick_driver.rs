@@ -76,7 +76,9 @@ impl TickDriver for TestTickDriver {
       | Err(_) => {
         // Clean up the tick thread if exec thread spawn fails.
         running.store(false, Ordering::Release);
-        let _ = tick_thread.join();
+        if tick_thread.join().is_err() {
+          std::eprintln!("warn: test tick driver tick thread panicked during spawn-failure cleanup");
+        }
         return Err(TickDriverError::SpawnFailed);
       },
     };
