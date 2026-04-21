@@ -82,15 +82,6 @@ impl TickFeed {
     self.finalize_enqueue(pushed, ticks);
   }
 
-  /// Enqueues ticks from interrupt context.
-  pub fn enqueue_from_isr(&self, ticks: u32) {
-    if ticks == 0 {
-      return;
-    }
-    let pushed = self.try_push(ticks);
-    self.finalize_enqueue(pushed, ticks);
-  }
-
   /// Drains buffered ticks, invoking the provided closure for each batch.
   pub(crate) fn drain_pending<F>(&self, mut consumer: F)
   where
