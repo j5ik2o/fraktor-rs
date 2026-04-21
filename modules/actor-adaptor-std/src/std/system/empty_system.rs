@@ -1,9 +1,6 @@
 //! Test-only constructors for empty actor systems backed by [`TestTickDriver`].
 
-use fraktor_actor_core_rs::core::{
-  kernel::{actor::setup::ActorSystemConfig, system::ActorSystem},
-  typed::TypedActorSystem,
-};
+use fraktor_actor_core_rs::core::kernel::{actor::setup::ActorSystemConfig, system::ActorSystem};
 
 use crate::std::tick_driver::TestTickDriver;
 
@@ -41,16 +38,3 @@ where
   }
 }
 
-/// Creates an empty [`TypedActorSystem`] backed by [`TestTickDriver`].
-///
-/// Equivalent to wrapping [`new_empty_actor_system`] with [`TypedActorSystem::from_untyped`].
-///
-/// # Panics
-///
-/// Panics if the default test-support configuration fails to build.
-#[must_use]
-pub fn new_empty_typed_actor_system<M>() -> TypedActorSystem<M>
-where
-  M: Send + Sync + 'static, {
-  TypedActorSystem::from_untyped(new_empty_actor_system())
-}

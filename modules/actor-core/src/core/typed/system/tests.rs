@@ -36,8 +36,9 @@ where
 {
   /// Creates an empty typed actor system without any guardian.
   ///
-  /// Inline-test only helper. External callers should use `new_empty_typed_actor_system` from
-  /// `fraktor-actor-adaptor-std-rs`.
+  /// Inline-test only helper. External callers should wrap
+  /// `fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system()` with
+  /// `TypedActorSystem::from_untyped`.
   #[must_use]
   pub(crate) fn new_empty() -> Self {
     Self::from_untyped(ActorSystem::new_empty())
