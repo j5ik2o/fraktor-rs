@@ -1,10 +1,12 @@
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::pattern::{CircuitBreakersRegistry, CircuitBreakersRegistryId};
+use fraktor_actor_adaptor_std_rs::std::{
+  pattern::{CircuitBreakersRegistry, CircuitBreakersRegistryId},
+  system::{new_empty_actor_system, new_empty_actor_system_with},
+};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{extension::ExtensionId, setup::CircuitBreakerConfig},
   pattern::CircuitBreakerState,
-  system::ActorSystem,
 };
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
@@ -13,7 +15,7 @@ fn assert_extension_id<E: ExtensionId<Ext = CircuitBreakersRegistry>>(_extension
 #[test]
 fn registry_is_available_as_actor_system_extension() {
   // Given: 空の actor system と extension id がある
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   let extension_id = CircuitBreakersRegistryId::new();
   assert_extension_id(&extension_id);
 
@@ -31,7 +33,7 @@ fn registry_is_available_as_actor_system_extension() {
 #[tokio::test]
 async fn same_name_returns_shared_breaker_state() {
   // Given: 登録済み registry から同名 breaker を 2 回取得する
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   let extension_id = CircuitBreakersRegistryId::new();
   let registry = system.extended().register_extension(&extension_id);
   let first = registry.get("payments");
@@ -49,7 +51,7 @@ async fn same_name_returns_shared_breaker_state() {
 #[tokio::test]
 async fn different_names_return_independent_breakers() {
   // Given: 別名 breaker を取得する
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   let extension_id = CircuitBreakersRegistryId::new();
   let registry = system.extended().register_extension(&extension_id);
   let payments = registry.get("payments");
@@ -67,7 +69,7 @@ async fn different_names_return_independent_breakers() {
 
 #[test]
 fn extension_uses_actor_system_default_and_named_settings() {
-  let system = ActorSystem::new_empty_with(|config| {
+  let system = new_empty_actor_system_with(|config| {
     config
       .with_default_circuit_breaker_config(CircuitBreakerConfig::new(3, Duration::from_secs(10)))
       .with_named_circuit_breaker_config("payments", CircuitBreakerConfig::new(7, Duration::from_secs(45)))

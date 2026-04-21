@@ -62,45 +62,29 @@ pub struct ActorSystem {
 }
 
 impl ActorSystem {
-  /// Creates an empty actor system without any guardian (testing only).
-  ///
-  /// # Panics
-  ///
-  /// Panics if the default test-support configuration fails to build.
-  #[must_use]
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn new_empty() -> Self {
-    Self::new_empty_with(|config| config)
-  }
-
-  /// Creates an empty actor system without any guardian using a customizable config (testing only).
-  ///
-  /// # Panics
-  ///
-  /// Panics if the default test-support configuration fails to build.
-  #[must_use]
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn new_empty_with<F>(configure: F) -> Self
-  where
-    F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
-    use crate::core::kernel::actor::scheduler::tick_driver::TestTickDriver;
-
-    let config = ActorSystemConfig::new(TestTickDriver::default());
-    let config = configure(config);
-    let state = match SystemState::build_from_owned_config(config) {
-      | Ok(state) => state,
-      | Err(error) => panic!("test-support config failed to build in new_empty_with: {error:?}"),
-    };
-    let system = Self::from_state(SystemStateShared::new(state));
-    system.state.mark_root_started();
-    system
-  }
-
   /// Creates an actor system from an existing system state.
   #[must_use]
   pub fn from_state(state: SystemStateShared) -> Self {
     let settings = TypedActorSystemConfig::new(state.system_name(), state.start_time());
     Self { state, settings }
+  }
+
+  /// Builds and starts an actor system from a fully constructed configuration.
+  ///
+  /// Creates the system state from the provided [`ActorSystemConfig`], wraps it in a
+  /// [`SystemStateShared`], and marks the root as started before returning. Designed as the
+  /// public seam used by adaptor-level test helpers (e.g. `new_empty_actor_system_with` in
+  /// `fraktor-actor-adaptor-std-rs`) that previously relied on private constructors.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the underlying [`SystemState`] cannot be built from the
+  /// supplied configuration.
+  pub fn new_started_from_config(config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    let state = SystemState::build_from_owned_config(config)?;
+    let system = Self::from_state(SystemStateShared::new(state));
+    system.state.mark_root_started();
+    Ok(system)
   }
 
   /// Creates an actor system with the provided configuration.

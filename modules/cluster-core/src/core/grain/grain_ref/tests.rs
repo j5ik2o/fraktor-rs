@@ -1,6 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
@@ -11,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{SchedulerConfig, SchedulerShared, tick_driver::TestTickDriver},
+    scheduler::{SchedulerConfig, SchedulerShared},
     setup::ActorSystemConfig,
   },
   event::stream::{

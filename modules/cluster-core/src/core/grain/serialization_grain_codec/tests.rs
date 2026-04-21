@@ -1,6 +1,7 @@
 use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::any::{Any, TypeId};
 
+use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   serialization::{
@@ -101,7 +102,7 @@ impl SerializerWithStringManifest for TelemetrySerializer {
 
 #[test]
 fn try_from_system_fails_when_extension_missing() {
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   match SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote) {
     | Ok(_) => panic!("extension should be missing"),
     | Err(err) => assert!(matches!(err, GrainCodecError::ExtensionUnavailable { .. })),
@@ -161,7 +162,7 @@ fn build_system_with_serialization() -> ActorSystem {
     .expect("setup");
   let extension_id = SerializationExtensionId::new(setup);
 
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   system.extended().register_extension(&extension_id);
   system
 }

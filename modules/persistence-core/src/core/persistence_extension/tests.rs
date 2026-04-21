@@ -1,10 +1,7 @@
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
-    error::ActorError,
-    messaging::AnyMessageView,
-    props::Props,
-    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
+    Actor, ActorContext, Pid, error::ActorError, messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig,
     setup::ActorSystemConfig,
   },
   system::ActorSystem,

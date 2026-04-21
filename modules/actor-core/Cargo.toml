@@ -40,6 +40,7 @@ proptest = "1.5"
 critical-section = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-adaptor-std-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 

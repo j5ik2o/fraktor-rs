@@ -5,13 +5,13 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, ChildRef,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::{MailboxConfig, Props},
-    scheduler::tick_driver::TestTickDriver,
     setup::ActorSystemConfig,
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},

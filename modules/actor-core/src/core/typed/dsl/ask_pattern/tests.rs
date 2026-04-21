@@ -1,7 +1,7 @@
 use core::{hint::spin_loop, time::Duration};
 
 use crate::core::{
-  kernel::actor::{messaging::AskError, scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
+  kernel::actor::{messaging::AskError, scheduler::tick_driver::tests::TestTickDriver, setup::ActorSystemConfig},
   typed::{
     Behavior, TypedActorRef, TypedActorSystem, TypedProps,
     dsl::{AskPattern, Behaviors, StatusReply, TypedAskError},

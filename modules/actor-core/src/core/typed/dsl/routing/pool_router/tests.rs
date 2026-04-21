@@ -11,7 +11,7 @@ use crate::core::{
       error::ActorError,
       messaging::{AnyMessage, AnyMessageView},
       props::Props,
-      scheduler::tick_driver::TestTickDriver,
+      scheduler::tick_driver::tests::TestTickDriver,
       setup::ActorSystemConfig,
     },
     system::ActorSystem,
@@ -577,7 +577,7 @@ mod optimal_size_exploring_resizer_smoke {
   use super::{RouteRecord, recording_routee_behavior, wait_until};
   use crate::core::{
     kernel::{
-      actor::{scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
+      actor::{scheduler::tick_driver::tests::TestTickDriver, setup::ActorSystemConfig},
       pattern::Clock,
     },
     typed::{

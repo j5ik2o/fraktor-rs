@@ -3,13 +3,10 @@ extern crate std;
 use core::time::Duration;
 use std::time::Instant;
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext,
-    error::ActorError,
-    messaging::AnyMessageView,
-    props::Props,
-    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
+    Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig,
     setup::ActorSystemConfig,
   },
   system::{ActorSystem, remote::RemotingConfig},

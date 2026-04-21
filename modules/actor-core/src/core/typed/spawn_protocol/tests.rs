@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::core::{
-  kernel::actor::{scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
+  kernel::actor::{scheduler::tick_driver::tests::TestTickDriver, setup::ActorSystemConfig},
   typed::{SpawnProtocol, TypedActorRef, dsl::Behaviors, props::TypedProps, system::TypedActorSystem},
 };
 

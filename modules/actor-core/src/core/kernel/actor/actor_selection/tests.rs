@@ -14,7 +14,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::TestTickDriver,
+    scheduler::tick_driver::tests::TestTickDriver,
     setup::ActorSystemConfig,
   },
   system::{

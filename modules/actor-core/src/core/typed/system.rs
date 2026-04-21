@@ -182,16 +182,6 @@ impl<M> TypedActorSystem<M>
 where
   M: Send + Sync + 'static,
 {
-  /// Creates an empty actor system without any guardian (testing only).
-  #[must_use]
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn new_empty() -> Self {
-    let inner = ActorSystem::new_empty();
-    let cached_address = Address::local(inner.name());
-    let event_stream_ref = build_event_stream_ref(&inner);
-    Self { inner, cached_address, event_stream_ref, marker: PhantomData }
-  }
-
   /// Creates a typed actor system using the supplied configuration.
   ///
   /// # Errors

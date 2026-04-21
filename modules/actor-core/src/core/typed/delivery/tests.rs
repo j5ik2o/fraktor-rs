@@ -6,7 +6,7 @@ use core::time::Duration;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use crate::core::{
-  kernel::actor::{Pid, scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
+  kernel::actor::{Pid, scheduler::tick_driver::tests::TestTickDriver, setup::ActorSystemConfig},
   typed::{
     Behavior, TypedActorRef, TypedActorSystem, TypedProps,
     delivery::{

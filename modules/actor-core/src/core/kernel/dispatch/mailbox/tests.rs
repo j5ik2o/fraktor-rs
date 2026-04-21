@@ -11,7 +11,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::{MailboxConfig, Props},
-    scheduler::tick_driver::TestTickDriver,
+    scheduler::tick_driver::tests::TestTickDriver,
     setup::ActorSystemConfig,
   },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},

@@ -28,8 +28,9 @@ use crate::core::{
         SchedulerConfig,
         task_run::{TaskRunError, TaskRunPriority},
         tick_driver::{
-          AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TestTickDriver, TickDriver, TickDriverError,
-          TickDriverId, TickDriverKind, TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
+          AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverId,
+          TickDriverKind, TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
+          tests::TestTickDriver,
         },
       },
       setup::ActorSystemConfig,
@@ -49,6 +50,45 @@ use crate::core::{
   },
   typed::receptionist::SYSTEM_RECEPTIONIST_TOP_LEVEL,
 };
+
+impl ActorSystem {
+  /// Creates an empty actor system without any guardian.
+  ///
+  /// Inline-test only helper. External callers should use `new_empty_actor_system` from
+  /// `fraktor-actor-adaptor-std-rs`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
+  #[must_use]
+  pub(crate) fn new_empty() -> Self {
+    Self::new_empty_with(|config| config)
+  }
+
+  /// Creates an empty actor system with a customizable config.
+  ///
+  /// See [`Self::new_empty`] for the rationale on the cfg gating.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
+  #[must_use]
+  pub(crate) fn new_empty_with<F>(configure: F) -> Self
+  where
+    F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
+    use crate::core::kernel::actor::scheduler::tick_driver::tests::TestTickDriver;
+
+    let config = ActorSystemConfig::new(TestTickDriver::default());
+    let config = configure(config);
+    let state = match SystemState::build_from_owned_config(config) {
+      | Ok(state) => state,
+      | Err(error) => panic!("test-support config failed to build in new_empty_with: {error:?}"),
+    };
+    let system = Self::from_state(SystemStateShared::new(state));
+    system.state.mark_root_started();
+    system
+  }
+}
 
 struct TestActor;
 

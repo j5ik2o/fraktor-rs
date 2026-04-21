@@ -10,7 +10,7 @@ use crate::core::kernel::{
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
+    scheduler::{SchedulerConfig, tick_driver::tests::TestTickDriver},
     setup::ActorSystemConfig,
   },
   system::{

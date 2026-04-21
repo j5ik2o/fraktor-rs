@@ -13,7 +13,7 @@ use std::thread::{self, JoinHandle};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
-use super::{
+use super::super::{
   SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind, TickDriverProvision, TickDriverStopper,
   TickFeedHandle, next_tick_driver_id,
 };
@@ -22,14 +22,15 @@ use super::{
 ///
 /// Returns [`TickDriverKind::Manual`] so that `build_from_owned_config`
 /// auto-enables `runner_api_enabled` before provisioning.
-pub struct TestTickDriver {
+pub(crate) struct TestTickDriver {
   resolution: Duration,
 }
 
 impl TestTickDriver {
   /// Creates a new test tick driver with the given resolution.
   #[must_use]
-  pub const fn new(resolution: Duration) -> Self {
+  #[allow(dead_code)]
+  pub(crate) const fn new(resolution: Duration) -> Self {
     Self { resolution }
   }
 }

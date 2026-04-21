@@ -1,12 +1,11 @@
-use fraktor_actor_core_rs::core::kernel::{
-  actor::extension::ExtensionId, pattern::CircuitBreakerState, system::ActorSystem,
-};
+use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, pattern::CircuitBreakerState};
 
 use super::CircuitBreakersRegistryId;
+use crate::std::system::new_empty_actor_system;
 
 #[test]
 fn create_extension_returns_empty_registry() {
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   let extension_id = CircuitBreakersRegistryId::new();
 
   let registry = extension_id.create_extension(&system);

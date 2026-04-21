@@ -4,7 +4,7 @@ use core::hint::spin_loop;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
-  kernel::actor::{scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig},
+  kernel::actor::{scheduler::tick_driver::tests::TestTickDriver, setup::ActorSystemConfig},
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
     dsl::Behaviors,
