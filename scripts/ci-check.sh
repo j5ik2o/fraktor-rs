@@ -1234,19 +1234,24 @@ run_examples() {
     rustflags_value="-Dwarnings --force-warn deprecated"
   fi
 
-  local example_file
-  example_file="$(mktemp)"
-  local metadata_file
-  metadata_file="$(mktemp)"
+  local example_file=""
+  example_file="$(mktemp)" || return 1
+  local metadata_file=""
+  metadata_file="$(mktemp)" || {
+    rm -f "${example_file}"
+    return 1
+  }
   if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
     if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo "+${DEFAULT_TOOLCHAIN}" metadata --format-version 1 --no-deps > "${metadata_file}"; then
-      rm -f "${example_file}" "${metadata_file}"
+      [[ -n "${example_file}" ]] && rm -f "${example_file}"
+      [[ -n "${metadata_file}" ]] && rm -f "${metadata_file}"
       echo "エラー: cargo metadata の取得に失敗しました。" >&2
       return 1
     fi
   else
     if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo metadata --format-version 1 --no-deps > "${metadata_file}"; then
-      rm -f "${example_file}" "${metadata_file}"
+      [[ -n "${example_file}" ]] && rm -f "${example_file}"
+      [[ -n "${metadata_file}" ]] && rm -f "${metadata_file}"
       echo "エラー: cargo metadata の取得に失敗しました。" >&2
       return 1
     fi
@@ -1280,10 +1285,11 @@ for package in metadata.get("packages", []):
             features_str = ",".join(required_features) if required_features else ""
             print(f"{name}\t{target_name}\t{features_str}")
 PY
-    rm -f "${example_file}" "${metadata_file}"
+    [[ -n "${example_file}" ]] && rm -f "${example_file}"
+    [[ -n "${metadata_file}" ]] && rm -f "${metadata_file}"
     return 1
   fi
-  rm -f "${metadata_file}"
+  [[ -n "${metadata_file}" ]] && rm -f "${metadata_file}"
 
   local had_examples=""
   while IFS=$'\t' read -r package_name example_name features; do
@@ -1301,13 +1307,13 @@ PY
     fi
     RUSTFLAGS="${rustflags_value}" run_cargo "${cargo_args[@]}" \
       || {
-        rm -f "${example_file}"
+        [[ -n "${example_file}" ]] && rm -f "${example_file}"
         return 1
       }
     echo
   done <"${example_file}"
 
-  rm -f "${example_file}"
+  [[ -n "${example_file}" ]] && rm -f "${example_file}"
 
   if [[ -z "${had_examples}" ]]; then
     echo "info: 実行可能な example が見つかりませんでした" >&2
