@@ -51,3 +51,6 @@ hide_rate_limit_model_nudge = true
 
 [plugins."gmail@openai-curated"]
 enabled = true
+
+[plugins."github@openai-curated"]
+enabled = true
