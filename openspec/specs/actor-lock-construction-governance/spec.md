@@ -83,6 +83,13 @@ impl provider 取得は各バイナリが `[dev-dependencies]` または `[depen
 - **AND** `critical-section` への依存は `portable-atomic = { features = ["critical-section"] }` のような推移的経路でのみ表現される
 - **AND** `[dev-dependencies]` には `critical-section = { workspace = true, features = ["std"] }` が impl provider 取得目的で記述されてよい（actor-core 自身の `cargo test` で必要）
 
+#### Scenario: actor-core の Cargo.toml は spin を `[dependencies]` 直接依存として持たない
+
+- **WHEN** `modules/actor-core/Cargo.toml` の `[dependencies]` セクションで `spin` エントリを検査する
+- **THEN** `spin` エントリは存在しない
+- **AND** `spin` への依存は `fraktor-utils-core-rs` 経由の推移的経路でのみ表現される
+- **AND** `actor-core` の production code 内の write-once + lock-free read 用途（旧 `spin::Once<T>` 利用箇所）は `fraktor-utils-core-rs` が提供する `SyncOnce<T>` 抽象を通して構築される
+
 #### Scenario: actor-* の他クレートも同じ規約に従う
 
 - **WHEN** `fraktor-actor-adaptor-std-rs`、`fraktor-cluster-*-rs`、`fraktor-remote-*-rs`、`fraktor-stream-*-rs`、`fraktor-persistence-*-rs` の `Cargo.toml` を読む
