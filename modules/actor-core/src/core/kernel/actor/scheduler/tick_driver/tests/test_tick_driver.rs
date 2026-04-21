@@ -26,15 +26,6 @@ pub(crate) struct TestTickDriver {
   resolution: Duration,
 }
 
-impl TestTickDriver {
-  /// Creates a new test tick driver with the given resolution.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) const fn new(resolution: Duration) -> Self {
-    Self { resolution }
-  }
-}
-
 impl Default for TestTickDriver {
   fn default() -> Self {
     Self { resolution: Duration::from_millis(10) }
@@ -59,20 +50,23 @@ impl TickDriver for TestTickDriver {
     let running = ArcShared::new(AtomicBool::new(true));
 
     let tick_flag = running.clone();
-    let tick_thread = thread::spawn(move || {
-      loop {
-        thread::sleep(resolution);
-        if !tick_flag.load(Ordering::Acquire) {
-          break;
+    let tick_thread = thread::Builder::new()
+      .name("test-tick-driver-tick".into())
+      .spawn(move || {
+        loop {
+          thread::sleep(resolution);
+          if !tick_flag.load(Ordering::Acquire) {
+            break;
+          }
+          feed.enqueue(1);
         }
-        feed.enqueue(1);
-      }
-    });
+      })
+      .map_err(|_| TickDriverError::SpawnFailed)?;
 
     let exec_flag = running.clone();
     let exec_interval = (resolution / 10).max(Duration::from_millis(1));
     let mut executor = executor;
-    let exec_thread = thread::spawn(move || {
+    let exec_thread = match thread::Builder::new().name("test-tick-driver-exec".into()).spawn(move || {
       loop {
         if !exec_flag.load(Ordering::Acquire) {
           break;
@@ -80,7 +74,14 @@ impl TickDriver for TestTickDriver {
         executor.drive_pending();
         thread::sleep(exec_interval);
       }
-    });
+    }) {
+      | Ok(handle) => handle,
+      | Err(_) => {
+        running.store(false, Ordering::Release);
+        let _ = tick_thread.join();
+        return Err(TickDriverError::SpawnFailed);
+      },
+    };
 
     Ok(TickDriverProvision {
       resolution,

@@ -51,5 +51,15 @@ path = "benches/balancing_dispatcher.rs"
 harness = false
 required-features = ["tokio-executor"]
 
+[[test]]
+name = "circuit_breakers_registry"
+path = "tests/circuit_breakers_registry.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "sp_h1_5_system_escalation"
+path = "tests/sp_h1_5_system_escalation.rs"
+required-features = ["test-support"]
+
 [lints]
 workspace = true
