@@ -7,4 +7,5 @@ disallowed-types = [
   { path = "std::sync::Mutex", reason = "Use SpinSyncMutex within production code", replacement = "fraktor_utils_core_rs::core::sync::SpinSyncMutex" },
   { path = "spin::Mutex", reason = "Use SpinSyncMutex within production code", replacement = "fraktor_utils_core_rs::core::sync::SpinSyncMutex" },
   { path = "spin::RwLock", reason = "Use SpinSyncRwLock within production code", replacement = "fraktor_utils_core_rs::core::sync::SpinSyncRwLock" },
+  { path = "spin::Once", reason = "Use SpinOnce within production code", replacement = "fraktor_utils_core_rs::core::sync::SpinOnce" },
 ]
