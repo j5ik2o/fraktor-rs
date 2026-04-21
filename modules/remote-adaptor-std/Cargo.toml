@@ -14,10 +14,7 @@ autoexamples = false
 
 [features]
 default = []
-test-support = [
-  "fraktor-remote-core-rs/test-support",
-  "fraktor-actor-core-rs/test-support",
-]
+test-support = ["fraktor-actor-core-rs/test-support"]
 
 [dependencies]
 fraktor-remote-core-rs = { workspace = true }
@@ -34,9 +31,9 @@ tracing = { workspace = true, features = ["std"] }
 workspace = true
 
 [dev-dependencies]
-fraktor-remote-core-rs = { workspace = true, features = ["test-support"] }
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["tokio-executor", "test-support"] }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+critical-section = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util", "test-util"] }
 anyhow = { workspace = true }
