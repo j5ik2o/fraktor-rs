@@ -45,9 +45,9 @@
 - `utils-core` の `SpinSyncMutex` / `SpinSyncRwLock` 抽象に置き換え可能か検証
 - 置き換え不能なケースがあれば、そのケースだけ allow-list 化
 
-### 5. `dev-dependencies` の `critical-section` 直接宣言
+### 5. `dev-dependencies` の `critical-section` 直接宣言（解消済み）
 
-`actor-core/Cargo.toml:42` で `critical-section = { workspace = true, features = ["std"] }` が `[dev-dependencies]` に直接宣言されている。これは `actor-core` 自身の `cargo test` 実行時に std impl provider を提供するため。本 change で `[dependencies]` 側を `optional = true` に変更したので、`[dev-dependencies]` 側は `optional` の有無に関わらず常に有効化される。整合性を取るなら `[dev-dependencies]` 宣言を削除し、`test-support` feature 経由のみで impl 提供することも可能（要検証）。
+`retire-actor-core-test-support-critical-section-impl` change（2026-04-21）により、impl provider 供給は各バイナリ（tests/benches/showcases）の責務に統一された。`actor-core/Cargo.toml` の `[dependencies]` から `critical-section` は完全削除済み。`[dev-dependencies]` に残る `critical-section = { workspace = true, features = ["std"] }` は、`actor-core` 自身の `cargo test` が impl を必要とするため引き続き必要（除去しない）。
 
 ## 参照
 
