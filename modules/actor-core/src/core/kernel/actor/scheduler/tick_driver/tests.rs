@@ -76,12 +76,12 @@ impl TickDriver for InlineTestDriver {
 }
 
 #[test]
-fn enqueue_from_isr_preserves_order_and_metrics() {
+fn enqueue_tracks_driver_active_and_drop_metrics() {
   let signal = TickExecutorSignal::new();
   let feed = TickFeed::new(Duration::from_millis(1), 1, signal.clone());
 
-  feed.enqueue_from_isr(1);
-  feed.enqueue_from_isr(1);
+  feed.enqueue(1);
+  feed.enqueue(1);
 
   let mut drained = Vec::new();
   feed.drain_pending(|ticks| drained.push(ticks));

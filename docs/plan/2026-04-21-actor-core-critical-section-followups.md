@@ -26,14 +26,15 @@
 
 ただし、`actor-core` の他 16 ファイルで `portable_atomic` が使われており、影響範囲は広い。
 
-### 3. `enqueue_from_isr` API 名と実装意図の乖離
+### 3. `enqueue_from_isr` API 名と実装意図の乖離（解消済み）
 
-`tick_feed.rs:88` の `pub fn enqueue_from_isr(&self, ticks: u32)` は API 名から ISR セーフティを示唆するが、実装は `try_push` を呼ぶだけで `enqueue` と完全に同じパス。本 change の起案時調査で production caller が存在しない（`tick_driver/tests.rs:83-84` のテストのみ）ことが判明した。
+**解消済み**: `step02-align-enqueue-from-isr-implementation` change（2026-04-21）で選択肢 A（`enqueue_from_isr` 削除 → `enqueue` 一本化）を採用して対応完了。
 
-選択肢:
-- A: `enqueue_from_isr` を削除し、`enqueue` に一本化
-- B: ISR 専用の backend を `DefaultMutex` の feature variant（例: `irq-locks`）として追加し、`enqueue_from_isr` の実装を分岐
-- C: API 名を維持し、ドキュメントで「実装上は `enqueue` と同じ」を明記
+対応内容:
+- `TickFeed::enqueue_from_isr` public API を削除
+- `tick_driver/tests.rs` の test 関数 `enqueue_from_isr_preserves_order_and_metrics` を `enqueue_tracks_driver_active_and_drop_metrics` にリネーム（既存 `tick_feed/tests.rs::enqueue_wakes_signal_and_preserves_order` とユニーク検証点を区別する命名）
+- `actor-lock-construction-governance` spec に「ISR セーフに見せかけながら中身が通常ロック」の public API を禁止する Scenario を追加
+- 将来 ISR セーフ経路が真に必要になった場合は、`DefaultMutex` の ISR セーフ feature variant（例: `irq-locks`）を伴う形で **新規 API として** 設計する方針（名前だけ先行した API を温存する方向は選ばない）
 
 ### 4. `actor-core/Cargo.toml:35` `spin` 直接依存の Requirement 2 違反（解消済み）
 
