@@ -60,3 +60,21 @@ impl<T> Default for SyncOnce<T, SpinOnce<T>> {
     Self::new()
   }
 }
+
+impl<T, D: OnceDriver<T>> OnceDriver<T> for SyncOnce<T, D> {
+  fn new() -> Self {
+    Self::with_driver()
+  }
+
+  fn call_once<F: FnOnce() -> T>(&self, f: F) -> &T {
+    self.call_once(f)
+  }
+
+  fn get(&self) -> Option<&T> {
+    self.get()
+  }
+
+  fn is_completed(&self) -> bool {
+    self.is_completed()
+  }
+}

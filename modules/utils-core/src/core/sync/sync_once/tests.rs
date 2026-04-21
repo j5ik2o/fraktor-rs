@@ -51,3 +51,25 @@ fn test_sync_once_with_explicit_driver() {
   assert!(once.is_completed());
   assert_eq!(once.get(), Some(&21));
 }
+
+#[test]
+fn test_sync_once_implements_once_driver() {
+  use crate::core::sync::OnceDriver;
+  let once: SyncOnce<u8> = <SyncOnce<u8> as OnceDriver<u8>>::new();
+  assert!(!OnceDriver::is_completed(&once));
+  assert_eq!(OnceDriver::get(&once), None);
+  let value = OnceDriver::call_once(&once, || 3u8);
+  assert_eq!(*value, 3);
+  assert!(OnceDriver::is_completed(&once));
+  assert_eq!(OnceDriver::get(&once), Some(&3));
+}
+
+#[test]
+fn test_sync_once_nested_as_driver() {
+  use crate::core::sync::SpinOnce;
+  // SyncOnce<T> 自身が OnceDriver<T> を実装するため、SyncOnce の backend として SyncOnce を渡せる
+  let outer: SyncOnce<i32, SyncOnce<i32, SpinOnce<i32>>> = SyncOnce::with_driver();
+  let value = outer.call_once(|| 7);
+  assert_eq!(*value, 7);
+  assert!(outer.is_completed());
+}
