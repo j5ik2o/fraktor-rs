@@ -16,3 +16,9 @@
 - [x] 3.1 各 batch ごとに対象 crate の `cargo test` / `ci-check` を実行し、移設前後でテスト意味論が変わっていないことを確認する
 - [x] 3.2 `src/` 配下の std 依存 test が減っていることと、対象 batch で `dead_code` が縮退していることを確認する
 - [x] 3.3 未着手の候補と残存理由を記録し、次 batch へ持ち越す backlog を明示する
+
+## 4. Remaining Cleanup
+
+- [ ] 4.1 `actor-core` の helper-heavy な test module（`system_state_shared`, `mailbox/base`, `backoff_supervisor`, `typed delivery`, `behaviors`, routing builders）を fixture 分離して `tests/` へ移す
+- [ ] 4.2 `stream-core` の helper-heavy な test module（`source`, `materialization/actor_materializer`）を public surface または `tests/fixtures` 経由へ整理して `tests/` へ移す
+- [ ] 4.3 残存候補が本当に non-goal か helper 分離待ちだけになっていることを再棚卸しし、この change を archive 可能な状態にする

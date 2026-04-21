@@ -1,9 +1,6 @@
 use super::{Flow, Sink, Source};
 use crate::core::materialization::{MatCombineRule, StreamNotUsed};
 
-#[cfg(test)]
-mod tests;
-
 /// Factory for flows that propagate termination bidirectionally between the wrapped sink and
 /// source.
 ///

@@ -80,5 +80,10 @@ name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
 required-features = ["test-support"]
 
+[[test]]
+name = "typed_scheduler"
+path = "tests/typed_scheduler.rs"
+required-features = ["test-support"]
+
 [lints]
 workspace = true

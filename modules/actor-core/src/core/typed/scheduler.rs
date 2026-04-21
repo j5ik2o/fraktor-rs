@@ -4,9 +4,6 @@
 //! reference implementation. Wraps the internal [`TypedSchedulerShared`] and
 //! provides direct scheduling methods without exposing the lock/guard pattern.
 
-#[cfg(test)]
-mod tests;
-
 use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
