@@ -3,7 +3,7 @@ use std::sync::{
   atomic::{AtomicUsize, Ordering},
 };
 
-use crate::core::{
+use fraktor_stream_core_rs::core::{
   dsl::{Flow, FlowWithContext, RetryFlow, Source},
   materialization::StreamNotUsed,
 };
@@ -82,7 +82,7 @@ fn retry_flow_with_zero_max_retries_never_retries() {
 #[test]
 fn retry_flow_preserves_multiple_pending_retries_in_order() {
   let inner_flow: Flow<u32, u32, StreamNotUsed> =
-    Flow::from_function(|x: u32| x).map_concat(|x: u32| alloc::vec![x.saturating_add(1), x.saturating_add(2)]);
+    Flow::from_function(|x: u32| x).map_concat(|x: u32| vec![x.saturating_add(1), x.saturating_add(2)]);
 
   let retry_flow =
     RetryFlow::with_backoff(
@@ -103,7 +103,7 @@ fn retry_flow_preserves_multiple_pending_retries_in_order() {
 #[test]
 fn retry_flow_accepts_remaining_outputs_after_scheduling_retry() {
   let inner_flow: Flow<u32, u32, StreamNotUsed> =
-    Flow::from_function(|x: u32| x).map_concat(|x: u32| alloc::vec![x.saturating_mul(2), 0_u32]);
+    Flow::from_function(|x: u32| x).map_concat(|x: u32| vec![x.saturating_mul(2), 0_u32]);
 
   let retry_flow = RetryFlow::with_backoff(0, 0, 0, 3, inner_flow, |input: &u32, output: &u32| {
     if *input < 10 && *output == 0 { Some(input.saturating_add(100)) } else { None }

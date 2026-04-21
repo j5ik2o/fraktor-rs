@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 use super::{Flow, FlowWithContext, StageDefinition, StreamGraph, retry_flow_definition};
 
 /// Retry flow factory for individual element retries with exponential backoff.

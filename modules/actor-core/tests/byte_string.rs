@@ -1,6 +1,7 @@
-use alloc::{format, string::String, vec};
+use core::hash::{Hash, Hasher};
+use std::{collections::hash_map::DefaultHasher, string::String};
 
-use crate::core::kernel::util::ByteString;
+use fraktor_actor_core_rs::core::kernel::util::ByteString;
 
 #[test]
 fn empty_creates_zero_length() {
@@ -201,9 +202,6 @@ fn debug_displays_len() {
 
 #[test]
 fn hash_is_content_based() {
-  use core::hash::{Hash, Hasher};
-  use std::collections::hash_map::DefaultHasher;
-
   fn compute_hash(bs: &ByteString) -> u64 {
     let mut hasher = DefaultHasher::new();
     bs.hash(&mut hasher);

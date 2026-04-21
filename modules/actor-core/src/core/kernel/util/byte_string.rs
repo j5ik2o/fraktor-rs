@@ -1,8 +1,5 @@
 //! Immutable byte sequence inspired by Pekko's `ByteString`.
 
-#[cfg(test)]
-mod tests;
-
 use alloc::{string::String, vec::Vec};
 use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
