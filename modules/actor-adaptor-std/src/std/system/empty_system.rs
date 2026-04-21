@@ -37,4 +37,3 @@ where
     | Err(error) => panic!("test-support config failed to build in new_empty_actor_system_with: {error:?}"),
   }
 }
-
