@@ -475,7 +475,7 @@ fn comments_use_japanese_in_context_wrapper_tests() {
   let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/dsl");
   let files = [
     ("flow_with_context/tests.rs", base.join("flow_with_context/tests.rs")),
-    ("source_with_context/tests.rs", base.join("source_with_context/tests.rs")),
+    ("tests/source_with_context.rs", Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/source_with_context.rs")),
   ];
   let forbidden_markers =
     [concat!("// ", "Given", ":"), concat!("// ", "When", ":"), concat!("// ", "Then", ":"), concat!("tests", " ---")];

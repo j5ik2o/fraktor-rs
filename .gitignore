@@ -50,8 +50,6 @@ Cargo.lock
 /reports/
 
 # AI agent tool directories (managed by configure.sh / okite-ai)
-/.agent/
-/.agents/
 
 /.claude/settings.local.json
 

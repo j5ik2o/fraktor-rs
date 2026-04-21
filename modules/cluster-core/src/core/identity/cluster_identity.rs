@@ -1,8 +1,5 @@
 //! Cluster identity model representing kind/identity pairs.
 
-#[cfg(test)]
-mod tests;
-
 use alloc::{format, string::String};
 
 use super::cluster_identity_error::ClusterIdentityError;

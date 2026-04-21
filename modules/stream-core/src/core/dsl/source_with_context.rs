@@ -7,9 +7,6 @@ use super::{
 };
 use crate::core::r#impl::StreamError;
 
-#[cfg(test)]
-mod tests;
-
 /// Context-preserving source wrapper.
 ///
 /// Wraps an inner `Source<(Ctx, Out), Mat>` and automatically propagates
