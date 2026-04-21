@@ -25,6 +25,22 @@ resolve_pinned_toolchain() {
   echo "nightly"
 }
 
+resolve_python3_bin() {
+  if [[ -x "/usr/bin/python3" ]]; then
+    printf '%s\n' "/usr/bin/python3"
+    return 0
+  fi
+
+  local python_bin=""
+  python_bin="$(command -v python3 || true)"
+  if [[ -z "${python_bin}" ]]; then
+    echo "エラー: python3 バイナリを特定できませんでした。" >&2
+    return 1
+  fi
+
+  printf '%s\n' "${python_bin}"
+}
+
 PINNED_TOOLCHAIN="$(resolve_pinned_toolchain)"
 DEFAULT_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 if [[ -n "${RUSTUP_TOOLCHAIN:-}" && "${RUSTUP_TOOLCHAIN}" != "${PINNED_TOOLCHAIN}" ]]; then
@@ -830,11 +846,24 @@ run_dylint() {
   local -a feature_packages=("fraktor-actor-adaptor-std-rs=tokio-executor")
 
   if [[ ${#package_args[@]} -eq 0 ]]; then
-    if ! command -v python3 >/dev/null 2>&1; then
-      echo "エラー: python3 が必要ですが見つかりませんでした。" >&2
-      return 1
+    local python_bin=""
+    python_bin="$(resolve_python3_bin)" || return 1
+    local metadata_file
+    metadata_file="$(mktemp)" || return 1
+    if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+      if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo "+${DEFAULT_TOOLCHAIN}" metadata --format-version 1 --no-deps > "${metadata_file}"; then
+        rm -f "${metadata_file}"
+        echo "エラー: cargo metadata の取得に失敗しました。" >&2
+        return 1
+      fi
+    else
+      if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo metadata --format-version 1 --no-deps > "${metadata_file}"; then
+        rm -f "${metadata_file}"
+        echo "エラー: cargo metadata の取得に失敗しました。" >&2
+        return 1
+      fi
     fi
-    local -a python_cmd=(python3 -)
+    local -a python_cmd=("${python_bin}" - "${metadata_file}")
     if [[ ${#hardware_packages[@]} -gt 0 ]]; then
       python_cmd+=("${hardware_packages[@]}")
     fi
@@ -845,11 +874,11 @@ run_dylint() {
       fi
     done < <("${python_cmd[@]}" <<'PY'
 import json
-import subprocess
 import sys
 
-metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--format-version", "1", "--no-deps"], text=True))
-hardware = set(sys.argv[1:])
+with open(sys.argv[1], encoding="utf-8") as f:
+    metadata = json.load(f)
+hardware = set(sys.argv[2:])
 for package in metadata.get("packages", []):
     name = package.get("name")
     if not name or name in hardware:
@@ -857,6 +886,7 @@ for package in metadata.get("packages", []):
     print(name)
 PY
     )
+    rm -f "${metadata_file}"
     if [[ ${#workspace_packages[@]} -eq 0 ]]; then
       echo "エラー: ワークスペースのパッケージ一覧を取得できませんでした。" >&2
       return 1
@@ -1194,10 +1224,8 @@ run_actor_path_e2e() {
 }
 
 run_examples() {
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "エラー: python3 が必要ですが見つかりませんでした。" >&2
-    return 1
-  fi
+  local python_bin=""
+  python_bin="$(resolve_python3_bin)" || return 1
 
   local rustflags_value
   if [[ -n "${RUSTFLAGS-}" ]]; then
@@ -1208,18 +1236,28 @@ run_examples() {
 
   local example_file
   example_file="$(mktemp)"
-  if ! python3 <<'PY' >"${example_file}"; then
+  local metadata_file
+  metadata_file="$(mktemp)"
+  if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+    if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo "+${DEFAULT_TOOLCHAIN}" metadata --format-version 1 --no-deps > "${metadata_file}"; then
+      rm -f "${example_file}" "${metadata_file}"
+      echo "エラー: cargo metadata の取得に失敗しました。" >&2
+      return 1
+    fi
+  else
+    if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo metadata --format-version 1 --no-deps > "${metadata_file}"; then
+      rm -f "${example_file}" "${metadata_file}"
+      echo "エラー: cargo metadata の取得に失敗しました。" >&2
+      return 1
+    fi
+  fi
+  if ! "${python_bin}" - "${metadata_file}" <<'PY' >"${example_file}"; then
 import json
-import subprocess
 import sys
 
 try:
-    metadata = json.loads(
-        subprocess.check_output(
-            ["cargo", "metadata", "--format-version", "1", "--no-deps"],
-            text=True,
-        )
-    )
+    with open(sys.argv[1], encoding="utf-8") as f:
+        metadata = json.load(f)
 except Exception as exc:
     print(f"metadata error: {exc}", file=sys.stderr)
     sys.exit(1)
@@ -1242,9 +1280,10 @@ for package in metadata.get("packages", []):
             features_str = ",".join(required_features) if required_features else ""
             print(f"{name}\t{target_name}\t{features_str}")
 PY
-    rm -f "${example_file}"
+    rm -f "${example_file}" "${metadata_file}"
     return 1
   fi
+  rm -f "${metadata_file}"
 
   local had_examples=""
   while IFS=$'\t' read -r package_name example_name features; do

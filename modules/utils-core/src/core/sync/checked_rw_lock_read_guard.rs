@@ -1,6 +1,4 @@
 //! Read guard for [`CheckedSpinSyncRwLock`](super::CheckedSpinSyncRwLock).
-#![allow(cfg_std_forbid)]
-
 use core::{mem::ManuallyDrop, ops::Deref};
 use std::thread;
 
