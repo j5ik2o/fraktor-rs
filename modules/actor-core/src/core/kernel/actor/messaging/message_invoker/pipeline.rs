@@ -1,34 +1,36 @@
 //! Middleware-enabled pipeline for invoking actors.
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::middleware_shared::MiddlewareShared;
 use crate::core::kernel::actor::{
   Actor, ActorContext,
   actor_ref::ActorRef,
   error::ActorError,
+  invoke_guard::InvokeGuard,
   messaging::{AnyMessage, any_message_view::AnyMessageView},
 };
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
 pub struct MessageInvokerPipeline {
   user_middlewares: Vec<MiddlewareShared>,
+  guard:            ArcShared<Box<dyn InvokeGuard>>,
 }
 
 impl MessageInvokerPipeline {
   /// Creates a pipeline without any middleware.
   #[must_use]
-  pub const fn new() -> Self {
-    Self { user_middlewares: Vec::new() }
+  pub fn new_with_guard(guard: ArcShared<Box<dyn InvokeGuard>>) -> Self {
+    Self { user_middlewares: Vec::new(), guard }
   }
 
   /// Builds a pipeline from the provided middleware list.
   #[must_use]
   #[allow(dead_code)] // Used in tests
-  pub(crate) const fn from_middlewares(middlewares: Vec<MiddlewareShared>) -> Self {
-    Self { user_middlewares: middlewares }
+  pub(crate) fn from_middlewares(middlewares: Vec<MiddlewareShared>, guard: ArcShared<Box<dyn InvokeGuard>>) -> Self {
+    Self { user_middlewares: middlewares, guard }
   }
 
   /// Invokes the actor using the configured middleware chain.
@@ -62,7 +64,11 @@ impl MessageInvokerPipeline {
       return Err(error);
     }
 
-    let mut result = actor.receive(ctx, view);
+    let mut guarded_view = Some(view);
+    let mut result = self.guard.wrap_receive(&mut || match guarded_view.take() {
+      | Some(current_view) => actor.receive(ctx, current_view),
+      | None => Err(ActorError::fatal("invoke guard called receive more than once")),
+    });
 
     let view_after = message.as_view();
     result = self.invoke_after(ctx, &view_after, result);
@@ -96,11 +102,5 @@ fn restore_sender(ctx: &mut ActorContext<'_>, previous: Option<ActorRef>) {
   match previous {
     | Some(target) => ctx.set_sender(Some(target)),
     | None => ctx.clear_sender(),
-  }
-}
-
-impl Default for MessageInvokerPipeline {
-  fn default() -> Self {
-    Self::new()
   }
 }

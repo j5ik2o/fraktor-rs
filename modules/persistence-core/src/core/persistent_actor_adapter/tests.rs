@@ -6,6 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
     actor_ref::ActorRef,
     error::ActorError,
     extension::ExtensionInstallers,
+    invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
     messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvokerPipeline},
     props::Props,
     scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
@@ -28,6 +29,10 @@ use crate::core::{
   recovery_timed_out::RecoveryTimedOut, snapshot::Snapshot, snapshot_response::SnapshotResponse,
   stash_overflow_strategy::StashOverflowStrategy,
 };
+
+fn noop_pipeline() -> MessageInvokerPipeline {
+  MessageInvokerPipeline::new_with_guard(NoopInvokeGuardFactory::new().build())
+}
 
 struct NoopActor;
 
@@ -436,7 +441,7 @@ fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
   assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
   assert!(adapter.actor.persistence_context().should_stash_commands());
 
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(123_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   assert_eq!(adapter.actor.command_count, 0);
@@ -466,7 +471,7 @@ fn adapter_stashes_command_between_write_message_success_and_write_messages_succ
   assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
   assert!(adapter.actor.persistence_context().should_stash_commands());
 
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let boundary_command = AnyMessage::new(125_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, boundary_command).expect("boundary command should be stashed");
   assert_eq!(adapter.actor.command_count, 0);
@@ -496,7 +501,7 @@ fn adapter_does_not_stash_command_during_persist_all_async() {
   assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
   assert!(!adapter.actor.persistence_context().should_stash_commands());
 
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(124_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be processed");
 
@@ -511,7 +516,7 @@ fn adapter_stashes_command_during_recovery_started() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(123_i32);
 
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
@@ -526,7 +531,7 @@ fn adapter_stashes_command_during_recovering() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(456_i32);
 
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
@@ -541,7 +546,7 @@ fn adapter_unstash_all_on_recovery_success() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(789_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
@@ -561,7 +566,7 @@ fn adapter_unstash_all_on_highest_sequence_nr() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(790_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
@@ -624,7 +629,7 @@ fn adapter_stops_on_write_message_failure() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(791_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   let instance_id = adapter.actor.persistence_context().instance_id();
@@ -669,7 +674,7 @@ fn adapter_unstash_all_on_write_message_rejected() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(792_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
@@ -694,7 +699,7 @@ fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(793_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
@@ -717,7 +722,7 @@ fn adapter_unstash_all_on_write_messages_failed_with_zero_write_count() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(794_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
@@ -741,7 +746,7 @@ fn adapter_ignores_write_messages_successful_when_instance_id_mismatches() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(795_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
@@ -780,7 +785,7 @@ fn adapter_ignores_write_messages_failed_with_zero_write_count_when_instance_id_
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(796_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
@@ -803,7 +808,7 @@ fn adapter_applies_drop_strategy_only_on_stash_overflow() {
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Drop, 0);
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(123_i32);
 
   let result = pipeline.invoke_user(&mut adapter, &mut ctx, command);
@@ -818,7 +823,7 @@ fn adapter_applies_fail_strategy_on_stash_overflow() {
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Fail, 0);
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
   let command = AnyMessage::new(123_i32);
 
   let result = pipeline.invoke_user(&mut adapter, &mut ctx, command);

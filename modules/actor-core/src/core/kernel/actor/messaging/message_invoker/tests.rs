@@ -10,10 +10,15 @@ use crate::core::kernel::{
     Actor, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     error::{ActorError, SendError},
+    invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
     messaging::{AnyMessage, AnyMessageView},
   },
   system::ActorSystem,
 };
+
+fn noop_pipeline() -> MessageInvokerPipeline {
+  MessageInvokerPipeline::new_with_guard(NoopInvokeGuardFactory::new().build())
+}
 
 struct RecordingSender;
 
@@ -111,7 +116,7 @@ fn pipeline_sets_and_clears_sender() {
   let pid = Pid::new(1, 0);
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = CaptureActor::new();
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
 
   let reply_sender = RecordingSender;
   let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(2, 0), reply_sender);
@@ -130,7 +135,7 @@ fn pipeline_restores_previous_sender() {
   let pid = Pid::new(10, 0);
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = CaptureActor::new();
-  let pipeline = MessageInvokerPipeline::new();
+  let pipeline = noop_pipeline();
 
   let previous_sender = RecordingSender;
   let previous_ref = ActorRef::new_with_builtin_lock(Pid::new(3, 0), previous_sender);
@@ -155,7 +160,8 @@ fn middleware_executes_in_expected_order() {
     MiddlewareShared::new(Box::new(RecordingMiddleware::new("a", log.clone())) as Box<dyn MessageInvokerMiddleware>);
   let middleware_b =
     MiddlewareShared::new(Box::new(RecordingMiddleware::new("b", log.clone())) as Box<dyn MessageInvokerMiddleware>);
-  let pipeline = MessageInvokerPipeline::from_middlewares(vec![middleware_a, middleware_b]);
+  let pipeline =
+    MessageInvokerPipeline::from_middlewares(vec![middleware_a, middleware_b], NoopInvokeGuardFactory::new().build());
 
   pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(1_u8)).expect("invoke");
 

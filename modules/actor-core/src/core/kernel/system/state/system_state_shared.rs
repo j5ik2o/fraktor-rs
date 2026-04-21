@@ -32,6 +32,7 @@ use crate::core::kernel::{
     },
     deploy::Deployer,
     error::{ActorError, SendError},
+    invoke_guard::InvokeGuardFactory,
     messaging::{
       AnyMessage, AskResult,
       system_message::{FailurePayload, SystemMessage},
@@ -210,6 +211,12 @@ impl SystemStateShared {
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
     self.inner.with_read(|inner| inner.allocate_pid())
+  }
+
+  /// Returns the configured invoke-guard factory.
+  #[must_use]
+  pub fn invoke_guard_factory(&self) -> ArcShared<Box<dyn InvokeGuardFactory>> {
+    self.inner.with_read(|inner| inner.invoke_guard_factory())
   }
 
   /// Registers the provided actor cell in the global registry.

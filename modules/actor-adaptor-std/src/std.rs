@@ -1,3 +1,5 @@
+/// Actor-specific standard-library bindings.
+pub mod actor;
 /// Dispatch bindings for the standard toolbox.
 pub mod dispatch;
 /// Event bindings for the standard toolbox.
