@@ -30,6 +30,9 @@ use crate::core::{
   },
 };
 
+// TENTATIVE: scheduled for removal in the same wave that drops `ActorSystem::new_empty`
+// (see base/tests.rs). External callers wrap `new_empty_actor_system()` from
+// actor-adaptor-std with `TypedActorSystem::from_untyped` instead.
 impl<M> TypedActorSystem<M>
 where
   M: Send + Sync + 'static,

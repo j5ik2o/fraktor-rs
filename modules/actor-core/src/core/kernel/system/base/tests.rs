@@ -51,6 +51,11 @@ use crate::core::{
   typed::receptionist::SYSTEM_RECEPTIONIST_TOP_LEVEL,
 };
 
+// TENTATIVE: `new_empty` / `new_empty_with` are scheduled for removal once actor-core's
+// inline tests are migrated to integration tests, which can call the public free functions
+// `new_empty_actor_system` / `new_empty_actor_system_with` from `actor-adaptor-std` without
+// hitting the Cargo dev-cycle dual-version conflict. See
+// `openspec/changes/step03-move-test-tick-driver-to-adaptor-std/design.md` 「実装後の補足」.
 impl ActorSystem {
   /// Creates an empty actor system without any guardian.
   ///

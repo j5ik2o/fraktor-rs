@@ -1,4 +1,11 @@
 //! Test tick driver for deterministic testing.
+//!
+//! TENTATIVE: scheduled for removal once actor-core's inline tests are migrated to
+//! integration tests (which can use the public `TestTickDriver` from `actor-adaptor-std`
+//! without the Cargo dev-cycle dual-version conflict). Until then this `pub(crate)`
+//! duplicate exists solely for inline-test consumption. See
+//! `openspec/changes/step03-move-test-tick-driver-to-adaptor-std/design.md`
+//! 「実装後の補足」.
 // std::thread is required for test-support functionality; exempt from no_std restriction.
 #![allow(cfg_std_forbid)]
 
