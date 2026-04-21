@@ -67,7 +67,7 @@ impl EventStreamShared {
     key: ClassifierKey,
     subscriber: &EventStreamSubscriberShared,
   ) -> EventStreamSubscription {
-    // Phase 1: Acquire lock, register subscriber, get replay snapshot
+    // ロック中に購読登録と replay 対象確定を終え、解放後の通知でも一貫した見え方を保つ。
     let (id, snapshot) = self.inner.with_write(|guard| guard.subscribe_with_key(key, subscriber.clone()));
     // Lock released here!
 
@@ -103,7 +103,7 @@ impl EventStreamShared {
   ///
   /// Subscribers are notified after releasing the lock to prevent deadlocks.
   pub fn publish(&self, event: &EventStreamEvent) {
-    // Phase 1: Acquire lock, store event, get the filtered subscriber snapshot
+    // ロック中に配送先を確定してから解放し、通知中の再入や競合で購読者集合がぶれないようにする。
     let subscribers = self.inner.with_write(|guard| guard.publish_prepare(event.clone()));
     // Lock released here!
 

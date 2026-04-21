@@ -220,7 +220,7 @@ fn with_capacity_creates_stream_with_specified_capacity() {
 }
 
 #[test]
-fn es_h1_t1_concrete_key_receives_only_matching_events() {
+fn concrete_key_subscriber_receives_only_matching_events() {
   let stream = EventStreamShared::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
@@ -236,7 +236,7 @@ fn es_h1_t1_concrete_key_receives_only_matching_events() {
 }
 
 #[test]
-fn es_h1_t2_all_key_receives_all_variants() {
+fn all_key_subscriber_receives_all_event_variants() {
   let stream = EventStreamShared::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
@@ -267,7 +267,7 @@ fn es_h1_t2_all_key_receives_all_variants() {
 }
 
 #[test]
-fn es_h1_t3_multiple_subscribers_fan_out_independently() {
+fn multiple_subscribers_receive_events_independently() {
   let stream = EventStreamShared::default();
 
   let lifecycle_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -299,7 +299,7 @@ fn es_h1_t3_multiple_subscribers_fan_out_independently() {
 }
 
 #[test]
-fn es_h1_t4_publish_prepare_filters_subscribers_by_key() {
+fn publish_prepare_filters_subscribers_by_key() {
   let mut stream = EventStream::default();
 
   let log_subscriber = subscriber_handle(RecordingSubscriber::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
@@ -327,7 +327,7 @@ fn es_h1_t4_publish_prepare_filters_subscribers_by_key() {
 }
 
 #[test]
-fn es_h1_t5_replay_filters_buffered_events_by_key() {
+fn replay_filters_buffered_events_by_key() {
   let stream = EventStreamShared::default();
 
   stream.publish(&EventStreamEvent::Log(log_event("buffered-log", 1)));
