@@ -24,7 +24,7 @@ unsize = []
 [dependencies]
 async-trait = { workspace = true }
 critical-section = { workspace = true, default-features = false, optional = false }
-spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "once", "portable_atomic"] }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 cortex-m = { workspace = true, optional = true }
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"] }

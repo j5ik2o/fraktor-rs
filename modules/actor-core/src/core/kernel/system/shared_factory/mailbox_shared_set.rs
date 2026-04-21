@@ -8,7 +8,7 @@ use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 /// The former `invoker` / `actor` / `instrumentation` fields were write-once
 /// and are now stored directly in
 /// [`Mailbox`](crate::core::kernel::dispatch::mailbox::Mailbox) as
-/// `spin::Once<T>` for lock-free reads on the hot path.
+/// `SyncOnce<T>` for lock-free reads on the hot path.
 #[derive(Clone)]
 pub struct MailboxSharedSet {
   put_lock: MailboxLocked<()>,

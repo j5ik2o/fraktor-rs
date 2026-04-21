@@ -22,6 +22,7 @@ mod checked_spin_sync_mutex_guard;
 mod checked_spin_sync_rwlock;
 mod lock_driver;
 mod lock_driver_factory;
+mod once_driver;
 mod rw_lock_driver_factory;
 mod rwlock_driver;
 pub mod shared;
@@ -29,6 +30,9 @@ mod shared_access;
 mod shared_error;
 mod shared_lock;
 mod shared_rw_lock;
+/// Spin-based write-once cell wrapper acting as the `spin` backend for `OnceDriver`.
+#[allow(clippy::disallowed_types)]
+mod spin_once;
 mod spin_sync_factory;
 /// Spin-based mutex wrapper used as the canonical sync primitive.
 #[allow(clippy::disallowed_types)]
@@ -47,6 +51,7 @@ mod std_sync_mutex;
 #[cfg(feature = "std-locks")]
 #[allow(clippy::disallowed_types, cfg_std_forbid)]
 mod std_sync_rwlock;
+mod sync_once;
 #[allow(clippy::disallowed_types)]
 mod weak_shared;
 mod weak_shared_lock;
@@ -65,12 +70,14 @@ pub use checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard;
 pub use checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
 pub use lock_driver::LockDriver;
 pub use lock_driver_factory::LockDriverFactory;
+pub use once_driver::OnceDriver;
 pub use rw_lock_driver_factory::RwLockDriverFactory;
 pub use rwlock_driver::RwLockDriver;
 pub use shared_access::SharedAccess;
 pub use shared_error::SharedError;
 pub use shared_lock::SharedLock;
 pub use shared_rw_lock::SharedRwLock;
+pub use spin_once::SpinOnce;
 pub use spin_sync_factory::SpinSyncFactory;
 pub use spin_sync_mutex::SpinSyncMutex;
 pub use spin_sync_rwlock::SpinSyncRwLock;
@@ -79,6 +86,7 @@ pub use spin_sync_rwlock_factory::SpinSyncRwLockFactory;
 pub use std_sync_mutex::StdSyncMutex;
 #[cfg(feature = "std-locks")]
 pub use std_sync_rwlock::StdSyncRwLock;
+pub use sync_once::SyncOnce;
 pub use weak_shared::WeakShared;
 pub use weak_shared_lock::WeakSharedLock;
 pub use weak_shared_rw_lock::WeakSharedRwLock;
