@@ -27,15 +27,19 @@
 //!
 //! # Debug
 //!
-//! `Arc<dyn Fn() -> Duration + Send + Sync>` does not implement `Debug`. Any
+//! [`ArcShared`]`<dyn Fn() -> Duration + Send + Sync>` does not implement `Debug`. Any
 //! struct holding an `Option<MailboxClock>` field that requires `Debug` must
 //! provide a manual implementation that skips or stubs the clock field.
 
-use alloc::sync::Arc;
 use core::time::Duration;
+
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 /// Shared monotonic clock callback used by [`Mailbox`](super::Mailbox) to evaluate
 /// the throughput deadline on each loop iteration.
 ///
-/// See the module-level documentation for the full contract.
-pub type MailboxClock = Arc<dyn Fn() -> Duration + Send + Sync>;
+/// See the module-level documentation for the full contract. Production code
+/// constructs instances via
+/// [`ArcShared::from_boxed`](fraktor_utils_core_rs::core::sync::ArcShared::from_boxed)
+/// with a boxed closure: `ArcShared::from_boxed(Box::new(|| ...))`.
+pub type MailboxClock = ArcShared<dyn Fn() -> Duration + Send + Sync>;

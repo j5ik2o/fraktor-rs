@@ -30,16 +30,15 @@ pub fn new_empty_actor_system() -> ActorSystem {
 pub fn new_empty_actor_system_with<F>(configure: F) -> ActorSystem
 where
   F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
-  let config = ActorSystemConfig::new(TestTickDriver::default());
+  // Install the std monotonic mailbox clock on the config so every mailbox
+  // constructed under this system observes real elapsed time when enforcing
+  // the throughput deadline (Pekko `Mailbox.scala:263-275`). Wiring this at
+  // the config level means the clock flows through `ActorSystem::create_*` /
+  // `new_started_from_config` uniformly, not only this test-support factory.
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_mailbox_clock(std_monotonic_mailbox_clock());
   let config = configure(config);
   match ActorSystem::new_started_from_config(config) {
-    | Ok(system) => {
-      // Install the std monotonic mailbox clock so mailboxes created by
-      // `ActorCell::create` observe real elapsed time when enforcing the
-      // throughput deadline (Pekko `Mailbox.scala:263-275`).
-      system.state().install_mailbox_clock(std_monotonic_mailbox_clock());
-      system
-    },
+    | Ok(system) => system,
     | Err(error) => panic!("test-support config failed to build in new_empty_actor_system_with: {error:?}"),
   }
 }

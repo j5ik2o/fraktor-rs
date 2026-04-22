@@ -253,7 +253,11 @@ impl Mailbox {
   /// CQS note: this is a Command (`&mut self + ()`). A builder variant
   /// (`self -> Self`) is intentionally avoided because `SyncOnce<T>` does not
   /// implement `Clone`, which would force costly field-by-field reconstruction.
-  #[cfg(test)]
+  ///
+  /// Used by kernel tests to inject a mock clock; production mailboxes receive
+  /// their clock via [`MailboxSharedSet::with_clock`] at construction time so
+  /// this setter is intentionally unused in the release build.
+  #[allow(dead_code)]
   pub(crate) fn set_clock(&mut self, clock: Option<MailboxClock>) {
     self.clock = clock;
   }

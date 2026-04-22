@@ -2,11 +2,12 @@
 
 extern crate std;
 
-use alloc::sync::Arc;
+use alloc::boxed::Box;
 use core::time::Duration;
 use std::time::Instant;
 
 use fraktor_actor_core_rs::core::kernel::dispatch::mailbox::MailboxClock;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 /// Builds a [`MailboxClock`] backed by [`Instant::now`] for throughput
 /// deadline enforcement.
@@ -22,5 +23,6 @@ use fraktor_actor_core_rs::core::kernel::dispatch::mailbox::MailboxClock;
 #[must_use]
 pub fn std_monotonic_mailbox_clock() -> MailboxClock {
   let start = Instant::now();
-  Arc::new(move || -> Duration { start.elapsed() })
+  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(move || -> Duration { start.elapsed() });
+  ArcShared::from_boxed(closure)
 }

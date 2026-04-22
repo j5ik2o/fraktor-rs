@@ -1,11 +1,11 @@
-use alloc::{collections::VecDeque, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{
   Arc,
   mpsc::{Receiver, Sender},
 };
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -1491,7 +1491,8 @@ impl MockClock {
 
   fn as_mailbox_clock(&self) -> MailboxClock {
     let inner = self.inner.clone();
-    Arc::new(move || inner.with_read(|d| *d))
+    let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(move || inner.with_read(|d| *d));
+    ArcShared::from_boxed(closure)
   }
 }
 

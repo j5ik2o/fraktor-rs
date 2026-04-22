@@ -46,13 +46,13 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::MessageDispatcherShared,
-    mailbox::{MailboxRegistryError, MessageQueue},
+    mailbox::{MailboxClock, MailboxRegistryError, MessageQueue},
   },
   event::{
     logging::{LogEvent, LogLevel, LoggingFilter},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
-  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal},
+  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, shared_factory::MailboxSharedSet},
   util::futures::ActorFutureShared,
 };
 
@@ -894,13 +894,13 @@ impl SystemStateShared {
   /// state. Used by [`ActorCell::create`] to wire the throughput deadline
   /// clock into newly constructed mailboxes.
   #[must_use]
-  pub fn mailbox_shared_set(&self) -> crate::core::kernel::system::shared_factory::MailboxSharedSet {
+  pub fn mailbox_shared_set(&self) -> MailboxSharedSet {
     self.inner.with_read(|inner| inner.mailbox_shared_set().clone())
   }
 
   /// Installs a monotonic clock into the underlying [`MailboxSharedSet`].
   /// Called by the std adaptor during `ActorSystem` initialization.
-  pub fn install_mailbox_clock(&self, clock: crate::core::kernel::dispatch::mailbox::MailboxClock) {
+  pub fn install_mailbox_clock(&self, clock: MailboxClock) {
     self.inner.with_write(|inner| inner.install_mailbox_clock(clock));
   }
 

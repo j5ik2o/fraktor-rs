@@ -21,7 +21,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherConfigurator},
-    mailbox::Mailboxes,
+    mailbox::{MailboxClock, Mailboxes},
   },
   system::remote::RemotingConfig,
 };
@@ -41,6 +41,13 @@ pub struct ActorSystemConfig {
   invoke_guard_factory: Option<ArcShared<Box<dyn InvokeGuardFactory>>>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
+  /// Optional monotonic clock installed into [`MailboxSharedSet`] during
+  /// `SystemState::build_from_owned_config`. `None` leaves deadline
+  /// enforcement disabled (Pekko `isThroughputDeadlineTimeDefined = false`
+  /// equivalent). std adaptors populate this with [`MailboxClock`] backed by
+  /// `Instant::now()` so every system created through the adaptor gets
+  /// production-grade deadline enforcement.
+  mailbox_clock: Option<MailboxClock>,
   default_circuit_breaker_config: CircuitBreakerConfig,
   named_circuit_breaker_config: BTreeMap<String, CircuitBreakerConfig>,
   start_time: Option<Duration>,
@@ -268,6 +275,33 @@ impl ActorSystemConfig {
   pub const fn start_time(&self) -> Option<Duration> {
     self.start_time
   }
+
+  /// Sets the monotonic mailbox clock used for throughput deadline enforcement.
+  ///
+  /// Called by std / embedded adaptors during `ActorSystemConfig` construction
+  /// so that every `ActorSystem` built from this config picks up the clock
+  /// during [`SystemState::build_from_owned_config`] via
+  /// [`SystemStateShared::install_mailbox_clock`]. Passing `None` disables
+  /// deadline enforcement.
+  #[must_use]
+  pub fn with_mailbox_clock(mut self, clock: impl Into<Option<MailboxClock>>) -> Self {
+    self.mailbox_clock = clock.into();
+    self
+  }
+
+  /// Returns a clone of the installed mailbox clock, if any.
+  #[must_use]
+  pub fn mailbox_clock(&self) -> Option<MailboxClock> {
+    self.mailbox_clock.clone()
+  }
+
+  /// Consumes the installed mailbox clock, leaving `None` in its place.
+  ///
+  /// Called by [`SystemState::build_from_owned_config`] during bootstrap to
+  /// hand the clock off to the mailbox lock bundle.
+  pub(crate) fn take_mailbox_clock(&mut self) -> Option<MailboxClock> {
+    self.mailbox_clock.take()
+  }
 }
 
 impl Default for ActorSystemConfig {
@@ -287,6 +321,7 @@ impl Default for ActorSystemConfig {
       invoke_guard_factory: None,
       dispatchers,
       mailboxes,
+      mailbox_clock: None,
       default_circuit_breaker_config: CircuitBreakerConfig::default(),
       named_circuit_breaker_config: BTreeMap::new(),
       start_time: None,

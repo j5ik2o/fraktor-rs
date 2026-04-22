@@ -57,7 +57,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherShared},
-    mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
+    mailbox::{MailboxClock, MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
     logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
@@ -200,6 +200,17 @@ impl SystemState {
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
     let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
     let invoke_guard_factory = config.take_invoke_guard_factory();
+    // Pekko `Mailbox.scala:263-275`: a monotonic clock is required for
+    // throughput deadline enforcement. The adaptor layer (e.g. std) populates
+    // `ActorSystemConfig::with_mailbox_clock(...)` with an `Instant::now()`
+    // backed closure; pulling it here lets every `ActorSystem` built from a
+    // config — regardless of the ActorSystem factory used — observe the
+    // install path uniformly.
+    let mailbox_clock = config.take_mailbox_clock();
+    let mailbox_shared_set = match mailbox_clock {
+      | Some(clock) => MailboxSharedSet::builtin().with_clock(clock),
+      | None => MailboxSharedSet::builtin(),
+    };
     let mut state = Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -229,7 +240,7 @@ impl SystemState {
       invoke_guard_factory,
       dispatchers,
       mailboxes,
-      mailbox_shared_set: MailboxSharedSet::builtin(),
+      mailbox_shared_set,
       deployer: Deployer::default(),
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistry::default(),
@@ -875,7 +886,7 @@ impl SystemState {
   /// Returns the mailbox lock bundle (with optional throughput deadline clock)
   /// used by [`Mailbox::new_from_config_with_shared_set`].
   #[must_use]
-  pub fn mailbox_shared_set(&self) -> &MailboxSharedSet {
+  pub const fn mailbox_shared_set(&self) -> &MailboxSharedSet {
     &self.mailbox_shared_set
   }
 
@@ -883,7 +894,7 @@ impl SystemState {
   /// clock. Called by the std adaptor during `ActorSystem` initialization to
   /// install the `Instant::now()` based clock for throughput deadline
   /// enforcement.
-  pub fn install_mailbox_clock(&mut self, clock: crate::core::kernel::dispatch::mailbox::MailboxClock) {
+  pub fn install_mailbox_clock(&mut self, clock: MailboxClock) {
     let existing = core::mem::replace(&mut self.mailbox_shared_set, MailboxSharedSet::builtin());
     self.mailbox_shared_set = existing.with_clock(clock);
   }
