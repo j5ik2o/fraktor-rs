@@ -83,15 +83,11 @@ impl ActorSystem {
     F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
     use crate::core::kernel::actor::scheduler::tick_driver::tests::TestTickDriver;
 
-    let config = ActorSystemConfig::new(TestTickDriver::default());
-    let config = configure(config);
-    let state = match SystemState::build_from_owned_config(config) {
-      | Ok(state) => state,
+    let config = configure(ActorSystemConfig::new(TestTickDriver::default()));
+    match Self::new_started_from_config(config) {
+      | Ok(system) => system,
       | Err(error) => panic!("test-support config failed to build in new_empty_with: {error:?}"),
-    };
-    let system = Self::from_state(SystemStateShared::new(state));
-    system.state.mark_root_started();
-    system
+    }
   }
 }
 
