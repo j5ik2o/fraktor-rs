@@ -22,7 +22,7 @@ TBD - created by archiving change step03-move-test-tick-driver-to-adaptor-std. U
 本 requirement は以下を許容する（例外）:
 
 - `actor-core/Cargo.toml` の `[dev-dependencies]` に `fraktor-actor-adaptor-std-rs = { ..., features = ["test-support"] }` が記述され、actor-core の `tests/*.rs` 統合テストから adaptor-std の TestTickDriver / new_empty* を利用できるようになること（Cargo の dev-cycle は prod 循環ではないため許容される）
-- step04 以降で新設される専用テストヘルパ crate（`fraktor-actor-test-rs` 等）が std 非依存のテストヘルパを提供すること（本 requirement は std 依存部分の配置のみを対象とする）
+- step04 close により責務 B-2 残（actor-core 内部 caller のみのテストヘルパ）は新 crate 化せず、本 capability の新規 Requirement に従って `pub(crate)` 化する（step05 で実施済み）
 - **dev-cycle workaround として、actor-core 内部にのみ可視な `pub(crate)` 限定の `TestTickDriver` / `new_empty*` 重複実装を残すこと**。Cargo の dev-cycle 制約により、actor-core の inline test (`src/**/tests.rs`) からは adaptor-std::TestTickDriver を参照すると同一クレート (`fraktor_actor_core_rs`) が二バージョンとして compiler に見え型不一致になる（Rust/Cargo の根本仕様、回避不能）。この内部版は **公開 API には現れず** (`pub(crate)` 限定、test-support feature 非経由)、`#[cfg(test)]` ゲートで通常ビルドからも除外される。最終撤去は inline test を統合テストに移行する後続 change で行う
 
 #### Scenario: TestTickDriver の公開定義は actor-adaptor-std 側にのみ存在する
@@ -58,3 +58,43 @@ TBD - created by archiving change step03-move-test-tick-driver-to-adaptor-std. U
 - **AND** `use fraktor_actor_core_rs::...::TestTickDriver;` 形式の import は存在しない
 
 **dev-cycle workaround 例外**: `actor-core` の inline test (`modules/actor-core/src/**/tests.rs`) は同一クレート二バージョン問題を避けるため `crate::core::kernel::actor::scheduler::tick_driver::tests::TestTickDriver` (`pub(crate)` 内部版) を利用する。これは本 Scenario のスコープ外。
+
+### Requirement: actor-core では feature ゲート経由で内部 API の可視性を拡大してはならない
+
+`fraktor-actor-core-rs` の本体ソース (`modules/actor-core/src/**/*.rs`) では、`#[cfg(any(test, feature = "test-support"))]` のような **`feature = "test-support"` を含む cfg ゲート** を使って `pub(crate)` 以下の内部 API を `pub` に格上げしてはならない（MUST NOT）。
+
+許容される使い方は以下のみ:
+
+- 純粋な `#[cfg(test)]`（`feature = "test-support"` を含まない）による test-only コード分離
+- `<module>/tests.rs` (file-level `#![cfg(test)]`) 配下に test fixture や test 用の inherent method を置くこと
+- `pub(crate)` のままの内部 API（feature ゲートを伴わない）
+
+「ダウンストリームのテストから internal API を叩きたい」という需要が現れた場合は、以下のいずれかで対応する（feature ゲート経由の visibility 拡大は禁止）:
+
+- 当該 API を正規 public API として設計し、`pub` で公開する（docs / 型シグネチャを整備）
+- ダウンストリームのテストを public API 経由 (`ActorRef::tell` 等) に書き換える
+- `actor-adaptor-std` 等の adaptor crate にファサード関数を追加し、ダウンストリームはそれを経由する
+
+#### Scenario: actor-core src 配下に test-support ゲート経由の visibility 拡大が存在しない
+
+- **WHEN** `Grep "feature = \"test-support\"" modules/actor-core/src/` を実行する
+- **THEN** ヒット件数が 0 件である
+- **AND** `#[cfg(any(test, feature = "test-support"))]` 形式の attribute を本体 (`src/**/*.rs`) に持つ箇所が存在しない
+
+#### Scenario: 内部 API の dual-visibility パターンが残存しない
+
+- **WHEN** `modules/actor-core/src/` 配下の任意のファイルを検査する
+- **THEN** 同一シンボルに対して以下のような dual-cfg pattern が存在しない:
+  ```rust
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn foo(...) { ... }
+  #[cfg(not(any(test, feature = "test-support")))]
+  pub(crate) fn foo(...) { ... }
+  ```
+- **AND** 該当シンボルは単一の `pub(crate)` 定義に統一されている
+
+#### Scenario: `pub(crate)` 内部 API が常に存在する (test/test-support 限定の存在切替を行わない)
+
+- **WHEN** `pub(crate)` 可視性を持つ内部 API のシンボルを検査する
+- **THEN** `#[cfg(any(test, feature = "test-support"))]` で「test/test-support ビルド時のみ存在する」という存在切替を行っていない
+- **AND** production caller (intra-crate) があるシンボルは常に存在し、ゲートで隠さない
