@@ -30,6 +30,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
+  drive_guard_token::DriveGuardToken,
   execute_error::ExecuteError,
   executor::Executor,
   trampoline_state::{QueuedTask, TrampolineState},
@@ -136,6 +137,34 @@ impl ExecutorShared {
       | Some(err) => Err(err),
       | None => Ok(()),
     }
+  }
+
+  /// Claims the drain-owner slot on this shared executor so that subsequent
+  /// [`execute`](Self::execute) calls made while the returned
+  /// [`DriveGuardToken`] is alive simply enqueue into the trampoline and
+  /// return without draining.
+  ///
+  /// If another drain owner is already active, the CAS fails and the returned
+  /// token reports `claimed = false`; its `Drop` is then a no-op so the outer
+  /// owner keeps running the drain loop. This contention handling is the
+  /// reason nested guards and production multi-thread access are safe without
+  /// additional synchronisation.
+  ///
+  /// Pairs with the token's `Drop` implementation. There is intentionally no
+  /// public `exit_drive_guard` method: release only happens through `Drop`, so
+  /// the type system prevents release-forgotten / double-release bugs.
+  ///
+  /// # Use case
+  ///
+  /// `ActorCell::fault_recreate` wraps the `pre_restart` call with this guard
+  /// (via [`MessageDispatcherShared::run_with_drive_guard`](super::MessageDispatcherShared::run_with_drive_guard))
+  /// so that default `pre_restart`'s `stop_all_children` does not trigger
+  /// same-thread reentrancy into child mailboxes when the invocation is
+  /// driven from outside the normal `execute` path (e.g. test direct
+  /// `system_invoke` calls).
+  pub(crate) fn enter_drive_guard(&self) -> DriveGuardToken {
+    let claimed = self.running.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok();
+    DriveGuardToken::new(claimed, self.running.clone())
   }
 
   /// Shuts the inner executor down.

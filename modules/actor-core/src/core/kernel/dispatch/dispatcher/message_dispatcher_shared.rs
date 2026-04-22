@@ -84,6 +84,37 @@ impl MessageDispatcherShared {
     self.with_read(|inner| inner.executor())
   }
 
+  /// Runs `f` on the calling thread while the underlying `ExecutorShared`
+  /// has its drain-owner slot claimed.
+  ///
+  /// Any nested `execute` calls triggered by `f` — typically through
+  /// `register_for_execution` from a `send_system_message` inside an actor
+  /// invocation — will observe `running = true` and enqueue into the
+  /// `ExecutorShared` trampoline instead of draining synchronously on the
+  /// current stack.
+  ///
+  /// Pending tasks accumulated during the guarded window are **not** drained
+  /// on exit — they remain in the trampoline queue and are picked up by the
+  /// next external `execute` call that wins the drain-owner CAS. This matches
+  /// Pekko async dispatcher semantics where actor invocation exit does not
+  /// implicitly flush other actors' mailboxes.
+  ///
+  /// The guard's enter/release pair is managed via RAII on the
+  /// [`DriveGuardToken`](super::DriveGuardToken) returned by
+  /// [`ExecutorShared::enter_drive_guard`](super::ExecutorShared::enter_drive_guard);
+  /// even if `f` panics, the token is still dropped during unwind so the
+  /// drain-owner slot is always released.
+  ///
+  /// Visibility is `pub(crate)`; `fault_recreate` is the sole caller within
+  /// actor-core.
+  pub(crate) fn run_with_drive_guard<F, R>(&self, f: F) -> R
+  where
+    F: FnOnce() -> R, {
+    let executor = self.executor();
+    let _token = executor.enter_drive_guard();
+    f()
+  }
+
   /// Returns a pre-built shared mailbox if the inner dispatcher requires one.
   ///
   /// Delegates to

@@ -1187,7 +1187,22 @@ impl ActorCell {
     {
       let mut ctx = self.make_context();
       ctx.cancel_receive_timeout();
-      self.actor.with_write(|actor| actor.pre_restart(&mut ctx, cause))?;
+      // Pekko parity under sync dispatch: default `pre_restart` invokes
+      // `stop_all_children`, which sends `SystemMessage::Stop` to each child.
+      // When the outer invocation is driven via `ActorCellInvoker::system_invoke`
+      // (e.g. test direct calls) the executor's `running` flag is not yet held,
+      // so the first nested `execute` for the child mailbox would claim the
+      // drain-owner slot and drain on the same thread — reentering into the
+      // parent before `set_children_termination_reason(Recreation)` runs.
+      // `run_with_drive_guard` claims the slot via the existing
+      // `ExecutorShared` trampoline for the duration of `pre_restart`, forcing
+      // child mailbox work to queue up instead. Production dispatchers already
+      // enter the trampoline when `mailbox.run` is scheduled on a worker
+      // thread, so this wrap is effectively a no-op there.
+      let dispatcher = self.new_dispatcher_shared();
+      let pre_restart_result =
+        dispatcher.run_with_drive_guard(|| self.actor.with_write(|actor| actor.pre_restart(&mut ctx, cause)));
+      pre_restart_result?;
       ctx.clear_sender();
     }
 
