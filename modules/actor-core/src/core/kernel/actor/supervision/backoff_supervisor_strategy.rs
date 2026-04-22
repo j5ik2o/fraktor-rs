@@ -2,6 +2,7 @@
 
 use core::time::Duration;
 
+use super::restart_limit::RestartLimit;
 use crate::core::kernel::event::logging::LogLevel;
 
 #[cfg(test)]
@@ -20,7 +21,7 @@ pub struct BackoffSupervisorStrategy {
   max_backoff:              Duration,
   random_factor:            f64,
   reset_backoff_after:      Duration,
-  max_restarts:             u32,
+  max_restarts:             RestartLimit,
   stop_children:            bool,
   stash_capacity:           usize,
   logging_enabled:          bool,
@@ -48,7 +49,7 @@ impl BackoffSupervisorStrategy {
       max_backoff,
       random_factor,
       reset_backoff_after,
-      max_restarts: 0,
+      max_restarts: RestartLimit::Unlimited,
       stop_children: true,
       stash_capacity: DEFAULT_STASH_CAPACITY,
       logging_enabled: true,
@@ -99,9 +100,12 @@ impl BackoffSupervisorStrategy {
     self
   }
 
-  /// Sets the maximum number of restarts before giving up. 0 means unlimited.
+  /// Sets the maximum number of restarts using the [`RestartLimit`] contract
+  /// (Pekko `maxNrOfRetries`). Use [`RestartLimit::Unlimited`] for no bound,
+  /// [`RestartLimit::WithinWindow`]`(0)` for immediate stop, and
+  /// [`RestartLimit::WithinWindow`]`(n)` for up to `n` retries.
   #[must_use]
-  pub const fn with_max_restarts(mut self, max_restarts: u32) -> Self {
+  pub const fn with_max_restarts(mut self, max_restarts: RestartLimit) -> Self {
     self.max_restarts = max_restarts;
     self
   }
@@ -144,9 +148,9 @@ impl BackoffSupervisorStrategy {
     self.reset_backoff_after
   }
 
-  /// Returns the maximum number of restarts. 0 means unlimited.
+  /// Returns the configured restart limit policy.
   #[must_use]
-  pub const fn max_restarts(&self) -> u32 {
+  pub const fn max_restarts(&self) -> RestartLimit {
     self.max_restarts
   }
 

@@ -9,7 +9,9 @@ use crate::core::kernel::{
     actor_ref::ActorRef,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
-    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+    supervision::{
+      RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
+    },
   },
   system::guardian::SystemGuardianProtocol,
 };
@@ -142,9 +144,12 @@ impl Actor for SystemGuardianActor {
   }
 
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, Duration::from_secs(0), |_error| {
-      SupervisorDirective::Stop
-    })
+    SupervisorStrategy::new(
+      SupervisorStrategyKind::OneForOne,
+      RestartLimit::WithinWindow(0),
+      Duration::from_secs(0),
+      |_error| SupervisorDirective::Stop,
+    )
     .into()
   }
 }

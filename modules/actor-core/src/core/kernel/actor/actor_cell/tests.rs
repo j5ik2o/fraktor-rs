@@ -18,7 +18,9 @@ use crate::core::kernel::{
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
-    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+    supervision::{
+      RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
+    },
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
@@ -193,9 +195,12 @@ impl Actor for ResumeSupervisorActor {
   }
 
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, Duration::from_secs(1), |_| {
-      SupervisorDirective::Resume
-    })
+    SupervisorStrategy::new(
+      SupervisorStrategyKind::OneForOne,
+      RestartLimit::WithinWindow(1),
+      Duration::from_secs(1),
+      |_| SupervisorDirective::Resume,
+    )
     .into()
   }
 }

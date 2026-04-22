@@ -13,7 +13,9 @@ use fraktor_actor_core_rs::core::kernel::{
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     setup::ActorSystemConfig,
-    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+    supervision::{
+      RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
+    },
   },
   system::ActorSystem,
 };
@@ -72,8 +74,13 @@ impl Actor for PanicSupervisor {
   }
 
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(1), restart_on_escalate_only)
-      .into()
+    SupervisorStrategy::new(
+      SupervisorStrategyKind::OneForOne,
+      RestartLimit::WithinWindow(3),
+      Duration::from_secs(1),
+      restart_on_escalate_only,
+    )
+    .into()
   }
 }
 

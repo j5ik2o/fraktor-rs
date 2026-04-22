@@ -6,7 +6,7 @@ use crate::core::{
     actor::{
       error::ActorError,
       supervision::{
-        RestartStatistics, SupervisorDirective, SupervisorStrategy as KernelSupervisorStrategy,
+        RestartLimit, RestartStatistics, SupervisorDirective, SupervisorStrategy as KernelSupervisorStrategy,
         SupervisorStrategyConfig, SupervisorStrategyKind,
       },
     },
@@ -16,15 +16,21 @@ use crate::core::{
 };
 
 fn resume_strategy() -> KernelSupervisorStrategy {
-  KernelSupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 10, Duration::from_secs(1), |_| {
-    SupervisorDirective::Resume
-  })
+  KernelSupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(10),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Resume,
+  )
 }
 
 fn restart_strategy() -> KernelSupervisorStrategy {
-  KernelSupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 10, Duration::from_secs(1), |_| {
-    SupervisorDirective::Restart
-  })
+  KernelSupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(10),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Restart,
+  )
 }
 
 struct DatabaseError;
@@ -56,10 +62,12 @@ fn on_failure_of_falls_back_for_unmatched_type() {
 
 #[test]
 fn on_failure_of_multiple_handlers_selects_correct_one() {
-  let stop_strategy =
-    KernelSupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 10, Duration::from_secs(1), |_| {
-      SupervisorDirective::Stop
-    });
+  let stop_strategy = KernelSupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(10),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Stop,
+  );
   let behavior = Behaviors::stopped::<u32>();
   let supervised = Supervise::new(behavior)
     .on_failure_of::<DatabaseError>(resume_strategy())
@@ -102,7 +110,7 @@ fn on_failure_accepts_typed_resume_factory() {
 fn on_failure_preserves_restart_wrapper_configuration() {
   let behavior = Behaviors::stopped::<u32>();
   let strategy = TypedSupervisorStrategy::restart()
-    .with_limit(-1, Duration::ZERO)
+    .with_unlimited_restarts(Duration::ZERO)
     .with_stop_children(false)
     .with_stash_capacity(32)
     .with_logging_enabled(false)

@@ -7,7 +7,10 @@ use core::{
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
-use super::{supervisor_directive::SupervisorDirective, supervisor_strategy_kind::SupervisorStrategyKind};
+use super::{
+  restart_limit::RestartLimit, supervisor_directive::SupervisorDirective,
+  supervisor_strategy_kind::SupervisorStrategyKind,
+};
 use crate::core::kernel::{
   actor::{error::ActorError, supervision::restart_statistics::RestartStatistics},
   event::logging::LogLevel,
@@ -24,10 +27,14 @@ type DynDecider = ArcShared<dyn Fn(&ActorError) -> SupervisorDirective + Send + 
 const DEFAULT_STASH_CAPACITY: usize = 1000;
 
 /// Supervisor configuration controlling restart policies.
+///
+/// `within: Duration::ZERO` is the fraktor-rs sentinel for "no window"
+/// (equivalent to typed Pekko `withinTimeRange = Duration.Zero` and to
+/// classic Pekko `withinTimeRangeOption` returning `None`).
 #[derive(Clone)]
 pub struct SupervisorStrategy {
   kind:            SupervisorStrategyKind,
-  max_restarts:    u32,
+  max_restarts:    RestartLimit,
   within:          Duration,
   decider:         SupervisorDecider,
   dyn_decider:     Option<DynDecider>,
@@ -54,10 +61,15 @@ impl Debug for SupervisorStrategy {
 
 impl SupervisorStrategy {
   /// Creates a supervisor strategy with a function pointer decider.
+  ///
+  /// `max_restarts` uses the [`RestartLimit`] contract (Pekko
+  /// `maxNrOfRetries`): `Unlimited` for unbounded retries, `WithinWindow(0)`
+  /// for immediate stop, `WithinWindow(n)` for up to `n` restarts within
+  /// the `within` window. `within = Duration::ZERO` disables the window.
   #[must_use]
   pub const fn new(
     kind: SupervisorStrategyKind,
-    max_restarts: u32,
+    max_restarts: RestartLimit,
     within: Duration,
     decider: SupervisorDecider,
   ) -> Self {
@@ -90,7 +102,7 @@ impl SupervisorStrategy {
     }
     Self {
       kind:            SupervisorStrategyKind::OneForOne,
-      max_restarts:    10,
+      max_restarts:    RestartLimit::WithinWindow(10),
       within:          Duration::from_secs(1),
       decider:         default_decider,
       dyn_decider:     Some(ArcShared::new(decider)),
@@ -122,9 +134,16 @@ impl SupervisorStrategy {
 
   /// Applies restart accounting and returns the effective directive.
   ///
-  /// When the decider returns [`SupervisorDirective::Restart`], the failure count is tracked within
-  /// the configured `within` window. If the restart count exceeds `max_restarts`, the directive is
-  /// promoted to [`SupervisorDirective::Stop`]. Any other directive resets the statistics.
+  /// Directive handling mirrors Pekko `FaultHandling.scala` exactly:
+  /// - `Restart` delegates to [`RestartStatistics::request_restart_permission`]; if it returns
+  ///   `false` the directive is promoted to [`SupervisorDirective::Stop`] and statistics are reset
+  ///   (mirroring the effect of Pekko's `processFailure(false, ...)` stopping the child and tearing
+  ///   down its stats).
+  /// - `Stop` / `Escalate` reset statistics.
+  /// - `Resume` leaves statistics untouched — Pekko's `Resume` branch does not touch `childStats`.
+  ///
+  /// `now` must be a monotonic clock reading (e.g.
+  /// `ActorSystem::monotonic_now()`).
   #[must_use]
   pub fn handle_failure(
     &self,
@@ -134,13 +153,11 @@ impl SupervisorStrategy {
   ) -> SupervisorDirective {
     match self.decide(error) {
       | SupervisorDirective::Restart => {
-        let limit = if self.max_restarts == 0 { None } else { Some(self.max_restarts) };
-        let count = statistics.record_failure(now, self.within, limit);
-        if self.max_restarts > 0 && count as u32 > self.max_restarts {
+        if statistics.request_restart_permission(now, self.max_restarts, self.within) {
+          SupervisorDirective::Restart
+        } else {
           statistics.reset();
           SupervisorDirective::Stop
-        } else {
-          SupervisorDirective::Restart
         }
       },
       | SupervisorDirective::Stop => {
@@ -161,9 +178,9 @@ impl SupervisorStrategy {
     self.kind
   }
 
-  /// Returns the restart threshold.
+  /// Returns the configured restart limit policy.
   #[must_use]
-  pub const fn max_restarts(&self) -> u32 {
+  pub const fn max_restarts(&self) -> RestartLimit {
     self.max_restarts
   }
 
@@ -243,6 +260,6 @@ impl Default for SupervisorStrategy {
       }
     }
 
-    Self::new(SupervisorStrategyKind::OneForOne, 10, Duration::from_secs(1), decider)
+    Self::new(SupervisorStrategyKind::OneForOne, RestartLimit::WithinWindow(10), Duration::from_secs(1), decider)
   }
 }

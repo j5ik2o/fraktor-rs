@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use super::{
   super::{
-    backoff_supervisor_strategy::BackoffSupervisorStrategy, base::SupervisorStrategy,
+    backoff_supervisor_strategy::BackoffSupervisorStrategy, base::SupervisorStrategy, restart_limit::RestartLimit,
     supervisor_directive::SupervisorDirective, supervisor_strategy_kind::SupervisorStrategyKind,
   },
   SupervisorStrategyConfig,
@@ -14,9 +14,12 @@ use crate::core::kernel::{
 
 #[test]
 fn standard_decide_delegates_to_inner() {
-  let strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(5), |_| {
-    SupervisorDirective::Resume
-  });
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(5),
+    |_| SupervisorDirective::Resume,
+  );
   let config = SupervisorStrategyConfig::Standard(strategy);
   assert_eq!(config.decide(&ActorError::recoverable("test")), SupervisorDirective::Resume);
 }
@@ -37,20 +40,23 @@ fn backoff_decide_stops_on_fatal() {
 
 #[test]
 fn standard_handle_failure_delegates_to_inner() {
-  let strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(5), |_| {
-    SupervisorDirective::Restart
-  });
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(5),
+    |_| SupervisorDirective::Restart,
+  );
   let config = SupervisorStrategyConfig::Standard(strategy);
   let mut stats = RestartStatistics::new();
   let directive = config.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(1));
   assert_eq!(directive, SupervisorDirective::Restart);
-  assert_eq!(stats.failure_count(), 1);
+  assert_eq!(stats.restart_count(), 1);
 }
 
 #[test]
 fn backoff_handle_failure_restarts_within_limit() {
-  let backoff =
-    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0).with_max_restarts(3);
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_max_restarts(RestartLimit::WithinWindow(3));
   let config = SupervisorStrategyConfig::Backoff(backoff);
   let mut stats = RestartStatistics::new();
   let directive = config.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(1));
@@ -59,8 +65,8 @@ fn backoff_handle_failure_restarts_within_limit() {
 
 #[test]
 fn backoff_handle_failure_stops_when_exceeding_limit() {
-  let backoff =
-    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0).with_max_restarts(1);
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_max_restarts(RestartLimit::WithinWindow(1));
   let config = SupervisorStrategyConfig::Backoff(backoff);
   let mut stats = RestartStatistics::new();
   let first = config.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(1));
@@ -71,8 +77,14 @@ fn backoff_handle_failure_stops_when_exceeding_limit() {
 
 #[test]
 fn backoff_handle_failure_unlimited_restarts() {
-  let backoff =
-    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0).with_max_restarts(0);
+  // Pekko parity: `Unlimited + reset_backoff_after` invokes
+  // `retriesInWindowOkay(retries = 1, window)` — with finite window only
+  // the very first failure is permitted. This test uses a zero-window
+  // reset configuration by exercising the `Unlimited + window = ZERO` arm
+  // (`(None, _) => true`).
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_max_restarts(RestartLimit::Unlimited)
+    .with_reset_backoff_after(Duration::ZERO);
   let config = SupervisorStrategyConfig::Backoff(backoff);
   let mut stats = RestartStatistics::new();
   for i in 0..10 {
@@ -83,9 +95,12 @@ fn backoff_handle_failure_unlimited_restarts() {
 
 #[test]
 fn standard_kind_returns_inner_kind() {
-  let strategy = SupervisorStrategy::new(SupervisorStrategyKind::AllForOne, 3, Duration::from_secs(5), |_| {
-    SupervisorDirective::Restart
-  });
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::AllForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(5),
+    |_| SupervisorDirective::Restart,
+  );
   let config = SupervisorStrategyConfig::Standard(strategy);
   assert_eq!(config.kind(), SupervisorStrategyKind::AllForOne);
 }
@@ -154,12 +169,13 @@ fn backoff_handle_failure_resets_stats_on_fatal() {
   let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
   let config = SupervisorStrategyConfig::Backoff(backoff);
   let mut stats = RestartStatistics::new();
-  // リセットを観測できるように、先に失敗履歴を記録しておく。
-  stats.record_failure(Duration::from_secs(1), Duration::from_secs(10), None);
-  assert_eq!(stats.failure_count(), 1);
+  // リセットを観測できるように、先に in-window 失敗履歴を記録しておく。
+  stats.request_restart_permission(Duration::from_secs(1), RestartLimit::WithinWindow(3), Duration::from_secs(10));
+  assert_eq!(stats.restart_count(), 1);
 
   let _directive = config.handle_failure(&mut stats, &ActorError::fatal("fatal"), Duration::from_secs(2));
-  assert_eq!(stats.failure_count(), 0);
+  assert_eq!(stats.restart_count(), 0);
+  assert_eq!(stats.window_start(), None);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use super::BackoffSupervisorStrategy;
+use super::{super::restart_limit::RestartLimit, BackoffSupervisorStrategy};
 
 #[test]
 fn compute_backoff_first_restart() {
@@ -60,9 +60,13 @@ fn default_reset_backoff_after() {
 }
 
 #[test]
-fn default_max_restarts_is_zero() {
+fn default_max_restarts_is_unlimited() {
+  // SP-M1: kernel default is now Pekko-parity `Unlimited` (previously the
+  // inverted `0 = unlimited` sentinel). `BackoffSupervisorStrategy::new`
+  // defaults to `RestartLimit::Unlimited` so it matches Pekko
+  // `BackoffSupervisor(..., maxNrOfRetries = -1)`.
   let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
-  assert_eq!(strategy.max_restarts(), 0);
+  assert_eq!(strategy.max_restarts(), RestartLimit::Unlimited);
 }
 
 #[test]
@@ -86,9 +90,18 @@ fn with_reset_backoff_after_sets_value() {
 
 #[test]
 fn with_max_restarts_sets_value() {
-  let strategy =
-    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0).with_max_restarts(5);
-  assert_eq!(strategy.max_restarts(), 5);
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_max_restarts(RestartLimit::WithinWindow(5));
+  assert_eq!(strategy.max_restarts(), RestartLimit::WithinWindow(5));
+}
+
+#[test]
+fn with_max_restarts_within_window_zero_is_accepted() {
+  // Pekko `maxNrOfRetries = 0` means "no retry, immediate stop" and is a
+  // valid configuration (not a panic).
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_max_restarts(RestartLimit::WithinWindow(0));
+  assert_eq!(strategy.max_restarts(), RestartLimit::WithinWindow(0));
 }
 
 #[test]
@@ -116,7 +129,7 @@ fn accessors_return_constructor_values() {
 #[test]
 fn clone_produces_equal_values() {
   let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.2)
-    .with_max_restarts(3)
+    .with_max_restarts(RestartLimit::WithinWindow(3))
     .with_stop_children(false)
     .with_stash_capacity(42);
   let cloned = strategy.clone();

@@ -106,7 +106,8 @@ pub trait Actor: Send {
   ///   error::ActorError,
   ///   messaging::AnyMessageView,
   ///   supervision::{
-  ///     SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
+  ///     RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
+  ///     SupervisorStrategyKind,
   ///   },
   /// };
   /// use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
@@ -129,7 +130,7 @@ pub trait Actor: Send {
   ///       // Too many errors: stop immediately
   ///       SupervisorStrategy::new(
   ///         SupervisorStrategyKind::OneForOne,
-  ///         0,
+  ///         RestartLimit::WithinWindow(0),
   ///         Duration::from_secs(0),
   ///         |_| SupervisorDirective::Stop,
   ///       )

@@ -9,7 +9,7 @@ use crate::core::{
       error::ActorError,
       scheduler::tick_driver::tests::TestTickDriver,
       setup::ActorSystemConfig,
-      supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+      supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
     },
     event::{
       logging::{LogEvent, LogLevel},
@@ -984,9 +984,12 @@ fn spawn_anonymous_child_restarts_under_supervision() {
   .expect("system");
 
   let start_count = ArcShared::new(SpinSyncMutex::new(0_usize));
-  let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
-    SupervisorDirective::Restart
-  });
+  let restart_strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(5),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Restart,
+  );
 
   let parent_props = TypedProps::<AnonymousRestartParentMsg>::from_behavior_factory({
     let start_count = start_count.clone();
@@ -1038,9 +1041,12 @@ fn spawn_anonymous_narrowed_child_restarts_under_supervision() {
   .expect("system");
 
   let start_count = ArcShared::new(SpinSyncMutex::new(0_usize));
-  let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
-    SupervisorDirective::Restart
-  });
+  let restart_strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(5),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Restart,
+  );
 
   let parent_props = TypedProps::<AnonymousRestartParentMsg>::from_behavior_factory({
     let start_count = start_count.clone();

@@ -54,16 +54,14 @@ impl SupervisorStrategyConfig {
     let directive = backoff_decide(error);
     match directive {
       | SupervisorDirective::Restart => {
-        let max = backoff.max_restarts();
-        let reset_after = backoff.reset_backoff_after();
-        let count = statistics.record_failure(now, reset_after, if max == 0 { None } else { Some(max) });
-        if max > 0 && count as u32 > max {
+        if statistics.request_restart_permission(now, backoff.max_restarts(), backoff.reset_backoff_after()) {
+          SupervisorDirective::Restart
+        } else {
           statistics.reset();
           SupervisorDirective::Stop
-        } else {
-          SupervisorDirective::Restart
         }
       },
+      | SupervisorDirective::Resume => SupervisorDirective::Resume,
       | other => {
         statistics.reset();
         other
