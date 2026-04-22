@@ -204,14 +204,6 @@ where
     ctx: &mut TypedActorContext<'_, M>,
     message: &M,
   ) -> Result<Behavior<M>, ActorError> {
-    self.handle_message_impl(ctx, message)
-  }
-
-  fn handle_message_impl(
-    &mut self,
-    ctx: &mut TypedActorContext<'_, M>,
-    message: &M,
-  ) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
       | BehaviorDirective::Stopped => Ok(Self::stopped()),
@@ -231,10 +223,6 @@ where
   ///
   /// Returns [`ActorError`] when the configured start handler fails.
   pub(crate) fn handle_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
-    self.handle_start_impl(ctx)
-  }
-
-  fn handle_start_impl(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
       | BehaviorDirective::Stopped => Ok(Self::stopped()),
@@ -254,14 +242,6 @@ where
   ///
   /// Returns [`ActorError`] when the configured signal handler fails.
   pub(crate) fn handle_signal(
-    &mut self,
-    ctx: &mut TypedActorContext<'_, M>,
-    signal: &BehaviorSignal,
-  ) -> Result<Behavior<M>, ActorError> {
-    self.handle_signal_impl(ctx, signal)
-  }
-
-  fn handle_signal_impl(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
     signal: &BehaviorSignal,

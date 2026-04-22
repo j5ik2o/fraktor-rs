@@ -26,13 +26,6 @@ impl TickDriverBootstrap {
     driver: Box<dyn TickDriver>,
     ctx: &TickDriverProvisioningContext,
   ) -> Result<BootstrapProvisionResult, TickDriverError> {
-    Self::provision_impl(driver, ctx)
-  }
-
-  fn provision_impl(
-    driver: Box<dyn TickDriver>,
-    ctx: &TickDriverProvisioningContext,
-  ) -> Result<BootstrapProvisionResult, TickDriverError> {
     let (start_instant, capacity, resolution) = {
       let scheduler = ctx.scheduler();
       scheduler.with_read(|s| (s.clock().now(), s.config().profile().tick_buffer_quota(), s.config().resolution()))

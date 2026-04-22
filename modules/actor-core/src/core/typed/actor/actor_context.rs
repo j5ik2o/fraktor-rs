@@ -48,10 +48,6 @@ where
 {
   /// Creates a typed wrapper from the provided untyped context.
   pub(crate) fn from_untyped(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
-    Self::from_untyped_impl(inner, adapters)
-  }
-
-  fn from_untyped_impl(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
     Self {
       inner:           NonNull::from(inner),
       adapters:        adapters.map(NonNull::from),
