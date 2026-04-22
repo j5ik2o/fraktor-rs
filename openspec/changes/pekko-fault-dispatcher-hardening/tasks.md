@@ -136,8 +136,8 @@ self.system().report_failure(payload);
 
 ## 10. PR 作成 / マージ / アーカイブ
 
-- [ ] 10.1 `feat(actor-core): wire setFailed perpetrator + AC-M1 rustdoc hardening (AC-M1/M3)` という題で PR を作成、本 change の change name をリンク
-- [ ] 10.2 PR 本文に以下を含める:
+- [x] 10.1 `feat(actor-core): wire setFailed perpetrator + AC-M1 rustdoc hardening (AC-M1/M3)` という題で PR を作成、本 change の change name をリンク → PR #1635
+- [x] 10.2 PR 本文に以下を含める:
   - Pekko `FaultHandling.scala:73-74, 221-222` / `PinnedDispatcher.scala:48-53` との対応表
   - **公開 API 変更**: なし (`report_failure` / `set_failed` / `is_failed` は既存公開、挙動追加のみ)
   - **破壊的変更**: なし
