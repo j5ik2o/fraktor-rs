@@ -21,6 +21,11 @@ alloc-metrics = []
 async-trait = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
 heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
+# `critical-section` feature は `thumbv8m.main-none-eabi` 等の 32-bit ARM (Cortex-M)
+# ターゲットで `AtomicU64` を critical-section ベースで emulation するために必須。
+# CI が `thumbv8m.main` で actor-core を check しており (scripts/ci-check.sh:1056)、
+# production code 内で `portable_atomic::AtomicU64` を 8 ファイル使っている。
+# 詳細評価: docs/plan/2026-04-22-portable-atomic-critical-section-evaluation.md
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 portable-atomic-util = { workspace = true, default-features = false, features = ["alloc"] }
 cortex-m = { workspace = true, optional = true }

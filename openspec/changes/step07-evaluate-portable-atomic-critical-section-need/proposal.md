@@ -1,6 +1,6 @@
 ## Why
 
-`modules/actor-core/Cargo.toml:25` の `portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }` は、組み込み 32-bit ターゲット（`armv7m` など `AtomicU64` 非対応プラットフォーム）向けの `AtomicU64` fallback を有効化する目的で `critical-section` feature を指定している。
+`modules/actor-core/Cargo.toml:24` の `portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }` は、組み込み 32-bit ターゲット（`armv7m` など `AtomicU64` 非対応プラットフォーム）向けの `AtomicU64` fallback を有効化する目的で `critical-section` feature を指定している。
 
 しかし以下が未確認のまま:
 - fraktor-rs が実際に組み込み 32-bit ターゲットでビルド・運用される実績はあるか
@@ -36,12 +36,7 @@ Strategy B の第 7 ステップ（評価）。step08 と合わせて `portable-
 - なし（調査 change であり、capability の新設は不要）
 
 ### Modified Capabilities
-- なし
-
-OpenSpec validation 要件を満たすため、design / specs フェーズで最低 1 件の delta を設計する。候補:
-- 案 A: 既存 `compile-time-lock-backend` に Scenario を追加（atomic backend の決定手順として）
-- 案 B: 新規 capability `actor-core-dependency-governance` を ADDED し、「低レベル依存の feature 指定は用途ターゲットが明示されなければならない」ルールを明文化
-- 案 C: 本 change は純粋な調査 change として spec delta を最小限にとどめ、step08 側で必要な spec 変更をまとめて行う
+- `actor-lock-construction-governance`: 既存 Requirement「actor-* の Cargo.toml は primitive lock crate を non-optional な直接依存として宣言してはならない」に MUST 節を追加し、low-level utility crate（`portable-atomic` 等）の feature 指定は対象ターゲット / ユースケースが Cargo.toml コメントまたは `docs/plan/` 評価レポートで明示されなければならない、というルールを明文化。Scenario「low-level utility crate の feature 指定は対象ターゲット / ユースケースが明示されている」を 1 件追加（案 C: 最小限）
 
 ## Impact
 
