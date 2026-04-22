@@ -171,10 +171,10 @@
 
 ## 13. PR 作成 / マージ / アーカイブ
 
-- [ ] 13.1 `feat(actor-core): introduce NotInfluenceReceiveTimeout marker (AC-M5)` という題で PR を作成、本 change の change name をリンク
-- [ ] 13.2 PR 本文に以下を含める:
+- [x] 13.1 `feat(actor-core): introduce NotInfluenceReceiveTimeout marker (AC-M5)` という題で PR を作成、本 change の change name をリンク → PR #1633
+- [x] 13.2 PR 本文に以下を含める:
   - Pekko `Actor.scala:165` (trait) + `Actor.scala:81` (`Identify` mix-in) + `dungeon/ReceiveTimeout.scala:40-42` (出口側判定) との対応表。入口側 `:71-76` は本 change では実装しない旨を明記 (design Decision 3)
-  - **公開 API 追加 (additive)**: `NotInfluenceReceiveTimeout` trait、`AnyMessage::not_influence`、`AnyMessage::is_not_influence_receive_timeout`、`AnyMessageView::not_influence_receive_timeout`、`AnyMessageView::with_flags`
+  - **公開 API 追加 (additive)**: `NotInfluenceReceiveTimeout` trait、`AnyMessage::not_influence`、`AnyMessage::is_not_influence_receive_timeout`、`AnyMessageView::not_influence_receive_timeout`、`AnyMessageView::with_flags`、`ActorContext::receive_timeout_schedule_generation`
   - **公開 API 破壊的変更 (BREAKING)**: `AnyMessage::from_parts` / `AnyMessage::into_parts` / `AnyMessage::from_erased` の tuple 要素数が 3 → 4 に拡張
   - **非破壊 (参考)**: `AnyMessage::new` / `AnyMessage::control` / `AnyMessageView::new` / `AnyMessageView::with_control` の signature は不変
   - gap-analysis AC-M5 done 化の反映
