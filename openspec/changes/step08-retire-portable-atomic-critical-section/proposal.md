@@ -1,6 +1,18 @@
 ## Why
 
-step07 の調査結果（`docs/plan/YYYY-MM-DD-portable-atomic-critical-section-evaluation.md`）で「`portable-atomic/critical-section` feature は不要」と結論されたら、本 change で実際に退役する。
+> **【中止】** step07 評価で「退役不可」が確定したため本 change は中止する。
+>
+> 中止理由 (2026-04-22): step07 (`step07-evaluate-portable-atomic-critical-section-need`) の評価レポート (`docs/plan/2026-04-22-portable-atomic-critical-section-evaluation.md`) により、以下が確定:
+> - CI が `thumbv8m.main-none-eabi` (32-bit ARM Cortex-M33) で `actor-core` を check している (`scripts/ci-check.sh:1056`)
+> - production code 内で `portable_atomic::AtomicU64` が **8 ファイル** 利用されている
+> - `thumbv8m.main` は AtomicU64 のハードウェアサポートを持たないため、`portable-atomic/critical-section` の emulated atomic が必須
+> - 退役した瞬間に no-std CI ジョブが compile error で fail する
+>
+> したがって本 change の本来の目的 (退役) は CI 上成立しない。本 change は **proposal のまま archive する** (実装フェーズに入らない)。
+>
+> 以下は中止前に書かれた本来の趣旨。記録のため残す:
+
+step07 の調査結果（`docs/plan/2026-04-22-portable-atomic-critical-section-evaluation.md`）で「`portable-atomic/critical-section` feature は不要」と結論されたら、本 change で実際に退役する。
 
 退役の意義:
 - `actor-core` が間接的に `critical-section` impl provider を要求する経路が消える（残課題が完全に閉じる）

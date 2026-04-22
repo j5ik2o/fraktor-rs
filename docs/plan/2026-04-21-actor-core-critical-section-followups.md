@@ -24,11 +24,21 @@
   - **完了** (`step05-hide-actor-core-internal-test-api`、2026-04-22): `Behavior::handle_*` (3)、`TypedActorContext::from_untyped`、`TickDriverBootstrap` 関連 (struct/method/re-export) を `pub(crate)` に縮小。dual-cfg pattern (`#[cfg(any(test, feature = "test-support"))] pub fn` + `#[cfg(not(...))] pub(crate) fn`) を全廃
 - feature 削除: **完了** (`step06-remove-actor-core-test-support-feature`、2026-04-22): `actor-core/Cargo.toml` から `test-support = []` 行と 8 個の `[[test]] required-features = ["test-support"]` を削除。下流 8 crate (`actor-adaptor-std`、`cluster-core`、`cluster-adaptor-std`、`persistence-core`、`remote-adaptor-std`、`stream-core`、`stream-adaptor-std`、`showcases/std`) の `Cargo.toml` から `fraktor-actor-core-rs/test-support` への参照も全廃。`actor-test-driver-placement` capability に検証 Scenario を追加し、再侵入を spec で機械的にブロック
 
-### 2. `portable-atomic` の `critical-section` feature 再評価
+### 2. `portable-atomic` の `critical-section` feature 再評価（解消済み）
 
-`actor-core/Cargo.toml:26` の `portable-atomic = { features = ["critical-section"] }` は組み込み 32-bit ターゲット向けの `AtomicU64` fallback として有効化されている。実際に組み込み 32-bit ターゲットでビルド・運用される実績があるか不明な場合は、std/64-bit 系のみ想定として `core::sync::atomic` への置換を検討する余地あり。
+**解消済み**: `step07-evaluate-portable-atomic-critical-section-need` change（2026-04-22）で評価完了。結論は **案 Y (現状維持)**。
 
-ただし、`actor-core` の他 16 ファイルで `portable_atomic` が使われており、影響範囲は広い。
+評価レポート: `docs/plan/2026-04-22-portable-atomic-critical-section-evaluation.md`
+
+判定根拠:
+- CI が `thumbv8m.main-none-eabi` (32-bit ARMv8-M Mainline、Cortex-M33 等) で `actor-core` を check している (`scripts/ci-check.sh:1056`)
+- `thumbv8m.main` は AtomicU64 のハードウェアサポートを持たないため emulated atomic が必須
+- production code 内に `portable_atomic::AtomicU64` 利用が **8 ファイル** ある (test 除く)
+- 退役した瞬間に no-std CI ジョブが compile error で破綻する
+
+対応:
+- `actor-core/Cargo.toml:24` の `portable-atomic` 行に直前コメントで対象ターゲット (`thumbv8m.main`) と判定根拠 (8 ファイルの AtomicU64 利用) を記録、評価レポートへの参照を追加
+- step08 (`step08-retire-portable-atomic-critical-section`) は中止 (本評価で「退役不可」が確定したため)
 
 ### 3. `enqueue_from_isr` API 名と実装意図の乖離（解消済み）
 
