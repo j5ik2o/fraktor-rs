@@ -14,7 +14,7 @@ autoexamples = false
 
 [features]
 default = []
-test-support = ["fraktor-actor-core-rs/test-support"]
+test-support = []
 tokio-executor = ["dep:tokio"]
 
 [dependencies]
@@ -27,14 +27,6 @@ tracing = { workspace = true, features = ["std"] }
 [dev-dependencies]
 criterion = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
-# Override the prod dep to pull in `test-support` (which transitively enables
-# `critical-section/std`) so the lib's `#[cfg(any(test, feature = "test-support"))]`
-# items are visible to integration tests and benches in this crate. Without
-# this override, `cargo test --features tokio-executor` and
-# `cargo bench --features tokio-executor` fail to link / resolve symbols
-# because the bench / test binaries do not pick up the `std` impl of
-# `critical-section`.
-fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 critical-section = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 serde_json = { workspace = true }
