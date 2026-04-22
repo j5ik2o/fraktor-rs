@@ -99,15 +99,20 @@ impl MessageDispatcher for BalancingDispatcher {
     &mut self.core
   }
 
-  fn try_create_shared_mailbox(&self) -> Option<ArcShared<Mailbox>> {
+  fn try_create_shared_mailbox(&self, shared_set: &MailboxSharedSet) -> Option<ArcShared<Mailbox>> {
     // All team members must drain the same queue, so we construct a sharing
     // mailbox that delegates to `self.shared_queue` rather than letting
     // `ActorCell::create` build a fresh per-actor queue. The queue is stable
     // for the dispatcher's lifetime, so every call returns a mailbox that
     // wraps the same underlying `SharedMessageQueue`.
+    //
+    // `shared_set` は呼び出し側 (通常は `ActorCell::create`) から渡される
+    // system-wide の `MailboxSharedSet` であり、std adaptor が install した
+    // throughput deadline clock を内包する。ここで builtin() を使うと clock が
+    // None になり deadline enforcement が無効化される (Pekko `Mailbox.scala:263-275`
+    // と不整合) ので、必ず呼び出し側から渡された `shared_set` を使う。
     let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
-    let shared_set = MailboxSharedSet::builtin();
-    Some(ArcShared::new(Mailbox::new_sharing_with_shared_set(MailboxPolicy::unbounded(None), queue, &shared_set)))
+    Some(ArcShared::new(Mailbox::new_sharing_with_shared_set(MailboxPolicy::unbounded(None), queue, shared_set)))
   }
 
   fn register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {

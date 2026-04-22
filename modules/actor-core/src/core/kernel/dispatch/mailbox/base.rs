@@ -324,7 +324,8 @@ impl Mailbox {
       // evaluated as the default argument of `processMailbox`, i.e. computed once at loop entry.
       // `self.clock = None` or `throughput_deadline = None` yields `deadline_at = None`, which
       // disables deadline enforcement (Pekko `isThroughputDeadlineTimeDefined = false` equivalent).
-      let deadline_at: Option<Duration> = self.clock.as_ref().zip(throughput_deadline).map(|(c, d)| c() + d);
+      let deadline_at: Option<Duration> =
+        self.clock.as_ref().zip(throughput_deadline).map(|(c, d)| c().saturating_add(d));
       self.process_mailbox(invoker, throughput, deadline_at);
     }
     // Surface the "needs reschedule" signal to the caller. The signal is
@@ -444,7 +445,8 @@ impl Mailbox {
       // (Option::zip returns None if either side is None). The `is_some_and`
       // call below is therefore logically equivalent to `.unwrap()`, but we
       // keep the explicit form for readability and type safety.
-      if let Some(da) = deadline_at
+      if left > 0
+        && let Some(da) = deadline_at
         && self.clock.as_ref().is_some_and(|c| c() >= da)
       {
         break;

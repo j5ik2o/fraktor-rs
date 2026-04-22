@@ -141,16 +141,16 @@ impl ActorCell {
     let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
       SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
-    // Give the dispatcher a chance to supply its own mailbox (e.g.,
-    // `BalancingDispatcher` hands out sharing mailboxes that all wrap its
-    // single team queue). Dispatchers that want per-actor queues return
-    // `None` and `ActorCell` falls back to the `MailboxConfig`-driven path.
-    // Pull the system-wide `MailboxSharedSet` so the throughput deadline clock
-    // (if installed by the std adaptor via `install_mailbox_clock`) propagates
-    // to the freshly constructed mailbox. `clock = None` on the bundle leaves
-    // deadline enforcement disabled (throughput-only fallback).
+    // dispatcher 自身が mailbox を用意したい場合 (例: `BalancingDispatcher` は
+    // 単一の team queue をラップする sharing mailbox を返す) に先に問い合わせる。
+    // per-actor queue を使う dispatcher は `None` を返し、`ActorCell` は
+    // `MailboxConfig` ベースの経路にフォールバックする。
+    // system 由来の `MailboxSharedSet` を取得し、std adaptor が
+    // `ActorSystemConfig::with_mailbox_clock` 経由で install した throughput
+    // deadline clock を新規構築の mailbox に伝播させる。bundle の `clock = None`
+    // なら deadline enforcement は無効化される (throughput-only fallback)。
     let mailbox_shared_set = system.mailbox_shared_set();
-    let mailbox = if let Some(shared_mailbox) = new_dispatcher.try_create_shared_mailbox() {
+    let mailbox = if let Some(shared_mailbox) = new_dispatcher.try_create_shared_mailbox(&mailbox_shared_set) {
       shared_mailbox
     } else if let Some(id) = mailbox_id {
       let queue =

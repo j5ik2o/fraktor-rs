@@ -45,6 +45,7 @@ use super::{dispatcher_core::DispatcherCore, executor_shared::ExecutorShared};
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox},
+  system::shared_factory::MailboxSharedSet,
 };
 
 /// Hook/query surface of a dispatcher.
@@ -99,10 +100,16 @@ pub trait MessageDispatcher: Send + Sync {
   /// `None` to let `ActorCell::create` build a per-actor mailbox from the
   /// `MailboxConfig`.
   ///
+  /// `shared_set` carries the system-wide mailbox lock bundle and the
+  /// throughput deadline clock installed by adaptors; implementations MUST
+  /// thread it through to [`Mailbox::new_sharing_with_shared_set`] (or
+  /// equivalent) so that throughput deadline enforcement is consistent across
+  /// dispatcher types (Pekko `Mailbox.scala:263-275`).
+  ///
   /// The default implementation returns `None`. `BalancingDispatcher`
   /// overrides this to return a sharing mailbox that wraps the dispatcher's
   /// shared team queue, so every team member drains the same queue.
-  fn try_create_shared_mailbox(&self) -> Option<ArcShared<Mailbox>> {
+  fn try_create_shared_mailbox(&self, _shared_set: &MailboxSharedSet) -> Option<ArcShared<Mailbox>> {
     None
   }
 

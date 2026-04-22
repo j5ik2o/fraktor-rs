@@ -1567,9 +1567,10 @@ fn throughput_deadline_none_processes_all_throughput() {
 
   // deadline=None: even though clock advances 5ms per invoke, run processes
   // all 100 messages (throughput-only yield behavior).
-  let _ = mailbox.run(NonZeroUsize::new(100).unwrap(), None);
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(100).unwrap(), None);
 
   assert_eq!(user_invocations.load(Ordering::SeqCst), 100, "deadline=None must allow full throughput consumption",);
+  assert!(!needs_reschedule, "queue is drained, no reschedule needed");
 }
 
 /// MB-M1 5.4: deadline 未達で throughput 消化の場合は throughput 基準で yield する。
@@ -1614,7 +1615,7 @@ fn deadline_computed_once_per_run() {
 
   // deadline = 10ms at loop start (clock=0). After ~4 invokes clock reaches 12ms,
   // which exceeds the frozen `deadline_at = 0 + 10ms = 10ms`, triggering break.
-  let _ = mailbox.run(NonZeroUsize::new(50).unwrap(), Some(Duration::from_millis(10)));
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(50).unwrap(), Some(Duration::from_millis(10)));
 
   let processed = user_invocations.load(Ordering::SeqCst);
   // `deadline_at` stays at 10ms throughout the run; never recomputed against
@@ -1623,6 +1624,7 @@ fn deadline_computed_once_per_run() {
   assert!(processed < 50, "deadline is frozen at run start, clock advances should cause break (got {processed} / 50)",);
   // Lower bound confirms at least one invoke ran before deadline fire.
   assert!(processed >= 1, "at least one invoke must run");
+  assert!(needs_reschedule, "{} messages remain queued after deadline break, reschedule required", 50 - processed);
 }
 
 /// MB-M1 5.6: monotonic clock が wall-clock 巻き戻しに耐える。
@@ -1648,20 +1650,22 @@ fn monotonic_clock_resilience_to_wallclock_rewind() {
   // compares against clock snapshots, so the second run() must behave
   // correctly despite the simulated rewind.
   mock.advance(Duration::from_millis(50));
-  let _ = mailbox.run(NonZeroUsize::new(3).unwrap(), Some(Duration::from_millis(100)));
+  let needs_reschedule_1 = mailbox.run(NonZeroUsize::new(3).unwrap(), Some(Duration::from_millis(100)));
   // First run: deadline_at = 50 + 100 = 150ms, clock stays 50ms (CountingInvoker
   // does not advance) → all 3 throughput processed.
   assert_eq!(user_invocations.load(Ordering::SeqCst), 3, "first run processes throughput=3");
+  assert!(needs_reschedule_1, "2 messages remain queued after throughput=3 yield, reschedule required");
 
   // Simulate rewind:
   mock.set(Duration::from_millis(0));
-  let _ = mailbox.run(NonZeroUsize::new(2).unwrap(), Some(Duration::from_millis(100)));
+  let needs_reschedule_2 = mailbox.run(NonZeroUsize::new(2).unwrap(), Some(Duration::from_millis(100)));
   // Second run: deadline_at = 0 + 100 = 100ms, clock stays 0ms → 2 more processed.
   assert_eq!(
     user_invocations.load(Ordering::SeqCst),
     5,
     "second run after rewind processes remaining 2 (deadline_at is recomputed per run)",
   );
+  assert!(!needs_reschedule_2, "queue is drained after second run, no reschedule needed");
 }
 
 /// MB-M1 5.7: Pekko `left > 1` 境界 — throughput=1 で deadline=ZERO でも 1 通処理。
@@ -1683,13 +1687,14 @@ fn throughput_1_with_deadline_zero_yields_after_one_message() {
   // throughput=1, deadline=ZERO: Pekko contract = 1 message processed, then break.
   // fraktor-rs: left=1 → invoke → left=0 → while loop terminates via `left > 0`
   // (deadline break never reached; but observable outcome identical to Pekko).
-  let _ = mailbox.run(NonZeroUsize::new(1).unwrap(), Some(Duration::ZERO));
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(1).unwrap(), Some(Duration::ZERO));
 
   assert_eq!(
     user_invocations.load(Ordering::SeqCst),
     1,
     "throughput=1 + deadline=ZERO must process exactly 1 message (Pekko left > 1 boundary)",
   );
+  assert!(needs_reschedule, "9 messages remain queued after throughput=1 yield, reschedule required");
 }
 
 /// MB-M1 5.8: throughput=2 + deadline=ZERO + clock 固定 — deadline break 経路を踏む。
@@ -1711,13 +1716,14 @@ fn throughput_2_with_deadline_zero_and_fixed_clock() {
   // throughput=2, deadline=ZERO, clock does not advance: deadline_at = 0.
   // After first invoke, `clock_now (=0) >= deadline_at (=0)` → break via deadline path.
   // Observable: exactly 1 invoke runs (2nd in throughput budget not consumed).
-  let _ = mailbox.run(NonZeroUsize::new(2).unwrap(), Some(Duration::ZERO));
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(2).unwrap(), Some(Duration::ZERO));
 
   assert_eq!(
     user_invocations.load(Ordering::SeqCst),
     1,
     "throughput=2 + deadline=ZERO + fixed clock must break after 1 message via deadline path",
   );
+  assert!(needs_reschedule, "4 messages remain queued after deadline break, reschedule required");
 }
 
 /// MB-M1 5.9: clock=None fallback — throughput-only yield behavior.
@@ -1737,13 +1743,14 @@ fn clock_none_falls_back_to_throughput_only() {
   fill_mailbox_with_users(&mailbox, 10);
 
   // Even with deadline set, clock=None disables deadline enforcement.
-  let _ = mailbox.run(NonZeroUsize::new(10).unwrap(), Some(Duration::from_nanos(1)));
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(10).unwrap(), Some(Duration::from_nanos(1)));
 
   assert_eq!(
     user_invocations.load(Ordering::SeqCst),
     10,
     "clock=None must disable deadline enforcement (throughput-only yield)",
   );
+  assert!(!needs_reschedule, "queue is drained, no reschedule needed");
 }
 
 /// MB-M1 5.10: throughput=10 + deadline=ZERO + clock 進行あり — 1 件処理後 break。

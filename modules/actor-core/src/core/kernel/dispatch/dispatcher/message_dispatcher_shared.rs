@@ -21,6 +21,7 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, ScheduleHints},
+  system::shared_factory::MailboxSharedSet,
 };
 
 /// Shared wrapper providing thread-safe orchestration around a `MessageDispatcher`.
@@ -123,8 +124,8 @@ impl MessageDispatcherShared {
   /// per-actor mailbox from `MailboxConfig`; returns `Some` for dispatchers
   /// like `BalancingDispatcher` whose team members must drain a shared queue.
   #[must_use]
-  pub fn try_create_shared_mailbox(&self) -> Option<ArcShared<Mailbox>> {
-    self.with_read(|inner| inner.try_create_shared_mailbox())
+  pub fn try_create_shared_mailbox(&self, shared_set: &MailboxSharedSet) -> Option<ArcShared<Mailbox>> {
+    self.with_read(|inner| inner.try_create_shared_mailbox(shared_set))
   }
 
   /// Attaches `actor` to the dispatcher and arranges initial scheduling.
