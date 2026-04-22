@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 #[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Arc;
 #[cfg(not(feature = "unsize"))]
@@ -32,6 +33,16 @@ impl<T: ?Sized> ArcShared<T> {
   where
     T: Sized, {
     Self(Arc::new(value))
+  }
+
+  /// Creates a new `ArcShared` from a boxed unsized value.
+  ///
+  /// This is the production constructor for shared handles over trait objects
+  /// (`ArcShared<dyn Trait>`) or slices (`ArcShared<[T]>`), where [`Self::new`]
+  /// is unavailable due to the `T: Sized` bound.
+  #[must_use]
+  pub fn from_boxed(boxed: Box<T>) -> Self {
+    Self(Arc::from(boxed))
   }
 
   /// For Testing, Don't Use Production

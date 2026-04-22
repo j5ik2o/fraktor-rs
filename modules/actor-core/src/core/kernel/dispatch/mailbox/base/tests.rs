@@ -1,11 +1,11 @@
-use alloc::{collections::VecDeque, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{
   Arc,
   mpsc::{Receiver, Sender},
 };
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -1453,4 +1453,331 @@ fn can_be_scheduled_for_execution_while_suspended_with_system_work() {
     has_user_messages:   true,
     backpressure_active: true,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// MB-M1: Throughput deadline enforcement tests
+//
+// Pekko `Mailbox.scala:261-278` regulates user-message processing by the
+// conjunction of throughput (max message count) and throughput deadline
+// (max elapsed time). These tests pin each branch of that contract using a
+// mock clock injected via `Mailbox::set_clock`.
+// ---------------------------------------------------------------------------
+
+use core::time::Duration;
+
+use crate::core::kernel::dispatch::mailbox::MailboxClock;
+
+/// Test-only monotonic clock holder backed by [`SharedLock`] over
+/// [`SpinSyncMutex`]. Exposes `advance()` for tests to move simulated time
+/// forward and `as_mailbox_clock()` to produce a [`MailboxClock`] that reads
+/// the current value.
+struct MockClock {
+  inner: SharedLock<Duration>,
+}
+
+impl MockClock {
+  fn new(start: Duration) -> Self {
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<Duration>>(start) }
+  }
+
+  fn advance(&self, delta: Duration) {
+    self.inner.with_write(|d| *d += delta);
+  }
+
+  fn set(&self, value: Duration) {
+    self.inner.with_write(|d| *d = value);
+  }
+
+  fn as_mailbox_clock(&self) -> MailboxClock {
+    let inner = self.inner.clone();
+    let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(move || inner.with_read(|d| *d));
+    ArcShared::from_boxed(closure)
+  }
+}
+
+/// Invoker that advances the mock clock on each user invocation. Used by
+/// tests that need `run()` to observe clock progress message-by-message.
+struct AdvancingInvoker {
+  user_invocations: Arc<AtomicUsize>,
+  clock:            SharedLock<Duration>,
+  tick:             Duration,
+}
+
+impl MessageInvoker for AdvancingInvoker {
+  fn invoke(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
+    self.user_invocations.fetch_add(1, Ordering::SeqCst);
+    self.clock.with_write(|d| *d += self.tick);
+    Ok(())
+  }
+
+  fn system_invoke(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+fn fill_mailbox_with_users(mailbox: &Mailbox, count: usize) {
+  for i in 0..count {
+    mailbox.enqueue_user(AnyMessage::new(i as u64)).expect("user enqueue should succeed");
+  }
+}
+
+/// MB-M1 5.2: throughput 未消化でも deadline 超過で yield する。
+#[test]
+fn throughput_deadline_expired_yields_before_exhausting_throughput() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let invoker = AdvancingInvoker {
+    user_invocations: user_invocations.clone(),
+    clock:            mock.inner.clone(),
+    tick:             Duration::from_millis(5),
+  };
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(invoker)));
+  fill_mailbox_with_users(&mailbox, 100);
+
+  // deadline = 10ms, each invoke advances clock by 5ms → yield after 2 or 3 messages.
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(100).unwrap(), Some(Duration::from_millis(10)));
+
+  let processed = user_invocations.load(Ordering::SeqCst);
+  assert!(processed < 100, "deadline must cause yield before exhausting throughput, got {processed} / 100",);
+  assert!(processed >= 1, "at least one message must process before deadline fires");
+  assert!(needs_reschedule, "unfinished work must trigger reschedule signal");
+}
+
+/// MB-M1 5.3: deadline = None では throughput を消化しきるまで続行する。
+#[test]
+fn throughput_deadline_none_processes_all_throughput() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let invoker = AdvancingInvoker {
+    user_invocations: user_invocations.clone(),
+    clock:            mock.inner.clone(),
+    tick:             Duration::from_millis(5),
+  };
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(invoker)));
+  fill_mailbox_with_users(&mailbox, 100);
+
+  // deadline=None: even though clock advances 5ms per invoke, run processes
+  // all 100 messages (throughput-only yield behavior).
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(100).unwrap(), None);
+
+  assert_eq!(user_invocations.load(Ordering::SeqCst), 100, "deadline=None must allow full throughput consumption",);
+  assert!(!needs_reschedule, "queue is drained, no reschedule needed");
+}
+
+/// MB-M1 5.4: deadline 未達で throughput 消化の場合は throughput 基準で yield する。
+#[test]
+fn throughput_limit_takes_precedence_when_deadline_far_in_future() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let system_invocations = Arc::new(AtomicUsize::new(0));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(CountingInvoker::new(
+    user_invocations.clone(),
+    system_invocations.clone(),
+  ))));
+  fill_mailbox_with_users(&mailbox, 20);
+
+  // deadline=60s (far future), throughput=10 → yield at throughput limit.
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(10).unwrap(), Some(Duration::from_secs(60)));
+
+  assert_eq!(user_invocations.load(Ordering::SeqCst), 10, "throughput=10 must cap consumption");
+  assert!(needs_reschedule, "10 messages remain queued, reschedule required");
+}
+
+/// MB-M1 5.5: deadline は run() 呼び出し中ずっと一定 (ループ開始時に一度だけ計算)。
+#[test]
+fn deadline_computed_once_per_run() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let invoker = AdvancingInvoker {
+    user_invocations: user_invocations.clone(),
+    clock:            mock.inner.clone(),
+    tick:             Duration::from_millis(3),
+  };
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(invoker)));
+  fill_mailbox_with_users(&mailbox, 50);
+
+  // deadline = 10ms at loop start (clock=0). After ~4 invokes clock reaches 12ms,
+  // which exceeds the frozen `deadline_at = 0 + 10ms = 10ms`, triggering break.
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(50).unwrap(), Some(Duration::from_millis(10)));
+
+  let processed = user_invocations.load(Ordering::SeqCst);
+  // `deadline_at` stays at 10ms throughout the run; never recomputed against
+  // the advancing clock. The exact break point depends on Pekko's `>= da`
+  // semantic, but must not consume all 50 messages.
+  assert!(processed < 50, "deadline is frozen at run start, clock advances should cause break (got {processed} / 50)",);
+  // Lower bound confirms at least one invoke ran before deadline fire.
+  assert!(processed >= 1, "at least one invoke must run");
+  assert!(needs_reschedule, "{} messages remain queued after deadline break, reschedule required", 50 - processed);
+}
+
+/// MB-M1 5.6: monotonic clock が wall-clock 巻き戻しに耐える。
+#[test]
+fn monotonic_clock_resilience_to_wallclock_rewind() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let system_invocations = Arc::new(AtomicUsize::new(0));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(CountingInvoker::new(
+    user_invocations.clone(),
+    system_invocations.clone(),
+  ))));
+  fill_mailbox_with_users(&mailbox, 5);
+
+  // Simulate wall-clock being rewound between two run() calls. The mock clock
+  // is advanced past the deadline, then reset to 0 (simulating rewind). A true
+  // `Instant::now()` is monotonic and never goes backwards — the mailbox
+  // code reads only `deadline_at` (a Duration computed at run start) and
+  // compares against clock snapshots, so the second run() must behave
+  // correctly despite the simulated rewind.
+  mock.advance(Duration::from_millis(50));
+  let needs_reschedule_1 = mailbox.run(NonZeroUsize::new(3).unwrap(), Some(Duration::from_millis(100)));
+  // First run: deadline_at = 50 + 100 = 150ms, clock stays 50ms (CountingInvoker
+  // does not advance) → all 3 throughput processed.
+  assert_eq!(user_invocations.load(Ordering::SeqCst), 3, "first run processes throughput=3");
+  assert!(needs_reschedule_1, "2 messages remain queued after throughput=3 yield, reschedule required");
+
+  // Simulate rewind:
+  mock.set(Duration::from_millis(0));
+  let needs_reschedule_2 = mailbox.run(NonZeroUsize::new(2).unwrap(), Some(Duration::from_millis(100)));
+  // Second run: deadline_at = 0 + 100 = 100ms, clock stays 0ms → 2 more processed.
+  assert_eq!(
+    user_invocations.load(Ordering::SeqCst),
+    5,
+    "second run after rewind processes remaining 2 (deadline_at is recomputed per run)",
+  );
+  assert!(!needs_reschedule_2, "queue is drained after second run, no reschedule needed");
+}
+
+/// MB-M1 5.7: Pekko `left > 1` 境界 — throughput=1 で deadline=ZERO でも 1 通処理。
+#[test]
+fn throughput_1_with_deadline_zero_yields_after_one_message() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let system_invocations = Arc::new(AtomicUsize::new(0));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(CountingInvoker::new(
+    user_invocations.clone(),
+    system_invocations.clone(),
+  ))));
+  fill_mailbox_with_users(&mailbox, 10);
+
+  // throughput=1, deadline=ZERO: Pekko contract = 1 message processed, then break.
+  // fraktor-rs: left=1 → invoke → left=0 → while loop terminates via `left > 0`
+  // (deadline break never reached; but observable outcome identical to Pekko).
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(1).unwrap(), Some(Duration::ZERO));
+
+  assert_eq!(
+    user_invocations.load(Ordering::SeqCst),
+    1,
+    "throughput=1 + deadline=ZERO must process exactly 1 message (Pekko left > 1 boundary)",
+  );
+  assert!(needs_reschedule, "9 messages remain queued after throughput=1 yield, reschedule required");
+}
+
+/// MB-M1 5.8: throughput=2 + deadline=ZERO + clock 固定 — deadline break 経路を踏む。
+#[test]
+fn throughput_2_with_deadline_zero_and_fixed_clock() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let system_invocations = Arc::new(AtomicUsize::new(0));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(CountingInvoker::new(
+    user_invocations.clone(),
+    system_invocations.clone(),
+  ))));
+  fill_mailbox_with_users(&mailbox, 5);
+
+  // throughput=2, deadline=ZERO, clock does not advance: deadline_at = 0.
+  // After first invoke, `clock_now (=0) >= deadline_at (=0)` → break via deadline path.
+  // Observable: exactly 1 invoke runs (2nd in throughput budget not consumed).
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(2).unwrap(), Some(Duration::ZERO));
+
+  assert_eq!(
+    user_invocations.load(Ordering::SeqCst),
+    1,
+    "throughput=2 + deadline=ZERO + fixed clock must break after 1 message via deadline path",
+  );
+  assert!(needs_reschedule, "4 messages remain queued after deadline break, reschedule required");
+}
+
+/// MB-M1 5.9: clock=None fallback — throughput-only yield behavior.
+#[test]
+fn clock_none_falls_back_to_throughput_only() {
+  use core::num::NonZeroUsize;
+
+  // Mailbox constructed via `Mailbox::new` gets `MailboxSharedSet::builtin()`
+  // which has clock=None. No `set_clock` call → deadline enforcement disabled.
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let system_invocations = Arc::new(AtomicUsize::new(0));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(CountingInvoker::new(
+    user_invocations.clone(),
+    system_invocations.clone(),
+  ))));
+  fill_mailbox_with_users(&mailbox, 10);
+
+  // Even with deadline set, clock=None disables deadline enforcement.
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(10).unwrap(), Some(Duration::from_nanos(1)));
+
+  assert_eq!(
+    user_invocations.load(Ordering::SeqCst),
+    10,
+    "clock=None must disable deadline enforcement (throughput-only yield)",
+  );
+  assert!(!needs_reschedule, "queue is drained, no reschedule needed");
+}
+
+/// MB-M1 5.10: throughput=10 + deadline=ZERO + clock 進行あり — 1 件処理後 break。
+#[test]
+fn deadline_zero_with_clock_progress_breaks_after_one_message() {
+  use core::num::NonZeroUsize;
+
+  let mut mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mock = MockClock::new(Duration::from_millis(0));
+  mailbox.set_clock(Some(mock.as_mailbox_clock()));
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let invoker = AdvancingInvoker {
+    user_invocations: user_invocations.clone(),
+    clock:            mock.inner.clone(),
+    tick:             Duration::from_micros(1),
+  };
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(invoker)));
+  fill_mailbox_with_users(&mailbox, 10);
+
+  // throughput=10, deadline=ZERO, invoke advances clock by 1µs:
+  // deadline_at = 0 at loop start. After first invoke clock=1µs > 0 → break.
+  let needs_reschedule = mailbox.run(NonZeroUsize::new(10).unwrap(), Some(Duration::ZERO));
+
+  assert_eq!(
+    user_invocations.load(Ordering::SeqCst),
+    1,
+    "deadline=ZERO with clock progress must break after exactly 1 message",
+  );
+  assert!(needs_reschedule, "9 messages remain queued, reschedule required");
 }

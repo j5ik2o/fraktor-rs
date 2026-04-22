@@ -34,6 +34,8 @@ mod enqueue_error;
 mod enqueue_outcome;
 mod envelope;
 mod mailbox_cleanup_policy;
+/// Monotonic clock callback type for throughput deadline enforcement.
+mod mailbox_clock;
 mod mailbox_instrumentation;
 mod mailbox_poll_future;
 mod mailbox_queue_handles;
@@ -96,6 +98,7 @@ pub use enqueue_error::EnqueueError;
 pub use enqueue_outcome::EnqueueOutcome;
 pub use envelope::Envelope;
 pub use mailbox_cleanup_policy::MailboxCleanupPolicy;
+pub use mailbox_clock::MailboxClock;
 pub use mailbox_instrumentation::MailboxInstrumentation;
 pub use mailbox_poll_future::MailboxPollFuture;
 pub(crate) use mailbox_queue_handles::QueueStateHandle;

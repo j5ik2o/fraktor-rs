@@ -52,7 +52,7 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel, LoggingFilter},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
-  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal},
+  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, shared_factory::MailboxSharedSet},
   util::futures::ActorFutureShared,
 };
 
@@ -888,6 +888,14 @@ impl SystemStateShared {
   #[must_use]
   pub fn monotonic_now(&self) -> Duration {
     self.inner.with_read(|inner| inner.monotonic_now())
+  }
+
+  /// Returns a clone of the mailbox lock bundle carried by the inner system
+  /// state. Used by [`ActorCell::create`] to wire the throughput deadline
+  /// clock into newly constructed mailboxes.
+  #[must_use]
+  pub fn mailbox_shared_set(&self) -> MailboxSharedSet {
+    self.inner.with_read(|inner| inner.mailbox_shared_set().clone())
   }
 
   /// Resolves a [`MessageDispatcherShared`] for the identifier.

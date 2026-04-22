@@ -17,7 +17,7 @@ use crate::core::kernel::{
     },
     mailbox::{Envelope, MailboxCleanupPolicy},
   },
-  system::ActorSystem,
+  system::{ActorSystem, shared_factory::MailboxSharedSet},
 };
 
 struct ProbeActor;
@@ -118,8 +118,9 @@ fn dispatch_enqueues_to_shared_queue_and_returns_team_candidates() {
 #[test]
 fn try_create_shared_mailbox_returns_sharing_mailbox() {
   let dispatcher = make_dispatcher();
-  let mailbox =
-    dispatcher.try_create_shared_mailbox().expect("balancing dispatcher always hands out a sharing mailbox");
+  let mailbox = dispatcher
+    .try_create_shared_mailbox(&MailboxSharedSet::builtin())
+    .expect("balancing dispatcher always hands out a sharing mailbox");
   assert_eq!(mailbox.cleanup_policy(), MailboxCleanupPolicy::LeaveSharedQueue);
 }
 
@@ -129,8 +130,9 @@ fn sharing_mailbox_close_keeps_shared_queue_contents() {
 
   let dispatcher = make_dispatcher();
   let queue = dispatcher.shared_queue();
-  let mailbox =
-    dispatcher.try_create_shared_mailbox().expect("balancing dispatcher always hands out a sharing mailbox");
+  let mailbox = dispatcher
+    .try_create_shared_mailbox(&MailboxSharedSet::builtin())
+    .expect("balancing dispatcher always hands out a sharing mailbox");
 
   queue.enqueue(Envelope::new(AnyMessage::new(11_u32))).expect("shared enqueue");
   mailbox.become_closed();
