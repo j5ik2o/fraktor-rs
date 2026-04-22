@@ -1211,6 +1211,154 @@ fn ac_h3_ext_t6_clear_failed_resets_fatally() {
 }
 
 // ============================================================================
+// AC-M3: `report_failure` wires `set_failed(self.pid)` with `is_failed()` guard
+// (Pekko `FaultHandling.scala:218-234` handleInvokeFailure parity).
+// ============================================================================
+
+#[test]
+fn ac_m3_report_failure_records_self_as_perpetrator() {
+  // Pekko `FaultHandling.scala:222`: case _ if !isFailed => setFailed(self)
+  // 初回 `report_failure` 呼び出しで `FailedInfo::Child(self.pid)` が記録され、
+  // `is_failed() == true` / `perpetrator() == Some(self.pid)` となる。
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(state.clone(), Pid::new(260, 0), None, "ac-m3-self-perp".to_string(), &props)
+    .expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+  assert!(!cell.is_failed(), "事前条件: 新規 cell は failed ではない");
+
+  cell.report_failure(&ActorError::recoverable("ac-m3-t1-boom"), None);
+
+  assert!(cell.is_failed(), "AC-M3: report_failure 後は is_failed が true");
+  assert_eq!(cell.perpetrator(), Some(cell.pid()), "AC-M3: perpetrator は self.pid");
+  assert!(!cell.is_failed_fatally(), "AC-M3: 通常の report_failure は fatal ではない");
+}
+
+#[test]
+fn ac_m3_duplicate_report_failure_preserves_perpetrator() {
+  // Pekko `FaultHandling.scala:221`: `!isFailed` guard により、既に failed 中の
+  // cell に対する重複 report_failure は perpetrator を overwrite しない。
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(state.clone(), Pid::new(261, 0), None, "ac-m3-dup".to_string(), &props)
+    .expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+
+  cell.report_failure(&ActorError::recoverable("ac-m3-t2-first"), None);
+  let perpetrator_after_first = cell.perpetrator();
+  assert_eq!(perpetrator_after_first, Some(cell.pid()), "事前条件: 初回 report_failure で self.pid が記録");
+
+  cell.report_failure(&ActorError::recoverable("ac-m3-t2-second"), None);
+
+  assert_eq!(
+    cell.perpetrator(),
+    perpetrator_after_first,
+    "AC-M3: 重複 report_failure は perpetrator を overwrite しない"
+  );
+  assert!(cell.is_failed(), "AC-M3: is_failed は維持される");
+}
+
+#[test]
+fn ac_m3_report_failure_preserves_fatal_state() {
+  // Pekko `FaultHandling.scala:79-82`: `setFailed` は FailedFatally を保持する。
+  // fraktor-rs の `set_failed` 実装 (`actor_cell.rs:448`) も同じ guard を持ち、
+  // さらに `report_failure` の `!is_failed()` guard で二重防御される。
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(state.clone(), Pid::new(262, 0), None, "ac-m3-fatal".to_string(), &props)
+    .expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+
+  cell.set_failed_fatally();
+  assert!(cell.is_failed_fatally(), "事前条件: set_failed_fatally で Fatal 状態");
+
+  cell.report_failure(&ActorError::recoverable("ac-m3-t3-after-fatal"), None);
+
+  assert!(cell.is_failed_fatally(), "AC-M3: Fatal 状態は downgrade されない");
+  assert_eq!(cell.perpetrator(), None, "AC-M3: Fatal 状態では perpetrator は常に None");
+}
+
+#[test]
+fn ac_m3_restart_clears_perpetrator() {
+  // Pekko `FaultHandling.scala:284` finishRecreate: restart 完了時に clearFailed()。
+  // fraktor-rs の既存配線 (`actor_cell.rs:1264`) で `finish_recreate` 内の
+  // `recreate_actor` 直後に `clear_failed()` が走り、`FailedInfo::Child(_)`
+  // が `FailedInfo::None` に戻ることを観測する。
+  //
+  // テスト戦略: orphan cell の `system.report_failure` は parent 無しの経路で
+  // `SystemMessage::Stop` を自分自身に送る副作用があり、sync dispatcher 上で
+  // inline 処理されて cell が terminated になる。この race を避けるため、
+  // AC-H4-T1 と同じパターンで `set_failed` + `mailbox.suspend` を直接呼んで
+  // failure の事前状態を再現する (本 change の `report_failure` wiring 自体は
+  // `ac_m3_report_failure_records_self_as_perpetrator` などで別途 pin 済み)。
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(state.clone(), Pid::new(263, 0), None, "ac-m3-restart".to_string(), &props)
+    .expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+
+  // AC-M3 `report_failure` 相当の事前状態を直接仕込む: perpetrator = self.pid、
+  // mailbox suspended (fault_recreate の AC-H3 precondition)。
+  cell.set_failed(cell.pid());
+  cell.mailbox().suspend();
+  assert_eq!(cell.perpetrator(), Some(cell.pid()), "事前条件: set_failed で perpetrator == self.pid");
+
+  // supervisor directive Restart を simulation (SystemMessage::Recreate)
+  let cause = ActorErrorReason::new("ac-m3-t4-restart-cause");
+  invoker.system_invoke(SystemMessage::Recreate(cause)).expect("recreate");
+
+  assert!(!cell.is_failed(), "AC-M3: restart 完了後は is_failed が false");
+  assert_eq!(cell.perpetrator(), None, "AC-M3: restart 完了後は perpetrator が None");
+
+  // 次のサイクル: 新しい set_failed で新しい perpetrator が記録されることを確認
+  cell.set_failed(cell.pid());
+  assert_eq!(cell.perpetrator(), Some(cell.pid()), "AC-M3: restart 後の次のサイクルで perpetrator が再記録される");
+}
+
+#[test]
+fn ac_m3_resume_clears_perpetrator() {
+  // Pekko `FaultHandling.scala:150` faultResume: `finally clearFailed()`。
+  // 本 change で `SystemMessage::Resume` arm に `clear_failed()` を追加したため、
+  // supervisor directive Resume 経路でも state がクリアされる。
+  //
+  // テスト戦略: `ac_m3_restart_clears_perpetrator` と同じく直接 `set_failed` で
+  // 事前状態を仕込み、orphan cell の Stop 副作用を回避する。
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(state.clone(), Pid::new(264, 0), None, "ac-m3-resume".to_string(), &props)
+    .expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+
+  cell.set_failed(cell.pid());
+  assert_eq!(cell.perpetrator(), Some(cell.pid()), "事前条件: set_failed で perpetrator == self.pid");
+
+  // supervisor directive Resume を simulation
+  invoker.system_invoke(SystemMessage::Resume).expect("resume");
+
+  assert!(!cell.is_failed(), "AC-M3: Resume arm の clear_failed で is_failed が false");
+  assert_eq!(cell.perpetrator(), None, "AC-M3: Resume arm の clear_failed で perpetrator が None");
+
+  // 次のサイクル: 新しい set_failed で新しい perpetrator が記録されることを確認
+  cell.set_failed(cell.pid());
+  assert_eq!(cell.perpetrator(), Some(cell.pid()), "AC-M3: Resume 後の次のサイクルで perpetrator が再記録される");
+}
+
+// ============================================================================
 // AC-H2: ChildrenContainer 4-state machine production wiring (PIDs 270-279)
 //
 // `set_children_termination_reason` / `is_normal` / `is_terminating` は

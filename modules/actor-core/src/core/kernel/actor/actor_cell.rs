@@ -1261,6 +1261,12 @@ impl ActorCell {
     self.drop_watch_with_messages();
     self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
+    // Pekko `FaultHandling.scala:173` `finishCreate` / `:284` `finishRecreate`:
+    //   try resumeNonRecursive() finally clearFailed()
+    // Clears `FailedInfo` (set by `report_failure` via AC-M3's
+    // `set_failed(self.pid)` wiring) so the fresh actor instance starts
+    // from `FailedInfo::None`. Paired with `SystemMessage::Resume` arm
+    // to cover both Restart and Resume supervisor directives.
     self.clear_failed();
 
     let outcome = {
@@ -1349,16 +1355,44 @@ impl ActorCell {
     Err(error)
   }
 
+  /// Reports an invocation failure to the supervisor, following Pekko
+  /// `FaultHandling.scala:215-234` `handleInvokeFailure` step-by-step:
+  ///
+  /// 1. `suspendNonRecursive()` (L218) — suspend this actor's mailbox.
+  /// 2. `case _ if !isFailed => setFailed(self)` (L222, AC-M3) — record the perpetrator as
+  ///    `self.pid` when not already failed. The `is_failed()` guard prevents overwriting a prior
+  ///    perpetrator on duplicate reports, and the inner `set_failed` implementation
+  ///    (`actor_cell.rs:448`) additionally preserves `FailedInfo::Fatal` against downgrade — the
+  ///    two guards compose so that neither existing `Child(_)` nor `Fatal` state is disturbed.
+  /// 3. `suspendChildren(...)` (L225, AC-H3) — recursively suspend children.
+  /// 4. `sendSystemMessage(Failed(...))` (L231-234) — hand the failure to the supervisor through
+  ///    `system.report_failure(payload)`. This always fires (independent of the `isFailed` guard)
+  ///    so Pekko's "report on every occurrence" semantics is preserved.
+  ///
+  /// The AC-H3 extension requires the parent mailbox and every descendant
+  /// to be suspended prior to `system.report_failure` so the supervisor
+  /// directive sees a fully quiesced subtree.
   fn report_failure(&self, error: &ActorError, snapshot: Option<FailureMessageSnapshot>) {
-    // Pekko `FaultHandling.scala:62-67` handleInvokeFailure: suspend self and
-    // all children **before** reporting the failure to the supervisor. AC-H3
-    // requires the parent mailbox and every descendant to be suspended prior
-    // to `system.report_failure` so the supervisor directive sees a fully
-    // quiesced subtree.
+    // Pekko `FaultHandling.scala:218` suspendNonRecursive()
     self.mailbox().suspend();
+    // Pekko `FaultHandling.scala:221-222` handleInvokeFailure:
+    //   case _ if !isFailed => setFailed(self); Set.empty
+    // fraktor-rs の report_failure は user / system message 処理失敗で
+    // 呼ばれる self-failure 経路のため、perpetrator は常に self.pid。
+    // child perpetrator 分岐 (Pekko L221) は現行 `FailureMessageSnapshot`
+    // に child pid 情報が含まれないため AC-M3 のスコープ外 (Decision 3)。
+    // is_failed() guard が既存 perpetrator (Child(_) もしくは Fatal) を
+    // overwrite しないことを保証する。
+    if !self.is_failed() {
+      self.set_failed(self.pid);
+    }
+    // Pekko `FaultHandling.scala:225` suspendChildren(exceptFor = skip)
+    // self-failure 経路のため skip = empty (全子を suspend)。
     self.suspend_children();
     let timestamp = self.system().monotonic_now();
     let payload = FailurePayload::from_error(self.pid, error, snapshot, timestamp);
+    // Pekko `FaultHandling.scala:231-234` parent.sendSystemMessage(Failed(...))
+    // guard 通過有無に関わらず毎回 supervisor へ通知する (Pekko 同挙動)。
     self.system().report_failure(payload);
   }
 
@@ -1573,7 +1607,31 @@ impl MessageInvoker for ActorCellInvoker {
       | SystemMessage::Resume => {
         // Pekko `FaultHandling.scala:136-153` faultResume: the mailbox counter
         // has already been decremented by the mailbox layer before forwarding
-        // (MB-H1). This arm only propagates the event to the children.
+        // (MB-H1).
+        //
+        // AC-M3 (change pekko-fault-dispatcher-hardening): mirror Pekko's
+        // `finally if (causedByFailure ne null) clearFailed()` at
+        // `FaultHandling.scala:150`. Because `report_failure` now records
+        // `FailedInfo::Child(self.pid)` via `set_failed` (Pekko L222),
+        // receiving `Resume` must clear that state so `is_failed()` does not
+        // stay stale across supervisor-approved resume directives.
+        //
+        // Known divergence from Pekko (Decision 5 in design.md):
+        //   - Pekko's `clearFailed` (L83-86) preserves `FailedFatally`; fraktor-rs's `clear_failed()` is
+        //     unconditional. Accepted because `SystemMessage::Resume` never reaches a cell that remained in
+        //     `Fatal` state in production — the only `set_failed_fatally()` production call site is the
+        //     `finish_recreate` post_restart-failure path, after which the supervisor typically chooses
+        //     Restart/Stop, not Resume.
+        //   - Pekko propagates `causedByFailure` through `resumeChildren` so only the originator clears
+        //     `_failed`; fraktor-rs's `SystemMessage::Resume` carries no cause, so propagation into
+        //     children that independently acquired `FailedInfo::Child(_)` state would over-clear. This race
+        //     is narrow (no production readers of `perpetrator()` yet) and accepted for AC-M3 scope. A
+        //     future `SystemMessage::Resume { cause: Option<...> }` refactor can restore strict Pekko
+        //     parity.
+        //
+        // Ordering matches Pekko's `try resumeNonRecursive() finally
+        // clearFailed(); resumeChildren(...)` — clear before propagation.
+        cell.clear_failed();
         cell.resume_children();
         Ok(())
       },
