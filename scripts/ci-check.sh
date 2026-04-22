@@ -1220,8 +1220,8 @@ check_unit_sleep() {
 }
 
 run_actor_path_e2e() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e --features test-support -- --nocapture"
-  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e --features test-support -- --nocapture || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture"
+  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture || return 1
 }
 
 run_examples() {

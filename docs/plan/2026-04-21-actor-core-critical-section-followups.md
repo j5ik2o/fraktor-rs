@@ -10,9 +10,11 @@
 
 ## 残課題
 
-### 1. `test-support` feature の責務分離
+### 1. `test-support` feature の責務分離（解消済み）
 
-`actor-core/Cargo.toml:19` の `test-support` feature は当初 3 つの異なる責務を抱えていた:
+**解消済み**: `step06-remove-actor-core-test-support-feature` change（2026-04-22）で feature 定義そのものを削除し、責務 A〜C + feature 削除すべて完了。
+
+`actor-core/test-support` feature は当初 3 つの異なる責務を抱えていた:
 
 - 責務 A: `critical-section/std` impl provider 提供（std 環境でリンクを通すため） → **完了** (`retire-actor-core-test-support-critical-section-impl` change で各バイナリ側へ移譲、2026-04-21)
 - 責務 B: ダウンストリーム統合テスト用 API 公開（`TestTickDriver`, `new_empty` 等）
@@ -20,8 +22,7 @@
   - **B-2 完了** (`step05-hide-actor-core-internal-test-api`、2026-04-22): step04 (CLOSED) で当初想定していた mock/probe 等の test fixture は実在せず、`feature = "test-support"` 公開シンボル (`ActorRef::new_with_builtin_lock`、`SchedulerRunner::manual`、`state::booting_state`/`running_state` 等) はすべて actor-core 内部 inline test のみが caller と判明。step05 で全 11 シンボルを `pub(crate)` 化して feature ゲートを削除した
 - 責務 C: 内部 API の `pub(crate)` → `pub` 格上げ（`Behavior::handle_message` 等）
   - **完了** (`step05-hide-actor-core-internal-test-api`、2026-04-22): `Behavior::handle_*` (3)、`TypedActorContext::from_untyped`、`TickDriverBootstrap` 関連 (struct/method/re-export) を `pub(crate)` に縮小。dual-cfg pattern (`#[cfg(any(test, feature = "test-support"))] pub fn` + `#[cfg(not(...))] pub(crate) fn`) を全廃
-
-責務 A〜C すべて退役。`actor-core/test-support` feature は **空 (`[]`)** になり、`actor-core/src/` 配下の `feature = "test-support"` 参照は **0 件**。残すは feature 定義そのものの削除（step06 で対応）。
+- feature 削除: **完了** (`step06-remove-actor-core-test-support-feature`、2026-04-22): `actor-core/Cargo.toml` から `test-support = []` 行と 8 個の `[[test]] required-features = ["test-support"]` を削除。下流 8 crate (`actor-adaptor-std`、`cluster-core`、`cluster-adaptor-std`、`persistence-core`、`remote-adaptor-std`、`stream-core`、`stream-adaptor-std`、`showcases/std`) の `Cargo.toml` から `fraktor-actor-core-rs/test-support` への参照も全廃。`actor-test-driver-placement` capability に検証 Scenario を追加し、再侵入を spec で機械的にブロック
 
 ### 2. `portable-atomic` の `critical-section` feature 再評価
 
