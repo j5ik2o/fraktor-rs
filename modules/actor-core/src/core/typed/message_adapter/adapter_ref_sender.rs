@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::format;
+use core::any::Any;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
@@ -54,11 +55,15 @@ impl ActorRefSender for AdapterRefSender {
       return Err(error);
     }
 
-    let (erased, sender, is_control) = message.into_parts();
+    let (erased, sender, is_control, not_influence_receive_timeout) = message.into_parts();
     let payload = AdapterPayload::from_erased(erased);
     let envelope = AdapterEnvelope::new(payload, sender);
-    // アダプタ境界を越えても control フラグを保持する
-    let adapted = if is_control { AnyMessage::control(envelope) } else { AnyMessage::new(envelope) };
+    // control フラグと NotInfluenceReceiveTimeout フラグの双方をアダプタ境界を越えて保持する。
+    // `AnyMessage::not_influence` は marker trait 実装を要求するため `AdapterEnvelope` では使えないが、
+    // `AnyMessage::from_parts` は raw bool を受け取るため marker trait なしでフラグを伝播できる。
+    // sender は `AdapterEnvelope` 内に移動済みなので外側の `AnyMessage` は None で再構築する。
+    let envelope_payload: ArcShared<dyn Any + Send + Sync + 'static> = ArcShared::new(envelope);
+    let adapted = AnyMessage::from_parts(envelope_payload, None, is_control, not_influence_receive_timeout);
 
     match self.target.with_write(|target| target.send(adapted)) {
       | Ok(outcome) => Ok(outcome),

@@ -74,7 +74,16 @@ impl ActorSelection {
     let path = self.resolve_target_path()?;
     self.ensure_authority_state(&path, None)?;
     let mut actor_ref = self.resolve_actor_ref(path)?;
-    Ok(actor_ref.ask_with_timeout(AnyMessage::new(Identify::new(AnyMessage::new(self.selection.clone()))), timeout))
+    Ok(actor_ref.ask_with_timeout(self.build_identify_envelope(), timeout))
+  }
+
+  /// Wraps the `Identify` payload into an `AnyMessage` that carries the
+  /// `NotInfluenceReceiveTimeout` marker, so the receiving actor does not
+  /// reset its receive timeout when answering the identity request
+  /// (Pekko `Actor.scala:81`). Exposed for `pub(crate)` unit tests.
+  #[must_use]
+  pub(crate) fn build_identify_envelope(&self) -> AnyMessage {
+    AnyMessage::not_influence(Identify::new(AnyMessage::new(self.selection.clone())))
   }
 
   /// Returns a canonical string representation suitable for later reconstruction.

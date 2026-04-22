@@ -1524,7 +1524,15 @@ impl MessageInvoker for ActorCellInvoker {
     let failure_candidate = message.clone();
     let result = cell.actor.with_write(|actor| cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
     match &result {
-      | Ok(()) => ctx.reschedule_receive_timeout(),
+      // Pekko `dungeon/ReceiveTimeout.scala:40-42` checkReceiveTimeoutIfNeeded:
+      //   reschedule = !message.isInstanceOf[NotInfluenceReceiveTimeout] || receiveTimeoutChanged
+      // fraktor-rs では marker trait を `AnyMessage::not_influence` 経由で flag に畳み込んでおり、
+      // `is_not_influence_receive_timeout() == true` のときは reschedule をスキップする。
+      | Ok(()) => {
+        if !failure_candidate.is_not_influence_receive_timeout() {
+          ctx.reschedule_receive_timeout();
+        }
+      },
       | Err(error) => {
         let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
         cell.report_failure(error, Some(snapshot));
