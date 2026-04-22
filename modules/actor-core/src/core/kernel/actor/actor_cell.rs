@@ -1199,6 +1199,11 @@ impl ActorCell {
       // child mailbox work to queue up instead. Production dispatchers already
       // enter the trampoline when `mailbox.run` is scheduled on a worker
       // thread, so this wrap is effectively a no-op there.
+      // 範囲制限: この guard が保護するのは親と同一の `ExecutorShared`（=同一 dispatcher）
+      // 配下の child のみ。`with_dispatcher_id` で別 dispatcher を割り当てた child の
+      // `send_system_message` → その dispatcher 側の `system_dispatch` は親とは別の
+      // trampoline を通るため、guard の外で実行され得る。クロス dispatcher 下の
+      // 再入防止は各 dispatcher 側の CAS ベース drain-owner 選択が担う。
       let dispatcher = self.new_dispatcher_shared();
       let pre_restart_result =
         dispatcher.run_with_drive_guard(|| self.actor.with_write(|actor| actor.pre_restart(&mut ctx, cause)));

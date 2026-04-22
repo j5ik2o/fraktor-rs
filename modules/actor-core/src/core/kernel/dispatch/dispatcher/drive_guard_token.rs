@@ -57,8 +57,8 @@ impl DriveGuardToken {
 impl Drop for DriveGuardToken {
   fn drop(&mut self) {
     if self.claimed {
-      // MUST NOT: tail drain the trampoline pending queue here — see the
-      // type-level doc comment above. Only releasing the claim is allowed.
+      // 禁止事項: ここでトランポリンの pending キューを末尾消費してはならない
+      // （上の型レベルドキュメント参照）。許可されるのはクレームの解放のみ。
       self.running.store(false, Ordering::Release);
     }
   }
