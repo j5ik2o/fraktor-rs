@@ -178,5 +178,5 @@
   - **公開 API 破壊的変更 (BREAKING)**: `AnyMessage::from_parts` / `AnyMessage::into_parts` / `AnyMessage::from_erased` の tuple 要素数が 3 → 4 に拡張
   - **非破壊 (参考)**: `AnyMessage::new` / `AnyMessage::control` / `AnyMessageView::new` / `AnyMessageView::with_control` の signature は不変
   - gap-analysis AC-M5 done 化の反映
-- [ ] 13.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
-- [ ] 13.4 マージ後、別 PR で change をアーカイブ
+- [x] 13.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve → Cursor Bugbot の adapter boundary flag propagation 指摘を commit `b3594d7` で解消、スレッドに返信済み。CodeRabbit はレート制限のため本 PR ではレビュー成立せず (次 PR で自然解消見込み)
+- [x] 13.4 マージ後、別 PR で change をアーカイブ → 本タスクで実施
