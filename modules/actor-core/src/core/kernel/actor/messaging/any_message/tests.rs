@@ -1,5 +1,9 @@
 use super::*;
-use crate::core::kernel::actor::{Pid, actor_ref::ActorRef};
+use crate::core::kernel::actor::{Pid, actor_ref::ActorRef, messaging::NotInfluenceReceiveTimeout};
+
+struct NonInfluencingTick;
+
+impl NotInfluenceReceiveTimeout for NonInfluencingTick {}
 
 #[test]
 fn stores_payload_and_sender() {
@@ -47,13 +51,48 @@ fn control_message_supports_sender() {
 #[test]
 fn from_erased_preserves_control_flag_true() {
   let payload = ArcShared::new(42_u32) as ArcShared<dyn Any + Send + Sync>;
-  let message = AnyMessage::from_erased(payload, None, true);
+  let message = AnyMessage::from_erased(payload, None, true, false);
   assert!(message.is_control());
 }
 
 #[test]
 fn from_erased_preserves_control_flag_false() {
   let payload = ArcShared::new(42_u32) as ArcShared<dyn Any + Send + Sync>;
-  let message = AnyMessage::from_erased(payload, None, false);
+  let message = AnyMessage::from_erased(payload, None, false, false);
   assert!(!message.is_control());
+}
+
+#[test]
+fn new_message_is_not_flagged_as_not_influence() {
+  let message = AnyMessage::new(NonInfluencingTick);
+  assert!(!message.is_not_influence_receive_timeout());
+}
+
+#[test]
+fn not_influence_sets_receive_timeout_flag() {
+  let message = AnyMessage::not_influence(NonInfluencingTick);
+  assert!(message.is_not_influence_receive_timeout());
+  assert!(!message.is_control());
+}
+
+#[test]
+fn not_influence_flag_is_preserved_on_clone() {
+  let original = AnyMessage::not_influence(NonInfluencingTick);
+  let cloned = original.clone();
+  assert!(cloned.is_not_influence_receive_timeout());
+}
+
+#[test]
+fn view_exposes_not_influence_flag() {
+  let message = AnyMessage::not_influence(NonInfluencingTick);
+  let view = message.as_view();
+  assert!(view.not_influence_receive_timeout());
+  assert!(!view.is_control());
+}
+
+#[test]
+fn regular_view_reports_not_influence_flag_as_false() {
+  let message = AnyMessage::new(NonInfluencingTick);
+  let view = message.as_view();
+  assert!(!view.not_influence_receive_timeout());
 }

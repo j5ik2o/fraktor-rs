@@ -183,7 +183,7 @@ where
     is_control: bool,
   ) {
     let system_state = ctx.system().state();
-    let message = AnyMessage::from_parts(payload.into_erased(), sender.cloned(), is_control);
+    let message = AnyMessage::from_parts(payload.into_erased(), sender.cloned(), is_control, false);
     system_state.record_dead_letter(message, reason, Some(ctx.pid()));
   }
 }

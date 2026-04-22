@@ -14,8 +14,8 @@ use crate::core::kernel::{
     Actor, ActorContext, Pid, ReceiveTimeoutState,
     error::{ActorError, ActorErrorReason},
     messaging::{
-      ActorIdentity, AnyMessage, AnyMessageView, Identify, Kill, PoisonPill, message_invoker::MessageInvoker,
-      system_message::SystemMessage,
+      ActorIdentity, AnyMessage, AnyMessageView, Identify, Kill, NotInfluenceReceiveTimeout, PoisonPill,
+      message_invoker::MessageInvoker, system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
     supervision::{
@@ -25,6 +25,31 @@ use crate::core::kernel::{
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
 };
+
+struct NonInfluencingTick;
+
+impl NotInfluenceReceiveTimeout for NonInfluencingTick {}
+
+struct ReceiveTimeoutNoopActor;
+
+impl Actor for ReceiveTimeoutNoopActor {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    ctx.set_receive_timeout(Duration::from_millis(20), AnyMessage::new("timeout"));
+    Ok(())
+  }
+
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+fn current_schedule_generation(cell: &ActorCell) -> u64 {
+  cell
+    .receive_timeout
+    .as_shared_lock()
+    .with_lock(|state| state.as_ref().map(ReceiveTimeoutState::schedule_generation))
+    .expect("receive timeout should be armed")
+}
 
 struct ProbeActor;
 
@@ -596,6 +621,42 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
     .expect("receive timeout handle should remain registered after failure");
 
   assert_eq!(current_handle, initial_handle, "failure path must not arm a fresh receive-timeout timer");
+}
+
+#[test]
+fn not_influence_message_skips_reschedule() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ReceiveTimeoutNoopActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(416, 0), None, "timeout-skip".to_string(), &props).expect("create cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+
+  let gen_before = current_schedule_generation(&cell);
+  invoker.invoke(AnyMessage::not_influence(NonInfluencingTick)).expect("invoke");
+  let gen_after = current_schedule_generation(&cell);
+
+  assert_eq!(gen_after, gen_before, "NotInfluenceReceiveTimeout payload must skip reschedule");
+}
+
+#[test]
+fn regular_message_reschedules_receive_timeout() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ReceiveTimeoutNoopActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(417, 0), None, "timeout-reset".to_string(), &props).expect("create cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+
+  let gen_before = current_schedule_generation(&cell);
+  invoker.invoke(AnyMessage::new(NonInfluencingTick)).expect("invoke");
+  let gen_after = current_schedule_generation(&cell);
+
+  assert_eq!(gen_after, gen_before + 1, "regular payload must cancel and reschedule (one extra schedule call)");
 }
 
 #[test]

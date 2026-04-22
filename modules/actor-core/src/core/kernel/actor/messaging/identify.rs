@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::kernel::actor::messaging::AnyMessage;
+use crate::core::kernel::actor::messaging::{AnyMessage, NotInfluenceReceiveTimeout};
 
 /// Message requesting the target actor to reply with its identity.
 #[derive(Clone, Debug)]
@@ -24,3 +24,5 @@ impl Identify {
     &self.correlation_id
   }
 }
+
+impl NotInfluenceReceiveTimeout for Identify {}

@@ -12,7 +12,7 @@ use crate::core::kernel::{
     actor_ref::{ActorRef, NullSender},
     actor_selection::{ActorSelection, ActorSelectionError, ActorSelectionResolver},
     error::ActorError,
-    messaging::{ActorIdentity, AnyMessage, AnyMessageView},
+    messaging::{ActorIdentity, AnyMessage, AnyMessageView, Identify},
     props::Props,
     scheduler::tick_driver::tests::TestTickDriver,
     setup::ActorSystemConfig,
@@ -431,4 +431,19 @@ fn actor_selection_forward_rejects_quarantined_authority() {
     selection.forward(AnyMessage::new(String::from("quarantined")), &sender).expect_err("quarantined authority");
 
   assert!(matches!(error, ActorSelectionError::Authority(PathResolutionError::AuthorityQuarantined)));
+}
+
+#[test]
+fn identify_envelope_carries_not_influence_receive_timeout_flag() {
+  let system = build_selection_system();
+  let path = ActorPath::from_parts(ActorPathParts::local("selection-spec")).child("worker");
+  let selection = ActorSelection::from_path(system.state(), &path);
+
+  let envelope = selection.build_identify_envelope();
+
+  assert!(
+    envelope.is_not_influence_receive_timeout(),
+    "internal Identify envelope must carry NotInfluenceReceiveTimeout (Pekko Actor.scala:81)"
+  );
+  assert!(envelope.downcast_ref::<Identify>().is_some(), "payload must remain Identify");
 }

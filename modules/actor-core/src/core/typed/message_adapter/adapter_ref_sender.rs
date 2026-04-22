@@ -54,10 +54,12 @@ impl ActorRefSender for AdapterRefSender {
       return Err(error);
     }
 
-    let (erased, sender, is_control) = message.into_parts();
+    let (erased, sender, is_control, _not_influence) = message.into_parts();
     let payload = AdapterPayload::from_erased(erased);
     let envelope = AdapterEnvelope::new(payload, sender);
-    // アダプタ境界を越えても control フラグを保持する
+    // アダプタ境界を越えても control フラグを保持する。
+    // not_influence_receive_timeout は adapted の payload が新しい型 `AdapterEnvelope` になるため
+    // そのままは伝播できない (marker trait 実装を持たないため)。現状はアダプタ越えで reset 扱いとする。
     let adapted = if is_control { AnyMessage::control(envelope) } else { AnyMessage::new(envelope) };
 
     match self.target.with_write(|target| target.send(adapted)) {

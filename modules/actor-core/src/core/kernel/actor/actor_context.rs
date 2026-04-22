@@ -550,6 +550,11 @@ impl ActorContext<'_> {
         system.emit_log(LogLevel::Warn, format!("failed to schedule receive timeout: {:?}", error), Some(pid), None);
       },
     }
+    // Advance the monotonic counter regardless of scheduler result so kernel
+    // tests can observe reschedule skips for NotInfluenceReceiveTimeout
+    // payloads (Pekko `Actor.scala:165`) and future production diagnostics
+    // can measure receive-timeout churn.
+    state.schedule_generation = state.schedule_generation.saturating_add(1);
   }
 
   pub(crate) fn reschedule_receive_timeout(&mut self) {
@@ -599,5 +604,20 @@ impl ActorContext<'_> {
   #[must_use]
   pub fn has_receive_timeout(&self) -> bool {
     self.with_receive_timeout_slot_ref(Option::is_some)
+  }
+
+  /// Returns the receive-timeout schedule-generation counter, or `None`
+  /// when no receive timeout is configured.
+  ///
+  /// The counter advances once per `schedule_receive_timeout` invocation
+  /// (both the initial `set_receive_timeout` arm and every
+  /// `reschedule_receive_timeout` cancel+schedule). Callers comparing
+  /// values around a user-message `invoke` can tell whether the reschedule
+  /// was skipped for a `NotInfluenceReceiveTimeout` payload
+  /// (Pekko `Actor.scala:165`), and diagnostics callers can measure
+  /// receive-timeout churn per actor.
+  #[must_use]
+  pub fn receive_timeout_schedule_generation(&self) -> Option<u64> {
+    self.with_receive_timeout_slot_ref(|slot| slot.as_ref().map(ReceiveTimeoutState::schedule_generation))
   }
 }
