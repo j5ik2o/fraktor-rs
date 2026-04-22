@@ -11,8 +11,8 @@ use fraktor_utils_core_rs::core::sync::{SharedAccess, SyncOnce, WeakShared};
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
   enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
-  mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_instrumentation::MailboxInstrumentation,
-  message_queue::MessageQueue,
+  mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_clock::MailboxClock,
+  mailbox_instrumentation::MailboxInstrumentation, message_queue::MessageQueue,
 };
 use crate::core::kernel::{
   actor::{
@@ -57,6 +57,14 @@ pub struct Mailbox {
   /// Write-once weak handle to the owning actor cell. Set by [`Mailbox::with_actor`]
   /// or [`install_actor`](Self::install_actor), read lock-free thereafter.
   actor:           SyncOnce<WeakShared<ActorCell>>,
+  /// Monotonic clock used to evaluate the throughput deadline (Pekko
+  /// `System.nanoTime()` equivalent). `None` disables deadline enforcement,
+  /// reducing [`Mailbox::run`] to throughput-only yield behaviour. Injected
+  /// via `MailboxSharedSet` at construction time; tests may replace it via
+  /// [`set_clock`](Self::set_clock).
+  ///
+  /// NOTE: does not implement `Debug`; manual impl required if `derive(Debug)` is ever added.
+  clock:           Option<MailboxClock>,
 }
 
 unsafe impl Send for Mailbox {}
@@ -130,6 +138,7 @@ impl Mailbox {
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
       invoker: SyncOnce::new(),
       actor: SyncOnce::new(),
+      clock: shared_set.clock().cloned(),
     }
   }
 
@@ -162,6 +171,7 @@ impl Mailbox {
       cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
       invoker: SyncOnce::new(),
       actor: SyncOnce::new(),
+      clock: shared_set.clock().cloned(),
     }
   }
 
@@ -204,6 +214,7 @@ impl Mailbox {
         once.call_once(|| actor);
         once
       },
+      clock: shared_set.clock().cloned(),
     }
   }
 
@@ -231,6 +242,22 @@ impl Mailbox {
     self.invoker.call_once(|| invoker);
   }
 
+  /// Replaces the mailbox clock used for throughput deadline evaluation.
+  ///
+  /// Test-only. Production mailboxes receive their clock via
+  /// [`MailboxSharedSet::with_clock`] at construction time; this setter exists
+  /// for tests that need to substitute a mock clock after the mailbox has
+  /// already been built. Passing `None` disables deadline enforcement and
+  /// reverts to throughput-only yield behaviour.
+  ///
+  /// CQS note: this is a Command (`&mut self + ()`). A builder variant
+  /// (`self -> Self`) is intentionally avoided because `SyncOnce<T>` does not
+  /// implement `Clone`, which would force costly field-by-field reconstruction.
+  #[cfg(test)]
+  pub(crate) fn set_clock(&mut self, clock: Option<MailboxClock>) {
+    self.clock = clock;
+  }
+
   /// Drains the mailbox up to `throughput` messages, invoking each one through the installed
   /// invoker.
   ///
@@ -253,7 +280,7 @@ impl Mailbox {
   /// installed an actor) and when the drain finishes cleanly with no
   /// pending reschedule.
   #[must_use]
-  pub fn run(&self, throughput: NonZeroUsize, _throughput_deadline: Option<Duration>) -> bool {
+  pub fn run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>) -> bool {
     if self.state.is_cleanup_done() {
       return false;
     }
@@ -289,9 +316,13 @@ impl Mailbox {
     // finish_run() → FinalizeNow を通して finalize_cleanup に到達させる。
     if !close_requested_at_start && let Some(ref invoker) = invoker {
       self.process_all_system_messages(invoker);
-      self.process_mailbox(invoker, throughput);
+      // Pekko `Mailbox.scala:263-266`: `deadlineNs = System.nanoTime + throughputDeadlineTime.toNanos`
+      // evaluated as the default argument of `processMailbox`, i.e. computed once at loop entry.
+      // `self.clock = None` or `throughput_deadline = None` yields `deadline_at = None`, which
+      // disables deadline enforcement (Pekko `isThroughputDeadlineTimeDefined = false` equivalent).
+      let deadline_at: Option<Duration> = self.clock.as_ref().zip(throughput_deadline).map(|(c, d)| c() + d);
+      self.process_mailbox(invoker, throughput, deadline_at);
     }
-    // Deadline support is added in a follow-up change (MB-M1, Phase A3).
     // Surface the "needs reschedule" signal to the caller. The signal is
     // a union of two independent sources:
     //
@@ -374,21 +405,46 @@ impl Mailbox {
   /// between two user messages flips `should_process_message` to `false` on the
   /// next iteration, gating the remaining user messages until a later `run()` call
   /// observes a `Resume` (AC-H1-T2 / T5).
-  fn process_mailbox(&self, invoker: &MessageInvokerShared, throughput: NonZeroUsize) {
+  ///
+  /// `deadline_at` carries the pre-computed absolute deadline from the caller
+  /// (see [`Mailbox::run`]). `None` disables deadline enforcement; a `Some`
+  /// value triggers the post-decrement break that mirrors Pekko
+  /// `Mailbox.scala:275`: `(left > 1) && (!deadlineDefined || (nanoTime - deadlineNs) < 0)`.
+  fn process_mailbox(&self, invoker: &MessageInvokerShared, throughput: NonZeroUsize, deadline_at: Option<Duration>) {
     let mut left = throughput.get();
     while left > 0 && self.should_process_message() {
+      // Pekko Mailbox.scala:268-269: `val next = dequeue(); if (next ne null) { ... }`
       let Some(envelope) = self.dequeue() else {
         break;
       };
       let payload = envelope.into_payload();
+      // Pekko Mailbox.scala:271: `actor.invoke(next)`
       if let Err(error) = invoker.with_write(|i| i.invoke(payload)) {
         self.emit_log(LogLevel::Error, alloc::format!("failed to invoke user message: {error:?}"));
       }
-      // Pekko: `actor.invoke(next); processAllSystemMessages()` — each user
+      // Pekko Mailbox.scala:274: `processAllSystemMessages()` — each user
       // message is followed by a full system drain so Suspend / Resume /
       // Stop arriving mid-run are reflected before the next user message.
+      // NOTE: this must run BEFORE the deadline break below (Pekko order
+      // preserves the system-message drain even on deadline exit).
       self.process_all_system_messages(invoker);
       left -= 1;
+      // Pekko Mailbox.scala:275: `(left > 1) && (!deadlineDefined || (nanoTime - deadlineNs) < 0)`
+      // fraktor-rs uses a post-decrement while loop, so `left > 0` after decrement is
+      // equivalent to Pekko's `left > 1` pre-decrement. The deadline check only adds
+      // the second clause of Pekko's conjunction.
+      //
+      // Safety/invariant: `deadline_at` is computed in [`Mailbox::run`] as
+      //   self.clock.as_ref().zip(throughput_deadline).map(|(c, d)| c() + d)
+      // so `deadline_at = Some(_)` type-level implies `self.clock = Some(_)`
+      // (Option::zip returns None if either side is None). The `is_some_and`
+      // call below is therefore logically equivalent to `.unwrap()`, but we
+      // keep the explicit form for readability and type safety.
+      if let Some(da) = deadline_at
+        && self.clock.as_ref().is_some_and(|c| c() >= da)
+      {
+        break;
+      }
     }
   }
 

@@ -145,15 +145,20 @@ impl ActorCell {
     // `BalancingDispatcher` hands out sharing mailboxes that all wrap its
     // single team queue). Dispatchers that want per-actor queues return
     // `None` and `ActorCell` falls back to the `MailboxConfig`-driven path.
+    // Pull the system-wide `MailboxSharedSet` so the throughput deadline clock
+    // (if installed by the std adaptor via `install_mailbox_clock`) propagates
+    // to the freshly constructed mailbox. `clock = None` on the bundle leaves
+    // deadline enforcement disabled (throughput-only fallback).
+    let mailbox_shared_set = system.mailbox_shared_set();
     let mailbox = if let Some(shared_mailbox) = new_dispatcher.try_create_shared_mailbox() {
       shared_mailbox
     } else if let Some(id) = mailbox_id {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
-      ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
+      ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_config.policy(), queue, &mailbox_shared_set))
     } else {
       ArcShared::new(
-        Mailbox::new_from_config(&mailbox_config)
+        Mailbox::new_from_config_with_shared_set(&mailbox_config, &mailbox_shared_set)
           .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
       )
     };

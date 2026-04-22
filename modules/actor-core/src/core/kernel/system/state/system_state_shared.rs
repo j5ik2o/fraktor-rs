@@ -890,6 +890,20 @@ impl SystemStateShared {
     self.inner.with_read(|inner| inner.monotonic_now())
   }
 
+  /// Returns a clone of the mailbox lock bundle carried by the inner system
+  /// state. Used by [`ActorCell::create`] to wire the throughput deadline
+  /// clock into newly constructed mailboxes.
+  #[must_use]
+  pub fn mailbox_shared_set(&self) -> crate::core::kernel::system::shared_factory::MailboxSharedSet {
+    self.inner.with_read(|inner| inner.mailbox_shared_set().clone())
+  }
+
+  /// Installs a monotonic clock into the underlying [`MailboxSharedSet`].
+  /// Called by the std adaptor during `ActorSystem` initialization.
+  pub fn install_mailbox_clock(&self, clock: crate::core::kernel::dispatch::mailbox::MailboxClock) {
+    self.inner.with_write(|inner| inner.install_mailbox_clock(clock));
+  }
+
   /// Resolves a [`MessageDispatcherShared`] for the identifier.
   ///
   /// Returns `None` when no configurator is registered for the id.

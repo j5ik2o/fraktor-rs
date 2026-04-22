@@ -2,7 +2,7 @@
 
 use fraktor_actor_core_rs::core::kernel::{actor::setup::ActorSystemConfig, system::ActorSystem};
 
-use crate::std::tick_driver::TestTickDriver;
+use crate::std::{tick_driver::TestTickDriver, time::std_monotonic_mailbox_clock};
 
 /// Creates an empty actor system without any guardian using the default test tick driver.
 ///
@@ -33,7 +33,13 @@ where
   let config = ActorSystemConfig::new(TestTickDriver::default());
   let config = configure(config);
   match ActorSystem::new_started_from_config(config) {
-    | Ok(system) => system,
+    | Ok(system) => {
+      // Install the std monotonic mailbox clock so mailboxes created by
+      // `ActorCell::create` observe real elapsed time when enforcing the
+      // throughput deadline (Pekko `Mailbox.scala:263-275`).
+      system.state().install_mailbox_clock(std_monotonic_mailbox_clock());
+      system
+    },
     | Err(error) => panic!("test-support config failed to build in new_empty_actor_system_with: {error:?}"),
   }
 }
