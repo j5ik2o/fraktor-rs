@@ -22,9 +22,6 @@ mod tick_metrics_probe;
 pub(crate) mod tests;
 
 pub use auto_driver_metadata::{AutoDriverMetadata, AutoProfileKind};
-#[cfg(any(test, feature = "test-support"))]
-pub use bootstrap::TickDriverBootstrap;
-#[cfg(not(any(test, feature = "test-support")))]
 pub(crate) use bootstrap::TickDriverBootstrap;
 pub use bootstrap_provision_result::BootstrapProvisionResult;
 pub use scheduler_tick_executor::SchedulerTickExecutor;

@@ -36,9 +36,12 @@ impl<'a> SchedulerRunner<'a> {
   }
 
   /// Creates a manual runner suitable for deterministic tests.
-  #[cfg(any(test, feature = "test-support"))]
+  ///
+  /// Inline-test only helper kept always-present (not test-cfg gated) so that test files
+  /// across the crate can share it via `pub(crate)` visibility.
   #[must_use]
-  pub fn manual(tick_handle: &'a SchedulerTickHandle<'a>) -> Self {
+  #[allow(dead_code)]
+  pub(crate) fn manual(tick_handle: &'a SchedulerTickHandle<'a>) -> Self {
     Self::new_internal(tick_handle)
   }
 

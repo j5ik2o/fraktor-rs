@@ -85,17 +85,11 @@ impl ActorRef {
 
   /// Creates a new actor reference backed by the built-in sender lock.
   ///
-  /// This helper is public only for tests and `test-support` consumers.
+  /// Inline-test only helper kept always-present (not test-cfg gated) so that test files
+  /// across the crate can share it via `pub(crate)` visibility.
   #[must_use]
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn new_with_builtin_lock<T>(pid: Pid, sender: T) -> Self
-  where
-    T: ActorRefSender + 'static, {
-    Self::new_with_builtin_lock_impl(pid, sender)
-  }
-
-  #[cfg(any(test, feature = "test-support"))]
-  fn new_with_builtin_lock_impl<T>(pid: Pid, sender: T) -> Self
+  #[allow(dead_code)]
+  pub(crate) fn new_with_builtin_lock<T>(pid: Pid, sender: T) -> Self
   where
     T: ActorRefSender + 'static, {
     let sender = ActorRefSenderShared::new(Box::new(sender));
