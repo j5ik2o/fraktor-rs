@@ -10,7 +10,7 @@ use crate::core::{
     actor::{
       error::ActorError,
       supervision::{
-        SupervisorDirective, SupervisorStrategy as KernelSupervisorStrategy, SupervisorStrategyConfig,
+        RestartLimit, SupervisorDirective, SupervisorStrategy as KernelSupervisorStrategy, SupervisorStrategyConfig,
         SupervisorStrategyKind,
       },
     },
@@ -27,11 +27,20 @@ pub struct SupervisorStrategy {
 
 impl SupervisorStrategy {
   /// Creates a strategy that resumes the actor on failure.
+  ///
+  /// `max_restarts` is set to [`RestartLimit::WithinWindow`]`(0)` since the
+  /// decider never returns `Restart`; this matches Pekko's convention for
+  /// strategies that don't use the retry budget.
   #[must_use]
   pub const fn resume() -> Self {
     Self {
-      inner: KernelSupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, Duration::ZERO, resume_decider)
-        .with_stash_capacity(usize::MAX),
+      inner: KernelSupervisorStrategy::new(
+        SupervisorStrategyKind::OneForOne,
+        RestartLimit::WithinWindow(0),
+        Duration::ZERO,
+        resume_decider,
+      )
+      .with_stash_capacity(usize::MAX),
     }
   }
 
@@ -52,11 +61,19 @@ impl SupervisorStrategy {
   }
 
   /// Creates a strategy that stops the actor on failure.
+  ///
+  /// `max_restarts` is set to [`RestartLimit::WithinWindow`]`(0)` — matching
+  /// Pekko `stoppingStrategy` which never restarts.
   #[must_use]
   pub const fn stop() -> Self {
     Self {
-      inner: KernelSupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, Duration::ZERO, stop_decider)
-        .with_stash_capacity(usize::MAX),
+      inner: KernelSupervisorStrategy::new(
+        SupervisorStrategyKind::OneForOne,
+        RestartLimit::WithinWindow(0),
+        Duration::ZERO,
+        stop_decider,
+      )
+      .with_stash_capacity(usize::MAX),
     }
   }
 

@@ -1,7 +1,10 @@
 use core::time::Duration;
 
 use super::{
-  super::{supervisor_directive::SupervisorDirective, supervisor_strategy_kind::SupervisorStrategyKind},
+  super::{
+    restart_limit::RestartLimit, supervisor_directive::SupervisorDirective,
+    supervisor_strategy_kind::SupervisorStrategyKind,
+  },
   SupervisorStrategy,
 };
 use crate::core::kernel::actor::{error::ActorError, supervision::RestartStatistics};
@@ -21,42 +24,141 @@ fn resume_only(_error: &ActorError) -> SupervisorDirective {
 #[test]
 fn restart_within_limit_returns_restart() {
   let mut stats = RestartStatistics::new();
-  let strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(5), restart_only);
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(5),
+    restart_only,
+  );
   let outcome = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(1));
   assert_eq!(outcome, SupervisorDirective::Restart);
-  assert_eq!(stats.failure_count(), 1);
+  assert_eq!(stats.restart_count(), 1);
 }
 
 #[test]
 fn exceeding_limit_forces_stop() {
   let mut stats = RestartStatistics::new();
-  let strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, Duration::from_secs(5), restart_only);
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(1),
+    Duration::from_secs(5),
+    restart_only,
+  );
   let first = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(1));
   let second = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(2));
   assert_eq!(first, SupervisorDirective::Restart);
   assert_eq!(second, SupervisorDirective::Stop);
-  assert_eq!(stats.failure_count(), 0);
+  assert_eq!(stats.restart_count(), 0);
 }
 
 #[test]
 fn non_restart_resets_statistics() {
   let mut stats = RestartStatistics::new();
-  let strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(5), stop_only);
-  stats.record_failure(Duration::from_secs(1), Duration::from_secs(5), Some(3));
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(5),
+    stop_only,
+  );
+  // Prime statistics via the permission path so the reset can be observed.
+  stats.request_restart_permission(Duration::from_secs(1), RestartLimit::WithinWindow(3), Duration::from_secs(5));
+  assert!(stats.restart_count() > 0);
   let decision = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(2));
   assert_eq!(decision, SupervisorDirective::Stop);
-  assert_eq!(stats.failure_count(), 0);
+  assert_eq!(stats.restart_count(), 0);
+  assert_eq!(stats.window_start(), None);
 }
 
 #[test]
 fn resume_leaves_statistics_unchanged() {
   let mut stats = RestartStatistics::new();
-  let strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(5), resume_only);
-  stats.record_failure(Duration::from_secs(1), Duration::from_secs(5), Some(3));
-  let count_before = stats.failure_count();
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(5),
+    resume_only,
+  );
+  stats.request_restart_permission(Duration::from_secs(1), RestartLimit::WithinWindow(3), Duration::from_secs(5));
+  let count_before = stats.restart_count();
+  let window_before = stats.window_start();
   let decision = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(2));
   assert_eq!(decision, SupervisorDirective::Resume);
-  assert_eq!(stats.failure_count(), count_before);
+  // Pekko parity: Resume must not touch restart stats.
+  assert_eq!(stats.restart_count(), count_before);
+  assert_eq!(stats.window_start(), window_before);
+}
+
+#[test]
+fn within_window_zero_stops_immediately_without_counter_update() {
+  // Pekko `(Some(0), _) if retries < 1 => false`. Counter must not be updated.
+  let mut stats = RestartStatistics::new();
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(0),
+    Duration::from_secs(5),
+    restart_only,
+  );
+  let outcome = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(1));
+  assert_eq!(outcome, SupervisorDirective::Stop);
+  assert_eq!(stats.restart_count(), 0);
+  assert_eq!(stats.window_start(), None);
+}
+
+#[test]
+fn unlimited_no_window_never_updates_counter() {
+  // Pekko `(None, _) => true`.
+  let mut stats = RestartStatistics::new();
+  let strategy =
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, RestartLimit::Unlimited, Duration::ZERO, restart_only);
+  for i in 0..50 {
+    let out = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_millis(i));
+    assert_eq!(out, SupervisorDirective::Restart);
+  }
+  assert_eq!(stats.restart_count(), 0);
+  assert_eq!(stats.window_start(), None);
+}
+
+#[test]
+fn unlimited_with_window_denies_second_in_window_failure() {
+  // Pekko `(None, Some(window)) => retriesInWindowOkay(1, window)`: retries = 1
+  // fixed, so the second in-window failure is denied.
+  let mut stats = RestartStatistics::new();
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::Unlimited,
+    Duration::from_secs(10),
+    restart_only,
+  );
+  let first = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(0));
+  assert_eq!(first, SupervisorDirective::Restart);
+  assert_eq!(stats.restart_count(), 1);
+  assert_eq!(stats.window_start(), Some(Duration::from_secs(0)));
+  let second = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(5));
+  assert_eq!(second, SupervisorDirective::Stop);
+  assert_eq!(stats.restart_count(), 0);
+  assert_eq!(stats.window_start(), None);
+}
+
+#[test]
+fn within_window_n_resets_counter_on_window_expiry() {
+  // Pekko `retriesInWindowOkay` outside-window branch: count = 1, window_start = now, true.
+  let mut stats = RestartStatistics::new();
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(10),
+    restart_only,
+  );
+  // Prime: 2 failures inside the window starting at 0s.
+  let _ = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(0));
+  let _ = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(5));
+  assert_eq!(stats.restart_count(), 2);
+  assert_eq!(stats.window_start(), Some(Duration::from_secs(0)));
+  // 15s is outside the 10s window ⇒ counter resets to 1, window_start to now, restart.
+  let outcome = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(15));
+  assert_eq!(outcome, SupervisorDirective::Restart);
+  assert_eq!(stats.restart_count(), 1);
+  assert_eq!(stats.window_start(), Some(Duration::from_secs(15)));
 }
 
 #[test]

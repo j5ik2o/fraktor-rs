@@ -5,6 +5,7 @@
 mod backoff_options_data;
 mod backoff_supervisor_strategy;
 mod base;
+mod restart_limit;
 mod restart_statistics;
 mod supervisor_directive;
 mod supervisor_strategy_config;
@@ -12,6 +13,7 @@ mod supervisor_strategy_kind;
 
 pub use backoff_supervisor_strategy::BackoffSupervisorStrategy;
 pub use base::SupervisorStrategy;
+pub use restart_limit::RestartLimit;
 pub use restart_statistics::RestartStatistics;
 pub use supervisor_directive::SupervisorDirective;
 pub use supervisor_strategy_config::SupervisorStrategyConfig;

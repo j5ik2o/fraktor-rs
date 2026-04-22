@@ -5,7 +5,7 @@ use crate::core::{
   kernel::{
     actor::{
       error::ActorError,
-      supervision::{SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
+      supervision::{RestartLimit, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
     },
     event::logging::LogLevel,
   },
@@ -42,8 +42,12 @@ fn stop_factory_returns_standard_strategy_with_stop_directive() {
 fn restart_factory_returns_restart_supervisor_strategy_with_default_settings() {
   let strategy: RestartSupervisorStrategy = SupervisorStrategy::restart();
 
+  // SP-M1: typed `restart()` default now mirrors Pekko
+  // `Restart(maxRestarts = -1, withinTimeRange = Duration.Zero)`.
+  // Previously `max_restarts == 0` encoded "unlimited"; the new encoding
+  // makes that explicit via `RestartLimit::Unlimited`.
   assert_eq!(strategy.kind(), SupervisorStrategyKind::OneForOne);
-  assert_eq!(strategy.max_restarts(), 0);
+  assert_eq!(strategy.max_restarts(), RestartLimit::Unlimited);
   assert_eq!(strategy.within(), Duration::ZERO);
 }
 

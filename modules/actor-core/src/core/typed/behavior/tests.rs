@@ -7,7 +7,7 @@ use crate::core::{
   kernel::{
     actor::{
       ActorContext, Pid,
-      supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+      supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
     },
     system::ActorSystem,
   },
@@ -273,9 +273,12 @@ fn narrow_clone_restarts_with_fresh_inner_behavior() {
 fn transform_messages_propagates_supervisor_override_from_started_inner() {
   let inner: Behavior<u32> = Behaviors::setup(move |_ctx| {
     Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())).with_supervisor_strategy(
-      SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
-        SupervisorDirective::Restart
-      }),
+      SupervisorStrategy::new(
+        SupervisorStrategyKind::OneForOne,
+        RestartLimit::WithinWindow(5),
+        Duration::from_secs(1),
+        |_| SupervisorDirective::Restart,
+      ),
     )
   });
 

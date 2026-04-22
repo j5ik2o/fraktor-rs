@@ -2,6 +2,7 @@
 
 use core::time::Duration;
 
+use super::restart_limit::RestartLimit;
 use crate::core::kernel::event::logging::LogLevel;
 
 #[cfg(test)]
@@ -14,13 +15,26 @@ const DEFAULT_STASH_CAPACITY: usize = 1000;
 /// The backoff delay is computed as `min(max_backoff, min_backoff * 2^restart_iteration)`.
 /// An optional jitter can be applied via
 /// [`compute_backoff_with_jitter`](Self::compute_backoff_with_jitter).
+///
+/// Pekko parity note: Pekko's `BackoffOnRestartSupervisor` installs an internal
+/// `OneForOneStrategy` configured with the user-provided
+/// `OneForOneStrategy(maxNrOfRetries, withinTimeRange, ...)` (see
+/// `references/pekko/actor/src/main/scala/org/apache/pekko/pattern/internal/
+/// BackoffOnRestartSupervisor.scala:58`). `withinTimeRange` there is the retry-accounting window
+/// (the classic `maxNrOfRetries.withinTimeRange` concept) and is **distinct from**
+/// `resetBackoffAfter`, which controls when the backoff iteration counter
+/// resets after the child stabilizes. fraktor-rs mirrors this separation
+/// with two independent fields: [`within_time_range`](Self::within_time_range)
+/// for retry accounting and [`reset_backoff_after`](Self::reset_backoff_after)
+/// for backoff reset.
 #[derive(Clone, Debug)]
 pub struct BackoffSupervisorStrategy {
   min_backoff:              Duration,
   max_backoff:              Duration,
   random_factor:            f64,
   reset_backoff_after:      Duration,
-  max_restarts:             u32,
+  within_time_range:        Duration,
+  max_restarts:             RestartLimit,
   stop_children:            bool,
   stash_capacity:           usize,
   logging_enabled:          bool,
@@ -48,7 +62,12 @@ impl BackoffSupervisorStrategy {
       max_backoff,
       random_factor,
       reset_backoff_after,
-      max_restarts: 0,
+      // Default `Duration::ZERO` = no window (matches typed Pekko
+      // `Duration.Zero` / classic Pekko `withinTimeRangeOption == None`).
+      // Combined with `max_restarts = Unlimited` this yields truly unlimited
+      // restarts by default, matching Pekko's `OneForOneStrategy()` default.
+      within_time_range: Duration::ZERO,
+      max_restarts: RestartLimit::Unlimited,
       stop_children: true,
       stash_capacity: DEFAULT_STASH_CAPACITY,
       logging_enabled: true,
@@ -99,10 +118,25 @@ impl BackoffSupervisorStrategy {
     self
   }
 
-  /// Sets the maximum number of restarts before giving up. 0 means unlimited.
+  /// Sets the maximum number of restarts using the [`RestartLimit`] contract
+  /// (Pekko `maxNrOfRetries`). Use [`RestartLimit::Unlimited`] for no bound,
+  /// [`RestartLimit::WithinWindow`]`(0)` for immediate stop, and
+  /// [`RestartLimit::WithinWindow`]`(n)` for up to `n` retries.
   #[must_use]
-  pub const fn with_max_restarts(mut self, max_restarts: u32) -> Self {
+  pub const fn with_max_restarts(mut self, max_restarts: RestartLimit) -> Self {
     self.max_restarts = max_restarts;
+    self
+  }
+
+  /// Sets the retry-accounting window (Pekko `OneForOneStrategy.withinTimeRange`).
+  ///
+  /// Pass [`Duration::ZERO`] to disable the window (matches typed Pekko
+  /// `Duration.Zero` and classic Pekko `withinTimeRangeOption == None`).
+  /// This is independent of [`reset_backoff_after`](Self::reset_backoff_after),
+  /// which controls the backoff-iteration reset timer.
+  #[must_use]
+  pub const fn with_within_time_range(mut self, within: Duration) -> Self {
+    self.within_time_range = within;
     self
   }
 
@@ -144,10 +178,18 @@ impl BackoffSupervisorStrategy {
     self.reset_backoff_after
   }
 
-  /// Returns the maximum number of restarts. 0 means unlimited.
+  /// Returns the configured restart limit policy.
   #[must_use]
-  pub const fn max_restarts(&self) -> u32 {
+  pub const fn max_restarts(&self) -> RestartLimit {
     self.max_restarts
+  }
+
+  /// Returns the retry-accounting window (Pekko `withinTimeRange`).
+  ///
+  /// `Duration::ZERO` means "no window" (disabled).
+  #[must_use]
+  pub const fn within_time_range(&self) -> Duration {
+    self.within_time_range
   }
 
   /// Returns whether sibling children are stopped on restart.

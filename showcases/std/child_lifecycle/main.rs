@@ -17,7 +17,7 @@ use fraktor_actor_core_rs::core::{
   kernel::actor::{
     error::ActorError,
     setup::ActorSystemConfig,
-    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
   typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal},
 };
@@ -62,12 +62,16 @@ fn fussy_worker(crashes_remaining: Arc<AtomicU32>) -> Behavior<ChildCommand> {
 
 fn parent() -> Behavior<ParentCommand> {
   // SupervisorStrategy: 子の recoverable エラーを最大3回まで再起動
-  let strategy =
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(1), |error| match error {
+  let strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(3),
+    Duration::from_secs(1),
+    |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Restart,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
       | ActorError::Escalate(_) => SupervisorDirective::Escalate,
-    });
+    },
+  );
 
   let inner = Behaviors::setup(move |ctx| {
     // 子アクターを監視付きで生成

@@ -4,7 +4,7 @@ use crate::core::{
   kernel::{
     actor::{
       error::ActorError,
-      supervision::{SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
+      supervision::{RestartLimit, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
     },
     event::logging::LogLevel,
   },
@@ -15,7 +15,9 @@ use crate::core::{
 fn restart_factory_exposes_default_restart_contract() {
   let strategy = TypedSupervisorStrategy::restart();
 
-  assert_eq!(strategy.max_restarts(), 0);
+  // SP-M1: default mirrors typed Pekko
+  // `Restart(maxRestarts = -1, withinTimeRange = Duration.Zero)`.
+  assert_eq!(strategy.max_restarts(), RestartLimit::Unlimited);
   assert_eq!(strategy.within(), Duration::ZERO);
   assert_eq!(strategy.kind(), SupervisorStrategyKind::OneForOne);
   assert!(strategy.stop_children());
@@ -25,26 +27,33 @@ fn restart_factory_exposes_default_restart_contract() {
 }
 
 #[test]
-fn with_limit_maps_negative_one_to_unlimited_without_mutating_source_strategy() {
+fn with_unlimited_restarts_sets_restart_limit_unlimited() {
   let strategy = TypedSupervisorStrategy::restart();
-  let configured = strategy.clone().with_limit(-1, Duration::ZERO);
+  let configured = strategy.clone().with_unlimited_restarts(Duration::from_secs(1));
 
-  assert_eq!(strategy.max_restarts(), 0);
+  // Original strategy is not mutated by the builder chain.
+  assert_eq!(strategy.max_restarts(), RestartLimit::Unlimited);
   assert_eq!(strategy.within(), Duration::ZERO);
-  assert_eq!(configured.max_restarts(), 0);
-  assert_eq!(configured.within(), Duration::ZERO);
+  assert_eq!(configured.max_restarts(), RestartLimit::Unlimited);
+  assert_eq!(configured.within(), Duration::from_secs(1));
 }
 
 #[test]
-#[should_panic(expected = "max_restarts must be -1 or at least 1")]
-fn with_limit_rejects_values_smaller_than_negative_one() {
-  let _ = TypedSupervisorStrategy::restart().with_limit(-2, Duration::from_secs(1));
+fn with_limit_zero_is_accepted_as_no_retry() {
+  // Pekko `maxNrOfRetries = 0` means "no retry — stop on first failure"
+  // and is a valid configuration (not a panic).
+  let strategy = TypedSupervisorStrategy::restart().with_limit(0, Duration::from_secs(1));
+
+  assert_eq!(strategy.max_restarts(), RestartLimit::WithinWindow(0));
+  assert_eq!(strategy.within(), Duration::from_secs(1));
 }
 
 #[test]
-#[should_panic(expected = "max_restarts must be -1 or at least 1")]
-fn with_limit_rejects_zero_to_avoid_ambiguous_unlimited_semantics() {
-  let _ = TypedSupervisorStrategy::restart().with_limit(0, Duration::from_secs(1));
+fn with_limit_finite_count_is_represented_as_within_window() {
+  let strategy = TypedSupervisorStrategy::restart().with_limit(3, Duration::from_secs(5));
+
+  assert_eq!(strategy.max_restarts(), RestartLimit::WithinWindow(3));
+  assert_eq!(strategy.within(), Duration::from_secs(5));
 }
 
 #[test]

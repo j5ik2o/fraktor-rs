@@ -6,7 +6,9 @@ mod tests;
 use core::time::Duration;
 
 use crate::core::kernel::{
-  actor::supervision::{BackoffSupervisorStrategy as KernelBackoffSupervisorStrategy, SupervisorStrategyConfig},
+  actor::supervision::{
+    BackoffSupervisorStrategy as KernelBackoffSupervisorStrategy, RestartLimit, SupervisorStrategyConfig,
+  },
   event::logging::LogLevel,
 };
 
@@ -38,10 +40,30 @@ impl BackoffSupervisorStrategy {
     self
   }
 
-  /// Sets the maximum number of restarts before giving up. 0 means unlimited.
+  /// Sets a finite restart limit (Pekko `maxNrOfRetries = max_restarts`).
+  /// `max_restarts = 0` means "no retry — stop on the first failure". Use
+  /// [`Self::with_unlimited_restarts`] for unlimited retries.
   #[must_use]
   pub const fn with_max_restarts(mut self, max_restarts: u32) -> Self {
-    self.inner = self.inner.with_max_restarts(max_restarts);
+    self.inner = self.inner.with_max_restarts(RestartLimit::WithinWindow(max_restarts));
+    self
+  }
+
+  /// Sets unlimited restarts (Pekko `maxNrOfRetries = -1`).
+  #[must_use]
+  pub const fn with_unlimited_restarts(mut self) -> Self {
+    self.inner = self.inner.with_max_restarts(RestartLimit::Unlimited);
+    self
+  }
+
+  /// Sets the retry-accounting window (Pekko `withinTimeRange`).
+  ///
+  /// Pass [`Duration::ZERO`] to disable the window (matches typed Pekko
+  /// `Duration.Zero` default). This is independent of
+  /// [`with_reset_backoff_after`](Self::with_reset_backoff_after).
+  #[must_use]
+  pub const fn with_within_time_range(mut self, within: Duration) -> Self {
+    self.inner = self.inner.with_within_time_range(within);
     self
   }
 
@@ -104,10 +126,18 @@ impl BackoffSupervisorStrategy {
     self.inner.reset_backoff_after()
   }
 
-  /// Returns the maximum number of restarts. 0 means unlimited.
+  /// Returns the configured restart limit policy.
   #[must_use]
-  pub const fn max_restarts(&self) -> u32 {
+  pub const fn max_restarts(&self) -> RestartLimit {
     self.inner.max_restarts()
+  }
+
+  /// Returns the retry-accounting window (Pekko `withinTimeRange`).
+  ///
+  /// `Duration::ZERO` means "no window" (disabled).
+  #[must_use]
+  pub const fn within_time_range(&self) -> Duration {
+    self.inner.within_time_range()
   }
 
   /// Returns whether sibling children are stopped during restart.

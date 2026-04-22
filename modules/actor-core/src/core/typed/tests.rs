@@ -23,7 +23,7 @@ use crate::core::{
       scheduler::tick_driver::tests::TestTickDriver,
       setup::ActorSystemConfig,
       supervision::{
-        BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
+        BackoffSupervisorStrategy, RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
         SupervisorStrategyKind,
       },
     },
@@ -715,9 +715,12 @@ fn supervised_parent_props(
 fn behaviors_supervise_restarts_children() {
   let start_counter = Arc::new(AtomicUsize::new(0));
   let child = child_props(&start_counter);
-  let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
-    SupervisorDirective::Restart
-  });
+  let restart_strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(5),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Restart,
+  );
   let parent_props = supervised_parent_props(restart_strategy, child);
   let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
     &parent_props,
@@ -740,9 +743,12 @@ fn intercepted_behavior_survives_supervised_restart() {
   let start_counter = Arc::new(AtomicUsize::new(0));
   let interceptor_counter = Arc::new(AtomicUsize::new(0));
   let child = intercepted_child_props(&start_counter, &interceptor_counter);
-  let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
-    SupervisorDirective::Restart
-  });
+  let restart_strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(5),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Restart,
+  );
   let parent_props = supervised_parent_props(restart_strategy, child);
   let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
     &parent_props,
@@ -769,9 +775,12 @@ fn intercepted_behavior_survives_supervised_restart() {
 fn behaviors_supervise_stops_children() {
   let start_counter = Arc::new(AtomicUsize::new(0));
   let child = child_props(&start_counter);
-  let stop_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, Duration::from_secs(1), |_| {
-    SupervisorDirective::Stop
-  });
+  let stop_strategy = SupervisorStrategy::new(
+    SupervisorStrategyKind::OneForOne,
+    RestartLimit::WithinWindow(1),
+    Duration::from_secs(1),
+    |_| SupervisorDirective::Stop,
+  );
   let parent_props = supervised_parent_props(stop_strategy, child);
   let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
     &parent_props,

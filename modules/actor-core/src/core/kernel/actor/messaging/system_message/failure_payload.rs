@@ -41,7 +41,7 @@ impl FailurePayload {
 
   /// Replaces the restart statistics snapshot embedded in the payload.
   #[must_use]
-  pub fn with_restart_stats(mut self, stats: RestartStatistics) -> Self {
+  pub const fn with_restart_stats(mut self, stats: RestartStatistics) -> Self {
     self.restart_stats = stats;
     self
   }

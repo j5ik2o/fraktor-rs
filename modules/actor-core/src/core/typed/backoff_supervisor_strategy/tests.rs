@@ -4,7 +4,9 @@ use crate::core::{
   kernel::{
     actor::{
       error::ActorError,
-      supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
+      supervision::{
+        RestartLimit, RestartStatistics, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind,
+      },
     },
     event::logging::LogLevel,
   },
@@ -20,7 +22,9 @@ fn restart_with_backoff_factory_exposes_default_backoff_contract() {
   assert_eq!(strategy.max_backoff(), Duration::from_secs(10));
   assert!((strategy.random_factor() - 0.2).abs() < f64::EPSILON);
   assert_eq!(strategy.reset_backoff_after(), (Duration::from_millis(100) + Duration::from_secs(10)) / 2);
-  assert_eq!(strategy.max_restarts(), 0);
+  // SP-M1: typed backoff default is Pekko `Unlimited` (previously the
+  // inverted `0 = unlimited` sentinel).
+  assert_eq!(strategy.max_restarts(), RestartLimit::Unlimited);
   assert!(strategy.stop_children());
   assert_eq!(strategy.stash_capacity(), usize::MAX);
   assert!(strategy.logging_enabled());
