@@ -15,7 +15,9 @@
 `actor-core/Cargo.toml:19` の `test-support` feature は当初 3 つの異なる責務を抱えていた:
 
 - 責務 A: `critical-section/std` impl provider 提供（std 環境でリンクを通すため） → **完了** (`retire-actor-core-test-support-critical-section-impl` change で各バイナリ側へ移譲、2026-04-21)
-- 責務 B: ダウンストリーム統合テスト用 API 公開（`TestTickDriver`, `new_empty` 等） → 未着手
+- 責務 B: ダウンストリーム統合テスト用 API 公開（`TestTickDriver`, `new_empty` 等）
+  - **B-1 完了** (`step03-move-test-tick-driver-to-adaptor-std`、2026-04-21): `TestTickDriver` と `new_empty*` の **公開 API** を `actor-adaptor-std` 側へ移設。`actor-core/test-support` feature の **公開 API には含まれなくなった**。inline test 用に `pub(crate)` 内部版が `tick_driver/tests/test_tick_driver.rs` と `base/tests.rs` / `typed/system/tests.rs` 内に残るが、これは外部から見えない。caller の使い分け: `actor-core` の inline test → 内部版、`actor-core` の integration test + 下流 crate → `actor-adaptor-std` 公開版。詳細は当該 change の design.md「実装後の補足」を参照
+  - **B-2 未着手**: mock / probe / その他ヘルパ → step04 で対応
 - 責務 C: 内部 API の `pub(crate)` → `pub` 格上げ（`Behavior::handle_message` 等） → 未着手
 
 責務 A 退役後、`actor-core/test-support` は `[]`（空配列）になり、責務 B/C のための `#[cfg(any(test, feature = "test-support"))]` がコード側で利用される構造のみが残った。最終的に責務 B/C も退役できれば `test-support` feature 自体を削除できる。

@@ -4,7 +4,7 @@ use crate::core::kernel::{
   actor::{
     actor_ref_provider::LocalActorRefProviderInstaller,
     extension::ExtensionInstallers,
-    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
+    scheduler::{SchedulerConfig, tick_driver::tests::TestTickDriver},
     setup::{ActorSystemSetup, BootstrapSetup},
   },
   dispatch::dispatcher::DEFAULT_DISPATCHER_ID,

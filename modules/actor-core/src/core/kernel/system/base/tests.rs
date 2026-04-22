@@ -28,8 +28,9 @@ use crate::core::{
         SchedulerConfig,
         task_run::{TaskRunError, TaskRunPriority},
         tick_driver::{
-          AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TestTickDriver, TickDriver, TickDriverError,
-          TickDriverId, TickDriverKind, TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
+          AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverId,
+          TickDriverKind, TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
+          tests::TestTickDriver,
         },
       },
       setup::ActorSystemConfig,
@@ -49,6 +50,46 @@ use crate::core::{
   },
   typed::receptionist::SYSTEM_RECEPTIONIST_TOP_LEVEL,
 };
+
+// TENTATIVE: `new_empty` / `new_empty_with` are scheduled for removal once actor-core's
+// inline tests are migrated to integration tests, which can call the public free functions
+// `new_empty_actor_system` / `new_empty_actor_system_with` from `actor-adaptor-std` without
+// hitting the Cargo dev-cycle dual-version conflict. See
+// `openspec/changes/step03-move-test-tick-driver-to-adaptor-std/design.md` 「実装後の補足」.
+impl ActorSystem {
+  /// Creates an empty actor system without any guardian.
+  ///
+  /// Inline-test only helper. External callers should use `new_empty_actor_system` from
+  /// `fraktor-actor-adaptor-std-rs`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
+  #[must_use]
+  pub(crate) fn new_empty() -> Self {
+    Self::new_empty_with(|config| config)
+  }
+
+  /// Creates an empty actor system with a customizable config.
+  ///
+  /// See [`Self::new_empty`] for the rationale on the cfg gating.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
+  #[must_use]
+  pub(crate) fn new_empty_with<F>(configure: F) -> Self
+  where
+    F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
+    use crate::core::kernel::actor::scheduler::tick_driver::tests::TestTickDriver;
+
+    let config = configure(ActorSystemConfig::new(TestTickDriver::default()));
+    match Self::new_started_from_config(config) {
+      | Ok(system) => system,
+      | Err(error) => panic!("test-support config failed to build in new_empty_with: {error:?}"),
+    }
+  }
+}
 
 struct TestActor;
 

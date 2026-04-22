@@ -1,4 +1,7 @@
 //! Tick driver bootstrap integration tests.
+#![cfg(test)]
+
+mod test_tick_driver;
 
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::time::Duration;
@@ -7,6 +10,7 @@ use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SpinSyncMutex},
   time::TimerInstant,
 };
+pub(crate) use test_tick_driver::TestTickDriver;
 
 use super::{
   SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverId, TickDriverKind, TickDriverProvision,

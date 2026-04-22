@@ -1,5 +1,6 @@
 use alloc::{string::ToString, vec::Vec};
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext,
@@ -9,7 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
     invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
     messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvokerPipeline},
     props::Props,
-    scheduler::{SchedulerConfig, tick_driver::TestTickDriver},
+    scheduler::SchedulerConfig,
     setup::ActorSystemConfig,
   },
   system::{

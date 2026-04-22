@@ -20,7 +20,7 @@ use crate::core::{
       actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
       error::ActorError,
       messaging::AnyMessage,
-      scheduler::tick_driver::TestTickDriver,
+      scheduler::tick_driver::tests::TestTickDriver,
       setup::ActorSystemConfig,
       supervision::{
         BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,

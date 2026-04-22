@@ -13,7 +13,7 @@ use crate::core::{
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::AnyMessage,
-      scheduler::tick_driver::TestTickDriver,
+      scheduler::tick_driver::tests::TestTickDriver,
       setup::ActorSystemConfig,
     },
     event::{
@@ -29,6 +29,24 @@ use crate::core::{
     receptionist::{ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
   },
 };
+
+// TENTATIVE: scheduled for removal in the same wave that drops `ActorSystem::new_empty`
+// (see base/tests.rs). External callers wrap `new_empty_actor_system()` from
+// actor-adaptor-std with `TypedActorSystem::from_untyped` instead.
+impl<M> TypedActorSystem<M>
+where
+  M: Send + Sync + 'static,
+{
+  /// Creates an empty typed actor system without any guardian.
+  ///
+  /// Inline-test only helper. External callers should wrap
+  /// `fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system()` with
+  /// `TypedActorSystem::from_untyped`.
+  #[must_use]
+  pub(crate) fn new_empty() -> Self {
+    Self::from_untyped(ActorSystem::new_empty())
+  }
+}
 
 struct TestExtension {
   value: u32,

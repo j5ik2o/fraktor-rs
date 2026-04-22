@@ -9,6 +9,7 @@ use std::{
   time::{Duration, Instant},
 };
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, ChildRef,
@@ -16,7 +17,6 @@ use fraktor_actor_core_rs::core::kernel::{
     lifecycle::LifecycleStage,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::TestTickDriver,
     setup::ActorSystemConfig,
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },

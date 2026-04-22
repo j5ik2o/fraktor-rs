@@ -5,13 +5,13 @@ use std::{
   time::{Duration, Instant},
 };
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, ChildRef, Pid,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::TestTickDriver,
     setup::ActorSystemConfig,
   },
   system::ActorSystem,

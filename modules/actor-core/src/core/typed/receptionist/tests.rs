@@ -10,7 +10,7 @@ use crate::core::{
       actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
       error::{ActorError, SendError},
       messaging::AnyMessage,
-      scheduler::tick_driver::TestTickDriver,
+      scheduler::tick_driver::tests::TestTickDriver,
       setup::ActorSystemConfig,
     },
     event::{

@@ -7,7 +7,7 @@ use crate::core::{
   kernel::{
     actor::{
       error::ActorError,
-      scheduler::tick_driver::TestTickDriver,
+      scheduler::tick_driver::tests::TestTickDriver,
       setup::ActorSystemConfig,
       supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
     },

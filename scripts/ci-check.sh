@@ -1181,6 +1181,7 @@ check_unit_sleep() {
     --glob '!modules/actor-core/src/core/kernel/dispatch/dispatcher/tests.rs'
     --glob '!modules/actor-core/src/core/typed/dsl/routing/scatter_gather_first_completed_router_builder/tests.rs'
     --glob '!modules/actor-core/src/core/typed/dsl/routing/tail_chopping_router_builder/tests.rs'
+    --glob '!modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
   )
 
   local violations=""

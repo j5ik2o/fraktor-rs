@@ -20,7 +20,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::AnyMessageView,
     props::Props,
-    scheduler::tick_driver::TestTickDriver,
+    scheduler::tick_driver::tests::TestTickDriver,
     setup::ActorSystemConfig,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},

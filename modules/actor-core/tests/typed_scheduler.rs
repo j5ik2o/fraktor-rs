@@ -8,12 +8,9 @@ use std::{
   time::Instant,
 };
 
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::{
-  kernel::actor::{
-    actor_ref::ActorRef,
-    scheduler::{ExecutionBatch, tick_driver::TestTickDriver},
-    setup::ActorSystemConfig,
-  },
+  kernel::actor::{actor_ref::ActorRef, scheduler::ExecutionBatch, setup::ActorSystemConfig},
   typed::{TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
 };
 

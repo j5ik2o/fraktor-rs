@@ -5,14 +5,13 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::actor::install_panic_invoke_guard;
+use fraktor_actor_adaptor_std_rs::std::{actor::install_panic_invoke_guard, tick_driver::TestTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, ChildRef,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick_driver::TestTickDriver,
     setup::ActorSystemConfig,
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },

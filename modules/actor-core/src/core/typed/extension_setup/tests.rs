@@ -5,7 +5,7 @@ use fraktor_utils_core_rs::core::sync::shared::Shared;
 use crate::core::{
   kernel::actor::{
     extension::{Extension, ExtensionInstallers},
-    scheduler::tick_driver::TestTickDriver,
+    scheduler::tick_driver::tests::TestTickDriver,
     setup::ActorSystemConfig,
   },
   typed::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors, extension_setup::ActorSystem},

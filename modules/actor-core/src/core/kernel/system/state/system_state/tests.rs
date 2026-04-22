@@ -23,8 +23,8 @@ use crate::core::kernel::{
     scheduler::{
       SchedulerConfig,
       tick_driver::{
-        SchedulerTickExecutor, TestTickDriver, TickDriver, TickDriverError, TickDriverKind, TickDriverProvision,
-        TickDriverStopper, TickFeedHandle, next_tick_driver_id,
+        SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind, TickDriverProvision, TickDriverStopper,
+        TickFeedHandle, next_tick_driver_id, tests::TestTickDriver,
       },
     },
     setup::ActorSystemConfig,

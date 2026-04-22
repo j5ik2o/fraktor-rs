@@ -1,12 +1,12 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
+use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   serialization::{
     builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistry,
   },
-  system::ActorSystem,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
@@ -75,7 +75,7 @@ fn flushes_when_batch_size_reached() {
   let shared = ClusterPubSubShared::new(Box::new(pubsub.clone()));
   let publisher = PubSubPublisher::new(shared, registry);
 
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   let scheduler = system.state().scheduler();
 
   let config = BatchingProducerConfig::new(2, 8, Duration::from_secs(60));
@@ -97,7 +97,7 @@ fn rejects_when_queue_full() {
   let shared = ClusterPubSubShared::new(Box::new(pubsub));
   let publisher = PubSubPublisher::new(shared, registry);
 
-  let system = ActorSystem::new_empty();
+  let system = new_empty_actor_system();
   let scheduler = system.state().scheduler();
 
   let config = BatchingProducerConfig::new(10, 1, Duration::from_secs(60));

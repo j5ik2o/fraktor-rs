@@ -52,6 +52,7 @@ Cargo.lock
 # AI agent tool directories (managed by configure.sh / okite-ai)
 
 /.claude/settings.local.json
+/.claude/scheduled_tasks.lock
 
 /.codex*/cache/
 /.codex*/log/

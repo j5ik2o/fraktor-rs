@@ -6,7 +6,7 @@ use super::ActorRefResolver;
 use crate::core::{
   kernel::actor::{
     Actor, ActorCell, ActorContext, Pid, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView,
-    props::Props, scheduler::tick_driver::TestTickDriver, setup::ActorSystemConfig,
+    props::Props, scheduler::tick_driver::tests::TestTickDriver, setup::ActorSystemConfig,
   },
   typed::{ActorRefResolverSetup, TypedActorSystem, TypedProps, actor_ref_resolver::ActorSystem, dsl::Behaviors},
 };
