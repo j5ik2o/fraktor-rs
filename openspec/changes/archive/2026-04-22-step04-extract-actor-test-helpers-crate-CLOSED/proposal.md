@@ -1,3 +1,12 @@
+> **CLOSED (2026-04-22, 未実装)**: 調査の結果、本 change のスコープが実質的に消滅していることが判明したため、実装せずに close する。
+>
+> **判断根拠**:
+> - proposal で想定されていた移設対象 (`MockActorRef`、`TestProbe` 等) は workspace 内に **実在しない** (`grep` で確認、0 件)
+> - `feature = "test-support"` で公開されている responsibility B-2 残（`ActorRef::new_with_builtin_lock`、`SchedulerRunner::manual`、`state::booting_state`/`running_state` モジュール宣言）の **caller はすべて actor-core 内部の inline test のみ**。外部 crate (cluster/stream/persistence/showcases) からの参照は 0 件
+> - したがって専用 crate `fraktor-actor-test-rs` を新設する必要がなく、これらの要素は単に `pub(crate)` 化（or `#[cfg(test)]` 化）するだけで足りる。これは責務 C と本質的に同じ問題なので step05 で統合処理する
+>
+> **後続**: step05 (`step05-hide-actor-core-internal-test-api`) の proposal を更新し、責務 B-2 残 + 責務 C を統合スコープとして取り扱うように再定義済み。本 change ディレクトリは記録目的でアーカイブする。
+
 ## Why
 
 step03 で `TestTickDriver` と `new_empty*` を `actor-adaptor-std` に引っ越した後も、`actor-core` の `test-support` feature 配下には責務 B の残りコンポーネント（テスト用の `MockActorRef`、各種 fixture を構築するヘルパ、その他 `#[cfg(any(test, feature = "test-support"))]` で公開されているダウンストリーム向け API）が残る。
