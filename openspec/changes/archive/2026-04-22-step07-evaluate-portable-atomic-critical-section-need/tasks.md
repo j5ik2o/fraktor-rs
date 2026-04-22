@@ -41,7 +41,7 @@
 
 ## 7. Spec delta apply
 
-- [ ] 7.1 `openspec/specs/actor-lock-construction-governance/spec.md` の MODIFIED Requirement を確認し、新規 Scenario「low-level utility crate の feature 指定は対象ターゲット / ユースケースが明示されている」を main spec に sync (本 change archive 時に実施)
+- [x] 7.1 `openspec/specs/actor-lock-construction-governance/spec.md` の MODIFIED Requirement を確認し、新規 Scenario「low-level utility crate の feature 指定は対象ターゲット / ユースケースが明示されている」を main spec に sync (本 change archive 時に実施)
 - [x] 7.2 新規 Scenario が要求する justification (Cargo.toml コメント or 評価レポート参照) を `modules/actor-core/Cargo.toml` の `portable-atomic` 行に追加 (※ コード変更は本 change の Non-Goals に該当するが、Scenario 違反になるため最小限のコメント追加は本 change で行う)
 
 ## 8. 全体検証
@@ -52,8 +52,8 @@
 
 ## 9. コミット・PR
 
-- [ ] 9.1 ブランチ作成: `step07-evaluate-portable-atomic-critical-section-need`
-- [ ] 9.2 論理単位での commit (artifacts / 評価レポート / Cargo.toml コメント / docs/plan 更新)
-- [ ] 9.3 push + PR 作成 (base: main、title prefix `docs(actor-core):` または `chore(actor-core):`)
-- [ ] 9.4 CI 全 pass + レビュー対応 + マージ
-- [ ] 9.5 archive (`/opsx:archive` または skill 経由)
+- [x] 9.1 ブランチ作成: `step07-evaluate-portable-atomic-critical-section-need`
+- [x] 9.2 論理単位での commit (artifacts / 評価レポート / Cargo.toml コメント / docs/plan 更新)
+- [x] 9.3 push + PR 作成 (base: main、title prefix `docs(actor-core):` または `chore(actor-core):`)
+- [x] 9.4 CI 全 pass + レビュー対応 + マージ
+- [x] 9.5 archive (`/opsx:archive` または skill 経由)
