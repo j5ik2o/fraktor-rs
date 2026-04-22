@@ -222,9 +222,9 @@
 
 ## 11. PR 作成 / マージ / アーカイブ
 
-- [ ] 11.1 `feat(actor-core): enforce mailbox throughput deadline (MB-M1)` という題で PR を作成、
+- [x] 11.1 `feat(actor-core): enforce mailbox throughput deadline (MB-M1)` という題で PR を作成、
   本 change の change name をリンク
-- [ ] 11.2 PR 本文に以下を含める:
+- [x] 11.2 PR 本文に以下を含める:
   - Pekko `Mailbox.scala:261-278` との行単位対応表
   - 公開 API 変更: `MailboxSharedSet` への `clock` field 追加 (既存 `Mailbox::new*` signature は維持)
   - `MailboxClock` 導入による clock 注入設計の根拠 (design.md Decision 1 の要約 +
