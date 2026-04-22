@@ -169,12 +169,12 @@
 
 ## 11. PR 作成 / マージ / アーカイブ
 
-- [ ] 11.1 `feat(actor-core): align supervisor maxNrOfRetries semantic with Pekko (SP-M1)`
-  という題で PR を作成、本 change の change name をリンク
-- [ ] 11.2 PR 本文に以下を含める:
-  - Pekko `maxNrOfRetries` 契約との対応表
-  - 破壊的 API 変更の一覧 (`with_limit(i32)` → `with_limit(u32)` + `with_unlimited_restarts()`)
-  - `RestartLimit` 導入による enum 化の設計根拠 (design.md Decision 1 の要約)
-  - gap-analysis SP-M1 done 化の反映
+- [x] 11.1 `feat(actor-core): align supervisor maxNrOfRetries semantic with Pekko (SP-M1)`
+  という題で PR を作成、本 change の change name をリンク → PR #1629
+- [x] 11.2 PR 本文に以下を含める:
+  - Pekko `maxNrOfRetries` 契約との対応表 ✓
+  - 破壊的 API 変更の一覧 (`with_limit(i32)` → `with_limit(u32)` + `with_unlimited_restarts()`) ✓
+  - `RestartLimit` 導入による enum 化の設計根拠 (design.md Decision 1 の要約) ✓
+  - gap-analysis SP-M1 done 化の反映 ✓
 - [ ] 11.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
 - [ ] 11.4 マージ後、別 PR で change をアーカイブ (`openspec archive-change` またはプロジェクト既存手順)
