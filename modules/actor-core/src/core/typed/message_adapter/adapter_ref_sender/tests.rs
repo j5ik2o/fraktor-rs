@@ -9,12 +9,16 @@ use crate::core::{
       Pid,
       actor_ref::{ActorRefSender, ActorRefSenderShared},
       error::SendError,
-      messaging::AnyMessage,
+      messaging::{AnyMessage, NotInfluenceReceiveTimeout},
     },
     system::ActorSystem,
   },
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender, adapter_ref_sender::SendOutcome},
 };
+
+struct AdapterTick;
+
+impl NotInfluenceReceiveTimeout for AdapterTick {}
 
 struct ProbeSender {
   messages: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
@@ -49,6 +53,48 @@ fn adapter_sender_wraps_payload_into_envelope() {
   assert_eq!(captured.len(), 1);
   let envelope = captured[0].payload().downcast_ref::<AdapterEnvelope>().expect("envelope");
   assert_eq!(envelope.type_id(), TypeId::of::<u32>());
+}
+
+#[test]
+fn adapter_sender_preserves_not_influence_receive_timeout_flag() {
+  let system = ActorSystem::new_empty().state();
+  let lifecycle = ArcShared::new(AdapterLifecycleState::new());
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let messages_clone = messages.clone();
+  let probe = ProbeSender::new(messages);
+  let target = ActorRefSenderShared::new(Box::new(probe));
+  let mut sender = AdapterRefSender::new(Pid::new(1, 0), 3, target, lifecycle, system);
+
+  sender.send(AnyMessage::not_influence(AdapterTick)).expect("send succeeds");
+
+  let captured = messages_clone.lock().clone();
+  assert_eq!(captured.len(), 1);
+  assert!(
+    captured[0].is_not_influence_receive_timeout(),
+    "adapter boundary must preserve NotInfluenceReceiveTimeout marker flag"
+  );
+  assert!(!captured[0].is_control(), "non-control input must remain non-control");
+}
+
+#[test]
+fn adapter_sender_preserves_control_flag_without_not_influence() {
+  let system = ActorSystem::new_empty().state();
+  let lifecycle = ArcShared::new(AdapterLifecycleState::new());
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let messages_clone = messages.clone();
+  let probe = ProbeSender::new(messages);
+  let target = ActorRefSenderShared::new(Box::new(probe));
+  let mut sender = AdapterRefSender::new(Pid::new(1, 0), 4, target, lifecycle, system);
+
+  sender.send(AnyMessage::control(7_u32)).expect("send succeeds");
+
+  let captured = messages_clone.lock().clone();
+  assert_eq!(captured.len(), 1);
+  assert!(captured[0].is_control(), "control flag must survive adapter boundary");
+  assert!(
+    !captured[0].is_not_influence_receive_timeout(),
+    "control-only message must not spuriously acquire NotInfluenceReceiveTimeout"
+  );
 }
 
 #[test]
