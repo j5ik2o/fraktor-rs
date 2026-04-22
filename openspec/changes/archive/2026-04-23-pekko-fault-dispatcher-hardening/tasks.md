@@ -143,5 +143,5 @@ self.system().report_failure(payload);
   - **破壊的変更**: なし
   - **テスト**: AC-M3 シナリオ 3 件 + 既存 AC-H3 拡張 / PinnedDispatcher 5 件の regression 保証
   - gap-analysis AC-M1 / AC-M3 done 化、第 14 版 medium 10 → 8
-- [ ] 10.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
-- [ ] 10.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-fault-dispatcher-hardening/spec.md` に sync
+- [x] 10.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
+- [x] 10.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-fault-dispatcher-hardening/spec.md` に sync
