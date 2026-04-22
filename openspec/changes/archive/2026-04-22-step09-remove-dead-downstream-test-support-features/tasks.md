@@ -42,6 +42,6 @@
 
 - [x] 6.1 ブランチ作成: `step09-remove-dead-downstream-test-support-features`
 - [x] 6.2 論理単位での commit
-- [ ] 6.3 push + PR 作成 (base: main、title prefix `chore(actor-*):` または `refactor(actor-*):`)
-- [ ] 6.4 CI 全 pass + レビュー対応 + マージ
-- [ ] 6.5 archive
+- [x] 6.3 push + PR 作成 (base: main、title prefix `chore(actor-*):` または `refactor(actor-*):`)
+- [x] 6.4 CI 全 pass + レビュー対応 + マージ
+- [x] 6.5 archive
