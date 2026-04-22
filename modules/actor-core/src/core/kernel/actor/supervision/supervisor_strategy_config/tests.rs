@@ -77,20 +77,34 @@ fn backoff_handle_failure_stops_when_exceeding_limit() {
 
 #[test]
 fn backoff_handle_failure_unlimited_restarts() {
-  // Pekko parity: `Unlimited + reset_backoff_after` invokes
-  // `retriesInWindowOkay(retries = 1, window)` — with finite window only
-  // the very first failure is permitted. This test uses a zero-window
-  // reset configuration by exercising the `Unlimited + window = ZERO` arm
-  // (`(None, _) => true`).
-  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
-    .with_max_restarts(RestartLimit::Unlimited)
-    .with_reset_backoff_after(Duration::ZERO);
+  // Pekko parity: `Unlimited + Duration::ZERO window` → `(None, _) => true`
+  // (truly unlimited). This is the default `BackoffSupervisorStrategy::new`
+  // configuration: `max_restarts = Unlimited` and `within_time_range =
+  // Duration::ZERO`, matching Pekko's `BackoffOnRestartSupervisor` default
+  // which installs `OneForOneStrategy(-1, Duration.Zero, ...)`.
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
   let config = SupervisorStrategyConfig::Backoff(backoff);
   let mut stats = RestartStatistics::new();
   for i in 0..10 {
     let directive = config.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(i as u64));
     assert_eq!(directive, SupervisorDirective::Restart);
   }
+}
+
+#[test]
+fn backoff_handle_failure_unlimited_with_finite_window_denies_second() {
+  // Pekko quirk: `Unlimited + finite window` invokes `retriesInWindowOkay(1, window)`
+  // — the hard-coded retries=1 means only the very first in-window failure is permitted.
+  // This test pins that quirk so the `(None, Some(window))` arm does not silently
+  // regress into "truly unlimited" behaviour.
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_within_time_range(Duration::from_secs(60));
+  let config = SupervisorStrategyConfig::Backoff(backoff);
+  let mut stats = RestartStatistics::new();
+  let first = config.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(1));
+  let second = config.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(2));
+  assert_eq!(first, SupervisorDirective::Restart);
+  assert_eq!(second, SupervisorDirective::Stop);
 }
 
 #[test]

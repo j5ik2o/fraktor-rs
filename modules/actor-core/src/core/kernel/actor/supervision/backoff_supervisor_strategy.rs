@@ -15,12 +15,25 @@ const DEFAULT_STASH_CAPACITY: usize = 1000;
 /// The backoff delay is computed as `min(max_backoff, min_backoff * 2^restart_iteration)`.
 /// An optional jitter can be applied via
 /// [`compute_backoff_with_jitter`](Self::compute_backoff_with_jitter).
+///
+/// Pekko parity note: Pekko's `BackoffOnRestartSupervisor` installs an internal
+/// `OneForOneStrategy` configured with the user-provided
+/// `OneForOneStrategy(maxNrOfRetries, withinTimeRange, ...)` (see
+/// `references/pekko/actor/src/main/scala/org/apache/pekko/pattern/internal/
+/// BackoffOnRestartSupervisor.scala:58`). `withinTimeRange` there is the retry-accounting window
+/// (the classic `maxNrOfRetries.withinTimeRange` concept) and is **distinct from**
+/// `resetBackoffAfter`, which controls when the backoff iteration counter
+/// resets after the child stabilizes. fraktor-rs mirrors this separation
+/// with two independent fields: [`within_time_range`](Self::within_time_range)
+/// for retry accounting and [`reset_backoff_after`](Self::reset_backoff_after)
+/// for backoff reset.
 #[derive(Clone, Debug)]
 pub struct BackoffSupervisorStrategy {
   min_backoff:              Duration,
   max_backoff:              Duration,
   random_factor:            f64,
   reset_backoff_after:      Duration,
+  within_time_range:        Duration,
   max_restarts:             RestartLimit,
   stop_children:            bool,
   stash_capacity:           usize,
@@ -49,6 +62,11 @@ impl BackoffSupervisorStrategy {
       max_backoff,
       random_factor,
       reset_backoff_after,
+      // Default `Duration::ZERO` = no window (matches typed Pekko
+      // `Duration.Zero` / classic Pekko `withinTimeRangeOption == None`).
+      // Combined with `max_restarts = Unlimited` this yields truly unlimited
+      // restarts by default, matching Pekko's `OneForOneStrategy()` default.
+      within_time_range: Duration::ZERO,
       max_restarts: RestartLimit::Unlimited,
       stop_children: true,
       stash_capacity: DEFAULT_STASH_CAPACITY,
@@ -110,6 +128,18 @@ impl BackoffSupervisorStrategy {
     self
   }
 
+  /// Sets the retry-accounting window (Pekko `OneForOneStrategy.withinTimeRange`).
+  ///
+  /// Pass [`Duration::ZERO`] to disable the window (matches typed Pekko
+  /// `Duration.Zero` and classic Pekko `withinTimeRangeOption == None`).
+  /// This is independent of [`reset_backoff_after`](Self::reset_backoff_after),
+  /// which controls the backoff-iteration reset timer.
+  #[must_use]
+  pub const fn with_within_time_range(mut self, within: Duration) -> Self {
+    self.within_time_range = within;
+    self
+  }
+
   /// Sets whether sibling children should be stopped on restart.
   #[must_use]
   pub const fn with_stop_children(mut self, stop_children: bool) -> Self {
@@ -152,6 +182,14 @@ impl BackoffSupervisorStrategy {
   #[must_use]
   pub const fn max_restarts(&self) -> RestartLimit {
     self.max_restarts
+  }
+
+  /// Returns the retry-accounting window (Pekko `withinTimeRange`).
+  ///
+  /// `Duration::ZERO` means "no window" (disabled).
+  #[must_use]
+  pub const fn within_time_range(&self) -> Duration {
+    self.within_time_range
   }
 
   /// Returns whether sibling children are stopped on restart.

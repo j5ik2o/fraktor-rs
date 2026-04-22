@@ -99,7 +99,7 @@ impl RestartStatistics {
 
   /// Clears restart count and window-start (called by `handle_failure`
   /// after a `Stop` / `Escalate` / permission-denied outcome).
-  pub fn reset(&mut self) {
+  pub const fn reset(&mut self) {
     self.restart_count = 0;
     self.window_start = None;
   }

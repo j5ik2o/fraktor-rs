@@ -54,7 +54,12 @@ impl SupervisorStrategyConfig {
     let directive = backoff_decide(error);
     match directive {
       | SupervisorDirective::Restart => {
-        if statistics.request_restart_permission(now, backoff.max_restarts(), backoff.reset_backoff_after()) {
+        // Pekko `BackoffOnRestartSupervisor` installs an internal
+        // `OneForOneStrategy(maxNrOfRetries, withinTimeRange, ...)` using the
+        // user-provided strategy's `withinTimeRange` — NOT `resetBackoffAfter`,
+        // which controls backoff iteration reset and is a separate concept.
+        // See references/pekko/actor/src/main/scala/.../BackoffOnRestartSupervisor.scala:58.
+        if statistics.request_restart_permission(now, backoff.max_restarts(), backoff.within_time_range()) {
           SupervisorDirective::Restart
         } else {
           statistics.reset();

@@ -56,6 +56,17 @@ impl BackoffSupervisorStrategy {
     self
   }
 
+  /// Sets the retry-accounting window (Pekko `withinTimeRange`).
+  ///
+  /// Pass [`Duration::ZERO`] to disable the window (matches typed Pekko
+  /// `Duration.Zero` default). This is independent of
+  /// [`with_reset_backoff_after`](Self::with_reset_backoff_after).
+  #[must_use]
+  pub const fn with_within_time_range(mut self, within: Duration) -> Self {
+    self.inner = self.inner.with_within_time_range(within);
+    self
+  }
+
   /// Sets whether sibling children are stopped during restart.
   #[must_use]
   pub const fn with_stop_children(mut self, stop_children: bool) -> Self {
@@ -119,6 +130,14 @@ impl BackoffSupervisorStrategy {
   #[must_use]
   pub const fn max_restarts(&self) -> RestartLimit {
     self.inner.max_restarts()
+  }
+
+  /// Returns the retry-accounting window (Pekko `withinTimeRange`).
+  ///
+  /// `Duration::ZERO` means "no window" (disabled).
+  #[must_use]
+  pub const fn within_time_range(&self) -> Duration {
+    self.inner.within_time_range()
   }
 
   /// Returns whether sibling children are stopped during restart.
