@@ -230,6 +230,7 @@
   - `MailboxClock` 導入による clock 注入設計の根拠 (design.md Decision 1 の要約 +
     factory 経路集約方針)
   - gap-analysis MB-M1 done 化の反映
-- [ ] 11.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない
+- [x] 11.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない
   範囲で対応、却下する場合は理由を reply してから resolve
-- [ ] 11.4 マージ後、別 PR で change をアーカイブ
+  (CodeRabbit 7 件 + Cursor Bugbot 3 件すべて対応・resolve 済み)
+- [x] 11.4 マージ後、別 PR で change をアーカイブ (PR #1631 squash merge 2026-04-22)
