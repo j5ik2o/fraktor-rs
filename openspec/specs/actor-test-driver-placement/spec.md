@@ -65,6 +65,8 @@ TBD - created by archiving change step03-move-test-tick-driver-to-adaptor-std. U
 
 加えて、本 capability では **`fraktor-actor-core-rs` クレート自身が `test-support` feature を提供してはならない** (MUST NOT)。`actor-core/Cargo.toml` の `[features]` セクションに `test-support` の定義が存在してはならず、関連する `[[test]] required-features = ["test-support"]` も含まれてはならない。同様に、ダウンストリームクレートの `Cargo.toml` で `fraktor-actor-core-rs = { ..., features = ["test-support"] }` のように **存在しない feature を要求してはならない** (MUST NOT)。
 
+更に、**下流 (`actor-*` 系の library crate) が `test-support` feature を定義する場合、当該 crate の `src/**/*.rs` 内に `#[cfg(feature = "test-support")]` または `#[cfg(all(test, feature = "test-support"))]` のような実用ゲートを少なくとも 1 件持たなければならない** (MUST)。空 feature (`test-support = []` で src 内利用なし) や forward 専用 feature (`test-support = ["other_crate/test-support"]` で src 内利用なし) を残してはならない (MUST NOT)。
+
 許容される使い方は以下のみ:
 
 - 純粋な `#[cfg(test)]`（`feature = "test-support"` を含まない）による test-only コード分離
@@ -113,3 +115,11 @@ TBD - created by archiving change step03-move-test-tick-driver-to-adaptor-std. U
 - **WHEN** workspace 内の任意の `Cargo.toml` (`modules/**/Cargo.toml`、`showcases/**/Cargo.toml`) を検査する
 - **THEN** `fraktor-actor-core-rs = { ..., features = [..., "test-support", ...] }` の形で actor-core の `test-support` を要求している行が存在しない
 - **AND** 同様に他 crate の `test-support` feature 定義 (`test-support = [...]`) において `"fraktor-actor-core-rs/test-support"` を forward する記述が存在しない
+
+#### Scenario: 下流 crate の test-support feature は実用ゲートを持つ場合のみ存在してよい
+
+- **WHEN** `actor-*` 系の library crate (`modules/<crate>/Cargo.toml`) の `[features]` セクションに `test-support = [...]` 定義が存在する
+- **THEN** 当該 crate の `src/**/*.rs` に `#[cfg(feature = "test-support")]` または `#[cfg(all(test, feature = "test-support"))]` のような実用ゲートが **少なくとも 1 件** 存在する
+- **AND** 「forward only」(`test-support = ["other_crate/test-support"]` で当該 crate の src には 1 件もゲートがない) 状態は許されない
+- **AND** 「空定義」(`test-support = []` で当該 crate の src には 1 件もゲートがない) 状態も許されない
+- **AND** workspace 内で本 Scenario を満たす crate は `actor-adaptor-std` (`tick_driver.rs`、`std.rs`、`circuit_breakers_registry_id.rs` 等) のみであり、cluster-core / cluster-adaptor-std / remote-adaptor-std / persistence-core / stream-core / stream-adaptor-std には `test-support` feature 定義が存在しない
