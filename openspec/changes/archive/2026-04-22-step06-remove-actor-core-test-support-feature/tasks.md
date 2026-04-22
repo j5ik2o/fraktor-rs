@@ -58,8 +58,8 @@
 
 > 本 change は **artifacts PR** (proposal/design/specs/tasks のみ) と **implementation PR** (本セクション) を分けて運用するか、変更が小さいため同一 PR で進めるかは判断する。design.md / spec の delta が小さいため同一 PR でも可。
 
-- [ ] 7.1 ブランチ作成: `step06-remove-actor-core-test-support-feature` (artifacts と impl を同 PR にする場合) または artifacts と `-impl` を分ける
-- [ ] 7.2 論理単位での commit (Phase 1 を crate ごとに分けるか、一括にするかは判断)
-- [ ] 7.3 push + PR 作成（base: main、title prefix `chore(actor-core):` または `refactor(actor-core):`）
-- [ ] 7.4 CI 全 pass + レビュー対応 + マージ
-- [ ] 7.5 archive (`/opsx:archive` または skill 経由)
+- [x] 7.1 ブランチ作成: `step06-remove-actor-core-test-support-feature` (artifacts と impl を同 PR にする場合) または artifacts と `-impl` を分ける
+- [x] 7.2 論理単位での commit (Phase 1 を crate ごとに分けるか、一括にするかは判断)
+- [x] 7.3 push + PR 作成（base: main、title prefix `chore(actor-core):` または `refactor(actor-core):`）
+- [x] 7.4 CI 全 pass + レビュー対応 + マージ
+- [x] 7.5 archive (`/opsx:archive` または skill 経由)
