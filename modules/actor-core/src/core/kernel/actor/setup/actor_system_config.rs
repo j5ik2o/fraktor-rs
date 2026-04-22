@@ -279,10 +279,9 @@ impl ActorSystemConfig {
   /// Sets the monotonic mailbox clock used for throughput deadline enforcement.
   ///
   /// Called by std / embedded adaptors during `ActorSystemConfig` construction
-  /// so that every `ActorSystem` built from this config picks up the clock
-  /// during [`SystemState::build_from_owned_config`] via
-  /// [`SystemStateShared::install_mailbox_clock`]. Passing `None` disables
-  /// deadline enforcement.
+  /// so that every `ActorSystem` built from this config picks up the clock via
+  /// [`ActorSystemConfig::take_mailbox_clock`] in `SystemState::build_from_owned_config`.
+  /// Passing `None` disables deadline enforcement.
   #[must_use]
   pub fn with_mailbox_clock(mut self, clock: impl Into<Option<MailboxClock>>) -> Self {
     self.mailbox_clock = clock.into();

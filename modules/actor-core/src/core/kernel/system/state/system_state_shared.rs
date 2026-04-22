@@ -46,7 +46,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::MessageDispatcherShared,
-    mailbox::{MailboxClock, MailboxRegistryError, MessageQueue},
+    mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
     logging::{LogEvent, LogLevel, LoggingFilter},
@@ -896,12 +896,6 @@ impl SystemStateShared {
   #[must_use]
   pub fn mailbox_shared_set(&self) -> MailboxSharedSet {
     self.inner.with_read(|inner| inner.mailbox_shared_set().clone())
-  }
-
-  /// Installs a monotonic clock into the underlying [`MailboxSharedSet`].
-  /// Called by the std adaptor during `ActorSystem` initialization.
-  pub fn install_mailbox_clock(&self, clock: MailboxClock) {
-    self.inner.with_write(|inner| inner.install_mailbox_clock(clock));
   }
 
   /// Resolves a [`MessageDispatcherShared`] for the identifier.

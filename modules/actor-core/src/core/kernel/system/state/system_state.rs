@@ -57,7 +57,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherShared},
-    mailbox::{MailboxClock, MailboxRegistryError, Mailboxes, MessageQueue},
+    mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
     logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
@@ -108,8 +108,8 @@ pub struct SystemState {
   mailboxes: Mailboxes,
   /// Lock bundle + optional monotonic clock used by [`Mailbox::new_from_config_with_shared_set`]
   /// when instantiating mailboxes for this system. Default `clock = None`; std
-  /// adaptors install a real monotonic clock via
-  /// [`install_mailbox_clock`](Self::install_mailbox_clock).
+  /// adaptors install a real monotonic clock by passing the clock through
+  /// [`ActorSystemConfig::with_mailbox_clock`] before the system is built.
   mailbox_shared_set: MailboxSharedSet,
   deployer: Deployer,
   path_identity: PathIdentity,
@@ -888,15 +888,6 @@ impl SystemState {
   #[must_use]
   pub const fn mailbox_shared_set(&self) -> &MailboxSharedSet {
     &self.mailbox_shared_set
-  }
-
-  /// Replaces the mailbox lock bundle with one carrying the given monotonic
-  /// clock. Called by the std adaptor during `ActorSystem` initialization to
-  /// install the `Instant::now()` based clock for throughput deadline
-  /// enforcement.
-  pub fn install_mailbox_clock(&mut self, clock: MailboxClock) {
-    let existing = core::mem::replace(&mut self.mailbox_shared_set, MailboxSharedSet::builtin());
-    self.mailbox_shared_set = existing.with_clock(clock);
   }
 
   /// Resolves a [`MessageDispatcherShared`] for the identifier.
