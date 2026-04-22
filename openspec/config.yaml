@@ -2,12 +2,29 @@ schema: spec-driven
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  ## プロジェクト原則（全 change 共通）
+
+  すべての change は以下 4 原則に従って設計される:
+
+  1. **Pekko 互換仕様の実現 + Rust らしい設計**: Pekko の lifecycle /
+     supervision / death watch / dispatcher / mailbox の意味論を再現しつつ、
+     Rust の所有権と mailbox 実行モデルに合わせて翻訳する。動的 reflection
+     や open hierarchy を必要とする箇所は closed enum / 静的 dispatch /
+     trait object を使い分けて置き換える。
+
+  2. **手間が掛かっても本質的な設計を選ぶ**: 局所 workaround や段階的妥協で
+     済ませず、scheduling 境界 / 責務境界 / state machine を正しく定義する。
+     正しさを守るのに必要な破壊的変更は本 change で完結させる。
+
+  3. **フォールバックや後方互換性を保つコードを書かない**: 正式リリース前の
+     ため、暫定 API / legacy alias / 互換層 / deprecated 経路は残さない。
+     必要な場合は破壊的変更を選ぶ。「既存 caller が壊れない」は後方互換の
+     目的で維持してはならない（結果として壊れないことは副次効果として許容）。
+
+  4. **no_std core + std adaptor 分離**: modules/actor-core は no_std 維持
+     （alloc::* のみ、std::* 禁止）。std 固有機能は modules/actor-adaptor-std
+     に隔離する。cfg-std-forbid dylint で機械的に違反検出する。
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

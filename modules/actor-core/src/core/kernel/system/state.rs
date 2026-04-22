@@ -18,9 +18,7 @@ use crate::core::kernel::actor::actor_ref_provider::{
 };
 
 mod authority_state;
-#[cfg(any(test, feature = "test-support"))]
 mod booting_state;
-#[cfg(any(test, feature = "test-support"))]
 mod running_state;
 /// Shared, mutable state owned by the actor system.
 pub mod system_state;

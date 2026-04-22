@@ -427,7 +427,6 @@ impl SystemStateShared {
   }
 
   /// Registers a PID for the specified guardian kind.
-  #[cfg(any(test, feature = "test-support"))]
   pub(crate) fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
     self.inner.with_write(|inner| inner.register_guardian_pid(kind, pid));
   }

@@ -14,9 +14,6 @@ use crate::core::kernel::{
 };
 
 /// Bootstrapper responsible for wiring drivers into the scheduler context.
-#[cfg(any(test, feature = "test-support"))]
-pub struct TickDriverBootstrap;
-#[cfg(not(any(test, feature = "test-support")))]
 pub(crate) struct TickDriverBootstrap;
 
 impl TickDriverBootstrap {
@@ -25,23 +22,7 @@ impl TickDriverBootstrap {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when driver provisioning fails.
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn provision(
-    driver: Box<dyn TickDriver>,
-    ctx: &TickDriverProvisioningContext,
-  ) -> Result<BootstrapProvisionResult, TickDriverError> {
-    Self::provision_impl(driver, ctx)
-  }
-
-  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn provision(
-    driver: Box<dyn TickDriver>,
-    ctx: &TickDriverProvisioningContext,
-  ) -> Result<BootstrapProvisionResult, TickDriverError> {
-    Self::provision_impl(driver, ctx)
-  }
-
-  fn provision_impl(
     driver: Box<dyn TickDriver>,
     ctx: &TickDriverProvisioningContext,
   ) -> Result<BootstrapProvisionResult, TickDriverError> {

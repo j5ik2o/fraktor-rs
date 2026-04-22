@@ -497,7 +497,6 @@ impl SystemState {
     self.root_guardian_alive.store(true, Ordering::Release);
   }
 
-  #[cfg(any(test, feature = "test-support"))]
   pub(crate) fn register_guardian_pid(&mut self, kind: GuardianKind, pid: Pid) {
     self.guardians.register(kind, pid);
     self.guardian_alive_flag(kind).store(true, Ordering::Release);

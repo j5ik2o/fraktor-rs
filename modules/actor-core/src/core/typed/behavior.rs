@@ -196,26 +196,10 @@ where
 
   /// Handles a typed message using this behavior.
   ///
-  /// This helper is public only for tests and `test-support` consumers.
-  ///
   /// # Errors
   ///
   /// Returns [`ActorError`] when the configured message handler fails.
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn handle_message(&mut self, ctx: &mut TypedActorContext<'_, M>, message: &M) -> Result<Behavior<M>, ActorError> {
-    self.handle_message_impl(ctx, message)
-  }
-
-  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn handle_message(
-    &mut self,
-    ctx: &mut TypedActorContext<'_, M>,
-    message: &M,
-  ) -> Result<Behavior<M>, ActorError> {
-    self.handle_message_impl(ctx, message)
-  }
-
-  fn handle_message_impl(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
     message: &M,
@@ -235,22 +219,10 @@ where
 
   /// Runs the start hook for this behavior.
   ///
-  /// This helper is public only for tests and `test-support` consumers.
-  ///
   /// # Errors
   ///
   /// Returns [`ActorError`] when the configured start handler fails.
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn handle_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
-    self.handle_start_impl(ctx)
-  }
-
-  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn handle_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
-    self.handle_start_impl(ctx)
-  }
-
-  fn handle_start_impl(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
       | BehaviorDirective::Stopped => Ok(Self::stopped()),
@@ -266,30 +238,10 @@ where
 
   /// Handles a signal using this behavior.
   ///
-  /// This helper is public only for tests and `test-support` consumers.
-  ///
   /// # Errors
   ///
   /// Returns [`ActorError`] when the configured signal handler fails.
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn handle_signal(
-    &mut self,
-    ctx: &mut TypedActorContext<'_, M>,
-    signal: &BehaviorSignal,
-  ) -> Result<Behavior<M>, ActorError> {
-    self.handle_signal_impl(ctx, signal)
-  }
-
-  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn handle_signal(
-    &mut self,
-    ctx: &mut TypedActorContext<'_, M>,
-    signal: &BehaviorSignal,
-  ) -> Result<Behavior<M>, ActorError> {
-    self.handle_signal_impl(ctx, signal)
-  }
-
-  fn handle_signal_impl(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
     signal: &BehaviorSignal,
