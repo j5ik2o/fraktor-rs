@@ -32,11 +32,10 @@ step01〜step05 を経て `actor-core/test-support` feature が抱えていた 3
 - なし
 
 ### Modified Capabilities
-- なし
-
-OpenSpec validation 要件を満たすため、design / specs フェーズで最低 1 件の delta を設計する。候補:
-- 案 A: step04 / step05 で導入した capability（`actor-test-helpers-placement` / `actor-core-api-visibility-governance` 等）に Scenario を追加し、「`actor-core` には `test-support` feature が存在しない」を検査項目化
-- 案 B: 既存 `actor-lock-construction-governance` に Scenario を追加
+- `actor-test-driver-placement`: step05 で追加した Requirement「actor-core では feature ゲート経由で内部 API の可視性を拡大してはならない」に Scenario を 2 件追加
+  - actor-core/Cargo.toml に `test-support` feature 定義が存在しないことを検証
+  - 全下流 crate の Cargo.toml が actor-core の存在しない `test-support` feature を要求していないことを検証
+  - 同 Requirement 本文も MUST NOT 節を追加し、「feature 自体が存在してはならない」「下流が存在しない feature を要求してはならない」を明文化
 
 ## Impact
 
