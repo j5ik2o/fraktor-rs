@@ -17,8 +17,8 @@ serde = { workspace = true, features = ["derive"] }
 
 # advanced 依存（cross-module examples 用）
 fraktor-persistence-core-rs = { workspace = true, optional = true }
-fraktor-cluster-core-rs = { workspace = true, features = ["test-support"], optional = true }
-fraktor-cluster-adaptor-std-rs = { workspace = true, features = ["test-support"], optional = true }
+fraktor-cluster-core-rs = { workspace = true, optional = true }
+fraktor-cluster-adaptor-std-rs = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
 anyhow = { workspace = true, optional = true }
 
