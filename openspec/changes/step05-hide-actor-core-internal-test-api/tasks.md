@@ -45,7 +45,7 @@
 - [ ] 8.1 `modules/actor-core/src/core/kernel/system/state.rs` の `#[cfg(any(test, feature = "test-support"))] mod booting_state;` の cfg gate を削除（`mod booting_state;` のみに）
 - [ ] 8.2 同 `running_state` の cfg gate を削除
 - [ ] 8.3 `cargo test -p fraktor-actor-core-rs --lib` で pass 確認
-- [ ] 8.4 dead code 警告が出る場合、`pub(crate)` items を `#[allow(dead_code)]` でマーク（または別 change で safe_delete を検討）
+- [ ] 8.4 dead code 警告が出る場合、`pub(crate)` items を `#[allow(dead_code)]` でマーク（または別 change で `mcp__serena__safe_delete_symbol` を使った除去を検討）
 
 ## 9. 全体検証
 
@@ -65,8 +65,10 @@
 
 ## 11. コミット・PR
 
+> 本 change は **artifacts PR** (proposal/design/specs/tasks のみ、PR #1617) と **implementation PR** (本セクション) を分けて運用する。artifacts PR が main にマージされていることを前提とする。
+
 - [ ] 11.1 シンボルごとの小さな commit（Phase 1-7 で約 7-14 commit、論理単位を意識）
-- [ ] 11.2 ブランチ作成: `step05-hide-actor-core-internal-test-api`
-- [ ] 11.3 push + PR 作成（base: main）
+- [ ] 11.2 ブランチ作成: `step05-hide-actor-core-internal-test-api-impl`（artifacts ブランチ名と衝突しないよう `-impl` サフィックス）
+- [ ] 11.3 push + PR 作成（base: main、title prefix `refactor(actor-core):`）
 - [ ] 11.4 CI 全 pass + レビュー対応 + マージ
 - [ ] 11.5 archive (`/opsx:archive` または skill 経由)
