@@ -22,6 +22,23 @@ use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
 /// Construction normalises throughput to `usize::MAX` and clears the throughput
 /// deadline regardless of the supplied [`DispatcherConfig`], matching Pekko's
 /// behaviour for `PinnedDispatcher`.
+///
+/// # 1 actor / 1 thread exclusion (AC-M1)
+///
+/// Mirrors Pekko `dispatch/PinnedDispatcher.scala:44-59`:
+///
+/// - Pekko: `@volatile var owner: ActorCell`, assigned inside `register` after an `if ((actor ne
+///   null) && actorCell != actor) throw`.
+/// - fraktor-rs: [`Self::owner`] holds `Option<Pid>`, and [`Self::register_actor`] returns
+///   [`SpawnError::DispatcherAlreadyOwned`] for the equivalent conflict case (see its rustdoc for
+///   the branch-by-branch correspondence).
+///
+/// Pekko relies on the external lock held by `MessageDispatcher.attach`;
+/// fraktor-rs achieves the equivalent serialisation through `&mut self`
+/// on the dispatcher trait plus the mutex inside
+/// [`MessageDispatcherShared`], so races between concurrent
+/// `register_actor` / `unregister_actor` invocations are impossible
+/// without additional atomics (no `AtomicCell<Option<Pid>>` needed).
 pub struct PinnedDispatcher {
   core:  DispatcherCore,
   owner: Option<Pid>,
@@ -56,6 +73,23 @@ impl MessageDispatcher for PinnedDispatcher {
     &mut self.core
   }
 
+  /// Registers an actor on this dispatcher, enforcing the
+  /// 1 actor / 1 thread exclusion contract.
+  ///
+  /// # Pekko parity (`PinnedDispatcher.scala:48-54`)
+  ///
+  /// | Pekko branch | fraktor-rs branch |
+  /// |-------------|-------------------|
+  /// | `actor eq null` (owner unset) | `None` → assign `owner = Some(pid)` |
+  /// | `actor ne null && actorCell eq actor` (same re-attach) | `Some(existing) if existing == pid` → idempotent accept |
+  /// | `actor ne null && actorCell ne actor` (conflict) | `Some(_)` → `Err(SpawnError::DispatcherAlreadyOwned)` |
+  ///
+  /// Pekko throws `IllegalArgumentException` for the conflict case; the
+  /// fraktor-rs translation is a recoverable `Err` so the caller can react
+  /// without panicking. fraktor-rs skips the unconditional re-assignment
+  /// that Pekko performs in the `same-actor` case (same value assignment
+  /// would be a no-op) and relies on `mark_attach` to keep the inhabitant
+  /// counter monotonic across repeated attaches.
   fn register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {
     let pid = actor.pid();
     match self.owner {
@@ -73,6 +107,17 @@ impl MessageDispatcher for PinnedDispatcher {
     }
   }
 
+  /// Unregisters an actor, clearing the owner slot when it matches.
+  ///
+  /// # Pekko parity (`PinnedDispatcher.scala:56-59`)
+  ///
+  /// Pekko unconditionally sets `owner = null` after delegating to
+  /// `super.unregister(actor)` because its callers already enforce
+  /// "only the current owner can call unregister". fraktor-rs adds a
+  /// defensive `owner == pid` check: if an unrelated pid is passed,
+  /// the owner slot stays intact and only `mark_detach` runs. The
+  /// difference has no observable effect under correct use, and
+  /// guards against future callers that might misuse the API.
   fn unregister_actor(&mut self, actor: &ArcShared<ActorCell>) {
     let pid = actor.pid();
     if let Some(owner) = self.owner
