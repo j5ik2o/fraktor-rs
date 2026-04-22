@@ -14,7 +14,6 @@ autoexamples = false
 
 [features]
 default = []
-test-support = []
 
 [dependencies]
 fraktor-actor-core-rs = { workspace = true }

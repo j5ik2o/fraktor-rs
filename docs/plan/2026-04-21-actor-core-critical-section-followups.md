@@ -23,6 +23,7 @@
 - 責務 C: 内部 API の `pub(crate)` → `pub` 格上げ（`Behavior::handle_message` 等）
   - **完了** (`step05-hide-actor-core-internal-test-api`、2026-04-22): `Behavior::handle_*` (3)、`TypedActorContext::from_untyped`、`TickDriverBootstrap` 関連 (struct/method/re-export) を `pub(crate)` に縮小。dual-cfg pattern (`#[cfg(any(test, feature = "test-support"))] pub fn` + `#[cfg(not(...))] pub(crate) fn`) を全廃
 - feature 削除: **完了** (`step06-remove-actor-core-test-support-feature`、2026-04-22): `actor-core/Cargo.toml` から `test-support = []` 行と 8 個の `[[test]] required-features = ["test-support"]` を削除。下流 8 crate (`actor-adaptor-std`、`cluster-core`、`cluster-adaptor-std`、`persistence-core`、`remote-adaptor-std`、`stream-core`、`stream-adaptor-std`、`showcases/std`) の `Cargo.toml` から `fraktor-actor-core-rs/test-support` への参照も全廃。`actor-test-driver-placement` capability に検証 Scenario を追加し、再侵入を spec で機械的にブロック
+- 下流 dead test-support 退役: **完了** (`step09-remove-dead-downstream-test-support-features`、2026-04-22): step06 archive 後の調査で `cluster-core/test-support`、`cluster-adaptor-std/test-support`、`remote-adaptor-std/test-support` が `src` 内 0 cfg gate の dead code と確定。3 件の feature 定義 + 3 件の参照 (showcases/std × 2、cluster-adaptor-std dev-dep × 1) を全廃。`actor-adaptor-std/test-support` のみ実用ゲート 4 箇所を持つため保持。`actor-test-driver-placement` capability に「下流 crate の test-support feature は実用ゲートを持つ場合のみ存在してよい」Scenario を追加し、空 / forward 専用の test-support 復活を spec で機械的に禁止
 
 ### 2. `portable-atomic` の `critical-section` feature 再評価（解消済み）
 

@@ -15,7 +15,6 @@ autoexamples = false
 [features]
 default = []
 aws-ecs = ["dep:aws-sdk-ecs", "dep:aws-config"]
-test-support = ["fraktor-cluster-core-rs/test-support"]
 
 [dependencies]
 fraktor-cluster-core-rs = { workspace = true }
@@ -34,7 +33,6 @@ workspace = true
 
 [dev-dependencies]
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["tokio-executor", "test-support"] }
-fraktor-cluster-core-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 critical-section = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"] }

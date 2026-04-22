@@ -14,7 +14,6 @@ autoexamples = false
 
 [features]
 default = []
-test-support = []
 
 [dependencies]
 fraktor-remote-core-rs = { workspace = true }
