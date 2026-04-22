@@ -176,5 +176,7 @@
   - 破壊的 API 変更の一覧 (`with_limit(i32)` → `with_limit(u32)` + `with_unlimited_restarts()`) ✓
   - `RestartLimit` 導入による enum 化の設計根拠 (design.md Decision 1 の要約) ✓
   - gap-analysis SP-M1 done 化の反映 ✓
-- [ ] 11.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
-- [ ] 11.4 マージ後、別 PR で change をアーカイブ (`openspec archive-change` またはプロジェクト既存手順)
+- [x] 11.3 レビュー対応: Cursor Bugbot High Severity 指摘 2 件に対応 → thread resolved、追加で clippy `missing_const_for_fn` 2 件も併せて修正
+  - Cursor Bugbot: `handle_backoff_failure` が `reset_backoff_after` を window として誤用 → `within_time_range` field を追加して Pekko `BackoffOnRestartSupervisor.scala:58` 準拠に分離 (fix commit `7024c8b6`)
+  - clippy const fn: `RestartStatistics::reset` / `FailurePayload::with_restart_stats` を `const fn` 化
+- [x] 11.4 マージ後、別 PR で change をアーカイブ (本 PR = archive PR)
