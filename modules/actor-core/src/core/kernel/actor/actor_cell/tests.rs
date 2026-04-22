@@ -1547,13 +1547,21 @@ fn al_h1_t1_default_pre_restart_calls_post_stop_and_default_post_restart_calls_p
 }
 
 #[test]
-#[ignore = "synchronous test dispatcher: stop_all_children は child を即座に停止させ children_state を Empty に遷移させるため、set_children_termination_reason(Recreation) が false を返し finish_recreate が即時 fall-through する。deferred 経路は AC-H4 T2/T3 (override pre_restart) で検証済みのため ignore。"]
 fn al_h1_t2_default_pre_restart_stops_children_and_defers_finish_recreate() {
   // AL-H1: 既定 pre_restart は stop_all_children を呼ぶことで子を terminate
   // キューに乗せた後、自身の post_stop を呼ぶ。childrenRefs は live child を
   // 残したまま Terminating(Recreation) へ遷移するため finishRecreate は遅延され、
   // 子が handle_terminated されるタイミングで post_restart (= 既定の pre_start
   // 委譲) が走る。
+  //
+  // Sync-dispatch parity は `ActorCell::fault_recreate` が `pre_restart` を
+  // `MessageDispatcherShared::run_with_drive_guard` でラップすることで成立する。
+  // guard が `ExecutorShared::running` を事前に claim するため、
+  // `stop_all_children` が child へ発行する `SystemMessage::Stop` は既存
+  // trampoline の pending に積まれるだけで parent の呼び出しスタック上では
+  // drain されない。後続の `parent.handle_death_watch_notification(child)` が
+  // `remove_child_and_get_state_change` で `Recreation(cause)` を観測し
+  // `finish_recreate` を起動する。
   let state = ActorSystem::new_empty().state();
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let parent_props = Props::from_fn({
@@ -1570,8 +1578,11 @@ fn al_h1_t2_default_pre_restart_stops_children_and_defers_finish_recreate() {
   state.register_cell(child.clone());
   parent.register_child(child.pid());
   // AC-H5 pre-wiring: spawn_with_parent 自動配線と同等の supervision watch を
-  // 手動登録する。
-  parent.register_watching(child.pid());
+  // 手動登録する。`register_supervision_watching` で `WatchKind::Supervision` を
+  // 使うことで、既定 `pre_restart` の `stop_all_children` が呼ぶ
+  // `unregister_watching`（User kind のみ除去）の影響を受けず、後続の
+  // `handle_death_watch_notification` が `watching_contains_pid` で通過する。
+  parent.register_supervision_watching(child.pid());
 
   let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
   parent_invoker.system_invoke(SystemMessage::Create).expect("parent create");
@@ -1606,6 +1617,86 @@ fn al_h1_t2_default_pre_restart_stops_children_and_defers_finish_recreate() {
   assert!(parent.children().is_empty(), "AL-H1: finishRecreate 後は children() は空");
   assert!(!parent.mailbox().is_suspended(), "AL-H1: finishRecreate 完了後は mailbox を resume");
   assert!(parent.children_state_is_normal(), "AL-H1: finishRecreate 後は ChildrenContainer が Normal に戻る");
+}
+
+#[test]
+fn al_h1_t2_default_pre_restart_with_multiple_children_defers_finish_recreate_until_last() {
+  // AL-H1: child が 2 件以上ある場合、最後の child の
+  // `handle_death_watch_notification` が届くまで `finish_recreate` が起動しない
+  // ことを確認する。中間の child DWN では `remove_child_and_get_state_change` が
+  // `None` を返し（container が Terminating に留まり to_die が非空のまま）、
+  // 最後の child DWN で初めて `Some(Recreation(cause))` → `finish_recreate` が起動する。
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let parent_props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let parent = ActorCell::create(state.clone(), Pid::new(813, 0), None, "al-h1-t2-multi".to_string(), &parent_props)
+    .expect("create parent");
+  let child_a_props = Props::from_fn(|| ProbeActor);
+  let child_a = ActorCell::create(
+    state.clone(),
+    Pid::new(814, 0),
+    Some(parent.pid()),
+    "al-h1-t2-multi-child-a".to_string(),
+    &child_a_props,
+  )
+  .expect("create child_a");
+  let child_b_props = Props::from_fn(|| ProbeActor);
+  let child_b = ActorCell::create(
+    state.clone(),
+    Pid::new(815, 0),
+    Some(parent.pid()),
+    "al-h1-t2-multi-child-b".to_string(),
+    &child_b_props,
+  )
+  .expect("create child_b");
+  state.register_cell(parent.clone());
+  state.register_cell(child_a.clone());
+  state.register_cell(child_b.clone());
+  parent.register_child(child_a.pid());
+  parent.register_child(child_b.pid());
+  // 両 child を supervision watch に登録（User kind だと stop_all_children で除去される）
+  parent.register_supervision_watching(child_a.pid());
+  parent.register_supervision_watching(child_b.pid());
+
+  let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
+  parent_invoker.system_invoke(SystemMessage::Create).expect("parent create");
+  assert_eq!(log.lock().clone(), vec!["pre_start"]);
+
+  parent.mailbox().suspend();
+  let cause = ActorErrorReason::new("al-h1-t2-multi-cause");
+  parent_invoker.system_invoke(SystemMessage::Recreate(cause)).expect("recreate");
+
+  // Recreate 直後: children が 2 件残り、Terminating(Recreation) で待機中。
+  assert_eq!(parent.children().len(), 2, "両 child が children_state の to_die に残存");
+  assert!(parent.children_state_is_terminating(), "子 stop 待ちで Terminating(Recreation)");
+  let mid_snapshot = log.lock().clone();
+  assert_eq!(mid_snapshot, vec!["pre_start", "post_stop"], "post_restart は最後の child 終了まで遅延");
+
+  // child_a の DWN → まだ child_b が to_die に残るので finish_recreate は起動しない
+  parent.handle_death_watch_notification(child_a.pid()).expect("handle_death_watch_notification A");
+  assert!(parent.children_state_is_terminating(), "child_a 除去後も to_die に child_b が残存するので Terminating 継続");
+  assert_eq!(parent.children().len(), 1, "child_a のみ children_state から除去される");
+  let after_a_snapshot = log.lock().clone();
+  assert_eq!(
+    after_a_snapshot,
+    vec!["pre_start", "post_stop"],
+    "child_a の DWN 処理中に finish_recreate は起動しない（中間 state_change=None）"
+  );
+
+  // child_b の DWN → 最後の child なので finish_recreate が起動し post_restart → pre_start
+  parent.handle_death_watch_notification(child_b.pid()).expect("handle_death_watch_notification B");
+  let final_snapshot = log.lock().clone();
+  assert_eq!(
+    final_snapshot,
+    vec!["pre_start", "post_stop", "pre_start"],
+    "最後の child_b DWN で finish_recreate → 既定 post_restart → pre_start が走る"
+  );
+  assert!(parent.children_state_is_normal(), "finish_recreate 後に Normal/Empty へ戻る");
+  assert!(parent.children().is_empty(), "finish_recreate 後 children は空");
+  assert!(!parent.mailbox().is_suspended(), "finish_recreate 後 mailbox を resume");
 }
 
 #[test]

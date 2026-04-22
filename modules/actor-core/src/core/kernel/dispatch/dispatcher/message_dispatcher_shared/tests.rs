@@ -5,6 +5,7 @@ use core::{
   time::Duration,
 };
 use std::{
+  panic::{AssertUnwindSafe, catch_unwind},
   sync::{
     Mutex as StdMutex,
     mpsc::{self, Receiver, Sender},
@@ -233,4 +234,53 @@ fn detach_running_mailbox_returns_before_runner_finalizes() {
   detach_handle.join().expect("detach thread should complete");
   assert_eq!(seen.load(Ordering::SeqCst), 1, "runner finalizer must suppress the second queued user message");
   assert_eq!(mailbox.user_len(), 0, "runner finalizer should clean remaining queued user messages");
+}
+
+#[test]
+fn run_with_drive_guard_runs_f_and_defers_nested_execute() {
+  let submits = Arc::new(AtomicUsize::new(0));
+  let executor =
+    ExecutorShared::new(Box::new(CountingExecutor { submits: Arc::clone(&submits) }), TrampolineState::new());
+  let executor_for_nested = executor.clone();
+  let settings = DispatcherConfig::with_defaults("drive-guard");
+  let dispatcher = DefaultDispatcher::new(&settings, executor);
+  let shared = MessageDispatcherShared::new(Box::new(dispatcher));
+
+  let observed = Arc::new(AtomicUsize::new(0));
+  let observed_inside = Arc::clone(&observed);
+  let result = shared.run_with_drive_guard(|| {
+    observed_inside.store(1, Ordering::SeqCst);
+    // Nested execute through the same ExecutorShared — while the guard is
+    // held the task must queue into the trampoline, not reach the inner
+    // executor. `submits` tracks inner executor calls; it should stay at 0.
+    executor_for_nested.execute(Box::new(|| {}), 0).expect("nested execute should succeed");
+    assert_eq!(submits.load(Ordering::SeqCst), 0, "inner.execute must not run while the guard is held");
+    42
+  });
+  assert_eq!(result, 42, "run_with_drive_guard must return f()'s value");
+  assert_eq!(observed.load(Ordering::SeqCst), 1, "f() must have run");
+  assert_eq!(submits.load(Ordering::SeqCst), 0, "DriveGuardToken::drop must not tail-drain the trampoline");
+}
+
+#[test]
+fn run_with_drive_guard_releases_guard_even_when_f_panics() {
+  let submits = Arc::new(AtomicUsize::new(0));
+  let executor =
+    ExecutorShared::new(Box::new(CountingExecutor { submits: Arc::clone(&submits) }), TrampolineState::new());
+  let executor_for_check = executor.clone();
+  let settings = DispatcherConfig::with_defaults("drive-guard-panic");
+  let dispatcher = DefaultDispatcher::new(&settings, executor);
+  let shared = MessageDispatcherShared::new(Box::new(dispatcher));
+
+  let result = catch_unwind(AssertUnwindSafe(|| {
+    shared.run_with_drive_guard(|| {
+      panic!("boom");
+    })
+  }));
+  assert!(result.is_err(), "panic should propagate out of run_with_drive_guard");
+
+  // After unwind, the DriveGuardToken must have released the running slot
+  // so a subsequent enter_drive_guard can claim it again.
+  let retry = executor_for_check.enter_drive_guard();
+  assert!(retry.claimed(), "running slot must be released after f() panic via Drop");
 }
