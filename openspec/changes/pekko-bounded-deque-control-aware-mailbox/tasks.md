@@ -6,7 +6,7 @@
 - [ ] 1.4 `mailbox.rs` (mod エントリ) の既存 mod 宣言順を確認 (新 mod 4 件を alphabetical に挿入)
 - [ ] 1.5 `mailboxes.rs` の `deque_mailbox_type_from_policy` と `create_message_queue_from_config` の control-aware 分岐の現行コードを確認
 - [ ] 1.6 `mailbox_config.rs::validate` (L137-148) で両拒否分岐 (`BoundedWithDeque` + `ControlAwareRequiresUnboundedPolicy`) を確認し、Phase 5A/5B の削除範囲を確定
-- [ ] 1.7 `rtk grep "BoundedWithDeque|ControlAwareRequiresUnboundedPolicy" --glob "*.rs"` で全参照を列挙 (想定 14 参照 / 7 ファイル前後)
+- [ ] 1.7 `rtk grep "BoundedWithDeque|ControlAwareRequiresUnboundedPolicy" --glob "*.rs"` で全参照を列挙 (想定 14 参照 / unique 6 ファイル、design Risk 1 参照)
 
 ## Phase 2: BoundedDeque variant の追加
 
