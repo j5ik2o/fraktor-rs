@@ -57,22 +57,27 @@ impl Dispatchers {
   ///
   /// # Selector mapping
   ///
-  /// | Selector | Resolved id |
-  /// |----------|-------------|
-  /// | `Default` | `"default"` |
-  /// | `FromConfig("pekko.actor.default-dispatcher")` | `"default"` |
-  /// | `FromConfig(id)` | the provided `id` |
-  /// | `SameAsParent` | `"default"` (parent inheritance is handled at spawn time) |
+  /// | Selector | Passed to kernel `resolve` |
+  /// |----------|----------------------------|
+  /// | `Default` / `SameAsParent` | `"default"` (kernel entry id) |
+  /// | `FromConfig(id)` | `id` verbatim (kernel follows its alias chain) |
   /// | `Blocking` | `"pekko.actor.default-blocking-io-dispatcher"` |
+  ///
+  /// The `FromConfig` arm passes the identifier through unchanged so that
+  /// kernel [`Dispatchers`](crate::core::kernel::dispatch::dispatcher::Dispatchers)
+  /// alias chain resolution is authoritative. This preserves any
+  /// user-provided entry override such as
+  /// `register_or_update("pekko.actor.default-dispatcher", custom)`, which
+  /// a stale typed-level normalization step would otherwise shadow.
   ///
   /// # Errors
   ///
   /// Returns [`DispatchersError::Unknown`] when the resolved identifier
   /// has not been registered in the kernel dispatcher registry.
   pub fn lookup(&self, selector: &DispatcherSelector) -> Result<MessageDispatcherShared, DispatchersError> {
-    let id = match selector {
+    let id: &str = match selector {
       | DispatcherSelector::Default | DispatcherSelector::SameAsParent => REGISTERED_DEFAULT_DISPATCHER_ID,
-      | DispatcherSelector::FromConfig(id) => Self::normalize_dispatcher_id(id),
+      | DispatcherSelector::FromConfig(id) => id,
       | DispatcherSelector::Blocking => DEFAULT_BLOCKING_DISPATCHER_ID,
     };
     self.state.resolve_dispatcher(id).ok_or_else(|| DispatchersError::Unknown(id.to_string()))
@@ -83,11 +88,4 @@ impl Dispatchers {
   /// This is intentionally a no-op because dispatcher runtime ownership stays
   /// with the actor system and underlying executor.
   pub const fn shutdown(&self) {}
-
-  fn normalize_dispatcher_id(id: &str) -> &str {
-    match id {
-      | Self::DEFAULT_DISPATCHER_ID | Self::INTERNAL_DISPATCHER_ID => REGISTERED_DEFAULT_DISPATCHER_ID,
-      | _ => id,
-    }
-  }
 }

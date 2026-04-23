@@ -230,9 +230,8 @@ impl Dispatchers {
   /// depth limit (matching Pekko `Dispatchers.scala:160-163`).
   fn follow_alias_chain(&self, id: &str) -> Result<String, DispatchersError> {
     let mut current = id.to_owned();
-    // Allow up to MAX_ALIAS_DEPTH alias hops; the (MAX_ALIAS_DEPTH + 1)-th
-    // hop is the one that trips the error, matching Pekko's
-    // `if (depth > MaxDispatcherAliasDepth)` guard.
+    // Pekko の `if (depth > MaxDispatcherAliasDepth)` ガードに合わせ、MAX_ALIAS_DEPTH 回までの
+    // alias hop を許容し、(MAX_ALIAS_DEPTH + 1) 回目で error を返す。
     for _ in 0..=Self::MAX_ALIAS_DEPTH {
       match self.aliases.get(&current) {
         | Some(target) => current = target.clone(),

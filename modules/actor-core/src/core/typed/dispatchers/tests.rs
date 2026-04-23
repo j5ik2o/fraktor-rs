@@ -38,13 +38,65 @@ fn lookup_from_config_selector_resolves_registered_dispatcher() {
 }
 
 #[test]
-fn lookup_from_config_selector_normalizes_internal_dispatcher_id_to_default() {
+fn lookup_from_config_selector_resolves_internal_dispatcher_id_via_kernel_alias() {
+  // 旧実装では typed 層で normalize_dispatcher_id が Pekko id を `"default"` に
+  // 書き換えていたが、本テストは kernel の alias chain 経由で等価に解決されることを確認する
+  // (`ensure_default_inline` が `pekko.actor.internal-dispatcher → default` の alias を登録する)。
   let dispatchers = new_dispatchers_with_defaults();
 
   let selector = DispatcherSelector::from_config(Dispatchers::INTERNAL_DISPATCHER_ID);
   let result = dispatchers.lookup(&selector);
 
-  assert!(result.is_ok(), "FromConfig(InternalDispatcherId) should resolve to the default dispatcher");
+  assert!(result.is_ok(), "FromConfig(InternalDispatcherId) should resolve via kernel alias chain");
+}
+
+#[test]
+fn lookup_from_config_preserves_user_override_of_pekko_alias() {
+  // Bugbot Medium 回帰防止: 旧実装では typed 層の normalize_dispatcher_id が Pekko id を
+  // 常に `"default"` にマッピングしていたため、`register_or_update("pekko.actor.default-dispatcher",
+  // custom)` によるユーザー上書きを typed 経路が bypass していた。本テストは kernel alias chain
+  // (alias は register_or_update 実行時に wipe される) を typed facade が尊重することを確認する。
+  use alloc::boxed::Box;
+  use core::time::Duration;
+
+  use fraktor_utils_core_rs::core::sync::ArcShared;
+
+  use crate::core::kernel::{
+    dispatch::dispatcher::{
+      DefaultDispatcherConfigurator, DispatcherConfig, ExecuteError, Executor, ExecutorShared,
+      MessageDispatcherConfigurator, TrampolineState,
+    },
+    system::ActorSystem,
+  };
+
+  struct NoopExecutor;
+  impl Executor for NoopExecutor {
+    fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
+      Ok(())
+    }
+
+    fn shutdown(&mut self) {}
+  }
+
+  // custom configurator を Pekko id の entry として register_or_update 経由で登録する。
+  // 既存の `ensure_default_inline` が登録した alias は register_or_update の wipe により除去される。
+  let system = ActorSystem::new_empty_with(|config| {
+    let custom_config =
+      DispatcherConfig::with_defaults("custom-typed-dispatcher").with_shutdown_timeout(Duration::from_secs(2));
+    let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
+    let custom: ArcShared<Box<dyn MessageDispatcherConfigurator>> =
+      ArcShared::new(Box::new(DefaultDispatcherConfigurator::new(&custom_config, executor)));
+    config.with_dispatcher_configurator("pekko.actor.default-dispatcher", custom)
+  });
+
+  let dispatchers = Dispatchers::new(system.state());
+  let selector = DispatcherSelector::from_config(Dispatchers::DEFAULT_DISPATCHER_ID);
+  let resolved = dispatchers.lookup(&selector).expect("resolve via typed facade");
+  assert_eq!(
+    resolved.id(),
+    "custom-typed-dispatcher",
+    "typed facade must honour kernel alias / entry resolution; user override must not be shadowed"
+  );
 }
 
 #[test]

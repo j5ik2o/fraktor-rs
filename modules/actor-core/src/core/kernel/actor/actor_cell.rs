@@ -245,9 +245,11 @@ impl ActorCell {
     }
 
     let dispatcher_id = props.dispatcher_id().unwrap_or(DEFAULT_DISPATCHER_ID);
-    system
-      .canonical_dispatcher_id(dispatcher_id)
-      .map_err(|_| SpawnError::invalid_props(alloc::format!("dispatcher `{dispatcher_id}` is not registered")))
+    system.canonical_dispatcher_id(dispatcher_id).map_err(|error| {
+      // alias chain 由来のエラー (AliasChainTooDeep / Unknown) を SpawnError に畳み込む際、
+      // 元の DispatchersError の Display を含めて設定ミスの診断を容易にする。
+      SpawnError::invalid_props(alloc::format!("dispatcher `{dispatcher_id}`: {error}"))
+    })
   }
 
   /// Returns the pid associated with the cell.

@@ -24,9 +24,12 @@ pub enum DispatchersError {
   /// The identifier is registered as both an alias and an entry.
   ///
   /// fraktor-rs stores aliases and entries in separate maps; registering the
-  /// same identifier in both would make `resolve` ambiguous, so both
-  /// `register` / `register_or_update` and `register_alias` reject the
-  /// conflict at registration time.
+  /// same identifier in both would make `resolve` ambiguous. The strict
+  /// `register` and `register_alias` APIs reject the conflict with this
+  /// variant. `register_or_update`, on the other hand, follows last-writer-
+  /// wins semantics and silently removes any pre-existing alias for the same
+  /// id before inserting the entry (so the builder-style
+  /// `ActorSystemConfig::with_dispatcher_configurator` remains infallible).
   AliasConflictsWithEntry(String),
 }
 
