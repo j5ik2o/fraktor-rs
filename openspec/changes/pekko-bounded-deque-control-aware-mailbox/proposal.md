@@ -43,15 +43,15 @@ fraktor-rs 現状 (`modules/actor-core/src/core/kernel/dispatch/mailbox/`):
   - `bounded_control_aware_message_queue.rs` (+ `bounded_control_aware_message_queue/tests.rs`)
 - `modules/actor-core/src/core/kernel/dispatch/mailbox.rs` に新 mod 登録 4 件
 - `modules/actor-core/src/core/kernel/dispatch/mailbox/mailboxes.rs`: `deque_mailbox_type_from_policy` / control-aware 分岐の書換え
-- `modules/actor-core/src/core/kernel/actor/props/mailbox_config.rs` / `mailbox_config_error.rs`: `BoundedWithDeque` validation の撤去
-- `modules/actor-core/src/core/kernel/actor/props/mailbox_config/tests.rs`: 既存 `BoundedWithDeque` 期待テストの撤去 / 差替え
-- 関連 `mailboxes/tests.rs` / `base/tests.rs`: 新 variant の組合せカバー追加
+- `modules/actor-core/src/core/kernel/actor/props/mailbox_config.rs` / `mailbox_config_error.rs`: `BoundedWithDeque` + `ControlAwareRequiresUnboundedPolicy` validation の撤去
+- `modules/actor-core/src/core/kernel/actor/props/mailbox_config/tests.rs`: 既存 2 variant 期待テスト (`BoundedWithDeque` / `ControlAwareRequiresUnboundedPolicy`) の差替え
+- 関連 `mailboxes/tests.rs` / `actor/props/base/tests.rs` / `typed/props/tests.rs`: 新 variant の組合せカバー追加と既存 assertion 反転
 
 **影響を受ける API 契約**:
 - **BREAKING**: `MailboxConfigError::BoundedWithDeque` variant 削除 (9 参照 / 6 ファイル)。public enum variant なので再 export している下流も影響。fraktor-rs 内部では `validate()` の戻り値型と数箇所のテストのみ影響を受ける。
 - **BREAKING**: `MailboxConfigError::ControlAwareRequiresUnboundedPolicy` variant 削除 (5 参照 / 3 ファイル)。
 - `MailboxConfig::validate()` の成功範囲拡張: 従来 `bounded + deque` / `bounded + control_aware` は `Err` を返していたが、本 change 以降は `Ok(())` を返し、`create_message_queue_from_config` が対応する新 Bounded 型を返す。
-- `create_message_queue_from_config`: control-aware + bounded 指定が従来 validate で fail-fast していたが、仮に validate を経由せず呼ばれた場合は silently unbounded fallback していた。本 change 以降は validate 成功 + `BoundedControlAwareMessageQueue` 生成の整合パスに統一 (behavior fix)。
+- `create_message_queue_from_config`: 従来 validate で fail-fast されていた control-aware + bounded 組合せが、本 change 以降は validate 成功 + `BoundedControlAwareMessageQueue` 生成として通る (behavior fix)。
 
 **影響を受けないもの**:
 - `MessageQueue` / `DequeMessageQueue` trait 定義
@@ -65,7 +65,7 @@ fraktor-rs 現状 (`modules/actor-core/src/core/kernel/dispatch/mailbox/`):
   - `BoundedDequeMessageQueue`: 最低 5 件 (enqueue/dequeue, front insertion, DropNewest 容量超過, DropOldest 容量超過, Grow 容量超過)
   - `BoundedControlAwareMessageQueue`: 最低 5 件 (control priority, normal priority, DropNewest, DropOldest, Grow)
 - `mailboxes.rs` dispatch 分岐の回帰テスト 2 件 (bounded + deque / bounded + control_aware)
-- `mailbox_config/tests.rs` の `BoundedWithDeque` 期待テスト削除 / `Ok(())` 期待に差替え
+- `mailbox_config/tests.rs` の `BoundedWithDeque` / `ControlAwareRequiresUnboundedPolicy` 期待テスト 2 件を `Ok(())` 期待に rename + 反転
 - 既存全テストが pass することを regression 確認
 
 **gap-analysis**:
