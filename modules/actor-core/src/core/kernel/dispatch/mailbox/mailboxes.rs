@@ -8,7 +8,8 @@ use hashbrown::HashMap;
 use crate::core::kernel::{
   actor::props::{MailboxConfig, MailboxConfigError},
   dispatch::mailbox::{
-    MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType,
+    MailboxRegistryError, bounded_control_aware_mailbox_type::BoundedControlAwareMailboxType,
+    bounded_deque_mailbox_type::BoundedDequeMailboxType, bounded_mailbox_type::BoundedMailboxType,
     bounded_priority_mailbox_type::BoundedPriorityMailboxType,
     bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType, capacity::MailboxCapacity,
     mailbox_type::MailboxType, message_priority_generator::MessagePriorityGenerator, message_queue::MessageQueue,
@@ -51,11 +52,10 @@ pub(crate) fn create_message_queue_from_config(
     return Ok(priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
   }
   if config.requirement().needs_control_aware() {
-    let mailbox_type: Box<dyn MailboxType> = Box::new(UnboundedControlAwareMailboxType::new());
-    return Ok(mailbox_type.create());
+    return Ok(control_aware_mailbox_type_from_policy(config.policy()).create());
   }
   if config.requirement().needs_deque() {
-    return Ok(deque_mailbox_type_from_policy(config.policy())?.create());
+    return Ok(deque_mailbox_type_from_policy(config.policy()).create());
   }
   Ok(create_message_queue_from_policy(config.policy()))
 }
@@ -84,10 +84,19 @@ fn stable_priority_mailbox_type_from_config(
   }
 }
 
-fn deque_mailbox_type_from_policy(policy: MailboxPolicy) -> Result<Box<dyn MailboxType>, MailboxConfigError> {
+fn deque_mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn MailboxType> {
   match policy.capacity() {
-    | MailboxCapacity::Bounded { .. } => Err(MailboxConfigError::BoundedWithDeque),
-    | MailboxCapacity::Unbounded => Ok(Box::new(UnboundedDequeMailboxType::new())),
+    | MailboxCapacity::Bounded { capacity } => Box::new(BoundedDequeMailboxType::new(capacity, policy.overflow())),
+    | MailboxCapacity::Unbounded => Box::new(UnboundedDequeMailboxType::new()),
+  }
+}
+
+fn control_aware_mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn MailboxType> {
+  match policy.capacity() {
+    | MailboxCapacity::Bounded { capacity } => {
+      Box::new(BoundedControlAwareMailboxType::new(capacity, policy.overflow()))
+    },
+    | MailboxCapacity::Unbounded => Box::new(UnboundedControlAwareMailboxType::new()),
   }
 }
 

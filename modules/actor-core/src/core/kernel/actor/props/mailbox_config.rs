@@ -122,30 +122,20 @@ impl MailboxConfig {
   /// Returns [`MailboxConfigError::StablePriorityWithoutGenerator`] when
   /// `stable_priority` is enabled but no priority generator has been attached.
   ///
-  /// Returns [`MailboxConfigError::ControlAwareRequiresUnboundedPolicy`] when
-  /// `needs_control_aware()` is set but the policy is bounded.
-  ///
   /// Returns [`MailboxConfigError::PriorityWithControlAware`] when both a
   /// priority generator and control-aware semantics are requested simultaneously.
   ///
-  /// Returns [`MailboxConfigError::BoundedWithDeque`] when the policy is bounded
-  /// and the requirement needs deque semantics (not supported).
+  /// Returns [`MailboxConfigError::PriorityWithDeque`] when both a priority
+  /// generator and deque semantics are requested simultaneously.
+  ///
+  /// Returns [`MailboxConfigError::DequeWithControlAware`] when both control-aware
+  /// and deque semantics are requested simultaneously.
   pub fn validate(&self) -> Result<(), MailboxConfigError> {
     if self.stable_priority && self.priority_generator.is_none() {
       return Err(MailboxConfigError::StablePriorityWithoutGenerator);
     }
-    if self.requirement.needs_control_aware()
-      && matches!(self.policy.capacity(), crate::core::kernel::dispatch::mailbox::MailboxCapacity::Bounded { .. })
-    {
-      return Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy);
-    }
     if self.priority_generator.is_some() && self.requirement.needs_control_aware() {
       return Err(MailboxConfigError::PriorityWithControlAware);
-    }
-    if self.requirement.needs_deque()
-      && matches!(self.policy.capacity(), crate::core::kernel::dispatch::mailbox::MailboxCapacity::Bounded { .. })
-    {
-      return Err(MailboxConfigError::BoundedWithDeque);
     }
     if self.priority_generator.is_some() && self.requirement.needs_deque() {
       return Err(MailboxConfigError::PriorityWithDeque);
