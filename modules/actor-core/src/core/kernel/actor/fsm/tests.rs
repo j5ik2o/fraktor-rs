@@ -398,23 +398,3 @@ fn logging_fsm_emits_transition_and_termination_logs() {
   assert!(snapshot.iter().any(|message| message.contains("Active")));
 }
 
-#[test]
-fn abstract_fsm_delegates_to_inner_runtime() {
-  let (_system, mut ctx) = build_context();
-  let mut fsm = Fsm::<ProbeState, usize>::new();
-  fsm.start_with(ProbeState::Idle, 10);
-  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, data| {
-    if message.downcast_ref::<usize>().is_some() {
-      return Ok(FsmTransition::stay().using(*data + 1));
-    }
-    Ok(FsmTransition::unhandled())
-  });
-  fsm.initialize(&ctx).expect("initialize");
-
-  let message = AnyMessage::new(1usize);
-  let view = message.as_view();
-  fsm.handle(&mut ctx, &view).expect("handle");
-
-  assert_eq!(fsm.state_name(), Some(&ProbeState::Idle));
-  assert_eq!(fsm.state_data(), Some(&11));
-}

@@ -600,9 +600,8 @@ where
   /// Marks this flow with an async boundary attribute.
   ///
   /// The materializer uses this attribute to split the graph into
-  /// independently executed islands.  Unlike the legacy
-  /// `async_boundary()` method, this does **not** insert a buffer
-  /// stage; the boundary is resolved at materialization time.
+  /// independently executed islands. The boundary is resolved at
+  /// materialization time and does not insert a buffer stage.
   ///
   /// Mirrors Pekko's `Graph.async`.
   #[must_use]
