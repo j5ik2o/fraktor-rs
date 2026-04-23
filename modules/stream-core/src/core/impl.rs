@@ -2,7 +2,6 @@
 
 mod cancellation_cause;
 mod cancellation_kind;
-mod decider;
 mod default_operator_catalog;
 mod flow_fragment;
 mod framing_error_kind;
