@@ -33,7 +33,6 @@ impl IslandId {
 
 /// A single island: a subset of stages from the original plan that
 /// execute together in one interpreter / mailbox.
-#[allow(dead_code)]
 pub(crate) struct SingleIslandPlan {
   id:             IslandId,
   stages:         Vec<StageDefinition>,
@@ -44,7 +43,7 @@ pub(crate) struct SingleIslandPlan {
   dispatcher:     Option<String>,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Several accessors are exercised only by tests; keeping them as part of the internal API.
 impl SingleIslandPlan {
   /// Returns the island identifier.
   #[must_use]
@@ -149,7 +148,6 @@ impl SingleIslandPlan {
 }
 
 /// An edge that crosses an island boundary.
-#[allow(dead_code)]
 pub(crate) struct IslandCrossing {
   upstream_island:   IslandId,
   downstream_island: IslandId,
@@ -161,6 +159,7 @@ pub(crate) struct IslandCrossing {
 }
 
 #[allow(clippy::wrong_self_convention, dead_code)]
+// `mat` / `element_type` accessors are exercised only by tests.
 impl IslandCrossing {
   /// Returns the upstream island.
   #[must_use]
@@ -214,7 +213,7 @@ impl IslandPlan {
 
   /// Returns the list of cross-island edges.
   #[must_use]
-  #[allow(dead_code)]
+  #[allow(dead_code)] // Exercised only by tests.
   pub(crate) fn crossings(&self) -> &[IslandCrossing] {
     &self.crossings
   }

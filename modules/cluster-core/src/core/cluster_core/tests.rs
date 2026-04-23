@@ -234,11 +234,6 @@ impl StubIdentityLookup {
     names.sort();
     guard.push(IdentityCall { mode, kinds: names });
   }
-
-  #[allow(dead_code)]
-  fn calls(&self) -> Vec<IdentityCall> {
-    self.calls.lock().clone()
-  }
 }
 
 impl IdentityLookup for StubIdentityLookup {
@@ -277,21 +272,6 @@ impl StubGossiper {
 
   fn failing_start() -> Self {
     Self { fail_start: true, ..Self::new() }
-  }
-
-  #[allow(dead_code)]
-  fn failing_stop() -> Self {
-    Self { fail_stop: true, ..Self::new() }
-  }
-
-  #[allow(dead_code)]
-  fn started(&self) -> bool {
-    *self.started.lock()
-  }
-
-  #[allow(dead_code)]
-  fn stopped(&self) -> bool {
-    *self.stopped.lock()
   }
 }
 
@@ -339,21 +319,6 @@ impl StubPubSub {
 
   fn failing_start() -> Self {
     Self { fail_start: true, ..Self::new() }
-  }
-
-  #[allow(dead_code)]
-  fn failing_stop() -> Self {
-    Self { fail_stop: true, ..Self::new() }
-  }
-
-  #[allow(dead_code)]
-  fn started(&self) -> bool {
-    *self.started.lock()
-  }
-
-  #[allow(dead_code)]
-  fn stopped(&self) -> bool {
-    *self.stopped.lock()
   }
 }
 

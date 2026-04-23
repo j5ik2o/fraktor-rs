@@ -24,18 +24,6 @@ pub(crate) trait SyncQueueBackendInternal<T> {
   /// Returns the maximum number of elements that can be stored without growing.
   fn capacity(&self) -> usize;
 
-  /// Indicates whether the queue is empty.
-  #[allow(dead_code)]
-  fn is_empty(&self) -> bool {
-    self.len() == 0
-  }
-
-  /// Indicates whether the queue is full.
-  #[allow(dead_code)]
-  fn is_full(&self) -> bool {
-    self.len() == self.capacity()
-  }
-
   /// Returns the overflow policy currently configured for the backend.
   #[allow(dead_code)]
   fn overflow_policy(&self) -> OverflowPolicy;
