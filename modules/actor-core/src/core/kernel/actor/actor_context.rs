@@ -361,7 +361,18 @@ impl ActorContext<'_> {
         }
         Ok(())
       },
-      | Err(error) => Err(WatchRegistrationError::send(error)),
+      | Err(error) => {
+        // Bugbot r3127781491: send が非 Closed で失敗した場合、直前の
+        // `register_watching` で追加した (target, User) entry が watching に
+        // 残ると、次回 `watch(target)` が `WatchRegistrationKind::Plain` を
+        // 観測して `Ok(())` を返してしまい、Watch system message が再送され
+        // ずに target は watched を認識しない。retry 可能性を保つため送信
+        // 失敗時は watching 側も巻き戻す。
+        if let Some(cell) = state.cell(&self.pid) {
+          cell.unregister_watching(target.pid());
+        }
+        Err(WatchRegistrationError::send(error))
+      },
     }
   }
 

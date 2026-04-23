@@ -669,6 +669,40 @@ fn unwatch_then_watch_with_succeeds() {
 }
 
 #[test]
+fn watch_rollback_removes_watching_entry_to_allow_retry() {
+  // Bugbot r3127781491 回帰ガード:
+  // `watch` が send 失敗 (非 Closed) した際に `register_watching` で追加した
+  // (target, User) を巻き戻さないと、retry 時に `WatchRegistrationKind::Plain`
+  // 分岐で `Ok(())` が返り、Watch system message が再送されない。
+  //
+  // 実コードで非 Closed の送信失敗を直接再現するのは難しいため、
+  // `unregister_watching` による rollback の invariant を検証する:
+  // (a) register_watching 後に unregister_watching を呼ぶと stale 状態が消える
+  // (b) 結果として次回 `watch` は `WatchRegistrationKind::None` 分岐で
+  //     通常フロー (send + watchers 登録) に進む
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let watcher_cell = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  // send 失敗の途中状態をシミュレート: register_watching は既に完了している。
+  watcher_cell.register_watching(target_pid);
+  // rollback を実行 (watch 内部の新 unregister_watching 呼び出しに対応)。
+  watcher_cell.unregister_watching(target_pid);
+
+  // rollback 完了後: retry は通常の新規登録として成功し、target 側 watchers に登録される。
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(context.watch(&target_ref).is_ok());
+  assert!(
+    target.watchers_snapshot().contains(&watcher_pid),
+    "rollback 後の retry は Watch system message を送信し、target の watchers に登録すべき"
+  );
+}
+
+#[test]
 fn watch_with_rollback_removes_both_watching_and_watch_with_entry() {
   // Bugbot r3127753262 回帰ガード:
   // `watch_with` の rollback は `watch_with_messages` だけでなく `watching` の
