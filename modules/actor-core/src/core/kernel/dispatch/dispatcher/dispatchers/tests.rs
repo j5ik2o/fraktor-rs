@@ -56,17 +56,17 @@ fn unknown_resolve_returns_error() {
 }
 
 #[test]
-fn pekko_compat_id_normalises_to_default() {
+fn pekko_default_dispatcher_id_resolves_via_alias_registered_by_ensure_default() {
   let mut dispatchers = Dispatchers::new();
-  dispatchers.register(DEFAULT_DISPATCHER_ID, make_default_configurator("default")).expect("register default");
+  dispatchers.ensure_default(|| make_default_configurator("default"));
   let resolved = dispatchers.resolve("pekko.actor.default-dispatcher").expect("resolve compat id");
   assert_eq!(resolved.id(), "default");
 }
 
 #[test]
-fn pekko_internal_dispatcher_id_normalises_to_default() {
+fn pekko_internal_dispatcher_id_resolves_via_alias_registered_by_ensure_default() {
   let mut dispatchers = Dispatchers::new();
-  dispatchers.register(DEFAULT_DISPATCHER_ID, make_default_configurator("default")).expect("register default");
+  dispatchers.ensure_default(|| make_default_configurator("default"));
   let resolved = dispatchers.resolve("pekko.actor.internal-dispatcher").expect("resolve internal");
   assert_eq!(resolved.id(), "default");
 }
@@ -86,7 +86,7 @@ fn ensure_default_is_idempotent_when_present() {
   let mut dispatchers = Dispatchers::new();
   dispatchers.register(DEFAULT_DISPATCHER_ID, make_default_configurator("first")).expect("register");
   dispatchers.ensure_default(|| make_default_configurator("second"));
-  // The original configurator stays.
+  // 既存 configurator はそのまま維持される (ensure_default は idempotent)。
   let resolved = dispatchers.resolve(DEFAULT_DISPATCHER_ID).expect("resolve default");
   assert_eq!(resolved.id(), "first");
 }
@@ -156,8 +156,8 @@ fn resolve_call_count_increments_even_on_unknown_id() {
   assert_eq!(dispatchers.resolve_call_count(), 0);
   let _ = dispatchers.resolve("missing");
   let _ = dispatchers.resolve("missing");
-  // Failed lookups still bump the counter so the diagnostic captures the
-  // full call traffic into the registry, not just successful resolutions.
+  // 失敗 lookup も counter をインクリメントする (成功分だけでなく registry への
+  // 全 call traffic を diagnostic に捕捉するため)。
   assert_eq!(dispatchers.resolve_call_count(), 2);
 }
 
@@ -168,8 +168,224 @@ fn resolve_call_count_is_shared_across_clones() {
   let cloned = dispatchers.clone();
   let _ = dispatchers.resolve("default").expect("resolve from original");
   let _ = cloned.resolve("default").expect("resolve from clone");
-  // Clones share the same counter so the diagnostic accurately reflects the
-  // total call traffic regardless of which Dispatchers handle observed it.
+  // clone 同士は同じ counter を共有するため、どの Dispatchers handle が観測した
+  // 呼び出しであっても diagnostic には合算される。
   assert_eq!(dispatchers.resolve_call_count(), 2);
   assert_eq!(cloned.resolve_call_count(), 2);
+}
+
+// --- Alias chain tests (change `pekko-dispatcher-alias-chain`, spec Scenarios 1-9) ---
+
+#[test]
+fn single_hop_alias_resolves_to_target_entry() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("default", make_default_configurator("default")).expect("register default");
+  dispatchers.register_alias("app.work", "default").expect("register alias");
+
+  let before = dispatchers.resolve_call_count();
+  let resolved = dispatchers.resolve("app.work").expect("resolve alias");
+  assert_eq!(resolved.id(), "default");
+  assert_eq!(dispatchers.resolve_call_count(), before + 1, "resolve() must bump the counter exactly once per call");
+}
+
+#[test]
+fn multi_hop_alias_chain_resolves_to_terminal_entry() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("A", make_default_configurator("A")).expect("register A");
+  dispatchers.register_alias("B", "A").expect("alias B->A");
+  dispatchers.register_alias("C", "B").expect("alias C->B");
+  dispatchers.register_alias("D", "C").expect("alias D->C");
+
+  let resolved = dispatchers.resolve("D").expect("resolve D");
+  assert_eq!(resolved.id(), "A");
+}
+
+#[test]
+fn alias_chain_at_max_depth_resolves_to_terminal_entry() {
+  // off-by-one regression 防止: MAX_ALIAS_DEPTH 段ちょうどの alias chain は成功で解決される
+  // べきであり、depth-exceeded で拒否されてはならない。本テストは「0〜MAX_ALIAS_DEPTH 段を
+  // 辿る」契約 (`spec` Requirement) を境界値で固定する。
+  let mut dispatchers = Dispatchers::new();
+  let terminal = alloc::format!("alias_{}", Dispatchers::MAX_ALIAS_DEPTH);
+  dispatchers.register(&terminal, make_default_configurator(&terminal)).expect("register terminal entry");
+  for step in 0..Dispatchers::MAX_ALIAS_DEPTH {
+    let alias = alloc::format!("alias_{step}");
+    let target = alloc::format!("alias_{}", step + 1);
+    dispatchers.register_alias(alias, target).expect("alias chain step");
+  }
+
+  let resolved = dispatchers.resolve("alias_0").expect("resolve at MAX_ALIAS_DEPTH must succeed");
+  assert_eq!(resolved.id(), terminal);
+}
+
+#[test]
+fn alias_chain_exceeding_max_depth_returns_alias_chain_too_deep() {
+  let mut dispatchers = Dispatchers::new();
+  // (MAX_ALIAS_DEPTH + 1) 段の線形 alias chain を構築する。末尾 id は entry として
+  // 登録しないため、先頭を resolve すると Unknown ではなく depth-exceeded が返ること
+  // を確認する。
+  for step in 0..=Dispatchers::MAX_ALIAS_DEPTH {
+    let alias = alloc::format!("alias_{step}");
+    let target = alloc::format!("alias_{}", step + 1);
+    dispatchers.register_alias(alias, target).expect("alias chain step");
+  }
+
+  match dispatchers.resolve("alias_0") {
+    | Ok(_) => panic!("expected AliasChainTooDeep"),
+    | Err(DispatchersError::AliasChainTooDeep { start, depth }) => {
+      assert_eq!(start, "alias_0");
+      assert_eq!(depth, Dispatchers::MAX_ALIAS_DEPTH);
+    },
+    | Err(other) => panic!("expected AliasChainTooDeep, got {other:?}"),
+  }
+}
+
+#[test]
+fn alias_cycle_is_detected_as_alias_chain_too_deep() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("A", "B").expect("alias A->B");
+  dispatchers.register_alias("B", "A").expect("alias B->A");
+
+  match dispatchers.resolve("A") {
+    | Ok(_) => panic!("expected AliasChainTooDeep for cycle"),
+    | Err(DispatchersError::AliasChainTooDeep { start, depth }) => {
+      assert_eq!(start, "A");
+      assert_eq!(depth, Dispatchers::MAX_ALIAS_DEPTH);
+    },
+    | Err(other) => panic!("expected AliasChainTooDeep for cycle, got {other:?}"),
+  }
+}
+
+#[test]
+fn alias_to_missing_target_surfaces_unknown_on_terminal_id() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("work", "missing-dispatcher").expect("register alias");
+
+  match dispatchers.resolve("work") {
+    | Ok(_) => panic!("expected Unknown(missing-dispatcher)"),
+    | Err(DispatchersError::Unknown(id)) => assert_eq!(id, "missing-dispatcher"),
+    | Err(other) => panic!("expected Unknown(missing-dispatcher), got {other:?}"),
+  }
+}
+
+#[test]
+fn register_rejects_id_already_registered_as_alias() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("default", make_default_configurator("default")).expect("register default");
+  dispatchers.register_alias("foo", "default").expect("register alias");
+
+  match dispatchers.register("foo", make_default_configurator("foo")) {
+    | Err(DispatchersError::AliasConflictsWithEntry(id)) => assert_eq!(id, "foo"),
+    | other => panic!("expected AliasConflictsWithEntry, got {other:?}"),
+  }
+
+  // 既存 alias エントリは保持され、引き続き `default` に解決される。
+  let resolved = dispatchers.resolve("foo").expect("resolve");
+  assert_eq!(resolved.id(), "default");
+}
+
+#[test]
+fn register_alias_rejects_id_already_registered_as_entry() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("foo", make_default_configurator("foo")).expect("register foo");
+
+  match dispatchers.register_alias("foo", "default") {
+    | Err(DispatchersError::AliasConflictsWithEntry(id)) => assert_eq!(id, "foo"),
+    | other => panic!("expected AliasConflictsWithEntry, got {other:?}"),
+  }
+
+  // 既存 entry は保持される。
+  let resolved = dispatchers.resolve("foo").expect("resolve foo");
+  assert_eq!(resolved.id(), "foo");
+}
+
+#[test]
+fn register_alias_rejects_duplicate_alias() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("foo", "default").expect("first alias");
+
+  match dispatchers.register_alias("foo", "other") {
+    | Err(DispatchersError::Duplicate(id)) => assert_eq!(id, "foo"),
+    | other => panic!("expected Duplicate, got {other:?}"),
+  }
+
+  // 既存 alias target は保持される。
+  assert_eq!(dispatchers.aliases.get("foo").map(String::as_str), Some("default"));
+}
+
+#[test]
+fn register_or_update_is_lenient_and_wipes_existing_alias() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.ensure_default(|| make_default_configurator("default"));
+  // Pekko alias が登録されていることを確認。
+  let via_alias = dispatchers.resolve("pekko.actor.default-dispatcher").expect("resolve via alias");
+  assert_eq!(via_alias.id(), "default");
+
+  // register_or_update (builder 経路) で alias を上書きして具体 entry にする。
+  // 戻り値は unit (infallible) であり、この呼び出しで alias は wipe される。
+  let custom = make_default_configurator("custom-pekko-default");
+  dispatchers.register_or_update("pekko.actor.default-dispatcher", custom);
+
+  let resolved = dispatchers.resolve("pekko.actor.default-dispatcher").expect("resolve after override");
+  assert_eq!(resolved.id(), "custom-pekko-default");
+
+  // 以前 alias が指していた target 側 (`default` entry) は変更されない。
+  let still_default = dispatchers.resolve("default").expect("resolve default");
+  assert_eq!(still_default.id(), "default");
+}
+
+#[test]
+fn canonical_id_returns_resolved_entry_id() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.ensure_default(|| make_default_configurator("default"));
+
+  let canonical = dispatchers.canonical_id("pekko.actor.default-dispatcher").expect("canonical");
+  assert_eq!(canonical, "default");
+
+  // canonical_id は resolve counter をインクリメントしない。
+  assert_eq!(dispatchers.resolve_call_count(), 0);
+}
+
+#[test]
+fn canonical_id_returns_unknown_when_terminal_is_missing() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("work", "missing").expect("register alias");
+
+  match dispatchers.canonical_id("work") {
+    | Err(DispatchersError::Unknown(id)) => assert_eq!(id, "missing"),
+    | other => panic!("expected Unknown, got {other:?}"),
+  }
+}
+
+#[test]
+fn ensure_default_wipes_preexisting_alias_for_default_id() {
+  // Bugbot の指摘シナリオを再現: 呼び出し側が先に `DEFAULT_DISPATCHER_ID` 宛ての alias を登録し、
+  // その後 `ensure_default` を呼ぶケース。alias を wipe しないと、`follow_alias_chain` が `aliases`
+  // を先に参照するため、新規 insert した entry が alias 経由で shadow されてしまう。
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias(DEFAULT_DISPATCHER_ID, "some-other-id").expect("pre-existing alias");
+
+  dispatchers.ensure_default(|| make_default_configurator("default"));
+
+  let resolved = dispatchers.resolve(DEFAULT_DISPATCHER_ID).expect("resolve default after wipe");
+  assert_eq!(resolved.id(), "default");
+  assert!(
+    !dispatchers.aliases.contains_key(DEFAULT_DISPATCHER_ID),
+    "alias for DEFAULT_DISPATCHER_ID must be wiped on ensure_default"
+  );
+}
+
+#[test]
+fn replace_default_inline_wipes_preexisting_alias_for_default_id() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias(DEFAULT_DISPATCHER_ID, "some-other-id").expect("pre-existing alias");
+
+  dispatchers.replace_default_inline();
+
+  let resolved = dispatchers.resolve(DEFAULT_DISPATCHER_ID).expect("resolve default after replace");
+  assert_eq!(resolved.id(), "default");
+  assert!(
+    !dispatchers.aliases.contains_key(DEFAULT_DISPATCHER_ID),
+    "alias for DEFAULT_DISPATCHER_ID must be wiped on replace_default_inline"
+  );
 }

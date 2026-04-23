@@ -45,7 +45,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::MessageDispatcherShared,
+    dispatcher::{DispatchersError, MessageDispatcherShared},
     mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
@@ -904,6 +904,18 @@ impl SystemStateShared {
   #[must_use]
   pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
     self.inner.with_read(|inner| inner.resolve_dispatcher(id))
+  }
+
+  /// Returns the canonical (fully-alias-resolved) identifier for `id`.
+  ///
+  /// Thin wrapper over [`SystemState::canonical_dispatcher_id`].
+  ///
+  /// # Errors
+  ///
+  /// Propagates [`DispatchersError`] from the registry (`AliasChainTooDeep`
+  /// or `Unknown`).
+  pub fn canonical_dispatcher_id(&self, id: &str) -> Result<String, DispatchersError> {
+    self.inner.with_read(|inner| inner.canonical_dispatcher_id(id))
   }
 
   /// Returns the cumulative number of `Dispatchers::resolve` invocations
