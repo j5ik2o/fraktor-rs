@@ -20,7 +20,7 @@ use crate::core::kernel::{
     setup::CircuitBreakerConfig,
   },
   dispatch::{
-    dispatcher::{Dispatchers, MessageDispatcherConfigurator},
+    dispatcher::{Dispatchers, MessageDispatcherFactory},
     mailbox::{MailboxClock, Mailboxes},
   },
   system::remote::RemotingConfig,
@@ -125,10 +125,10 @@ impl ActorSystemConfig {
   /// users override the entry by calling this method with a configurator
   /// that uses a real executor (Tokio, threaded, pinned, etc.).
   #[must_use]
-  pub fn with_dispatcher_configurator(
+  pub fn with_dispatcher_factory(
     mut self,
     id: impl Into<String>,
-    configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
+    configurator: ArcShared<Box<dyn MessageDispatcherFactory>>,
   ) -> Self {
     self.dispatchers.register_or_update(id, configurator);
     self

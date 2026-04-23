@@ -18,8 +18,8 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherConfig, ExecutorShared,
-      MessageDispatcherConfigurator, TrampolineState,
+      DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecutorShared, MessageDispatcherFactory,
+      TrampolineState,
     },
     mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   },
@@ -139,9 +139,9 @@ impl TokioBenchSystem {
       let config = ActorSystemConfig::new(TokioTickDriver::default());
       let settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
       let executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
-      let configurator: Box<dyn MessageDispatcherConfigurator> =
-        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
-      let config = config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
+      let configurator: Box<dyn MessageDispatcherFactory> =
+        Box::new(DefaultDispatcherFactory::new(&settings, executor));
+      let config = config.with_dispatcher_factory(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
       ActorSystem::create_with_config(props, config).expect("actor system")
     });
     Self { runtime, system }

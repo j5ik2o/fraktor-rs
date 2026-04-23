@@ -2,7 +2,7 @@
 //!
 //! `Dispatchers` is the new dispatcher registry introduced in the
 //! dispatcher-pekko-1n-redesign change. It stores configurators behind
-//! `ArcShared<Box<dyn MessageDispatcherConfigurator>>` so the entry can be
+//! `ArcShared<Box<dyn MessageDispatcherFactory>>` so the entry can be
 //! resolved without internal mutability.
 //!
 //! # Alias chain resolution
@@ -18,7 +18,7 @@
 //! # Call-frequency contract
 //!
 //! `Dispatchers::resolve` is intended for spawn / bootstrap paths only. Do not
-//! call it from message dispatch hot paths: `PinnedDispatcherConfigurator`
+//! call it from message dispatch hot paths: `PinnedDispatcherFactory`
 //! constructs a fresh OS thread per call, and unrestricted hot-path resolution
 //! would leak threads.
 
@@ -33,9 +33,9 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{
-  default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_config::DispatcherConfig,
+  default_dispatcher_factory::DefaultDispatcherFactory, dispatcher_config::DispatcherConfig,
   dispatchers_error::DispatchersError, executor_shared::ExecutorShared, inline_executor::InlineExecutor,
-  message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
+  message_dispatcher_factory::MessageDispatcherFactory, message_dispatcher_shared::MessageDispatcherShared,
   trampoline_state::TrampolineState,
 };
 
@@ -65,7 +65,7 @@ const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 
 /// Registry mapping dispatcher identifiers to configurators.
 pub struct Dispatchers {
-  entries:       HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>, RandomState>,
+  entries:       HashMap<String, ArcShared<Box<dyn MessageDispatcherFactory>>, RandomState>,
   /// Alias identifiers redirecting to another id (target may itself be an alias).
   ///
   /// Kept separate from `entries` so that `register` and `register_alias` can
@@ -126,7 +126,7 @@ impl Dispatchers {
   pub fn register(
     &mut self,
     id: impl Into<String>,
-    configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
+    configurator: ArcShared<Box<dyn MessageDispatcherFactory>>,
   ) -> Result<(), DispatchersError> {
     let id = id.into();
     if self.aliases.contains_key(&id) {
@@ -147,11 +147,11 @@ impl Dispatchers {
   /// existing alias with the same identifier is removed so the new entry
   /// takes precedence. This keeps the method infallible so it composes
   /// cleanly with builder-style configuration (e.g.
-  /// `ActorSystemConfig::with_dispatcher_configurator`).
+  /// `ActorSystemConfig::with_dispatcher_factory`).
   pub fn register_or_update(
     &mut self,
     id: impl Into<String>,
-    configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
+    configurator: ArcShared<Box<dyn MessageDispatcherFactory>>,
   ) {
     let id = id.into();
     self.aliases.remove(&id);
@@ -196,7 +196,7 @@ impl Dispatchers {
   /// **Call-frequency contract**: invoke from spawn / bootstrap paths only.
   /// Hot-path callers must cache the resolved [`MessageDispatcherShared`] (or
   /// the underlying dispatcher handle) instead of calling resolve repeatedly.
-  /// `PinnedDispatcherConfigurator` allocates a new OS thread on every call,
+  /// `PinnedDispatcherFactory` allocates a new OS thread on every call,
   /// so hot-path resolution leaks threads.
   ///
   /// Each invocation increments the diagnostic counter exposed by
@@ -268,11 +268,10 @@ impl Dispatchers {
     self.resolve_count.load(Ordering::Relaxed)
   }
 
-  fn build_default_inline_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+  fn build_default_inline_configurator() -> ArcShared<Box<dyn MessageDispatcherFactory>> {
     let settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
     let executor = ExecutorShared::new(Box::new(InlineExecutor::new()), TrampolineState::new());
-    let configurator: Box<dyn MessageDispatcherConfigurator> =
-      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));
     ArcShared::new(configurator)
   }
 
@@ -303,7 +302,7 @@ impl Dispatchers {
   /// exclusively, so the checks here are equivalent).
   fn register_alias_if_absent(
     aliases: &mut HashMap<String, String, RandomState>,
-    entries: &HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>, RandomState>,
+    entries: &HashMap<String, ArcShared<Box<dyn MessageDispatcherFactory>>, RandomState>,
     alias: &str,
     target: &'static str,
   ) {
@@ -325,7 +324,7 @@ impl Dispatchers {
   /// entry insertion (matching [`Self::register_or_update`] semantics) so
   /// the freshly inserted entry is reachable via `resolve` without being
   /// shadowed by a stale alias.
-  pub fn ensure_default(&mut self, factory: impl FnOnce() -> ArcShared<Box<dyn MessageDispatcherConfigurator>>) {
+  pub fn ensure_default(&mut self, factory: impl FnOnce() -> ArcShared<Box<dyn MessageDispatcherFactory>>) {
     if !self.entries.contains_key(DEFAULT_DISPATCHER_ID) {
       let configurator = factory();
       self.insert_entry_wiping_alias(DEFAULT_DISPATCHER_ID, configurator.clone());
@@ -337,13 +336,13 @@ impl Dispatchers {
   }
 
   /// Ensures the default dispatcher entry exists, populating it with an
-  /// [`InlineExecutor`]-backed [`DefaultDispatcherConfigurator`] when missing.
+  /// [`InlineExecutor`]-backed [`DefaultDispatcherFactory`] when missing.
   ///
   /// This mirrors the legacy `Dispatchers::ensure_default` shape and is the
   /// configuration installed by `ActorSystemConfig::default()` so that all
   /// in-process tests run on the new dispatcher tree without bringing in
   /// `tokio` or another runtime. Production users override the entry through
-  /// `ActorSystemConfig::with_dispatcher_configurator`.
+  /// `ActorSystemConfig::with_dispatcher_factory`.
   pub fn ensure_default_inline(&mut self) {
     self.ensure_default(Self::build_default_inline_configurator);
   }
@@ -378,7 +377,7 @@ impl Dispatchers {
   /// stay consistent with [`Self::register_or_update`] last-writer-wins
   /// semantics and a pre-existing alias cannot shadow the fresh entry via
   /// [`Self::follow_alias_chain`].
-  fn insert_entry_wiping_alias(&mut self, id: &str, configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>) {
+  fn insert_entry_wiping_alias(&mut self, id: &str, configurator: ArcShared<Box<dyn MessageDispatcherFactory>>) {
     self.aliases.remove(id);
     self.entries.insert(id.to_owned(), configurator);
   }

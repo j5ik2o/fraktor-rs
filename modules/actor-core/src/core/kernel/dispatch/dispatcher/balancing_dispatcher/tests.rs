@@ -143,7 +143,7 @@ fn sharing_mailbox_close_keeps_shared_queue_contents() {
 #[test]
 fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   // Phase 14.6: end-to-end load balancing check. Three actors are attached
-  // to the same `BalancingDispatcherConfigurator`, then 9 envelopes are
+  // to the same `BalancingDispatcherFactory`, then 9 envelopes are
   // dispatched through the first cell. Because all team members share the
   // same `SharedMessageQueue`, the inline executor drains the queue across
   // multiple actors instead of leaving everything on the receiver mailbox.
@@ -153,7 +153,7 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   use alloc::sync::Arc;
   use core::sync::atomic::{AtomicUsize, Ordering};
 
-  use crate::core::kernel::dispatch::dispatcher::{BalancingDispatcherConfigurator, MessageDispatcherConfigurator};
+  use crate::core::kernel::dispatch::dispatcher::{BalancingDispatcherFactory, MessageDispatcherFactory};
 
   struct InlineExec;
 
@@ -177,17 +177,17 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
     }
   }
 
-  let configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
+  let configurator: ArcShared<Box<dyn MessageDispatcherFactory>> = {
     let executor = ExecutorShared::new(Box::new(InlineExec), TrampolineState::new());
     let settings = DispatcherConfig::new("balancing-load", nz(8), None, Duration::from_secs(1));
     let shared_queue = SharedMessageQueue::new();
-    let inner: Box<dyn MessageDispatcherConfigurator> =
-      Box::new(BalancingDispatcherConfigurator::new(&settings, executor, shared_queue));
+    let inner: Box<dyn MessageDispatcherFactory> =
+      Box::new(BalancingDispatcherFactory::new(&settings, executor, shared_queue));
     ArcShared::new(inner)
   };
   let configurator_clone = configurator.clone();
   let system = ActorSystem::new_empty_with(move |config| {
-    config.with_dispatcher_configurator("balancing-load", configurator_clone.clone())
+    config.with_dispatcher_factory("balancing-load", configurator_clone.clone())
   });
   let state = system.state();
 

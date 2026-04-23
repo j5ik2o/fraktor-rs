@@ -1,9 +1,9 @@
 //! Dispatcher module aligned with Apache Pekko's `MessageDispatcher` model.
 
 mod balancing_dispatcher;
-mod balancing_dispatcher_configurator;
+mod balancing_dispatcher_factory;
 mod default_dispatcher;
-mod default_dispatcher_configurator;
+mod default_dispatcher_factory;
 mod dispatcher_config;
 mod dispatcher_core;
 mod dispatcher_sender;
@@ -16,18 +16,18 @@ mod executor_factory;
 mod executor_shared;
 mod inline_executor;
 mod message_dispatcher;
-mod message_dispatcher_configurator;
+mod message_dispatcher_factory;
 mod message_dispatcher_shared;
 mod pinned_dispatcher;
-mod pinned_dispatcher_configurator;
+mod pinned_dispatcher_factory;
 mod shared_message_queue;
 mod shutdown_schedule;
 mod trampoline_state;
 
 pub use balancing_dispatcher::BalancingDispatcher;
-pub use balancing_dispatcher_configurator::BalancingDispatcherConfigurator;
+pub use balancing_dispatcher_factory::BalancingDispatcherFactory;
 pub use default_dispatcher::DefaultDispatcher;
-pub use default_dispatcher_configurator::DefaultDispatcherConfigurator;
+pub use default_dispatcher_factory::DefaultDispatcherFactory;
 pub use dispatcher_config::DispatcherConfig;
 pub use dispatcher_core::DispatcherCore;
 pub use dispatcher_sender::DispatcherSender;
@@ -39,10 +39,10 @@ pub use executor_factory::ExecutorFactory;
 pub use executor_shared::ExecutorShared;
 pub use inline_executor::InlineExecutor;
 pub use message_dispatcher::MessageDispatcher;
-pub use message_dispatcher_configurator::MessageDispatcherConfigurator;
+pub use message_dispatcher_factory::MessageDispatcherFactory;
 pub use message_dispatcher_shared::MessageDispatcherShared;
 pub use pinned_dispatcher::PinnedDispatcher;
-pub use pinned_dispatcher_configurator::PinnedDispatcherConfigurator;
+pub use pinned_dispatcher_factory::PinnedDispatcherFactory;
 pub use shared_message_queue::SharedMessageQueue;
 pub use shutdown_schedule::ShutdownSchedule;
 pub use trampoline_state::TrampolineState;

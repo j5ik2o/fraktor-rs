@@ -29,7 +29,7 @@ pub enum DispatchersError {
   /// variant. `register_or_update`, on the other hand, follows last-writer-
   /// wins semantics and silently removes any pre-existing alias for the same
   /// id before inserting the entry (so the builder-style
-  /// `ActorSystemConfig::with_dispatcher_configurator` remains infallible).
+  /// `ActorSystemConfig::with_dispatcher_factory` remains infallible).
   AliasConflictsWithEntry(String),
 }
 

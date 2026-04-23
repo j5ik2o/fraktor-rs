@@ -37,8 +37,8 @@ use crate::core::{
       spawn::SpawnError,
     },
     dispatch::dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherConfig, ExecuteError, Executor, ExecutorShared,
-      MessageDispatcherConfigurator, TrampolineState,
+      DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
+      TrampolineState,
     },
     event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
     system::{
@@ -180,11 +180,10 @@ impl Executor for NoopExecutor {
   fn shutdown(&mut self) {}
 }
 
-fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherFactory>> {
   let settings = DispatcherConfig::with_defaults("noop");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
-  let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+  let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));
   ArcShared::new(configurator)
 }
 
@@ -672,7 +671,7 @@ fn actor_system_terminate_when_already_terminated() {
 fn spawn_does_not_block_when_dispatcher_never_runs() {
   // Register NoopExecutor as "noop" dispatcher
   let system =
-    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_factory("noop", noop_dispatcher_configurator()));
   let log: ArcShared<SpinSyncMutex<Vec<&'static str>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
 
   let props = Props::from_fn({
@@ -689,7 +688,7 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 #[test]
 fn spawn_child_same_as_parent_inherits_dispatcher_selection_result() {
   let system =
-    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_factory("noop", noop_dispatcher_configurator()));
 
   let parent_props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let parent = system.spawn_with_parent(None, &parent_props).expect("parent spawn succeeds");
@@ -738,7 +737,7 @@ fn create_send_failure_triggers_rollback() {
 #[test]
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   let system =
-    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_factory("noop", noop_dispatcher_configurator()));
   let props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let result = system.spawn_with_parent(None, &props);
 

@@ -36,9 +36,9 @@ use fraktor_actor_core_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherConfig,
-    ExecuteError, Executor, ExecutorFactory, ExecutorShared, MessageDispatcherConfigurator,
-    PinnedDispatcherConfigurator, SharedMessageQueue, TrampolineState,
+    BalancingDispatcherFactory, DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecuteError,
+    Executor, ExecutorFactory, ExecutorShared, MessageDispatcherFactory, PinnedDispatcherFactory, SharedMessageQueue,
+    TrampolineState,
   },
   system::ActorSystem,
 };
@@ -112,18 +112,18 @@ fn build_system() -> ActorSystem {
   let config = ActorSystemConfig::new(TokioTickDriver::default());
   let default_settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
-  let default_configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
+  let default_configurator: Box<dyn MessageDispatcherFactory> =
+    Box::new(DefaultDispatcherFactory::new(&default_settings, default_executor));
 
   let balancing_settings = DispatcherConfig::with_defaults(BALANCING_DISPATCHER_ID);
   let balancing_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
-  let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(BalancingDispatcherConfigurator::new(&balancing_settings, balancing_executor, shared_queue));
+  let balancing_configurator: Box<dyn MessageDispatcherFactory> =
+    Box::new(BalancingDispatcherFactory::new(&balancing_settings, balancing_executor, shared_queue));
 
   let config = config
-    .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
-    .with_dispatcher_configurator(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
+    .with_dispatcher_factory(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
+    .with_dispatcher_factory(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
   let props = Props::from_fn(|| TeamGuardian);
   ActorSystem::create_with_config(&props, config).expect("actor system")
 }
@@ -194,22 +194,22 @@ async fn tokio_executor_factory_creates_executor_shared() {
 }
 
 #[test]
-fn pinned_dispatcher_configurator_creates_fresh_dispatcher_per_call() {
+fn pinned_dispatcher_factory_creates_fresh_dispatcher_per_call() {
   let config = DispatcherConfig::with_defaults("pinned-test");
   let executor_factory: ArcShared<Box<dyn ExecutorFactory>> =
     ArcShared::new(Box::new(PinnedExecutorFactory::new("pinned-test")));
-  let configurator = PinnedDispatcherConfigurator::new(config, executor_factory, "pinned-test");
+  let configurator = PinnedDispatcherFactory::new(config, executor_factory, "pinned-test");
 
   let _first = configurator.dispatcher();
   let _second = configurator.dispatcher();
 }
 
 #[test]
-fn balancing_dispatcher_configurator_creates_dispatcher_with_shared_queue() {
+fn balancing_dispatcher_factory_creates_dispatcher_with_shared_queue() {
   let settings = DispatcherConfig::with_defaults("balancing-test");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
-  let configurator = BalancingDispatcherConfigurator::new(&settings, executor, shared_queue);
+  let configurator = BalancingDispatcherFactory::new(&settings, executor, shared_queue);
 
   let _dispatcher = configurator.dispatcher();
 }
