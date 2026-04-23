@@ -9,17 +9,33 @@ use fraktor_cluster_adaptor_std_rs::std::{
 };
 use fraktor_cluster_core_rs::core::{
   ClusterEvent, ClusterExtensionConfig,
-  failure_detector::{
-    DefaultFailureDetectorRegistry,
-    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
-  },
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
     GossipOutbound, GossipTransport, Gossiper, MembershipCoordinator, MembershipCoordinatorConfig,
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
 };
+use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 use tokio::runtime::Handle;
+
+/// Test-only adapter that bridges the remote-core detector to the
+/// cluster-core `FailureDetector` trait.
+struct PhiAccrualAdapter(PhiAccrualFailureDetector);
+
+impl FailureDetector for PhiAccrualAdapter {
+  fn is_available(&self, now_ms: u64) -> bool {
+    self.0.is_available(now_ms)
+  }
+
+  fn is_monitoring(&self) -> bool {
+    self.0.is_monitoring()
+  }
+
+  fn heartbeat(&mut self, now_ms: u64) {
+    self.0.heartbeat(now_ms);
+  }
+}
 
 struct EventSink {
   events: Arc<Mutex<Vec<ClusterEvent>>>,
@@ -56,7 +72,7 @@ fn build_coordinator() -> MembershipCoordinatorShared {
   let table = MembershipTable::new(3);
   let threshold = config.phi_threshold;
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
+    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(threshold, 10, 1, 0, 10)))
   }));
   let cluster_config = ClusterExtensionConfig::new()
     .with_advertised_address("127.0.0.1:22110")
