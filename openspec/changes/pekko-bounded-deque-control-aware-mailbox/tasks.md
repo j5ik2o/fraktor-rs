@@ -10,79 +10,25 @@
 
 ## Phase 2: BoundedDeque variant の追加
 
-- [ ] 2.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_deque_message_queue.rs` を新規作成:
-  - `pub struct BoundedDequeMessageQueue { inner: SharedLock<VecDeque<Envelope>>, capacity: usize, overflow: MailboxOverflowStrategy }`
-  - `new(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy) -> Self`
-  - `impl MessageQueue`: `enqueue` / `dequeue` / `number_of_messages` / `clean_up` / `as_deque`
-  - `impl DequeMessageQueue`: `enqueue_first`
-  - enqueue は overflow 分岐 (Grow = push_back, DropNewest = len check + Rejected, DropOldest = pop_front evict + push_back + Evicted)
-  - **enqueue_first (Decision 2-c)**: Grow = push_front + Ok, DropNewest = len check + Err(SendError::Full), **DropOldest = len check + Err(SendError::Full)** (evict しない Reject 方式)
-- [ ] 2.2 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_deque_message_queue/tests.rs` を新規作成: spec の 6 シナリオに対応するテスト 6 件以上
-  - Grow で 3 件 enqueue 成功
-  - DropNewest の Rejected
-  - DropOldest の Evicted (front evict)
-  - enqueue_first の DropNewest で Err(SendError::Full)
-  - **enqueue_first の DropOldest も Err(SendError::Full) (既存 entry を evict しない)**
-  - clean_up で全 clear
-- [ ] 2.3 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_deque_mailbox_type.rs` を新規作成:
-  - `pub struct BoundedDequeMailboxType { capacity: NonZeroUsize, overflow: MailboxOverflowStrategy }`
-  - `new(capacity, overflow) -> Self`
-  - `impl MailboxType`: `create(&self) -> Box<dyn MessageQueue>`
-- [ ] 2.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_deque_mailbox_type/tests.rs` を新規作成: factory が BoundedDequeMessageQueue を生成することの最低限の検証 (既存 `bounded_mailbox_type/tests.rs` パターン)
+- [ ] 2.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_deque_message_queue.rs` を新規作成。実装は spec Requirement 1 (enqueue/dequeue/enqueue_first の overflow 契約) に従う。`UnboundedDequeMessageQueue` の内部構造を踏襲し、`BoundedMessageQueue` の overflow 分岐を混ぜる (design Decision 1, 2, 2-c)
+- [ ] 2.2 `bounded_deque_message_queue/tests.rs` を新規作成。spec Requirement 1 の 6 Scenario に 1:1 対応するテストを追加 (`UnboundedDequeMessageQueue::tests` と `BoundedMessageQueue::tests` のパターン混合)
+- [ ] 2.3 `bounded_deque_mailbox_type.rs` を新規作成 (既存 `BoundedMailboxType` と同パターン、MessageQueue 生成先だけ差し替え)
+- [ ] 2.4 `bounded_deque_mailbox_type/tests.rs` を新規作成 (既存 `bounded_mailbox_type/tests.rs` パターン: factory が正しい型を生成することの最低限検証)
 
 ## Phase 3: BoundedControlAware variant の追加
 
-- [ ] 3.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_control_aware_message_queue.rs` を新規作成:
-  - `pub struct BoundedControlAwareMessageQueue { inner: SharedLock<Inner>, capacity: usize, overflow: MailboxOverflowStrategy }` + `struct Inner { control_queue: VecDeque<Envelope>, normal_queue: VecDeque<Envelope> }`
-  - `new(capacity, overflow) -> Self`
-  - `impl MessageQueue`: `enqueue` / `dequeue` / `number_of_messages` / `clean_up`
-  - enqueue 内の容量判定: `control_queue.len() + normal_queue.len() >= capacity`
-  - overflow 分岐:
-    - Grow: 対応 queue に push_back、Accepted
-    - DropNewest: capacity 超過なら Rejected(envelope)
-    - DropOldest: normal_queue が空でないなら front を evict して対応 queue に push_back、Evicted(evicted); normal_queue が空なら control drop を避けて Rejected (Decision 3)
-  - dequeue: `control_queue.pop_front().or_else(|| normal_queue.pop_front())`
-- [ ] 3.2 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_control_aware_message_queue/tests.rs` を新規作成: spec の 5 シナリオに対応するテスト 5 件以上
-  - control 優先 dequeue
-  - DropOldest の normal 優先 evict
-  - DropOldest + normal 空 → control Reject
-  - DropNewest の Rejected
-  - Grow で capacity 超過受理
-- [ ] 3.3 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_control_aware_mailbox_type.rs` を新規作成:
-  - `pub struct BoundedControlAwareMailboxType { capacity, overflow }`
-  - `new(capacity, overflow) -> Self`
-  - `impl MailboxType`: `create`
-- [ ] 3.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_control_aware_mailbox_type/tests.rs` を新規作成
+- [ ] 3.1 `bounded_control_aware_message_queue.rs` を新規作成。実装は spec Requirement 2 (control 優先 dequeue + 合計 capacity 強制 + normal 優先 evict) に従う。`UnboundedControlAwareMessageQueue` の dual-queue 構造を踏襲し、合計 length による overflow 判定と `DropOldest` 時の normal-優先 evict / normal 空時の Reject を追加 (design Decision 1, 3)
+- [ ] 3.2 `bounded_control_aware_message_queue/tests.rs` を新規作成。spec Requirement 2 の 5 Scenario に 1:1 対応するテストを追加
+- [ ] 3.3 `bounded_control_aware_mailbox_type.rs` を新規作成 (`BoundedDequeMailboxType` と同パターン、生成先 MessageQueue のみ差し替え)
+- [ ] 3.4 `bounded_control_aware_mailbox_type/tests.rs` を新規作成 (最低限の factory 検証)
 
 ## Phase 4: mod 宣言と dispatch 分岐の更新
 
-- [ ] 4.1 `modules/actor-core/src/core/kernel/dispatch/mailbox.rs` に以下を追加 (alphabetical な位置に):
-  - `pub(crate) mod bounded_control_aware_mailbox_type;`
-  - `pub(crate) mod bounded_control_aware_message_queue;`
-  - `pub(crate) mod bounded_deque_mailbox_type;`
-  - `pub(crate) mod bounded_deque_message_queue;`
-- [ ] 4.2 `mailboxes.rs` の imports に `BoundedDequeMailboxType`, `BoundedControlAwareMailboxType` を追加
-- [ ] 4.3 `mailboxes.rs::deque_mailbox_type_from_policy` を書換:
-  ```rust
-  match policy.capacity() {
-    MailboxCapacity::Bounded { capacity } => Box::new(BoundedDequeMailboxType::new(capacity, policy.overflow())),
-    MailboxCapacity::Unbounded => Box::new(UnboundedDequeMailboxType::new()),
-  }
-  ```
-  戻り値を `Box<dyn MailboxType>` に変更し、`Result` / `MailboxConfigError` を返さなくする
-- [ ] 4.4 `mailboxes.rs::create_message_queue_from_config` の control-aware 分岐を書換:
-  ```rust
-  if config.requirement().needs_control_aware() {
-    let mailbox_type: Box<dyn MailboxType> = match config.policy().capacity() {
-      MailboxCapacity::Bounded { capacity } => {
-        Box::new(BoundedControlAwareMailboxType::new(capacity, config.policy().overflow()))
-      }
-      MailboxCapacity::Unbounded => Box::new(UnboundedControlAwareMailboxType::new()),
-    };
-    return Ok(mailbox_type.create());
-  }
-  ```
-- [ ] 4.5 `mailboxes.rs::create_message_queue_from_config` の deque 分岐 (`config.requirement().needs_deque()` 部分) で、`deque_mailbox_type_from_policy` が Result を返さなくなるのに追随して `?` を削除
+- [ ] 4.1 `mailbox.rs` に 4 新 mod (`bounded_deque_message_queue` / `bounded_deque_mailbox_type` / `bounded_control_aware_message_queue` / `bounded_control_aware_mailbox_type`) の宣言と `pub use` 再 export を追加。既存 `bounded_*` / `unbounded_*` mod と同じ 3 段パターン (`/// doc` + `mod ...;` + `pub use ...::Type;`) に揃える
+- [ ] 4.2 `mailboxes.rs` の imports に新 MailboxType 2 種を追加
+- [ ] 4.3 `mailboxes.rs::deque_mailbox_type_from_policy` を書換: 戻り値型を `Box<dyn MailboxType>` に変更 (Result を剥がす)、`Bounded` 分岐で `BoundedDequeMailboxType` を返す
+- [ ] 4.4 `mailboxes.rs::create_message_queue_from_config` の control-aware 分岐を capacity 分岐へ拡張 (priority 分岐 `priority_mailbox_type_from_config` と同じ構造)
+- [ ] 4.5 `create_message_queue_from_config` 内の `deque_mailbox_type_from_policy` 呼び出し箇所で、戻り値型変更に追随して `?` を除去
 - [ ] 4.6 `mailboxes/tests.rs` L78 の `create_message_queue_rejects_bounded_with_deque` を `create_message_queue_creates_bounded_deque_for_bounded_plus_deque` 等に rename し、assertion を `Ok(BoundedDequeMessageQueue)` 相当の検証 (例: `number_of_messages == 0` 直後の enqueue が DropNewest で期待通り挙動) に差替え
 - [ ] 4.7 新規 dispatch 回帰テストを `mailboxes/tests.rs` に追加: `create_message_queue_creates_bounded_control_aware_for_bounded_plus_control_aware` — bounded + control_aware config で `BoundedControlAwareMessageQueue` が生成され、capacity を超えた enqueue が Rejected/Evicted として挙動することを確認
 

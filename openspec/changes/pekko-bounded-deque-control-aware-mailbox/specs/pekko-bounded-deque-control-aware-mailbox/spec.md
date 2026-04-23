@@ -6,7 +6,7 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_dequ
 
 - [`MessageQueue`](crate::core::kernel::dispatch::mailbox::message_queue::MessageQueue) trait を実装し、`enqueue` / `dequeue` / `number_of_messages` / `clean_up` を提供する。
 - [`DequeMessageQueue`](crate::core::kernel::dispatch::mailbox::deque_message_queue::DequeMessageQueue) trait を実装し、`enqueue_first(envelope)` で **front 挿入**を提供する。
-- `new(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy)` で構築され、内部に `SharedLock<VecDeque<Envelope>>` を保持する。
+- `new(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy)` で構築される。
 - `enqueue` (back 挿入) は `overflow` に従って振舞う (Pekko `Mailbox.scala:844` `BoundedDequeBasedMailbox` 相当):
   - `Grow`: capacity を無視して push_back し、`Ok(EnqueueOutcome::Accepted)` を返す。
   - `DropNewest`: `len >= capacity` なら到着 envelope を drop し `Ok(EnqueueOutcome::Rejected(envelope))` を返す。それ以外は push_back し `Accepted`。
@@ -15,7 +15,7 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_dequ
   - `Grow`: capacity 無視で push_front し `Ok(())`。
   - `DropNewest`: `len >= capacity` なら `Err(SendError::Full(envelope.into_payload()))`。それ以外は push_front し `Ok(())`。
   - `DropOldest`: **`len >= capacity` なら `Err(SendError::Full(envelope.into_payload()))` を返し、いずれの既存 entry も evict しない**。`enqueue` 側の DropOldest (front evict) を push_front 経路に適用すると「今 push した envelope を直後に evict する」か「最新挿入側 (back) を drop する」かのいずれかになるが、前者は意味を成さず、後者は "oldest" の語義から離れる。stash rehydration の失敗はユーザーが例外処理できるよう明示 `Err` で通知する方が安全と判断 (設計 Decision 2-c)。
-  - **備考**: `SendError::Full` は `AnyMessage` を wrap する。実装では `Envelope::into_payload()` で payload を取り出して格納する。以下 Scenario 中の `Err(SendError::Full(B))` のような記述は可読性のための shorthand で、実装上は `Err(SendError::Full(B.into_payload()))` と解釈する。
+  - **備考**: `SendError::Full` は `AnyMessage` を wrap するため、Scenario 中の `Err(SendError::Full(B))` は envelope の payload を wrap した `SendError` を返す意味の shorthand である。
 - `dequeue` は front を `pop_front` する (Pekko の FIFO / deque semantics)。
 - `as_deque(&self) -> Option<&dyn DequeMessageQueue>` は `Some(self)` を返し、stash 層が front 挿入を実行できる。
 
@@ -73,17 +73,17 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_dequ
 fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_control_aware_message_queue.rs` に `BoundedControlAwareMessageQueue` を提供し、以下の契約をすべて満たさなければならない (MUST):
 
 - [`MessageQueue`](crate::core::kernel::dispatch::mailbox::message_queue::MessageQueue) trait を実装する (deque trait は実装しない)。
-- `new(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy)` で構築され、内部に `SharedLock<Inner>` (control_queue + normal_queue の 2 本 VecDeque) を保持する。
+- `new(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy)` で構築される。
 - `number_of_messages()` は control + normal の合計長を返す。
 - `enqueue(envelope)` の挙動:
-  - `envelope.payload().is_control()` が true の場合は control_queue に、false の場合は normal_queue に入れる (Pekko `Mailbox.scala:931` `BoundedControlAwareMailbox` 相当)。
-  - 容量判定は `control_queue.len() + normal_queue.len() >= capacity` で行う。
+  - `envelope.payload().is_control()` が true の場合は control キューに、false の場合は normal キューに入れる (Pekko `Mailbox.scala:931` `BoundedControlAwareMailbox` 相当)。
+  - 容量判定は control + normal の合計数が `capacity` 以上かで行う。
   - overflow 戦略に従う:
-    - `Grow`: capacity 無視、対応 queue に push_back、`Accepted`。
+    - `Grow`: capacity 無視、対応キューに追加、`Accepted`。
     - `DropNewest`: capacity 超過なら `Rejected(envelope)`。
-    - `DropOldest`: capacity 超過時は **normal_queue の front** を evict してから対応 queue に push_back、`Evicted(evicted_from_normal)`。normal_queue が空かつ capacity 超過の場合は control drop を避けるため `Rejected(envelope)` を返す (Decision 3)。
-- `dequeue()` は control_queue.pop_front() を優先し、control が空なら normal_queue.pop_front() を返す (Pekko と同じ順序契約)。
-- `clean_up()` は両 queue を clear する。
+    - `DropOldest`: capacity 超過時は **normal キューの front** を evict してから対応キューに追加、`Evicted(evicted_from_normal)`。normal キューが空かつ capacity 超過の場合は control drop を避けるため `Rejected(envelope)` を返す (Decision 3)。
+- `dequeue()` は control キューを優先し、control が空なら normal キューから取り出す (Pekko と同じ順序契約)。
+- `clean_up()` は両キューを clear する。
 
 `BoundedControlAwareMailboxType` は `create(&self) -> Box<dyn MessageQueue>` で新しい `BoundedControlAwareMessageQueue` を生成する factory でなければならない (MUST)。`new(capacity, overflow)` を持ち、`MailboxType` trait を実装する。
 
