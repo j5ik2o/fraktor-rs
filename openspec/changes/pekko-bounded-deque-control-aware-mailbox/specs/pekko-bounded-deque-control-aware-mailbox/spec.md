@@ -153,7 +153,7 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_cont
 - **WHEN** `config.validate()` に続けて `create_message_queue_from_config(&config)` を呼ぶ
 - **THEN** `validate()` は `Ok(())` を返す (従来は `Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy)` で fail-fast 拒否)
 - **AND** `create_message_queue_from_config` は `BoundedControlAwareMessageQueue` 相当の `Box<dyn MessageQueue>` を返す
-- **AND** 10 個 enqueue すると 9 件目以降が `EnqueueOutcome::Rejected` を返す (bounded が実効: `len >= capacity` 判定により 1〜8 件目は Accepted)
+- **AND** 10 個 enqueue した際、capacity=8 を超える 9 件目以降は `EnqueueOutcome::Rejected` を返す (bounded が実効)
 
 #### Scenario: unbounded + deque 構成の挙動は変化しない (regression)
 
