@@ -157,7 +157,7 @@ if config.requirement().needs_control_aware() {
 ### Risk 4: `QueueStateHandle` を使わないことによる metrics / instrumentation の欠落
 
 - **影響**: `BoundedMessageQueue` は QueueStateHandle 経由で mailbox metrics (e.g. pressure event) を発火しうる。新 Bounded variant は直接 VecDeque なので同等の metrics 経路を持たない。
-- **緩和**: 既存 `UnboundedDeque` / `UnboundedControlAware` も QueueStateHandle を使わない = metrics 経路は未配線。本 change は scope 外 (将来 `MailboxInstrumentation` の整備時に横断的に対応)。gap-analysis / tasks に記録
+- **緩和**: 既存 `UnboundedDeque` / `UnboundedControlAware` も QueueStateHandle を使わない = metrics 経路は未配線。本 change は scope 外とし、将来 `MailboxInstrumentation` 整備時に Unbounded 側と合わせて横断対応する
 
 ### Risk 5: 新 variant のテスト漏れによる overflow strategy 不整合
 
