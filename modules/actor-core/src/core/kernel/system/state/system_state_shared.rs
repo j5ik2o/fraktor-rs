@@ -37,7 +37,6 @@ use crate::core::kernel::{
       AnyMessage, AskResult,
       system_message::{FailurePayload, SystemMessage},
     },
-    props::MailboxConfig,
     scheduler::{
       SchedulerBackedDelayProvider, SchedulerShared, task_run::TaskRunSummary, tick_driver::TickDriverBundle,
     },
@@ -45,7 +44,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{DispatchersError, MessageDispatcherShared},
-    mailbox::{MailboxRegistryError, MessageQueue},
+    mailbox::{MailboxFactory, MailboxRegistryError, MessageQueue},
   },
   event::{
     logging::{LogEvent, LogLevel, LoggingFilter},
@@ -838,12 +837,12 @@ impl SystemStateShared {
     self.inner.with_read(|inner| inner.dispatcher_resolve_call_count())
   }
 
-  /// Resolves the mailbox configuration for the identifier.
+  /// Resolves the mailbox factory for the identifier.
   ///
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+  pub fn resolve_mailbox(&self, id: &str) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
     self.inner.with_read(|inner| inner.resolve_mailbox(id))
   }
 

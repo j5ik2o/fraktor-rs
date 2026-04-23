@@ -15,12 +15,12 @@ use crate::core::kernel::{
     actor_selection::ActorSelection,
     error::SendError,
     extension::{Extension, ExtensionId},
-    props::{MailboxConfig, Props},
+    props::Props,
     spawn::SpawnError,
   },
   dispatch::{
     dispatcher::{DispatchersError, MessageDispatcherShared},
-    mailbox::MailboxRegistryError,
+    mailbox::{MailboxFactory, MailboxRegistryError},
   },
 };
 
@@ -59,12 +59,12 @@ impl ExtendedActorSystem {
     self.inner.state().resolve_dispatcher(id).ok_or_else(|| DispatchersError::Unknown(ToString::to_string(id)))
   }
 
-  /// Resolves the mailbox configuration for the identifier.
+  /// Resolves the mailbox factory for the identifier.
   ///
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+  pub fn resolve_mailbox(&self, id: &str) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
     self.inner.state().resolve_mailbox(id)
   }
 

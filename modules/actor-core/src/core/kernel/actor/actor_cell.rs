@@ -39,7 +39,9 @@ use crate::core::{
     },
     dispatch::{
       dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, MessageDispatcherShared},
-      mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
+      mailbox::{
+        Mailbox, MailboxCapacity, MailboxFactory, MailboxInstrumentation, metrics_event::MailboxPressureEvent,
+      },
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
     system::{
@@ -129,10 +131,10 @@ impl ActorCell {
   ) -> Result<ArcShared<Self>, SpawnError> {
     let mailbox_id = props.mailbox_id();
 
-    let mailbox_config = if let Some(id) = mailbox_id {
+    let mailbox_factory: ArcShared<dyn MailboxFactory> = if let Some(id) = mailbox_id {
       system.resolve_mailbox(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?
     } else {
-      props.mailbox_config().clone()
+      ArcShared::new(props.mailbox_config().clone())
     };
 
     let dispatcher_id = Self::resolve_dispatcher_id(&system, parent, props)?;
@@ -145,7 +147,7 @@ impl ActorCell {
     // dispatcher 自身が mailbox を用意したい場合 (例: `BalancingDispatcher` は
     // 単一の team queue をラップする sharing mailbox を返す) に先に問い合わせる。
     // per-actor queue を使う dispatcher は `None` を返し、`ActorCell` は
-    // `MailboxConfig` ベースの経路にフォールバックする。
+    // `MailboxFactory` ベースの経路にフォールバックする。
     // system 由来の `MailboxSharedSet` を取得し、std adaptor が
     // `ActorSystemConfig::with_mailbox_clock` 経由で install した throughput
     // deadline clock を新規構築の mailbox に伝播させる。bundle の `clock = None`
@@ -156,21 +158,21 @@ impl ActorCell {
     } else if let Some(id) = mailbox_id {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
-      ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_config.policy(), queue, &mailbox_shared_set))
+      ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_factory.policy(), queue, &mailbox_shared_set))
     } else {
       ArcShared::new(
-        Mailbox::new_from_config_with_shared_set(&mailbox_config, &mailbox_shared_set)
+        Mailbox::new_from_factory_with_shared_set(&*mailbox_factory, &mailbox_shared_set)
           .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
       )
     };
     {
-      let policy = mailbox_config.policy();
+      let policy = mailbox_factory.policy();
       let capacity = match policy.capacity() {
         | MailboxCapacity::Bounded { capacity } => Some(capacity.get()),
         | MailboxCapacity::Unbounded => None,
       };
       let throughput = policy.throughput_limit().map(|limit| limit.get());
-      let warn_threshold = mailbox_config.warn_threshold().map(|threshold| threshold.get());
+      let warn_threshold = mailbox_factory.warn_threshold().map(|threshold| threshold.get());
       let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }

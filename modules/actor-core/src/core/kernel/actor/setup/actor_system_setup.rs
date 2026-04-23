@@ -11,11 +11,10 @@ use crate::core::kernel::{
   actor::{
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
-    props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::{ActorSystemConfig, BootstrapSetup, CircuitBreakerConfig},
   },
-  dispatch::dispatcher::MessageDispatcherFactory,
+  dispatch::{dispatcher::MessageDispatcherFactory, mailbox::MailboxFactory},
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -80,10 +79,13 @@ impl ActorSystemSetup {
     Self { config: self.config.with_dispatcher_factory(id, configurator) }
   }
 
-  /// Registers or updates a mailbox configuration.
+  /// Registers or updates a mailbox factory under the supplied id.
+  ///
+  /// Accepts any [`MailboxFactory`] implementation, including
+  /// [`MailboxConfig`] via its bridge impl.
   #[must_use]
-  pub fn with_mailbox(self, id: impl Into<String>, config: MailboxConfig) -> Self {
-    Self { config: self.config.with_mailbox(id, config) }
+  pub fn with_mailbox(self, id: impl Into<String>, factory: impl MailboxFactory + 'static) -> Self {
+    Self { config: self.config.with_mailbox(id, factory) }
   }
 
   /// Replaces the default circuit-breaker configuration.

@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
   num::NonZeroUsize,
@@ -6,7 +7,9 @@ use core::{
 use fraktor_utils_core_rs::core::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
 use super::{MailboxConfigError, MailboxRequirement};
-use crate::core::kernel::dispatch::mailbox::{MailboxPolicy, MessagePriorityGenerator};
+use crate::core::kernel::dispatch::mailbox::{
+  MailboxFactory, MailboxPolicy, MailboxType, MessagePriorityGenerator, MessageQueue,
+};
 
 #[cfg(test)]
 mod tests;
@@ -150,6 +153,37 @@ impl MailboxConfig {
 impl Default for MailboxConfig {
   fn default() -> Self {
     MailboxConfig::new(MailboxPolicy::unbounded(None))
+  }
+}
+
+impl MailboxFactory for MailboxConfig {
+  fn mailbox_type(&self) -> ArcShared<dyn MailboxType> {
+    // The built-in selection logic returns a `Box<dyn MailboxType>` keyed
+    // off policy / requirement / priority_generator / stable_priority.
+    // Wrap the resolved factory in `ArcShared` so the caller sees a
+    // stable trait-object reference per invocation.
+    let boxed = crate::core::kernel::dispatch::mailbox::select_mailbox_type_from_config(self);
+    ArcShared::from_boxed(boxed)
+  }
+
+  fn create_message_queue(&self) -> Result<Box<dyn MessageQueue>, MailboxConfigError> {
+    crate::core::kernel::dispatch::mailbox::create_message_queue_from_config(self)
+  }
+
+  fn policy(&self) -> MailboxPolicy {
+    self.policy
+  }
+
+  fn warn_threshold(&self) -> Option<NonZeroUsize> {
+    self.warn_threshold
+  }
+
+  fn requirement(&self) -> MailboxRequirement {
+    self.requirement
+  }
+
+  fn capabilities(&self) -> QueueCapabilityRegistry {
+    self.capabilities
   }
 }
 

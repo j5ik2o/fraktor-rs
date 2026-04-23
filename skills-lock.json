@@ -1,10 +1,105 @@
 {
   "version": 1,
   "skills": {
+    "aggregate-design": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "d79dd9d27ffd06fe093c853af877c551d2d9254a3d088951679084174e027b83"
+    },
+    "aggregate-transaction-boundary": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "cfa9da35bb1a00b010e5f4bec33de8aafc45cf3a50c62a1636d8a77431479e82"
+    },
+    "breach-encapsulation-naming": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "055239f0e8ba801615073ef0e7f242826de68fec9bc492f2b67eab83deb2aa37"
+    },
+    "clean-architecture": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "084ce499caf6ff50cb967712d1ad17d4561279bca38636357717a829eb6a0627"
+    },
+    "ddd-module-pattern": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "997a0dc3c13eacff66aa0a17d70a6bfc80d8ec6dbff74dc8c2f7df79f96d5ac8"
+    },
+    "domain-building-blocks": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "b80e4c9f07e697f21f702657a072b15a667b4c75d95220eb6c7ff8b12514ddef"
+    },
+    "domain-model-first": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "7766287cc67707f9aeabe5ca33487a9e8d28fca0991f723436a7b1abd682d6b9"
+    },
+    "domain-primitives-and-always-valid": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "55ee376d86beb014e79508d239032d0effed2dceff85b92dc720b15115ed2943"
+    },
+    "error-classification": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "88ef374be5460211f9ba8b4e4b002b4922b806dd6b8dcda375d6eb675f53c539"
+    },
+    "error-handling": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "8297fc7c44942bd50a9eae080b3331c9f2016cd39c42d84607566b869a383600"
+    },
+    "first-class-collection": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "bd5c6abac5d9940cbb10701522b874c649bff3930c4d466a1a478ccc594f6253"
+    },
+    "intent-based-dedup": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "12e6751e487f028ccfff5ff9cabfa85204f756f97dd6197333f7f7fb2392111b"
+    },
+    "law-of-demeter": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "6b2d1c6ee44df3c2240ba92817cb611559740e5d7b24abd0ef55dec9829243c1"
+    },
+    "package-design": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "d93d5c7c35eeb37978edea45a32f3cbb2f9eec0e8e8155d894b637b5d68a473b"
+    },
+    "parse-dont-validate": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "3302a298db838f7394143606ff833b9eec0257cd028e0f7fc6d0852d66d53562"
+    },
     "readme-blueprint-generator": {
       "source": "github/awesome-copilot",
       "sourceType": "github",
       "computedHash": "e2c7dabf2e455794260f1516e2ceda6a82dc92a409578cc184fcb0f45bddca54"
+    },
+    "refactoring-packages": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "03e070ad176bb4ca112d351fde52a9ebca4e6a363a7f082fdb1dbfb4bd459e76"
+    },
+    "repository-design": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "8eff644d6162c3f2265177f05b122330434013b854099ef4bd148b41bf82228e"
+    },
+    "repository-placement": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "12d676922bc3264ac22baee9749d08c0af46cd483516336ebe576c600067bbf0"
+    },
+    "reviewing-skills": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "e95552c38835eb514b93c78e14fd161d8ee97d29b3bf427a21e5dc92573b756d"
     },
     "skill-forge": {
       "source": "j5ik2o/ai-tools",
@@ -45,6 +140,16 @@
       "source": "j5ik2o/ai-tools",
       "sourceType": "github",
       "computedHash": "3acc6533d44a5e5164ea623166e17d0119a2bbcb05b024df068174ed481c38f2"
+    },
+    "tell-dont-ask": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "396308e424f41a83f6803864f5ceb733cc859d2cc4c8b1deefdc6fe4707dbd0f"
+    },
+    "when-to-wrap-primitives": {
+      "source": "j5ik2o/okite-ai",
+      "sourceType": "github",
+      "computedHash": "a9da0c8882a39b473d0a49c95295523b0ce723f9b3869fd9fefdf65ccf2e3f7d"
     }
   }
 }
