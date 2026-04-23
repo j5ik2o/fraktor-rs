@@ -12,16 +12,18 @@ use alloc::string::ToString;
 
 use crate::core::{
   kernel::{
-    dispatch::dispatcher::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatchersError, MessageDispatcherShared},
+    dispatch::dispatcher::{
+      DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, DispatchersError, MessageDispatcherShared,
+    },
     system::state::SystemStateShared,
   },
   typed::DispatcherSelector,
 };
 
-/// Internal registry id for the default dispatcher entry.
-const REGISTERED_DEFAULT_DISPATCHER_ID: &str = "default";
 /// Pekko-compatible public identifier for the default dispatcher.
-const PEKKO_DEFAULT_DISPATCHER_ID: &str = "pekko.actor.default-dispatcher";
+///
+/// Matches [`DEFAULT_DISPATCHER_ID`] (the kernel primary entry id).
+const PEKKO_DEFAULT_DISPATCHER_ID: &str = DEFAULT_DISPATCHER_ID;
 /// Pekko-compatible public identifier for the internal dispatcher.
 const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 
@@ -59,7 +61,7 @@ impl Dispatchers {
   ///
   /// | Selector | Passed to kernel `resolve` |
   /// |----------|----------------------------|
-  /// | `Default` / `SameAsParent` | `"default"` (kernel entry id) |
+  /// | `Default` / `SameAsParent` | `"pekko.actor.default-dispatcher"` (kernel `DEFAULT_DISPATCHER_ID`) |
   /// | `FromConfig(id)` | `id` verbatim (kernel follows its alias chain) |
   /// | `Blocking` | `"pekko.actor.default-blocking-io-dispatcher"` |
   ///
@@ -76,7 +78,7 @@ impl Dispatchers {
   /// has not been registered in the kernel dispatcher registry.
   pub fn lookup(&self, selector: &DispatcherSelector) -> Result<MessageDispatcherShared, DispatchersError> {
     let id: &str = match selector {
-      | DispatcherSelector::Default | DispatcherSelector::SameAsParent => REGISTERED_DEFAULT_DISPATCHER_ID,
+      | DispatcherSelector::Default | DispatcherSelector::SameAsParent => DEFAULT_DISPATCHER_ID,
       | DispatcherSelector::FromConfig(id) => id,
       | DispatcherSelector::Blocking => DEFAULT_BLOCKING_DISPATCHER_ID,
     };

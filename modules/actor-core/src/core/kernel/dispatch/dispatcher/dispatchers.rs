@@ -39,14 +39,28 @@ use super::{
   trampoline_state::TrampolineState,
 };
 
-/// Reserved registry identifier for the default dispatcher.
-pub const DEFAULT_DISPATCHER_ID: &str = "default";
+/// Primary registry identifier for the default dispatcher entry.
+///
+/// Corresponds 1:1 to Pekko `Dispatchers.DefaultDispatcherId` in
+/// `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Dispatchers.scala:160-164`.
+///
+/// Historically fraktor-rs used `"default"` as the primary id, but change
+/// `pekko-dispatcher-primary-id-alignment` (2026-04-23) flipped the value to
+/// match Pekko. The legacy `"default"` token is no longer registered as an
+/// entry or alias; callers must use this constant (or the raw Pekko string
+/// `"pekko.actor.default-dispatcher"` when a literal is required for
+/// external configuration such as HOCON-style config files).
+pub const DEFAULT_DISPATCHER_ID: &str = "pekko.actor.default-dispatcher";
 /// Reserved registry identifier for the default blocking IO dispatcher.
+///
+/// Matches Pekko `Dispatchers.DefaultBlockingDispatcherId`.
 pub const DEFAULT_BLOCKING_DISPATCHER_ID: &str = "pekko.actor.default-blocking-io-dispatcher";
 
-/// Pekko-style alias for the default dispatcher.
-const PEKKO_DEFAULT_DISPATCHER_ID: &str = "pekko.actor.default-dispatcher";
 /// Pekko-style alias for the internal dispatcher.
+///
+/// Matches Pekko `Dispatchers.InternalDispatcherId`. Registered as an alias
+/// of [`DEFAULT_DISPATCHER_ID`] by `ensure_default` so Pekko-style user code
+/// referring to the internal dispatcher resolves to the same entry.
 const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 
 /// Registry mapping dispatcher identifiers to configurators.
@@ -262,32 +276,41 @@ impl Dispatchers {
     ArcShared::new(configurator)
   }
 
-  /// Registers the Pekko-compatible aliases (`pekko.actor.default-dispatcher`
-  /// and `pekko.actor.internal-dispatcher`) pointing at
+  /// Registers the Pekko `InternalDispatcherId` alias pointing at
   /// [`DEFAULT_DISPATCHER_ID`].
   ///
-  /// Idempotent: if an alias is already registered or the id has been
+  /// Only `pekko.actor.internal-dispatcher` is registered as an alias;
+  /// `pekko.actor.default-dispatcher` is the primary entry id itself after
+  /// change `pekko-dispatcher-primary-id-alignment` (2026-04-23), so it must
+  /// not be registered as an alias. The legacy fraktor-rs `"default"` token
+  /// is also not registered (completely retired by the same change).
+  ///
+  /// Idempotent: if the alias is already registered or the id has been
   /// explicitly overridden as a concrete entry (e.g. by
-  /// `register_or_update`), the call is a no-op for that id.
-  fn register_pekko_default_aliases(&mut self) {
-    Self::register_alias_if_absent(&mut self.aliases, &self.entries, PEKKO_DEFAULT_DISPATCHER_ID);
-    Self::register_alias_if_absent(&mut self.aliases, &self.entries, PEKKO_INTERNAL_DISPATCHER_ID);
+  /// `register_or_update`), the call is a no-op.
+  fn register_internal_dispatcher_alias(&mut self) {
+    Self::register_alias_if_absent(
+      &mut self.aliases,
+      &self.entries,
+      PEKKO_INTERNAL_DISPATCHER_ID,
+      DEFAULT_DISPATCHER_ID,
+    );
   }
 
-  /// Inserts an alias pointing at [`DEFAULT_DISPATCHER_ID`] if `alias` is
-  /// neither a registered entry nor a registered alias. Idempotent helper
-  /// for [`Self::register_pekko_default_aliases`] that bypasses the
-  /// `register_alias` Result API (we own both maps exclusively, so the
-  /// checks here are equivalent).
+  /// Inserts an alias pointing at `target` if `alias` is neither a
+  /// registered entry nor a registered alias. Idempotent helper that
+  /// bypasses the `register_alias` Result API (we own both maps
+  /// exclusively, so the checks here are equivalent).
   fn register_alias_if_absent(
     aliases: &mut HashMap<String, String, RandomState>,
     entries: &HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>, RandomState>,
     alias: &str,
+    target: &'static str,
   ) {
     if entries.contains_key(alias) {
       return;
     }
-    aliases.entry(alias.to_owned()).or_insert_with(|| DEFAULT_DISPATCHER_ID.to_owned());
+    aliases.entry(alias.to_owned()).or_insert_with(|| target.to_owned());
   }
 
   /// Ensures the default dispatcher entry exists.
@@ -310,7 +333,7 @@ impl Dispatchers {
         self.insert_entry_wiping_alias(DEFAULT_BLOCKING_DISPATCHER_ID, configurator);
       }
     }
-    self.register_pekko_default_aliases();
+    self.register_internal_dispatcher_alias();
   }
 
   /// Ensures the default dispatcher entry exists, populating it with an
@@ -347,7 +370,7 @@ impl Dispatchers {
     if replace_blocking || !self.entries.contains_key(DEFAULT_BLOCKING_DISPATCHER_ID) {
       self.insert_entry_wiping_alias(DEFAULT_BLOCKING_DISPATCHER_ID, configurator);
     }
-    self.register_pekko_default_aliases();
+    self.register_internal_dispatcher_alias();
   }
 
   /// Inserts a configurator into `entries` after removing any alias for the
