@@ -11,7 +11,7 @@ fraktor-rs 現状 (`modules/actor-core/src/core/kernel/dispatch/mailbox/`):
 - **deque + bounded**: `mailboxes.rs:89` の `deque_mailbox_type_from_policy` が `MailboxConfigError::BoundedWithDeque` で fail-fast し、組合せ自体を禁止
 - **control_aware + bounded**: `MailboxConfig::validate()` (`mailbox_config.rs:137-141`) が `MailboxConfigError::ControlAwareRequiresUnboundedPolicy` を返して fail-fast で拒否しており、組合せ自体が unvalid。さらに `mailboxes.rs:54-57` の `create_message_queue_from_config` は `needs_control_aware()` を検出しても **無条件に Unbounded 版**を生成 (capacity 分岐なし) のため、validate を迂回する経路があっても実際の capacity 制約は効かない
 
-本 change で 2 variant を新設し、mailboxes.rs の分岐を bounded 対応に拡張する。gap-analysis MB-M2 は第16版で残存 medium 5 件の 1 つとして identifiable、pattern 複製で確実に閉塞可能と評価されている。
+本 change で 2 variant を新設し、mailboxes.rs の分岐を bounded 対応に拡張する。gap-analysis MB-M2 は第16版で残存 medium 5 件の 1 つとして特定されており、既存 pattern の複製で確実に閉塞可能と評価されている。
 
 ## What Changes
 
