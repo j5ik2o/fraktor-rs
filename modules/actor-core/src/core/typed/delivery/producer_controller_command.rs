@@ -31,17 +31,8 @@ where
   RegisterConsumer { consumer_controller: TypedActorRef<ConsumerControllerCommand<A>> },
   /// A message from the producer (via `send_next_to`).
   Msg { message: A },
-  /// A message from the producer with confirmation (via `ask_next_to`).
-  #[allow(dead_code)]
-  MsgWithConfirmation { message: A, reply_to: TypedActorRef<SeqNr> },
   /// Demand request from the consumer controller.
-  Request {
-    confirmed_seq_nr:     SeqNr,
-    request_up_to_seq_nr: SeqNr,
-    support_resend:       bool,
-    #[allow(dead_code)]
-    via_timeout:          bool,
-  },
+  Request { confirmed_seq_nr: SeqNr, request_up_to_seq_nr: SeqNr, support_resend: bool },
   /// Resend request from the consumer controller.
   Resend { from_seq_nr: SeqNr },
   /// Ack from the consumer controller.
@@ -78,13 +69,8 @@ where
   }
 
   /// Creates a `Request` command (internal, from consumer controller).
-  pub(crate) const fn request(
-    confirmed_seq_nr: SeqNr,
-    request_up_to_seq_nr: SeqNr,
-    support_resend: bool,
-    via_timeout: bool,
-  ) -> Self {
-    Self(ProducerControllerCommandKind::Request { confirmed_seq_nr, request_up_to_seq_nr, support_resend, via_timeout })
+  pub(crate) const fn request(confirmed_seq_nr: SeqNr, request_up_to_seq_nr: SeqNr, support_resend: bool) -> Self {
+    Self(ProducerControllerCommandKind::Request { confirmed_seq_nr, request_up_to_seq_nr, support_resend })
   }
 
   /// Creates a `Resend` command (internal, from consumer controller).

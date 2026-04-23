@@ -33,12 +33,6 @@ where
   Confirmed,
   /// Stop after delivering all remaining messages.
   DeliverThenStop,
-  /// Internal retry timer.
-  #[allow(dead_code)]
-  Retry,
-  /// Internal: consumer actor terminated.
-  #[allow(dead_code)]
-  ConsumerTerminated,
 }
 
 impl<A> ConsumerControllerCommand<A>
