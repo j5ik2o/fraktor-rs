@@ -1,21 +1,37 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
+use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
 use fraktor_utils_core_rs::core::time::TimerInstant;
 
 use super::MembershipCoordinator;
 use crate::core::{
   ClusterEvent, ClusterExtensionConfig,
-  failure_detector::{
-    DefaultFailureDetectorRegistry,
-    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
-  },
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
     MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
     MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeStatus, QuarantineEvent,
   },
   pub_sub::PubSubConfig,
 };
+
+/// Test-only adapter that bridges the remote-core detector to the
+/// cluster-core `FailureDetector` trait.
+struct PhiAccrualAdapter(PhiAccrualFailureDetector);
+
+impl FailureDetector for PhiAccrualAdapter {
+  fn is_available(&self, now_ms: u64) -> bool {
+    self.0.is_available(now_ms)
+  }
+
+  fn is_monitoring(&self) -> bool {
+    self.0.is_monitoring()
+  }
+
+  fn heartbeat(&mut self, now_ms: u64) {
+    self.0.heartbeat(now_ms);
+  }
+}
 
 fn base_config() -> MembershipCoordinatorConfig {
   MembershipCoordinatorConfig {
@@ -31,7 +47,7 @@ fn base_config() -> MembershipCoordinatorConfig {
 
 fn registry(threshold: f64) -> DefaultFailureDetectorRegistry<String> {
   DefaultFailureDetectorRegistry::new(Box::new(move || {
-    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
+    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(threshold, 10, 1, 0, 10)))
   }))
 }
 

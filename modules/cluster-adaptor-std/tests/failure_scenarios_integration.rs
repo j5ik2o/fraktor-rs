@@ -8,16 +8,32 @@ use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
 use fraktor_cluster_adaptor_std_rs::std::MembershipCoordinatorDriver;
 use fraktor_cluster_core_rs::core::{
   ClusterExtensionConfig,
-  failure_detector::{
-    DefaultFailureDetectorRegistry,
-    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
-  },
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
     GossipOutbound, GossipTransport, GossipTransportError, MembershipCoordinator, MembershipCoordinatorConfig,
     MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },
 };
+use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
 use fraktor_utils_core_rs::core::{sync::SharedAccess, time::TimerInstant};
+
+/// Test-only adapter that bridges the remote-core detector to the
+/// cluster-core `FailureDetector` trait.
+struct PhiAccrualAdapter(PhiAccrualFailureDetector);
+
+impl FailureDetector for PhiAccrualAdapter {
+  fn is_available(&self, now_ms: u64) -> bool {
+    self.0.is_available(now_ms)
+  }
+
+  fn is_monitoring(&self) -> bool {
+    self.0.is_monitoring()
+  }
+
+  fn heartbeat(&mut self, now_ms: u64) {
+    self.0.heartbeat(now_ms);
+  }
+}
 
 struct InMemoryBus {
   inbox:          HashMap<String, Vec<(String, MembershipDelta)>>,
@@ -96,7 +112,7 @@ impl DemoNode {
       .with_app_version("1.0.0")
       .with_roles(vec![String::from("member")]);
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-      Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
+      Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(threshold, 10, 1, 0, 10)))
     }));
     let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
     coordinator.start_member().expect("start_member");

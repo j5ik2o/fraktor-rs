@@ -28,9 +28,7 @@ mod cluster_topology;
 mod config_validation;
 /// Downing strategy abstractions and default implementations.
 pub mod downing_provider;
-/// Failure detector traits, registry, and the legacy `PhiFailureDetector`
-/// implementation moved here from the legacy `fraktor-remote-rs` during the
-/// `remote-redesign` change.
+/// Failure detector traits and registry used by the cluster layer.
 pub mod failure_detector;
 /// Virtual actor (grain) API, RPC routing, and codec abstraction.
 pub mod grain;

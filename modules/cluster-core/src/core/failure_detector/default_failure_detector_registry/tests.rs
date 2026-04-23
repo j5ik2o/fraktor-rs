@@ -1,14 +1,31 @@
 use alloc::{boxed::Box, string::String};
 
+use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
+
 use super::DefaultFailureDetectorRegistry;
-use crate::core::failure_detector::{
-  FailureDetectorRegistry,
-  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
-};
+use crate::core::failure_detector::{FailureDetector, FailureDetectorRegistry};
+
+/// Test-only adapter that bridges the remote-core detector to the
+/// cluster-core `FailureDetector` trait.
+struct PhiAccrualAdapter(PhiAccrualFailureDetector);
+
+impl FailureDetector for PhiAccrualAdapter {
+  fn is_available(&self, now_ms: u64) -> bool {
+    self.0.is_available(now_ms)
+  }
+
+  fn is_monitoring(&self) -> bool {
+    self.0.is_monitoring()
+  }
+
+  fn heartbeat(&mut self, now_ms: u64) {
+    self.0.heartbeat(now_ms);
+  }
+}
 
 fn registry() -> DefaultFailureDetectorRegistry<String> {
   DefaultFailureDetectorRegistry::new(Box::new(|| {
-    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(1.5, 4, 1)))
+    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(1.5, 4, 1, 0, 10)))
   }))
 }
 
