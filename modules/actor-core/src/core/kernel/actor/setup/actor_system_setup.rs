@@ -15,7 +15,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::{ActorSystemConfig, BootstrapSetup, CircuitBreakerConfig},
   },
-  dispatch::dispatcher::MessageDispatcherConfigurator,
+  dispatch::dispatcher::MessageDispatcherFactory,
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -72,12 +72,12 @@ impl ActorSystemSetup {
 
   /// Registers a dispatcher configurator under the supplied id.
   #[must_use]
-  pub fn with_dispatcher_configurator(
+  pub fn with_dispatcher_factory(
     self,
     id: impl Into<String>,
-    configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
+    configurator: ArcShared<Box<dyn MessageDispatcherFactory>>,
   ) -> Self {
-    Self { config: self.config.with_dispatcher_configurator(id, configurator) }
+    Self { config: self.config.with_dispatcher_factory(id, configurator) }
   }
 
   /// Registers or updates a mailbox configuration.

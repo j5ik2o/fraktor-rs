@@ -30,8 +30,7 @@ use crate::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    DefaultDispatcherConfigurator, DispatcherConfig, ExecuteError, Executor, MessageDispatcherConfigurator,
-    TrampolineState,
+    DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, MessageDispatcherFactory, TrampolineState,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   system::{
@@ -102,7 +101,7 @@ fn build_shared_state() -> SystemStateShared {
 }
 
 fn build_shared_state_with_noop_dispatcher() -> SystemStateShared {
-  let config = base_config().with_dispatcher_configurator("noop", noop_dispatcher_configurator());
+  let config = base_config().with_dispatcher_factory("noop", noop_dispatcher_configurator());
   SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"))
 }
 
@@ -815,12 +814,11 @@ impl Executor for NoopExecutor {
   fn shutdown(&mut self) {}
 }
 
-fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherFactory>> {
   use crate::core::kernel::dispatch::dispatcher::ExecutorShared;
   let settings = DispatcherConfig::with_defaults("noop");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
-  let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+  let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));
   ArcShared::new(configurator)
 }
 

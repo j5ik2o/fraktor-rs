@@ -1,7 +1,7 @@
 //! Configurator for [`PinnedDispatcher`](super::PinnedDispatcher).
 //!
 //! Each call to `dispatcher()` constructs a brand-new dispatcher and executor,
-//! matching Pekko's `PinnedDispatcherConfigurator` behaviour. The thread name
+//! matching Pekko's `PinnedDispatcherFactory` behaviour. The thread name
 //! prefix is captured at construction time.
 
 use alloc::{boxed::Box, string::String};
@@ -10,18 +10,18 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{
   dispatcher_config::DispatcherConfig, executor_factory::ExecutorFactory,
-  message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
+  message_dispatcher_factory::MessageDispatcherFactory, message_dispatcher_shared::MessageDispatcherShared,
   pinned_dispatcher::PinnedDispatcher,
 };
 
 /// Configurator that produces a fresh [`PinnedDispatcher`] per call.
-pub struct PinnedDispatcherConfigurator {
+pub struct PinnedDispatcherFactory {
   config:             DispatcherConfig,
   executor_factory:   ArcShared<Box<dyn ExecutorFactory>>,
   thread_name_prefix: String,
 }
 
-impl PinnedDispatcherConfigurator {
+impl PinnedDispatcherFactory {
   /// Builds a new pinned configurator.
   #[must_use]
   pub fn new(
@@ -39,7 +39,7 @@ impl PinnedDispatcherConfigurator {
   }
 }
 
-impl MessageDispatcherConfigurator for PinnedDispatcherConfigurator {
+impl MessageDispatcherFactory for PinnedDispatcherFactory {
   fn dispatcher(&self) -> MessageDispatcherShared {
     let executor = self.executor_factory.create(self.config.id());
     let dispatcher = PinnedDispatcher::new(&self.config, executor);
