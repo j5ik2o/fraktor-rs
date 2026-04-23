@@ -91,7 +91,7 @@
     - `BoundedWithDeque` (bounded + deque が valid に)
     - `ControlAwareRequiresUnboundedPolicy` (bounded + control_aware が valid に)
   - **挙動変更**: control_aware + bounded は従来 `validate()` で fail-fast 拒否されていたが、新 variant により validate 成功 + BoundedControlAware 生成の整合パスに統一 (behavior fix)
-  - **テスト**: 新 variant 10+ 件 + dispatch 回帰 2 件 + validate 差替え (2 テスト rename + assertion 反転)
+  - **テスト**: 新 variant 11 件 (BoundedDeque 6 + BoundedControlAware 5) + dispatch 回帰 2 件 (rename 1 + new 1) + 既存 validate test rename + assertion 反転 4 件 (Phase 5.3 / 5.4 / 5.5 / 5.8)
   - gap-analysis MB-M2 done 化、第17版 medium 5 → 4
 - [ ] 8.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
 - [ ] 8.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-bounded-deque-control-aware-mailbox/spec.md` に sync
