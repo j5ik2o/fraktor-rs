@@ -88,8 +88,8 @@
 
 ## Phase 8: PR 発行とレビュー対応
 
-- [ ] 8.1 branch `impl/pekko-dispatcher-alias-chain` を切って PR 発行、base は main
-- [ ] 8.2 PR 本文に以下を含める:
+- [x] 8.1 branch `impl/pekko-dispatcher-alias-chain` を切って PR 発行、base は main
+- [x] 8.2 PR 本文に以下を含める:
   - Pekko `Dispatchers.scala:146,159-198` との対応表
   - **公開 API 追加** (additive):
     - `Dispatchers::register_alias(alias, target)`
@@ -100,5 +100,5 @@
   - **挙動変更**: `resolve()` は lookup 前に alias chain を 0〜20 段辿る。既存コードで alias を登録していない場合は挙動不変
   - **scope outside**: HOCON dynamic loading (`type = "..."` 文字列からの動的 instantiation)、`DynamicAccess` reflection — いずれも JVM 依存で Rust 側は typed `register()` で等価な責務を提供
   - gap-analysis AC-M2 done 化、第18版 medium 4 → 3
-- [ ] 8.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
-- [ ] 8.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-dispatcher-alias-chain/spec.md` に sync
+- [x] 8.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
+- [x] 8.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-dispatcher-alias-chain/spec.md` に sync
