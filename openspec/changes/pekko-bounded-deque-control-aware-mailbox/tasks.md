@@ -47,7 +47,7 @@
 ### 5A: `BoundedWithDeque` variant の削除 (9 参照 / 6 ファイル)
 
 - [ ] 5.1 `modules/actor-core/src/core/kernel/actor/props/mailbox_config_error.rs` から `BoundedWithDeque` variant を削除 (L14) + `Display` impl の対応 arm 削除 (L33)
-- [ ] 5.2 `modules/actor-core/src/core/kernel/actor/props/mailbox_config.rs::validate` L148 付近の `return Err(MailboxConfigError::BoundedWithDeque);` 枝を削除。関連 rustdoc (L131) も更新
+- [ ] 5.2 `modules/actor-core/src/core/kernel/actor/props/mailbox_config.rs::validate` L145-149 の `needs_deque() && Bounded` 拒否分岐 (if ブロック全体) を削除。関連 rustdoc (L131-132) も更新
 - [ ] 5.3 `modules/actor-core/src/core/kernel/actor/props/mailbox_config/tests.rs` L93 の `BoundedWithDeque` 期待を `Ok(())` 期待に差替え。テスト名も `rejects` → `accepts` に rename
 - [ ] 5.4 **修正**: `modules/actor-core/src/core/kernel/actor/props/base/tests.rs` L67 の `with_stash_mailbox_rejects_bounded_mailbox_config` を `with_stash_mailbox_accepts_bounded_mailbox_config` に rename、L76 の assertion を `Err(BoundedWithDeque)` → `Ok(())` に反転 (※旧 tasks は `dispatch/mailbox/base/tests.rs` と誤記、実際は `actor/props/base/tests.rs`)
 - [ ] 5.5 `modules/actor-core/src/core/typed/props/tests.rs:46` の `with_stash_mailbox_rejects_bounded_mailbox_config` を `with_stash_mailbox_accepts_bounded_mailbox_config` に rename、assertion を `Err(BoundedWithDeque)` → `Ok(())` に反転 (stash + bounded は本 change で valid 組合せに)
