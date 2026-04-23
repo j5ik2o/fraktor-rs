@@ -14,13 +14,12 @@ pub(crate) struct DiagnosticsSubscriber {
   pub(crate) id:     u64,
   pub(crate) buffer: ArcShared<DiagnosticsBuffer>,
 }
-#[allow(dead_code)]
 pub(crate) struct DiagnosticsBuffer {
   queue:    SharedLock<VecDeque<SchedulerDiagnosticsEvent>>,
   capacity: usize,
   _marker:  PhantomData<()>,
 }
-#[allow(dead_code)]
+
 impl DiagnosticsBuffer {
   pub(crate) fn new(capacity: usize) -> Self {
     Self { queue: SharedLock::new_with_driver::<DefaultMutex<_>>(VecDeque::new()), capacity, _marker: PhantomData }
@@ -54,7 +53,7 @@ impl Clone for DiagnosticsRegistry {
     Self { entries: self.entries.clone(), _marker: PhantomData }
   }
 }
-#[allow(dead_code)]
+
 impl DiagnosticsRegistry {
   pub(crate) fn new() -> Self {
     Self { entries: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()), _marker: PhantomData }

@@ -12,7 +12,7 @@ use super::cells::Cells;
 pub(crate) struct CellsShared {
   inner: SharedLock<Cells>,
 }
-#[allow(dead_code)]
+
 impl CellsShared {
   /// Creates a new shared wrapper around the provided registry.
   #[must_use]

@@ -539,7 +539,6 @@ impl SystemState {
 
   /// Returns the root guardian cell if initialised.
   #[must_use]
-  #[allow(dead_code)]
   pub(crate) fn root_guardian(&self) -> Option<ArcShared<ActorCell>> {
     self.guardian_cell_via_cells(GuardianKind::Root)
   }

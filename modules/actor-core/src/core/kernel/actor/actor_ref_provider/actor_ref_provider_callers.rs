@@ -16,7 +16,7 @@ pub(crate) type ActorRefProviderCaller =
 pub(crate) struct ActorRefProviderCallers {
   map: HashMap<ActorPathScheme, ActorRefProviderCaller, RandomState>,
 }
-#[allow(dead_code)]
+
 impl ActorRefProviderCallers {
   /// Creates a new empty actor reference provider callers registry.
   #[must_use]

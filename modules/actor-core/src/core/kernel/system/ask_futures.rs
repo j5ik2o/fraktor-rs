@@ -10,7 +10,7 @@ use crate::core::kernel::{actor::messaging::AskResult, util::futures::ActorFutur
 pub(crate) struct AskFutures {
   futures: Vec<ActorFutureShared<AskResult>>,
 }
-#[allow(dead_code)]
+
 impl AskFutures {
   /// Creates a new empty ask futures registry.
   #[must_use]

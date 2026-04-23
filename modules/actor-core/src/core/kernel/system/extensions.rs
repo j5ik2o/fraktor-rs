@@ -14,7 +14,7 @@ pub(crate) struct Extensions {
   map:     HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>,
   _marker: PhantomData<()>,
 }
-#[allow(dead_code)]
+
 impl Extensions {
   /// Creates a new empty extensions registry.
   #[must_use]

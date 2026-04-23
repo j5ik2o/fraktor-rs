@@ -10,7 +10,7 @@ use crate::core::kernel::actor::{ActorCell, Pid};
 pub(crate) struct Cells {
   map: HashMap<Pid, ArcShared<ActorCell>, RandomState>,
 }
-#[allow(dead_code)]
+
 impl Cells {
   /// Creates a new empty cell registry.
   #[must_use]

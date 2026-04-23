@@ -417,7 +417,6 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError::SystemUnavailable`] when the guardian is missing.
-  #[allow(dead_code)]
   pub(crate) fn spawn(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
@@ -458,7 +457,6 @@ impl ActorSystem {
   }
 
   /// Spawns a new actor under the system guardian (internal use only).
-  #[allow(dead_code)]
   pub(crate) fn system_actor_of(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let guardian_pid = self.state.system_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)

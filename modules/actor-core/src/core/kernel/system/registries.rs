@@ -12,7 +12,7 @@ pub(crate) struct Registries {
   map:     HashMap<Option<Pid>, NameRegistry, RandomState>,
   _marker: PhantomData<()>,
 }
-#[allow(dead_code)]
+
 impl Registries {
   /// Creates a new empty registries collection.
   #[must_use]
