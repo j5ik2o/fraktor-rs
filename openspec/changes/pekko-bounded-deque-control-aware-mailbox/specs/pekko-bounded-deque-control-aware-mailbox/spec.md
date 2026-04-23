@@ -136,12 +136,9 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_cont
 - `needs_control_aware()` が true かつ `policy.capacity()` が `Unbounded` の場合: 既存 `UnboundedControlAwareMessageQueue` を返す (挙動不変)。
 - 他の組合せ (priority / plain bounded / plain unbounded) は現行挙動を維持する。
 
-`MailboxConfig::validate()` は `bounded + deque` / `bounded + control_aware` のいずれの組合せも拒否してはならない (MUST NOT)。従来以下を返していたケースは `Ok(())` を返さなければならない (MUST):
+`MailboxConfig::validate()` は `bounded + deque` / `bounded + control_aware` のいずれの組合せも拒否してはならない (MUST NOT)。いずれの組合せに対しても `Ok(())` を返さなければならない (MUST)。
 
-- `bounded + deque` → 従来 `Err(MailboxConfigError::BoundedWithDeque)`
-- `bounded + control_aware` → 従来 `Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy)`
-
-`MailboxConfigError::BoundedWithDeque` と `MailboxConfigError::ControlAwareRequiresUnboundedPolicy` variant はいずれも削除される (BREAKING)。
+(※ 関連する `MailboxConfigError` variant の削除など BREAKING 影響は proposal.md / design.md Decision 4 を参照)
 
 #### Scenario: bounded + deque 構成の validate は成功する
 
