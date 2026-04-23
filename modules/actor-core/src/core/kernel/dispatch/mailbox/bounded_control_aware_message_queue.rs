@@ -17,8 +17,9 @@ use super::{
 ///
 /// The combined length of the two queues is bounded by `capacity`, so allocating the full
 /// `capacity` for each queue would reserve 2× the memory that can ever be used
-/// simultaneously. We mirror [`UnboundedControlAwareMessageQueue`](super::UnboundedControlAwareMessageQueue)'s
-/// fixed 16-slot hint (clamped to `capacity`) and let `VecDeque` grow on demand.
+/// simultaneously. We mirror
+/// [`UnboundedControlAwareMessageQueue`](super::UnboundedControlAwareMessageQueue)'s fixed 16-slot
+/// hint (clamped to `capacity`) and let `VecDeque` grow on demand.
 const DEFAULT_CAPACITY_HINT: usize = 16;
 
 /// Bounded message queue that prioritises control messages and enforces a combined capacity.
