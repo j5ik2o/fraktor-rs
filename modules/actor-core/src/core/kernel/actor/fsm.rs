@@ -1,6 +1,5 @@
 //! Classic FSM runtime for kernel extensions and classic actors.
 
-mod abstract_fsm;
 mod fsm_reason;
 mod fsm_state_timeout;
 mod fsm_transition;
@@ -10,7 +9,6 @@ mod machine;
 #[cfg(test)]
 mod tests;
 
-pub use abstract_fsm::AbstractFsm;
 pub use fsm_reason::FsmReason;
 pub use fsm_state_timeout::FsmStateTimeout;
 pub use fsm_transition::FsmTransition;

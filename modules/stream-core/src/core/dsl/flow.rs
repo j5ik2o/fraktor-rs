@@ -600,9 +600,8 @@ where
   /// Marks this flow with an async boundary attribute.
   ///
   /// The materializer uses this attribute to split the graph into
-  /// independently executed islands.  Unlike the legacy
-  /// `async_boundary()` method, this does **not** insert a buffer
-  /// stage; the boundary is resolved at materialization time.
+  /// independently executed islands. The boundary is resolved at
+  /// materialization time and does not insert a buffer stage.
   ///
   /// Mirrors Pekko's `Graph.async`.
   #[must_use]
@@ -620,20 +619,6 @@ where
     self.graph.mark_last_node_async();
     self.graph.mark_last_node_dispatcher(dispatcher);
     self
-  }
-
-  /// Adds an explicit async boundary stage.
-  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
-  #[must_use]
-  pub fn async_boundary(mut self) -> Flow<In, Out, Mat> {
-    let definition = async_boundary_definition::<Out>();
-    let inlet_id = definition.inlet;
-    let from = self.graph.tail_outlet();
-    self.graph.push_stage(StageDefinition::Flow(definition));
-    if let Some(from) = from {
-      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
-    }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds a throttle stage that limits the number of buffered in-flight elements.
@@ -1424,13 +1409,6 @@ where
   where
     F: FnMut(&In) -> In + Send + Sync + 'static, {
     self
-  }
-
-  /// Decouples upstream and downstream demand signaling via an async boundary.
-  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
-  #[must_use]
-  pub fn detach(self) -> Flow<In, Out, Mat> {
-    self.r#async()
   }
 
   /// Maps outputs while accepting dimap-compatible signatures.
@@ -4133,26 +4111,6 @@ where
   let logic = BufferLogic::<In> { capacity, overflow_strategy, pending: VecDeque::new(), source_done: false };
   FlowDefinition {
     kind:        StageKind::FlowBuffer,
-    inlet:       inlet.id(),
-    outlet:      outlet.id(),
-    input_type:  TypeId::of::<In>(),
-    output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::Left,
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-    logic:       Box::new(logic),
-    attributes:  Attributes::new(),
-  }
-}
-
-pub(in crate::core) fn async_boundary_definition<In>() -> FlowDefinition
-where
-  In: Send + Sync + 'static, {
-  let inlet: Inlet<In> = Inlet::new();
-  let outlet: Outlet<In> = Outlet::new();
-  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity: 16, enforcing: false };
-  FlowDefinition {
-    kind:        StageKind::FlowAsyncBoundary,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),

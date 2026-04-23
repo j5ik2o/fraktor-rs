@@ -101,21 +101,6 @@ impl<T: ?Sized> ArcShared<T> {
       ArcShared::from_raw(trait_ptr)
     }
   }
-
-  /// Converts the shared handle into another dynamically sized representation.
-  #[cfg(feature = "unsize")]
-  #[deprecated(
-    note = "ArcShared::into_dyn is disabled when the `unsize` feature is enabled; rely on implicit coercion instead."
-  )]
-  /// # Panics
-  ///
-  /// Always panics because the `unsize` feature enables implicit coercion and this method must not
-  /// be used directly.
-  pub fn into_dyn<U: ?Sized, F>(self, _cast: F) -> ArcShared<U>
-  where
-    F: FnOnce(&T) -> &U, {
-    panic!("ArcShared::into_dyn is disabled when the `unsize` feature is enabled; rely on implicit coercion instead.");
-  }
 }
 
 impl<T: ?Sized> core::ops::Deref for ArcShared<T> {

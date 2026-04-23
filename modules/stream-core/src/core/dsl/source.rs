@@ -18,8 +18,8 @@ use super::{
   SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamCompletion,
   StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow::{
-    Flow, async_boundary_definition, backpressure_timeout_definition, balance_definition, batch_definition,
-    broadcast_definition, buffer_definition, completion_timeout_definition, concat_definition, concat_lazy_definition,
+    Flow, backpressure_timeout_definition, balance_definition, batch_definition, broadcast_definition,
+    buffer_definition, completion_timeout_definition, concat_definition, concat_lazy_definition,
     concat_substreams_definition, conflate_with_seed_definition, debounce_definition, delay_definition,
     drop_definition, drop_while_definition, expand_definition, filter_definition, flat_map_concat_definition,
     flat_map_merge_definition, flat_map_prefix_definition, group_by_definition, grouped_definition,
@@ -675,18 +675,6 @@ impl Source<i32, StreamNotUsed> {
       return Self::from_iterator(start..=end);
     }
     Self::from_iterator((end..=start).rev())
-  }
-}
-
-impl Source<u8, StreamNotUsed> {
-  /// Creates a source from a path-compatible value.
-  ///
-  /// This stub converts a string to its UTF-8 byte representation.
-  /// For actual file IO, use `fraktor_stream_adaptor_std_rs::std::io::FileIO::from_path`.
-  #[must_use]
-  #[deprecated(note = "Use fraktor_stream_adaptor_std_rs::std::io::FileIO::from_path for actual file reading")]
-  pub fn from_path(path: &str) -> Self {
-    Self::from_iterator(path.as_bytes().to_vec())
   }
 }
 
@@ -1500,9 +1488,8 @@ where
   /// Marks this source with an async boundary attribute.
   ///
   /// The materializer uses this attribute to split the graph into
-  /// independently executed islands.  Unlike the legacy
-  /// `async_boundary()` method, this does **not** insert a buffer
-  /// stage; the boundary is resolved at materialization time.
+  /// independently executed islands. The boundary is resolved at
+  /// materialization time and does not insert a buffer stage.
   ///
   /// Mirrors Pekko's `Graph.async`.
   #[must_use]
@@ -1520,31 +1507,6 @@ where
     self.graph.mark_last_node_async();
     self.graph.mark_last_node_dispatcher(dispatcher);
     self
-  }
-
-  /// Decouples upstream and downstream demand signaling via an async boundary.
-  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
-  #[must_use]
-  pub fn detach(self) -> Source<Out, Mat> {
-    self.append_legacy_async_boundary()
-  }
-
-  /// Adds an explicit async boundary stage.
-  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
-  #[must_use]
-  pub fn async_boundary(self) -> Source<Out, Mat> {
-    self.append_legacy_async_boundary()
-  }
-
-  fn append_legacy_async_boundary(mut self) -> Source<Out, Mat> {
-    let definition = async_boundary_definition::<Out>();
-    let inlet_id = definition.inlet;
-    let from = self.graph.tail_outlet();
-    self.graph.push_stage(StageDefinition::Flow(definition));
-    if let Some(from) = from {
-      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
-    }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds a throttle stage that limits the number of buffered in-flight elements.
