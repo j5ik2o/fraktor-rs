@@ -11,7 +11,7 @@ use crate::core::kernel::actor::{Pid, actor_ref::ActorRef};
 pub(crate) struct TempActors {
   map: HashMap<String, ActorRef, RandomState>,
 }
-#[allow(dead_code)]
+
 impl TempActors {
   /// Creates a new empty temporary actors registry.
   #[must_use]

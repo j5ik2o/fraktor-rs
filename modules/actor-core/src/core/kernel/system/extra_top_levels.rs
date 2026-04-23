@@ -11,7 +11,7 @@ use crate::core::kernel::actor::actor_ref::ActorRef;
 pub(crate) struct ExtraTopLevels {
   map: HashMap<String, ActorRef, RandomState>,
 }
-#[allow(dead_code)]
+
 impl ExtraTopLevels {
   /// Creates a new empty extra top-levels registry.
   #[must_use]

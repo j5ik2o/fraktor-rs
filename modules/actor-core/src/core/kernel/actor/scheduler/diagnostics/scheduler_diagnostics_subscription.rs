@@ -14,7 +14,7 @@ pub struct SchedulerDiagnosticsSubscription {
   buffer:   ArcShared<DiagnosticsBuffer>,
   detached: bool,
 }
-#[allow(dead_code)]
+
 impl SchedulerDiagnosticsSubscription {
   pub(crate) const fn new(id: u64, registry: DiagnosticsRegistry, buffer: ArcShared<DiagnosticsBuffer>) -> Self {
     Self { id, registry, buffer, detached: false }

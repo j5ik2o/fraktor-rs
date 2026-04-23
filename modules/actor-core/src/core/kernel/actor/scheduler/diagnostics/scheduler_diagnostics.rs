@@ -17,7 +17,7 @@ pub struct SchedulerDiagnostics {
   stream_capacity:    usize,
   _marker:            PhantomData<()>,
 }
-#[allow(dead_code)]
+
 impl SchedulerDiagnostics {
   /// Creates a diagnostics container with logging disabled.
   #[must_use]
