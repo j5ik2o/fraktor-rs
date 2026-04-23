@@ -138,7 +138,7 @@ if config.requirement().needs_control_aware() {
 - **範囲** (rtk grep 実測):
   - `BoundedWithDeque`: 9 参照 / 6 ファイル
   - `ControlAwareRequiresUnboundedPolicy`: 5 参照 / 3 ファイル
-  - 合計 14 参照 / 7 ファイル (一部重複)。外部クレートへの波及はなし (pre-release)
+  - 合計 14 参照。両方を参照する 3 ファイル (mailbox_config_error.rs / mailbox_config.rs / mailbox_config/tests.rs) を差し引いた unique 対象は **6 ファイル**。外部クレートへの波及はなし (pre-release)
 - **緩和**: CLAUDE.md 方針に従い破壊的変更を許容。tasks の caller 追随と `rtk grep "BoundedWithDeque|ControlAwareRequiresUnboundedPolicy"` で残参照ゼロ検証 + CI 全通しで担保
 
 ### Risk 2: control-aware + bounded の受理経路修正による挙動変化
@@ -146,7 +146,7 @@ if config.requirement().needs_control_aware() {
 - **従来の実際の挙動** (ultrareview で判明): `MailboxConfig::validate()` が `ControlAwareRequiresUnboundedPolicy` で **fail-fast** で拒否する。当初の proposal 記述 "silently unbounded fallback" は誤認で、`mailboxes.rs:54-57` の無条件 Unbounded 生成は validate を経由しない経路でのみ到達する
 - **本 change 後**: validate は `Ok(())` を返し、`create_message_queue_from_config` が `BoundedControlAwareMessageQueue` を返す
 - **影響**: 従来 `ControlAwareRequiresUnboundedPolicy` 前提で組まれていた caller は validate 成功経路に切替わる。`match` で variant を handle していたコードは 2 variant 削除により要修正
-- **範囲**: workspace 内 13 参照すべてを tasks Phase 5 で列挙済
+- **範囲**: workspace 内 14 参照すべてを tasks Phase 5 で列挙済 (Risk 1 と同じ)
 - **緩和**: change log に BREAKING として明記、tasks と CI で網羅確認
 
 ### Risk 3: DropOldest eviction 対象 (control vs normal) の判断ミス
