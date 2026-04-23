@@ -104,33 +104,37 @@ impl ActorSystemConfig {
 
   /// Registers a custom actor-ref provider installer.
   #[must_use]
-  pub fn with_actor_ref_provider_installer<P>(mut self, installer: P) -> Self
-  where
-    P: ActorRefProviderInstaller + 'static, {
+  pub fn with_actor_ref_provider_installer(mut self, installer: impl ActorRefProviderInstaller + 'static) -> Self {
     self.provider_installer = Some(ArcShared::new(installer));
     self
   }
 
   /// Registers a custom invoke-guard factory.
+  ///
+  /// The builder wraps the supplied factory in `ArcShared<Box<dyn _>>`
+  /// internally; callers pass the concrete impl directly.
   #[must_use]
-  pub fn with_invoke_guard_factory(mut self, factory: ArcShared<Box<dyn InvokeGuardFactory>>) -> Self {
-    self.invoke_guard_factory = Some(factory);
+  pub fn with_invoke_guard_factory(mut self, factory: impl InvokeGuardFactory + 'static) -> Self {
+    self.invoke_guard_factory = Some(ArcShared::new(Box::new(factory)));
     self
   }
 
-  /// Registers a dispatcher configurator under the supplied id.
+  /// Registers a dispatcher factory under the supplied id.
   ///
   /// `ActorSystemConfig::default()` seeds the registry with an
-  /// `InlineExecutor`-backed configurator under the default id; production
-  /// users override the entry by calling this method with a configurator
+  /// `InlineExecutor`-backed factory under the default id; production
+  /// users override the entry by calling this method with a factory
   /// that uses a real executor (Tokio, threaded, pinned, etc.).
+  ///
+  /// The builder wraps the supplied factory in `ArcShared<Box<dyn _>>`
+  /// internally; callers pass the concrete factory type directly.
   #[must_use]
   pub fn with_dispatcher_factory(
     mut self,
     id: impl Into<String>,
-    configurator: ArcShared<Box<dyn MessageDispatcherFactory>>,
+    factory: impl MessageDispatcherFactory + 'static,
   ) -> Self {
-    self.dispatchers.register_or_update(id, configurator);
+    self.dispatchers.register_or_update(id, ArcShared::new(Box::new(factory)));
     self
   }
 

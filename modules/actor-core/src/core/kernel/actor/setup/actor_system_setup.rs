@@ -3,9 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, string::String};
-
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use alloc::string::String;
 
 use crate::core::kernel::{
   actor::{
@@ -64,20 +62,21 @@ impl ActorSystemSetup {
 
   /// Registers a custom actor-ref provider installer.
   #[must_use]
-  pub fn with_actor_ref_provider_installer<P>(self, installer: P) -> Self
-  where
-    P: ActorRefProviderInstaller + 'static, {
+  pub fn with_actor_ref_provider_installer(self, installer: impl ActorRefProviderInstaller + 'static) -> Self {
     Self { config: self.config.with_actor_ref_provider_installer(installer) }
   }
 
-  /// Registers a dispatcher configurator under the supplied id.
+  /// Registers a dispatcher factory under the supplied id.
+  ///
+  /// The builder wraps the supplied factory in `ArcShared<Box<dyn _>>`
+  /// internally; callers pass the concrete factory type directly.
   #[must_use]
   pub fn with_dispatcher_factory(
     self,
     id: impl Into<String>,
-    configurator: ArcShared<Box<dyn MessageDispatcherFactory>>,
+    factory: impl MessageDispatcherFactory + 'static,
   ) -> Self {
-    Self { config: self.config.with_dispatcher_factory(id, configurator) }
+    Self { config: self.config.with_dispatcher_factory(id, factory) }
   }
 
   /// Registers or updates a mailbox configuration.

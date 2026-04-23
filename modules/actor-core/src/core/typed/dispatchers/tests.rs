@@ -59,12 +59,9 @@ fn lookup_from_config_preserves_user_override_of_pekko_alias() {
   use alloc::boxed::Box;
   use core::time::Duration;
 
-  use fraktor_utils_core_rs::core::sync::ArcShared;
-
   use crate::core::kernel::{
     dispatch::dispatcher::{
-      DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
-      TrampolineState,
+      DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, TrampolineState,
     },
     system::ActorSystem,
   };
@@ -84,9 +81,10 @@ fn lookup_from_config_preserves_user_override_of_pekko_alias() {
     let custom_config =
       DispatcherConfig::with_defaults("custom-typed-dispatcher").with_shutdown_timeout(Duration::from_secs(2));
     let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
-    let custom: ArcShared<Box<dyn MessageDispatcherFactory>> =
-      ArcShared::new(Box::new(DefaultDispatcherFactory::new(&custom_config, executor)));
-    config.with_dispatcher_factory("pekko.actor.default-dispatcher", custom)
+    config.with_dispatcher_factory(
+      "pekko.actor.default-dispatcher",
+      DefaultDispatcherFactory::new(&custom_config, executor),
+    )
   });
 
   let dispatchers = Dispatchers::new(system.state());

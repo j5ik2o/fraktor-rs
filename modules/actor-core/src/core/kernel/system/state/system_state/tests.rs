@@ -29,9 +29,7 @@ use crate::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{
-    DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, MessageDispatcherFactory, TrampolineState,
-  },
+  dispatch::dispatcher::{DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, TrampolineState},
   event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   system::{
     RegisterExtraTopLevelError, TerminationSignal,
@@ -814,12 +812,11 @@ impl Executor for NoopExecutor {
   fn shutdown(&mut self) {}
 }
 
-fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherFactory>> {
+fn noop_dispatcher_configurator() -> DefaultDispatcherFactory {
   use crate::core::kernel::dispatch::dispatcher::ExecutorShared;
   let settings = DispatcherConfig::with_defaults("noop");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
-  let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));
-  ArcShared::new(configurator)
+  DefaultDispatcherFactory::new(&settings, executor)
 }
 
 struct LogRecorder {

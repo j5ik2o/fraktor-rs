@@ -10,5 +10,5 @@ pub use panic_invoke_guard_factory::PanicInvokeGuardFactory;
 /// Installs the std panic guard into an actor-system configuration.
 #[must_use]
 pub fn install_panic_invoke_guard(config: ActorSystemConfig) -> ActorSystemConfig {
-  config.with_invoke_guard_factory(PanicInvokeGuardFactory::shared())
+  config.with_invoke_guard_factory(PanicInvokeGuardFactory::new())
 }

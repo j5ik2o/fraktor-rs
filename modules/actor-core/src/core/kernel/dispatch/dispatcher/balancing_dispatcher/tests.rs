@@ -153,7 +153,7 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   use alloc::sync::Arc;
   use core::sync::atomic::{AtomicUsize, Ordering};
 
-  use crate::core::kernel::dispatch::dispatcher::{BalancingDispatcherFactory, MessageDispatcherFactory};
+  use crate::core::kernel::dispatch::dispatcher::BalancingDispatcherFactory;
 
   struct InlineExec;
 
@@ -177,17 +177,11 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
     }
   }
 
-  let configurator: ArcShared<Box<dyn MessageDispatcherFactory>> = {
+  let system = ActorSystem::new_empty_with(|config| {
     let executor = ExecutorShared::new(Box::new(InlineExec), TrampolineState::new());
     let settings = DispatcherConfig::new("balancing-load", nz(8), None, Duration::from_secs(1));
     let shared_queue = SharedMessageQueue::new();
-    let inner: Box<dyn MessageDispatcherFactory> =
-      Box::new(BalancingDispatcherFactory::new(&settings, executor, shared_queue));
-    ArcShared::new(inner)
-  };
-  let configurator_clone = configurator.clone();
-  let system = ActorSystem::new_empty_with(move |config| {
-    config.with_dispatcher_factory("balancing-load", configurator_clone.clone())
+    config.with_dispatcher_factory("balancing-load", BalancingDispatcherFactory::new(&settings, executor, shared_queue))
   });
   let state = system.state();
 

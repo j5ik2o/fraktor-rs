@@ -1,7 +1,5 @@
 //! Factory for std panic-catching invoke guards.
 
-use alloc::boxed::Box;
-
 use fraktor_actor_core_rs::core::kernel::actor::invoke_guard::{InvokeGuard, InvokeGuardFactory};
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -18,12 +16,6 @@ impl PanicInvokeGuardFactory {
   pub fn new() -> Self {
     let shared_guard: ArcShared<dyn InvokeGuard> = ArcShared::new(PanicInvokeGuard::new());
     Self { shared_guard }
-  }
-
-  /// Returns a shared trait-object wrapper of this factory.
-  #[must_use]
-  pub fn shared() -> ArcShared<Box<dyn InvokeGuardFactory>> {
-    ArcShared::new(Box::new(Self::new()) as Box<dyn InvokeGuardFactory>)
   }
 }
 
