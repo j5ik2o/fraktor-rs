@@ -35,13 +35,6 @@ impl Scheduler {
     Self { inner }
   }
 
-  /// Returns the underlying shared scheduler handle (for internal wiring).
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn raw(&self) -> TypedSchedulerShared {
-    self.inner.clone()
-  }
-
   /// Schedules a single message delivery after the given delay.
   ///
   /// Corresponds to Pekko's `Scheduler.scheduleOnce`.

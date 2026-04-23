@@ -35,7 +35,6 @@ use crate::core::{
   },
   typed::{
     TypedActorRef, TypedActorSystemConfig, TypedActorSystemLog,
-    actor::TypedChildRef,
     dispatchers::Dispatchers,
     eventstream::EventStreamCommand,
     internal::TypedSchedulerShared,
@@ -384,15 +383,6 @@ where
   /// Publishes a raw event to the event stream.
   pub fn publish_event(&self, event: &EventStreamEvent) {
     self.inner.publish_event(event)
-  }
-
-  /// Spawns a new top-level actor under the user guardian.
-  #[allow(dead_code)]
-  pub(crate) fn spawn<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
-  where
-    C: Send + Sync + 'static, {
-    let child = self.inner.spawn(typed_props.to_untyped())?;
-    Ok(TypedChildRef::from_untyped(child))
   }
 
   /// Spawns a named actor under the `/system` guardian.

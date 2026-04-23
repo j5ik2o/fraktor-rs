@@ -25,12 +25,6 @@ impl<'a> TypedScheduler<'a> {
     Self { scheduler }
   }
 
-  /// Returns a mutable reference to the underlying scheduler (primarily for testing).
-  #[allow(dead_code)]
-  pub(crate) const fn inner(&mut self) -> &mut Scheduler {
-    self.scheduler
-  }
-
   /// Schedules a typed message for one-shot delivery.
   ///
   /// # Errors

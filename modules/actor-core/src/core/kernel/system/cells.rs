@@ -34,27 +34,6 @@ impl Cells {
   pub(crate) fn get(&self, pid: &Pid) -> Option<ArcShared<ActorCell>> {
     self.map.get(pid).cloned()
   }
-
-  /// Returns `true` if the registry contains the given [`Pid`].
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn contains(&self, pid: &Pid) -> bool {
-    self.map.contains_key(pid)
-  }
-
-  /// Returns the number of cells in the registry.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn len(&self) -> usize {
-    self.map.len()
-  }
-
-  /// Returns `true` if the registry is empty.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn is_empty(&self) -> bool {
-    self.map.is_empty()
-  }
 }
 
 impl Default for Cells {

@@ -14,19 +14,11 @@ pub(crate) struct ActorRefProviders {
   map:     HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>,
   _marker: PhantomData<()>,
 }
-#[allow(dead_code)]
 impl ActorRefProviders {
   /// Creates a new empty actor reference providers registry.
   #[must_use]
   pub(crate) fn new() -> Self {
     Self { map: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
-  }
-
-  /// Returns `true` when a provider for the provided [`TypeId`] is registered.
-  #[allow(dead_code)]
-  #[must_use]
-  pub(crate) fn contains_key(&self, type_id: &TypeId) -> bool {
-    self.map.contains_key(type_id)
   }
 
   /// Returns a provider by [`TypeId`].
@@ -37,12 +29,6 @@ impl ActorRefProviders {
   /// Inserts a provider.
   pub(crate) fn insert(&mut self, type_id: TypeId, provider: ArcShared<dyn Any + Send + Sync + 'static>) {
     self.map.insert(type_id, provider);
-  }
-
-  /// Returns an iterator over the provider values.
-  #[allow(dead_code)]
-  pub(crate) fn values(&self) -> impl Iterator<Item = &ArcShared<dyn Any + Send + Sync + 'static>> {
-    self.map.values()
   }
 }
 

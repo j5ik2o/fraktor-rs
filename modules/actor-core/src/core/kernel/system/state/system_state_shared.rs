@@ -42,7 +42,6 @@ use crate::core::kernel::{
       SchedulerBackedDelayProvider, SchedulerShared, task_run::TaskRunSummary, tick_driver::TickDriverBundle,
     },
     spawn::SpawnError,
-    supervision::SupervisorDirective,
   },
   dispatch::{
     dispatcher::{DispatchersError, MessageDispatcherShared},
@@ -764,95 +763,6 @@ impl SystemStateShared {
   pub fn record_send_error(&self, recipient: Option<Pid>, error: &SendError) {
     let timestamp = self.monotonic_now();
     self.dead_letter.record_send_error(recipient, error, timestamp);
-  }
-
-  /// Handles a failure in a child actor according to supervision strategy.
-  #[allow(dead_code)]
-  pub fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
-    let Some(parent_pid) = parent else {
-      if let Err(e) = self.send_system_message(pid, SystemMessage::Stop) {
-        self.record_send_error(Some(pid), &e);
-      }
-      return;
-    };
-
-    let Some(parent_cell) = self.cell(&parent_pid) else {
-      if let Err(e) = self.send_system_message(pid, SystemMessage::Stop) {
-        self.record_send_error(Some(pid), &e);
-      }
-      return;
-    };
-
-    let parent_parent = parent_cell.parent();
-    let now = self.monotonic_now();
-    let (directive, affected) = parent_cell.handle_child_failure(pid, error, now);
-
-    match directive {
-      | SupervisorDirective::Restart => {
-        let mut escalate_due_to_recreate_failure = false;
-        for target in &affected {
-          // Pekko `SupervisorStrategy.restartChild(..., suspendFirst)`: the
-          // originally failing child already suspended itself via
-          // `report_failure`, but AllForOne siblings must be suspended before
-          // their `Recreate` is delivered so that `fault_recreate` observes
-          // the AC-H3 "suspended mailbox" precondition.
-          if *target != pid
-            && let Some(sibling_cell) = self.cell(target)
-          {
-            sibling_cell.mailbox().suspend();
-            sibling_cell.suspend_children();
-          }
-        }
-        for target in affected {
-          let cause = error.to_reason();
-          if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate(cause)) {
-            self.record_send_error(Some(target), &send_error);
-            if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
-              self.record_send_error(Some(target), &e);
-            }
-            escalate_due_to_recreate_failure = true;
-          }
-        }
-        if escalate_due_to_recreate_failure {
-          Self::suspend_for_escalation(&parent_cell);
-          self.handle_failure(parent_pid, parent_parent, error);
-        }
-      },
-      | SupervisorDirective::Stop => {
-        for target in affected {
-          if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
-            self.record_send_error(Some(target), &e);
-          }
-        }
-      },
-      | SupervisorDirective::Escalate => {
-        for target in affected {
-          if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
-            self.record_send_error(Some(target), &e);
-          }
-        }
-        // Pekko `FaultHandling.scala:62-67` handleInvokeFailure semantics:
-        // escalation throws in the supervisor, which triggers its own
-        // `handleInvokeFailure` → suspend self + children before reporting to
-        // its parent. Replicate that quiescence here so the grandparent's
-        // restart directive finds the supervisor with a suspended mailbox
-        // (AC-H3 precondition for `fault_recreate`).
-        Self::suspend_for_escalation(&parent_cell);
-        self.handle_failure(parent_pid, parent_parent, error);
-      },
-      | SupervisorDirective::Resume => {
-        for target in affected {
-          if let Err(e) = self.send_system_message(target, SystemMessage::Resume) {
-            self.record_send_error(Some(target), &e);
-          }
-        }
-      },
-    }
-  }
-
-  fn suspend_for_escalation(cell: &ActorCell) {
-    cell.mailbox().suspend();
-    cell.suspend_children();
   }
 
   /// Records an explicit deadletter entry originating from runtime logic.

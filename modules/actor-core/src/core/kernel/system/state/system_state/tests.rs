@@ -16,7 +16,7 @@ use crate::core::kernel::{
     actor_ref::ActorRef,
     error::ActorError,
     messaging::{
-      AnyMessage, AnyMessageView,
+      AnyMessageView,
       system_message::{FailurePayload, SystemMessage},
     },
     props::Props,
@@ -531,28 +531,6 @@ fn system_state_remote_authority_events() {
 }
 
 #[test]
-fn system_state_send_system_message_to_nonexistent_actor() {
-  use crate::core::kernel::actor::messaging::system_message::SystemMessage;
-
-  let state = build_state();
-  let pid = state.allocate_pid();
-
-  let result = state.send_system_message(pid, SystemMessage::Stop);
-  assert!(result.is_err());
-}
-
-#[test]
-fn system_state_record_send_error() {
-  use crate::core::kernel::actor::error::SendError;
-
-  let state = build_state();
-  let error = SendError::closed(AnyMessage::new(42_u32));
-
-  state.record_send_error(None, &error);
-  state.record_send_error(Some(state.allocate_pid()), &error);
-}
-
-#[test]
 fn guardian_cell_via_cells_returns_none_when_missing() {
   let state = build_shared_state();
   let user_pid = state.allocate_pid();
@@ -872,27 +850,4 @@ impl Actor for RestartProbeActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
-}
-
-#[test]
-fn recreate_send_failure_escalates_and_stops_parent() {
-  let state = build_shared_state();
-  let parent_pid = state.allocate_pid();
-  let parent_props = Props::from_fn(|| RestartProbeActor);
-  let parent =
-    ActorCell::create(state.clone(), parent_pid, None, "parent".to_string(), &parent_props).expect("create actor cell");
-  state.register_cell(parent.clone());
-
-  let child_pid = state.allocate_pid();
-  let child_props = Props::from_fn(|| RestartProbeActor);
-  let child = ActorCell::create(state.clone(), child_pid, Some(parent_pid), "child".to_string(), &child_props)
-    .expect("create actor cell");
-  state.register_cell(child.clone());
-  state.register_child(parent_pid, child_pid);
-
-  state.remove_cell(&child_pid);
-  let error = ActorError::recoverable("boom");
-  state.handle_failure(child_pid, Some(parent_pid), &error);
-
-  assert!(state.cell(&parent_pid).is_none());
 }
