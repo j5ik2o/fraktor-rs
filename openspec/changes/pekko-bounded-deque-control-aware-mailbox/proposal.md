@@ -9,7 +9,7 @@ fraktor-rs 現状 (`modules/actor-core/src/core/kernel/dispatch/mailbox/`):
 - Unbounded 側は 5 variant (plain / deque / control_aware / priority / stable_priority) 揃っている
 - Bounded 側は 3 variant (plain / priority / stable_priority) のみ
 - **deque + bounded**: `mailboxes.rs:89` の `deque_mailbox_type_from_policy` が `MailboxConfigError::BoundedWithDeque` で fail-fast し、組合せ自体を禁止
-- **control_aware + bounded**: `mailboxes.rs:54-57` の `create_message_queue_from_config` が `needs_control_aware()` を検出しても **無条件に Unbounded 版**を生成 (capacity 分岐なし)。bounded を指定しても silently unbounded にフォールバックする
+- **control_aware + bounded**: `MailboxConfig::validate()` (`mailbox_config.rs:137-141`) が `MailboxConfigError::ControlAwareRequiresUnboundedPolicy` を返して fail-fast で拒否しており、組合せ自体が unvalid。さらに `mailboxes.rs:54-57` の `create_message_queue_from_config` は `needs_control_aware()` を検出しても **無条件に Unbounded 版**を生成 (capacity 分岐なし) のため、validate を迂回する経路があっても実際の capacity 制約は効かない
 
 本 change で 2 variant を新設し、mailboxes.rs の分岐を bounded 対応に拡張する。gap-analysis MB-M2 は第16版で残存 medium 5 件の 1 つとして identifiable、pattern 複製で確実に閉塞可能と評価されている。
 
@@ -20,7 +20,8 @@ fraktor-rs 現状 (`modules/actor-core/src/core/kernel/dispatch/mailbox/`):
 - **分岐拡張** (`mailboxes.rs`):
   - `deque_mailbox_type_from_policy`: `Bounded { capacity }` 枝を `BoundedDequeMailboxType::new(capacity, overflow)` に差し替え、`Err(BoundedWithDeque)` の fail-fast を廃止
   - `create_message_queue_from_config` の control-aware 分岐: 現状の無条件 `UnboundedControlAwareMailboxType` を `policy.capacity()` で `Bounded` / `Unbounded` 振分け
-- **BREAKING**: `MailboxConfigError::BoundedWithDeque` variant を削除 (新 variant で組合せが valid になるため error 自体が無意味)。caller (`validate` / tests) も追随更新する。
+- **BREAKING**: `MailboxConfigError::BoundedWithDeque` variant を削除 (新 BoundedDeque 型で組合せが valid になるため error 自体が無意味)。caller (`validate` / tests) も追随更新する。
+- **BREAKING**: `MailboxConfigError::ControlAwareRequiresUnboundedPolicy` variant を削除 (新 BoundedControlAware 型で組合せが valid になるため)。`mailbox_config.rs:137-141` の validate 分岐と rustdoc (L125-126) も撤去。caller (`mailbox_config/tests.rs:56` など) も追随更新する。
 - **テスト**: 新 mailbox type 2 件ごとに既存 `bounded_message_queue/tests.rs` / `unbounded_deque_message_queue/tests.rs` / `unbounded_control_aware_message_queue/tests.rs` と同パターンの unit tests を追加。overflow strategy 3 種 (`Grow` / `DropNewest` / `DropOldest`) × 新 variant 2 種で `BoundedMessageQueue` と等価な挙動を検証。
 - **gap-analysis 更新**: 第17版として MB-M2 を done 化、残存 medium を 4 件 (AC-M2, AC-M4b [deferred], FS-M1, FS-M2) に更新。
 
@@ -47,9 +48,10 @@ fraktor-rs 現状 (`modules/actor-core/src/core/kernel/dispatch/mailbox/`):
 - 関連 `mailboxes/tests.rs` / `base/tests.rs`: 新 variant の組合せカバー追加
 
 **影響を受ける API 契約**:
-- **BREAKING**: `MailboxConfigError::BoundedWithDeque` variant 削除。public enum variant なので再 export している下流も影響。fraktor-rs 内部では `validate()` の戻り値型と数箇所のテストのみ影響を受ける。
-- `MailboxConfig::validate()` の成功範囲拡張: 従来 `bounded + deque` は `Err` を返していたが、本 change 以降は `Ok(())` を返し、`create_message_queue_from_config` が `BoundedDequeMessageQueue` を返す。
-- `create_message_queue_from_config`: control-aware + bounded 指定が従来 silently unbounded fallback だったが、本 change 以降は `BoundedControlAwareMessageQueue` を返す (挙動修正 = BREAKING fix)。
+- **BREAKING**: `MailboxConfigError::BoundedWithDeque` variant 削除 (9 参照 / 6 ファイル)。public enum variant なので再 export している下流も影響。fraktor-rs 内部では `validate()` の戻り値型と数箇所のテストのみ影響を受ける。
+- **BREAKING**: `MailboxConfigError::ControlAwareRequiresUnboundedPolicy` variant 削除 (5 参照 / 3 ファイル)。
+- `MailboxConfig::validate()` の成功範囲拡張: 従来 `bounded + deque` / `bounded + control_aware` は `Err` を返していたが、本 change 以降は `Ok(())` を返し、`create_message_queue_from_config` が対応する新 Bounded 型を返す。
+- `create_message_queue_from_config`: control-aware + bounded 指定が従来 validate で fail-fast していたが、仮に validate を経由せず呼ばれた場合は silently unbounded fallback していた。本 change 以降は validate 成功 + `BoundedControlAwareMessageQueue` 生成の整合パスに統一 (behavior fix)。
 
 **影響を受けないもの**:
 - `MessageQueue` / `DequeMessageQueue` trait 定義

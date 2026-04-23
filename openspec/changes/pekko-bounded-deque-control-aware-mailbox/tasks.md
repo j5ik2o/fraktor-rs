@@ -5,6 +5,8 @@
 - [ ] 1.3 既存 `UnboundedControlAwareMessageQueue` の dual-queue 構造と `is_control()` 判定経路を確認
 - [ ] 1.4 `mailbox.rs` (mod エントリ) の既存 mod 宣言順を確認 (新 mod 4 件を alphabetical に挿入)
 - [ ] 1.5 `mailboxes.rs` の `deque_mailbox_type_from_policy` と `create_message_queue_from_config` の control-aware 分岐の現行コードを確認
+- [ ] 1.6 `mailbox_config.rs::validate` (L137-148) で両拒否分岐 (`BoundedWithDeque` + `ControlAwareRequiresUnboundedPolicy`) を確認し、Phase 5A/5B の削除範囲を確定
+- [ ] 1.7 `rtk grep "BoundedWithDeque|ControlAwareRequiresUnboundedPolicy" --glob "*.rs"` で全参照を列挙 (想定 14 参照 / 7 ファイル前後)
 
 ## Phase 2: BoundedDeque variant の追加
 
@@ -14,13 +16,13 @@
   - `impl MessageQueue`: `enqueue` / `dequeue` / `number_of_messages` / `clean_up` / `as_deque`
   - `impl DequeMessageQueue`: `enqueue_first`
   - enqueue は overflow 分岐 (Grow = push_back, DropNewest = len check + Rejected, DropOldest = pop_front evict + push_back + Evicted)
-  - enqueue_first も同様に capacity 強制 (Grow = push_front, DropNewest = len check + Err(SendError::Full), DropOldest = pop_back evict + push_front + Ok)
+  - **enqueue_first (Decision 2-c)**: Grow = push_front + Ok, DropNewest = len check + Err(SendError::Full), **DropOldest = len check + Err(SendError::Full)** (evict しない Reject 方式)
 - [ ] 2.2 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_deque_message_queue/tests.rs` を新規作成: spec の 6 シナリオに対応するテスト 6 件以上
   - Grow で 3 件 enqueue 成功
   - DropNewest の Rejected
   - DropOldest の Evicted (front evict)
   - enqueue_first の DropNewest で Err(SendError::Full)
-  - enqueue_first の DropOldest で back evict
+  - **enqueue_first の DropOldest も Err(SendError::Full) (既存 entry を evict しない)**
   - clean_up で全 clear
 - [ ] 2.3 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_deque_mailbox_type.rs` を新規作成:
   - `pub struct BoundedDequeMailboxType { capacity: NonZeroUsize, overflow: MailboxOverflowStrategy }`
@@ -83,13 +85,28 @@
 - [ ] 4.5 `mailboxes.rs::create_message_queue_from_config` の deque 分岐 (`config.requirement().needs_deque()` 部分) で、`deque_mailbox_type_from_policy` が Result を返さなくなるのに追随して `?` を削除
 - [ ] 4.6 `mailboxes/tests.rs` を調べて、`Err(BoundedWithDeque)` を期待していた箇所があれば `Ok(BoundedDequeMessageQueue 生成)` 期待に差替え。新 variant の dispatch 回帰テスト 2 件を追加 (bounded + deque / bounded + control_aware)
 
-## Phase 5: `MailboxConfigError::BoundedWithDeque` の削除
+## Phase 5: `MailboxConfigError::BoundedWithDeque` + `ControlAwareRequiresUnboundedPolicy` の削除
+
+**背景** (ultrareview merged_bug_001 で判明): `MailboxConfig::validate()` には 2 つの関連拒否分岐があり、`BoundedWithDeque` だけでなく `ControlAwareRequiresUnboundedPolicy` も削除する必要がある。後者を残すと新 Bounded+ControlAware 分岐が unreachable dead code になる。
+
+### 5A: `BoundedWithDeque` variant の削除 (9 参照 / 6 ファイル)
 
 - [ ] 5.1 `modules/actor-core/src/core/kernel/actor/props/mailbox_config_error.rs` から `BoundedWithDeque` variant を削除 (L14) + `Display` impl の対応 arm 削除 (L33)
 - [ ] 5.2 `modules/actor-core/src/core/kernel/actor/props/mailbox_config.rs::validate` L148 付近の `return Err(MailboxConfigError::BoundedWithDeque);` 枝を削除。関連 rustdoc (L131) も更新
-- [ ] 5.3 `modules/actor-core/src/core/kernel/actor/props/mailbox_config/tests.rs::test at L93` の `BoundedWithDeque` 期待を `Ok(())` 期待に差替え。テスト名も意味に合わせて rename するか、assertion を更新
-- [ ] 5.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/base/tests.rs::test at L76` の `BoundedWithDeque` 期待を対応する新 variant の挙動に差替え (or 削除)
-- [ ] 5.5 `rtk grep "BoundedWithDeque"` で残参照ゼロを確認
+- [ ] 5.3 `modules/actor-core/src/core/kernel/actor/props/mailbox_config/tests.rs` L93 の `BoundedWithDeque` 期待を `Ok(())` 期待に差替え。テスト名も `rejects` → `accepts` に rename
+- [ ] 5.4 **修正**: `modules/actor-core/src/core/kernel/actor/props/base/tests.rs` L76 の `BoundedWithDeque` 期待を `Ok(())` 期待に差替え (※旧 tasks は `dispatch/mailbox/base/tests.rs` と誤記、実際は `actor/props/base/tests.rs`)
+- [ ] 5.5 `modules/actor-core/src/core/typed/props/tests.rs:46` の `with_stash_mailbox_rejects_bounded_mailbox_config` を `with_stash_mailbox_accepts_bounded_mailbox_config` に rename、assertion を `Err(BoundedWithDeque)` → `Ok(())` に反転 (stash + bounded は本 change で valid 組合せに)
+
+### 5B: `ControlAwareRequiresUnboundedPolicy` variant の削除 (5 参照 / 3 ファイル)
+
+- [ ] 5.6 `modules/actor-core/src/core/kernel/actor/props/mailbox_config_error.rs` から `ControlAwareRequiresUnboundedPolicy` variant を削除 (L10) + `Display` impl の対応 arm 削除 (L27)
+- [ ] 5.7 `modules/actor-core/src/core/kernel/actor/props/mailbox_config.rs::validate` L137-141 の `needs_control_aware() && Bounded` 拒否分岐を削除。関連 rustdoc (L125-126) も更新
+- [ ] 5.8 `modules/actor-core/src/core/kernel/actor/props/mailbox_config/tests.rs::validate_rejects_control_aware_with_bounded_policy` (L56 付近) を `validate_accepts_control_aware_with_bounded_policy` に rename、assertion を `Err(ControlAwareRequiresUnboundedPolicy)` → `Ok(())` に反転
+
+### 5C: 残参照ゼロ検証
+
+- [ ] 5.9 `rtk grep "BoundedWithDeque"` で残参照ゼロを確認
+- [ ] 5.10 `rtk grep "ControlAwareRequiresUnboundedPolicy"` で残参照ゼロを確認
 
 ## Phase 6: テストと CI 検証
 
@@ -115,9 +132,11 @@
 - [ ] 8.1 branch `impl/pekko-bounded-deque-control-aware-mailbox` を切って PR 発行、base は main
 - [ ] 8.2 PR 本文に以下を含める:
   - Pekko `Mailbox.scala:844,931` との対応表
-  - **公開 API 変更**: `MailboxConfigError::BoundedWithDeque` variant 削除 (BREAKING)
-  - **破壊的変更**: control_aware + bounded が silently unbounded fallback していた挙動を修正 (behavior fix)
-  - **テスト**: 新 variant 10+ 件 + dispatch 回帰 2 件 + validate 差替え
+  - **公開 API 変更**: `MailboxConfigError` から 2 variant 削除 (BREAKING):
+    - `BoundedWithDeque` (bounded + deque が valid に)
+    - `ControlAwareRequiresUnboundedPolicy` (bounded + control_aware が valid に)
+  - **挙動変更**: control_aware + bounded は従来 `validate()` で fail-fast 拒否されていたが、新 variant により validate 成功 + BoundedControlAware 生成の整合パスに統一 (behavior fix)
+  - **テスト**: 新 variant 10+ 件 + dispatch 回帰 2 件 + validate 差替え (2 テスト rename + assertion 反転)
   - gap-analysis MB-M2 done 化、第17版 medium 5 → 4
 - [ ] 8.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
 - [ ] 8.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-bounded-deque-control-aware-mailbox/spec.md` に sync

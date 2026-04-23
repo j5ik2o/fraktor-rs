@@ -82,6 +82,21 @@ if config.requirement().needs_control_aware() {
   - `EnqueueOutcome` / `EnqueueError` / `DropOldestOutcome` 等の型は既存 API を使用
 - **代替**: overflow handling を trait / macro 化して共通化する案は却下 (Decision 1 で論じた通り push_front / dual-queue の variant 固有差分を隠せない)
 
+### Decision 2-c: `BoundedDequeMessageQueue::enqueue_first` の DropOldest は **Reject** で扱う
+
+- **問題**: `enqueue_first` (push_front) は stash rehydration 用途で、Pekko `BoundedDequeBasedMailbox` には明示規定が無い。DropOldest をどう適用するかは設計判断。
+- **検討した選択肢**:
+  - (a) **front evict**: `enqueue` 側と同じ front evict。しかし push_front で front に入れるため、自分が push した envelope を直後に evict する可能性が高く意味を成さない
+  - (b) **back evict**: push_front に対し back を evict。"oldest" の語義 (長く保持している方 = 通常 front) と外れるため混乱を招く
+  - (c) **Reject**: `Err(SendError::Full(envelope))` を返し、既存 entry もいずれも evict しない
+- **選択**: (c) Reject 方式。
+- **Rationale**:
+  - DropNewest + enqueue_first と同じ挙動に揃うので一貫性が高い
+  - stash rehydration 失敗を呼び出し側が `?` で catch できる
+  - "oldest の evict 対象が push_front と push_back で逆転する" という spec-level の語義不整合を回避
+- **代替**: (a), (b) は ultrareview 指摘 (bug_008) で語義ねじれが明示されたため却下
+- **Pekko 参照**: 該当組合せの明示規定無し、fraktor-rs 独自 divergence として spec に明記
+
 ### Decision 3: BoundedControlAware の `DropOldest` は normal queue を優先 evict する
 
 - **選択**: 容量超過時の DropOldest は **control_queue ではなく normal_queue の front** を evict する。両方空で capacity オーバーする状況は overflow check の性質上発生しない (`total_len < capacity` 前提)。
@@ -90,13 +105,22 @@ if config.requirement().needs_control_aware() {
   - Control が優先される意味論上、容量確保は常に normal 側から取る方が期待どおり
 - **エッジケース**: 到着 envelope が control で normal_queue が空の場合、control_queue 末尾から evict する frontier が必要。Pekko `BoundedControlAwareMailbox` はこの場合 control を drop せず fail する (=`EnqueueOutcome::Rejected`) — fraktor-rs も同仕様に倣い、normal が空のとき制御 enqueue は capacity 判定で Reject する (実装を設計 spec に記載)
 
-### Decision 4: `MailboxConfigError::BoundedWithDeque` variant を削除する
+### Decision 4: `MailboxConfigError::BoundedWithDeque` / `ControlAwareRequiresUnboundedPolicy` variant を削除する
 
-- **選択**: `bounded + deque` が valid な組合せになるため、該当 variant と `validate()` 内の拒否ロジックをまとめて撤去する。related tests (`mailbox_config/tests.rs`) も `Ok(())` 期待に差替え。
+- **背景調査** (ultrareview merged_bug_001 指摘で判明):
+  - `MailboxConfig::validate()` には **2 つの関連拒否分岐**が存在する:
+    - `mailbox_config.rs:145-148` (L148 で `BoundedWithDeque` を返す)
+    - `mailbox_config.rs:137-141` (L140 で `ControlAwareRequiresUnboundedPolicy` を返す)
+  - 当初の proposal は後者を見落としており、新 Bounded+ControlAware 分岐が validate で弾かれ unreachable dead code になる設計ミスを内包していた
+- **選択**: **両 variant + 両 validate 分岐**を削除する。関連する rustdoc / tests / 他 caller もまとめて追随。
 - **Rationale**:
-  - `BoundedWithDeque` の意味は「組合せを許容していない」ため残すと誤情報化する
+  - `bounded + deque` / `bounded + control_aware` の両方が valid な組合せになるため、validate での拒否は論理的に不整合
+  - 両 variant はいずれも「組合せを許容していない」意味なので残すと誤情報化する
   - CLAUDE.md 「後方互換は不要 / 破壊的変更を恐れずに最適な設計を追求」方針で variant 削除を許容
-- **代替**: `BoundedWithDeque` を `#[deprecated]` で残す案は却下 (pre-release なので意味がない)
+- **影響範囲** (rtk grep 実測):
+  - `BoundedWithDeque`: 9 参照 / 6 ファイル
+  - `ControlAwareRequiresUnboundedPolicy`: 5 参照 / 3 ファイル
+- **代替**: `#[deprecated]` で残す案は却下 (pre-release なので意味がない)
 
 ### Decision 5: `create_message_queue_from_config` の control-aware 分岐に capacity 判定を追加する
 
@@ -108,17 +132,22 @@ if config.requirement().needs_control_aware() {
 
 ## Risks / Trade-offs
 
-### Risk 1: BREAKING: `MailboxConfigError::BoundedWithDeque` variant 削除
+### Risk 1: BREAKING: `MailboxConfigError` 2 variant 削除
 
-- **影響**: public enum variant が削除される。下流 (workspace 内) で `match` していた箇所はコンパイルエラーになる。
-- **範囲**: `rtk grep "BoundedWithDeque"` では fraktor-rs 内 7 箇所で参照されており、全て本 change で追随修正する対象。外部クレートへの波及はなし (pre-release)。
-- **緩和**: CLAUDE.md 方針に従い破壊的変更を許容。tasks の caller 追随と CI 全通しで担保
+- **影響**: public enum から 2 variant (`BoundedWithDeque`, `ControlAwareRequiresUnboundedPolicy`) が削除される。下流 (workspace 内) で `match` していた箇所はコンパイルエラーになる。
+- **範囲** (rtk grep 実測):
+  - `BoundedWithDeque`: 9 参照 / 6 ファイル
+  - `ControlAwareRequiresUnboundedPolicy`: 5 参照 / 3 ファイル
+  - 合計 14 参照 / 7 ファイル (一部重複)。外部クレートへの波及はなし (pre-release)
+- **緩和**: CLAUDE.md 方針に従い破壊的変更を許容。tasks の caller 追随と `rtk grep "BoundedWithDeque|ControlAwareRequiresUnboundedPolicy"` で残参照ゼロ検証 + CI 全通しで担保
 
-### Risk 2: control-aware + bounded の silent unbounded fallback 修正による挙動変化
+### Risk 2: control-aware + bounded の受理経路修正による挙動変化
 
-- **影響**: 従来 bounded を指定しても unbounded にフォールバックして受理していた config が、本 change 以降は実際に bounded として動作する。capacity 到達時に DropOldest / DropNewest 等の overflow 挙動が発生する。
-- **範囲**: control-aware + bounded を指定する config が production で存在するかは不明。もし存在すれば実質的に silently buggy だった挙動が修正される。
-- **緩和**: change log に BREAKING fix として明記。gap-analysis で MB-M2 の既知 issue として記録済
+- **従来の実際の挙動** (ultrareview で判明): `MailboxConfig::validate()` が `ControlAwareRequiresUnboundedPolicy` で **fail-fast** で拒否する。当初の proposal 記述 "silently unbounded fallback" は誤認で、`mailboxes.rs:54-57` の無条件 Unbounded 生成は validate を経由しない経路でのみ到達する
+- **本 change 後**: validate は `Ok(())` を返し、`create_message_queue_from_config` が `BoundedControlAwareMessageQueue` を返す
+- **影響**: 従来 `ControlAwareRequiresUnboundedPolicy` 前提で組まれていた caller は validate 成功経路に切替わる。`match` で variant を handle していたコードは 2 variant 削除により要修正
+- **範囲**: workspace 内 13 参照すべてを tasks Phase 5 で列挙済
+- **緩和**: change log に BREAKING として明記、tasks と CI で網羅確認
 
 ### Risk 3: DropOldest eviction 対象 (control vs normal) の判断ミス
 

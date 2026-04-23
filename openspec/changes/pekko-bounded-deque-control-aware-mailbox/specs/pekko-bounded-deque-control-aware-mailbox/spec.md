@@ -11,10 +11,10 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_dequ
   - `Grow`: capacity を無視して push_back し、`Ok(EnqueueOutcome::Accepted)` を返す。
   - `DropNewest`: `len >= capacity` なら到着 envelope を drop し `Ok(EnqueueOutcome::Rejected(envelope))` を返す。それ以外は push_back し `Accepted`。
   - `DropOldest`: `len >= capacity` なら front を evict してから push_back し `Ok(EnqueueOutcome::Evicted(evicted))` を返す。それ以外は push_back し `Accepted`。
-- `enqueue_first` (front 挿入) も同様に `overflow` に従う (Pekko には明示規定がないが、`enqueue` と同一戦略を適用する):
+- `enqueue_first` (front 挿入) は stash rehydration 用途が中心で、Pekko に明示規定が無い。以下の設計を採用する:
   - `Grow`: capacity 無視で push_front し `Ok(())`。
   - `DropNewest`: `len >= capacity` なら `Err(SendError::Full(envelope))`。それ以外は push_front し `Ok(())`。
-  - `DropOldest`: `len >= capacity` なら **back** を evict してから push_front し `Ok(())` (DequeMessageQueue trait 契約により evicted 情報は返さない)。
+  - `DropOldest`: **`len >= capacity` なら `Err(SendError::Full(envelope))` を返し、いずれの既存 entry も evict しない**。`enqueue` 側の DropOldest (front evict) を push_front 経路に適用すると「今 push した envelope を直後に evict する」か「最新挿入側 (back) を drop する」かのいずれかになるが、前者は意味を成さず、後者は "oldest" の語義から離れる。stash rehydration の失敗はユーザーが例外処理できるよう明示 `Err` で通知する方が安全と判断 (設計 Decision 2-c)。
 - `dequeue` は front を `pop_front` する (Pekko の FIFO / deque semantics)。
 - `as_deque(&self) -> Option<&dyn DequeMessageQueue>` は `Some(self)` を返し、stash 層が front 挿入を実行できる。
 
@@ -50,13 +50,13 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_dequ
 - **THEN** `Err(SendError::Full(B))` が返る (DropNewest は到着拒否)
 - **AND** `number_of_messages()` が 1 のまま (A 保持)
 
-#### Scenario: DropOldest 下の enqueue_first は back を evict する
+#### Scenario: DropOldest 下の enqueue_first は capacity 超過なら Reject する (Decision 2-c)
 
 - **GIVEN** `BoundedDequeMessageQueue::new(capacity=2, DropOldest)` に envelope A, B が enqueue 済 (front→back = A, B)
 - **WHEN** envelope C を `enqueue_first(C)` する
-- **THEN** `Ok(())` が返る
-- **AND** `number_of_messages()` が 2
-- **AND** `dequeue` を 2 回呼ぶと C, A の順で取り出せる (B は evict された)
+- **THEN** `Err(SendError::Full(C))` が返る (evict せず拒否)
+- **AND** `number_of_messages()` が 2 のまま (A, B 保持)
+- **AND** `dequeue` を 2 回呼ぶと A, B の順で取り出せる
 
 #### Scenario: clean_up で全 envelope を破棄する
 
@@ -149,7 +149,7 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_cont
 - **GIVEN** `MailboxConfig` with `policy = Bounded { capacity: 8, overflow: DropNewest }` and `requirement.needs_control_aware() == true`
 - **WHEN** `create_message_queue_from_config(&config)` を呼ぶ
 - **THEN** `Ok(BoundedControlAwareMessageQueue)` 相当の `Box<dyn MessageQueue>` が返る (従来は silently Unbounded fallback)
-- **AND** 10 個 enqueue すると 8 件目以降が `EnqueueOutcome::Rejected` を返す (bounded が実効)
+- **AND** 10 個 enqueue すると 9 件目以降が `EnqueueOutcome::Rejected` を返す (bounded が実効: `len >= capacity` 判定により 1〜8 件目は Accepted)
 
 #### Scenario: unbounded + deque 構成の挙動は変化しない (regression)
 
