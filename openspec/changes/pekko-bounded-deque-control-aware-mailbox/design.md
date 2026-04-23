@@ -79,7 +79,7 @@ if config.requirement().needs_control_aware() {
 - **Rationale**:
   - DropOldest は `oldest` をどこから evict するかが variant 固有 (deque なら front、control-aware なら normal-queue 側 front を優先)。shared helper 化しても分岐が増え可読性低下
   - variant 数は 2 に限定されるので重複コードは許容範囲
-  - `EnqueueOutcome` / `EnqueueError` / `DropOldestOutcome` 等の型は既存 API を使用
+  - `EnqueueOutcome` / `EnqueueError` / `SendError` 等の公開型は既存 API を使用 (内部 `QueueStateHandle` / `DropOldestOutcome` は Decision 1 により使わない)
 - **代替**: overflow handling を trait / macro 化して共通化する案は却下 (Decision 1 で論じた通り push_front / dual-queue の variant 固有差分を隠せない)
 
 ### Decision 2-c: `BoundedDequeMessageQueue::enqueue_first` の DropOldest は **Reject** で扱う
