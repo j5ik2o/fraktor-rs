@@ -86,6 +86,20 @@ impl ActorCellState {
     self.watching.iter().any(|(existing, _)| *existing == pid)
   }
 
+  /// Returns whether `pid` is present in `watching` with
+  /// [`WatchKind::User`] specifically.
+  ///
+  /// Unlike [`watching_contains_pid`](Self::watching_contains_pid) which
+  /// treats supervision and user watches uniformly, this helper drives the
+  /// Pekko-parity duplicate check in
+  /// [`ActorCell::watch_registration_kind`](crate::core::kernel::actor::ActorCell::watch_registration_kind):
+  /// kernel-internal supervision entries must not trigger a user-facing
+  /// duplicate error.
+  #[must_use]
+  pub(crate) fn watching_contains_user(&self, pid: Pid) -> bool {
+    self.watching.iter().any(|(existing, kind)| *existing == pid && *kind == WatchKind::User)
+  }
+
   /// Idempotently adds `(pid, kind)` to `watching`. No-op if already present.
   pub(crate) fn register_watching(&mut self, pid: Pid, kind: WatchKind) {
     if !self.watching.iter().any(|(existing, existing_kind)| *existing == pid && *existing_kind == kind) {

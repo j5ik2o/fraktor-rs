@@ -11,7 +11,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid, ReceiveTimeoutState,
+    Actor, ActorContext, Pid, ReceiveTimeoutState, WatchRegistrationKind,
     error::{ActorError, ActorErrorReason},
     messaging::{
       ActorIdentity, AnyMessage, AnyMessageView, Identify, Kill, NotInfluenceReceiveTimeout, PoisonPill,
@@ -796,23 +796,14 @@ fn remove_watch_with_clears_custom_message() {
   assert!(cell.take_watch_with_message(target_pid).is_none());
 }
 
-#[test]
-fn register_watch_with_replaces_previous_entry_for_same_target() {
-  let state = ActorSystem::new_empty().state();
-  let props = Props::from_fn(|| ProbeActor);
-  let cell =
-    ActorCell::create(state.clone(), Pid::new(74, 0), None, "watcher".to_string(), &props).expect("create actor cell");
-  state.register_cell(cell.clone());
-
-  let target_pid = Pid::new(75, 0);
-  cell.register_watch_with(target_pid, AnyMessage::new(1_i32));
-  cell.register_watch_with(target_pid, AnyMessage::new(2_i32));
-
-  // 後から登録した値（2）で上書きされていることを検証
-  let msg = cell.take_watch_with_message(target_pid).expect("watch_with メッセージが存在すること");
-  assert_eq!(*msg.payload().downcast_ref::<i32>().expect("i32 にダウンキャスト"), 2);
-  assert!(cell.take_watch_with_message(target_pid).is_none());
-}
+// NOTE: previously `register_watch_with_replaces_previous_entry_for_same_target`
+// verified the silent-overwrite behaviour. After change
+// `pekko-death-watch-duplicate-check` (Decision 4), `register_watch_with` is a
+// `pub(crate)` internal whose invariant is "upstream `watch_registration_kind`
+// check has already validated there is no existing entry". The silent
+// overwrite is therefore no longer part of the contract (debug builds panic
+// via `debug_assert!`), and the context-level duplicate detection is covered
+// by `actor_context::tests::watch_with_after_watch_with_always_rejects`.
 
 #[test]
 fn handle_death_watch_notification_skips_on_terminated_when_watch_with_registered() {
@@ -2166,6 +2157,73 @@ fn ac_h5_user_unwatch_preserves_supervision_watch() {
     .expect("dwn should proceed since supervision watch survives unwatch");
 
   assert!(!parent.is_watching(child_pid), "AC-H5: handle 完了後は User / Supervision 両方とも除去される");
+}
+
+// === AC-M4a: watch_registration_kind query ============================
+//
+// Pekko `DeathWatch.scala:104` `watching.get(actor)` の 3 値セマンティクスを
+// fraktor-rs の split data structure (`watching` + `watch_with_messages`) と
+// `WatchKind::User` フィルタで合成できることを検証する。
+
+#[test]
+fn watch_registration_kind_returns_none_for_unknown_target() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(500, 0), None, "cell".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  assert_eq!(cell.watch_registration_kind(Pid::new(501, 0)), WatchRegistrationKind::None);
+}
+
+#[test]
+fn watch_registration_kind_returns_plain_for_user_watch_only() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(510, 0), None, "cell".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+  let target = Pid::new(511, 0);
+
+  cell.register_watching(target);
+
+  assert_eq!(cell.watch_registration_kind(target), WatchRegistrationKind::Plain);
+}
+
+#[test]
+fn watch_registration_kind_returns_with_message_when_watch_with_registered() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(520, 0), None, "cell".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+  let target = Pid::new(521, 0);
+
+  cell.register_watching(target);
+  cell.register_watch_with(target, AnyMessage::new(42_i32));
+
+  assert_eq!(cell.watch_registration_kind(target), WatchRegistrationKind::WithMessage);
+}
+
+#[test]
+fn watch_registration_kind_ignores_supervision_only_entry() {
+  // 親 cell が子を spawn しただけで spawn_child_watched していない状態を模す。
+  // Supervision watch のみが register される場合、user-level duplicate check は
+  // 対象外として None を返す必要がある (Decision 2)。
+  let state = ActorSystem::new_empty().state();
+  let parent_props = Props::from_fn(|| ProbeActor);
+  let parent = ActorCell::create(state.clone(), Pid::new(530, 0), None, "parent".to_string(), &parent_props)
+    .expect("create parent cell");
+  state.register_cell(parent.clone());
+
+  let child_pid = Pid::new(531, 0);
+  parent.register_child(child_pid);
+
+  assert_eq!(
+    parent.watch_registration_kind(child_pid),
+    WatchRegistrationKind::None,
+    "Supervision kind の watching entry は user-level 判定に影響しない"
+  );
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {

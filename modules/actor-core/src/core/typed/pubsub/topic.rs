@@ -101,7 +101,7 @@ impl Topic {
               if !state.local_subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
                 ctx
                   .watch_with(&subscriber, TopicCommand::subscriber_terminated(subscriber.pid()))
-                  .map_err(|error| ActorError::from_send_error(&error))?;
+                  .map_err(|error| error.to_actor_error())?;
                 state.local_subscribers.push(subscriber);
                 if state.local_subscribers.len() == 1 {
                   let mut receptionist = receptionist.clone();

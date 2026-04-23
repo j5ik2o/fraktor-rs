@@ -8,7 +8,7 @@ use crate::core::kernel::{
   actor::{
     Actor, ActorCell, Pid, StashOverflowError,
     actor_ref::NullSender,
-    error::{ActorError, SendError},
+    error::{ActorError, SendError, WatchConflict, WatchRegistrationError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::SchedulerHandle,
@@ -549,6 +549,209 @@ fn actor_context_unwatch_enqueues_message() {
   assert!(context.watch(&target_ref).is_ok());
   assert!(context.unwatch(&target_ref).is_ok());
   assert!(!target.watchers_snapshot().contains(&watcher_pid));
+}
+
+// === AC-M4a: watch / watch_with duplicate detection ===================
+//
+// Pekko parity: `DeathWatch.scala:36-66, 126-132` の `watch` / `watchWith`
+// + `checkWatchingSame`。`ActorContext::watch_registration_kind` 経由で
+// Pekko の `Option[Any]` tri-state を模倣し、同一 target への異種登録を
+// `WatchRegistrationError::Duplicate` で拒否する。
+
+#[test]
+fn watch_after_watch_is_idempotent() {
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  // Pekko `DeathWatch.scala:39,44-45`: same-state plain watch is idempotent.
+  assert!(context.watch(&target_ref).is_ok());
+  assert!(context.watch(&target_ref).is_ok());
+  // target 側の watchers は 1 件のまま (2 度目は Watch system message も送られない)。
+  assert_eq!(target.watchers_snapshot().iter().filter(|pid| **pid == watcher_pid).count(), 1);
+}
+
+#[test]
+fn watch_after_watch_with_rejects() {
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  let custom = AnyMessage::new(42u32);
+  assert!(context.watch_with(&target_ref, custom).is_ok());
+
+  // Pekko `DeathWatch.scala:128`: `Some(_) != None` → IllegalStateException.
+  let err = context.watch(&target_ref).expect_err("duplicate should reject");
+  match err {
+    | WatchRegistrationError::Duplicate { target, conflict } => {
+      assert_eq!(target, target_pid);
+      assert_eq!(conflict, WatchConflict::WatchWithThenPlain);
+    },
+    | other => panic!("unexpected error: {other:?}"),
+  }
+}
+
+#[test]
+fn watch_with_after_watch_rejects() {
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(context.watch(&target_ref).is_ok());
+
+  // Pekko `DeathWatch.scala:128`: `None != Some(_)` → IllegalStateException.
+  let err = context.watch_with(&target_ref, AnyMessage::new(42u32)).expect_err("duplicate should reject");
+  match err {
+    | WatchRegistrationError::Duplicate { target, conflict } => {
+      assert_eq!(target, target_pid);
+      assert_eq!(conflict, WatchConflict::PlainThenWatchWith);
+    },
+    | other => panic!("unexpected error: {other:?}"),
+  }
+}
+
+#[test]
+fn watch_with_after_watch_with_always_rejects() {
+  // Conservative divergence: Pekko allows same-message re-registration
+  // (`Some(m1) == Some(m2)`), fraktor-rs rejects unconditionally because
+  // `AnyMessage` has no `PartialEq` (design Decision 5).
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(context.watch_with(&target_ref, AnyMessage::new(1u32)).is_ok());
+
+  let err = context.watch_with(&target_ref, AnyMessage::new(1u32)).expect_err("duplicate should reject");
+  match err {
+    | WatchRegistrationError::Duplicate { target, conflict } => {
+      assert_eq!(target, target_pid);
+      assert_eq!(conflict, WatchConflict::WatchWithThenWatchWith);
+    },
+    | other => panic!("unexpected error: {other:?}"),
+  }
+}
+
+#[test]
+fn unwatch_then_watch_with_succeeds() {
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(context.watch_with(&target_ref, AnyMessage::new(1u32)).is_ok());
+  assert!(context.unwatch(&target_ref).is_ok());
+  // unwatch 後は新規登録として扱われる。
+  assert!(context.watch_with(&target_ref, AnyMessage::new(2u32)).is_ok());
+}
+
+#[test]
+fn watch_rollback_removes_watching_entry_to_allow_retry() {
+  // Bugbot r3127781491 回帰ガード:
+  // `watch` が send 失敗 (非 Closed) した際に `register_watching` で追加した
+  // (target, User) を巻き戻さないと、retry 時に `WatchRegistrationKind::Plain`
+  // 分岐で `Ok(())` が返り、Watch system message が再送されない。
+  //
+  // 実コードで非 Closed の送信失敗を直接再現するのは難しいため、
+  // `unregister_watching` による rollback の invariant を検証する:
+  // (a) register_watching 後に unregister_watching を呼ぶと stale 状態が消える
+  // (b) 結果として次回 `watch` は `WatchRegistrationKind::None` 分岐で
+  //     通常フロー (send + watchers 登録) に進む
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let watcher_cell = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  // send 失敗の途中状態をシミュレート: register_watching は既に完了している。
+  watcher_cell.register_watching(target_pid);
+  // rollback を実行 (watch 内部の新 unregister_watching 呼び出しに対応)。
+  watcher_cell.unregister_watching(target_pid);
+
+  // rollback 完了後: retry は通常の新規登録として成功し、target 側 watchers に登録される。
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(context.watch(&target_ref).is_ok());
+  assert!(
+    target.watchers_snapshot().contains(&watcher_pid),
+    "rollback 後の retry は Watch system message を送信し、target の watchers に登録すべき"
+  );
+}
+
+#[test]
+fn watch_with_rollback_removes_both_watching_and_watch_with_entry() {
+  // Bugbot r3127753262 回帰ガード:
+  // `watch_with` の rollback は `watch_with_messages` だけでなく `watching` の
+  // User entry も除去する必要がある。除去しないと `WatchRegistrationKind` が
+  // `Plain` のまま残り、retry 時に `PlainThenWatchWith` で永続 reject される。
+  //
+  // ここでは `self.watch` 内の send 失敗を直接シミュレートするのが難しいため、
+  // rollback 後の state invariants を `ActorCell` helper 呼び出しで検証する:
+  // (a) `remove_watch_with(target)` で `watch_with_messages` が空
+  // (b) `unregister_watching(target)` で `watching` User entry が消える
+  // (c) 結果として `watch_registration_kind(target) == None`
+  // (d) 続く `watch_with` が新規登録として成功する
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let watcher_cell = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  // self.watch 内で register_watching が呼ばれた後に send が失敗した状態を直接構成する。
+  watcher_cell.register_watch_with(target_pid, AnyMessage::new(7u32));
+  watcher_cell.register_watching(target_pid);
+
+  // rollback 実行 (watch_with 内の両 helper 呼び出しに対応)。
+  watcher_cell.remove_watch_with(target_pid);
+  watcher_cell.unregister_watching(target_pid);
+
+  // rollback 完了後は clean 状態: retry が Duplicate で block されない。
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(
+    context.watch_with(&target_ref, AnyMessage::new(8u32)).is_ok(),
+    "rollback 後の retry は clean 新規登録として成功すべき"
+  );
+}
+
+#[test]
+fn watch_self_returns_ok_without_side_effect() {
+  let system = ActorSystem::new_empty();
+  let self_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let cell = register_cell(&system, self_pid, "self", &props);
+
+  let mut context = ActorContext::new(&system, self_pid);
+  let self_ref = cell.actor_ref();
+  assert!(context.watch(&self_ref).is_ok());
+  assert!(context.watch_with(&self_ref, AnyMessage::new(1u32)).is_ok());
+  // self-watch は watching / watch_with_messages に何も登録しない。
+  assert!(!cell.is_watching(self_pid));
 }
 
 #[test]

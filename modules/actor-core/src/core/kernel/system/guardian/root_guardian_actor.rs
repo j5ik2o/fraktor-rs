@@ -28,7 +28,7 @@ impl RootGuardianActor {
   fn watch_system_guardian(ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if let Some(cell) = ctx.system().state().system_guardian() {
       let system_ref: ActorRef = cell.actor_ref();
-      ctx.watch(&system_ref).map_err(|error| ActorError::from_send_error(&error))
+      ctx.watch(&system_ref).map_err(|error| error.to_actor_error())
     } else {
       Ok(())
     }

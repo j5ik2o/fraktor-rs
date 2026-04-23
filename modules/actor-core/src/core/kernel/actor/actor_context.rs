@@ -10,9 +10,9 @@ use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use crate::core::kernel::{
   actor::{
-    ChildRef, ClassicTimerScheduler, Pid, ReceiveTimeoutState,
+    ChildRef, ClassicTimerScheduler, Pid, ReceiveTimeoutState, WatchRegistrationKind,
     actor_ref::ActorRef,
-    error::{ActorError, PipeSpawnError, SendError},
+    error::{ActorError, PipeSpawnError, SendError, WatchConflict, WatchRegistrationError},
     messaging::{AnyMessage, system_message::SystemMessage},
     props::Props,
     scheduler::SchedulerCommand,
@@ -310,22 +310,48 @@ impl ActorContext<'_> {
 
   /// Subscribes the running actor to termination events for the specified target.
   ///
+  /// # Pekko parity
+  ///
+  /// Equivalent to Pekko `DeathWatch.scala:36-50` `watch(subject)`. If the
+  /// target is already being watched with a custom message
+  /// (`watch_with(_, _)`), this call returns
+  /// [`WatchRegistrationError::Duplicate`] with
+  /// [`WatchConflict::WatchWithThenPlain`], matching Pekko's
+  /// `checkWatchingSame` (`DeathWatch.scala:126-132`).
+  ///
+  /// # Note
+  ///
+  /// Watching state is **not** cleared across restart (see the change notes
+  /// for `pekko-death-watch-duplicate-check` Risk 6). When re-registering a
+  /// watch inside `post_restart`, call `unwatch` first if the previous
+  /// registration may still be present.
+  ///
   /// # Errors
   ///
-  /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch(&mut self, target: &ActorRef) -> Result<(), SendError> {
+  /// Returns [`WatchRegistrationError::Duplicate`] when the target already has
+  /// a conflicting watch registration, or [`WatchRegistrationError::Send`]
+  /// when the runtime cannot enqueue the watch signal.
+  pub fn watch(&mut self, target: &ActorRef) -> Result<(), WatchRegistrationError> {
     if target.pid() == self.pid {
       return Ok(());
     }
 
-    // Register the user-level `watching` entry before sending `Watch`, so that
-    // the compensating `DeathWatchNotification` below (when the target is
-    // already closed) passes the watcher's `watching_contains_pid` check.
-    if let Some(cell) = self.system.state().cell(&self.pid) {
+    let state = self.system.state();
+    if let Some(cell) = state.cell(&self.pid) {
+      match cell.watch_registration_kind(target.pid()) {
+        | WatchRegistrationKind::None => {},
+        // Pekko `DeathWatch.scala:39,44-45` — same-state plain watch is idempotent.
+        | WatchRegistrationKind::Plain => return Ok(()),
+        | WatchRegistrationKind::WithMessage => {
+          return Err(WatchRegistrationError::duplicate(target.pid(), WatchConflict::WatchWithThenPlain));
+        },
+      }
+      // Register the user-level `watching` entry before sending `Watch`, so that
+      // the compensating `DeathWatchNotification` below (when the target is
+      // already closed) passes the watcher's `watching_contains_pid` check.
       cell.register_watching(target.pid());
     }
 
-    let state = self.system.state();
     match state.send_system_message(target.pid(), SystemMessage::Watch(self.pid)) {
       | Ok(()) => Ok(()),
       | Err(SendError::Closed(_)) => {
@@ -335,7 +361,18 @@ impl ActorContext<'_> {
         }
         Ok(())
       },
-      | Err(error) => Err(error),
+      | Err(error) => {
+        // Bugbot r3127781491: send が非 Closed で失敗した場合、直前の
+        // `register_watching` で追加した (target, User) entry が watching に
+        // 残ると、次回 `watch(target)` が `WatchRegistrationKind::Plain` を
+        // 観測して `Ok(())` を返してしまい、Watch system message が再送され
+        // ずに target は watched を認識しない。retry 可能性を保つため送信
+        // 失敗時は watching 側も巻き戻す。
+        if let Some(cell) = state.cell(&self.pid) {
+          cell.unregister_watching(target.pid());
+        }
+        Err(WatchRegistrationError::send(error))
+      },
     }
   }
 
@@ -384,19 +421,62 @@ impl ActorContext<'_> {
   /// When the target terminates, the provided `message` is delivered as a user message
   /// instead of a `Terminated` signal.
   ///
+  /// # Pekko parity
+  ///
+  /// Equivalent to Pekko `DeathWatch.scala:52-66` `watchWith(subject, msg)`.
+  /// Duplicate registration with a conflicting state is rejected via
+  /// [`WatchRegistrationError::Duplicate`]:
+  ///
+  /// - Previous `watch(target)` (no message) → [`WatchConflict::PlainThenWatchWith`]
+  /// - Previous `watch_with(target, _)` → [`WatchConflict::WatchWithThenWatchWith`]
+  ///
+  /// The second case is a **conservative divergence** from Pekko: Pekko
+  /// allows re-registering when the new and old messages are equal
+  /// (`Some(m1) == Some(m2)`). fraktor-rs `AnyMessage` does not implement
+  /// `PartialEq`, so we reject unconditionally and require callers to
+  /// `unwatch` first before reconfiguring the message (design Decision 5).
+  ///
+  /// The rejected `message` is dropped and is **not** recoverable from the
+  /// returned error.
+  ///
+  /// # Note
+  ///
+  /// Watching state is **not** cleared across restart (see the change notes
+  /// for `pekko-death-watch-duplicate-check` Risk 6). When re-registering a
+  /// watch inside `post_restart`, call `unwatch` first if the previous
+  /// registration may still be present.
+  ///
   /// # Errors
   ///
-  /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch_with(&mut self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  /// Returns [`WatchRegistrationError::Duplicate`] when the target already
+  /// has a conflicting watch registration, or [`WatchRegistrationError::Send`]
+  /// when the runtime cannot enqueue the watch signal.
+  pub fn watch_with(&mut self, target: &ActorRef, message: AnyMessage) -> Result<(), WatchRegistrationError> {
     if target.pid() == self.pid {
       return Ok(());
     }
     let state = self.system.state();
-    let cell = state.cell(&self.pid).ok_or_else(|| SendError::no_recipient(message.clone()))?;
+    let cell =
+      state.cell(&self.pid).ok_or_else(|| WatchRegistrationError::send(SendError::no_recipient(message.clone())))?;
+    match cell.watch_registration_kind(target.pid()) {
+      | WatchRegistrationKind::None => {},
+      | WatchRegistrationKind::Plain => {
+        return Err(WatchRegistrationError::duplicate(target.pid(), WatchConflict::PlainThenWatchWith));
+      },
+      | WatchRegistrationKind::WithMessage => {
+        return Err(WatchRegistrationError::duplicate(target.pid(), WatchConflict::WatchWithThenWatchWith));
+      },
+    }
     cell.register_watch_with(target.pid(), message);
     if let Err(error) = self.watch(target) {
-      // watch 失敗時はカスタムメッセージ登録をロールバックする
+      // watch 失敗時はカスタムメッセージ登録と watching への User entry 追加を
+      // ロールバックする。self.watch の内部では watch_registration_kind が None
+      // を返した後に register_watching で (target, User) を追加しているため、
+      // send 失敗 (非 Closed) 時は双方を巻き戻さないと WatchRegistrationKind が
+      // `Plain` に残留し、次回 watch_with で `PlainThenWatchWith` エラーが
+      // 永続化する。
       cell.remove_watch_with(target.pid());
+      cell.unregister_watching(target.pid());
       return Err(error);
     }
     Ok(())
