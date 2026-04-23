@@ -397,4 +397,3 @@ fn logging_fsm_emits_transition_and_termination_logs() {
   assert!(snapshot.iter().any(|message| message.contains("fsm terminated")));
   assert!(snapshot.iter().any(|message| message.contains("Active")));
 }
-
