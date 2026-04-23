@@ -103,7 +103,7 @@ if config.requirement().needs_control_aware() {
 - **Rationale**:
   - Pekko の `BoundedControlAwareMailbox` も control 優先、normal drop の契約 (制御メッセージが drop されると supervision / PoisonPill が失われ、Actor 停止不能になる)
   - Control が優先される意味論上、容量確保は常に normal 側から取る方が期待どおり
-- **エッジケース**: 到着 envelope が control で normal_queue が空の場合、control_queue 末尾から evict する frontier が必要。Pekko `BoundedControlAwareMailbox` はこの場合 control を drop せず fail する (=`EnqueueOutcome::Rejected`) — fraktor-rs も同仕様に倣い、normal が空のとき制御 enqueue は capacity 判定で Reject する (実装を設計 spec に記載)
+- **エッジケース**: 到着 envelope が control で normal_queue が空の場合の扱い。Pekko `BoundedControlAwareMailbox` はこの場合 control を drop せず `EnqueueOutcome::Rejected` を返す (supervision / PoisonPill 保護優先) — fraktor-rs も同仕様に倣い、normal が空かつ capacity 超過時の control enqueue は `Rejected` とする (spec Requirement 2 の Scenario "DropOldest 下で normal queue が空なら control envelope を Reject する" に明記)
 
 ### Decision 4: `MailboxConfigError::BoundedWithDeque` / `ControlAwareRequiresUnboundedPolicy` variant を削除する
 
