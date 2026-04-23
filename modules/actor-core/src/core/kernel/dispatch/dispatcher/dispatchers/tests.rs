@@ -338,3 +338,37 @@ fn canonical_id_returns_unknown_when_terminal_is_missing() {
     | other => panic!("expected Unknown, got {other:?}"),
   }
 }
+
+#[test]
+fn ensure_default_wipes_preexisting_alias_for_default_id() {
+  // Simulate the Bugbot-reported scenario: a caller registers an alias under
+  // `DEFAULT_DISPATCHER_ID` first and then calls `ensure_default`. Without
+  // the wipe, the alias would shadow the freshly inserted entry because
+  // `follow_alias_chain` consults `aliases` before `entries`.
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias(DEFAULT_DISPATCHER_ID, "some-other-id").expect("pre-existing alias");
+
+  dispatchers.ensure_default(|| make_default_configurator("default"));
+
+  let resolved = dispatchers.resolve(DEFAULT_DISPATCHER_ID).expect("resolve default after wipe");
+  assert_eq!(resolved.id(), "default");
+  assert!(
+    !dispatchers.aliases.contains_key(DEFAULT_DISPATCHER_ID),
+    "alias for DEFAULT_DISPATCHER_ID must be wiped on ensure_default"
+  );
+}
+
+#[test]
+fn replace_default_inline_wipes_preexisting_alias_for_default_id() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias(DEFAULT_DISPATCHER_ID, "some-other-id").expect("pre-existing alias");
+
+  dispatchers.replace_default_inline();
+
+  let resolved = dispatchers.resolve(DEFAULT_DISPATCHER_ID).expect("resolve default after replace");
+  assert_eq!(resolved.id(), "default");
+  assert!(
+    !dispatchers.aliases.contains_key(DEFAULT_DISPATCHER_ID),
+    "alias for DEFAULT_DISPATCHER_ID must be wiped on replace_default_inline"
+  );
+}

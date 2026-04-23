@@ -267,16 +267,28 @@ impl Dispatchers {
   /// and `pekko.actor.internal-dispatcher`) pointing at
   /// [`DEFAULT_DISPATCHER_ID`].
   ///
-  /// Idempotent: duplicate registrations are silently ignored so repeated
-  /// calls to `ensure_default_*` stay safe.
+  /// Idempotent: if an alias is already registered or the id has been
+  /// explicitly overridden as a concrete entry (e.g. by
+  /// `register_or_update`), the call is a no-op for that id.
   fn register_pekko_default_aliases(&mut self) {
-    // Ignoring Duplicate here is intentional: this function is idempotent by
-    // contract, and there is no other failure mode because both aliases
-    // target `DEFAULT_DISPATCHER_ID` which is an entry (not an alias), so
-    // `AliasConflictsWithEntry` cannot fire for these alias keys either
-    // (they are never registered as entries).
-    let _ = self.register_alias(PEKKO_DEFAULT_DISPATCHER_ID, DEFAULT_DISPATCHER_ID);
-    let _ = self.register_alias(PEKKO_INTERNAL_DISPATCHER_ID, DEFAULT_DISPATCHER_ID);
+    Self::register_alias_if_absent(&mut self.aliases, &self.entries, PEKKO_DEFAULT_DISPATCHER_ID);
+    Self::register_alias_if_absent(&mut self.aliases, &self.entries, PEKKO_INTERNAL_DISPATCHER_ID);
+  }
+
+  /// Inserts an alias pointing at [`DEFAULT_DISPATCHER_ID`] if `alias` is
+  /// neither a registered entry nor a registered alias. Idempotent helper
+  /// for [`Self::register_pekko_default_aliases`] that bypasses the
+  /// `register_alias` Result API (we own both maps exclusively, so the
+  /// checks here are equivalent).
+  fn register_alias_if_absent(
+    aliases: &mut HashMap<String, String, RandomState>,
+    entries: &HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>, RandomState>,
+    alias: &str,
+  ) {
+    if entries.contains_key(alias) {
+      return;
+    }
+    aliases.entry(alias.to_owned()).or_insert_with(|| DEFAULT_DISPATCHER_ID.to_owned());
   }
 
   /// Ensures the default dispatcher entry exists.
@@ -286,11 +298,18 @@ impl Dispatchers {
   /// [`DEFAULT_DISPATCHER_ID`] and [`DEFAULT_BLOCKING_DISPATCHER_ID`], and the
   /// Pekko-compatible aliases are registered against
   /// [`DEFAULT_DISPATCHER_ID`].
+  ///
+  /// Any pre-existing alias registered under the same id is removed before
+  /// entry insertion (matching [`Self::register_or_update`] semantics) so
+  /// the freshly inserted entry is reachable via `resolve` without being
+  /// shadowed by a stale alias.
   pub fn ensure_default(&mut self, factory: impl FnOnce() -> ArcShared<Box<dyn MessageDispatcherConfigurator>>) {
     if !self.entries.contains_key(DEFAULT_DISPATCHER_ID) {
       let configurator = factory();
-      self.entries.insert(DEFAULT_DISPATCHER_ID.to_owned(), configurator.clone());
-      self.entries.entry(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned()).or_insert(configurator);
+      self.insert_entry_wiping_alias(DEFAULT_DISPATCHER_ID, configurator.clone());
+      if !self.entries.contains_key(DEFAULT_BLOCKING_DISPATCHER_ID) {
+        self.insert_entry_wiping_alias(DEFAULT_BLOCKING_DISPATCHER_ID, configurator);
+      }
     }
     self.register_pekko_default_aliases();
   }
@@ -312,6 +331,12 @@ impl Dispatchers {
   /// When the default blocking dispatcher still aliases the same configurator as
   /// `default`, it is updated to keep both reserved ids on the same provider.
   /// Explicit blocking-dispatcher overrides are preserved.
+  ///
+  /// Any pre-existing alias registered under [`DEFAULT_DISPATCHER_ID`] (or
+  /// [`DEFAULT_BLOCKING_DISPATCHER_ID`] when the blocking alias is being
+  /// rebuilt) is removed before entry insertion so the freshly inserted
+  /// entry is reachable via `resolve` without being shadowed by a stale
+  /// alias.
   pub fn replace_default_inline(&mut self) {
     let replace_blocking = self
       .entries
@@ -319,10 +344,20 @@ impl Dispatchers {
       .zip(self.entries.get(DEFAULT_DISPATCHER_ID))
       .is_some_and(|(blocking, default)| ArcShared::ptr_eq(blocking, default));
     let configurator = Self::build_default_inline_configurator();
-    self.entries.insert(DEFAULT_DISPATCHER_ID.to_owned(), configurator.clone());
+    self.insert_entry_wiping_alias(DEFAULT_DISPATCHER_ID, configurator.clone());
     if replace_blocking || !self.entries.contains_key(DEFAULT_BLOCKING_DISPATCHER_ID) {
-      self.entries.insert(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned(), configurator);
+      self.insert_entry_wiping_alias(DEFAULT_BLOCKING_DISPATCHER_ID, configurator);
     }
     self.register_pekko_default_aliases();
+  }
+
+  /// Inserts a configurator into `entries` after removing any alias for the
+  /// same id. Factored out so `ensure_default` / `replace_default_inline`
+  /// stay consistent with [`Self::register_or_update`] last-writer-wins
+  /// semantics and a pre-existing alias cannot shadow the fresh entry via
+  /// [`Self::follow_alias_chain`].
+  fn insert_entry_wiping_alias(&mut self, id: &str, configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>) {
+    self.aliases.remove(id);
+    self.entries.insert(id.to_owned(), configurator);
   }
 }
