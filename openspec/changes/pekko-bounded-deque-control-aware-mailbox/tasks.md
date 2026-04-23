@@ -36,6 +36,14 @@
 
 **背景** (ultrareview merged_bug_001 で判明): `MailboxConfig::validate()` には 2 つの関連拒否分岐があり、`BoundedWithDeque` だけでなく `ControlAwareRequiresUnboundedPolicy` も削除する必要がある。後者を残すと新 Bounded+ControlAware 分岐が unreachable dead code になる。
 
+**削除対象外の拒否分岐** (本 change で触らない):
+- `MailboxConfigError::PriorityWithControlAware` (priority + control_aware 組合せ)
+- `MailboxConfigError::PriorityWithDeque` (priority + deque 組合せ)
+- `MailboxConfigError::DequeWithControlAware` (deque + control_aware 組合せ)
+- `MailboxConfigError::StablePriorityWithoutGenerator`
+
+これらは独立した組合せ制約であり、MB-M2 の scope (bounded + {deque, control_aware} 許容) と直交する。
+
 ### 5A: `BoundedWithDeque` variant の削除 (9 参照 / 6 ファイル)
 
 - [ ] 5.1 `modules/actor-core/src/core/kernel/actor/props/mailbox_config_error.rs` から `BoundedWithDeque` variant を削除 (L14) + `Display` impl の対応 arm 削除 (L33)

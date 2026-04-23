@@ -13,9 +13,9 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_dequ
   - `DropOldest`: `len >= capacity` なら front を evict してから push_back し `Ok(EnqueueOutcome::Evicted(evicted))` を返す。それ以外は push_back し `Accepted`。
 - `enqueue_first` (front 挿入) は stash rehydration 用途が中心で、Pekko に明示規定が無い。以下の設計を採用する:
   - `Grow`: capacity 無視で push_front し `Ok(())`。
-  - `DropNewest`: `len >= capacity` なら `Err(SendError::Full(envelope.into_payload()))`。それ以外は push_front し `Ok(())`。
-  - `DropOldest`: **`len >= capacity` なら `Err(SendError::Full(envelope.into_payload()))` を返し、いずれの既存 entry も evict しない**。`enqueue` 側の DropOldest (front evict) を push_front 経路に適用すると「今 push した envelope を直後に evict する」か「最新挿入側 (back) を drop する」かのいずれかになるが、前者は意味を成さず、後者は "oldest" の語義から離れる。stash rehydration の失敗はユーザーが例外処理できるよう明示 `Err` で通知する方が安全と判断 (設計 Decision 2-c)。
-  - **備考**: `SendError::Full` は `AnyMessage` を wrap するため、Scenario 中の `Err(SendError::Full(B))` は envelope の payload を wrap した `SendError` を返す意味の shorthand である。
+  - `DropNewest`: `len >= capacity` なら `Err(SendError::Full(..))`。それ以外は push_front し `Ok(())`。
+  - `DropOldest`: **`len >= capacity` なら `Err(SendError::Full(..))` を返し、いずれの既存 entry も evict しない**。`enqueue` 側の DropOldest (front evict) を push_front 経路に適用すると「今 push した envelope を直後に evict する」か「最新挿入側 (back) を drop する」かのいずれかになるが、前者は意味を成さず、後者は "oldest" の語義から離れる。stash rehydration の失敗はユーザーが例外処理できるよう明示 `Err` で通知する方が安全と判断 (設計 Decision 2-c)。
+  - **備考**: 以下 Scenario 中の `Err(SendError::Full(B))` は envelope の payload を `SendError::Full` (= `AnyMessage` wrap) にした結果を指す shorthand である。
 - `dequeue` は front を `pop_front` する (Pekko の FIFO / deque semantics)。
 - `as_deque(&self) -> Option<&dyn DequeMessageQueue>` は `Some(self)` を返し、stash 層が front 挿入を実行できる。
 
