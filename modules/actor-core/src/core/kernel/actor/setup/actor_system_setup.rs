@@ -62,9 +62,7 @@ impl ActorSystemSetup {
 
   /// Registers a custom actor-ref provider installer.
   #[must_use]
-  pub fn with_actor_ref_provider_installer<P>(self, installer: P) -> Self
-  where
-    P: ActorRefProviderInstaller + 'static, {
+  pub fn with_actor_ref_provider_installer(self, installer: impl ActorRefProviderInstaller + 'static) -> Self {
     Self { config: self.config.with_actor_ref_provider_installer(installer) }
   }
 
