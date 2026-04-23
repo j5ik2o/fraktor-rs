@@ -172,12 +172,6 @@ impl ConsumerController {
                 should_stop = true;
               }
             },
-            | ConsumerControllerCommandKind::Retry => {
-              collect_send_request(state, &self_ref, true, &mut deferred);
-            },
-            | ConsumerControllerCommandKind::ConsumerTerminated => {
-              should_stop = true;
-            },
           }
           if !should_stop && state.stopping && !state.waiting_for_confirm && state.stashed.is_empty() {
             should_stop = true;
@@ -245,7 +239,7 @@ fn collect_on_sequenced_message<A>(
   }
 
   if state.should_request_more() || state.requested_seq_nr == 0 {
-    collect_send_request(state, self_ref, false, deferred);
+    collect_send_request(state, self_ref, deferred);
   }
 }
 
@@ -286,7 +280,7 @@ fn collect_on_confirmed<A>(
   collect_try_deliver_stashed(state, confirm_adapter, deferred);
 
   if state.should_request_more() {
-    collect_send_request(state, self_ref, false, deferred);
+    collect_send_request(state, self_ref, deferred);
   }
 }
 
@@ -309,20 +303,19 @@ fn collect_try_deliver_stashed<A>(
 fn collect_send_request<A>(
   state: &mut ConsumerControllerState<A>,
   _self_ref: &TypedActorRef<ConsumerControllerCommand<A>>,
-  via_timeout: bool,
   deferred: &mut Vec<DeferredAction<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
   let window = u64::from(state.settings.flow_control_window());
   let new_requested = state.received_seq_nr + window;
-  if (new_requested > state.requested_seq_nr || via_timeout)
+  if new_requested > state.requested_seq_nr
     && let Some(pc) = state.producer_controller.clone()
   {
     state.requested_seq_nr = new_requested;
     let support_resend = !state.settings.only_flow_control();
     deferred.push(DeferredAction::SendToProducer(
       pc,
-      ProducerControllerCommand::request(state.confirmed_seq_nr, state.requested_seq_nr, support_resend, via_timeout),
+      ProducerControllerCommand::request(state.confirmed_seq_nr, state.requested_seq_nr, support_resend),
     ));
   }
 }

@@ -301,13 +301,7 @@ impl ProducerController {
               state.awaiting_msg = false;
               collect_on_msg(state, message.clone(), &self_ref, &mut deferred);
             },
-            | ProducerControllerCommandKind::MsgWithConfirmation { message, .. } => {
-              state.awaiting_msg = false;
-              collect_on_msg(state, message.clone(), &self_ref, &mut deferred);
-            },
-            | ProducerControllerCommandKind::Request {
-              confirmed_seq_nr, request_up_to_seq_nr, support_resend, ..
-            } => {
+            | ProducerControllerCommandKind::Request { confirmed_seq_nr, request_up_to_seq_nr, support_resend } => {
               let previous_confirmed_seq_nr = state.confirmed_seq_nr;
               state.support_resend = *support_resend;
               state.on_confirmed(*confirmed_seq_nr);
