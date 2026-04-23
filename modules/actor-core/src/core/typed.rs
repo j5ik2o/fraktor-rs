@@ -1,7 +1,5 @@
 //! Typed interface wrappers around the untyped runtime.
 
-/// Pekko-compatible alias for [`ExtensionSetup`].
-mod abstract_extension_setup;
 /// Typed actor primitives (actors, contexts, references).
 pub mod actor;
 /// Typed actor reference wrapper promoted to the typed root.
@@ -64,7 +62,6 @@ mod system;
 mod typed_actor_system_config;
 /// System-level log handle for typed actor systems.
 mod typed_actor_system_log;
-pub use abstract_extension_setup::AbstractExtensionSetup;
 pub use actor_ref::TypedActorRef;
 pub use actor_ref_resolver::ActorRefResolver;
 pub use actor_ref_resolver_setup::ActorRefResolverSetup;

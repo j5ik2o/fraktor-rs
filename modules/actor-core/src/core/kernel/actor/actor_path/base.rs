@@ -131,13 +131,6 @@ impl ActorPath {
     value
   }
 
-  /// Backwards-compatible helper that forwards to [`Self::to_relative_string`].
-  #[must_use]
-  #[allow(clippy::inherent_to_string_shadow_display)]
-  pub fn to_string(&self) -> String {
-    self.to_relative_string()
-  }
-
   /// Formats the path as `fraktor://system@host:port/...`.
   #[must_use]
   pub fn to_canonical_uri(&self) -> String {

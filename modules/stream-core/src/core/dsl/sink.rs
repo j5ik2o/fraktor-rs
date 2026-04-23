@@ -256,19 +256,6 @@ where
   }
 }
 
-impl Sink<u8, StreamCompletion<Vec<u8>>> {
-  /// Creates a sink that collects bytes for path-compatible output.
-  ///
-  /// This stub ignores the path and simply collects bytes.
-  /// For actual file IO, use `fraktor_stream_adaptor_std_rs::std::io::FileIO::to_path`.
-  #[must_use]
-  #[deprecated(note = "Use fraktor_stream_adaptor_std_rs::std::io::FileIO::to_path for actual file writing")]
-  pub fn to_path(path: &str) -> Self {
-    let _ = path;
-    Self::collect()
-  }
-}
-
 impl<In> Sink<In, StreamCompletion<usize>>
 where
   In: Send + Sync + 'static,

@@ -521,14 +521,14 @@ fn append_tree_line(tree: &mut String, state: &SystemStateShared, pid: Pid, dept
   let Some(path) = state.actor_path(&pid) else {
     panic!("registered actor must have a logical path");
   };
-  tree.push_str(&path.to_string());
+  tree.push_str(&path.to_relative_string());
 
   let mut child_pids = state.child_pids(pid);
   child_pids.sort_by_key(|child_pid| {
     let Some(path) = state.actor_path(child_pid) else {
       panic!("registered child actor must have a logical path");
     };
-    path.to_string()
+    path.to_relative_string()
   });
   for child_pid in child_pids {
     append_tree_line(tree, state, child_pid, depth + 1);

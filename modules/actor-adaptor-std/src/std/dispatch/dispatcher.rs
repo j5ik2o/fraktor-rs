@@ -1,9 +1,4 @@
-//! New std-layer dispatch executors that target the redesigned `Executor` trait.
-//!
-//! Files inside `dispatcher/` MUST NOT depend on the legacy `dispatch/`
-//! tree (see openspec change `dispatcher-pekko-1n-redesign`). Once the
-//! migration completes the legacy tree is removed in a single drop and this
-//! module is renamed back to `dispatch/`.
+//! Std-layer dispatch executors targeting the `Executor` trait.
 
 #[cfg(all(test, feature = "tokio-executor"))]
 mod tests;

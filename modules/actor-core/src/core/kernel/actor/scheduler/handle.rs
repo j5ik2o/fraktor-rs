@@ -8,9 +8,6 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::cancellable::CancellableEntry;
 
 /// Identifier for scheduled jobs.
-///
-/// This is also exposed as the Pekko-compatible
-/// [`Cancellable`](crate::core::kernel::actor::scheduler::Cancellable) alias.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchedulerHandle {
   raw:   u64,

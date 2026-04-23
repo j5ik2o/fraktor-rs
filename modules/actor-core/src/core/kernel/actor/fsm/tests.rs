@@ -3,7 +3,7 @@ use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
-use super::{AbstractFsm, Fsm, FsmReason, FsmStateTimeout, FsmTransition, LoggingFsm};
+use super::{Fsm, FsmReason, FsmStateTimeout, FsmTransition, LoggingFsm};
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -401,7 +401,7 @@ fn logging_fsm_emits_transition_and_termination_logs() {
 #[test]
 fn abstract_fsm_delegates_to_inner_runtime() {
   let (_system, mut ctx) = build_context();
-  let mut fsm = AbstractFsm::<ProbeState, usize>::new();
+  let mut fsm = Fsm::<ProbeState, usize>::new();
   fsm.start_with(ProbeState::Idle, 10);
   fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, data| {
     if message.downcast_ref::<usize>().is_some() {

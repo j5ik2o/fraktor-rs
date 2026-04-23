@@ -290,7 +290,7 @@ impl SerializationExtension {
 
   fn actor_path(actor_ref: &ActorRef) -> String {
     if let Some(path) = actor_ref.path() {
-      return path.to_string();
+      return path.to_relative_string();
     }
     fallback_path(actor_ref.pid())
   }
