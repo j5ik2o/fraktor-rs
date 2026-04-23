@@ -17,7 +17,7 @@
 - classic の Java 継承 DSL (`AbstractActor`, `ReceiveBuilder`, `AbstractActorWithTimers` 等) は JVM / Java モデル依存のため `n/a` 判定
 - Java DSL 全般 (`javadsl/`, `japi/`) は `n/a` 判定
 - Pekko IO パッケージ (`io/Tcp`, `io/Udp`, `io/Dns` 等) はネットワーク IO モジュールであり、fraktor-rs ではランタイム非依存の actor core に含めず、将来 remote / transport モジュールで扱うため `n/a` 判定
-- 分析日: 2026-04-23（初版: 2026-04-15、第2版: 2026-04-16、第3版: 2026-04-17、第4版: 2026-04-17、第5版: 2026-04-17、第6版: 2026-04-17、第7版: 2026-04-18、第8版: 2026-04-19、**第8.1版: 2026-04-19** — Phase A1 完了反映、**第9版: 2026-04-21** — InvokeGuard / PanicInvokeGuard による SP-H1.5 完了反映、**第10版: 2026-04-22** — Phase A2+ (AC-H2/H3/H4/H5/AL-H1/ES-H1) 全完了反映、**第11版: 2026-04-22** — SP-M1 (maxNrOfRetries 意味反転) 完了反映、`RestartLimit` enum + Pekko one-shot window 実装、**第12版: 2026-04-22** — MB-M1 (mailbox throughput deadline) 完了反映、**第13版: 2026-04-22** — AC-M5 (NotInfluenceReceiveTimeout marker) 完了反映、**第14版: 2026-04-23** — AC-M1/M3 (PinnedDispatcher 排他 / isFailed guard) 完了反映、**第15版: 2026-04-23** — AC-M4a (watchWith 重複チェック) + AL-M1 (post_restart) 完了反映、**第16版: 2026-04-23** — MB-M3 n/a 化 / ES-M1 low 降格、**第17版: 2026-04-23** — MB-M2 (BoundedDequeBasedMailbox / BoundedControlAwareMailbox) 完了反映、**第18版: 2026-04-23** — AC-M2 (Dispatchers alias chain resolution, MAX_ALIAS_DEPTH=20) 完了反映、HOCON dynamic loading は JVM reflection 依存のため n/a 確定、**第19版: 2026-04-23** — DP-M1 (Dispatcher primary id flip) + MB-P1 (Mailbox primary id flip) 完了反映、legacy `"default"` 完全退役）
+- 分析日: 2026-04-23（初版: 2026-04-15、第2版: 2026-04-16、第3版: 2026-04-17、第4版: 2026-04-17、第5版: 2026-04-17、第6版: 2026-04-17、第7版: 2026-04-18、第8版: 2026-04-19、**第8.1版: 2026-04-19** — Phase A1 完了反映、**第9版: 2026-04-21** — InvokeGuard / PanicInvokeGuard による SP-H1.5 完了反映、**第10版: 2026-04-22** — Phase A2+ (AC-H2/H3/H4/H5/AL-H1/ES-H1) 全完了反映、**第11版: 2026-04-22** — SP-M1 (maxNrOfRetries 意味反転) 完了反映、`RestartLimit` enum + Pekko one-shot window 実装、**第12版: 2026-04-22** — MB-M1 (mailbox throughput deadline) 完了反映、**第13版: 2026-04-22** — AC-M5 (NotInfluenceReceiveTimeout marker) 完了反映、**第14版: 2026-04-23** — AC-M1/M3 (PinnedDispatcher 排他 / isFailed guard) 完了反映、**第15版: 2026-04-23** — AC-M4a (watchWith 重複チェック) + AL-M1 (post_restart) 完了反映、**第16版: 2026-04-23** — MB-M3 n/a 化 / ES-M1 low 降格、**第17版: 2026-04-23** — MB-M2 (BoundedDequeBasedMailbox / BoundedControlAwareMailbox) 完了反映、**第18版: 2026-04-23** — AC-M2 (Dispatchers alias chain resolution, MAX_ALIAS_DEPTH=20) 完了反映、HOCON dynamic loading は JVM reflection 依存のため n/a 確定、**第19版: 2026-04-23** — DP-M1 (Dispatcher primary id flip) + MB-P1 (Mailbox primary id flip) 完了反映、legacy `"default"` 完全退役、**第20版: 2026-04-23** — 中途半端な実装の残骸削除 16 件 (change `pekko-dead-code-retire-phase1`))
 - **第8版での重大な是正**: 第7版までは「公開 API カバレッジ 100%」で parity 完了として扱っていたが、これは **型と関数シグネチャの存在** を測ったにすぎず、**内部セマンティクス (実行時の契約)** が Pekko と一致しているかは検証していなかった。第8版では Mailbox / Dispatcher / ActorCell / ChildrenContainer / FaultHandling / DeathWatch / ReceiveTimeout / ActorLifecycle / EventStream / FSM / Stash / SupervisorStrategy の計 34 観点を Pekko 参照実装と行単位で比較し、**high 11 件 / medium 13 件 / low 約 10 件の内部セマンティクス不一致を検出した**。公開 API カウントでのカバレッジ (100%) は維持するが、**"internal parity gap" は Phase A として未解決扱い**とし、本版末尾に「内部セマンティクスギャップ」セクションを追加する。
 - 第3版での追加検出: Pekko 側を `actor` / `actor-typed` 両パッケージから全件再抽出し、ergonomics 系 API と classic 補助パターンの未対応項目を新たに洗い出した。
 - 第4版での更新: `SmallestMailboxRoutingLogic` の Pekko 互換化を実装完了（2パス探索・`isSuspended`/`isProcessingMessage` 追跡・スコアリング）。部分実装ギャップは 1 件に減少。
@@ -474,6 +474,46 @@ low 判定約 10 件。公開 API には影響せず、優先度は低い。Phas
 各エージェントは **8〜16 観点**で一致判定（完全一致 / 部分一致 / 不一致 / 未実装）と深刻度（low / medium / high）を出力。合計 34 観点。
 
 今後は、**pekko-porting facets の implement ステップ** でこの比較手法を個別バッチに適用し、新規実装のたびに内部セマンティクス突合を必須化する。`.takt/facets/instructions/pekko-porting-implement.md` の Fake Gap チェックはシグネチャ面の偽装検出だが、**内部セマンティクス逸脱は Fake Gap チェックを通過してしまう** ため、別途「Pekko 内部参照の行単位突合」を追加する必要がある（今後の facets 改訂で検討）。
+
+## 中途半端な実装の残骸削除 (第20版)
+
+change: `pekko-dead-code-retire-phase1`
+scope: `modules/actor-core/`
+原則: CLAUDE.md "No half-finished implementations either" 遵守
+
+actor-core の `#[allow(dead_code)]` 46 箇所を監査し、**production / test 双方から参照ゼロ** の 16 項目を残骸として削除。Pekko 互換機能は他経路 (`SystemStateShared`, `ExtendedActorSystem` 等) で既に成立しているため、削除による機能退行はない。
+
+### 削除済み (残骸 16 件 + cascade)
+
+| # | item | 削除理由 |
+|---|------|---------|
+| 1 | `ActorRefProviders::contains_key` | 外部参照 0 |
+| 2 | `ActorRefProviders::values` | 外部参照 0 |
+| 3 | `Cells::contains` | 外部参照 0 |
+| 4 | `Cells::len` | 外部参照 0 |
+| 5 | `Cells::is_empty` | 外部参照 0 |
+| 6 | `ActorSystem::register_temp_actor` | `SystemStateShared` に同等機能、ActorSystem 層での再ラップ不要 |
+| 7 | `ActorSystem::unregister_temp_actor` | 同上 |
+| 8 | `ActorSystem::temp_actor` | 同上 |
+| 9 | `SystemStateShared::handle_failure` + `suspend_for_escalation` | 再帰 self-call のみ、external entry なし |
+| 10 | `SystemState::handle_failure` + `suspend_for_escalation` + `stop_actor` + test `recreate_send_failure_escalates_and_stops_parent` | 同上 |
+| 11 | `ConsumerControllerCommand::retry` (constructor) | variant は match で直接使用、constructor 未使用 |
+| 12 | `ConsumerControllerCommand::consumer_terminated` (constructor) | 同上 |
+| 13 | `ProducerControllerCommand::msg_with_confirmation` (constructor) | 同上 |
+| 14 | `TypedScheduler::inner` | 公開 accessor の未使用残骸 |
+| 15 | `Scheduler::raw` | 同上 |
+| 16 | `TypedActorSystem::spawn` (untyped パス alias) | 未使用 |
+
+#### Item 10 の連鎖削除 (handle_failure 除去に伴う孤児)
+
+`SystemState` の `forward_remote_watch` / `forward_remote_unwatch` / `send_system_message` / `record_send_error` は `handle_failure` および自身の再帰呼び出しのみから到達可能であり、handle_failure 除去後は非到達。同時に削除。対応する test `system_state_send_system_message_to_nonexistent_actor` / `system_state_record_send_error` (SystemState 層の duplicate API を検証していた冗長テスト) も削除。production 経路は `SystemStateShared::send_system_message` / `record_send_error` (生きている) に集約。
+
+### 結果
+
+- `#[allow(dead_code)]` 件数: **46 → 29 (−17 件)**
+- 削除後の残存 29 件の内訳:
+  - LIVE-BUG 系 (実際は使われているが `#[allow]` が誤って付いている) の除去は **次 PR** で対応予定
+  - EXEMPT (compile-time guard / test helper / platform-cfg) は原則残置
 
 ## まとめ
 

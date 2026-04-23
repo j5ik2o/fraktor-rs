@@ -77,12 +77,6 @@ where
     Self(ProducerControllerCommandKind::Msg { message })
   }
 
-  /// Creates a `MsgWithConfirmation` command.
-  #[allow(dead_code)]
-  pub(crate) const fn msg_with_confirmation(message: A, reply_to: TypedActorRef<SeqNr>) -> Self {
-    Self(ProducerControllerCommandKind::MsgWithConfirmation { message, reply_to })
-  }
-
   /// Creates a `Request` command (internal, from consumer controller).
   pub(crate) const fn request(
     confirmed_seq_nr: SeqNr,

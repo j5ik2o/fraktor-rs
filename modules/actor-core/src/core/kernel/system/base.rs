@@ -365,26 +365,6 @@ impl ActorSystem {
     self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
-  /// Registers a temporary actor reference under `/temp` and returns the generated segment.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn register_temp_actor(&self, actor: ActorRef) -> String {
-    self.state.register_temp_actor(actor)
-  }
-
-  /// Removes a temporary actor mapping if present.
-  #[allow(dead_code)]
-  pub(crate) fn unregister_temp_actor(&self, name: &str) {
-    self.state.unregister_temp_actor(name);
-  }
-
-  /// Resolves a registered temporary actor reference.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRef> {
-    self.state.temp_actor(name)
-  }
-
   /// Emits a log event with the specified severity.
   pub fn emit_log(
     &self,

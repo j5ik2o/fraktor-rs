@@ -72,18 +72,6 @@ where
     Self(ConsumerControllerCommandKind::DeliverThenStop)
   }
 
-  /// Creates a `Retry` command (internal timer).
-  #[allow(dead_code)]
-  pub(crate) const fn retry() -> Self {
-    Self(ConsumerControllerCommandKind::Retry)
-  }
-
-  /// Creates a `ConsumerTerminated` command (internal watch notification).
-  #[allow(dead_code)]
-  pub(crate) const fn consumer_terminated() -> Self {
-    Self(ConsumerControllerCommandKind::ConsumerTerminated)
-  }
-
   /// Returns a reference to the command kind.
   pub(crate) const fn kind(&self) -> &ConsumerControllerCommandKind<A> {
     &self.0
