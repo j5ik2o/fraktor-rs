@@ -27,7 +27,7 @@
 - [ ] 4.1 `mailbox.rs` に 4 新 mod (`bounded_deque_message_queue` / `bounded_deque_mailbox_type` / `bounded_control_aware_message_queue` / `bounded_control_aware_mailbox_type`) の宣言と `pub use` 再 export を追加。既存 `bounded_*` / `unbounded_*` mod と同じ 3 段パターン (`/// doc` + `mod ...;` + `pub use ...::Type;`) に揃える
 - [ ] 4.2 `mailboxes.rs` の imports に新 MailboxType 2 種を追加
 - [ ] 4.3 `mailboxes.rs::deque_mailbox_type_from_policy` を書換: 戻り値型を `Box<dyn MailboxType>` に変更 (Result を剥がす)、`Bounded` 分岐で `BoundedDequeMailboxType` を返す
-- [ ] 4.4 `mailboxes.rs::create_message_queue_from_config` の control-aware 分岐を capacity 分岐へ拡張 (priority 分岐 `priority_mailbox_type_from_config` と同じ構造)
+- [ ] 4.4 `mailboxes.rs` に helper `control_aware_mailbox_type_from_policy(policy) -> Box<dyn MailboxType>` を新設 (既存 `deque_mailbox_type_from_policy` / `priority_mailbox_type_from_config` と同形)。`create_message_queue_from_config` の control-aware 枝から helper を呼ぶよう書換 (design Decision 5)
 - [ ] 4.5 `create_message_queue_from_config` 内の `deque_mailbox_type_from_policy` 呼び出し箇所で、戻り値型変更に追随して `?` を除去
 - [ ] 4.6 `mailboxes/tests.rs` L78 の `create_message_queue_rejects_bounded_with_deque` を `create_message_queue_creates_bounded_deque_for_bounded_plus_deque` 等に rename し、assertion を `Ok(BoundedDequeMessageQueue)` 相当の検証 (例: `number_of_messages == 0` 直後の enqueue が DropNewest で期待通り挙動) に差替え
 - [ ] 4.7 新規 dispatch 回帰テストを `mailboxes/tests.rs` に追加: `create_message_queue_creates_bounded_control_aware_for_bounded_plus_control_aware` — bounded + control_aware config で `BoundedControlAwareMessageQueue` が生成され、capacity を超えた enqueue が Rejected/Evicted として挙動することを確認
