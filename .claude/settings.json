@@ -1,6 +1,10 @@
 {
   "alwaysThinkingEnabled": true,
   "showThinkingSummaries": true,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "codex",
