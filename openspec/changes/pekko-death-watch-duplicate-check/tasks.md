@@ -111,8 +111,8 @@
 
 ## Phase 10: PR 発行とレビュー対応
 
-- [ ] 10.1 branch `impl/pekko-death-watch-duplicate-check` で PR 発行、base は main
-- [ ] 10.2 PR 本文に以下を含める:
+- [x] 10.1 branch `impl/pekko-death-watch-duplicate-check` で PR 発行、base は main (PR #1638)
+- [x] 10.2 PR 本文に以下を含める:
   - Pekko `DeathWatch.scala:36-66, 126-132` との対応表
   - **公開 API 変更**: `ActorContext::watch` / `watch_with` の戻り値型 `Result<(), SendError>` → `Result<(), WatchRegistrationError>` (BREAKING)
   - **破壊的変更**: 上記戻り値型変更
