@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::collections::VecDeque;
-use core::num::NonZeroUsize;
+use core::{cmp::min, num::NonZeroUsize};
 
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
@@ -12,6 +12,14 @@ use super::{
   enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
   overflow_strategy::MailboxOverflowStrategy,
 };
+
+/// Initial capacity hint for each backing deque.
+///
+/// The combined length of the two queues is bounded by `capacity`, so allocating the full
+/// `capacity` for each queue would reserve 2× the memory that can ever be used
+/// simultaneously. We mirror [`UnboundedControlAwareMessageQueue`](super::UnboundedControlAwareMessageQueue)'s
+/// fixed 16-slot hint (clamped to `capacity`) and let `VecDeque` grow on demand.
+const DEFAULT_CAPACITY_HINT: usize = 16;
 
 /// Bounded message queue that prioritises control messages and enforces a combined capacity.
 ///
@@ -42,10 +50,16 @@ impl BoundedControlAwareMessageQueue {
   #[must_use]
   pub fn new(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy) -> Self {
     let capacity_value = capacity.get();
+    // control_queue + normal_queue の合計長は capacity で上限されるため、各 queue に capacity
+    // を pre-allocate すると 2× の over-allocation になる。UnboundedControlAwareMessageQueue と
+    // 同じ固定ヒント (16) に揃え、capacity を下回る場合のみ capacity で clamp する。
+    // これにより大容量設定 (capacity ≫ 16) で合計 32 slot に収まり、非常に小さい設定
+    // (capacity < 16) でも pre-allocate が capacity 分以下に抑えられる。
+    let hint = min(DEFAULT_CAPACITY_HINT, capacity_value);
     Self {
       inner: SharedLock::new_with_driver::<DefaultMutex<_>>(Inner {
-        control_queue: VecDeque::with_capacity(capacity_value),
-        normal_queue:  VecDeque::with_capacity(capacity_value),
+        control_queue: VecDeque::with_capacity(hint),
+        normal_queue:  VecDeque::with_capacity(hint),
       }),
       capacity: capacity_value,
       overflow,
