@@ -22,6 +22,7 @@ use crate::core::{
     actor::{
       Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, FailedInfo, Pid,
       ReceiveTimeoutStateShared, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON, SuspendReason, WatchKind,
+      WatchRegistrationKind,
       actor_ref::{ActorRef, ActorRefSenderShared},
       context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
       error::{ActorError, ActorErrorReason, PipeSpawnError},
@@ -506,6 +507,34 @@ impl ActorCell {
   #[must_use]
   pub fn is_watching(&self, target: Pid) -> bool {
     self.state.with_read(|state| state.watching_contains_pid(target))
+  }
+
+  /// Classifies the current **user-level** watch registration for `target`.
+  ///
+  /// **User watch only.** Supervision-only entries
+  /// (`WatchKind::Supervision`) are treated as
+  /// [`WatchRegistrationKind::None`] so that kernel-internal parent/child
+  /// bookkeeping cannot spuriously trip the duplicate check in
+  /// `ActorContext::watch` / `watch_with`.
+  ///
+  /// Equivalent to Pekko `DeathWatch.scala:104` `watching.get(actor)` viewed
+  /// through the lens of `Option[Any]`:
+  ///
+  /// | fraktor-rs                           | Pekko                     |
+  /// |--------------------------------------|---------------------------|
+  /// | [`WatchRegistrationKind::None`]      | `watching.get(ref) == None` (absent) |
+  /// | [`WatchRegistrationKind::Plain`]     | `watching(ref) == None`   |
+  /// | [`WatchRegistrationKind::WithMessage`] | `watching(ref) == Some(_)` |
+  pub(crate) fn watch_registration_kind(&self, target: Pid) -> WatchRegistrationKind {
+    self.state.with_read(|state| {
+      if !state.watching_contains_user(target) {
+        WatchRegistrationKind::None
+      } else if state.watch_with_messages.iter().any(|(pid, _)| *pid == target) {
+        WatchRegistrationKind::WithMessage
+      } else {
+        WatchRegistrationKind::Plain
+      }
+    })
   }
 
   /// Returns a snapshot of the `terminated_queued` set (Pekko
@@ -1142,8 +1171,21 @@ impl ActorCell {
   }
 
   /// Registers a custom message to deliver when the watched target terminates.
+  ///
+  /// **Invariant**: `ActorContext::watch_with` performs a
+  /// [`watch_registration_kind`](Self::watch_registration_kind) check **before**
+  /// invoking this helper, so arriving with an existing entry for `target`
+  /// indicates a violation of the duplicate-check contract
+  /// (`pekko-death-watch-duplicate-check` Decision 4). In debug builds this
+  /// panics; in release builds the existing entry is replaced to preserve
+  /// safety but the bug should be fixed upstream.
   pub(crate) fn register_watch_with(&self, target: Pid, message: AnyMessage) {
     self.state.with_write(|state| {
+      debug_assert!(
+        !state.watch_with_messages.iter().any(|(pid, _)| *pid == target),
+        "register_watch_with invariant violated: duplicate entry for {target:?}. \
+         ActorContext::watch_with must call watch_registration_kind first.",
+      );
       state.watch_with_messages.retain(|(pid, _)| *pid != target);
       state.watch_with_messages.push((target, message));
     });

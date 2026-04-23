@@ -76,7 +76,7 @@ impl SystemGuardianActor {
     if self.hooks.iter().any(|entry| entry.pid() == actor.pid()) {
       return Ok(());
     }
-    ctx.watch(&actor).map_err(|error| ActorError::from_send_error(&error))?;
+    ctx.watch(&actor).map_err(|error| error.to_actor_error())?;
     self.hooks.push(HookEntry { actor, completed: false });
     Ok(())
   }
@@ -122,7 +122,7 @@ impl SystemGuardianActor {
 
 impl Actor for SystemGuardianActor {
   fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    ctx.watch(&self.user_guardian).map_err(|error| ActorError::from_send_error(&error))
+    ctx.watch(&self.user_guardian).map_err(|error| error.to_actor_error())
   }
 
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {

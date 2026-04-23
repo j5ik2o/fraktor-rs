@@ -12,7 +12,7 @@ use crate::core::{
   kernel::{
     actor::{
       ActorContext, ChildRef, Pid,
-      error::{ActorError, PipeSpawnError, SendError},
+      error::{ActorError, PipeSpawnError, SendError, WatchRegistrationError},
       messaging::{AnyMessage, AskError},
       scheduler::{SchedulerError, SchedulerHandle},
       spawn::SpawnError,
@@ -155,8 +155,11 @@ where
   ///
   /// # Errors
   ///
-  /// Returns an error if the watch operation cannot be performed.
-  pub fn watch<C>(&mut self, target: &TypedActorRef<C>) -> Result<(), SendError>
+  /// Returns [`WatchRegistrationError::Duplicate`] when the target already has a
+  /// conflicting watch registration (e.g. previous `watch_with` with a custom message),
+  /// or [`WatchRegistrationError::Send`] when the runtime cannot enqueue the watch signal.
+  /// See `ActorContext::watch` for the Pekko parity table.
+  pub fn watch<C>(&mut self, target: &TypedActorRef<C>) -> Result<(), WatchRegistrationError>
   where
     C: Send + Sync + 'static, {
     self.inner_mut().watch(target.as_untyped())
@@ -169,8 +172,11 @@ where
   ///
   /// # Errors
   ///
-  /// Returns an error if the watch operation cannot be performed.
-  pub fn watch_with<C>(&mut self, target: &TypedActorRef<C>, message: M) -> Result<(), SendError>
+  /// Returns [`WatchRegistrationError::Duplicate`] when the target already has a
+  /// conflicting watch registration. See `ActorContext::watch_with` for the
+  /// conservative divergence from Pekko (`watch_with` after `watch_with` is always
+  /// rejected because `AnyMessage` has no `PartialEq`).
+  pub fn watch_with<C>(&mut self, target: &TypedActorRef<C>, message: M) -> Result<(), WatchRegistrationError>
   where
     C: Send + Sync + 'static, {
     self.inner_mut().watch_with(target.as_untyped(), AnyMessage::new(message))

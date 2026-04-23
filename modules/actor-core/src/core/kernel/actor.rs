@@ -38,6 +38,7 @@ mod stash_overflow_error;
 pub mod supervision;
 mod suspend_reason;
 mod watch_kind;
+mod watch_registration_kind;
 
 pub use actor_cell::ActorCell;
 pub(crate) use actor_cell_state::ActorCellState;
@@ -57,3 +58,4 @@ pub(crate) use receive_timeout_state_shared::ReceiveTimeoutStateShared;
 pub use stash_overflow_error::StashOverflowError;
 pub(crate) use suspend_reason::SuspendReason;
 pub(crate) use watch_kind::WatchKind;
+pub(crate) use watch_registration_kind::WatchRegistrationKind;
