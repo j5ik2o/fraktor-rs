@@ -166,5 +166,8 @@ if config.requirement().needs_control_aware() {
 
 ### Risk 6: 新 Bounded variant が deque trait の `enqueue_first` を `SendError::Full` に適切にマッピングしない
 
-- **影響**: push_front が容量超過した際の挙動が DequeMessageQueue::enqueue_first の契約と整合しない可能性。
-- **緩和**: push_front も capacity チェックを行い、容量超過時は overflow strategy に従う (Grow / DropNewest / DropOldest 同様)。`enqueue_first` の戻り値型は `Result<(), SendError>` なので DropOldest の evicted 情報は捨てる (trait 契約制約、上位は push_back 経由で enqueue するときのみ evicted を受け取る)
+- **影響**: push_front が容量超過した際の挙動が `DequeMessageQueue::enqueue_first` の契約と整合しない可能性。
+- **緩和**: Decision 2-c に従い、`enqueue_first` は capacity チェックを行う:
+  - Grow: 容量無視で push_front 成功
+  - DropNewest / DropOldest: 容量超過なら `Err(SendError::Full(..))` (evict せず Reject)
+  戻り値型 `Result<(), SendError>` と整合し、enqueue 経路 (EnqueueOutcome) との責務分離が保たれる。
