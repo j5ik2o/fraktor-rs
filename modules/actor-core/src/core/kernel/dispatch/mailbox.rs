@@ -44,6 +44,8 @@ mod envelope;
 mod mailbox_cleanup_policy;
 /// Monotonic clock callback type for throughput deadline enforcement.
 mod mailbox_clock;
+/// High-level factory trait registered with the actor-system builder.
+mod mailbox_factory;
 mod mailbox_instrumentation;
 mod mailbox_poll_future;
 mod mailbox_queue_handles;
@@ -51,7 +53,7 @@ mod mailbox_queue_state;
 mod mailbox_registry_error;
 /// Factory trait for creating message queue instances.
 mod mailbox_type;
-mod mailboxes;
+pub(crate) mod mailboxes;
 /// Priority generator for priority-based message queues.
 mod message_priority_generator;
 /// Pluggable message queue trait.
@@ -111,6 +113,7 @@ pub use enqueue_outcome::EnqueueOutcome;
 pub use envelope::Envelope;
 pub use mailbox_cleanup_policy::MailboxCleanupPolicy;
 pub use mailbox_clock::MailboxClock;
+pub use mailbox_factory::MailboxFactory;
 pub use mailbox_instrumentation::MailboxInstrumentation;
 pub use mailbox_poll_future::MailboxPollFuture;
 pub(crate) use mailbox_queue_handles::QueueStateHandle;

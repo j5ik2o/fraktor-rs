@@ -224,11 +224,6 @@ impl Props {
     self.mailbox_id = None;
     self
   }
-
-  pub(crate) fn with_resolved_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
-    self.mailbox_config = mailbox_config;
-    self
-  }
 }
 
 impl Clone for Props {

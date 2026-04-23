@@ -8,7 +8,7 @@ use hashbrown::HashMap;
 use crate::core::kernel::{
   actor::props::{MailboxConfig, MailboxConfigError},
   dispatch::mailbox::{
-    MailboxRegistryError, bounded_control_aware_mailbox_type::BoundedControlAwareMailboxType,
+    MailboxFactory, MailboxRegistryError, bounded_control_aware_mailbox_type::BoundedControlAwareMailboxType,
     bounded_deque_mailbox_type::BoundedDequeMailboxType, bounded_mailbox_type::BoundedMailboxType,
     bounded_priority_mailbox_type::BoundedPriorityMailboxType,
     bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType, capacity::MailboxCapacity,
@@ -55,19 +55,35 @@ pub(crate) fn create_message_queue_from_config(
   config: &MailboxConfig,
 ) -> Result<Box<dyn MessageQueue>, MailboxConfigError> {
   config.validate()?;
+  Ok(select_mailbox_type_from_config(config).create())
+}
+
+/// Selects the [`MailboxType`] that matches the supplied [`MailboxConfig`].
+///
+/// Selection precedence:
+/// 1. `priority_generator` with `stable_priority` → stable-priority factory
+/// 2. `priority_generator` → priority factory
+/// 3. `requirement.needs_control_aware()` → control-aware factory
+/// 4. `requirement.needs_deque()` → deque factory
+/// 5. default → capacity-based unbounded / bounded factory
+///
+/// Callers that invoke [`MailboxType::create`] directly on the returned
+/// factory must pre-validate via
+/// [`MailboxConfig::validate`](crate::core::kernel::actor::props::MailboxConfig::validate).
+pub(crate) fn select_mailbox_type_from_config(config: &MailboxConfig) -> Box<dyn MailboxType> {
   if let Some(generator) = config.priority_generator() {
     if config.stable_priority() {
-      return Ok(stable_priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
+      return stable_priority_mailbox_type_from_config(generator.clone(), config.policy());
     }
-    return Ok(priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
+    return priority_mailbox_type_from_config(generator.clone(), config.policy());
   }
   if config.requirement().needs_control_aware() {
-    return Ok(control_aware_mailbox_type_from_policy(config.policy()).create());
+    return control_aware_mailbox_type_from_policy(config.policy());
   }
   if config.requirement().needs_deque() {
-    return Ok(deque_mailbox_type_from_policy(config.policy()).create());
+    return deque_mailbox_type_from_policy(config.policy());
   }
-  Ok(create_message_queue_from_policy(config.policy()))
+  mailbox_type_from_policy(config.policy())
 }
 
 fn priority_mailbox_type_from_config(
@@ -121,9 +137,15 @@ fn bounded_mailbox_type(capacity: NonZeroUsize, overflow: MailboxOverflowStrateg
   Box::new(BoundedMailboxType::new(capacity, overflow))
 }
 
-/// Registry that manages mailbox configurations keyed by identifier.
+/// Registry that manages mailbox factories keyed by identifier.
+///
+/// Each entry is stored as a trait-object factory
+/// ([`ArcShared<dyn MailboxFactory>`]). [`MailboxConfig`] implements
+/// [`MailboxFactory`] as a bridge so high-level callers register a
+/// `MailboxConfig` and low-level callers pass a custom
+/// [`MailboxFactory`] implementation directly.
 pub struct Mailboxes {
-  entries: HashMap<String, MailboxConfig, RandomState>,
+  entries: HashMap<String, ArcShared<dyn MailboxFactory>, RandomState>,
   _marker: PhantomData<()>,
 }
 
@@ -140,53 +162,55 @@ impl Mailboxes {
     Self { entries: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
   }
 
-  /// Registers a mailbox configuration.
+  /// Registers a mailbox factory.
   ///
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Duplicate`] when the identifier already exists.
-  pub fn register(&mut self, id: impl Into<String>, config: MailboxConfig) -> Result<(), MailboxRegistryError> {
+  pub fn register(
+    &mut self,
+    id: impl Into<String>,
+    factory: impl MailboxFactory + 'static,
+  ) -> Result<(), MailboxRegistryError> {
     let id = id.into();
     if self.entries.contains_key(&id) {
       return Err(MailboxRegistryError::duplicate(&id));
     }
-    self.entries.insert(id, config);
+    self.entries.insert(id, ArcShared::new(factory));
     Ok(())
   }
 
-  /// Registers or updates a mailbox configuration for the provided identifier.
+  /// Registers or updates a mailbox factory for the provided identifier.
   ///
-  /// If the identifier already exists, the configuration is updated.
-  pub fn register_or_update(&mut self, id: impl Into<String>, config: MailboxConfig) {
-    self.entries.insert(id.into(), config);
+  /// If the identifier already exists, the factory is replaced.
+  pub fn register_or_update(&mut self, id: impl Into<String>, factory: impl MailboxFactory + 'static) {
+    self.entries.insert(id.into(), ArcShared::new(factory));
   }
 
-  /// Resolves the mailbox configuration for the provided identifier.
+  /// Resolves the mailbox factory for the provided identifier.
   ///
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+  pub fn resolve(&self, id: &str) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
     self.entries.get(id).cloned().ok_or_else(|| MailboxRegistryError::unknown(id))
   }
 
-  /// Creates a user-message queue from the configuration registered under `id`.
-  ///
-  /// When a priority generator is present, a priority-based queue is produced.
-  /// When the registered configuration declares deque semantics and the policy is
-  /// unbounded, this returns a deque-capable queue.
+  /// Creates a user-message queue from the factory registered under `id`.
   ///
   /// # Errors
   ///
-  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been
+  /// registered; wraps [`MailboxConfigError`] from the factory via
+  /// [`MailboxRegistryError::from`].
   pub fn create_message_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
-    let config = self.resolve(id)?;
-    Ok(create_message_queue_from_config(&config)?)
+    let factory = self.resolve(id)?;
+    Ok(factory.create_message_queue()?)
   }
 
   /// Ensures the default mailbox configuration is registered.
   pub fn ensure_default(&mut self) {
-    self.entries.entry(DEFAULT_MAILBOX_ID.to_owned()).or_default();
+    self.entries.entry(DEFAULT_MAILBOX_ID.to_owned()).or_insert_with(|| ArcShared::new(MailboxConfig::default()));
   }
 }
 

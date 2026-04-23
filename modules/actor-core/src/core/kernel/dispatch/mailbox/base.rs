@@ -9,8 +9,8 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_core_rs::core::sync::{SharedAccess, SyncOnce, WeakShared};
 
 use super::{
-  CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
-  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
+  CloseRequestOutcome, DequeMessageQueue, MailboxFactory, MailboxScheduleState, RunFinishOutcome, ScheduleHints,
+  SystemQueue, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
   mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_clock::MailboxClock,
   mailbox_instrumentation::MailboxInstrumentation, message_queue::MessageQueue,
 };
@@ -20,7 +20,7 @@ use crate::core::kernel::{
     actor_ref::dead_letter::DeadLetterReason,
     error::SendError,
     messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
-    props::{MailboxConfig, MailboxConfigError},
+    props::MailboxConfigError,
   },
   dispatch::mailbox::policy::MailboxPolicy,
   event::logging::LogLevel,
@@ -85,33 +85,33 @@ impl Mailbox {
     Self::new_with_queue_and_shared_set(policy, queue, shared_set)
   }
 
-  /// Creates a new mailbox from the provided configuration.
+  /// Creates a new mailbox from the provided factory.
   ///
-  /// When the config declares deque semantics and the policy is unbounded, this produces a
-  /// deque-capable queue that supports O(1) front insertion in
+  /// When the factory declares deque semantics and the policy is unbounded,
+  /// this produces a deque-capable queue that supports O(1) front insertion in
   /// [`prepend_user_messages_deque`](Self::prepend_user_messages_deque).
   ///
   /// # Errors
   ///
   /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
   /// configuration contract is violated.
-  pub fn new_from_config(config: &MailboxConfig) -> Result<Self, MailboxConfigError> {
+  pub fn new_from_factory(factory: &dyn MailboxFactory) -> Result<Self, MailboxConfigError> {
     let shared_set = MailboxSharedSet::builtin();
-    Self::new_from_config_with_shared_set(config, &shared_set)
+    Self::new_from_factory_with_shared_set(factory, &shared_set)
   }
 
-  /// Creates a mailbox from configuration using the supplied lock bundle.
+  /// Creates a mailbox from the provided factory using the supplied lock bundle.
   ///
   /// # Errors
   ///
   /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
   /// configuration contract is violated.
-  pub fn new_from_config_with_shared_set(
-    config: &MailboxConfig,
+  pub fn new_from_factory_with_shared_set(
+    factory: &dyn MailboxFactory,
     shared_set: &MailboxSharedSet,
   ) -> Result<Self, MailboxConfigError> {
-    let policy = config.policy();
-    let queue = super::mailboxes::create_message_queue_from_config(config)?;
+    let policy = factory.policy();
+    let queue = factory.create_message_queue()?;
     Ok(Self::new_with_queue_and_shared_set(policy, queue, shared_set))
   }
 

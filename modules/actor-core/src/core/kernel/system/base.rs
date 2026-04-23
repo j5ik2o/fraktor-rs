@@ -11,7 +11,10 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
+use fraktor_utils_core_rs::core::{
+  collections::queue::capabilities::{QueueCapability, QueueCapabilityRegistry},
+  sync::ArcShared,
+};
 
 use super::{
   ActorSystemWeak, Blocker, ExtendedActorSystem, TerminationSignal,
@@ -31,7 +34,7 @@ use crate::core::{
       actor_selection::ActorSelection,
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
-      props::Props,
+      props::{MailboxRequirement, Props},
       scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverBundle},
       setup::{ActorSystemConfig, ActorSystemSetup, CircuitBreakerConfig},
       spawn::SpawnError,
@@ -670,15 +673,29 @@ impl ActorSystem {
     name: String,
     props: &Props,
   ) -> Result<ArcShared<ActorCell>, SpawnError> {
-    let resolved = self.resolve_props(parent, props)?;
-    Self::ensure_mailbox_requirements(&resolved)?;
-    ActorCell::create(self.state.clone(), pid, parent, name, &resolved)
+    self.ensure_mailbox_requirements(props)?;
+    ActorCell::create(self.state.clone(), pid, parent, name, props)
   }
 
-  fn ensure_mailbox_requirements(props: &Props) -> Result<(), SpawnError> {
-    let requirement = props.mailbox_config().requirement();
-    let registry = props.mailbox_config().capabilities();
-    requirement.ensure_supported(&registry).map_err(|error| {
+  fn ensure_mailbox_requirements(&self, props: &Props) -> Result<(), SpawnError> {
+    // Requirements come from the factory that will actually be used at spawn
+    // time: the registered factory when `mailbox_id` is set, otherwise the
+    // inline `MailboxConfig` carried by the props.
+    if let Some(mailbox_id) = props.mailbox_id() {
+      let factory =
+        self.state.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      Self::ensure_requirements_from(&factory.requirement(), &factory.capabilities())
+    } else {
+      let config = props.mailbox_config();
+      Self::ensure_requirements_from(&config.requirement(), &config.capabilities())
+    }
+  }
+
+  fn ensure_requirements_from(
+    requirement: &MailboxRequirement,
+    registry: &QueueCapabilityRegistry,
+  ) -> Result<(), SpawnError> {
+    requirement.ensure_supported(registry).map_err(|error| {
       let reason = Self::missing_capability_reason(error.missing());
       SpawnError::invalid_props(reason)
     })
@@ -691,16 +708,6 @@ impl ActorSystem {
       | QueueCapability::BlockingFuture => "mailbox requires blocking-future capability",
       | QueueCapability::ControlAware => "mailbox requires control-aware capability",
     }
-  }
-
-  fn resolve_props(&self, _parent: Option<Pid>, props: &Props) -> Result<Props, SpawnError> {
-    let mut resolved = props.clone();
-    if let Some(mailbox_id) = resolved.mailbox_id() {
-      let config =
-        self.state.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
-      resolved = resolved.with_resolved_mailbox_config(config);
-    }
-    Ok(resolved)
   }
 
   fn perform_create_handshake(

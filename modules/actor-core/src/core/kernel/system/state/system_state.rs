@@ -39,7 +39,6 @@ use crate::core::kernel::{
     deploy::Deployer,
     invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
     messaging::{AnyMessage, AskResult, system_message::FailurePayload},
-    props::MailboxConfig,
     scheduler::{
       SchedulerBackedDelayProvider, SchedulerContext, SchedulerShared,
       task_run::TaskRunSummary,
@@ -52,7 +51,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{Dispatchers, DispatchersError, MessageDispatcherShared},
-    mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
+    mailbox::{MailboxFactory, MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
     logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
@@ -880,12 +879,12 @@ impl SystemState {
     self.dispatchers.resolve_call_count()
   }
 
-  /// Resolves the mailbox configuration for the identifier.
+  /// Resolves the mailbox factory for the identifier.
   ///
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+  pub fn resolve_mailbox(&self, id: &str) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
     self.mailboxes.resolve(id)
   }
 

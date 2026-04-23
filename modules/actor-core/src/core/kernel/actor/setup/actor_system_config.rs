@@ -15,13 +15,12 @@ use crate::core::kernel::{
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
     invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
-    props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::CircuitBreakerConfig,
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherFactory},
-    mailbox::{MailboxClock, Mailboxes},
+    mailbox::{MailboxClock, MailboxFactory, Mailboxes},
   },
   system::remote::RemotingConfig,
 };
@@ -134,10 +133,15 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Registers or updates a mailbox configuration.
+  /// Registers or updates a mailbox factory under the supplied id.
+  ///
+  /// Accepts any [`MailboxFactory`] implementation. Since
+  /// [`MailboxConfig`] implements [`MailboxFactory`], existing callers can
+  /// continue to pass a `MailboxConfig` directly; custom factory types can
+  /// also be plugged in to override queue construction and metadata.
   #[must_use]
-  pub fn with_mailbox(mut self, id: impl Into<String>, config: MailboxConfig) -> Self {
-    self.mailboxes.register_or_update(id, config);
+  pub fn with_mailbox(mut self, id: impl Into<String>, factory: impl MailboxFactory + 'static) -> Self {
+    self.mailboxes.register_or_update(id, factory);
     self
   }
 
