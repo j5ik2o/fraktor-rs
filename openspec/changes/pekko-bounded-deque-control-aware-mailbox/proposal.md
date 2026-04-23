@@ -60,10 +60,9 @@ fraktor-rs 現状 (`modules/actor-core/src/core/kernel/dispatch/mailbox/`):
 - `Envelope` / `QueueStateHandle` / dead-letter routing
 - Pekko `Mailbox.scala:844,931` 以外の mailbox 関連 API (本 change は bounded variant 追加のみ)
 
-**テスト**:
-- 新 2 variant × 4 シナリオ (空 → enqueue → dequeue、overflow DropNewest、overflow DropOldest、overflow Grow、control priority ordering、deque front insertion):
-  - `BoundedDequeMessageQueue`: 最低 5 件 (enqueue/dequeue, front insertion, DropNewest 容量超過, DropOldest 容量超過, Grow 容量超過)
-  - `BoundedControlAwareMessageQueue`: 最低 5 件 (control priority, normal priority, DropNewest, DropOldest, Grow)
+**テスト** (spec Requirement 1/2/3 の Scenario と 1:1 対応):
+- `BoundedDequeMessageQueue`: 6 件 (Grow 容量超過 / DropNewest 容量超過 / DropOldest 容量超過 / enqueue_first × DropNewest / enqueue_first × DropOldest (Decision 2-c Reject) / clean_up)
+- `BoundedControlAwareMessageQueue`: 5 件 (control priority dequeue / DropOldest × normal front evict / DropOldest × normal 空時 Reject / DropNewest / Grow)
 - `mailboxes.rs` dispatch 分岐の回帰テスト 2 件 (bounded + deque / bounded + control_aware)
 - `mailbox_config/tests.rs` の `BoundedWithDeque` / `ControlAwareRequiresUnboundedPolicy` 期待テスト 2 件を `Ok(())` 期待に rename + 反転
 - 既存全テストが pass することを regression 確認
