@@ -14,6 +14,7 @@
 - [ ] 2.2 `bounded_deque_message_queue/tests.rs` を新規作成。spec Requirement 1 の 6 Scenario に 1:1 対応するテストを追加 (`UnboundedDequeMessageQueue::tests` と `BoundedMessageQueue::tests` のパターン混合)
 - [ ] 2.3 `bounded_deque_mailbox_type.rs` を新規作成 (既存 `BoundedMailboxType` と同パターン、MessageQueue 生成先だけ差し替え)
 - [ ] 2.4 `bounded_deque_mailbox_type/tests.rs` を新規作成 (既存 `bounded_mailbox_type/tests.rs` パターン: factory が正しい型を生成することの最低限検証)
+- [ ] 2.5 `./scripts/ci-check.sh ai dylint` を実行し、新規ファイルで dylint エラーゼロを確認 (特に type-per-file / mod-file / module-wiring / use-placement / rustdoc / cfg-std-forbid / ambiguous-suffix / tests-location)
 
 ## Phase 3: BoundedControlAware variant の追加
 
@@ -21,6 +22,7 @@
 - [ ] 3.2 `bounded_control_aware_message_queue/tests.rs` を新規作成。spec Requirement 2 の 5 Scenario に 1:1 対応するテストを追加
 - [ ] 3.3 `bounded_control_aware_mailbox_type.rs` を新規作成 (既存 `BoundedMailboxType` と同パターン、生成先 MessageQueue を `BoundedControlAwareMessageQueue` に差し替え)
 - [ ] 3.4 `bounded_control_aware_mailbox_type/tests.rs` を新規作成 (最低限の factory 検証)
+- [ ] 3.5 `./scripts/ci-check.sh ai dylint` を実行し、新規ファイルで dylint エラーゼロを確認
 
 ## Phase 4: mod 宣言と dispatch 分岐の更新
 
@@ -31,6 +33,7 @@
 - [ ] 4.5 `create_message_queue_from_config` 内の `deque_mailbox_type_from_policy` 呼び出し箇所で、戻り値型変更に追随して `?` を除去
 - [ ] 4.6 `mailboxes/tests.rs` L78 の `create_message_queue_rejects_bounded_with_deque` を `create_message_queue_creates_bounded_deque_for_bounded_plus_deque` 等に rename し、assertion を `Ok(BoundedDequeMessageQueue)` 相当の検証 (例: `number_of_messages == 0` 直後の enqueue が DropNewest で期待通り挙動) に差替え
 - [ ] 4.7 新規 dispatch 回帰テストを `mailboxes/tests.rs` に追加: `create_message_queue_creates_bounded_control_aware_for_bounded_plus_control_aware` — bounded + control_aware config で `BoundedControlAwareMessageQueue` が生成され、capacity を超えた enqueue が Rejected/Evicted として挙動することを確認
+- [ ] 4.8 `./scripts/ci-check.sh ai dylint` を実行し、dispatch 書換え後の dylint エラーゼロを確認 (mod 宣言順 / use-placement / module-wiring の変化を検知)
 
 ## Phase 5: `MailboxConfigError::BoundedWithDeque` + `ControlAwareRequiresUnboundedPolicy` の削除
 
@@ -62,6 +65,7 @@
 
 - [ ] 5.9 `rtk grep "BoundedWithDeque" modules/ --glob "*.rs"` で残参照ゼロを確認 (※ openspec/changes/pekko-bounded-deque-control-aware-mailbox/ 自身の言及と archive 配下は immutable history として対象外、modules/ 配下のみ検証)
 - [ ] 5.10 `rtk grep "ControlAwareRequiresUnboundedPolicy" modules/ --glob "*.rs"` で残参照ゼロを確認 (同上の範囲限定)
+- [ ] 5.11 `./scripts/ci-check.sh ai dylint` を実行し、variant 削除後の dylint エラーゼロを確認 (削除 variant の残参照を dylint 側からも検知)
 
 ## Phase 6: テストと CI 検証
 
