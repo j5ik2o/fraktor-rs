@@ -112,18 +112,17 @@ fn build_system() -> ActorSystem {
   let config = ActorSystemConfig::new(TokioTickDriver::default());
   let default_settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
-  let default_configurator: Box<dyn MessageDispatcherFactory> =
-    Box::new(DefaultDispatcherFactory::new(&default_settings, default_executor));
 
   let balancing_settings = DispatcherConfig::with_defaults(BALANCING_DISPATCHER_ID);
   let balancing_executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
-  let balancing_configurator: Box<dyn MessageDispatcherFactory> =
-    Box::new(BalancingDispatcherFactory::new(&balancing_settings, balancing_executor, shared_queue));
 
   let config = config
-    .with_dispatcher_factory(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
-    .with_dispatcher_factory(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
+    .with_dispatcher_factory(DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory::new(&default_settings, default_executor))
+    .with_dispatcher_factory(
+      BALANCING_DISPATCHER_ID,
+      BalancingDispatcherFactory::new(&balancing_settings, balancing_executor, shared_queue),
+    );
   let props = Props::from_fn(|| TeamGuardian);
   ActorSystem::create_with_config(&props, config).expect("actor system")
 }

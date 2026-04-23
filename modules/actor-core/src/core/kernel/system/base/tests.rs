@@ -37,8 +37,7 @@ use crate::core::{
       spawn::SpawnError,
     },
     dispatch::dispatcher::{
-      DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
-      TrampolineState,
+      DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, TrampolineState,
     },
     event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
     system::{
@@ -180,11 +179,10 @@ impl Executor for NoopExecutor {
   fn shutdown(&mut self) {}
 }
 
-fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherFactory>> {
+fn noop_dispatcher_configurator() -> DefaultDispatcherFactory {
   let settings = DispatcherConfig::with_defaults("noop");
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
-  let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));
-  ArcShared::new(configurator)
+  DefaultDispatcherFactory::new(&settings, executor)
 }
 
 /// Noop stopper used in `StaticTickDriver`.

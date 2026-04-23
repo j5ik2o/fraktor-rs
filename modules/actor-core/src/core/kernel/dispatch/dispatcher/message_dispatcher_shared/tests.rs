@@ -145,12 +145,7 @@ fn dispatch_drives_user_message_through_actor_invoker() {
 
 #[test]
 fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
-  use fraktor_utils_core_rs::core::sync::ArcShared;
-
-  use crate::core::kernel::{
-    dispatch::dispatcher::{DefaultDispatcherFactory, MessageDispatcherFactory},
-    system::ActorSystem,
-  };
+  use crate::core::kernel::{dispatch::dispatcher::DefaultDispatcherFactory, system::ActorSystem};
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = ExecutorShared::new(
@@ -158,9 +153,7 @@ fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
       TrampolineState::new(),
     );
     let settings = DispatcherConfig::new("system-test-dispatch", nz(4), None, Duration::from_secs(1));
-    let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));
-    let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
-    config.with_dispatcher_factory("system-test-dispatch", configurator_handle)
+    config.with_dispatcher_factory("system-test-dispatch", DefaultDispatcherFactory::new(&settings, executor))
   });
   let resolved = system.state().resolve_dispatcher("system-test-dispatch").expect("registered configurator");
   assert_eq!(resolved.id(), "system-test-dispatch");
