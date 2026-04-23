@@ -60,8 +60,8 @@
 
 ### 5C: 残参照ゼロ検証
 
-- [ ] 5.9 `rtk grep "BoundedWithDeque"` で残参照ゼロを確認
-- [ ] 5.10 `rtk grep "ControlAwareRequiresUnboundedPolicy"` で残参照ゼロを確認
+- [ ] 5.9 `rtk grep "BoundedWithDeque" modules/ --glob "*.rs"` で残参照ゼロを確認 (※ openspec/changes/pekko-bounded-deque-control-aware-mailbox/ 自身の言及と archive 配下は immutable history として対象外、modules/ 配下のみ検証)
+- [ ] 5.10 `rtk grep "ControlAwareRequiresUnboundedPolicy" modules/ --glob "*.rs"` で残参照ゼロを確認 (同上の範囲限定)
 
 ## Phase 6: テストと CI 検証
 
