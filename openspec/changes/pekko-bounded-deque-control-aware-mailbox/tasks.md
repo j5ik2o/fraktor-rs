@@ -83,7 +83,8 @@
   }
   ```
 - [ ] 4.5 `mailboxes.rs::create_message_queue_from_config` の deque 分岐 (`config.requirement().needs_deque()` 部分) で、`deque_mailbox_type_from_policy` が Result を返さなくなるのに追随して `?` を削除
-- [ ] 4.6 `mailboxes/tests.rs` を調べて、`Err(BoundedWithDeque)` を期待していた箇所があれば `Ok(BoundedDequeMessageQueue 生成)` 期待に差替え。新 variant の dispatch 回帰テスト 2 件を追加 (bounded + deque / bounded + control_aware)
+- [ ] 4.6 `mailboxes/tests.rs` L78 の `create_message_queue_rejects_bounded_with_deque` を `create_message_queue_creates_bounded_deque_for_bounded_plus_deque` 等に rename し、assertion を `Ok(BoundedDequeMessageQueue)` 相当の検証 (例: `number_of_messages == 0` 直後の enqueue が DropNewest で期待通り挙動) に差替え
+- [ ] 4.7 新規 dispatch 回帰テストを `mailboxes/tests.rs` に追加: `create_message_queue_creates_bounded_control_aware_for_bounded_plus_control_aware` — bounded + control_aware config で `BoundedControlAwareMessageQueue` が生成され、capacity を超えた enqueue が Rejected/Evicted として挙動することを確認
 
 ## Phase 5: `MailboxConfigError::BoundedWithDeque` + `ControlAwareRequiresUnboundedPolicy` の削除
 

@@ -127,7 +127,7 @@ if config.requirement().needs_control_aware() {
 - **選択**: `needs_control_aware()` 枝の中で `policy.capacity()` を参照し、`Bounded { capacity }` なら `BoundedControlAwareMailboxType::new(capacity, overflow)`, `Unbounded` なら既存の `UnboundedControlAwareMailboxType::new()` を返す。
 - **Rationale**:
   - 既存 priority 分岐 (`priority_mailbox_type_from_config`) と同じパターン
-  - bounded 指定を silently unbounded fallback するのは gap (MB-M2 の根本原因の 1 つ) なので明示分岐で修正
+  - Decision 4 で `ControlAwareRequiresUnboundedPolicy` を削除したため、validate を通過して dispatch に到達する bounded + control_aware 経路が新たに発生する。この経路で `policy.capacity()` を分岐せず無条件 Unbounded 生成すると bounded 指定が silently ignored される (既存 dispatch の残存 bug)。本 change で validate を緩める以上、dispatch 側も capacity 分岐で整合を取る必要がある
 - **代替**: ヘルパー関数 `control_aware_mailbox_type_from_policy` を切り出す案もあるが、既存 `deque_mailbox_type_from_policy` とパターン統一するためこちらで採用する
 
 ## Risks / Trade-offs

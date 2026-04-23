@@ -13,8 +13,9 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_dequ
   - `DropOldest`: `len >= capacity` なら front を evict してから push_back し `Ok(EnqueueOutcome::Evicted(evicted))` を返す。それ以外は push_back し `Accepted`。
 - `enqueue_first` (front 挿入) は stash rehydration 用途が中心で、Pekko に明示規定が無い。以下の設計を採用する:
   - `Grow`: capacity 無視で push_front し `Ok(())`。
-  - `DropNewest`: `len >= capacity` なら `Err(SendError::Full(envelope))`。それ以外は push_front し `Ok(())`。
-  - `DropOldest`: **`len >= capacity` なら `Err(SendError::Full(envelope))` を返し、いずれの既存 entry も evict しない**。`enqueue` 側の DropOldest (front evict) を push_front 経路に適用すると「今 push した envelope を直後に evict する」か「最新挿入側 (back) を drop する」かのいずれかになるが、前者は意味を成さず、後者は "oldest" の語義から離れる。stash rehydration の失敗はユーザーが例外処理できるよう明示 `Err` で通知する方が安全と判断 (設計 Decision 2-c)。
+  - `DropNewest`: `len >= capacity` なら `Err(SendError::Full(envelope.into_payload()))`。それ以外は push_front し `Ok(())`。
+  - `DropOldest`: **`len >= capacity` なら `Err(SendError::Full(envelope.into_payload()))` を返し、いずれの既存 entry も evict しない**。`enqueue` 側の DropOldest (front evict) を push_front 経路に適用すると「今 push した envelope を直後に evict する」か「最新挿入側 (back) を drop する」かのいずれかになるが、前者は意味を成さず、後者は "oldest" の語義から離れる。stash rehydration の失敗はユーザーが例外処理できるよう明示 `Err` で通知する方が安全と判断 (設計 Decision 2-c)。
+  - **備考**: `SendError::Full` は `AnyMessage` を wrap する。実装では `Envelope::into_payload()` で payload を取り出して格納する。以下 Scenario 中の `Err(SendError::Full(B))` のような記述は可読性のための shorthand で、実装上は `Err(SendError::Full(B.into_payload()))` と解釈する。
 - `dequeue` は front を `pop_front` する (Pekko の FIFO / deque semantics)。
 - `as_deque(&self) -> Option<&dyn DequeMessageQueue>` は `Some(self)` を返し、stash 層が front 挿入を実行できる。
 
@@ -135,7 +136,12 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_cont
 - `needs_control_aware()` が true かつ `policy.capacity()` が `Unbounded` の場合: 既存 `UnboundedControlAwareMessageQueue` を返す (挙動不変)。
 - 他の組合せ (priority / plain bounded / plain unbounded) は現行挙動を維持する。
 
-`MailboxConfig::validate()` は `bounded + deque` を拒否してはならない (MUST NOT)。従来 `Err(MailboxConfigError::BoundedWithDeque)` を返していたケースは `Ok(())` を返さなければならない (MUST)。`MailboxConfigError::BoundedWithDeque` variant は削除される (BREAKING)。
+`MailboxConfig::validate()` は `bounded + deque` / `bounded + control_aware` のいずれの組合せも拒否してはならない (MUST NOT)。従来以下を返していたケースは `Ok(())` を返さなければならない (MUST):
+
+- `bounded + deque` → 従来 `Err(MailboxConfigError::BoundedWithDeque)`
+- `bounded + control_aware` → 従来 `Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy)`
+
+`MailboxConfigError::BoundedWithDeque` と `MailboxConfigError::ControlAwareRequiresUnboundedPolicy` variant はいずれも削除される (BREAKING)。
 
 #### Scenario: bounded + deque 構成の validate は成功する
 
@@ -147,8 +153,9 @@ fraktor-rs は `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_cont
 #### Scenario: bounded + control_aware 構成は BoundedControlAwareMessageQueue を返す
 
 - **GIVEN** `MailboxConfig` with `policy = Bounded { capacity: 8, overflow: DropNewest }` and `requirement.needs_control_aware() == true`
-- **WHEN** `create_message_queue_from_config(&config)` を呼ぶ
-- **THEN** `Ok(BoundedControlAwareMessageQueue)` 相当の `Box<dyn MessageQueue>` が返る (従来は silently Unbounded fallback)
+- **WHEN** `config.validate()` に続けて `create_message_queue_from_config(&config)` を呼ぶ
+- **THEN** `validate()` は `Ok(())` を返す (従来は `Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy)` で fail-fast 拒否)
+- **AND** `create_message_queue_from_config` は `BoundedControlAwareMessageQueue` 相当の `Box<dyn MessageQueue>` を返す
 - **AND** 10 個 enqueue すると 9 件目以降が `EnqueueOutcome::Rejected` を返す (bounded が実効: `len >= capacity` 判定により 1〜8 件目は Accepted)
 
 #### Scenario: unbounded + deque 構成の挙動は変化しない (regression)
