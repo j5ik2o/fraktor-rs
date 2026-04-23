@@ -19,7 +19,7 @@
 
 - [ ] 3.1 `bounded_control_aware_message_queue.rs` を新規作成。実装は spec Requirement 2 (control 優先 dequeue + 合計 capacity 強制 + normal 優先 evict) に従う。`UnboundedControlAwareMessageQueue` の dual-queue 構造を踏襲し、合計 length による overflow 判定と `DropOldest` 時の normal-優先 evict / normal 空時の Reject を追加 (design Decision 1, 3)
 - [ ] 3.2 `bounded_control_aware_message_queue/tests.rs` を新規作成。spec Requirement 2 の 5 Scenario に 1:1 対応するテストを追加
-- [ ] 3.3 `bounded_control_aware_mailbox_type.rs` を新規作成 (`BoundedDequeMailboxType` と同パターン、生成先 MessageQueue のみ差し替え)
+- [ ] 3.3 `bounded_control_aware_mailbox_type.rs` を新規作成 (既存 `BoundedMailboxType` と同パターン、生成先 MessageQueue を `BoundedControlAwareMessageQueue` に差し替え)
 - [ ] 3.4 `bounded_control_aware_mailbox_type/tests.rs` を新規作成 (最低限の factory 検証)
 
 ## Phase 4: mod 宣言と dispatch 分岐の更新
