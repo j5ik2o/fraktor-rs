@@ -458,8 +458,14 @@ impl ActorContext<'_> {
     }
     cell.register_watch_with(target.pid(), message);
     if let Err(error) = self.watch(target) {
-      // watch 失敗時はカスタムメッセージ登録をロールバックする
+      // watch 失敗時はカスタムメッセージ登録と watching への User entry 追加を
+      // ロールバックする。self.watch の内部では watch_registration_kind が None
+      // を返した後に register_watching で (target, User) を追加しているため、
+      // send 失敗 (非 Closed) 時は双方を巻き戻さないと WatchRegistrationKind が
+      // `Plain` に残留し、次回 watch_with で `PlainThenWatchWith` エラーが
+      // 永続化する。
       cell.remove_watch_with(target.pid());
+      cell.unregister_watching(target.pid());
       return Err(error);
     }
     Ok(())

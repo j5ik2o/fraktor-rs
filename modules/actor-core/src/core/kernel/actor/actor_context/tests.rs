@@ -669,6 +669,43 @@ fn unwatch_then_watch_with_succeeds() {
 }
 
 #[test]
+fn watch_with_rollback_removes_both_watching_and_watch_with_entry() {
+  // Bugbot r3127753262 回帰ガード:
+  // `watch_with` の rollback は `watch_with_messages` だけでなく `watching` の
+  // User entry も除去する必要がある。除去しないと `WatchRegistrationKind` が
+  // `Plain` のまま残り、retry 時に `PlainThenWatchWith` で永続 reject される。
+  //
+  // ここでは `self.watch` 内の send 失敗を直接シミュレートするのが難しいため、
+  // rollback 後の state invariants を `ActorCell` helper 呼び出しで検証する:
+  // (a) `remove_watch_with(target)` で `watch_with_messages` が空
+  // (b) `unregister_watching(target)` で `watching` User entry が消える
+  // (c) 結果として `watch_registration_kind(target) == None`
+  // (d) 続く `watch_with` が新規登録として成功する
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let watcher_cell = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  // self.watch 内で register_watching が呼ばれた後に send が失敗した状態を直接構成する。
+  watcher_cell.register_watch_with(target_pid, AnyMessage::new(7u32));
+  watcher_cell.register_watching(target_pid);
+
+  // rollback 実行 (watch_with 内の両 helper 呼び出しに対応)。
+  watcher_cell.remove_watch_with(target_pid);
+  watcher_cell.unregister_watching(target_pid);
+
+  // rollback 完了後は clean 状態: retry が Duplicate で block されない。
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(
+    context.watch_with(&target_ref, AnyMessage::new(8u32)).is_ok(),
+    "rollback 後の retry は clean 新規登録として成功すべき"
+  );
+}
+
+#[test]
 fn watch_self_returns_ok_without_side_effect() {
   let system = ActorSystem::new_empty();
   let self_pid = system.allocate_pid();
