@@ -56,7 +56,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::{Dispatchers, MessageDispatcherShared},
+    dispatcher::{Dispatchers, DispatchersError, MessageDispatcherShared},
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
@@ -896,6 +896,23 @@ impl SystemState {
   #[must_use]
   pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
     self.dispatchers.resolve(id).ok()
+  }
+
+  /// Returns the canonical (fully-alias-resolved) identifier for `id` if it
+  /// is registered in the dispatcher registry.
+  ///
+  /// Thin wrapper over
+  /// [`Dispatchers::canonical_id`](crate::core::kernel::dispatch::dispatcher::Dispatchers::canonical_id).
+  ///
+  ///
+  /// # Errors
+  ///
+  /// Propagates [`DispatchersError`] from the underlying registry
+  /// (`AliasChainTooDeep` when the alias chain exceeds the registry's
+  /// `MAX_ALIAS_DEPTH`, `Unknown` when the final identifier is not a
+  /// registered entry).
+  pub fn canonical_dispatcher_id(&self, id: &str) -> Result<String, DispatchersError> {
+    self.dispatchers.canonical_id(id)
   }
 
   /// Returns the configured invoke-guard factory.

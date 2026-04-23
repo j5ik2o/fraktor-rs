@@ -56,17 +56,17 @@ fn unknown_resolve_returns_error() {
 }
 
 #[test]
-fn pekko_compat_id_normalises_to_default() {
+fn pekko_default_dispatcher_id_resolves_via_alias_registered_by_ensure_default() {
   let mut dispatchers = Dispatchers::new();
-  dispatchers.register(DEFAULT_DISPATCHER_ID, make_default_configurator("default")).expect("register default");
+  dispatchers.ensure_default(|| make_default_configurator("default"));
   let resolved = dispatchers.resolve("pekko.actor.default-dispatcher").expect("resolve compat id");
   assert_eq!(resolved.id(), "default");
 }
 
 #[test]
-fn pekko_internal_dispatcher_id_normalises_to_default() {
+fn pekko_internal_dispatcher_id_resolves_via_alias_registered_by_ensure_default() {
   let mut dispatchers = Dispatchers::new();
-  dispatchers.register(DEFAULT_DISPATCHER_ID, make_default_configurator("default")).expect("register default");
+  dispatchers.ensure_default(|| make_default_configurator("default"));
   let resolved = dispatchers.resolve("pekko.actor.internal-dispatcher").expect("resolve internal");
   assert_eq!(resolved.id(), "default");
 }
@@ -172,4 +172,169 @@ fn resolve_call_count_is_shared_across_clones() {
   // total call traffic regardless of which Dispatchers handle observed it.
   assert_eq!(dispatchers.resolve_call_count(), 2);
   assert_eq!(cloned.resolve_call_count(), 2);
+}
+
+// --- Alias chain tests (change `pekko-dispatcher-alias-chain`, spec Scenarios 1-9) ---
+
+#[test]
+fn single_hop_alias_resolves_to_target_entry() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("default", make_default_configurator("default")).expect("register default");
+  dispatchers.register_alias("app.work", "default").expect("register alias");
+
+  let before = dispatchers.resolve_call_count();
+  let resolved = dispatchers.resolve("app.work").expect("resolve alias");
+  assert_eq!(resolved.id(), "default");
+  assert_eq!(dispatchers.resolve_call_count(), before + 1, "resolve() must bump the counter exactly once per call");
+}
+
+#[test]
+fn multi_hop_alias_chain_resolves_to_terminal_entry() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("A", make_default_configurator("A")).expect("register A");
+  dispatchers.register_alias("B", "A").expect("alias B->A");
+  dispatchers.register_alias("C", "B").expect("alias C->B");
+  dispatchers.register_alias("D", "C").expect("alias D->C");
+
+  let resolved = dispatchers.resolve("D").expect("resolve D");
+  assert_eq!(resolved.id(), "A");
+}
+
+#[test]
+fn alias_chain_exceeding_max_depth_returns_alias_chain_too_deep() {
+  let mut dispatchers = Dispatchers::new();
+  // Build a strictly-linear chain of (MAX_ALIAS_DEPTH + 1) aliases; the
+  // final id is never registered as an entry. resolving the head should
+  // report depth-exceeded rather than Unknown.
+  for step in 0..=Dispatchers::MAX_ALIAS_DEPTH {
+    let alias = alloc::format!("alias_{step}");
+    let target = alloc::format!("alias_{}", step + 1);
+    dispatchers.register_alias(alias, target).expect("alias chain step");
+  }
+
+  match dispatchers.resolve("alias_0") {
+    | Ok(_) => panic!("expected AliasChainTooDeep"),
+    | Err(DispatchersError::AliasChainTooDeep { start, depth }) => {
+      assert_eq!(start, "alias_0");
+      assert_eq!(depth, Dispatchers::MAX_ALIAS_DEPTH);
+    },
+    | Err(other) => panic!("expected AliasChainTooDeep, got {other:?}"),
+  }
+}
+
+#[test]
+fn alias_cycle_is_detected_as_alias_chain_too_deep() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("A", "B").expect("alias A->B");
+  dispatchers.register_alias("B", "A").expect("alias B->A");
+
+  match dispatchers.resolve("A") {
+    | Ok(_) => panic!("expected AliasChainTooDeep for cycle"),
+    | Err(DispatchersError::AliasChainTooDeep { start, depth }) => {
+      assert_eq!(start, "A");
+      assert_eq!(depth, Dispatchers::MAX_ALIAS_DEPTH);
+    },
+    | Err(other) => panic!("expected AliasChainTooDeep for cycle, got {other:?}"),
+  }
+}
+
+#[test]
+fn alias_to_missing_target_surfaces_unknown_on_terminal_id() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("work", "missing-dispatcher").expect("register alias");
+
+  match dispatchers.resolve("work") {
+    | Ok(_) => panic!("expected Unknown(missing-dispatcher)"),
+    | Err(DispatchersError::Unknown(id)) => assert_eq!(id, "missing-dispatcher"),
+    | Err(other) => panic!("expected Unknown(missing-dispatcher), got {other:?}"),
+  }
+}
+
+#[test]
+fn register_rejects_id_already_registered_as_alias() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("default", make_default_configurator("default")).expect("register default");
+  dispatchers.register_alias("foo", "default").expect("register alias");
+
+  match dispatchers.register("foo", make_default_configurator("foo")) {
+    | Err(DispatchersError::AliasConflictsWithEntry(id)) => assert_eq!(id, "foo"),
+    | other => panic!("expected AliasConflictsWithEntry, got {other:?}"),
+  }
+
+  // The alias entry must still be intact and still resolve to `default`.
+  let resolved = dispatchers.resolve("foo").expect("resolve");
+  assert_eq!(resolved.id(), "default");
+}
+
+#[test]
+fn register_alias_rejects_id_already_registered_as_entry() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("foo", make_default_configurator("foo")).expect("register foo");
+
+  match dispatchers.register_alias("foo", "default") {
+    | Err(DispatchersError::AliasConflictsWithEntry(id)) => assert_eq!(id, "foo"),
+    | other => panic!("expected AliasConflictsWithEntry, got {other:?}"),
+  }
+
+  // The entry must remain untouched.
+  let resolved = dispatchers.resolve("foo").expect("resolve foo");
+  assert_eq!(resolved.id(), "foo");
+}
+
+#[test]
+fn register_alias_rejects_duplicate_alias() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("foo", "default").expect("first alias");
+
+  match dispatchers.register_alias("foo", "other") {
+    | Err(DispatchersError::Duplicate(id)) => assert_eq!(id, "foo"),
+    | other => panic!("expected Duplicate, got {other:?}"),
+  }
+
+  // The original alias target must be preserved.
+  assert_eq!(dispatchers.aliases.get("foo").map(String::as_str), Some("default"));
+}
+
+#[test]
+fn register_or_update_is_lenient_and_wipes_existing_alias() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.ensure_default(|| make_default_configurator("default"));
+  // Confirm pekko alias is in place.
+  let via_alias = dispatchers.resolve("pekko.actor.default-dispatcher").expect("resolve via alias");
+  assert_eq!(via_alias.id(), "default");
+
+  // Replace the alias with a concrete entry using register_or_update (builder
+  // path). This must succeed unconditionally (no Result) and wipe the alias.
+  let custom = make_default_configurator("custom-pekko-default");
+  dispatchers.register_or_update("pekko.actor.default-dispatcher", custom);
+
+  let resolved = dispatchers.resolve("pekko.actor.default-dispatcher").expect("resolve after override");
+  assert_eq!(resolved.id(), "custom-pekko-default");
+
+  // The `default` entry (previous alias target) must remain untouched.
+  let still_default = dispatchers.resolve("default").expect("resolve default");
+  assert_eq!(still_default.id(), "default");
+}
+
+#[test]
+fn canonical_id_returns_resolved_entry_id() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.ensure_default(|| make_default_configurator("default"));
+
+  let canonical = dispatchers.canonical_id("pekko.actor.default-dispatcher").expect("canonical");
+  assert_eq!(canonical, "default");
+
+  // canonical_id must NOT bump the resolve counter.
+  assert_eq!(dispatchers.resolve_call_count(), 0);
+}
+
+#[test]
+fn canonical_id_returns_unknown_when_terminal_is_missing() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register_alias("work", "missing").expect("register alias");
+
+  match dispatchers.canonical_id("work") {
+    | Err(DispatchersError::Unknown(id)) => assert_eq!(id, "missing"),
+    | other => panic!("expected Unknown, got {other:?}"),
+  }
 }

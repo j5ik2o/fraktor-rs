@@ -10,6 +10,24 @@ pub enum DispatchersError {
   Duplicate(String),
   /// No configurator is registered for the identifier.
   Unknown(String),
+  /// An alias chain exceeded the maximum allowed depth.
+  ///
+  /// This indicates either a cycle in the alias graph or an excessively deep
+  /// chain of aliases. Mirrors Pekko `Dispatchers.scala:160-163` which throws
+  /// `ConfigurationException` once `MaxDispatcherAliasDepth = 20` is exceeded.
+  AliasChainTooDeep {
+    /// The identifier where alias resolution started.
+    start: String,
+    /// The maximum depth that was tolerated before rejection.
+    depth: usize,
+  },
+  /// The identifier is registered as both an alias and an entry.
+  ///
+  /// fraktor-rs stores aliases and entries in separate maps; registering the
+  /// same identifier in both would make `resolve` ambiguous, so both
+  /// `register` / `register_or_update` and `register_alias` reject the
+  /// conflict at registration time.
+  AliasConflictsWithEntry(String),
 }
 
 impl Display for DispatchersError {
@@ -17,6 +35,12 @@ impl Display for DispatchersError {
     match self {
       | Self::Duplicate(id) => write!(f, "dispatcher id `{id}` is already registered"),
       | Self::Unknown(id) => write!(f, "no dispatcher registered for id `{id}`"),
+      | Self::AliasChainTooDeep { start, depth } => {
+        write!(f, "alias chain starting at `{start}` exceeded max depth {depth} (possible cycle or excessive aliasing)")
+      },
+      | Self::AliasConflictsWithEntry(id) => {
+        write!(f, "id `{id}` is registered as both an alias and an entry")
+      },
     }
   }
 }

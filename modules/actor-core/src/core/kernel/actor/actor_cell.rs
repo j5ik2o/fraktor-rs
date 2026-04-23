@@ -38,7 +38,7 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, Dispatchers, MessageDispatcherShared},
+      dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, MessageDispatcherShared},
       mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
@@ -245,11 +245,9 @@ impl ActorCell {
     }
 
     let dispatcher_id = props.dispatcher_id().unwrap_or(DEFAULT_DISPATCHER_ID);
-    let normalized = Dispatchers::normalize_dispatcher_id(dispatcher_id);
-    if system.resolve_dispatcher(normalized).is_none() {
-      return Err(SpawnError::invalid_props(alloc::format!("dispatcher `{normalized}` is not registered")));
-    }
-    Ok(normalized.to_owned())
+    system
+      .canonical_dispatcher_id(dispatcher_id)
+      .map_err(|_| SpawnError::invalid_props(alloc::format!("dispatcher `{dispatcher_id}` is not registered")))
   }
 
   /// Returns the pid associated with the cell.

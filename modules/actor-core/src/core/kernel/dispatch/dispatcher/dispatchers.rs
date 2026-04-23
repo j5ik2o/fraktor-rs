@@ -5,6 +5,16 @@
 //! `ArcShared<Box<dyn MessageDispatcherConfigurator>>` so the entry can be
 //! resolved without internal mutability.
 //!
+//! # Alias chain resolution
+//!
+//! Identifiers can be registered either as concrete entries
+//! (`register` / `register_or_update`) or as aliases that redirect to another
+//! identifier (`register_alias`). Aliases are followed up to
+//! [`Dispatchers::MAX_ALIAS_DEPTH`] levels before resolution fails with
+//! [`DispatchersError::AliasChainTooDeep`]. Mirrors Pekko
+//! `Dispatchers.lookupConfigurator` (`Dispatchers.scala:159-198`) and
+//! `MaxDispatcherAliasDepth = 20` (`Dispatchers.scala:146`).
+//!
 //! # Call-frequency contract
 //!
 //! `Dispatchers::resolve` is intended for spawn / bootstrap paths only. Do not
@@ -34,12 +44,20 @@ pub const DEFAULT_DISPATCHER_ID: &str = "default";
 /// Reserved registry identifier for the default blocking IO dispatcher.
 pub const DEFAULT_BLOCKING_DISPATCHER_ID: &str = "pekko.actor.default-blocking-io-dispatcher";
 
+/// Pekko-style alias for the default dispatcher.
 const PEKKO_DEFAULT_DISPATCHER_ID: &str = "pekko.actor.default-dispatcher";
+/// Pekko-style alias for the internal dispatcher.
 const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 
 /// Registry mapping dispatcher identifiers to configurators.
 pub struct Dispatchers {
   entries:       HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>, RandomState>,
+  /// Alias identifiers redirecting to another id (target may itself be an alias).
+  ///
+  /// Kept separate from `entries` so that `register` and `register_alias` can
+  /// detect cross-map conflicts at registration time rather than at resolve
+  /// time.
+  aliases:       HashMap<String, String, RandomState>,
   /// Cumulative `resolve()` invocation counter.
   ///
   /// Wrapped in `ArcShared<AtomicUsize>` so that all clones of a single
@@ -53,7 +71,11 @@ pub struct Dispatchers {
 
 impl Clone for Dispatchers {
   fn clone(&self) -> Self {
-    Self { entries: self.entries.clone(), resolve_count: self.resolve_count.clone() }
+    Self {
+      entries:       self.entries.clone(),
+      aliases:       self.aliases.clone(),
+      resolve_count: self.resolve_count.clone(),
+    }
   }
 }
 
@@ -64,23 +86,38 @@ impl Default for Dispatchers {
 }
 
 impl Dispatchers {
+  /// Maximum alias chain depth before rejection.
+  ///
+  /// Matches Pekko `Dispatchers.MaxDispatcherAliasDepth = 20`
+  /// (`Dispatchers.scala:146`).
+  pub const MAX_ALIAS_DEPTH: usize = 20;
+
   /// Creates an empty registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: HashMap::with_hasher(RandomState::new()), resolve_count: ArcShared::new(AtomicUsize::new(0)) }
+    Self {
+      entries:       HashMap::with_hasher(RandomState::new()),
+      aliases:       HashMap::with_hasher(RandomState::new()),
+      resolve_count: ArcShared::new(AtomicUsize::new(0)),
+    }
   }
 
   /// Registers a configurator for the supplied identifier.
   ///
   /// # Errors
   ///
-  /// Returns [`DispatchersError::Duplicate`] if the identifier already has a registered entry.
+  /// - [`DispatchersError::AliasConflictsWithEntry`] if the identifier is already registered as an
+  ///   alias.
+  /// - [`DispatchersError::Duplicate`] if the identifier already has a registered entry.
   pub fn register(
     &mut self,
     id: impl Into<String>,
     configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
   ) -> Result<(), DispatchersError> {
     let id = id.into();
+    if self.aliases.contains_key(&id) {
+      return Err(DispatchersError::AliasConflictsWithEntry(id));
+    }
     match self.entries.entry(id.clone()) {
       | Entry::Occupied(_) => Err(DispatchersError::Duplicate(id)),
       | Entry::Vacant(vacant) => {
@@ -91,15 +128,56 @@ impl Dispatchers {
   }
 
   /// Registers or replaces the configurator for the supplied identifier.
+  ///
+  /// Last-writer-wins semantics: any existing entry is replaced, and any
+  /// existing alias with the same identifier is removed so the new entry
+  /// takes precedence. This keeps the method infallible so it composes
+  /// cleanly with builder-style configuration (e.g.
+  /// `ActorSystemConfig::with_dispatcher_configurator`).
   pub fn register_or_update(
     &mut self,
     id: impl Into<String>,
     configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
   ) {
-    self.entries.insert(id.into(), configurator);
+    let id = id.into();
+    self.aliases.remove(&id);
+    self.entries.insert(id, configurator);
+  }
+
+  /// Registers an alias identifier that redirects to another dispatcher id.
+  ///
+  /// The `target` id may itself be an alias (chains are supported up to
+  /// [`Self::MAX_ALIAS_DEPTH`] levels) and does not need to be registered at
+  /// the time this method is called; alias targets are validated lazily on
+  /// `resolve`.
+  ///
+  /// # Errors
+  ///
+  /// - [`DispatchersError::AliasConflictsWithEntry`] if `alias` is already registered as a concrete
+  ///   entry.
+  /// - [`DispatchersError::Duplicate`] if `alias` already has an alias registration.
+  pub fn register_alias(
+    &mut self,
+    alias: impl Into<String>,
+    target: impl Into<String>,
+  ) -> Result<(), DispatchersError> {
+    let alias = alias.into();
+    if self.entries.contains_key(&alias) {
+      return Err(DispatchersError::AliasConflictsWithEntry(alias));
+    }
+    match self.aliases.entry(alias.clone()) {
+      | Entry::Occupied(_) => Err(DispatchersError::Duplicate(alias)),
+      | Entry::Vacant(vacant) => {
+        vacant.insert(target.into());
+        Ok(())
+      },
+    }
   }
 
   /// Resolves the [`MessageDispatcherShared`] for the requested identifier.
+  ///
+  /// Follows the alias chain (up to [`Self::MAX_ALIAS_DEPTH`] levels) before
+  /// looking up the final identifier in the entry map.
   ///
   /// **Call-frequency contract**: invoke from spawn / bootstrap paths only.
   /// Hot-path callers must cache the resolved [`MessageDispatcherShared`] (or
@@ -108,21 +186,60 @@ impl Dispatchers {
   /// so hot-path resolution leaks threads.
   ///
   /// Each invocation increments the diagnostic counter exposed by
-  /// [`Dispatchers::resolve_call_count`], regardless of whether the lookup
-  /// succeeded.
+  /// [`Dispatchers::resolve_call_count`] exactly once, regardless of the
+  /// alias chain depth or whether the lookup ultimately succeeds.
   ///
   /// # Errors
   ///
-  /// Returns [`DispatchersError::Unknown`] when the identifier has not been
-  /// registered.
+  /// - [`DispatchersError::AliasChainTooDeep`] when the alias chain exceeds
+  ///   [`Self::MAX_ALIAS_DEPTH`].
+  /// - [`DispatchersError::Unknown`] when the final (non-alias) identifier is not registered.
   pub fn resolve(&self, id: &str) -> Result<MessageDispatcherShared, DispatchersError> {
     self.resolve_count.fetch_add(1, Ordering::Relaxed);
-    let id = Self::normalize_dispatcher_id(id);
-    self
-      .entries
-      .get(id)
-      .map(|configurator| configurator.dispatcher())
-      .ok_or_else(|| DispatchersError::Unknown(id.to_owned()))
+    let resolved = self.follow_alias_chain(id)?;
+    self.entries.get(&resolved).map(|configurator| configurator.dispatcher()).ok_or(DispatchersError::Unknown(resolved))
+  }
+
+  /// Returns the canonical (fully-alias-resolved) identifier for `id`.
+  ///
+  /// Follows the alias chain the same way as [`Self::resolve`] and verifies
+  /// that the final identifier is registered as a concrete entry. Intended
+  /// for callers that need to record the canonical id (e.g. to tie an actor
+  /// cell to its dispatcher for later diagnostics) without constructing a
+  /// [`MessageDispatcherShared`].
+  ///
+  /// Does **not** increment [`Self::resolve_call_count`].
+  ///
+  /// # Errors
+  ///
+  /// - [`DispatchersError::AliasChainTooDeep`] when the alias chain exceeds
+  ///   [`Self::MAX_ALIAS_DEPTH`].
+  /// - [`DispatchersError::Unknown`] when the final identifier is not registered as a concrete
+  ///   entry.
+  pub fn canonical_id(&self, id: &str) -> Result<String, DispatchersError> {
+    let resolved = self.follow_alias_chain(id)?;
+    if self.entries.contains_key(&resolved) { Ok(resolved) } else { Err(DispatchersError::Unknown(resolved)) }
+  }
+
+  /// Follows the alias chain from `id` and returns the final (non-alias)
+  /// identifier.
+  ///
+  /// Returns `Ok(id.to_owned())` immediately when `id` is not an alias.
+  /// Returns [`DispatchersError::AliasChainTooDeep`] when the chain exceeds
+  /// [`Self::MAX_ALIAS_DEPTH`]. Cycles are detected implicitly through the
+  /// depth limit (matching Pekko `Dispatchers.scala:160-163`).
+  fn follow_alias_chain(&self, id: &str) -> Result<String, DispatchersError> {
+    let mut current = id.to_owned();
+    // Allow up to MAX_ALIAS_DEPTH alias hops; the (MAX_ALIAS_DEPTH + 1)-th
+    // hop is the one that trips the error, matching Pekko's
+    // `if (depth > MaxDispatcherAliasDepth)` guard.
+    for _ in 0..=Self::MAX_ALIAS_DEPTH {
+      match self.aliases.get(&current) {
+        | Some(target) => current = target.clone(),
+        | None => return Ok(current),
+      }
+    }
+    Err(DispatchersError::AliasChainTooDeep { start: id.to_owned(), depth: Self::MAX_ALIAS_DEPTH })
   }
 
   /// Returns the cumulative number of [`Dispatchers::resolve`] invocations
@@ -146,17 +263,36 @@ impl Dispatchers {
     ArcShared::new(configurator)
   }
 
+  /// Registers the Pekko-compatible aliases (`pekko.actor.default-dispatcher`
+  /// and `pekko.actor.internal-dispatcher`) pointing at
+  /// [`DEFAULT_DISPATCHER_ID`].
+  ///
+  /// Idempotent: duplicate registrations are silently ignored so repeated
+  /// calls to `ensure_default_*` stay safe.
+  fn register_pekko_default_aliases(&mut self) {
+    // Ignoring Duplicate here is intentional: this function is idempotent by
+    // contract, and there is no other failure mode because both aliases
+    // target `DEFAULT_DISPATCHER_ID` which is an entry (not an alias), so
+    // `AliasConflictsWithEntry` cannot fire for these alias keys either
+    // (they are never registered as entries).
+    let _ = self.register_alias(PEKKO_DEFAULT_DISPATCHER_ID, DEFAULT_DISPATCHER_ID);
+    let _ = self.register_alias(PEKKO_INTERNAL_DISPATCHER_ID, DEFAULT_DISPATCHER_ID);
+  }
+
   /// Ensures the default dispatcher entry exists.
   ///
   /// If `default` is missing, the supplied factory closure is called to
   /// produce a configurator that is then registered for both
-  /// [`DEFAULT_DISPATCHER_ID`] and [`DEFAULT_BLOCKING_DISPATCHER_ID`].
+  /// [`DEFAULT_DISPATCHER_ID`] and [`DEFAULT_BLOCKING_DISPATCHER_ID`], and the
+  /// Pekko-compatible aliases are registered against
+  /// [`DEFAULT_DISPATCHER_ID`].
   pub fn ensure_default(&mut self, factory: impl FnOnce() -> ArcShared<Box<dyn MessageDispatcherConfigurator>>) {
     if !self.entries.contains_key(DEFAULT_DISPATCHER_ID) {
       let configurator = factory();
       self.entries.insert(DEFAULT_DISPATCHER_ID.to_owned(), configurator.clone());
       self.entries.entry(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned()).or_insert(configurator);
     }
+    self.register_pekko_default_aliases();
   }
 
   /// Ensures the default dispatcher entry exists, populating it with an
@@ -187,14 +323,6 @@ impl Dispatchers {
     if replace_blocking || !self.entries.contains_key(DEFAULT_BLOCKING_DISPATCHER_ID) {
       self.entries.insert(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned(), configurator);
     }
-  }
-
-  /// Maps a Pekko-style dispatcher identifier to the canonical kernel id.
-  #[must_use]
-  pub fn normalize_dispatcher_id(id: &str) -> &str {
-    match id {
-      | PEKKO_DEFAULT_DISPATCHER_ID | PEKKO_INTERNAL_DISPATCHER_ID => DEFAULT_DISPATCHER_ID,
-      | _ => id,
-    }
+    self.register_pekko_default_aliases();
   }
 }
