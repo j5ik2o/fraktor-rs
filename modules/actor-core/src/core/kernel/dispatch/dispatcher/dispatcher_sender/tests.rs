@@ -9,7 +9,9 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{ActorCell, messaging::AnyMessage},
-  dispatch::dispatcher::{DispatcherConfig, ExecuteError, Executor, ExecutorShared, TrampolineState},
+  dispatch::dispatcher::{
+    DEFAULT_DISPATCHER_ID, DispatcherConfig, ExecuteError, Executor, ExecutorShared, TrampolineState,
+  },
 };
 
 struct InlineExec;
@@ -67,14 +69,14 @@ fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = inline_executor_shared();
-    let settings = DispatcherConfig::new("default", nz(8), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, configurator_handle)
   });
   let state = system.state();
-  let resolved = state.resolve_dispatcher("default").expect("configurator registered");
+  let resolved = state.resolve_dispatcher(DEFAULT_DISPATCHER_ID).expect("configurator registered");
 
   // Creating two actor cells should bump the inhabitants counter via attach.
   let props = Props::from_fn(|| QuietActor);
@@ -119,11 +121,11 @@ fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = inline_executor_shared();
-    let settings = DispatcherConfig::new("default", nz(16), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(16), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, configurator_handle)
   });
   let state = system.state();
   let seen = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
@@ -193,11 +195,11 @@ fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = inline_executor_shared();
-    let settings = DispatcherConfig::new("default", nz(16), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(16), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, configurator_handle)
   });
   let state = system.state();
 
@@ -265,11 +267,11 @@ fn new_dispatcher_delivers_messages_to_multiple_actors_independently() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = inline_executor_shared();
-    let settings = DispatcherConfig::new("default", nz(8), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, configurator_handle)
   });
   let state = system.state();
 
@@ -327,14 +329,14 @@ fn removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants()
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = inline_executor_shared();
-    let settings = DispatcherConfig::new("default", nz(8), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, configurator_handle)
   });
   let state = system.state();
-  let resolved = state.resolve_dispatcher("default").expect("configurator registered");
+  let resolved = state.resolve_dispatcher(DEFAULT_DISPATCHER_ID).expect("configurator registered");
 
   let props = Props::from_fn(|| QuietActor);
   let pid_a = state.allocate_pid();
@@ -380,11 +382,11 @@ fn end_to_end_send_via_actor_system_with_dispatcher_configurator() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = inline_executor_shared();
-    let settings = DispatcherConfig::new("default", nz(8), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, configurator_handle)
   });
   let state = system.state();
   let seen = Arc::new(AtomicUsize::new(0));
@@ -512,11 +514,11 @@ fn dispatcher_resolve_is_not_called_from_message_hot_path() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let executor = inline_executor_shared();
-    let settings = DispatcherConfig::new("default", nz(8), None, Duration::from_secs(1));
+    let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, configurator_handle)
   });
   let state = system.state();
 
