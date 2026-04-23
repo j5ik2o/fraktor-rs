@@ -92,3 +92,39 @@ fn validate_accepts_bounded_with_deque() {
   let config = MailboxConfig::new(bounded_policy).with_requirement(MailboxRequirement::requires_deque());
   assert_eq!(config.validate(), Ok(()));
 }
+
+#[test]
+fn with_mailbox_type_installs_custom_factory() {
+  use alloc::boxed::Box;
+
+  use crate::core::kernel::dispatch::mailbox::{MailboxType, MessageQueue, UnboundedMailboxType};
+
+  struct RecordingMailboxType;
+  impl MailboxType for RecordingMailboxType {
+    fn create(&self) -> Box<dyn MessageQueue> {
+      UnboundedMailboxType::new().create()
+    }
+  }
+
+  let config = MailboxConfig::default().with_mailbox_type(RecordingMailboxType);
+  assert!(config.custom_mailbox_type().is_some());
+}
+
+#[test]
+fn validate_skips_checks_when_custom_mailbox_type_is_installed() {
+  use alloc::boxed::Box;
+
+  use crate::core::kernel::dispatch::mailbox::{MailboxType, MessageQueue, UnboundedMailboxType};
+
+  struct NoopMailboxType;
+  impl MailboxType for NoopMailboxType {
+    fn create(&self) -> Box<dyn MessageQueue> {
+      UnboundedMailboxType::new().create()
+    }
+  }
+
+  // stable_priority without a generator would normally fail validation.
+  // With a custom mailbox type installed, validation is skipped.
+  let config = MailboxConfig::default().with_stable_priority(true).with_mailbox_type(NoopMailboxType);
+  assert!(config.validate().is_ok());
+}

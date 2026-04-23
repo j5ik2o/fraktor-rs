@@ -119,3 +119,40 @@ fn create_message_queue_creates_bounded_control_aware_for_bounded_plus_control_a
   assert!(first.is_control());
   assert_eq!(first.payload().downcast_ref::<u32>().copied(), Some(99_u32));
 }
+
+#[test]
+fn create_message_queue_honors_custom_mailbox_type_over_policy() {
+  use alloc::{boxed::Box, sync::Arc};
+  use core::sync::atomic::{AtomicUsize, Ordering};
+
+  use crate::core::kernel::dispatch::mailbox::{MailboxType, MessageQueue, UnboundedMailboxType};
+
+  struct CountingMailboxType {
+    create_calls: Arc<AtomicUsize>,
+  }
+  impl MailboxType for CountingMailboxType {
+    fn create(&self) -> Box<dyn MessageQueue> {
+      self.create_calls.fetch_add(1, Ordering::SeqCst);
+      UnboundedMailboxType::new().create()
+    }
+  }
+
+  let create_calls = Arc::new(AtomicUsize::new(0));
+  let mailbox_type = CountingMailboxType { create_calls: create_calls.clone() };
+
+  // Bounded policy would normally produce a bounded queue. The custom
+  // mailbox type must take precedence and be invoked instead.
+  let capacity = NonZeroUsize::new(4).expect("capacity");
+  let bounded_policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
+  let config = MailboxConfig::new(bounded_policy).with_mailbox_type(mailbox_type);
+
+  let mut registry = Mailboxes::new();
+  registry.register("custom-type", config).expect("register");
+  let _ = registry.create_message_queue("custom-type").expect("create queue via custom type");
+
+  assert_eq!(
+    create_calls.load(Ordering::SeqCst),
+    1,
+    "custom MailboxType::create must be invoked once, regardless of the bounded policy",
+  );
+}

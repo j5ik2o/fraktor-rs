@@ -43,18 +43,24 @@ pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn
 /// Creates a message queue considering the policy, requirement, and priority generator
 /// from the config.
 ///
-/// When a priority generator is present, a priority-based queue is returned regardless
-/// of other requirements. When the config declares deque semantics and the policy is
-/// unbounded, this returns an [`UnboundedDequeMessageQueue`].
+/// Selection precedence (first match wins):
+/// 1. [`custom_mailbox_type`](MailboxConfig::custom_mailbox_type) — user-supplied factory
+/// 2. [`priority_generator`](MailboxConfig::priority_generator) — priority (stable or not)
+/// 3. [`requirement`](MailboxConfig::requirement) — control-aware / deque
+/// 4. [`policy`](MailboxConfig::policy) — capacity-based default
 ///
 /// # Errors
 ///
 /// Returns [`MailboxConfigError`] when the configuration contract is violated
-/// (e.g. `stable_priority` enabled without a priority generator).
+/// (e.g. `stable_priority` enabled without a priority generator). When a
+/// custom mailbox type is installed, validation is skipped.
 pub(crate) fn create_message_queue_from_config(
   config: &MailboxConfig,
 ) -> Result<Box<dyn MessageQueue>, MailboxConfigError> {
   config.validate()?;
+  if let Some(custom) = config.custom_mailbox_type() {
+    return Ok(custom.create());
+  }
   if let Some(generator) = config.priority_generator() {
     if config.stable_priority() {
       return Ok(stable_priority_mailbox_type_from_config(generator.clone(), config.policy()).create());

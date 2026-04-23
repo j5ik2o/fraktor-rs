@@ -6,7 +6,7 @@ use core::{
 use fraktor_utils_core_rs::core::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
 use super::{MailboxConfigError, MailboxRequirement};
-use crate::core::kernel::dispatch::mailbox::{MailboxPolicy, MessagePriorityGenerator};
+use crate::core::kernel::dispatch::mailbox::{MailboxPolicy, MailboxType, MessagePriorityGenerator};
 
 #[cfg(test)]
 mod tests;
@@ -17,14 +17,21 @@ mod tests;
 /// produces a priority-based message queue instead of the default FIFO queue.
 /// When `stable_priority` is also set, equal-priority messages are dequeued in
 /// FIFO (insertion) order.
+///
+/// To plug in a user-defined mailbox implementation, attach a custom
+/// [`MailboxType`] via [`with_mailbox_type`](Self::with_mailbox_type). A custom
+/// mailbox type takes precedence over every other selection rule
+/// (priority generator, control-aware / deque requirement, policy-based
+/// capacity selection).
 #[derive(Clone)]
 pub struct MailboxConfig {
-  policy:             MailboxPolicy,
-  warn_threshold:     Option<NonZeroUsize>,
-  requirement:        MailboxRequirement,
-  capabilities:       QueueCapabilityRegistry,
-  priority_generator: Option<ArcShared<dyn MessagePriorityGenerator>>,
-  stable_priority:    bool,
+  policy:              MailboxPolicy,
+  warn_threshold:      Option<NonZeroUsize>,
+  requirement:         MailboxRequirement,
+  capabilities:        QueueCapabilityRegistry,
+  priority_generator:  Option<ArcShared<dyn MessagePriorityGenerator>>,
+  stable_priority:     bool,
+  custom_mailbox_type: Option<ArcShared<dyn MailboxType>>,
 }
 
 impl MailboxConfig {
@@ -38,6 +45,7 @@ impl MailboxConfig {
       capabilities: QueueCapabilityRegistry::with_defaults(),
       priority_generator: None,
       stable_priority: false,
+      custom_mailbox_type: None,
     }
   }
 
@@ -75,6 +83,15 @@ impl MailboxConfig {
   #[must_use]
   pub const fn stable_priority(&self) -> bool {
     self.stable_priority
+  }
+
+  /// Returns the custom mailbox type override, if any.
+  ///
+  /// When `Some`, the selection logic uses this factory directly and
+  /// bypasses policy / requirement / priority-based selection.
+  #[must_use]
+  pub fn custom_mailbox_type(&self) -> Option<&ArcShared<dyn MailboxType>> {
+    self.custom_mailbox_type.as_ref()
   }
 
   /// Updates the warning threshold.
@@ -115,7 +132,25 @@ impl MailboxConfig {
     self
   }
 
+  /// Installs a user-defined [`MailboxType`] that overrides every other
+  /// selection rule.
+  ///
+  /// The supplied factory is wrapped in `ArcShared<dyn MailboxType>`
+  /// internally. When a custom mailbox type is set, `validate()` and
+  /// `create_message_queue_from_config` bypass priority / requirement /
+  /// policy-based selection and delegate directly to this factory.
+  #[must_use]
+  pub fn with_mailbox_type(mut self, mailbox_type: impl MailboxType + 'static) -> Self {
+    self.custom_mailbox_type = Some(ArcShared::new(mailbox_type));
+    self
+  }
+
   /// Validates the configuration contract.
+  ///
+  /// When a [custom mailbox type](Self::with_mailbox_type) is installed,
+  /// validation is skipped because the custom factory bypasses every other
+  /// selection rule — priority / requirement / capacity fields become
+  /// advisory metadata only.
   ///
   /// # Errors
   ///
@@ -131,6 +166,9 @@ impl MailboxConfig {
   /// Returns [`MailboxConfigError::DequeWithControlAware`] when both control-aware
   /// and deque semantics are requested simultaneously.
   pub fn validate(&self) -> Result<(), MailboxConfigError> {
+    if self.custom_mailbox_type.is_some() {
+      return Ok(());
+    }
     if self.stable_priority && self.priority_generator.is_none() {
       return Err(MailboxConfigError::StablePriorityWithoutGenerator);
     }
@@ -162,6 +200,7 @@ impl Debug for MailboxConfig {
       .field("capabilities", &self.capabilities)
       .field("has_priority_generator", &self.priority_generator.is_some())
       .field("stable_priority", &self.stable_priority)
+      .field("has_custom_mailbox_type", &self.custom_mailbox_type.is_some())
       .finish()
   }
 }
