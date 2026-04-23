@@ -6,7 +6,7 @@ use crate::core::kernel::{
     Actor, ActorContext,
     error::ActorError,
     messaging::AnyMessageView,
-    props::{MailboxConfig, MailboxConfigError, Props},
+    props::{MailboxConfig, Props},
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
 };
@@ -64,7 +64,7 @@ fn with_stash_mailbox_sets_stash_requirement() {
 }
 
 #[test]
-fn with_stash_mailbox_rejects_bounded_mailbox_config() {
+fn with_stash_mailbox_accepts_bounded_mailbox_config() {
   let props = Props::from_fn(|| TestActor)
     .with_mailbox_config(MailboxConfig::new(MailboxPolicy::bounded(
       NonZeroUsize::new(8).expect("non-zero"),
@@ -73,5 +73,5 @@ fn with_stash_mailbox_rejects_bounded_mailbox_config() {
     )))
     .with_stash_mailbox();
 
-  assert_eq!(props.mailbox_config().validate(), Err(MailboxConfigError::BoundedWithDeque));
+  assert_eq!(props.mailbox_config().validate(), Ok(()));
 }

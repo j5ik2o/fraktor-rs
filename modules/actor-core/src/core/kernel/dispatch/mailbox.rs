@@ -8,6 +8,14 @@ use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 mod backpressure_publisher;
 mod base;
+/// Bounded control-aware mailbox type factory.
+mod bounded_control_aware_mailbox_type;
+/// Bounded control-aware message queue with dual-queue prioritisation and capacity enforcement.
+mod bounded_control_aware_message_queue;
+/// Bounded deque mailbox type factory.
+mod bounded_deque_mailbox_type;
+/// Bounded deque message queue with capacity enforcement and O(1) front insertion.
+mod bounded_deque_message_queue;
 /// Bounded mailbox type factory.
 mod bounded_mailbox_type;
 /// Bounded message queue with configurable overflow strategy.
@@ -82,6 +90,10 @@ mod unbounded_stable_priority_message_queue;
 
 pub use backpressure_publisher::BackpressurePublisher;
 pub use base::Mailbox;
+pub use bounded_control_aware_mailbox_type::BoundedControlAwareMailboxType;
+pub use bounded_control_aware_message_queue::BoundedControlAwareMessageQueue;
+pub use bounded_deque_mailbox_type::BoundedDequeMailboxType;
+pub use bounded_deque_message_queue::BoundedDequeMessageQueue;
 pub use bounded_mailbox_type::BoundedMailboxType;
 pub use bounded_message_queue::BoundedMessageQueue;
 pub use bounded_priority_mailbox_type::BoundedPriorityMailboxType;

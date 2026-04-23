@@ -45,7 +45,7 @@ fn validate_accepts_default_config() {
 }
 
 #[test]
-fn validate_rejects_control_aware_with_bounded_policy() {
+fn validate_accepts_control_aware_with_bounded_policy() {
   use core::num::NonZeroUsize;
 
   use crate::core::kernel::dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy};
@@ -53,7 +53,7 @@ fn validate_rejects_control_aware_with_bounded_policy() {
   let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
   let bounded_policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
   let config = MailboxConfig::new(bounded_policy).with_requirement(MailboxRequirement::requires_control_aware());
-  assert_eq!(config.validate(), Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy));
+  assert_eq!(config.validate(), Ok(()));
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn validate_rejects_priority_with_control_aware() {
 }
 
 #[test]
-fn validate_rejects_bounded_with_deque() {
+fn validate_accepts_bounded_with_deque() {
   use core::num::NonZeroUsize;
 
   use crate::core::kernel::dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy};
@@ -90,5 +90,5 @@ fn validate_rejects_bounded_with_deque() {
   let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
   let bounded_policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
   let config = MailboxConfig::new(bounded_policy).with_requirement(MailboxRequirement::requires_deque());
-  assert_eq!(config.validate(), Err(MailboxConfigError::BoundedWithDeque));
+  assert_eq!(config.validate(), Ok(()));
 }
