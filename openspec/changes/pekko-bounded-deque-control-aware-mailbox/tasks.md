@@ -88,14 +88,14 @@
 
 ## Phase 8: PR 発行とレビュー対応
 
-- [ ] 8.1 branch `impl/pekko-bounded-deque-control-aware-mailbox` を切って PR 発行、base は main
-- [ ] 8.2 PR 本文に以下を含める:
+- [x] 8.1 branch `impl/pekko-bounded-deque-control-aware-mailbox` を切って PR 発行、base は main — PR #1642
+- [x] 8.2 PR 本文に以下を含める:
   - Pekko `Mailbox.scala:844,931` との対応表
   - **公開 API 変更**: `MailboxConfigError` から 2 variant 削除 (BREAKING):
     - `BoundedWithDeque` (bounded + deque が valid に)
     - `ControlAwareRequiresUnboundedPolicy` (bounded + control_aware が valid に)
   - **挙動変更**: control_aware + bounded は従来 `validate()` で fail-fast 拒否されていたが、新 variant により validate 成功 + BoundedControlAware 生成の整合パスに統一 (behavior fix)
-  - **テスト**: 新 variant 11 件 (BoundedDeque 6 + BoundedControlAware 5) + dispatch 回帰 2 件 (rename 1 + new 1) + 既存 validate test rename + assertion 反転 4 件 (Phase 5.3 / 5.4 / 5.5 / 5.8)
+  - **テスト**: 新 variant 12 件 (BoundedDeque 7 + BoundedControlAware 5) + factory 系 4 件 + dispatch 回帰 2 件 (rename 1 + new 1) + 既存 validate test rename + assertion 反転 4 件 (Phase 5.3 / 5.4 / 5.5 / 5.8)
   - gap-analysis MB-M2 done 化、第17版 medium 5 → 4
-- [ ] 8.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve
-- [ ] 8.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-bounded-deque-control-aware-mailbox/spec.md` に sync
+- [ ] 8.3 レビュー対応: CodeRabbit / Cursor Bugbot の指摘が来た場合は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve — レビューコメント着次第対応
+- [ ] 8.4 マージ後、別 PR で change をアーカイブ + main spec を `openspec/specs/pekko-bounded-deque-control-aware-mailbox/spec.md` に sync — マージ後に実施
