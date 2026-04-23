@@ -53,7 +53,7 @@ mod mailbox_queue_state;
 mod mailbox_registry_error;
 /// Factory trait for creating message queue instances.
 mod mailbox_type;
-pub(crate) mod mailboxes;
+mod mailboxes;
 /// Priority generator for priority-based message queues.
 mod message_priority_generator;
 /// Pluggable message queue trait.
@@ -120,6 +120,7 @@ pub(crate) use mailbox_queue_handles::QueueStateHandle;
 pub use mailbox_registry_error::MailboxRegistryError;
 pub use mailbox_type::MailboxType;
 pub use mailboxes::Mailboxes;
+pub(crate) use mailboxes::{create_message_queue_from_config, select_mailbox_type_from_config};
 pub use message_priority_generator::MessagePriorityGenerator;
 pub use message_queue::MessageQueue;
 pub use overflow_strategy::MailboxOverflowStrategy;

@@ -162,12 +162,12 @@ impl MailboxFactory for MailboxConfig {
     // off policy / requirement / priority_generator / stable_priority.
     // Wrap the resolved factory in `ArcShared` so the caller sees a
     // stable trait-object reference per invocation.
-    let boxed = crate::core::kernel::dispatch::mailbox::mailboxes::select_mailbox_type_from_config(self);
+    let boxed = crate::core::kernel::dispatch::mailbox::select_mailbox_type_from_config(self);
     ArcShared::from_boxed(boxed)
   }
 
   fn create_message_queue(&self) -> Result<Box<dyn MessageQueue>, MailboxConfigError> {
-    crate::core::kernel::dispatch::mailbox::mailboxes::create_message_queue_from_config(self)
+    crate::core::kernel::dispatch::mailbox::create_message_queue_from_config(self)
   }
 
   fn policy(&self) -> MailboxPolicy {

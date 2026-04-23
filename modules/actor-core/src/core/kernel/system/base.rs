@@ -684,18 +684,18 @@ impl ActorSystem {
     if let Some(mailbox_id) = props.mailbox_id() {
       let factory =
         self.state.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
-      Self::ensure_requirements_from(&factory.requirement(), &factory.capabilities())
+      Self::ensure_requirements_from(factory.requirement(), factory.capabilities())
     } else {
       let config = props.mailbox_config();
-      Self::ensure_requirements_from(&config.requirement(), &config.capabilities())
+      Self::ensure_requirements_from(config.requirement(), config.capabilities())
     }
   }
 
   fn ensure_requirements_from(
-    requirement: &MailboxRequirement,
-    registry: &QueueCapabilityRegistry,
+    requirement: MailboxRequirement,
+    registry: QueueCapabilityRegistry,
   ) -> Result<(), SpawnError> {
-    requirement.ensure_supported(registry).map_err(|error| {
+    requirement.ensure_supported(&registry).map_err(|error| {
       let reason = Self::missing_capability_reason(error.missing());
       SpawnError::invalid_props(reason)
     })
