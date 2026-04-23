@@ -510,9 +510,10 @@ actor-core の `#[allow(dead_code)]` 46 箇所を監査し、**production / test
 
 ### 結果
 
-- `#[allow(dead_code)]` 件数: **46 → 29 (−17 件)**
-- 削除後の残存 29 件の内訳:
-  - LIVE-BUG 系 (実際は使われているが `#[allow]` が誤って付いている) の除去は **次 PR** で対応予定
+- `#[allow(dead_code)]` 件数: **49 → 32 (−17 件)**
+- 内訳: 削除 item 16 件分の item-level allow 16 件 + `impl ActorRefProviders` の block-level allow 1 件 (item 削除に伴い LIVE-BUG 扱いで一括除去) = **17 件**
+- 削除後の残存 32 件:
+  - LIVE-BUG 系 (実際は使われているが `#[allow]` が誤って付いている、例: `impl Cells` の block-level allow 等) の除去は **次 PR** で対応予定
   - EXEMPT (compile-time guard / test helper / platform-cfg) は原則残置
 
 ## まとめ
