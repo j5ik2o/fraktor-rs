@@ -46,6 +46,14 @@ impl Actor for TestActor {
   }
 }
 
+struct MinimalActor;
+
+impl Actor for MinimalActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
 #[test]
 fn actor_box_delegates_pre_start() {
   let system = ActorSystem::new_empty();
@@ -88,4 +96,20 @@ fn actor_box_delegates_on_mailbox_pressure() {
   let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
   let event = MailboxPressureEvent::new(pid, 8, 8, 100, Duration::from_millis(1), Some(6));
   assert!(actor.on_mailbox_pressure(&mut ctx, &event).is_ok());
+}
+
+#[test]
+fn default_lifecycle_hooks_are_noops_and_restart_delegates() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = MinimalActor;
+  let reason = ActorError::recoverable("restart").reason().clone();
+  let pressure = MailboxPressureEvent::new(pid, 1, 1, 100, Duration::from_millis(1), None);
+
+  assert!(actor.on_mailbox_pressure(&mut ctx, &pressure).is_ok());
+  assert!(actor.on_child_failed(&mut ctx, pid, &ActorError::fatal("child")).is_ok());
+  assert!(actor.pre_restart(&mut ctx, &reason).is_ok());
+  assert!(actor.post_restart(&mut ctx, &reason).is_ok());
+  let _strategy = actor.supervisor_strategy(&mut ctx);
 }

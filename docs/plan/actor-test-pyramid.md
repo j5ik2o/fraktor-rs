@@ -55,13 +55,13 @@ helper 名には `Manager` / `Util` / `Service` / `Runtime` / `Engine` を使わ
 
 | 指標 | baseline | Wave 1 実測 | Wave 1 目標 | 長期目標 |
 |------|----------|-------------|-------------|----------|
-| Function | 83.79% | 84.01% | 85% | 90% 以上 |
-| Line | 83.36% | 83.59% | 85% | 90% 以上 |
-| Region | 82.74% | 83.02% | 84% | 90% 以上 |
+| Function | 83.79% | 86.74% | 85% | 90% 以上 |
+| Line | 83.36% | 85.35% | 85% | 90% 以上 |
+| Region | 82.74% | 84.72% | 84% | 90% 以上 |
 
 低 coverage の上位は `actor_cell.rs`, `actor_context.rs`, `actor_path/*`, `actor-adaptor-std` の executor factory / std system config だった。Wave 1 では coverage 順ではなく、Pekko contract と公開境界へ直結する箇所を優先する。
 
-Wave 1 実測は `scripts/coverage.sh --format html --output target/coverage/actor-test-pyramid` で生成した `target/coverage/actor-test-pyramid/html/index.html` の totals。目標未達の理由は、1 change の巨大化を避けるため Contract 5 件 / Integration 2 件に絞り、最大未到達の `actor_cell.rs` lifecycle / restart 系と `actor_context.rs` の残り contract を follow-up に送ったためである。次 wave では `actor_cell.rs` の lifecycle contract と typed ask / pipeToSelf を優先する。
+Wave 1 実測は `scripts/coverage.sh --format json --output target/coverage/actor-test-pyramid` で生成した `target/coverage/actor-test-pyramid/coverage.json` の totals。Function / Line / Region の Wave 1 目標はすべて達成済み。次 wave では、数値だけを追わず `actor_cell.rs` の lifecycle contract と typed ask / pipeToSelf を優先する。
 
 ## Pekko 対応表
 
@@ -105,4 +105,4 @@ Wave 1 は Contract 最大 5 件、Integration 最大 2 件に限定する。
 | `actor_cell.rs` の未到達行 | 重要度は高いが、lifecycle / restart の大きな scope になりやすいため専用 wave に分ける。 |
 | `actor_context.rs` の残り public contract | `reply` / `forward` / timer / stash は厚いが、coverage 上はまだ 84.85% / 82.63% に残るため、Pekko `ActorContextSpec.scala` と対応を再確認する。 |
 
-Wave 1 追加後に coverage 目標へ届かない場合は、private helper の枝葉で数字だけを埋めず、この follow-up 表から次の Pekko contract を選ぶ。
+Wave 1 追加後の coverage 目標は達成済み。次 wave でも private helper の枝葉で数字だけを埋めず、この follow-up 表から次の Pekko contract を選ぶ。

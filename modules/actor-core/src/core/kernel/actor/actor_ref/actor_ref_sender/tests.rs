@@ -1,3 +1,5 @@
+use alloc::format;
+
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::*;
@@ -31,4 +33,21 @@ fn apply_outcome_runs_scheduled_task() {
   sender.apply_outcome(scheduled);
 
   assert!(*observed.lock());
+}
+
+#[test]
+fn apply_outcome_accepts_delivered_without_side_effect() {
+  let mut sender = TestSender;
+
+  sender.apply_outcome(SendOutcome::Delivered);
+
+  assert!(sender.send(AnyMessage::new(1_u8)).is_ok());
+}
+
+#[test]
+fn send_outcome_debug_is_stable_public_diagnostic() {
+  let scheduled = SendOutcome::Schedule(Box::new(|| {}));
+
+  assert_eq!(format!("{:?}", SendOutcome::Delivered), "Delivered");
+  assert_eq!(format!("{scheduled:?}"), "Schedule(<deferred>)");
 }

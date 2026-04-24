@@ -84,11 +84,11 @@
 - [x] 6.3 `rtk cargo test -p fraktor-actor-adaptor-std-rs --features test-support` を実行し、std adaptor 側の失敗がないことを確認する
 - [x] 6.4 `rtk scripts/coverage.sh` を実行し、actor 系 HTML レポートを生成する
 - [x] 6.5 Wave 1 coverage を計測し、目標との差分を確認する
-- [ ] 6.5a Wave 1 coverage 目標を達成する:
+- [x] 6.5a Wave 1 coverage 目標を達成する:
   - Function coverage: 85% 以上
   - Line coverage: 85% 以上
   - Region coverage: 84% 以上
-  - 実測: Function 84.01% / Line 83.59% / Region 83.02%。Wave 1 目標には未達。
+  - 実測: Function 86.74% / Line 85.35% / Region 84.72%。Wave 1 目標を達成済み。
 - [x] 6.6 coverage 目標に届かない場合は、未達理由と次に埋める Pekko contract を `docs/plan/actor-test-pyramid.md` の follow-up 表に残す。private helper の枝葉で数字だけを埋めない
 - [x] 6.7 テスト実行時間が悪化した場合、Integration 層の重複を削る。必要なら expensive test は個別 target に分ける
 
@@ -96,10 +96,10 @@
 
 - [x] 7.1 `./scripts/ci-check.sh ai all` を実行し、exit 0 を確認する
 - [x] 7.2 `scripts/coverage.sh` の出力パスと actor coverage totals を PR 本文に記録する
-  - 出力: `target/coverage/actor-test-pyramid/html/index.html`
-  - totals: Function 84.01% / Line 83.59% / Region 83.02%
+  - 出力: `target/coverage/actor-test-pyramid/coverage.json`
+  - totals: Function 86.74% / Line 85.35% / Region 84.72%
 - [x] 7.3 Wave 1 coverage 目標の達成 / 未達理由 / follow-up を PR 本文に記録する
-  - 目標未達。理由と follow-up は `docs/plan/actor-test-pyramid.md` に記録済み。
+  - 目標達成。follow-up は `docs/plan/actor-test-pyramid.md` に記録済み。
 - [x] 7.4 追加したテストが以下を満たすことを確認する:
   - no_std core と std adaptor の分離を壊していない
   - `Result` / `Option` / `#[must_use]` 戻り値を握りつぶしていない

@@ -1,5 +1,8 @@
 //! Standard-library clock backed by [`std::time::Instant`].
 
+#[cfg(test)]
+mod tests;
+
 extern crate std;
 
 use core::time::Duration;

@@ -27,6 +27,21 @@ fn path_segment_rejects_reserved_dollar_prefix() {
 }
 
 #[test]
+fn path_segment_rejects_empty_invalid_percent_and_invalid_char() {
+  assert!(matches!(PathSegment::new(""), Err(ActorPathError::EmptySegment)));
+  assert!(matches!(PathSegment::new("bad%"), Err(ActorPathError::InvalidPercentEncoding)));
+  assert!(matches!(PathSegment::new("bad%XX"), Err(ActorPathError::InvalidPercentEncoding)));
+  assert!(matches!(PathSegment::new("bad space"), Err(ActorPathError::InvalidSegmentChar { ch: ' ', index: 3 })));
+}
+
+#[test]
+fn actor_path_parts_can_set_port_before_host() {
+  let parts = ActorPathParts::local("cellsys").with_authority_port(2552);
+
+  assert_eq!(parts.authority_endpoint().as_deref(), Some(":2552"));
+}
+
+#[test]
 fn canonical_uri_includes_scheme_system_and_segments() {
   let parts = ActorPathParts::local("cellsys")
     .with_guardian(GuardianKind::User)

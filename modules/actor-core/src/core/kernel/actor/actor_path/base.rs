@@ -1,5 +1,8 @@
 //! In-memory representation of canonical actor paths.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{
   string::{String, ToString},
   vec::Vec,

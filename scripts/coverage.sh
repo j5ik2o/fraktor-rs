@@ -49,7 +49,6 @@ log_step() {
 
 coverage_packages() {
   printf '%s\n' \
-    "fraktor-utils-core-rs" \
     "fraktor-actor-core-rs" \
     "fraktor-actor-adaptor-std-rs"
 }

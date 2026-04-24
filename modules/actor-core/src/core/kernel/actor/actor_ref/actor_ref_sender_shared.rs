@@ -1,5 +1,8 @@
 //! Shared wrapper for actor reference senders.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::boxed::Box;
 
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};

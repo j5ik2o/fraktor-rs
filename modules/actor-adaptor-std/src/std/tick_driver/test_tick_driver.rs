@@ -2,6 +2,9 @@
 
 extern crate std;
 
+#[cfg(test)]
+mod tests;
+
 use alloc::boxed::Box;
 use core::{
   sync::atomic::{AtomicBool, Ordering},
