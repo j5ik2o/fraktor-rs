@@ -96,7 +96,7 @@ where
   /// Returns an error when the underlying timer scheduler rejects the timer.
   pub fn start_single_timer(
     &mut self,
-    ctx: &mut ActorContext<'_>,
+    ctx: &ActorContext<'_>,
     name: impl Into<String>,
     message: AnyMessage,
     delay: Duration,
@@ -111,7 +111,7 @@ where
   /// Returns an error when the underlying timer scheduler rejects the timer.
   pub fn start_timer_at_fixed_rate(
     &mut self,
-    ctx: &mut ActorContext<'_>,
+    ctx: &ActorContext<'_>,
     name: impl Into<String>,
     message: AnyMessage,
     interval: Duration,
@@ -126,7 +126,7 @@ where
   /// Returns an error when the underlying timer scheduler rejects the timer.
   pub fn start_timer_with_fixed_delay(
     &mut self,
-    ctx: &mut ActorContext<'_>,
+    ctx: &ActorContext<'_>,
     name: impl Into<String>,
     message: AnyMessage,
     delay: Duration,

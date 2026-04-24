@@ -591,6 +591,36 @@ fn replying_basic_delivers_to_sender() {
 }
 
 #[test]
+fn replying_dispatches_before_transition_observer() {
+  let (system, mut ctx) = build_context();
+  let (inbox, sender_ref) = capturing_sender(system.allocate_pid());
+  let inbox_for_observer = inbox.clone();
+  let observed_reply_counts = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let observed_reply_counts_for_observer = observed_reply_counts.clone();
+  ctx.set_sender(Some(sender_ref));
+
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 0);
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, _data| {
+    if message.downcast_ref::<Advance>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active).replying(AnyMessage::new(Reply("ack"))));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.on_transition(move |_from, _to| {
+    observed_reply_counts_for_observer.lock().push(inbox_for_observer.lock().len());
+  });
+  fsm.initialize(&ctx).expect("initialize");
+
+  let advance = AnyMessage::new(Advance);
+  let advance_view = advance.as_view();
+  fsm.handle(&mut ctx, &advance_view).expect("advance");
+
+  assert_eq!(inbox.lock().len(), 1);
+  assert_eq!(observed_reply_counts.lock().as_slice(), &[1]);
+}
+
+#[test]
 fn replying_multiple_preserves_order() {
   let (system, mut ctx) = build_context();
   let (inbox, sender_ref) = capturing_sender(system.allocate_pid());
@@ -658,7 +688,7 @@ fn start_single_timer_fires_and_unwraps_payload() {
   });
   fsm.initialize(&ctx).expect("initialize");
   fsm
-    .start_single_timer(&mut ctx, "tick", AnyMessage::new(TimerPayload("once")), Duration::from_millis(10))
+    .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("once")), Duration::from_millis(10))
     .expect("start timer");
 
   assert!(fsm.is_timer_active("tick"));
@@ -685,7 +715,7 @@ fn start_timer_at_fixed_rate_fires_repeatedly() {
   });
   fsm.initialize(&ctx).expect("initialize");
   fsm
-    .start_timer_at_fixed_rate(&mut ctx, "tick", AnyMessage::new(TimerPayload("rate")), Duration::from_millis(10))
+    .start_timer_at_fixed_rate(&ctx, "tick", AnyMessage::new(TimerPayload("rate")), Duration::from_millis(10))
     .expect("start timer");
 
   let fired = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("rate"))));
@@ -710,7 +740,7 @@ fn start_timer_with_fixed_delay_fires_repeatedly() {
   });
   fsm.initialize(&ctx).expect("initialize");
   fsm
-    .start_timer_with_fixed_delay(&mut ctx, "tick", AnyMessage::new(TimerPayload("delay")), Duration::from_millis(10))
+    .start_timer_with_fixed_delay(&ctx, "tick", AnyMessage::new(TimerPayload("delay")), Duration::from_millis(10))
     .expect("start timer");
 
   let fired = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("delay"))));
@@ -735,7 +765,7 @@ fn cancel_timer_prevents_fire() {
   });
   fsm.initialize(&ctx).expect("initialize");
   fsm
-    .start_single_timer(&mut ctx, "tick", AnyMessage::new(TimerPayload("cancelled")), Duration::from_millis(10))
+    .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("cancelled")), Duration::from_millis(10))
     .expect("start timer");
   fsm.cancel_timer(&ctx, "tick").expect("cancel timer");
 
@@ -763,7 +793,7 @@ fn is_timer_active_tracks_lifecycle() {
 
   assert!(!fsm.is_timer_active("tick"));
   fsm
-    .start_single_timer(&mut ctx, "tick", AnyMessage::new(TimerPayload("once")), Duration::from_millis(10))
+    .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("once")), Duration::from_millis(10))
     .expect("start single");
   assert!(fsm.is_timer_active("tick"));
 
@@ -773,7 +803,7 @@ fn is_timer_active_tracks_lifecycle() {
   assert!(!fsm.is_timer_active("tick"));
 
   fsm
-    .start_timer_at_fixed_rate(&mut ctx, "tick", AnyMessage::new(TimerPayload("rate")), Duration::from_millis(10))
+    .start_timer_at_fixed_rate(&ctx, "tick", AnyMessage::new(TimerPayload("rate")), Duration::from_millis(10))
     .expect("start repeating");
   assert!(fsm.is_timer_active("tick"));
   fsm.cancel_timer(&ctx, "tick").expect("cancel repeating");
@@ -798,10 +828,10 @@ fn restart_same_name_discards_late_arrival() {
   });
   fsm.initialize(&ctx).expect("initialize");
   fsm
-    .start_single_timer(&mut ctx, "tick", AnyMessage::new(TimerPayload("old")), Duration::from_millis(10))
+    .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("old")), Duration::from_millis(10))
     .expect("start old");
   fsm
-    .start_single_timer(&mut ctx, "tick", AnyMessage::new(TimerPayload("new")), Duration::from_millis(10))
+    .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("new")), Duration::from_millis(10))
     .expect("start new");
 
   let old = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("old"))));
@@ -837,7 +867,7 @@ fn stop_cancels_all_named_timers() {
   });
   fsm.initialize(&ctx).expect("initialize");
   fsm
-    .start_timer_with_fixed_delay(&mut ctx, "tick", AnyMessage::new(TimerPayload("delay")), Duration::from_millis(10))
+    .start_timer_with_fixed_delay(&ctx, "tick", AnyMessage::new(TimerPayload("delay")), Duration::from_millis(10))
     .expect("start timer");
   assert!(fsm.is_timer_active("tick"));
 
