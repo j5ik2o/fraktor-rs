@@ -83,7 +83,8 @@
 - [x] 6.2 `rtk cargo test -p fraktor-actor-core-rs --tests` を実行し、Integration / external contract の失敗がないことを確認する
 - [x] 6.3 `rtk cargo test -p fraktor-actor-adaptor-std-rs --features test-support` を実行し、std adaptor 側の失敗がないことを確認する
 - [x] 6.4 `rtk scripts/coverage.sh` を実行し、actor 系 HTML レポートを生成する
-- [x] 6.5 Wave 1 coverage 目標を確認する:
+- [x] 6.5 Wave 1 coverage を計測し、目標との差分を確認する
+- [ ] 6.5a Wave 1 coverage 目標を達成する:
   - Function coverage: 85% 以上
   - Line coverage: 85% 以上
   - Region coverage: 84% 以上
