@@ -171,3 +171,10 @@
   - graceful terminate
 - [x] 10.7 E2E / Integration が実時間 sleep に依存していないことを確認し、必要な場合は deterministic probe / manual tick / start_paused へ置き換える
 - [x] 10.8 Phase 10 が完了するまで、PR 本文や docs で「テストピラミッドの網羅性達成」と表現しない。表現は「Wave 1 coverage 目標達成」と「次 wave の網羅性ゲート定義」に留める
+
+## Phase 11: Coverage script のフルピラミッド計測
+
+- [x] 11.1 `scripts/coverage.sh` が actor 系 package を対象に、Unit / Contract 相当の `lib` / `bins` と、Contract / Integration / E2E 相当の `tests` / `examples` を分割実行する
+- [x] 11.2 `cargo llvm-cov` は `--no-report` で各層のプロファイルを収集し、最後に1つの report として出力する
+- [x] 11.3 `grcov` 経路も `cargo test --lib --bins` と `cargo test --tests --examples` に分け、同じ層セットを計測する
+- [x] 11.4 `rtk scripts/coverage.sh --format json --output target/coverage/actor-test-pyramid` を実行し、Function 86.78% / Line 85.37% / Region 84.74% を確認する

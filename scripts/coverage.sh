@@ -40,6 +40,10 @@ usage() {
 
   # HTML出力後にブラウザで開く
   scripts/coverage.sh --open
+
+計測対象:
+  actor 系 package の lib / bins と tests / examples を分割実行し、
+  Unit / Contract / Integration / E2E のプロファイルを1つのレポートに統合します。
 EOF
 }
 
@@ -98,6 +102,7 @@ run_llvm_cov() {
   mkdir -p "${output_dir}"
 
   local -a package_args=()
+  local -a feature_args=()
   local pkg=""
   while IFS= read -r pkg; do
     package_args+=("-p" "${pkg}")
@@ -111,25 +116,33 @@ run_llvm_cov() {
     fi
     feature_list+="${feature}"
   done < <(coverage_features)
+  if [[ -n "${feature_list}" ]]; then
+    feature_args+=("--features" "${feature_list}")
+  fi
+
+  cargo llvm-cov clean --workspace || return 1
+
+  log_step "Unit / Contract 層を計測: lib / bins"
+  cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" --no-report --lib --bins || return 1
+
+  log_step "Contract / Integration / E2E 層を計測: tests / examples"
+  cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" --no-report --tests --examples || return 1
 
   case "${format}" in
     html)
       log_step "HTML形式でカバレッジレポートを生成: ${output_dir}/html"
-      cargo llvm-cov clean --workspace || return 1
       rm -rf "${output_dir}/html"
-      cargo llvm-cov "${package_args[@]}" --features "${feature_list}" --html --output-dir "${output_dir}" || return 1
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --html --output-dir "${output_dir}" || return 1
       echo "カバレッジレポート: ${output_dir}/html/index.html"
       ;;
     lcov)
       log_step "LCOV形式でカバレッジレポートを生成: ${output_dir}/lcov.info"
-      cargo llvm-cov clean --workspace || return 1
-      cargo llvm-cov "${package_args[@]}" --features "${feature_list}" --lcov --output-path "${output_dir}/lcov.info" || return 1
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --lcov --output-path "${output_dir}/lcov.info" || return 1
       echo "カバレッジレポート: ${output_dir}/lcov.info"
       ;;
     json)
       log_step "JSON形式でカバレッジレポートを生成: ${output_dir}/coverage.json"
-      cargo llvm-cov clean --workspace || return 1
-      cargo llvm-cov "${package_args[@]}" --features "${feature_list}" --json --output-path "${output_dir}/coverage.json" || return 1
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --json --output-path "${output_dir}/coverage.json" || return 1
       echo "カバレッジレポート: ${output_dir}/coverage.json"
       ;;
     *)
@@ -150,11 +163,35 @@ run_grcov() {
   # プロファイルデータをクリーンアップ
   find . -name "*.profraw" -delete
 
+  local -a package_args=()
+  local -a feature_args=()
+  local pkg=""
+  while IFS= read -r pkg; do
+    package_args+=("-p" "${pkg}")
+  done < <(coverage_packages)
+
+  local feature_list=""
+  local feature=""
+  while IFS= read -r feature; do
+    if [[ -n "${feature_list}" ]]; then
+      feature_list+=","
+    fi
+    feature_list+="${feature}"
+  done < <(coverage_features)
+  if [[ -n "${feature_list}" ]]; then
+    feature_args+=("--features" "${feature_list}")
+  fi
+
   # RUSTFLAGS を設定してテストを実行
-  log_step "テストを実行してプロファイルデータを収集中..."
+  log_step "Unit / Contract 層を計測: lib / bins"
   RUSTFLAGS="-C instrument-coverage" \
   LLVM_PROFILE_FILE="${REPO_ROOT}/target/coverage/default_%m_%p.profraw" \
-  cargo test --workspace --all-features || return 1
+  cargo test "${package_args[@]}" "${feature_args[@]}" --lib --bins || return 1
+
+  log_step "Contract / Integration / E2E 層を計測: tests / examples"
+  RUSTFLAGS="-C instrument-coverage" \
+  LLVM_PROFILE_FILE="${REPO_ROOT}/target/coverage/default_%m_%p.profraw" \
+  cargo test "${package_args[@]}" "${feature_args[@]}" --tests --examples || return 1
 
   # grcov でカバレッジレポートを生成
   case "${format}" in

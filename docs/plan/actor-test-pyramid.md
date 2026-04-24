@@ -56,6 +56,8 @@ helper 名には `Manager` / `Util` / `Service` / `Runtime` / `Engine` を使わ
 
 `scripts/coverage.sh --format json --output target/coverage/actor-test-pyramid` の baseline は以下。
 
+`scripts/coverage.sh` は actor 系 package の `lib` / `bins` と `tests` / `examples` を分割実行し、Unit / Contract / Integration / E2E のプロファイルを1つの report に統合する。
+
 | 指標 | baseline | Wave 1 実測 | Wave 1 目標 | 長期目標 |
 |------|----------|-------------|-------------|----------|
 | Function | 83.79% | 86.78% | 85% | 90% 以上 |
