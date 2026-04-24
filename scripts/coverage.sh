@@ -47,6 +47,18 @@ log_step() {
   printf '==> %s\n' "$1"
 }
 
+coverage_packages() {
+  printf '%s\n' \
+    "fraktor-utils-core-rs" \
+    "fraktor-actor-core-rs" \
+    "fraktor-actor-adaptor-std-rs"
+}
+
+coverage_features() {
+  printf '%s\n' \
+    "fraktor-actor-adaptor-std-rs/test-support"
+}
+
 ensure_tool_installed() {
   local tool="$1"
 
@@ -86,57 +98,39 @@ run_llvm_cov() {
 
   mkdir -p "${output_dir}"
 
-  # Main packages to measure coverage for (run separately to avoid SIGSEGV)
-  local -a packages=(
-    "fraktor-utils-core-rs"
-    "fraktor-actor-core-rs"
-    "fraktor-actor-std-rs"
-  )
+  local -a package_args=()
+  local pkg=""
+  while IFS= read -r pkg; do
+    package_args+=("-p" "${pkg}")
+  done < <(coverage_packages)
+
+  local feature_list=""
+  local feature=""
+  while IFS= read -r feature; do
+    if [[ -n "${feature_list}" ]]; then
+      feature_list+=","
+    fi
+    feature_list+="${feature}"
+  done < <(coverage_features)
 
   case "${format}" in
     html)
       log_step "HTML形式でカバレッジレポートを生成: ${output_dir}/html"
-      # Clean previous coverage data
       cargo llvm-cov clean --workspace || return 1
-
-      # Run coverage for each package separately and accumulate
-      for pkg in "${packages[@]}"; do
-        log_step "  パッケージ ${pkg} のカバレッジを計測中..."
-        cargo llvm-cov --lib -p "${pkg}" --no-report || return 1
-      done
-
-      # Generate combined HTML report
-      cargo llvm-cov report --html --output-dir "${output_dir}/html" || return 1
+      rm -rf "${output_dir}/html"
+      cargo llvm-cov "${package_args[@]}" --features "${feature_list}" --html --output-dir "${output_dir}" || return 1
       echo "カバレッジレポート: ${output_dir}/html/index.html"
       ;;
     lcov)
       log_step "LCOV形式でカバレッジレポートを生成: ${output_dir}/lcov.info"
-      # Clean previous coverage data
       cargo llvm-cov clean --workspace || return 1
-
-      # Run coverage for each package separately and accumulate
-      for pkg in "${packages[@]}"; do
-        log_step "  パッケージ ${pkg} のカバレッジを計測中..."
-        cargo llvm-cov --lib -p "${pkg}" --no-report || return 1
-      done
-
-      # Generate combined LCOV report
-      cargo llvm-cov report --lcov --output-path "${output_dir}/lcov.info" || return 1
+      cargo llvm-cov "${package_args[@]}" --features "${feature_list}" --lcov --output-path "${output_dir}/lcov.info" || return 1
       echo "カバレッジレポート: ${output_dir}/lcov.info"
       ;;
     json)
       log_step "JSON形式でカバレッジレポートを生成: ${output_dir}/coverage.json"
-      # Clean previous coverage data
       cargo llvm-cov clean --workspace || return 1
-
-      # Run coverage for each package separately and accumulate
-      for pkg in "${packages[@]}"; do
-        log_step "  パッケージ ${pkg} のカバレッジを計測中..."
-        cargo llvm-cov --lib -p "${pkg}" --no-report || return 1
-      done
-
-      # Generate combined JSON report
-      cargo llvm-cov report --json --output-path "${output_dir}/coverage.json" || return 1
+      cargo llvm-cov "${package_args[@]}" --features "${feature_list}" --json --output-path "${output_dir}/coverage.json" || return 1
       echo "カバレッジレポート: ${output_dir}/coverage.json"
       ;;
     *)
