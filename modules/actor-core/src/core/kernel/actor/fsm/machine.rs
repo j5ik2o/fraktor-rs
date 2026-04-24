@@ -33,6 +33,12 @@ type StateHandler<State, Data> = dyn for<'a, 'b> FnMut(
 type TransitionObserver<State> = dyn FnMut(&State, &State) + Send + 'static;
 type TerminationObserver<State, Data> = dyn FnMut(&FsmReason, &State, &Data) + Send + 'static;
 
+enum NamedTimerOutcome {
+  NotTimer,
+  Stale,
+  Deliver(AnyMessage),
+}
+
 static FSM_TIMER_KEY_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Minimal classic FSM runtime for untyped actors.
@@ -177,6 +183,8 @@ where
   /// # Errors
   ///
   /// Returns an error when the scheduler rejects the timer registration.
+  /// If registration fails after replacing an existing `name`, the previous timer
+  /// has already been cancelled and removed.
   pub fn start_single_timer(
     &mut self,
     ctx: &ActorContext<'_>,
@@ -184,18 +192,9 @@ where
     message: AnyMessage,
     delay: Duration,
   ) -> Result<(), ActorError> {
-    let name = name.into();
-    self.cancel_replaced_named_timer(ctx, &name);
-    let generation = self.next_named_timer_generation();
-    let timer_key = self.named_timer_key(&name);
-    let fired = AnyMessage::new(FsmTimerFired::new(name.clone(), generation, message));
-    ctx
-      .timers()
-      .start_single_timer(timer_key.clone(), fired, delay)
-      .map_err(|error| Self::scheduler_error_to_actor_error(&error))?;
-    let previous = self.named_timers.insert(name, FsmNamedTimer::new(generation, false, timer_key));
-    debug_assert!(previous.is_none());
-    Ok(())
+    self.start_named_timer(ctx, name, message, false, |timer_key, fired| {
+      ctx.timers().start_single_timer(timer_key, fired, delay)
+    })
   }
 
   /// Starts a fixed-rate named timer that delivers `message` back to this FSM.
@@ -206,6 +205,8 @@ where
   /// # Errors
   ///
   /// Returns an error when the scheduler rejects the timer registration.
+  /// If registration fails after replacing an existing `name`, the previous timer
+  /// has already been cancelled and removed.
   pub fn start_timer_at_fixed_rate(
     &mut self,
     ctx: &ActorContext<'_>,
@@ -213,18 +214,9 @@ where
     message: AnyMessage,
     interval: Duration,
   ) -> Result<(), ActorError> {
-    let name = name.into();
-    self.cancel_replaced_named_timer(ctx, &name);
-    let generation = self.next_named_timer_generation();
-    let timer_key = self.named_timer_key(&name);
-    let fired = AnyMessage::new(FsmTimerFired::new(name.clone(), generation, message));
-    ctx
-      .timers()
-      .start_timer_at_fixed_rate(timer_key.clone(), fired, interval)
-      .map_err(|error| Self::scheduler_error_to_actor_error(&error))?;
-    let previous = self.named_timers.insert(name, FsmNamedTimer::new(generation, true, timer_key));
-    debug_assert!(previous.is_none());
-    Ok(())
+    self.start_named_timer(ctx, name, message, true, |timer_key, fired| {
+      ctx.timers().start_timer_at_fixed_rate(timer_key, fired, interval)
+    })
   }
 
   /// Starts a fixed-delay named timer that delivers `message` back to this FSM.
@@ -235,6 +227,8 @@ where
   /// # Errors
   ///
   /// Returns an error when the scheduler rejects the timer registration.
+  /// If registration fails after replacing an existing `name`, the previous timer
+  /// has already been cancelled and removed.
   pub fn start_timer_with_fixed_delay(
     &mut self,
     ctx: &ActorContext<'_>,
@@ -242,18 +236,9 @@ where
     message: AnyMessage,
     delay: Duration,
   ) -> Result<(), ActorError> {
-    let name = name.into();
-    self.cancel_replaced_named_timer(ctx, &name);
-    let generation = self.next_named_timer_generation();
-    let timer_key = self.named_timer_key(&name);
-    let fired = AnyMessage::new(FsmTimerFired::new(name.clone(), generation, message));
-    ctx
-      .timers()
-      .start_timer_with_fixed_delay(timer_key.clone(), fired, delay)
-      .map_err(|error| Self::scheduler_error_to_actor_error(&error))?;
-    let previous = self.named_timers.insert(name, FsmNamedTimer::new(generation, true, timer_key));
-    debug_assert!(previous.is_none());
-    Ok(())
+    self.start_named_timer(ctx, name, message, true, |timer_key, fired| {
+      ctx.timers().start_timer_with_fixed_delay(timer_key, fired, delay)
+    })
   }
 
   /// Cancels the named timer if it is active.
@@ -287,19 +272,15 @@ where
       return Ok(());
     }
 
-    let named_timer_payload = match self.take_named_timer_payload(message) {
-      | Some(Some(payload)) => Some(payload),
-      | Some(None) => return Ok(()),
-      | None => None,
-    };
-
+    let named_timer_outcome = self.take_named_timer_payload(message);
     let payload_view;
-    let message = match named_timer_payload.as_ref() {
-      | Some(payload) => {
+    let message = match &named_timer_outcome {
+      | NamedTimerOutcome::Deliver(payload) => {
         payload_view = payload.as_view();
         &payload_view
       },
-      | None => {
+      | NamedTimerOutcome::Stale => return Ok(()),
+      | NamedTimerOutcome::NotTimer => {
         if self.is_stale_timeout(message) {
           return Ok(());
         }
@@ -466,14 +447,16 @@ where
     timeout.generation() != self.timeout_generation || timeout.state() != current_state
   }
 
-  fn take_named_timer_payload(&mut self, message: &AnyMessageView<'_>) -> Option<Option<AnyMessage>> {
-    let fired = message.downcast_ref::<FsmTimerFired>()?;
+  fn take_named_timer_payload(&mut self, message: &AnyMessageView<'_>) -> NamedTimerOutcome {
+    let Some(fired) = message.downcast_ref::<FsmTimerFired>() else {
+      return NamedTimerOutcome::NotTimer;
+    };
     let is_repeating = {
       let Some(timer) = self.named_timers.get(fired.name()) else {
-        return Some(None);
+        return NamedTimerOutcome::Stale;
       };
       if timer.generation() != fired.generation() {
-        return Some(None);
+        return NamedTimerOutcome::Stale;
       }
       timer.is_repeating()
     };
@@ -483,7 +466,7 @@ where
       let removed = self.named_timers.remove(fired.name());
       debug_assert!(removed.is_some());
     }
-    Some(Some(payload))
+    NamedTimerOutcome::Deliver(payload)
   }
 
   fn dispatch_replies(ctx: &mut ActorContext<'_>, replies: Vec<AnyMessage>) {
@@ -500,6 +483,27 @@ where
     {
       Self::log_scheduler_warning(ctx, format!("fsm named timer replacement cancel failed for {name}: {error:?}"));
     }
+  }
+
+  fn start_named_timer<F>(
+    &mut self,
+    ctx: &ActorContext<'_>,
+    name: impl Into<String>,
+    message: AnyMessage,
+    is_repeating: bool,
+    schedule: F,
+  ) -> Result<(), ActorError>
+  where
+    F: FnOnce(String, AnyMessage) -> Result<(), SchedulerError>, {
+    let name = name.into();
+    self.cancel_replaced_named_timer(ctx, &name);
+    let generation = self.next_named_timer_generation();
+    let timer_key = self.named_timer_key(&name);
+    let fired = AnyMessage::new(FsmTimerFired::new(name.clone(), generation, message));
+    schedule(timer_key.clone(), fired).map_err(|error| Self::scheduler_error_to_actor_error(&error))?;
+    let previous = self.named_timers.insert(name, FsmNamedTimer::new(generation, is_repeating, timer_key));
+    debug_assert!(previous.is_none());
+    Ok(())
   }
 
   fn cancel_all_named_timers_best_effort(&mut self, ctx: &ActorContext<'_>) {

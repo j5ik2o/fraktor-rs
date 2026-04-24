@@ -71,6 +71,10 @@ fn build_context() -> (ActorSystem, ActorContext<'static>) {
   (system.clone(), ActorContext::new(&system, pid))
 }
 
+fn named_timer_generation(fsm: &Fsm<ProbeState, usize>, name: &str) -> u64 {
+  fsm.named_timer_generation_for_test(name).expect("named timer generation")
+}
+
 fn capturing_sender(pid: Pid) -> (ArcShared<SpinSyncMutex<Vec<AnyMessage>>>, ActorRef) {
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = ActorRef::new_with_builtin_lock(pid, CapturingSender { inbox: inbox.clone() });
@@ -693,7 +697,9 @@ fn start_single_timer_fires_and_unwraps_payload() {
 
   assert!(fsm.is_timer_active("tick"));
 
-  let fired = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("once"))));
+  let generation = named_timer_generation(&fsm, "tick");
+  let fired =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), generation, AnyMessage::new(TimerPayload("once"))));
   let fired_view = fired.as_view();
   fsm.handle(&mut ctx, &fired_view).expect("timer fired");
 
@@ -719,6 +725,7 @@ fn named_timer_generation_skips_zero_after_wrap() {
     .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("wrapped")), Duration::from_millis(10))
     .expect("start timer");
 
+  let generation = named_timer_generation(&fsm, "tick");
   let stale_zero = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 0, AnyMessage::new(TimerPayload("stale"))));
   let stale_zero_view = stale_zero.as_view();
   fsm.handle(&mut ctx, &stale_zero_view).expect("stale zero");
@@ -726,7 +733,8 @@ fn named_timer_generation_skips_zero_after_wrap() {
   assert_eq!(fsm.state_data(), Some(&0));
   assert!(fsm.is_timer_active("tick"));
 
-  let current = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("current"))));
+  let current =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), generation, AnyMessage::new(TimerPayload("current"))));
   let current_view = current.as_view();
   fsm.handle(&mut ctx, &current_view).expect("current timer");
 
@@ -750,7 +758,9 @@ fn start_timer_at_fixed_rate_fires_repeatedly() {
     .start_timer_at_fixed_rate(&ctx, "tick", AnyMessage::new(TimerPayload("rate")), Duration::from_millis(10))
     .expect("start timer");
 
-  let fired = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("rate"))));
+  let generation = named_timer_generation(&fsm, "tick");
+  let fired =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), generation, AnyMessage::new(TimerPayload("rate"))));
   let fired_view = fired.as_view();
   fsm.handle(&mut ctx, &fired_view).expect("timer fired 1");
   fsm.handle(&mut ctx, &fired_view).expect("timer fired 2");
@@ -775,7 +785,9 @@ fn start_timer_with_fixed_delay_fires_repeatedly() {
     .start_timer_with_fixed_delay(&ctx, "tick", AnyMessage::new(TimerPayload("delay")), Duration::from_millis(10))
     .expect("start timer");
 
-  let fired = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("delay"))));
+  let generation = named_timer_generation(&fsm, "tick");
+  let fired =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), generation, AnyMessage::new(TimerPayload("delay"))));
   let fired_view = fired.as_view();
   fsm.handle(&mut ctx, &fired_view).expect("timer fired 1");
   fsm.handle(&mut ctx, &fired_view).expect("timer fired 2");
@@ -799,9 +811,11 @@ fn cancel_timer_prevents_fire() {
   fsm
     .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("cancelled")), Duration::from_millis(10))
     .expect("start timer");
+  let generation = named_timer_generation(&fsm, "tick");
   fsm.cancel_timer(&ctx, "tick").expect("cancel timer");
 
-  let fired = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("cancelled"))));
+  let fired =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), generation, AnyMessage::new(TimerPayload("cancelled"))));
   let fired_view = fired.as_view();
   fsm.handle(&mut ctx, &fired_view).expect("timer fired");
 
@@ -829,7 +843,9 @@ fn is_timer_active_tracks_lifecycle() {
     .expect("start single");
   assert!(fsm.is_timer_active("tick"));
 
-  let single = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("once"))));
+  let generation = named_timer_generation(&fsm, "tick");
+  let single =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), generation, AnyMessage::new(TimerPayload("once"))));
   let single_view = single.as_view();
   fsm.handle(&mut ctx, &single_view).expect("single fired");
   assert!(!fsm.is_timer_active("tick"));
@@ -862,11 +878,14 @@ fn restart_same_name_discards_late_arrival() {
   fsm
     .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("old")), Duration::from_millis(10))
     .expect("start old");
+  let old_generation = named_timer_generation(&fsm, "tick");
   fsm
     .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("new")), Duration::from_millis(10))
     .expect("start new");
+  let new_generation = named_timer_generation(&fsm, "tick");
 
-  let old = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("old"))));
+  let old =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), old_generation, AnyMessage::new(TimerPayload("old"))));
   let old_view = old.as_view();
   fsm.handle(&mut ctx, &old_view).expect("old fired");
 
@@ -874,7 +893,8 @@ fn restart_same_name_discards_late_arrival() {
   assert_eq!(fsm.state_data(), Some(&0));
   assert!(fsm.is_timer_active("tick"));
 
-  let new = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 2, AnyMessage::new(TimerPayload("new"))));
+  let new =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), new_generation, AnyMessage::new(TimerPayload("new"))));
   let new_view = new.as_view();
   fsm.handle(&mut ctx, &new_view).expect("new fired");
 
@@ -902,6 +922,7 @@ fn stop_cancels_all_named_timers() {
     .start_timer_with_fixed_delay(&ctx, "tick", AnyMessage::new(TimerPayload("delay")), Duration::from_millis(10))
     .expect("start timer");
   assert!(fsm.is_timer_active("tick"));
+  let generation = named_timer_generation(&fsm, "tick");
 
   let finish = AnyMessage::new(Finish);
   let finish_view = finish.as_view();
@@ -911,7 +932,8 @@ fn stop_cancels_all_named_timers() {
   assert_eq!(fsm.state_data(), Some(&1));
   assert!(!fsm.is_timer_active("tick"));
 
-  let fired = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("delay"))));
+  let fired =
+    AnyMessage::new(FsmTimerFired::new(String::from("tick"), generation, AnyMessage::new(TimerPayload("delay"))));
   let fired_view = fired.as_view();
   fsm.handle(&mut ctx, &fired_view).expect("late timer fired");
 
