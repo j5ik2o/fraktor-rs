@@ -250,7 +250,7 @@ fn wait_until(deadline_ms: u64, predicate: &dyn Fn() -> bool) -> bool {
     if predicate() {
       return true;
     }
-    thread::sleep(Duration::from_millis(5));
+    thread::yield_now();
   }
   predicate()
 }
@@ -297,7 +297,9 @@ fn death_watch_unwatch_suppresses_notifications() {
   system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
-  thread::sleep(Duration::from_millis(50));
+  let child_pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
+  let stopped = wait_until(200, &|| system.actor_ref_by_pid(child_pid).is_none());
+  assert!(stopped, "child should stop before asserting unwatch suppression");
   assert!(terminated.lock().is_empty());
 }
 
@@ -523,7 +525,9 @@ fn watch_with_unwatch_clears_custom_message_registration() {
   system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
-  thread::sleep(Duration::from_millis(50));
+  let child_pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
+  let stopped = wait_until(200, &|| system.actor_ref_by_pid(child_pid).is_none());
+  assert!(stopped, "child should stop before asserting watch_with unwatch suppression");
   assert!(custom_log.lock().is_empty(), "no custom message after unwatch");
   assert!(terminated_log.lock().is_empty(), "no on_terminated after unwatch");
 }

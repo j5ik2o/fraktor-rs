@@ -10,8 +10,9 @@ use std::{
   env, fs,
   path::{Path, PathBuf},
   process::{Command, Output},
-  sync::mpsc::channel,
-  time::{Duration, SystemTime, UNIX_EPOCH},
+  sync::mpsc::{Receiver, TryRecvError, channel},
+  thread,
+  time::{SystemTime, UNIX_EPOCH},
 };
 
 use fraktor_actor_adaptor_std_rs::std::{
@@ -73,7 +74,7 @@ fn std_dispatcher_factories_create_executors_and_accept_tasks() {
   let pinned = pinned_factory.create("default-dispatcher");
   let (tx, rx) = channel();
   pinned.execute(Box::new(move || tx.send("pinned").expect("send pinned marker")), 0).expect("execute pinned task");
-  assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("pinned task"), "pinned");
+  assert_eq!(recv_by_yielding(&rx, "pinned task"), "pinned");
   pinned.shutdown();
 
   let affinity_factory = AffinityExecutorFactory::new("affinity-contract", 2, 8);
@@ -82,7 +83,7 @@ fn std_dispatcher_factories_create_executors_and_accept_tasks() {
   affinity
     .execute(Box::new(move || tx.send("affinity").expect("send affinity marker")), 1)
     .expect("execute affinity task");
-  assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("affinity task"), "affinity");
+  assert_eq!(recv_by_yielding(&rx, "affinity task"), "affinity");
   affinity.shutdown();
 }
 
@@ -162,4 +163,15 @@ fn render_output(output: &Output) -> String {
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
   format!("status={:?}\nstdout:\n{stdout}\nstderr:\n{stderr}", output.status.code())
+}
+
+fn recv_by_yielding(rx: &Receiver<&'static str>, label: &str) -> &'static str {
+  for _ in 0..10_000 {
+    match rx.try_recv() {
+      | Ok(value) => return value,
+      | Err(TryRecvError::Empty) => thread::yield_now(),
+      | Err(TryRecvError::Disconnected) => panic!("{label} sender disconnected"),
+    }
+  }
+  panic!("{label} did not complete");
 }

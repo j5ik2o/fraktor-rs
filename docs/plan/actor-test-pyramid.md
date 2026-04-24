@@ -58,9 +58,9 @@ helper 名には `Manager` / `Util` / `Service` / `Runtime` / `Engine` を使わ
 
 | 指標 | baseline | Wave 1 実測 | Wave 1 目標 | 長期目標 |
 |------|----------|-------------|-------------|----------|
-| Function | 83.79% | 86.74% | 85% | 90% 以上 |
-| Line | 83.36% | 85.35% | 85% | 90% 以上 |
-| Region | 82.74% | 84.72% | 84% | 90% 以上 |
+| Function | 83.79% | 86.78% | 85% | 90% 以上 |
+| Line | 83.36% | 85.37% | 85% | 90% 以上 |
+| Region | 82.74% | 84.74% | 84% | 90% 以上 |
 
 低 coverage の上位は `actor_cell.rs`, `actor_context.rs`, `actor_path/*`, `actor-adaptor-std` の executor factory / std system config だった。Wave 1 では coverage 順ではなく、Pekko contract と公開境界へ直結する箇所を優先する。
 
@@ -86,6 +86,8 @@ Wave 1 実測は `scripts/coverage.sh --format json --output target/coverage/act
 
 Wave 1 は Contract 最大 5 件、Integration 最大 2 件に限定する。E2E は既存候補の棚卸しまでとし、新規 E2E scenario は次 wave の受け入れ条件へ送る。
 
+Phase 10 では Wave 1 後に残っていた網羅性ゲートを閉じるため、Contract matrix を `docs/plan/actor-contract-coverage-matrix.md` に分離し、classic / typed / std adaptor の代表 E2E を追加した。
+
 | 種別 | 対象 | 理由 |
 |------|------|------|
 | Contract | actor path error display | public error の観測可能文字列と variant を固定し、0% file を価値のある境界で埋める。 |
@@ -100,9 +102,9 @@ Wave 1 は Contract 最大 5 件、Integration 最大 2 件に限定する。E2E
 
 | 候補 | 理由 |
 |------|------|
-| classic E2E user flow | system 起動 → named child spawn → tell / ask → watch → stop → terminated / dead letter 観測までを public API だけで通す。 |
-| typed E2E user flow | typed system 起動 → spawn → message adapter → ask / pipeToSelf → stop → signal 観測までを public API だけで通す。 |
-| std adaptor E2E boot flow | std actor system config から dispatcher / mailbox / scheduler / logging が実配線され、graceful terminate できることを確認する。 |
+| classic E2E user flow | Phase 10 で `modules/actor-core/tests/classic_user_flow_e2e.rs` として追加済み。 |
+| typed E2E user flow | Phase 10 で `modules/actor-core/tests/typed_user_flow_e2e.rs` として追加済み。 |
+| std adaptor E2E boot flow | Phase 10 で `modules/actor-adaptor-std/tests/std_adaptor_boot_e2e.rs` として追加済み。 |
 | typed `Behaviors.same` / `unhandled` / `stopped` | typed contract 層として価値が高いが、Wave 1 では std 接続と public error 境界を優先。 |
 | typed `with_timers` | 既存 scheduler tests との重複整理が必要。 |
 | ask / pipeToSelf | actor_context には coverage があるが、typed 側の public contract 対応表が薄い。 |

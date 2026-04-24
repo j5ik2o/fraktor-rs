@@ -122,7 +122,7 @@
   - Function coverage: 85% 以上
   - Line coverage: 85% 以上
   - Region coverage: 84% 以上
-  - 実測: Function 86.74% / Line 85.35% / Region 84.72%。Wave 1 目標を達成済み。
+  - 実測: Function 86.78% / Line 85.37% / Region 84.74%。Wave 1 目標を達成済み。
 - [x] 8.7 coverage 目標に届かない場合は、未達理由と次に埋める Pekko contract / Integration / E2E scenario を `docs/plan/actor-test-pyramid.md` の follow-up 表に残す。private helper の枝葉で数字だけを埋めない
 - [x] 8.8 テスト実行時間が悪化した場合、Integration / E2E 層の重複を削る。必要なら expensive test は個別 target に分ける
 
@@ -131,7 +131,7 @@
 - [x] 9.1 `./scripts/ci-check.sh ai all` を実行し、exit 0 を確認する
 - [x] 9.2 `scripts/coverage.sh` の出力パスと actor coverage totals を PR 本文に記録する
   - 出力: `target/coverage/actor-test-pyramid/coverage.json`
-  - totals: Function 86.74% / Line 85.35% / Region 84.72%
+  - totals: Function 86.78% / Line 85.37% / Region 84.74%
 - [x] 9.3 Wave 1 coverage 目標の達成 / 未達理由 / follow-up を PR 本文に記録する
   - 目標達成。follow-up は `docs/plan/actor-test-pyramid.md` に記録済み。
 - [x] 9.4 追加したテストが以下を満たすことを確認する:
@@ -143,31 +143,31 @@
 
 ## Phase 10: テストピラミッド網羅性ゲート
 
-以下は Wave 1 では未完了。これらが完了するまでは、Contract / Integration / E2E の網羅性が担保されたとは扱わない。
+以下は Wave 1 では未完了だった網羅性ゲート。Phase 10 で Contract / Integration / E2E の代表シナリオと matrix を追加し、完了条件を満たした。
 
-- [ ] 10.1 Contract coverage matrix を作り、Pekko 代表 Spec ごとに `covered` / `deferred` / `not covered` を記録する:
+- [x] 10.1 Contract coverage matrix を作り、Pekko 代表 Spec ごとに `covered` / `deferred` / `not covered` を記録する:
   - classic: lifecycle, mailbox, death watch, receive timeout, scheduler / timer, FSM
   - typed: behavior, actor context, watch, supervision, timer, ask / pipeToSelf, event stream
   - typed testkit: actor testkit, behavior testkit, test probe
-- [ ] 10.2 Contract 層で、各 `covered` 項目が Rust public API または public state machine から検証されていることを確認する。内部 helper の枝葉だけで coverage を上げた項目は `covered` にしない
-- [ ] 10.3 Integration 層で、classic actor system / typed actor system / std adaptor の代表的な module 接続がそれぞれ少なくとも 1 件ずつ検証されていることを確認する
-- [ ] 10.4 E2E 層で classic user flow を実装する:
+- [x] 10.2 Contract 層で、各 `covered` 項目が Rust public API または public state machine から検証されていることを確認する。内部 helper の枝葉だけで coverage を上げた項目は `covered` にしない
+- [x] 10.3 Integration 層で、classic actor system / typed actor system / std adaptor の代表的な module 接続がそれぞれ少なくとも 1 件ずつ検証されていることを確認する
+- [x] 10.4 E2E 層で classic user flow を実装する:
   - system 起動
   - named child spawn
   - tell / ask
   - watch
   - stop
   - terminated / dead letter 観測
-- [ ] 10.5 E2E 層で typed user flow を実装する:
+- [x] 10.5 E2E 層で typed user flow を実装する:
   - typed system 起動
   - spawn
   - message adapter
   - ask / pipeToSelf
   - stop
   - signal 観測
-- [ ] 10.6 E2E 層で std adaptor boot flow を実装する:
+- [x] 10.6 E2E 層で std adaptor boot flow を実装する:
   - std actor system config
   - dispatcher / mailbox / scheduler / logging の実配線
   - graceful terminate
-- [ ] 10.7 E2E / Integration が実時間 sleep に依存していないことを確認し、必要な場合は deterministic probe / manual tick / start_paused へ置き換える
-- [ ] 10.8 Phase 10 が完了するまで、PR 本文や docs で「テストピラミッドの網羅性達成」と表現しない。表現は「Wave 1 coverage 目標達成」と「次 wave の網羅性ゲート定義」に留める
+- [x] 10.7 E2E / Integration が実時間 sleep に依存していないことを確認し、必要な場合は deterministic probe / manual tick / start_paused へ置き換える
+- [x] 10.8 Phase 10 が完了するまで、PR 本文や docs で「テストピラミッドの網羅性達成」と表現しない。表現は「Wave 1 coverage 目標達成」と「次 wave の網羅性ゲート定義」に留める
