@@ -703,6 +703,38 @@ fn start_single_timer_fires_and_unwraps_payload() {
 }
 
 #[test]
+fn named_timer_generation_skips_zero_after_wrap() {
+  let (_system, mut ctx) = build_context();
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 0);
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, data| {
+    if message.downcast_ref::<TimerPayload>().is_some() {
+      return Ok(FsmTransition::stay().using(*data + 1));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+  fsm.set_named_timer_generation_for_test(u64::MAX);
+  fsm
+    .start_single_timer(&ctx, "tick", AnyMessage::new(TimerPayload("wrapped")), Duration::from_millis(10))
+    .expect("start timer");
+
+  let stale_zero = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 0, AnyMessage::new(TimerPayload("stale"))));
+  let stale_zero_view = stale_zero.as_view();
+  fsm.handle(&mut ctx, &stale_zero_view).expect("stale zero");
+
+  assert_eq!(fsm.state_data(), Some(&0));
+  assert!(fsm.is_timer_active("tick"));
+
+  let current = AnyMessage::new(FsmTimerFired::new(String::from("tick"), 1, AnyMessage::new(TimerPayload("current"))));
+  let current_view = current.as_view();
+  fsm.handle(&mut ctx, &current_view).expect("current timer");
+
+  assert_eq!(fsm.state_data(), Some(&1));
+  assert!(!fsm.is_timer_active("tick"));
+}
+
+#[test]
 fn start_timer_at_fixed_rate_fires_repeatedly() {
   let (_system, mut ctx) = build_context();
   let mut fsm = Fsm::<ProbeState, usize>::new();

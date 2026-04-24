@@ -18,6 +18,9 @@ use crate::core::kernel::{
   event::logging::LogLevel,
 };
 
+#[cfg(test)]
+mod tests;
+
 type StateHandler<State, Data> = dyn for<'a, 'b> FnMut(
     &mut ActorContext<'a>,
     &AnyMessageView<'b>,
@@ -514,6 +517,9 @@ where
   // CQS exception: bump and read are inseparable in a single call, same pattern as Vec::pop
   const fn next_named_timer_generation(&mut self) -> u64 {
     self.named_timer_generation = self.named_timer_generation.wrapping_add(1);
+    if self.named_timer_generation == 0 {
+      self.named_timer_generation = 1;
+    }
     self.named_timer_generation
   }
 
