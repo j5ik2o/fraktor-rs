@@ -14,7 +14,8 @@
 
 - leaf 型・純粋関数の unit test は既存の `foo.rs` + `foo/tests.rs` 配置を維持する。
 - Pekko の contract を Rust の公開 API / state machine に翻訳した contract test 層を追加する。
-- actor system を実際に動かす integration / scenario test 層を、少数の高価値ケースに絞って追加する。
+- actor system を実際に動かす integration test 層と、ユーザー操作に近い E2E scenario 層を分け、少数の高価値ケースに絞って追加する。
+- gap-analysis や過去差分の再発防止は層ではなく横断タグとして扱い、Unit / Contract / Integration / E2E のいずれかへ配置する。
 - coverage report を「どこが低いか」だけでなく「どの contract 層が薄いか」を見つける入口として使う。
 - Wave 1 の coverage 目標を、現行 baseline (Function 83.79% / Line 83.36% / Region 82.74%) から Function 85% / Line 85% / Region 84% へ引き上げる。
 - test-support / fixture / helper の配置と命名を決め、今後の actor 実装漏れを見つけやすくする。
@@ -29,11 +30,13 @@
 
 ## Approach
 
-テストピラミッドを 4 層に分ける。
+テストピラミッドを実行粒度で 4 層に分ける。
 
 1. **Unit 層**: 既存の型単位テストを維持し、境界値・不変条件・Pekko 由来の純粋契約を追加する。
 2. **Contract 層**: Pekko `actor` / `actor-typed` の公開契約を、Rust の API から直接検証する。例: dispatcher id、mailbox overflow、supervision directive、typed `Behavior` 遷移、receive timeout marker、FSM timer。
-3. **Integration 層**: `ActorSystem` / `TypedActorSystem` / std adaptor を起動し、spawn → send → watch → stop → terminate のようなユーザー目線の振る舞いを検証する。
-4. **Conformance / Regression 層**: gap-analysis や過去 PR で塞いだ Pekko 差分を、ID 付きテストとして残す。新しい Pekko 参照調査で見つかった契約はまずこの層に pin する。
+3. **Integration 層**: `ActorSystem` / `TypedActorSystem` / std adaptor を起動し、複数 module の接続を検証する。
+4. **E2E 層**: public API だけを使い、spawn → send / ask → watch → stop → terminate → observable event のようなユーザー操作に近い scenario を検証する。
+
+Conformance / Regression は独立したピラミッド層ではなく、gap-analysis や過去 PR で塞いだ Pekko 差分を追跡する横断タグとして扱う。ID 付きテストは Unit / Contract / Integration / E2E のいずれかへ配置し、新しい Pekko 参照調査で見つかった契約はまず対応する層へ pin する。
 
 実装は最初にテスト目録と fixture 方針を作り、次に coverage が低い領域を起点に Contract / Integration 層を追加する。各テストは `Pekko reference`、`fraktor module`、`contract id` のいずれかをコメントまたはテスト名で辿れるようにする。

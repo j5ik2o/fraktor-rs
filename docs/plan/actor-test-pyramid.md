@@ -2,7 +2,7 @@
 
 ## 目的
 
-`modules/actor-core` / `modules/actor-adaptor-std` のテストを、Pekko 互換 contract を中心に 4 層へ整理する。coverage は最終確認の指標として使うが、private helper の枝葉を埋めるためではなく、Pekko 由来の観測可能 contract が薄い箇所を見つける入口として扱う。
+`modules/actor-core` / `modules/actor-adaptor-std` のテストを、Pekko 互換 contract を中心に Unit / Contract / Integration / E2E の 4 層へ整理する。coverage は最終確認の指標として使うが、private helper の枝葉を埋めるためではなく、Pekko 由来の観測可能 contract が薄い箇所を見つける入口として扱う。
 
 ## 参照
 
@@ -24,7 +24,9 @@
 | Unit | `modules/actor-core/src/**/tests.rs` / `foo/tests.rs` | 型単位、純粋変換、状態機械、不変条件。system 起動を不要にできるものをここへ置く。 |
 | Contract | `modules/actor-core/src/**/tests.rs` / `modules/actor-core/tests/*_contract.rs` / `modules/actor-adaptor-std/tests/*_contract.rs` | Pekko の public contract または fraktor-rs の公開 API 境界を Rust API から直接検証する。 |
 | Integration | `modules/actor-core/tests/*.rs` / `modules/actor-adaptor-std/tests/*.rs` | actor system、dispatcher、mailbox、event stream、std adaptor の接続漏れを検出する。 |
-| Conformance / Regression | 既存 regression test または `tests/pekko_*.rs` | gap-analysis ID や過去 change の再発防止。テスト名またはコメントから ID を辿れるようにする。 |
+| E2E | `modules/actor-core/tests/*_e2e.rs` / user-flow scenario tests | public API だけを使い、spawn → send / ask → watch → stop → terminate → observable event のようなユーザー操作に近い流れを検証する。 |
+
+Conformance / Regression はピラミッドの実行層ではなく横断タグとする。gap-analysis ID や過去 change の再発防止テストは、Unit / Contract / Integration / E2E のいずれかに置き、テスト名またはコメントから ID を辿れるようにする。
 
 ## 既存目録
 
@@ -33,6 +35,7 @@
 | Unit 並置テスト | `modules/actor-core/src/core/kernel` / `modules/actor-core/src/core/typed` / `modules/actor-adaptor-std/src` 配下で `tests.rs` が 53 件 |
 | actor-core integration | `actor_path_e2e`, `byte_string`, `death_watch`, `event_stream`, `invoke_guard`, `kernel_public_surface`, `logging_filter_public_surface`, `ping_pong`, `supervisor`, `system_events`, `system_lifecycle`, `typed_scheduler` |
 | actor-adaptor-std integration | `circuit_breakers_registry`, `dispatcher_public_surface`, `sp_h1_5_panic_guard`, `sp_h1_5_system_escalation` |
+| E2E 候補 | `actor_path_e2e`, `ping_pong`, `supervisor`, `system_lifecycle`, `system_events`, `sp_h1_5_system_escalation`。ただし classic / typed の代表 user flow としてはまだ薄い。 |
 | ignored test | `actor_cell/tests.rs` の 2 件。どちらも Phase A3 の terminate / finish_terminate 依存であり、Wave 1 では pending のまま残す。 |
 
 ## Fixture / Support 配置
@@ -81,7 +84,7 @@ Wave 1 実測は `scripts/coverage.sh --format json --output target/coverage/act
 
 ## Wave 1 Scope
 
-Wave 1 は Contract 最大 5 件、Integration 最大 2 件に限定する。
+Wave 1 は Contract 最大 5 件、Integration 最大 2 件に限定する。E2E は既存候補の棚卸しまでとし、新規 E2E scenario は次 wave の受け入れ条件へ送る。
 
 | 種別 | 対象 | 理由 |
 |------|------|------|
@@ -91,11 +94,15 @@ Wave 1 は Contract 最大 5 件、Integration 最大 2 件に限定する。
 | Contract | std public dispatcher factory compile surface | `PinnedExecutor` / `PinnedExecutorFactory` を外部 crate から見える公開面として固定する。 |
 | Integration | std dispatcher factories create executors and accept tasks | std adaptor から core `ExecutorFactory` へ接続できることを実行時に確認する。 |
 | Integration | `std_actor_system_config` installs mailbox clock | std adaptor の production config が mailbox deadline clock を core config へ配線することを確認する。 |
+| E2E | existing E2E inventory only | Wave 1 は Unit / Contract 寄りに coverage を上げたため、新規 E2E は入れない。既存 E2E 相当テストと不足 user flow を明示し、次 wave へ送る。 |
 
 ## Follow-up
 
 | 候補 | 理由 |
 |------|------|
+| classic E2E user flow | system 起動 → named child spawn → tell / ask → watch → stop → terminated / dead letter 観測までを public API だけで通す。 |
+| typed E2E user flow | typed system 起動 → spawn → message adapter → ask / pipeToSelf → stop → signal 観測までを public API だけで通す。 |
+| std adaptor E2E boot flow | std actor system config から dispatcher / mailbox / scheduler / logging が実配線され、graceful terminate できることを確認する。 |
 | typed `Behaviors.same` / `unhandled` / `stopped` | typed contract 層として価値が高いが、Wave 1 では std 接続と public error 境界を優先。 |
 | typed `with_timers` | 既存 scheduler tests との重複整理が必要。 |
 | ask / pipeToSelf | actor_context には coverage があるが、typed 側の public contract 対応表が薄い。 |

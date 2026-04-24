@@ -18,7 +18,8 @@
   - Unit: `modules/actor-core/src/**/tests.rs` / `foo/tests.rs`
   - Contract: public API / Pekko contract を直接検証する crate 内外テスト
   - Integration: `modules/actor-core/tests/*.rs` / `modules/actor-adaptor-std/tests/*.rs`
-  - Conformance / Regression: gap-analysis ID または過去 change に紐づくテスト
+  - E2E: public API だけを使う user-flow scenario
+  - Conformance / Regression: 独立層ではなく、gap-analysis ID または過去 change に紐づく横断タグ
 - [x] 1.5 `#[ignore]` 付き actor-core テストを棚卸しし、以下に分類する:
   - まだ未実装仕様なので pending のまま残す
   - 実装済みだが ignore が残っているため有効化する
@@ -32,6 +33,7 @@
   - 4 層の分類ルール
   - Pekko 代表 Spec と fraktor-rs テスト配置の対応表
   - Wave 1 で扱う contract と follow-up に分ける contract
+  - Integration / E2E の分類差と、Wave 1 で新規 E2E を増やさない理由
   - coverage baseline / Wave 1 目標 / 長期目標
   - fixture / support module の配置ルール
 - [x] 2.3 必要な helper は `tests/support/mod.rs` から明示的に module wiring する。候補:
@@ -67,8 +69,9 @@
   - std adaptor: tokio executor → dispatcher 起動 → logging subscriber
 - [x] 4.3 実時間 sleep を避け、manual tick / start_paused / deterministic probe で検証する。避けられない場合は理由をコメントに残す
 - [x] 4.4 Integration 層は接続漏れを検出する範囲に絞り、Unit / Contract で済むケースを重複して増やさない
+- [x] 4.5 E2E は Integration と分けて扱う。Wave 1 では新規 E2E を追加せず、既存 E2E 相当テストと不足 user flow を `docs/plan/actor-test-pyramid.md` の follow-up 表に残す
 
-## Phase 5: Conformance / Regression 層の整備
+## Phase 5: Conformance / Regression 横断タグの整備
 
 - [x] 5.1 gap-analysis done 項目のうち、テスト名またはコメントから ID を辿れないものを洗い出す
 - [x] 5.2 本 change で紐づける regression は Wave 1 に選んだ contract に限定する
