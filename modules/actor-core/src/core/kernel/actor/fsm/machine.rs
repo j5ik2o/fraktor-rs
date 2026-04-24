@@ -386,14 +386,13 @@ where
     self.state = Some(next_state.clone());
     self.data = Some(next_data);
 
-    Self::dispatch_replies(ctx, replies);
-
     if explicit_transition {
       for observer in &mut self.transition_observers {
         observer(current_state, &next_state);
       }
     }
 
+    Self::dispatch_replies(ctx, replies);
     self.apply_for_max_timeout(ctx, &next_state, explicit_transition, for_max_timeout)?;
 
     Ok(())

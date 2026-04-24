@@ -591,7 +591,7 @@ fn replying_basic_delivers_to_sender() {
 }
 
 #[test]
-fn replying_dispatches_before_transition_observer() {
+fn replying_dispatches_after_transition_observer() {
   let (system, mut ctx) = build_context();
   let (inbox, sender_ref) = capturing_sender(system.allocate_pid());
   let inbox_for_observer = inbox.clone();
@@ -617,7 +617,7 @@ fn replying_dispatches_before_transition_observer() {
   fsm.handle(&mut ctx, &advance_view).expect("advance");
 
   assert_eq!(inbox.lock().len(), 1);
-  assert_eq!(observed_reply_counts.lock().as_slice(), &[1]);
+  assert_eq!(observed_reply_counts.lock().as_slice(), &[0]);
 }
 
 #[test]
