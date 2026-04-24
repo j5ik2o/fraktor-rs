@@ -140,3 +140,34 @@
   - 既存 helper と重複する大きな fixture を作っていない
   - Pekko reference / gap ID / public API contract のいずれかへ辿れる
 - [x] 9.5 `openspec validate actor-test-pyramid --strict` またはローカル互換 CLI の status 確認で artifact 整合を確認する
+
+## Phase 10: テストピラミッド網羅性ゲート
+
+以下は Wave 1 では未完了。これらが完了するまでは、Contract / Integration / E2E の網羅性が担保されたとは扱わない。
+
+- [ ] 10.1 Contract coverage matrix を作り、Pekko 代表 Spec ごとに `covered` / `deferred` / `not covered` を記録する:
+  - classic: lifecycle, mailbox, death watch, receive timeout, scheduler / timer, FSM
+  - typed: behavior, actor context, watch, supervision, timer, ask / pipeToSelf, event stream
+  - typed testkit: actor testkit, behavior testkit, test probe
+- [ ] 10.2 Contract 層で、各 `covered` 項目が Rust public API または public state machine から検証されていることを確認する。内部 helper の枝葉だけで coverage を上げた項目は `covered` にしない
+- [ ] 10.3 Integration 層で、classic actor system / typed actor system / std adaptor の代表的な module 接続がそれぞれ少なくとも 1 件ずつ検証されていることを確認する
+- [ ] 10.4 E2E 層で classic user flow を実装する:
+  - system 起動
+  - named child spawn
+  - tell / ask
+  - watch
+  - stop
+  - terminated / dead letter 観測
+- [ ] 10.5 E2E 層で typed user flow を実装する:
+  - typed system 起動
+  - spawn
+  - message adapter
+  - ask / pipeToSelf
+  - stop
+  - signal 観測
+- [ ] 10.6 E2E 層で std adaptor boot flow を実装する:
+  - std actor system config
+  - dispatcher / mailbox / scheduler / logging の実配線
+  - graceful terminate
+- [ ] 10.7 E2E / Integration が実時間 sleep に依存していないことを確認し、必要な場合は deterministic probe / manual tick / start_paused へ置き換える
+- [ ] 10.8 Phase 10 が完了するまで、PR 本文や docs で「テストピラミッドの網羅性達成」と表現しない。表現は「Wave 1 coverage 目標達成」と「次 wave の網羅性ゲート定義」に留める
