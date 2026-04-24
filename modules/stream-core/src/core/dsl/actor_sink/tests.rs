@@ -9,7 +9,10 @@ use crate::core::{
     fusing::StreamBufferConfig,
     materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
   },
-  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph, StreamDone},
+  materialization::{
+    Completion, DriveOutcome, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamDone,
+    StreamNotUsed,
+  },
 };
 
 struct TestMaterializer;
@@ -38,7 +41,9 @@ impl Materializer for TestMaterializer {
 
 fn drive_until_terminal<Mat>(materialized: &Materialized<Mat>) {
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
+    match materialized.handle().drive() {
+      | DriveOutcome::Progressed | DriveOutcome::Idle => {},
+    }
     if materialized.handle().state().is_terminal() {
       break;
     }
@@ -79,6 +84,14 @@ impl SourceLogic for CancelTrackingSourceLogic {
 enum BackpressureMessage {
   Init { ack: u8 },
   Element { ack: u8, value: u32 },
+  Complete,
+  Failure,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum AnyAckBackpressureMessage {
+  Init,
+  Element { value: u32 },
   Complete,
   Failure,
 }
@@ -158,7 +171,7 @@ fn actor_sink_actor_ref_with_backpressure_should_complete_stream() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8, 1_u8, 1_u8])));
 
-  let graph = Source::from_array([1_u32, 2_u32]).into_mat(
+  let graph: RunnableGraph<StreamCompletion<StreamDone>> = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_backpressure(
       {
         let messages = messages.clone();
@@ -196,7 +209,7 @@ fn actor_sink_actor_ref_with_backpressure_should_pause_without_ack() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8])));
 
-  let graph = Source::from_array([1_u32, 2_u32]).into_mat(
+  let graph: RunnableGraph<StreamCompletion<StreamDone>> = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_backpressure(
       {
         let messages = messages.clone();
@@ -277,5 +290,98 @@ fn actor_sink_actor_ref_with_backpressure_should_resume_after_delayed_ack() {
   ]);
 }
 
-// NOTE: actor_ref_with_backpressure_no_ack テストは、API 実装時にテストと同時に追加する。
-// 参照: Issue #1329
+#[test]
+fn actor_sink_actor_ref_with_backpressure_any_ack_should_accept_different_ack_values() {
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::<AnyAckBackpressureMessage>::new()));
+  let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([7_u8, 8_u8, 9_u8])));
+
+  // Given: ack 値の一致判定を持たない backpressure sink
+  let graph: RunnableGraph<StreamNotUsed> = Source::from_array([1_u32, 2_u32]).into_mat(
+    ActorSink::actor_ref_with_backpressure_any_ack(
+      {
+        let messages = messages.clone();
+        move |message| {
+          messages.lock().push(message);
+        }
+      },
+      |value| AnyAckBackpressureMessage::Element { value },
+      || AnyAckBackpressureMessage::Init,
+      {
+        let acks = acks.clone();
+        move || acks.lock().pop_front()
+      },
+      AnyAckBackpressureMessage::Complete,
+      |_error| AnyAckBackpressureMessage::Failure,
+    ),
+    KeepRight,
+  );
+  let mut materializer = TestMaterializer;
+
+  // When: init と各要素に異なる ack 値を返す
+  let materialized = graph.run(&mut materializer).expect("run");
+  drive_until_terminal(&materialized);
+
+  // Then: Some(_) を ack として扱い、全要素を流して完了する
+  assert!(materialized.handle().state().is_terminal());
+  assert_eq!(*materialized.materialized(), StreamNotUsed::new());
+  assert_eq!(messages.lock().as_slice(), &[
+    AnyAckBackpressureMessage::Init,
+    AnyAckBackpressureMessage::Element { value: 1_u32 },
+    AnyAckBackpressureMessage::Element { value: 2_u32 },
+    AnyAckBackpressureMessage::Complete,
+  ]);
+}
+
+#[test]
+fn actor_sink_actor_ref_with_backpressure_any_ack_should_pause_until_ack_is_available() {
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::<AnyAckBackpressureMessage>::new()));
+  let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([7_u8])));
+
+  // Given: init ack だけが先に到達している any-ack backpressure sink
+  let graph: RunnableGraph<StreamNotUsed> = Source::from_array([1_u32, 2_u32]).into_mat(
+    ActorSink::actor_ref_with_backpressure_any_ack(
+      {
+        let messages = messages.clone();
+        move |message| {
+          messages.lock().push(message);
+        }
+      },
+      |value| AnyAckBackpressureMessage::Element { value },
+      || AnyAckBackpressureMessage::Init,
+      {
+        let acks = acks.clone();
+        move || acks.lock().pop_front()
+      },
+      AnyAckBackpressureMessage::Complete,
+      |_error| AnyAckBackpressureMessage::Failure,
+    ),
+    KeepRight,
+  );
+  let mut materializer = TestMaterializer;
+  let materialized = graph.run(&mut materializer).expect("run");
+
+  // When: 1 要素目送信後の ack がまだない状態まで進める
+  drive_until_terminal(&materialized);
+
+  // Then: stream は pending のまま追加 demand を出さない
+  assert!(!materialized.handle().state().is_terminal());
+  assert_eq!(*materialized.materialized(), StreamNotUsed::new());
+  assert_eq!(messages.lock().as_slice(), &[AnyAckBackpressureMessage::Init, AnyAckBackpressureMessage::Element {
+    value: 1_u32,
+  },]);
+
+  // When: 値の異なる ack を後から供給する
+  acks.lock().push_back(8_u8);
+  acks.lock().push_back(9_u8);
+  drive_until_terminal(&materialized);
+
+  // Then: ack 値を比較せず再開して完了する
+  assert!(materialized.handle().state().is_terminal());
+  assert_eq!(*materialized.materialized(), StreamNotUsed::new());
+  assert_eq!(messages.lock().as_slice(), &[
+    AnyAckBackpressureMessage::Init,
+    AnyAckBackpressureMessage::Element { value: 1_u32 },
+    AnyAckBackpressureMessage::Element { value: 2_u32 },
+    AnyAckBackpressureMessage::Complete,
+  ]);
+}

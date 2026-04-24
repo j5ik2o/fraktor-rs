@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{boxed::Box, string::ToString, vec, vec::Vec};
 use core::{
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
@@ -13,10 +13,10 @@ use crate::core::kernel::{
     actor_path::{
       ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,
     },
-    actor_ref::ActorRef,
-    error::ActorError,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    error::{ActorError, SendError},
     messaging::{
-      AnyMessageView,
+      AnyMessage, AnyMessageView,
       system_message::{FailurePayload, SystemMessage},
     },
     props::Props,
@@ -112,6 +112,26 @@ struct StopCountingStopper {
 impl TickDriverStopper for StopCountingStopper {
   fn stop(self: Box<Self>) {
     self.stop_calls.fetch_add(1, Ordering::SeqCst);
+  }
+}
+
+struct RecordingSystemMessageSender {
+  messages: ArcShared<SpinSyncMutex<Vec<SystemMessage>>>,
+}
+
+impl RecordingSystemMessageSender {
+  fn new() -> (ArcShared<SpinSyncMutex<Vec<SystemMessage>>>, Self) {
+    let messages = ArcShared::new(SpinSyncMutex::new(Vec::<SystemMessage>::new()));
+    let sender = Self { messages: messages.clone() };
+    (messages, sender)
+  }
+}
+
+impl ActorRefSender for RecordingSystemMessageSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    let system_message = message.downcast_ref::<SystemMessage>().expect("system message payload");
+    self.messages.lock().push(system_message.clone());
+    Ok(SendOutcome::Delivered)
   }
 }
 
@@ -497,6 +517,40 @@ fn system_state_temp_actor_round_trip() {
   assert!(state.temp_actor(&name).is_some());
   state.unregister_temp_actor(&name);
   assert!(state.temp_actor(&name).is_none());
+}
+
+#[test]
+fn send_system_message_delivers_watch_to_registered_temp_actor_pid() {
+  // Given: /temp registry に登録された ActorRef
+  let state = build_shared_state();
+  let target_pid = state.allocate_pid();
+  let watcher_pid = state.allocate_pid();
+  let (messages, sender) = RecordingSystemMessageSender::new();
+  let target_ref = ActorRef::new_with_builtin_lock(target_pid, sender);
+  let _name = state.register_temp_actor(target_ref);
+
+  // When: temp actor pid 宛てに Watch system message を送る
+  state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch delivery");
+
+  // Then: missing actor fallback ではなく、temp actor の sender へ配送される
+  assert_eq!(*messages.lock(), vec![SystemMessage::Watch(watcher_pid)]);
+}
+
+#[test]
+fn send_system_message_delivers_unwatch_to_registered_temp_actor_pid() {
+  // Given: /temp registry に登録された ActorRef
+  let state = build_shared_state();
+  let target_pid = state.allocate_pid();
+  let watcher_pid = state.allocate_pid();
+  let (messages, sender) = RecordingSystemMessageSender::new();
+  let target_ref = ActorRef::new_with_builtin_lock(target_pid, sender);
+  let _name = state.register_temp_actor(target_ref);
+
+  // When: temp actor pid 宛てに Unwatch system message を送る
+  state.send_system_message(target_pid, SystemMessage::Unwatch(watcher_pid)).expect("unwatch delivery");
+
+  // Then: StageActor::unwatch からの system message も temp actor へ配送できる
+  assert_eq!(*messages.lock(), vec![SystemMessage::Unwatch(watcher_pid)]);
 }
 
 #[test]

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use core::marker::PhantomData;
 
 use super::stream_graph::StreamGraph;
@@ -19,7 +17,7 @@ mod tests;
 /// and non-linear topologies (via [`add_source`](Self::add_source) /
 /// [`add_flow`](Self::add_flow) / [`add_sink`](Self::add_sink) /
 /// [`connect`](Self::connect)).
-pub(crate) struct GraphDslBuilder<In, Out, Mat> {
+pub(in crate::core) struct GraphDslBuilder<In, Out, Mat> {
   graph: StreamGraph,
   mat:   Mat,
   /// Tracks `In`/`Out` at the type level without storing values.
@@ -32,7 +30,7 @@ pub(crate) struct GraphDslBuilder<In, Out, Mat> {
 impl<T> GraphDslBuilder<T, T, StreamNotUsed> {
   /// Creates an empty builder.
   #[must_use]
-  pub(crate) fn new() -> Self {
+  pub(in crate::core) fn new() -> Self {
     Self { graph: StreamGraph::new(), mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 }
@@ -46,20 +44,20 @@ impl<T> Default for GraphDslBuilder<T, T, StreamNotUsed> {
 impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// Creates a builder from a pre-built stream graph.
   #[must_use]
-  pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+  pub(in crate::core) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
     Self { graph, mat, _pd: PhantomData }
   }
 
   /// Creates a builder from an existing flow.
   #[must_use]
-  pub(crate) fn from_flow(flow: Flow<In, Out, Mat>) -> Self {
+  pub(in crate::core) fn from_flow(flow: Flow<In, Out, Mat>) -> Self {
     let (graph, mat) = flow.into_parts();
     Self::from_graph(graph, mat)
   }
 
   /// Maps the materialized value while keeping the graph unchanged.
   #[must_use]
-  pub(crate) fn map_materialized_value<Mat2, F>(self, func: F) -> GraphDslBuilder<In, Out, Mat2>
+  pub(in crate::core) fn map_materialized_value<Mat2, F>(self, func: F) -> GraphDslBuilder<In, Out, Mat2>
   where
     F: FnOnce(Mat) -> Mat2, {
     let (graph, mat) = self.into_parts();
@@ -68,19 +66,19 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
 
   /// Consumes the builder and returns the underlying graph and materialized value.
   #[must_use]
-  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
+  pub(in crate::core) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
 
   /// Finalizes the builder as a flow.
   #[must_use]
-  pub(crate) fn build(self) -> Flow<In, Out, Mat> {
+  pub(in crate::core) fn build(self) -> Flow<In, Out, Mat> {
     Flow::from_graph(self.graph, self.mat)
   }
 
   /// Appends a flow to this builder.
   #[must_use]
-  pub(crate) fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> GraphDslBuilder<In, T, Mat>
+  pub(in crate::core) fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> GraphDslBuilder<In, T, Mat>
   where
     T: Send + Sync + 'static, {
     self.via_mat(flow, KeepLeft)
@@ -88,7 +86,11 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
 
   /// Appends a flow with a custom materialized value rule.
   #[must_use]
-  pub(crate) fn via_mat<T, Mat2, C>(self, flow: Flow<Out, T, Mat2>, _combine: C) -> GraphDslBuilder<In, T, C::Out>
+  pub(in crate::core) fn via_mat<T, Mat2, C>(
+    self,
+    flow: Flow<Out, T, Mat2>,
+    _combine: C,
+  ) -> GraphDslBuilder<In, T, C::Out>
   where
     T: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
@@ -101,7 +103,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
 
   /// Connects the builder to a sink.
   #[must_use]
-  pub(crate) fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat>
+  pub(in crate::core) fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat>
   where
     In: Send + Sync + 'static,
     Out: Send + Sync + 'static, {
@@ -110,7 +112,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
 
   /// Connects the builder to a sink with a custom materialized value rule.
   #[must_use]
-  pub(crate) fn into_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Sink<In, C::Out>
+  pub(in crate::core) fn into_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Sink<In, C::Out>
   where
     In: Send + Sync + 'static,
     Out: Send + Sync + 'static,
@@ -126,7 +128,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidConnection`] if the source graph has no outlet.
-  pub(crate) fn add_source<T, Mat2>(&mut self, source: Source<T, Mat2>) -> Result<Outlet<T>, StreamError>
+  pub(in crate::core) fn add_source<T, Mat2>(&mut self, source: Source<T, Mat2>) -> Result<Outlet<T>, StreamError>
   where
     T: Send + Sync + 'static, {
     let (other_graph, _mat) = source.into_parts();
@@ -143,7 +145,10 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidConnection`] if the flow graph has no inlet or outlet.
-  pub(crate) fn add_flow<I, O, Mat2>(&mut self, flow: Flow<I, O, Mat2>) -> Result<(Inlet<I>, Outlet<O>), StreamError>
+  pub(in crate::core) fn add_flow<I, O, Mat2>(
+    &mut self,
+    flow: Flow<I, O, Mat2>,
+  ) -> Result<(Inlet<I>, Outlet<O>), StreamError>
   where
     I: Send + Sync + 'static,
     O: Send + Sync + 'static, {
@@ -162,7 +167,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidConnection`] if the sink graph has no inlet.
-  pub(crate) fn add_sink<T, Mat2>(&mut self, sink: Sink<T, Mat2>) -> Result<Inlet<T>, StreamError>
+  pub(in crate::core) fn add_sink<T, Mat2>(&mut self, sink: Sink<T, Mat2>) -> Result<Inlet<T>, StreamError>
   where
     T: Send + Sync + 'static, {
     let (other_graph, _mat) = sink.into_parts();
@@ -180,7 +185,10 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidConnection`] if the source graph has no outlet.
-  pub(crate) fn add_source_mat<T, Mat2>(&mut self, source: Source<T, Mat2>) -> Result<(Outlet<T>, Mat2), StreamError>
+  pub(in crate::core) fn add_source_mat<T, Mat2>(
+    &mut self,
+    source: Source<T, Mat2>,
+  ) -> Result<(Outlet<T>, Mat2), StreamError>
   where
     T: Send + Sync + 'static, {
     let (other_graph, mat) = source.into_parts();
@@ -198,7 +206,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidConnection`] if the flow graph has no inlet or outlet.
-  pub(crate) fn add_flow_mat<I, O, Mat2>(
+  pub(in crate::core) fn add_flow_mat<I, O, Mat2>(
     &mut self,
     flow: Flow<I, O, Mat2>,
   ) -> Result<(Inlet<I>, Outlet<O>, Mat2), StreamError>
@@ -221,7 +229,10 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidConnection`] if the sink graph has no inlet.
-  pub(crate) fn add_sink_mat<T, Mat2>(&mut self, sink: Sink<T, Mat2>) -> Result<(Inlet<T>, Mat2), StreamError>
+  pub(in crate::core) fn add_sink_mat<T, Mat2>(
+    &mut self,
+    sink: Sink<T, Mat2>,
+  ) -> Result<(Inlet<T>, Mat2), StreamError>
   where
     T: Send + Sync + 'static, {
     let (other_graph, mat) = sink.into_parts();
@@ -237,7 +248,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidConnection`] when a port is unknown.
-  pub(crate) fn connect<T>(&mut self, from: &Outlet<T>, to: &Inlet<T>) -> Result<(), StreamError> {
+  pub(in crate::core) fn connect<T>(&mut self, from: &Outlet<T>, to: &Inlet<T>) -> Result<(), StreamError> {
     self.graph.connect(from, to, MatCombine::Left)
   }
 
@@ -251,7 +262,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   ///
   /// Returns [`StreamError::InvalidConnection`] if the flow graph has
   /// missing ports or the connections fail.
-  pub(crate) fn connect_via<T, U, Mat2>(
+  pub(in crate::core) fn connect_via<T, U, Mat2>(
     &mut self,
     from: &Outlet<T>,
     flow: Flow<T, U, Mat2>,
@@ -275,7 +286,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   ///
   /// Returns [`StreamError::InvalidConnection`] if the flow graph has
   /// missing ports or the connection fails.
-  pub(crate) fn wire_via<T, U, Mat2>(
+  pub(in crate::core) fn wire_via<T, U, Mat2>(
     &mut self,
     from: &Outlet<T>,
     flow: Flow<T, U, Mat2>,
@@ -296,7 +307,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   ///
   /// Returns [`StreamError::InvalidConnection`] if the sink graph has
   /// no inlet or the connection fails.
-  pub(crate) fn wire_to<T, Mat2>(&mut self, from: &Outlet<T>, sink: Sink<T, Mat2>) -> Result<(), StreamError>
+  pub(in crate::core) fn wire_to<T, Mat2>(&mut self, from: &Outlet<T>, sink: Sink<T, Mat2>) -> Result<(), StreamError>
   where
     T: Send + Sync + 'static, {
     let inlet = self.add_sink(sink)?;
@@ -311,7 +322,11 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   ///
   /// Returns [`StreamError::InvalidConnection`] if the source graph has
   /// no outlet or the connection fails.
-  pub(crate) fn wire_from<T, Mat2>(&mut self, source: Source<T, Mat2>, to: &Inlet<T>) -> Result<(), StreamError>
+  pub(in crate::core) fn wire_from<T, Mat2>(
+    &mut self,
+    source: Source<T, Mat2>,
+    to: &Inlet<T>,
+  ) -> Result<(), StreamError>
   where
     T: Send + Sync + 'static, {
     let outlet = self.add_source(source)?;

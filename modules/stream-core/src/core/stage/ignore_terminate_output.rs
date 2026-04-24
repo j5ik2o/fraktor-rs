@@ -2,7 +2,7 @@
 mod tests;
 
 use super::{OutHandler, StageContext};
-use crate::core::{StreamError, r#impl::CancellationCause};
+use crate::core::{StreamError, stage::CancellationCause};
 
 /// Output-side handler that swallows downstream cancellation.
 ///

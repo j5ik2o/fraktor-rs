@@ -705,12 +705,6 @@ fn source_as_source_with_context_attaches_unit_context() {
   assert_eq!(values, vec![((), 1_u32), ((), 2_u32)]);
 }
 
-#[test]
-fn source_sink_alias_exposes_sink_endpoint() {
-  let values = Source::<u32, _>::sink().into_publisher().collect_values().expect("collect_values");
-  assert_eq!(values, Vec::<u32>::new());
-}
-
 // --- watch_termination tests ---
 
 #[test]

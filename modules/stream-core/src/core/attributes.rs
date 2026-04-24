@@ -18,6 +18,10 @@ mod name;
 mod nested_materialization_cancellation_policy;
 mod output_burst_limit;
 mod source_location;
+mod stream_ref_buffer_capacity;
+mod stream_ref_demand_redelivery_interval;
+mod stream_ref_final_termination_signal_deadline;
+mod stream_ref_subscription_timeout;
 mod stream_subscription_timeout;
 mod sync_processing_limit;
 
@@ -36,6 +40,10 @@ pub use name::Name;
 pub use nested_materialization_cancellation_policy::NestedMaterializationCancellationPolicy;
 pub use output_burst_limit::OutputBurstLimit;
 pub use source_location::SourceLocation;
+pub use stream_ref_buffer_capacity::StreamRefBufferCapacity;
+pub use stream_ref_demand_redelivery_interval::StreamRefDemandRedeliveryInterval;
+pub use stream_ref_final_termination_signal_deadline::StreamRefFinalTerminationSignalDeadline;
+pub use stream_ref_subscription_timeout::StreamRefSubscriptionTimeout;
 pub use stream_subscription_timeout::StreamSubscriptionTimeout;
 pub use sync_processing_limit::SyncProcessingLimit;
 
@@ -45,10 +53,18 @@ mod collection {
   use super::{
     AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DebugLogging, DispatcherAttribute, FuzzingMode,
     InputBuffer, LogLevel, LogLevels, MandatoryAttribute, MaxFixedBufferSize, Name,
-    NestedMaterializationCancellationPolicy, OutputBurstLimit, SourceLocation, StreamSubscriptionTimeout,
-    SyncProcessingLimit,
+    NestedMaterializationCancellationPolicy, OutputBurstLimit, SourceLocation, StreamRefBufferCapacity,
+    StreamRefDemandRedeliveryInterval, StreamRefFinalTerminationSignalDeadline, StreamRefSubscriptionTimeout,
+    StreamSubscriptionTimeout, SyncProcessingLimit,
   };
-  use crate::core::stream_subscription_timeout_termination_mode::StreamSubscriptionTimeoutTerminationMode;
+  use crate::core::{
+    StreamDslError, stream_subscription_timeout_termination_mode::StreamSubscriptionTimeoutTerminationMode,
+  };
+
+  const STREAM_REF_SUBSCRIPTION_TIMEOUT_NAME: &str = "stream-ref-subscription-timeout";
+  const STREAM_REF_BUFFER_CAPACITY_NAME: &str = "stream-ref-buffer-capacity";
+  const STREAM_REF_DEMAND_REDELIVERY_INTERVAL_NAME: &str = "stream-ref-demand-redelivery-interval";
+  const STREAM_REF_FINAL_TERMINATION_SIGNAL_DEADLINE_NAME: &str = "stream-ref-final-termination-signal-deadline";
 
   /// Immutable collection of stream attributes.
   ///
@@ -237,6 +253,54 @@ mod collection {
       Self {
         names: alloc::vec![String::from("stream-subscription-timeout")],
         attrs: alloc::vec![Box::new(StreamSubscriptionTimeout::new(timeout_ticks, termination_mode))],
+      }
+    }
+
+    /// Creates attributes containing a [`StreamRefSubscriptionTimeout`].
+    ///
+    /// Mirrors Pekko's `StreamRefAttributes.subscriptionTimeout`.
+    #[must_use]
+    pub fn stream_ref_subscription_timeout(timeout_ticks: u32) -> Self {
+      Self {
+        names: alloc::vec![String::from(STREAM_REF_SUBSCRIPTION_TIMEOUT_NAME)],
+        attrs: alloc::vec![Box::new(StreamRefSubscriptionTimeout::new(timeout_ticks))],
+      }
+    }
+
+    /// Creates attributes containing a [`StreamRefBufferCapacity`].
+    ///
+    /// Mirrors Pekko's `StreamRefAttributes.bufferCapacity`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StreamDslError::InvalidArgument`] when `capacity == 0`.
+    pub fn stream_ref_buffer_capacity(capacity: usize) -> Result<Self, StreamDslError> {
+      let capacity = StreamRefBufferCapacity::new(capacity)?;
+      Ok(Self {
+        names: alloc::vec![String::from(STREAM_REF_BUFFER_CAPACITY_NAME)],
+        attrs: alloc::vec![Box::new(capacity)],
+      })
+    }
+
+    /// Creates attributes containing a [`StreamRefDemandRedeliveryInterval`].
+    ///
+    /// Mirrors Pekko's `StreamRefAttributes.demandRedeliveryInterval`.
+    #[must_use]
+    pub fn stream_ref_demand_redelivery_interval(timeout_ticks: u32) -> Self {
+      Self {
+        names: alloc::vec![String::from(STREAM_REF_DEMAND_REDELIVERY_INTERVAL_NAME)],
+        attrs: alloc::vec![Box::new(StreamRefDemandRedeliveryInterval::new(timeout_ticks))],
+      }
+    }
+
+    /// Creates attributes containing a [`StreamRefFinalTerminationSignalDeadline`].
+    ///
+    /// Mirrors Pekko's `StreamRefAttributes.finalTerminationSignalDeadline`.
+    #[must_use]
+    pub fn stream_ref_final_termination_signal_deadline(timeout_ticks: u32) -> Self {
+      Self {
+        names: alloc::vec![String::from(STREAM_REF_FINAL_TERMINATION_SIGNAL_DEADLINE_NAME)],
+        attrs: alloc::vec![Box::new(StreamRefFinalTerminationSignalDeadline::new(timeout_ticks))],
       }
     }
 

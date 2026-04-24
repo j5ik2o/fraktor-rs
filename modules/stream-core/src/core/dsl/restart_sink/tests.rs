@@ -2,7 +2,9 @@ use super::RestartSink;
 use crate::core::{
   RestartConfig,
   dsl::{Sink, Source},
-  r#impl::{fusing::StreamBufferConfig, interpreter::GraphInterpreter, materialization::StreamState},
+  r#impl::{
+    fusing::StreamBufferConfig, interpreter::graph_interpreter::GraphInterpreter, materialization::StreamState,
+  },
   materialization::{Completion, KeepRight, StreamDone},
 };
 

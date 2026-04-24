@@ -497,6 +497,11 @@ impl SystemState {
     self.temp_actors.get(name)
   }
 
+  #[must_use]
+  pub(crate) fn temp_actor_by_pid(&self, pid: &Pid) -> Option<ActorRef> {
+    self.temp_actors.get_by_pid(pid)
+  }
+
   /// Returns the shared remote watch hook handle.
   #[must_use]
   pub(crate) fn remote_watch_hook_handle(&self) -> RemoteWatchHookDynShared {

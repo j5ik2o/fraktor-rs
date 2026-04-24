@@ -1,7 +1,7 @@
 use crate::core::{
   dsl::{Flow, Sink, Source},
   r#impl::{
-    fusing::StreamBufferConfig, graph_dsl_builder::GraphDslBuilder, interpreter::GraphInterpreter,
+    fusing::StreamBufferConfig, graph_dsl_builder::GraphDslBuilder, interpreter::graph_interpreter::GraphInterpreter,
     materialization::StreamState, port_ops::PortOps,
   },
   materialization::{Completion, DriveOutcome, StreamNotUsed},

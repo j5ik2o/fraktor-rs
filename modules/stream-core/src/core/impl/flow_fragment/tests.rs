@@ -1,7 +1,7 @@
 use crate::core::{
   dsl::{Flow, Sink, Source},
   r#impl::{
-    flow_fragment::FlowFragment, fusing::StreamBufferConfig, interpreter::GraphInterpreter,
+    flow_fragment::FlowFragment, fusing::StreamBufferConfig, interpreter::graph_interpreter::GraphInterpreter,
     materialization::StreamState,
   },
   materialization::{Completion, KeepRight},

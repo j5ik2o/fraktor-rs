@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use super::SubscriptionTimeoutConfig;
-use crate::core::{SupervisionStrategy, r#impl::fusing::StreamBufferConfig};
+use crate::core::{SupervisionStrategy, r#impl::fusing::StreamBufferConfig, stream_ref::StreamRefSettings};
 
 #[cfg(test)]
 mod tests;
@@ -15,6 +15,7 @@ pub struct ActorMaterializerConfig {
   debug_logging:         bool,
   output_burst_limit:    usize,
   max_fixed_buffer_size: usize,
+  stream_ref_settings:   StreamRefSettings,
 }
 
 impl ActorMaterializerConfig {
@@ -29,6 +30,7 @@ impl ActorMaterializerConfig {
       debug_logging:         false,
       output_burst_limit:    1000,
       max_fixed_buffer_size: 1_000_000_000,
+      stream_ref_settings:   StreamRefSettings::new(),
     }
   }
 
@@ -72,6 +74,12 @@ impl ActorMaterializerConfig {
   #[must_use]
   pub const fn max_fixed_buffer_size(&self) -> usize {
     self.max_fixed_buffer_size
+  }
+
+  /// Returns the configured stream reference settings.
+  #[must_use]
+  pub fn stream_ref_settings(&self) -> StreamRefSettings {
+    self.stream_ref_settings.clone()
   }
 
   /// Updates the drive interval.
@@ -120,6 +128,13 @@ impl ActorMaterializerConfig {
   #[must_use]
   pub const fn with_max_fixed_buffer_size(mut self, max_fixed_buffer_size: usize) -> Self {
     self.max_fixed_buffer_size = max_fixed_buffer_size;
+    self
+  }
+
+  /// Updates the stream reference settings.
+  #[must_use]
+  pub const fn with_stream_ref_settings(mut self, stream_ref_settings: StreamRefSettings) -> Self {
+    self.stream_ref_settings = stream_ref_settings;
     self
   }
 }

@@ -1,10 +1,13 @@
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   StreamError, UniqueKillSwitch,
-  stage::{AsyncCallback, GraphStageLogic, KillableGraphStageLogic, StageContext, TimerGraphStageLogic},
+  stage::{
+    AsyncCallback, GraphStageLogic, KillableGraphStageLogic, StageActor, StageActorReceive, StageContext,
+    TimerGraphStageLogic,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -68,6 +71,15 @@ impl StageContext<u32, u32> for TestCtx {
 
   fn timer_graph_stage_logic(&mut self) -> &mut TimerGraphStageLogic {
     &mut self.timers
+  }
+
+  fn get_stage_actor(&mut self, receive: Box<dyn StageActorReceive>) -> Result<StageActor, StreamError> {
+    drop(receive);
+    Err(StreamError::ActorSystemMissing)
+  }
+
+  fn stage_actor(&self) -> Result<StageActor, StreamError> {
+    Err(StreamError::StageActorRefNotInitialized)
   }
 }
 

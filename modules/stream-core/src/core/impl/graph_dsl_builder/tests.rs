@@ -1,7 +1,7 @@
 use crate::core::{
-  dsl::{Flow, Sink, Source},
+  dsl::{Flow, GraphDsl, GraphDslBuilder as PublicGraphDslBuilder, Sink, Source},
   r#impl::{
-    fusing::StreamBufferConfig, graph_dsl::GraphDsl, graph_dsl_builder::GraphDslBuilder, interpreter::GraphInterpreter,
+    fusing::StreamBufferConfig, graph_dsl_builder::GraphDslBuilder, interpreter::graph_interpreter::GraphInterpreter,
     materialization::StreamState,
   },
   materialization::{Completion, DriveOutcome, KeepBoth, KeepRight, StreamNotUsed},
@@ -133,7 +133,7 @@ fn connect_wires_outlet_to_inlet() {
 #[test]
 fn create_flow_builds_flow_via_builder_block() {
   // Given: a create_flow call that adds a map flow and wires it
-  let flow = GraphDsl::create_flow(|builder: &mut GraphDslBuilder<u32, u32, StreamNotUsed>| {
+  let flow = GraphDsl::create_flow(|builder: &mut PublicGraphDslBuilder<u32, u32, StreamNotUsed>| {
     let (map_in, map_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v: u32| v * 3)).unwrap();
     // The builder's main inlet connects to map_in, map_out connects to main outlet
     // (exact wiring depends on implementation; this tests the builder block pattern itself)
@@ -149,7 +149,7 @@ fn create_flow_builds_flow_via_builder_block() {
 #[test]
 fn create_flow_mat_preserves_materialized_value() {
   // Given: a create_flow_mat call with an initial Mat value
-  let flow = GraphDsl::create_flow_mat(99_u32, |_builder: &mut GraphDslBuilder<u32, u32, u32>| {
+  let flow = GraphDsl::create_flow_mat(99_u32, |_builder: &mut PublicGraphDslBuilder<u32, u32, u32>| {
     // No additional wiring needed for Mat-only test
   });
 
@@ -179,7 +179,7 @@ fn add_source_and_connect_to_sink_produces_data() {
 #[test]
 fn create_flow_empty_block_produces_valid_flow() {
   // Given: create_flow with an empty build block
-  let flow = GraphDsl::create_flow(|_builder: &mut GraphDslBuilder<u32, u32, StreamNotUsed>| {
+  let flow = GraphDsl::create_flow(|_builder: &mut PublicGraphDslBuilder<u32, u32, StreamNotUsed>| {
     // empty — no additional wiring
   });
 
@@ -194,7 +194,7 @@ fn create_flow_empty_block_produces_valid_flow() {
 #[test]
 fn create_source_builds_source_via_builder_block() {
   // Given: a create_source call that adds a source and wires it
-  let source = GraphDsl::create_source(|builder: &mut GraphDslBuilder<(), u32, StreamNotUsed>| {
+  let source = GraphDsl::create_source(|builder: &mut PublicGraphDslBuilder<(), u32, StreamNotUsed>| {
     let outlet = builder.add_source(Source::single(42_u32)).unwrap();
     let _ = outlet;
   });
@@ -208,7 +208,7 @@ fn create_source_builds_source_via_builder_block() {
 #[test]
 fn create_source_empty_block_produces_valid_source() {
   // Given: create_source with an empty build block
-  let source = GraphDsl::create_source(|_builder: &mut GraphDslBuilder<(), u32, StreamNotUsed>| {
+  let source = GraphDsl::create_source(|_builder: &mut PublicGraphDslBuilder<(), u32, StreamNotUsed>| {
     // empty — no additional wiring
   });
 
@@ -219,7 +219,7 @@ fn create_source_empty_block_produces_valid_source() {
 #[test]
 fn create_sink_builds_sink_via_builder_block() {
   // Given: a create_sink call that adds a sink and wires it
-  let sink = GraphDsl::create_sink(|builder: &mut GraphDslBuilder<u32, (), StreamNotUsed>| {
+  let sink = GraphDsl::create_sink(|builder: &mut PublicGraphDslBuilder<u32, (), StreamNotUsed>| {
     let inlet = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
     let _ = inlet;
   });
@@ -233,7 +233,7 @@ fn create_sink_builds_sink_via_builder_block() {
 #[test]
 fn create_sink_empty_block_produces_valid_sink() {
   // Given: create_sink with an empty build block
-  let sink = GraphDsl::create_sink(|_builder: &mut GraphDslBuilder<u32, (), StreamNotUsed>| {
+  let sink = GraphDsl::create_sink(|_builder: &mut PublicGraphDslBuilder<u32, (), StreamNotUsed>| {
     // empty — no additional wiring
   });
 

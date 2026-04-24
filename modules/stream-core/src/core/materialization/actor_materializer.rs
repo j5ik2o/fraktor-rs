@@ -188,14 +188,21 @@ impl Materializer for ActorMaterializer {
       | MaterializerLifecycleState::Stopped => return Err(StreamError::MaterializerStopped),
       | MaterializerLifecycleState::Running => {},
     }
+    let actor_system = self.system()?;
     let drive_actor = self.drive_actor.as_mut().ok_or(StreamError::MaterializerNotStarted)?;
     let (plan, materialized) = graph.into_parts();
     let island_plan = IslandSplitter::split(plan);
+    let stream_ref_settings = self.config.stream_ref_settings();
 
     if island_plan.islands().len() <= 1 {
       // Single island: existing path
       let single_plan = island_plan.into_single_plan();
-      let mut stream = Stream::new(single_plan, self.config.buffer_config());
+      let mut stream = Stream::new_with_materializer_context(
+        single_plan,
+        self.config.buffer_config(),
+        Some(&actor_system),
+        &stream_ref_settings,
+      );
       stream.start()?;
       let shared = StreamShared::new(stream);
       let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
@@ -220,7 +227,12 @@ impl Materializer for ActorMaterializer {
       let mut handles: Vec<StreamHandleImpl> = Vec::with_capacity(islands.len());
       for island in islands {
         let stream_plan = island.into_stream_plan();
-        let mut stream = Stream::new(stream_plan, self.config.buffer_config());
+        let mut stream = Stream::new_with_materializer_context(
+          stream_plan,
+          self.config.buffer_config(),
+          Some(&actor_system),
+          &stream_ref_settings,
+        );
         if let Err(error) = stream.start() {
           for handle in &handles {
             if let Err(_cleanup_error) = handle.cancel() {

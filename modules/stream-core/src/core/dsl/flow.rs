@@ -1397,35 +1397,38 @@ where
     self.take_while(predicate)
   }
 
-  /// Compatibility alias for completion-stage flow entry points.
+  /// Transforms incoming upstream elements before this flow.
   #[must_use]
-  pub const fn completion_stage_flow(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn contramap<In2, F>(self, func: F) -> Flow<In2, Out, Mat>
+  where
+    In2: Send + Sync + 'static,
+    F: FnMut(In2) -> In + Send + Sync + 'static, {
+    Flow::<In2, In2, StreamNotUsed>::new().map(func).via_mat(self, KeepRight)
   }
 
-  /// Compatibility alias for contramap entry points.
+  /// Transforms incoming and outgoing elements around this flow.
   #[must_use]
-  pub fn contramap<F>(self, _func: F) -> Flow<In, Out, Mat>
+  pub fn dimap<In2, T, FL, FR>(self, left: FL, right: FR) -> Flow<In2, T, Mat>
   where
-    F: FnMut(&In) -> In + Send + Sync + 'static, {
-    self
-  }
-
-  /// Maps outputs while accepting dimap-compatible signatures.
-  #[must_use]
-  pub fn dimap<T, FL, FR>(self, _left: FL, right: FR) -> Flow<In, T, Mat>
-  where
+    In2: Send + Sync + 'static,
     T: Send + Sync + 'static,
-    FL: Send + Sync + 'static,
+    FL: FnMut(In2) -> In + Send + Sync + 'static,
     FR: FnMut(Out) -> T + Send + Sync + 'static, {
-    self.map(right)
+    Flow::<In2, In2, StreamNotUsed>::new().map(left).via_mat(self, KeepRight).map(right)
   }
 
-  /// Registers a cancel callback placeholder.
+  /// Invokes a callback when downstream cancellation reaches this flow.
   #[must_use]
-  pub fn do_on_cancel<F>(self, _callback: F) -> Flow<In, Out, Mat>
+  pub fn do_on_cancel<F>(mut self, callback: F) -> Flow<In, Out, Mat>
   where
     F: FnMut() + Send + Sync + 'static, {
+    let definition = do_on_cancel_definition::<Out, F>(callback);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
     self
   }
 
@@ -1514,12 +1517,6 @@ where
     })
   }
 
-  /// Compatibility alias for future-flow entry points.
-  #[must_use]
-  pub const fn future_flow(self) -> Flow<In, Out, Mat> {
-    self
-  }
-
   /// Groups adjacent elements by key.
   ///
   /// # Errors
@@ -1573,17 +1570,6 @@ where
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Lazily creates a completion-stage flow.
-  ///
-  /// Alias of [`Flow::lazy_flow`].
-  #[must_use]
-  pub fn lazy_completion_stage_flow<F>(factory: F) -> Flow<In, Out, Mat>
-  where
-    F: FnOnce() -> Flow<In, Out, Mat> + Send + 'static,
-    Mat: Default + Send + 'static, {
-    Self::lazy_flow(factory)
-  }
-
   /// Lazily creates a flow.
   ///
   /// The factory is not called until the first element arrives.
@@ -1622,21 +1608,18 @@ where
     Flow::from_graph(graph, Mat::default())
   }
 
-  /// Lazily creates a future flow.
-  ///
-  /// Alias of [`Flow::lazy_flow`].
-  #[must_use]
-  pub fn lazy_future_flow<F>(factory: F) -> Flow<In, Out, Mat>
-  where
-    F: FnOnce() -> Flow<In, Out, Mat> + Send + 'static,
-    Mat: Default + Send + 'static, {
-    Self::lazy_flow(factory)
-  }
-
   /// Limits element count.
   #[must_use]
   pub fn limit(self, max: usize) -> Flow<In, Out, Mat> {
-    self.take(max)
+    let mut flow = self;
+    let definition = limit_weighted_definition::<Out, _>(max, |_| 1);
+    let inlet_id = definition.inlet;
+    let from = flow.graph.tail_outlet();
+    flow.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      flow.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Flow { graph: flow.graph, mat: flow.mat, _pd: PhantomData }
   }
 
   /// Limits weighted element count.
@@ -2207,13 +2190,29 @@ where
     self.merge(fan_in)
   }
 
-  /// Adds a concat-all-lazy compatibility stage.
+  /// Concatenates all secondary sources after the primary flow completes.
   ///
   /// # Errors
   ///
-  /// Returns [`StreamDslError`] when `fan_in` is zero.
-  pub fn concat_all_lazy(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.concat(fan_in)
+  /// Returns [`StreamDslError`] when the source collection is empty.
+  pub fn concat_all_lazy<Mat2, Sources>(self, sources: Sources) -> Result<Flow<In, Out, Mat>, StreamDslError>
+  where
+    Mat2: Send + Sync + 'static,
+    Sources: IntoIterator<Item = Source<Out, Mat2>>, {
+    let mut sources = sources.into_iter();
+    let Some(first) = sources.next() else {
+      return Err(StreamDslError::InvalidArgument {
+        name:   "sources",
+        value:  0,
+        reason: "must contain at least one source",
+      });
+    };
+
+    let mut flow = self.concat_lazy(first);
+    for source in sources {
+      flow = flow.concat_lazy(source);
+    }
+    Ok(flow)
   }
 
   /// Concatenates a secondary source after the primary flow completes.
@@ -2976,12 +2975,6 @@ where
     Flow::from_graph(graph, mat)
   }
 
-  /// Adds an actor-watch compatibility stage.
-  #[must_use]
-  pub const fn watch(self) -> Flow<In, Out, Mat> {
-    self
-  }
-
   /// Adds a monitor compatibility stage.
   #[must_use]
   pub fn monitor(self) -> Flow<In, (u64, Out), Mat> {
@@ -2999,6 +2992,25 @@ where
   }
 
   /// Watches stream termination and completes a `StreamCompletion<()>` handle.
+  ///
+  /// Elements are passed through unchanged. The materialized value is
+  /// combined with a fresh `StreamCompletion<()>` using the supplied
+  /// `MatCombineRule`.
+  #[must_use]
+  pub fn watch_termination(mut self) -> Flow<In, Out, Mat> {
+    let completion = StreamCompletion::<()>::new();
+    let definition = watch_termination_definition::<Out>(completion);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Watches stream termination and combines the completion handle into the
+  /// materialized value.
   ///
   /// Elements are passed through unchanged. The materialized value is
   /// combined with a fresh `StreamCompletion<()>` using the supplied
@@ -3678,7 +3690,7 @@ where
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
   let logic =
-    LimitWeightedLogic::<In, FW> { remaining: max_weight, weight_fn, shutdown_requested: false, _pd: PhantomData };
+    LimitWeightedLogic::<In, FW> { max_weight: max_weight as u64, remaining: max_weight, weight_fn, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::Custom,
     inlet:       inlet.id(),

@@ -270,12 +270,6 @@ fn sink_on_complete_invokes_callback_on_failure() {
 }
 
 #[test]
-fn sink_completion_stage_sink_alias_completes_with_done() {
-  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::completion_stage_sink());
-  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
-}
-
-#[test]
 fn sink_combine_routes_elements_to_all_combined_sinks() {
   let left_values = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let right_values = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
@@ -373,21 +367,19 @@ fn sink_foreach_async_accepts_positive_parallelism() {
 }
 
 #[test]
-fn sink_from_materializer_alias_completes_with_done() {
-  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::from_materializer());
-  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
-}
+fn sink_from_materializer_defers_factory_and_uses_created_sink() {
+  let factory_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let factory_calls_ref = factory_calls.clone();
+  let sink = Sink::<u32, StreamCompletion<Vec<u32>>>::from_materializer(move || {
+    *factory_calls_ref.lock() += 1;
+    Sink::collect()
+  });
 
-#[test]
-fn sink_from_subscriber_alias_completes_with_done() {
-  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::from_subscriber());
-  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
-}
+  assert_eq!(*factory_calls.lock(), 0_u32);
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), sink);
 
-#[test]
-fn sink_future_sink_alias_completes_with_done() {
-  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::future_sink());
-  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(*factory_calls.lock(), 1_u32);
+  assert_eq!(completion, Completion::Ready(Ok(vec![1_u32, 2, 3])));
 }
 
 #[test]
@@ -427,19 +419,6 @@ fn sink_lazy_sink_with_foreach_processes_elements() {
 }
 
 #[test]
-fn sink_lazy_completion_stage_sink_delegates_to_lazy_sink() {
-  let completion =
-    run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::lazy_completion_stage_sink(Sink::ignore));
-  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
-}
-
-#[test]
-fn sink_lazy_future_sink_delegates_to_lazy_sink() {
-  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::lazy_future_sink(Sink::ignore));
-  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
-}
-
-#[test]
 fn sink_lazy_sink_with_empty_source_completes() {
   let completion = run_source_with_sink(Source::<u32, _>::empty(), Sink::lazy_sink(Sink::ignore));
   assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
@@ -452,16 +431,17 @@ fn sink_pre_materialize_returns_pending_completion_handle() {
 }
 
 #[test]
-fn sink_source_alias_returns_empty_source() {
-  let values = Sink::<u32, StreamCompletion<StreamDone>>::source().collect_values().expect("collect_values");
-  assert_eq!(values, Vec::<u32>::new());
-}
+fn sink_source_materializes_live_source_with_upstream_elements() {
+  let sink: Sink<u32, Source<u32, StreamNotUsed>> = Sink::source();
+  let graph = Source::from_array([1_u32, 2, 3]).into_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
 
-#[test]
-fn sink_as_publisher_alias_returns_empty_source() {
-  let values =
-    Sink::<u32, StreamCompletion<StreamDone>>::ignore().into_publisher().collect_values().expect("collect_values");
-  assert_eq!(values, Vec::<u32>::new());
+  assert!(drive_steps(&materialized, 64));
+  let source = materialized.into_materialized();
+  let values = source.collect_values().expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
 #[test]
