@@ -14,7 +14,7 @@ use core::{marker::Unsize, ops::CoerceUnsized};
 use portable_atomic_util::Arc;
 
 use super::weak_shared::WeakShared;
-use crate::core::sync::shared::{Shared, SharedDyn};
+use crate::core::sync::shared::Shared;
 
 #[cfg(test)]
 mod tests;
@@ -130,34 +130,6 @@ impl<T: ?Sized> Shared<T> for ArcShared<T> {
   where
     T: Sized, {
     Arc::try_unwrap(self.0).map_err(ArcShared)
-  }
-}
-
-#[cfg(not(feature = "unsize"))]
-impl<T: ?Sized> SharedDyn<T> for ArcShared<T> {
-  type Dyn<U: ?Sized + 'static> = ArcShared<U>;
-
-  fn into_dyn<U: ?Sized + 'static, F>(self, cast: F) -> Self::Dyn<U>
-  where
-    F: FnOnce(&T) -> &U, {
-    ArcShared::into_dyn(self, cast)
-  }
-}
-
-#[cfg(feature = "unsize")]
-impl<T: ?Sized> SharedDyn<T> for ArcShared<T> {
-  type Dyn<U: ?Sized + 'static> = ArcShared<U>;
-
-  fn into_dyn<U: ?Sized + 'static, F>(self, cast: F) -> Self::Dyn<U>
-  where
-    F: FnOnce(&T) -> &U, {
-    let raw = self.into_raw();
-    unsafe {
-      let reference = &*raw;
-      let trait_reference = cast(reference);
-      let trait_ptr = core::ptr::from_ref(trait_reference);
-      ArcShared::from_raw(trait_ptr)
-    }
   }
 }
 
