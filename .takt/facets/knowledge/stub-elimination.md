@@ -5,7 +5,9 @@
 fraktor-rsはtickベースの同期実行モデル。Pekkoの`FiniteDuration`パラメータはtick数(`ticks: usize`)で代替する。
 実時間タイマーは使えないが、tick数でのタイミング制御は可能。
 
-## スタブ一覧（全25件）
+## スタブ履歴（初期抽出25件）
+
+この一覧は初期抽出時点のスタブ履歴であり、各バッチで解消済みに変わる。計画時は必ず実コードを読み直すこと。
 
 ### グループA: バッファリング・レート制御（5件）
 tickベース同期モデルでの再設計が必要。
@@ -37,8 +39,8 @@ merge/zip系のセマンティクス強化。
 ### グループD: Lazy評価（3件）
 遅延評価パターン。
 
-16. `concat_lazy` — 現状: `self.concat(fan_in)`。Pekko: セカンダリソースの作成を遅延。実装: クロージャを受け取り、プライマリ完了時にセカンダリを生成してconcat。
-17. `concat_all_lazy` — 現状: `self.concat(fan_in)`。同上、複数ソース版。
+16. `concat_lazy` — 解消済み。`ConcatSourceLogic` がプライマリ完了後にセカンダリ `Source` を materialize して連結する。
+17. `concat_all_lazy` — 解消済み。`IntoIterator<Item = Source<_, _>>` を受け、空列を構築エラーにし、各セカンダリを指定順に `concat_lazy` で遅延連結する。
 18. `prepend_lazy` — 現状: `self.prepend(fan_in)`。Pekko: prepend対象の生成を遅延。
 
 ### グループE: その他オペレーター（7件）
@@ -46,10 +48,10 @@ merge/zip系のセマンティクス強化。
 19. `prefix_and_tail` — 現状: `self.grouped(size)`。Pekko: 先頭N要素(prefix)と残り(tail)のSource/Flowを返す。実装: take(n)で先頭を集め、残りはdrop(n)相当のFlowとしてペアで返す。
 20. `switch_map` — 現状: `self.flat_map_merge(1, func)`。Pekko: 新要素が来たら前のサブストリームをキャンセルして新サブストリームに切替。breadth=1のflat_map_mergeは近いが、前のキャンセルが不足。
 21. `keep_alive` — 現状: `self.intersperse(...)`。Pekko: 無通信がinterval超過したらinject要素を注入。tick版: 無要素tickカウントがinterval超過で注入。
-22. `limit` — 現状: `self.take(max)`。Pekko: max超過時に`StreamLimitReachedException`をthrow。実装: カウントしてmax超過でStreamError。
-23. `limit_weighted` — 現状: `self.take(max_weight)`。Pekko: 重み関数で重み合計がmax超過でエラー。
+22. `limit` — 解消済み。`limit_weighted(max, |_| 1)` 相当の専用 stage で max 超過時に `StreamError::StreamLimitReached` を返す。
+23. `limit_weighted` — 解消済み。重み関数で remaining budget を減算し、超過時に `StreamError::StreamLimitReached` を返す。
 24. `batch_weighted` — 現状: `self.batch(size)`。Pekko: 重み関数で重み合計がmax_weight未満の間バッチ蓄積。実装: stateful_mapで重み管理付きバッチ。
-25. `watch_termination` — 現状: `self` (no-op)。Pekko: ストリーム終了時にFutureを完了。tick版: Completion<()>をMat値として返し、完了時にReadyにする。
+25. `watch_termination` — 解消済み。plain 版は materialized value を保持して stage を挿入し、`watch_termination_mat` は `StreamCompletion<()>` を combine rule で合成する。
 
 ### 「ほぼ完全実装」（対象外）
 - `drop_repeated` — stateful_mapで実装済み、ほぼ完全。
@@ -64,7 +66,7 @@ merge/zip系のセマンティクス強化。
 
 | 対象 | パス |
 |------|------|
-| FlowOps | `references/pekko/pekko-stream/src/main/scala/org/apache/pekko/stream/scaladsl/FlowOps.scala` |
+| FlowOps | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala` |
 
 ## 既存パターン参考
 
