@@ -5,7 +5,11 @@ use core::{fmt::Debug, hash::Hash, time::Duration};
 
 use super::{Fsm, FsmReason, FsmTransition};
 use crate::core::kernel::{
-  actor::{ActorContext, error::ActorError, messaging::AnyMessageView},
+  actor::{
+    ActorContext,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+  },
   event::logging::LogLevel,
 };
 
@@ -83,6 +87,66 @@ where
   /// Registers a timeout for the specified state.
   pub fn set_state_timeout(&mut self, state: State, timeout: Duration) {
     self.inner.set_state_timeout(state, timeout);
+  }
+
+  /// Starts a single-shot named timer.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the underlying timer scheduler rejects the timer.
+  pub fn start_single_timer(
+    &mut self,
+    ctx: &ActorContext<'_>,
+    name: impl Into<String>,
+    message: AnyMessage,
+    delay: Duration,
+  ) -> Result<(), ActorError> {
+    self.inner.start_single_timer(ctx, name, message, delay)
+  }
+
+  /// Starts a named timer that fires at a fixed rate.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the underlying timer scheduler rejects the timer.
+  pub fn start_timer_at_fixed_rate(
+    &mut self,
+    ctx: &ActorContext<'_>,
+    name: impl Into<String>,
+    message: AnyMessage,
+    interval: Duration,
+  ) -> Result<(), ActorError> {
+    self.inner.start_timer_at_fixed_rate(ctx, name, message, interval)
+  }
+
+  /// Starts a named timer that waits for a fixed delay after each delivery.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the underlying timer scheduler rejects the timer.
+  pub fn start_timer_with_fixed_delay(
+    &mut self,
+    ctx: &ActorContext<'_>,
+    name: impl Into<String>,
+    message: AnyMessage,
+    delay: Duration,
+  ) -> Result<(), ActorError> {
+    self.inner.start_timer_with_fixed_delay(ctx, name, message, delay)
+  }
+
+  /// Cancels an active named timer.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the underlying timer scheduler rejects cancellation.
+  pub fn cancel_timer(&mut self, ctx: &ActorContext<'_>, name: &str) -> Result<(), ActorError> {
+    self.inner.cancel_timer(ctx, name)
+  }
+
+  /// Returns `true` when a named timer is active.
+  #[must_use]
+  pub fn is_timer_active(&self, name: &str) -> bool {
+    self.inner.is_timer_active(name)
   }
 
   /// Registers an observer invoked after each state transition.
