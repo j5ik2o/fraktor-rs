@@ -7,12 +7,15 @@ use ahash::RandomState;
 use hashbrown::HashMap;
 use portable_atomic::{AtomicU64, Ordering};
 
-use super::{FsmReason, FsmStateTimeout, FsmTransition};
-use crate::core::kernel::actor::{
-  ActorContext,
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  scheduler::SchedulerError,
+use super::{FsmReason, FsmStateTimeout, FsmTimerFired, FsmTransition, fsm_named_timer::FsmNamedTimer};
+use crate::core::kernel::{
+  actor::{
+    ActorContext,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    scheduler::SchedulerError,
+  },
+  event::logging::LogLevel,
 };
 
 type StateHandler<State, Data> = dyn for<'a, 'b> FnMut(
@@ -34,18 +37,21 @@ pub struct Fsm<State, Data>
 where
   State: Clone + Eq + Hash + Send + Sync + 'static,
   Data: Clone + Send + Sync + 'static, {
-  state:                 Option<State>,
-  data:                  Option<Data>,
-  handlers:              HashMap<State, Box<StateHandler<State, Data>>, RandomState>,
-  unhandled_handler:     Option<Box<StateHandler<State, Data>>>,
-  transition_observers:  Vec<Box<TransitionObserver<State>>>,
-  termination_observers: Vec<Box<TerminationObserver<State, Data>>>,
-  state_timeouts:        HashMap<State, Duration, RandomState>,
-  initialized:           bool,
-  terminated:            bool,
-  last_stop_reason:      Option<FsmReason>,
-  timeout_generation:    u64,
-  timer_key:             String,
+  state:                  Option<State>,
+  data:                   Option<Data>,
+  handlers:               HashMap<State, Box<StateHandler<State, Data>>, RandomState>,
+  unhandled_handler:      Option<Box<StateHandler<State, Data>>>,
+  transition_observers:   Vec<Box<TransitionObserver<State>>>,
+  termination_observers:  Vec<Box<TerminationObserver<State, Data>>>,
+  state_timeouts:         HashMap<State, Duration, RandomState>,
+  initialized:            bool,
+  terminated:             bool,
+  last_stop_reason:       Option<FsmReason>,
+  timeout_generation:     u64,
+  timer_key:              String,
+  named_timers:           HashMap<String, FsmNamedTimer, RandomState>,
+  named_timer_generation: u64,
+  named_timer_key_prefix: String,
 }
 
 impl<State, Data> Fsm<State, Data>
@@ -56,7 +62,9 @@ where
   /// Creates a new empty FSM runtime.
   #[must_use]
   pub fn new() -> Self {
-    let timer_key = format!("fraktor-fsm-timeout-{}", FSM_TIMER_KEY_COUNTER.fetch_add(1, Ordering::Relaxed));
+    let timer_id = FSM_TIMER_KEY_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let timer_key = format!("fraktor-fsm-timeout-{timer_id}");
+    let named_timer_key_prefix = format!("fraktor-fsm-named-{timer_id}");
     Self {
       state: None,
       data: None,
@@ -70,6 +78,9 @@ where
       last_stop_reason: None,
       timeout_generation: 0,
       timer_key,
+      named_timers: HashMap::with_hasher(RandomState::new()),
+      named_timer_generation: 0,
+      named_timer_key_prefix,
     }
   }
 
@@ -155,6 +166,111 @@ where
     Ok(())
   }
 
+  /// Starts a one-shot named timer that delivers `message` back to this FSM.
+  ///
+  /// Reusing the same `name` cancels the previous timer and discards any late
+  /// arrival from the replaced generation.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the scheduler rejects the timer registration.
+  pub fn start_single_timer(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    name: impl Into<String>,
+    message: AnyMessage,
+    delay: Duration,
+  ) -> Result<(), ActorError> {
+    let name = name.into();
+    self.cancel_replaced_named_timer(ctx, &name);
+    let generation = self.next_named_timer_generation();
+    let timer_key = self.named_timer_key(&name);
+    let fired = AnyMessage::new(FsmTimerFired::new(name.clone(), generation, message));
+    ctx
+      .timers()
+      .start_single_timer(timer_key.clone(), fired, delay)
+      .map_err(|error| Self::scheduler_error_to_actor_error(&error))?;
+    let previous = self.named_timers.insert(name, FsmNamedTimer::new(generation, false, timer_key));
+    debug_assert!(previous.is_none());
+    Ok(())
+  }
+
+  /// Starts a fixed-rate named timer that delivers `message` back to this FSM.
+  ///
+  /// Reusing the same `name` cancels the previous timer and discards any late
+  /// arrival from the replaced generation.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the scheduler rejects the timer registration.
+  pub fn start_timer_at_fixed_rate(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    name: impl Into<String>,
+    message: AnyMessage,
+    interval: Duration,
+  ) -> Result<(), ActorError> {
+    let name = name.into();
+    self.cancel_replaced_named_timer(ctx, &name);
+    let generation = self.next_named_timer_generation();
+    let timer_key = self.named_timer_key(&name);
+    let fired = AnyMessage::new(FsmTimerFired::new(name.clone(), generation, message));
+    ctx
+      .timers()
+      .start_timer_at_fixed_rate(timer_key.clone(), fired, interval)
+      .map_err(|error| Self::scheduler_error_to_actor_error(&error))?;
+    let previous = self.named_timers.insert(name, FsmNamedTimer::new(generation, true, timer_key));
+    debug_assert!(previous.is_none());
+    Ok(())
+  }
+
+  /// Starts a fixed-delay named timer that delivers `message` back to this FSM.
+  ///
+  /// Reusing the same `name` cancels the previous timer and discards any late
+  /// arrival from the replaced generation.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the scheduler rejects the timer registration.
+  pub fn start_timer_with_fixed_delay(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    name: impl Into<String>,
+    message: AnyMessage,
+    delay: Duration,
+  ) -> Result<(), ActorError> {
+    let name = name.into();
+    self.cancel_replaced_named_timer(ctx, &name);
+    let generation = self.next_named_timer_generation();
+    let timer_key = self.named_timer_key(&name);
+    let fired = AnyMessage::new(FsmTimerFired::new(name.clone(), generation, message));
+    ctx
+      .timers()
+      .start_timer_with_fixed_delay(timer_key.clone(), fired, delay)
+      .map_err(|error| Self::scheduler_error_to_actor_error(&error))?;
+    let previous = self.named_timers.insert(name, FsmNamedTimer::new(generation, true, timer_key));
+    debug_assert!(previous.is_none());
+    Ok(())
+  }
+
+  /// Cancels the named timer if it is active.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the scheduler cannot cancel the registered timer.
+  pub fn cancel_timer(&mut self, ctx: &ActorContext<'_>, name: &str) -> Result<(), ActorError> {
+    let Some(timer) = self.named_timers.remove(name) else {
+      return Ok(());
+    };
+    ctx.timers().cancel(timer.timer_key()).map_err(|error| Self::scheduler_error_to_actor_error(&error))
+  }
+
+  /// Returns whether the named timer is currently active from the FSM perspective.
+  #[must_use]
+  pub fn is_timer_active(&self, name: &str) -> bool {
+    self.named_timers.contains_key(name)
+  }
+
   /// Evaluates the current message against the active state handler.
   ///
   /// # Errors
@@ -168,9 +284,25 @@ where
       return Ok(());
     }
 
-    if self.is_stale_timeout(message) {
-      return Ok(());
-    }
+    let named_timer_payload = match self.take_named_timer_payload(message) {
+      | Some(Some(payload)) => Some(payload),
+      | Some(None) => return Ok(()),
+      | None => None,
+    };
+
+    let payload_view;
+    let message = match named_timer_payload.as_ref() {
+      | Some(payload) => {
+        payload_view = payload.as_view();
+        &payload_view
+      },
+      | None => {
+        if self.is_stale_timeout(message) {
+          return Ok(());
+        }
+        message
+      },
+    };
 
     let current_state = self.state.clone().ok_or_else(|| ActorError::recoverable("fsm has no current state"))?;
     let current_data = self.data.clone().ok_or_else(|| ActorError::recoverable("fsm has no current data"))?;
@@ -225,11 +357,13 @@ where
 
   fn apply_transition(
     &mut self,
-    ctx: &ActorContext<'_>,
+    ctx: &mut ActorContext<'_>,
     current_state: &State,
     current_data: Data,
-    transition: FsmTransition<State, Data>,
+    mut transition: FsmTransition<State, Data>,
   ) -> Result<(), ActorError> {
+    let for_max_timeout = transition.for_max_timeout();
+    let replies = transition.take_replies();
     let (next_state, next_data, stop_reason) = transition.into_parts();
     let next_data = next_data.unwrap_or(current_data);
 
@@ -238,18 +372,16 @@ where
       self.data = Some(next_data.clone());
       self.terminated = true;
       self.last_stop_reason = Some(reason.clone());
+      Self::dispatch_replies(ctx, replies);
       for observer in &mut self.termination_observers {
         observer(&reason, current_state, &next_data);
       }
+      self.cancel_all_named_timers_best_effort(ctx);
       return Ok(());
     }
 
     let explicit_transition = next_state.is_some();
     let next_state = next_state.unwrap_or_else(|| current_state.clone());
-
-    if explicit_transition {
-      self.reschedule_state_timeout_for_state(ctx, &next_state)?;
-    }
 
     self.state = Some(next_state.clone());
     self.data = Some(next_data);
@@ -259,6 +391,9 @@ where
         observer(current_state, &next_state);
       }
     }
+
+    Self::dispatch_replies(ctx, replies);
+    self.apply_for_max_timeout(ctx, &next_state, explicit_transition, for_max_timeout)?;
 
     Ok(())
   }
@@ -275,6 +410,15 @@ where
     let Some(timeout) = self.state_timeouts.get(state).copied() else {
       return Ok(());
     };
+    self.schedule_state_timeout_for_duration(ctx, state, timeout)
+  }
+
+  fn schedule_state_timeout_for_duration(
+    &mut self,
+    ctx: &ActorContext<'_>,
+    state: &State,
+    timeout: Duration,
+  ) -> Result<(), ActorError> {
     self.timeout_generation = self.timeout_generation.wrapping_add(1);
     let message = AnyMessage::new(FsmStateTimeout::new(state.clone(), self.timeout_generation));
     ctx
@@ -287,6 +431,28 @@ where
     ctx.timers().cancel(&self.timer_key).map_err(|error| Self::scheduler_error_to_actor_error(&error))
   }
 
+  fn apply_for_max_timeout(
+    &mut self,
+    ctx: &ActorContext<'_>,
+    state: &State,
+    explicit_transition: bool,
+    for_max_timeout: Option<Option<Duration>>,
+  ) -> Result<(), ActorError> {
+    match for_max_timeout {
+      | Some(Some(timeout)) => {
+        self.cancel_state_timeout(ctx)?;
+        self.schedule_state_timeout_for_duration(ctx, state, timeout)
+      },
+      | Some(None) => {
+        self.cancel_state_timeout(ctx)?;
+        self.timeout_generation = self.timeout_generation.wrapping_add(1);
+        Ok(())
+      },
+      | None if explicit_transition => self.reschedule_state_timeout_for_state(ctx, state),
+      | None => Ok(()),
+    }
+  }
+
   fn is_stale_timeout(&self, message: &AnyMessageView<'_>) -> bool {
     let Some(timeout) = message.downcast_ref::<FsmStateTimeout<State>>() else {
       return false;
@@ -295,6 +461,67 @@ where
       return true;
     };
     timeout.generation() != self.timeout_generation || timeout.state() != current_state
+  }
+
+  fn take_named_timer_payload(&mut self, message: &AnyMessageView<'_>) -> Option<Option<AnyMessage>> {
+    let fired = message.downcast_ref::<FsmTimerFired>()?;
+    let is_repeating = {
+      let Some(timer) = self.named_timers.get(fired.name()) else {
+        return Some(None);
+      };
+      if timer.generation() != fired.generation() {
+        return Some(None);
+      }
+      timer.is_repeating()
+    };
+
+    let payload = fired.payload().clone();
+    if !is_repeating {
+      let removed = self.named_timers.remove(fired.name());
+      debug_assert!(removed.is_some());
+    }
+    Some(Some(payload))
+  }
+
+  fn dispatch_replies(ctx: &mut ActorContext<'_>, replies: Vec<AnyMessage>) {
+    for reply in replies {
+      if let Err(error) = ctx.reply(reply) {
+        ctx.system().state().record_send_error(None, &error);
+      }
+    }
+  }
+
+  fn cancel_replaced_named_timer(&mut self, ctx: &ActorContext<'_>, name: &str) {
+    if let Some(timer) = self.named_timers.remove(name)
+      && let Err(error) = ctx.timers().cancel(timer.timer_key())
+    {
+      Self::log_scheduler_warning(ctx, format!("fsm named timer replacement cancel failed for {name}: {error:?}"));
+    }
+  }
+
+  fn cancel_all_named_timers_best_effort(&mut self, ctx: &ActorContext<'_>) {
+    for (name, timer) in self.named_timers.drain() {
+      if let Err(error) = ctx.timers().cancel(timer.timer_key()) {
+        Self::log_scheduler_warning(ctx, format!("fsm named timer stop cleanup failed for {name}: {error:?}"));
+      }
+    }
+  }
+
+  fn named_timer_key(&self, name: &str) -> String {
+    format!("{}-{name}", self.named_timer_key_prefix)
+  }
+
+  // CQS exception: bump and read are inseparable in a single call, same pattern as Vec::pop
+  const fn next_named_timer_generation(&mut self) -> u64 {
+    self.named_timer_generation = self.named_timer_generation.wrapping_add(1);
+    if self.named_timer_generation == 0 {
+      self.named_timer_generation = 1;
+    }
+    self.named_timer_generation
+  }
+
+  fn log_scheduler_warning(ctx: &ActorContext<'_>, message: String) {
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
   }
 
   fn scheduler_error_to_actor_error(error: &SchedulerError) -> ActorError {

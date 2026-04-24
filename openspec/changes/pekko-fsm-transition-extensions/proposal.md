@@ -1,6 +1,6 @@
 ## Why
 
-gap-analysis 第19版時点で actor-core に残る medium ギャップ 3 件のうち、remote 依存 (AC-M4b) を除いた **2 件は classic FSM の transition DSL / timer 管理不足** であり、いずれも独立して scope できる:
+gap-analysis 第20版時点で actor-core に残る medium ギャップ 3 件のうち、remote 依存 (AC-M4b) を除いた **2 件は classic FSM の transition DSL / timer 管理不足** であり、いずれも独立して scope できる:
 
 ### FS-M1: `FsmTransition` の `forMax` / `replying` 未実装
 
@@ -62,12 +62,13 @@ pub fn replying(mut self, reply: AnyMessage) -> Self
 ```
 
 - `FsmTransition` に `replies: Vec<AnyMessage>` を追加 (複数 `replying` 呼び出しを保持、Pekko と同じ)
-- `Fsm::handle` が transition を適用する際、`ctx.sender()` (= 現在処理中の envelope の sender) に replies を順に `tell` する
-- tests: `stay().replying(Reply::Ack)` で sender が受信すること、複数 replies が送信順序で届くこと、sender 不在の場合は dead letters 経由になること
+- `Fsm::handle` が transition を適用する際、`ctx.reply(reply)` で現在の sender へ replies を順に送信する
+- `ctx.reply` が `SendError` を返した場合は `SystemStateShared::record_send_error` 経由で観測可能に記録し、残りの replies の送信を継続する
+- tests: `stay().replying(Reply::Ack)` で sender が受信すること、複数 replies が送信順序で届くこと、sender 不在の場合は `SendError::NoRecipient` が dead-letter 観測経路へ記録されること
 
 ### FS-M2.1: 名前付き timer API 追加
 
-新規 `FsmTimers` ハンドル (または `Fsm` 本体のメソッド) として以下を提供:
+`Fsm` 本体のメソッドとして以下を提供:
 
 ```rust
 /// Start a single-shot timer with the given name.
@@ -101,7 +102,7 @@ pub fn is_timer_active(&self, name: &str) -> bool;
 
 ### Gap-analysis 更新
 
-- 第21版として FS-M1 (forMax / replying) + FS-M2 (名前付き timer) を done 化
+- 実装時点の現行最新版 + 1 として FS-M1 (forMax / replying) + FS-M2 (名前付き timer) を done 化
 - 残存 medium を AC-M4b (remote 依存 / deferred) の 1 件に更新
 
 ## Capabilities
@@ -132,20 +133,22 @@ pub fn is_timer_active(&self, name: &str) -> bool;
   - `start_single_timer` / `start_timer_at_fixed_rate` / `start_timer_with_fixed_delay` / `cancel_timer` / `is_timer_active` メソッド追加
   - `handle` で遷移実行時に `for_max_timeout` と `replies` を適用するロジック追加
   - `handle` 先頭で `FsmTimerFired` マーカー型を見て generation matching + discard ロジック追加
-- `modules/actor-core/src/core/kernel/actor/fsm/fsm_named_timer.rs` (新規、1file1type 原則):
+- `modules/actor-core/src/core/kernel/actor/fsm/fsm_timer_fired.rs` (新規、1file1type 原則):
   - `FsmTimerFired { name, generation, payload }` ペイロード型
-  - `FsmNamedTimer { generation, handle, is_repeating }` 内部状態
+- `modules/actor-core/src/core/kernel/actor/fsm/fsm_named_timer.rs` (新規、1file1type 原則):
+  - `FsmNamedTimer { generation, is_repeating, timer_key }` 内部状態
 - `modules/actor-core/src/core/kernel/actor/fsm/tests.rs`:
-  - `for_max` 系 4 ケース (Some / None / state_timeouts との interaction / `Duration::MAX` 相当の sanity)
-  - `replying` 系 3 ケース (basic / multiple replies / dead-letters fallback)
+  - `for_max` 系 5 ケース (Some / None / stay 経路 / state_timeouts との interaction / `Duration::ZERO` cancel 正規化)
+  - `replying` 系 3 ケース (basic / multiple replies / missing-recipient dead-letter observation)
   - 名前付き timer 系 6 ケース (single / fixed-rate / fixed-delay / cancel / is_active / 同名再登録時の late-arrival discard)
 - `docs/gap-analysis/actor-gap-analysis.md`:
-  - 第21版 entry 追加、FS-M1 / FS-M2 done 化、残存 medium を AC-M4b 1 件に更新
+  - 実装時点の現行最新版 + 1 の entry を追加、FS-M1 / FS-M2 done 化、残存 medium を AC-M4b 1 件に更新
 
 **影響を受ける公開 API 契約**:
 
 - `FsmTransition` 型の public メソッド数が増加 (既存メソッドのシグネチャは不変) — 純粋な追加変更、破壊的変更なし
 - `Fsm` 型に新規 public メソッドが追加される (既存メソッドは不変) — 同上
+- `FsmTimerFired` 型を `fsm::FsmTimerFired` として型のみ public export する。`new` / accessor は `pub(crate)` で、state handler には unwrap 済み payload が渡るため通常の利用者 API にはしない
 - `FsmTransition::into_parts` は `pub(crate)` のため外部ユーザー影響なし
 
 **挙動変更**:
@@ -158,4 +161,4 @@ pub fn is_timer_active(&self, name: &str) -> bool;
 - **typed FSM の拡張** — typed 層は既に `behavior::Behaviors::withTimers` / typed timers 経由で相当機能を提供済み。classic FSM (untyped) の runtime 不足のみを scope
 - **state_timeouts と forMax の cascade 動作の厳密な Pekko 完全再現** — 本 change では "遷移ごとに install、次の遷移で cancel" の単純動作を実装。Pekko の `StateTimeoutAbove` 等のエッジケースは別 change で必要性が出たら対応
 - **`startTimerAtFixedRate` の precise fixed-rate 保証** — Pekko も "ベストエフォート" であり、fraktor-rs の scheduler 挙動に従う (timer drift が生じ得る)
-- **`FsmTimerFired` の external exposure** — timer 発火メッセージは `Fsm::handle` 内で discard / unwrap されるため public 露出は不要。ユーザー目線では `msg` がそのまま state handler に届く
+- **`FsmTimerFired` のユーザー向け API 化** — 型名は内部 wrapper の trait-bound 伝搬と crate 内テストのため `fsm::FsmTimerFired` として見えるが、構築・accessor は `pub(crate)` のままにする。ユーザー目線では `msg` がそのまま state handler に届く
