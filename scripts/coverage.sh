@@ -18,14 +18,14 @@ usage() {
 
 オプション:
   --tool <tool>       カバレッジツールを指定 (llvm-cov, grcov) [デフォルト: llvm-cov]
-  --format <format>   出力形式を指定 (html, lcov, json) [デフォルト: html]
+  --format <format>   出力形式を指定 (html, lcov, json, html-lcov) [デフォルト: html]
   --output <dir>      出力ディレクトリを指定 [デフォルト: target/coverage]
   --open              HTML出力後にブラウザで開く
   --help, -h          このヘルプを表示
 
 環境変数:
   COVERAGE_TOOL       カバレッジツール (llvm-cov, grcov)
-  COVERAGE_FORMAT     出力形式 (html, lcov, json)
+  COVERAGE_FORMAT     出力形式 (html, lcov, json, html-lcov)
   COVERAGE_DIR        出力ディレクトリ
 
 例:
@@ -34,6 +34,9 @@ usage() {
 
   # lcov形式で出力
   scripts/coverage.sh --format lcov
+
+  # HTML と Codecov 用 LCOV を同時に出力
+  scripts/coverage.sh --format html-lcov
 
   # grcovを使用してHTML出力
   scripts/coverage.sh --tool grcov --format html
@@ -148,6 +151,15 @@ run_llvm_cov() {
       rm -rf "${output_dir}/html"
       cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --html --output-dir "${output_dir}/html" || return 1
       echo "カバレッジレポート: ${output_dir}/html/index.html"
+      ;;
+    html-lcov)
+      log_step "HTML形式でカバレッジレポートを生成: ${output_dir}/html"
+      rm -rf "${output_dir}/html"
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --html --output-dir "${output_dir}/html" || return 1
+      echo "カバレッジレポート: ${output_dir}/html/index.html"
+      log_step "LCOV形式でカバレッジレポートを生成: ${output_dir}/lcov.info"
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --lcov --output-path "${output_dir}/lcov.info" || return 1
+      echo "カバレッジレポート: ${output_dir}/lcov.info"
       ;;
     lcov)
       log_step "LCOV形式でカバレッジレポートを生成: ${output_dir}/lcov.info"
