@@ -15,6 +15,7 @@ env:
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
   DYLINT_VERSION: "4.1.0"
+  RUST_TOOLCHAIN: nightly-2025-12-01
   # NOTE: CARGO_HOME, RUSTUP_HOME, and TMPDIR are set per-job via the
   # `./.github/actions/setup-isolated-rust` composite action. They are NOT
   # pinned at the workflow level because:
@@ -56,7 +57,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -83,7 +84,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -92,7 +93,14 @@ jobs:
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
-  # Build and test
+  # ビルドとテスト
+  #
+  # 実行頻度の方針:
+  # - pull_request / main push: 正しさを検証する全テストを必ず実行する。
+  #   失敗箇所を切り分けやすいように no_std / std / workspace に分割する。
+  # - schedule / workflow_dispatch: 同じ全テストに加えて、下の
+  #   performance-smoke も実行する。ベンチマークは遅く揺らぎやすいため、
+  #   すべての PR の必須ゲートにはしない。
   test:
     name: Test (${{ matrix.target.name }})
     runs-on: self-hosted
@@ -117,7 +125,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -138,7 +146,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -159,13 +167,38 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: examples
       - name: Build examples
         run: ./scripts/ci-check.sh examples
+
+  # 性能系スモークは劣化検出には有効だが、ベンチマークノイズで正しさの
+  # シグナルを埋もれさせないため、PR ごとの必須ゲートにはしない。
+  performance-smoke:
+    name: Performance Smoke
+    runs-on: self-hosted
+    needs:
+      - format
+      - test
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        uses: ./.github/actions/setup-isolated-rust
+      - name: Setup Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: performance-smoke
+      - name: Run performance smoke checks
+        run: ./scripts/ci-check.sh perf
 
   # All jobs completion check
   ci-success:
@@ -177,6 +210,33 @@ jobs:
       - test
       - docs
       - examples
+      - performance-smoke
+    if: always()
     steps:
       - name: All checks passed
-        run: echo "✅ All CI checks passed successfully"
+        run: |
+          if [[ "${{ needs.format.result }}" != "success" ]]; then
+            echo "format failed"
+            exit 1
+          fi
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "test failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docs.result }}" != "success" ]]; then
+            echo "docs failed"
+            exit 1
+          fi
+          if [[ "${{ needs.examples.result }}" != "success" ]]; then
+            echo "examples failed"
+            exit 1
+          fi
+          if [[ "${{ needs['performance-smoke'].result }}" != "success" && "${{ needs['performance-smoke'].result }}" != "skipped" ]]; then
+            echo "performance-smoke failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed successfully"
