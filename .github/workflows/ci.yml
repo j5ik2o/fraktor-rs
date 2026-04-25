@@ -169,6 +169,9 @@ jobs:
     name: Coverage Report
     runs-on: self-hosted
     needs: integration-e2e
+    permissions:
+      contents: read
+      id-token: write
     env:
       TEST_TIME_FACTOR: "2.0"
       CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
@@ -198,7 +201,7 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v6
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: target/coverage/lcov.info
           disable_search: true
           flags: actor
