@@ -260,6 +260,16 @@ fn array_scanner_should_error_when_primitive_exceeds_max_length_before_array_end
 }
 
 #[test]
+fn array_scanner_should_error_when_primitive_exceeds_max_length_across_chunks() {
+  let framing = JsonFraming::array_scanner(5);
+  let source = Source::from(vec![b"[12345".to_vec(), b"6,1]".to_vec()]);
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
+}
+
+#[test]
 fn array_scanner_should_error_on_unclosed_array() {
   let framing = JsonFraming::array_scanner(1024);
   let source = Source::single(b"[".to_vec());
