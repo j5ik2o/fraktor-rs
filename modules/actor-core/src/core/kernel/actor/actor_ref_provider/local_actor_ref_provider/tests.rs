@@ -109,11 +109,13 @@ fn local_actor_ref_provider_resolves_guardians_and_reports_missing_local_path() 
   let user_path = ActorPathParser::parse("fraktor://provider-guards/user").expect("user path");
   let system_path = ActorPathParser::parse("fraktor://provider-guards/system").expect("system path");
 
-  assert_eq!(provider.resolve_actor_ref(user_path).expect("user guardian"), provider.guardian().expect("guardian"));
-  assert_eq!(
-    provider.resolve_actor_ref(system_path).expect("system guardian"),
-    provider.system_guardian().expect("system guardian")
-  );
+  let resolved_user_guardian = provider.resolve_actor_ref(user_path).expect("user guardian");
+  let expected_user_guardian = provider.guardian().expect("guardian");
+  assert_eq!(resolved_user_guardian, expected_user_guardian);
+
+  let resolved_system_guardian = provider.resolve_actor_ref(system_path).expect("system guardian");
+  let expected_system_guardian = provider.system_guardian().expect("system guardian");
+  assert_eq!(resolved_system_guardian, expected_system_guardian);
 
   let missing_path = ActorPathParser::parse("fraktor://provider-guards/user/missing").expect("missing path");
   let error = provider.resolve_actor_ref(missing_path).expect_err("missing path");
