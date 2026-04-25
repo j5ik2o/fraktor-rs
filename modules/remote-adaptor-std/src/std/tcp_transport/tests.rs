@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use fraktor_remote_core_rs::core::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq};
+use fraktor_remote_core_rs::core::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError};
 use tokio::net::TcpListener;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
@@ -93,6 +93,19 @@ fn wire_frame_codec_handles_multiple_frames_in_one_buffer() {
   let decoded_b = codec.decode(&mut buf).unwrap().expect("second frame");
   assert_eq!(decoded_b, b);
   assert!(buf.is_empty());
+}
+
+#[test]
+fn wire_frame_codec_rejects_oversized_frame_length() {
+  let mut codec = WireFrameCodec::new();
+  let mut buf = BytesMut::new();
+  // Declared frame length larger than 16 MiB limit.
+  buf.extend_from_slice(&(16 * 1024 * 1024 + 1_u32).to_be_bytes());
+  // Minimum bytes to pass header pre-check.
+  buf.extend_from_slice(&[1, 0]);
+
+  let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
+  assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::FrameTooLarge)));
 }
 
 // ---------------------------------------------------------------------------
