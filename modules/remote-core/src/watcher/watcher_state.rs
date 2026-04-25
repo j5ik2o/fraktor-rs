@@ -1,5 +1,8 @@
 //! Pure state type backing the remote watcher.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{
   string::{String, ToString},
   vec::Vec,
@@ -8,11 +11,11 @@ use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use ahash::RandomState;
 use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, hash_map::Entry};
 
 use crate::{
   address::Address,
-  failure_detector::PhiAccrualFailureDetector,
+  failure_detector::{FailureDetectorWithAddress, PhiAccrualFailureDetector},
   watcher::{watcher_command::WatcherCommand, watcher_effect::WatcherEffect},
 };
 
@@ -88,7 +91,7 @@ impl WatcherState {
     match command {
       | WatcherCommand::Watch { target, watcher } => self.on_watch(target, watcher),
       | WatcherCommand::Unwatch { target, watcher } => self.on_unwatch(&target, &watcher),
-      | WatcherCommand::HeartbeatReceived { from, now } => self.on_heartbeat(from, now),
+      | WatcherCommand::HeartbeatReceived { from, now } => self.on_heartbeat(&from, now),
       | WatcherCommand::HeartbeatTick { now } => self.on_tick(now),
     }
   }
@@ -115,10 +118,7 @@ impl WatcherState {
       node_targets.push(target);
     }
 
-    // Ensure a failure detector exists for this node.
-    if !self.detectors.contains_key(&node) {
-      self.detectors.insert(node.clone(), (self.detector_factory)());
-    }
+    self.ensure_detector(&node);
 
     // Emit an initial heartbeat towards the new peer so that it can respond
     // and make itself observable.
@@ -146,10 +146,10 @@ impl WatcherState {
     Vec::new()
   }
 
-  fn on_heartbeat(&mut self, from: Address, now: u64) -> Vec<WatcherEffect> {
+  fn on_heartbeat(&mut self, from: &Address, now: u64) -> Vec<WatcherEffect> {
     // Clear the notified flag so that a subsequent silence is detected again.
-    self.already_notified.remove(&from);
-    let detector = self.detectors.entry(from).or_insert_with(self.detector_factory);
+    self.already_notified.remove(from);
+    let detector = self.ensure_detector(from);
     detector.heartbeat(now);
     Vec::new()
   }
@@ -183,6 +183,17 @@ impl WatcherState {
     }
 
     effects
+  }
+
+  fn ensure_detector(&mut self, node: &Address) -> &mut PhiAccrualFailureDetector {
+    match self.detectors.entry(node.clone()) {
+      | Entry::Occupied(entry) => entry.into_mut(),
+      | Entry::Vacant(entry) => {
+        let mut detector = (self.detector_factory)();
+        detector.set_address(node.to_string());
+        entry.insert(detector)
+      },
+    }
   }
 }
 

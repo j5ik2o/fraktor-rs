@@ -1,5 +1,4 @@
-//! Phi Accrual failure detector (`no_std`-friendly, time passed as monotonic
-//! millis).
+//! Failure detectors (`no_std`-friendly, time passed as monotonic millis).
 //!
 //! Models Apache Pekko's `PhiAccrualFailureDetector` (Scala, ~295 lines). The
 //! implementation is a pure value type: every operation takes `now_ms: u64`
@@ -9,8 +8,12 @@
 #[cfg(test)]
 mod tests;
 
+mod deadline_failure_detector;
+mod failure_detector_with_address;
 mod heartbeat_history;
 mod phi_accrual;
 
+pub use deadline_failure_detector::DeadlineFailureDetector;
+pub use failure_detector_with_address::FailureDetectorWithAddress;
 pub use heartbeat_history::HeartbeatHistory;
 pub use phi_accrual::PhiAccrualFailureDetector;

@@ -1,4 +1,6 @@
-use crate::failure_detector::{HeartbeatHistory, PhiAccrualFailureDetector};
+use core::num::NonZeroU64;
+
+use crate::failure_detector::{DeadlineFailureDetector, HeartbeatHistory, PhiAccrualFailureDetector};
 
 // ---------------------------------------------------------------------------
 // HeartbeatHistory
@@ -68,6 +70,17 @@ fn make_detector() -> PhiAccrualFailureDetector {
     0,    // acceptable_heartbeat_pause (ms)
     1000, // first_heartbeat_estimate (ms)
   )
+}
+
+const HEARTBEAT_INTERVAL_MS: u64 = 1_000;
+const ACCEPTABLE_HEARTBEAT_PAUSE_MS: u64 = 200;
+
+fn heartbeat_interval_ms() -> NonZeroU64 {
+  NonZeroU64::new(HEARTBEAT_INTERVAL_MS).expect("heartbeat interval must be non-zero")
+}
+
+fn make_deadline_detector() -> DeadlineFailureDetector {
+  DeadlineFailureDetector::new(heartbeat_interval_ms(), ACCEPTABLE_HEARTBEAT_PAUSE_MS)
 }
 
 #[test]
@@ -183,4 +196,34 @@ fn detector_acceptable_pause_delays_unavailability() {
   let no_pause_phi = no_pause.phi(last + 1000);
   let with_pause_phi = with_pause.phi(last + 1000);
   assert!(with_pause_phi < no_pause_phi);
+}
+
+#[test]
+fn deadline_detector_is_available_before_first_heartbeat() {
+  let detector = make_deadline_detector();
+
+  assert!(!detector.is_monitoring());
+  assert!(detector.is_available(10_000));
+}
+
+#[test]
+fn deadline_detector_starts_monitoring_after_heartbeat() {
+  let mut detector = make_deadline_detector();
+
+  detector.heartbeat(500);
+
+  assert!(detector.is_monitoring());
+  assert!(detector.is_available(500));
+}
+
+#[test]
+fn deadline_detector_uses_exclusive_deadline_boundary() {
+  let mut detector = make_deadline_detector();
+  let heartbeat_ms = 5_000;
+  let deadline_ms = heartbeat_ms + HEARTBEAT_INTERVAL_MS + ACCEPTABLE_HEARTBEAT_PAUSE_MS;
+
+  detector.heartbeat(heartbeat_ms);
+
+  assert!(detector.is_available(deadline_ms - 1));
+  assert!(!detector.is_available(deadline_ms));
 }

@@ -13,9 +13,11 @@ mod flight_recorder_event;
 mod flight_recorder_snapshot;
 mod handshake_phase;
 mod remote_instrument;
+mod remote_log_marker;
 
 pub use flight_recorder::RemotingFlightRecorder;
 pub use flight_recorder_event::FlightRecorderEvent;
 pub use flight_recorder_snapshot::RemotingFlightRecorderSnapshot;
 pub use handshake_phase::HandshakePhase;
 pub use remote_instrument::RemoteInstrument;
+pub use remote_log_marker::RemoteLogMarker;

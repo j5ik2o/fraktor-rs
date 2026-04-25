@@ -5,17 +5,25 @@ use fraktor_actor_core_rs::core::kernel::{
     actor_path::{ActorPath, ActorPathParser},
     messaging::AnyMessage,
   },
-  event::stream::CorrelationId,
+  event::{logging::ActorLogMarker, stream::CorrelationId},
 };
 
 use crate::{
-  address::RemoteNodeId,
+  address::{Address, RemoteNodeId},
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   instrument::{
-    FlightRecorderEvent, HandshakePhase, RemoteInstrument, RemotingFlightRecorder, RemotingFlightRecorderSnapshot,
+    FlightRecorderEvent, HandshakePhase, RemoteInstrument, RemoteLogMarker, RemotingFlightRecorder,
+    RemotingFlightRecorderSnapshot,
   },
   transport::BackpressureSignal,
 };
+
+const REMOTE_ADDRESS: &str = "sys@host:2552";
+const REMOTE_ADDRESS_UID: u64 = 42;
+
+fn marker_property<'a>(marker: &'a ActorLogMarker, key: &str) -> Option<&'a str> {
+  marker.properties().get(key).map(String::as_str)
+}
 
 fn sample_path() -> ActorPath {
   ActorPathParser::parse("fraktor.tcp://sys@host:2552/user/worker").expect("parse")
@@ -23,6 +31,10 @@ fn sample_path() -> ActorPath {
 
 fn sample_remote_node() -> RemoteNodeId {
   RemoteNodeId::new("sys", "host", Some(2552), 1)
+}
+
+fn sample_address() -> Address {
+  Address::new("sys", "host", 2552)
 }
 
 fn sample_outbound() -> OutboundEnvelope {
@@ -220,4 +232,57 @@ fn snapshot_new_and_accessors() {
   let snap = RemotingFlightRecorderSnapshot::new(events);
   assert_eq!(snap.len(), 1);
   assert!(!snap.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// RemoteLogMarker
+// ---------------------------------------------------------------------------
+
+#[test]
+fn failure_detector_growing_marker_uses_pekko_name_and_remote_address() {
+  let marker = RemoteLogMarker::failure_detector_growing(String::from(REMOTE_ADDRESS));
+
+  assert_eq!(marker.name(), "pekkoFailureDetectorGrowing");
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddress"), Some(REMOTE_ADDRESS));
+  assert_eq!(marker.properties().len(), 1);
+}
+
+#[test]
+fn quarantine_marker_uses_pekko_name_remote_address_and_uid() {
+  let address = sample_address();
+  let marker = RemoteLogMarker::quarantine(&address, Some(REMOTE_ADDRESS_UID));
+
+  assert_eq!(marker.name(), "pekkoQuarantine");
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddress"), Some(REMOTE_ADDRESS));
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddressUid"), Some("42"));
+}
+
+#[test]
+fn quarantine_marker_uses_empty_uid_property_when_uid_is_absent() {
+  let address = sample_address();
+  let marker = RemoteLogMarker::quarantine(&address, None);
+
+  assert_eq!(marker.name(), "pekkoQuarantine");
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddress"), Some(REMOTE_ADDRESS));
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddressUid"), Some(""));
+}
+
+#[test]
+fn connect_marker_uses_pekko_name_remote_address_and_uid() {
+  let address = sample_address();
+  let marker = RemoteLogMarker::connect(&address, Some(REMOTE_ADDRESS_UID));
+
+  assert_eq!(marker.name(), "pekkoConnect");
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddress"), Some(REMOTE_ADDRESS));
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddressUid"), Some("42"));
+}
+
+#[test]
+fn disconnected_marker_uses_pekko_name_remote_address_and_uid() {
+  let address = sample_address();
+  let marker = RemoteLogMarker::disconnected(&address, Some(REMOTE_ADDRESS_UID));
+
+  assert_eq!(marker.name(), "pekkoDisconnected");
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddress"), Some(REMOTE_ADDRESS));
+  assert_eq!(marker_property(&marker, "pekkoRemoteAddressUid"), Some("42"));
 }
