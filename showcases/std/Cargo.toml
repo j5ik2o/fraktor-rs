@@ -76,6 +76,10 @@ name = "stream_pipeline"
 path = "stream_pipeline/main.rs"
 
 [[example]]
+name = "stream_authoring_apis"
+path = "stream_authoring_apis/main.rs"
+
+[[example]]
 name = "classic_logging"
 path = "classic_logging/main.rs"
 

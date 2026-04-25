@@ -42,6 +42,8 @@ pub mod snapshot;
 mod source_logic;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
+/// Stream reference public contracts.
+pub mod stream_ref;
 /// Unique kill switch for single-stream control.
 mod unique_kill_switch;
 // stateful_map_concat_accumulator moved to dsl/stateful_map_concat_accumulator
@@ -63,6 +65,7 @@ pub use bounded_source_queue::BoundedSourceQueue;
 pub use completion_strategy::CompletionStrategy;
 #[cfg(feature = "compression")]
 pub use dsl::Compression;
+use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 use r#impl::{
   RestartBackoff, StreamDslError as ImplStreamDslError, StreamError as ImplStreamError,
@@ -489,6 +492,10 @@ pub(crate) trait FlowLogic: Send {
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())
+  }
+
+  fn attach_actor_system(&mut self, system: ActorSystem) {
+    drop(system);
   }
 }
 

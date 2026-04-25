@@ -1,8 +1,10 @@
 use alloc::{boxed::Box, vec::Vec};
 
+use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
+
 use crate::core::{
   DynValue, StreamError,
-  stage::{AsyncCallback, StageContext, TimerGraphStageLogic},
+  stage::{AsyncCallback, StageActor, StageActorReceive, StageContext, TimerGraphStageLogic},
 };
 
 #[cfg(test)]
@@ -23,6 +25,8 @@ pub(crate) struct GraphStageFlowContext<In, Out> {
   output_closed:        bool,
   async_cb:             AsyncCallback<Out>,
   timer:                TimerGraphStageLogic,
+  actor_system:         Option<ActorSystem>,
+  stage_actor:          Option<StageActor>,
 }
 
 impl<In, Out> GraphStageFlowContext<In, Out>
@@ -41,7 +45,13 @@ where
       output_closed: false,
       async_cb:      AsyncCallback::new(),
       timer:         TimerGraphStageLogic::new(),
+      actor_system:  None,
+      stage_actor:   None,
     }
+  }
+
+  pub(crate) fn set_actor_system(&mut self, system: ActorSystem) {
+    self.actor_system = Some(system);
   }
 
   /// Sets the current input element (called by the adapter before `on_push`).
@@ -62,6 +72,12 @@ where
     failed
   }
 
+  pub(crate) const fn take_completed(&mut self) -> bool {
+    let completed = self.completed;
+    self.completed = false;
+    completed
+  }
+
   /// Marks the input port as closed.
   pub(crate) const fn mark_input_closed(&mut self) {
     self.input_closed = true;
@@ -75,6 +91,20 @@ where
   /// Returns `true` if there are buffered output values waiting to be drained.
   pub(crate) fn has_outputs(&self) -> bool {
     !self.outputs.is_empty()
+  }
+
+  pub(crate) fn drain_stage_actor_messages(&self) -> Result<(), StreamError> {
+    if let Some(stage_actor) = &self.stage_actor {
+      stage_actor.drain_pending()?;
+    }
+    Ok(())
+  }
+
+  pub(crate) fn stop_stage_actor(&mut self) -> Result<(), StreamError> {
+    if let Some(stage_actor) = self.stage_actor.take() {
+      stage_actor.stop()?;
+    }
+    Ok(())
   }
 }
 
@@ -111,6 +141,21 @@ where
 
   fn timer_graph_stage_logic(&mut self) -> &mut TimerGraphStageLogic {
     &mut self.timer
+  }
+
+  fn get_stage_actor(&mut self, receive: Box<dyn StageActorReceive>) -> Result<StageActor, StreamError> {
+    if let Some(stage_actor) = &self.stage_actor {
+      stage_actor.r#become(receive);
+      return Ok(stage_actor.clone());
+    }
+    let system = self.actor_system.as_ref().ok_or(StreamError::ActorSystemMissing)?;
+    let stage_actor = StageActor::new(system, receive);
+    self.stage_actor = Some(stage_actor.clone());
+    Ok(stage_actor)
+  }
+
+  fn stage_actor(&self) -> Result<StageActor, StreamError> {
+    self.stage_actor.clone().ok_or(StreamError::StageActorRefNotInitialized)
   }
 
   fn has_been_pulled(&self) -> bool {

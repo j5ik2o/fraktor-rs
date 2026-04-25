@@ -9,7 +9,8 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::actor::error::SendError;
 
-use super::{CancellationCause, CancellationKind, FramingErrorKind};
+use super::FramingErrorKind;
+use crate::core::stage::{CancellationCause, CancellationKind};
 
 /// Errors returned by stream operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +39,10 @@ pub enum StreamError {
   MaterializerStopped,
   /// Indicates an actor system is missing for actor-backed materializers.
   ActorSystemMissing,
+  /// Indicates that a stage actor was read before it was initialized.
+  ///
+  /// Pekko parity: `StageActorRefNotInitializedException`.
+  StageActorRefNotInitialized,
   /// Indicates a stream graph connection is invalid.
   InvalidConnection,
   /// Indicates a type mismatch at runtime.
@@ -94,6 +99,46 @@ pub enum StreamError {
   ///
   /// Pekko parity: `pekko.stream.StreamDetachedException`.
   StreamDetached,
+  /// Indicates that a StreamRef target actor reference was used before initialization.
+  ///
+  /// Pekko parity: `pekko.stream.TargetRefNotInitializedYetException`.
+  StreamRefTargetNotInitialized,
+  /// Indicates that the remote side did not subscribe to a StreamRef in time.
+  ///
+  /// Pekko parity: `pekko.stream.StreamRefSubscriptionTimeoutException`.
+  StreamRefSubscriptionTimeout {
+    /// Human-readable timeout message.
+    message: Cow<'static, str>,
+  },
+  /// Indicates that the remote StreamRef actor terminated.
+  ///
+  /// Pekko parity: `pekko.stream.RemoteStreamRefActorTerminatedException`.
+  RemoteStreamRefActorTerminated {
+    /// Human-readable termination message.
+    message: Cow<'static, str>,
+  },
+  /// Indicates that a StreamRef sequence number is not the expected one.
+  ///
+  /// Pekko parity: `pekko.stream.InvalidSequenceNumberException`.
+  InvalidSequenceNumber {
+    /// Expected sequence number.
+    expected_seq_nr: u64,
+    /// Received sequence number.
+    got_seq_nr:      u64,
+    /// Human-readable sequence failure message.
+    message:         Cow<'static, str>,
+  },
+  /// Indicates that a StreamRef message came from a non-partner actor.
+  ///
+  /// Pekko parity: `pekko.stream.InvalidPartnerActorException`.
+  InvalidPartnerActor {
+    /// Expected partner actor reference.
+    expected_ref: Cow<'static, str>,
+    /// Received actor reference.
+    got_ref:      Cow<'static, str>,
+    /// Human-readable partner failure message.
+    message:      Cow<'static, str>,
+  },
   /// Indicates an IO operation failed.
   IoError {
     /// IO error kind identifier (e.g. `"BrokenPipe"`, `"UnexpectedEof"`).
@@ -201,6 +246,9 @@ impl fmt::Display for StreamError {
       | Self::MaterializerAlreadyStarted => write!(f, "materializer already started"),
       | Self::MaterializerStopped => write!(f, "materializer stopped"),
       | Self::ActorSystemMissing => write!(f, "actor system missing"),
+      | Self::StageActorRefNotInitialized => {
+        write!(f, "You must first call getStageActor, to initialize the Actors behavior")
+      },
       | Self::InvalidConnection => write!(f, "invalid stream connection"),
       | Self::TypeMismatch => write!(f, "stream type mismatch"),
       | Self::WouldBlock => write!(f, "stream would block"),
@@ -221,6 +269,31 @@ impl fmt::Display for StreamError {
       },
       | Self::StreamDetached => {
         write!(f, "stream is terminated, materialized value is detached")
+      },
+      | Self::StreamRefTargetNotInitialized => {
+        write!(
+          f,
+          "Internal remote target actor ref not yet resolved, yet attempted to send messages to it. \
+           This should not happen due to proper flow-control."
+        )
+      },
+      | Self::StreamRefSubscriptionTimeout { message } => write!(f, "{message}"),
+      | Self::RemoteStreamRefActorTerminated { message } => write!(f, "{message}"),
+      | Self::InvalidSequenceNumber { expected_seq_nr, got_seq_nr, message } => {
+        write!(
+          f,
+          "{message} (expected: {expected_seq_nr}, got: {got_seq_nr}). \
+           In most cases this means that message loss on this connection has occurred and the stream will fail eagerly."
+        )
+      },
+      | Self::InvalidPartnerActor { expected_ref, got_ref, message } => {
+        write!(
+          f,
+          "{message} (expected: {expected_ref}, got: {got_ref}). \
+           This may happen due to 'double-materialization' on the other side of this stream ref. \
+           Do note that stream refs are one-shot references and have to be paired up in 1:1 pairs. \
+           Multi-cast such as broadcast etc can be implemented by sharing multiple new stream references."
+        )
       },
       | Self::IoError { kind, message } => {
         write!(f, "IO error ({kind}): {message}")

@@ -1,4 +1,4 @@
-use crate::core::{DemandTracker, DynValue, SinkDecision, StreamError};
+use crate::core::{DemandTracker, DynValue, SinkDecision, StreamError, stream_ref::StreamRefSettings};
 
 /// Sink-stage callback contract used by adaptor implementations.
 ///
@@ -71,4 +71,7 @@ pub trait SinkLogic: Send {
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())
   }
+
+  /// Attaches stream reference settings resolved by the materializer.
+  fn attach_stream_ref_settings(&mut self, _settings: StreamRefSettings) {}
 }

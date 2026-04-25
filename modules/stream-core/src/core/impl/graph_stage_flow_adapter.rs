@@ -1,6 +1,8 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::any::Any;
 
+use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
+
 use super::graph_stage_flow_context::GraphStageFlowContext;
 use crate::core::{
   DownstreamCancelAction, DynValue, FailureAction, FlowLogic, StreamError,
@@ -48,6 +50,21 @@ where
       self.logic.on_start(&mut self.context);
     }
   }
+
+  fn stop_context(&mut self) -> Result<(), StreamError> {
+    self.context.stop_stage_actor()
+  }
+
+  fn failure_action_after_error_callback(&mut self, error: StreamError) -> FailureAction {
+    self.logic.on_error(&mut self.context, error.clone());
+    if let Some(err) = self.context.take_failure() {
+      return FailureAction::Propagate(err);
+    }
+    if self.context.take_completed() {
+      return FailureAction::Complete;
+    }
+    FailureAction::Propagate(error)
+  }
 }
 
 impl<In, Out, Mat> FlowLogic for GraphStageFlowAdapter<In, Out, Mat>
@@ -63,6 +80,7 @@ where
 
     self.context.set_input(typed_input);
     self.logic.on_push(&mut self.context);
+    self.context.drain_stage_actor_messages()?;
 
     if let Some(err) = self.context.take_failure() {
       return Err(err);
@@ -77,11 +95,7 @@ where
 
   fn on_failure(&mut self, error: StreamError) -> Result<FailureAction, StreamError> {
     self.ensure_started();
-    self.logic.on_error(&mut self.context, error);
-    if let Some(err) = self.context.take_failure() {
-      return Ok(FailureAction::Propagate(err));
-    }
-    Ok(FailureAction::Resume)
+    Ok(self.failure_action_after_error_callback(error))
   }
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
@@ -89,6 +103,7 @@ where
     self.context.mark_input_closed();
     self.logic.on_complete(&mut self.context);
     self.logic.on_stop(&mut self.context);
+    self.stop_context()?;
     if let Some(err) = self.context.take_failure() {
       return Err(err);
     }
@@ -99,6 +114,7 @@ where
     self.ensure_started();
     self.context.mark_output_closed();
     self.logic.on_stop(&mut self.context);
+    self.stop_context()?;
     if let Some(err) = self.context.take_failure() {
       return Err(err);
     }
@@ -106,6 +122,7 @@ where
   }
 
   fn on_async_callback(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    self.context.drain_stage_actor_messages()?;
     self.logic.on_async_callback(&mut self.context);
     if let Some(err) = self.context.take_failure() {
       return Err(err);
@@ -133,10 +150,19 @@ where
     self.context.has_outputs()
   }
 
+  fn take_shutdown_request(&mut self) -> bool {
+    self.context.take_completed()
+  }
+
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    self.context.drain_stage_actor_messages()?;
     if let Some(err) = self.context.take_failure() {
       return Err(err);
     }
     Ok(self.context.take_outputs())
+  }
+
+  fn attach_actor_system(&mut self, system: ActorSystem) {
+    self.context.set_actor_system(system);
   }
 }

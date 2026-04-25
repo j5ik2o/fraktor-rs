@@ -2,7 +2,10 @@ use alloc::{borrow::Cow, string::String};
 
 use fraktor_actor_core_rs::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
-use crate::core::r#impl::{CancellationCause, CancellationKind, FramingErrorKind, StreamError};
+use crate::core::{
+  r#impl::{FramingErrorKind, StreamError},
+  stage::{CancellationCause, CancellationKind},
+};
 
 // --- StreamDetached variant ---
 
@@ -63,6 +66,41 @@ fn stream_error_from_send_error_maps_backpressure_to_would_block() {
   let error = StreamError::from_send_error(&SendError::full(AnyMessage::new("payload")));
 
   assert_eq!(error, StreamError::WouldBlock);
+}
+
+// --- StageActorRefNotInitialized variant (Pekko parity: StageActorRefNotInitializedException) ---
+
+#[test]
+fn stage_actor_ref_not_initialized_is_constructible() {
+  // Given/When: constructing StageActorRefNotInitialized
+  let error = StreamError::StageActorRefNotInitialized;
+
+  // Then: it matches the expected variant
+  assert!(matches!(error, StreamError::StageActorRefNotInitialized));
+}
+
+#[test]
+fn stage_actor_ref_not_initialized_display_matches_pekko_message() {
+  // Given: a StageActorRefNotInitialized error
+  //   Pekko reference: GraphStageLogic.StageActorRefNotInitializedException().getMessage
+  //     = "You must first call getStageActor, to initialize the Actors behavior"
+  let error = StreamError::StageActorRefNotInitialized;
+
+  // When: formatting with Display
+  let rendered = alloc::format!("{error}");
+
+  // Then: the message mirrors Pekko's contract exactly
+  assert_eq!(rendered, "You must first call getStageActor, to initialize the Actors behavior");
+}
+
+#[test]
+fn stage_actor_ref_not_initialized_is_distinct_from_actor_system_missing() {
+  // Given: StageActorRefNotInitialized and ActorSystemMissing
+  let not_initialized = StreamError::StageActorRefNotInitialized;
+  let missing_system = StreamError::ActorSystemMissing;
+
+  // Then: they remain distinct failure modes
+  assert_ne!(not_initialized, missing_system);
 }
 
 // --- StreamLimitReached variant (Pekko parity: StreamLimitReachedException) ---
@@ -277,12 +315,12 @@ fn cancellation_kind_variants_are_distinct() {
 }
 
 #[test]
-fn cancellation_kind_is_cloneable() {
+fn cancellation_kind_is_copy() {
   // Given: a NoMoreElementsNeeded kind
   let kind = CancellationKind::NoMoreElementsNeeded;
 
-  // When: cloning
-  let cloned = kind.clone();
+  // When: copying
+  let cloned = kind;
 
   // Then: equality is preserved
   assert_eq!(kind, cloned);
@@ -400,6 +438,120 @@ fn existing_variants_keep_display_contract_after_additions() {
 
   // Then: the previous wording is preserved (regression guard for the new variants)
   assert_eq!(rendered, "materializer stopped");
+}
+
+// --- StreamRef error variants (Pekko parity: StreamRefs.scala exceptions) ---
+
+#[test]
+fn stream_ref_target_not_initialized_is_constructible() {
+  // Given/When: constructing StreamRefTargetNotInitialized
+  let error = StreamError::StreamRefTargetNotInitialized;
+
+  // Then: the variant is available for StreamRef protocol failures
+  assert!(matches!(error, StreamError::StreamRefTargetNotInitialized));
+}
+
+#[test]
+fn stream_ref_target_not_initialized_display_contains_reference_message() {
+  // Given: target ref not initialized error
+  let error = StreamError::StreamRefTargetNotInitialized;
+
+  // When: formatting with Display
+  let rendered = alloc::format!("{error}");
+
+  // Then: the message mirrors Pekko's diagnostic intent
+  assert!(rendered.contains("target actor ref not yet resolved"), "unexpected rendering: {rendered}");
+}
+
+#[test]
+fn stream_ref_subscription_timeout_preserves_message() {
+  // Given: StreamRef subscription timeout with a diagnostic message
+  let error = StreamError::StreamRefSubscriptionTimeout { message: Cow::Borrowed("remote side did not subscribe") };
+
+  // When: formatting with Display
+  let rendered = alloc::format!("{error}");
+
+  // Then: the supplied message is used as the error text
+  assert_eq!(rendered, "remote side did not subscribe");
+}
+
+#[test]
+fn remote_stream_ref_actor_terminated_preserves_message() {
+  // Given: remote StreamRef actor termination with a diagnostic message
+  let error = StreamError::RemoteStreamRefActorTerminated { message: Cow::Borrowed("remote actor stopped") };
+
+  // When: formatting with Display
+  let rendered = alloc::format!("{error}");
+
+  // Then: the supplied message is used as the error text
+  assert_eq!(rendered, "remote actor stopped");
+}
+
+#[test]
+fn invalid_sequence_number_display_includes_sequence_context() {
+  // Given: invalid StreamRef sequence number
+  let error = StreamError::InvalidSequenceNumber {
+    expected_seq_nr: 10,
+    got_seq_nr:      9,
+    message:         Cow::Borrowed("invalid seq"),
+  };
+
+  // When: formatting with Display
+  let rendered = alloc::format!("{error}");
+
+  // Then: expected/got values and Pekko message-loss hint are visible
+  assert!(rendered.contains("invalid seq"), "message must be preserved: {rendered}");
+  assert!(rendered.contains("expected: 10"), "expected sequence must be rendered: {rendered}");
+  assert!(rendered.contains("got: 9"), "received sequence must be rendered: {rendered}");
+  assert!(rendered.contains("message loss"), "Pekko diagnostic hint must be rendered: {rendered}");
+}
+
+#[test]
+fn invalid_partner_actor_display_includes_actor_context() {
+  // Given: message from a non-partner actor
+  let error = StreamError::InvalidPartnerActor {
+    expected_ref: Cow::Borrowed("pekko://sys/user/expected"),
+    got_ref:      Cow::Borrowed("pekko://sys/user/got"),
+    message:      Cow::Borrowed("invalid partner"),
+  };
+
+  // When: formatting with Display
+  let rendered = alloc::format!("{error}");
+
+  // Then: expected/got actor refs and one-shot StreamRef guidance are visible
+  assert!(rendered.contains("invalid partner"), "message must be preserved: {rendered}");
+  assert!(rendered.contains("expected: pekko://sys/user/expected"), "expected ref must be rendered: {rendered}");
+  assert!(rendered.contains("got: pekko://sys/user/got"), "got ref must be rendered: {rendered}");
+  assert!(rendered.contains("one-shot references"), "Pekko one-shot guidance must be rendered: {rendered}");
+}
+
+#[test]
+fn stream_ref_error_variants_are_distinct() {
+  // Given: StreamRef-specific error variants
+  let timeout = StreamError::StreamRefSubscriptionTimeout { message: Cow::Borrowed("x") };
+  let terminated = StreamError::RemoteStreamRefActorTerminated { message: Cow::Borrowed("x") };
+  let target = StreamError::StreamRefTargetNotInitialized;
+
+  // Then: superficially similar diagnostics remain distinct enum variants
+  assert_ne!(timeout, terminated);
+  assert_ne!(timeout, target);
+  assert_ne!(terminated, target);
+}
+
+#[test]
+fn invalid_sequence_number_clone_preserves_fields() {
+  // Given: invalid sequence number error
+  let original = StreamError::InvalidSequenceNumber {
+    expected_seq_nr: 10,
+    got_seq_nr:      9,
+    message:         Cow::Borrowed("invalid seq"),
+  };
+
+  // When: cloning
+  let cloned = original.clone();
+
+  // Then: all fields round-trip through Clone/Eq
+  assert_eq!(original, cloned);
 }
 
 // --- TooManySubstreamsOpen variant (Pekko parity: TooManySubstreamsOpenException) ---

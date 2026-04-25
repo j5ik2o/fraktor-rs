@@ -1,25 +1,31 @@
-use alloc::{format, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 
+mod failure_restart;
 #[cfg(test)]
 mod tests;
 
+use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
+
+use super::{
+  compiled_graph_plan::CompiledGraphPlan, failure_disposition::FailureDisposition, graph_connections::GraphConnections,
+  interpreter_snapshot_builder::InterpreterSnapshotBuilder,
+};
 use crate::core::{
-  DownstreamCancelAction, DynValue, FailureAction, SinkDecision, StageDefinition, StageKind, StreamError, StreamPlan,
-  SupervisionStrategy,
+  DownstreamCancelAction, DynValue, SinkDecision, StageDefinition, StreamError, StreamPlan,
   r#impl::{
-    fusing::{DemandTracker, StreamBuffer, StreamBufferConfig},
+    fusing::{DemandTracker, StreamBufferConfig},
     materialization::StreamState,
   },
-  materialization::{DriveOutcome, MatCombine},
+  materialization::DriveOutcome,
   shape::PortId,
-  snapshot::{ConnectionSnapshot, ConnectionState, LogicSnapshot, RunningInterpreter},
+  snapshot::RunningInterpreter,
+  stream_ref::StreamRefSettings,
 };
 
 /// Executes a stream graph using a port-driven runtime.
 pub(in crate::core) struct GraphInterpreter {
   stages:                 Vec<StageDefinition>,
-  edges:                  Vec<EdgeRuntime>,
-  dispatch:               Vec<OutletDispatchState>,
+  connections:            GraphConnections,
   flow_order:             Vec<usize>,
   flow_slots:             Vec<Option<usize>>,
   source_indices:         Vec<usize>,
@@ -44,8 +50,19 @@ impl GraphInterpreter {
   /// Panics when the provided plan is structurally invalid.
   #[must_use]
   pub(in crate::core) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
-    let compiled = Self::compile_plan(plan, buffer_config);
-    let stage_count = compiled.stages.len();
+    Self::new_with_materializer_context(plan, buffer_config, None, &StreamRefSettings::new())
+  }
+
+  pub(in crate::core) fn new_with_materializer_context(
+    plan: StreamPlan,
+    buffer_config: StreamBufferConfig,
+    actor_system: Option<&ActorSystem>,
+    stream_ref_settings: &StreamRefSettings,
+  ) -> Self {
+    let compiled = CompiledGraphPlan::compile(plan, buffer_config);
+    let mut stages = compiled.stages;
+    Self::attach_materializer_context(&mut stages, actor_system, stream_ref_settings);
+    let stage_count = stages.len();
     let flow_count = compiled.flow_order.len();
     let source_indices_len = compiled.source_indices.len();
     let sink_indices_len = compiled.sink_indices.len();
@@ -54,9 +71,8 @@ impl GraphInterpreter {
       flow_slots[stage_index] = Some(flow_slot);
     }
     Self {
-      stages: compiled.stages,
-      edges: compiled.edges,
-      dispatch: compiled.dispatch,
+      stages,
+      connections: GraphConnections::new(compiled.edges, compiled.dispatch),
       flow_order: compiled.flow_order,
       flow_slots,
       source_indices: compiled.source_indices,
@@ -71,6 +87,24 @@ impl GraphInterpreter {
       sink_upstream_notified: vec![false; sink_indices_len],
       on_start_done: false,
       tick_count: 0,
+    }
+  }
+
+  fn attach_materializer_context(
+    stages: &mut [StageDefinition],
+    actor_system: Option<&ActorSystem>,
+    stream_ref_settings: &StreamRefSettings,
+  ) {
+    for stage in stages {
+      match stage {
+        | StageDefinition::Source(source) => source.logic.attach_stream_ref_settings(stream_ref_settings.clone()),
+        | StageDefinition::Flow(flow) => {
+          if let Some(system) = actor_system {
+            flow.logic.attach_actor_system(system.clone());
+          }
+        },
+        | StageDefinition::Sink(sink) => sink.logic.attach_stream_ref_settings(stream_ref_settings.clone()),
+      };
     }
   }
 
@@ -105,37 +139,7 @@ impl GraphInterpreter {
   /// reports the number of logics still alive.
   #[must_use]
   pub(in crate::core) fn snapshot(&self) -> RunningInterpreter {
-    let logics: Vec<LogicSnapshot> = self
-      .stages
-      .iter()
-      .enumerate()
-      .map(|(index, stage)| LogicSnapshot::new(index as u32, format!("{:?}", stage.kind()), stage.attributes().clone()))
-      .collect();
-
-    let connections: Vec<ConnectionSnapshot> = self
-      .edges
-      .iter()
-      .enumerate()
-      .filter_map(|(edge_index, edge)| {
-        let in_index = self.stage_index_for_outlet(edge.from)?;
-        let out_index = self.stage_index_for_inlet(edge.to)?;
-        let in_logic = logics.get(in_index).cloned()?;
-        let out_logic = logics.get(out_index).cloned()?;
-        let state = if edge.closed {
-          ConnectionState::Closed
-        } else if edge.buffer.is_empty() {
-          ConnectionState::ShouldPull
-        } else {
-          ConnectionState::ShouldPush
-        };
-        Some(ConnectionSnapshot::new(edge_index as u32, in_logic, out_logic, state))
-      })
-      .collect();
-
-    let running_logics_count = self.stages.len() as u32;
-    let stopped_logics: Vec<LogicSnapshot> = Vec::new();
-
-    RunningInterpreter::new(logics, connections, running_logics_count, stopped_logics)
+    InterpreterSnapshotBuilder::new(&self.stages).build(self.connections.edges())
   }
 
   /// Cancels the stream.
@@ -347,7 +351,7 @@ impl GraphInterpreter {
               self.set_all_sources_done()?;
             }
             self.shutdown_flow_stage(stage_index)?;
-            let _ = self.maybe_finish_flow_stage(stage_index);
+            self.maybe_finish_flow_stage(stage_index);
             progressed = true;
             continue;
           },
@@ -373,37 +377,6 @@ impl GraphInterpreter {
     Ok(progressed)
   }
 
-  fn compile_plan(plan: StreamPlan, buffer_config: StreamBufferConfig) -> CompiledPlan {
-    let StreamPlan { stages, edges, source_indices, sink_indices, flow_order, .. } = plan;
-
-    let mut runtime_edges = Vec::new();
-    for edge in edges {
-      runtime_edges.push(EdgeRuntime {
-        from:   edge.from_port,
-        to:     edge.to_port,
-        _mat:   edge.mat,
-        closed: false,
-        buffer: StreamBuffer::new(buffer_config),
-      });
-    }
-
-    let dispatch = Self::create_dispatch_states(&stages);
-
-    CompiledPlan { stages, edges: runtime_edges, dispatch, flow_order, source_indices, sink_indices }
-  }
-
-  fn create_dispatch_states(stages: &[StageDefinition]) -> Vec<OutletDispatchState> {
-    let mut dispatch = Vec::new();
-    for stage in stages {
-      match stage {
-        | StageDefinition::Source(source) => dispatch.push(OutletDispatchState::new(source.outlet)),
-        | StageDefinition::Flow(flow) => dispatch.push(OutletDispatchState::new(flow.outlet)),
-        | StageDefinition::Sink(_) => {},
-      }
-    }
-    dispatch
-  }
-
   fn start_sinks(&mut self) -> Result<(), StreamError> {
     for sink_index in &self.sink_indices {
       let StageDefinition::Sink(sink) = &mut self.stages[*sink_index] else {
@@ -417,7 +390,7 @@ impl GraphInterpreter {
   fn notify_source_done_to_flows(&mut self) -> Result<(), StreamError> {
     for flow_index in 0..self.flow_order.len() {
       let stage_index = self.flow_order[flow_index];
-      let _ = self.mark_flow_source_done(stage_index)?;
+      self.mark_flow_source_done(stage_index)?;
     }
     Ok(())
   }
@@ -688,7 +661,7 @@ impl GraphInterpreter {
                 self.set_all_sources_done()?;
               }
               self.shutdown_flow_stage(stage_index)?;
-              let _ = self.maybe_finish_flow_stage(stage_index);
+              self.maybe_finish_flow_stage(stage_index);
               progressed = true;
               continue;
             },
@@ -740,7 +713,7 @@ impl GraphInterpreter {
       if shutdown_requested || force_shutdown {
         self.shutdown_flow_stage(stage_index)?;
       }
-      let _ = self.maybe_finish_flow_stage(stage_index);
+      self.maybe_finish_flow_stage(stage_index);
       progressed = true;
     }
 
@@ -881,7 +854,7 @@ impl GraphInterpreter {
         continue;
       }
       let sink_index = self.sink_indices[sink_position];
-      let _ = self.notify_sink_upstream_finish(sink_position)?;
+      self.notify_sink_upstream_finish(sink_position)?;
       if self.sink_has_pending_work(sink_index)? {
         continue;
       }
@@ -892,7 +865,7 @@ impl GraphInterpreter {
   }
 
   fn has_buffered_outgoing(&self, from: PortId) -> bool {
-    self.edges.iter().any(|edge| edge.from == from && !edge.buffer.is_empty())
+    self.connections.has_buffered_outgoing(from)
   }
 
   fn poll_from_incoming_edges(
@@ -900,84 +873,23 @@ impl GraphInterpreter {
     to: PortId,
     preferred_slot: Option<usize>,
   ) -> Result<Option<(usize, DynValue)>, StreamError> {
-    // ヒープ確保なしで入力エッジ数を数え、優先スロットのエッジインデックスを取得する。
-    let incoming_count = self.edges.iter().filter(|e| e.to == to).count();
-    if incoming_count == 0 {
-      return Ok(None);
-    }
-
-    // ヘルパー: n番目の入力エッジ（スロット）のエッジインデックスを取得する。
-    let nth_incoming = |edges: &[EdgeRuntime], slot: usize| -> Option<usize> {
-      edges.iter().enumerate().filter(|(_, e)| e.to == to).nth(slot).map(|(i, _)| i)
-    };
-
-    // 優先スロットを先にチェックし、実際にチェックできたか記録する。
-    let mut preferred_checked = false;
-    if let Some(pref) = preferred_slot
-      && let Some(edge_index) = nth_incoming(&self.edges, pref)
-    {
-      preferred_checked = true;
-      if !self.edges[edge_index].buffer.is_empty() {
-        let value = self.edges[edge_index].buffer.poll()?;
-        return Ok(Some((pref, value)));
-      }
-    }
-
-    // フォールバック: 優先スロットの次からラップアラウンドで走査する。
-    let skip = if preferred_checked { 1 } else { 0 };
-    let start = preferred_slot.map(|p| p + 1).unwrap_or(0);
-    for i in 0..incoming_count.saturating_sub(skip) {
-      let slot = (start + i) % incoming_count;
-      if let Some(edge_index) = nth_incoming(&self.edges, slot)
-        && !self.edges[edge_index].buffer.is_empty()
-      {
-        let value = self.edges[edge_index].buffer.poll()?;
-        return Ok(Some((slot, value)));
-      }
-    }
-    Ok(None)
+    self.connections.poll_incoming_with_preferred(to, preferred_slot)
   }
 
   fn offer_to_next_outgoing_edge(&mut self, from: PortId, value: DynValue) -> Result<(), StreamError> {
-    let target = self.next_outgoing_edge_index(from)?;
-    self.offer_to_outgoing_edge(target, value)
+    self.connections.offer_next(from, value)
   }
 
   fn offer_to_outgoing_edge(&mut self, edge_index: usize, value: DynValue) -> Result<(), StreamError> {
-    if self.edges[edge_index].closed {
-      return Ok(());
-    }
-    if self.edges[edge_index].buffer.offer(value).is_err() {
-      return Err(StreamError::BufferOverflow);
-    }
-    Ok(())
+    self.connections.offer_at(edge_index, value)
   }
 
   fn outgoing_edge_indices(&self, from: PortId) -> Result<Vec<usize>, StreamError> {
-    let mut outgoing_edges = Vec::new();
-    for (index, edge) in self.edges.iter().enumerate() {
-      if edge.from == from {
-        outgoing_edges.push(index);
-      }
-    }
-    if outgoing_edges.is_empty() {
-      return Err(StreamError::InvalidConnection);
-    }
-    Ok(outgoing_edges)
-  }
-
-  fn next_outgoing_edge_index(&mut self, from: PortId) -> Result<usize, StreamError> {
-    let outgoing_edges = self.outgoing_edge_indices(from)?;
-    let Some(state_index) = self.dispatch.iter().position(|state| state.outlet == from) else {
-      return Err(StreamError::InvalidConnection);
-    };
-    let next = self.dispatch[state_index].next_edge % outgoing_edges.len();
-    self.dispatch[state_index].next_edge = (next + 1) % outgoing_edges.len();
-    Ok(outgoing_edges[next])
+    self.connections.outgoing_edge_indices(from)
   }
 
   fn all_edge_buffers_empty(&self) -> bool {
-    self.edges.iter().all(|edge| edge.buffer.is_empty())
+    self.connections.all_buffers_empty()
   }
 
   fn sink_has_pending_work(&self, sink_index: usize) -> Result<bool, StreamError> {
@@ -1058,87 +970,11 @@ impl GraphInterpreter {
     }
   }
 
-  fn tick_restart_windows(&mut self) -> Result<(), StreamError> {
-    for (stage_index, stage) in self.stages.iter_mut().enumerate() {
-      match stage {
-        | StageDefinition::Source(source) => {
-          if let Some(restart) = &mut source.restart
-            && restart.tick(self.tick_count)
-          {
-            source.logic.on_restart()?;
-          }
-        },
-        | StageDefinition::Flow(flow) => {
-          if let Some(restart) = &mut flow.restart
-            && restart.tick(self.tick_count)
-          {
-            flow.logic.on_restart()?;
-          }
-        },
-        | StageDefinition::Sink(sink) => {
-          if let Some(restart) = &mut sink.restart
-            && restart.tick(self.tick_count)
-          {
-            sink.logic.on_restart()?;
-            sink.logic.on_start(&mut self.demand)?;
-            if let Some(pos) = self.sink_indices.iter().position(|&idx| idx == stage_index) {
-              self.sink_upstream_notified[pos] = false;
-            }
-          }
-        },
-      }
-    }
-    Ok(())
-  }
-
-  fn source_restart_waiting(&self) -> bool {
-    for source_index in &self.source_indices {
-      let StageDefinition::Source(source) = &self.stages[*source_index] else {
-        return false;
-      };
-      if source.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false) {
-        return true;
-      }
-    }
-    false
-  }
-
-  fn source_restart_waiting_at(&self, source_position: usize) -> bool {
-    let source_index = self.source_indices[source_position];
-    let StageDefinition::Source(source) = &self.stages[source_index] else {
-      return false;
-    };
-    source.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false)
-  }
-
-  fn flow_restart_waiting(&self, stage_index: usize) -> bool {
-    let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
-      return false;
-    };
-    flow.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false)
-  }
-
   fn flow_has_pending_output(&self, stage_index: usize) -> bool {
     let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
       return false;
     };
     flow.logic.has_pending_output()
-  }
-
-  fn sink_restart_waiting(&self) -> bool {
-    for sink_index in &self.sink_indices {
-      if self.sink_restart_waiting_at(*sink_index) {
-        return true;
-      }
-    }
-    false
-  }
-
-  fn sink_restart_waiting_at(&self, sink_index: usize) -> bool {
-    let StageDefinition::Sink(sink) = &self.stages[sink_index] else {
-      return false;
-    };
-    sink.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false)
   }
 
   fn all_sinks_done(&self) -> bool {
@@ -1203,7 +1039,7 @@ impl GraphInterpreter {
     visited_stages.push(stage_index);
 
     for edge_index in self.incoming_edge_indices_for_stage(stage_index) {
-      let upstream_port = self.edges[edge_index].from;
+      let upstream_port = self.connections.edge_from(edge_index);
       let Some(upstream_stage_index) = self.stage_index_for_outlet(upstream_port) else {
         continue;
       };
@@ -1263,14 +1099,14 @@ impl GraphInterpreter {
   fn shutdown_flow_stage(&mut self, stage_index: usize) -> Result<(), StreamError> {
     self.close_and_clear_incoming_edges_for_stage(stage_index)?;
     self.cancel_upstream_stage(stage_index)?;
-    let _ = self.mark_flow_source_done(stage_index)?;
+    self.mark_flow_source_done(stage_index)?;
     Ok(())
   }
 
   fn cancel_upstream_stage(&mut self, stage_index: usize) -> Result<(), StreamError> {
     let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
     for edge_index in incoming_edges {
-      let upstream_port = self.edges[edge_index].from;
+      let upstream_port = self.connections.edge_from(edge_index);
       if let Some(upstream_stage_index) = self.stage_index_for_outlet(upstream_port)
         && self.all_outgoing_edges_closed(upstream_stage_index)
       {
@@ -1322,21 +1158,14 @@ impl GraphInterpreter {
   fn stage_input_exhausted(&self, stage_index: usize) -> bool {
     let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
     !incoming_edges.is_empty()
-      && incoming_edges
-        .iter()
-        .all(|edge_index| self.edges[*edge_index].closed && self.edges[*edge_index].buffer.is_empty())
+      && incoming_edges.iter().all(|edge_index| self.connections.edge_closed_and_empty(*edge_index))
   }
 
   fn incoming_edge_indices_for_stage(&self, stage_index: usize) -> Vec<usize> {
     let Some(inlet) = self.stages[stage_index].inlet() else {
       return Vec::new();
     };
-    self
-      .edges
-      .iter()
-      .enumerate()
-      .filter_map(|(index, edge)| if edge.to == inlet { Some(index) } else { None })
-      .collect()
+    self.connections.incoming_edge_indices(inlet)
   }
 
   fn stage_index_for_outlet(&self, outlet: PortId) -> Option<usize> {
@@ -1355,254 +1184,24 @@ impl GraphInterpreter {
       .find_map(|(index, stage)| stage.inlet().filter(|stage_inlet| *stage_inlet == inlet).map(|_| index))
   }
 
-  fn apply_failure_action(
-    &mut self,
-    handler_stage_index: usize,
-    action: FailureAction,
-  ) -> Result<FailureDisposition, StreamError> {
-    match action {
-      | FailureAction::Propagate(error) => Ok(FailureDisposition::Fail(error)),
-      | FailureAction::Resume => Ok(FailureDisposition::Continue),
-      | FailureAction::Complete => {
-        self.shutdown_flow_stage(handler_stage_index)?;
-        Ok(FailureDisposition::Continue)
-      },
-    }
-  }
-
-  fn propagate_failure_to_downstream(
-    &mut self,
-    stage_index: usize,
-    error: StreamError,
-  ) -> Result<(bool, FailureDisposition), StreamError> {
-    let Some(outlet) = self.stages[stage_index].outlet() else {
-      return Ok((false, FailureDisposition::Fail(error)));
-    };
-    let Ok(outgoing_edges) = self.outgoing_edge_indices(outlet) else {
-      return Ok((false, FailureDisposition::Fail(error)));
-    };
-    if outgoing_edges.len() != 1 {
-      return Ok((false, FailureDisposition::Fail(error)));
-    }
-    let edge_index = outgoing_edges[0];
-    if self.edges[edge_index].closed {
-      return Ok((false, FailureDisposition::Fail(error)));
-    }
-    let Some(next_stage_index) = self.stage_index_for_inlet(self.edges[edge_index].to) else {
-      return Ok((false, FailureDisposition::Fail(error)));
-    };
-    let action = {
-      let StageDefinition::Flow(flow) = &mut self.stages[next_stage_index] else {
-        return Ok((false, FailureDisposition::Fail(error)));
-      };
-      let reports_failure_handling = flow.logic.handles_failures();
-      let action = flow.logic.on_failure(error)?;
-      debug_assert!(
-        reports_failure_handling || matches!(action, FailureAction::Propagate(_)),
-        "FlowLogic returning Resume/Complete should report handles_failures() = true"
-      );
-      action
-    };
-    match action {
-      | FailureAction::Resume | FailureAction::Complete => {
-        let disposition = self.apply_failure_action(next_stage_index, action)?;
-        Ok((true, disposition))
-      },
-      | FailureAction::Propagate(next_error) => {
-        let (touched_downstream, disposition) = self.propagate_failure_to_downstream(next_stage_index, next_error)?;
-        Ok((touched_downstream, disposition))
-      },
-    }
-  }
-
   fn all_outgoing_edges_closed(&self, stage_index: usize) -> bool {
     let Some(outlet) = self.stages[stage_index].outlet() else {
       return true;
     };
-    self.edges.iter().filter(|edge| edge.from == outlet).all(|edge| edge.closed)
+    self.connections.all_outgoing_closed(outlet)
   }
 
   fn close_outgoing_edges_for_stage(&mut self, stage_index: usize) {
     let Some(outlet) = self.stages[stage_index].outlet() else {
       return;
     };
-    for edge in &mut self.edges {
-      if edge.from == outlet {
-        edge.closed = true;
-      }
-    }
+    self.connections.close_outgoing(outlet);
   }
 
   fn close_and_clear_incoming_edges_for_stage(&mut self, stage_index: usize) -> Result<(), StreamError> {
-    let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
-    for edge_index in incoming_edges {
-      self.edges[edge_index].closed = true;
-      while !self.edges[edge_index].buffer.is_empty() {
-        let _ = self.edges[edge_index].buffer.poll()?;
-      }
-    }
-    Ok(())
-  }
-
-  fn handle_source_failure(
-    &mut self,
-    source_position: usize,
-    error: StreamError,
-  ) -> Result<FailureDisposition, StreamError> {
-    let source_index = self.source_indices[source_position];
-    let (handled, disposition) = self.propagate_failure_to_downstream(source_index, error.clone())?;
-    if handled {
-      return Ok(disposition);
-    }
-    let fallback_error = match disposition {
-      | FailureDisposition::Fail(next_error) => next_error,
-      | FailureDisposition::Continue | FailureDisposition::Complete => error,
+    let Some(inlet) = self.stages[stage_index].inlet() else {
+      return Ok(());
     };
-    let StageDefinition::Source(source) = &mut self.stages[source_index] else {
-      return Ok(FailureDisposition::Fail(StreamError::InvalidConnection));
-    };
-    if let Some(restart) = &mut source.restart {
-      if restart.schedule(self.tick_count) {
-        return Ok(FailureDisposition::Continue);
-      }
-      return if restart.complete_on_max_restarts() {
-        Ok(FailureDisposition::Complete)
-      } else {
-        Ok(FailureDisposition::Fail(fallback_error))
-      };
-    }
-    match source.supervision {
-      | SupervisionStrategy::Stop => Ok(FailureDisposition::Fail(fallback_error)),
-      | SupervisionStrategy::Resume => Ok(FailureDisposition::Continue),
-      | SupervisionStrategy::Restart => {
-        source.logic.on_restart()?;
-        Ok(FailureDisposition::Continue)
-      },
-    }
+    self.connections.close_and_clear_incoming(inlet)
   }
-
-  fn handle_flow_failure(
-    &mut self,
-    stage_index: usize,
-    error: &StreamError,
-  ) -> Result<FailureDisposition, StreamError> {
-    let self_action = {
-      let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-        return Ok(FailureDisposition::Fail(StreamError::InvalidConnection));
-      };
-      let reports_failure_handling = flow.logic.handles_failures();
-      let action = flow.logic.on_failure(error.clone())?;
-      debug_assert!(
-        reports_failure_handling || matches!(action, FailureAction::Propagate(_)),
-        "FlowLogic returning Resume/Complete should report handles_failures() = true"
-      );
-      action
-    };
-    match self_action {
-      | FailureAction::Resume | FailureAction::Complete => {
-        let disposition = self.apply_failure_action(stage_index, self_action)?;
-        Ok(disposition)
-      },
-      | FailureAction::Propagate(error) => {
-        let (handled_downstream, disposition) = self.propagate_failure_to_downstream(stage_index, error.clone())?;
-        if handled_downstream {
-          return Ok(disposition);
-        }
-        let fallback_error = match disposition {
-          | FailureDisposition::Fail(next_error) => next_error,
-          | FailureDisposition::Continue | FailureDisposition::Complete => error,
-        };
-        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-          return Ok(FailureDisposition::Fail(StreamError::InvalidConnection));
-        };
-        if let Some(restart) = &mut flow.restart {
-          if restart.schedule(self.tick_count) {
-            return Ok(FailureDisposition::Continue);
-          }
-          return if restart.complete_on_max_restarts() {
-            Ok(FailureDisposition::Complete)
-          } else {
-            Ok(FailureDisposition::Fail(fallback_error))
-          };
-        }
-        match flow.supervision {
-          | SupervisionStrategy::Stop => Ok(FailureDisposition::Fail(fallback_error)),
-          | SupervisionStrategy::Resume => Ok(FailureDisposition::Continue),
-          | SupervisionStrategy::Restart => {
-            if matches!(flow.kind, StageKind::FlowSplitWhen | StageKind::FlowSplitAfter) {
-              return Ok(FailureDisposition::Continue);
-            }
-            flow.logic.on_restart()?;
-            Ok(FailureDisposition::Continue)
-          },
-        }
-      },
-    }
-  }
-
-  fn handle_sink_failure(&mut self, sink_index: usize, error: StreamError) -> Result<FailureDisposition, StreamError> {
-    let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
-      return Ok(FailureDisposition::Fail(StreamError::InvalidConnection));
-    };
-    if let Some(restart) = &mut sink.restart {
-      if restart.schedule(self.tick_count) {
-        self.demand.request(1)?;
-        return Ok(FailureDisposition::Continue);
-      }
-      return if restart.complete_on_max_restarts() {
-        Ok(FailureDisposition::Complete)
-      } else {
-        Ok(FailureDisposition::Fail(error))
-      };
-    }
-    match sink.supervision {
-      | SupervisionStrategy::Stop => Ok(FailureDisposition::Fail(error)),
-      | SupervisionStrategy::Resume => {
-        self.demand.request(1)?;
-        Ok(FailureDisposition::Continue)
-      },
-      | SupervisionStrategy::Restart => {
-        sink.logic.on_restart()?;
-        sink.logic.on_start(&mut self.demand)?;
-        if let Some(pos) = self.sink_indices.iter().position(|&idx| idx == sink_index) {
-          self.sink_upstream_notified[pos] = false;
-        }
-        Ok(FailureDisposition::Continue)
-      },
-    }
-  }
-}
-
-struct CompiledPlan {
-  stages:         Vec<StageDefinition>,
-  edges:          Vec<EdgeRuntime>,
-  dispatch:       Vec<OutletDispatchState>,
-  flow_order:     Vec<usize>,
-  source_indices: Vec<usize>,
-  sink_indices:   Vec<usize>,
-}
-
-struct EdgeRuntime {
-  from:   PortId,
-  to:     PortId,
-  _mat:   MatCombine,
-  closed: bool,
-  buffer: StreamBuffer<DynValue>,
-}
-
-struct OutletDispatchState {
-  outlet:    PortId,
-  next_edge: usize,
-}
-
-impl OutletDispatchState {
-  const fn new(outlet: PortId) -> Self {
-    Self { outlet, next_edge: 0 }
-  }
-}
-
-enum FailureDisposition {
-  Continue,
-  Complete,
-  Fail(StreamError),
 }

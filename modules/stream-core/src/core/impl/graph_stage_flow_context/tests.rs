@@ -233,3 +233,19 @@ fn timer_schedule_and_advance_works_through_context() {
   let fired_2 = ctx.advance_timers();
   assert_eq!(fired_2, alloc::vec![1_u64]);
 }
+
+// ---------------------------------------------------------------------------
+// stage_actor / get_stage_actor
+// ---------------------------------------------------------------------------
+
+#[test]
+fn stage_actor_before_get_stage_actor_returns_not_initialized_error() {
+  // Given: get_stage_actor がまだ呼ばれていない context
+  let ctx = GraphStageFlowContext::<u32, u32>::new();
+
+  // When: stage_actor を参照する
+  let result = ctx.stage_actor();
+
+  // Then: Pekko StageActorRefNotInitializedException と同じ失敗として観測できる
+  assert!(matches!(result, Err(StreamError::StageActorRefNotInitialized)));
+}

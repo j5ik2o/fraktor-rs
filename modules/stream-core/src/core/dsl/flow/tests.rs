@@ -260,6 +260,61 @@ fn concat_lazy_appends_secondary_source_after_primary_completion() {
 }
 
 #[test]
+fn concat_all_lazy_should_append_all_secondary_sources_when_primary_completes() {
+  // Given: primary source と 2 つの secondary source
+  let flow = Flow::new()
+    .concat_all_lazy([Source::from_array([3_u32, 4_u32]), Source::from_array([5_u32])])
+    .expect("concat_all_lazy");
+
+  // When: primary が完了するまで stream を実行
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+
+  // Then: secondary source が指定順に連結される
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32, 5_u32]);
+}
+
+#[test]
+fn concat_all_lazy_should_materialize_secondary_sources_after_primary_completion() {
+  // Given: materialize 時に記録を残す secondary source 群
+  let materialized_sources = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let first = Source::lazy_source({
+    let materialized_sources = materialized_sources.clone();
+    move || {
+      materialized_sources.lock().push(1_u32);
+      Source::from_array([3_u32])
+    }
+  });
+  let second = Source::lazy_source({
+    let materialized_sources = materialized_sources.clone();
+    move || {
+      materialized_sources.lock().push(2_u32);
+      Source::from_array([4_u32])
+    }
+  });
+  let flow = Flow::new().concat_all_lazy([first, second]).expect("concat_all_lazy");
+  assert!(materialized_sources.lock().is_empty());
+
+  // When: primary が完了するまで stream を実行
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+
+  // Then: secondary source は primary 後に指定順で評価される
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+  assert_eq!(materialized_sources.lock().as_slice(), &[1_u32, 2_u32]);
+}
+
+#[test]
+fn concat_all_lazy_should_reject_empty_secondary_sources() {
+  // Given: secondary source が空の concat_all_lazy
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+
+  // When: 空の source 列で構築する
+  let result = flow.concat_all_lazy(core::iter::empty::<Source<u32, StreamNotUsed>>());
+
+  // Then: fan-in 相当が 0 のため構築エラーになる
+  assert!(result.is_err());
+}
+
+#[test]
 fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion() {
   let (secondary_graph, mut secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
   let secondary = Source::from_graph(secondary_graph, StreamNotUsed::new());
@@ -2542,12 +2597,6 @@ fn ask_with_status_and_context_preserves_context_and_maps_value() {
 }
 
 #[test]
-fn watch_alias_keeps_single_path_behavior() {
-  let values = Source::from_array([1_u32, 2_u32]).via(Flow::new().watch()).collect_values().expect("collect_values");
-  assert_eq!(values, vec![1_u32, 2_u32]);
-}
-
-#[test]
 fn operator_catalog_lookup_returns_contract_for_supported_operator() {
   let catalog = DefaultOperatorCatalog::new();
   let contract = catalog.lookup(OperatorKey::GROUP_BY).expect("lookup");
@@ -2883,24 +2932,66 @@ fn gzip_decompress_accepts_payload_larger_than_compression_chunk_default() {
 }
 
 #[test]
-fn limit_weighted_stops_before_exceeding_budget() {
-  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 2, 1]))
-    .via(Flow::new().limit_weighted(3, |value| *value as usize))
-    .collect_values()
-    .expect("collect_values");
-  assert_eq!(values, vec![2_u32]);
+fn limit_should_pass_when_element_count_equals_max() {
+  // Given: limit と同じ数だけ要素を出す source
+  let source = Source::from_array([1_u32, 2_u32]);
+
+  // When: limit を通して収集する
+  let values = source.via(Flow::new().limit(2)).collect_values().expect("collect_values");
+
+  // Then: 境界値まではそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
 #[test]
-fn limit_weighted_requests_shutdown_after_exceeding_budget() {
-  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+fn limit_should_fail_when_element_count_exceeds_max() {
+  // Given: limit を 1 要素超える source
+  let source = Source::from_array([1_u32, 2_u32, 3_u32]);
+
+  // When: limit を通して収集する
+  let error = source.via(Flow::new().limit(2)).collect_values().expect_err("limit should fail");
+
+  // Then: Pekko の StreamLimitReachedException 相当の failure になる
+  assert_eq!(error, StreamError::StreamLimitReached { limit: 2 });
+}
+
+#[test]
+fn limit_weighted_should_pass_when_total_weight_equals_budget() {
+  // Given: 合計 weight が budget と一致する source
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]));
+
+  // When: limit_weighted を通して収集する
   let values =
-    Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[2, 2, 1], pulls.clone()))
-      .via(Flow::new().limit_weighted(3, |value| *value as usize))
-      .collect_values()
-      .expect("collect_values");
-  assert_eq!(values, vec![2_u32]);
-  assert_eq!(*pulls.lock(), 2_usize);
+    source.via(Flow::new().limit_weighted(3, |value| *value as usize)).collect_values().expect("collect_values");
+
+  // Then: budget 境界まではそのまま通過する
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn limit_weighted_should_fail_when_weight_exceeds_remaining_budget() {
+  // Given: 2 要素目で remaining budget を超える source
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 2, 1]));
+
+  // When: limit_weighted を通して収集する
+  let error =
+    source.via(Flow::new().limit_weighted(3, |value| *value as usize)).collect_values().expect_err("limit should fail");
+
+  // Then: 超過を正常完了にせず failure として返す
+  assert_eq!(error, StreamError::StreamLimitReached { limit: 3 });
+}
+
+#[test]
+fn limit_weighted_should_fail_when_zero_budget_receives_input() {
+  // Given: zero budget の limit_weighted と 1 要素の source
+  let source = Source::single(1_u32);
+
+  // When: 最初の要素が到達する
+  let error =
+    source.via(Flow::new().limit_weighted(0, |value| *value as usize)).collect_values().expect_err("limit should fail");
+
+  // Then: 構築時ではなく要素到達時の limit reached failure になる
+  assert_eq!(error, StreamError::StreamLimitReached { limit: 0 });
 }
 
 #[test]
@@ -3539,24 +3630,6 @@ fn flow_lazy_flow_with_empty_source() {
 }
 
 #[test]
-fn flow_lazy_completion_stage_flow_delegates_to_lazy_flow() {
-  let values = Source::single(7_u32)
-    .via(Flow::lazy_completion_stage_flow(|| Flow::new().map(|v: u32| v + 3)))
-    .collect_values()
-    .expect("collect_values");
-  assert_eq!(values, vec![10_u32]);
-}
-
-#[test]
-fn flow_lazy_future_flow_delegates_to_lazy_flow() {
-  let values = Source::single(7_u32)
-    .via(Flow::lazy_future_flow(|| Flow::new().map(|v: u32| v + 3)))
-    .collect_values()
-    .expect("collect_values");
-  assert_eq!(values, vec![10_u32]);
-}
-
-#[test]
 fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path_behavior() {
   let (graph, _unused) = Flow::<u32, u32, StreamNotUsed>::new().map(|value: u32| value + 1).into_parts();
   let flow: Flow<u32, u32, u32> = Flow::from_graph(graph, 10_u32);
@@ -4083,6 +4156,30 @@ fn watch_termination_passes_through_elements() {
 }
 
 #[test]
+fn watch_termination_should_keep_left_materialized_value() {
+  // Given: materialized value を持つ Flow
+  let flow = Flow::<u32, u32, StreamNotUsed>::new().map_materialized_value(|_| 7_u32);
+
+  // When: plain watch_termination を追加する
+  let (_graph, materialized) = flow.watch_termination().into_parts();
+
+  // Then: watch_termination_mat(KeepLeft) 相当として元の materialized value を保持する
+  assert_eq!(materialized, 7_u32);
+}
+
+#[test]
+fn watch_termination_should_pass_through_elements() {
+  // Given: plain watch_termination を持つ Flow
+  let flow = Flow::new().watch_termination();
+
+  // When: 要素を流す
+  let values = Source::single(42_u32).via(flow).collect_values().expect("collect_values");
+
+  // Then: 要素は変更されない
+  assert_eq!(values, vec![42_u32]);
+}
+
+#[test]
 fn watch_termination_completes_stream_completion_handle() {
   let (graph, completion) = Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepRight).into_parts();
   // 実行前はPending
@@ -4399,6 +4496,55 @@ fn flow_from_materializer_creates_flow() {
   let flow = Flow::from_materializer(|| Flow::from_function(|x: u32| x * 2));
   let values = Source::single(5_u32).via(flow).collect_values().expect("collect_values");
   assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
+fn flow_contramap_transforms_input_before_original_flow_and_keeps_materialized_value() {
+  let flow = Flow::<u32, u32, _>::from_function(|value| value.saturating_add(1))
+    .map_materialized_value(|_| 7_u32)
+    .contramap(|text: &str| text.len() as u32);
+
+  let (plan, (flow_mat, completion)) =
+    Source::from_array(["aa", "bbbb"]).via_mat(flow, KeepRight).into_mat(Sink::collect(), KeepBoth).into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+  for _ in 0..64 {
+    let _ = stream.drive();
+    if stream.state().is_terminal() {
+      break;
+    }
+  }
+
+  assert_eq!(flow_mat, 7_u32);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![3_u32, 5_u32])));
+}
+
+#[test]
+fn flow_dimap_applies_input_mapping_then_original_flow_then_output_mapping() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_function(|value| value.saturating_mul(2))
+    .dimap(|text: &str| text.len() as u32, |value| value.saturating_add(10));
+
+  let values = Source::from_array(["abc", "hello"]).via(flow).collect_values().expect("collect_values");
+
+  assert_eq!(values, vec![16_u32, 20_u32]);
+}
+
+#[test]
+fn flow_do_on_cancel_invokes_callback_once_when_downstream_cancels() {
+  let cancel_count = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancel_count_ref = cancel_count.clone();
+  let flow = Flow::<u32, u32, StreamNotUsed>::new().do_on_cancel(move || {
+    *cancel_count_ref.lock() += 1;
+  });
+  let graph = Source::from_array([1_u32, 2, 3]).via(flow).into_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+
+  drive_until_completion(&mut stream, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*cancel_count.lock(), 1_u32);
 }
 
 #[test]
@@ -5011,6 +5157,35 @@ impl GraphStage<u32, u32, StreamNotUsed> for ThresholdFilterStage {
   }
 }
 
+struct FailOnZeroStageLogic;
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for FailOnZeroStageLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    let value = ctx.grab();
+    if value == 0 {
+      ctx.fail(StreamError::Failed);
+      return;
+    }
+    ctx.push(value);
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+struct FailOnZeroStage;
+
+impl GraphStage<u32, u32, StreamNotUsed> for FailOnZeroStage {
+  fn shape(&self) -> StreamShape<u32, u32> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> {
+    Box::new(FailOnZeroStageLogic)
+  }
+}
+
 /// A GraphStageLogic with a materialized value (counter of processed elements).
 struct CountingLogic {
   count: ArcShared<SpinSyncMutex<usize>>,
@@ -5110,6 +5285,18 @@ fn from_graph_stage_empty_source_produces_no_output() {
 
   // Then: no output
   assert!(values.is_empty());
+}
+
+#[test]
+fn from_graph_stage_fail_should_propagate_to_materialized_completion() {
+  // Given: ctx.fail を呼ぶ GraphStage を含む stream
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(FailOnZeroStage);
+
+  // When: 失敗対象の要素を流す
+  let result = Source::from_array([1_u32, 0, 2]).via(flow).collect_values();
+
+  // Then: interpreter 経由でも failure は握りつぶされず completion に伝播する
+  assert_eq!(result, Err(StreamError::Failed));
 }
 
 // ---------------------------------------------------------------------------

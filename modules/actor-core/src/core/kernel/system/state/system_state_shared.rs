@@ -504,6 +504,10 @@ impl SystemStateShared {
     self.inner.with_read(|inner| inner.temp_actor(name))
   }
 
+  fn temp_actor_by_pid(&self, pid: &Pid) -> Option<ActorRef> {
+    self.inner.with_read(|inner| inner.temp_actor_by_pid(pid))
+  }
+
   /// Resolves the actor path for the specified pid if the actor exists.
   #[must_use]
   pub fn actor_path(&self, pid: &Pid) -> Option<ActorPath> {
@@ -734,6 +738,8 @@ impl SystemStateShared {
   pub fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError> {
     if let Some(cell) = self.cell(&pid) {
       cell.new_dispatcher_shared().system_dispatch(&cell, message)
+    } else if let Some(mut actor) = self.temp_actor_by_pid(&pid) {
+      actor.try_tell(AnyMessage::new(message))
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {

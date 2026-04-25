@@ -1,6 +1,6 @@
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
-use super::{AsyncCallback, TimerGraphStageLogic};
+use super::{AsyncCallback, StageActor, StageActorReceive, TimerGraphStageLogic};
 use crate::core::r#impl::StreamError;
 
 /// Context passed to stage logic.
@@ -20,6 +20,18 @@ pub trait StageContext<In, Out> {
   fn async_callback(&self) -> &AsyncCallback<Out>;
   /// Returns the timer helper for this stage.
   fn timer_graph_stage_logic(&mut self) -> &mut TimerGraphStageLogic;
+  /// Creates or updates the stage actor receive callback.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when no actor system is available for this stage.
+  fn get_stage_actor(&mut self, receive: Box<dyn StageActorReceive>) -> Result<StageActor, StreamError>;
+  /// Returns the stage actor previously created by [`StageContext::get_stage_actor`].
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when the stage actor has not been initialized.
+  fn stage_actor(&self) -> Result<StageActor, StreamError>;
 
   /// Drains asynchronous events from the callback queue.
   #[must_use]

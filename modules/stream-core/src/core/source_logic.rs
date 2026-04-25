@@ -1,4 +1,4 @@
-use crate::core::{DynValue, StreamError};
+use crate::core::{DynValue, StreamError, stream_ref::StreamRefSettings};
 
 /// Source-stage callback contract used by adaptor implementations.
 ///
@@ -32,4 +32,7 @@ pub trait SourceLogic: Send {
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())
   }
+
+  /// Attaches stream reference settings resolved by the materializer.
+  fn attach_stream_ref_settings(&mut self, _settings: StreamRefSettings) {}
 }

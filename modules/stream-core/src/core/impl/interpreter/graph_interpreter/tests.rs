@@ -11,6 +11,11 @@ use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SpinSyncMutex},
 };
 
+use super::super::{
+  buffered_edge::BufferedEdge, compiled_graph_plan::CompiledGraphPlan, failure_disposition::FailureDisposition,
+  graph_connections::GraphConnections, interpreter_snapshot_builder::InterpreterSnapshotBuilder,
+  outlet_dispatch_state::OutletDispatchState,
+};
 use crate::core::{
   Attributes, DynValue, FailureAction, FlowDefinition, FlowLogic, KillSwitchState, KillSwitchStateHandle,
   OverflowStrategy, RestartConfig, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
@@ -19,11 +24,12 @@ use crate::core::{
   r#impl::{
     RestartBackoff,
     fusing::{DemandTracker, StreamBufferConfig},
-    interpreter::GraphInterpreter,
+    interpreter::graph_interpreter::GraphInterpreter,
     materialization::StreamState,
   },
   materialization::{Completion, DriveOutcome, KeepRight, MatCombine, StreamCompletion, StreamDone, StreamNotUsed},
   shape::{Inlet, Outlet, PortId},
+  snapshot::{ConnectionState, InterpreterSnapshot},
   stage::{AsyncCallback, StageKind, TimerGraphStageLogic},
 };
 
@@ -51,6 +57,93 @@ fn linear_plan(source: SourceDefinition, flows: Vec<FlowDefinition>, sink: SinkD
 
 fn stream_plan(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> StreamPlan {
   StreamPlan::from_parts(stages, edges).expect("valid stream graph shape")
+}
+
+#[test]
+fn compiled_graph_plan_extracts_plan_structure_without_interpreter_state() {
+  let graph =
+    Source::single(1_u32).map(|value| value + 1).into_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+
+  let compiled = CompiledGraphPlan::compile(plan, StreamBufferConfig::default());
+
+  assert_eq!(compiled.stages.len(), 3);
+  assert_eq!(compiled.edges.len(), 2);
+  assert_eq!(compiled.dispatch.len(), 2);
+  assert_eq!(compiled.source_indices, &[0]);
+  assert_eq!(compiled.flow_order, &[1]);
+  assert_eq!(compiled.sink_indices, &[2]);
+}
+
+#[test]
+fn buffered_edge_reports_connection_state_from_buffer_lifecycle() {
+  let outlet: Outlet<u32> = Outlet::new();
+  let inlet: Inlet<u32> = Inlet::new();
+  let mut edge =
+    BufferedEdge::new(outlet.id(), inlet.id(), MatCombine::Left, StreamBufferConfig::new(1, OverflowPolicy::Block));
+
+  assert_eq!(edge.from(), outlet.id());
+  assert_eq!(edge.to(), inlet.id());
+  assert_eq!(edge.connection_state(), ConnectionState::ShouldPull);
+
+  edge.offer(Box::new(10_u32)).expect("offer");
+  assert_eq!(edge.connection_state(), ConnectionState::ShouldPush);
+
+  let pulled = edge.poll().expect("poll").expect("element");
+  assert_eq!(*pulled.downcast::<u32>().expect("u32"), 10_u32);
+  assert_eq!(edge.connection_state(), ConnectionState::ShouldPull);
+
+  edge.close();
+  assert_eq!(edge.connection_state(), ConnectionState::Closed);
+}
+
+#[test]
+fn graph_connections_dispatches_same_outlet_to_next_edge() {
+  let outlet: Outlet<u32> = Outlet::new();
+  let first_inlet: Inlet<u32> = Inlet::new();
+  let second_inlet: Inlet<u32> = Inlet::new();
+  let config = StreamBufferConfig::new(1, OverflowPolicy::Block);
+  let mut connections = GraphConnections::new(
+    vec![
+      BufferedEdge::new(outlet.id(), first_inlet.id(), MatCombine::Left, config),
+      BufferedEdge::new(outlet.id(), second_inlet.id(), MatCombine::Right, config),
+    ],
+    vec![OutletDispatchState::new(outlet.id())],
+  );
+
+  connections.offer_next(outlet.id(), Box::new(1_u32)).expect("first offer");
+  connections.offer_next(outlet.id(), Box::new(2_u32)).expect("second offer");
+
+  let (_, first) =
+    connections.poll_incoming_with_preferred(first_inlet.id(), None).expect("first poll").expect("first");
+  let (_, second) =
+    connections.poll_incoming_with_preferred(second_inlet.id(), None).expect("second poll").expect("second");
+  assert_eq!(*first.downcast::<u32>().expect("u32"), 1_u32);
+  assert_eq!(*second.downcast::<u32>().expect("u32"), 2_u32);
+}
+
+#[test]
+fn interpreter_snapshot_builder_uses_compiled_edges_without_owning_interpreter_drive_state() {
+  let graph =
+    Source::single(1_u32).map(|value| value + 1).into_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let compiled = CompiledGraphPlan::compile(plan, StreamBufferConfig::default());
+
+  let snapshot = InterpreterSnapshotBuilder::new(&compiled.stages).build(&compiled.edges);
+
+  assert_eq!(snapshot.logics().len(), 3);
+  assert_eq!(snapshot.connections().len(), 2);
+  assert_eq!(snapshot.running_logics_count(), 3);
+  assert!(snapshot.stopped_logics().is_empty());
+  assert!(snapshot.connections().iter().all(|connection| connection.state() == ConnectionState::ShouldPull));
+}
+
+#[test]
+fn failure_disposition_keeps_terminal_failure_payload_after_extraction() {
+  match FailureDisposition::Fail(StreamError::Failed) {
+    | FailureDisposition::Fail(error) => assert_eq!(error, StreamError::Failed),
+    | FailureDisposition::Continue | FailureDisposition::Complete => panic!("expected failure disposition"),
+  }
 }
 
 fn flow_definition_by_kind<In, Out, Mat>(flow: Flow<In, Out, Mat>, kind: StageKind) -> FlowDefinition {
@@ -2176,6 +2269,52 @@ fn flow_restart_backoff_waits_configured_ticks_before_on_restart() {
 
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32])));
+}
+
+#[test]
+fn sink_restart_backoff_waits_configured_ticks_before_on_restart() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+
+  let source = source_sequence_u32(source_outlet, 3);
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(RestartGateCollectSinkLogic {
+      completion:    completion.clone(),
+      values:        Vec::new(),
+      restarted:     false,
+      restart_calls: restart_calls.clone(),
+    }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::new(2, 1)),
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  interpreter.start().expect("start");
+  let _ = interpreter.drive();
+  assert_eq!(*restart_calls.lock(), 0_u32);
+  let _ = interpreter.drive();
+  assert_eq!(*restart_calls.lock(), 0_u32);
+  let _ = interpreter.drive();
+  assert_eq!(*restart_calls.lock(), 0_u32);
+  let _ = interpreter.drive();
+  assert_eq!(*restart_calls.lock(), 1_u32);
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
 }
 
 #[test]

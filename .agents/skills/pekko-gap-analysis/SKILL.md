@@ -52,6 +52,193 @@ std/embedded はcoreのポートを実装するアダプタモジュールです
 **注意**: すべてのモジュールが `typed/` サブ層を持つわけではない。
 `list_dir` で実際の構造を確認してからマッピングを決定すること。
 
+### actor モジュールの固定スコープ
+
+`/pekko-gap-analysis actor` では、汎用の `modules/{name}/src/` ではなく、現行リポジトリ構造に合わせて次のパスを使う。
+
+| 層 | fraktor-rs 側 | Pekko 側 |
+|----|---------------|----------|
+| classic / untyped kernel | `modules/actor-core/src/core/kernel/` | `references/pekko/actor/` |
+| typed wrapper | `modules/actor-core/src/core/typed/` | `references/pekko/actor-typed/` |
+| std adaptor | `modules/actor-adaptor-std/src/std/` | actor runtime の std / JVM 実装相当のうち Rust で再現可能な adapter 契約 |
+
+actor 調査では、まず **比較スコープ定義** を出力し、そのスコープだけを parity 分母にする。
+Pekko ディレクトリ配下の raw 公開型数をそのまま分母にしてはならない。
+
+#### actor parity 対象に含めるもの
+
+Rust の actor runtime として意味を持つ公開契約だけを対象にする。
+
+- classic actor core: actor, context, ref, path, selection, props, system message
+- supervision / lifecycle: supervisor strategy, directive, restart, DeathWatch, termination
+- typed core: typed actor ref, actor system, behavior, signal, interceptor, typed context
+- dispatch / mailbox: dispatcher abstraction, executor port, mailbox contract, mailbox requirement
+- routing: classic / typed routing semantics, routee, routing logic, pool / group equivalent
+- event / logging: event stream, dead letter, logging adapter, tracing adapter contract
+- pattern: ask, pipe, retry, graceful stop, circuit breaker
+- receptionist / discovery: service key, receptionist command, listing
+- scheduling / timers: scheduler, timer scheduler, receive timeout
+- ref / resolution: actor path, selection, identify / identity
+- delivery / pubsub: producer / consumer controller, durable producer queue, topic
+- serialization contract: serializer trait, manifest, registry, transport information
+- extension: extension id, setup, registry
+- coordinated shutdown: phase, task, reason, termination
+- std adaptor: tokio / executor / scheduler / tracing など、core の port を実装する Rust 側 adapter
+
+#### actor parity 対象外にするもの
+
+次は `n/a` として分類し、actor parity の分母に入れない。
+
+- Java DSL / Java interop: `AbstractActor`, `UntypedAbstractActor`, `ReceiveBuilder`, `BehaviorBuilder`, `javadsl/*`, `japi/*`
+- Scala 構文拡張: implicit ops, package object convenience API
+- JVM reflection / classloader: `DynamicAccess`, `ReflectiveDynamicAccess`, `ClassLoaderObjectInputStream`
+- HOCON dynamic loading / configurator facade: JVM 設定ロード方式に依存する provider / configurator
+- Java serialization: `JavaSerializer`, `DisabledJavaSerializer`
+- JFR / flight recorder events
+- deprecated classic remoting / Netty / Aeron 固有実装
+- Pekko IO / TCP / UDP / DNS: actor core ではなく transport / network adapter の別スコープ
+- actor runtime に不要な Pekko util 全体互換: runtime 契約に必要な `ByteString` 等だけを対象にする
+- testkit 専用 API: ユーザーが testkit 調査を明示した場合だけ別スコープで扱う
+
+#### actor 調査で必ず確認する項目
+
+`actor` では次の順で確認し、レポートに根拠を残す。
+
+1. 現行パスが `modules/actor-core` と `modules/actor-adaptor-std` に分かれていることを確認する。`modules/actor/src/` が存在しなくてもエラー扱いにしない。
+2. `references/pekko/actor/` と `references/pekko/actor-typed/` を参照し、対象外 API を除いた parity 分母を作る。
+3. カテゴリ別に、同名 API だけでなく同等セマンティクスを持つ別名実装も対応済みとして扱う。
+4. `todo!()` / `unimplemented!()` / placeholder を検索し、スタブがあれば部分実装として記録する。
+5. 公開 API ギャップが少ない場合は、内部構造として DeathWatch の remote `AddressTerminated` 統合、classic kernel の public surface、typed/untyped 分離、core/std 境界を確認する。
+6. raw 抽出数を出す場合は参考値として別枠に置き、parity カバレッジや「ギャップ大」の根拠にしない。
+7. Pekko IO / TCP / UDP / DNS を調べる必要が出た場合は、actor core parity ではなく transport / network adapter の別ギャップ分析として明記する。
+
+### その他モジュールの固定スコープ
+
+`actor` 以外も、現行リポジトリの `*-core` / `*-adaptor-std` 構造を優先する。
+固定スコープが定義されているモジュールでは、`modules/{name}/src/` と `references/pekko/{name}/src/` の単純対応を使わない。
+
+| 引数 | fraktor-rs 側 | Pekko 側 |
+|------|---------------|----------|
+| `stream` | `modules/stream-core/src/core/`, `modules/stream-adaptor-std/src/std/` | `references/pekko/stream/`, `references/pekko/stream-typed/` |
+| `remote` | `modules/remote-core/src/`, `modules/remote-adaptor-std/src/` | `references/pekko/remote/` |
+| `cluster` | `modules/cluster-core/src/core/`, `modules/cluster-adaptor-std/src/std/` | `references/pekko/cluster/`, `references/pekko/cluster-typed/`, `references/pekko/cluster-sharding/`, `references/pekko/cluster-sharding-typed/`, `references/pekko/cluster-tools/`, `references/pekko/distributed-data/` |
+| `persistence` | `modules/persistence-core/src/core/` | `references/pekko/persistence/`, `references/pekko/persistence-typed/`, `references/pekko/persistence-shared/` |
+| `utils` | `modules/utils-core/src/core/`, `modules/utils-adaptor-std/src/std/` | `references/pekko/actor/src/main/scala/org/apache/pekko/util/` のうち fraktor runtime に必要な utility |
+
+#### stream の対象範囲
+
+`stream` では、Pekko Streams の実行モデルと operator semantics を対象にする。Scala / Java DSL の表層名ではなく、Rust の `Source` / `Flow` / `Sink` / `BidiFlow` / `RunnableGraph` / `GraphDSL` 相当の契約で比較する。
+
+対象に含めるもの:
+
+- stream graph, shape, port, materialization, interpreter, fusing
+- `Source` / `Flow` / `Sink` / `BidiFlow` / `RunnableGraph` の主要 operator semantics
+- graph stage, handler, async callback, timer stage
+- attributes, supervision, restart, kill switch, queue, hub, throttle, completion strategy
+- actor interop, stream ref, typed stream interop
+- framing / compression / IO adapter のうち Rust std adapter として再現可能なもの
+
+対象外にするもの:
+
+- Java DSL wrapper と Java interop 専用 API
+- Scala implicit / package ops / syntax sugar
+- `stream-testkit`, `stream-tests`, `stream-tests-tck`, `stream-typed-tests`
+- JVM dispatcher / materializer configurator / HOCON loading 固有 API
+- Reactive Streams TCK や test probe API。ユーザーが testkit 調査を明示した場合だけ別スコープにする
+
+#### remote の対象範囲
+
+`remote` では、Pekko Artery compatible な remote actor transport 契約を対象にする。
+
+対象に含めるもの:
+
+- remote address, actor ref serialization, envelope, manifest, wire protocol
+- association, handshake, quarantine, disassociation, reconnect / backoff
+- failure detector, remote watcher, remote DeathWatch integration
+- transport abstraction と std TCP transport adapter
+- provider / extension installer / remote actor ref provider 相当の契約
+
+対象外にするもの:
+
+- deprecated classic remoting
+- Netty / Aeron / TLS など特定実装技術の完全互換
+- Java serialization / Jackson module そのもの。serialization contract との接続点だけを対象にする
+- remote testkit / multi-node-testkit / remote-tests
+- HOCON provider loading や JVM classloader 固有 API
+
+#### cluster の対象範囲
+
+`cluster` では、cluster membership と virtual actor / sharding 相当の分散配置契約を対象にする。
+
+対象に含めるもの:
+
+- cluster extension, cluster state, member / node status, gossip, vector clock
+- failure detector, downing provider, cluster provider
+- cluster router pool / group semantics
+- receptionist / discovery 連携のうち cluster membership に依存するもの
+- distributed pubsub / topic / broker semantics
+- sharding / grain / virtual actor / placement / identity lookup に相当する契約
+- std adapter の gossip transport, provider adapter, AWS ECS discovery adapter
+
+対象外にするもの:
+
+- `cluster-metrics`。ユーザーが metrics 調査を明示した場合だけ別スコープにする
+- Kubernetes / discovery backend 固有実装の完全互換
+- multi-node-testkit, cluster tests, typed tests
+- Java / Scala DSL convenience API
+- JVM management / JMX / HOCON loading 固有 API
+
+#### persistence の対象範囲
+
+`persistence` では、write-side persistence runtime を対象にする。`persistence-query` はデフォルトでは別スコープにする。
+
+対象に含めるもの:
+
+- persistent actor, event sourced behavior, recovery, journal, snapshot
+- persistent representation, envelope, sequence number, metadata
+- event adapter, read / write adapter, tagging
+- durable state store registry と durable state error contract
+- at-least-once delivery, unconfirmed delivery, persistent FSM
+- plugin proxy / extension / in-memory journal / in-memory snapshot store
+
+対象外にするもの:
+
+- `persistence-query`。ユーザーが query 調査を明示した場合だけ別スコープにする
+- `persistence-testkit`, `persistence-tck`, `persistence-typed-tests`
+- JDBC / Cassandra など特定 storage plugin の完全互換
+- Java DSL wrapper / Scala syntax sugar
+- HOCON plugin loading / JVM reflection 固有 API
+
+#### utils の対象範囲
+
+`utils` は Pekko の汎用 util 全体互換ではなく、fraktor runtime の no_std / std 境界を支える portable utility を対象にする。
+
+対象に含めるもの:
+
+- shared ownership / lock / once / rwlock / debug lock adapter
+- queue / wait / collection primitives
+- timer wheel / delay / scheduler capacity profile
+- URI / address parsing に必要な net utility
+- actor / stream / remote / cluster の実装で直接使われる `ByteString`, `Timeout`, `StablePriorityQueue` 等の runtime utility semantics
+
+対象外にするもの:
+
+- JVM reflection, classloader, Java version, flight recorder loader
+- Scala collection compatibility / ccompat
+- Pekko 内部最適化用 util の完全互換
+- Java API helper / boxed type / manifest helper など JVM 型システム依存 API
+
+#### 固定スコープ共通ルール
+
+固定スコープがあるモジュールでは、次を必ず守る。
+
+1. レポート冒頭に「比較スコープ定義」を出し、対象に含める参照ディレクトリと除外ディレクトリを明記する。
+2. `*-tests`, `*-testkit`, `*-tck`, `docs`, `bench-jmh` は、ユーザーが明示した場合だけ分母に含める。
+3. Java / Scala / JVM 固有 API は `n/a` に分類し、parity 分母には入れない。
+4. raw 抽出数を出す場合は参考値として分離し、カバレッジ計算や「ギャップ大」の根拠にしない。
+5. typed 参照ディレクトリは、fraktor 側に対応する typed API または同等セマンティクスがある場合に対象へ入れる。単なる Java / Scala DSL 差分は対象外にする。
+6. std adapter は core の port を実装する詳細として扱い、JVM 実装技術そのものの互換性を要求しない。
+
 ## ワークフロー
 
 
@@ -68,6 +255,9 @@ std/embedded はcoreのポートを実装するアダプタモジュールです
 
 Pekko側のディレクトリ名が異なる場合（例: `stream` vs `streams`）は、
 `references/pekko/` 配下を `list_dir` で確認して対応するディレクトリを特定する。
+
+固定スコープがある場合は上記の「actor モジュールの固定スコープ」または「その他モジュールの固定スコープ」を優先する。
+`actor` の `modules/actor/src/` のように汎用パスが存在しなくても、固定スコープの実パスが存在すればエラー扱いにしてはならない。
 
 **層構造の把握（必須）**:
 ```
@@ -97,6 +287,8 @@ search_for_pattern: "^\s+(?:final |override |protected |private )*def\s+\S+"
 ```
 
 抽出後、`private` / `private[...]` 修飾付きのものはフィルタで除外する。
+
+固定スコープがある場合は、抽出直後に対象外 API を分類して parity 分母から除外する。raw 抽出結果は必要に応じて参考値として残すが、カバレッジ計算には使わない。
 
 抽出結果を以下のカテゴリに分類する：
 
@@ -288,6 +480,11 @@ find modules/{name}/src -name "*.rs" | sort
 
 ```markdown
 # {name} モジュール ギャップ分析
+
+## 比較スコープ定義
+
+この分析で parity 対象に含める範囲と、`n/a` として除外する範囲を先に明記する。
+固定スコープがある場合は、そのスコープ表に従って Java / Scala / JVM 固有 API、testkit / TCK / tests、実装技術固有 API を分母から除外したことを明記する。
 
 ## サマリー
 

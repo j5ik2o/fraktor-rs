@@ -1,13 +1,15 @@
 use alloc::vec::Vec;
 
+use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::StreamState;
 use crate::core::{
   KillSwitchState, KillSwitchStateHandle, StreamError, StreamPlan,
-  r#impl::{fusing::StreamBufferConfig, interpreter::GraphInterpreter},
+  r#impl::{fusing::StreamBufferConfig, interpreter::graph_interpreter::GraphInterpreter},
   materialization::DriveOutcome,
   snapshot::StreamSnapshot,
+  stream_ref::StreamRefSettings,
 };
 
 /// Internal stream execution state.
@@ -22,6 +24,26 @@ impl Stream {
     let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
     let kill_switch_state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
     Self { interpreter: GraphInterpreter::new(plan, buffer_config), kill_switch_state, linked_kill_switch_states }
+  }
+
+  pub(crate) fn new_with_materializer_context(
+    plan: StreamPlan,
+    buffer_config: StreamBufferConfig,
+    actor_system: Option<&ActorSystem>,
+    stream_ref_settings: &StreamRefSettings,
+  ) -> Self {
+    let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
+    let kill_switch_state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
+    Self {
+      interpreter: GraphInterpreter::new_with_materializer_context(
+        plan,
+        buffer_config,
+        actor_system,
+        stream_ref_settings,
+      ),
+      kill_switch_state,
+      linked_kill_switch_states,
+    }
   }
 
   pub(crate) fn start(&mut self) -> Result<(), StreamError> {

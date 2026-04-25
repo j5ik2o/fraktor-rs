@@ -2,8 +2,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use crate::core::{
   StreamError,
-  r#impl::CancellationCause,
-  stage::{OutHandler, StageContext},
+  stage::{CancellationCause, OutHandler, StageContext},
 };
 
 // --- テスト用ミニマルモック ---

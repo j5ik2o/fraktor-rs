@@ -41,6 +41,8 @@ mod debounce_logic;
 mod demand;
 /// Internal demand tracker.
 mod demand_tracker;
+/// Downstream-cancel callback logic.
+mod do_on_cancel_logic;
 /// Drop (skip first N) logic.
 mod drop_logic;
 /// Drop-while logic.
@@ -97,6 +99,8 @@ mod map_error_logic;
 mod map_logic;
 /// Map-option logic.
 mod map_option_logic;
+/// Materialized sink factory logic.
+mod materialized_sink_logic;
 /// Merge-latest logic.
 mod merge_latest_logic;
 /// Merge (unordered fan-in) logic.
@@ -125,6 +129,8 @@ mod retry_flow_logic;
 mod sample_logic;
 /// Scan logic.
 mod scan_logic;
+/// Sink-source bridge logic.
+mod sink_source_logic;
 /// Sliding window logic.
 mod sliding_logic;
 /// Split-after logic.
@@ -187,6 +193,7 @@ pub(in crate::core) use conflate_with_seed_logic::*;
 pub(in crate::core) use coupled_termination_logic::*;
 pub(in crate::core) use debounce_logic::*;
 pub(crate) use demand_tracker::DemandTracker;
+pub(in crate::core) use do_on_cancel_logic::*;
 pub(in crate::core) use drop_logic::*;
 pub(in crate::core) use drop_while_logic::*;
 pub(in crate::core) use expand_logic::*;
@@ -215,6 +222,7 @@ pub(in crate::core) use map_concat_logic::*;
 pub(in crate::core) use map_error_logic::*;
 pub(in crate::core) use map_logic::*;
 pub(in crate::core) use map_option_logic::*;
+pub(in crate::core) use materialized_sink_logic::*;
 pub(in crate::core) use merge_latest_logic::*;
 pub(in crate::core) use merge_logic::*;
 pub(in crate::core) use merge_preferred_logic::*;
@@ -229,6 +237,7 @@ pub(in crate::core) use recover_with_retries_logic::*;
 pub(in crate::core) use retry_flow_logic::*;
 pub(in crate::core) use sample_logic::*;
 pub(in crate::core) use scan_logic::*;
+pub(in crate::core) use sink_source_logic::*;
 pub(in crate::core) use sliding_logic::*;
 pub(in crate::core) use split_after_logic::*;
 pub(in crate::core) use split_when_logic::*;
@@ -289,6 +298,27 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::Left,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+    attributes:  Attributes::new(),
+  }
+}
+
+pub(in crate::core) fn do_on_cancel_definition<In, F>(callback: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut() + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic: DoOnCancelLogic<In, F> = DoOnCancelLogic { callback, fired: false, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,

@@ -1,7 +1,7 @@
 use core::any::TypeId;
 
 use crate::core::r#impl::interpreter::{
-  DEFAULT_BOUNDARY_CAPACITY, GraphInterpreter, IslandBoundaryShared, IslandSplitter,
+  DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter, graph_interpreter::GraphInterpreter,
 };
 
 #[test]

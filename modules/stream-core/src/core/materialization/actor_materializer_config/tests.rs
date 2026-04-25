@@ -3,6 +3,7 @@ use core::time::Duration;
 use crate::core::{
   SupervisionStrategy,
   materialization::{ActorMaterializerConfig, SubscriptionTimeoutConfig, SubscriptionTimeoutMode},
+  stream_ref::StreamRefSettings,
 };
 
 // --- default values ---
@@ -103,6 +104,50 @@ fn default_matches_new() {
   assert_eq!(from_new.debug_logging(), from_default.debug_logging());
   assert_eq!(from_new.output_burst_limit(), from_default.output_burst_limit());
   assert_eq!(from_new.max_fixed_buffer_size(), from_default.max_fixed_buffer_size());
+}
+
+// --- StreamRefSettings 連携 ---
+
+#[test]
+fn new_returns_default_stream_ref_settings() {
+  // Given/When: materializer config を default で構築する
+  let config = ActorMaterializerConfig::new();
+
+  // Then: StreamRefSettings の reference.conf 相当 default が含まれる
+  assert_eq!(config.stream_ref_settings(), StreamRefSettings::new());
+}
+
+#[test]
+fn with_stream_ref_settings_round_trip() {
+  // Given: 明示的な StreamRefSettings
+  let stream_ref_settings = StreamRefSettings::new()
+    .with_buffer_capacity(64)
+    .with_demand_redelivery_interval_ticks(2)
+    .with_subscription_timeout_ticks(45)
+    .with_termination_received_before_completion_leeway_ticks(5);
+
+  // When: ActorMaterializerConfig に設定する
+  let config = ActorMaterializerConfig::new().with_stream_ref_settings(stream_ref_settings.clone());
+
+  // Then: 同じ設定値が取得できる
+  assert_eq!(config.stream_ref_settings(), stream_ref_settings);
+}
+
+#[test]
+fn with_stream_ref_settings_preserves_existing_materializer_fields() {
+  // Given: 既存 materializer fields を設定済みにする
+  let stream_ref_settings = StreamRefSettings::new().with_buffer_capacity(64);
+  let config = ActorMaterializerConfig::new()
+    .with_drive_interval(Duration::from_millis(50))
+    .with_debug_logging(true)
+    .with_output_burst_limit(500)
+    .with_stream_ref_settings(stream_ref_settings.clone());
+
+  // Then: StreamRef settings 追加後も既存 fields は保持される
+  assert_eq!(config.drive_interval(), Duration::from_millis(50));
+  assert!(config.debug_logging());
+  assert_eq!(config.output_burst_limit(), 500);
+  assert_eq!(config.stream_ref_settings(), stream_ref_settings);
 }
 
 // --- SubscriptionTimeoutConfig のテスト ---

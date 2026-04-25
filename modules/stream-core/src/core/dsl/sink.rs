@@ -18,7 +18,10 @@ use super::{
 };
 use crate::core::{
   attributes::Attributes,
-  r#impl::{fusing::DemandTracker, queue::SinkQueue},
+  r#impl::{
+    fusing::{DemandTracker, MaterializedSinkLogic, SinkSourceLogic},
+    queue::SinkQueue,
+  },
   stage::{GraphStage, GraphStageLogic, StreamStage},
 };
 
@@ -78,12 +81,6 @@ where
     Self::from_definition(StageKind::Custom, logic, completion)
   }
 
-  /// Creates a sink that is compatible with completion-stage based APIs.
-  #[must_use]
-  pub fn completion_stage_sink() -> Self {
-    Self::ignore()
-  }
-
   /// Creates a sink that folds while a predicate remains true.
   #[must_use]
   pub fn fold_while<Acc, P, F>(initial: Acc, mut predicate: P, mut func: F) -> Sink<In, StreamCompletion<Acc>>
@@ -128,44 +125,6 @@ where
     }))
   }
 
-  /// Creates a sink backed by a materializer integration placeholder.
-  #[must_use]
-  pub fn from_materializer() -> Self {
-    Self::ignore()
-  }
-
-  /// Creates a sink backed by a subscriber integration placeholder.
-  #[must_use]
-  pub fn from_subscriber() -> Self {
-    Self::ignore()
-  }
-
-  /// Creates a sink compatible with future-based entry points.
-  #[must_use]
-  pub fn future_sink() -> Self {
-    Self::ignore()
-  }
-
-  /// Lazily creates a completion-stage sink.
-  ///
-  /// Alias of [`Sink::lazy_sink`].
-  #[must_use]
-  pub fn lazy_completion_stage_sink<F>(factory: F) -> Self
-  where
-    F: FnOnce() -> Self + Send + 'static, {
-    Self::lazy_sink(factory)
-  }
-
-  /// Lazily creates a future sink.
-  ///
-  /// Alias of [`Sink::lazy_sink`].
-  #[must_use]
-  pub fn lazy_future_sink<F>(factory: F) -> Self
-  where
-    F: FnOnce() -> Self + Send + 'static, {
-    Self::lazy_sink(factory)
-  }
-
   /// Lazily creates a sink.
   ///
   /// The factory is not called until the first element arrives.
@@ -190,18 +149,35 @@ where
   pub fn pre_materialize(self) -> (Self, StreamCompletion<StreamDone>) {
     (self, StreamCompletion::new())
   }
+}
 
-  /// Creates a source placeholder corresponding to sink-source bridge APIs.
+impl<In, T> Sink<In, StreamCompletion<T>>
+where
+  In: Send + Sync + 'static,
+  T: Send + 'static,
+{
+  /// Creates a sink from a materializer-time factory.
   #[must_use]
-  pub fn source() -> Source<In, StreamNotUsed> {
-    Source::empty()
+  pub fn from_materializer<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self + Send + 'static, {
+    let completion = StreamCompletion::new();
+    let logic = MaterializedSinkLogic::<In, T, F>::new(factory, completion.clone());
+    Self::from_definition(StageKind::Custom, logic, completion)
   }
+}
 
-  /// Creates a source placeholder corresponding to publisher conversion APIs.
+impl<In> Sink<In, Source<In, StreamNotUsed>>
+where
+  In: Send + Sync + 'static,
+{
+  /// Creates a sink that materializes a live source view of its input.
   #[must_use]
-  pub fn into_publisher(self) -> Source<In, StreamNotUsed> {
-    let _ = self;
-    Source::empty()
+  pub fn source() -> Self {
+    let (source_graph, queue) = Source::<In, StreamNotUsed>::queue_unbounded().into_parts();
+    let source = Source::from_graph(source_graph, StreamNotUsed::new());
+    let logic: SinkSourceLogic<In> = SinkSourceLogic::new(queue);
+    Self::from_definition(StageKind::Custom, logic, source)
   }
 }
 

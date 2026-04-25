@@ -35,6 +35,12 @@ impl TempActors {
     self.map.get(name).cloned()
   }
 
+  /// Returns a registered actor reference by pid if present.
+  #[must_use]
+  pub(crate) fn get_by_pid(&self, pid: &Pid) -> Option<ActorRef> {
+    self.map.values().find(|actor| actor.pid() == *pid).cloned()
+  }
+
   /// Removes an actor reference by pid if present.
   pub(crate) fn remove_by_pid(&mut self, pid: &Pid) -> Option<(String, ActorRef)> {
     let name = self.map.iter().find(|(_, actor)| actor.pid() == *pid).map(|(name, _)| name.clone());

@@ -2,7 +2,7 @@
 mod tests;
 
 use super::StageContext;
-use crate::core::{StreamError, r#impl::CancellationCause};
+use crate::core::{StreamError, stage::CancellationCause};
 
 /// Trait implemented by output-side stage logic handlers.
 ///

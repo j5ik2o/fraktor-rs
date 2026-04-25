@@ -2,8 +2,16 @@
 
 extern crate std;
 
+use std::vec::Vec;
+
 use fraktor_actor_core_rs::core::kernel::actor::extension::Extension;
-use fraktor_stream_core_rs::core::materialization::ActorMaterializer;
+use fraktor_stream_core_rs::core::{
+  materialization::ActorMaterializer,
+  snapshot::{MaterializerState, StreamSnapshot},
+};
+
+#[cfg(test)]
+mod tests;
 
 /// Per-ActorSystem shared materializer (Pekko `SystemMaterializer` equivalent).
 ///
@@ -34,5 +42,11 @@ impl SystemMaterializer {
   #[must_use]
   pub const fn materializer_mut(&mut self) -> &mut ActorMaterializer {
     &mut self.materializer
+  }
+
+  /// Collects stream snapshots from the underlying materializer.
+  #[must_use]
+  pub fn stream_snapshots(&self) -> Vec<StreamSnapshot> {
+    MaterializerState::stream_snapshots(&self.materializer)
   }
 }

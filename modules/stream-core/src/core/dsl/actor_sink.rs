@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use super::{
   DemandTracker, DynValue, SinkDecision, SinkLogic, StageKind, StreamCompletion, StreamDone, StreamError,
-  downcast_value, sink::Sink,
+  StreamNotUsed, downcast_value, sink::Sink,
 };
 
 #[cfg(test)]
@@ -88,6 +88,62 @@ impl ActorSink {
       _pd: PhantomData,
     };
     Sink::from_definition(StageKind::Custom, logic, completion)
+  }
+
+  /// Creates an actor-ref sink with backpressure released by any ack value.
+  ///
+  /// The sink sends the `on_init_message` first, waits for `receive_ack` to
+  /// yield any value, and then forwards each stream element using
+  /// `message_adapter`. After each sent message, demand is requested only when
+  /// `receive_ack` yields `Some(_)`.
+  pub fn actor_ref_with_backpressure_any_ack<
+    In,
+    Ack,
+    Msg,
+    Emit,
+    MessageAdapter,
+    OnInitMessage,
+    ReceiveAck,
+    OnFailureMessage,
+  >(
+    emit: Emit,
+    message_adapter: MessageAdapter,
+    on_init_message: OnInitMessage,
+    receive_ack: ReceiveAck,
+    on_complete_message: Msg,
+    on_failure_message: OnFailureMessage,
+  ) -> Sink<In, StreamNotUsed>
+  where
+    In: Send + Sync + 'static,
+    Ack: Send + Sync + 'static,
+    Msg: Clone + Send + Sync + 'static,
+    Emit: FnMut(Msg) + Send + Sync + 'static,
+    MessageAdapter: FnMut(In) -> Msg + Send + Sync + 'static,
+    OnInitMessage: FnMut() -> Msg + Send + Sync + 'static,
+    ReceiveAck: FnMut() -> Option<Ack> + Send + Sync + 'static,
+    OnFailureMessage: FnMut(StreamError) -> Msg + Send + Sync + 'static, {
+    let completion = StreamCompletion::new();
+    let logic = ActorRefBackpressureAnyAckSinkLogic::<
+      In,
+      Ack,
+      Msg,
+      Emit,
+      MessageAdapter,
+      OnInitMessage,
+      ReceiveAck,
+      OnFailureMessage,
+    > {
+      emit,
+      message_adapter,
+      on_init_message,
+      receive_ack,
+      on_complete_message,
+      on_failure_message,
+      completion,
+      awaiting_ack: false,
+      _pd: PhantomData,
+    };
+    Sink::from_definition(StageKind::Custom, logic, StreamNotUsed::new())
   }
 }
 
@@ -232,6 +288,110 @@ where
       return Ok(false);
     }
     if matches!((self.receive_ack)(), Some(received) if received == self.ack_message) {
+      self.awaiting_ack = false;
+      demand.request(1)?;
+      return Ok(true);
+    }
+    Ok(false)
+  }
+}
+
+struct ActorRefBackpressureAnyAckSinkLogic<
+  In,
+  Ack,
+  Msg,
+  Emit,
+  MessageAdapter,
+  OnInitMessage,
+  ReceiveAck,
+  OnFailureMessage,
+> {
+  emit:                Emit,
+  message_adapter:     MessageAdapter,
+  on_init_message:     OnInitMessage,
+  receive_ack:         ReceiveAck,
+  on_complete_message: Msg,
+  on_failure_message:  OnFailureMessage,
+  completion:          StreamCompletion<StreamDone>,
+  awaiting_ack:        bool,
+  _pd:                 PhantomData<fn(In, Ack, Msg)>,
+}
+
+impl<In, Ack, Msg, Emit, MessageAdapter, OnInitMessage, ReceiveAck, OnFailureMessage> SinkLogic
+  for ActorRefBackpressureAnyAckSinkLogic<
+    In,
+    Ack,
+    Msg,
+    Emit,
+    MessageAdapter,
+    OnInitMessage,
+    ReceiveAck,
+    OnFailureMessage,
+  >
+where
+  In: Send + Sync + 'static,
+  Ack: Send + Sync + 'static,
+  Msg: Clone + Send + Sync + 'static,
+  Emit: FnMut(Msg) + Send + Sync + 'static,
+  MessageAdapter: FnMut(In) -> Msg + Send + Sync + 'static,
+  OnInitMessage: FnMut() -> Msg + Send + Sync + 'static,
+  ReceiveAck: FnMut() -> Option<Ack> + Send + Sync + 'static,
+  OnFailureMessage: FnMut(StreamError) -> Msg + Send + Sync + 'static,
+{
+  fn can_accept_input(&self) -> bool {
+    !self.awaiting_ack
+  }
+
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    (self.emit)((self.on_init_message)());
+    self.awaiting_ack = true;
+    self.observe_ack(demand).map(|_| ())
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    if self.awaiting_ack {
+      return Err(StreamError::WouldBlock);
+    }
+    let value = downcast_value::<In>(input)?;
+    (self.emit)((self.message_adapter)(value));
+    self.awaiting_ack = true;
+    let _observed = self.observe_ack(demand)?;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    (self.emit)(self.on_complete_message.clone());
+    self.completion.complete(Ok(StreamDone::new()));
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    (self.emit)((self.on_failure_message)(error.clone()));
+    self.completion.complete(Err(error));
+  }
+
+  fn on_tick(&mut self, demand: &mut DemandTracker) -> Result<bool, StreamError> {
+    self.observe_ack(demand)
+  }
+}
+
+impl<In, Ack, Msg, Emit, MessageAdapter, OnInitMessage, ReceiveAck, OnFailureMessage>
+  ActorRefBackpressureAnyAckSinkLogic<In, Ack, Msg, Emit, MessageAdapter, OnInitMessage, ReceiveAck, OnFailureMessage>
+where
+  In: Send + Sync + 'static,
+  Ack: Send + Sync + 'static,
+  Msg: Clone + Send + Sync + 'static,
+  Emit: FnMut(Msg) + Send + Sync + 'static,
+  MessageAdapter: FnMut(In) -> Msg + Send + Sync + 'static,
+  OnInitMessage: FnMut() -> Msg + Send + Sync + 'static,
+  ReceiveAck: FnMut() -> Option<Ack> + Send + Sync + 'static,
+  OnFailureMessage: FnMut(StreamError) -> Msg + Send + Sync + 'static,
+{
+  fn observe_ack(&mut self, demand: &mut DemandTracker) -> Result<bool, StreamError> {
+    if !self.awaiting_ack {
+      return Ok(false);
+    }
+    if (self.receive_ack)().is_some() {
       self.awaiting_ack = false;
       demand.request(1)?;
       return Ok(true);

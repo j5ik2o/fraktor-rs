@@ -4,7 +4,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::GraphStageFlowAdapter;
 use crate::core::{
-  DownstreamCancelAction, DynValue, FlowLogic, StreamError,
+  DownstreamCancelAction, DynValue, FailureAction, FlowLogic, StreamError,
   materialization::StreamNotUsed,
   stage::{GraphStageLogic, StageContext},
 };
@@ -210,6 +210,38 @@ impl GraphStageLogic<u32, u32, StreamNotUsed> for StopFailureLogic {
   }
 }
 
+struct ErrorCallbackFailureLogic;
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for ErrorCallbackFailureLogic {
+  fn on_error(&mut self, ctx: &mut dyn StageContext<u32, u32>, _error: StreamError) {
+    ctx.fail(StreamError::InvalidConnection);
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+struct ErrorCallbackCompleteLogic;
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for ErrorCallbackCompleteLogic {
+  fn on_error(&mut self, ctx: &mut dyn StageContext<u32, u32>, _error: StreamError) {
+    ctx.complete();
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+struct ErrorCallbackIgnoresLogic;
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for ErrorCallbackIgnoresLogic {
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
 #[test]
 fn on_source_done_calls_on_complete_and_on_stop() {
   let completed = ArcShared::new(SpinSyncMutex::new(false));
@@ -223,6 +255,53 @@ fn on_source_done_calls_on_complete_and_on_stop() {
   assert!(result.is_ok());
   assert!(*completed.lock());
   assert!(*stopped.lock());
+}
+
+#[test]
+fn on_failure_propagates_error_set_by_on_error_callback() {
+  let logic: Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> = Box::new(ErrorCallbackFailureLogic);
+  let mut adapter = GraphStageFlowAdapter::new(logic);
+
+  let result = adapter.on_failure(StreamError::Failed);
+
+  match result {
+    | Ok(FailureAction::Propagate(StreamError::InvalidConnection)) => {},
+    | Ok(FailureAction::Propagate(other)) => panic!("unexpected propagated error: {other:?}"),
+    | Ok(FailureAction::Complete) => panic!("unexpected complete action"),
+    | Ok(FailureAction::Resume) => panic!("unexpected resume action"),
+    | Err(error) => panic!("unexpected error: {error:?}"),
+  }
+}
+
+#[test]
+fn on_failure_completes_when_on_error_callback_completes_context() {
+  let logic: Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> = Box::new(ErrorCallbackCompleteLogic);
+  let mut adapter = GraphStageFlowAdapter::new(logic);
+
+  let result = adapter.on_failure(StreamError::Failed);
+
+  match result {
+    | Ok(FailureAction::Complete) => {},
+    | Ok(FailureAction::Propagate(error)) => panic!("unexpected propagated error: {error:?}"),
+    | Ok(FailureAction::Resume) => panic!("unexpected resume action"),
+    | Err(error) => panic!("unexpected error: {error:?}"),
+  }
+}
+
+#[test]
+fn on_failure_propagates_original_error_when_on_error_callback_does_not_decide() {
+  let logic: Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> = Box::new(ErrorCallbackIgnoresLogic);
+  let mut adapter = GraphStageFlowAdapter::new(logic);
+
+  let result = adapter.on_failure(StreamError::Failed);
+
+  match result {
+    | Ok(FailureAction::Propagate(StreamError::Failed)) => {},
+    | Ok(FailureAction::Propagate(other)) => panic!("unexpected propagated error: {other:?}"),
+    | Ok(FailureAction::Complete) => panic!("unexpected complete action"),
+    | Ok(FailureAction::Resume) => panic!("unexpected resume action"),
+    | Err(error) => panic!("unexpected error: {error:?}"),
+  }
 }
 
 // ---------------------------------------------------------------------------
