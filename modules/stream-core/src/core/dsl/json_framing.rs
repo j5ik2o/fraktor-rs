@@ -465,6 +465,9 @@ impl JsonArrayFramingLogic {
           if pos == self.scan_offset {
             return Ok(None);
           }
+          if pos - self.scan_offset > self.maximum_element_length {
+            return Err(StreamError::BufferOverflow);
+          }
           let element = self.buffer[self.scan_offset..pos].to_vec();
           self.scan_offset = pos;
           return Ok(Some(element));
