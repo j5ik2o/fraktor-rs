@@ -1,179 +1,157 @@
 # stream モジュール ギャップ分析
 
-更新日: 2026-04-25 (13th edition / GraphInterpreter failure-restart 分割反映)
+更新日: 2026-04-25 (14th edition / 固定スコープ再分類)
 
 ## 比較スコープ定義
 
-この調査は、Apache Pekko の `stream` / `stream-typed` をそのまま全量移植する調査ではなく、fraktor-rs の Rust API として再現対象にする範囲を固定して比較する。
+この調査は、Apache Pekko の `stream` / `stream-typed` を全量移植する調査ではない。Rust で再現可能な fraktor-rs の stream runtime 契約だけを parity 対象に固定し、Scala / Java / JVM 固有の表層 API は分母から除外する。
 
 ### 対象に含めるもの
 
-| 領域 | fraktor-rs | Pekko 参照 |
-|------|------------|------------|
+| 領域 | fraktor-rs 側 | Pekko 側 |
+|------|---------------|----------|
 | Stream core DSL | `modules/stream-core/src/core/dsl/` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/` |
-| Stage / graph / materialization | `modules/stream-core/src/core/stage/`, `modules/stream-core/src/core/impl/`, `modules/stream-core/src/core/materializer/` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/`, `references/pekko/stream/src/main/scala/org/apache/pekko/stream/stage/` |
-| Attributes / Shape / Snapshot | `modules/stream-core/src/core/attribute/`, `modules/stream-core/src/core/shape/`, `modules/stream-core/src/core/snapshot/` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/` |
-| Stream typed actor interop | `modules/stream-core/src/core/dsl/actor_*.rs`, `modules/stream-core/src/core/dsl/topic_pub_sub.rs` | `references/pekko/stream-typed/src/main/scala/org/apache/pekko/stream/typed/scaladsl/` |
-| std adaptor / IO | `modules/stream-adaptor-std/src/std/` | Pekko の FileIO / StreamConverters / Tcp / TLS 相当 |
+| Graph / stage / materialization | `modules/stream-core/src/core/stage/`, `modules/stream-core/src/core/materialization/`, `modules/stream-core/src/core/impl/` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/`, `references/pekko/stream/src/main/scala/org/apache/pekko/stream/stage/`, `references/pekko/stream/src/main/scala/org/apache/pekko/stream/impl/` |
+| Attributes / shape / snapshot | `modules/stream-core/src/core/attributes/`, `modules/stream-core/src/core/shape/`, `modules/stream-core/src/core/snapshot/` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/` |
+| typed actor interop | `modules/stream-core/src/core/dsl/actor_*.rs`, `modules/stream-core/src/core/dsl/topic_pub_sub.rs` | `references/pekko/stream-typed/src/main/scala/org/apache/pekko/stream/typed/scaladsl/` |
+| StreamRef | `modules/stream-core/src/core/stream_ref/`, `modules/stream-core/src/core/impl/streamref/`, `modules/stream-core/src/core/dsl/stream_refs.rs` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/StreamRefs.scala`, `references/pekko/stream/src/main/scala/org/apache/pekko/stream/impl/streamref/` |
+| std adaptor / IO | `modules/stream-adaptor-std/src/std/io/`, `modules/stream-adaptor-std/src/std/materializer/` | Pekko の FileIO / StreamConverters / Tcp / TLS 相当 |
 
 ### 対象から除外するもの
 
 | 除外項目 | 理由 |
 |----------|------|
-| `javadsl` API | Java 固有の overload / builder 体系であり、Rust API の再現対象ではない |
-| Scala implicit / symbolic syntax / `~>` そのもの | Scala 言語機能であり、Rust では明示的 builder API に置換する |
-| Reactive Streams TCK / stream-testkit / テスト専用 API | 利用者向け runtime API ではない |
-| HOCON / JVM dispatcher / MaterializerConfigurator | JVM/Typesafe Config 固有 |
-| Java `Publisher` / `Subscriber` / `CompletionStage` ブリッジ | JVM interop 固有。Rust では `Stream` / `Sink` / async primitive で代替する |
-| deprecated API | 互換性維持目的の API は正式リリース前の fraktor-rs では追わない |
+| `javadsl` API / Java overload / `CompletionStage` | Java 相互運用専用であり、Rust API の再現対象ではない |
+| Scala implicit / package ops / symbolic syntax / `~>` そのもの | Scala 言語機能。Rust では明示的 builder API に置換する |
+| Reactive Streams `Publisher` / `Subscriber` ブリッジ | JVM interop 固有。Rust では stream / sink / async primitive で代替する |
+| `stream-testkit`, `stream-tests`, `stream-tests-tck`, `stream-typed-tests` | runtime API ではなく検証資材。ユーザーが testkit 調査を明示した場合だけ別スコープ |
+| HOCON / JVM dispatcher / MaterializerConfigurator | JVM / Typesafe Config 固有 |
+| deprecated API | 正式リリース前の fraktor-rs では互換維持目的 API を追わない |
 
 ### 判定方針
 
-`references/pekko` から機械的に抽出した public 型・メソッド数は、比較の参考情報に留める。Scala/Java/JVM 固有 API を分母に入れると Rust 側では再現不能なギャップが混ざるため、このレポートでは上記固定スコープのみをギャップ判定の対象にする。
+`references/pekko` から機械的に抽出した raw 公開型数・メソッド数は参考値に留める。Scala / Java / JVM 固有 API を分母に入れると Rust では再現不能なギャップが混ざるため、このレポートでは上記固定スコープだけを parity 分母にする。
 
-API 面の残ギャップが小さいため、後半で内部モジュール構造のギャップも分析する。
+API 面の hard / medium ギャップは 5 件以下であり、主要 operator / stage authoring / typed interop の致命的欠落もない。そのため、API ギャップ一覧に加えて内部モジュール構造ギャップも分析する。
 
-## エグゼクティブサマリー
+## サマリー
 
-stream の固定スコープにおける API カバレッジは高い。過去レポートで中程度以上のギャップとして挙がっていた `conflate`、`expand`、`intersperse`、`orElse`、timeout 系、`mapAsyncPartitioned`、`RetryFlow.withBackoffAndContext`、`MergeSequence`、`ZipLatest`、`GraphStageWithMaterializedValue` 相当は現在の実装で確認できる。
+stream の固定スコープにおける API parity はほぼ到達済み。残ギャップは単純な operator 追加ではなく、remote StreamRef と Tcp / TLS の integration-level 機能に集中している。
 
-2026-04-24 の core DSL fake-impl 排除バッチで、`Flow::contramap` / `Flow::dimap` / `Flow::do_on_cancel`、`Sink::from_materializer`、`Sink::source` は no-op / placeholder ではなく実データパスを持つ実装になった。JVM 固有の `CompletionStage` / `Publisher` / `Subscriber` 互換 alias は固定スコープ外として削除した。
-
-2026-04-25 の GraphInterpreter 構造分割バッチで、plan compile、edge buffer dispatch、snapshot 生成、failure disposition は `GraphInterpreter` 本体から internal module へ切り出された。これにより Pekko の interpreter / connection / snapshot 責務分離意図を、fraktor-rs の tick-based core に合わせて再表現した。
-
-2026-04-25 の GraphInterpreter failure/restart 分割バッチで、restart window tick、restart waiting 判定、failure action 適用、downstream failure propagation、source / flow / sink failure handler は `graph_interpreter/failure_restart.rs` へ切り出された。これにより drive loop 本体と failure / restart policy の変更理由を分離した。
-
-2026-04-25 の DefaultOperatorCatalog 構造分割バッチで、operator contract / coverage は `default_operator_catalog_source` / `default_operator_catalog_transform` / `default_operator_catalog_substream` / `default_operator_catalog_timing` / `default_operator_catalog_fan_in` / `default_operator_catalog_fan_out` / `default_operator_catalog_failure` / `default_operator_catalog_hub` / `default_operator_catalog_kill_switch` のカテゴリ別 internal module へ切り出された。これにより operator 追加時の競合とレビュー負荷を下げつつ、既存の `OperatorCatalog` public 境界は維持した。
-
-残っている主要ギャップは、単純な operator 追加ではなく、remote StreamRef、Tcp/TLS などの integration-level 機能に集中している。
-
-| 指標 | 現在値 |
-|------|--------|
-| fraktor-rs public type 数 | 209 (core 202 / std 7) |
-| fraktor-rs public method 数 | 1470 (shape / DSL boilerplate 含む) |
+| 指標 | 値 |
+|------|-----|
+| fraktor-rs raw public type declarations | 229 (core 222 / std 7) |
+| fraktor-rs raw public method declarations | 1535 (core 1520 / std 15) |
 | 固定スコープ API カバレッジ推定 | 約 98% |
 | Hard gap | 3 |
 | Medium gap | 0 |
 | Easy gap | 0 |
 | Trivial gap | 1 |
 
-## レイヤー別カバレッジ
+raw declaration count は API parity の分母ではない。shape boilerplate、internal helper の public surface、Rust の型分割方針を含むため、Pekko の raw Scala / Java API 数とは直接比較しない。
 
-| レイヤー | 判定 | 根拠 |
-|----------|------|------|
-| Stream core DSL | 約 97% | Source / Flow / Sink / RunnableGraph の主要 operator はほぼ実装済み |
-| Graph / materialization | 約 96% | Graph stage / materialized value / public GraphDSL facade は実装済み。GraphInterpreter 内部も plan / connection / snapshot / failure-restart support へ分割済み |
-| Stream typed interop | 約 93% | ActorSource / ActorSink / ask / PubSub は実装済み。`ActorSink::actor_ref_with_backpressure_any_ack` も追加済み |
-| std adaptor / IO | 約 75-80% | FileIO / StreamConverters 系はあるが Tcp / TLS が未実装 |
-| StreamRef / distributed stream | 部分対応 | local handoff の `StreamRefs` / `SourceRef` / `SinkRef` / protocol / settings は実装済み。remote resolver / serializer は未実装 |
+スタブ確認では、`todo!()` / `unimplemented!()` / `panic!("not implemented")` は stream core / std adaptor から検出されなかった。`Sink::combine` の rustdoc に古い `stub implementation` 表記が残っているが、実装は `Sink::combine_mat` 経由で broadcast fan-out し、テストも存在するため API ギャップには分類しない。
 
-## API ギャップ一覧
+## 層別カバレッジ
 
-### Hard
+| 層 | 固定スコープ判定 | fraktor-rs 現状 | 残ギャップ |
+|----|------------------|-----------------|------------|
+| core DSL / operator semantics | 高 | Source / Flow / Sink / BidiFlow / RunnableGraph の主要 operator は実装済み。`conflate`, `expand`, `intersperse`, `orElse`, timeout, `mapAsyncPartitioned`, `RetryFlow.withBackoffAndContext`, `MergeSequence`, `ZipLatest` も確認済み | なし |
+| graph / stage / materialization | 高 | `GraphDSL`, `GraphDslBuilder`, `GraphStage<In, Out, Mat>`, `GraphStageLogic<In, Out, Mat>`, stage actor, substream authoring, snapshot helper が存在する | なし |
+| typed actor interop | 高 | `ActorSource`, `ActorSink`, ask / pubsub、backpressure no-ack 相当を実装済み | なし |
+| StreamRef / distributed stream | 部分対応 | local handoff の `StreamRefs`, `SourceRef`, `SinkRef`, settings, attributes, exception variants は実装済み | remote resolver / serializer / transport integration |
+| std adaptor / IO | 部分対応 | FileIO / StreamConverters / SystemMaterializer helper は実装済み | Tcp / TLS |
 
-| ギャップ | Pekko 側 | fraktor-rs 現状 | 対応方針 |
-|----------|----------|-----------------|----------|
-| StreamRef remote integration | `StreamRefResolver`, remote StreamRef protocol transport, serializer | local handoff の `StreamRefs` / `SourceRef` / `SinkRef` / protocol は実装済み。remote resolver / serializer は未実装 | resolver / serializer / remote transport 連携を local handoff とは分けて実装する |
-| Tcp stream | `Tcp`, `Tcp.IncomingConnection`, `Tcp.OutgoingConnection`, TCP command/event | std adaptor に TCP 接続 API がない | `stream-adaptor-std/src/std/io/tcp/` を新設し、tokio TCP を Stream DSL に接続する |
-| TLS stream | `TLS`, `SslTlsOptions`, TLS session handling | TLS API がない | TCP と独立した `std/io/tls/` と options 型を追加する |
+## カテゴリ別ギャップ
 
-### Medium
+ギャップ表には未対応・部分実装・n/a のみを列挙する。実装済み項目はカテゴリヘッダーの件数に含める。
 
-| ギャップ | Pekko 側 | fraktor-rs 現状 | 対応方針 |
-|----------|----------|-----------------|----------|
-| 該当なし | - | Public GraphDSL facade、SubSinkInlet / SubSourceOutlet、StreamRef attributes / exceptions は実装済み | 新規 Medium gap は現時点でなし |
+### Core DSL / operator semantics 実装済み 18/18 (100%)
 
-### Easy
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| 該当なし | - | 実装済み | core | - | 既知の主要 operator ギャップは残っていない |
 
-| ギャップ | Pekko 側 | fraktor-rs 現状 | 対応方針 |
-|----------|----------|-----------------|----------|
-| 該当なし | - | typed ActorSink no-ack 相当、`Flow::watch_termination` convenience、system-level stream snapshot helper は実装済み | 新規 Easy gap は現時点でなし |
+実装済みと判定した代表項目は、`conflate` / `conflateWithSeed`, `expand` / `extrapolate`, `intersperse`, `orElse`, timeout 系, `mapAsyncPartitioned`, `RetryFlow.withBackoffAndContext`, `MergeSequence`, `ZipLatest`, `Sink.combine`, `watchTermination`, `fromMaterializer`, `contramap`, `dimap`, `doOnCancel`, `Sink.source`, `FlowWithContext` / `SourceWithContext` の partitioned async 系である。
 
-### Trivial
+### Graph / stage / materialization 実装済み 8/8 (100%)
 
-| ギャップ | Pekko 側 | fraktor-rs 現状 | 対応方針 |
-|----------|----------|-----------------|----------|
-| Tcp error aliases | `StreamTcpException` | TCP stream API が未実装のため専用 error 型も未実装。StreamRef exception 相当は `StreamError` variants として実装済み | TCP stream API 実装時に Rust の error enum / marker 型として追加する |
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| 該当なし | - | 実装済み | core | - | public authoring API と materialization helper の主要ギャップは残っていない |
 
-## 実装済みと判定した主な過去ギャップ
+根拠は `GraphDsl`, `GraphDslBuilder`, `GraphStage<In, Out, Mat>`, `GraphStageLogic<In, Out, Mat>`, `StageActor`, `SubSinkInlet`, `SubSourceOutlet`, `SystemMaterializer::stream_snapshots` である。
 
-| 項目 | 判定 | fraktor-rs 根拠 |
-|------|------|-----------------|
-| `conflate` / `conflateWithSeed` | 実装済み | `Flow::conflate`, `Flow::conflate_with_seed`, `Source` 側対応あり |
-| `expand` / `extrapolate` | 実装済み | `Flow::expand`, `Flow::extrapolate`, `Source` 側対応あり |
-| `intersperse` | 実装済み | `Flow::intersperse`, `Source::intersperse` |
-| `orElse` | 実装済み | `Flow::or_else`, `Source::or_else` |
-| timeout 系 | 実装済み | `initial_timeout`, `completion_timeout`, `idle_timeout`, `backpressure_timeout` |
-| `mapAsyncPartitioned` | 実装済み | `Flow::map_async_partitioned` |
-| `RetryFlow.withBackoffAndContext` | 実装済み | `RetryFlow::with_backoff_and_context` |
-| `MergeSequence` | 実装済み | `Flow::merge_sequence` |
-| `ZipLatest` | 実装済み | `zip_latest`, `zip_latest_with`, `zip_latest_mat`, `zip_latest_with_mat` |
-| `GraphStageWithMaterializedValue` 相当 | 実装済み | `GraphStage<In, Out, Mat>` と `GraphStageLogic<In, Out, Mat>` が `Mat` を型パラメータ化 |
-| `Flow.contramap` / `Flow.dimap` | 実装済み | `Flow::contramap`, `Flow::dimap` が入力側 map を元 Flow の前段に合成し、元 Flow の materialized value を保持 |
-| `Flow.doOnCancel` | 実装済み | `DoOnCancelLogic` が downstream cancel で callback を一度実行 |
-| `Sink.fromMaterializer` | 実装済み | `Sink::from_materializer(factory)` が stream 開始時に factory Sink を生成して実 Sink として処理 |
-| `Sink.source` | 実装済み | `Sink::source` が queue backed live `Source` を materialize し、入力要素を Source 側へ流す |
-| StreamRef local handoff | 実装済み | `StreamRefs::{source_ref,sink_ref}`, `SourceRef`, `SinkRef`, local protocol / handoff / settings |
-| Public GraphDSL facade | 実装済み | `core/dsl/graph_dsl.rs`, `core/dsl/graph_dsl_builder.rs`, `tests/graph_dsl_public.rs` |
-| StageActorRef 相当 | 実装済み | `StageActor`, `StageActorEnvelope`, `StageActorReceive`, `StageContext::get_stage_actor`, `tests/stage_actor_public.rs` |
-| SubSinkInlet / SubSourceOutlet | 実装済み | `SubSinkInlet`, `SubSourceOutlet`, handler trait 群、`tests/substream_ports_public.rs` |
-| StreamRef attributes / exceptions | 実装済み | `Attributes::stream_ref_*`, `StreamError::{StreamRefSubscriptionTimeout, RemoteStreamRefActorTerminated, InvalidSequenceNumber, InvalidPartnerActor}` |
-| typed ActorSink backpressure no-ack 相当 | 実装済み | `ActorSink::actor_ref_with_backpressure_any_ack` |
-| `Flow::watch_termination` convenience | 実装済み | `Flow::watch_termination`, `Source::watch_termination` |
-| system-level stream snapshot helper | 実装済み | `SystemMaterializer::stream_snapshots` |
-| GraphInterpreter support 分割 | 実装済み | `CompiledGraphPlan`, `BufferedEdge`, `GraphConnections`, `InterpreterSnapshotBuilder`, `FailureDisposition`, `graph_interpreter/failure_restart.rs` |
-| DefaultOperatorCatalog カテゴリ分割 | 実装済み | `default_operator_catalog_{source,transform,substream,timing,fan_in,fan_out,failure,hub,kill_switch}.rs` |
+### Typed actor interop 実装済み 4/4 (100%)
 
-## JVM / Scala 固有として除外した項目
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| 該当なし | - | 実装済み | core | - | actor interop の既知ギャップは残っていない |
 
-次の項目は raw extraction では API ギャップに見えるが、固定スコープでは parity 分母に入れない。
+`ActorSink::actor_ref_with_backpressure_any_ack`、`ActorSource`、ask pattern、topic pub/sub 相当を確認済み。
 
-| 項目 | 判定理由 |
-|------|----------|
-| Java DSL overload 群 | Rust では overload が存在しないため、同一シグネチャ数の再現はしない |
-| `~>` / implicit conversion | Scala DSL 構文。Rust では builder method に置換する |
-| `Publisher` / `Subscriber` bridge | JVM Reactive Streams interop。Rust では async `Stream` / `Sink` が対応境界 |
-| HOCON based settings factory | JVM 設定基盤依存 |
-| TestKit / TCK | runtime API ではなく検証資材 |
+### StreamRef / distributed stream 部分対応 6/7 (約 86%)
+
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| `StreamRefResolver` + remote serializer / transport | `StreamRefs.scala:133`, `impl/streamref/StreamRefResolverImpl.scala:26`, `StreamRefMessages.proto:20` | local handoff の `StreamRefs`, `SourceRef`, `SinkRef`, protocol, settings, attributes, exception variants まで実装済み。remote resolver / serializer / actor transport 連携は未実装 | core + std / remote adapter | hard | local handoff と remote actor ref 解決を混ぜない境界設計が必要 |
+
+### std adaptor / IO 部分対応 2/5 (40%)
+
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| `Tcp`, `Tcp.IncomingConnection`, `Tcp.OutgoingConnection` | `scaladsl/Tcp.scala:47`, `impl/io/TcpStages.scala:53` | 未対応 | std | hard | tokio TCP を Stream DSL と materialization に接続する adapter が必要 |
+| `TLS`, `SslTlsOptions`, `TLSProtocol`, `TLSPlacebo` | `scaladsl/TLS.scala:62`, `SslTlsOptions.scala:29`, `SslTlsOptions.scala:152`, `impl/io/TLSActor.scala:41` | 未対応 | std | hard | TLS option / protocol messages / byte stream wrapping の境界が必要 |
+| `StreamTcpException`, `BindFailedException`, `ConnectionException` | `StreamTcpException.scala:18` | 未対応 | std | trivial | TCP 実装時に Rust の error enum / marker 型として追加する |
+
+### JVM / Scala / Java 固有 API n/a
+
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| `javadsl.*`, Java overload, Java `CompletionStage` bridge | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/javadsl/` | n/a | - | n/a | Rust API では overload / Java wrapper を再現しない |
+| Scala implicit / symbolic GraphDSL syntax | `scaladsl` / package ops | n/a | - | n/a | Rust では明示的 builder API として再表現する |
+| testkit / TCK / tests | `stream-testkit`, `stream-tests`, `stream-tests-tck` | n/a | - | n/a | runtime API ではない |
 
 ## 内部モジュール構造ギャップ
 
-API カバレッジが高いため、残りは内部構造の差分が重要になる。
+API ギャップが少ないため、残りは内部構造と integration 境界が主なボトルネックになる。
 
-| 構造ギャップ | 現状 | リスク | 推奨対応 |
-|--------------|------|--------|----------|
-| GraphDSL の public / internal 境界 | public wrapper は `core/dsl/graph_dsl*.rs`、内部 wiring は `core/impl/graph_dsl_builder.rs` に分離済み | 今後 builder API を拡張すると public wrapper と内部 graph 変換の責務が混ざるリスクがある | public wrapper は DSL 操作だけを公開し、接続検証と実行 graph 変換は `impl` に残す |
-| StreamRef remote package 境界 | local handoff は `core/stream_ref/` と `impl/streamref/{protocol,handoff,source_logic,sink_logic}` に分離済み | remote resolver / serializer を追加すると local handoff と remote transport が混ざるリスクがある | remote 側は `resolver` / `serialization` / `transport adapter` を local handoff から分けて追加する |
-| std IO adaptor に tcp/tls 境界がない | FileIO / StreamConverters と同じ層に TCP/TLS が未配置 | IO 機能追加時に std adaptor の責務が曖昧になる | `std/io/tcp/` と `std/io/tls/` を明示的に分離する |
-| `graph_interpreter.rs` が大きい | plan compile、edge buffer dispatch、snapshot support、failure disposition、failure / restart policy は internal module へ分割済み。drive state machine 本体はまだ集中している | scheduling / demand の変更影響は引き続き広い | drive state machine は demand / scheduling を壊さない単位で別バッチに分割する |
-| `default_operator_catalog.rs` が肥大化傾向 | contract / coverage はカテゴリ別 internal module へ分割済み。catalog 本体は dispatcher と結合 coverage に限定済み | operator 追加時にカテゴリ境界が崩れるリスクがある | 新規 operator は対応カテゴリ module へ追加し、coverage / lookup 一致テストを維持する |
-| stage actor / substream authoring の配置 | `stage_actor`、`sub_sink_inlet`、`sub_source_outlet` と handler trait 群は `core/stage/` に分離済み | handler 追加時に stage logic 本体へ責務が戻るリスクがある | stage authoring API は `core/stage/` に閉じ、runtime 接続だけを interpreter 側へ渡す |
+| 構造ギャップ | Pekko側の根拠 | fraktor-rs側の現状 | 推奨アクション | 難易度 | 緊急度 | 備考 |
+|-------------|---------------|--------------------|----------------|--------|--------|------|
+| StreamRef remote 境界が未配置 | `impl/streamref/StreamRefResolverImpl.scala`, `impl/streamref/StreamRefsMaster.scala`, `StreamRefMessages.proto` | `core/stream_ref/` と `core/impl/streamref/` は local handoff に閉じている | resolver / serialization / remote transport adapter を local handoff から分ける | hard | high | remote を local handoff に直結すると core/std/remote の依存方向が崩れる |
+| std IO の tcp/tls サブモジュールが未配置 | `impl/io/TcpStages.scala`, `impl/io/TLSActor.scala`, `impl/io/TlsModule.scala` | `std/io/` は FileIO / StreamConverters 中心。`core/impl/io/` は compression のみ | `stream-adaptor-std/src/std/io/tcp/` と `stream-adaptor-std/src/std/io/tls/` を分ける | hard | high | TCP と TLS を同一モジュールへ詰めると options / protocol / connection lifecycle が混ざる |
+| GraphInterpreter drive state machine がまだ中心に残る | `impl/fusing/GraphInterpreter.scala`, `ActorGraphInterpreter.scala` | plan compile、edge buffer、snapshot、failure / restart は分割済み。drive loop 本体は `graph_interpreter.rs` に残る | demand / scheduling を壊さない単位で後続分割する | medium | medium | 現時点では API ギャップではないが、今後の interpreter 変更の衝突点になる |
+| DefaultOperatorCatalog のカテゴリ境界維持 | Pekko は fusing / impl に operator 実装責務を分散 | `default_operator_catalog_{source,transform,substream,timing,fan_in,fan_out,failure,hub,kill_switch}.rs` へ分割済み | 新規 operator は対応カテゴリへ追加し、catalog 本体は dispatcher に留める | trivial | medium | 既に改善済み。今後の追加時に境界を崩さないことが重要 |
+| stage authoring API と runtime 接続の境界維持 | `stage/GraphStage.scala`, `stage/GraphStageLogic.scala` | `core/stage/` に public authoring API、`core/impl/interpreter/` に runtime 接続を配置 | handler / substream / stage actor は `core/stage/` に閉じる | trivial | low | 既に改善済み。runtime 都合を public stage API に漏らさない |
 
-## 実装優先順位
+## 実装優先度
 
-### Phase 1: 小さく閉じる差分
+この節は、上記のカテゴリ別ギャップに列挙した項目だけを parity ギャップ解消順に再配置する。
 
-1. 完了: `Flow::watch_termination` convenience を追加する
-2. 完了: typed `ActorSink` の backpressure no-ack overload 相当を追加する
-3. 完了: `MaterializerState` / `SystemMaterializer` の system-level snapshot helper を追加する
-4. 残: TCP 用 error 型の骨格を追加する
+### Phase 1: trivial / easy
 
-### Phase 2: public authoring API
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| `StreamTcpException` / TCP error 型 | std | 既存 error enum / marker 型の追加で閉じる。ただし TCP API と命名を合わせる必要がある |
 
-1. 完了: Public GraphDSL facade を Rust builder API として追加する
-2. 完了: `SubSinkInlet` / `SubSourceOutlet` 相当を stage authoring API として追加する
-3. 完了: `StreamRefSettings` / StreamRef attributes / StreamRef exception 群を先行追加する
+### Phase 2: medium
 
-### Phase 3: integration-level 機能
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| 該当なし | - | 現時点の未実装は trivial か hard に二極化している |
 
-1. `StreamRefResolver` を実装する
-2. StreamRef serialization / remote transport 連携を実装する
-3. TCP stream API を std adaptor に追加する
-4. TLS stream API を std adaptor に追加する
-5. 完了: `StageActorRef` 相当を actor / stream 境界 API として追加する
+### Phase 3: hard
 
-## 結論
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| StreamRef remote integration | core + std / remote adapter | resolver / serializer / actor transport 連携を伴う |
+| TCP stream API | std | tokio TCP、connection lifecycle、materialized binding / connection 型が必要 |
+| TLS stream API | std | TLS option、protocol message、byte stream wrapping、TCP 連携が必要 |
 
-stream モジュールは、固定スコープの API parity ではほぼ到達済みと見てよい。現在の主要ギャップは operator の数ではなく、remote StreamRef、Tcp/TLS など、分散・IO 境界機能に集中している。
+## まとめ
 
-したがって次の調査・実装は、raw API 数を追うよりも、上記の integration-level 機能と内部モジュール境界を順に固めるのが妥当である。
+stream モジュールは固定スコープの API parity ではほぼ到達済みで、過去の「API ギャップ大」は raw extraction を分母にした場合の見え方だった。Rust で再現可能な stream runtime 契約に絞ると、主要 operator、GraphDSL / stage authoring、typed actor interop は実装済みと判定できる。
+
+低コストで進められる残差は TCP error 型だけである。主要ギャップは StreamRef remote integration、TCP stream、TLS stream の 3 点で、いずれも std / remote 連携を伴う integration-level 実装である。
+
+次のボトルネックは API surface の追加数ではなく、remote StreamRef と std IO adapter の境界設計である。実装時は local handoff、remote resolver、serialization、transport adapter を分け、core/std/remote の依存方向を崩さないことが重要になる。
