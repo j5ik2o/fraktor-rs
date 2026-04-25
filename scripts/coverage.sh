@@ -85,6 +85,12 @@ build_coverage_args() {
   fi
 }
 
+run_cargo_test_with_coverage() {
+  RUSTFLAGS="-C instrument-coverage" \
+  LLVM_PROFILE_FILE="${REPO_ROOT}/target/coverage/default_%m_%p.profraw" \
+  cargo test "$@"
+}
+
 ensure_tool_installed() {
   local tool="$1"
 
@@ -177,14 +183,10 @@ run_grcov() {
 
   # RUSTFLAGS を設定してテストを実行
   log_step "Unit / Contract 層を計測: lib / bins"
-  RUSTFLAGS="-C instrument-coverage" \
-  LLVM_PROFILE_FILE="${REPO_ROOT}/target/coverage/default_%m_%p.profraw" \
-  cargo test "${package_args[@]}" "${feature_args[@]}" --lib --bins || return 1
+  run_cargo_test_with_coverage "${package_args[@]}" "${feature_args[@]}" --lib --bins || return 1
 
   log_step "Contract / Integration / E2E 層を計測: tests / examples"
-  RUSTFLAGS="-C instrument-coverage" \
-  LLVM_PROFILE_FILE="${REPO_ROOT}/target/coverage/default_%m_%p.profraw" \
-  cargo test "${package_args[@]}" "${feature_args[@]}" --tests --examples || return 1
+  run_cargo_test_with_coverage "${package_args[@]}" "${feature_args[@]}" --tests --examples || return 1
 
   # grcov でカバレッジレポートを生成
   case "${format}" in

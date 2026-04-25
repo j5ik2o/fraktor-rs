@@ -1,8 +1,8 @@
 extern crate std;
 
-use alloc::{boxed::Box, string::String, sync::Arc};
+use alloc::{boxed::Box, sync::Arc};
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Barrier, Mutex};
+use std::sync::{Barrier, mpsc};
 
 use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::Executor;
 
@@ -32,24 +32,19 @@ fn execute_runs_each_task_on_a_new_thread() {
 #[test]
 fn with_name_assigns_spawned_thread_name() {
   let mut executor = ThreadedExecutor::with_name("actor-blocking");
-  let observed = Arc::new(Mutex::new(None::<String>));
-  let barrier = Arc::new(Barrier::new(2));
+  let (tx, rx) = mpsc::channel();
 
-  let observed_clone = Arc::clone(&observed);
-  let barrier_clone = Arc::clone(&barrier);
   executor
     .execute(
       Box::new(move || {
         let name = std::thread::current().name().map(ToOwned::to_owned);
-        *observed_clone.lock().expect("thread name lock") = name;
-        barrier_clone.wait();
+        tx.send(name).expect("send thread name");
       }),
       0,
     )
     .expect("execute should succeed");
 
-  barrier.wait();
-  assert_eq!(observed.lock().expect("thread name lock").as_deref(), Some("actor-blocking"));
+  assert_eq!(rx.recv().expect("recv thread name").as_deref(), Some("actor-blocking"));
 }
 
 #[test]

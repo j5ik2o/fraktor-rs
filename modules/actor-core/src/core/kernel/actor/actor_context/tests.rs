@@ -188,6 +188,7 @@ fn actor_context_stop_all_children_is_noop_when_cell_is_missing() {
   let mut context = ActorContext::new(&system, pid);
 
   assert!(context.stop_all_children().is_ok());
+  assert!(context.children().is_empty(), "cell 不在時は children() に副作用なし");
 }
 
 #[test]
@@ -875,10 +876,13 @@ fn actor_context_stop_self_queues_stop_for_running_actor() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
-  let _cell = register_cell(&system, pid, "stop-self", &props);
+  let cell = register_cell(&system, pid, "stop-self", &props);
   let mut context = ActorContext::new(&system, pid);
 
   context.stop_self().expect("stop self");
+  // stop_self は Stop system message を enqueue するだけなので、InlineExecutor
+  // を明示的に駆動して mailbox state machine へ反映する。
+  let _scheduled = cell.new_dispatcher_shared().register_for_execution(&cell.mailbox(), false, true);
 
   wait_until(|| system.state().cell(&pid).is_none());
 }

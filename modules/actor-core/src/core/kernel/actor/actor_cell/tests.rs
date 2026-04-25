@@ -277,10 +277,12 @@ fn actor_cell_stop_child_ignores_unknown_child_pid() {
   let system = actor_system.state();
   let props = Props::from_fn(|| ProbeActor);
   let cell = ActorCell::create(system, Pid::new(903, 0), None, "parent".to_string(), &props).expect("cell");
+  let known_child = Pid::new(905, 0);
+  cell.register_child(known_child);
 
   cell.stop_child(Pid::new(904, 0));
 
-  assert!(cell.children().is_empty());
+  assert_eq!(cell.children(), vec![known_child]);
 }
 
 #[test]

@@ -59,9 +59,12 @@ fn shared_access_write_reaches_inner_sender() {
   let shared = ActorRefSenderShared::new(Box::new(RecordingSender { sends: sends.clone() }));
   let cloned = shared.clone();
 
+  shared.with_write(|sender| {
+    let _outcome = sender.send(AnyMessage::new("payload")).expect("send");
+  });
   cloned.with_write(|sender| {
     let _outcome = sender.send(AnyMessage::new("payload")).expect("send");
   });
 
-  assert_eq!(*sends.lock(), 1);
+  assert_eq!(*sends.lock(), 2);
 }

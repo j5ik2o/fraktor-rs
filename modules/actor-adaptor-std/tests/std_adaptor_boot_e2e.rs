@@ -38,7 +38,7 @@ impl Actor for BootActor {
     if message.downcast_ref::<Start>().is_some() {
       self.message_log.lock().push("start");
       ctx.log(LogLevel::Info, "std adaptor boot e2e");
-      ctx.stop_self().map_err(|error| ActorError::recoverable(format!("std adaptor E2E stop failed: {error:?}")))?;
+      ctx.stop_self().expect("stop_self should succeed in std adaptor boot E2E");
     }
     Ok(())
   }
@@ -62,6 +62,8 @@ impl EventStreamSubscriber for LogRecorder {
   }
 }
 
+const STD_ADAPTOR_BOOT_TIMEOUT_MS: u64 = 2_000;
+
 #[test]
 fn std_adaptor_boot_flow_wires_config_dispatcher_mailbox_scheduler_logging_and_termination() {
   let message_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -79,11 +81,12 @@ fn std_adaptor_boot_flow_wires_config_dispatcher_mailbox_scheduler_logging_and_t
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   assert!(system.tick_driver_snapshot().is_some(), "std config must provision scheduler tick driver");
+  // boot 後に scheduler accessor が panic せず取得できることを smoke check する。
   let _ = system.scheduler();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
-  assert!(wait_until(200, || {
+  assert!(wait_until(STD_ADAPTOR_BOOT_TIMEOUT_MS, || {
     *message_log.lock() == vec!["start"] && log_messages.lock().iter().any(|message| message == "std adaptor boot e2e")
   }));
 

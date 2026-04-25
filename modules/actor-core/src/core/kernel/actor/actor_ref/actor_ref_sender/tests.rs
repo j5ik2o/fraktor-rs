@@ -13,6 +13,17 @@ impl ActorRefSender for TestSender {
   }
 }
 
+struct CountingSender {
+  sends: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl ActorRefSender for CountingSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    *self.sends.lock() += 1;
+    Ok(SendOutcome::Delivered)
+  }
+}
+
 #[test]
 fn trait_object_compile_check() {
   let mut sender = TestSender;
@@ -37,11 +48,12 @@ fn apply_outcome_runs_scheduled_task() {
 
 #[test]
 fn apply_outcome_accepts_delivered_without_side_effect() {
-  let mut sender = TestSender;
+  let sends = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let mut sender = CountingSender { sends: sends.clone() };
 
   sender.apply_outcome(SendOutcome::Delivered);
 
-  assert!(sender.send(AnyMessage::new(1_u8)).is_ok());
+  assert_eq!(*sends.lock(), 0);
 }
 
 #[test]

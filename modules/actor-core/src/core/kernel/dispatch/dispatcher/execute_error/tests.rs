@@ -15,9 +15,9 @@ fn display_matches_public_contract() {
 
 #[test]
 fn implements_core_error_trait() {
-  fn assert_error(error: &dyn Error) -> String {
+  fn format_via_dyn_error(error: &dyn Error) -> String {
     alloc::format!("{error}")
   }
 
-  assert_eq!(assert_error(&ExecuteError::Shutdown), "executor is shut down");
+  assert_eq!(format_via_dyn_error(&ExecuteError::Shutdown), "executor is shut down");
 }

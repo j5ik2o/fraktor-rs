@@ -93,14 +93,12 @@ jobs:
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
-  # ビルドとテスト
+  # ビルドと単体テスト
   #
   # 実行頻度の方針:
-  # - pull_request / main push: 正しさを検証する全テストを必ず実行する。
-  #   失敗箇所を切り分けやすいように no_std / std / workspace に分割する。
-  # - schedule / workflow_dispatch: 同じ全テストに加えて、下の
-  #   performance-smoke も実行する。ベンチマークは遅く揺らぎやすいため、
-  #   すべての PR の必須ゲートにはしない。
+  # - pull_request / main push: まず単体テスト中心の correctness gate を必ず実行する。
+  # - integration / E2E は下の dedicated job で別途実行し、失敗箇所を切り分ける。
+  # - performance / benchmark は CI の正しさゲートに含めない。
   test:
     name: Test (${{ matrix.target.name }})
     runs-on: self-hosted
@@ -115,8 +113,8 @@ jobs:
             script: no-std
           - name: std
             script: std
-          - name: workspace
-            script: test
+          - name: unit
+            script: unit-test
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -132,6 +130,34 @@ jobs:
           shared-key: test-${{ matrix.target.name }}
       - name: Run ${{ matrix.target.name }} tests
         run: ./scripts/ci-check.sh ${{ matrix.target.script }}
+
+  # 結合テスト / E2E
+  #
+  # `scripts/ci-check.sh integration-test` は workspace の `--tests --examples`
+  # を実行する。actor の classic/typed user flow や std adaptor boot など、
+  # テストピラミッド上の Integration / E2E 層はここで PR ごとに検証する。
+  integration-e2e:
+    name: Integration / E2E
+    runs-on: self-hosted
+    needs: test
+    env:
+      TEST_TIME_FACTOR: "2.0"
+      CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        uses: ./.github/actions/setup-isolated-rust
+      - name: Setup Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: integration-e2e
+      - name: Run integration and E2E tests
+        run: ./scripts/ci-check.sh integration-test
 
   # Documentation build
   docs:
@@ -175,31 +201,6 @@ jobs:
       - name: Build examples
         run: ./scripts/ci-check.sh examples
 
-  # 性能系スモークは劣化検出には有効だが、ベンチマークノイズで正しさの
-  # シグナルを埋もれさせないため、PR ごとの必須ゲートにはしない。
-  performance-smoke:
-    name: Performance Smoke
-    runs-on: self-hosted
-    needs:
-      - format
-      - test
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
-        uses: ./.github/actions/setup-isolated-rust
-      - name: Setup Rust toolchain (nightly)
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - name: Setup Cargo cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: performance-smoke
-      - name: Run performance smoke checks
-        run: ./scripts/ci-check.sh perf
-
   # All jobs completion check
   ci-success:
     name: CI Success
@@ -208,9 +209,9 @@ jobs:
       - format
       - lint
       - test
+      - integration-e2e
       - docs
       - examples
-      - performance-smoke
     if: always()
     steps:
       - name: All checks passed
@@ -227,16 +228,16 @@ jobs:
             echo "test failed"
             exit 1
           fi
+          if [[ "${{ needs['integration-e2e'].result }}" != "success" ]]; then
+            echo "integration-e2e failed"
+            exit 1
+          fi
           if [[ "${{ needs.docs.result }}" != "success" ]]; then
             echo "docs failed"
             exit 1
           fi
           if [[ "${{ needs.examples.result }}" != "success" ]]; then
             echo "examples failed"
-            exit 1
-          fi
-          if [[ "${{ needs['performance-smoke'].result }}" != "success" && "${{ needs['performance-smoke'].result }}" != "skipped" ]]; then
-            echo "performance-smoke failed"
             exit 1
           fi
           echo "✅ All CI checks passed successfully"

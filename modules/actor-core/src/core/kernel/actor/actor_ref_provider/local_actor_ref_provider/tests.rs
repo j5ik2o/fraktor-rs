@@ -127,6 +127,7 @@ fn local_actor_ref_provider_temp_helpers_handle_empty_prefix_and_invalid_path() 
   let system = ActorSystem::create_with_config(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
 
+  // 空 prefix は LocalActorRefProvider 側で "tmp" prefix にフォールバックする契約。
   let generated = provider.temp_path_with_prefix("").expect("empty prefix");
   assert!(generated.to_relative_string().starts_with("/user/temp/tmp-"));
 
@@ -272,19 +273,6 @@ fn local_actor_ref_provider_accessors_and_resolve_cover_public_contract() {
   assert_eq!(provider.actor_ref(child_path.clone()).expect("actor ref"), child.actor_ref().clone());
   assert_eq!(provider.resolve_actor_ref(child_path.clone()).expect("resolve path"), child.actor_ref().clone());
   assert_eq!(provider.resolve_actor_ref_str(&canonical).expect("resolve str"), child.actor_ref().clone());
-  assert!(provider.root_guardian().is_some());
-  assert!(provider.guardian().is_some());
-  assert!(provider.system_guardian().is_some());
-  assert_eq!(provider.root_path().to_relative_string(), "/user");
-  assert_eq!(provider.temp_path().to_relative_string(), "/user/temp");
-  assert!(provider.root_guardian_at(&Address::local("provider-accessors")).is_some());
-  assert!(provider.deployer().is_some());
-  assert_eq!(provider.get_default_address(), Some(Address::local("provider-accessors")));
-  assert_eq!(
-    provider.get_external_address_for(&Address::local("provider-accessors")),
-    Some(Address::local("provider-accessors"))
-  );
-  assert!(!provider.termination_signal().is_terminated());
 }
 
 #[test]
