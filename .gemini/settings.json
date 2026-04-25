@@ -1,1 +1,6 @@
-../references/okite-ai/.gemini/settings.json
+{
+  "general": {
+    "enablePromptCompletion": true,
+    "previewFeatures": true
+  }
+}
