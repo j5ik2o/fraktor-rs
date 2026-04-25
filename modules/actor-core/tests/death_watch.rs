@@ -311,6 +311,7 @@ fn death_watch_handles_multiple_watchers() {
   system.user_guardian_ref().tell(AnyMessage::new(SpawnSecondaryWatcherMessage { log: secondary_log.clone() }));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
+  assert!(wait_until(200, || child_slot.lock().as_ref().is_some()));
   let pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
   let primary_ready = wait_until(200, || primary_log.lock().len() == 1);
   let secondary_ready = wait_until(200, || secondary_log.lock().len() == 1);
@@ -489,6 +490,7 @@ fn watch_with_delivers_custom_message_instead_of_on_terminated() {
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
+  assert!(wait_until(200, || child_slot.lock().as_ref().is_some()));
   let child_pid = child_slot.lock().as_ref().map(|c| c.pid()).unwrap();
   let observed = wait_until(200, || custom_log.lock().len() == 1);
   assert!(observed, "custom message should be delivered via watch_with");

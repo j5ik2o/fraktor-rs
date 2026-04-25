@@ -15,7 +15,7 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
     setup::ActorSystemConfig,
   },
-  system::ActorSystem,
+  system::{ActorSystem, SpinBlocker},
   util::futures::ActorFutureShared,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
@@ -150,4 +150,5 @@ fn classic_user_flow_observes_spawn_tell_ask_watch_stop_and_dead_letter() {
   }));
 
   system.terminate().expect("terminate");
+  system.run_until_terminated(&SpinBlocker);
 }
