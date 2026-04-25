@@ -140,7 +140,7 @@ run_llvm_cov() {
     html)
       log_step "HTML形式でカバレッジレポートを生成: ${output_dir}/html"
       rm -rf "${output_dir}/html"
-      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --html --output-dir "${output_dir}" || return 1
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --html --output-dir "${output_dir}/html" || return 1
       echo "カバレッジレポート: ${output_dir}/html/index.html"
       ;;
     lcov)
