@@ -1,0 +1,158 @@
+## ADDED Requirements
+
+### Requirement: typed persistence は通常の `Behavior` ベース actor として実装できる
+
+fraktor-rs の typed persistence API は、ユーザー actor に `EventSourcedBehavior` 相当の専用 command handler / event handler DSL を強制してはならない (MUST NOT)。ユーザーは `Behaviors::setup`、`Behaviors::receive_message`、`Behaviors::receive_message_partial`、状態別 handler 関数を使って aggregate actor を実装できなければならない (MUST)。
+
+typed persistence API は `PersistenceEffector::from_config(config, on_ready)` を提供し、recovery 完了後に `on_ready(state, effector)` を呼び出して初期 `Behavior<M>` を生成しなければならない (MUST)。
+
+#### Scenario: recovery 後に state-specific behavior を開始できる
+
+- **GIVEN** `PersistenceEffectorConfig` に `initial_state` と `apply_event` が設定されている
+- **WHEN** actor が起動し recovery が完了する
+- **THEN** `on_ready(recovered_state, effector)` が呼び出される
+- **AND** ユーザーは `recovered_state` の variant に応じて別々の `Behavior<M>` を返せる
+
+#### Scenario: recovery 中の user command は stash される
+
+- **GIVEN** actor が recovery 中である
+- **WHEN** user command が mailbox に届く
+- **THEN** effector wrapper はその command を stash する
+- **AND** recovery 完了後に `on_ready` が返した behavior へ unstash する
+
+### Requirement: `PersistenceEffector` は event persistence operation を提供する
+
+typed persistence API は `persist_event` と `persist_events` を提供しなければならない (MUST)。これらの operation は event を store actor または mode-specific store に保存し、保存成功後に callback を実行しなければならない (MUST)。
+
+persist operation は保存完了前に user command を処理してはならない (MUST NOT)。保存待ち中の user command は `stash_capacity` に従って stash しなければならない (MUST)。保存成功後、callback が返した behavior へ stashed command を戻さなければならない (MUST)。
+
+#### Scenario: 単一 event persist 成功後に callback が実行される
+
+- **GIVEN** aggregate actor が command を処理して event `E1` を生成する
+- **WHEN** actor が `effector.persist_event(ctx, E1, callback)` を呼ぶ
+- **AND** store actor が `PersistedEvents([E1])` を返す
+- **THEN** callback は `E1` を受け取って実行される
+- **AND** callback が返した behavior が次の active behavior になる
+
+#### Scenario: persist 中の command は保存成功まで処理されない
+
+- **GIVEN** `persist_event` の store reply を待っている
+- **WHEN** 別の user command が届く
+- **THEN** effector wrapper は command を stash する
+- **AND** persist 成功 callback 完了後に unstash する
+
+#### Scenario: 複数 event は batch として保存される
+
+- **GIVEN** command が複数 event `[E1, E2, E3]` を生成する
+- **WHEN** actor が `persist_events` を呼ぶ
+- **THEN** store actor は event sequence を同一 persistence id に順序通り保存する
+- **AND** callback は保存された event slice を順序通り受け取る
+
+### Requirement: recovery は command handler を再実行せず `apply_event` だけで state を復元する
+
+typed persistence effector は recovery 中に保存済み snapshot と event を読み込み、`apply_event(&S, &E) -> S` だけを使って state を復元しなければならない (MUST)。user command handler、domain command method、reply side effect は recovery 中に実行してはならない (MUST NOT)。
+
+#### Scenario: event replay は domain command を再実行しない
+
+- **GIVEN** journal に `Created`, `Deposited` event が保存されている
+- **WHEN** actor が再起動する
+- **THEN** effector は `initial_state` または snapshot から event を replay する
+- **AND** replay では `apply_event` だけを呼び出す
+- **AND** command handler の reply / side effect は実行されない
+
+### Requirement: command handler はドメインオブジェクトの新 state を直接利用できる
+
+typed persistence effector を使う aggregate actor は、domain object が返した新 state と event を command handler 内で受け取り、event persistence 成功後に新 state を次の behavior に渡せなければならない (MUST)。
+
+#### Scenario: ドメイン操作が返した新 state を次 behavior に渡す
+
+- **GIVEN** state `Created { account }` で `DepositCash` command を受け取る
+- **WHEN** `account.deposit(amount)` が `Ok((new_account, deposited_event))` を返す
+- **THEN** command handler は `deposited_event` を `persist_event` に渡す
+- **AND** persist 成功 callback は `new_account` を含む `Created` state の behavior を返す
+- **AND** event handler 側で同じ domain validation を二重実行しない
+
+### Requirement: persistence mode を設定で切り替えられる
+
+typed persistence effector は `PersistenceMode::Persisted`、`PersistenceMode::Ephemeral`、`PersistenceMode::Deferred` を提供しなければならない (MUST)。3 mode は同じ public API、同じ callback ordering、同じ stashing 契約を提供しなければならない (MUST)。
+
+#### Scenario: `Persisted` mode は journal / snapshot store に保存する
+
+- **GIVEN** persistence extension に journal actor と snapshot actor が登録されている
+- **WHEN** `PersistenceMode::Persisted` で `persist_event` を呼ぶ
+- **THEN** event は configured journal に保存される
+- **AND** actor 再起動後に recovery で replay される
+
+#### Scenario: `Ephemeral` mode は process 内 store から replay する
+
+- **GIVEN** `PersistenceMode::Ephemeral` の actor が event を保存している
+- **WHEN** 同一 process 内で同じ persistence id の actor を再作成する
+- **THEN** effector は in-memory snapshot / event から state を復元する
+- **AND** external journal plugin は不要である
+
+#### Scenario: `Deferred` mode は storage に書かず callback を実行する
+
+- **GIVEN** `PersistenceMode::Deferred` が設定されている
+- **WHEN** `persist_event` を呼ぶ
+- **THEN** event は journal に保存されない
+- **AND** callback は即時実行される
+- **AND** recovery state は常に `initial_state` から開始する
+
+### Requirement: snapshot criteria と retention criteria を提供する
+
+typed persistence effector は snapshot を保存するための `persist_snapshot`、event persist と同時に snapshot criteria を評価する `persist_event_with_snapshot` / `persist_events_with_snapshot` を提供しなければならない (MUST)。
+
+`SnapshotCriteria` は `Never`、`Always`、`Every { number_of_events }`、`Predicate` を表現できなければならない (MUST)。`RetentionCriteria` は snapshot 保存後に保持する snapshot 数を制御できなければならない (SHOULD)。
+
+#### Scenario: event count に基づいて snapshot を保存する
+
+- **GIVEN** `SnapshotCriteria::Every { number_of_events: 2 }` が設定されている
+- **WHEN** sequence number 2 の event persist が成功する
+- **THEN** effector は callback 完了前に snapshot を保存する
+
+#### Scenario: force snapshot は criteria を無視する
+
+- **GIVEN** `SnapshotCriteria::Never` が設定されている
+- **WHEN** `persist_snapshot(snapshot, force = true, callback)` を呼ぶ
+- **THEN** snapshot は保存される
+- **AND** callback が実行される
+
+#### Scenario: retention criteria は古い snapshot deletion を起動する
+
+- **GIVEN** `RetentionCriteria::snapshot_every(2, keep_snapshots = 2)` が設定されている
+- **WHEN** 新しい snapshot 保存が成功する
+- **THEN** effector は保持対象外の古い snapshot deletion を store actor に依頼する
+
+### Requirement: persistence failure と domain error を分離する
+
+typed persistence effector は domain validation failure と persistence failure を混同してはならない (MUST NOT)。domain validation failure は user command handler が通常の reply と behavior で処理する。persistence failure は infrastructure failure として扱い、default では actor を fatal error で停止しなければならない (MUST)。
+
+#### Scenario: domain validation failure は persistence を呼ばない
+
+- **GIVEN** withdraw command が残高不足になる
+- **WHEN** domain object が `Err(InsufficientFunds)` を返す
+- **THEN** command handler は failure reply を送る
+- **AND** `persist_event` は呼ばれない
+- **AND** actor は通常処理を継続する
+
+#### Scenario: journal write failure は success reply を送らない
+
+- **GIVEN** command handler が event を生成して `persist_event` を呼ぶ
+- **WHEN** journal write が失敗する
+- **THEN** success reply は送られない
+- **AND** persistence failure は `ActorError::fatal` として扱われる
+
+### Requirement: no_std core と既存モジュール規約を守る
+
+typed persistence effector 実装は `modules/persistence-core` の no_std 境界を守らなければならない (MUST)。`std::*` を core に導入してはならない (MUST NOT)。新規 public 型は原則 1 型 1 ファイルで配置し、`core.rs` / `typed.rs` から明示的に re-export しなければならない (MUST)。
+
+#### Scenario: core module に std dependency を追加しない
+
+- **WHEN** 実装差分を確認する
+- **THEN** `modules/persistence-core/src` に `std::` import は追加されない
+- **AND** in-memory mode は `alloc` と既存 sync primitive だけで実装される
+
+#### Scenario: public typed persistence API は re-export される
+
+- **WHEN** crate user が `fraktor_persistence_core_rs::core` を import する
+- **THEN** `PersistenceEffector`, `PersistenceEffectorConfig`, `PersistenceId`, `PersistenceMode`, `SnapshotCriteria`, `RetentionCriteria` を利用できる
