@@ -11,10 +11,10 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, RemotingLifecycleEvent},
   system::ActorSystem,
 };
-use fraktor_remote_adaptor_std_rs::{
+use fraktor_remote_adaptor_std_rs::std::{
   extension_installer::RemotingExtensionInstaller, tcp_transport::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::{address::Address, extension::Remoting};
+use fraktor_remote_core_rs::core::{address::Address, extension::Remoting};
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock, SpinSyncMutex};
 
 struct NoopActor;

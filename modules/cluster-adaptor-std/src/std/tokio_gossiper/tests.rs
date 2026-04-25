@@ -8,7 +8,7 @@ use fraktor_cluster_core_rs::core::{
     Gossiper, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorShared, MembershipTable,
   },
 };
-use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
 use tokio::runtime::Handle;
 
 use crate::std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig};

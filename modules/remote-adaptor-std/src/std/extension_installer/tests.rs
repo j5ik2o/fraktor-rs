@@ -1,0 +1,226 @@
+use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
+use fraktor_actor_core_rs::core::kernel::{
+  actor::extension::ExtensionInstaller,
+  event::stream::{
+    CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent,
+    subscriber_handle,
+  },
+  system::{ActorSystem, ActorSystemBuildError},
+};
+use fraktor_remote_core_rs::core::{
+  address::Address,
+  association::QuarantineReason,
+  extension::{EventPublisher, Remoting, RemotingError},
+};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
+
+use crate::std::{
+  extension_installer::{base::StdRemoting, remoting_extension_installer::RemotingExtensionInstaller},
+  tcp_transport::TcpRemoteTransport,
+};
+
+fn make_transport() -> SharedLock<TcpRemoteTransport> {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", Vec::new()))
+}
+
+fn make_transport_with_addresses(addresses: Vec<Address>) -> SharedLock<TcpRemoteTransport> {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", addresses))
+}
+
+struct EventHarness {
+  system:        ActorSystem,
+  publisher:     EventPublisher,
+  events:        SharedLock<Vec<EventStreamEvent>>,
+  _subscription: EventStreamSubscription,
+}
+
+impl EventHarness {
+  fn new() -> Self {
+    let system = new_empty_actor_system();
+    let events = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
+    let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+    let subscription = system.subscribe_event_stream(&subscriber);
+    let publisher = EventPublisher::new(system.downgrade());
+    Self { system, publisher, events, _subscription: subscription }
+  }
+
+  fn publisher(&self) -> EventPublisher {
+    self.publisher.clone()
+  }
+
+  fn system(&self) -> &ActorSystem {
+    &self.system
+  }
+
+  fn events(&self) -> Vec<EventStreamEvent> {
+    self.events.with_lock(|events| events.clone())
+  }
+}
+
+struct RecordingSubscriber {
+  events: SharedLock<Vec<EventStreamEvent>>,
+}
+
+impl RecordingSubscriber {
+  fn new(events: SharedLock<Vec<EventStreamEvent>>) -> Self {
+    Self { events }
+  }
+}
+
+impl EventStreamSubscriber for RecordingSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    self.events.with_lock(|events| events.push(event.clone()));
+  }
+}
+
+fn make_remoting(transport: SharedLock<TcpRemoteTransport>) -> (StdRemoting, EventHarness) {
+  let harness = EventHarness::new();
+  let remoting = StdRemoting::new(transport, None, harness.publisher());
+  (remoting, harness)
+}
+
+fn assert_configuration_error(error: ActorSystemBuildError, expected_message: &str) {
+  match error {
+    | ActorSystemBuildError::Configuration(message) => assert_eq!(message, expected_message),
+    | other => panic!("expected configuration error, got {other:?}"),
+  }
+}
+
+fn listen_started_authorities(events: &[EventStreamEvent]) -> Vec<String> {
+  events
+    .iter()
+    .filter_map(|event| match event {
+      | EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted { authority, .. }) => {
+        Some(authority.clone())
+      },
+      | _ => None,
+    })
+    .collect()
+}
+
+#[test]
+fn std_remoting_lifecycle_starts_and_shuts_down() {
+  let (mut remoting, _harness) = make_remoting(make_transport());
+  assert!(!remoting.lifecycle().is_running());
+
+  remoting.start().expect("start should succeed from Pending");
+  assert!(remoting.lifecycle().is_running());
+
+  remoting.shutdown().expect("shutdown should succeed from Running");
+  assert!(remoting.lifecycle().is_terminated());
+}
+
+#[test]
+fn std_remoting_double_start_returns_already_running() {
+  let (mut remoting, _harness) = make_remoting(make_transport());
+  remoting.start().expect("first start");
+  let err = remoting.start().unwrap_err();
+  assert_eq!(err, RemotingError::AlreadyRunning);
+}
+
+#[test]
+fn std_remoting_quarantine_requires_running_state() {
+  let (mut remoting, _harness) = make_remoting(make_transport());
+  let address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let err = remoting.quarantine(&address, Some(1), QuarantineReason::new("not started")).unwrap_err();
+  assert_eq!(err, RemotingError::NotStarted);
+}
+
+#[test]
+fn std_remoting_quarantine_succeeds_while_running() {
+  let (mut remoting, _harness) = make_remoting(make_transport());
+  remoting.start().expect("start");
+  let address = Address::new("remote-sys", "10.0.0.1", 2552);
+  remoting.quarantine(&address, Some(1), QuarantineReason::new("test")).expect("quarantine while running");
+}
+
+#[test]
+fn std_remoting_start_snapshots_advertised_addresses() {
+  let addresses = vec![Address::new("local-sys", "127.0.0.1", 2551), Address::new("local-sys", "127.0.0.2", 2552)];
+  let (mut remoting, _harness) = make_remoting(make_transport_with_addresses(addresses.clone()));
+
+  remoting.start().expect("start should snapshot advertised addresses");
+
+  assert_eq!(remoting.addresses(), addresses.as_slice());
+}
+
+#[test]
+fn std_remoting_start_publishes_listen_started_for_each_advertised_address() {
+  let addresses = vec![Address::new("local-sys", "127.0.0.1", 2551), Address::new("local-sys", "127.0.0.2", 2552)];
+  let (mut remoting, harness) = make_remoting(make_transport_with_addresses(addresses));
+
+  remoting.start().expect("start should publish listen events");
+
+  let events = harness.events();
+  assert_eq!(listen_started_authorities(&events), vec![
+    String::from("local-sys@127.0.0.1:2551"),
+    String::from("local-sys@127.0.0.2:2552")
+  ]);
+  assert!(events.iter().any(|event| matches!(
+    event,
+    EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted {
+      correlation_id,
+      ..
+    }) if *correlation_id == CorrelationId::nil()
+  )));
+}
+
+#[test]
+fn extension_installer_holds_a_shared_remoting_handle() {
+  let installer = RemotingExtensionInstaller::new(make_transport());
+  let harness = EventHarness::new();
+  installer.install(harness.system()).expect("install should create remoting");
+  let remoting_a = installer.remoting().expect("installed remoting should be available");
+  let remoting_b = installer.remoting().expect("installed remoting should be available");
+  assert!(SharedLock::ptr_eq(&remoting_a, &remoting_b), "installer should hand out the same shared lock");
+}
+
+#[test]
+fn extension_installer_remoting_before_install_returns_configuration_error() {
+  let installer = RemotingExtensionInstaller::new(make_transport());
+
+  let error = match installer.remoting() {
+    | Ok(_) => panic!("remoting handle should not exist before install"),
+    | Err(error) => error,
+  };
+
+  assert_configuration_error(error, "remoting extension is not installed");
+}
+
+#[test]
+fn extension_installer_double_install_returns_configuration_error() {
+  let installer = RemotingExtensionInstaller::new(make_transport());
+  let harness = EventHarness::new();
+  installer.install(harness.system()).expect("first install should create remoting");
+
+  let error = installer.install(harness.system()).expect_err("second install should fail");
+
+  assert_configuration_error(error, "remoting extension is already installed");
+}
+
+#[test]
+fn extension_installer_remoting_lifecycle_drives_via_arc() {
+  let installer = RemotingExtensionInstaller::new(make_transport());
+  let harness = EventHarness::new();
+  installer.install(harness.system()).expect("install should wire event publisher");
+  let remoting = installer.remoting().expect("installed remoting should be available");
+  remoting.with_lock(|remoting| remoting.start()).expect("start through installer-shared handle");
+  let snapshot_running = remoting.with_lock(|remoting| remoting.lifecycle().is_running());
+  assert!(snapshot_running);
+}
+
+#[test]
+fn extension_installer_install_wires_listen_event_publisher() {
+  let listen_address = Address::new("local-sys", "127.0.0.1", 2551);
+  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]));
+  let harness = EventHarness::new();
+  installer.install(harness.system()).expect("install should wire event publisher");
+
+  {
+    let remoting = installer.remoting().expect("installed remoting should be available");
+    remoting.with_lock(|remoting| remoting.start()).expect("start should publish through installed publisher");
+  }
+
+  let events = harness.events();
+  assert_eq!(listen_started_authorities(&events), vec![String::from("local-sys@127.0.0.1:2551")]);
+}

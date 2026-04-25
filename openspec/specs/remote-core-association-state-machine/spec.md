@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: Association 型の存在
 
-`fraktor_remote_core_rs::association::Association` 型が定義され、per-remote-node の状態と send queue を集約する SHALL。Pekko `Association` (Scala, 1240行) に対応する。
+`fraktor_remote_core_rs::core::association::Association` 型が定義され、per-remote-node の状態と send queue を集約する SHALL。Pekko `Association` (Scala, 1240行) に対応する。
 
 #### Scenario: Association struct の存在
 
@@ -19,7 +19,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: AssociationState 状態列挙
 
-`fraktor_remote_core_rs::association::AssociationState` enum が定義され、`Idle`、`Handshaking`、`Active`、`Gated`、`Quarantined` の各バリアントを持つ SHALL。
+`fraktor_remote_core_rs::core::association::AssociationState` enum が定義され、`Idle`、`Handshaking`、`Active`、`Gated`、`Quarantined` の各バリアントを持つ SHALL。
 
 #### Scenario: AssociationState の存在
 
@@ -91,7 +91,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: AssociationEffect 出力型
 
-`fraktor_remote_core_rs::association::AssociationEffect` enum が定義され、状態遷移の副作用 (送信、ハンドシェイク開始、ライフサイクルイベント発火、quarantine 通知等) を表現する SHALL。
+`fraktor_remote_core_rs::core::association::AssociationEffect` enum が定義され、状態遷移の副作用 (送信、ハンドシェイク開始、ライフサイクルイベント発火、quarantine 通知等) を表現する SHALL。
 
 #### Scenario: AssociationEffect の存在
 
@@ -177,7 +177,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: QuarantineReason 型
 
-`fraktor_remote_core_rs::association::QuarantineReason` 型が定義され、quarantine の理由を保持する SHALL。
+`fraktor_remote_core_rs::core::association::QuarantineReason` 型が定義され、quarantine の理由を保持する SHALL。
 
 #### Scenario: QuarantineReason の存在
 
