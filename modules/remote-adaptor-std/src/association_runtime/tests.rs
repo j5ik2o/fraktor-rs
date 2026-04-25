@@ -1,22 +1,39 @@
 use core::time::Duration;
-use std::time::Instant;
+use std::{
+  sync::{Arc, Mutex},
+  time::Instant,
+};
 
 use bytes::Bytes;
+use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
-  event::stream::CorrelationId,
+  event::stream::{
+    CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent,
+    subscriber_handle,
+  },
+  system::ActorSystem,
 };
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  association::{Association, QuarantineReason},
+  association::{Association, AssociationEffect, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},
+  extension::EventPublisher,
   transport::TransportEndpoint,
-  wire::{AckPdu, EnvelopePdu},
+  wire::{AckPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp},
+};
+use tokio::sync::{
+  mpsc,
+  oneshot::{self, Sender},
 };
 
-use crate::association_runtime::{
-  apply_effects_in_place, association_registry::AssociationRegistry, association_shared::AssociationShared,
-  handshake_driver::HandshakeDriver, system_message_delivery::SystemMessageDeliveryState,
+use crate::{
+  association_runtime::{
+    apply_effects_in_place, association_registry::AssociationRegistry, association_shared::AssociationShared,
+    handshake_driver::HandshakeDriver, inbound_dispatch::run_inbound_dispatch,
+    system_message_delivery::SystemMessageDeliveryState,
+  },
+  tcp_transport::{InboundFrameEvent, WireFrame},
 };
 
 // ---------------------------------------------------------------------------
@@ -27,6 +44,58 @@ fn sample_association() -> Association {
   let local = UniqueAddress::new(Address::new("local-sys", "127.0.0.1", 2551), 1);
   let remote = Address::new("remote-sys", "10.0.0.1", 2552);
   Association::new(local, remote)
+}
+
+struct EventHarness {
+  _system:       ActorSystem,
+  publisher:     EventPublisher,
+  events:        Arc<Mutex<Vec<EventStreamEvent>>>,
+  _subscription: EventStreamSubscription,
+}
+
+impl EventHarness {
+  fn new() -> Self {
+    let system = new_empty_actor_system();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = subscriber_handle(RecordingSubscriber::new(Arc::clone(&events)));
+    let subscription = system.subscribe_event_stream(&subscriber);
+    let publisher = EventPublisher::new(system.downgrade());
+    Self { _system: system, publisher, events, _subscription: subscription }
+  }
+
+  fn publisher(&self) -> EventPublisher {
+    self.publisher.clone()
+  }
+
+  fn events(&self) -> Vec<EventStreamEvent> {
+    self.events.lock().expect("event recorder lock should not be poisoned").clone()
+  }
+}
+
+struct RecordingSubscriber {
+  events: Arc<Mutex<Vec<EventStreamEvent>>>,
+}
+
+impl RecordingSubscriber {
+  fn new(events: Arc<Mutex<Vec<EventStreamEvent>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl EventStreamSubscriber for RecordingSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    self.events.lock().expect("event recorder lock should not be poisoned").push(event.clone());
+  }
+}
+
+fn has_remoting_lifecycle_event(
+  events: &[EventStreamEvent],
+  expected: impl Fn(&RemotingLifecycleEvent) -> bool,
+) -> bool {
+  events.iter().any(|event| match event {
+    | EventStreamEvent::RemotingLifecycle(lifecycle) => expected(lifecycle),
+    | _ => false,
+  })
 }
 
 #[test]
@@ -47,7 +116,8 @@ fn association_shared_clone_shares_state() {
   let b = a.clone();
   let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
   a.with_write(|assoc| {
-    let _ = assoc.associate(endpoint, 0);
+    let effects = assoc.associate(endpoint, 0);
+    assert!(!effects.is_empty(), "associate should emit StartHandshake");
   });
   b.with_write(|assoc| {
     assert!(matches!(assoc.state(), fraktor_remote_core_rs::association::AssociationState::Handshaking { .. }));
@@ -123,9 +193,9 @@ fn system_message_delivery_window_full_returns_none() {
 #[test]
 fn system_message_delivery_apply_ack_drops_acknowledged() {
   let mut state = SystemMessageDeliveryState::new(10);
-  let _ = state.record_send(sample_envelope_pdu(1));
-  let _ = state.record_send(sample_envelope_pdu(2));
-  let _ = state.record_send(sample_envelope_pdu(3));
+  assert_eq!(state.record_send(sample_envelope_pdu(1)), Some(1));
+  assert_eq!(state.record_send(sample_envelope_pdu(2)), Some(2));
+  assert_eq!(state.record_send(sample_envelope_pdu(3)), Some(3));
   assert_eq!(state.pending_len(), 3);
 
   let ack = AckPdu::new(2, 2, 0);
@@ -137,8 +207,8 @@ fn system_message_delivery_apply_ack_drops_acknowledged() {
 #[test]
 fn system_message_delivery_apply_ack_is_monotonic() {
   let mut state = SystemMessageDeliveryState::new(10);
-  let _ = state.record_send(sample_envelope_pdu(1));
-  let _ = state.record_send(sample_envelope_pdu(2));
+  assert_eq!(state.record_send(sample_envelope_pdu(1)), Some(1));
+  assert_eq!(state.record_send(sample_envelope_pdu(2)), Some(2));
   state.apply_ack(&AckPdu::new(2, 2, 0));
   // A stale ack with a smaller cumulative value must not regress the state.
   state.apply_ack(&AckPdu::new(1, 1, 0));
@@ -149,40 +219,55 @@ fn system_message_delivery_apply_ack_is_monotonic() {
 // HandshakeDriver
 // ---------------------------------------------------------------------------
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_driver_fires_after_timeout_and_marks_gated() {
+  let harness = EventHarness::new();
   let association = {
     let mut assoc = sample_association();
     let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-    let _ = assoc.associate(endpoint, 0);
+    let effects = assoc.associate(endpoint, 0);
+    assert!(!effects.is_empty(), "associate should emit StartHandshake");
     assoc
   };
   let shared = AssociationShared::new(association);
 
   let mut driver = HandshakeDriver::new();
-  driver.arm(shared.clone(), Instant::now(), Duration::from_millis(10));
-  // Wait long enough for the timeout to fire.
-  tokio::time::sleep(Duration::from_millis(60)).await;
+  driver.arm(shared.clone(), Instant::now(), Duration::from_millis(10), harness.publisher());
+  tokio::task::yield_now().await;
+  tokio::time::advance(Duration::from_millis(10)).await;
+  tokio::task::yield_now().await;
 
   shared.with_write(|assoc| {
     assert!(assoc.state().is_gated(), "handshake driver should have transitioned the association into Gated");
   });
+  let events = harness.events();
+  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
+    event,
+    RemotingLifecycleEvent::Gated {
+      authority,
+      correlation_id
+    } if authority == "remote-sys@10.0.0.1:2552" && *correlation_id == CorrelationId::nil()
+  )));
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_driver_cancel_prevents_firing() {
+  let harness = EventHarness::new();
   let association = {
     let mut assoc = sample_association();
     let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-    let _ = assoc.associate(endpoint, 0);
+    let effects = assoc.associate(endpoint, 0);
+    assert!(!effects.is_empty(), "associate should emit StartHandshake");
     assoc
   };
   let shared = AssociationShared::new(association);
 
   let mut driver = HandshakeDriver::new();
-  driver.arm(shared.clone(), Instant::now(), Duration::from_millis(50));
+  driver.arm(shared.clone(), Instant::now(), Duration::from_millis(50), harness.publisher());
+  tokio::task::yield_now().await;
   driver.cancel();
-  tokio::time::sleep(Duration::from_millis(120)).await;
+  tokio::time::advance(Duration::from_millis(50)).await;
+  tokio::task::yield_now().await;
 
   shared.with_write(|assoc| {
     assert!(
@@ -190,6 +275,8 @@ async fn handshake_driver_cancel_prevents_firing() {
       "cancelled driver must not transition state"
     );
   });
+  let events = harness.events();
+  assert!(!has_remoting_lifecycle_event(&events, |event| matches!(event, RemotingLifecycleEvent::Gated { .. })));
 }
 
 // ---------------------------------------------------------------------------
@@ -207,8 +294,9 @@ async fn outbound_loop_drains_active_association() {
 
   // A capturing transport that records every envelope it is asked to send.
   struct CapturingTransport {
-    sent:      Arc<Mutex<Vec<OutboundEnvelope>>>,
-    addresses: Vec<Address>,
+    sent:        Arc<Mutex<Vec<OutboundEnvelope>>>,
+    sent_signal: Option<Sender<()>>,
+    addresses:   Vec<Address>,
   }
 
   impl RemoteTransport for CapturingTransport {
@@ -222,6 +310,9 @@ async fn outbound_loop_drains_active_association() {
 
     fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError> {
       self.sent.lock().unwrap().push(envelope);
+      if let Some(sent_signal) = self.sent_signal.take() {
+        sent_signal.send(()).expect("send completion receiver should be alive");
+      }
       Ok(())
     }
 
@@ -249,8 +340,10 @@ async fn outbound_loop_drains_active_association() {
 
   let mut association = sample_association();
   let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let _ = association.associate(endpoint, 0);
-  let _ = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
+  let associate_effects = association.associate(endpoint, 0);
+  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
+  let connected_effects = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
+  assert!(!connected_effects.is_empty(), "handshake_accepted should emit Connected lifecycle");
   // Enqueue a system-priority envelope.
   let path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/x").unwrap();
   let envelope = OutboundEnvelope::new(
@@ -261,13 +354,16 @@ async fn outbound_loop_drains_active_association() {
     RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
     CorrelationId::nil(),
   );
-  let _ = association.enqueue(envelope);
+  let enqueue_effects = association.enqueue(envelope);
+  assert!(enqueue_effects.is_empty(), "active enqueue should only append to the send queue");
 
   let shared = AssociationShared::new(association);
   let sent = Arc::new(Mutex::new(Vec::<OutboundEnvelope>::new()));
+  let (sent_tx, sent_rx) = oneshot::channel();
   let transport = Arc::new(Mutex::new(CapturingTransport {
-    sent:      Arc::clone(&sent),
-    addresses: vec![Address::new("local-sys", "127.0.0.1", 2551)],
+    sent:        Arc::clone(&sent),
+    sent_signal: Some(sent_tx),
+    addresses:   vec![Address::new("local-sys", "127.0.0.1", 2551)],
   }));
 
   let task_shared = shared.clone();
@@ -276,11 +372,14 @@ async fn outbound_loop_drains_active_association() {
     run_outbound_loop(task_shared, task_transport).await;
   });
 
-  // Allow the outbound loop to drain the queue.
-  tokio::time::sleep(Duration::from_millis(20)).await;
+  tokio::time::timeout(Duration::from_secs(1), sent_rx)
+    .await
+    .expect("outbound loop should send before the test timeout")
+    .expect("send completion should be delivered");
 
   task.abort();
-  drop(task.await);
+  let join_error = task.await.expect_err("aborted outbound loop should return JoinError");
+  assert!(join_error.is_cancelled(), "outbound loop task should be cancelled by abort");
 
   let sent = sent.lock().unwrap();
   assert_eq!(sent.len(), 1, "outbound loop should have drained one envelope");
@@ -305,13 +404,15 @@ fn deferred_envelope() -> OutboundEnvelope {
 
 #[test]
 fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
+  let harness = EventHarness::new();
   // Build an association that has been associated and has a deferred envelope
   // queued (because the handshake hasn't completed yet).
   let mut association = sample_association();
   let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let _ = association.associate(endpoint, 0);
-  let _ = association.enqueue(deferred_envelope());
-  let _ = association.enqueue(deferred_envelope());
+  let associate_effects = association.associate(endpoint, 0);
+  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
+  assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
+  assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
   // Sanity: the envelopes should not yet be drainable from the send queue.
   assert!(association.next_outbound().is_none(), "deferred envelopes must not be drainable before handshake_accepted");
 
@@ -319,7 +420,7 @@ fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
   // place. This is the contract that production sites
   // (`inbound_dispatch::run_inbound_dispatch`) must honour.
   let effects = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
-  apply_effects_in_place(&mut association, effects);
+  apply_effects_in_place(&mut association, effects, &harness.publisher());
 
   // Both deferred envelopes must now be drainable through next_outbound,
   // proving they were re-enqueued into the active send queue rather than
@@ -327,38 +428,166 @@ fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
   assert!(association.next_outbound().is_some(), "first deferred envelope must be re-enqueued");
   assert!(association.next_outbound().is_some(), "second deferred envelope must be re-enqueued");
   assert!(association.next_outbound().is_none(), "no further envelopes expected");
+  let events = harness.events();
+  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
+    event,
+    RemotingLifecycleEvent::Connected {
+      authority,
+      remote_system,
+      remote_uid,
+      correlation_id
+    } if authority == "remote-sys@10.0.0.1:2552"
+      && remote_system == "remote-sys"
+      && *remote_uid == 1
+      && *correlation_id == CorrelationId::nil()
+  )));
 }
 
 #[test]
 fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
+  let harness = EventHarness::new();
   // Build an association that has been associated and has a deferred envelope
   // queued (because the handshake never completed).
   let mut association = sample_association();
   let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let _ = association.associate(endpoint, 0);
-  let _ = association.enqueue(deferred_envelope());
+  let associate_effects = association.associate(endpoint, 0);
+  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
+  assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
 
   // Trigger the timeout transition and apply effects in place. This is the
   // contract that `handshake_driver::HandshakeDriver` must honour.
   let effects = association.handshake_timed_out(0, None);
-  apply_effects_in_place(&mut association, effects);
+  apply_effects_in_place(&mut association, effects, &harness.publisher());
 
   // The state must now be Gated, and the send queue must be empty (the
   // deferred envelopes were intentionally discarded by the timeout path).
   assert!(association.state().is_gated(), "handshake_timed_out should have moved the association to Gated");
   assert!(association.next_outbound().is_none(), "Gated state must not surface envelopes from next_outbound");
+  let events = harness.events();
+  assert!(has_remoting_lifecycle_event(&events, |event| matches!(event, RemotingLifecycleEvent::Gated { .. })));
 }
 
 #[test]
 fn handshake_accepted_with_no_deferred_envelopes_is_a_noop() {
+  let harness = EventHarness::new();
   // Regression coverage: even when there is nothing to flush, applying the
   // effects must not panic and must not produce phantom envelopes.
   let mut association = sample_association();
   let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let _ = association.associate(endpoint, 0);
+  let associate_effects = association.associate(endpoint, 0);
+  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
 
   let effects = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
-  apply_effects_in_place(&mut association, effects);
+  apply_effects_in_place(&mut association, effects, &harness.publisher());
 
   assert!(association.next_outbound().is_none());
+}
+
+#[test]
+fn apply_effects_in_place_publishes_lifecycle_events_to_event_stream() {
+  let harness = EventHarness::new();
+  let mut association = sample_association();
+  let effects = vec![AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined {
+    authority:      String::from("remote-sys@10.0.0.1:2552"),
+    reason:         String::from("test quarantine"),
+    correlation_id: CorrelationId::from_u128(99),
+  })];
+
+  apply_effects_in_place(&mut association, effects, &harness.publisher());
+
+  let events = harness.events();
+  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
+    event,
+    RemotingLifecycleEvent::Quarantined {
+      authority,
+      reason,
+      correlation_id
+    } if authority == "remote-sys@10.0.0.1:2552"
+      && reason == "test quarantine"
+      && *correlation_id == CorrelationId::from_u128(99)
+  )));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_publishes_connected_lifecycle_with_req_origin() {
+  let harness = EventHarness::new();
+  let association = {
+    let mut assoc = sample_association();
+    let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+    let effects = assoc.associate(endpoint, 0);
+    assert!(!effects.is_empty(), "associate should emit StartHandshake");
+    assoc
+  };
+  let shared = AssociationShared::new(association);
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(InboundFrameEvent {
+    peer:  String::from("10.0.0.1:2552"),
+    frame: WireFrame::Handshake(HandshakePdu::Req(HandshakeReq::new(
+      String::from("remote-sys"),
+      String::from("10.0.0.1"),
+      2552,
+      1,
+    ))),
+  })
+  .expect("handshake frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch(rx, shared, || 200, harness.publisher()).await;
+
+  let events = harness.events();
+  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
+    event,
+    RemotingLifecycleEvent::Connected {
+      authority,
+      remote_system,
+      remote_uid,
+      correlation_id
+    } if authority == "remote-sys@10.0.0.1:2552"
+      && remote_system == "remote-sys"
+      && *remote_uid == 1
+      && *correlation_id == CorrelationId::nil()
+  )));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_publishes_connected_lifecycle_with_rsp_origin() {
+  let harness = EventHarness::new();
+  let association = {
+    let mut assoc = sample_association();
+    let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+    let effects = assoc.associate(endpoint, 0);
+    assert!(!effects.is_empty(), "associate should emit StartHandshake");
+    assoc
+  };
+  let shared = AssociationShared::new(association);
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(InboundFrameEvent {
+    peer:  String::from("10.0.0.1:2552"),
+    frame: WireFrame::Handshake(HandshakePdu::Rsp(HandshakeRsp::new(
+      String::from("remote-sys"),
+      String::from("10.0.0.1"),
+      2552,
+      1,
+    ))),
+  })
+  .expect("handshake frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch(rx, shared, || 200, harness.publisher()).await;
+
+  let events = harness.events();
+  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
+    event,
+    RemotingLifecycleEvent::Connected {
+      authority,
+      remote_system,
+      remote_uid,
+      correlation_id
+    } if authority == "remote-sys@10.0.0.1:2552"
+      && remote_system == "remote-sys"
+      && *remote_uid == 1
+      && *correlation_id == CorrelationId::nil()
+  )));
 }

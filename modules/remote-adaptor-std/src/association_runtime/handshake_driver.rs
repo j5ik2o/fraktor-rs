@@ -4,6 +4,7 @@
 use core::time::Duration;
 use std::time::Instant;
 
+use fraktor_remote_core_rs::extension::EventPublisher;
 use tokio::task::JoinHandle;
 
 use crate::association_runtime::{apply_effects_in_place, association_shared::AssociationShared};
@@ -38,7 +39,13 @@ impl HandshakeDriver {
   /// `started_at` is a `std::time::Instant` captured at handshake start; the
   /// driver computes the elapsed monotonic millis at firing time. Re-arming
   /// before the previous task fires aborts the old task.
-  pub fn arm(&mut self, shared: AssociationShared, started_at: Instant, timeout: Duration) {
+  pub fn arm(
+    &mut self,
+    shared: AssociationShared,
+    started_at: Instant,
+    timeout: Duration,
+    event_publisher: EventPublisher,
+  ) {
     if let Some(handle) = self.task.take() {
       handle.abort();
     }
@@ -50,8 +57,9 @@ impl HandshakeDriver {
         // Discarding `effects` here would silently drop the `Gated`
         // lifecycle event and the `DiscardEnvelopes` notice that contains
         // every envelope buffered during the handshake. apply_effects_in_place
-        // logs both so the operator can observe the loss.
-        apply_effects_in_place(assoc, effects);
+        // publishes the lifecycle event and logs the discard so the operator
+        // can observe the loss.
+        apply_effects_in_place(assoc, effects, &event_publisher);
       });
     });
     self.task = Some(task);

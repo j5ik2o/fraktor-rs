@@ -11,6 +11,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
+use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionInstaller, system::ActorSystem};
 use fraktor_remote_adaptor_std_rs::{
   extension_installer::{RemotingExtensionInstaller, StdRemoting},
   tcp_transport::TcpRemoteTransport,
@@ -18,16 +20,23 @@ use fraktor_remote_adaptor_std_rs::{
 use fraktor_remote_core_rs::{
   address::Address,
   association::QuarantineReason,
-  extension::{Remoting, RemotingError},
+  extension::{EventPublisher, Remoting, RemotingError},
 };
 
 fn make_transport() -> Arc<Mutex<TcpRemoteTransport>> {
   Arc::new(Mutex::new(TcpRemoteTransport::new("127.0.0.1:0", Vec::new())))
 }
 
+fn make_event_publisher() -> (ActorSystem, EventPublisher) {
+  let system = new_empty_actor_system();
+  let publisher = EventPublisher::new(system.downgrade());
+  (system, publisher)
+}
+
 #[test]
 fn quickstart_lifecycle_via_std_remoting_directly() {
-  let mut remoting = StdRemoting::new(make_transport(), None);
+  let (_system, publisher) = make_event_publisher();
+  let mut remoting = StdRemoting::new(make_transport(), None, publisher);
   assert!(!remoting.lifecycle().is_running());
 
   remoting.start().expect("start");
@@ -43,7 +52,9 @@ fn quickstart_lifecycle_via_std_remoting_directly() {
 #[test]
 fn quickstart_lifecycle_via_extension_installer() {
   let installer = RemotingExtensionInstaller::new(make_transport());
-  let remoting = installer.remoting();
+  let system = new_empty_actor_system();
+  installer.install(&system).expect("install remoting extension");
+  let remoting = installer.remoting().expect("installed remoting should be available");
 
   {
     let mut guard = remoting.lock().unwrap();

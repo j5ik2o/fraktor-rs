@@ -1,7 +1,7 @@
 //! Inbound dispatch loop: feeds incoming wire frames into the matching
 //! `Association`.
 
-use fraktor_remote_core_rs::address::RemoteNodeId;
+use fraktor_remote_core_rs::{address::RemoteNodeId, extension::EventPublisher, wire::HandshakePdu};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
@@ -25,24 +25,21 @@ pub async fn run_inbound_dispatch(
   mut inbound_rx: UnboundedReceiver<InboundFrameEvent>,
   target: AssociationShared,
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
+  event_publisher: EventPublisher,
 ) {
   while let Some(event) = inbound_rx.recv().await {
     match event.frame {
-      | WireFrame::Handshake(_pdu) => {
-        // Phase B minimum: synthesise a remote-node identifier from the
-        // peer string. The full handshake protocol (validating origin
-        // system / uid against the PDU contents) is left to Section 22's
-        // StdRemoting wiring.
+      | WireFrame::Handshake(pdu) => {
         let now = now_ms_provider();
-        let remote_node = RemoteNodeId::new("remote", event.peer.as_str(), None, 0);
+        let remote_node = remote_node_from_handshake_pdu(&pdu);
         target.with_write(|assoc| {
           let effects = assoc.handshake_accepted(remote_node, now);
           // The state is now Active. apply_effects_in_place re-enqueues any
           // deferred envelopes through `assoc.enqueue` so the outbound loop
-          // drains them, and logs the lifecycle event. Discarding `effects`
-          // here would silently lose every message buffered during the
-          // handshake.
-          apply_effects_in_place(assoc, effects);
+          // drains them and publishes the lifecycle event. Discarding
+          // `effects` here would silently lose every message buffered during
+          // the handshake.
+          apply_effects_in_place(assoc, effects, &event_publisher);
         });
       },
       | WireFrame::Envelope(_pdu) => {
@@ -58,5 +55,16 @@ pub async fn run_inbound_dispatch(
         tracing::debug!(peer = %event.peer, "inbound ack frame received");
       },
     }
+  }
+}
+
+fn remote_node_from_handshake_pdu(pdu: &HandshakePdu) -> RemoteNodeId {
+  match pdu {
+    | HandshakePdu::Req(req) => {
+      RemoteNodeId::new(req.origin_system(), req.origin_host(), Some(req.origin_port()), req.origin_uid())
+    },
+    | HandshakePdu::Rsp(rsp) => {
+      RemoteNodeId::new(rsp.origin_system(), rsp.origin_host(), Some(rsp.origin_port()), rsp.origin_uid())
+    },
   }
 }

@@ -2,10 +2,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
 use fraktor_remote_core_rs::{
   address::Address,
   association::QuarantineReason,
-  extension::{Remoting, RemotingError, RemotingLifecycleState},
+  extension::{EventPublisher, Remoting, RemotingError, RemotingLifecycleState},
   transport::RemoteTransport,
 };
 
@@ -30,10 +31,12 @@ use crate::{
 /// their handles. This keeps `StdRemoting` runtime-agnostic — the same type
 /// can be driven from `tokio::main` or from a manual runtime.
 pub struct StdRemoting {
-  lifecycle: RemotingLifecycleState,
-  transport: Arc<Mutex<TcpRemoteTransport>>,
-  registry:  AssociationRegistry,
-  watcher:   Option<WatcherActorHandle>,
+  lifecycle:            RemotingLifecycleState,
+  transport:            Arc<Mutex<TcpRemoteTransport>>,
+  registry:             AssociationRegistry,
+  watcher:              Option<WatcherActorHandle>,
+  event_publisher:      EventPublisher,
+  advertised_addresses: Vec<Address>,
 }
 
 impl StdRemoting {
@@ -43,8 +46,19 @@ impl StdRemoting {
   /// watcher actor can pass `None`. The handle can be installed later with
   /// [`StdRemoting::install_watcher`].
   #[must_use]
-  pub fn new(transport: Arc<Mutex<TcpRemoteTransport>>, watcher: Option<WatcherActorHandle>) -> Self {
-    Self { lifecycle: RemotingLifecycleState::new(), transport, registry: AssociationRegistry::new(), watcher }
+  pub fn new(
+    transport: Arc<Mutex<TcpRemoteTransport>>,
+    watcher: Option<WatcherActorHandle>,
+    event_publisher: EventPublisher,
+  ) -> Self {
+    Self {
+      lifecycle: RemotingLifecycleState::new(),
+      transport,
+      registry: AssociationRegistry::new(),
+      watcher,
+      event_publisher,
+      advertised_addresses: Vec::new(),
+    }
   }
 
   /// Installs (or replaces) the watcher handle.
@@ -88,11 +102,14 @@ impl StdRemoting {
 impl Remoting for StdRemoting {
   fn start(&mut self) -> Result<(), RemotingError> {
     self.lifecycle.transition_to_start()?;
-    {
+    let advertised_addresses = {
       let mut transport = self.transport.lock().map_err(|_| RemotingError::TransportUnavailable)?;
       transport.start().map_err(|_| RemotingError::TransportUnavailable)?;
-    }
+      transport.addresses().to_vec()
+    };
+    self.advertised_addresses = advertised_addresses;
     self.lifecycle.mark_started()?;
+    self.publish_listen_started();
     Ok(())
   }
 
@@ -118,10 +135,17 @@ impl Remoting for StdRemoting {
   }
 
   fn addresses(&self) -> &[Address] {
-    // We cannot return a borrow that escapes the mutex guard, so the
-    // method falls back to an empty slice when the transport is locked or
-    // poisoned. Phase B minimum-viable: callers that need the live address
-    // list should query the transport directly via [`Self::transport`].
-    &[]
+    &self.advertised_addresses
+  }
+}
+
+impl StdRemoting {
+  fn publish_listen_started(&self) {
+    for address in &self.advertised_addresses {
+      self.event_publisher.publish_lifecycle(RemotingLifecycleEvent::ListenStarted {
+        authority:      address.to_string(),
+        correlation_id: CorrelationId::nil(),
+      });
+    }
   }
 }
