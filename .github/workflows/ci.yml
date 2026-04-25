@@ -169,6 +169,9 @@ jobs:
     name: Coverage Report
     runs-on: self-hosted
     needs: integration-e2e
+    permissions:
+      contents: read
+      id-token: write
     env:
       TEST_TIME_FACTOR: "2.0"
       CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
@@ -196,9 +199,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v6
+        # third-party action の mutable tag リスクを避けるため、v6 の commit SHA に固定する。
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: target/coverage/lcov.info
           disable_search: true
           flags: actor
