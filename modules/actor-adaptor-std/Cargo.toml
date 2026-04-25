@@ -49,8 +49,18 @@ path = "tests/circuit_breakers_registry.rs"
 required-features = ["test-support"]
 
 [[test]]
+name = "dispatcher_public_surface"
+path = "tests/dispatcher_public_surface.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "sp_h1_5_system_escalation"
 path = "tests/sp_h1_5_system_escalation.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "std_adaptor_boot_e2e"
+path = "tests/std_adaptor_boot_e2e.rs"
 required-features = ["test-support"]
 
 [lints]
