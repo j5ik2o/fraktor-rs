@@ -15,6 +15,7 @@ env:
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
   DYLINT_VERSION: "4.1.0"
+  RUST_TOOLCHAIN: nightly-2025-12-01
   # NOTE: CARGO_HOME, RUSTUP_HOME, and TMPDIR are set per-job via the
   # `./.github/actions/setup-isolated-rust` composite action. They are NOT
   # pinned at the workflow level because:
@@ -56,7 +57,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -83,7 +84,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -92,7 +93,12 @@ jobs:
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
-  # Build and test
+  # ビルドと単体テスト
+  #
+  # 実行頻度の方針:
+  # - pull_request / main push: まず単体テスト中心の correctness gate を必ず実行する。
+  # - integration / E2E は下の dedicated job で別途実行し、失敗箇所を切り分ける。
+  # - performance / benchmark は CI の正しさゲートに含めない。
   test:
     name: Test (${{ matrix.target.name }})
     runs-on: self-hosted
@@ -107,8 +113,8 @@ jobs:
             script: no-std
           - name: std
             script: std
-          - name: workspace
-            script: test
+          - name: unit
+            script: unit-test
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -117,13 +123,78 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-${{ matrix.target.name }}
       - name: Run ${{ matrix.target.name }} tests
         run: ./scripts/ci-check.sh ${{ matrix.target.script }}
+
+  # 結合テスト / E2E
+  #
+  # `scripts/ci-check.sh integration-test` は workspace の `--tests --examples`
+  # を実行する。actor の classic/typed user flow や std adaptor boot など、
+  # テストピラミッド上の Integration / E2E 層はここで PR ごとに検証する。
+  integration-e2e:
+    name: Integration / E2E
+    runs-on: self-hosted
+    needs: test
+    env:
+      TEST_TIME_FACTOR: "2.0"
+      CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        uses: ./.github/actions/setup-isolated-rust
+      - name: Setup Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: integration-e2e
+      - name: Run integration and E2E tests
+        run: ./scripts/ci-check.sh integration-test
+
+  # カバレッジレポート
+  #
+  # `scripts/coverage.sh` は actor 系 package の Unit / Contract /
+  # Integration / E2E をまとめて計測し、HTML レポートを生成する。
+  # PR / main push / schedule で成果物として確認できるよう、
+  # 通常テストとは別ジョブで実行して artifact に保存する。
+  coverage:
+    name: Coverage Report
+    runs-on: self-hosted
+    needs: integration-e2e
+    env:
+      TEST_TIME_FACTOR: "2.0"
+      CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        uses: ./.github/actions/setup-isolated-rust
+      - name: Setup Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: coverage
+      - name: Generate actor coverage HTML report
+        run: ./scripts/coverage.sh --tool llvm-cov --format html --output target/coverage
+      - name: Upload actor coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actor-coverage-html
+          path: target/coverage/html
+          if-no-files-found: warn
+          retention-days: 14
 
   # Documentation build
   docs:
@@ -138,7 +209,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -159,7 +230,7 @@ jobs:
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -175,8 +246,40 @@ jobs:
       - format
       - lint
       - test
+      - integration-e2e
+      - coverage
       - docs
       - examples
+    if: always()
     steps:
       - name: All checks passed
-        run: echo "✅ All CI checks passed successfully"
+        run: |
+          if [[ "${{ needs.format.result }}" != "success" ]]; then
+            echo "format failed"
+            exit 1
+          fi
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "test failed"
+            exit 1
+          fi
+          if [[ "${{ needs['integration-e2e'].result }}" != "success" ]]; then
+            echo "integration-e2e failed"
+            exit 1
+          fi
+          if [[ "${{ needs.coverage.result }}" != "success" ]]; then
+            echo "coverage failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docs.result }}" != "success" ]]; then
+            echo "docs failed"
+            exit 1
+          fi
+          if [[ "${{ needs.examples.result }}" != "success" ]]; then
+            echo "examples failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed successfully"

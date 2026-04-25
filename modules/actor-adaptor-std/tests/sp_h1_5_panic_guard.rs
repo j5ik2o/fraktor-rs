@@ -42,3 +42,21 @@ fn sp_h1_5_t4_panic_guard_preserves_ok_result() {
 
   assert_eq!(guard.wrap(|| Ok(())), Ok(()));
 }
+
+#[test]
+fn sp_h1_5_t5_panic_guard_converts_string_panic_payload() {
+  let guard = PanicInvokeGuard::new();
+
+  let result = guard.wrap(|| std::panic::panic_any(String::from("owned panic")));
+
+  assert!(matches!(result, Err(ActorError::Escalate(reason)) if reason.as_str().contains("owned panic")));
+}
+
+#[test]
+fn sp_h1_5_t6_panic_guard_reports_non_string_panic_payload() {
+  let guard = PanicInvokeGuard::new();
+
+  let result = guard.wrap(|| std::panic::panic_any(42_u32));
+
+  assert!(matches!(result, Err(ActorError::Escalate(reason)) if !reason.as_str().is_empty()));
+}

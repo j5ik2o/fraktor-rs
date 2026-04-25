@@ -3,6 +3,9 @@
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
+#[cfg(test)]
+mod tests;
+
 /// Errors returned when an executor cannot accept a submitted task.
 ///
 /// `ExecuteError` makes the executor backend's failure observable so that

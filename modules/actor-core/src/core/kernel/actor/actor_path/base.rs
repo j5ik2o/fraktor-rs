@@ -8,6 +8,9 @@ use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use super::{ActorPathError, ActorPathParts, ActorUid, GuardianKind, PathSegment, formatter::ActorPathFormatter};
 
+#[cfg(test)]
+mod tests;
+
 /// Canonical actor path with scheme/system/authority metadata.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ActorPath {

@@ -1,10 +1,8 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{
-  thread,
-  time::{Duration, Instant},
-};
+mod common;
 
+use common::wait_until;
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -244,17 +242,6 @@ impl Actor for CycleGuardian {
   }
 }
 
-fn wait_until(deadline_ms: u64, predicate: &dyn Fn() -> bool) -> bool {
-  let deadline = Instant::now() + Duration::from_millis(deadline_ms);
-  while Instant::now() < deadline {
-    if predicate() {
-      return true;
-    }
-    thread::sleep(Duration::from_millis(5));
-  }
-  predicate()
-}
-
 #[test]
 fn death_watch_notifies_parent_on_child_stop() {
   let terminated = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -272,8 +259,9 @@ fn death_watch_notifies_parent_on_child_stop() {
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
+  assert!(wait_until(200, || child_slot.lock().is_some()));
   let child_pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
-  let observed = wait_until(200, &|| terminated.lock().len() == 1);
+  let observed = wait_until(200, || terminated.lock().len() == 1);
   let snapshot = terminated.lock().clone();
   assert!(observed, "terminated log={:?}", snapshot);
   assert_eq!(terminated.lock().clone(), vec![child_pid]);
@@ -297,7 +285,10 @@ fn death_watch_unwatch_suppresses_notifications() {
   system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
-  thread::sleep(Duration::from_millis(50));
+  assert!(wait_until(200, || child_slot.lock().is_some()));
+  let child_pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
+  let stopped = wait_until(200, || system.actor_ref_by_pid(child_pid).is_none());
+  assert!(stopped, "child should stop before asserting unwatch suppression");
   assert!(terminated.lock().is_empty());
 }
 
@@ -320,9 +311,10 @@ fn death_watch_handles_multiple_watchers() {
   system.user_guardian_ref().tell(AnyMessage::new(SpawnSecondaryWatcherMessage { log: secondary_log.clone() }));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
+  assert!(wait_until(200, || child_slot.lock().is_some()));
   let pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
-  let primary_ready = wait_until(200, &|| primary_log.lock().len() == 1);
-  let secondary_ready = wait_until(200, &|| secondary_log.lock().len() == 1);
+  let primary_ready = wait_until(200, || primary_log.lock().len() == 1);
+  let secondary_ready = wait_until(200, || secondary_log.lock().len() == 1);
   assert!(primary_ready && secondary_ready);
   assert_eq!(primary_log.lock().clone(), vec![pid]);
   assert_eq!(secondary_log.lock().clone(), vec![pid]);
@@ -344,13 +336,13 @@ fn watch_after_stop_triggers_immediate_notification() {
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
-  let first = wait_until(200, &|| terminated.lock().len() == 1);
+  let first = wait_until(200, || terminated.lock().len() == 1);
   assert!(first);
   terminated.lock().clear();
 
   system.user_guardian_ref().tell(AnyMessage::new(WatchAfterStop));
 
-  let observed = wait_until(200, &|| terminated.lock().len() == 1);
+  let observed = wait_until(200, || terminated.lock().len() == 1);
   assert!(observed);
 }
 
@@ -365,7 +357,7 @@ fn spawn_child_watched_notifies_on_stop() {
     ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
-  let observed = wait_until(200, &|| !terminated.lock().is_empty());
+  let observed = wait_until(200, || !terminated.lock().is_empty());
   assert!(observed);
 }
 
@@ -393,7 +385,7 @@ fn terminated_and_user_messages_are_both_processed() {
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(QueueUserEvent));
 
-  let observed = wait_until(200, &|| order.lock().len() >= 2);
+  let observed = wait_until(200, || order.lock().len() >= 2);
   assert!(observed);
   // Both "terminated" and "user" should be present, order is timing-dependent
   let order_snapshot = order.lock().clone();
@@ -415,7 +407,7 @@ fn cyclic_watchers_do_not_deadlock() {
 
   system.user_guardian_ref().tell(AnyMessage::new(StartCycle));
 
-  let observed = wait_until(500, &|| log_b.lock().len() == 1);
+  let observed = wait_until(500, || log_b.lock().len() == 1);
   let snapshot_b = log_b.lock().clone();
   assert!(observed, "log_b={:?}", snapshot_b);
 }
@@ -498,8 +490,9 @@ fn watch_with_delivers_custom_message_instead_of_on_terminated() {
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
+  assert!(wait_until(200, || child_slot.lock().is_some()));
   let child_pid = child_slot.lock().as_ref().map(|c| c.pid()).unwrap();
-  let observed = wait_until(200, &|| custom_log.lock().len() == 1);
+  let observed = wait_until(200, || custom_log.lock().len() == 1);
   assert!(observed, "custom message should be delivered via watch_with");
   assert_eq!(custom_log.lock().clone(), vec![child_pid]);
   assert!(terminated_log.lock().is_empty(), "on_terminated should not be called when watch_with is active");
@@ -523,7 +516,10 @@ fn watch_with_unwatch_clears_custom_message_registration() {
   system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
-  thread::sleep(Duration::from_millis(50));
+  assert!(wait_until(200, || child_slot.lock().is_some()));
+  let child_pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
+  let stopped = wait_until(200, || system.actor_ref_by_pid(child_pid).is_none());
+  assert!(stopped, "child should stop before asserting watch_with unwatch suppression");
   assert!(custom_log.lock().is_empty(), "no custom message after unwatch");
   assert!(terminated_log.lock().is_empty(), "no on_terminated after unwatch");
 }

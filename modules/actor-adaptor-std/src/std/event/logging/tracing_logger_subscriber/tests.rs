@@ -18,7 +18,7 @@ use tracing::{
   subscriber::with_default,
 };
 
-use super::TracingLoggerSubscriber;
+use super::{TracingLoggerSubscriber, duration_to_micros};
 
 #[test]
 fn forwards_log_events_to_tracing() {
@@ -88,6 +88,37 @@ fn forwards_structured_marker_and_mdc_fields_to_tracing() {
   assert_eq!(event.marker_name, Some(String::from("pekkoDeadLetter")));
   assert_eq!(event.marker_properties, Some(String::from("{\"pekkoMessageClass\": \"ExampleMessage\"}")));
   assert_eq!(event.mdc, Some(String::from("{\"iam\": \"the one who knocks\"}")));
+}
+
+#[test]
+fn forwards_trace_debug_and_error_levels_to_tracing() {
+  let collector = RecordingSubscriber::default();
+  let shared = collector.clone();
+  with_default(shared, || {
+    let mut subscriber = TracingLoggerSubscriber::new(LogLevel::Trace);
+    for (level, message) in [(LogLevel::Trace, "trace"), (LogLevel::Debug, "debug"), (LogLevel::Error, "error")] {
+      subscriber.on_event(&EventStreamEvent::Log(LogEvent::new(
+        level,
+        String::from(message),
+        Duration::ZERO,
+        None,
+        None,
+      )));
+    }
+  });
+
+  let events = collector.events();
+  assert_eq!(events.iter().map(|event| event.level).collect::<Vec<_>>(), vec![
+    Level::TRACE,
+    Level::DEBUG,
+    Level::ERROR
+  ]);
+  assert_eq!(events.iter().map(|event| event.message.as_str()).collect::<Vec<_>>(), vec!["trace", "debug", "error"]);
+}
+
+#[test]
+fn duration_to_micros_saturates_at_u64_max() {
+  assert_eq!(duration_to_micros(Duration::from_secs(u64::MAX)), u64::MAX);
 }
 
 #[derive(Clone, Default)]

@@ -2,6 +2,9 @@
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
+#[cfg(test)]
+mod tests;
+
 /// Errors that can occur during tick driver operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TickDriverError {

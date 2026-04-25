@@ -13,6 +13,9 @@ use crate::core::kernel::{
   system::TerminationSignal,
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Trait for all ActorRef providers to implement.
 ///
 /// ActorRefProvider is responsible for creating actor references and managing

@@ -83,6 +83,23 @@ fn canonical_uri_delegates_to_inner() {
 }
 
 #[test]
+fn as_path_and_relative_string_delegate_to_inner() {
+  let path = ActorPath::root().child("service").child("worker");
+  let child = ChildActorPath::try_from_path(path.clone()).unwrap();
+
+  assert_eq!(child.as_path(), &path);
+  assert_eq!(child.to_relative_string(), "/user/service/worker");
+}
+
+#[test]
+fn debug_uses_child_relative_path() {
+  let path = ActorPath::root().child("worker");
+  let child = ChildActorPath::try_from_path(path).unwrap();
+
+  assert_eq!(alloc::format!("{child:?}"), "ChildActorPath(\"/user/worker\")");
+}
+
+#[test]
 fn clone_produces_equal_child() {
   let path = ActorPath::root().child("worker");
   let child = ChildActorPath::try_from_path(path).unwrap();

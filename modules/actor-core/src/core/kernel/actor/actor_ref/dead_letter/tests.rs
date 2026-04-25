@@ -8,7 +8,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use crate::core::kernel::{
   actor::{
     Pid,
-    actor_ref::dead_letter::{DeadLetterReason, DeadLetterShared},
+    actor_ref::dead_letter::{DeadLetter, DeadLetterReason, DeadLetterShared},
     error::SendError,
     messaging::AnyMessage,
   },
@@ -114,4 +114,47 @@ fn dead_letter_reason_supports_suppressed_and_dropped() {
   let entries = dead_letter.entries();
   assert!(entries.iter().any(|entry| entry.reason() == DeadLetterReason::SuppressedDeadLetter));
   assert!(entries.iter().any(|entry| entry.reason() == DeadLetterReason::Dropped));
+}
+
+#[test]
+fn dead_letter_capacity_drops_oldest_entry() {
+  let mut dead_letter = DeadLetter::with_capacity(2);
+  assert_eq!(dead_letter.capacity(), 2);
+
+  let first =
+    dead_letter.record_entry(AnyMessage::new("one"), DeadLetterReason::ExplicitRouting, None, Duration::from_millis(1));
+  let second =
+    dead_letter.record_entry(AnyMessage::new("two"), DeadLetterReason::Dropped, None, Duration::from_millis(2));
+  let third = dead_letter.record_entry(
+    AnyMessage::new("three"),
+    DeadLetterReason::SuppressedDeadLetter,
+    None,
+    Duration::from_millis(3),
+  );
+  assert_eq!(first.reason(), DeadLetterReason::ExplicitRouting);
+  assert_eq!(second.reason(), DeadLetterReason::Dropped);
+  assert_eq!(third.reason(), DeadLetterReason::SuppressedDeadLetter);
+
+  let snapshot = dead_letter.snapshot();
+  assert_eq!(snapshot.len(), 2);
+  assert_eq!(snapshot[0].reason(), DeadLetterReason::Dropped);
+  assert_eq!(snapshot[1].reason(), DeadLetterReason::SuppressedDeadLetter);
+}
+
+#[test]
+fn record_send_error_maps_all_public_send_error_reasons() {
+  let mut dead_letter = DeadLetter::with_capacity(8);
+  let pid = Pid::new(31, 0);
+  let cases = [
+    (SendError::suspended(AnyMessage::new("suspended")), DeadLetterReason::MailboxSuspended),
+    (SendError::closed(AnyMessage::new("closed")), DeadLetterReason::RecipientUnavailable),
+    (SendError::no_recipient(AnyMessage::new("missing")), DeadLetterReason::MissingRecipient),
+    (SendError::invalid_payload(AnyMessage::new("invalid"), "expected u32"), DeadLetterReason::SerializationError),
+  ];
+
+  for (index, (error, expected)) in cases.into_iter().enumerate() {
+    let entry = dead_letter.record_send_error(Some(pid), &error, Duration::from_millis(index as u64));
+    assert_eq!(entry.reason(), expected);
+    assert_eq!(entry.recipient(), Some(pid));
+  }
 }

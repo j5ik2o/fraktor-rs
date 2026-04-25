@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
@@ -22,7 +22,10 @@ use crate::core::kernel::{
       RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
     },
   },
-  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  dispatch::{
+    dispatcher::DEFAULT_DISPATCHER_ID,
+    mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  },
   system::ActorSystem,
 };
 
@@ -240,6 +243,46 @@ fn actor_cell_holds_components() {
   assert_eq!(cell.name(), "worker");
   assert!(cell.parent().is_none());
   assert_eq!(cell.mailbox().system_len(), 0);
+}
+
+#[test]
+fn actor_cell_scheduler_accessor_returns_system_scheduler() {
+  let actor_system = ActorSystem::new_empty();
+  let system = actor_system.state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(system, Pid::new(901, 0), None, "scheduler".to_string(), &props).expect("cell");
+
+  let system_scheduler = actor_system.scheduler();
+  assert!(!system_scheduler.with_read(|scheduler| scheduler.diagnostics().is_log_enabled()));
+
+  cell.scheduler().with_write(|scheduler| scheduler.enable_deterministic_log(4));
+
+  assert!(cell.scheduler().with_read(|scheduler| scheduler.diagnostics().is_log_enabled()));
+  assert!(system_scheduler.with_read(|scheduler| scheduler.diagnostics().is_log_enabled()));
+}
+
+#[test]
+fn actor_cell_create_same_as_parent_without_parent_uses_default_dispatcher() {
+  let actor_system = ActorSystem::new_empty();
+  let system = actor_system.state();
+  let props = Props::from_fn(|| ProbeActor).with_dispatcher_same_as_parent();
+  let cell = ActorCell::create(system, Pid::new(902, 0), None, "root-child".to_string(), &props).expect("cell");
+
+  assert_eq!(cell.dispatcher_id(), DEFAULT_DISPATCHER_ID);
+}
+
+#[test]
+fn actor_cell_stop_child_ignores_unknown_child_pid() {
+  let actor_system = ActorSystem::new_empty();
+  let system = actor_system.state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(system, Pid::new(903, 0), None, "parent".to_string(), &props).expect("cell");
+  let known_child = Pid::new(905, 0);
+  cell.register_child(known_child);
+
+  cell.stop_child(Pid::new(904, 0));
+
+  assert_eq!(cell.children(), vec![known_child]);
 }
 
 #[test]

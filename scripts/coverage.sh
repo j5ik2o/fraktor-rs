@@ -40,11 +40,55 @@ usage() {
 
   # HTML出力後にブラウザで開く
   scripts/coverage.sh --open
+
+計測対象:
+  actor 系 package の lib / bins と tests / examples を分割実行し、
+  Unit / Contract / Integration / E2E のプロファイルを1つのレポートに統合します。
 EOF
 }
 
 log_step() {
   printf '==> %s\n' "$1"
+}
+
+coverage_packages() {
+  printf '%s\n' \
+    "fraktor-actor-core-rs" \
+    "fraktor-actor-adaptor-std-rs"
+}
+
+coverage_features() {
+  printf '%s\n' \
+    "fraktor-actor-core-rs/alloc" \
+    "fraktor-actor-adaptor-std-rs/test-support"
+}
+
+build_coverage_args() {
+  COVERAGE_PACKAGE_ARGS=()
+  COVERAGE_FEATURE_ARGS=()
+
+  local pkg=""
+  while IFS= read -r pkg; do
+    COVERAGE_PACKAGE_ARGS+=("-p" "${pkg}")
+  done < <(coverage_packages)
+
+  local feature_list=""
+  local feature=""
+  while IFS= read -r feature; do
+    if [[ -n "${feature_list}" ]]; then
+      feature_list+=","
+    fi
+    feature_list+="${feature}"
+  done < <(coverage_features)
+  if [[ -n "${feature_list}" ]]; then
+    COVERAGE_FEATURE_ARGS+=("--features" "${feature_list}")
+  fi
+}
+
+run_cargo_test_with_coverage() {
+  RUSTFLAGS="-C instrument-coverage" \
+  LLVM_PROFILE_FILE="${REPO_ROOT}/target/coverage/default_%m_%p.profraw" \
+  cargo test "$@"
 }
 
 ensure_tool_installed() {
@@ -86,57 +130,33 @@ run_llvm_cov() {
 
   mkdir -p "${output_dir}"
 
-  # Main packages to measure coverage for (run separately to avoid SIGSEGV)
-  local -a packages=(
-    "fraktor-utils-core-rs"
-    "fraktor-actor-core-rs"
-    "fraktor-actor-std-rs"
-  )
+  build_coverage_args
+  local -a package_args=("${COVERAGE_PACKAGE_ARGS[@]}")
+  local -a feature_args=("${COVERAGE_FEATURE_ARGS[@]}")
+
+  cargo llvm-cov clean --workspace || return 1
+
+  log_step "Unit / Contract 層を計測: lib / bins"
+  cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" --no-report --lib --bins || return 1
+
+  log_step "Contract / Integration / E2E 層を計測: tests / examples"
+  cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" --no-report --tests --examples || return 1
 
   case "${format}" in
     html)
       log_step "HTML形式でカバレッジレポートを生成: ${output_dir}/html"
-      # Clean previous coverage data
-      cargo llvm-cov clean --workspace || return 1
-
-      # Run coverage for each package separately and accumulate
-      for pkg in "${packages[@]}"; do
-        log_step "  パッケージ ${pkg} のカバレッジを計測中..."
-        cargo llvm-cov --lib -p "${pkg}" --no-report || return 1
-      done
-
-      # Generate combined HTML report
-      cargo llvm-cov report --html --output-dir "${output_dir}/html" || return 1
+      rm -rf "${output_dir}/html"
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --html --output-dir "${output_dir}/html" || return 1
       echo "カバレッジレポート: ${output_dir}/html/index.html"
       ;;
     lcov)
       log_step "LCOV形式でカバレッジレポートを生成: ${output_dir}/lcov.info"
-      # Clean previous coverage data
-      cargo llvm-cov clean --workspace || return 1
-
-      # Run coverage for each package separately and accumulate
-      for pkg in "${packages[@]}"; do
-        log_step "  パッケージ ${pkg} のカバレッジを計測中..."
-        cargo llvm-cov --lib -p "${pkg}" --no-report || return 1
-      done
-
-      # Generate combined LCOV report
-      cargo llvm-cov report --lcov --output-path "${output_dir}/lcov.info" || return 1
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --lcov --output-path "${output_dir}/lcov.info" || return 1
       echo "カバレッジレポート: ${output_dir}/lcov.info"
       ;;
     json)
       log_step "JSON形式でカバレッジレポートを生成: ${output_dir}/coverage.json"
-      # Clean previous coverage data
-      cargo llvm-cov clean --workspace || return 1
-
-      # Run coverage for each package separately and accumulate
-      for pkg in "${packages[@]}"; do
-        log_step "  パッケージ ${pkg} のカバレッジを計測中..."
-        cargo llvm-cov --lib -p "${pkg}" --no-report || return 1
-      done
-
-      # Generate combined JSON report
-      cargo llvm-cov report --json --output-path "${output_dir}/coverage.json" || return 1
+      cargo llvm-cov "${package_args[@]}" "${feature_args[@]}" report --json --output-path "${output_dir}/coverage.json" || return 1
       echo "カバレッジレポート: ${output_dir}/coverage.json"
       ;;
     *)
@@ -157,11 +177,16 @@ run_grcov() {
   # プロファイルデータをクリーンアップ
   find . -name "*.profraw" -delete
 
+  build_coverage_args
+  local -a package_args=("${COVERAGE_PACKAGE_ARGS[@]}")
+  local -a feature_args=("${COVERAGE_FEATURE_ARGS[@]}")
+
   # RUSTFLAGS を設定してテストを実行
-  log_step "テストを実行してプロファイルデータを収集中..."
-  RUSTFLAGS="-C instrument-coverage" \
-  LLVM_PROFILE_FILE="${REPO_ROOT}/target/coverage/default_%m_%p.profraw" \
-  cargo test --workspace --all-features || return 1
+  log_step "Unit / Contract 層を計測: lib / bins"
+  run_cargo_test_with_coverage "${package_args[@]}" "${feature_args[@]}" --lib --bins || return 1
+
+  log_step "Contract / Integration / E2E 層を計測: tests / examples"
+  run_cargo_test_with_coverage "${package_args[@]}" "${feature_args[@]}" --tests --examples || return 1
 
   # grcov でカバレッジレポートを生成
   case "${format}" in

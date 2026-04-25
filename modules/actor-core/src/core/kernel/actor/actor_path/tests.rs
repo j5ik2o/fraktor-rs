@@ -1,8 +1,8 @@
 use alloc::{vec, vec::Vec};
 
 use super::{
-  ActorPath, ActorPathComparator, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, GuardianKind,
-  PathSegment,
+  ActorPath, ActorPathComparator, ActorPathError, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid,
+  GuardianKind, PathResolutionError, PathSegment,
 };
 
 #[test]
@@ -24,6 +24,21 @@ fn root_injects_user_guardian_by_default() {
 fn path_segment_rejects_reserved_dollar_prefix() {
   let result = PathSegment::new("$user");
   assert!(result.is_err());
+}
+
+#[test]
+fn path_segment_rejects_empty_invalid_percent_and_invalid_char() {
+  assert!(matches!(PathSegment::new(""), Err(ActorPathError::EmptySegment)));
+  assert!(matches!(PathSegment::new("bad%"), Err(ActorPathError::InvalidPercentEncoding)));
+  assert!(matches!(PathSegment::new("bad%XX"), Err(ActorPathError::InvalidPercentEncoding)));
+  assert!(matches!(PathSegment::new("bad space"), Err(ActorPathError::InvalidSegmentChar { ch: ' ', index: 3 })));
+}
+
+#[test]
+fn actor_path_parts_can_set_port_before_host() {
+  let parts = ActorPathParts::local("cellsys").with_authority_port(2552);
+
+  assert_eq!(parts.authority_endpoint().as_deref(), Some(":2552"));
 }
 
 #[test]
@@ -82,4 +97,43 @@ fn parser_decodes_percent_encoded_segments() {
   let last = parsed.segments().last().expect("segment");
   assert_eq!(last.as_str(), "service%20worker");
   assert_eq!(last.decoded(), "service worker");
+}
+
+#[test]
+fn actor_path_error_display_matches_public_contract() {
+  // Pekko contract: actor path construction errors must be observable and
+  // diagnostic without exposing parser internals to callers.
+  let cases = [
+    (ActorPathError::EmptySegment, "path segment must not be empty"),
+    (ActorPathError::ReservedSegment, "path segment must not start with '$'"),
+    (ActorPathError::InvalidSegmentChar { ch: ' ', index: 3 }, "invalid character ' ' at position 3"),
+    (ActorPathError::InvalidPercentEncoding, "invalid percent encoding sequence"),
+    (ActorPathError::RelativeEscape, "relative path escapes beyond guardian root"),
+    (ActorPathError::InvalidUri, "invalid actor path uri"),
+    (ActorPathError::UnsupportedScheme, "unsupported actor path scheme"),
+    (ActorPathError::MissingSystemName, "missing actor system name"),
+    (ActorPathError::InvalidAuthority, "invalid authority segment"),
+    (ActorPathError::NotRootPath, "path is not a root path"),
+    (ActorPathError::NotChildPath, "path is not a child path"),
+  ];
+
+  for (error, expected) in cases {
+    assert_eq!(error.to_string(), expected);
+  }
+}
+
+#[test]
+fn path_resolution_error_display_matches_public_contract() {
+  // Registry / remote path resolution errors are part of the public failure
+  // surface even when the concrete registry implementation changes.
+  let cases = [
+    (PathResolutionError::PidUnknown, "PID not found in registry"),
+    (PathResolutionError::AuthorityUnresolved, "authority is not resolved"),
+    (PathResolutionError::AuthorityQuarantined, "authority is quarantined"),
+    (PathResolutionError::UidReserved { uid: ActorUid::new(42) }, "UID 42 is reserved and cannot be reused"),
+  ];
+
+  for (error, expected) in cases {
+    assert_eq!(error.to_string(), expected);
+  }
 }

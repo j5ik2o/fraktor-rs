@@ -67,7 +67,7 @@ workspace = false
 category = "Test"
 script = '''
 #!/usr/bin/env bash
-./coverage.sh
+./scripts/coverage.sh
 '''
 
 [tasks.coverage]

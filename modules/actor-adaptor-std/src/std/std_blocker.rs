@@ -1,5 +1,8 @@
 //! Standard-library based [`Blocker`] implementation.
 
+#[cfg(test)]
+mod tests;
+
 extern crate std;
 
 use std::{

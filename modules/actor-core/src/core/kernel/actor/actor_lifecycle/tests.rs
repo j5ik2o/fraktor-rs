@@ -3,7 +3,7 @@ use core::time::Duration;
 
 use super::Actor;
 use crate::core::kernel::{
-  actor::{ActorContext, Pid, error::ActorError, messaging::AnyMessageView},
+  actor::{ActorContext, Pid, error::ActorError, messaging::AnyMessageView, supervision::SupervisorStrategyKind},
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   system::ActorSystem,
 };
@@ -42,6 +42,14 @@ impl Actor for TestActor {
     _event: &MailboxPressureEvent,
   ) -> Result<(), ActorError> {
     self.mailbox_pressure = true;
+    Ok(())
+  }
+}
+
+struct MinimalActor;
+
+impl Actor for MinimalActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -88,4 +96,36 @@ fn actor_box_delegates_on_mailbox_pressure() {
   let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
   let event = MailboxPressureEvent::new(pid, 8, 8, 100, Duration::from_millis(1), Some(6));
   assert!(actor.on_mailbox_pressure(&mut ctx, &event).is_ok());
+}
+
+#[test]
+fn default_lifecycle_hooks_are_noops() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = MinimalActor;
+  let reason = ActorError::recoverable("restart").reason().clone();
+  let pressure = MailboxPressureEvent::new(pid, 1, 1, 100, Duration::from_millis(1), None);
+
+  assert!(actor.on_mailbox_pressure(&mut ctx, &pressure).is_ok());
+  assert!(actor.on_child_failed(&mut ctx, pid, &ActorError::fatal("child")).is_ok());
+  assert!(actor.pre_restart(&mut ctx, &reason).is_ok());
+  assert!(actor.post_restart(&mut ctx, &reason).is_ok());
+  assert_eq!(actor.supervisor_strategy(&mut ctx).kind(), SupervisorStrategyKind::OneForOne);
+}
+
+#[test]
+fn default_restart_hooks_delegate_to_stop_and_start_hooks() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let reason = ActorError::recoverable("restart").reason().clone();
+
+  let mut pre_restart_actor = TestActor::default();
+  assert!(pre_restart_actor.pre_restart(&mut ctx, &reason).is_ok());
+  assert!(pre_restart_actor.post_stop_called);
+
+  let mut post_restart_actor = TestActor::default();
+  assert!(post_restart_actor.post_restart(&mut ctx, &reason).is_ok());
+  assert!(post_restart_actor.pre_start_called);
 }

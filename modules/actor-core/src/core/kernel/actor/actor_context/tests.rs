@@ -8,7 +8,7 @@ use crate::core::kernel::{
   actor::{
     Actor, ActorCell, Pid, StashOverflowError,
     actor_ref::NullSender,
-    error::{ActorError, SendError, WatchConflict, WatchRegistrationError},
+    error::{ActorError, PipeSpawnError, SendError, WatchConflict, WatchRegistrationError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::SchedulerHandle,
@@ -111,6 +111,29 @@ fn actor_context_system() {
 }
 
 #[test]
+fn actor_context_self_ref_returns_registered_actor_ref() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "self-ref", &props);
+  let context = ActorContext::new(&system, pid);
+
+  let self_ref = context.self_ref();
+
+  assert_eq!(self_ref.pid(), pid);
+}
+
+#[test]
+#[should_panic(expected = "actor reference must exist for running context")]
+fn actor_context_self_ref_panics_when_cell_is_missing() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let context = ActorContext::new(&system, pid);
+
+  let _self_ref = context.self_ref();
+}
+
+#[test]
 fn actor_context_pid() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -156,6 +179,16 @@ fn actor_context_children() {
 
   let children = context.children();
   assert_eq!(children.len(), 0);
+}
+
+#[test]
+fn actor_context_stop_all_children_is_noop_when_cell_is_missing() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+
+  assert!(context.stop_all_children().is_ok());
+  assert!(context.children().is_empty(), "cell 不在時は children() に副作用なし");
 }
 
 #[test]
@@ -234,6 +267,17 @@ fn actor_context_pipe_to_self_handles_async_future() {
   }
   wait_until(|| !received.lock().is_empty());
   assert_eq!(received.lock()[0], 7);
+}
+
+#[test]
+fn actor_context_pipe_to_self_reports_unavailable_when_cell_is_missing() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+
+  let result = context.pipe_to_self(async { 1_i32 }, AnyMessage::new);
+
+  assert!(matches!(result, Err(PipeSpawnError::ActorUnavailable)));
 }
 
 #[test]
@@ -551,6 +595,19 @@ fn actor_context_unwatch_enqueues_message() {
   assert!(!target.watchers_snapshot().contains(&watcher_pid));
 }
 
+#[test]
+fn actor_context_unwatch_self_is_noop() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let cell = register_cell(&system, pid, "self-watch", &props);
+  let self_ref = cell.actor_ref();
+  let mut context = ActorContext::new(&system, pid);
+
+  assert!(context.unwatch(&self_ref).is_ok());
+  assert!(cell.watchers_snapshot().is_empty());
+}
+
 // === AC-M4a: watch / watch_with duplicate detection ===================
 //
 // Pekko parity: `DeathWatch.scala:36-66, 126-132` の `watch` / `watchWith`
@@ -815,6 +872,46 @@ fn actor_context_stop_child_returns_ok() {
 }
 
 #[test]
+fn actor_context_stop_self_queues_stop_for_running_actor() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let cell = register_cell(&system, pid, "stop-self", &props);
+  let mut context = ActorContext::new(&system, pid);
+
+  context.stop_self().expect("stop self");
+  // stop_self は Stop system message を enqueue するだけなので、InlineExecutor
+  // を明示的に駆動して mailbox state machine へ反映する。
+  let _scheduled = cell.new_dispatcher_shared().register_for_execution(&cell.mailbox(), false, true);
+
+  wait_until(|| system.state().cell(&pid).is_none());
+}
+
+#[test]
+fn actor_context_suspend_and_resume_child_delegate_to_child_ref() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "parent", &props);
+  let mut context = ActorContext::new(&system, parent_pid);
+  let child_props = Props::from_fn(|| TestActor);
+  let child = context.spawn_child(&child_props).expect("spawn child");
+  let child_cell = system.state().cell(&child.pid()).expect("child cell");
+
+  context.suspend_child(&child).expect("suspend child");
+  // Drive the InlineExecutor so the queued Suspend system message is applied
+  // to the mailbox; the scheduling result is not the behavior under test.
+  let _scheduled = child_cell.new_dispatcher_shared().register_for_execution(&child_cell.mailbox(), false, true);
+  assert!(child_cell.mailbox().is_suspended());
+
+  context.resume_child(&child).expect("resume child");
+  // Drive the InlineExecutor so the queued Resume system message is applied
+  // to the mailbox; the scheduling result is not the behavior under test.
+  let _scheduled = child_cell.new_dispatcher_shared().register_for_execution(&child_cell.mailbox(), false, true);
+  assert!(!child_cell.mailbox().is_suspended());
+}
+
+#[test]
 fn actor_context_tags_returns_props_tags_at_runtime() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -935,6 +1032,7 @@ fn set_receive_timeout_stores_handle() {
 
   // Then: has_receive_timeout returns true
   assert!(context.has_receive_timeout(), "receive timeout should be configured after set");
+  assert_eq!(context.receive_timeout_schedule_generation(), Some(1));
 }
 
 #[test]
@@ -969,6 +1067,7 @@ fn set_receive_timeout_replaces_previous_timeout() {
 
   // Then: the timeout is still active (replaced, not accumulated)
   assert!(context.has_receive_timeout(), "receive timeout should still be configured");
+  assert_eq!(context.receive_timeout_schedule_generation(), Some(1));
 }
 
 #[test]
@@ -994,6 +1093,21 @@ fn has_receive_timeout_returns_false_initially() {
 
   // When/Then: has_receive_timeout returns false
   assert!(!context.has_receive_timeout(), "new context should not have receive timeout");
+}
+
+#[test]
+fn receive_timeout_schedule_generation_reads_cell_backed_state() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "timeout-generation", &props);
+  let mut context = ActorContext::new(&system, pid);
+
+  assert_eq!(context.receive_timeout_schedule_generation(), None);
+
+  context.set_receive_timeout(Duration::from_millis(500), AnyMessage::new(1_u32));
+
+  assert_eq!(context.receive_timeout_schedule_generation(), Some(1));
 }
 
 #[test]
@@ -1139,6 +1253,20 @@ fn actor_context_pipe_to_delivers_to_external_target() {
 }
 
 #[test]
+fn actor_context_pipe_to_reports_unavailable_when_cell_is_missing() {
+  use crate::core::kernel::actor::actor_ref::ActorRef;
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let target = ActorRef::new_with_builtin_lock(Pid::new(901, 0), NullSender);
+  let mut context = ActorContext::new(&system, pid);
+
+  let result = context.pipe_to(async { 1_i32 }, &target, |value| Some(AnyMessage::new(value)));
+
+  assert!(matches!(result, Err(PipeSpawnError::ActorUnavailable)));
+}
+
+#[test]
 fn actor_context_pipe_to_self_still_works_after_pipe_to_added() {
   // 前提: pipe_to_self を使う actor がある
   let system = ActorSystem::new_empty();
@@ -1244,15 +1372,11 @@ fn al_h1_stop_all_children_unwatches_each_child_before_stopping() {
   let child = context.spawn_child_watched(&child_props).expect("spawn watched child");
   let child_pid = child.pid();
   assert!(parent_cell.is_watching(child_pid), "前提: 親が子を watch している");
+  let child_name = system.state().cell(&child_pid).expect("spawned child cell").name().to_owned();
 
   context.stop_all_children().expect("AL-H1: stop_all_children Ok");
 
-  let child_name = system.state().cell(&child_pid).map(|c| c.name().to_owned()).unwrap_or_default();
-  if !child_name.is_empty() {
-    wait_until(|| context.child(&child_name).is_none());
-  } else {
-    wait_until(|| system.state().cell(&child_pid).is_none());
-  }
+  wait_until(|| context.child(&child_name).is_none());
   assert!(
     !parent_cell.is_watching(child_pid),
     "AL-H1: stop_all_children は implicit unwatch を行うため、親の watching から子が除去される"
