@@ -3,6 +3,9 @@
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
+#[cfg(test)]
+mod tests;
+
 /// Resolution failures for actor references.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActorRefResolveError {

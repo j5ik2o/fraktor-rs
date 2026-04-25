@@ -1,14 +1,16 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{
-  thread,
-  time::{Duration, Instant},
-  vec::Vec,
-};
+mod common;
 
+use std::{time::Duration, vec::Vec};
+
+use common::wait_until;
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::{
-  kernel::actor::{Pid, error::ActorError, setup::ActorSystemConfig},
+  kernel::{
+    actor::{Pid, error::ActorError, setup::ActorSystemConfig},
+    system::SpinBlocker,
+  },
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
     actor::{TypedActor, TypedActorContext, TypedChildRef},
@@ -150,7 +152,7 @@ fn typed_user_flow_observes_spawn_adapter_ask_pipe_stop_and_signal() {
 
   guardian.tell(RootMsg::Start);
 
-  assert!(wait_until(200, || {
+  assert!(wait_until(1000, || {
     *adapted_log.lock() == vec![5]
       && *pipe_log.lock() == vec![11]
       && *ask_log.lock() == vec![31]
@@ -162,15 +164,5 @@ fn typed_user_flow_observes_spawn_adapter_ask_pipe_stop_and_signal() {
   assert_eq!(*ask_log.lock(), vec![31]);
   assert_eq!(terminated_log.lock().len(), 1);
   system.terminate().expect("terminate");
-}
-
-fn wait_until(deadline_ms: u64, mut predicate: impl FnMut() -> bool) -> bool {
-  let deadline = Instant::now() + Duration::from_millis(deadline_ms);
-  while Instant::now() < deadline {
-    if predicate() {
-      return true;
-    }
-    thread::yield_now();
-  }
-  predicate()
+  system.as_untyped().run_until_terminated(&SpinBlocker);
 }

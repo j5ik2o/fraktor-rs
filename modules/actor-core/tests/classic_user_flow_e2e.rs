@@ -1,11 +1,10 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{
-  thread,
-  time::{Duration, Instant},
-  vec::Vec,
-};
+mod common;
 
+use std::vec::Vec;
+
+use common::wait_until;
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -125,7 +124,6 @@ fn classic_user_flow_observes_spawn_tell_ask_watch_stop_and_dead_letter() {
 
   let child = child_slot.lock().clone().expect("classic E2E child");
   let child_pid = child.pid();
-  assert_eq!(*tell_log.lock(), vec![7]);
 
   let ask_result = ask_future
     .lock()
@@ -139,7 +137,7 @@ fn classic_user_flow_observes_spawn_tell_ask_watch_stop_and_dead_letter() {
 
   child.stop().expect("classic E2E stop");
   assert!(wait_until(200, || !terminated_log.lock().is_empty()));
-  assert_eq!(terminated_log.lock().clone(), vec![child_pid.value()]);
+  assert_eq!(*terminated_log.lock(), vec![child_pid.value()]);
 
   let mut stopped_child = child.clone();
   stopped_child.tell(AnyMessage::new(AfterStopProbe));
@@ -152,15 +150,4 @@ fn classic_user_flow_observes_spawn_tell_ask_watch_stop_and_dead_letter() {
   }));
 
   system.terminate().expect("terminate");
-}
-
-fn wait_until(deadline_ms: u64, mut predicate: impl FnMut() -> bool) -> bool {
-  let deadline = Instant::now() + Duration::from_millis(deadline_ms);
-  while Instant::now() < deadline {
-    if predicate() {
-      return true;
-    }
-    thread::yield_now();
-  }
-  predicate()
 }

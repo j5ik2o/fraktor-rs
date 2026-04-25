@@ -3,7 +3,7 @@ use core::time::Duration;
 
 use super::Actor;
 use crate::core::kernel::{
-  actor::{ActorContext, Pid, error::ActorError, messaging::AnyMessageView},
+  actor::{ActorContext, Pid, error::ActorError, messaging::AnyMessageView, supervision::SupervisorStrategyKind},
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   system::ActorSystem,
 };
@@ -99,7 +99,7 @@ fn actor_box_delegates_on_mailbox_pressure() {
 }
 
 #[test]
-fn default_lifecycle_hooks_are_noops_and_restart_delegates() {
+fn default_lifecycle_hooks_are_noops() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let mut ctx = ActorContext::new(&system, pid);
@@ -111,5 +111,21 @@ fn default_lifecycle_hooks_are_noops_and_restart_delegates() {
   assert!(actor.on_child_failed(&mut ctx, pid, &ActorError::fatal("child")).is_ok());
   assert!(actor.pre_restart(&mut ctx, &reason).is_ok());
   assert!(actor.post_restart(&mut ctx, &reason).is_ok());
-  let _strategy = actor.supervisor_strategy(&mut ctx);
+  assert_eq!(actor.supervisor_strategy(&mut ctx).kind(), SupervisorStrategyKind::OneForOne);
+}
+
+#[test]
+fn default_restart_hooks_delegate_to_stop_and_start_hooks() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let reason = ActorError::recoverable("restart").reason().clone();
+
+  let mut pre_restart_actor = TestActor::default();
+  assert!(pre_restart_actor.pre_restart(&mut ctx, &reason).is_ok());
+  assert!(pre_restart_actor.post_stop_called);
+
+  let mut post_restart_actor = TestActor::default();
+  assert!(post_restart_actor.post_restart(&mut ctx, &reason).is_ok());
+  assert!(post_restart_actor.pre_start_called);
 }

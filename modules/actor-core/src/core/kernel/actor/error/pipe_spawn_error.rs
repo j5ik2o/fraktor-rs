@@ -2,6 +2,9 @@
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
+#[cfg(test)]
+mod tests;
+
 /// Describes failures encountered when spawning a pipe task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipeSpawnError {

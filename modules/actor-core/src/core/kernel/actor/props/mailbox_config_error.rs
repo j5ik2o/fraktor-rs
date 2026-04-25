@@ -1,5 +1,8 @@
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
+#[cfg(test)]
+mod tests;
+
 /// Error raised when a [`MailboxConfig`](super::MailboxConfig) violates its
 /// construction contract.
 #[derive(Clone, Debug, PartialEq, Eq)]

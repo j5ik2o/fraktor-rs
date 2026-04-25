@@ -54,12 +54,11 @@ fn send_runs_scheduled_outcome_after_lock_is_released() {
 }
 
 #[test]
-fn shared_access_read_and_write_reach_same_sender() {
+fn shared_access_write_reaches_inner_sender() {
   let sends = ArcShared::new(SpinSyncMutex::new(0));
   let shared = ActorRefSenderShared::new(Box::new(RecordingSender { sends: sends.clone() }));
   let cloned = shared.clone();
 
-  cloned.with_read(|_| ());
   cloned.with_write(|sender| {
     let _outcome = sender.send(AnyMessage::new("payload")).expect("send");
   });

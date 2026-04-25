@@ -59,7 +59,30 @@ coverage_packages() {
 
 coverage_features() {
   printf '%s\n' \
+    "fraktor-actor-core-rs/alloc" \
     "fraktor-actor-adaptor-std-rs/test-support"
+}
+
+build_coverage_args() {
+  COVERAGE_PACKAGE_ARGS=()
+  COVERAGE_FEATURE_ARGS=()
+
+  local pkg=""
+  while IFS= read -r pkg; do
+    COVERAGE_PACKAGE_ARGS+=("-p" "${pkg}")
+  done < <(coverage_packages)
+
+  local feature_list=""
+  local feature=""
+  while IFS= read -r feature; do
+    if [[ -n "${feature_list}" ]]; then
+      feature_list+=","
+    fi
+    feature_list+="${feature}"
+  done < <(coverage_features)
+  if [[ -n "${feature_list}" ]]; then
+    COVERAGE_FEATURE_ARGS+=("--features" "${feature_list}")
+  fi
 }
 
 ensure_tool_installed() {
@@ -101,24 +124,9 @@ run_llvm_cov() {
 
   mkdir -p "${output_dir}"
 
-  local -a package_args=()
-  local -a feature_args=()
-  local pkg=""
-  while IFS= read -r pkg; do
-    package_args+=("-p" "${pkg}")
-  done < <(coverage_packages)
-
-  local feature_list=""
-  local feature=""
-  while IFS= read -r feature; do
-    if [[ -n "${feature_list}" ]]; then
-      feature_list+=","
-    fi
-    feature_list+="${feature}"
-  done < <(coverage_features)
-  if [[ -n "${feature_list}" ]]; then
-    feature_args+=("--features" "${feature_list}")
-  fi
+  build_coverage_args
+  local -a package_args=("${COVERAGE_PACKAGE_ARGS[@]}")
+  local -a feature_args=("${COVERAGE_FEATURE_ARGS[@]}")
 
   cargo llvm-cov clean --workspace || return 1
 
@@ -163,24 +171,9 @@ run_grcov() {
   # プロファイルデータをクリーンアップ
   find . -name "*.profraw" -delete
 
-  local -a package_args=()
-  local -a feature_args=()
-  local pkg=""
-  while IFS= read -r pkg; do
-    package_args+=("-p" "${pkg}")
-  done < <(coverage_packages)
-
-  local feature_list=""
-  local feature=""
-  while IFS= read -r feature; do
-    if [[ -n "${feature_list}" ]]; then
-      feature_list+=","
-    fi
-    feature_list+="${feature}"
-  done < <(coverage_features)
-  if [[ -n "${feature_list}" ]]; then
-    feature_args+=("--features" "${feature_list}")
-  fi
+  build_coverage_args
+  local -a package_args=("${COVERAGE_PACKAGE_ARGS[@]}")
+  local -a feature_args=("${COVERAGE_FEATURE_ARGS[@]}")
 
   # RUSTFLAGS を設定してテストを実行
   log_step "Unit / Contract 層を計測: lib / bins"

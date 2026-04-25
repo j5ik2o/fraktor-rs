@@ -19,7 +19,7 @@ fn try_from_segments_rejects_invalid_segment() {
 }
 
 #[test]
-fn root_relative_string_is_slash_when_no_segments_are_present_before_guardian_injection() {
+fn root_relative_string_is_user_when_guardian_is_user() {
   let parts = ActorPathParts::local("cellsys").with_guardian(GuardianKind::User);
   let path = ActorPath::from_parts_and_segments(parts, Vec::new(), None);
 

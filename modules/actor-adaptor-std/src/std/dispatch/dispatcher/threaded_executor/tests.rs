@@ -57,6 +57,8 @@ fn shutdown_is_noop_and_later_execute_still_runs() {
   let mut executor = ThreadedExecutor::new();
   executor.shutdown();
 
+  // ThreadedExecutor starts a fresh OS thread per task, so shutdown has no
+  // worker queue to close and intentionally does not reject later execution.
   let count = Arc::new(AtomicUsize::new(0));
   let barrier = Arc::new(Barrier::new(2));
   let count_clone = Arc::clone(&count);

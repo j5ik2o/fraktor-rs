@@ -895,10 +895,14 @@ fn actor_context_suspend_and_resume_child_delegate_to_child_ref() {
   let child_cell = system.state().cell(&child.pid()).expect("child cell");
 
   context.suspend_child(&child).expect("suspend child");
+  // Drive the InlineExecutor so the queued Suspend system message is applied
+  // to the mailbox; the scheduling result is not the behavior under test.
   let _scheduled = child_cell.new_dispatcher_shared().register_for_execution(&child_cell.mailbox(), false, true);
   assert!(child_cell.mailbox().is_suspended());
 
   context.resume_child(&child).expect("resume child");
+  // Drive the InlineExecutor so the queued Resume system message is applied
+  // to the mailbox; the scheduling result is not the behavior under test.
   let _scheduled = child_cell.new_dispatcher_shared().register_for_execution(&child_cell.mailbox(), false, true);
   assert!(!child_cell.mailbox().is_suspended());
 }
@@ -1093,8 +1097,7 @@ fn receive_timeout_schedule_generation_reads_cell_backed_state() {
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _cell = register_cell(&system, pid, "timeout-generation", &props);
-  let timeout_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
-  let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
+  let mut context = ActorContext::new(&system, pid);
 
   assert_eq!(context.receive_timeout_schedule_generation(), None);
 
@@ -1365,15 +1368,11 @@ fn al_h1_stop_all_children_unwatches_each_child_before_stopping() {
   let child = context.spawn_child_watched(&child_props).expect("spawn watched child");
   let child_pid = child.pid();
   assert!(parent_cell.is_watching(child_pid), "前提: 親が子を watch している");
+  let child_name = system.state().cell(&child_pid).expect("spawned child cell").name().to_owned();
 
   context.stop_all_children().expect("AL-H1: stop_all_children Ok");
 
-  let child_name = system.state().cell(&child_pid).map(|c| c.name().to_owned()).unwrap_or_default();
-  if !child_name.is_empty() {
-    wait_until(|| context.child(&child_name).is_none());
-  } else {
-    wait_until(|| system.state().cell(&child_pid).is_none());
-  }
+  wait_until(|| context.child(&child_name).is_none());
   assert!(
     !parent_cell.is_watching(child_pid),
     "AL-H1: stop_all_children は implicit unwatch を行うため、親の watching から子が除去される"

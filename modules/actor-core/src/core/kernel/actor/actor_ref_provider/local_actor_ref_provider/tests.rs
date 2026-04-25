@@ -76,6 +76,7 @@ fn local_actor_ref_provider_unbound_defaults_are_safe() {
 }
 
 #[test]
+#[cfg(debug_assertions)]
 #[should_panic(expected = "LocalActorRefProvider.state not initialized")]
 fn local_actor_ref_provider_unbound_dead_letters_debug_asserts() {
   let provider = LocalActorRefProvider::default();
@@ -177,18 +178,6 @@ fn local_actor_ref_provider_exposes_classic_contract_helpers() {
   assert_eq!(root_at.pid(), provider.root_guardian().expect("root guardian").pid());
   assert!(provider.root_guardian_at(&Address::remote("other", "127.0.0.1", 2552)).is_none());
 
-  let prefixed = provider.temp_path_with_prefix("reply").expect("prefixed temp path");
-  assert!(prefixed.to_relative_string().starts_with("/user/temp/reply-"));
-
-  let temp_container = provider.temp_container().expect("temp container");
-  assert_eq!(temp_container.path().expect("temp path").to_relative_string(), "/user/temp");
-
-  let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(5252, 0), TempProbeSender);
-  let name = provider.register_temp_actor(temp_ref).expect("temp actor");
-  let path = provider.temp_path().child(&name);
-  provider.unregister_temp_actor_path(&path).expect("unregister by path");
-  assert!(provider.temp_actor(&name).is_none());
-
   assert!(provider.deployer().is_some());
   assert_eq!(provider.get_default_address(), Some(Address::local("provider-helpers")));
   assert_eq!(
@@ -253,35 +242,57 @@ fn actor_ref_provider_shared_resolves_actor_refs_via_shared_borrow() {
 }
 
 #[test]
-fn actor_ref_provider_shared_delegates_full_local_provider_contract() {
+fn actor_ref_provider_shared_delegates_shared_access() {
   let props = Props::from_fn(|| ProbeActor).with_name("user-root");
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-shared-full");
   let system = ActorSystem::create_with_config(&props, config).expect("system");
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
-  let child_path = ActorPathParser::parse(&canonical).expect("canonical child path");
   let shared = ActorRefProviderHandleShared::new(LocalActorRefProvider::new_with_state(&system.state()));
-  let mut provider = shared.clone();
 
   assert_eq!(shared.inner_type_id(), TypeId::of::<LocalActorRefProvider>());
+  shared.with_read(|handle| {
+    assert_eq!(handle.supported_schemes(), &[ActorPathScheme::Fraktor]);
+  });
+  let resolved = shared.with_write(|handle| handle.resolve_actor_ref_str(&canonical).expect("resolve via write"));
+  assert_eq!(resolved, child.actor_ref().clone());
+}
+
+#[test]
+fn local_actor_ref_provider_accessors_and_resolve_cover_public_contract() {
+  let props = Props::from_fn(|| ProbeActor).with_name("user-root");
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-accessors");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
+  let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
+  let child_path = ActorPathParser::parse(&canonical).expect("canonical child path");
+  let mut provider = LocalActorRefProvider::new_with_state(&system.state());
+
   assert_eq!(provider.supported_schemes(), &[ActorPathScheme::Fraktor]);
   assert_eq!(provider.actor_ref(child_path.clone()).expect("actor ref"), child.actor_ref().clone());
   assert_eq!(provider.resolve_actor_ref(child_path.clone()).expect("resolve path"), child.actor_ref().clone());
   assert_eq!(provider.resolve_actor_ref_str(&canonical).expect("resolve str"), child.actor_ref().clone());
-
   assert!(provider.root_guardian().is_some());
   assert!(provider.guardian().is_some());
   assert!(provider.system_guardian().is_some());
   assert_eq!(provider.root_path().to_relative_string(), "/user");
   assert_eq!(provider.temp_path().to_relative_string(), "/user/temp");
-  assert!(provider.root_guardian_at(&Address::local("provider-shared-full")).is_some());
+  assert!(provider.root_guardian_at(&Address::local("provider-accessors")).is_some());
   assert!(provider.deployer().is_some());
-  assert_eq!(provider.get_default_address(), Some(Address::local("provider-shared-full")));
+  assert_eq!(provider.get_default_address(), Some(Address::local("provider-accessors")));
   assert_eq!(
-    provider.get_external_address_for(&Address::local("provider-shared-full")),
-    Some(Address::local("provider-shared-full"))
+    provider.get_external_address_for(&Address::local("provider-accessors")),
+    Some(Address::local("provider-accessors"))
   );
+  assert!(!provider.termination_signal().is_terminated());
+}
 
+#[test]
+fn local_actor_ref_provider_temp_actor_path_round_trip() {
+  let props = Props::from_fn(|| ProbeActor);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-temp-path");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let provider = LocalActorRefProvider::new_with_state(&system.state());
   let prefixed = provider.temp_path_with_prefix("reply").expect("prefixed temp path");
   assert!(prefixed.to_relative_string().starts_with("/user/temp/reply-"));
   let temp_container = provider.temp_container().expect("temp container");
@@ -293,17 +304,16 @@ fn actor_ref_provider_shared_delegates_full_local_provider_contract() {
   let path = provider.temp_path().child(&name);
   provider.unregister_temp_actor_path(&path).expect("unregister by path");
   assert!(provider.temp_actor(&name).is_none());
+}
 
+#[test]
+fn local_actor_ref_provider_temp_actor_name_round_trip() {
+  let props = Props::from_fn(|| ProbeActor);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-temp-name");
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let provider = LocalActorRefProvider::new_with_state(&system.state());
+  let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(6363, 0), TempProbeSender);
   let name = provider.register_temp_actor(temp_ref).expect("temp actor");
   provider.unregister_temp_actor(&name);
   assert!(provider.temp_actor(&name).is_none());
-
-  let signal = provider.termination_signal();
-  assert!(!signal.is_terminated());
-
-  shared.with_read(|handle| {
-    assert_eq!(handle.supported_schemes(), &[ActorPathScheme::Fraktor]);
-  });
-  let resolved = shared.with_write(|handle| handle.resolve_actor_ref_str(&canonical).expect("resolve via write"));
-  assert_eq!(resolved, child.actor_ref().clone());
 }

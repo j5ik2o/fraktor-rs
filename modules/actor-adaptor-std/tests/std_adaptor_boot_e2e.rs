@@ -1,11 +1,10 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{
-  thread,
-  time::{Duration, Instant},
-  vec::Vec,
-};
+mod common;
 
+use std::vec::Vec;
+
+use common::wait_until;
 use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -80,8 +79,7 @@ fn std_adaptor_boot_flow_wires_config_dispatcher_mailbox_scheduler_logging_and_t
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   assert!(system.tick_driver_snapshot().is_some(), "std config must provision scheduler tick driver");
-  let scheduler = system.scheduler();
-  drop(scheduler);
+  let _ = system.scheduler();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
@@ -91,15 +89,4 @@ fn std_adaptor_boot_flow_wires_config_dispatcher_mailbox_scheduler_logging_and_t
 
   system.terminate().expect("terminate");
   system.run_until_terminated(&SpinBlocker);
-}
-
-fn wait_until(deadline_ms: u64, mut predicate: impl FnMut() -> bool) -> bool {
-  let deadline = Instant::now() + Duration::from_millis(deadline_ms);
-  while Instant::now() < deadline {
-    if predicate() {
-      return true;
-    }
-    thread::yield_now();
-  }
-  predicate()
 }

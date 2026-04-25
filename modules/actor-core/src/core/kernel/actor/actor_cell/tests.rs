@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
@@ -252,7 +252,13 @@ fn actor_cell_scheduler_accessor_returns_system_scheduler() {
   let props = Props::from_fn(|| ProbeActor);
   let cell = ActorCell::create(system, Pid::new(901, 0), None, "scheduler".to_string(), &props).expect("cell");
 
-  let _scheduler = cell.scheduler();
+  let system_scheduler = actor_system.scheduler();
+  assert!(!system_scheduler.with_read(|scheduler| scheduler.diagnostics().is_log_enabled()));
+
+  cell.scheduler().with_write(|scheduler| scheduler.enable_deterministic_log(4));
+
+  assert!(cell.scheduler().with_read(|scheduler| scheduler.diagnostics().is_log_enabled()));
+  assert!(system_scheduler.with_read(|scheduler| scheduler.diagnostics().is_log_enabled()));
 }
 
 #[test]

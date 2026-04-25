@@ -2,6 +2,9 @@
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
+#[cfg(test)]
+mod tests;
+
 /// Errors raised when scheduling requests fail.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SchedulerError {

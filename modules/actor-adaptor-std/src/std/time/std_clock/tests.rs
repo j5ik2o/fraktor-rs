@@ -8,6 +8,8 @@ use super::StdClock;
 fn now_returns_monotonic_instant() {
   let clock = StdClock;
 
+  // StdClock::now is kept here as a Clock-trait compatibility check, even
+  // though the concrete implementation delegates to std::time::Instant::now.
   let earlier = clock.now();
   let later = clock.now();
 
@@ -17,9 +19,11 @@ fn now_returns_monotonic_instant() {
 #[test]
 fn elapsed_since_uses_std_instant_elapsed() {
   let clock = StdClock;
-  let earlier = clock.now();
+  let first = clock.now();
+  let second = clock.now();
 
-  let elapsed = clock.elapsed_since(earlier);
+  let elapsed = clock.elapsed_since(first);
+  let upper_bound = second.duration_since(first) + Duration::from_millis(50);
 
-  assert!(elapsed >= Duration::ZERO);
+  assert!(elapsed <= upper_bound);
 }

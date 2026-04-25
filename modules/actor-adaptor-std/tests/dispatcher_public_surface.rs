@@ -12,7 +12,7 @@ use std::{
   process::{Command, Output},
   sync::mpsc::{Receiver, TryRecvError, channel},
   thread,
-  time::{SystemTime, UNIX_EPOCH},
+  time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use fraktor_actor_adaptor_std_rs::std::{
@@ -63,6 +63,10 @@ fn affinity_executor_factory_is_reachable_from_external_crate() {
 #[test]
 fn pinned_executor_public_surface_is_reachable_from_external_crate() {
   assert_fixture_build_success("dispatcher-public-surface-pinned", PINNED_EXECUTOR_SOURCE);
+}
+
+#[test]
+fn pinned_executor_factory_public_surface_is_reachable_from_external_crate() {
   assert_fixture_build_success("dispatcher-public-surface-pinned-factory", PINNED_EXECUTOR_FACTORY_SOURCE);
 }
 
@@ -166,7 +170,10 @@ fn render_output(output: &Output) -> String {
 }
 
 fn recv_by_yielding(rx: &Receiver<&'static str>, label: &str) -> &'static str {
-  for _ in 0..10_000 {
+  // A one-second wall-clock deadline avoids fixed-spin flakes on loaded CI while
+  // still surfacing a stuck executor promptly.
+  let deadline = Instant::now() + Duration::from_secs(1);
+  while Instant::now() < deadline {
     match rx.try_recv() {
       | Ok(value) => return value,
       | Err(TryRecvError::Empty) => thread::yield_now(),
