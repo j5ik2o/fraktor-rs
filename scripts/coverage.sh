@@ -299,7 +299,7 @@ main() {
   esac
 
   # ブラウザで開く
-  if [[ -n "${open_browser}" && "${OUTPUT_FORMAT}" == "html" ]]; then
+  if [[ -n "${open_browser}" && ( "${OUTPUT_FORMAT}" == "html" || "${OUTPUT_FORMAT}" == "html-lcov" ) ]]; then
     local html_file="${OUTPUT_DIR}/html/index.html"
     if [[ -f "${html_file}" ]]; then
       log_step "ブラウザでレポートを開いています..."
