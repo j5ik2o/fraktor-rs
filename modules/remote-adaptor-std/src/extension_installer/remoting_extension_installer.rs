@@ -1,12 +1,13 @@
 //! Actor system extension installer for the new `StdRemoting` aggregate.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::extension::EventPublisher;
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::{extension_installer::base::StdRemoting, tcp_transport::TcpRemoteTransport};
 
@@ -15,14 +16,14 @@ const ALREADY_INSTALLED: &str = "remoting extension is already installed";
 
 /// Extension installer for the `fraktor-remote-adaptor-std-rs` runtime.
 pub struct RemotingExtensionInstaller {
-  transport: Arc<Mutex<TcpRemoteTransport>>,
-  remoting:  OnceLock<Arc<Mutex<StdRemoting>>>,
+  transport: SharedLock<TcpRemoteTransport>,
+  remoting:  OnceLock<SharedLock<StdRemoting>>,
 }
 
 impl RemotingExtensionInstaller {
   /// Creates a new installer wrapping the given transport.
   #[must_use]
-  pub fn new(transport: Arc<Mutex<TcpRemoteTransport>>) -> Self {
+  pub fn new(transport: SharedLock<TcpRemoteTransport>) -> Self {
     Self { transport, remoting: OnceLock::new() }
   }
 
@@ -32,7 +33,7 @@ impl RemotingExtensionInstaller {
   ///
   /// Returns [`ActorSystemBuildError::Configuration`] when the installer has
   /// not been installed into an actor system yet.
-  pub fn remoting(&self) -> Result<Arc<Mutex<StdRemoting>>, ActorSystemBuildError> {
+  pub fn remoting(&self) -> Result<SharedLock<StdRemoting>, ActorSystemBuildError> {
     self.remoting.get().cloned().ok_or_else(|| ActorSystemBuildError::Configuration(String::from(NOT_INSTALLED)))
   }
 }
@@ -40,7 +41,8 @@ impl RemotingExtensionInstaller {
 impl ExtensionInstaller for RemotingExtensionInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let event_publisher = EventPublisher::new(system.downgrade());
-    let remoting = Arc::new(Mutex::new(StdRemoting::new(Arc::clone(&self.transport), None, event_publisher)));
+    let remoting =
+      SharedLock::new_with_driver::<DefaultMutex<_>>(StdRemoting::new(self.transport.clone(), None, event_publisher));
     self.remoting.set(remoting).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
   }
 }

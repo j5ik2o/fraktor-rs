@@ -1,8 +1,5 @@
 use core::time::Duration;
-use std::{
-  sync::{Arc, Mutex},
-  time::Instant,
-};
+use std::time::Instant;
 
 use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
@@ -22,6 +19,7 @@ use fraktor_remote_core_rs::{
   transport::TransportEndpoint,
   wire::{AckPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp},
 };
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 use tokio::sync::{
   mpsc,
   oneshot::{self, Sender},
@@ -49,15 +47,15 @@ fn sample_association() -> Association {
 struct EventHarness {
   _system:       ActorSystem,
   publisher:     EventPublisher,
-  events:        Arc<Mutex<Vec<EventStreamEvent>>>,
+  events:        SharedLock<Vec<EventStreamEvent>>,
   _subscription: EventStreamSubscription,
 }
 
 impl EventHarness {
   fn new() -> Self {
     let system = new_empty_actor_system();
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = subscriber_handle(RecordingSubscriber::new(Arc::clone(&events)));
+    let events = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
+    let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
     let subscription = system.subscribe_event_stream(&subscriber);
     let publisher = EventPublisher::new(system.downgrade());
     Self { _system: system, publisher, events, _subscription: subscription }
@@ -68,23 +66,23 @@ impl EventHarness {
   }
 
   fn events(&self) -> Vec<EventStreamEvent> {
-    self.events.lock().expect("event recorder lock should not be poisoned").clone()
+    self.events.with_lock(|events| events.clone())
   }
 }
 
 struct RecordingSubscriber {
-  events: Arc<Mutex<Vec<EventStreamEvent>>>,
+  events: SharedLock<Vec<EventStreamEvent>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: Arc<Mutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: SharedLock<Vec<EventStreamEvent>>) -> Self {
     Self { events }
   }
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.lock().expect("event recorder lock should not be poisoned").push(event.clone());
+    self.events.with_lock(|events| events.push(event.clone()));
   }
 }
 
@@ -286,7 +284,6 @@ async fn handshake_driver_cancel_prevents_firing() {
 #[tokio::test(flavor = "current_thread")]
 async fn outbound_loop_drains_active_association() {
   use core::time::Duration;
-  use std::sync::{Arc, Mutex};
 
   use fraktor_remote_core_rs::transport::{RemoteTransport, TransportError};
 
@@ -294,7 +291,7 @@ async fn outbound_loop_drains_active_association() {
 
   // A capturing transport that records every envelope it is asked to send.
   struct CapturingTransport {
-    sent:        Arc<Mutex<Vec<OutboundEnvelope>>>,
+    sent:        SharedLock<Vec<OutboundEnvelope>>,
     sent_signal: Option<Sender<()>>,
     addresses:   Vec<Address>,
   }
@@ -309,7 +306,7 @@ async fn outbound_loop_drains_active_association() {
     }
 
     fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError> {
-      self.sent.lock().unwrap().push(envelope);
+      self.sent.with_lock(|sent| sent.push(envelope));
       if let Some(sent_signal) = self.sent_signal.take() {
         sent_signal.send(()).expect("send completion receiver should be alive");
       }
@@ -358,16 +355,16 @@ async fn outbound_loop_drains_active_association() {
   assert!(enqueue_effects.is_empty(), "active enqueue should only append to the send queue");
 
   let shared = AssociationShared::new(association);
-  let sent = Arc::new(Mutex::new(Vec::<OutboundEnvelope>::new()));
+  let sent = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::<OutboundEnvelope>::new());
   let (sent_tx, sent_rx) = oneshot::channel();
-  let transport = Arc::new(Mutex::new(CapturingTransport {
-    sent:        Arc::clone(&sent),
+  let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(CapturingTransport {
+    sent:        sent.clone(),
     sent_signal: Some(sent_tx),
     addresses:   vec![Address::new("local-sys", "127.0.0.1", 2551)],
-  }));
+  });
 
   let task_shared = shared.clone();
-  let task_transport = Arc::clone(&transport);
+  let task_transport = transport.clone();
   let task = tokio::spawn(async move {
     run_outbound_loop(task_shared, task_transport).await;
   });
@@ -381,8 +378,8 @@ async fn outbound_loop_drains_active_association() {
   let join_error = task.await.expect_err("aborted outbound loop should return JoinError");
   assert!(join_error.is_cancelled(), "outbound loop task should be cancelled by abort");
 
-  let sent = sent.lock().unwrap();
-  assert_eq!(sent.len(), 1, "outbound loop should have drained one envelope");
+  let sent_len = sent.with_lock(|sent| sent.len());
+  assert_eq!(sent_len, 1, "outbound loop should have drained one envelope");
 }
 
 // ---------------------------------------------------------------------------

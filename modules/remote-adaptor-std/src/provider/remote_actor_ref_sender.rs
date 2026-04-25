@@ -1,8 +1,6 @@
 //! Adapter sender that bridges actor-core's `ActorRefSender` trait to a
 //! `TcpRemoteTransport`.
 
-use std::sync::{Arc, Mutex};
-
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Pid,
@@ -19,6 +17,7 @@ use fraktor_remote_core_rs::{
   provider::RemoteActorRef,
   transport::RemoteTransport,
 };
+use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::tcp_transport::TcpRemoteTransport;
 
@@ -40,7 +39,7 @@ use crate::tcp_transport::TcpRemoteTransport;
 /// `serialization` extension and is out of scope for Phase B.
 pub struct RemoteActorRefSender {
   remote_ref:  RemoteActorRef,
-  transport:   Arc<Mutex<TcpRemoteTransport>>,
+  transport:   SharedLock<TcpRemoteTransport>,
   #[allow(dead_code)]
   watcher_pid: Pid,
 }
@@ -52,7 +51,7 @@ impl RemoteActorRefSender {
   /// Pekko's `RemoteActorRef.watcherActor`. The field is currently a
   /// placeholder for the death-watch wiring added in Section 22.
   #[must_use]
-  pub fn new(remote_ref: RemoteActorRef, transport: Arc<Mutex<TcpRemoteTransport>>, watcher_pid: Pid) -> Self {
+  pub fn new(remote_ref: RemoteActorRef, transport: SharedLock<TcpRemoteTransport>, watcher_pid: Pid) -> Self {
     Self { remote_ref, transport, watcher_pid }
   }
 
@@ -68,8 +67,11 @@ impl ActorRefSender for RemoteActorRefSender {
     let path = self.remote_ref.path().clone();
     let node = self.remote_ref.remote_node().clone();
     let envelope = build_envelope_for(path, node, message);
-    let mut guard = self.transport.lock().map_err(|_| SendError::closed(AnyMessage::new(())))?;
-    guard.send(envelope).map(|_| SendOutcome::Delivered).map_err(|_| SendError::closed(AnyMessage::new(())))
+    self
+      .transport
+      .with_lock(|transport| transport.send(envelope))
+      .map(|_| SendOutcome::Delivered)
+      .map_err(|_| SendError::closed(AnyMessage::new(())))
   }
 }
 

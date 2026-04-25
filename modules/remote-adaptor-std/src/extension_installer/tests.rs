@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
 use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
@@ -14,32 +12,33 @@ use fraktor_remote_core_rs::{
   association::QuarantineReason,
   extension::{EventPublisher, Remoting, RemotingError},
 };
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::{
   extension_installer::{base::StdRemoting, remoting_extension_installer::RemotingExtensionInstaller},
   tcp_transport::TcpRemoteTransport,
 };
 
-fn make_transport() -> Arc<Mutex<TcpRemoteTransport>> {
-  Arc::new(Mutex::new(TcpRemoteTransport::new("127.0.0.1:0", Vec::new())))
+fn make_transport() -> SharedLock<TcpRemoteTransport> {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", Vec::new()))
 }
 
-fn make_transport_with_addresses(addresses: Vec<Address>) -> Arc<Mutex<TcpRemoteTransport>> {
-  Arc::new(Mutex::new(TcpRemoteTransport::new("127.0.0.1:0", addresses)))
+fn make_transport_with_addresses(addresses: Vec<Address>) -> SharedLock<TcpRemoteTransport> {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", addresses))
 }
 
 struct EventHarness {
   system:        ActorSystem,
   publisher:     EventPublisher,
-  events:        Arc<Mutex<Vec<EventStreamEvent>>>,
+  events:        SharedLock<Vec<EventStreamEvent>>,
   _subscription: EventStreamSubscription,
 }
 
 impl EventHarness {
   fn new() -> Self {
     let system = new_empty_actor_system();
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = subscriber_handle(RecordingSubscriber::new(Arc::clone(&events)));
+    let events = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
+    let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
     let subscription = system.subscribe_event_stream(&subscriber);
     let publisher = EventPublisher::new(system.downgrade());
     Self { system, publisher, events, _subscription: subscription }
@@ -54,27 +53,27 @@ impl EventHarness {
   }
 
   fn events(&self) -> Vec<EventStreamEvent> {
-    self.events.lock().expect("event recorder lock should not be poisoned").clone()
+    self.events.with_lock(|events| events.clone())
   }
 }
 
 struct RecordingSubscriber {
-  events: Arc<Mutex<Vec<EventStreamEvent>>>,
+  events: SharedLock<Vec<EventStreamEvent>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: Arc<Mutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: SharedLock<Vec<EventStreamEvent>>) -> Self {
     Self { events }
   }
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.lock().expect("event recorder lock should not be poisoned").push(event.clone());
+    self.events.with_lock(|events| events.push(event.clone()));
   }
 }
 
-fn make_remoting(transport: Arc<Mutex<TcpRemoteTransport>>) -> (StdRemoting, EventHarness) {
+fn make_remoting(transport: SharedLock<TcpRemoteTransport>) -> (StdRemoting, EventHarness) {
   let harness = EventHarness::new();
   let remoting = StdRemoting::new(transport, None, harness.publisher());
   (remoting, harness)
@@ -173,7 +172,7 @@ fn extension_installer_holds_a_shared_remoting_handle() {
   installer.install(harness.system()).expect("install should create remoting");
   let remoting_a = installer.remoting().expect("installed remoting should be available");
   let remoting_b = installer.remoting().expect("installed remoting should be available");
-  assert!(Arc::ptr_eq(&remoting_a, &remoting_b), "installer should hand out the same Arc");
+  assert!(SharedLock::ptr_eq(&remoting_a, &remoting_b), "installer should hand out the same shared lock");
 }
 
 #[test]
@@ -205,11 +204,8 @@ fn extension_installer_remoting_lifecycle_drives_via_arc() {
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should wire event publisher");
   let remoting = installer.remoting().expect("installed remoting should be available");
-  {
-    let mut guard = remoting.lock().unwrap();
-    guard.start().expect("start through installer-shared handle");
-  }
-  let snapshot_running = remoting.lock().unwrap().lifecycle().is_running();
+  remoting.with_lock(|remoting| remoting.start()).expect("start through installer-shared handle");
+  let snapshot_running = remoting.with_lock(|remoting| remoting.lifecycle().is_running());
   assert!(snapshot_running);
 }
 
@@ -222,8 +218,7 @@ fn extension_installer_install_wires_listen_event_publisher() {
 
   {
     let remoting = installer.remoting().expect("installed remoting should be available");
-    let mut guard = remoting.lock().expect("remoting lock should not be poisoned");
-    guard.start().expect("start should publish through installed publisher");
+    remoting.with_lock(|remoting| remoting.start()).expect("start should publish through installed publisher");
   }
 
   let events = harness.events();

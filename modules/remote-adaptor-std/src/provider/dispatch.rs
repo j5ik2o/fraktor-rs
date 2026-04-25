@@ -3,7 +3,6 @@
 //! design Decision 3-C.
 
 use alloc::boxed::Box;
-use std::sync::{Arc, Mutex};
 
 use fraktor_actor_core_rs::core::kernel::actor::{
   Pid,
@@ -15,6 +14,7 @@ use fraktor_remote_core_rs::{
   address::UniqueAddress,
   provider::{RemoteActorRefProvider, resolve_remote_address},
 };
+use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::{provider::provider_dispatch_error::StdRemoteActorRefProviderError, tcp_transport::TcpRemoteTransport};
 
@@ -39,7 +39,7 @@ pub struct StdRemoteActorRefProvider {
   local_address:   UniqueAddress,
   local_provider:  ActorRefProviderHandleShared<LocalActorRefProvider>,
   remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
-  transport:       Arc<Mutex<TcpRemoteTransport>>,
+  transport:       SharedLock<TcpRemoteTransport>,
 }
 
 impl StdRemoteActorRefProvider {
@@ -49,7 +49,7 @@ impl StdRemoteActorRefProvider {
     local_address: UniqueAddress,
     local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
-    transport: Arc<Mutex<TcpRemoteTransport>>,
+    transport: SharedLock<TcpRemoteTransport>,
   ) -> Self {
     Self { local_address, local_provider, remote_provider, transport }
   }
@@ -132,8 +132,8 @@ impl StdRemoteActorRefProvider {
   /// transport into other adapter components without going through this
   /// type's mutable methods.
   #[must_use]
-  pub fn transport(&self) -> Arc<Mutex<TcpRemoteTransport>> {
-    Arc::clone(&self.transport)
+  pub fn transport(&self) -> SharedLock<TcpRemoteTransport> {
+    self.transport.clone()
   }
 
   fn is_local_authority(&self, resolved: &UniqueAddress) -> bool {

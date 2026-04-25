@@ -2,9 +2,9 @@
 //! them through the transport.
 
 use core::time::Duration;
-use std::sync::{Arc, Mutex};
 
 use fraktor_remote_core_rs::transport::{RemoteTransport, TransportError};
+use fraktor_utils_core_rs::core::sync::SharedLock;
 use tokio::time::sleep;
 
 use crate::association_runtime::association_shared::AssociationShared;
@@ -26,15 +26,15 @@ const POLL_INTERVAL: Duration = Duration::from_millis(1);
 /// - the transport reports `TransportError::NotStarted` (the runtime is shutting down), or
 /// - `transport.send` reports a connection-level failure (the caller is responsible for re-arming
 ///   the loop after recovery).
-pub async fn run_outbound_loop<T: RemoteTransport + 'static>(shared: AssociationShared, transport: Arc<Mutex<T>>) {
+pub async fn run_outbound_loop<T: RemoteTransport + Send + 'static>(
+  shared: AssociationShared,
+  transport: SharedLock<T>,
+) {
   loop {
     let next_envelope = shared.with_write(|assoc| assoc.next_outbound());
     match next_envelope {
       | Some(envelope) => {
-        let send_result = {
-          let mut transport_guard = transport.lock().expect("transport poisoned");
-          transport_guard.send(envelope)
-        };
+        let send_result = transport.with_lock(|transport| transport.send(envelope));
         match send_result {
           | Ok(()) => {},
           | Err(TransportError::NotStarted) => break,

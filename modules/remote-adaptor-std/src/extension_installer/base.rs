@@ -1,7 +1,5 @@
 //! `StdRemoting` aggregate implementing the core `Remoting` trait.
 
-use std::sync::{Arc, Mutex};
-
 use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
 use fraktor_remote_core_rs::{
   address::Address,
@@ -9,6 +7,7 @@ use fraktor_remote_core_rs::{
   extension::{EventPublisher, Remoting, RemotingError, RemotingLifecycleState},
   transport::RemoteTransport,
 };
+use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::{
   association_runtime::AssociationRegistry, tcp_transport::TcpRemoteTransport, watcher_actor::WatcherActorHandle,
@@ -19,8 +18,8 @@ use crate::{
 /// `StdRemoting` is the Phase B replacement for the legacy
 /// `RemotingControlHandle`. It owns:
 ///
-/// - the [`TcpRemoteTransport`] (wrapped in `Arc<Mutex<...>>` so the association runtime tasks can
-///   share it),
+/// - the [`TcpRemoteTransport`] wrapped in [`SharedLock`] so the association runtime tasks can
+///   share it,
 /// - an [`AssociationRegistry`] of per-remote `AssociationShared` handles,
 /// - a [`WatcherActorHandle`] for submitting watch / unwatch / heartbeat commands to the watcher
 ///   actor task,
@@ -32,7 +31,7 @@ use crate::{
 /// can be driven from `tokio::main` or from a manual runtime.
 pub struct StdRemoting {
   lifecycle:            RemotingLifecycleState,
-  transport:            Arc<Mutex<TcpRemoteTransport>>,
+  transport:            SharedLock<TcpRemoteTransport>,
   registry:             AssociationRegistry,
   watcher:              Option<WatcherActorHandle>,
   event_publisher:      EventPublisher,
@@ -47,7 +46,7 @@ impl StdRemoting {
   /// [`StdRemoting::install_watcher`].
   #[must_use]
   pub fn new(
-    transport: Arc<Mutex<TcpRemoteTransport>>,
+    transport: SharedLock<TcpRemoteTransport>,
     watcher: Option<WatcherActorHandle>,
     event_publisher: EventPublisher,
   ) -> Self {
@@ -71,8 +70,8 @@ impl StdRemoting {
   /// Exposed so the runtime tasks (`run_outbound_loop`, `run_inbound_dispatch`)
   /// can share the same transport instance.
   #[must_use]
-  pub fn transport(&self) -> Arc<Mutex<TcpRemoteTransport>> {
-    Arc::clone(&self.transport)
+  pub fn transport(&self) -> SharedLock<TcpRemoteTransport> {
+    self.transport.clone()
   }
 
   /// Returns an immutable reference to the association registry.
@@ -102,11 +101,10 @@ impl StdRemoting {
 impl Remoting for StdRemoting {
   fn start(&mut self) -> Result<(), RemotingError> {
     self.lifecycle.transition_to_start()?;
-    let advertised_addresses = {
-      let mut transport = self.transport.lock().map_err(|_| RemotingError::TransportUnavailable)?;
+    let advertised_addresses = self.transport.with_lock(|transport| {
       transport.start().map_err(|_| RemotingError::TransportUnavailable)?;
-      transport.addresses().to_vec()
-    };
+      Ok(transport.addresses().to_vec())
+    })?;
     self.advertised_addresses = advertised_addresses;
     self.lifecycle.mark_started()?;
     self.publish_listen_started();
@@ -115,23 +113,23 @@ impl Remoting for StdRemoting {
 
   fn shutdown(&mut self) -> Result<(), RemotingError> {
     self.lifecycle.transition_to_shutdown()?;
-    {
-      let mut transport = self.transport.lock().map_err(|_| RemotingError::TransportUnavailable)?;
+    self.transport.with_lock(|transport| {
       // Best-effort shutdown — record any failure as a tracing warning so
       // the operator can correlate it with the lifecycle transition, but
       // always reach the `Shutdown` terminal state regardless.
       if let Err(err) = transport.shutdown() {
         tracing::warn!(?err, "transport shutdown failed during StdRemoting::shutdown");
       }
-    }
+    });
     self.lifecycle.mark_shutdown()?;
     Ok(())
   }
 
   fn quarantine(&mut self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
-    let mut transport = self.transport.lock().map_err(|_| RemotingError::TransportUnavailable)?;
-    transport.quarantine(address, uid, reason).map_err(|_| RemotingError::TransportUnavailable)
+    self.transport.with_lock(|transport| {
+      transport.quarantine(address, uid, reason).map_err(|_| RemotingError::TransportUnavailable)
+    })
   }
 
   fn addresses(&self) -> &[Address] {

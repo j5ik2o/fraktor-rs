@@ -1,11 +1,6 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{
-  boxed::Box,
-  string::ToString,
-  sync::{Arc, Mutex},
-  vec::Vec,
-};
+use std::{boxed::Box, string::ToString, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
@@ -20,7 +15,7 @@ use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, tcp_transport::TcpRemoteTransport,
 };
 use fraktor_remote_core_rs::{address::Address, extension::Remoting};
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock, SpinSyncMutex};
 
 struct NoopActor;
 
@@ -60,17 +55,18 @@ fn main() {
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   let advertised_address = Address::new("remote-showcase", "127.0.0.1", 2551);
-  let transport = Arc::new(Mutex::new(TcpRemoteTransport::new("127.0.0.1:0", vec![advertised_address.clone()])));
+  let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", vec![
+    advertised_address.clone(),
+  ]));
   let installer = RemotingExtensionInstaller::new(transport);
 
   installer.install(&system).expect("remote extension install");
   let remoting = installer.remoting().expect("installed remoting handle");
-  {
-    let mut guard = remoting.lock().expect("remoting lock should not be poisoned");
-    guard.start().expect("remote lifecycle start");
-    assert_eq!(guard.addresses(), core::slice::from_ref(&advertised_address));
-    guard.shutdown().expect("remote lifecycle shutdown");
-  }
+  remoting.with_lock(|remoting| {
+    remoting.start().expect("remote lifecycle start");
+    assert_eq!(remoting.addresses(), core::slice::from_ref(&advertised_address));
+    remoting.shutdown().expect("remote lifecycle shutdown");
+  });
 
   let expected_authority = advertised_address.to_string();
   assert!(events.with_lock(|events| {

@@ -1,6 +1,6 @@
 //! TCP accept loop.
 
-use alloc::{string::String, sync::Arc};
+use alloc::string::String;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use fraktor_remote_core_rs::transport::TransportError;
@@ -59,12 +59,11 @@ impl TcpServer {
       return Err(TransportError::AlreadyRunning);
     }
     let listener = TcpListener::bind(&self.bind_addr).await.map_err(|_| TransportError::SendFailed)?;
-    let inbound_tx = Arc::new(inbound_tx);
     let task = tokio::spawn(async move {
       loop {
         match listener.accept().await {
           | Ok((stream, peer)) => {
-            let inbound_tx = Arc::clone(&inbound_tx);
+            let inbound_tx = inbound_tx.clone();
             let peer_addr = peer.to_string();
             tokio::spawn(read_loop(stream, peer_addr, inbound_tx));
           },
@@ -87,7 +86,7 @@ impl TcpServer {
   }
 }
 
-async fn read_loop(stream: TcpStream, peer: String, inbound_tx: Arc<UnboundedSender<InboundFrameEvent>>) {
+async fn read_loop(stream: TcpStream, peer: String, inbound_tx: UnboundedSender<InboundFrameEvent>) {
   let mut framed = Framed::new(stream, WireFrameCodec::new());
   while let Some(next) = framed.next().await {
     match next {
