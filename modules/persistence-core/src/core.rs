@@ -3,7 +3,7 @@
 mod at_least_once_delivery;
 mod at_least_once_delivery_config;
 mod at_least_once_delivery_snapshot;
-mod durable_state_exception;
+mod durable_state_error;
 mod durable_state_store;
 mod durable_state_store_provider;
 mod durable_state_store_registry;
@@ -60,7 +60,7 @@ mod write_event_adapter;
 pub use at_least_once_delivery::AtLeastOnceDelivery;
 pub use at_least_once_delivery_config::AtLeastOnceDeliveryConfig;
 pub use at_least_once_delivery_snapshot::AtLeastOnceDeliverySnapshot;
-pub use durable_state_exception::DurableStateException;
+pub use durable_state_error::DurableStateError;
 pub use durable_state_store::DurableStateStore;
 pub use durable_state_store_provider::DurableStateStoreProvider;
 pub use durable_state_store_registry::DurableStateStoreRegistry;

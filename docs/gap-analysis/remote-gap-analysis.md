@@ -45,7 +45,7 @@
 | 固定スコープ概念カバレッジ | 約 33/54 (61%) |
 | raw public type declarations | 72（core: 52, std: 20） |
 | raw public method declarations | 254（core: 187, std: 67） |
-| hard / medium / easy / trivial gap | 8 / 8 / 1 / 0 |
+| hard / medium / easy / trivial gap | 8 / 8 / 0 / 0 |
 
 前回から改善された点は明確で、`remote-core` の公開境界は `core` に整理され、`DeadlineFailureDetector`、address-bound な `PhiAccrualFailureDetector`、`RemoteLogMarker`、`ListenStarted` event publish、association effects の lifecycle publish は実装済みになっている。
 
@@ -108,7 +108,7 @@
 | `MessageContainerSerializer` | `serialization/MessageContainerSerializer.scala:30` | 未対応 | actor-core/serialization | medium | actor selection message の remote payload 化がない |
 | `SystemMessageSerializer` | `serialization/SystemMessageSerializer.scala:22` | 未対応 | actor-core/serialization | medium | Watch / Unwatch / DeathWatchNotification / Terminate の serializer がない |
 | `MiscMessageSerializer` subset | `serialization/MiscMessageSerializer.scala:37` | 部分実装 | actor-core/serialization + core/wire | medium | `Address` / `UniqueAddress` はあるが、Identify / ActorIdentity / `RemoteRouterConfig` などの manifest 対応がない |
-| `ThrowableNotSerializableException` | `serialization/ThrowableNotSerializableException.scala:22` | 未対応 | actor-core/serialization | easy | 例外型追加で閉じる小さい差分 |
+| `ThrowableNotSerializableException` | `serialization/ThrowableNotSerializableException.scala:22` | 対応済み (新名 `ThrowableNotSerializableError`) | actor-core/serialization | easy | 対応済み。Rust 慣習に合わせ `*Error` 命名 |
 | Artery compression protocol (`CompressionProtocol`, `CompressionTable`, `InboundCompressions`, `TopHeavyHitters`) | `artery/compress/*`, `artery/Codecs.scala` | 未対応 | core/wire + core/association | hard | wire protocol 上の actor ref / manifest compression がごっそり未実装 |
 
 ### 5. Provider / remote actor ref / routing　✅ 実装済み 3/8 (38%)
@@ -156,12 +156,6 @@
 | Java serialization / Jackson module | serializer contract との接続点だけ対象 |
 
 ## 実装優先度
-
-### Phase 1: trivial / easy
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `ThrowableNotSerializableException` 相当 | actor-core/serialization | カテゴリ4 |
 
 ### Phase 2: medium
 
