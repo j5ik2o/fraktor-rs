@@ -65,12 +65,17 @@ fn heartbeat_history_std_deviation_is_computed() {
 
 fn make_detector() -> PhiAccrualFailureDetector {
   PhiAccrualFailureDetector::new(
+    make_address(),
     8.0,  // threshold
     100,  // max_sample_size
     10,   // min_std_deviation (ms)
     0,    // acceptable_heartbeat_pause (ms)
     1000, // first_heartbeat_estimate (ms)
   )
+}
+
+fn make_address() -> Address {
+  Address::new("remote-sys", "10.0.0.1", 2552)
 }
 
 const ACCEPTABLE_HEARTBEAT_PAUSE_MS: u64 = 200;
@@ -89,10 +94,9 @@ fn detector_is_available_without_heartbeat() {
 
 #[test]
 fn detector_binds_monitored_address_at_construction() {
-  let address = Address::new("remote-sys", "10.0.0.1", 2552);
-  let d = PhiAccrualFailureDetector::new(8.0, 100, 10, 0, 1000).with_monitored_address(address.clone());
-  assert_eq!(d.monitored_address(), Some(&address));
-  assert_eq!(make_detector().monitored_address(), None);
+  let address = make_address();
+  let d = PhiAccrualFailureDetector::new(address.clone(), 8.0, 100, 10, 0, 1000);
+  assert_eq!(d.monitored_address(), &address);
 }
 
 #[test]
@@ -105,7 +109,7 @@ fn detector_available_immediately_after_heartbeat() {
 
 #[test]
 fn detector_max_sample_size_is_enforced() {
-  let mut d = PhiAccrualFailureDetector::new(8.0, 10, 10, 0, 1000);
+  let mut d = PhiAccrualFailureDetector::new(make_address(), 8.0, 10, 10, 0, 1000);
   // Record many heartbeats with constant interval of 100 ms.
   let mut t: u64 = 0;
   d.heartbeat(t);
@@ -154,7 +158,7 @@ fn detector_phi_increases_with_elapsed_time() {
 
 #[test]
 fn detector_long_silence_triggers_unavailable() {
-  let mut d = PhiAccrualFailureDetector::new(5.0, 100, 10, 0, 100);
+  let mut d = PhiAccrualFailureDetector::new(make_address(), 5.0, 100, 10, 0, 100);
   // Establish a stable heartbeat cadence.
   let mut t: u64 = 0;
   for _ in 0..50 {
@@ -169,7 +173,7 @@ fn detector_long_silence_triggers_unavailable() {
 #[test]
 fn detector_no_nan_or_infinity_with_min_std_deviation() {
   // Extreme config: min_std_deviation is zero and all intervals are constant.
-  let mut d = PhiAccrualFailureDetector::new(8.0, 100, 0, 0, 100);
+  let mut d = PhiAccrualFailureDetector::new(make_address(), 8.0, 100, 0, 0, 100);
   let mut t: u64 = 0;
   for _ in 0..10 {
     d.heartbeat(t);
@@ -182,8 +186,8 @@ fn detector_no_nan_or_infinity_with_min_std_deviation() {
 
 #[test]
 fn detector_acceptable_pause_delays_unavailability() {
-  let with_pause = PhiAccrualFailureDetector::new(8.0, 100, 10, 2000, 100);
-  let no_pause = PhiAccrualFailureDetector::new(8.0, 100, 10, 0, 100);
+  let with_pause = PhiAccrualFailureDetector::new(make_address(), 8.0, 100, 10, 2000, 100);
+  let no_pause = PhiAccrualFailureDetector::new(make_address(), 8.0, 100, 10, 0, 100);
   let mut with_pause = with_pause;
   let mut no_pause = no_pause;
   let mut t: u64 = 0;

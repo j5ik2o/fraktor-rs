@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::{address::Address, failure_detector::PhiAccrualFailureDetector};
 use fraktor_utils_core_rs::core::time::TimerInstant;
 
 use super::MembershipCoordinator;
@@ -47,8 +47,12 @@ fn base_config() -> MembershipCoordinatorConfig {
 
 fn registry(threshold: f64) -> DefaultFailureDetectorRegistry<String> {
   DefaultFailureDetectorRegistry::new(Box::new(move || {
-    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(threshold, 10, 1, 0, 10)))
+    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(detector_address(), threshold, 10, 1, 0, 10)))
   }))
+}
+
+fn detector_address() -> Address {
+  Address::new("cluster-test", "127.0.0.1", 0)
 }
 
 fn now(ticks: u64) -> TimerInstant {

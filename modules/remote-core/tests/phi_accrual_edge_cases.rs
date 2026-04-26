@@ -10,10 +10,14 @@
 //! lookup). This integration test focuses on the edge cases that exercise the
 //! external contract of [`PhiAccrualFailureDetector`].
 
-use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::{address::Address, failure_detector::PhiAccrualFailureDetector};
 
 fn detector_with(threshold: f64) -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(threshold, 100, 10, 0, 100)
+  PhiAccrualFailureDetector::new(test_address(), threshold, 100, 10, 0, 100)
+}
+
+fn test_address() -> Address {
+  Address::new("remote-sys", "10.0.0.1", 2552)
 }
 
 #[test]
@@ -58,7 +62,7 @@ fn detector_recovers_after_fresh_heartbeat() {
 fn detector_handles_constant_intervals_without_diverging() {
   // All heartbeats arrive exactly every 100 ms → standard deviation 0,
   // which would cause naive phi formulas to produce NaN / Infinity.
-  let mut detector = PhiAccrualFailureDetector::new(8.0, 100, 0, 0, 100);
+  let mut detector = PhiAccrualFailureDetector::new(test_address(), 8.0, 100, 0, 0, 100);
   let mut t: u64 = 0;
   for _ in 0..30 {
     detector.heartbeat(t);
@@ -70,8 +74,8 @@ fn detector_handles_constant_intervals_without_diverging() {
 
 #[test]
 fn detector_acceptable_pause_widens_availability_window() {
-  let mut with_pause = PhiAccrualFailureDetector::new(8.0, 100, 10, 2_000, 100);
-  let mut no_pause = PhiAccrualFailureDetector::new(8.0, 100, 10, 0, 100);
+  let mut with_pause = PhiAccrualFailureDetector::new(test_address(), 8.0, 100, 10, 2_000, 100);
+  let mut no_pause = PhiAccrualFailureDetector::new(test_address(), 8.0, 100, 10, 0, 100);
   let mut t: u64 = 0;
   for _ in 0..50 {
     with_pause.heartbeat(t);
@@ -91,7 +95,7 @@ fn detector_max_sample_size_is_enforced_indirectly() {
   // growing without bound. We cannot inspect history directly, but we can
   // verify that recording 200 heartbeats does not push phi into the
   // unavailable region.
-  let mut detector = PhiAccrualFailureDetector::new(8.0, 10, 10, 0, 100);
+  let mut detector = PhiAccrualFailureDetector::new(test_address(), 8.0, 10, 10, 0, 100);
   let mut t: u64 = 0;
   detector.heartbeat(t);
   for _ in 0..200 {

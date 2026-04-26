@@ -39,12 +39,13 @@ pub struct PhiAccrualFailureDetector {
   first_heartbeat_estimate:   u64,
   history:                    HeartbeatHistory,
   last_heartbeat_ms:          Option<u64>,
-  monitored_address:          Option<Address>,
+  monitored_address:          Address,
 }
 
 impl PhiAccrualFailureDetector {
   /// Creates a new detector.
   ///
+  /// - `monitored_address`: remote address this detector is bound to.
   /// - `threshold`: phi value above which the peer is considered unavailable.
   /// - `max_sample_size`: bounded interval history capacity.
   /// - `min_std_deviation`: lower bound for the standard deviation used in the phi formula, in
@@ -54,6 +55,7 @@ impl PhiAccrualFailureDetector {
   ///   very first heartbeat.
   #[must_use]
   pub fn new(
+    monitored_address: Address,
     threshold: f64,
     max_sample_size: usize,
     min_std_deviation: u64,
@@ -77,15 +79,8 @@ impl PhiAccrualFailureDetector {
       first_heartbeat_estimate,
       history,
       last_heartbeat_ms: None,
-      monitored_address: None,
+      monitored_address,
     }
-  }
-
-  /// Binds the monitored address metadata to this detector.
-  #[must_use]
-  pub fn with_monitored_address(mut self, monitored_address: Address) -> Self {
-    self.monitored_address = Some(monitored_address);
-    self
   }
 
   /// Returns the configured phi threshold.
@@ -124,11 +119,10 @@ impl PhiAccrualFailureDetector {
     self.last_heartbeat_ms
   }
 
-  /// Returns the monitored address metadata when this detector was created
-  /// for a concrete remote node.
+  /// Returns the monitored address metadata bound at construction.
   #[must_use]
-  pub const fn monitored_address(&self) -> Option<&Address> {
-    self.monitored_address.as_ref()
+  pub const fn monitored_address(&self) -> &Address {
+    &self.monitored_address
   }
 
   /// Records a heartbeat at `now_ms` (monotonic millis).

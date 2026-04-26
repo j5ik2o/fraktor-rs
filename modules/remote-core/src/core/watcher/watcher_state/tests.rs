@@ -8,7 +8,7 @@ use crate::core::{
 };
 
 fn test_factory(address: &Address) -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(5.0, 100, 10, 0, 100).with_monitored_address(address.clone())
+  PhiAccrualFailureDetector::new(address.clone(), 5.0, 100, 10, 0, 100)
 }
 
 fn new_state() -> WatcherState {
@@ -28,7 +28,7 @@ fn remote_node() -> Address {
 }
 
 fn detector_address_for_node<'a>(state: &'a WatcherState, node: &Address) -> Option<&'a Address> {
-  state.detectors.get(node).and_then(PhiAccrualFailureDetector::monitored_address)
+  state.detectors.get(node).map(PhiAccrualFailureDetector::monitored_address)
 }
 
 #[test]
