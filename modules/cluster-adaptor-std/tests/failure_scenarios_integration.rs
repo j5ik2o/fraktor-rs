@@ -14,7 +14,7 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },
 };
-use fraktor_remote_core_rs::domain::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
 use fraktor_utils_core_rs::core::{sync::SharedAccess, time::TimerInstant};
 
 /// Test-only adapter that bridges the remote-core detector to the

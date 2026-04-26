@@ -5,7 +5,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
   system::ActorSystem,
 };
-use fraktor_remote_core_rs::domain::extension::EventPublisher;
+use fraktor_remote_core_rs::core::extension::EventPublisher;
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 pub(crate) struct EventHarness {

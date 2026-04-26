@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::CorrelationId,
 };
-use fraktor_remote_core_rs::domain::{
+use fraktor_remote_core_rs::core::{
   address::RemoteNodeId,
   envelope::{OutboundEnvelope, OutboundPriority},
   provider::RemoteActorRef,

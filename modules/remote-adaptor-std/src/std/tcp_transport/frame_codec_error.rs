@@ -6,7 +6,7 @@ use std::{
   io::Error as IoError,
 };
 
-use fraktor_remote_core_rs::domain::wire::WireError;
+use fraktor_remote_core_rs::core::wire::WireError;
 
 /// Error returned by [`crate::std::tcp_transport::WireFrameCodec`] when used as a
 /// `tokio_util::codec::{Encoder, Decoder}`.

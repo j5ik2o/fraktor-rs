@@ -1,7 +1,7 @@
 //! Inbound dispatch loop: feeds incoming wire frames into the matching
 //! `Association`.
 
-use fraktor_remote_core_rs::domain::{
+use fraktor_remote_core_rs::core::{
   address::RemoteNodeId, association::Association, extension::EventPublisher, wire::HandshakePdu,
 };
 use tokio::sync::mpsc::UnboundedReceiver;

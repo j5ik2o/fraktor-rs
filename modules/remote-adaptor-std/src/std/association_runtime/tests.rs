@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
 };
-use fraktor_remote_core_rs::domain::{
+use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},
@@ -234,7 +234,7 @@ async fn handshake_driver_cancel_prevents_firing() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_drains_active_association() {
-  use fraktor_remote_core_rs::domain::transport::{RemoteTransport, TransportError};
+  use fraktor_remote_core_rs::core::transport::{RemoteTransport, TransportError};
 
   use crate::std::association_runtime::outbound_loop::run_outbound_loop;
 

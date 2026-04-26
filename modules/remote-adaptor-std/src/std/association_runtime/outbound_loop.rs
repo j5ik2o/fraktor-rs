@@ -3,7 +3,7 @@
 
 use core::time::Duration;
 
-use fraktor_remote_core_rs::domain::transport::{RemoteTransport, TransportError};
+use fraktor_remote_core_rs::core::transport::{RemoteTransport, TransportError};
 use fraktor_utils_core_rs::core::sync::SharedLock;
 use tokio::time::sleep;
 
@@ -12,7 +12,7 @@ use crate::std::association_runtime::association_shared::AssociationShared;
 /// Polling interval used by the outbound drain loop.
 const POLL_INTERVAL: Duration = Duration::from_millis(1);
 
-/// Drains [`fraktor_remote_core_rs::domain::association::Association::next_outbound`]
+/// Drains [`fraktor_remote_core_rs::core::association::Association::next_outbound`]
 /// in a loop, forwarding each envelope through `transport.send`.
 ///
 /// This task is intentionally simple: it polls at `POLL_INTERVAL` whenever

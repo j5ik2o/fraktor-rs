@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_path::{ActorPath, ActorPathParser};
-use fraktor_remote_core_rs::domain::{
+use fraktor_remote_core_rs::core::{
   address::Address,
   watcher::{WatcherCommand, WatcherEffect},
 };

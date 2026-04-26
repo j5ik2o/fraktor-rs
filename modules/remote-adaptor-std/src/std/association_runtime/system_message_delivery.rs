@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use fraktor_remote_core_rs::domain::wire::{AckPdu, EnvelopePdu};
+use fraktor_remote_core_rs::core::wire::{AckPdu, EnvelopePdu};
 
 /// State machine for ack-based system message delivery.
 ///

@@ -2,7 +2,7 @@
 
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_remote_core_rs::domain::association::Association;
+use fraktor_remote_core_rs::core::association::Association;
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 /// Thread-safe shared handle for an [`Association`].

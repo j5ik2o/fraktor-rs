@@ -3,7 +3,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
   system::ActorSystemBuildError,
 };
-use fraktor_remote_core_rs::domain::{
+use fraktor_remote_core_rs::core::{
   address::Address,
   association::QuarantineReason,
   extension::{Remoting, RemotingError},

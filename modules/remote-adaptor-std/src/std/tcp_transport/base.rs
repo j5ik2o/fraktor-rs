@@ -9,7 +9,7 @@ use core::fmt::{Debug, Formatter, Result as FmtResult};
 use std::collections::BTreeMap;
 
 use bytes::Bytes;
-use fraktor_remote_core_rs::domain::{
+use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId},
   association::QuarantineReason,
   envelope::OutboundEnvelope,

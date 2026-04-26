@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use fraktor_remote_core_rs::domain::address::UniqueAddress;
+use fraktor_remote_core_rs::core::address::UniqueAddress;
 
 use crate::std::association_runtime::association_shared::AssociationShared;
 

@@ -3,7 +3,7 @@
 use core::time::Duration;
 use std::time::Instant;
 
-use fraktor_remote_core_rs::domain::watcher::WatcherCommand;
+use fraktor_remote_core_rs::core::watcher::WatcherCommand;
 
 use crate::std::watcher_actor::watcher_actor_handle::WatcherActorHandle;
 

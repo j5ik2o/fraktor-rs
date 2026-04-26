@@ -1,7 +1,7 @@
 //! Tokio-based runtime that drives the pure `Association` state machine.
 //!
 //! This module materialises the side-effects emitted by
-//! [`fraktor_remote_core_rs::domain::association::Association`] (`StartHandshake`,
+//! [`fraktor_remote_core_rs::core::association::Association`] (`StartHandshake`,
 //! `SendEnvelopes`, `DiscardEnvelopes`, `PublishLifecycle`) on top of a real
 //! TCP transport. The decomposition follows Apache Pekko Artery's runtime
 //! split:
@@ -12,7 +12,7 @@
 //! - [`association_registry::AssociationRegistry`] keeps a `BTreeMap` of per-remote
 //!   `AssociationShared` handles.
 //! - [`outbound_loop::run_outbound_loop`] drains
-//!   [`fraktor_remote_core_rs::domain::association::Association::next_outbound`] and forwards
+//!   [`fraktor_remote_core_rs::core::association::Association::next_outbound`] and forwards
 //!   envelopes to the transport.
 //! - [`inbound_dispatch::run_inbound_dispatch`] reads inbound frames from the TCP layer and
 //!   dispatches them to the matching `Association`.

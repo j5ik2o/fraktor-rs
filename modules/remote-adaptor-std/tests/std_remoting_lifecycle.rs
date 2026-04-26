@@ -7,7 +7,7 @@
 //! `bind_transport_listener_for_test` plumbing — none of which exist in
 //! the new design. Phase B's `StdRemoting` instead exposes a small,
 //! synchronous lifecycle surface that mirrors the pure
-//! `fraktor_remote_core_rs::domain::extension::Remoting` trait.
+//! `fraktor_remote_core_rs::core::extension::Remoting` trait.
 
 use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
 use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionInstaller, system::ActorSystem};
@@ -15,7 +15,7 @@ use fraktor_remote_adaptor_std_rs::std::{
   extension_installer::{RemotingExtensionInstaller, StdRemoting},
   tcp_transport::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::domain::{
+use fraktor_remote_core_rs::core::{
   address::Address,
   association::QuarantineReason,
   extension::{EventPublisher, Remoting, RemotingError},

@@ -15,7 +15,7 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
 };
-use fraktor_remote_core_rs::domain::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 use tokio::runtime::Handle;
 

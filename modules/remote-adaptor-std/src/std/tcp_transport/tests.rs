@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use fraktor_remote_core_rs::domain::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq};
+use fraktor_remote_core_rs::core::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq};
 use tokio::net::TcpListener;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 

@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_remote_core_rs::domain::extension::EventPublisher;
+use fraktor_remote_core_rs::core::extension::EventPublisher;
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::std::{extension_installer::base::StdRemoting, tcp_transport::TcpRemoteTransport};

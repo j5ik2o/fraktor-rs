@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_remote_core_rs::domain::transport::TransportError;
+use fraktor_remote_core_rs::core::transport::TransportError;
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::{TcpListener, TcpStream},

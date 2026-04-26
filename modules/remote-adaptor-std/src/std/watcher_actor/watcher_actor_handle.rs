@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_remote_core_rs::domain::watcher::WatcherCommand;
+use fraktor_remote_core_rs::core::watcher::WatcherCommand;
 use tokio::sync::mpsc::UnboundedSender;
 
 /// Boxed [`WatcherCommand`] returned in the `Err` arm of

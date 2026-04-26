@@ -1,5 +1,5 @@
 //! Edge-case integration tests for the new
-//! [`fraktor_remote_core_rs::domain::failure_detector::PhiAccrualFailureDetector`].
+//! [`fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector`].
 //!
 //! Replaces the legacy `modules/remote/tests/phi_failure_detector_edge_cases.rs`
 //! for the redesigned `remote-core` API. The legacy tests targeted the old
@@ -10,7 +10,7 @@
 //! lookup). This integration test focuses on the edge cases that exercise the
 //! external contract of [`PhiAccrualFailureDetector`].
 
-use fraktor_remote_core_rs::domain::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
 
 fn detector_with(threshold: f64) -> PhiAccrualFailureDetector {
   PhiAccrualFailureDetector::new(threshold, 100, 10, 0, 100)
