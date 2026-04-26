@@ -21,23 +21,33 @@ use crate::std::association_runtime::{apply_effects_in_place, association_shared
 /// spurious timeouts.
 #[derive(Default)]
 pub struct HandshakeDriver {
-  tasks: Vec<JoinHandle<()>>,
+  // Timeout is kept separate from periodic tasks so that re-arming the
+  // handshake timeout aborts any prior timeout, preventing a stale firing
+  // from gating an association that has since been re-armed with a fresh
+  // deadline.
+  timeout_task: Option<JoinHandle<()>>,
+  tasks:        Vec<JoinHandle<()>>,
 }
 
 impl HandshakeDriver {
   /// Creates a new, idle driver.
   #[must_use]
   pub const fn new() -> Self {
-    Self { tasks: Vec::new() }
+    Self { timeout_task: None, tasks: Vec::new() }
   }
 
   /// Returns `true` when at least one handshake control task is currently armed.
   #[must_use]
   pub fn is_armed(&self) -> bool {
-    self.tasks.iter().any(|task| !task.is_finished())
+    self.timeout_task.as_ref().is_some_and(|task| !task.is_finished())
+      || self.tasks.iter().any(|task| !task.is_finished())
   }
 
   /// Arms the driver to fire after `timeout` and notify `shared`.
+  ///
+  /// Any previously armed timeout is aborted before the new one is spawned,
+  /// so callers can re-arm with a fresh deadline without leaking stale
+  /// timeout firings.
   ///
   /// `started_at` is a `std::time::Instant` captured at handshake start; the
   /// driver computes the elapsed monotonic millis at firing time.
@@ -48,6 +58,9 @@ impl HandshakeDriver {
     timeout: Duration,
     event_publisher: EventPublisher,
   ) {
+    if let Some(existing) = self.timeout_task.take() {
+      existing.abort();
+    }
     let task = tokio::spawn(async move {
       tokio::time::sleep(timeout).await;
       let now_ms = monotonic_millis_since(started_at);
@@ -61,7 +74,7 @@ impl HandshakeDriver {
         apply_effects_in_place(assoc, effects, &event_publisher);
       });
     });
-    self.tasks.push(task);
+    self.timeout_task = Some(task);
   }
 
   /// Arms periodic handshake request retry while the association is handshaking.
@@ -138,6 +151,9 @@ impl HandshakeDriver {
 
   /// Cancels all pending handshake control tasks.
   pub fn cancel(&mut self) {
+    if let Some(task) = self.timeout_task.take() {
+      task.abort();
+    }
     for handle in self.tasks.drain(..) {
       handle.abort();
     }

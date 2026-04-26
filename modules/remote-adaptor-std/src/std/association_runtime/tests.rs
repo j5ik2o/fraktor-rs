@@ -377,6 +377,42 @@ async fn handshake_driver_cancel_prevents_firing() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn handshake_driver_arm_aborts_previous_timeout() {
+  // 二重 arm された場合、最初の timeout が abort されず生き残ると、
+  // re-arm 後の新しい deadline より前に古い timeout が fire して
+  // association を Gated に落としてしまう。`arm` は前回の timeout を
+  // 必ず abort してから新しい task を spawn しなければならない。
+  let harness = EventHarness::new();
+  let shared = AssociationShared::new(handshaking_association());
+
+  let mut driver = HandshakeDriver::new();
+  driver.arm(shared.clone(), Instant::now(), Duration::from_millis(10), harness.publisher().clone());
+  tokio::task::yield_now().await;
+  // Re-arm with a longer deadline before the first one fires.
+  driver.arm(shared.clone(), Instant::now(), Duration::from_millis(100), harness.publisher().clone());
+  tokio::task::yield_now().await;
+
+  // Advance past the *first* timeout but well before the second.
+  tokio::time::advance(Duration::from_millis(20)).await;
+  tokio::task::yield_now().await;
+
+  shared.with_write(|assoc| {
+    assert!(
+      matches!(assoc.state(), AssociationState::Handshaking { .. }),
+      "the first timeout must have been aborted by re-arm and not gate the association"
+    );
+  });
+  harness.events_with(|events| {
+    assert!(
+      !has_remoting_lifecycle_event(events, |event| matches!(event, RemotingLifecycleEvent::Gated { .. })),
+      "no Gated event should be observed before the second timeout fires"
+    );
+  });
+
+  driver.cancel();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_driver_retries_handshake_req_while_handshaking() {
   let shared = AssociationShared::new(handshaking_association());
   let sent = new_sent_handshakes();
@@ -682,6 +718,47 @@ async fn outbound_loop_returns_send_failure_when_restart_budget_is_exhausted() {
   shared.with_write(|assoc| {
     assert!(assoc.state().is_gated(), "budget exhaustion should leave the association observably gated");
   });
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn recover_with_restart_budget_resets_counter_on_successful_recovery() {
+  // 同じ outbound loop の中で複数の独立した障害サイクルが発生したとき、
+  // 過去サイクルで消費した restart カウントが残り続けると、十分な余裕
+  // (max_restarts) があってもサイクル N の途中で予算枯渇と誤判定して
+  // ループを終了させてしまう。successful recovery の直後に counter を
+  // 0 にリセットすることで、各サイクルが独立した予算で動くことを検証する。
+  use crate::std::association_runtime::{ReconnectBackoffPolicy, outbound_loop::recover_with_restart_budget};
+
+  let mut association = handshaking_association();
+  let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
+  association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
+  let shared = AssociationShared::new(association);
+
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let policy = ReconnectBackoffPolicy::new(Duration::from_millis(10), Duration::from_millis(100), 3);
+  let mut reconnect = |remote: Address| async move { Ok(TransportEndpoint::new(remote.to_string())) };
+
+  // Simulate that prior failure cycles consumed 2 of the 3-budget.
+  let mut restarts: u32 = 2;
+  let started_at = tokio::time::Instant::now();
+
+  let recover_future = recover_with_restart_budget(
+    &shared,
+    &policy,
+    &mut reconnect,
+    remote,
+    started_at,
+    &mut restarts,
+    TransportError::SendFailed,
+  );
+  tokio::time::advance(Duration::from_millis(20)).await;
+  let result = recover_future.await;
+
+  assert_eq!(result, Ok(()));
+  assert_eq!(
+    restarts, 0,
+    "restart counter must reset to zero after successful recovery so a future independent failure starts with the full budget"
+  );
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]

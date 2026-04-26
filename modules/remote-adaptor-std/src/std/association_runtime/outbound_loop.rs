@@ -98,7 +98,16 @@ where
   }
 }
 
-async fn recover_with_restart_budget<F, Fut>(
+/// Drives the reconnect retry loop bounded by `policy.max_restarts()`.
+///
+/// On a successful reconnect the function resets `*restarts` to `0` so a
+/// future independent failure cycle starts from a fresh budget rather than
+/// inheriting the consumed credits from prior recoveries.
+///
+/// Visibility is `pub(super)` to allow direct unit testing of the budget
+/// reset behaviour from the sibling test module without needing to drive a
+/// full transport / handshake fixture.
+pub(super) async fn recover_with_restart_budget<F, Fut>(
   shared: &AssociationShared,
   policy: &ReconnectBackoffPolicy,
   reconnect: &mut F,
@@ -120,6 +129,10 @@ where
       | Ok(endpoint) => {
         let effects = shared.with_write(|assoc| assoc.recover(Some(endpoint), elapsed_ms(started_at)));
         log_association_effects(effects);
+        // Reset the restart counter on successful recovery so a future
+        // transient failure long after this point still has the full
+        // restart budget rather than the residue from prior failures.
+        *restarts = 0;
         return Ok(());
       },
       | Err(err) => {
