@@ -29,11 +29,11 @@ def main() -> int:
     if not isinstance(tool_input, dict):
         return 0
 
-    command = tool_input.get("command")
-    if not isinstance(command, str):
+    patch_text = extract_patch_text(tool_input)
+    if patch_text is None:
         return 0
 
-    rust_paths = find_rust_paths(command)
+    rust_paths = find_rust_paths(patch_text)
     if not rust_paths:
         return 0
 
@@ -74,6 +74,24 @@ def find_rust_paths(command: str) -> list[str]:
         if path.endswith(".rs"):
             rust_paths.append(path)
     return rust_paths
+
+
+def extract_patch_text(tool_input: dict[str, object]) -> str | None:
+    command = tool_input.get("command")
+    if isinstance(command, str):
+        return command
+    if isinstance(command, list):
+        command_parts = [part for part in command if isinstance(part, str)]
+        if len(command_parts) >= 2 and command_parts[0] == "apply_patch":
+            return command_parts[1]
+        if len(command_parts) == 1:
+            return command_parts[0]
+
+    patch_input = tool_input.get("input")
+    if isinstance(patch_input, str):
+        return patch_input
+
+    return None
 
 
 def resolve_repo_root(payload: dict[str, object]) -> Path | None:

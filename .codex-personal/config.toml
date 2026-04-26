@@ -15,15 +15,6 @@ shell_snapshot = true
 steer = true
 multi_agent = true
 
-[[hooks.PostToolUse]]
-matcher = "^(apply_patch|Edit|Write)$"
-
-[[hooks.PostToolUse.hooks]]
-type = "command"
-command = '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/run_dylint_after_rust_edit.py"'
-timeout = 1800
-statusMessage = "Rust 変更後の dylint を確認中"
-
 [agents]
 max_threads = 4
 max_depth = 1
