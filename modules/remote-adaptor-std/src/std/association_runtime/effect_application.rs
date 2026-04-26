@@ -36,15 +36,24 @@ pub fn apply_effects_in_place(
   effects: Vec<AssociationEffect>,
   event_publisher: &EventPublisher,
 ) {
-  for effect in effects {
-    apply_one(assoc, effect, event_publisher);
+  // `pending` is a LIFO worklist; push effects in reverse to preserve emission order without
+  // recursion.
+  let mut pending = effects;
+  pending.reverse();
+  while let Some(effect) = pending.pop() {
+    apply_one(assoc, effect, event_publisher, &mut pending);
   }
 }
 
-fn apply_one(assoc: &mut Association, effect: AssociationEffect, event_publisher: &EventPublisher) {
+fn apply_one(
+  assoc: &mut Association,
+  effect: AssociationEffect,
+  event_publisher: &EventPublisher,
+  pending: &mut Vec<AssociationEffect>,
+) {
   match effect {
     | AssociationEffect::SendEnvelopes { envelopes } => {
-      apply_send_envelopes(assoc, envelopes, event_publisher);
+      apply_send_envelopes(assoc, envelopes, pending);
     },
     | AssociationEffect::DiscardEnvelopes { reason, envelopes } => {
       tracing::warn!(
@@ -66,36 +75,20 @@ fn apply_one(assoc: &mut Association, effect: AssociationEffect, event_publisher
   }
 }
 
-fn apply_send_envelopes(assoc: &mut Association, envelopes: Vec<OutboundEnvelope>, event_publisher: &EventPublisher) {
+fn apply_send_envelopes(
+  assoc: &mut Association,
+  envelopes: Vec<OutboundEnvelope>,
+  pending: &mut Vec<AssociationEffect>,
+) {
   let count = envelopes.len();
+  let mut recursive = Vec::new();
   for envelope in envelopes {
-    let recursive = assoc.enqueue(envelope);
-    for inner in recursive {
-      apply_recursive_effect(assoc, inner, event_publisher);
-    }
+    recursive.extend(assoc.enqueue(envelope));
   }
+  push_effects_in_order(pending, recursive);
   tracing::debug!(count, "association re-enqueued envelopes");
 }
 
-fn apply_recursive_effect(assoc: &mut Association, effect: AssociationEffect, event_publisher: &EventPublisher) {
-  match effect {
-    | AssociationEffect::DiscardEnvelopes { reason, envelopes } => {
-      tracing::warn!(
-        discarded = envelopes.len(),
-        reason = %reason.message(),
-        "association discarded re-enqueued envelopes",
-      );
-    },
-    | AssociationEffect::SendEnvelopes { envelopes } => {
-      apply_send_envelopes(assoc, envelopes, event_publisher);
-    },
-    | AssociationEffect::PublishLifecycle(event) => {
-      // tracing は運用観測、event stream は下流購読者向けなので両方へ出力する。
-      tracing::info!(?event, "remoting lifecycle event during re-enqueue");
-      event_publisher.publish_lifecycle(event);
-    },
-    | AssociationEffect::StartHandshake { endpoint } => {
-      tracing::debug!(?endpoint, "association requested handshake start during re-enqueue");
-    },
-  }
+fn push_effects_in_order(pending: &mut Vec<AssociationEffect>, effects: Vec<AssociationEffect>) {
+  pending.extend(effects.into_iter().rev());
 }
