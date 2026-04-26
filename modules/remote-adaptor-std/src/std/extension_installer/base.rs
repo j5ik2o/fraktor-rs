@@ -118,7 +118,9 @@ impl Remoting for StdRemoting {
       | Ok(addresses) => addresses,
       | Err(error) => {
         // transport.start() 失敗後に Starting に残ると再試行も shutdown もできなくなるため戻す。
-        self.lifecycle.mark_start_failed()?;
+        if let Err(rollback_error) = self.lifecycle.mark_start_failed() {
+          tracing::error!(?rollback_error, "lifecycle rollback failed after transport start failure");
+        }
         return Err(error);
       },
     };
@@ -136,7 +138,9 @@ impl Remoting for StdRemoting {
         tracing::warn!(?err, "transport shutdown failed during StdRemoting::shutdown");
       }
     });
-    self.lifecycle.mark_shutdown()?;
+    if !self.lifecycle.is_terminated() {
+      self.lifecycle.mark_shutdown()?;
+    }
     Ok(())
   }
 

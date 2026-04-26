@@ -73,6 +73,8 @@ pub async fn run_inbound_dispatch(
 
 fn remote_node_matches_association(remote_node: &RemoteNodeId, assoc: &Association) -> bool {
   let remote = assoc.remote();
+  // UID is intentionally not compared here; Association is keyed by Address, and RemoteNodeId UID
+  // validation belongs to a later identity/quarantine phase after remote_node_from_handshake_pdu.
   remote_node.system() == remote.system()
     && remote_node.host() == remote.host()
     && remote_node.port() == Some(remote.port())

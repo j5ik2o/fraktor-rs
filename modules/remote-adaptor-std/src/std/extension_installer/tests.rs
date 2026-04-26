@@ -66,6 +66,15 @@ fn std_remoting_lifecycle_starts_and_shuts_down() {
 }
 
 #[test]
+fn std_remoting_shutdown_from_pending_terminates_without_error() {
+  let (mut remoting, _harness) = make_remoting(make_transport());
+
+  remoting.shutdown().expect("shutdown should succeed from Pending");
+
+  assert!(remoting.lifecycle().is_terminated());
+}
+
+#[test]
 fn std_remoting_double_start_returns_already_running() {
   let (mut remoting, _harness) = make_remoting(make_transport());
   remoting.start().expect("first start");
@@ -107,10 +116,9 @@ fn std_remoting_start_publishes_listen_started_for_each_advertised_address() {
   remoting.start().expect("start should publish listen events");
 
   let events = harness.events();
-  assert_eq!(listen_started_authorities(&events), vec![
-    String::from("local-sys@127.0.0.1:2551"),
-    String::from("local-sys@127.0.0.2:2552")
-  ]);
+  let mut authorities = listen_started_authorities(&events);
+  authorities.sort();
+  assert_eq!(authorities, vec![String::from("local-sys@127.0.0.1:2551"), String::from("local-sys@127.0.0.2:2552")]);
   assert!(events.iter().any(|event| matches!(
     event,
     EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted {

@@ -9,7 +9,7 @@ use crate::core::{
 };
 
 fn test_factory(address: &Address) -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::with_monitored_address(address.to_string(), 5.0, 100, 10, 0, 100)
+  PhiAccrualFailureDetector::new(5.0, 100, 10, 0, 100).with_monitored_address(address.to_string())
 }
 
 fn new_state() -> WatcherState {

@@ -83,20 +83,11 @@ impl PhiAccrualFailureDetector {
     }
   }
 
-  /// Creates a detector with its monitored address bound at construction.
+  /// Binds the monitored address metadata to this detector.
   #[must_use]
-  pub fn with_monitored_address(
-    monitored_address: String,
-    threshold: f64,
-    max_sample_size: usize,
-    min_std_deviation: u64,
-    acceptable_heartbeat_pause: u64,
-    first_heartbeat_estimate: u64,
-  ) -> Self {
-    let mut detector =
-      Self::new(threshold, max_sample_size, min_std_deviation, acceptable_heartbeat_pause, first_heartbeat_estimate);
-    detector.monitored_address = Some(monitored_address);
-    detector
+  pub fn with_monitored_address(mut self, monitored_address: String) -> Self {
+    self.monitored_address = Some(monitored_address);
+    self
   }
 
   /// Returns the configured phi threshold.

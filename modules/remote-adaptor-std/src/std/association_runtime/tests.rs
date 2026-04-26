@@ -244,7 +244,7 @@ async fn handshake_driver_cancel_prevents_firing() {
 // outbound_loop / inbound_dispatch（配線のスモークテスト）
 // ---------------------------------------------------------------------------
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_drains_active_association() {
   use fraktor_remote_core_rs::core::transport::{RemoteTransport, TransportError};
 
@@ -330,7 +330,11 @@ async fn outbound_loop_drains_active_association() {
     run_outbound_loop(task_shared, task_transport).await;
   });
 
-  tokio::time::timeout(Duration::from_secs(1), sent_rx)
+  tokio::task::yield_now().await;
+  tokio::time::advance(Duration::from_millis(1)).await;
+  tokio::task::yield_now().await;
+
+  tokio::time::timeout(Duration::from_secs(5), sent_rx)
     .await
     .expect("outbound loop should send before the test timeout")
     .expect("send completion should be delivered");

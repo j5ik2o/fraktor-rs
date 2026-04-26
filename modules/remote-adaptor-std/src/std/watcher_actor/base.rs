@@ -71,5 +71,5 @@ impl WatcherActor {
 }
 
 fn default_detector_factory(address: &Address) -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::with_monitored_address(address.to_string(), 8.0, 200, 100, 0, 1000)
+  PhiAccrualFailureDetector::new(8.0, 200, 100, 0, 1000).with_monitored_address(address.to_string())
 }

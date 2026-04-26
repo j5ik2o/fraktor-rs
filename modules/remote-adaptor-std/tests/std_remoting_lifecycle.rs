@@ -34,7 +34,7 @@ fn make_event_publisher() -> (ActorSystem, EventPublisher) {
 
 #[test]
 fn std_remoting_lifecycle_via_std_remoting_directly() {
-  let (_system, publisher) = make_event_publisher();
+  let (system, publisher) = make_event_publisher();
   let mut remoting = StdRemoting::new(make_transport(), None, publisher);
   assert!(!remoting.lifecycle().is_running());
 
@@ -48,6 +48,7 @@ fn std_remoting_lifecycle_via_std_remoting_directly() {
 
   remoting.shutdown().expect("shutdown");
   assert!(remoting.lifecycle().is_terminated());
+  system.terminate().expect("terminate actor system");
 }
 
 #[test]
@@ -79,4 +80,5 @@ fn std_remoting_lifecycle_via_extension_installer() {
     });
     assert_eq!(second, RemotingError::InvalidTransition);
   }
+  system.terminate().expect("terminate actor system");
 }
