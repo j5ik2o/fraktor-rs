@@ -45,7 +45,8 @@ fn subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubsc
   EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
 }
 
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
   let props = Props::from_fn(|| NoopActor);
   let system =
     ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
