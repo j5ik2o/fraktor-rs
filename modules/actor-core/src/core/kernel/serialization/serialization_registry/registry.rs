@@ -15,12 +15,13 @@ use crate::core::kernel::serialization::{
 /// Registry that resolves serializers based on type identifiers.
 #[allow(clippy::type_complexity)]
 pub struct SerializationRegistry {
-  serializers:     SharedRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>>,
-  bindings:        SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
-  binding_names:   SharedRwLock<HashMap<TypeId, String, RandomState>>,
-  manifest_routes: SharedRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>>,
-  cache:           SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
-  fallback:        SerializerId,
+  serializers:      SharedRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>>,
+  bindings:         SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
+  binding_names:    SharedRwLock<HashMap<TypeId, String, RandomState>>,
+  remote_manifests: SharedRwLock<HashMap<TypeId, String, RandomState>>,
+  manifest_routes:  SharedRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>>,
+  cache:            SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
+  fallback:         SerializerId,
 }
 
 impl SerializationRegistry {
@@ -33,16 +34,19 @@ impl SerializationRegistry {
     bindings.extend(setup.bindings_ref().iter().map(|(ty, id)| (*ty, *id)));
     let mut binding_names = HashMap::with_hasher(RandomState::new());
     binding_names.extend(setup.binding_names_ref().iter().map(|(ty, name)| (*ty, name.clone())));
+    let mut remote_manifests = HashMap::with_hasher(RandomState::new());
+    remote_manifests.extend(setup.remote_manifests_ref().iter().map(|(ty, manifest)| (*ty, manifest.clone())));
     let mut manifest_routes = HashMap::with_hasher(RandomState::new());
     manifest_routes
       .extend(setup.manifest_routes_ref().iter().map(|(manifest, routes)| (manifest.clone(), routes.clone())));
     Self {
-      serializers:     SharedRwLock::new_with_driver::<DefaultRwLock<_>>(serializers),
-      bindings:        SharedRwLock::new_with_driver::<DefaultRwLock<_>>(bindings),
-      binding_names:   SharedRwLock::new_with_driver::<DefaultRwLock<_>>(binding_names),
-      manifest_routes: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(manifest_routes),
-      cache:           SharedRwLock::new_with_driver::<DefaultRwLock<_>>(HashMap::with_hasher(RandomState::new())),
-      fallback:        setup.fallback_serializer(),
+      serializers:      SharedRwLock::new_with_driver::<DefaultRwLock<_>>(serializers),
+      bindings:         SharedRwLock::new_with_driver::<DefaultRwLock<_>>(bindings),
+      binding_names:    SharedRwLock::new_with_driver::<DefaultRwLock<_>>(binding_names),
+      remote_manifests: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(remote_manifests),
+      manifest_routes:  SharedRwLock::new_with_driver::<DefaultRwLock<_>>(manifest_routes),
+      cache:            SharedRwLock::new_with_driver::<DefaultRwLock<_>>(HashMap::with_hasher(RandomState::new())),
+      fallback:         setup.fallback_serializer(),
     }
   }
 
@@ -167,6 +171,12 @@ impl SerializationRegistry {
   #[must_use]
   pub fn binding_name(&self, type_id: TypeId) -> Option<String> {
     self.binding_names.with_read(|binding_names| binding_names.get(&type_id).cloned())
+  }
+
+  /// Returns the remote manifest registered for the provided type identifier.
+  #[must_use]
+  pub fn manifest_for(&self, type_id: TypeId) -> Option<String> {
+    self.remote_manifests.with_read(|manifests| manifests.get(&type_id).cloned())
   }
 
   /// Clears cached lookups (used during shutdown).

@@ -1,6 +1,9 @@
 use crate::core::{
   address::Address,
-  failure_detector::{DeadlineFailureDetector, HeartbeatHistory, PhiAccrualFailureDetector},
+  failure_detector::{
+    DeadlineFailureDetector, DefaultFailureDetectorRegistry, FailureDetector, FailureDetectorRegistry,
+    HeartbeatHistory, PhiAccrualFailureDetector,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -234,4 +237,112 @@ fn deadline_detector_uses_exclusive_deadline_boundary() {
 
   assert!(detector.is_available(deadline_ms - 1));
   assert!(!detector.is_available(deadline_ms));
+}
+
+// ---------------------------------------------------------------------------
+// FailureDetectorRegistry
+// ---------------------------------------------------------------------------
+
+struct BoundDetector {
+  bound:      Address,
+  monitoring: bool,
+}
+
+impl BoundDetector {
+  fn new(bound: &Address) -> Self {
+    Self { bound: bound.clone(), monitoring: false }
+  }
+}
+
+impl FailureDetector for BoundDetector {
+  fn is_available(&self, _now_ms: u64) -> bool {
+    !self.monitoring || self.bound == always_available_node()
+  }
+
+  fn is_monitoring(&self) -> bool {
+    self.monitoring
+  }
+
+  fn heartbeat(&mut self, _now_ms: u64) {
+    self.monitoring = true;
+  }
+}
+
+type BoundRegistry = DefaultFailureDetectorRegistry<Address, BoundDetector, fn(&Address) -> BoundDetector>;
+
+fn bound_registry() -> BoundRegistry {
+  DefaultFailureDetectorRegistry::new(BoundDetector::new)
+}
+
+fn always_available_node() -> Address {
+  Address::new("remote-sys", "10.0.0.2", 2552)
+}
+
+fn unavailable_node() -> Address {
+  Address::new("remote-sys", "10.0.0.1", 2552)
+}
+
+#[test]
+fn should_return_available_for_unregistered_resource() {
+  // Given
+  let registry = bound_registry();
+  let resource = unavailable_node();
+
+  // When
+  let available = registry.is_available(&resource, 100);
+
+  // Then
+  assert!(available);
+  assert!(!registry.is_monitoring(&resource));
+}
+
+#[test]
+fn should_create_resource_bound_detector_on_first_heartbeat() {
+  // Given
+  let mut registry = bound_registry();
+  let available_resource = always_available_node();
+  let unavailable_resource = unavailable_node();
+
+  // When
+  registry.heartbeat(&available_resource, 0);
+  registry.heartbeat(&unavailable_resource, 0);
+
+  // Then
+  assert!(registry.is_monitoring(&available_resource));
+  assert!(registry.is_monitoring(&unavailable_resource));
+  assert!(registry.is_available(&available_resource, 1));
+  assert!(!registry.is_available(&unavailable_resource, 1));
+}
+
+#[test]
+fn should_remove_resource_state() {
+  // Given
+  let mut registry = bound_registry();
+  let resource = unavailable_node();
+  registry.heartbeat(&resource, 0);
+
+  // When
+  registry.remove(&resource);
+
+  // Then
+  assert!(!registry.is_monitoring(&resource));
+  assert!(registry.is_available(&resource, 100));
+}
+
+#[test]
+fn should_reset_all_resource_state() {
+  // Given
+  let mut registry = bound_registry();
+  let available_resource = always_available_node();
+  let unavailable_resource = unavailable_node();
+  registry.heartbeat(&available_resource, 0);
+  registry.heartbeat(&unavailable_resource, 0);
+
+  // When
+  registry.reset();
+
+  // Then
+  assert!(!registry.is_monitoring(&available_resource));
+  assert!(!registry.is_monitoring(&unavailable_resource));
+  assert!(registry.is_available(&unavailable_resource, 100));
 }

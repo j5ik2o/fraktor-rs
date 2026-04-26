@@ -14,7 +14,7 @@ use fraktor_remote_core_rs::core::{
   association::QuarantineReason,
   envelope::OutboundEnvelope,
   transport::{RemoteTransport, TransportError},
-  wire::EnvelopePdu,
+  wire::{EnvelopePdu, HandshakePdu},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
@@ -110,26 +110,21 @@ impl TcpRemoteTransport {
     Ok(())
   }
 
-  /// Asynchronously starts the transport. Call this from within a tokio
-  /// runtime to bind the listener and spawn the accept loop.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::AlreadyRunning`] if the transport is already
-  /// running, or a bind failure from the underlying listener.
-  pub async fn start_async(&mut self) -> Result<(), TransportError> {
-    if self.running {
-      return Err(TransportError::AlreadyRunning);
-    }
-    self.server.start(self.inbound_tx.clone()).await?;
-    self.running = true;
-    Ok(())
-  }
-
   /// Returns an immutable reference to the client registry.
   #[must_use]
   pub fn clients(&self) -> &BTreeMap<String, TcpClient> {
     &self.clients
+  }
+
+  fn apply_bound_port_to_advertised_addresses(&mut self, bound_port: u16) {
+    self.local_addresses = self
+      .local_addresses
+      .iter()
+      .map(|address| {
+        if address.port() == 0 { Address::new(address.system(), address.host(), bound_port) } else { address.clone() }
+      })
+      .collect();
+    self.default_address = self.local_addresses.first().cloned();
   }
 
   fn peer_key_for_address(address: &Address) -> String {
@@ -139,18 +134,32 @@ impl TcpRemoteTransport {
   fn peer_key_for_remote_node(node: &RemoteNodeId) -> String {
     alloc::format!("{}:{}", node.host(), node.port().unwrap_or(0))
   }
+
+  /// Sends a handshake PDU to an already connected peer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
+  /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
+  pub fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    let peer_key = Self::peer_key_for_address(remote);
+    let Some(client) = self.clients.get(&peer_key) else {
+      return Err(TransportError::ConnectionClosed);
+    };
+    client.send(WireFrame::Handshake(pdu))
+  }
 }
 
 impl RemoteTransport for TcpRemoteTransport {
   fn start(&mut self) -> Result<(), TransportError> {
-    // The trait contract is synchronous — we cannot bind a TCP listener
-    // without an async runtime, so callers are expected to use
-    // [`Self::start_async`] instead. We still gate the state flag here so
-    // that higher-level lifecycle code works correctly when it does not
-    // need the listener (e.g. tests with stub clients).
     if self.running {
       return Err(TransportError::AlreadyRunning);
     }
+    let bound_addr = self.server.start(self.inbound_tx.clone())?;
+    self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;
     Ok(())
   }

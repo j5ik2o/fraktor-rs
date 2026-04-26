@@ -20,6 +20,8 @@
 //!   `Association::handshake_timed_out` when the deadline expires.
 //! - [`system_message_delivery::SystemMessageDeliveryState`] holds the per-association ack-based
 //!   redelivery bookkeeping (sequence number, pending window, retransmit deadline).
+//! - [`reconnect_backoff_policy::ReconnectBackoffPolicy`] carries the resolved outbound restart
+//!   budget and timing settings used after transient send failures.
 
 #[cfg(test)]
 mod tests;
@@ -30,6 +32,7 @@ mod effect_application;
 mod handshake_driver;
 mod inbound_dispatch;
 mod outbound_loop;
+mod reconnect_backoff_policy;
 mod system_message_delivery;
 
 pub use association_registry::AssociationRegistry;
@@ -37,5 +40,6 @@ pub use association_shared::AssociationShared;
 pub(crate) use effect_application::apply_effects_in_place;
 pub use handshake_driver::HandshakeDriver;
 pub use inbound_dispatch::run_inbound_dispatch;
-pub use outbound_loop::run_outbound_loop;
+pub use outbound_loop::{run_outbound_loop, run_outbound_loop_with_reconnect};
+pub use reconnect_backoff_policy::ReconnectBackoffPolicy;
 pub use system_message_delivery::SystemMessageDeliveryState;

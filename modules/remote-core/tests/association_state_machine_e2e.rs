@@ -18,6 +18,7 @@ use fraktor_remote_core_rs::core::{
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{BackpressureSignal, TransportEndpoint},
+  wire::HandshakeRsp,
 };
 
 fn local_address() -> UniqueAddress {
@@ -30,6 +31,10 @@ fn remote_address() -> Address {
 
 fn remote_node() -> RemoteNodeId {
   RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 7)
+}
+
+fn remote_unique_address() -> UniqueAddress {
+  UniqueAddress::new(remote_address(), 7)
 }
 
 fn user_envelope(payload: &str) -> OutboundEnvelope {
@@ -73,7 +78,9 @@ fn full_lifecycle_associate_handshake_send_quarantine_recover() {
   assert_eq!(association.deferred_len(), 2);
 
   // Complete the handshake → Active.
-  let effects = association.handshake_accepted(remote_node(), 200);
+  let response = HandshakeRsp::new(remote_unique_address());
+  let effects =
+    association.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
   let send_effect = effects.iter().find(|effect| matches!(effect, AssociationEffect::SendEnvelopes { .. }));
   assert!(send_effect.is_some(), "deferred queue should flush as SendEnvelopes");
   if let Some(AssociationEffect::SendEnvelopes { envelopes }) = send_effect {

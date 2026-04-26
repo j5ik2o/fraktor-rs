@@ -1,13 +1,14 @@
 use core::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use fraktor_remote_core_rs::core::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError};
-use tokio::net::TcpListener;
-use tokio_util::codec::{Decoder, Encoder, Framed};
-
-use crate::std::tcp_transport::{
-  frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, wire_frame::WireFrame,
+use fraktor_remote_core_rs::core::{
+  address::{Address, UniqueAddress},
+  transport::{RemoteTransport, TransportError},
+  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
 };
+use tokio_util::codec::{Decoder, Encoder};
+
+use crate::std::tcp_transport::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
 
 #[test]
 fn wire_frame_codec_roundtrips_envelope() {
@@ -25,7 +26,9 @@ fn wire_frame_codec_roundtrips_envelope() {
 
 #[test]
 fn wire_frame_codec_roundtrips_handshake() {
-  let pdu = HandshakePdu::Req(HandshakeReq::new("sys".into(), "host".into(), 1234, 7));
+  let from = UniqueAddress::new(Address::new("sys", "host", 1234), 7);
+  let to = Address::new("local-sys", "127.0.0.1", 2551);
+  let pdu = HandshakePdu::Req(HandshakeReq::new(from, to));
   let frame = WireFrame::Handshake(pdu.clone());
 
   let mut codec = WireFrameCodec::new();
@@ -123,6 +126,80 @@ fn wire_frame_codec_rejects_declared_frame_length_smaller_than_header() {
   assert_eq!(buf.len(), 6, "invalid header must not partially consume the buffer");
 }
 
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_start_binds_listener_and_receives_frame() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{TcpClient, TcpRemoteTransport};
+
+  // Given
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]);
+  let mut inbound_rx = transport.take_inbound_receiver().expect("inbound receiver should be available");
+
+  // When
+  transport.start().expect("start should bind listener");
+  let bound_address = transport.default_address().expect("default address should be available").clone();
+  assert_ne!(bound_address.port(), 0, "port 0 should be replaced by the actual bound port");
+
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let mut client =
+    TcpClient::connect(alloc::format!("{}:{}", bound_address.host(), bound_address.port()), client_inbound_tx)
+      .await
+      .expect("client should connect to started transport");
+  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
+  client.send(WireFrame::Envelope(pdu.clone())).expect("client send should succeed");
+
+  // Then
+  let event = tokio::time::timeout(Duration::from_secs(5), inbound_rx.recv())
+    .await
+    .expect("frame should arrive before timeout")
+    .expect("inbound frame should exist");
+  assert_eq!(event.frame, WireFrame::Envelope(pdu));
+
+  client.shutdown();
+  transport.shutdown().expect("shutdown should stop started transport");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_start_rewrites_port_zero_advertised_addresses() {
+  use crate::std::tcp_transport::TcpRemoteTransport;
+
+  // Given
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]);
+
+  // When
+  transport.start().expect("start should bind listener");
+
+  // Then
+  let addresses = transport.addresses();
+  assert_eq!(addresses.len(), 1);
+  assert_ne!(addresses[0].port(), 0);
+  assert_eq!(transport.default_address().expect("default address").port(), addresses[0].port());
+
+  transport.shutdown().expect("shutdown should stop started transport");
+}
+
+#[test]
+fn remote_transport_start_without_tokio_runtime_returns_not_available() {
+  use crate::std::tcp_transport::TcpRemoteTransport;
+
+  // Given
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]);
+
+  // When
+  let error = transport.start().expect_err("start without a tokio runtime should fail");
+
+  // Then
+  assert_eq!(error, TransportError::NotAvailable);
+  assert_eq!(
+    transport.shutdown().expect_err("failed start must not mark transport running"),
+    TransportError::NotStarted
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 2-node echo integration test
 // ---------------------------------------------------------------------------
@@ -133,42 +210,54 @@ async fn tcp_server_and_client_exchange_a_frame() {
 
   use crate::std::tcp_transport::{client::TcpClient, server::TcpServer};
 
-  // Start the server.
   let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
   let mut server = TcpServer::new("127.0.0.1:0".into());
-  // Bind to a system-assigned port first to learn the port number.
-  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let bind_addr = listener.local_addr().unwrap();
-  // Manually spawn an accept loop mirroring TcpServer semantics to avoid
-  // re-binding.
-  let accept_tx = server_inbound_tx.clone();
-  let accept_task = tokio::spawn(async move {
-    let (stream, peer) = listener.accept().await.unwrap();
-    let peer_addr = peer.to_string();
-    let inbound_tx = accept_tx;
-    let mut framed = Framed::new(stream, WireFrameCodec::new());
-    use futures::StreamExt;
-    if let Some(Ok(frame)) = framed.next().await {
-      inbound_tx.send(InboundFrameEvent { peer: peer_addr, frame }).unwrap();
-    }
-  });
-  // Quiet the unused-variable warnings for the placeholder server handle.
-  let _ = &mut server;
+  let bind_addr = server.start(server_inbound_tx).expect("server should bind to a system-assigned port");
 
-  // Connect a client.
   let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
   let client = TcpClient::connect(bind_addr.to_string(), client_inbound_tx).await.unwrap();
 
-  // Send a frame.
   let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).unwrap();
 
-  // Wait for the frame to land on the server side.
   let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
     .await
     .unwrap()
     .expect("server inbound frame");
   assert_eq!(event.frame, WireFrame::Envelope(pdu));
 
-  accept_task.await.unwrap();
+  server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_send_handshake_writes_handshake_frame_to_connected_peer() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{TcpRemoteTransport, server::TcpServer};
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = TcpServer::new("127.0.0.1:0".into());
+  let bind_addr = server.start(server_inbound_tx).expect("server should bind to a system-assigned port");
+
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  transport.start().expect("transport should start before connecting a peer");
+
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+  transport
+    .connect_peer(alloc::format!("{}:{}", remote.host(), remote.port()))
+    .await
+    .expect("transport should connect to peer before sending handshake");
+
+  let from = UniqueAddress::new(transport.default_address().expect("default local address").clone(), 1);
+  let pdu = HandshakePdu::Req(HandshakeReq::new(from, remote.clone()));
+  transport.send_handshake(&remote, pdu.clone()).expect("handshake send should be enqueued");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
+    .await
+    .expect("handshake should arrive before timeout")
+    .expect("server inbound frame");
+  assert_eq!(event.frame, WireFrame::Handshake(pdu));
+
+  transport.shutdown().expect("transport shutdown should succeed");
+  server.shutdown();
 }

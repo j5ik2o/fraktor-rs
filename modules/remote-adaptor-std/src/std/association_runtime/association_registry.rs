@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use fraktor_remote_core_rs::core::address::UniqueAddress;
+use fraktor_remote_core_rs::core::address::{Address, UniqueAddress};
 
 use crate::std::association_runtime::association_shared::AssociationShared;
 
@@ -52,6 +52,12 @@ impl AssociationRegistry {
   #[must_use]
   pub fn get(&self, address: &UniqueAddress) -> Option<&AssociationShared> {
     self.entries.get(address)
+  }
+
+  /// Returns the entry whose unique address wraps `address`, if present.
+  #[must_use]
+  pub fn get_by_remote_address(&self, address: &Address) -> Option<&AssociationShared> {
+    self.entries.iter().find_map(|(remote, shared)| (remote.address() == address).then_some(shared))
   }
 
   /// Iterates over every `(address, shared)` pair in the registry.

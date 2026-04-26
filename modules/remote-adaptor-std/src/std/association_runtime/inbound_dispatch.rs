@@ -2,63 +2,44 @@
 //! `Association`.
 
 use fraktor_remote_core_rs::core::{
-  address::RemoteNodeId, association::Association, extension::EventPublisher, wire::HandshakePdu,
+  address::{Address, UniqueAddress},
+  extension::EventPublisher,
+  transport::TransportError,
+  wire::{HandshakePdu, HandshakeReq, HandshakeRsp},
 };
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::std::{
-  association_runtime::{apply_effects_in_place, association_shared::AssociationShared},
+  association_runtime::{apply_effects_in_place, association_registry::AssociationRegistry},
   tcp_transport::{InboundFrameEvent, WireFrame},
 };
 
 /// Reads inbound frames from the TCP transport's inbound channel and
 /// dispatches them into the matching `Association`.
-///
-/// This Phase B minimum-viable implementation maps every inbound frame to
-/// the single `target` `AssociationShared` passed in. Section 21's provider
-/// dispatch and Section 22's `StdRemoting` will replace this with a per-peer
-/// lookup once the full peer registry is wired up.
-///
-/// The function returns when:
-///
-/// - `inbound_rx` is closed by the transport, or
-/// - `now_ms_provider` returns a value indicating the runtime is shutting down (currently never).
 pub async fn run_inbound_dispatch(
   mut inbound_rx: UnboundedReceiver<InboundFrameEvent>,
-  target: AssociationShared,
+  registry: AssociationRegistry,
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
   event_publisher: EventPublisher,
+  local: UniqueAddress,
+  mut send_handshake_response: impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError> + Send + 'static,
 ) {
   while let Some(event) = inbound_rx.recv().await {
     match event.frame {
       | WireFrame::Handshake(pdu) => {
         let now = now_ms_provider();
-        let remote_node = remote_node_from_handshake_pdu(&pdu);
-        target.with_write(|assoc| {
-          if !remote_node_matches_association(&remote_node, assoc) {
-            tracing::warn!(
-              peer = %event.peer,
-              expected = %assoc.remote(),
-              origin_system = %remote_node.system(),
-              origin_host = %remote_node.host(),
-              origin_port = ?remote_node.port(),
-              "discarding handshake frame for a different association",
-            );
-            return;
-          }
-          let effects = assoc.handshake_accepted(remote_node, now);
-          // The state is now Active. apply_effects_in_place re-enqueues any
-          // deferred envelopes through `assoc.enqueue` so the outbound loop
-          // drains them and publishes the lifecycle event. Discarding
-          // `effects` here would silently lose every message buffered during
-          // the handshake.
-          apply_effects_in_place(assoc, effects, &event_publisher);
-        });
+        dispatch_handshake_pdu(
+          &event.peer,
+          &pdu,
+          &registry,
+          now,
+          &event_publisher,
+          &local,
+          &mut send_handshake_response,
+        );
       },
       | WireFrame::Envelope(_pdu) => {
-        // Phase B minimum: the envelope is observed but not delivered to a
-        // local actor — that wiring belongs in Section 22 once the
-        // `StdRemoteActorRefProvider` is in place.
+        // Local actor delivery is a separate provider integration contract.
         tracing::debug!(peer = %event.peer, "inbound envelope frame received");
       },
       | WireFrame::Control(_pdu) => {
@@ -71,22 +52,75 @@ pub async fn run_inbound_dispatch(
   }
 }
 
-fn remote_node_matches_association(remote_node: &RemoteNodeId, assoc: &Association) -> bool {
-  let remote = assoc.remote();
-  // UID is intentionally not compared here; Association is keyed by Address, and RemoteNodeId UID
-  // validation belongs to a later identity/quarantine phase after remote_node_from_handshake_pdu.
-  remote_node.system() == remote.system()
-    && remote_node.host() == remote.host()
-    && remote_node.port() == Some(remote.port())
-}
-
-fn remote_node_from_handshake_pdu(pdu: &HandshakePdu) -> RemoteNodeId {
+fn dispatch_handshake_pdu(
+  peer: &str,
+  pdu: &HandshakePdu,
+  registry: &AssociationRegistry,
+  now_ms: u64,
+  event_publisher: &EventPublisher,
+  local: &UniqueAddress,
+  send_handshake_response: &mut impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError>,
+) {
   match pdu {
     | HandshakePdu::Req(req) => {
-      RemoteNodeId::new(req.origin_system(), req.origin_host(), Some(req.origin_port()), req.origin_uid())
+      dispatch_handshake_request(peer, req, registry, now_ms, event_publisher, local, send_handshake_response);
     },
-    | HandshakePdu::Rsp(rsp) => {
-      RemoteNodeId::new(rsp.origin_system(), rsp.origin_host(), Some(rsp.origin_port()), rsp.origin_uid())
-    },
+    | HandshakePdu::Rsp(rsp) => dispatch_handshake_response(peer, rsp, registry, now_ms, event_publisher),
   }
+}
+
+fn dispatch_handshake_request(
+  peer: &str,
+  req: &HandshakeReq,
+  registry: &AssociationRegistry,
+  now_ms: u64,
+  event_publisher: &EventPublisher,
+  local: &UniqueAddress,
+  send_handshake_response: &mut impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError>,
+) {
+  let remote_address = req.from().address();
+  let Some(target) = registry.get_by_remote_address(remote_address).cloned() else {
+    tracing::warn!(
+      peer = %peer,
+      origin = %remote_address,
+      "discarding handshake request for an unregistered association",
+    );
+    return;
+  };
+  target.with_write(|assoc| match assoc.accept_handshake_request(req, now_ms) {
+    | Ok(effects) => {
+      apply_effects_in_place(assoc, effects, event_publisher);
+      let response = HandshakePdu::Rsp(HandshakeRsp::new(local.clone()));
+      if let Err(err) = send_handshake_response(remote_address, response) {
+        tracing::warn!(peer = %peer, origin = %remote_address, ?err, "handshake response send failed");
+      }
+    },
+    | Err(err) => {
+      tracing::warn!(peer = %peer, ?err, "discarding invalid handshake request");
+    },
+  });
+}
+
+fn dispatch_handshake_response(
+  peer: &str,
+  rsp: &HandshakeRsp,
+  registry: &AssociationRegistry,
+  now_ms: u64,
+  event_publisher: &EventPublisher,
+) {
+  let remote_address = rsp.from().address();
+  let Some(target) = registry.get_by_remote_address(remote_address).cloned() else {
+    tracing::warn!(
+      peer = %peer,
+      origin = %remote_address,
+      "discarding handshake response for an unregistered association",
+    );
+    return;
+  };
+  target.with_write(|assoc| match assoc.accept_handshake_response(rsp, now_ms) {
+    | Ok(effects) => apply_effects_in_place(assoc, effects, event_publisher),
+    | Err(err) => {
+      tracing::warn!(peer = %peer, ?err, "discarding invalid handshake response");
+    },
+  });
 }

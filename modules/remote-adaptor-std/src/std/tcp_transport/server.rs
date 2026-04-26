@@ -2,11 +2,13 @@
 
 use alloc::string::String;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
+use std::net::{SocketAddr, TcpListener as StdTcpListener};
 
 use fraktor_remote_core_rs::core::transport::TransportError;
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::{TcpListener, TcpStream},
+  runtime::Handle,
   sync::mpsc::UnboundedSender,
   task::JoinHandle,
 };
@@ -53,13 +55,18 @@ impl TcpServer {
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::SendFailed`] if the listener cannot be bound.
-  pub async fn start(&mut self, inbound_tx: UnboundedSender<InboundFrameEvent>) -> Result<(), TransportError> {
+  /// Returns [`TransportError::NotAvailable`] if no Tokio runtime is available,
+  /// or [`TransportError::SendFailed`] if the listener cannot be bound.
+  pub fn start(&mut self, inbound_tx: UnboundedSender<InboundFrameEvent>) -> Result<SocketAddr, TransportError> {
     if self.accept_task.is_some() {
       return Err(TransportError::AlreadyRunning);
     }
-    let listener = TcpListener::bind(&self.bind_addr).await.map_err(|_| TransportError::SendFailed)?;
-    let task = tokio::spawn(async move {
+    let handle = Handle::try_current().map_err(|_| TransportError::NotAvailable)?;
+    let listener = StdTcpListener::bind(&self.bind_addr).map_err(|_| TransportError::SendFailed)?;
+    let bound_addr = listener.local_addr().map_err(|_| TransportError::SendFailed)?;
+    listener.set_nonblocking(true).map_err(|_| TransportError::SendFailed)?;
+    let listener = TcpListener::from_std(listener).map_err(|_| TransportError::SendFailed)?;
+    let task = handle.spawn(async move {
       loop {
         match listener.accept().await {
           | Ok((stream, peer)) => {
@@ -75,7 +82,7 @@ impl TcpServer {
       }
     });
     self.accept_task = Some(task);
-    Ok(())
+    Ok(bound_addr)
   }
 
   /// Stops the accept loop task, aborting any in-flight accept.
