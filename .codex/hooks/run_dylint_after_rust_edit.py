@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -171,9 +172,14 @@ def build_ci_environment() -> dict[str, str]:
 def wait_for_lock_release(lock_path: Path, label: str) -> None:
     deadline = time.monotonic() + LOCK_WAIT_TIMEOUT_SEC
     while True:
-        pid = read_lock_pid(lock_path)
-        if pid is None:
+        exists, pid = read_lock_pid(lock_path)
+        if not exists:
             return
+        if pid is None:
+            if time.monotonic() >= deadline:
+                raise HookFailure(f"{label} のロック情報が解決できないままタイムアウトしました。")
+            time.sleep(LOCK_POLL_INTERVAL_SEC)
+            continue
         if not process_exists(pid):
             remove_stale_lock(lock_path)
             return
@@ -191,48 +197,56 @@ class FileLock:
     def __enter__(self) -> "FileLock":
         deadline = time.monotonic() + LOCK_WAIT_TIMEOUT_SEC
         while True:
+            fd = os.open(
+                self.lock_path,
+                os.O_RDWR | os.O_CREAT,
+                0o600,
+            )
             try:
-                self.fd = os.open(
-                    self.lock_path,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                    0o600,
-                )
-                os.write(self.fd, f"{os.getpid()}\n".encode("utf-8"))
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                write_lock_pid(fd)
+                self.fd = fd
                 return self
-            except FileExistsError:
-                pid = read_lock_pid(self.lock_path)
-                if pid is None or not process_exists(pid):
-                    remove_stale_lock(self.lock_path)
-                    continue
+            except BlockingIOError:
+                os.close(fd)
                 if time.monotonic() >= deadline:
                     raise HookFailure(f"{self.label} の待機がタイムアウトしました。")
                 time.sleep(LOCK_POLL_INTERVAL_SEC)
+            except OSError:
+                os.close(fd)
+                raise
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         if self.fd is not None:
-            os.close(self.fd)
-        try:
-            self.lock_path.unlink()
-        except FileNotFoundError:
-            pass
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self.fd)
 
 
-def read_lock_pid(lock_path: Path) -> int | None:
+def write_lock_pid(fd: int) -> None:
+    os.ftruncate(fd, 0)
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.write(fd, f"{os.getpid()}\n".encode("utf-8"))
+    os.fsync(fd)
+
+
+def read_lock_pid(lock_path: Path) -> tuple[bool, int | None]:
     if not lock_path.exists():
-        return None
+        return False, None
 
     try:
         pid_text = lock_path.read_text(encoding="utf-8").strip()
     except OSError:
-        return None
+        return True, None
 
     if not pid_text:
-        return None
+        return True, None
 
     try:
-        return int(pid_text)
+        return True, int(pid_text)
     except ValueError:
-        return None
+        return True, None
 
 
 def process_exists(pid: int) -> bool:
