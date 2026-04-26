@@ -1,0 +1,11 @@
+# PR の追加変更行は引き続き厳格に見る一方で、
+# project 全体の 0.01% 程度の微小低下では PR を落とさない。
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0.02
+    patch:
+      default:
+        target: 100%
