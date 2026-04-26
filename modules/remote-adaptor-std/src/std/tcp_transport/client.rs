@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_remote_core_rs::core::transport::TransportError;
+use fraktor_remote_core_rs::domain::transport::TransportError;
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::TcpStream,
@@ -19,7 +19,7 @@ use crate::std::tcp_transport::{
 /// Single outbound TCP connection towards a remote authority.
 ///
 /// Owns a writer channel used by the synchronous
-/// `fraktor_remote_core_rs::core::transport::RemoteTransport::send` entry point,
+/// `fraktor_remote_core_rs::domain::transport::RemoteTransport::send` entry point,
 /// and a background tokio task that drains the channel and writes frames to
 /// the socket. The same task also reads inbound frames and forwards them to
 /// the shared inbound channel owned by the transport.

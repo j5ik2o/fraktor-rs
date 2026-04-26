@@ -2,7 +2,7 @@
 //! dispatch demanded by design Decision 3-C.
 //!
 //! `remote-core` ships a **remote-only**
-//! [`fraktor_remote_core_rs::core::provider::RemoteActorRefProvider`]: it never resolves a local
+//! [`fraktor_remote_core_rs::domain::provider::RemoteActorRefProvider`]: it never resolves a local
 //! `ActorPath`. The adapter installs [`dispatch::StdRemoteActorRefProvider`] in front of it,
 //! inspects every incoming `ActorPath`, and forwards local-bound traffic to actor-core's
 //! `LocalActorRefProvider` while passing remote-bound traffic to the core

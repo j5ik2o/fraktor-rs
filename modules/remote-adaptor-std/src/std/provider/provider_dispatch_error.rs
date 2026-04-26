@@ -4,7 +4,7 @@ use core::fmt::{Display, Formatter, Result as FmtResult};
 use std::error::Error;
 
 use fraktor_actor_core_rs::core::kernel::actor::error::ActorError;
-use fraktor_remote_core_rs::core::provider::ProviderError;
+use fraktor_remote_core_rs::domain::provider::ProviderError;
 
 /// Errors produced by [`crate::std::provider::StdRemoteActorRefProvider`].
 ///

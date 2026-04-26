@@ -1,7 +1,7 @@
 //! `StdRemoting` aggregate implementing the core `Remoting` trait.
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::domain::{
   address::Address,
   association::QuarantineReason,
   extension::{EventPublisher, Remoting, RemotingError, RemotingLifecycleState},

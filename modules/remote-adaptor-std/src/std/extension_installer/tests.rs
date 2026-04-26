@@ -3,21 +3,17 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
   system::ActorSystemBuildError,
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::domain::{
   address::Address,
   association::QuarantineReason,
   extension::{Remoting, RemotingError},
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
-#[path = "../test_support.rs"]
-mod test_support;
-
-use test_support::EventHarness;
-
 use crate::std::{
   extension_installer::{base::StdRemoting, remoting_extension_installer::RemotingExtensionInstaller},
   tcp_transport::TcpRemoteTransport,
+  tests::test_support::EventHarness,
 };
 
 fn make_transport() -> SharedLock<TcpRemoteTransport> {
@@ -115,17 +111,18 @@ fn std_remoting_start_publishes_listen_started_for_each_advertised_address() {
 
   remoting.start().expect("start should publish listen events");
 
-  let events = harness.events();
-  let mut authorities = listen_started_authorities(&events);
-  authorities.sort();
-  assert_eq!(authorities, vec![String::from("local-sys@127.0.0.1:2551"), String::from("local-sys@127.0.0.2:2552")]);
-  assert!(events.iter().any(|event| matches!(
-    event,
-    EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted {
-      correlation_id,
-      ..
-    }) if *correlation_id == CorrelationId::nil()
-  )));
+  harness.events_with(|events| {
+    let mut authorities = listen_started_authorities(events);
+    authorities.sort();
+    assert_eq!(authorities, vec![String::from("local-sys@127.0.0.1:2551"), String::from("local-sys@127.0.0.2:2552")]);
+    assert!(events.iter().any(|event| matches!(
+      event,
+      EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted {
+        correlation_id,
+        ..
+      }) if *correlation_id == CorrelationId::nil()
+    )));
+  });
 }
 
 #[test]

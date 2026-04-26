@@ -10,7 +10,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   actor_ref::ActorRef,
   actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::domain::{
   address::UniqueAddress,
   provider::{RemoteActorRefProvider, resolve_remote_address},
 };
@@ -71,7 +71,7 @@ impl StdRemoteActorRefProvider {
   ///
   /// - the local provider rejects the path (`LocalProvider`),
   /// - the core remote provider rejects the path (`CoreProvider`), or
-  /// - the resolved [`fraktor_remote_core_rs::core::provider::RemoteActorRef`] cannot be wrapped
+  /// - the resolved [`fraktor_remote_core_rs::domain::provider::RemoteActorRef`] cannot be wrapped
   ///   into an `ActorRef` (`RemoteSenderBuildFailed`).
   ///
   /// # Panics

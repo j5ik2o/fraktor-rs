@@ -1,6 +1,6 @@
 //! Unified on-the-wire frame used by the adapter layer.
 
-use fraktor_remote_core_rs::core::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu};
+use fraktor_remote_core_rs::domain::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu};
 
 /// Unified wire frame multiplexing every PDU kind over a single tokio `Framed`
 /// stream.

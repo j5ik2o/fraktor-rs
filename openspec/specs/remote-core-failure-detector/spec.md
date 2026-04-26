@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: PhiAccrualFailureDetector 型
 
-`fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector` 型が定義され、Phi Accrual algorithm に基づく failure detector を実装する SHALL。Pekko `PhiAccrualFailureDetector` (Scala, 295行) に対応する。
+`fraktor_remote_core_rs::domain::failure_detector::PhiAccrualFailureDetector` 型が定義され、Phi Accrual algorithm に基づく failure detector を実装する SHALL。Pekko `PhiAccrualFailureDetector` (Scala, 295行) に対応する。
 
 #### Scenario: 型の存在
 

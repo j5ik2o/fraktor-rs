@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::domain::failure_detector::PhiAccrualFailureDetector;
 use fraktor_utils_core_rs::core::time::TimerInstant;
 
 use super::MembershipCoordinator;

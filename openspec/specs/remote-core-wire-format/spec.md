@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: 独自 binary wire format の採用
 
-`fraktor_remote_core_rs::core::wire` モジュールは独自 binary format による wire encoding/decoding を実装し、`prost`/`protobuf` 系の依存を持たない SHALL。
+`fraktor_remote_core_rs::domain::wire` モジュールは独自 binary format による wire encoding/decoding を実装し、`prost`/`protobuf` 系の依存を持たない SHALL。
 
 #### Scenario: prost 非依存
 
@@ -19,7 +19,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: Codec trait の存在
 
-`fraktor_remote_core_rs::core::wire::Codec` trait が定義され、PDU 種別の encode/decode を抽象化する SHALL。これにより将来 L2 (Pekko Artery TCP wire 互換) codec を実装差し替えで追加可能となる。
+`fraktor_remote_core_rs::domain::wire::Codec` trait が定義され、PDU 種別の encode/decode を抽象化する SHALL。これにより将来 L2 (Pekko Artery TCP wire 互換) codec を実装差し替えで追加可能となる。
 
 #### Scenario: Codec trait の存在
 
@@ -38,7 +38,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: PDU 種別の網羅
 
-`fraktor_remote_core_rs::core::wire` は以下の PDU (Protocol Data Unit) を encode/decode する SHALL: `EnvelopePdu` (メッセージエンベロープ)、`HandshakePdu` (handshake req/rsp)、`ControlPdu` (制御メッセージ)、`AckPdu` (ack/nack)。
+`fraktor_remote_core_rs::domain::wire` は以下の PDU (Protocol Data Unit) を encode/decode する SHALL: `EnvelopePdu` (メッセージエンベロープ)、`HandshakePdu` (handshake req/rsp)、`ControlPdu` (制御メッセージ)、`AckPdu` (ack/nack)。
 
 #### Scenario: EnvelopePdu の存在
 
@@ -62,7 +62,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: WireError 型
 
-`fraktor_remote_core_rs::core::wire::WireError` enum が定義され、wire format の encode/decode 失敗カテゴリを網羅する SHALL。
+`fraktor_remote_core_rs::domain::wire::WireError` enum が定義され、wire format の encode/decode 失敗カテゴリを網羅する SHALL。
 
 #### Scenario: WireError の存在
 

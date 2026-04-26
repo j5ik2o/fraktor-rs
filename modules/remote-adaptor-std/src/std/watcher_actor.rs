@@ -1,10 +1,10 @@
 //! Tokio-based actor wrapping the pure
-//! [`fraktor_remote_core_rs::core::watcher::WatcherState`].
+//! [`fraktor_remote_core_rs::domain::watcher::WatcherState`].
 //!
 //! `remote-core` keeps the watcher logic completely actor- and
 //! runtime-independent: it is just a `&mut self` state machine that consumes
-//! [`fraktor_remote_core_rs::core::watcher::WatcherCommand`] and returns
-//! [`fraktor_remote_core_rs::core::watcher::WatcherEffect`] values. This module
+//! [`fraktor_remote_core_rs::domain::watcher::WatcherCommand`] and returns
+//! [`fraktor_remote_core_rs::domain::watcher::WatcherEffect`] values. This module
 //! re-introduces the actor / scheduler concerns (per design Decision 9):
 //!
 //! - [`base::WatcherActor`] owns the `WatcherState`, exposes a

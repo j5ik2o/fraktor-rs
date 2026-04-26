@@ -1,4 +1,4 @@
-//! TCP-based implementation of `fraktor_remote_core_rs::core::transport::RemoteTransport`.
+//! TCP-based implementation of `fraktor_remote_core_rs::domain::transport::RemoteTransport`.
 //!
 //! The module is structured as a thin I/O layer over the pure `remote-core` types:
 //!

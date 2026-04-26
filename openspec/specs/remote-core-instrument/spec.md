@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: RemoteInstrument trait
 
-`fraktor_remote_core_rs::core::instrument::RemoteInstrument` trait が定義され、リモート通信のイベントフックを提供する SHALL。Pekko `RemoteInstrument` (Scala) に対応する。
+`fraktor_remote_core_rs::domain::instrument::RemoteInstrument` trait が定義され、リモート通信のイベントフックを提供する SHALL。Pekko `RemoteInstrument` (Scala) に対応する。
 
 #### Scenario: trait の存在
 
@@ -33,7 +33,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: RemotingFlightRecorder 型
 
-`fraktor_remote_core_rs::core::instrument::RemotingFlightRecorder` 型が定義され、リモート通信イベントの ring buffer ベースの記録を提供する SHALL。Pekko `RemotingFlightRecorder` に対応する。
+`fraktor_remote_core_rs::domain::instrument::RemotingFlightRecorder` 型が定義され、リモート通信イベントの ring buffer ベースの記録を提供する SHALL。Pekko `RemotingFlightRecorder` に対応する。
 
 #### Scenario: 型の存在
 
@@ -85,7 +85,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: FlightRecorderEvent 型
 
-`fraktor_remote_core_rs::core::instrument::FlightRecorderEvent` 型 (enum または trait) が定義され、記録対象のイベント種別 (送信、受信、ハンドシェイク、quarantine、backpressure 等) を表現する SHALL。
+`fraktor_remote_core_rs::domain::instrument::FlightRecorderEvent` 型 (enum または trait) が定義され、記録対象のイベント種別 (送信、受信、ハンドシェイク、quarantine、backpressure 等) を表現する SHALL。
 
 #### Scenario: イベント型の存在
 

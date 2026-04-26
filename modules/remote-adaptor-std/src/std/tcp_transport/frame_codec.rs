@@ -2,7 +2,7 @@
 //! implementations.
 
 use bytes::{Bytes, BytesMut};
-use fraktor_remote_core_rs::core::wire::{
+use fraktor_remote_core_rs::domain::wire::{
   AckCodec, Codec, ControlCodec, EnvelopeCodec, HandshakeCodec, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE,
   KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WireError,
 };

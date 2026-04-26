@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::domain::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},
@@ -19,11 +19,6 @@ use tokio::sync::{
   oneshot::{self, Sender},
 };
 
-#[path = "../test_support.rs"]
-mod test_support;
-
-use test_support::EventHarness;
-
 use crate::std::{
   association_runtime::{
     apply_effects_in_place, association_registry::AssociationRegistry, association_shared::AssociationShared,
@@ -31,6 +26,7 @@ use crate::std::{
     system_message_delivery::SystemMessageDeliveryState,
   },
   tcp_transport::{InboundFrameEvent, WireFrame},
+  tests::test_support::EventHarness,
 };
 
 // ---------------------------------------------------------------------------
@@ -44,11 +40,7 @@ fn sample_association() -> Association {
 }
 
 fn new_event_harness() -> EventHarness {
-  let harness = EventHarness::new();
-  // EventHarness は購読を維持するため ActorSystem を保持する。association_runtime
-  // 側では直接 system を使わないため、test-only module ごとの dead_code 判定を避ける。
-  let _system = harness.system();
-  harness
+  EventHarness::new()
 }
 
 fn has_remoting_lifecycle_event(
@@ -201,14 +193,15 @@ async fn handshake_driver_fires_after_timeout_and_marks_gated() {
   shared.with_write(|assoc| {
     assert!(assoc.state().is_gated(), "handshake driver should have transitioned the association into Gated");
   });
-  let events = harness.events();
-  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
-    event,
-    RemotingLifecycleEvent::Gated {
-      authority,
-      correlation_id
-    } if authority == "remote-sys@10.0.0.1:2552" && *correlation_id == CorrelationId::nil()
-  )));
+  harness.events_with(|events| {
+    assert!(has_remoting_lifecycle_event(events, |event| matches!(
+      event,
+      RemotingLifecycleEvent::Gated {
+        authority,
+        correlation_id
+      } if authority == "remote-sys@10.0.0.1:2552" && *correlation_id == CorrelationId::nil()
+    )));
+  });
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -236,8 +229,9 @@ async fn handshake_driver_cancel_prevents_firing() {
       "cancelled driver must not transition state"
     );
   });
-  let events = harness.events();
-  assert!(!has_remoting_lifecycle_event(&events, |event| matches!(event, RemotingLifecycleEvent::Gated { .. })));
+  harness.events_with(|events| {
+    assert!(!has_remoting_lifecycle_event(events, |event| matches!(event, RemotingLifecycleEvent::Gated { .. })));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -246,7 +240,7 @@ async fn handshake_driver_cancel_prevents_firing() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_drains_active_association() {
-  use fraktor_remote_core_rs::core::transport::{RemoteTransport, TransportError};
+  use fraktor_remote_core_rs::domain::transport::{RemoteTransport, TransportError};
 
   use crate::std::association_runtime::outbound_loop::run_outbound_loop;
 
@@ -386,19 +380,20 @@ fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
   assert!(association.next_outbound().is_some(), "first deferred envelope must be re-enqueued");
   assert!(association.next_outbound().is_some(), "second deferred envelope must be re-enqueued");
   assert!(association.next_outbound().is_none(), "no further envelopes expected");
-  let events = harness.events();
-  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
-    event,
-    RemotingLifecycleEvent::Connected {
-      authority,
-      remote_system,
-      remote_uid,
-      correlation_id
-    } if authority == "remote-sys@10.0.0.1:2552"
-      && remote_system == "remote-sys"
-      && *remote_uid == 1
-      && *correlation_id == CorrelationId::nil()
-  )));
+  harness.events_with(|events| {
+    assert!(has_remoting_lifecycle_event(events, |event| matches!(
+      event,
+      RemotingLifecycleEvent::Connected {
+        authority,
+        remote_system,
+        remote_uid,
+        correlation_id
+      } if authority == "remote-sys@10.0.0.1:2552"
+        && remote_system == "remote-sys"
+        && *remote_uid == 1
+        && *correlation_id == CorrelationId::nil()
+    )));
+  });
 }
 
 #[test]
@@ -419,8 +414,9 @@ fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
   // timeout path で deferred envelope を破棄するため、状態は Gated で send queue は空になる。
   assert!(association.state().is_gated(), "handshake_timed_out should have moved the association to Gated");
   assert!(association.next_outbound().is_none(), "Gated state must not surface envelopes from next_outbound");
-  let events = harness.events();
-  assert!(has_remoting_lifecycle_event(&events, |event| matches!(event, RemotingLifecycleEvent::Gated { .. })));
+  harness.events_with(|events| {
+    assert!(has_remoting_lifecycle_event(events, |event| matches!(event, RemotingLifecycleEvent::Gated { .. })));
+  });
 }
 
 #[test]
@@ -450,17 +446,18 @@ fn apply_effects_in_place_publishes_lifecycle_events_to_event_stream() {
 
   apply_effects_in_place(&mut association, effects, harness.publisher());
 
-  let events = harness.events();
-  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
-    event,
-    RemotingLifecycleEvent::Quarantined {
-      authority,
-      reason,
-      correlation_id
-    } if authority == "remote-sys@10.0.0.1:2552"
-      && reason == "test quarantine"
-      && *correlation_id == CorrelationId::from_u128(99)
-  )));
+  harness.events_with(|events| {
+    assert!(has_remoting_lifecycle_event(events, |event| matches!(
+      event,
+      RemotingLifecycleEvent::Quarantined {
+        authority,
+        reason,
+        correlation_id
+      } if authority == "remote-sys@10.0.0.1:2552"
+        && reason == "test quarantine"
+        && *correlation_id == CorrelationId::from_u128(99)
+    )));
+  });
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -490,19 +487,20 @@ async fn inbound_dispatch_publishes_connected_lifecycle_with_req_origin() {
 
   run_inbound_dispatch(rx, shared, || 200, harness.publisher().clone()).await;
 
-  let events = harness.events();
-  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
-    event,
-    RemotingLifecycleEvent::Connected {
-      authority,
-      remote_system,
-      remote_uid,
-      correlation_id
-    } if authority == "remote-sys@10.0.0.1:2552"
-      && remote_system == "remote-sys"
-      && *remote_uid == 1
-      && *correlation_id == CorrelationId::nil()
-  )));
+  harness.events_with(|events| {
+    assert!(has_remoting_lifecycle_event(events, |event| matches!(
+      event,
+      RemotingLifecycleEvent::Connected {
+        authority,
+        remote_system,
+        remote_uid,
+        correlation_id
+      } if authority == "remote-sys@10.0.0.1:2552"
+        && remote_system == "remote-sys"
+        && *remote_uid == 1
+        && *correlation_id == CorrelationId::nil()
+    )));
+  });
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -536,8 +534,9 @@ async fn inbound_dispatch_discards_handshake_for_different_association() {
   shared_for_assert.with_write(|assoc| {
     assert!(matches!(assoc.state(), AssociationState::Handshaking { .. }));
   });
-  let events = harness.events();
-  assert!(!has_remoting_lifecycle_event(&events, |event| matches!(event, RemotingLifecycleEvent::Connected { .. })));
+  harness.events_with(|events| {
+    assert!(!has_remoting_lifecycle_event(events, |event| matches!(event, RemotingLifecycleEvent::Connected { .. })));
+  });
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -567,17 +566,18 @@ async fn inbound_dispatch_publishes_connected_lifecycle_with_rsp_origin() {
 
   run_inbound_dispatch(rx, shared, || 200, harness.publisher().clone()).await;
 
-  let events = harness.events();
-  assert!(has_remoting_lifecycle_event(&events, |event| matches!(
-    event,
-    RemotingLifecycleEvent::Connected {
-      authority,
-      remote_system,
-      remote_uid,
-      correlation_id
-    } if authority == "remote-sys@10.0.0.1:2552"
-      && remote_system == "remote-sys"
-      && *remote_uid == 1
-      && *correlation_id == CorrelationId::nil()
-  )));
+  harness.events_with(|events| {
+    assert!(has_remoting_lifecycle_event(events, |event| matches!(
+      event,
+      RemotingLifecycleEvent::Connected {
+        authority,
+        remote_system,
+        remote_uid,
+        correlation_id
+      } if authority == "remote-sys@10.0.0.1:2552"
+        && remote_system == "remote-sys"
+        && *remote_uid == 1
+        && *correlation_id == CorrelationId::nil()
+    )));
+  });
 }

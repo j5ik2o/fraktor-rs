@@ -15,6 +15,9 @@
 
 extern crate std;
 
+#[cfg(test)]
+mod tests;
+
 pub mod association_runtime;
 pub mod extension_installer;
 pub mod provider;

@@ -1,6 +1,6 @@
 //! Tokio actor that owns the pure `WatcherState`.
 
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::domain::{
   address::Address,
   failure_detector::PhiAccrualFailureDetector,
   watcher::{WatcherCommand, WatcherEffect, WatcherState},

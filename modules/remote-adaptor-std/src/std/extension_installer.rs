@@ -1,6 +1,6 @@
 //! Extension installer that wires the adapter components into a single
 //! `StdRemoting` aggregate implementing
-//! [`fraktor_remote_core_rs::core::extension::Remoting`].
+//! [`fraktor_remote_core_rs::domain::extension::Remoting`].
 //!
 //! `StdRemoting` is the Phase B counterpart to the legacy
 //! `RemotingControlHandle` god object: it owns the

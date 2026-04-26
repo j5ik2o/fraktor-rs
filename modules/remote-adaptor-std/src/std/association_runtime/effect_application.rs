@@ -8,7 +8,7 @@
 //! deferred-message loss after a successful handshake — this helper is the
 //! single place that the production runtime relies on to avoid that bug.
 
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::domain::{
   association::{Association, AssociationEffect},
   extension::EventPublisher,
 };

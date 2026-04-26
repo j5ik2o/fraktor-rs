@@ -4,7 +4,7 @@
 use core::time::Duration;
 use std::time::Instant;
 
-use fraktor_remote_core_rs::core::extension::EventPublisher;
+use fraktor_remote_core_rs::domain::extension::EventPublisher;
 use tokio::task::JoinHandle;
 
 use crate::std::association_runtime::{apply_effects_in_place, association_shared::AssociationShared};

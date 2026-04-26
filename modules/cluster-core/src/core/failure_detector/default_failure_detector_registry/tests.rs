@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, string::String};
 
-use fraktor_remote_core_rs::core::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::domain::failure_detector::PhiAccrualFailureDetector;
 
 use super::DefaultFailureDetectorRegistry;
 use crate::core::failure_detector::{FailureDetector, FailureDetectorRegistry};

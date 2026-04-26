@@ -101,7 +101,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 #### Scenario: authority あり path での resolve_remote_address の利用
 
 - **WHEN** authority あり path を扱う `StdRemoteActorRefProvider::actor_ref` の実装を検査する
-- **THEN** `fraktor_remote_core_rs::core::provider::resolve_remote_address(&path)` が呼ばれ、結果が `Some(UniqueAddress)` で `self.local_address` と比較される
+- **THEN** `fraktor_remote_core_rs::domain::provider::resolve_remote_address(&path)` が呼ばれ、結果が `Some(UniqueAddress)` で `self.local_address` と比較される
 
 #### Scenario: local path 判定後の入力条件適合
 

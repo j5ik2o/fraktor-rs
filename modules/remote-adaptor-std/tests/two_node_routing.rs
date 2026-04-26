@@ -14,7 +14,7 @@ use bytes::Bytes;
 use fraktor_remote_adaptor_std_rs::std::tcp_transport::{
   InboundFrameEvent, TcpClient, TcpServer, WireFrame, WireFrameCodec,
 };
-use fraktor_remote_core_rs::core::wire::EnvelopePdu;
+use fraktor_remote_core_rs::domain::wire::EnvelopePdu;
 use futures::StreamExt;
 use tokio::{net::TcpListener, sync::mpsc};
 use tokio_util::codec::Framed;
