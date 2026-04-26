@@ -102,8 +102,7 @@ async fn read_loop(stream: TcpStream, peer: String, inbound_tx: UnboundedSender<
       },
     }
   }
-  // Gracefully close the stream when the loop exits.
-  let mut framed = framed;
+  // ループ終了時にストリームを明示的に閉じる。
   if let Err(err) = framed.close().await {
     tracing::debug!(?err, peer = %peer, "tcp server framed close failed during shutdown");
   }

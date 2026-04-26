@@ -2,9 +2,7 @@
 
 use alloc::string::String;
 
-use crate::core::failure_detector::{
-  failure_detector_with_address::FailureDetectorWithAddress, heartbeat_history::HeartbeatHistory,
-};
+use crate::core::failure_detector::heartbeat_history::HeartbeatHistory;
 
 /// Phi Accrual failure detector modelled after Apache Pekko's
 /// `PhiAccrualFailureDetector`.
@@ -36,14 +34,14 @@ use crate::core::failure_detector::{
 /// `Infinity`.
 #[derive(Debug)]
 pub struct PhiAccrualFailureDetector {
-  threshold: f64,
-  max_sample_size: usize,
-  min_std_deviation: u64,
+  threshold:                  f64,
+  max_sample_size:            usize,
+  min_std_deviation:          u64,
   acceptable_heartbeat_pause: u64,
-  first_heartbeat_estimate: u64,
-  history: HeartbeatHistory,
-  last_heartbeat_ms: Option<u64>,
-  pub(crate) monitored_address: Option<String>,
+  first_heartbeat_estimate:   u64,
+  history:                    HeartbeatHistory,
+  last_heartbeat_ms:          Option<u64>,
+  monitored_address:          Option<String>,
 }
 
 impl PhiAccrualFailureDetector {
@@ -85,6 +83,22 @@ impl PhiAccrualFailureDetector {
     }
   }
 
+  /// Creates a detector with its monitored address bound at construction.
+  #[must_use]
+  pub fn with_monitored_address(
+    monitored_address: String,
+    threshold: f64,
+    max_sample_size: usize,
+    min_std_deviation: u64,
+    acceptable_heartbeat_pause: u64,
+    first_heartbeat_estimate: u64,
+  ) -> Self {
+    let mut detector =
+      Self::new(threshold, max_sample_size, min_std_deviation, acceptable_heartbeat_pause, first_heartbeat_estimate);
+    detector.monitored_address = Some(monitored_address);
+    detector
+  }
+
   /// Returns the configured phi threshold.
   #[must_use]
   pub const fn threshold(&self) -> f64 {
@@ -119,6 +133,13 @@ impl PhiAccrualFailureDetector {
   #[must_use]
   pub const fn last_heartbeat_ms(&self) -> Option<u64> {
     self.last_heartbeat_ms
+  }
+
+  /// Returns the monitored address metadata when this detector was created
+  /// for a concrete remote node.
+  #[must_use]
+  pub fn monitored_address(&self) -> Option<&str> {
+    self.monitored_address.as_deref()
   }
 
   /// Records a heartbeat at `now_ms` (monotonic millis).
@@ -185,11 +206,5 @@ impl PhiAccrualFailureDetector {
   #[must_use]
   pub const fn is_monitoring(&self) -> bool {
     self.last_heartbeat_ms.is_some()
-  }
-}
-
-impl FailureDetectorWithAddress for PhiAccrualFailureDetector {
-  fn set_address(&mut self, address: String) {
-    self.monitored_address = Some(address);
   }
 }

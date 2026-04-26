@@ -1,6 +1,7 @@
 //! Tokio actor that owns the pure `WatcherState`.
 
 use fraktor_remote_core_rs::core::{
+  address::Address,
   failure_detector::PhiAccrualFailureDetector,
   watcher::{WatcherCommand, WatcherEffect, WatcherState},
 };
@@ -69,6 +70,6 @@ impl WatcherActor {
   }
 }
 
-fn default_detector_factory() -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(8.0, 200, 100, 0, 1000)
+fn default_detector_factory(address: &Address) -> PhiAccrualFailureDetector {
+  PhiAccrualFailureDetector::with_monitored_address(address.to_string(), 8.0, 200, 100, 0, 1000)
 }

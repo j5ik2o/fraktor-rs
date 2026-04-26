@@ -39,6 +39,16 @@ fn pending_can_shortcut_to_shutdown() {
   assert!(s.is_terminated());
 }
 
+#[test]
+fn start_failure_rolls_back_to_pending() {
+  let mut s = RemotingLifecycleState::new();
+  s.transition_to_start().unwrap();
+  s.mark_start_failed().unwrap();
+  s.transition_to_start().unwrap();
+  s.mark_started().unwrap();
+  assert!(s.is_running());
+}
+
 // ---------------------------------------------------------------------------
 // RemotingLifecycleState — invalid transitions
 // ---------------------------------------------------------------------------
@@ -47,6 +57,12 @@ fn pending_can_shortcut_to_shutdown() {
 fn mark_started_from_pending_is_invalid_transition() {
   let mut s = RemotingLifecycleState::new();
   assert_eq!(s.mark_started().unwrap_err(), RemotingError::InvalidTransition);
+}
+
+#[test]
+fn mark_start_failed_from_pending_is_invalid_transition() {
+  let mut s = RemotingLifecycleState::new();
+  assert_eq!(s.mark_start_failed().unwrap_err(), RemotingError::InvalidTransition);
 }
 
 #[test]

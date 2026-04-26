@@ -43,6 +43,7 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     let event_publisher = EventPublisher::new(system.downgrade());
     let remoting =
       SharedLock::new_with_driver::<DefaultMutex<_>>(StdRemoting::new(self.transport.clone(), None, event_publisher));
+    // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
     self.remoting.set(remoting).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
   }
 }

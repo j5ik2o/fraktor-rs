@@ -47,7 +47,7 @@ fn apply_one(assoc: &mut Association, effect: AssociationEffect, event_publisher
       for envelope in envelopes {
         let recursive = assoc.enqueue(envelope);
         for inner in recursive {
-          log_recursive(inner, event_publisher);
+          apply_recursive_effect(inner, event_publisher);
         }
       }
       tracing::debug!(count, "association re-enqueued deferred envelopes after handshake");
@@ -60,6 +60,7 @@ fn apply_one(assoc: &mut Association, effect: AssociationEffect, event_publisher
       );
     },
     | AssociationEffect::PublishLifecycle(event) => {
+      // tracing は運用観測、event stream は下流購読者向けなので両方へ出力する。
       tracing::info!(?event, "remoting lifecycle event");
       event_publisher.publish_lifecycle(event);
     },
@@ -71,7 +72,7 @@ fn apply_one(assoc: &mut Association, effect: AssociationEffect, event_publisher
   }
 }
 
-fn log_recursive(effect: AssociationEffect, event_publisher: &EventPublisher) {
+fn apply_recursive_effect(effect: AssociationEffect, event_publisher: &EventPublisher) {
   match effect {
     | AssociationEffect::DiscardEnvelopes { reason, envelopes } => {
       tracing::warn!(
@@ -84,6 +85,7 @@ fn log_recursive(effect: AssociationEffect, event_publisher: &EventPublisher) {
       tracing::debug!(count = envelopes.len(), "association produced nested SendEnvelopes during re-enqueue");
     },
     | AssociationEffect::PublishLifecycle(event) => {
+      // tracing は運用観測、event stream は下流購読者向けなので両方へ出力する。
       tracing::info!(?event, "remoting lifecycle event during re-enqueue");
       event_publisher.publish_lifecycle(event);
     },

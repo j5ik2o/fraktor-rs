@@ -1,7 +1,9 @@
 //! Inbound dispatch loop: feeds incoming wire frames into the matching
 //! `Association`.
 
-use fraktor_remote_core_rs::core::{address::RemoteNodeId, extension::EventPublisher, wire::HandshakePdu};
+use fraktor_remote_core_rs::core::{
+  address::RemoteNodeId, association::Association, extension::EventPublisher, wire::HandshakePdu,
+};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::std::{
@@ -33,6 +35,17 @@ pub async fn run_inbound_dispatch(
         let now = now_ms_provider();
         let remote_node = remote_node_from_handshake_pdu(&pdu);
         target.with_write(|assoc| {
+          if !remote_node_matches_association(&remote_node, assoc) {
+            tracing::warn!(
+              peer = %event.peer,
+              expected = %assoc.remote(),
+              origin_system = %remote_node.system(),
+              origin_host = %remote_node.host(),
+              origin_port = ?remote_node.port(),
+              "discarding handshake frame for a different association",
+            );
+            return;
+          }
           let effects = assoc.handshake_accepted(remote_node, now);
           // The state is now Active. apply_effects_in_place re-enqueues any
           // deferred envelopes through `assoc.enqueue` so the outbound loop
@@ -56,6 +69,13 @@ pub async fn run_inbound_dispatch(
       },
     }
   }
+}
+
+fn remote_node_matches_association(remote_node: &RemoteNodeId, assoc: &Association) -> bool {
+  let remote = assoc.remote();
+  remote_node.system() == remote.system()
+    && remote_node.host() == remote.host()
+    && remote_node.port() == Some(remote.port())
 }
 
 fn remote_node_from_handshake_pdu(pdu: &HandshakePdu) -> RemoteNodeId {

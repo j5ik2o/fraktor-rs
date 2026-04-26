@@ -96,15 +96,32 @@ impl StdRemoting {
   pub const fn lifecycle(&self) -> &RemotingLifecycleState {
     &self.lifecycle
   }
+
+  fn publish_listen_started(&self) {
+    for address in &self.advertised_addresses {
+      self.event_publisher.publish_lifecycle(RemotingLifecycleEvent::ListenStarted {
+        authority:      address.to_string(),
+        // Phase 1A では start と listen address の相関管理が未導入のため nil 固定にする。
+        correlation_id: CorrelationId::nil(),
+      });
+    }
+  }
 }
 
 impl Remoting for StdRemoting {
   fn start(&mut self) -> Result<(), RemotingError> {
     self.lifecycle.transition_to_start()?;
-    let advertised_addresses = self.transport.with_lock(|transport| {
+    let advertised_addresses = match self.transport.with_lock(|transport| {
       transport.start().map_err(|_| RemotingError::TransportUnavailable)?;
       Ok(transport.addresses().to_vec())
-    })?;
+    }) {
+      | Ok(addresses) => addresses,
+      | Err(error) => {
+        // transport.start() 失敗後に Starting に残ると再試行も shutdown もできなくなるため戻す。
+        self.lifecycle.mark_start_failed()?;
+        return Err(error);
+      },
+    };
     self.advertised_addresses = advertised_addresses;
     self.lifecycle.mark_started()?;
     self.publish_listen_started();
@@ -114,9 +131,7 @@ impl Remoting for StdRemoting {
   fn shutdown(&mut self) -> Result<(), RemotingError> {
     self.lifecycle.transition_to_shutdown()?;
     self.transport.with_lock(|transport| {
-      // Best-effort shutdown — record any failure as a tracing warning so
-      // the operator can correlate it with the lifecycle transition, but
-      // always reach the `Shutdown` terminal state regardless.
+      // Shutdown は best-effort とし、失敗は遷移と紐付けて観測できるよう警告に残す。
       if let Err(err) = transport.shutdown() {
         tracing::warn!(?err, "transport shutdown failed during StdRemoting::shutdown");
       }
@@ -134,16 +149,5 @@ impl Remoting for StdRemoting {
 
   fn addresses(&self) -> &[Address] {
     &self.advertised_addresses
-  }
-}
-
-impl StdRemoting {
-  fn publish_listen_started(&self) {
-    for address in &self.advertised_addresses {
-      self.event_publisher.publish_lifecycle(RemotingLifecycleEvent::ListenStarted {
-        authority:      address.to_string(),
-        correlation_id: CorrelationId::nil(),
-      });
-    }
   }
 }

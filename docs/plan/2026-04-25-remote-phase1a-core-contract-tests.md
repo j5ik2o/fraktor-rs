@@ -3,14 +3,14 @@
 ## 目的
 
 Pekko remote 互換の Phase 1A として、std runtime 配線を伴わない core/no_std 側の契約を先に固定する。
-対象は `ThrowableNotSerializableException` 相当、`FailureDetectorWithAddress`、`DeadlineFailureDetector`、`RemoteLogMarker` の 4 件とする。
+対象は `ThrowableNotSerializableException` 相当、`PhiAccrualFailureDetector` の監視先 address 束縛、`DeadlineFailureDetector`、`RemoteLogMarker` の 4 件とする。
 
 ## テスト対象
 
 | 項目 | 追加予定の振る舞い | テスト観点 |
 |------|--------------------|------------|
 | `ThrowableNotSerializableException` 相当 | serializer できなかった例外の message と class name を payload として保持する | message / class name の保持、clone / equality |
-| `FailureDetectorWithAddress` | detector に監視先 address を後から設定し、参照できる | 初期状態は address なし、設定後に address を返す |
+| `PhiAccrualFailureDetector` address 対応 | detector 生成時に監視先 address を束縛し、参照できる | 通常生成は address なし、address 付き生成後に address を返す |
 | `DeadlineFailureDetector` | heartbeat の deadline を超えるまで available、超えたら unavailable | 未監視状態、境界直前、境界値、境界超過 |
 | `RemoteLogMarker` | Pekko と同じ marker 名と remote address property を `ActorLogMarker` として返す | marker 名、address property、uid property |
 

@@ -7,12 +7,18 @@ use crate::core::{
   watcher::{WatcherCommand, WatcherEffect},
 };
 
-fn test_factory() -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(5.0, 100, 10, 0, 100)
+fn test_factory(address: &Address) -> PhiAccrualFailureDetector {
+  PhiAccrualFailureDetector::with_monitored_address(address.to_string(), 5.0, 100, 10, 0, 100)
 }
 
 fn new_state() -> WatcherState {
   WatcherState::new(test_factory)
+}
+
+impl WatcherState {
+  fn detector_for(&self, node: &Address) -> Option<&PhiAccrualFailureDetector> {
+    self.detectors.get(node)
+  }
 }
 
 fn remote_target() -> ActorPath {
@@ -28,7 +34,7 @@ fn remote_node() -> Address {
 }
 
 fn detector_address_for_node<'a>(state: &'a WatcherState, node: &Address) -> Option<&'a str> {
-  state.detectors.get(node).and_then(|detector| detector.monitored_address.as_deref())
+  state.detector_for(node).and_then(PhiAccrualFailureDetector::monitored_address)
 }
 
 #[test]
@@ -45,12 +51,12 @@ fn watch_remote_target_configures_detector_address() {
 }
 
 #[test]
-fn heartbeat_received_for_unknown_node_configures_detector_address() {
+fn heartbeat_received_for_unknown_node_does_not_create_detector() {
   let mut state = new_state();
   let node = remote_node();
 
   let effects = state.handle(WatcherCommand::HeartbeatReceived { from: node.clone(), now: 100 });
 
   assert!(effects.is_empty());
-  assert_eq!(detector_address_for_node(&state, &node), Some("remote-sys@10.0.0.1:2552"));
+  assert_eq!(detector_address_for_node(&state, &node), None);
 }

@@ -1,18 +1,19 @@
-use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
 use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
-  event::stream::{
-    CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent,
-    subscriber_handle,
-  },
-  system::{ActorSystem, ActorSystemBuildError},
+  event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
+  system::ActorSystemBuildError,
 };
 use fraktor_remote_core_rs::core::{
   address::Address,
   association::QuarantineReason,
-  extension::{EventPublisher, Remoting, RemotingError},
+  extension::{Remoting, RemotingError},
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
+
+#[path = "../test_support.rs"]
+mod test_support;
+
+use test_support::EventHarness;
 
 use crate::std::{
   extension_installer::{base::StdRemoting, remoting_extension_installer::RemotingExtensionInstaller},
@@ -27,55 +28,9 @@ fn make_transport_with_addresses(addresses: Vec<Address>) -> SharedLock<TcpRemot
   SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", addresses))
 }
 
-struct EventHarness {
-  system:        ActorSystem,
-  publisher:     EventPublisher,
-  events:        SharedLock<Vec<EventStreamEvent>>,
-  _subscription: EventStreamSubscription,
-}
-
-impl EventHarness {
-  fn new() -> Self {
-    let system = new_empty_actor_system();
-    let events = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
-    let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-    let subscription = system.subscribe_event_stream(&subscriber);
-    let publisher = EventPublisher::new(system.downgrade());
-    Self { system, publisher, events, _subscription: subscription }
-  }
-
-  fn publisher(&self) -> EventPublisher {
-    self.publisher.clone()
-  }
-
-  fn system(&self) -> &ActorSystem {
-    &self.system
-  }
-
-  fn events(&self) -> Vec<EventStreamEvent> {
-    self.events.with_lock(|events| events.clone())
-  }
-}
-
-struct RecordingSubscriber {
-  events: SharedLock<Vec<EventStreamEvent>>,
-}
-
-impl RecordingSubscriber {
-  fn new(events: SharedLock<Vec<EventStreamEvent>>) -> Self {
-    Self { events }
-  }
-}
-
-impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.with_lock(|events| events.push(event.clone()));
-  }
-}
-
 fn make_remoting(transport: SharedLock<TcpRemoteTransport>) -> (StdRemoting, EventHarness) {
   let harness = EventHarness::new();
-  let remoting = StdRemoting::new(transport, None, harness.publisher());
+  let remoting = StdRemoting::new(transport, None, harness.publisher().clone());
   (remoting, harness)
 }
 
@@ -199,7 +154,7 @@ fn extension_installer_double_install_returns_configuration_error() {
 }
 
 #[test]
-fn extension_installer_remoting_lifecycle_drives_via_arc() {
+fn extension_installer_remoting_lifecycle_drives_via_shared_lock() {
   let installer = RemotingExtensionInstaller::new(make_transport());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should wire event publisher");

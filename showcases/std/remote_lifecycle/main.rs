@@ -50,11 +50,13 @@ fn main() {
   let system =
     ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
 
+  // events は短時間の記録だけなので、低オーバーヘッドな spin lock を使う。
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   let advertised_address = Address::new("remote-showcase", "127.0.0.1", 2551);
+  // transport は I/O 境界を跨ぐため、長時間保持に備えて blocking mutex を使う。
   let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", vec![
     advertised_address.clone(),
   ]));
@@ -69,17 +71,17 @@ fn main() {
   });
 
   let expected_authority = advertised_address.to_string();
-  assert!(events.with_lock(|events| {
-    events.iter().any(|event| {
-      matches!(
-        event,
-        EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted {
-          authority,
-          ..
-        }) if authority == &expected_authority
-      )
-    })
-  }));
+  let observed_events = events.with_lock(|events| events.clone());
+  let observed = observed_events.iter().any(|event| {
+    matches!(
+      event,
+      EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted {
+        authority,
+        ..
+      }) if authority == &expected_authority
+    )
+  });
+  assert!(observed, "ListenStarted({expected_authority}) not observed; events={observed_events:?}");
 
   system.terminate().expect("terminate");
 }

@@ -8,8 +8,8 @@ use crate::core::{
   watcher::{WatcherCommand, WatcherEffect, WatcherState},
 };
 
-fn test_factory() -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(5.0, 100, 10, 0, 100)
+fn test_factory(address: &Address) -> PhiAccrualFailureDetector {
+  PhiAccrualFailureDetector::with_monitored_address(address.to_string(), 5.0, 100, 10, 0, 100)
 }
 
 fn new_state() -> WatcherState {

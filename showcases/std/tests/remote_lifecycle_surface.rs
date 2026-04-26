@@ -15,5 +15,6 @@ fn remote_lifecycle_showcase_uses_public_remote_lifecycle_api() {
   assert!(source.contains("RemotingExtensionInstaller"), "showcase must install the remote extension");
   assert!(source.contains("TcpRemoteTransport"), "showcase must configure the std TCP transport");
   assert!(source.contains("RemotingLifecycleEvent::ListenStarted"), "showcase must observe listen lifecycle events");
+  // showcase は println! ではなくイベント観測で挙動を示すため、print_stdout 抑制を許可しない。
   assert!(!source.contains("#[allow(clippy::print_stdout)]"), "showcase must not suppress print stdout lint");
 }

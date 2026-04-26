@@ -15,7 +15,7 @@ use hashbrown::{HashMap, hash_map::Entry};
 
 use crate::core::{
   address::Address,
-  failure_detector::{FailureDetectorWithAddress, PhiAccrualFailureDetector},
+  failure_detector::PhiAccrualFailureDetector,
   watcher::{watcher_command::WatcherCommand, watcher_effect::WatcherEffect},
 };
 
@@ -27,7 +27,7 @@ type Map<K, V> = HashMap<K, V, RandomState>;
 /// Factory used by [`WatcherState`] to create a fresh
 /// [`PhiAccrualFailureDetector`] on demand when a new remote node is
 /// encountered.
-type DetectorFactory = fn() -> PhiAccrualFailureDetector;
+type DetectorFactory = fn(&Address) -> PhiAccrualFailureDetector;
 
 /// Pure state portion of the remote watcher.
 ///
@@ -147,7 +147,11 @@ impl WatcherState {
   }
 
   fn on_heartbeat(&mut self, from: &Address, now: u64) -> Vec<WatcherEffect> {
-    // Clear the notified flag so that a subsequent silence is detected again.
+    // 監視対象外ノードからの heartbeat は detector の無制限肥大を防ぐため無視する。
+    if !self.targets_by_node.contains_key(from) {
+      return Vec::new();
+    }
+    // 通知済みフラグを消して、再度沈黙した場合に検出できるようにする。
     self.already_notified.remove(from);
     let detector = self.ensure_detector(from);
     detector.heartbeat(now);
@@ -188,11 +192,7 @@ impl WatcherState {
   fn ensure_detector(&mut self, node: &Address) -> &mut PhiAccrualFailureDetector {
     match self.detectors.entry(node.clone()) {
       | Entry::Occupied(entry) => entry.into_mut(),
-      | Entry::Vacant(entry) => {
-        let mut detector = (self.detector_factory)();
-        detector.set_address(node.to_string());
-        entry.insert(detector)
-      },
+      | Entry::Vacant(entry) => entry.insert((self.detector_factory)(node)),
     }
   }
 }

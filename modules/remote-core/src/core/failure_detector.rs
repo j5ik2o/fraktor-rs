@@ -9,11 +9,9 @@
 mod tests;
 
 mod deadline_failure_detector;
-mod failure_detector_with_address;
 mod heartbeat_history;
 mod phi_accrual;
 
 pub use deadline_failure_detector::DeadlineFailureDetector;
-pub use failure_detector_with_address::FailureDetectorWithAddress;
 pub use heartbeat_history::HeartbeatHistory;
 pub use phi_accrual::PhiAccrualFailureDetector;

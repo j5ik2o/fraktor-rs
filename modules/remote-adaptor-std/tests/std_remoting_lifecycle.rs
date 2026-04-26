@@ -63,7 +63,7 @@ fn std_remoting_lifecycle_via_extension_installer() {
   let snapshot_running = remoting.with_lock(|remoting| remoting.lifecycle().is_running());
   assert!(snapshot_running);
 
-  // Quarantine via the same shared handle.
+  // 同じ共有ハンドル経由で quarantine を実行する。
   let address = Address::new("remote-sys", "10.0.0.1", 2552);
   {
     remoting
@@ -71,14 +71,12 @@ fn std_remoting_lifecycle_via_extension_installer() {
       .expect("quarantine via installer-shared handle");
   }
 
-  // Shutdown returns NotStarted on a second call.
+  // 2 回目の shutdown は閉じた状態機械により InvalidTransition として拒否される。
   {
     let second = remoting.with_lock(|remoting| {
       remoting.shutdown().expect("first shutdown");
       remoting.shutdown().unwrap_err()
     });
-    // Second shutdown is rejected by the lifecycle state machine — the
-    // exact variant depends on the closed state-machine semantics.
-    assert!(matches!(second, RemotingError::InvalidTransition | RemotingError::NotStarted));
+    assert_eq!(second, RemotingError::InvalidTransition);
   }
 }

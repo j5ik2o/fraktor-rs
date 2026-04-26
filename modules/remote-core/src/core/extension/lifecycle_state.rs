@@ -70,6 +70,22 @@ impl RemotingLifecycleState {
     }
   }
 
+  /// Rolls a failed startup attempt back from `Starting` to `Pending`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::InvalidTransition`] from any state other
+  /// than `Starting`.
+  pub const fn mark_start_failed(&mut self) -> Result<(), RemotingError> {
+    match self.phase {
+      | Phase::Starting => {
+        self.phase = Phase::Pending;
+        Ok(())
+      },
+      | _ => Err(RemotingError::InvalidTransition),
+    }
+  }
+
   /// Moves out of the live states towards termination:
   ///
   /// - `Running` → `ShuttingDown`
