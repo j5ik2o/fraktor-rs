@@ -25,7 +25,7 @@ mod serializer;
 mod serializer_id;
 mod serializer_id_error;
 mod string_manifest_serializer;
-mod throwable_not_serializable_exception;
+mod throwable_not_serializable_error;
 mod transport_information;
 
 pub use async_serializer::{AsyncSerializer, SerializationFuture};
@@ -49,5 +49,5 @@ pub use serializer::Serializer;
 pub use serializer_id::SerializerId;
 pub use serializer_id_error::SerializerIdError;
 pub use string_manifest_serializer::SerializerWithStringManifest;
-pub use throwable_not_serializable_exception::ThrowableNotSerializableException;
+pub use throwable_not_serializable_error::ThrowableNotSerializableError;
 pub use transport_information::TransportInformation;

@@ -12,7 +12,7 @@ use alloc::{
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
-  durable_state_exception::DurableStateException, durable_state_store::DurableStateStore,
+  durable_state_error::DurableStateError, durable_state_store::DurableStateStore,
   durable_state_store_provider::DurableStateStoreProvider,
 };
 
@@ -32,16 +32,16 @@ impl<A: Send + 'static> DurableStateStoreRegistry<A> {
   ///
   /// # Errors
   ///
-  /// Returns [`DurableStateException::ProviderAlreadyRegistered`] when the identifier already
+  /// Returns [`DurableStateError::ProviderAlreadyRegistered`] when the identifier already
   /// exists.
   pub fn register(
     &mut self,
     provider_id: impl Into<String>,
     provider: ArcShared<dyn DurableStateStoreProvider<A>>,
-  ) -> Result<(), DurableStateException> {
+  ) -> Result<(), DurableStateError> {
     let provider_id = provider_id.into();
     match self.providers.entry(provider_id) {
-      | Entry::Occupied(entry) => Err(DurableStateException::provider_already_registered(entry.key().clone())),
+      | Entry::Occupied(entry) => Err(DurableStateError::provider_already_registered(entry.key().clone())),
       | Entry::Vacant(entry) => {
         entry.insert(provider);
         Ok(())
@@ -53,10 +53,9 @@ impl<A: Send + 'static> DurableStateStoreRegistry<A> {
   ///
   /// # Errors
   ///
-  /// Returns [`DurableStateException::ProviderNotFound`] when the identifier does not exist.
-  pub fn resolve(&self, provider_id: &str) -> Result<Box<dyn DurableStateStore<A>>, DurableStateException> {
-    let provider =
-      self.providers.get(provider_id).ok_or_else(|| DurableStateException::provider_not_found(provider_id))?;
+  /// Returns [`DurableStateError::ProviderNotFound`] when the identifier does not exist.
+  pub fn resolve(&self, provider_id: &str) -> Result<Box<dyn DurableStateStore<A>>, DurableStateError> {
+    let provider = self.providers.get(provider_id).ok_or_else(|| DurableStateError::provider_not_found(provider_id))?;
     Ok(provider.durable_state_store())
   }
 }

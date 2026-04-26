@@ -4,12 +4,12 @@ use alloc::string::String;
 
 /// Replacement payload used when an original throwable cannot be serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ThrowableNotSerializableException {
+pub struct ThrowableNotSerializableError {
   original_message:    String,
   original_class_name: String,
 }
 
-impl ThrowableNotSerializableException {
+impl ThrowableNotSerializableError {
   /// Creates a replacement payload for the original throwable.
   #[must_use]
   pub fn new(original_message: impl Into<String>, original_class_name: impl Into<String>) -> Self {

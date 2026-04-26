@@ -3,10 +3,10 @@
 use alloc::boxed::Box;
 use core::{future::Future, pin::Pin};
 
-use crate::core::durable_state_exception::DurableStateException;
+use crate::core::durable_state_error::DurableStateError;
 
 pub(crate) type DurableStateStoreFuture<'a, T> =
-  Pin<Box<dyn Future<Output = Result<T, DurableStateException>> + Send + 'a>>;
+  Pin<Box<dyn Future<Output = Result<T, DurableStateError>> + Send + 'a>>;
 
 /// Durable state store abstraction using object-safe boxed futures.
 pub trait DurableStateStore<A: Send>: Send + Sync + 'static {

@@ -65,6 +65,7 @@ modules/{name}/src/
 |-------|-----------|-----|
 | `camelCase` メソッド | `snake_case` メソッド | `mapAsync` → `map_async` |
 | `PascalCase` 型 | `PascalCase` 型 | `Source` → `Source` |
+| `*Exception` 型 | `*Error` 型 | `DurableStateException` → `DurableStateError`, `ThrowableNotSerializableException` → `ThrowableNotSerializableError` |
 
 ※ 以前存在した `*Generic<TB>` サフィックスと型エイリアスのパターンは廃止済み。型は直接使用する。
 

@@ -8,7 +8,7 @@ use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors returned by durable state store operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DurableStateException {
+pub enum DurableStateError {
   /// Failed to load a durable state object.
   GetObjectFailed(String),
   /// Failed to persist a durable state object.
@@ -23,7 +23,7 @@ pub enum DurableStateException {
   ProviderNotFound(String),
 }
 
-impl DurableStateException {
+impl DurableStateError {
   /// Creates a provider duplicate error.
   #[must_use]
   pub fn provider_already_registered(id: impl Into<String>) -> Self {
@@ -37,7 +37,7 @@ impl DurableStateException {
   }
 }
 
-impl Display for DurableStateException {
+impl Display for DurableStateError {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::GetObjectFailed(reason) => write!(formatter, "get durable state object failed: {}", reason),
