@@ -53,7 +53,9 @@ Cargo.lock
 
 /.claude/settings.local.json
 /.claude/scheduled_tasks.lock
+/.claude/dylint-hook.lock
 
+/.codex*/dylint-hook.lock
 /.codex*/cache/
 /.codex*/log/
 /.codex*/auth.json

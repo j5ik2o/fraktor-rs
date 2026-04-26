@@ -55,7 +55,7 @@ CI_CHECK_GUARD_TIMEOUT_UNIT_SEC="${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC:-}"
 CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC="${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC:-}"
 CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
 CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
-CI_CHECK_HANG_RECORD_FILE="${CI_CHECK_HANG_RECORD_FILE:-${REPO_ROOT}/.takt/.ci-check.last-hang}"
+CI_CHECK_HANG_RECORD_FILE="${CI_CHECK_HANG_RECORD_FILE:-${REPO_ROOT}/target/.ci-check.last-hang}"
 CI_CHECK_ALLOW_RERUN_AFTER_HANG="${CI_CHECK_ALLOW_RERUN_AFTER_HANG:-0}"
 export CI_CHECK_GUARD_TIMEOUT_SEC
 export CI_CHECK_GUARD_TIMEOUT_UNIT_SEC
@@ -1355,8 +1355,8 @@ run_all() {
 }
 
 main() {
-  mkdir -p "${REPO_ROOT}/.takt"
-  local lockfile="${REPO_ROOT}/.takt/.ci-check.lock"
+  mkdir -p "${REPO_ROOT}/target"
+  local lockfile="${REPO_ROOT}/target/.ci-check.lock"
   while true; do
     if ( set -o noclobber; printf '%s\n' "$$" > "${lockfile}" ) 2>/dev/null; then
       break

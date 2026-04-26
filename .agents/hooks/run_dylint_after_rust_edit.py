@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
+"""AI エージェント PostToolUse hook: Rust ファイル編集後に dylint を自動実行する。
+
+Claude Code と Codex CLI で共通利用するため、エージェント種別を `--agent`
+引数で切り替える。エージェントごとに異なるのは以下の3点のみ:
+
+* tool_input から編集対象パスを抽出する方法 (Claude は `file_path` のみ、
+  Codex は `apply_patch` コマンド本文も解釈する)
+* 自身の hook 用ロックファイルの配置先
+* 失敗時にエージェントへ返すブロック応答の形式 (Claude は stderr へ書き出し
+  て exit 2、Codex は `{should_block, reason}` の JSON を stdout へ出力)
+
+排他制御は二段:
+  1. `target/.ci-check.coordination.lock` で hook 同士 (エージェント横断) の
+     直列化を行い、ci-check.sh の起動権を一つに絞る (TOCTOU 防止)。
+  2. ci-check.sh 自身は `target/.ci-check.lock` で多重起動を弾くため、本
+     hook はその解放を待ってから coordination lock 内で dylint を起動する。
+"""
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import json
 import os
@@ -9,47 +27,79 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
-PATCH_FILE_PATTERN = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$")
-DIRECT_RUST_PATH_KEYS = ("file_path", "path", "target_file")
-HOOK_LOCK_PATH = Path(".takt/.codex-hook-dylint.lock")
-CI_LOCK_PATH = Path(".takt/.ci-check.lock")
+CI_LOCK_PATH = Path("target/.ci-check.lock")
+COORDINATION_LOCK_PATH = Path("target/.ci-check.coordination.lock")
 LOCK_WAIT_TIMEOUT_SEC = 1800
 LOCK_POLL_INTERVAL_SEC = 1.0
 CI_COMMAND = ("./scripts/ci-check.sh", "ai", "dylint")
 MAX_FAILURE_LINES = 160
 MAX_FAILURE_CHARS = 12000
 
+PATCH_FILE_PATTERN = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$")
+DIRECT_RUST_PATH_KEYS = ("file_path", "path", "target_file")
+
+
+@dataclass(frozen=True)
+class AgentProfile:
+    name: str
+    label: str
+    hook_lock_path: Path
+    extract_rust_paths: Callable[[dict[str, object]], list[str]]
+    block: Callable[[str], int]
+
 
 def main() -> int:
+    args = parse_args()
+    profile = AGENT_PROFILES.get(args.agent)
+    if profile is None:
+        valid_agents = ", ".join(sorted(AGENT_PROFILES.keys()))
+        print(
+            f"未知のエージェント種別: {args.agent} (利用可能: {valid_agents})",
+            file=sys.stderr,
+        )
+        return 2
+
     payload = load_payload()
     if payload is None:
-        return block("Codex hook の入力 JSON を解釈できませんでした。")
+        return profile.block(f"{profile.label} hook の入力 JSON を解釈できませんでした。")
 
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
         return 0
 
-    rust_paths = extract_rust_paths(tool_input)
+    rust_paths = profile.extract_rust_paths(tool_input)
     if not rust_paths:
         return 0
 
     repo_root = resolve_repo_root(payload)
     if repo_root is None:
-        return block("Git ルートを特定できなかったため、自動 dylint を実行できませんでした。")
+        return profile.block("Git ルートを特定できなかったため、自動 dylint を実行できませんでした。")
 
     try:
-        run_auto_dylint(repo_root)
+        run_auto_dylint(repo_root, profile.hook_lock_path, profile.label)
     except HookFailure as failure:
         touched_paths = ", ".join(rust_paths)
-        return block(
+        return profile.block(
             "Rust ファイル編集後の自動 `./scripts/ci-check.sh ai dylint` が失敗しました。\n"
             f"対象: {touched_paths}\n\n"
             f"{failure.message}"
         )
 
     return 0
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="dylint after Rust edit hook")
+    parser.add_argument(
+        "--agent",
+        required=True,
+        help="呼び出し元のエージェント種別 (claude / codex)。未知の値は main() で検証する",
+    )
+    return parser.parse_args()
 
 
 def load_payload() -> dict[str, object] | None:
@@ -62,19 +112,17 @@ def load_payload() -> dict[str, object] | None:
     return None
 
 
-def find_rust_paths(command: str) -> list[str]:
+def extract_rust_paths_claude(tool_input: dict[str, object]) -> list[str]:
+    """Claude Code (Edit / Write / MultiEdit) の tool_input を解釈する。"""
     rust_paths: list[str] = []
-    for line in command.splitlines():
-        match = PATCH_FILE_PATTERN.match(line)
-        if match is None:
-            continue
-        path = match.group(1).strip()
-        if path.endswith(".rs"):
-            rust_paths.append(path)
+    file_path = tool_input.get("file_path")
+    if isinstance(file_path, str) and file_path.endswith(".rs"):
+        rust_paths.append(file_path)
     return rust_paths
 
 
-def extract_rust_paths(tool_input: dict[str, object]) -> list[str]:
+def extract_rust_paths_codex(tool_input: dict[str, object]) -> list[str]:
+    """Codex CLI の tool_input (apply_patch / Edit / Write) を解釈する。"""
     rust_paths: list[str] = []
 
     for key in DIRECT_RUST_PATH_KEYS:
@@ -84,9 +132,21 @@ def extract_rust_paths(tool_input: dict[str, object]) -> list[str]:
 
     patch_text = extract_patch_text(tool_input)
     if patch_text is not None:
-        rust_paths.extend(find_rust_paths(patch_text))
+        rust_paths.extend(find_rust_paths_in_patch(patch_text))
 
     return deduplicate_paths(rust_paths)
+
+
+def find_rust_paths_in_patch(command: str) -> list[str]:
+    rust_paths: list[str] = []
+    for line in command.splitlines():
+        match = PATCH_FILE_PATTERN.match(line)
+        if match is None:
+            continue
+        path = match.group(1).strip()
+        if path.endswith(".rs"):
+            rust_paths.append(path)
+    return rust_paths
 
 
 def extract_patch_text(tool_input: dict[str, object]) -> str | None:
@@ -139,23 +199,34 @@ def resolve_repo_root(payload: dict[str, object]) -> Path | None:
     return Path(repo_root)
 
 
-def run_auto_dylint(repo_root: Path) -> None:
-    repo_hook_lock_path = repo_root / HOOK_LOCK_PATH
+def run_auto_dylint(repo_root: Path, hook_lock_relative: Path, lock_label: str) -> None:
+    repo_hook_lock_path = repo_root / hook_lock_relative
     repo_ci_lock_path = repo_root / CI_LOCK_PATH
+    repo_coordination_lock_path = repo_root / COORDINATION_LOCK_PATH
     repo_hook_lock_path.parent.mkdir(parents=True, exist_ok=True)
+    repo_coordination_lock_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with FileLock(repo_hook_lock_path, "codex hook dylint lock"):
-        wait_for_lock_release(repo_ci_lock_path, "ci-check.sh")
-        completed = subprocess.run(
-            CI_COMMAND,
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-            env=build_ci_environment(),
-        )
+    # 二段ロック構成:
+    #   1. per-agent lock: 同一エージェント内の hook 多重起動を直列化
+    #   2. coordination lock: エージェント横断 (Claude / Codex) の hook 同士を
+    #      直列化し、wait_for_lock_release と subprocess.run の間に別 hook が
+    #      割り込んで ci-check.sh を二重起動する TOCTOU を防ぐ
+    # ci-check.sh 自身の lockfile (target/.ci-check.lock) は noclobber で作成
+    # されるため、Python 側から直接 flock できない。代わりに別パスの
+    # coordination lock を使い、ci-check.sh の起動権を hook 同士で取り合う。
+    with FileLock(repo_hook_lock_path, lock_label):
+        with FileLock(repo_coordination_lock_path, "ci-check coordination"):
+            wait_for_lock_release(repo_ci_lock_path, "ci-check.sh")
+            completed = subprocess.run(
+                CI_COMMAND,
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                env=build_ci_environment(),
+            )
 
     if completed.returncode == 0:
         return
@@ -286,7 +357,12 @@ def summarize_failure_output(completed: subprocess.CompletedProcess[str]) -> str
     return message
 
 
-def block(message: str) -> int:
+def block_claude(message: str) -> int:
+    print(message, file=sys.stderr)
+    return 2
+
+
+def block_codex(message: str) -> int:
     print(json.dumps({
         "should_block": True,
         "reason": message,
@@ -298,6 +374,24 @@ class HookFailure(Exception):
     def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message
+
+
+AGENT_PROFILES: dict[str, AgentProfile] = {
+    "claude": AgentProfile(
+        name="claude",
+        label="Claude",
+        hook_lock_path=Path(".claude/dylint-hook.lock"),
+        extract_rust_paths=extract_rust_paths_claude,
+        block=block_claude,
+    ),
+    "codex": AgentProfile(
+        name="codex",
+        label="Codex",
+        hook_lock_path=Path(".codex/dylint-hook.lock"),
+        extract_rust_paths=extract_rust_paths_codex,
+        block=block_codex,
+    ),
+}
 
 
 if __name__ == "__main__":
