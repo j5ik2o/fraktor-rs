@@ -1,6 +1,7 @@
-use alloc::string::String;
-
-use crate::domain::failure_detector::{DeadlineFailureDetector, HeartbeatHistory, PhiAccrualFailureDetector};
+use crate::domain::{
+  address::Address,
+  failure_detector::{DeadlineFailureDetector, HeartbeatHistory, PhiAccrualFailureDetector},
+};
 
 // ---------------------------------------------------------------------------
 // HeartbeatHistory
@@ -88,9 +89,9 @@ fn detector_is_available_without_heartbeat() {
 
 #[test]
 fn detector_binds_monitored_address_at_construction() {
-  let d = PhiAccrualFailureDetector::new(8.0, 100, 10, 0, 1000)
-    .with_monitored_address(String::from("remote-sys@10.0.0.1:2552"));
-  assert_eq!(d.monitored_address(), Some("remote-sys@10.0.0.1:2552"));
+  let address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let d = PhiAccrualFailureDetector::new(8.0, 100, 10, 0, 1000).with_monitored_address(address.clone());
+  assert_eq!(d.monitored_address(), Some(&address));
   assert_eq!(make_detector().monitored_address(), None);
 }
 

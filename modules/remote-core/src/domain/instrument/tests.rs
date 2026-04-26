@@ -240,7 +240,8 @@ fn snapshot_new_and_accessors() {
 
 #[test]
 fn failure_detector_growing_marker_uses_pekko_name_and_remote_address() {
-  let marker = RemoteLogMarker::failure_detector_growing(String::from(REMOTE_ADDRESS));
+  let address = sample_address();
+  let marker = RemoteLogMarker::failure_detector_growing(&address);
 
   assert_eq!(marker.name(), "pekkoFailureDetectorGrowing");
   assert_eq!(marker_property(&marker, "pekkoRemoteAddress"), Some(REMOTE_ADDRESS));

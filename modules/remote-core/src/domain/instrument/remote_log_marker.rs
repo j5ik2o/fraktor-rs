@@ -19,8 +19,9 @@ pub struct RemoteLogMarker;
 impl RemoteLogMarker {
   /// Creates a failure-detector-growing marker.
   #[must_use]
-  pub fn failure_detector_growing(remote_address: String) -> ActorLogMarker {
-    ActorLogMarker::new(FAILURE_DETECTOR_GROWING_MARKER).with_property(REMOTE_ADDRESS_PROPERTY, remote_address)
+  pub fn failure_detector_growing(remote_address: &Address) -> ActorLogMarker {
+    ActorLogMarker::new(FAILURE_DETECTOR_GROWING_MARKER)
+      .with_property(REMOTE_ADDRESS_PROPERTY, remote_address.to_string())
   }
 
   /// Creates a quarantine marker.
@@ -53,8 +54,5 @@ impl RemoteLogMarker {
 }
 
 fn remote_address_uid_property(remote_address_uid: Option<u64>) -> String {
-  match remote_address_uid {
-    | Some(value) => value.to_string(),
-    | None => String::new(),
-  }
+  remote_address_uid.map_or_else(String::new, |value| value.to_string())
 }

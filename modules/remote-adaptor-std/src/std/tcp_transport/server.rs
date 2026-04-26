@@ -102,7 +102,8 @@ async fn read_loop(stream: TcpStream, peer: String, inbound_tx: UnboundedSender<
       },
     }
   }
-  // ループ終了時にストリームを明示的に閉じる。
+  // write buffer を flush し、peer が end-of-stream を観測できるよう half-close を明示する。
+  // shutdown 経路なので close 失敗は非致命として debug ログに留める。
   if let Err(err) = framed.close().await {
     tracing::debug!(?err, peer = %peer, "tcp server framed close failed during shutdown");
   }

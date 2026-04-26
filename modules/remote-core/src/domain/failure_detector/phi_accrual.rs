@@ -1,8 +1,6 @@
 //! Phi Accrual failure detector.
 
-use alloc::string::String;
-
-use crate::domain::failure_detector::heartbeat_history::HeartbeatHistory;
+use crate::domain::{address::Address, failure_detector::heartbeat_history::HeartbeatHistory};
 
 /// Phi Accrual failure detector modelled after Apache Pekko's
 /// `PhiAccrualFailureDetector`.
@@ -41,7 +39,7 @@ pub struct PhiAccrualFailureDetector {
   first_heartbeat_estimate:   u64,
   history:                    HeartbeatHistory,
   last_heartbeat_ms:          Option<u64>,
-  monitored_address:          Option<String>,
+  monitored_address:          Option<Address>,
 }
 
 impl PhiAccrualFailureDetector {
@@ -85,7 +83,7 @@ impl PhiAccrualFailureDetector {
 
   /// Binds the monitored address metadata to this detector.
   #[must_use]
-  pub fn with_monitored_address(mut self, monitored_address: String) -> Self {
+  pub fn with_monitored_address(mut self, monitored_address: Address) -> Self {
     self.monitored_address = Some(monitored_address);
     self
   }
@@ -129,8 +127,8 @@ impl PhiAccrualFailureDetector {
   /// Returns the monitored address metadata when this detector was created
   /// for a concrete remote node.
   #[must_use]
-  pub fn monitored_address(&self) -> Option<&str> {
-    self.monitored_address.as_deref()
+  pub const fn monitored_address(&self) -> Option<&Address> {
+    self.monitored_address.as_ref()
   }
 
   /// Records a heartbeat at `now_ms` (monotonic millis).

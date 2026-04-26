@@ -39,6 +39,14 @@ fn sample_association() -> Association {
   Association::new(local, remote)
 }
 
+fn handshaking_association() -> Association {
+  let mut assoc = sample_association();
+  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let effects = assoc.associate(endpoint, 0);
+  assert!(!effects.is_empty(), "associate should emit StartHandshake");
+  assoc
+}
+
 fn new_event_harness() -> EventHarness {
   EventHarness::new()
 }
@@ -175,14 +183,7 @@ fn system_message_delivery_apply_ack_is_monotonic() {
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_driver_fires_after_timeout_and_marks_gated() {
   let harness = new_event_harness();
-  let association = {
-    let mut assoc = sample_association();
-    let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-    let effects = assoc.associate(endpoint, 0);
-    assert!(!effects.is_empty(), "associate should emit StartHandshake");
-    assoc
-  };
-  let shared = AssociationShared::new(association);
+  let shared = AssociationShared::new(handshaking_association());
 
   let mut driver = HandshakeDriver::new();
   driver.arm(shared.clone(), Instant::now(), Duration::from_millis(10), harness.publisher().clone());
@@ -207,14 +208,7 @@ async fn handshake_driver_fires_after_timeout_and_marks_gated() {
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_driver_cancel_prevents_firing() {
   let harness = new_event_harness();
-  let association = {
-    let mut assoc = sample_association();
-    let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-    let effects = assoc.associate(endpoint, 0);
-    assert!(!effects.is_empty(), "associate should emit StartHandshake");
-    assoc
-  };
-  let shared = AssociationShared::new(association);
+  let shared = AssociationShared::new(handshaking_association());
 
   let mut driver = HandshakeDriver::new();
   driver.arm(shared.clone(), Instant::now(), Duration::from_millis(50), harness.publisher().clone());
@@ -290,10 +284,7 @@ async fn outbound_loop_drains_active_association() {
     }
   }
 
-  let mut association = sample_association();
-  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let associate_effects = association.associate(endpoint, 0);
-  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
+  let mut association = handshaking_association();
   let connected_effects = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
   assert!(!connected_effects.is_empty(), "handshake_accepted should emit Connected lifecycle");
   // system 優先度の envelope を投入する。
@@ -362,10 +353,7 @@ fn deferred_envelope() -> OutboundEnvelope {
 fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
   let harness = new_event_harness();
   // associate 済み、かつ handshake 未完了のため deferred envelope を保持する association を作る。
-  let mut association = sample_association();
-  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let associate_effects = association.associate(endpoint, 0);
-  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
+  let mut association = handshaking_association();
   assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
   assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
   // handshake_accepted 前は send queue から drain できないことを確認する。
@@ -400,10 +388,7 @@ fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
 fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
   let harness = new_event_harness();
   // associate 済み、かつ handshake 未完了のため deferred envelope を保持する association を作る。
-  let mut association = sample_association();
-  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let associate_effects = association.associate(endpoint, 0);
-  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
+  let mut association = handshaking_association();
   assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
 
   // timeout 遷移を発火し、effects をその場で適用する。
@@ -423,10 +408,7 @@ fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
 fn handshake_accepted_with_no_deferred_envelopes_is_a_noop() {
   let harness = new_event_harness();
   // flush 対象が空でも、effects 適用で panic せず phantom envelope も生成しない。
-  let mut association = sample_association();
-  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let associate_effects = association.associate(endpoint, 0);
-  assert!(!associate_effects.is_empty(), "associate should emit StartHandshake");
+  let mut association = handshaking_association();
 
   let effects = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
   apply_effects_in_place(&mut association, effects, harness.publisher());
@@ -463,14 +445,7 @@ fn apply_effects_in_place_publishes_lifecycle_events_to_event_stream() {
 #[tokio::test(flavor = "current_thread")]
 async fn inbound_dispatch_publishes_connected_lifecycle_with_req_origin() {
   let harness = new_event_harness();
-  let association = {
-    let mut assoc = sample_association();
-    let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-    let effects = assoc.associate(endpoint, 0);
-    assert!(!effects.is_empty(), "associate should emit StartHandshake");
-    assoc
-  };
-  let shared = AssociationShared::new(association);
+  let shared = AssociationShared::new(handshaking_association());
   let (tx, rx) = mpsc::unbounded_channel();
 
   tx.send(InboundFrameEvent {
@@ -506,14 +481,7 @@ async fn inbound_dispatch_publishes_connected_lifecycle_with_req_origin() {
 #[tokio::test(flavor = "current_thread")]
 async fn inbound_dispatch_discards_handshake_for_different_association() {
   let harness = new_event_harness();
-  let association = {
-    let mut assoc = sample_association();
-    let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-    let effects = assoc.associate(endpoint, 0);
-    assert!(!effects.is_empty(), "associate should emit StartHandshake");
-    assoc
-  };
-  let shared = AssociationShared::new(association);
+  let shared = AssociationShared::new(handshaking_association());
   let shared_for_assert = shared.clone();
   let (tx, rx) = mpsc::unbounded_channel();
 
@@ -542,14 +510,7 @@ async fn inbound_dispatch_discards_handshake_for_different_association() {
 #[tokio::test(flavor = "current_thread")]
 async fn inbound_dispatch_publishes_connected_lifecycle_with_rsp_origin() {
   let harness = new_event_harness();
-  let association = {
-    let mut assoc = sample_association();
-    let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-    let effects = assoc.associate(endpoint, 0);
-    assert!(!effects.is_empty(), "associate should emit StartHandshake");
-    assoc
-  };
-  let shared = AssociationShared::new(association);
+  let shared = AssociationShared::new(handshaking_association());
   let (tx, rx) = mpsc::unbounded_channel();
 
   tx.send(InboundFrameEvent {

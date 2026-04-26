@@ -8,7 +8,7 @@ use crate::domain::{
 };
 
 fn test_factory(address: &Address) -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(5.0, 100, 10, 0, 100).with_monitored_address(address.to_string())
+  PhiAccrualFailureDetector::new(5.0, 100, 10, 0, 100).with_monitored_address(address.clone())
 }
 
 fn new_state() -> WatcherState {
@@ -27,14 +27,8 @@ fn remote_node() -> Address {
   Address::new("remote-sys", "10.0.0.1", 2552)
 }
 
-fn detector_address_for_node<'a>(state: &'a WatcherState, node: &Address) -> Option<&'a str> {
-  state.detector_for(node).and_then(PhiAccrualFailureDetector::monitored_address)
-}
-
-impl WatcherState {
-  fn detector_for(&self, node: &Address) -> Option<&PhiAccrualFailureDetector> {
-    self.detectors.get(node)
-  }
+fn detector_address_for_node<'a>(state: &'a WatcherState, node: &Address) -> Option<&'a Address> {
+  state.detectors.get(node).and_then(PhiAccrualFailureDetector::monitored_address)
 }
 
 #[test]
@@ -47,7 +41,7 @@ fn watch_remote_target_configures_detector_address() {
 
   let node = remote_node();
   assert!(matches!(effects.as_slice(), [WatcherEffect::SendHeartbeat { .. }]));
-  assert_eq!(detector_address_for_node(&state, &node), Some("remote-sys@10.0.0.1:2552"));
+  assert_eq!(detector_address_for_node(&state, &node), Some(&node));
 }
 
 #[test]
