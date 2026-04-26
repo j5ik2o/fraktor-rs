@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-OKITE_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
+REPO_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
 
-# 第1引数でプロジェクトルートを指定可能（未指定時はOKITE_ROOT）
-TARGET_ROOT="${1:-${OKITE_ROOT}}"
+# 第1引数でプロジェクトルートを指定可能（未指定時はリポジトリルート）
+TARGET_ROOT="${1:-${REPO_ROOT}}"
 
 COMMON_MD="${TARGET_ROOT}/COMMON.md"
 RULES_DIR="${TARGET_ROOT}/.agents/rules"
