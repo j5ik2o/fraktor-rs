@@ -1,5 +1,3 @@
-use core::num::NonZeroU64;
-
 use crate::core::failure_detector::{DeadlineFailureDetector, HeartbeatHistory, PhiAccrualFailureDetector};
 
 // ---------------------------------------------------------------------------
@@ -72,15 +70,10 @@ fn make_detector() -> PhiAccrualFailureDetector {
   )
 }
 
-const HEARTBEAT_INTERVAL_MS: u64 = 1_000;
 const ACCEPTABLE_HEARTBEAT_PAUSE_MS: u64 = 200;
 
-fn heartbeat_interval_ms() -> NonZeroU64 {
-  NonZeroU64::new(HEARTBEAT_INTERVAL_MS).expect("heartbeat interval must be non-zero")
-}
-
 fn make_deadline_detector() -> DeadlineFailureDetector {
-  DeadlineFailureDetector::new(heartbeat_interval_ms(), ACCEPTABLE_HEARTBEAT_PAUSE_MS)
+  DeadlineFailureDetector::new(ACCEPTABLE_HEARTBEAT_PAUSE_MS)
 }
 
 #[test]
@@ -228,7 +221,7 @@ fn deadline_detector_starts_monitoring_after_heartbeat() {
 fn deadline_detector_uses_exclusive_deadline_boundary() {
   let mut detector = make_deadline_detector();
   let heartbeat_ms = 5_000;
-  let deadline_ms = heartbeat_ms + HEARTBEAT_INTERVAL_MS + ACCEPTABLE_HEARTBEAT_PAUSE_MS;
+  let deadline_ms = heartbeat_ms + ACCEPTABLE_HEARTBEAT_PAUSE_MS;
 
   detector.heartbeat(heartbeat_ms);
 
