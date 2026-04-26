@@ -28,7 +28,6 @@
   - 同ファイル内のテスト関数名 `throwable_not_serializable_exception_is_cloneable_value_payload` → `throwable_not_serializable_error_is_cloneable_value_payload`
 - [ ] 2.5 `cargo build -p fraktor-actor-core-rs` 通過確認
 - [ ] 2.6 `cargo test -p fraktor-actor-core-rs` pass 確認 (rename 済みテスト関数 2 件含む)
-- [ ] 2.7 `./scripts/ci-check.sh ai dylint -m fraktor-actor-core-rs` pass 確認 (mod-file / type-per-file / use-placement 等の lint が rename に追従していること)
 
 ## 3. Phase 2 — `DurableStateException` → `DurableStateError`
 
@@ -62,7 +61,6 @@
   - L121 / L129 の `DurableStateException::*` バリアント参照 → `DurableStateError::*`
 - [ ] 3.8 `cargo build -p fraktor-persistence-core-rs` 通過確認
 - [ ] 3.9 `cargo test -p fraktor-persistence-core-rs` pass 確認
-- [ ] 3.10 `./scripts/ci-check.sh ai dylint -m fraktor-persistence-core-rs` pass 確認
 
 ## 4. Phase 3 — gap analysis 同期
 
@@ -87,7 +85,7 @@
 ## 6. Phase 5 — final-ci
 
 - [ ] 6.1 ワークスペース全体の参照漏れ最終確認: `rg -n '\bThrowableNotSerializableException\b|\bDurableStateException\b' modules/ src/ docs/ .takt/facets/ openspec/specs/ openspec/changes/` の出力が、本 change 自身の proposal/design/tasks 内記述および Pekko 側 `.scala` ファイル名の言及だけになっていることを確認
-- [ ] 6.2 `./scripts/ci-check.sh ai all` を実行して fmt / dylint / clippy / no-std / doc / unit-test / integration-test 全て pass
+- [ ] 6.2 `./scripts/ci-check.sh ai all` を実行して fmt / clippy / no-std / doc / unit-test / integration-test 全て pass
 - [ ] 6.3 マージ後、別 PR で本 change を archive + main spec sync (本 change は specs delta を持たないため sync 対象は無し)
 
 ## 7. レビュー対応 / 後追い
