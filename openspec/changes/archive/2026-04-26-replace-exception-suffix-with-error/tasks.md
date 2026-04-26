@@ -86,9 +86,9 @@
 
 - [x] 6.1 ワークスペース全体の参照漏れ最終確認: `rg -n '\bThrowableNotSerializableException\b|\bDurableStateException\b' modules/ src/ docs/ .takt/facets/ openspec/specs/ openspec/changes/` の出力が、本 change 自身の proposal/design/tasks 内記述および Pekko 側 `.scala` ファイル名の言及だけになっていることを確認
 - [x] 6.2 `./scripts/ci-check.sh ai all` を実行して fmt / clippy / no-std / doc / unit-test / integration-test 全て pass
-- [ ] 6.3 マージ後、別 PR で本 change を archive + main spec sync (本 change は specs delta を持たないため sync 対象は無し)
+- [x] 6.3 マージ後、別 PR で本 change を archive + main spec sync (本 change は specs delta を持たないため sync 対象は無し)
 
 ## 7. レビュー対応 / 後追い
 
-- [ ] 7.1 PR レビュー対応 (CodeRabbit / Cursor Bugbot 指摘は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve)
-- [ ] 7.2 マージ後、`/opsx:archive replace-exception-suffix-with-error` で archive
+- [x] 7.1 PR レビュー対応 (CodeRabbit / Cursor Bugbot 指摘は Pekko 互換を崩さない範囲で対応、却下する場合は理由を reply してから resolve)
+- [x] 7.2 マージ後、`/opsx:archive replace-exception-suffix-with-error` で archive
