@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 PATCH_FILE_PATTERN = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$")
+DIRECT_RUST_PATH_KEYS = ("file_path", "path", "target_file")
 HOOK_LOCK_PATH = Path(".takt/.codex-hook-dylint.lock")
 CI_LOCK_PATH = Path(".takt/.ci-check.lock")
 LOCK_WAIT_TIMEOUT_SEC = 1800
@@ -29,11 +30,7 @@ def main() -> int:
     if not isinstance(tool_input, dict):
         return 0
 
-    patch_text = extract_patch_text(tool_input)
-    if patch_text is None:
-        return 0
-
-    rust_paths = find_rust_paths(patch_text)
+    rust_paths = extract_rust_paths(tool_input)
     if not rust_paths:
         return 0
 
@@ -76,6 +73,21 @@ def find_rust_paths(command: str) -> list[str]:
     return rust_paths
 
 
+def extract_rust_paths(tool_input: dict[str, object]) -> list[str]:
+    rust_paths: list[str] = []
+
+    for key in DIRECT_RUST_PATH_KEYS:
+        value = tool_input.get(key)
+        if isinstance(value, str) and value.endswith(".rs"):
+            rust_paths.append(value)
+
+    patch_text = extract_patch_text(tool_input)
+    if patch_text is not None:
+        rust_paths.extend(find_rust_paths(patch_text))
+
+    return deduplicate_paths(rust_paths)
+
+
 def extract_patch_text(tool_input: dict[str, object]) -> str | None:
     command = tool_input.get("command")
     if isinstance(command, str):
@@ -92,6 +104,17 @@ def extract_patch_text(tool_input: dict[str, object]) -> str | None:
         return patch_input
 
     return None
+
+
+def deduplicate_paths(paths: list[str]) -> list[str]:
+    unique_paths: list[str] = []
+    seen_paths: set[str] = set()
+    for path in paths:
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+        unique_paths.append(path)
+    return unique_paths
 
 
 def resolve_repo_root(payload: dict[str, object]) -> Path | None:
@@ -250,7 +273,10 @@ def summarize_failure_output(completed: subprocess.CompletedProcess[str]) -> str
 
 
 def block(message: str) -> int:
-    print(message, file=sys.stderr)
+    print(json.dumps({
+        "should_block": True,
+        "reason": message,
+    }, ensure_ascii=False))
     return 2
 
 
