@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: TcpRemoteTransport 型
 
-`fraktor_remote_adaptor_std_rs::tcp_transport::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。Pekko `ArteryTcpTransport` に対応する TCP ベースの remote transport を提供する。
+`fraktor_remote_adaptor_std_rs::std::tcp_transport::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。Pekko `ArteryTcpTransport` に対応する TCP ベースの remote transport を提供する。
 
 #### Scenario: 型の存在
 

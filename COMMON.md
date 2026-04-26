@@ -2,7 +2,6 @@
 - 既存の多くの実装を参考にして、一貫性のあるコードを書くこと
 - **後方互換性**: 後方互換は不要（破壊的変更を恐れずに最適な設計を追求すること）
 - **リリース状況**: まだ正式リリース前の開発フェーズ。必要であれば破壊的変更を歓迎し、最適な設計を優先すること
-- serena mcpを有効活用すること
 - 当該ディレクトリ以外を読まないこと
 - 一連のタスクが完了した最後でかつソースコードを編集した場合は `./scripts/ci-check.sh ai all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。ただし **TAKT ピース実行中は、`final-ci` ムーブメント以外で `./scripts/ci-check.sh ai all` を実行してはならない**（各ムーブメントのインストラクションに従うこと）。
 - `./scripts/ci-check.sh ai all` は所要時間が長いが、完了を待ってください。
@@ -37,9 +36,6 @@
 ## Dylint lint（8つ、機械的強制）
 
 mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
-
-## AI-DLC and Spec-Driven Development
-@.agents/CC-SDD.md を読むこと
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands

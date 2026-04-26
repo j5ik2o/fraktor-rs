@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: WatcherState 型
 
-`fraktor_remote_core_rs::watcher::WatcherState` 型が定義され、RemoteWatcher の状態 (誰が誰を watch しているか、最後の heartbeat 時刻、quarantine 判定) を保持する SHALL。Pekko `RemoteWatcher` (Scala, 342行) のロジック部分に対応する。
+`fraktor_remote_core_rs::domain::watcher::WatcherState` 型が定義され、RemoteWatcher の状態 (誰が誰を watch しているか、最後の heartbeat 時刻、quarantine 判定) を保持する SHALL。Pekko `RemoteWatcher` (Scala, 342行) のロジック部分に対応する。
 
 #### Scenario: WatcherState の存在
 
@@ -38,7 +38,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: WatcherCommand と WatcherEffect
 
-`fraktor_remote_core_rs::watcher::WatcherCommand` enum と `WatcherEffect` enum が定義され、`WatcherState` への入力 (Watch / Unwatch / Heartbeat 受信) と出力 (Heartbeat 送信指示 / Terminated 通知 / Quarantine 通知) を表現する SHALL。`now` を含むすべてのバリアントは **monotonic millis** (`u64` に comment/rustdoc で明示) で時刻を保持する。
+`fraktor_remote_core_rs::domain::watcher::WatcherCommand` enum と `WatcherEffect` enum が定義され、`WatcherState` への入力 (Watch / Unwatch / Heartbeat 受信) と出力 (Heartbeat 送信指示 / Terminated 通知 / Quarantine 通知) を表現する SHALL。`now` を含むすべてのバリアントは **monotonic millis** (`u64` に comment/rustdoc で明示) で時刻を保持する。
 
 #### Scenario: WatcherCommand の存在
 

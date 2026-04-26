@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: RemoteTransport trait の存在
 
-`fraktor_remote_core_rs::transport::RemoteTransport` trait が定義され、Pekko `RemoteTransport` (Scala abstract class, 113行) のメソッドセットに対応する API を提供する SHALL。
+`fraktor_remote_core_rs::domain::transport::RemoteTransport` trait が定義され、Pekko `RemoteTransport` (Scala abstract class, 113行) のメソッドセットに対応する API を提供する SHALL。
 
 #### Scenario: trait の公開
 
@@ -80,7 +80,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: TransportError 型
 
-`fraktor_remote_core_rs::transport::TransportError` enum が定義され、トランスポート操作の失敗カテゴリを網羅する SHALL。
+`fraktor_remote_core_rs::domain::transport::TransportError` enum が定義され、トランスポート操作の失敗カテゴリを網羅する SHALL。
 
 #### Scenario: TransportError の存在
 

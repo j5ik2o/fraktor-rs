@@ -1,8 +1,9 @@
-use alloc::format;
+use alloc::{format, string::String};
 
 use super::SerializationError;
 use crate::core::kernel::serialization::{
-  call_scope::SerializationCallScope, not_serializable_error::NotSerializableError, serializer_id::SerializerId,
+  ThrowableNotSerializableException, call_scope::SerializationCallScope, not_serializable_error::NotSerializableError,
+  serializer_id::SerializerId,
 };
 
 #[test]
@@ -84,4 +85,22 @@ fn is_methods_return_correct_values() {
   let invalid_format = SerializationError::InvalidFormat;
   assert!(!invalid_format.is_uninitialized());
   assert!(invalid_format.is_invalid_format());
+}
+
+#[test]
+fn throwable_not_serializable_exception_preserves_original_message_and_class_name() {
+  let payload =
+    ThrowableNotSerializableException::new(String::from("serialization failed"), String::from("example::BrokenError"));
+
+  assert_eq!(payload.original_message(), "serialization failed");
+  assert_eq!(payload.original_class_name(), "example::BrokenError");
+}
+
+#[test]
+fn throwable_not_serializable_exception_is_cloneable_value_payload() {
+  let payload = ThrowableNotSerializableException::new(String::from("boom"), String::from("example::BrokenError"));
+
+  let cloned = payload.clone();
+
+  assert_eq!(cloned, payload);
 }

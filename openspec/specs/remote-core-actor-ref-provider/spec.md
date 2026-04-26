@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: 単一の RemoteActorRefProvider trait (remote 専用)
 
-`fraktor_remote_core_rs::provider::RemoteActorRefProvider` trait が定義され、**リモート経路の actor ref 生成・死活管理の窓口** となる SHALL。Pekko `RemoteActorRefProvider` (Scala, 784行) に対応するが、fraktor-rs では責務を分離する:
+`fraktor_remote_core_rs::domain::provider::RemoteActorRefProvider` trait が定義され、**リモート経路の actor ref 生成・死活管理の窓口** となる SHALL。Pekko `RemoteActorRefProvider` (Scala, 784行) に対応するが、fraktor-rs では責務を分離する:
 
 - **core の `RemoteActorRefProvider`**: リモート ActorPath に対する `RemoteActorRef` の構築と watch 管理のみを担う。local ActorPath の解決には関与しない
 - **loopback (同一 `UniqueAddress`) のディスパッチ**: Phase B adapter の責務。adapter が `ActorPath` を検査して local / remote を振り分け、local なら actor-core の local provider に委譲、remote なら core の `RemoteActorRefProvider` を呼ぶ
@@ -43,7 +43,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 #### Scenario: 戻り値は RemoteActorRef である
 
 - **WHEN** `RemoteActorRefProvider::actor_ref` の戻り値型を検査する
-- **THEN** 戻り値は `fraktor_remote_core_rs::provider::RemoteActorRef` である (actor-core の polymorphic `ActorRef` は返さない)
+- **THEN** 戻り値は `fraktor_remote_core_rs::domain::provider::RemoteActorRef` である (actor-core の polymorphic `ActorRef` は返さない)
 
 #### Scenario: local path に対するエラー返却
 
@@ -86,7 +86,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: RemoteActorRef data 型
 
-`fraktor_remote_core_rs::provider::RemoteActorRef` 型が定義され、リモートアクター参照を表現する **data-only 型** である SHALL。これは `RemoteActorRefProvider::actor_ref` メソッドの公開戻り値であり、Phase B で adapter 側が `RemoteActorRef` を受け取って actor-core の `ActorRef` + remote 用 `ActorRefSender` を構築する。core の `RemoteActorRef` 自体は path と remote_node の保持、accessor、clone、equality のみを提供し、送信責務は持たない。
+`fraktor_remote_core_rs::domain::provider::RemoteActorRef` 型が定義され、リモートアクター参照を表現する **data-only 型** である SHALL。これは `RemoteActorRefProvider::actor_ref` メソッドの公開戻り値であり、Phase B で adapter 側が `RemoteActorRef` を受け取って actor-core の `ActorRef` + remote 用 `ActorRefSender` を構築する。core の `RemoteActorRef` 自体は path と remote_node の保持、accessor、clone、equality のみを提供し、送信責務は持たない。
 
 #### Scenario: RemoteActorRef の存在
 
@@ -126,7 +126,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: ActorPath → UniqueAddress 解決関数
 
-`fraktor_remote_core_rs::provider::resolve_remote_address` 関数が定義され、`ActorPath` から `UniqueAddress` (host, port, system, uid) を抽出する SHALL。状態を持たないため struct ではなく free function として実装する。
+`fraktor_remote_core_rs::domain::provider::resolve_remote_address` 関数が定義され、`ActorPath` から `UniqueAddress` (host, port, system, uid) を抽出する SHALL。状態を持たないため struct ではなく free function として実装する。
 
 #### Scenario: 関数の存在
 

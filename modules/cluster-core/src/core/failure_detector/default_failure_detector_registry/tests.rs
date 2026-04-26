@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, string::String};
 
-use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::{address::Address, failure_detector::PhiAccrualFailureDetector};
 
 use super::DefaultFailureDetectorRegistry;
 use crate::core::failure_detector::{FailureDetector, FailureDetectorRegistry};
@@ -25,8 +25,12 @@ impl FailureDetector for PhiAccrualAdapter {
 
 fn registry() -> DefaultFailureDetectorRegistry<String> {
   DefaultFailureDetectorRegistry::new(Box::new(|| {
-    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(1.5, 4, 1, 0, 10)))
+    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(detector_address(), 1.5, 4, 1, 0, 10)))
   }))
+}
+
+fn detector_address() -> Address {
+  Address::new("cluster-test", "127.0.0.1", 0)
 }
 
 #[test]

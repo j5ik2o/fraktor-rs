@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: StdRemoteActorRefProvider 型
 
-`fraktor_remote_adaptor_std_rs::provider::StdRemoteActorRefProvider` 型が定義され、**loopback 振り分けを含む ActorPath 解決の唯一の窓口** として機能する SHALL。この型が core spec `remote-core-actor-ref-provider` の「loopback 短絡の実装責務は adapter にある」要件 (Decision 3-C) を満たす実装である。
+`fraktor_remote_adaptor_std_rs::std::provider::StdRemoteActorRefProvider` 型が定義され、**loopback 振り分けを含む ActorPath 解決の唯一の窓口** として機能する SHALL。この型が core spec `remote-core-actor-ref-provider` の「loopback 短絡の実装責務は adapter にある」要件 (Decision 3-C) を満たす実装である。
 
 #### Scenario: 型の存在
 
@@ -101,7 +101,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 #### Scenario: authority あり path での resolve_remote_address の利用
 
 - **WHEN** authority あり path を扱う `StdRemoteActorRefProvider::actor_ref` の実装を検査する
-- **THEN** `fraktor_remote_core_rs::provider::resolve_remote_address(&path)` が呼ばれ、結果が `Some(UniqueAddress)` で `self.local_address` と比較される
+- **THEN** `fraktor_remote_core_rs::domain::provider::resolve_remote_address(&path)` が呼ばれ、結果が `Some(UniqueAddress)` で `self.local_address` と比較される
 
 #### Scenario: local path 判定後の入力条件適合
 

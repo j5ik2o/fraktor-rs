@@ -15,7 +15,7 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
 };
-use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::{address::Address, failure_detector::PhiAccrualFailureDetector};
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 use tokio::runtime::Handle;
 
@@ -72,7 +72,7 @@ fn build_coordinator() -> MembershipCoordinatorShared {
   let table = MembershipTable::new(3);
   let threshold = config.phi_threshold;
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(threshold, 10, 1, 0, 10)))
+    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(detector_address(), threshold, 10, 1, 0, 10)))
   }));
   let cluster_config = ClusterExtensionConfig::new()
     .with_advertised_address("127.0.0.1:22110")
@@ -81,6 +81,10 @@ fn build_coordinator() -> MembershipCoordinatorShared {
   let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorShared::new(coordinator)
+}
+
+fn detector_address() -> Address {
+  Address::new("cluster-test", "127.0.0.1", 0)
 }
 
 fn join_delta(authority: &str) -> MembershipDelta {

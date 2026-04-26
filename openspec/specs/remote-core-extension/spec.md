@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: Remoting trait
 
-`fraktor_remote_core_rs::extension::Remoting` trait が定義され、リモートサブシステムの lifecycle API を提供する SHALL。god object `RemotingControlHandle` (旧 `fraktor-remote-rs`, 479行) の純粋 lifecycle 責務のみを受け持つ。transport 参照、bridge factory、watcher daemon、heartbeat channels 等の runtime 配線は **一切保持しない**。
+`fraktor_remote_core_rs::domain::extension::Remoting` trait が定義され、リモートサブシステムの lifecycle API を提供する SHALL。god object `RemotingControlHandle` (旧 `fraktor-remote-rs`, 479行) の純粋 lifecycle 責務のみを受け持つ。transport 参照、bridge factory、watcher daemon、heartbeat channels 等の runtime 配線は **一切保持しない**。
 
 #### Scenario: trait の存在
 
@@ -29,7 +29,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: RemotingLifecycleState 状態機械
 
-`fraktor_remote_core_rs::extension::RemotingLifecycleState` 型が定義され、`Pending`・`Starting`・`Running`・`ShuttingDown`・`Shutdown` の5状態と `&mut self` ベースの **閉じた遷移メソッド群** を持つ SHALL。状態機械は以下の遷移で閉じられる:
+`fraktor_remote_core_rs::domain::extension::RemotingLifecycleState` 型が定義され、`Pending`・`Starting`・`Running`・`ShuttingDown`・`Shutdown` の5状態と `&mut self` ベースの **閉じた遷移メソッド群** を持つ SHALL。状態機械は以下の遷移で閉じられる:
 
 ```
 Pending --transition_to_start()--> Starting --mark_started()--> Running
@@ -124,7 +124,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 ### Requirement: EventPublisher
 
-`fraktor_remote_core_rs::extension::EventPublisher` 型が定義され、`RemotingLifecycleEvent` を actor system のイベントストリームへ送出する機能を提供する SHALL。core は `fraktor-actor-core-rs` に既に依存しているため、`ActorSystemWeak` を直接保持する形で実装する (独自 trait abstraction は作らない)。
+`fraktor_remote_core_rs::domain::extension::EventPublisher` 型が定義され、`RemotingLifecycleEvent` を actor system のイベントストリームへ送出する機能を提供する SHALL。core は `fraktor-actor-core-rs` に既に依存しているため、`ActorSystemWeak` を直接保持する形で実装する (独自 trait abstraction は作らない)。
 
 #### Scenario: 型の存在
 
@@ -143,7 +143,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 ### Requirement: RemoteAuthoritySnapshot data 型
 
-`fraktor_remote_core_rs::extension::RemoteAuthoritySnapshot` 型が定義され、リモート authority の状態 snapshot を表現する immutable data 型として提供される SHALL。
+`fraktor_remote_core_rs::domain::extension::RemoteAuthoritySnapshot` 型が定義され、リモート authority の状態 snapshot を表現する immutable data 型として提供される SHALL。
 
 #### Scenario: 型の存在
 
@@ -157,7 +157,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 ### Requirement: RemotingError 型
 
-`fraktor_remote_core_rs::extension::RemotingError` enum が定義され、lifecycle 遷移失敗や `Remoting` trait メソッドの失敗カテゴリを網羅する SHALL。
+`fraktor_remote_core_rs::domain::extension::RemotingError` enum が定義され、lifecycle 遷移失敗や `Remoting` trait メソッドの失敗カテゴリを網羅する SHALL。
 
 #### Scenario: 型の存在
 

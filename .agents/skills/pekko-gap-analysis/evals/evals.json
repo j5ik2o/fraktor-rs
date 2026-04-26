@@ -21,6 +21,13 @@
       "expected_output": "clusterモジュールのギャップ分析レポート。pekko側に cluster-typed 等の複数サブモジュールがある状況を考慮し、関連するディレクトリを参照しながら分析。カテゴリ別ギャップと難易度を含む。",
       "files": [],
       "expectations": []
+    },
+    {
+      "id": 4,
+      "prompt": "remoteモジュールについてPekkoとのギャップ分析をしてください。現状の remote-core が src/domain/ を公開境界にしている前提で、不足機能を洗い出してほしいです。",
+      "expected_output": "remoteモジュールのギャップ分析レポート。`modules/remote-core/src/domain/` と `modules/remote-adaptor-std/src/std/` を比較スコープとして扱い、raw 抽出値を parity 分母に使わず、カテゴリ別ギャップと Phase 1-3 の実装優先度を含む。",
+      "files": [],
+      "expectations": []
     }
   ]
 }

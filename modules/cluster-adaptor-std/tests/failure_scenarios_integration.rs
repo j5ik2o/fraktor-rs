@@ -14,7 +14,7 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },
 };
-use fraktor_remote_core_rs::failure_detector::PhiAccrualFailureDetector;
+use fraktor_remote_core_rs::core::{address::Address, failure_detector::PhiAccrualFailureDetector};
 use fraktor_utils_core_rs::core::{sync::SharedAccess, time::TimerInstant};
 
 /// Test-only adapter that bridges the remote-core detector to the
@@ -112,7 +112,7 @@ impl DemoNode {
       .with_app_version("1.0.0")
       .with_roles(vec![String::from("member")]);
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-      Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(threshold, 10, 1, 0, 10)))
+      Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(detector_address(), threshold, 10, 1, 0, 10)))
     }));
     let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
     coordinator.start_member().expect("start_member");
@@ -149,6 +149,10 @@ impl DemoNode {
   fn status_of(&self, authority: &str) -> Option<NodeStatus> {
     self.snapshot().entries.into_iter().find(|record| record.authority == authority).map(|record| record.status)
   }
+}
+
+fn detector_address() -> Address {
+  Address::new("cluster-test", "127.0.0.1", 0)
 }
 
 fn config() -> MembershipCoordinatorConfig {

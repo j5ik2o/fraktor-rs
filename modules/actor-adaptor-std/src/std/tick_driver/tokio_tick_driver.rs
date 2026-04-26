@@ -15,7 +15,7 @@ use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
 };
 use tokio::{
   runtime::{Handle, RuntimeFlavor},
-  task::JoinHandle,
+  task::{JoinError, JoinHandle},
   time::{MissedTickBehavior, interval},
 };
 
@@ -116,9 +116,21 @@ impl TickDriverStopper for TokioTickDriverStopper {
     let tick_task = self.tick_task;
     let exec_task = self.exec_task;
     let join = std::thread::spawn(move || {
-      let _ = handle.block_on(tick_task);
-      let _ = handle.block_on(exec_task);
+      log_task_join_result("scheduler tick task", handle.block_on(tick_task));
+      log_task_join_result("scheduler executor task", handle.block_on(exec_task));
     });
-    let _ = join.join();
+    if join.join().is_err() {
+      tracing::warn!("tokio tick driver stopper wait thread panicked");
+    }
+  }
+}
+
+fn log_task_join_result(task: &'static str, result: Result<(), JoinError>) {
+  match result {
+    | Ok(()) => {},
+    | Err(error) if error.is_cancelled() => {},
+    | Err(error) => {
+      tracing::warn!(task, ?error, "tokio tick driver task finished with error");
+    },
   }
 }
