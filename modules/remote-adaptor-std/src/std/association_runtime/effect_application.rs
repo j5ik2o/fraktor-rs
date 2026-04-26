@@ -10,6 +10,7 @@
 
 use fraktor_remote_core_rs::domain::{
   association::{Association, AssociationEffect},
+  envelope::OutboundEnvelope,
   extension::EventPublisher,
 };
 
@@ -24,7 +25,7 @@ use fraktor_remote_core_rs::domain::{
 /// - **`SendEnvelopes`**: each envelope is re-enqueued via `assoc.enqueue` so the outbound loop
 ///   drains it through `next_outbound`. After `handshake_accepted` the state is `Active`, so the
 ///   envelopes land in the internal send queue. If the state is anything else, `enqueue` either
-///   defers them again or surfaces a recursive `DiscardEnvelopes` effect, which is logged below.
+///   defers them again or surfaces recursive effects, which are applied below.
 /// - **`DiscardEnvelopes`**: the discarded count and reason are logged via `tracing` so the
 ///   operator can observe the loss.
 /// - **`PublishLifecycle`**: published through the actor-system event stream.
@@ -43,14 +44,7 @@ pub fn apply_effects_in_place(
 fn apply_one(assoc: &mut Association, effect: AssociationEffect, event_publisher: &EventPublisher) {
   match effect {
     | AssociationEffect::SendEnvelopes { envelopes } => {
-      let count = envelopes.len();
-      for envelope in envelopes {
-        let recursive = assoc.enqueue(envelope);
-        for inner in recursive {
-          apply_recursive_effect(inner, event_publisher);
-        }
-      }
-      tracing::debug!(count, "association re-enqueued deferred envelopes after handshake");
+      apply_send_envelopes(assoc, envelopes, event_publisher);
     },
     | AssociationEffect::DiscardEnvelopes { reason, envelopes } => {
       tracing::warn!(
@@ -72,7 +66,18 @@ fn apply_one(assoc: &mut Association, effect: AssociationEffect, event_publisher
   }
 }
 
-fn apply_recursive_effect(effect: AssociationEffect, event_publisher: &EventPublisher) {
+fn apply_send_envelopes(assoc: &mut Association, envelopes: Vec<OutboundEnvelope>, event_publisher: &EventPublisher) {
+  let count = envelopes.len();
+  for envelope in envelopes {
+    let recursive = assoc.enqueue(envelope);
+    for inner in recursive {
+      apply_recursive_effect(assoc, inner, event_publisher);
+    }
+  }
+  tracing::debug!(count, "association re-enqueued envelopes");
+}
+
+fn apply_recursive_effect(assoc: &mut Association, effect: AssociationEffect, event_publisher: &EventPublisher) {
   match effect {
     | AssociationEffect::DiscardEnvelopes { reason, envelopes } => {
       tracing::warn!(
@@ -82,7 +87,7 @@ fn apply_recursive_effect(effect: AssociationEffect, event_publisher: &EventPubl
       );
     },
     | AssociationEffect::SendEnvelopes { envelopes } => {
-      tracing::debug!(count = envelopes.len(), "association produced nested SendEnvelopes during re-enqueue");
+      apply_send_envelopes(assoc, envelopes, event_publisher);
     },
     | AssociationEffect::PublishLifecycle(event) => {
       // tracing は運用観測、event stream は下流購読者向けなので両方へ出力する。
