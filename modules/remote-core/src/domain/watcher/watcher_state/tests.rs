@@ -31,6 +31,12 @@ fn detector_address_for_node<'a>(state: &'a WatcherState, node: &Address) -> Opt
   state.detector_for(node).and_then(PhiAccrualFailureDetector::monitored_address)
 }
 
+impl WatcherState {
+  fn detector_for(&self, node: &Address) -> Option<&PhiAccrualFailureDetector> {
+    self.detectors.get(node)
+  }
+}
+
 #[test]
 fn watch_remote_target_configures_detector_address() {
   let mut state = new_state();

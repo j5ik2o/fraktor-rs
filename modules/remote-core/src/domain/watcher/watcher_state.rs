@@ -86,10 +86,6 @@ impl WatcherState {
     self.watching.values().map(Vec::len).sum()
   }
 
-  pub(super) fn detector_for(&self, node: &Address) -> Option<&PhiAccrualFailureDetector> {
-    self.detectors.get(node)
-  }
-
   /// Applies a command and returns the list of effects to perform.
   pub fn handle(&mut self, command: WatcherCommand) -> Vec<WatcherEffect> {
     match command {
@@ -157,9 +153,6 @@ impl WatcherState {
     }
     // 通知済みフラグを消して、再度沈黙した場合に検出できるようにする。
     self.already_notified.remove(from);
-    if self.detector_for(from).is_none() {
-      self.ensure_detector(from);
-    }
     self.ensure_detector(from).heartbeat(now);
     Vec::new()
   }
