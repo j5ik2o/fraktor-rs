@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use fraktor_remote_core_rs::core::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq};
+use fraktor_remote_core_rs::core::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError};
 use tokio::net::TcpListener;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
@@ -93,6 +93,34 @@ fn wire_frame_codec_handles_multiple_frames_in_one_buffer() {
   let decoded_b = codec.decode(&mut buf).unwrap().expect("second frame");
   assert_eq!(decoded_b, b);
   assert!(buf.is_empty());
+}
+
+#[test]
+fn wire_frame_codec_rejects_oversized_frame_length() {
+  let mut codec = WireFrameCodec::new();
+  let mut buf = BytesMut::new();
+  // 宣言されたフレーム長が 16 MiB 上限を超えるケースを作る。
+  buf.extend_from_slice(&(16 * 1024 * 1024 + 1_u32).to_be_bytes());
+  // ヘッダ事前チェックを通すための最小バイト数を追加する。
+  buf.extend_from_slice(&[1, 0]);
+
+  let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
+  assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::FrameTooLarge)));
+  assert_eq!(buf.len(), 6, "oversized header must not partially consume the buffer");
+}
+
+#[test]
+fn wire_frame_codec_rejects_declared_frame_length_smaller_than_header() {
+  let mut codec = WireFrameCodec::new();
+  let mut buf = BytesMut::new();
+  // 宣言されたフレーム長には最低でも version + kind が必要。
+  buf.extend_from_slice(&1_u32.to_be_bytes());
+  // 外側のヘッダ長チェックを通すための十分なバイト数を追加する。
+  buf.extend_from_slice(&[1, 0]);
+
+  let err = codec.decode(&mut buf).expect_err("too-small frame length must be rejected");
+  assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::InvalidFormat)));
+  assert_eq!(buf.len(), 6, "invalid header must not partially consume the buffer");
 }
 
 // ---------------------------------------------------------------------------
