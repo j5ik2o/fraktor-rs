@@ -107,7 +107,7 @@
 | message payload serialization into envelope | `MessageSerializer.scala:81`, `ArteryMessageSerializer.scala:178` | 部分実装 | std/tcp_transport + actor-core/serialization | hard | `build_envelope_frame()` が `Bytes::new()` placeholder を使う |
 | `MessageContainerSerializer` | `serialization/MessageContainerSerializer.scala:30` | 未対応 | actor-core/serialization | medium | actor selection message の remote payload 化がない |
 | `SystemMessageSerializer` | `serialization/SystemMessageSerializer.scala:22` | 未対応 | actor-core/serialization | medium | Watch / Unwatch / DeathWatchNotification / Terminate の serializer がない |
-| `MiscMessageSerializer` subset | `serialization/MiscMessageSerializer.scala:37` | 部分実装 | actor-core/serialization + core/wire | medium | `Address` / `UniqueAddress` はあるが、Identify / ActorIdentity / `RemoteRouterConfig` などの manifest 対応がない |
+| `MiscMessageSerializer` subset | `serialization/MiscMessageSerializer.scala:37` | 部分実装 | actor-core/serialization + core/wire | medium | `Address` / `UniqueAddress` および `Identify` の manifest 対応 (manifest `"ID"`, `MISC_MESSAGE_ID = 9`) は実装済み。`ActorIdentity` は `ActorRef` path serialization 拡張待ち、`RemoteRouterConfig` は routing layer 拡張待ち |
 | `ThrowableNotSerializableException` | `serialization/ThrowableNotSerializableException.scala:22` | 対応済み (新名 `ThrowableNotSerializableError`) | actor-core/serialization | easy | 対応済み。Rust 慣習に合わせ `*Error` 命名 |
 | Artery compression protocol (`CompressionProtocol`, `CompressionTable`, `InboundCompressions`, `TopHeavyHitters`) | `artery/compress/*`, `artery/Codecs.scala` | 未対応 | core/wire + core/association | hard | wire protocol 上の actor ref / manifest compression がごっそり未実装 |
 

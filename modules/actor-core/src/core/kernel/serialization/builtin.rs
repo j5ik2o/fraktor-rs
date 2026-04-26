@@ -5,6 +5,7 @@ mod byte_string_serializer;
 mod bytes_serializer;
 mod i32_serializer;
 mod message_container_serializer;
+mod misc_message_serializer;
 mod null_serializer;
 mod string_serializer;
 mod system_message_serializer;
@@ -18,6 +19,7 @@ pub use bytes_serializer::BytesSerializer;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 pub use i32_serializer::I32Serializer;
 pub use message_container_serializer::MessageContainerSerializer;
+pub use misc_message_serializer::MiscMessageSerializer;
 pub use null_serializer::NullSerializer;
 pub use string_serializer::StringSerializer;
 pub use system_message_serializer::SystemMessageSerializer;
@@ -25,7 +27,7 @@ pub use system_message_serializer::SystemMessageSerializer;
 use crate::core::kernel::{
   actor::{
     actor_selection::ActorSelectionMessage,
-    messaging::system_message::SystemMessage,
+    messaging::{Identify, system_message::SystemMessage},
   },
   serialization::{
     error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
@@ -57,6 +59,9 @@ pub const SYSTEM_MESSAGE_ID: SerializerId = SerializerId::from_raw(7);
 
 /// Serializer ID for [`ActorSelectionMessage`].
 pub const MESSAGE_CONTAINER_ID: SerializerId = SerializerId::from_raw(8);
+
+/// Serializer ID for the misc-message subset (Pekko-compatible `Identify`).
+pub const MISC_MESSAGE_ID: SerializerId = SerializerId::from_raw(9);
 
 /// Registers built-in serializers required by the runtime.
 ///
@@ -131,6 +136,14 @@ where
     MessageContainerSerializer::new(MESSAGE_CONTAINER_ID, registry.downgrade()),
     "message_container",
     Some((TypeId::of::<ActorSelectionMessage>(), "ActorSelectionMessage".into())),
+    &mut on_collision,
+  )?;
+  register::<_, _>(
+    registry,
+    MISC_MESSAGE_ID,
+    MiscMessageSerializer::new(MISC_MESSAGE_ID, registry.downgrade()),
+    "misc_message",
+    Some((TypeId::of::<Identify>(), "Identify".into())),
     &mut on_collision,
   )?;
   Ok(())
