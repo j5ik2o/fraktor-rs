@@ -106,13 +106,13 @@ fraktor-rs は Pekko の `PersistentActor` と複数 mix-in trait を、`Eventso
 
 ### 5. Durable State store contract　✅ 実装済み 5/8 (63%)
 
-`DurableStateStore`、`DurableStateUpdateStore`、`DurableStateStoreProvider`、`DurableStateStoreRegistry`、`DurableStateException` は存在する。ただし Pekko の revision / tag を含む durable state write-side contract とはまだ差がある。
+`DurableStateStore`、`DurableStateUpdateStore`、`DurableStateStoreProvider`、`DurableStateStoreRegistry`、`DurableStateError` は存在する。ただし Pekko の revision / tag を含む durable state write-side contract とはまだ差がある。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
 | `GetObjectResult[A]` | `state/scaladsl/DurableStateStore.scala:31`, `state/scaladsl/DurableStateStore.scala:35` | 未対応 | core/durable_state | trivial | 現状は `Option<A>` だけを返し、revision を保持しない |
 | revision / tag aware update store | `state/scaladsl/DurableStateUpdateStore.scala:37`, `state/scaladsl/DurableStateUpdateStore.scala:63` | 部分実装 | core/durable_state | medium | `upsert_object` と `delete_object` に revision / tag がない |
-| `DeleteRevisionException` | `state/exception/DurableStateException.scala:41` | 未対応 | core/durable_state | trivial | `DurableStateException` に revision mismatch 系の variant がない |
+| `DeleteRevisionException` | `state/exception/DurableStateException.scala:41` | 未対応 | core/durable_state | trivial | `DurableStateError` に revision mismatch 系の variant がない |
 
 ### 6. Plugin / extension / in-memory stores　✅ 実装済み 5/7 (71%)
 

@@ -33,6 +33,7 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 - Scala trait 階層 → Rust trait + 合成
 - Scala implicit → Rust ジェネリクスまたは通常の引数
 - sealed trait + case classes → enum
+- Java/Scala の `*Exception` 型 → Rust の `*Error` 型 (例: `ThrowableNotSerializableException` → `ThrowableNotSerializableError`)
 
 ## テストポリシー
 

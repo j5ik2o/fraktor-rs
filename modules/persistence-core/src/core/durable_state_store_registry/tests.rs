@@ -13,7 +13,7 @@ use core::{
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
-  durable_state_exception::DurableStateException, durable_state_store::DurableStateStore,
+  durable_state_error::DurableStateError, durable_state_store::DurableStateStore,
   durable_state_store_provider::DurableStateStoreProvider, durable_state_store_registry::DurableStateStoreRegistry,
   durable_state_update_store::DurableStateUpdateStore,
 };
@@ -22,7 +22,7 @@ const TEST_PROVIDER_ID: &str = "in-memory";
 const TEST_PERSISTENCE_ID: &str = "persistence-1";
 const TEST_UNKNOWN_PROVIDER_ID: &str = "missing-provider";
 
-type DurableStateFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, DurableStateException>> + Send + 'a>>;
+type DurableStateFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, DurableStateError>> + Send + 'a>>;
 
 #[derive(Default)]
 struct TestDurableStateStore {
@@ -118,7 +118,7 @@ fn register_duplicate_provider_fails() {
   registry.register(TEST_PROVIDER_ID, provider.clone()).expect("first register provider");
 
   let result = registry.register(TEST_PROVIDER_ID, provider);
-  assert_eq!(result, Err(DurableStateException::ProviderAlreadyRegistered(TEST_PROVIDER_ID.to_string())));
+  assert_eq!(result, Err(DurableStateError::ProviderAlreadyRegistered(TEST_PROVIDER_ID.to_string())));
 }
 
 #[test]
@@ -126,7 +126,7 @@ fn resolve_unknown_provider_fails() {
   let registry = DurableStateStoreRegistry::<i32>::empty();
 
   let result = registry.resolve(TEST_UNKNOWN_PROVIDER_ID);
-  assert_eq!(result.err(), Some(DurableStateException::ProviderNotFound(TEST_UNKNOWN_PROVIDER_ID.to_string())));
+  assert_eq!(result.err(), Some(DurableStateError::ProviderNotFound(TEST_UNKNOWN_PROVIDER_ID.to_string())));
 }
 
 #[test]

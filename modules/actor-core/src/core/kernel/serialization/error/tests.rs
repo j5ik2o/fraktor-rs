@@ -2,7 +2,7 @@ use alloc::{format, string::String};
 
 use super::SerializationError;
 use crate::core::kernel::serialization::{
-  ThrowableNotSerializableException, call_scope::SerializationCallScope, not_serializable_error::NotSerializableError,
+  ThrowableNotSerializableError, call_scope::SerializationCallScope, not_serializable_error::NotSerializableError,
   serializer_id::SerializerId,
 };
 
@@ -88,17 +88,17 @@ fn is_methods_return_correct_values() {
 }
 
 #[test]
-fn throwable_not_serializable_exception_preserves_original_message_and_class_name() {
+fn throwable_not_serializable_error_preserves_original_message_and_class_name() {
   let payload =
-    ThrowableNotSerializableException::new(String::from("serialization failed"), String::from("example::BrokenError"));
+    ThrowableNotSerializableError::new(String::from("serialization failed"), String::from("example::BrokenError"));
 
   assert_eq!(payload.original_message(), "serialization failed");
   assert_eq!(payload.original_class_name(), "example::BrokenError");
 }
 
 #[test]
-fn throwable_not_serializable_exception_is_cloneable_value_payload() {
-  let payload = ThrowableNotSerializableException::new(String::from("boom"), String::from("example::BrokenError"));
+fn throwable_not_serializable_error_is_cloneable_value_payload() {
+  let payload = ThrowableNotSerializableError::new(String::from("boom"), String::from("example::BrokenError"));
 
   let cloned = payload.clone();
 
