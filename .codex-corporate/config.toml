@@ -6,6 +6,7 @@ web_search = "live"
 personality = "pragmatic"
 
 [features]
+codex_hooks = true
 rmcp_client = true
 skills = true
 unified_exec = true
