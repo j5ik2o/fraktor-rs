@@ -47,10 +47,6 @@ fn handshaking_association() -> Association {
   assoc
 }
 
-fn new_event_harness() -> EventHarness {
-  EventHarness::new()
-}
-
 fn has_remoting_lifecycle_event(
   events: &[EventStreamEvent],
   expected: impl Fn(&RemotingLifecycleEvent) -> bool,
@@ -118,6 +114,8 @@ fn registry_iter_yields_all_entries() {
   reg.insert(b.clone(), AssociationShared::new(sample_association()));
   let collected: Vec<_> = reg.iter().map(|(addr, _)| addr.clone()).collect();
   assert_eq!(collected.len(), 2);
+  assert!(collected.contains(&a));
+  assert!(collected.contains(&b));
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +180,7 @@ fn system_message_delivery_apply_ack_is_monotonic() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_driver_fires_after_timeout_and_marks_gated() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   let shared = AssociationShared::new(handshaking_association());
 
   let mut driver = HandshakeDriver::new();
@@ -207,7 +205,7 @@ async fn handshake_driver_fires_after_timeout_and_marks_gated() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_driver_cancel_prevents_firing() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   let shared = AssociationShared::new(handshaking_association());
 
   let mut driver = HandshakeDriver::new();
@@ -351,7 +349,7 @@ fn deferred_envelope() -> OutboundEnvelope {
 
 #[test]
 fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   // associate 済み、かつ handshake 未完了のため deferred envelope を保持する association を作る。
   let mut association = handshaking_association();
   assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
@@ -386,7 +384,7 @@ fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
 
 #[test]
 fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   // associate 済み、かつ handshake 未完了のため deferred envelope を保持する association を作る。
   let mut association = handshaking_association();
   assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
@@ -406,7 +404,7 @@ fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
 
 #[test]
 fn handshake_accepted_with_no_deferred_envelopes_is_a_noop() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   // flush 対象が空でも、effects 適用で panic せず phantom envelope も生成しない。
   let mut association = handshaking_association();
 
@@ -418,7 +416,7 @@ fn handshake_accepted_with_no_deferred_envelopes_is_a_noop() {
 
 #[test]
 fn apply_effects_in_place_publishes_lifecycle_events_to_event_stream() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   let mut association = sample_association();
   let effects = vec![AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined {
     authority:      String::from("remote-sys@10.0.0.1:2552"),
@@ -444,7 +442,7 @@ fn apply_effects_in_place_publishes_lifecycle_events_to_event_stream() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn inbound_dispatch_publishes_connected_lifecycle_with_req_origin() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   let shared = AssociationShared::new(handshaking_association());
   let (tx, rx) = mpsc::unbounded_channel();
 
@@ -480,7 +478,7 @@ async fn inbound_dispatch_publishes_connected_lifecycle_with_req_origin() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn inbound_dispatch_discards_handshake_for_different_association() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   let shared = AssociationShared::new(handshaking_association());
   let shared_for_assert = shared.clone();
   let (tx, rx) = mpsc::unbounded_channel();
@@ -509,7 +507,7 @@ async fn inbound_dispatch_discards_handshake_for_different_association() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn inbound_dispatch_publishes_connected_lifecycle_with_rsp_origin() {
-  let harness = new_event_harness();
+  let harness = EventHarness::new();
   let shared = AssociationShared::new(handshaking_association());
   let (tx, rx) = mpsc::unbounded_channel();
 

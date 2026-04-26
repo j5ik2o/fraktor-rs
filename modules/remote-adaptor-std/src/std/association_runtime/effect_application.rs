@@ -36,8 +36,7 @@ pub fn apply_effects_in_place(
   effects: Vec<AssociationEffect>,
   event_publisher: &EventPublisher,
 ) {
-  // `pending` is a LIFO worklist; push effects in reverse to preserve emission order without
-  // recursion.
+  // `pending` は LIFO の作業リストなので、再帰を使わずに出力順を保つため reverse してから処理する。
   let mut pending = effects;
   pending.reverse();
   while let Some(effect) = pending.pop() {
@@ -68,8 +67,8 @@ fn apply_one(
       event_publisher.publish_lifecycle(event);
     },
     | AssociationEffect::StartHandshake { endpoint } => {
-      // The transport-driven start path is the caller's responsibility; this
-      // helper only logs that the effect was observed.
+      // StartHandshake は transport 駆動の開始経路を呼び出し元が担うので、
+      // このヘルパーでは観測した効果をログするだけに留める。
       tracing::debug!(?endpoint, "association requested handshake start");
     },
   }
