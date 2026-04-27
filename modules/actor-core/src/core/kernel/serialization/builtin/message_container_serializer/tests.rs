@@ -36,19 +36,12 @@ fn round_trip(message: ActorSelectionMessage) -> ActorSelectionMessage {
   *decoded.downcast::<ActorSelectionMessage>().expect("selection message")
 }
 
-#[test]
-fn identifier_returns_configured_id() {
-  let registry = registry();
-
-  assert_eq!(serializer(&registry).identifier(), MESSAGE_CONTAINER_ID);
-}
-
-#[test]
-fn include_manifest_is_false() {
-  let registry = registry();
-
-  assert!(!serializer(&registry).include_manifest());
-}
+// `identifier_returns_configured_id` / `include_manifest_is_false` /
+// `non_selection_message_type_is_rejected` の各ケースは
+// `modules/actor-core/tests/message_container_serializer.rs` の
+// `should_return_configured_serializer_id` / `should_not_require_manifest` /
+// `should_reject_non_actor_selection_message_type` と重複していたため、ここでは
+// エンコーダ/デコーダの単体検証 (round-trip と element-tag 解析) のみを残す。
 
 #[test]
 fn actor_selection_message_round_trips_with_nested_string_payload() {
@@ -66,15 +59,6 @@ fn actor_selection_message_round_trips_with_nested_string_payload() {
   ]);
   assert!(decoded.wildcard_fan_out());
   assert_eq!(decoded.message().downcast_ref::<String>(), Some(&String::from("payload")));
-}
-
-#[test]
-fn non_selection_message_type_is_rejected() {
-  let registry = registry();
-  let serializer = serializer(&registry);
-  let result = serializer.to_binary(&String::from("wrong"));
-
-  assert!(matches!(result, Err(SerializationError::InvalidFormat)));
 }
 
 #[test]
