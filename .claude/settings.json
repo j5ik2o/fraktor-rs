@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/run_dylint_after_rust_edit.py\" --agent claude",
+            "command": "/usr/bin/python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/run_rust_checks_after_edit.py\" --agent claude",
             "timeout": 1800
           }
         ]
