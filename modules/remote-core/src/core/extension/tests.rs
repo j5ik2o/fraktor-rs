@@ -1,8 +1,13 @@
 use alloc::string::String;
 
+use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPathParser;
+
 use crate::core::{
   address::Address,
-  extension::{RemoteAuthoritySnapshot, RemotingError, RemotingLifecycleState},
+  extension::{
+    RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome, RemoteAuthoritySnapshot, RemotingError,
+    RemotingLifecycleState,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -145,4 +150,28 @@ fn remote_authority_snapshot_clone_preserves_fields() {
   let snap = RemoteAuthoritySnapshot::new(Address::new("sys", "host", 0), false, true, None, None);
   let cloned = snap.clone();
   assert_eq!(snap, cloned);
+}
+
+// ---------------------------------------------------------------------------
+// RemoteActorRefResolveCacheEvent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn remote_actor_ref_resolve_cache_event_exposes_path_and_miss_outcome() {
+  let path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+  let event = RemoteActorRefResolveCacheEvent::new(path.clone(), RemoteActorRefResolveCacheOutcome::Miss);
+
+  assert_eq!(event.path(), &path);
+  assert_eq!(event.outcome(), RemoteActorRefResolveCacheOutcome::Miss);
+}
+
+#[test]
+fn remote_actor_ref_resolve_cache_event_clone_preserves_hit_outcome() {
+  let path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+  let event = RemoteActorRefResolveCacheEvent::new(path.clone(), RemoteActorRefResolveCacheOutcome::Hit);
+
+  let cloned = event.clone();
+
+  assert_eq!(cloned.path(), &path);
+  assert_eq!(cloned.outcome(), RemoteActorRefResolveCacheOutcome::Hit);
 }
