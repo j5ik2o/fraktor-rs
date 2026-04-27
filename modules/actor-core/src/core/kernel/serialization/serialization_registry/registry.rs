@@ -43,13 +43,13 @@ impl SerializationRegistry {
     manifest_routes
       .extend(setup.manifest_routes_ref().iter().map(|(manifest, routes)| (manifest.clone(), routes.clone())));
     Self {
-      serializers:      SharedRwLock::new_with_driver::<DefaultRwLock<_>>(serializers),
-      bindings:         SharedRwLock::new_with_driver::<DefaultRwLock<_>>(bindings),
-      binding_names:    SharedRwLock::new_with_driver::<DefaultRwLock<_>>(binding_names),
+      serializers: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(serializers),
+      bindings: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(bindings),
+      binding_names: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(binding_names),
       remote_manifests,
-      manifest_routes:  SharedRwLock::new_with_driver::<DefaultRwLock<_>>(manifest_routes),
-      cache:            SharedRwLock::new_with_driver::<DefaultRwLock<_>>(HashMap::with_hasher(RandomState::new())),
-      fallback:         setup.fallback_serializer(),
+      manifest_routes: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(manifest_routes),
+      cache: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(HashMap::with_hasher(RandomState::new())),
+      fallback: setup.fallback_serializer(),
     }
   }
 

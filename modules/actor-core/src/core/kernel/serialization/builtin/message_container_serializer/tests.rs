@@ -84,11 +84,8 @@ fn invalid_element_tag_is_rejected() {
   // 1 要素 (Parent) で encode し、末尾の Parent タグバイトを未知の値に差し替えて
   // unknown-tag 判定パスを実行させる。要素 0 で末尾に余剰バイトを付けると
   // is_finished の余剰バイト検知に先に当たり、目的のパスを通らない。
-  let message = ActorSelectionMessage::new(
-    AnyMessage::new(String::from("payload")),
-    vec![SelectionPathElement::Parent],
-    false,
-  );
+  let message =
+    ActorSelectionMessage::new(AnyMessage::new(String::from("payload")), vec![SelectionPathElement::Parent], false);
   let mut bytes = serializer.to_binary(&message).expect("selection message should encode");
   *bytes.last_mut().expect("Parent tag byte") = u8::MAX;
 

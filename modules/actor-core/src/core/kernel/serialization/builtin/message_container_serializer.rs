@@ -70,8 +70,9 @@ impl Serializer for MessageContainerSerializer {
     let decoded = decode_selection(bytes)?;
     let delegator = SerializationDelegator::new(&registry);
     let payload = delegator.deserialize(&decoded.nested, None)?;
-    // ActorSelectionMessage の payload はユーザメッセージ扱い（control でも NotInfluenceReceiveTimeout でもない）。
-    // wire 上に flag を載せていないため、deserialize 側では常に false/false で復元する。
+    // ActorSelectionMessage の payload はユーザメッセージ扱い（control でも NotInfluenceReceiveTimeout
+    // でもない）。 wire 上に flag を載せていないため、deserialize 側では常に false/false
+    // で復元する。
     let message = AnyMessage::from_erased(ArcShared::from_boxed(payload), None, false, false);
     Ok(Box::new(ActorSelectionMessage::new(message, decoded.elements, decoded.wildcard_fan_out)))
   }

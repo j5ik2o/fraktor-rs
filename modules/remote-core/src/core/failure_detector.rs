@@ -2,11 +2,11 @@
 //!
 //! This module ships:
 //!
-//! - the [`FailureDetector`] trait and its concrete implementations
-//!   ([`PhiAccrualFailureDetector`] modelled after Apache Pekko's `PhiAccrualFailureDetector`,
-//!   [`DeadlineFailureDetector`] for deadline-style probes), and
-//! - the registry abstractions [`FailureDetectorRegistry`] /
-//!   [`DefaultFailureDetectorRegistry`] that compose per-resource detectors.
+//! - the [`FailureDetector`] trait and its concrete implementations ([`PhiAccrualFailureDetector`]
+//!   modelled after Apache Pekko's `PhiAccrualFailureDetector`, [`DeadlineFailureDetector`] for
+//!   deadline-style probes), and
+//! - the registry abstractions [`FailureDetectorRegistry`] / [`DefaultFailureDetectorRegistry`]
+//!   that compose per-resource detectors.
 //!
 //! All implementations are pure value types: every operation takes `now_ms: u64`
 //! (monotonic millis) as an explicit argument so higher layers stay in control of
