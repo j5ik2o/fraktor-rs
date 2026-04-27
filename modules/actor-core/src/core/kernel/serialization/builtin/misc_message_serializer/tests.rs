@@ -359,6 +359,38 @@ fn registry_drop_yields_uninitialized_error_on_encode() {
 }
 
 #[test]
+fn actor_identity_decode_rejects_truncated_actor_ref_tag() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let identity = ActorIdentity::new(AnyMessage::new(String::from("trunc")), None);
+  let mut bytes = s.to_binary(&identity).expect("encode");
+  // 末尾 1 バイト (actor_ref tag) を削り、 cursor.read_u8() が InvalidFormat になることを確認する。
+  bytes.pop();
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, ACTOR_IDENTITY_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_truncated_dispatcher_string() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let mut bytes = Vec::new();
+  bytes.push(1_u8);
+  bytes.extend_from_slice(&3_u32.to_le_bytes());
+  // dispatcher の長さフィールドだけ書き込んで本体を切り詰める。
+  bytes.extend_from_slice(&5_u32.to_le_bytes());
+  bytes.extend_from_slice(b"abc");
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
 fn from_binary_uses_type_hint_to_select_decoder_for_actor_identity() {
   let registry = registry();
   let s = serializer(&registry);
