@@ -137,6 +137,45 @@ fn should_reject_zero_capacity() {
 }
 
 #[test]
+fn should_use_default_capacity_and_threshold_when_default_is_called() {
+  let mut cache: ActorRefResolveCache<ActorPath> = ActorRefResolveCache::default();
+  let path = remote_path("default");
+
+  let outcome = cache.resolve(&path, |candidate: &ActorPath| Ok::<ActorPath, &'static str>(candidate.clone()));
+
+  assert!(matches!(outcome, Ok(ActorRefResolveCacheOutcome::Miss(value)) if value == path));
+}
+
+#[test]
+fn should_evict_least_recently_used_entry_when_first_inserted_is_more_recent() {
+  let mut cache = ActorRefResolveCache::with_limits(2, 600);
+  let first_path = remote_path("first");
+  let second_path = remote_path("second");
+  let third_path = remote_path("third");
+
+  cache
+    .resolve(&first_path, |candidate: &ActorPath| Ok::<ActorPath, &'static str>(candidate.clone()))
+    .expect("first miss");
+  cache
+    .resolve(&second_path, |candidate: &ActorPath| Ok::<ActorPath, &'static str>(candidate.clone()))
+    .expect("second miss");
+  cache
+    .resolve(&first_path, |candidate: &ActorPath| Ok::<ActorPath, &'static str>(candidate.clone()))
+    .expect("first hit");
+  cache
+    .resolve(&third_path, |candidate: &ActorPath| Ok::<ActorPath, &'static str>(candidate.clone()))
+    .expect("third miss evicts second");
+
+  let first_again =
+    cache.resolve(&first_path, |candidate: &ActorPath| Ok::<ActorPath, &'static str>(candidate.clone()));
+  let second_again =
+    cache.resolve(&second_path, |candidate: &ActorPath| Ok::<ActorPath, &'static str>(candidate.clone()));
+
+  assert!(matches!(first_again, Ok(ActorRefResolveCacheOutcome::Hit(value)) if value == first_path));
+  assert!(matches!(second_again, Ok(ActorRefResolveCacheOutcome::Miss(value)) if value == second_path));
+}
+
+#[test]
 fn should_evict_stale_entry_before_least_recently_used_entry() {
   let mut cache = ActorRefResolveCache::with_limits(2, 1);
   let first_path = remote_path("one");

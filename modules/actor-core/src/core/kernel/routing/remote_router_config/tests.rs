@@ -32,6 +32,10 @@ fn new_preserves_pool_contract() {
   assert!(!config.has_resizer());
   assert!(!config.use_pool_dispatcher());
   assert_eq!(config.create_router().routees().len(), 0);
+  assert_eq!(
+    config.stop_router_when_all_routees_removed(),
+    SmallestMailboxPool::new(3).stop_router_when_all_routees_removed(),
+  );
 }
 
 #[test]

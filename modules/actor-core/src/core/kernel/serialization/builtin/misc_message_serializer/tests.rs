@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -367,4 +367,147 @@ fn registry_drop_yields_uninitialized_error_on_encode() {
   let identify = Identify::new(AnyMessage::new(String::from("payload")));
   let result = s.to_binary(&identify);
   assert!(matches!(result, Err(SerializationError::Uninitialized)));
+}
+
+#[test]
+fn as_any_returns_concrete_serializer_reference() {
+  let registry = registry();
+  let s = serializer(&registry);
+
+  let any_ref = s.as_any();
+
+  assert!(any_ref.downcast_ref::<MiscMessageSerializer>().is_some());
+}
+
+#[test]
+fn actor_identity_decode_rejects_unknown_actor_ref_tag() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let identity = ActorIdentity::new(AnyMessage::new(String::from("correlation")), None);
+  let mut bytes = s.to_binary(&identity).expect("encode");
+  let last_index = bytes.len() - 1;
+  bytes[last_index] = 9;
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, ACTOR_IDENTITY_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn actor_identity_decode_rejects_trailing_bytes_after_tag() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let identity = ActorIdentity::new(AnyMessage::new(String::from("correlation")), None);
+  let mut bytes = s.to_binary(&identity).expect("encode");
+  bytes.push(0xff);
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, ACTOR_IDENTITY_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_scope_decode_rejects_trailing_bytes() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let scope = RemoteScope::new(remote_node());
+  let mut bytes = s.to_binary(&scope).expect("encode");
+  bytes.push(0xff);
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_SCOPE_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_zero_instances() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let mut bytes = Vec::new();
+  bytes.push(1_u8);
+  bytes.extend_from_slice(&0_u32.to_le_bytes());
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_zero_nodes() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let dispatcher = "remote-router-dispatcher";
+  let mut bytes = Vec::new();
+  bytes.push(1_u8);
+  bytes.extend_from_slice(&3_u32.to_le_bytes());
+  bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
+  bytes.extend_from_slice(dispatcher.as_bytes());
+  bytes.extend_from_slice(&0_u32.to_le_bytes());
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_trailing_bytes() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = SmallestMailboxPool::new(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let mut bytes = s.to_binary(&original).expect("encode");
+  bytes.push(0xff);
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_unknown_pool_tag() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = SmallestMailboxPool::new(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let mut bytes = s.to_binary(&original).expect("encode");
+  bytes[0] = 0xff;
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn status_failure_decode_rejects_unknown_error_tag() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = Status::failure(ActorError::recoverable("reason"));
+  let mut bytes = s.to_binary(&original).expect("encode");
+  bytes[0] = 0xff;
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, STATUS_FAILURE_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn status_failure_decode_rejects_trailing_bytes() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = Status::failure(ActorError::recoverable("reason"));
+  let mut bytes = s.to_binary(&original).expect("encode");
+  bytes.push(0xff);
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, STATUS_FAILURE_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
 }
