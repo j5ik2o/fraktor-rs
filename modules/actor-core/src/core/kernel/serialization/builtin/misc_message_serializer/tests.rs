@@ -571,6 +571,25 @@ fn remote_router_config_decode_rejects_zero_instances() {
 }
 
 #[test]
+fn remote_router_config_decode_rejects_node_count_exceeding_remaining_bytes() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let dispatcher = "remote-router-dispatcher";
+  let mut bytes = Vec::new();
+  bytes.push(1_u8);
+  bytes.extend_from_slice(&3_u32.to_le_bytes());
+  bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
+  bytes.extend_from_slice(dispatcher.as_bytes());
+  // node_count を u32::MAX にして残りバイト数を遥かに超えさせる。 OOM 防御で InvalidFormat を返す。
+  bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
 fn remote_router_config_decode_rejects_zero_nodes() {
   let registry = registry();
   let s = serializer(&registry);
