@@ -1,6 +1,6 @@
 # remote モジュール ギャップ分析
 
-更新日: 2026-04-27 (6th edition / Phase 2 medium 完了 + Phase 3 hard 再確認版)
+更新日: 2026-04-27 (6th edition / Phase 2 medium 完了 + Phase 3 hard 再確認 + 方針判断追加版)
 
 ## 比較スコープ定義
 
@@ -168,6 +168,35 @@
 | `artery/jfr/Events.scala`, `JFRRemotingFlightRecorder.scala` | JVM Flight Recorder 固有。Rust 側は `RemotingFlightRecorder` (ring buffer) で代替 |
 | HOCON provider loading / `FailureDetectorLoader` 動的ロード / JVM classloader | JVM 設定ロード方式 |
 | `TestStage`, multi-node-testkit, remote-tests | runtime API ではない |
+
+## Phase 3 着手前に決めるべき方針判断
+
+Phase 3 hard 14 件の実装は、以下の方針判断 1 つに強く依存する。Phase 2 medium を takt で回す前に明文化しておくと、advanced settings の命名や serializer manifest の選定が方針側に揃う分、後続の手戻りが減る。
+
+### Q. Pekko Artery と wire-protocol parity を目指すか
+
+| 選択肢 | wire 互換 | 影響範囲 | 主なトレードオフ |
+|--------|-----------|----------|------------------|
+| A. protocol parity (Pekko Artery と相互運用可能) | TCP framing で `AKKA` magic + stream id、`ArteryMessageSerializer` の protobuf control PDU、`CompressionTable` の wire 表現すべて Pekko 互換 | `tcp_transport/frame_codec.rs` 全書き換え、`core/wire/*` の PDU 再設計、`DaemonMsgCreateSerializer` も Pekko protobuf manifest と整合 | Pekko クラスタとの相互運用が得られる。Rust 側 binary codec 設計の自由度を失う |
+| B. responsibility parity のみ (責任分割は Pekko、wire は独立) | 現状維持。`length(4) + version(1) + kind(1)` framing と独自 PDU / manifest | wire layer の自由度を保ち、framing 互換用コードを書かない | Pekko クラスタとは相互運用しない (fraktor ノード同士のみ) |
+
+`lib.rs` の "Pekko Artery compatible" は責任分割 (B) の意味で書かれている可能性が高いが、現時点で明文化されていない。Phase 3 で `ArteryMessageSerializer` / `CompressionProtocol` / `DaemonMsgCreateSerializer` を書く前に openspec proposal で確定させる必要がある。
+
+A を選ぶ場合の影響を受ける項目: カテゴリ 4 (Wire protocol / serialization) の Phase 3 hard 5 件 (Pekko Artery TCP framing / `ArteryMessageSerializer` / payload serialization / `DaemonMsgCreateSerializer` / Compression protocol)、advanced settings の `transport` / compression toggle の命名。
+
+B を選ぶ場合の影響を受ける項目: 同 5 件は「Pekko 由来の責任分割を踏襲しつつ独自 binary 実装」となり、命名 / 内部 PDU 形は自由。advanced settings は fraktor 独自命名で良い。
+
+### 早すぎる refactor を避ける箇所
+
+以下は Phase 3 hard を実装してから自然に正しい責務境界が見える。いま先回りで refactor しない。
+
+| 観点 | いま触らない理由 | 検討するタイミング |
+|------|------------------|--------------------|
+| payload serialization の owner (`build_envelope_frame` の置き場 — wire / association_runtime / provider のどれか) | remote send path 実装時に正しい呼び出し位置が決まる | Phase 3 hard の "remote send path" 着手時 |
+| 設定だけ先行している箇所 (`shutdown_flush_timeout`, `outbound_max_restarts` 等) | driver 側 (`FlushOnShutdown`, `RestartCounter`) が決まれば設定との配線も自動的に決まる | Phase 3 hard の "FlushOnShutdown" / Phase 2 medium の "RestartCounter" 着手時 |
+| `RemoteConfig` を 1 構造体にまとめるか、transport 種別ごとに分けるか | TLS / bind / lanes を実際に追加するときに肥大化具合が分かる | Phase 2 medium の "advanced settings 残り" 着手時 |
+
+これらは API 面が埋まったあとの「内部モジュール構造ギャップ分析」フェーズで一括整理する (本レポート末尾の構造観点表を起点にする)。
 
 ## 実装優先度
 
