@@ -2,6 +2,10 @@ use core::time::Duration;
 
 use crate::core::config::RemoteConfig;
 
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
+const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
+const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+
 #[test]
 fn new_uses_defaults_for_optional_fields() {
   let s = RemoteConfig::new("localhost");
@@ -24,6 +28,24 @@ fn new_uses_defaults_for_optional_fields() {
   assert_eq!(s.outbound_restart_backoff(), Duration::from_secs(1));
   assert_eq!(s.outbound_restart_timeout(), Duration::from_secs(5));
   assert_eq!(s.outbound_max_restarts(), 5);
+}
+
+#[test]
+fn advanced_artery_settings_use_pekko_compatible_defaults() {
+  // Given: デフォルト構成
+  let s = RemoteConfig::new("localhost");
+
+  // Then: Pekko Artery 相当の既定値を返す
+  assert_eq!(s.bind_hostname(), None);
+  assert_eq!(s.bind_port(), None);
+  assert_eq!(s.inbound_lanes(), 4);
+  assert_eq!(s.outbound_lanes(), 1);
+  assert_eq!(s.maximum_frame_size(), DEFAULT_MAXIMUM_FRAME_SIZE);
+  assert_eq!(s.buffer_pool_size(), DEFAULT_BUFFER_POOL_SIZE);
+  assert!(!s.untrusted_mode());
+  assert!(!s.log_received_messages());
+  assert!(!s.log_sent_messages());
+  assert_eq!(s.log_frame_size_exceeding(), None);
 }
 
 #[test]
@@ -71,6 +93,71 @@ fn method_chain_applies_all_changes() {
   assert_eq!(s.outbound_restart_backoff(), Duration::from_millis(100));
   assert_eq!(s.outbound_restart_timeout(), Duration::from_millis(500));
   assert_eq!(s.outbound_max_restarts(), 2);
+}
+
+#[test]
+fn advanced_artery_settings_method_chain_applies_all_changes() {
+  // Given: advanced 設定をすべて上書きした構成
+  let s = RemoteConfig::new("localhost")
+    .with_bind_hostname("0.0.0.0")
+    .with_bind_port(25520)
+    .with_inbound_lanes(8)
+    .with_outbound_lanes(2)
+    .with_maximum_frame_size(512 * 1024)
+    .with_buffer_pool_size(64)
+    .with_untrusted_mode(true)
+    .with_log_received_messages(true)
+    .with_log_sent_messages(true)
+    .with_log_frame_size_exceeding(128 * 1024);
+
+  // Then: 上書きした値を保持する
+  assert_eq!(s.bind_hostname(), Some("0.0.0.0"));
+  assert_eq!(s.bind_port(), Some(25520));
+  assert_eq!(s.inbound_lanes(), 8);
+  assert_eq!(s.outbound_lanes(), 2);
+  assert_eq!(s.maximum_frame_size(), 512 * 1024);
+  assert_eq!(s.buffer_pool_size(), 64);
+  assert!(s.untrusted_mode());
+  assert!(s.log_received_messages());
+  assert!(s.log_sent_messages());
+  assert_eq!(s.log_frame_size_exceeding(), Some(128 * 1024));
+}
+
+#[test]
+fn with_inbound_lanes_rejects_zero() {
+  // When: inbound lane に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_inbound_lanes(0));
+
+  // Then: 不正な lane 数として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_outbound_lanes_rejects_zero() {
+  // When: outbound lane に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_lanes(0));
+
+  // Then: 不正な lane 数として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_maximum_frame_size_rejects_values_below_minimum() {
+  // When: 最小値未満の frame size を指定する
+  let result =
+    std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_maximum_frame_size(MINIMUM_MAXIMUM_FRAME_SIZE - 1));
+
+  // Then: 不正な frame size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_buffer_pool_size_rejects_zero() {
+  // When: buffer pool size に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_buffer_pool_size(0));
+
+  // Then: 不正な pool size として拒否する
+  assert!(result.is_err());
 }
 
 #[test]
