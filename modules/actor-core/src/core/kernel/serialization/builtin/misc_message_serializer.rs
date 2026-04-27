@@ -112,7 +112,11 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
     // release ではログに残したうえで空マニフェストを返す（呼び出し元の to_binary が
     // InvalidFormat を返すので silent-corruption にはならない）。
     debug_assert!(false, "MiscMessageSerializer::manifest called with unsupported type {:?}", message.type_id());
-    tracing::error!(type_id = ?message.type_id(), "MiscMessageSerializer::manifest called with unsupported type");
+    tracing::error!(
+      serializer = "MiscMessageSerializer",
+      type_id = ?message.type_id(),
+      "manifest() called with unsupported type"
+    );
     Cow::Borrowed("")
   }
 

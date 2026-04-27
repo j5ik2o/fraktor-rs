@@ -36,11 +36,16 @@ impl HandshakeDriver {
     Self { timeout_task: None, tasks: Vec::new() }
   }
 
-  /// Returns `true` when at least one handshake control task is currently armed.
+  /// Returns `true` when at least one handshake control task slot is currently occupied.
+  ///
+  /// We deliberately use slot occupancy (`Option::is_some` / `Vec::is_empty`) instead of
+  /// `JoinHandle::is_finished`. `is_finished` can flap immediately after `abort()` because the
+  /// task drop is observed asynchronously, which produced false negatives in the past.
+  /// `cancel()` is the canonical "drop everything" path and clears both fields, so this view
+  /// matches the in-struct intent rather than runtime task state.
   #[must_use]
   pub fn is_armed(&self) -> bool {
-    self.timeout_task.as_ref().is_some_and(|task| !task.is_finished())
-      || self.tasks.iter().any(|task| !task.is_finished())
+    self.timeout_task.is_some() || !self.tasks.is_empty()
   }
 
   /// Arms the driver to fire after `timeout` and notify `shared`.

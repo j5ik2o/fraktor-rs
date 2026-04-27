@@ -737,6 +737,12 @@ async fn recover_with_restart_budget_resets_counter_on_successful_recovery() {
   let mut association = handshaking_association();
   let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
   association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
+  // run_outbound_loop_with_reconnect は recover_with_restart_budget を呼ぶ前に
+  // 必ず gate_for_reconnect を経由するので、テストでも association を一旦 Gated に
+  // 落としてから recover を呼び出す。これがないと Association::recover は Active 経路の
+  // `_ => Vec::new()` 分岐に入ってしまい、本来検証したい Gated → Handshaking 復旧の
+  // effect が発生しない。
+  let _gate_effects = association.gate(Some(0), 0);
   let shared = AssociationShared::new(association);
 
   let remote = remote_address("remote-sys", "10.0.0.1", 2552);

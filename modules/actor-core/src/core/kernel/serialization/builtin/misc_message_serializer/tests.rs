@@ -122,8 +122,10 @@ fn truncated_payload_is_rejected_on_decode() {
   let mut bytes = s.to_binary(&original).expect("identify should encode");
   bytes.truncate(bytes.len() / 2);
 
+  // 切り詰めバイト列は最終的に SerializedMessage::decode 経路で InvalidFormat に行き着く。
+  // 単に is_err で受けず variant を固定して回帰検出感度を上げる。
   let result = s.from_binary(&bytes, None);
-  assert!(result.is_err());
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
 }
 
 #[test]

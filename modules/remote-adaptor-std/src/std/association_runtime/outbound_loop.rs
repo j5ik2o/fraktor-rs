@@ -62,6 +62,13 @@ pub async fn run_outbound_loop<T: RemoteTransport + Send + 'static>(
 /// run the supplied reconnect operation, and recover the association into a new
 /// handshake when reconnect succeeds.
 ///
+/// `gate_for_reconnect` is invoked **unconditionally** before
+/// `recover_with_restart_budget`, so even when `policy.max_restarts() == 0`
+/// (no reconnect attempt) the association still transitions to `Gated` and is
+/// observable to callers. This mirrors Pekko Artery's behaviour where a
+/// connection failure first surfaces as `Gated` regardless of whether any
+/// recovery is attempted.
+///
 /// # Errors
 ///
 /// Returns the observed transport error when the restart budget is exhausted or
@@ -224,9 +231,6 @@ fn elapsed_ms(started_at: Instant) -> u64 {
 }
 
 fn duration_millis(duration: Duration) -> u64 {
-  let millis = duration.as_millis();
-  match u64::try_from(millis) {
-    | Ok(value) => value,
-    | Err(_overflow) => u64::MAX,
-  }
+  // handshake_driver::monotonic_millis_since と同じ saturating キャスト形式に揃える。
+  duration.as_millis().min(u128::from(u64::MAX)) as u64
 }
