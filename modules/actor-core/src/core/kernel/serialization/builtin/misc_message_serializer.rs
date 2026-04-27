@@ -262,13 +262,13 @@ impl MiscMessageSerializer {
     let Some(system_state) = self.system_state.as_ref().and_then(SystemStateWeak::upgrade) else {
       return Err(Self::actor_ref_not_serializable());
     };
-    let Some(pid) = system_state.with_actor_path_registry(|registry| registry.pid_for(&path)) else {
-      return Err(Self::actor_ref_not_serializable());
-    };
-    let Some(cell) = system_state.cell(&pid) else {
-      return Err(Self::actor_ref_not_serializable());
-    };
-    Ok(cell.actor_ref())
+    // pid 解決と cell 取得の 2 段ルックアップ間で actor がライフサイクル終了する race も
+    // ありうるため、両方の None を `actor_ref_not_serializable` に集約する。
+    system_state
+      .with_actor_path_registry(|registry| registry.pid_for(&path))
+      .and_then(|pid| system_state.cell(&pid))
+      .map(|cell| cell.actor_ref())
+      .ok_or_else(Self::actor_ref_not_serializable)
   }
 
   fn actor_ref_not_serializable() -> SerializationError {
@@ -397,11 +397,8 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
     // manifest() は to_binary が成功したメッセージにしか呼ばれない想定だが、予期しない型でも
     // silent-corruption を避けるため診断ログを出して空マニフェストを返す（呼び出し元の
     // to_binary が InvalidFormat を返すので最終的にエラーが伝播する）。
-    tracing::error!(
-      serializer = "MiscMessageSerializer",
-      type_id = ?message.type_id(),
-      "manifest() called with unsupported type"
-    );
+    let type_id = message.type_id();
+    tracing::error!(serializer = "MiscMessageSerializer", ?type_id, "manifest() called with unsupported type");
     Cow::Borrowed("")
   }
 
