@@ -87,18 +87,24 @@ fn dispatch_handshake_request(
     );
     return;
   };
-  target.with_write(|assoc| match assoc.accept_handshake_request(req, now_ms) {
+  // Lock 区間内で外部 I/O (send_handshake_response) を呼ぶと、send 側が再帰的に同じ
+  // registry/association を参照するパスを持っていたとき deadlock し得る。受理判定と
+  // effect 適用、応答 PDU の構築までを lock 内で完結させ、送信は lock 解放後に行う。
+  let response = target.with_write(|assoc| match assoc.accept_handshake_request(req, now_ms) {
     | Ok(effects) => {
       apply_effects_in_place(assoc, effects, event_publisher);
-      let response = HandshakePdu::Rsp(HandshakeRsp::new(local.clone()));
-      if let Err(err) = send_handshake_response(remote_address, response) {
-        tracing::warn!(peer = %peer, origin = %remote_address, ?err, "handshake response send failed");
-      }
+      Some(HandshakePdu::Rsp(HandshakeRsp::new(local.clone())))
     },
     | Err(err) => {
       tracing::warn!(peer = %peer, ?err, "discarding invalid handshake request");
+      None
     },
   });
+  if let Some(response) = response
+    && let Err(err) = send_handshake_response(remote_address, response)
+  {
+    tracing::warn!(peer = %peer, origin = %remote_address, ?err, "handshake response send failed");
+  }
 }
 
 fn dispatch_handshake_response(

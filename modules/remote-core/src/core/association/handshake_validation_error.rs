@@ -1,5 +1,7 @@
 //! Handshake validation errors.
 
+use core::fmt::{Display, Formatter, Result as FmtResult};
+
 use crate::core::address::Address;
 
 /// Error returned when a handshake message does not match the association endpoints.
@@ -20,3 +22,18 @@ pub enum HandshakeValidationError {
     actual:   Address,
   },
 }
+
+impl Display for HandshakeValidationError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    match self {
+      | Self::UnexpectedDestination { expected, actual } => {
+        write!(f, "handshake validation: unexpected destination (expected {expected}, got {actual})")
+      },
+      | Self::UnexpectedRemote { expected, actual } => {
+        write!(f, "handshake validation: unexpected remote (expected {expected}, got {actual})")
+      },
+    }
+  }
+}
+
+impl core::error::Error for HandshakeValidationError {}

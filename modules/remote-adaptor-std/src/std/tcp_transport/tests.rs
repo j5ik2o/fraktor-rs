@@ -243,10 +243,7 @@ async fn remote_transport_send_handshake_writes_handshake_frame_to_connected_pee
   transport.start().expect("transport should start before connecting a peer");
 
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
-  transport
-    .connect_peer(alloc::format!("{}:{}", remote.host(), remote.port()))
-    .await
-    .expect("transport should connect to peer before sending handshake");
+  transport.connect_peer(&remote).await.expect("transport should connect to peer before sending handshake");
 
   let from = UniqueAddress::new(transport.default_address().expect("default local address").clone(), 1);
   let pdu = HandshakePdu::Req(HandshakeReq::new(from, remote.clone()));

@@ -44,17 +44,11 @@ where
   F: Fn(&K) -> D,
 {
   fn is_available(&self, resource: &K, now_ms: u64) -> bool {
-    match self.detectors.get(resource) {
-      | Some(detector) => detector.is_available(now_ms),
-      | None => true,
-    }
+    self.detectors.get(resource).map_or(true, |detector| detector.is_available(now_ms))
   }
 
   fn is_monitoring(&self, resource: &K) -> bool {
-    match self.detectors.get(resource) {
-      | Some(detector) => detector.is_monitoring(),
-      | None => false,
-    }
+    self.detectors.get(resource).map_or(false, |detector| detector.is_monitoring())
   }
 
   fn heartbeat(&mut self, resource: &K, now_ms: u64) {
@@ -62,8 +56,8 @@ where
   }
 
   fn remove(&mut self, resource: &K) {
-    // Removing an absent resource is a valid command outcome.
-    let _removed = self.detectors.remove(resource);
+    // 監視対象でないリソースの remove は no-op として扱う (command の冪等性を担保する)。
+    self.detectors.remove(resource);
   }
 
   fn reset(&mut self) {

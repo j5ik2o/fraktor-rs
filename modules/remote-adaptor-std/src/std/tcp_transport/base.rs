@@ -86,27 +86,35 @@ impl TcpRemoteTransport {
     self.inbound_rx.take()
   }
 
-  /// Establishes an outbound connection to `peer_addr` and stores the client.
+  /// Establishes an outbound connection to `remote` and stores the client.
   ///
   /// This method is async because `TcpStream::connect` is async. It must be
   /// invoked from an async context (e.g. `tokio::spawn`) prior to calling
   /// the synchronous [`RemoteTransport::send`].
+  ///
+  /// `remote` is hashed via the same [`Self::peer_key_for_address`] formatter
+  /// used by [`RemoteTransport::send`] / [`Self::send_handshake`], so the
+  /// stored client is guaranteed to match subsequent send/quarantine lookups.
+  /// (Earlier revisions accepted an arbitrary `String` here, which silently
+  /// caused `ConnectionClosed` errors when callers formatted the key
+  /// differently from the internal `host:port` convention.)
   ///
   /// # Errors
   ///
   /// Returns [`TransportError::NotStarted`] if the transport has not yet been
   /// started, or [`TransportError::SendFailed`] if the outbound connection
   /// cannot be established.
-  pub async fn connect_peer(&mut self, peer_addr: impl Into<String>) -> Result<(), TransportError> {
+  pub async fn connect_peer(&mut self, remote: &Address) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
-    let peer_addr = peer_addr.into();
-    if self.clients.contains_key(&peer_addr) {
+    let peer_key = Self::peer_key_for_address(remote);
+    if self.clients.contains_key(&peer_key) {
       return Ok(());
     }
-    let client = TcpClient::connect(peer_addr.clone(), self.inbound_tx.clone()).await?;
-    self.clients.insert(peer_addr, client);
+    let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
+    let client = TcpClient::connect(connect_addr, self.inbound_tx.clone()).await?;
+    self.clients.insert(peer_key, client);
     Ok(())
   }
 

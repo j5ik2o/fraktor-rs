@@ -255,6 +255,9 @@ impl BoundDetector {
 }
 
 impl FailureDetector for BoundDetector {
+  // テスト用 fixture: heartbeat 前は常に available と見なし、heartbeat 後は bound アドレスが
+  // `always_available_node()` と一致するときだけ available。レジストリのリセット / リセット後の
+  // 復帰を検証するための最小モックなので、本番の Phi accrual ロジックとは異なる。
   fn is_available(&self, _now_ms: u64) -> bool {
     !self.monitoring || self.bound == always_available_node()
   }
@@ -344,5 +347,8 @@ fn should_reset_all_resource_state() {
   // Then
   assert!(!registry.is_monitoring(&available_resource));
   assert!(!registry.is_monitoring(&unavailable_resource));
+  // リセット後は両リソースとも detector を持たない状態 (= 未監視) に戻り、is_available の既定値
+  // (true) が返る。available 側も明示的に確認しておく。
+  assert!(registry.is_available(&available_resource, 100));
   assert!(registry.is_available(&unavailable_resource, 100));
 }

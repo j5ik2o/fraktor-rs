@@ -157,9 +157,16 @@ where
   F: FnMut(Address) -> Fut,
   Fut: Future<Output = Result<TransportEndpoint, TransportError>>, {
   sleep(policy.backoff()).await;
+  // タイムアウトは TransportError 列挙体に独自バリアントを持たないため、上位に対しては
+  // ConnectionClosed として扱う (再接続ループの共通失敗経路に乗せる)。実原因を観測できる
+  // よう、マップする前に WARN ログを残す。
+  let remote_for_log = remote.clone();
   match timeout(policy.timeout(), reconnect(remote)).await {
     | Ok(result) => result,
-    | Err(_elapsed) => Err(TransportError::ConnectionClosed),
+    | Err(_elapsed) => {
+      tracing::warn!(remote = %remote_for_log, timeout_ms = duration_millis(policy.timeout()), "reconnect attempt timed out");
+      Err(TransportError::ConnectionClosed)
+    },
   }
 }
 

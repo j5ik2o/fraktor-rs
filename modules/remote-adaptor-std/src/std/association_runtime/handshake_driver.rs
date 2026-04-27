@@ -188,7 +188,10 @@ where
       if should_send {
         let pdu = HandshakePdu::Req(HandshakeReq::new(local.clone(), remote.clone()));
         if let Err(err) = send_handshake(&remote, pdu) {
-          tracing::warn!(remote = %remote, ?err, failure_message);
+          // failure_message は識別子末尾なので tracing マクロの field 短縮 (`field=field`)
+          // として記録される。メッセージ本文として残すために kind フィールドへ再 bind し、
+          // 可読な固定文字列を本文に置く。
+          tracing::warn!(remote = %remote, ?err, kind = failure_message, "periodic handshake send failed");
         }
       }
     }
