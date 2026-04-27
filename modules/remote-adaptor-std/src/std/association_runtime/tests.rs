@@ -1028,6 +1028,44 @@ async fn inbound_dispatch_replies_to_valid_handshake_req_with_local_unique_addre
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_does_not_reply_when_association_is_gated() {
+  // Association が Gated の状態で HandshakeReq を受信しても、accept_handshake_request は
+  // RejectedInState を返すため HandshakeRsp は送信されない。これにより、Pekko の遮断中
+  // に reconnect 試行を勝手に成功扱いしてしまう非対称な状態を防ぐ。
+  let harness = EventHarness::new();
+  let mut association = handshaking_association();
+  let _ = association.handshake_timed_out(0, Some(500));
+  assert!(association.state().is_gated(), "association must be in Gated state for this test");
+  let shared = AssociationShared::new(association);
+  let shared_for_assert = shared.clone();
+  let mut registry = AssociationRegistry::new();
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  registry.insert(UniqueAddress::new(remote.clone(), 0), shared);
+  let sent = new_sent_handshakes();
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(InboundFrameEvent {
+    peer:  String::from("10.0.0.1:2552"),
+    frame: remote_handshake_req("remote-sys", "10.0.0.1", 2552, 1),
+  })
+  .expect("handshake frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch_with_response_probe(rx, registry, 200, &harness, sent.clone()).await;
+
+  assert!(sent_handshakes(&sent).is_empty(), "gated association must not receive a handshake response");
+  shared_for_assert.with_write(|assoc| {
+    assert!(assoc.state().is_gated(), "association state must remain Gated after rejected handshake");
+  });
+  harness.events_with(|events| {
+    assert!(
+      !has_remoting_lifecycle_event(events, |event| matches!(event, RemotingLifecycleEvent::Connected { .. })),
+      "no Connected lifecycle should be emitted while gated"
+    );
+  });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn inbound_dispatch_discards_handshake_for_different_association() {
   let harness = EventHarness::new();
   let shared = AssociationShared::new(handshaking_association());

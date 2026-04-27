@@ -121,30 +121,45 @@ impl Association {
   ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
     self.ensure_local_destination(request.to())?;
     self.ensure_remote_origin(request.from().address())?;
-    Ok(self.handshake_accepted(remote_node_id_from_unique_address(request.from()), now_ms))
+    self.handshake_accepted(remote_node_id_from_unique_address(request.from()), now_ms)
   }
 
   /// Accepts a handshake response after verifying the remote origin.
   ///
   /// # Errors
   ///
-  /// Returns [`HandshakeValidationError`] when the response does not belong to this association.
+  /// Returns [`HandshakeValidationError`] when the response does not belong to
+  /// this association, or when the association cannot transition into `Active`
+  /// from its current state (`Idle`, `Gated`, `Quarantined`).
   pub fn accept_handshake_response(
     &mut self,
     response: &HandshakeRsp,
     now_ms: u64,
   ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
     self.ensure_remote_origin(response.from().address())?;
-    Ok(self.handshake_accepted(remote_node_id_from_unique_address(response.from()), now_ms))
+    self.handshake_accepted(remote_node_id_from_unique_address(response.from()), now_ms)
   }
 
   /// Transitions `Handshaking` → `Active`, flushing any deferred envelopes.
-  fn handshake_accepted(&mut self, remote_node: RemoteNodeId, now_ms: u64) -> Vec<AssociationEffect> {
+  ///
+  /// Returns `Err(RejectedInState)` for `Idle` / `Gated` / `Quarantined`: those
+  /// states must not be silently promoted to `Active` because the inbound
+  /// dispatcher would otherwise reply with `HandshakeRsp` and the peer would
+  /// observe an `Active` association while the local side stays unreachable.
+  // Idle / Gated / Quarantined で `Ok(Vec::new())` を返すと、inbound dispatcher が
+  // 「accept_handshake_request が Ok = HandshakeRsp を返してよい」という規約に従い
+  // 応答 PDU を送信してしまう。リモートは Active と思い込むがローカルは引き続き
+  // 到達不能のまま、という非対称なプロトコル状態を作るため、ここで明示的に拒否する。
+  fn handshake_accepted(
+    &mut self,
+    remote_node: RemoteNodeId,
+    now_ms: u64,
+  ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
     if let AssociationState::Active { remote_node: current, last_used_at, .. } = &mut self.state
       && current == &remote_node
     {
       *last_used_at = now_ms;
-      return Vec::new();
+      return Ok(Vec::new());
     }
 
     match &self.state {
@@ -161,7 +176,7 @@ impl Association {
           effects.push(AssociationEffect::SendEnvelopes { envelopes: deferred });
         }
         self.state = AssociationState::Active { remote_node, established_at: now_ms, last_used_at: now_ms };
-        effects
+        Ok(effects)
       },
       | AssociationState::Active { .. } => {
         let effect = AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected {
@@ -171,9 +186,11 @@ impl Association {
           correlation_id: CorrelationId::nil(),
         });
         self.state = AssociationState::Active { remote_node, established_at: now_ms, last_used_at: now_ms };
-        vec![effect]
+        Ok(vec![effect])
       },
-      | _ => Vec::new(),
+      | AssociationState::Idle => Err(HandshakeValidationError::RejectedInState { state: "Idle" }),
+      | AssociationState::Gated { .. } => Err(HandshakeValidationError::RejectedInState { state: "Gated" }),
+      | AssociationState::Quarantined { .. } => Err(HandshakeValidationError::RejectedInState { state: "Quarantined" }),
     }
   }
 

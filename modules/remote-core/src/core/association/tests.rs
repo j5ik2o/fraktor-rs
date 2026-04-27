@@ -10,7 +10,10 @@ use fraktor_actor_core_rs::core::kernel::{
 
 use crate::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  association::{Association, AssociationEffect, AssociationState, OfferOutcome, QuarantineReason, SendQueue},
+  association::{
+    Association, AssociationEffect, AssociationState, HandshakeValidationError, OfferOutcome, QuarantineReason,
+    SendQueue,
+  },
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{BackpressureSignal, TransportEndpoint},
   wire::{HandshakeReq, HandshakeRsp},
@@ -195,6 +198,92 @@ fn accept_handshake_request_rejects_unexpected_remote_without_state_change() {
 
   assert!(result.is_err(), "request from a different remote address must be rejected");
   assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 100, .. }));
+}
+
+// `Idle` / `Gated` / `Quarantined` の各状態でハンドシェイクを受理してしまうと、
+// inbound dispatcher が Ok を見て HandshakeRsp を送り返し、リモートはハンドシェイク
+// 成立と認識する一方でローカルは到達不能のまま、という非対称なプロトコル状態が
+// 生まれる。これらの状態では accept_handshake_request / accept_handshake_response が
+// `RejectedInState` を返し、状態遷移しないことを回帰検証する。
+
+#[test]
+fn accept_handshake_request_rejects_idle_state_without_state_change() {
+  let mut a = new_association();
+  assert!(matches!(a.state(), AssociationState::Idle));
+  let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Idle" })));
+  assert!(matches!(a.state(), AssociationState::Idle));
+}
+
+#[test]
+fn accept_handshake_request_rejects_gated_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  // gate() は Active からしか遷移しないため、Handshaking → Gated は
+  // handshake_timed_out() 経由で作る。
+  let _ = a.handshake_timed_out(100, Some(500));
+  assert!(a.state().is_gated());
+  let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Gated" })));
+  assert!(a.state().is_gated());
+}
+
+#[test]
+fn accept_handshake_request_rejects_quarantined_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100);
+  assert!(a.state().is_quarantined());
+  let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Quarantined" })));
+  assert!(a.state().is_quarantined());
+}
+
+#[test]
+fn accept_handshake_response_rejects_idle_state_without_state_change() {
+  let mut a = new_association();
+  assert!(matches!(a.state(), AssociationState::Idle));
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let result = a.accept_handshake_response(&response, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Idle" })));
+  assert!(matches!(a.state(), AssociationState::Idle));
+}
+
+#[test]
+fn accept_handshake_response_rejects_gated_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  let _ = a.handshake_timed_out(100, Some(500));
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let result = a.accept_handshake_response(&response, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Gated" })));
+  assert!(a.state().is_gated());
+}
+
+#[test]
+fn accept_handshake_response_rejects_quarantined_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100);
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let result = a.accept_handshake_response(&response, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Quarantined" })));
+  assert!(a.state().is_quarantined());
 }
 
 #[test]
