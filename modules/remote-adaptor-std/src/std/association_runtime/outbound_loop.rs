@@ -171,6 +171,10 @@ where
           let effects = assoc.recover(Some(endpoint), elapsed_ms(ctx.started_at));
           apply_effects_in_place(assoc, effects, ctx.event_publisher);
         });
+        // 復旧成功後に予算をリセットし、次の独立した障害サイクルが満額の budget で始まるようにする。
+        // RestartCounter が時刻 window でしかリセットされないと、回復直後の連続失敗で前サイクルの
+        // 消費を引き継いでしまうため、ここで明示的にクリアする。
+        restart_counter.reset();
         return Ok(());
       },
       | Err(err) => {

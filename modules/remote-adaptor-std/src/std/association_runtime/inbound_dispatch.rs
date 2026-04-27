@@ -190,20 +190,11 @@ fn registered_remote_address(
 
 pub(super) fn parse_authority(authority: &str) -> Option<Address> {
   let (system, endpoint) = authority.split_once('@')?;
-  // IPv6 リテラルは `system@[::1]:2552` 形式で来るため、ホスト部の括弧を先に切り落とし、
-  // `peer_matches_address` 側 (`Address::host()` は括弧なしを返す前提) と整合させる。
-  let (host, port) = if let Some(end) = endpoint.find(']') {
-    let host = endpoint.get(..=end)?;
-    let after = endpoint.get(end + 1..)?;
-    let port = after.strip_prefix(':')?;
-    (host.strip_prefix('[')?.strip_suffix(']')?, port)
-  } else {
-    endpoint.rsplit_once(':')?
-  };
-  let port = match port.parse::<u16>() {
-    | Ok(port) => port,
-    | Err(_) => return None,
-  };
+  // IPv6 リテラルでも最後の `:` がポート区切り。ホスト部のブラケット剥がしは
+  // `peer_matches_address` と同じく一律で行う。
+  let (host, port) = endpoint.rsplit_once(':')?;
+  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
+  let port = port.parse::<u16>().ok()?;
   Some(Address::new(system, host, port))
 }
 

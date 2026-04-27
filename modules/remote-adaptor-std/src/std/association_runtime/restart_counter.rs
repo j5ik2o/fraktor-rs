@@ -38,6 +38,16 @@ impl RestartCounter {
     }
     self.count <= self.max_restarts
   }
+
+  /// Resets the consumed budget so a new failure cycle starts from a fresh count.
+  ///
+  /// The outbound loop calls this after a successful reconnect: if another failure
+  /// occurs shortly after recovery (within the same window), the counter must not
+  /// inherit the consumed credits from the prior cycle.
+  pub const fn reset(&mut self) {
+    self.count = 0;
+    self.deadline_ms = 0;
+  }
 }
 
 fn duration_millis(duration: Duration) -> u64 {

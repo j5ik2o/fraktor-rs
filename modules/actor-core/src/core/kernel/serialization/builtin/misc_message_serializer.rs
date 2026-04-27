@@ -216,7 +216,10 @@ impl MiscMessageSerializer {
     write_len_prefixed_bytes(buffer, address.protocol().as_bytes())?;
     write_len_prefixed_bytes(buffer, address.system().as_bytes())?;
     write_len_prefixed_bytes(buffer, host.as_bytes())?;
-    buffer.extend_from_slice(&port.to_le_bytes());
+    // Pekko の MiscMessageSerializer は protobuf int32 で port を符号化する。 u16 だと
+    // 将来 protobuf 互換に切り替えるときに silent な mis-parse になるため、 4 バイト幅で
+    // 符号化しておく。
+    buffer.extend_from_slice(&u32::from(port).to_le_bytes());
     Ok(())
   }
 
@@ -344,7 +347,8 @@ impl Serializer for MiscMessageSerializer {
     // include_manifest() == true なので通常は from_binary_with_manifest が呼ばれるが、
     // include_manifest を確認しない呼び出し元から直接 from_binary に来た場合でも、
     // type_hint が手掛かりとして渡されていれば対応する decoder にディスパッチする。
-    // type_hint が無い、または未対応の TypeId なら data corruption を避けるため失敗させる。
+    // type_hint が無い場合は Pekko の MiscMessageSerializer 由来の単一型 (Identify) として
+    // 後方互換に decode する。未知の TypeId は silent な mis-decode を避けて InvalidFormat を返す。
     let Some(type_id) = type_hint else {
       return Ok(Box::new(self.decode_identify(bytes)?));
     };
@@ -455,13 +459,6 @@ impl<'a> Cursor<'a> {
     Ok(value)
   }
 
-  fn read_u16(&mut self) -> Result<u16, SerializationError> {
-    let end = self.offset.checked_add(2).ok_or(SerializationError::InvalidFormat)?;
-    let bytes = self.bytes.get(self.offset..end).ok_or(SerializationError::InvalidFormat)?;
-    self.offset = end;
-    Ok(u16::from_le_bytes(bytes.try_into().map_err(|_| SerializationError::InvalidFormat)?))
-  }
-
   fn read_u32(&mut self) -> Result<u32, SerializationError> {
     let end = self.offset.checked_add(4).ok_or(SerializationError::InvalidFormat)?;
     let bytes = self.bytes.get(self.offset..end).ok_or(SerializationError::InvalidFormat)?;
@@ -487,7 +484,9 @@ impl<'a> Cursor<'a> {
     let protocol = self.read_string()?;
     let system = self.read_string()?;
     let host = self.read_string()?;
-    let port = self.read_u16()?;
+    // Pekko 互換のため port は 4 バイト (u32) 読みだが値域は u16 に収まる必要がある。
+    let port_value = self.read_u32()?;
+    let port = u16::try_from(port_value).map_err(|_| SerializationError::InvalidFormat)?;
     Ok(Address::new_remote(protocol, system, host, port))
   }
 }

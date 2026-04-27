@@ -44,6 +44,22 @@ fn duration_millis_keeps_zero_for_zero_duration() {
 }
 
 #[test]
+fn reset_returns_budget_to_full_for_next_failure_cycle() {
+  let mut counter = RestartCounter::new(2, Duration::from_millis(100));
+
+  assert!(counter.restart(0));
+  assert!(counter.restart(10));
+  assert!(!counter.restart(20), "third restart inside window should exceed budget");
+
+  counter.reset();
+
+  // reset 後は同じ window 内でも満額の budget が戻る。
+  assert!(counter.restart(30));
+  assert!(counter.restart(40));
+  assert!(!counter.restart(50));
+}
+
+#[test]
 fn restart_with_sub_millisecond_timeout_still_enforces_budget() {
   let mut counter = RestartCounter::new(1, Duration::from_nanos(1));
 
