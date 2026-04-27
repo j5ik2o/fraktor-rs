@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, string::String, vec, vec::Vec};
 use core::any::{Any, TypeId};
 
 use ahash::RandomState;
@@ -8,7 +8,8 @@ use hashbrown::HashMap;
 use crate::core::kernel::serialization::{
   builder::SerializationSetupBuilder, call_scope::SerializationCallScope, delegator::SerializationDelegator,
   error::SerializationError, serialization_registry::SerializationRegistry, serialization_setup::SerializationSetup,
-  serializer::Serializer, serializer_id::SerializerId,
+  serialized_message::SerializedMessage, serializer::Serializer, serializer_id::SerializerId,
+  string_manifest_serializer::SerializerWithStringManifest,
 };
 
 #[derive(Clone)]
@@ -71,6 +72,167 @@ fn delegator_serializes_payload_via_registry() {
   let serialized = delegator.serialize(&payload, core::any::type_name::<TestPayload>()).expect("serialized");
   assert_eq!(serialized.serializer_id(), serializer_id);
   assert_eq!(serialized.bytes(), &[1, 2, 3]);
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ManifestPayload(&'static str);
+
+struct PrimaryManifestSerializer {
+  id: SerializerId,
+}
+
+impl Serializer for PrimaryManifestSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn to_binary(&self, _value: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    Ok(Vec::new())
+  }
+
+  fn from_binary(
+    &self,
+    _bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    // primary は常に未対応 manifest を返し、delegator の manifest-route fallback を発火させる。
+    Err(SerializationError::UnknownManifest(String::from("alias")))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    Some(self)
+  }
+}
+
+impl SerializerWithStringManifest for PrimaryManifestSerializer {
+  fn manifest(&self, _value: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
+    Cow::Borrowed("alias")
+  }
+
+  fn from_binary_with_manifest(
+    &self,
+    _bytes: &[u8],
+    manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Err(SerializationError::UnknownManifest(String::from(manifest)))
+  }
+}
+
+struct AliasManifestSerializer {
+  id: SerializerId,
+}
+
+impl Serializer for AliasManifestSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn to_binary(&self, _value: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    Ok(Vec::new())
+  }
+
+  fn from_binary(
+    &self,
+    _bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(ManifestPayload("alias-hit")))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    Some(self)
+  }
+}
+
+impl SerializerWithStringManifest for AliasManifestSerializer {
+  fn manifest(&self, _value: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
+    Cow::Borrowed("alias")
+  }
+
+  fn from_binary_with_manifest(
+    &self,
+    _bytes: &[u8],
+    _manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(ManifestPayload("alias-hit")))
+  }
+}
+
+#[test]
+fn delegator_deserializes_payload_via_registry() {
+  // primary serializer を直接 hit させ、delegator.deserialize の happy path を通す。
+  let primary_id = SerializerId::try_from(303).expect("id");
+  let alias_id = SerializerId::try_from(304).expect("id");
+  let primary: ArcShared<dyn Serializer> = ArcShared::new(AliasManifestSerializer { id: primary_id });
+  let alias: ArcShared<dyn Serializer> = ArcShared::new(AliasManifestSerializer { id: alias_id });
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("primary", primary_id, primary)
+    .expect("primary")
+    .register_serializer("alias", alias_id, alias)
+    .expect("alias")
+    .set_fallback("primary")
+    .expect("fallback")
+    .build()
+    .expect("build");
+  let registry = SerializationRegistry::from_setup(&setup);
+  let delegator = SerializationDelegator::new(&registry);
+  let message = SerializedMessage::new(primary_id, Some(String::from("alias")), Vec::new());
+  let decoded = delegator.deserialize(&message, None).expect("decode");
+  let payload = decoded.downcast::<ManifestPayload>().expect("ManifestPayload");
+  assert_eq!(*payload, ManifestPayload("alias-hit"));
+}
+
+#[test]
+fn delegator_routes_unknown_manifest_to_alias_serializer() {
+  // primary が UnknownManifest を返す → manifest-route に登録した alias で復号できることを検証。
+  let primary_id = SerializerId::try_from(305).expect("id");
+  let alias_id = SerializerId::try_from(306).expect("id");
+  let primary: ArcShared<dyn Serializer> = ArcShared::new(PrimaryManifestSerializer { id: primary_id });
+  let alias: ArcShared<dyn Serializer> = ArcShared::new(AliasManifestSerializer { id: alias_id });
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("primary", primary_id, primary)
+    .expect("primary")
+    .register_serializer("alias", alias_id, alias)
+    .expect("alias")
+    .register_manifest_route("alias", 0, "alias")
+    .expect("route")
+    .set_fallback("primary")
+    .expect("fallback")
+    .build()
+    .expect("build");
+  let registry = SerializationRegistry::from_setup(&setup);
+  let delegator = SerializationDelegator::new(&registry);
+  let message = SerializedMessage::new(primary_id, Some(String::from("alias")), Vec::new());
+  let decoded = delegator.deserialize(&message, None).expect("alias should be retried via manifest-route fallback");
+  let payload = decoded.downcast::<ManifestPayload>().expect("ManifestPayload");
+  assert_eq!(*payload, ManifestPayload("alias-hit"));
+}
+
+#[test]
+fn delegator_propagates_unknown_manifest_when_no_alias_matches() {
+  // manifest-route 未登録の場合、最終的に UnknownManifest がそのまま伝播する。
+  let primary_id = SerializerId::try_from(307).expect("id");
+  let primary: ArcShared<dyn Serializer> = ArcShared::new(PrimaryManifestSerializer { id: primary_id });
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("primary", primary_id, primary)
+    .expect("primary")
+    .set_fallback("primary")
+    .expect("fallback")
+    .build()
+    .expect("build");
+  let registry = SerializationRegistry::from_setup(&setup);
+  let delegator = SerializationDelegator::new(&registry);
+  let message = SerializedMessage::new(primary_id, Some(String::from("unknown-alias")), Vec::new());
+  let error = delegator.deserialize(&message, None).expect_err("no alias registered");
+  assert!(matches!(error, SerializationError::UnknownManifest(ref m) if m == "unknown-alias"), "got {error:?}");
 }
 
 #[test]
