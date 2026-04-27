@@ -348,6 +348,30 @@ fn truncated_payload_is_rejected_on_decode() {
 }
 
 #[test]
+fn actor_identity_decode_with_some_ref_returns_not_serializable_when_system_state_unavailable() {
+  // Some(actor_ref) ペイロードを手で組み立てて、 deserialize_actor_ref の system_state 不在経路を
+  // 直接踏ませる。 system_state を渡さない `MiscMessageSerializer::new` で構築した場合、
+  // upgrade は常に None なので NotSerializable が返ることを確認する。
+  let registry = registry();
+  let s = serializer(&registry);
+  // payload: 長さプリフィックス付き correlation_id (空 SerializedMessage), tag=1, path 文字列.
+  let identify = Identify::new(AnyMessage::new(String::from("corr")));
+  let identify_payload = s.to_binary(&identify).expect("encode identify");
+  let mut bytes = Vec::new();
+  bytes.extend_from_slice(&u32::try_from(identify_payload.len()).expect("len fits").to_le_bytes());
+  bytes.extend_from_slice(&identify_payload);
+  bytes.push(1);
+  let path = "fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker";
+  bytes.extend_from_slice(&u32::try_from(path.len()).expect("path len fits").to_le_bytes());
+  bytes.extend_from_slice(path.as_bytes());
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, ACTOR_IDENTITY_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::NotSerializable(_))), "expected NotSerializable, got {result:?}");
+}
+
+#[test]
 fn registry_drop_yields_uninitialized_error_on_encode() {
   let registry = registry();
   let s = MiscMessageSerializer::new(MISC_MESSAGE_ID, registry.downgrade());
@@ -386,6 +410,58 @@ fn remote_router_config_decode_rejects_truncated_dispatcher_string() {
 
   let view = s.as_string_manifest().expect("string manifest view");
   let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn from_binary_uses_type_hint_to_select_decoder_for_identify() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = Identify::new(AnyMessage::new(String::from("hint-id")));
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<Identify>())).expect("decode");
+
+  let identify = decoded.downcast::<Identify>().expect("decoded payload should be Identify");
+  let restored = identify.correlation_id().downcast_ref::<String>().expect("correlation id should be String");
+  assert_eq!(restored, "hint-id");
+}
+
+#[test]
+fn from_binary_uses_type_hint_to_select_decoder_for_remote_scope() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = RemoteScope::new(remote_node());
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteScope>())).expect("decode");
+
+  let scope = decoded.downcast::<RemoteScope>().expect("decoded payload should be RemoteScope");
+  assert_eq!(scope.node(), &remote_node());
+}
+
+#[test]
+fn from_binary_uses_type_hint_to_select_decoder_for_remote_router_config() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = SmallestMailboxPool::new(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>())).expect("decode");
+
+  assert!(decoded.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().is_some());
+}
+
+#[test]
+fn from_binary_returns_invalid_format_for_unsupported_type_hint() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = Identify::new(AnyMessage::new(String::from("payload")));
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let result = s.from_binary(&bytes, Some(TypeId::of::<i32>()));
 
   assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
 }
