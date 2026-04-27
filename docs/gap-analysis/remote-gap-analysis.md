@@ -1,12 +1,12 @@
 # remote モジュール ギャップ分析
 
-更新日: 2026-04-26 (5th edition / `core` namespace 再評価版)
+更新日: 2026-04-27 (6th edition / Phase 2 medium 完了 + Phase 3 hard 再確認版)
 
 ## 比較スコープ定義
 
 この調査は、Apache Pekko remote 配下の raw API 数をそのまま移植対象にするものではない。fraktor-rs の `remote` では、Pekko Artery compatible な remote actor transport 契約を対象にし、classic remoting / JVM 実装技術 / testkit は parity 分母から除外する。
 
-前回レポートの `modules/remote-core/src/domain/` 前提は現状と一致しない。現在の公開境界は `modules/remote-core/src/core/` であり、このレポートはその前提で再評価している。
+公開境界は `modules/remote-core/src/core/` (Pekko Artery 互換 core) と `modules/remote-adaptor-std/src/std/` (tokio adapter)。前回 5th edition と同じ namespace 前提を維持する。
 
 ### 対象に含めるもの
 
@@ -25,12 +25,18 @@
 | 除外項目 | 理由 |
 |----------|------|
 | classic remoting / `Endpoint.scala` / `AckedDelivery.scala` | Pekko 側でも deprecated。Artery 互換の分母には入れない |
-| Netty transport / Aeron UDP 完全互換 | JVM / Netty / Aeron 固有の transport 実装。Rust std TCP adapter とは別物 |
-| TLS / `SSLEngineProvider` 完全互換 | Java `SSLEngine` / HOCON / classloader に依存する実装互換は除外。Rust TLS adapter が必要なら別スコープ |
-| Java serialization / Jackson module そのもの | serialization contract との接続点のみ対象 |
-| HOCON provider loading / JVM dynamic access / classloader check | JVM 設定ロード方式に依存するため対象外 |
-| JFR / Flight Recorder event class 完全互換 | JFR は JVM 固有。Rust 側は ring-buffer flight recorder で代替 |
-| remote testkit / multi-node-testkit / remote-tests | runtime API ではない |
+| `transport/netty/` 配下、`PekkoProtocolTransport.scala`, `PekkoPduCodec.scala`, `AbstractTransportAdapter.scala` | classic transport stack |
+| `FailureInjectorTransportAdapter`, `ThrottlerTransportAdapter`, `TestTransport` | test / fault injection 用 |
+| Aeron UDP transport (`artery/aeron/*`) | JVM Aeron 固有実装、Rust std TCP adapter とは別物 |
+| TLS / `SSLEngineProvider` / `ConfigSSLEngineProvider` / `RotatingKeysSSLEngineProvider` / `security/provider/*` | Java `SSLEngine` / HOCON / classloader に依存する完全互換は除外。Rust TLS adapter が必要なら別スコープ |
+| `JavaSerializer` / Jackson module 完全互換 | serialization contract との接続点だけ対象 |
+| HOCON provider loading / `FailureDetectorLoader` 動的ロード / JVM classloader | JVM 設定ロード方式に依存 |
+| JFR `artery/jfr/Events.scala`, `JFRRemotingFlightRecorder.scala` | JFR は JVM 固有。Rust 側は `RemotingFlightRecorder` (ring buffer) で代替 |
+| remote testkit / multi-node-testkit / remote-tests / `TestStage.scala` | runtime API ではない |
+| `RemoteMetricsExtension`, `AddressUidExtension`, `BoundAddressesExtension` | JVM 拡張ローダ依存。同等情報は `RemotingLifecycleState` / `RemoteAuthoritySnapshot` で再現済み |
+| `EnvelopeBufferPool`, `ObjectPool`, `FixedSizePartitionHub` | JVM GC 回避目的の最適化用 buffer pool。Rust では割り当て戦略が異なるため完全互換は不要 |
+| `ImmutableLongMap`, `LruBoundedCache` | internal collection helper。Rust では `hashbrown` / `BTreeMap` 等で代替 |
+| `ProtobufSerializer` | Pekko 内部で protobuf wire encode を分離するための adapter。fraktor は独自 binary codec を採用 |
 
 ### raw 抽出値の扱い
 
@@ -40,31 +46,30 @@
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 固定スコープ対象概念 | 約 54 |
-| fraktor-rs 固定スコープ対応概念 | 約 33 |
-| 固定スコープ概念カバレッジ | 約 33/54 (61%) |
-| raw public type declarations | 72（core: 52, std: 20） |
-| raw public method declarations | 254（core: 187, std: 67） |
-| hard / medium / easy / trivial gap | 12 / 0 / 0 / 0 (Phase 2 medium 全項目完了。残ギャップは Phase 3 hard のみ) |
+| Pekko 固定スコープ対象概念 | 約 58 |
+| fraktor-rs 固定スコープ対応概念 | 約 43 |
+| 固定スコープ概念カバレッジ | 約 43/58 (74%) |
+| raw public type declarations | 79（core: 57, std: 22） |
+| raw public method declarations | 290（core: 210, std: 80） |
+| hard / medium / easy / trivial gap | 14 / 1 / 0 / 0 (Phase 2 medium は前回 10/10 完了。今回 advanced settings の lanes/frame size/untrusted/log を再分割した結果 1 件残置) |
 
-前回から改善された点は明確で、`remote-core` の公開境界は `core` に整理され、`DeadlineFailureDetector`、address-bound な `PhiAccrualFailureDetector`、`RemoteLogMarker`、`ListenStarted` event publish、association effects の lifecycle publish は実装済みになっている。
+前回 5th edition との差分:
 
-一方で、実動作の観点ではまだ **end-to-end の remote actor delivery が未完成** である。特に次が支配的なボトルネックとして残る。
+- 前回 `domain/` 前提の評価が含まれる箇所はすべて `core/` に統一
+- Phase 2 medium 10 件はすべてコード上で完了確認済み (`FailureDetectorRegistry`, `RemoteTransport.start` 実 bind, handshake validation, per-peer routing, system message delivery, reconnect/backoff, MessageContainerSerializer, SystemMessageSerializer, MiscMessageSerializer subset, advanced settings の timing 部分)
+- Phase 3 hard 12 件は全件未着手のまま (`build_envelope_frame()` の `Bytes::new()` placeholder、`WireFrame::Envelope` の debug log only inbound dispatch、`RemoteSenderBuildFailed` を返す provider、watcher effect が `effect_tx` までで止まる経路、Pekko Artery framing 非互換、compression / RemoteRouterConfig / RemoteDaemon 不在 を確認)
+- 5th edition で扱っていなかった Phase 3 hard 候補 (DaemonMsgCreateSerializer / FlushOnShutdown / FlushBeforeDeathWatchNotification / InboundQuarantineCheck / ActorRefResolveCache / RestartCounter) を表に明示
+- `RemoteConfig` の advanced settings は timing 部分のみ実装済み。lanes / maximum_frame_size / untrusted_mode / log toggles / bind_hostname / bind_port / buffer_pool_size は依然不足のため medium 1 件として再計上
 
-- `StdRemoteActorRefProvider::actor_ref` の remote branch が依然として `RemoteSenderBuildFailed` を返す
-- `TcpRemoteTransport::build_envelope_frame` が payload を `Bytes::new()` の placeholder で送る
-- `run_inbound_dispatch` が `WireFrame::Envelope` を観測ログに留め、local actor へ配送しない
-- watcher effects が actor-core の `Terminated` / system message 経路へ接続されていない
-
-`todo!()` / `unimplemented!()` / `panic!("not implemented")` は remote core / adaptor から検出されなかった。一方で `Phase B minimum-viable` や placeholder コメントは多数残っており、実装上の未完了箇所として扱う必要がある。
+`todo!()` / `unimplemented!()` / `panic!("not implemented")` は remote core / adaptor から検出されない。一方で `Phase B minimum-viable` や placeholder コメントは複数残り、未完了箇所として扱う必要がある。
 
 ## 層別カバレッジ
 
 | 層 | Pekko 対応範囲 | fraktor-rs 現状 | 評価 |
 |----|----------------|-----------------|------|
-| core / remote primitives | `Address`, `UniqueAddress`, association state machine, wire PDU, watcher state, failure detector, provider contract | `modules/remote-core/src/core/` に一通り揃う。`PhiAccrualFailureDetector` は address-bound constructor、`DeadlineFailureDetector`、`RemoteLogMarker` も存在 | 公開面は中程度以上。抽象 registry / serializer / remote deployment が不足 |
-| std / adaptor | `RemoteTransport`, TCP listener/client, per-peer association runtime, remoting lifecycle wiring | `modules/remote-adaptor-std/src/std/` に `StdRemoting`, `TcpRemoteTransport`, `association_runtime`, `watcher_actor` を配置 | 骨格はあるが実 bind / inbound delivery / remote ActorRef wiring は未完 |
-| actor-core integration | event stream, serializer registry, DeathWatch | lifecycle event publish は接続済み。remote-specific serializer / remote DeathWatch / AddressTerminated は未接続 | 大きいギャップが残る |
+| core / remote primitives | `Address`, `UniqueAddress`, association state machine (handshake validation 含む), wire PDU, watcher state, failure detector + registry, provider contract, advanced timing settings | `modules/remote-core/src/core/` に揃う。`HandshakeValidationError::RejectedInState` で Idle/Gated/Quarantined を型安全に拒否、`DefaultFailureDetectorRegistry` も実装済み | 公開面は十分。残るのは compression / DaemonMsgCreate 等の hard 領域と advanced settings の追加 field |
+| std / adaptor | `RemoteTransport`, TCP listener/client, per-peer association runtime, remoting lifecycle wiring, reconnect-with-backoff outbound loop | `StdRemoting`, `TcpRemoteTransport`, `association_runtime`, `watcher_actor` を配置。`RemoteTransport::start` は `server.start(...)` 経由で実 bind、`run_outbound_loop_with_reconnect` も完成 | bind / handshake / reconnect は機能。残りは inbound envelope delivery、payload serialization、remote ActorRef wiring |
+| actor-core integration | event stream, serializer registry, DeathWatch | lifecycle event publish, MessageContainerSerializer, SystemMessageSerializer, MiscMessageSerializer (Identify subset) は接続済み。remote DeathWatch、`AddressTerminated`、ActorIdentity、RemoteRouterConfig は未接続 | 大きいギャップが残る (Phase 3 hard) |
 
 ## カテゴリ別ギャップ
 
@@ -74,141 +79,159 @@
 
 `Address`, `UniqueAddress`, `RemoteNodeId`, `resolve_remote_address` は実装済み。Pekko の `UniqueAddress` と同じく `(Address, uid)` を保持する。
 
-### 2. Failure detector　✅ 実装済み 4/6 (67%)
+### 2. Failure detector　✅ 実装済み 6/6 (100%)
 
-前回との差分として、`DeadlineFailureDetector` は実装済みになり、address-bound detector metadata も `PhiAccrualFailureDetector::new(address, ...)` で満たしている。したがって、以前の `FailureDetectorWithAddress` ギャップは閉じたと評価してよい。
+5th edition で残っていた `FailureDetectorRegistry[A]` / `DefaultFailureDetectorRegistry[A]` は `modules/remote-core/src/core/failure_detector/{failure_detector_registry.rs,default_failure_detector_registry.rs}` で実装済み。`PhiAccrualFailureDetector`, address-bound metadata, `DeadlineFailureDetector`, `HeartbeatHistory` も継続して提供。
 
-| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
-|------------------|------------|-----------------|----------|--------|------|
-| `FailureDetectorRegistry[A]` | `FailureDetectorRegistry.scala:30` | 未対応 | core/failure_detector | medium | `WatcherState` 内部に detector map はあるが、汎用 registry contract はない |
-| `DefaultFailureDetectorRegistry[A]` | `DefaultFailureDetectorRegistry.scala:27` | 未対応 | core/failure_detector | medium | registry API 不在のため同時に未実装 |
+### 3. Transport / association / lifecycle　✅ 実装済み 14/15 (93%)
 
-実装済みとして扱うもの: `PhiAccrualFailureDetector`, address-bound detector metadata, `DeadlineFailureDetector`, `HeartbeatHistory`。
-
-### 3. Transport / association / lifecycle　✅ 実装済み 8/14 (57%)
-
-`Association`, `AssociationEffect`, `SendQueue`, `QuarantineReason`, `RemoteTransport` trait, `TcpRemoteTransport`, `StdRemoting`, `ListenStarted` publish は存在する。
+`Association`, `AssociationEffect`, `SendQueue`, `QuarantineReason`, `HandshakeValidationError` (`RejectedInState` バリアント含む), `HandshakeRejectedState`, `RemoteTransport` trait, `TcpRemoteTransport`, `StdRemoting`, `ListenStarted` publish, `AssociationRegistry`, `HandshakeDriver`, `SystemMessageDeliveryState`, `ReconnectBackoffPolicy`, `run_outbound_loop_with_reconnect`, `EventPublisher` 経由の lifecycle effect 適用は実装済み。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `RemoteTransport.start` が実 listener を起動する契約 | `RemoteTransport.scala:84`, `ArteryTcpTransport.scala:118` | 部分実装 | std/tcp_transport + std/extension_installer | medium | `TcpRemoteTransport::start_async()` はあるが、`StdRemoting::start()` / installer 経路では未使用。同期 `start()` は `running = true` を立てるだけ |
-| handshake validation / retry / liveness probe | `Handshake.scala:37`, `Handshake.scala:63` | 部分実装 | core/association + std/association_runtime | medium | `run_inbound_dispatch` は handshake origin を `RemoteNodeId` 化するが、uid / to / retry / liveness probe の検証がない |
-| per-peer inbound association routing | `ArteryTransport.scala:280`, `Association.scala:1131` | 部分実装 | std/association_runtime | medium | `run_inbound_dispatch` は単一 `AssociationShared` に流すだけで、registry lookup がない |
-| inbound envelope delivery | `ArteryTcpTransport.scala:405`, `MessageDispatcher.scala:33` | 部分実装 | std/association_runtime + std/provider | hard | `WireFrame::Envelope` は debug log のみ。local actor / mailbox へ配送しない |
-| system message delivery retransmission / nack | `SystemMessageDelivery.scala:51`, `SystemMessageDelivery.scala:83` | 部分実装 | std/association_runtime | medium | `SystemMessageDeliveryState` は sequence / cumulative ack まで。retransmission / nack は未実装 |
-| reconnect / backoff runtime | `ArteryTcpTransport.scala:156` | 部分実装 | std/tcp_transport + std/association_runtime | medium | `Association::recover` はあるが、runtime が backoff / reconnect policy を駆動しない |
+| inbound envelope delivery | `ArteryTcpTransport.scala:405`, `MessageDispatcher.scala:33` | 部分実装 | std/association_runtime + std/provider | hard | `WireFrame::Envelope(_pdu)` は inbound dispatcher で `tracing::debug!` のみ。local actor / mailbox へ配送しない (`inbound_dispatch.rs:41-44` で確認) |
 
-### 4. Wire protocol / serialization　✅ 実装済み 6/14 (43%)
+### 4. Wire protocol / serialization　✅ 実装済み 9/15 (60%)
+
+`MessageContainerSerializer` (`modules/actor-core/src/core/kernel/serialization/builtin/message_container_serializer.rs`)、`SystemMessageSerializer`、`MiscMessageSerializer` (`Address` / `UniqueAddress` / `Identify` manifest 対応)、`ThrowableNotSerializableError` は実装済み。delegator manifest-route fallback も整備済み。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| Pekko Artery TCP framing | `artery/tcp/TcpFraming.scala:34` | 未対応 | std/tcp_transport | hard | fraktor は独自 `length + version + kind` frame。Pekko の `AKKA` magic / stream id / little-endian framing ではない |
+| Pekko Artery TCP framing | `artery/tcp/TcpFraming.scala:34` | 未対応 | std/tcp_transport | hard | fraktor は独自 `length(4) + version(1) + kind(1)` frame (`frame_codec.rs:13-20`)。Pekko の `AKKA` magic / stream id / little-endian framing と非互換 |
 | `ArteryMessageSerializer` control protocol | `serialization/ArteryMessageSerializer.scala:56` | 部分実装 | core/wire + actor-core/serialization | hard | `HandshakePdu` / `ControlPdu` / `AckPdu` はあるが、Pekko manifest / protobuf control 互換ではない |
-| message payload serialization into envelope | `MessageSerializer.scala:81`, `ArteryMessageSerializer.scala:178` | 部分実装 | std/tcp_transport + actor-core/serialization | hard | `build_envelope_frame()` が `Bytes::new()` placeholder を使う |
-| `MessageContainerSerializer` | `serialization/MessageContainerSerializer.scala:30` | 未対応 | actor-core/serialization | medium | actor selection message の remote payload 化がない |
-| `SystemMessageSerializer` | `serialization/SystemMessageSerializer.scala:22` | 未対応 | actor-core/serialization | medium | Watch / Unwatch / DeathWatchNotification / Terminate の serializer がない |
-| `MiscMessageSerializer` subset | `serialization/MiscMessageSerializer.scala:37` | 部分実装 | actor-core/serialization + core/wire | medium | `Address` / `UniqueAddress` および `Identify` の manifest 対応 (manifest `"ID"`, `MISC_MESSAGE_ID = 9`) は実装済み。`ActorIdentity` は `ActorRef` path serialization 拡張待ち、`RemoteRouterConfig` は routing layer 拡張待ち |
-| `ThrowableNotSerializableException` | `serialization/ThrowableNotSerializableException.scala:22` | 対応済み (新名 `ThrowableNotSerializableError`) | actor-core/serialization | easy | 対応済み。Rust 慣習に合わせ `*Error` 命名 |
-| Artery compression protocol (`CompressionProtocol`, `CompressionTable`, `InboundCompressions`, `TopHeavyHitters`) | `artery/compress/*`, `artery/Codecs.scala` | 未対応 | core/wire + core/association | hard | wire protocol 上の actor ref / manifest compression がごっそり未実装 |
+| message payload serialization into envelope | `MessageSerializer.scala:81`, `ArteryMessageSerializer.scala:178` | 部分実装 | std/tcp_transport + actor-core/serialization | hard | `build_envelope_frame()` が `Bytes::new()` placeholder を使う (`tcp_transport/base.rs:231-241` で確認) |
+| `MiscMessageSerializer` 残り (`ActorIdentity`, `RemoteRouterConfig`, `Status.Failure`, `RemoteScope`, etc.) | `serialization/MiscMessageSerializer.scala:37` 以下 | 部分実装 | actor-core/serialization | medium | 現状は `Address` / `UniqueAddress` / `Identify` のみ。`ActorIdentity` は ActorRef path serialization 拡張、`RemoteRouterConfig` は routing layer 拡張待ち |
+| `DaemonMsgCreateSerializer` | `serialization/DaemonMsgCreateSerializer.scala` | 未対応 | actor-core/serialization | hard | remote daemon 経由の child actor 作成要求の wire 表現。`RemoteDaemon` / `useActorOnNode` (カテゴリ5) と一体で必要 |
+| Artery compression protocol (`CompressionProtocol`, `CompressionTable`, `InboundCompressions`, `TopHeavyHitters`) | `artery/compress/*`, `artery/Codecs.scala` | 未対応 | core/wire + core/association | hard | wire protocol 上の actor ref / manifest compression 経路が不在 |
 
 ### 5. Provider / remote actor ref / routing　✅ 実装済み 3/8 (38%)
 
-`RemoteActorRef`, `RemoteActorRefProvider` trait, local/remote dispatch ruleを持つ `StdRemoteActorRefProvider` は存在するが、実体化と送信経路が未完了。
+`RemoteActorRef`, `RemoteActorRefProvider` trait, local/remote dispatch ルートを持つ `StdRemoteActorRefProvider`, `RemoteActorRefSender` は存在。実体化と送信経路が未完了。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| concrete remote `ActorRef` construction | `RemoteActorRefProvider.scala:161`, `RemoteActorRefProvider.scala:673` | 部分実装 | std/provider | hard | remote branch は core resolve 後に `RemoteSenderBuildFailed` を返す |
-| remote send path | `RemoteActorRefProvider.scala:763` | 部分実装 | std/provider + std/tcp_transport | hard | `RemoteActorRefSender` はあるが、payload serialization と watch integration が placeholder |
-| remote DeathWatch interception | `RemoteActorRefProvider.scala:739` | 部分実装 | std/provider + std/watcher_actor + actor-core | hard | `watch` / `unwatch` intent はあるが `Terminated(AddressTerminated)` 統合がない |
+| concrete remote `ActorRef` construction | `RemoteActorRefProvider.scala:161,673` | 部分実装 | std/provider | hard | remote branch は `provider/dispatch.rs:100` で `Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)` を返す |
+| remote send path | `RemoteActorRefProvider.scala:763` | 部分実装 | std/provider + std/tcp_transport | hard | `RemoteActorRefSender` はあるが、payload serialization と watch integration が placeholder。実 transport.send まで結線されていない |
+| remote DeathWatch interception | `RemoteActorRefProvider.scala:739` | 部分実装 | std/provider + std/watcher_actor + actor-core | hard | `WatcherCommand::Watch` / `Unwatch` intent はあるが `Terminated(AddressTerminated)` 統合がない |
 | `RemoteRouterConfig` | `routing/RemoteRouterConfig.scala:47` | 未対応 | actor-core/routing + core/provider | medium | actor-core routing はあるが、remote node list に pool routee を展開する契約がない |
-| remote deployment daemon / `useActorOnNode` | `RemoteDaemon.scala`, `RemoteDeployer.scala`, `RemoteDeploymentWatcher.scala` | 未対応 | std/provider | hard | remote child actor 作成要求と deployment watch の経路がない |
+| remote deployment daemon / `useActorOnNode` | `RemoteDaemon.scala`, `RemoteDeployer.scala`, `RemoteDeploymentWatcher.scala` | 未対応 | std/provider + actor-core | hard | remote child actor 作成要求と deployment watch の経路がない |
 
 ### 6. Watcher / DeathWatch runtime　✅ 実装済み 3/6 (50%)
 
-`WatcherState`, `WatcherCommand`, `WatcherEffect`, `WatcherActor`, `run_heartbeat_loop` は存在する。watch bookkeeping と detector tick は動くが、actor-core への最終適用が不足する。
+`WatcherState`, `WatcherCommand`, `WatcherEffect`, `WatcherActor`, `run_heartbeat_loop` は実装済み。watch bookkeeping と detector tick は動くが、actor-core への最終適用が不足。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| heartbeat response protocol | `RemoteWatcher.scala:56`, `RemoteWatcher.scala:57` | 部分実装 | core/wire + std/watcher_actor | medium | heartbeat tick / receive はあるが、response uid / actor-system UID 検証は未接続 |
-| watcher effects application | `RemoteWatcher.scala:103` | 部分実装 | std/watcher_actor + actor-core | hard | `WatcherActor` は `WatcherEffect` を `effect_tx` に流すだけで、`Terminated` / event stream 適用がない |
-| `AddressTerminated` integration | `RemoteWatcher.scala:103`, `SystemMessageSerializer.scala:22` | 未対応 | actor-core + std/watcher_actor | hard | remote node failure を local DeathWatch へ統合する契約がない |
+| heartbeat response protocol | `RemoteWatcher.scala:56,57` | 部分実装 | core/wire + std/watcher_actor | medium | heartbeat tick / receive はあるが、response uid / actor-system UID 検証は未接続 |
+| watcher effects application | `RemoteWatcher.scala:103` | 部分実装 | std/watcher_actor + actor-core | hard | `WatcherActor` は `WatcherEffect` を `effect_tx` (`watcher_actor/base.rs:62`) に流すだけで、`Terminated` / event stream 適用がない |
+| `AddressTerminated` integration | `RemoteWatcher.scala:103`, `SystemMessageSerializer.scala` | 未対応 | actor-core + std/watcher_actor | hard | remote node failure を local DeathWatch へ統合する契約がない |
 
-### 7. Instrumentation / config / logging　✅ 実装済み 5/6 (83%)
+### 7. Instrumentation / config / logging　✅ 実装済み 6/7 (86%)
 
-前回から改善が大きいカテゴリで、`RemoteLogMarker` と association effects の lifecycle publish は実装済みと判断できる。
+`RemotingLifecycleState`, `EventPublisher`, `ListenStarted` publish, `RemoteLogMarker`, `RemoteInstrument`, `RemotingFlightRecorder`, advanced settings の timing 部分は実装済み。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| advanced Artery settings subset | `ArterySettings.scala`, `RemoteSettings.scala` | 部分実装 | core/config | medium | `RemoteConfig` は canonical address / ack window / flight recorder を持つが、lanes / compression / restart backoff / watcher interval 等は不足 |
+| advanced Artery settings 残り (lanes / maximum_frame_size / untrusted_mode / log toggles / bind_hostname / bind_port / buffer_pool_size) | `ArterySettings.scala` の `Advanced` block | 未対応 | core/config | medium | `RemoteConfig` は 17 field (handshake / ack / restart / system message timing) まで。lanes / frame size / untrusted / bind / log は未追加 |
 
-実装済みとして扱うもの: `RemotingLifecycleState`, `EventPublisher`, `ListenStarted` publish, `RemoteLogMarker`, `RemoteInstrument`, `RemotingFlightRecorder`。
+### 8. Reliability / lifecycle adapter　✅ 実装済み 0/4 (0%)
+
+5th edition では「instrumentation」と一体で扱っていたが、今回 Pekko Artery 側の reliability adapter 群を独立カテゴリとして再分割した。
+
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| `FlushOnShutdown` | `artery/FlushOnShutdown.scala` | 未対応 | std/extension_installer + std/association_runtime | hard | shutdown 時の send queue / outbound buffer flush 駆動。`shutdown_flush_timeout` 設定はあるが driver 不在 |
+| `FlushBeforeDeathWatchNotification` | `artery/FlushBeforeDeathWatchNotification.scala` | 未対応 | std/watcher_actor + std/association_runtime | hard | DeathWatch 通知前に対象 actor 宛 outbound を flush する Pekko 固有契約 |
+| `InboundQuarantineCheck` | `artery/InboundQuarantineCheck.scala` | 未対応 | std/association_runtime | medium | quarantined association からの inbound を破棄するフィルタ。現状の inbound dispatcher にこの分岐が無い |
+| `RestartCounter` | `artery/RestartCounter.scala` | 部分実装 | std/association_runtime | medium | `ReconnectBackoffPolicy::max_restarts` で再接続上限は管理済みだが、Pekko の (count, deadline) ベース counter helper 相当の独立型はない |
+
+### 9. Internal helpers / cache　✅ 実装済み 0/2 (0%)
+
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| `ActorRefResolveCache` | `serialization/ActorRefResolveCache.scala` | 未対応 | actor-core/serialization + std/provider | medium | 同一 actor path の再 resolve コストを抑える LRU。remote send path が完成すれば必要になる |
+| `RemoteActorRef` 解決の cache hit / miss 計測 | `RemoteActorRefProvider.scala:330` 周辺 | 未対応 | std/provider | medium | 上記 cache の hit/miss を `EventPublisher` 経由で観測する経路 |
 
 ## 対象外（n/a）
 
 | Pekko API / 領域 | 判定理由 |
 |------------------|----------|
-| classic remoting `Endpoint*`, `AckedDelivery`, `PekkoProtocolTransport`, `transport/Transport.scala` | deprecated classic remoting |
-| Netty transport / FailureInjectorTransportAdapter / ThrottlerTransportAdapter | deprecated classic transport または test/failure injection 用 |
-| Aeron UDP transport | 特定実装技術の完全互換は固定スコープ外 |
-| `SSLEngineProvider`, `ConfigSSLEngineProvider`, `RotatingKeysSSLEngineProvider` | Java `SSLEngine` 完全互換は対象外。Rust TLS adapter が必要なら別スコープ |
-| JFR remoting flight recorder events | JVM Flight Recorder 固有 |
-| HOCON provider loading / `FailureDetectorLoader` dynamic access | JVM classloader / reflection 固有 |
-| Java serialization / Jackson module | serializer contract との接続点だけ対象 |
+| classic remoting `Endpoint*`, `AckedDelivery`, `PekkoProtocolTransport`, `PekkoPduCodec`, `transport/Transport.scala` | deprecated classic remoting |
+| `transport/netty/*`, `FailureInjectorTransportAdapter`, `ThrottlerTransportAdapter`, `TestTransport` | classic transport / fault injection / test 用 |
+| Aeron UDP transport (`artery/aeron/{ArteryAeronUdpTransport,AeronSink,AeronSource,TaskRunner}`) | JVM Aeron 固有 |
+| `SSLEngineProvider`, `ConfigSSLEngineProvider`, `RotatingKeysSSLEngineProvider`, `security/provider/*` | Java `SSLEngine` 完全互換は対象外。Rust TLS adapter が必要なら別スコープ |
+| `JavaSerializer` / Jackson module 完全互換 | serializer contract との接続点だけ対象 |
+| `RemoteMetricsExtension`, `AddressUidExtension`, `BoundAddressesExtension` | JVM 拡張ローダ依存。同等情報は `RemotingLifecycleState` / `RemoteAuthoritySnapshot` で再現 |
+| `EnvelopeBufferPool`, `ObjectPool`, `FixedSizePartitionHub` | JVM GC 回避用 buffer pool |
+| `ImmutableLongMap`, `LruBoundedCache` | internal collection helper |
+| `ProtobufSerializer` | Pekko 内部の protobuf bridge。fraktor は独自 binary codec |
+| `artery/jfr/Events.scala`, `JFRRemotingFlightRecorder.scala` | JVM Flight Recorder 固有。Rust 側は `RemotingFlightRecorder` (ring buffer) で代替 |
+| HOCON provider loading / `FailureDetectorLoader` 動的ロード / JVM classloader | JVM 設定ロード方式 |
+| `TestStage`, multi-node-testkit, remote-tests | runtime API ではない |
 
 ## 実装優先度
 
-### Phase 2: medium ✅ 全 10 項目実装済み
+この節では、上で列挙したギャップ (Phase 2 medium 1 件 + Phase 3 hard 14 件) を Phase に再配置する。新規提案は追加せず、カテゴリ別ギャップ表に存在する項目だけを並べる。
 
-takt `pekko-porting` ワークフローと後続の手動実装 (Identify subset) により Phase 2 の medium は全件閉じた。
-個別項目はカテゴリ別ギャップ表 (上の節) に解消ステータスを反映する次回更新で削除予定で、ここではトレーサビリティのため一覧を残す。
+### Phase 1: trivial / easy
 
-| 項目 | 実装先層 | 根拠 | 状態 |
-|------|----------|------|------|
-| `FailureDetectorRegistry[A]` / `DefaultFailureDetectorRegistry[A]` | core/failure_detector | カテゴリ2 | ✅ 完了 |
-| `RemoteTransport.start` の実 bind 契約 | std/tcp_transport + std/extension_installer | カテゴリ3 | ✅ 完了 |
-| handshake validation / retry / liveness probe | core/association + std/association_runtime | カテゴリ3 | ✅ 完了 |
-| per-peer inbound association routing | std/association_runtime | カテゴリ3 | ✅ 完了 |
-| system message delivery retransmission / nack | std/association_runtime | カテゴリ3 | ✅ 完了 |
-| reconnect / backoff runtime | std/tcp_transport + std/association_runtime | カテゴリ3 | ✅ 完了 |
-| `MessageContainerSerializer` | actor-core/serialization | カテゴリ4 | ✅ 完了 |
-| `SystemMessageSerializer` | actor-core/serialization | カテゴリ4 | ✅ 完了 |
-| `MiscMessageSerializer` subset (`Identify`) | actor-core/serialization + core/wire | カテゴリ4 | ✅ 完了 |
-| advanced Artery settings subset | core/config | カテゴリ7 | ✅ 完了 |
+該当なし。Phase 1 / Phase 2 medium のうち trivial / easy 相当はすべて 5th edition 時点で完了済み。
+
+### Phase 2: medium
+
+| 項目 | 実装先層 | 根拠 (カテゴリ) |
+|------|----------|----------------|
+| `MiscMessageSerializer` 残り (`ActorIdentity`, `RemoteRouterConfig`, `Status.Failure`, `RemoteScope` 等) | actor-core/serialization | 4 |
+| advanced Artery settings 残り (lanes / maximum_frame_size / untrusted_mode / log toggles / bind_hostname / bind_port / buffer_pool_size) | core/config | 7 |
+| heartbeat response protocol (response uid / actor-system UID 検証) | core/wire + std/watcher_actor | 6 |
+| `InboundQuarantineCheck` | std/association_runtime | 8 |
+| `RestartCounter` (Pekko 互換 helper) | std/association_runtime | 8 |
+| `RemoteRouterConfig` | actor-core/routing + core/provider | 5 |
+| `ActorRefResolveCache` | actor-core/serialization + std/provider | 9 |
+| RemoteActorRef 解決の cache hit / miss 計測 | std/provider | 9 |
 
 ### Phase 3: hard
 
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| inbound envelope delivery | std/association_runtime + std/provider | カテゴリ3 |
-| Pekko Artery TCP framing | std/tcp_transport | カテゴリ4 |
-| `ArteryMessageSerializer` control protocol | core/wire + actor-core/serialization | カテゴリ4 |
-| message payload serialization into envelope | std/tcp_transport + actor-core/serialization | カテゴリ4 |
-| Artery compression protocol | core/wire + core/association | カテゴリ4 |
-| concrete remote `ActorRef` construction | std/provider | カテゴリ5 |
-| remote send path | std/provider + std/tcp_transport | カテゴリ5 |
-| remote DeathWatch interception | std/provider + std/watcher_actor + actor-core | カテゴリ5 |
-| `RemoteRouterConfig` | actor-core/routing + core/provider | カテゴリ5 |
-| remote deployment daemon / `useActorOnNode` | std/provider | カテゴリ5 |
-| watcher effects application | std/watcher_actor + actor-core | カテゴリ6 |
-| `AddressTerminated` integration | actor-core + std/watcher_actor | カテゴリ6 |
+| 項目 | 実装先層 | 根拠 (カテゴリ) |
+|------|----------|----------------|
+| inbound envelope delivery | std/association_runtime + std/provider | 3 |
+| Pekko Artery TCP framing | std/tcp_transport | 4 |
+| `ArteryMessageSerializer` control protocol | core/wire + actor-core/serialization | 4 |
+| message payload serialization into envelope | std/tcp_transport + actor-core/serialization | 4 |
+| `DaemonMsgCreateSerializer` | actor-core/serialization | 4 |
+| Artery compression protocol (`CompressionProtocol`, `CompressionTable`, `InboundCompressions`, `TopHeavyHitters`) | core/wire + core/association | 4 |
+| concrete remote `ActorRef` construction | std/provider | 5 |
+| remote send path | std/provider + std/tcp_transport | 5 |
+| remote DeathWatch interception | std/provider + std/watcher_actor + actor-core | 5 |
+| remote deployment daemon / `useActorOnNode` | std/provider + actor-core | 5 |
+| watcher effects application | std/watcher_actor + actor-core | 6 |
+| `AddressTerminated` integration | actor-core + std/watcher_actor | 6 |
+| `FlushOnShutdown` | std/extension_installer + std/association_runtime | 8 |
+| `FlushBeforeDeathWatchNotification` | std/watcher_actor + std/association_runtime | 8 |
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的なため、内部モジュール構造ギャップの詳細分析は省略する。特に remote `ActorRef` 実体化、payload serialization、inbound envelope delivery、watcher effects の actor-core 適用が未完成であり、責務分割の最適化より先に公開契約と end-to-end 経路を閉じる段階である。
+今回も API / 実動作ギャップが支配的なため、内部モジュール構造ギャップの詳細分析は省略する。特に以下が end-to-end remote actor delivery を阻む直接の壁であり、責務分割の最適化より先に公開契約と end-to-end 経路を閉じる段階である。
 
-ただし、次版で構造分析へ進む場合の観点は以下になる。
+- remote `ActorRef` 実体化
+- `build_envelope_frame()` の payload serialization
+- `WireFrame::Envelope` の inbound delivery
+- watcher effects の actor-core 適用 (`AddressTerminated` 統合)
+
+次版で構造分析へ進む場合の観点は以下になる。
 
 | 構造観点 | 現状 | 次に見るべき点 |
 |----------|------|----------------|
-| `core::wire` と actor-core serialization の境界 | `wire` は独自 PDU を持つが byte payload が placeholder | `AnyMessage` → serialized bytes の責務をどこへ置くか |
-| `association_runtime` の責務 | handshake / outbound / inbound / effect application が揃うが、peer registry と delivery adapter が未接続 | per-peer registry と delivery adapter を分けるか |
-| provider と actor-core provider の境界 | local/remote dispatch まではあるが remote branch が `RemoteSenderBuildFailed` | `ActorSystemState` 依存をどこに閉じるか |
-| watcher effect の適用先 | pure `WatcherState` と tokio actor はある | `Terminated` / event stream / system message への接続点 |
+| `core::wire` と actor-core serialization の境界 | `wire` は独自 PDU を持つが byte payload が placeholder | `AnyMessage` → serialized bytes の責務をどこへ置くか (delegator 経由か新 trait か) |
+| `association_runtime` の責務 | handshake / outbound / inbound / effect application / reconnect が揃うが、peer registry と delivery adapter が未接続 | per-peer registry と inbound delivery adapter を分けるか |
+| provider と actor-core provider の境界 | local/remote dispatch まではあるが remote branch が `RemoteSenderBuildFailed` | `ActorSystemState` 依存をどこに閉じるか、RemoteActorRef 実体化の owner |
+| watcher effect の適用先 | pure `WatcherState` と tokio actor はある | `Terminated` / event stream / system message への接続点と `AddressTerminated` 経路 |
+| flush 系契約の置き場 | `shutdown_flush_timeout` 設定だけあり driver が無い | `FlushOnShutdown` / `FlushBeforeDeathWatchNotification` を core にロジック・std に driver で分離するか |
 
 ## まとめ
 
-remote は `core` namespace への整理、address primitives、association state machine、`DeadlineFailureDetector`、address-bound `PhiAccrualFailureDetector`、`RemoteLogMarker`、`ListenStarted` publish まで進んでおり、前回レポートより確実に前進している。
+remote の公開境界は `core/` に整理され、address primitives、association state machine (handshake validation 含む)、failure detector + registry、`DeadlineFailureDetector`、address-bound `PhiAccrualFailureDetector`、`RemoteLogMarker`、`ListenStarted` publish、handshake 拒否 (`RejectedInState`)、reconnect-with-backoff outbound loop、MessageContainerSerializer / SystemMessageSerializer / MiscMessageSerializer (Identify subset) まで実装済み。前回 5th edition の Phase 2 medium 10 件はコード上で完了確認済みである。
 
-低コストで parity を前進できるのは、failure detector registry、`RemoteTransport.start` の実 bind 契約、system message retransmission、serializer まわりの medium gap である。
+低コストで parity を前進できる Phase 2 medium は 8 件: `MiscMessageSerializer` 残り、advanced Artery settings の追加 field、heartbeat response 検証、`InboundQuarantineCheck`、`RestartCounter` helper、`RemoteRouterConfig`、`ActorRefResolveCache`、cache hit/miss 観測。
 
-主要ギャップは、remote `ActorRef` 実体化、payload serialization、Pekko Artery framing / control protocol、inbound envelope delivery、watcher effects / `AddressTerminated` の actor-core 統合である。したがって現時点では、内部構造の細部比較よりも、API surface と実配送経路の未完成部分を先に閉じるのが妥当である。
+主要ギャップは Phase 3 hard で 14 件: end-to-end の inbound envelope delivery、Pekko Artery TCP framing 互換、payload serialization、`DaemonMsgCreateSerializer`、compression protocol、remote `ActorRef` 実体化、remote send path、remote DeathWatch / `AddressTerminated` 統合、remote deployment daemon、watcher effects 適用、`FlushOnShutdown` / `FlushBeforeDeathWatchNotification`。これらが揃うまでは end-to-end remote actor delivery が動作しないため、内部構造の細部比較よりも公開契約と実配送経路の未完成部分を先に閉じるのが妥当である。
