@@ -372,6 +372,19 @@ fn actor_identity_decode_with_some_ref_returns_not_serializable_when_system_stat
 }
 
 #[test]
+fn manifest_returns_empty_string_for_unsupported_type() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let view = s.as_string_manifest().expect("string manifest view");
+
+  // 未対応型 (i32) は to_binary 側で弾かれる前提だが、 manifest() 単独で呼ばれた場合は
+  // 診断ログを出して空マニフェストを返すフォールバック経路が動く。
+  let manifest = view.manifest(&123_i32);
+
+  assert_eq!(manifest.as_ref(), "");
+}
+
+#[test]
 fn registry_drop_yields_uninitialized_error_on_encode() {
   let registry = registry();
   let s = MiscMessageSerializer::new(MISC_MESSAGE_ID, registry.downgrade());

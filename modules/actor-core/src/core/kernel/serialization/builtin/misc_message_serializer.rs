@@ -394,11 +394,9 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
         | Status::Failure(_) => Cow::Borrowed(STATUS_FAILURE_MANIFEST),
       };
     }
-    // manifest() は to_binary が成功したメッセージにしか呼ばれない想定だが、
-    // 予期しない型が渡されたら即座に観測できるよう debug ビルドではアサートで落とし、
-    // release ではログに残したうえで空マニフェストを返す（呼び出し元の to_binary が
-    // InvalidFormat を返すので silent-corruption にはならない）。
-    debug_assert!(false, "MiscMessageSerializer::manifest called with unsupported type {:?}", message.type_id());
+    // manifest() は to_binary が成功したメッセージにしか呼ばれない想定だが、予期しない型でも
+    // silent-corruption を避けるため診断ログを出して空マニフェストを返す（呼び出し元の
+    // to_binary が InvalidFormat を返すので最終的にエラーが伝播する）。
     tracing::error!(
       serializer = "MiscMessageSerializer",
       type_id = ?message.type_id(),
