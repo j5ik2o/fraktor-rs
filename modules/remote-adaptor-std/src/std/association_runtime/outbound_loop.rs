@@ -100,8 +100,9 @@ where
         match send_result {
           | Ok(()) => {},
           | Err(TransportError::NotStarted) => {
-            // shutdown 経路: 取り出し済み envelope を deferred に戻して shutdown 後の再起動で
-            // 再送できるようにする。
+            // shutdown 経路: 取り出し済み envelope を Association::enqueue 経由で内部キュー
+            // (next_outbound が Some を返した時点で Active のため、実際の戻り先は send_queue)
+            // に戻して shutdown 後の再起動で再送できるようにする。
             shared.with_write(|assoc| {
               let effects = assoc.enqueue(envelope_for_retry);
               apply_effects_in_place(assoc, effects, &event_publisher);

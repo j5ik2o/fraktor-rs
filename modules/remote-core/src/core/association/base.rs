@@ -13,7 +13,8 @@ use crate::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{
     association_effect::AssociationEffect, association_state::AssociationState,
-    handshake_validation_error::HandshakeValidationError, quarantine_reason::QuarantineReason, send_queue::SendQueue,
+    handshake_rejected_state::HandshakeRejectedState, handshake_validation_error::HandshakeValidationError,
+    quarantine_reason::QuarantineReason, send_queue::SendQueue,
   },
   envelope::OutboundEnvelope,
   transport::{BackpressureSignal, TransportEndpoint},
@@ -188,9 +189,15 @@ impl Association {
         self.state = AssociationState::Active { remote_node, established_at: now_ms, last_used_at: now_ms };
         Ok(vec![effect])
       },
-      | AssociationState::Idle => Err(HandshakeValidationError::RejectedInState { state: "Idle" }),
-      | AssociationState::Gated { .. } => Err(HandshakeValidationError::RejectedInState { state: "Gated" }),
-      | AssociationState::Quarantined { .. } => Err(HandshakeValidationError::RejectedInState { state: "Quarantined" }),
+      | AssociationState::Idle => {
+        Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })
+      },
+      | AssociationState::Gated { .. } => {
+        Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })
+      },
+      | AssociationState::Quarantined { .. } => {
+        Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Quarantined })
+      },
     }
   }
 

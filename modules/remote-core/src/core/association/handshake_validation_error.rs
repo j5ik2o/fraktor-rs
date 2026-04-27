@@ -2,7 +2,7 @@
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
-use crate::core::address::Address;
+use crate::core::{address::Address, association::handshake_rejected_state::HandshakeRejectedState};
 
 /// Error returned when a handshake message cannot be accepted by this association.
 ///
@@ -32,8 +32,8 @@ pub enum HandshakeValidationError {
   /// does not believe the handshake succeeded while the local side stays
   /// unreachable.
   RejectedInState {
-    /// Discriminator of the state at the time of rejection (e.g. `"Idle"`).
-    state: &'static str,
+    /// Discriminator of the state at the time of rejection.
+    state: HandshakeRejectedState,
   },
 }
 

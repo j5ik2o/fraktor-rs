@@ -95,8 +95,9 @@ impl Serializer for PrimaryManifestSerializer {
     _bytes: &[u8],
     _type_hint: Option<TypeId>,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    // primary は常に未対応 manifest を返し、delegator の manifest-route fallback を発火させる。
-    Err(SerializationError::UnknownManifest(String::from("alias")))
+    // 本テスト群は as_string_manifest 経路 (=from_binary_with_manifest) のみを使用するため、
+    // ここは到達しない想定。万一呼ばれた場合はテスト前提が崩れたシグナルとして panic する。
+    unreachable!("PrimaryManifestSerializer::from_binary should not be invoked in tests")
   }
 
   fn as_any(&self) -> &(dyn Any + Send + Sync) {
@@ -169,15 +170,13 @@ impl SerializerWithStringManifest for AliasManifestSerializer {
 #[test]
 fn delegator_deserializes_payload_via_registry() {
   // primary serializer を直接 hit させ、delegator.deserialize の happy path を通す。
+  // alias 登録は本テストでは経由しないため意図的に省く (manifest-route の検証は
+  // `delegator_routes_unknown_manifest_to_alias_serializer` で別途行う)。
   let primary_id = SerializerId::try_from(303).expect("id");
-  let alias_id = SerializerId::try_from(304).expect("id");
   let primary: ArcShared<dyn Serializer> = ArcShared::new(AliasManifestSerializer { id: primary_id });
-  let alias: ArcShared<dyn Serializer> = ArcShared::new(AliasManifestSerializer { id: alias_id });
   let setup = SerializationSetupBuilder::new()
     .register_serializer("primary", primary_id, primary)
     .expect("primary")
-    .register_serializer("alias", alias_id, alias)
-    .expect("alias")
     .set_fallback("primary")
     .expect("fallback")
     .build()

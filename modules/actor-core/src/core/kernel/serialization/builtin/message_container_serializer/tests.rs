@@ -68,19 +68,12 @@ fn oversized_element_count_is_rejected_without_panicking() {
   // 上限に capacity を制限することで silent panic にならないことを回帰検証する。
   let registry = registry();
   let serializer = serializer(&registry);
-  // [nested_len(4) | nested_bytes(=0)] [wildcard(1)=0] [element_count(4)=u32::MAX]
-  // の最小ヘッダ。残バイト数は 0 なので decode_selection は InvalidFormat を返さなければならない。
-  let mut bytes = vec![0u8; 4]; // nested_len = 0
-  // nested_bytes が 0 なので SerializedMessage::decode は空入力で InvalidFormat を返す。
-  // テスト目的は decode_selection 側の element_count 防御なので、有効な nested を 1
-  // つ作って先頭に置く。
+  // 0 要素で encode した payload (= 末尾 4 バイトが element_count) の element_count を
+  // u32::MAX に書き換える。残バイト数 0 のため decode_selection は capacity 予約に進む前に
+  // 「element_count > remaining」で InvalidFormat を返さなければならない。
   let nested = ActorSelectionMessage::new(AnyMessage::new(String::from("x")), Vec::new(), false);
-  let encoded = serializer.to_binary(&nested).expect("nested encodes");
-  // encoded layout: [nested_len(4) nested_bytes...] [wildcard(1)] [element_count(4)] (no elements)
-  // element_count バイト位置を u32::MAX に書き換える。decode_selection は残バイト数 0
-  // を見て即座に拒否する。
-  let elem_count_offset = encoded.len() - 4;
-  bytes = encoded;
+  let mut bytes = serializer.to_binary(&nested).expect("nested encodes");
+  let elem_count_offset = bytes.len() - 4;
   bytes[elem_count_offset..elem_count_offset + 4].copy_from_slice(&u32::MAX.to_le_bytes());
 
   let result = serializer.from_binary(&bytes, None);

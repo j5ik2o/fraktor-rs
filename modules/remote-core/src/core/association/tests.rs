@@ -11,8 +11,8 @@ use fraktor_actor_core_rs::core::kernel::{
 use crate::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{
-    Association, AssociationEffect, AssociationState, HandshakeValidationError, OfferOutcome, QuarantineReason,
-    SendQueue,
+    Association, AssociationEffect, AssociationState, HandshakeRejectedState, HandshakeValidationError, OfferOutcome,
+    QuarantineReason, SendQueue,
   },
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{BackpressureSignal, TransportEndpoint},
@@ -214,7 +214,7 @@ fn accept_handshake_request_rejects_idle_state_without_state_change() {
 
   let result = a.accept_handshake_request(&request, 200);
 
-  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Idle" })));
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })));
   assert!(matches!(a.state(), AssociationState::Idle));
 }
 
@@ -230,7 +230,7 @@ fn accept_handshake_request_rejects_gated_state_without_state_change() {
 
   let result = a.accept_handshake_request(&request, 200);
 
-  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Gated" })));
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })));
   assert!(a.state().is_gated());
 }
 
@@ -244,7 +244,10 @@ fn accept_handshake_request_rejects_quarantined_state_without_state_change() {
 
   let result = a.accept_handshake_request(&request, 200);
 
-  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Quarantined" })));
+  assert!(matches!(
+    result,
+    Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Quarantined })
+  ));
   assert!(a.state().is_quarantined());
 }
 
@@ -256,7 +259,7 @@ fn accept_handshake_response_rejects_idle_state_without_state_change() {
 
   let result = a.accept_handshake_response(&response, 200);
 
-  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Idle" })));
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })));
   assert!(matches!(a.state(), AssociationState::Idle));
 }
 
@@ -269,7 +272,7 @@ fn accept_handshake_response_rejects_gated_state_without_state_change() {
 
   let result = a.accept_handshake_response(&response, 200);
 
-  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Gated" })));
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })));
   assert!(a.state().is_gated());
 }
 
@@ -282,7 +285,10 @@ fn accept_handshake_response_rejects_quarantined_state_without_state_change() {
 
   let result = a.accept_handshake_response(&response, 200);
 
-  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: "Quarantined" })));
+  assert!(matches!(
+    result,
+    Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Quarantined })
+  ));
   assert!(a.state().is_quarantined());
 }
 

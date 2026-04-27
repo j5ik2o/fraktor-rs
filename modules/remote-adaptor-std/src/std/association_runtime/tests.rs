@@ -756,10 +756,10 @@ async fn recover_with_restart_budget_resets_counter_on_successful_recovery() {
   let event_publisher = harness.publisher().clone();
 
   let ctx = RecoverContext { shared: &shared, policy: &policy, event_publisher: &event_publisher, started_at };
-  let recover_future =
-    recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restarts, TransportError::SendFailed);
-  tokio::time::advance(Duration::from_millis(20)).await;
-  let result = recover_future.await;
+  // start_paused = true + current_thread の auto-advance で reconnect_after_backoff 内の
+  // sleep(policy.backoff()) は await 中に自動的に進むため、明示的な advance は不要。
+  let result =
+    recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restarts, TransportError::SendFailed).await;
 
   assert_eq!(result, Ok(()));
   assert_eq!(
