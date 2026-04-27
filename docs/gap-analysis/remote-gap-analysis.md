@@ -45,7 +45,7 @@
 | 固定スコープ概念カバレッジ | 約 33/54 (61%) |
 | raw public type declarations | 72（core: 52, std: 20） |
 | raw public method declarations | 254（core: 187, std: 67） |
-| hard / medium / easy / trivial gap | 8 / 8 / 0 / 0 |
+| hard / medium / easy / trivial gap | 12 / 0 / 0 / 0 (Phase 2 medium 全項目完了。残ギャップは Phase 3 hard のみ) |
 
 前回から改善された点は明確で、`remote-core` の公開境界は `core` に整理され、`DeadlineFailureDetector`、address-bound な `PhiAccrualFailureDetector`、`RemoteLogMarker`、`ListenStarted` event publish、association effects の lifecycle publish は実装済みになっている。
 
@@ -157,20 +157,23 @@
 
 ## 実装優先度
 
-### Phase 2: medium
+### Phase 2: medium ✅ 全 10 項目実装済み
 
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `FailureDetectorRegistry[A]` / `DefaultFailureDetectorRegistry[A]` | core/failure_detector | カテゴリ2 |
-| `RemoteTransport.start` の実 bind 契約 | std/tcp_transport + std/extension_installer | カテゴリ3 |
-| handshake validation / retry / liveness probe | core/association + std/association_runtime | カテゴリ3 |
-| per-peer inbound association routing | std/association_runtime | カテゴリ3 |
-| system message delivery retransmission / nack | std/association_runtime | カテゴリ3 |
-| reconnect / backoff runtime | std/tcp_transport + std/association_runtime | カテゴリ3 |
-| `MessageContainerSerializer` | actor-core/serialization | カテゴリ4 |
-| `SystemMessageSerializer` | actor-core/serialization | カテゴリ4 |
-| `MiscMessageSerializer` subset | actor-core/serialization + core/wire | カテゴリ4 |
-| advanced Artery settings subset | core/config | カテゴリ7 |
+takt `pekko-porting` ワークフローと後続の手動実装 (Identify subset) により Phase 2 の medium は全件閉じた。
+個別項目はカテゴリ別ギャップ表 (上の節) に解消ステータスを反映する次回更新で削除予定で、ここではトレーサビリティのため一覧を残す。
+
+| 項目 | 実装先層 | 根拠 | 状態 |
+|------|----------|------|------|
+| `FailureDetectorRegistry[A]` / `DefaultFailureDetectorRegistry[A]` | core/failure_detector | カテゴリ2 | ✅ 完了 |
+| `RemoteTransport.start` の実 bind 契約 | std/tcp_transport + std/extension_installer | カテゴリ3 | ✅ 完了 |
+| handshake validation / retry / liveness probe | core/association + std/association_runtime | カテゴリ3 | ✅ 完了 |
+| per-peer inbound association routing | std/association_runtime | カテゴリ3 | ✅ 完了 |
+| system message delivery retransmission / nack | std/association_runtime | カテゴリ3 | ✅ 完了 |
+| reconnect / backoff runtime | std/tcp_transport + std/association_runtime | カテゴリ3 | ✅ 完了 |
+| `MessageContainerSerializer` | actor-core/serialization | カテゴリ4 | ✅ 完了 |
+| `SystemMessageSerializer` | actor-core/serialization | カテゴリ4 | ✅ 完了 |
+| `MiscMessageSerializer` subset (`Identify`) | actor-core/serialization + core/wire | カテゴリ4 | ✅ 完了 |
+| advanced Artery settings subset | core/config | カテゴリ7 | ✅ 完了 |
 
 ### Phase 3: hard
 
