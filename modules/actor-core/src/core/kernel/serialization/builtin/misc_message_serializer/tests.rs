@@ -89,7 +89,10 @@ fn from_binary_with_manifest_accepts_identify_manifest() {
 }
 
 #[test]
-fn from_binary_with_unknown_manifest_is_rejected() {
+fn from_binary_with_unknown_manifest_returns_unknown_manifest_for_alias_fallback() {
+  // 未対応 manifest は `UnknownManifest` を返さなければならない (`SerializationDelegator` の
+  // manifest-route fallback がこの variant を見て次のシリアライザー候補へ continue する)。
+  // `InvalidFormat` を返すと alias 経路が壊れる。
   let registry = registry();
   let s = serializer(&registry);
   let original = Identify::new(AnyMessage::new(String::from("payload")));
@@ -97,7 +100,10 @@ fn from_binary_with_unknown_manifest_is_rejected() {
 
   let view = s.as_string_manifest().expect("string manifest view");
   let result = view.from_binary_with_manifest(&bytes, "AID");
-  assert!(matches!(result, Err(SerializationError::InvalidFormat)));
+  match result {
+    | Err(SerializationError::UnknownManifest(manifest)) => assert_eq!(manifest, "AID"),
+    | other => panic!("expected UnknownManifest(\"AID\"), got {other:?}"),
+  }
 }
 
 #[test]

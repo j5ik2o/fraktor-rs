@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{
-  any::{Any, TypeId},
+  any::{Any, TypeId, type_name_of_val},
   convert::TryInto,
 };
 
@@ -56,7 +56,11 @@ impl Serializer for MessageContainerSerializer {
     let registry = self.registry()?;
     let delegator = SerializationDelegator::new(&registry);
     let payload = selection.message().payload();
-    let payload_type_name = registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from("<unbound>"));
+    // 第一候補: registry に登録された binding 名 (= 設定で明示された型名)。
+    // フォールバック: ランタイム型名 (`type_name_of_val`) を文字列化する。 trait オブジェクト名と
+    // なるが診断上は無情報な "<unbound>" よりは追跡しやすい。診断専用で wire には乗らない。
+    let payload_type_name =
+      registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from(type_name_of_val(payload)));
     let nested = delegator.serialize(payload, &payload_type_name)?;
     encode_selection(selection, &nested)
   }

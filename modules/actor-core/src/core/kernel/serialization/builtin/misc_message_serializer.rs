@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
-use core::any::{Any, TypeId};
+use core::any::{Any, TypeId, type_name_of_val};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
 
@@ -45,7 +45,11 @@ impl MiscMessageSerializer {
     let registry = self.registry()?;
     let delegator = SerializationDelegator::new(&registry);
     let payload = identify.correlation_id().payload();
-    let payload_type_name = registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from("<unbound>"));
+    // 第一候補: registry に登録された binding 名 (= 設定で明示された型名)。
+    // フォールバック: ランタイム型名 (`type_name_of_val`) を文字列化する。 trait オブジェクト名と
+    // なるが診断上は無情報な "<unbound>" よりは追跡しやすい。診断専用で wire には乗らない。
+    let payload_type_name =
+      registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from(type_name_of_val(payload)));
     let nested = delegator.serialize(payload, &payload_type_name)?;
     Ok(nested.encode())
   }
@@ -119,7 +123,11 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     match manifest {
       | IDENTIFY_MANIFEST => Ok(Box::new(self.decode_identify(bytes)?)),
-      | _ => Err(SerializationError::InvalidFormat),
+      // 未対応 manifest は `UnknownManifest` を返すことで `SerializationDelegator::deserialize`
+      // の manifest-route fallback (delegator.rs) が次の候補シリアライザーへ continue できる。
+      // ここで InvalidFormat を返すと alias 経路が壊れ、将来の ActorIdentity / RemoteRouterConfig
+      // 等の追加が manifest_routes 共有時にハードフェイルしてしまう。
+      | other => Err(SerializationError::UnknownManifest(String::from(other))),
     }
   }
 }
