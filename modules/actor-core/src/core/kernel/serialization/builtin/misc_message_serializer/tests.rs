@@ -359,6 +359,30 @@ fn registry_drop_yields_uninitialized_error_on_encode() {
 }
 
 #[test]
+fn from_binary_uses_type_hint_to_select_decoder_for_actor_identity() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = ActorIdentity::new(AnyMessage::new(String::from("hint")), None);
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<ActorIdentity>())).expect("decode");
+
+  assert!(decoded.downcast_ref::<ActorIdentity>().is_some(), "decoded payload should be ActorIdentity");
+}
+
+#[test]
+fn from_binary_rejects_status_without_manifest_routing() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = Status::success(AnyMessage::new(String::from("ok")));
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let result = s.from_binary(&bytes, Some(TypeId::of::<Status>()));
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
 fn as_any_returns_concrete_serializer_reference() {
   let registry = registry();
   let s = serializer(&registry);

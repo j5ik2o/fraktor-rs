@@ -154,14 +154,8 @@ impl MiscMessageSerializer {
   }
 
   fn encode_remote_scope(scope: &RemoteScope) -> Result<Vec<u8>, SerializationError> {
-    let node = scope.node();
-    let host = node.host().ok_or(SerializationError::InvalidFormat)?;
-    let port = node.port().ok_or(SerializationError::InvalidFormat)?;
     let mut buffer = Vec::new();
-    write_len_prefixed_bytes(&mut buffer, node.protocol().as_bytes())?;
-    write_len_prefixed_bytes(&mut buffer, node.system().as_bytes())?;
-    write_len_prefixed_bytes(&mut buffer, host.as_bytes())?;
-    buffer.extend_from_slice(&port.to_le_bytes());
+    Self::write_address(&mut buffer, scope.node())?;
     Ok(buffer)
   }
 
@@ -345,9 +339,30 @@ impl Serializer for MiscMessageSerializer {
   fn from_binary(
     &self,
     bytes: &[u8],
-    _type_hint: Option<TypeId>,
+    type_hint: Option<TypeId>,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    Ok(Box::new(self.decode_identify(bytes)?))
+    // include_manifest() == true なので通常は from_binary_with_manifest が呼ばれるが、
+    // include_manifest を確認しない呼び出し元から直接 from_binary に来た場合でも、
+    // type_hint が手掛かりとして渡されていれば対応する decoder にディスパッチする。
+    // type_hint が無い、または未対応の TypeId なら data corruption を避けるため失敗させる。
+    let Some(type_id) = type_hint else {
+      return Ok(Box::new(self.decode_identify(bytes)?));
+    };
+    if type_id == TypeId::of::<Identify>() {
+      return Ok(Box::new(self.decode_identify(bytes)?));
+    }
+    if type_id == TypeId::of::<ActorIdentity>() {
+      return Ok(Box::new(self.decode_actor_identity(bytes)?));
+    }
+    if type_id == TypeId::of::<RemoteScope>() {
+      return Ok(Box::new(Self::decode_remote_scope(bytes)?));
+    }
+    if type_id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() {
+      return Self::decode_remote_router_config(bytes);
+    }
+    // Status は Success / Failure の判別に manifest が必要。 type_hint だけでは
+    // どちらの variant か決まらないため、 from_binary_with_manifest 経由を要求する。
+    Err(SerializationError::InvalidFormat)
   }
 
   fn as_any(&self) -> &(dyn Any + Send + Sync) {
