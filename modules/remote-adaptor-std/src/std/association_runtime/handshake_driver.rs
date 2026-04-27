@@ -133,10 +133,13 @@ impl HandshakeDriver {
     N: Fn() -> u64 + Send + 'static, {
     let task = tokio::spawn(async move {
       let mut send_handshake = send_handshake;
+      // u128 -> u64 のロッシーキャストを `monotonic_millis_since` と同じ防御パターンで揃え、
+      // 極端な Duration が来ても silent な値変動を起こさないようにする。
+      let interval_ms = interval.as_millis().min(u128::from(u64::MAX)) as u64;
       loop {
         tokio::time::sleep(interval).await;
         let now_ms = now_ms_provider();
-        let due = shared.with_write(|assoc| assoc.is_liveness_probe_due(now_ms, interval.as_millis() as u64));
+        let due = shared.with_write(|assoc| assoc.is_liveness_probe_due(now_ms, interval_ms));
         if due {
           let pdu = HandshakePdu::Req(HandshakeReq::new(local.clone(), remote.clone()));
           match send_handshake(&remote, pdu) {
@@ -184,8 +187,10 @@ where
     let mut send_handshake = send_handshake;
     loop {
       tokio::time::sleep(interval).await;
-      let should_send = shared.with_write(|assoc| should_send(assoc.state()));
-      if should_send {
+      // 内側の bool が外側の generic クロージャ `should_send: P` と shadowing しないよう
+      // `due` に rename し、述語呼び出しと送信判定を視覚的に分離する。
+      let due = shared.with_write(|assoc| should_send(assoc.state()));
+      if due {
         let pdu = HandshakePdu::Req(HandshakeReq::new(local.clone(), remote.clone()));
         if let Err(err) = send_handshake(&remote, pdu) {
           // failure_message は識別子末尾なので tracing マクロの field 短縮 (`field=field`)

@@ -3,7 +3,7 @@
 use core::hash::Hash;
 
 use ahash::RandomState;
-use hashbrown::{HashMap, hash_map::Entry};
+use hashbrown::HashMap;
 
 use crate::core::failure_detector::{FailureDetector, failure_detector_registry::FailureDetectorRegistry};
 
@@ -30,10 +30,7 @@ where
   }
 
   fn detector_for(&mut self, resource: &K) -> &mut D {
-    match self.detectors.entry(resource.clone()) {
-      | Entry::Occupied(entry) => entry.into_mut(),
-      | Entry::Vacant(entry) => entry.insert((self.factory)(resource)),
-    }
+    self.detectors.entry(resource.clone()).or_insert_with(|| (self.factory)(resource))
   }
 }
 
