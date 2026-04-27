@@ -25,10 +25,17 @@ impl<P: Pool> RemoteRouterConfig<P> {
   ///
   /// # Panics
   ///
-  /// Panics if `nodes` is empty.
+  /// Panics if `nodes` is empty, or if any entry is a local address (no
+  /// host/port). The local-address check mirrors `RemoteScope::new` so that
+  /// `deploy_for_routee_index` cannot construct a `RemoteScope` from a
+  /// local-only `Address`.
   #[must_use]
   pub fn new(local: P, nodes: Vec<Address>) -> Self {
     assert!(!nodes.is_empty(), "nodes must not be empty");
+    assert!(
+      nodes.iter().all(Address::has_global_scope),
+      "RemoteRouterConfig requires every node to be a remote address with host and port",
+    );
     Self { local, nodes }
   }
 

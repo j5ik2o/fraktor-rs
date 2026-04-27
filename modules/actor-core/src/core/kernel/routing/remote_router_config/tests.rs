@@ -56,6 +56,13 @@ fn new_rejects_empty_nodes() {
 }
 
 #[test]
+#[should_panic(expected = "RemoteRouterConfig requires every node to be a remote address with host and port")]
+fn new_rejects_local_node_address() {
+  let local_address = Address::local("local-system");
+  let _config = RemoteRouterConfig::new(SmallestMailboxPool::new(1), vec![node_a(), local_address]);
+}
+
+#[test]
 fn scope_remote_carries_remote_scope() {
   let node = node_a();
   let scope = Scope::Remote(RemoteScope::new(node.clone()));
