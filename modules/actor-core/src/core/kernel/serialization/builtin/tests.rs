@@ -29,8 +29,8 @@ fn register_defaults_does_not_register_misc_bindings_when_misc_serializer_id_col
     collisions.iter().any(|(name, id)| *name == "misc_message" && *id == MISC_MESSAGE_ID),
     "misc_message collision must surface to the on_collision callback"
   );
-  // 衝突した場合 ActorIdentity / RemoteScope / Status の追加 binding を MISC_MESSAGE_ID
-  // に固定登録してはならない。
+  // 衝突した場合 ActorIdentity / RemoteScope / RemoteRouterConfig<SmallestMailboxPool> /
+  // Status の追加 binding を MISC_MESSAGE_ID に固定登録してはならない。
   assert!(registry.binding_name(TypeId::of::<ActorIdentity>()).is_none(), "ActorIdentity must not bind on collision");
   assert!(registry.binding_name(TypeId::of::<RemoteScope>()).is_none(), "RemoteScope must not bind on collision");
   assert!(

@@ -148,11 +148,12 @@ fn dispatch_heartbeat_response(
   let Some(remote_address) = registered_remote_address(peer, authority, registry, "heartbeat response") else {
     return;
   };
+  let origin = remote_address.clone();
   let command = WatcherCommand::HeartbeatResponseReceived { from: remote_address, uid, now: now_ms };
   match submit_watcher_command(command) {
     | Ok(()) => {},
     | Err(command) => {
-      tracing::warn!(peer = %peer, ?command, "watcher command submission failed");
+      tracing::warn!(peer = %peer, origin = %origin, ?command, "watcher command submission failed");
     },
   }
 }

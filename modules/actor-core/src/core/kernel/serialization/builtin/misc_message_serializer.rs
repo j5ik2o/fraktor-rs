@@ -194,6 +194,12 @@ impl MiscMessageSerializer {
     if node_count == 0 {
       return Err(SerializationError::InvalidFormat);
     }
+    // 不正な wire 値で `node_count == u32::MAX` のような値が来ても、 cursor の残りバイト数で
+    // 上限をかけて OOM を防ぐ。 1 ノードあたりの最小サイズは 1 バイト以上なので、 残りバイト数を
+    // そのまま上限として使えば pre-allocation で巨大な確保が起こらない。
+    if node_count > cursor.remaining() {
+      return Err(SerializationError::InvalidFormat);
+    }
     let mut nodes = Vec::with_capacity(node_count);
     for _ in 0..node_count {
       nodes.push(cursor.read_address()?);
@@ -451,6 +457,10 @@ impl<'a> Cursor<'a> {
 
   const fn is_finished(&self) -> bool {
     self.offset == self.bytes.len()
+  }
+
+  const fn remaining(&self) -> usize {
+    self.bytes.len() - self.offset
   }
 
   fn read_u8(&mut self) -> Result<u8, SerializationError> {
