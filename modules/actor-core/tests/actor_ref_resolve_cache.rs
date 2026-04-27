@@ -1,7 +1,7 @@
 use core::cell::Cell;
 
 use fraktor_actor_core_rs::core::kernel::{
-  actor::actor_path::{ActorPath, ActorPathParser},
+  actor::actor_path::{ActorPath, ActorPathParser, GuardianKind},
   serialization::{ActorRefResolveCache, ActorRefResolveCacheOutcome},
 };
 
@@ -134,6 +134,27 @@ fn should_reject_zero_capacity() {
   let result = std::panic::catch_unwind(|| ActorRefResolveCache::<ActorPath>::with_limits(0, 600));
 
   assert!(result.is_err(), "zero capacity must be rejected at construction time");
+}
+
+#[test]
+fn should_cache_paths_under_system_guardian() {
+  let mut cache = ActorRefResolveCache::with_limits(2, 600);
+  let path = ActorPath::root_with_guardian(GuardianKind::System).child("temp").child("entry");
+  let calls = Cell::new(0_u32);
+
+  let first = cache.resolve(&path, |candidate: &ActorPath| {
+    calls.set(calls.get() + 1);
+    Ok::<ActorPath, &'static str>(candidate.clone())
+  });
+  let second = cache.resolve(&path, |_candidate: &ActorPath| {
+    calls.set(calls.get() + 1);
+    Ok::<ActorPath, &'static str>(remote_path("unexpected"))
+  });
+
+  // システム guardian 配下のパスは一時 actor 規約の対象外なので cache 対象。
+  assert!(matches!(first, Ok(ActorRefResolveCacheOutcome::Miss(value)) if value == path));
+  assert!(matches!(second, Ok(ActorRefResolveCacheOutcome::Hit(value)) if value == path));
+  assert_eq!(calls.get(), 1);
 }
 
 #[test]

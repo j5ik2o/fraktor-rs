@@ -1,5 +1,8 @@
 //! Built-in serializer implementations registered by the extension.
 
+#[cfg(test)]
+mod tests;
+
 mod bool_serializer;
 mod byte_string_serializer;
 mod bytes_serializer;
