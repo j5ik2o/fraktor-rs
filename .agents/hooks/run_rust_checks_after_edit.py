@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AI エージェント PostToolUse hook: Rust ファイル編集後に dylint を自動実行する。
+"""AI エージェント PostToolUse hook: Rust ファイル編集後に品質チェックを自動実行する。
 
 Claude Code と Codex CLI で共通利用するため、エージェント種別を `--agent`
 引数で切り替える。エージェントごとに異なるのは以下の3点のみ:
@@ -14,7 +14,7 @@ Claude Code と Codex CLI で共通利用するため、エージェント種別
   1. `target/.ci-check.coordination.lock` で hook 同士 (エージェント横断) の
      直列化を行い、ci-check.sh の起動権を一つに絞る (TOCTOU 防止)。
   2. ci-check.sh 自身は `target/.ci-check.lock` で多重起動を弾くため、本
-     hook はその解放を待ってから coordination lock 内で dylint を起動する。
+     hook はその解放を待ってから coordination lock 内で品質チェックを起動する。
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ CI_LOCK_PATH = Path("target/.ci-check.lock")
 COORDINATION_LOCK_PATH = Path("target/.ci-check.coordination.lock")
 LOCK_WAIT_TIMEOUT_SEC = 1800
 LOCK_POLL_INTERVAL_SEC = 1.0
-CI_COMMAND = ("./scripts/ci-check.sh", "ai", "dylint")
+RUST_CHECK_COMMAND = ("./scripts/ci-check.sh", "ai", "fmt", "dylint", "clippy")
 MAX_FAILURE_LINES = 160
 MAX_FAILURE_CHARS = 12000
 
@@ -77,14 +77,14 @@ def main() -> int:
 
     repo_root = resolve_repo_root(payload)
     if repo_root is None:
-        return profile.block("Git ルートを特定できなかったため、自動 dylint を実行できませんでした。")
+        return profile.block("Git ルートを特定できなかったため、自動 Rust 品質チェックを実行できませんでした。")
 
     try:
-        run_auto_dylint(repo_root, profile.hook_lock_path, profile.label)
+        run_auto_rust_checks(repo_root, profile.hook_lock_path, profile.label)
     except HookFailure as failure:
         touched_paths = ", ".join(rust_paths)
         return profile.block(
-            "Rust ファイル編集後の自動 `./scripts/ci-check.sh ai dylint` が失敗しました。\n"
+            "Rust ファイル編集後の自動 `./scripts/ci-check.sh ai fmt dylint clippy` が失敗しました。\n"
             f"対象: {touched_paths}\n\n"
             f"{failure.message}"
         )
@@ -93,7 +93,7 @@ def main() -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="dylint after Rust edit hook")
+    parser = argparse.ArgumentParser(description="Rust checks after edit hook")
     parser.add_argument(
         "--agent",
         required=True,
@@ -199,7 +199,7 @@ def resolve_repo_root(payload: dict[str, object]) -> Path | None:
     return Path(repo_root)
 
 
-def run_auto_dylint(repo_root: Path, hook_lock_relative: Path, lock_label: str) -> None:
+def run_auto_rust_checks(repo_root: Path, hook_lock_relative: Path, lock_label: str) -> None:
     repo_hook_lock_path = repo_root / hook_lock_relative
     repo_ci_lock_path = repo_root / CI_LOCK_PATH
     repo_coordination_lock_path = repo_root / COORDINATION_LOCK_PATH
@@ -218,7 +218,7 @@ def run_auto_dylint(repo_root: Path, hook_lock_relative: Path, lock_label: str) 
         with FileLock(repo_coordination_lock_path, "ci-check coordination"):
             wait_for_lock_release(repo_ci_lock_path, "ci-check.sh")
             completed = subprocess.run(
-                CI_COMMAND,
+                RUST_CHECK_COMMAND,
                 cwd=repo_root,
                 capture_output=True,
                 text=True,
@@ -345,7 +345,7 @@ def summarize_failure_output(completed: subprocess.CompletedProcess[str]) -> str
         lines.extend(line.rstrip() for line in text.splitlines())
 
     if not lines:
-        return f"`{' '.join(CI_COMMAND)}` が終了コード {completed.returncode} で失敗しました。"
+        return f"`{' '.join(RUST_CHECK_COMMAND)}` が終了コード {completed.returncode} で失敗しました。"
 
     tail = lines[-MAX_FAILURE_LINES:]
     message = "\n".join(tail).strip()
@@ -380,14 +380,14 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
     "claude": AgentProfile(
         name="claude",
         label="Claude",
-        hook_lock_path=Path(".claude/dylint-hook.lock"),
+        hook_lock_path=Path(".claude/rust-check-hook.lock"),
         extract_rust_paths=extract_rust_paths_claude,
         block=block_claude,
     ),
     "codex": AgentProfile(
         name="codex",
         label="Codex",
-        hook_lock_path=Path(".codex/dylint-hook.lock"),
+        hook_lock_path=Path(".codex/rust-check-hook.lock"),
         extract_rust_paths=extract_rust_paths_codex,
         block=block_codex,
     ),
