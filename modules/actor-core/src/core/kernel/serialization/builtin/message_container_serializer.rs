@@ -113,6 +113,15 @@ fn decode_selection(bytes: &[u8]) -> Result<DecodedSelection, SerializationError
   let nested = SerializedMessage::decode(nested_bytes)?;
   let wildcard_fan_out = decode_wildcard(cursor.read_u8()?)?;
   let element_count = cursor.read_u32()? as usize;
+  // 信頼できない wire データから読み出した `element_count` をそのまま `Vec::with_capacity`
+  // に渡すと、悪意ある peer が `u32::MAX` 近くの値を仕掛けるだけで multi-GB の確保要求が
+  // 発生し、即座にプロセスを panic させられる (cursor bugbot 報告)。
+  // 各要素は最低 1 バイト (Parent タグ) を消費するため、残バイト数を上限に capacity を
+  // 制限することで「要素数 > 残バイト数」の不整合 payload を予約段階で防ぐ。
+  let remaining = cursor.remaining();
+  if element_count > remaining {
+    return Err(SerializationError::InvalidFormat);
+  }
   let mut elements = Vec::with_capacity(element_count);
   for _ in 0..element_count {
     elements.push(decode_element(&mut cursor)?);
@@ -191,6 +200,11 @@ impl<'a> Cursor<'a> {
 
   const fn is_finished(&self) -> bool {
     self.offset == self.bytes.len()
+  }
+
+  /// Bytes still available to read.
+  const fn remaining(&self) -> usize {
+    self.bytes.len().saturating_sub(self.offset)
   }
 
   fn read_u8(&mut self) -> Result<u8, SerializationError> {
