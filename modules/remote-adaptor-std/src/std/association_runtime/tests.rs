@@ -22,7 +22,7 @@ use tokio::sync::{
 use crate::std::{
   association_runtime::{
     apply_effects_in_place, association_registry::AssociationRegistry, association_shared::AssociationShared,
-    handshake_driver::HandshakeDriver, inbound_dispatch::run_inbound_dispatch,
+    handshake_driver::HandshakeDriver, inbound_dispatch::run_inbound_dispatch, outbound_loop::RecoverContext,
     system_message_delivery::SystemMessageDeliveryState,
   },
   tcp_transport::{InboundFrameEvent, WireFrame},
@@ -652,8 +652,11 @@ async fn outbound_loop_waits_backoff_before_reconnect_and_recovers_association()
 
   let task_shared = shared.clone();
   let task_transport = transport.clone();
-  let task =
-    tokio::spawn(async move { run_outbound_loop_with_reconnect(task_shared, task_transport, policy, reconnect).await });
+  let harness = EventHarness::new();
+  let event_publisher = harness.publisher().clone();
+  let task = tokio::spawn(async move {
+    run_outbound_loop_with_reconnect(task_shared, task_transport, policy, event_publisher, reconnect).await
+  });
 
   tokio::task::yield_now().await;
   tokio::time::advance(Duration::from_millis(1)).await;
@@ -710,7 +713,9 @@ async fn outbound_loop_returns_send_failure_when_restart_budget_is_exhausted() {
     }
   };
 
-  let result = run_outbound_loop_with_reconnect(shared.clone(), transport, policy, reconnect).await;
+  let harness = EventHarness::new();
+  let result =
+    run_outbound_loop_with_reconnect(shared.clone(), transport, policy, harness.publisher().clone(), reconnect).await;
 
   assert_eq!(result, Err(TransportError::SendFailed));
   assert_eq!(sends.with_lock(|count| *count), 1, "one send attempt should consume the zero restart budget");
@@ -741,16 +746,12 @@ async fn recover_with_restart_budget_resets_counter_on_successful_recovery() {
   // Simulate that prior failure cycles consumed 2 of the 3-budget.
   let mut restarts: u32 = 2;
   let started_at = tokio::time::Instant::now();
+  let harness = EventHarness::new();
+  let event_publisher = harness.publisher().clone();
 
-  let recover_future = recover_with_restart_budget(
-    &shared,
-    &policy,
-    &mut reconnect,
-    remote,
-    started_at,
-    &mut restarts,
-    TransportError::SendFailed,
-  );
+  let ctx = RecoverContext { shared: &shared, policy: &policy, event_publisher: &event_publisher, started_at };
+  let recover_future =
+    recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restarts, TransportError::SendFailed);
   tokio::time::advance(Duration::from_millis(20)).await;
   let result = recover_future.await;
 
@@ -787,7 +788,9 @@ async fn outbound_loop_treats_not_started_as_shutdown_without_reconnect() {
     }
   };
 
-  let result = run_outbound_loop_with_reconnect(shared.clone(), transport, policy, reconnect).await;
+  let harness = EventHarness::new();
+  let result =
+    run_outbound_loop_with_reconnect(shared.clone(), transport, policy, harness.publisher().clone(), reconnect).await;
 
   assert_eq!(result, Ok(()));
   assert_eq!(sends.with_lock(|count| *count), 1, "shutdown path should observe the pending send once");
