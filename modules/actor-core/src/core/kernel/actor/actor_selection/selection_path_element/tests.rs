@@ -17,6 +17,7 @@ fn child_pattern_keeps_wildcard_matcher() {
 }
 
 #[test]
-fn parent_represents_parent_step() {
-  assert_eq!(SelectionPathElement::Parent, SelectionPathElement::Parent);
+fn parent_is_distinct_from_other_variants() {
+  assert_ne!(SelectionPathElement::Parent, SelectionPathElement::ChildName(String::from("worker")));
+  assert_ne!(SelectionPathElement::Parent, SelectionPathElement::ChildPattern(String::from("worker-*")));
 }

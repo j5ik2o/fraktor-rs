@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{
-  any::{Any, TypeId, type_name_of_val},
+  any::{Any, TypeId},
   convert::TryInto,
 };
 
@@ -56,7 +56,8 @@ impl Serializer for MessageContainerSerializer {
     let registry = self.registry()?;
     let delegator = SerializationDelegator::new(&registry);
     let payload = selection.message().payload();
-    let nested = delegator.serialize(payload, type_name_of_val(payload))?;
+    let payload_type_name = registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from("<unbound>"));
+    let nested = delegator.serialize(payload, &payload_type_name)?;
     encode_selection(selection, &nested)
   }
 
@@ -69,6 +70,8 @@ impl Serializer for MessageContainerSerializer {
     let decoded = decode_selection(bytes)?;
     let delegator = SerializationDelegator::new(&registry);
     let payload = delegator.deserialize(&decoded.nested, None)?;
+    // ActorSelectionMessage の payload はユーザメッセージ扱い（control でも NotInfluenceReceiveTimeout でもない）。
+    // wire 上に flag を載せていないため、deserialize 側では常に false/false で復元する。
     let message = AnyMessage::from_erased(ArcShared::from_boxed(payload), None, false, false);
     Ok(Box::new(ActorSelectionMessage::new(message, decoded.elements, decoded.wildcard_fan_out)))
   }

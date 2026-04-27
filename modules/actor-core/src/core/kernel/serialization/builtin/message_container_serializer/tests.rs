@@ -81,9 +81,16 @@ fn non_selection_message_type_is_rejected() {
 fn invalid_element_tag_is_rejected() {
   let registry = registry();
   let serializer = serializer(&registry);
-  let message = ActorSelectionMessage::new(AnyMessage::new(String::from("payload")), Vec::new(), false);
+  // 1 要素 (Parent) で encode し、末尾の Parent タグバイトを未知の値に差し替えて
+  // unknown-tag 判定パスを実行させる。要素 0 で末尾に余剰バイトを付けると
+  // is_finished の余剰バイト検知に先に当たり、目的のパスを通らない。
+  let message = ActorSelectionMessage::new(
+    AnyMessage::new(String::from("payload")),
+    vec![SelectionPathElement::Parent],
+    false,
+  );
   let mut bytes = serializer.to_binary(&message).expect("selection message should encode");
-  bytes.extend_from_slice(&[1, u8::MAX]);
+  *bytes.last_mut().expect("Parent tag byte") = u8::MAX;
 
   let result = serializer.from_binary(&bytes, None);
 

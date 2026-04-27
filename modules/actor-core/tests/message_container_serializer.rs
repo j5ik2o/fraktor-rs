@@ -215,13 +215,15 @@ fn should_reject_unknown_nested_serializer_id() {
     false,
   );
   let mut bytes = serializer.to_binary(&message).expect("selection container should encode");
-  let string_id = STRING_ID.value().to_le_bytes();
+  // 外側 wire レイアウト: [nested_len(4)] [nested_serializer_id(4)] [has_manifest(1)] ...
+  // nested_serializer_id の位置は決定論的に offset 4 に固定なので、`STRING_ID` の偶発一致を
+  // 待つバイト探索ではなく直接書き換える。
+  let nested_id_offset = 4_usize;
   let unknown_id = SerializerId::try_from(9999).expect("unknown serializer id").value().to_le_bytes();
-  let offset = bytes
-    .windows(string_id.len())
-    .position(|window| window == string_id)
-    .expect("nested String serializer id must be encoded");
-  bytes[offset..offset + unknown_id.len()].copy_from_slice(&unknown_id);
+  // 比較として STRING_ID が確かに該当オフセットに格納されていることを表明し、レイアウト変更を
+  // この箇所で検知できるようにする。
+  assert_eq!(&bytes[nested_id_offset..nested_id_offset + 4], &STRING_ID.value().to_le_bytes());
+  bytes[nested_id_offset..nested_id_offset + unknown_id.len()].copy_from_slice(&unknown_id);
 
   let Err(error) = serializer.from_binary(&bytes, None) else { panic!("unknown nested serializer should fail") };
   assert!(matches!(error, SerializationError::UnknownSerializer(_)));
@@ -247,8 +249,14 @@ fn should_reject_truncated_selection_container() {
 fn should_reject_unknown_selection_element_tag() {
   let registry = default_registry();
   let serializer = serializer(&registry);
+  // 1 要素 (Parent) を含む有効な container を encode し、末尾の Parent タグバイトを未知の値に
+  // 差し替えて unknown-tag の判定パスを実行させる。空 container (`&[u8::MAX]`) では nested 長
+  // プレフィックス読み取り段階で先に失敗してしまい、目的のタグ判定パスを通らない。
+  let message = selection_message(AnyMessage::new(String::from("payload")), vec![SelectionPathElement::Parent], false);
+  let mut bytes = serializer.to_binary(&message).expect("selection container should encode");
+  *bytes.last_mut().expect("Parent tag byte") = u8::MAX;
 
-  let Err(error) = serializer.from_binary(&[u8::MAX], None) else { panic!("unknown element tag should fail") };
+  let Err(error) = serializer.from_binary(&bytes, None) else { panic!("unknown element tag should fail") };
   assert!(matches!(error, SerializationError::InvalidFormat));
 }
 

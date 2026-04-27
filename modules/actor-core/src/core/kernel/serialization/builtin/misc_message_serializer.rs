@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{borrow::Cow, boxed::Box, vec::Vec};
-use core::any::{Any, TypeId, type_name_of_val};
+use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
+use core::any::{Any, TypeId};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
 
@@ -45,7 +45,8 @@ impl MiscMessageSerializer {
     let registry = self.registry()?;
     let delegator = SerializationDelegator::new(&registry);
     let payload = identify.correlation_id().payload();
-    let nested = delegator.serialize(payload, type_name_of_val(payload))?;
+    let payload_type_name = registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from("<unbound>"));
+    let nested = delegator.serialize(payload, &payload_type_name)?;
     Ok(nested.encode())
   }
 
@@ -54,6 +55,8 @@ impl MiscMessageSerializer {
     let delegator = SerializationDelegator::new(&registry);
     let nested = SerializedMessage::decode(bytes)?;
     let payload = delegator.deserialize(&nested, None)?;
+    // Identify は user メッセージ扱い（control でも NotInfluenceReceiveTimeout でもない）。
+    // wire 上に flag を載せていないため、deserialize 側では常に false/false で復元する。
     let message = AnyMessage::from_erased(ArcShared::from_boxed(payload), None, false, false);
     Ok(Identify::new(message))
   }
@@ -69,10 +72,13 @@ impl Serializer for MiscMessageSerializer {
   }
 
   fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
-    if let Some(identify) = message.downcast_ref::<Identify>() {
-      return self.encode_identify(identify);
+    match message.type_id() {
+      | id if id == TypeId::of::<Identify>() => {
+        let identify = message.downcast_ref::<Identify>().ok_or(SerializationError::InvalidFormat)?;
+        self.encode_identify(identify)
+      },
+      | _ => Err(SerializationError::InvalidFormat),
     }
-    Err(SerializationError::InvalidFormat)
   }
 
   fn from_binary(
@@ -97,6 +103,12 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
     if message.downcast_ref::<Identify>().is_some() {
       return Cow::Borrowed(IDENTIFY_MANIFEST);
     }
+    // manifest() は to_binary が成功したメッセージにしか呼ばれない想定だが、
+    // 予期しない型が渡されたら即座に観測できるよう debug ビルドではアサートで落とし、
+    // release ではログに残したうえで空マニフェストを返す（呼び出し元の to_binary が
+    // InvalidFormat を返すので silent-corruption にはならない）。
+    debug_assert!(false, "MiscMessageSerializer::manifest called with unsupported type {:?}", message.type_id());
+    tracing::error!(type_id = ?message.type_id(), "MiscMessageSerializer::manifest called with unsupported type");
     Cow::Borrowed("")
   }
 

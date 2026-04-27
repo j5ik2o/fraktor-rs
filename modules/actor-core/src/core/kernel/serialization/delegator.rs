@@ -56,6 +56,7 @@ impl<'a> SerializationDelegator<'a> {
     let manifest = self
       .registry
       .manifest_for(value.type_id())
+      .map(String::from)
       .or_else(|| serializer.as_string_manifest().map(|provider| provider.manifest(value).into_owned()));
     Ok(SerializedMessage::new(serializer.identifier(), manifest, bytes))
   }
@@ -96,6 +97,18 @@ impl<'a> SerializationDelegator<'a> {
     self.scope
   }
 
+  /// Iterates serializers that have explicitly opted into the given manifest via
+  /// [`SerializationRegistry::serializers_for_manifest`] and returns the first successful decode.
+  ///
+  /// This is the manifest-aliasing fallback: when the originally-targeted serializer
+  /// returns [`SerializationError::UnknownManifest`], any serializer registered against the
+  /// same manifest string (e.g. via [`builder::register_manifest_route`]) is re-tried.
+  ///
+  /// **Invariant:** every serializer reachable here is expected to share a compatible wire
+  /// format for `manifest`; the registry honours this by gating registration through
+  /// `register_manifest_route`. Routes registered against incompatible types will surface
+  /// as `Err(SerializationError::UnknownManifest)` per call and are skipped via `continue`.
+  /// If no route succeeds, the original `UnknownManifest(manifest)` error is propagated.
   fn deserialize_with_manifest_routes(
     &self,
     message: &SerializedMessage,

@@ -13,12 +13,15 @@ use crate::core::kernel::serialization::{
 };
 
 /// Registry that resolves serializers based on type identifiers.
+///
+/// `remote_manifests` is populated once in [`Self::from_setup`] from the immutable
+/// [`SerializationSetup`] and never mutated afterwards, so it does not need a lock.
 #[allow(clippy::type_complexity)]
 pub struct SerializationRegistry {
   serializers:      SharedRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>>,
   bindings:         SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
   binding_names:    SharedRwLock<HashMap<TypeId, String, RandomState>>,
-  remote_manifests: SharedRwLock<HashMap<TypeId, String, RandomState>>,
+  remote_manifests: HashMap<TypeId, String, RandomState>,
   manifest_routes:  SharedRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>>,
   cache:            SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
   fallback:         SerializerId,
@@ -43,7 +46,7 @@ impl SerializationRegistry {
       serializers:      SharedRwLock::new_with_driver::<DefaultRwLock<_>>(serializers),
       bindings:         SharedRwLock::new_with_driver::<DefaultRwLock<_>>(bindings),
       binding_names:    SharedRwLock::new_with_driver::<DefaultRwLock<_>>(binding_names),
-      remote_manifests: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(remote_manifests),
+      remote_manifests,
       manifest_routes:  SharedRwLock::new_with_driver::<DefaultRwLock<_>>(manifest_routes),
       cache:            SharedRwLock::new_with_driver::<DefaultRwLock<_>>(HashMap::with_hasher(RandomState::new())),
       fallback:         setup.fallback_serializer(),
@@ -175,8 +178,8 @@ impl SerializationRegistry {
 
   /// Returns the remote manifest registered for the provided type identifier.
   #[must_use]
-  pub fn manifest_for(&self, type_id: TypeId) -> Option<String> {
-    self.remote_manifests.with_read(|manifests| manifests.get(&type_id).cloned())
+  pub fn manifest_for(&self, type_id: TypeId) -> Option<&str> {
+    self.remote_manifests.get(&type_id).map(String::as_str)
   }
 
   /// Clears cached lookups (used during shutdown).
