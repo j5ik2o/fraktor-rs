@@ -11,7 +11,8 @@ use fraktor_remote_core_rs::core::{
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::{AckPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp},
+  watcher::WatcherCommand,
+  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp},
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 use tokio::sync::{
@@ -21,8 +22,8 @@ use tokio::sync::{
 
 use crate::std::{
   association_runtime::{
-    apply_effects_in_place, association_registry::AssociationRegistry, association_shared::AssociationShared,
-    handshake_driver::HandshakeDriver, inbound_dispatch::run_inbound_dispatch, outbound_loop::RecoverContext,
+    InboundQuarantineCheck, RestartCounter, apply_effects_in_place, association_registry::AssociationRegistry,
+    association_shared::AssociationShared, handshake_driver::HandshakeDriver, inbound_dispatch::run_inbound_dispatch,
     system_message_delivery::SystemMessageDeliveryState,
   },
   tcp_transport::{InboundFrameEvent, WireFrame},
@@ -51,6 +52,22 @@ fn handshaking_association_for(remote: Address) -> Association {
   let endpoint = TransportEndpoint::new(remote.to_string());
   let effects = assoc.associate(endpoint, 0);
   assert!(!effects.is_empty(), "associate should emit StartHandshake");
+  assoc
+}
+
+fn active_association_for(remote: Address) -> Association {
+  let mut assoc = handshaking_association_for(remote.clone());
+  let response = HandshakeRsp::new(remote_unique(remote.system(), remote.host(), remote.port(), 1));
+  let effects = assoc.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
+  assert!(!effects.is_empty(), "handshake response should activate the association");
+  assoc
+}
+
+fn quarantined_association_for(remote: Address) -> Association {
+  let mut assoc = active_association_for(remote);
+  let effects = assoc.quarantine(QuarantineReason::new("test quarantine"), 2);
+  assert!(!effects.is_empty(), "quarantine should emit lifecycle effects");
+  assert!(assoc.state().is_quarantined(), "association must be quarantined for this test");
   assoc
 }
 
@@ -83,13 +100,41 @@ fn remote_handshake_rsp(system: &str, host: &str, port: u16, uid: u64) -> WireFr
 }
 
 type SentHandshakes = SharedLock<Vec<(Address, HandshakePdu)>>;
+type SentControls = SharedLock<Vec<(Address, ControlPdu)>>;
+type SubmittedWatcherCommands = SharedLock<Vec<WatcherCommand>>;
 
 fn new_sent_handshakes() -> SentHandshakes {
   SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new())
 }
 
+fn new_sent_controls() -> SentControls {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new())
+}
+
+fn new_submitted_watcher_commands() -> SubmittedWatcherCommands {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new())
+}
+
 fn sent_handshakes(sent: &SentHandshakes) -> Vec<(Address, HandshakePdu)> {
   sent.with_lock(|items| items.clone())
+}
+
+fn sent_control_frames(sent: &SentControls) -> Vec<(Address, ControlPdu)> {
+  sent.with_lock(|items| items.clone())
+}
+
+fn registry_with(remote: Address, association: Association) -> AssociationRegistry {
+  let mut registry = AssociationRegistry::new();
+  registry.insert(UniqueAddress::new(remote, 0), AssociationShared::new(association));
+  registry
+}
+
+fn inbound_event_from(remote: &Address, frame: WireFrame) -> InboundFrameEvent {
+  InboundFrameEvent { peer: format!("{}:{}", remote.host(), remote.port()), frame }
+}
+
+fn inbound_event_from_peer(peer: &str, frame: WireFrame) -> InboundFrameEvent {
+  InboundFrameEvent { peer: peer.into(), frame }
 }
 
 fn handshake_send_probe(
@@ -101,6 +146,24 @@ fn handshake_send_probe(
   }
 }
 
+fn control_send_probe(
+  sent: SentControls,
+) -> impl FnMut(&Address, ControlPdu) -> Result<(), TransportError> + Send + 'static {
+  move |remote, pdu| {
+    sent.with_lock(|items| items.push((remote.clone(), pdu)));
+    Ok(())
+  }
+}
+
+fn watcher_submit_probe(
+  submitted: SubmittedWatcherCommands,
+) -> impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>> + Send + 'static {
+  move |command| {
+    submitted.with_lock(|items| items.push(command));
+    Ok(())
+  }
+}
+
 async fn run_inbound_dispatch_with_response_probe(
   rx: UnboundedReceiver<InboundFrameEvent>,
   registry: AssociationRegistry,
@@ -108,13 +171,66 @@ async fn run_inbound_dispatch_with_response_probe(
   harness: &EventHarness,
   sent: SentHandshakes,
 ) {
+  let sent_controls = new_sent_controls();
+  let submitted_commands = new_submitted_watcher_commands();
   run_inbound_dispatch(
     rx,
     registry,
     move || now_ms,
     harness.publisher().clone(),
-    local_unique(),
-    handshake_send_probe(sent),
+    (
+      local_unique(),
+      handshake_send_probe(sent),
+      control_send_probe(sent_controls),
+      watcher_submit_probe(submitted_commands),
+    ),
+  )
+  .await;
+}
+
+async fn run_inbound_dispatch_with_control_probes(
+  rx: UnboundedReceiver<InboundFrameEvent>,
+  registry: AssociationRegistry,
+  now_ms: u64,
+  harness: &EventHarness,
+  sent_controls: SentControls,
+  submitted_commands: SubmittedWatcherCommands,
+) {
+  run_inbound_dispatch(
+    rx,
+    registry,
+    move || now_ms,
+    harness.publisher().clone(),
+    (
+      local_unique(),
+      handshake_send_probe(new_sent_handshakes()),
+      control_send_probe(sent_controls),
+      watcher_submit_probe(submitted_commands),
+    ),
+  )
+  .await;
+}
+
+async fn run_inbound_dispatch_with_all_probes(
+  rx: UnboundedReceiver<InboundFrameEvent>,
+  registry: AssociationRegistry,
+  now_ms: u64,
+  harness: &EventHarness,
+  sent_handshakes: SentHandshakes,
+  sent_controls: SentControls,
+  submitted_commands: SubmittedWatcherCommands,
+) {
+  run_inbound_dispatch(
+    rx,
+    registry,
+    move || now_ms,
+    harness.publisher().clone(),
+    (
+      local_unique(),
+      handshake_send_probe(sent_handshakes),
+      control_send_probe(sent_controls),
+      watcher_submit_probe(submitted_commands),
+    ),
   )
   .await;
 }
@@ -211,6 +327,135 @@ fn registry_get_by_remote_address_returns_none_for_unknown_peer() {
   reg.insert(UniqueAddress::new(known.clone(), 42), AssociationShared::new(sample_association_for(known)));
 
   assert!(reg.get_by_remote_address(&unknown).is_none());
+}
+
+// ---------------------------------------------------------------------------
+// InboundQuarantineCheck 検疫フィルタ
+// ---------------------------------------------------------------------------
+
+#[test]
+fn inbound_quarantine_check_allows_envelope_from_active_peer() {
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), active_association_for(remote.clone()));
+  let event = inbound_event_from(&remote, WireFrame::Envelope(sample_envelope_pdu(1)));
+
+  let allowed = InboundQuarantineCheck::allows(&registry, &event);
+
+  assert!(allowed, "active peer envelope must continue into inbound dispatch");
+}
+
+#[test]
+fn inbound_quarantine_check_drops_envelope_from_quarantined_peer() {
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), quarantined_association_for(remote.clone()));
+  let event = inbound_event_from(&remote, WireFrame::Envelope(sample_envelope_pdu(1)));
+
+  let allowed = InboundQuarantineCheck::allows(&registry, &event);
+
+  assert!(!allowed, "quarantined peer envelope must be dropped before normal inbound dispatch");
+}
+
+#[test]
+fn inbound_quarantine_check_drops_heartbeat_from_quarantined_peer() {
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), quarantined_association_for(remote.clone()));
+  let event = inbound_event_from(&remote, WireFrame::Control(ControlPdu::Heartbeat { authority: remote.to_string() }));
+
+  let allowed = InboundQuarantineCheck::allows(&registry, &event);
+
+  assert!(!allowed, "quarantined peer heartbeat must be dropped before normal inbound dispatch");
+}
+
+#[test]
+fn inbound_quarantine_check_drops_heartbeat_response_from_quarantined_peer() {
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), quarantined_association_for(remote.clone()));
+  let event = inbound_event_from(
+    &remote,
+    WireFrame::Control(ControlPdu::HeartbeatResponse { authority: remote.to_string(), uid: 42 }),
+  );
+
+  let allowed = InboundQuarantineCheck::allows(&registry, &event);
+
+  assert!(!allowed, "quarantined peer heartbeat response must be dropped before normal inbound dispatch");
+}
+
+#[test]
+fn inbound_quarantine_check_drops_handshake_from_quarantined_peer() {
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), quarantined_association_for(remote.clone()));
+  let event = inbound_event_from(&remote, remote_handshake_req("remote-sys", "10.0.0.1", 2552, 1));
+
+  let allowed = InboundQuarantineCheck::allows(&registry, &event);
+
+  assert!(!allowed, "quarantined peer handshake must be dropped before normal inbound dispatch");
+}
+
+#[test]
+fn inbound_quarantine_check_drops_quarantine_notice_from_quarantined_peer() {
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), quarantined_association_for(remote.clone()));
+  let event = inbound_event_from(
+    &remote,
+    WireFrame::Control(ControlPdu::Quarantine {
+      authority: remote.to_string(),
+      reason:    Some("test quarantine".into()),
+    }),
+  );
+
+  let allowed = InboundQuarantineCheck::allows(&registry, &event);
+
+  assert!(!allowed, "quarantined peer quarantine notices must be dropped before normal inbound dispatch");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_drops_quarantined_peer_before_side_effects() {
+  let harness = EventHarness::new();
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), quarantined_association_for(remote.clone()));
+  let sent_handshake_frames = new_sent_handshakes();
+  let sent_controls = new_sent_controls();
+  let submitted_commands = new_submitted_watcher_commands();
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(inbound_event_from(
+    &remote,
+    WireFrame::Control(ControlPdu::HeartbeatResponse { authority: remote.to_string(), uid: 42 }),
+  ))
+  .expect("heartbeat response frame should be sent to inbound dispatch");
+  tx.send(inbound_event_from(&remote, remote_handshake_req("remote-sys", "10.0.0.1", 2552, 1)))
+    .expect("handshake frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch_with_all_probes(
+    rx,
+    registry,
+    333,
+    &harness,
+    sent_handshake_frames.clone(),
+    sent_controls.clone(),
+    submitted_commands.clone(),
+  )
+  .await;
+
+  assert!(
+    sent_handshakes(&sent_handshake_frames).is_empty(),
+    "quarantined peer handshake must not emit handshake responses"
+  );
+  assert!(
+    sent_control_frames(&sent_controls).is_empty(),
+    "quarantined peer control frame must not emit control responses"
+  );
+  assert!(
+    submitted_commands.with_lock(|items| items.is_empty()),
+    "quarantined peer heartbeat response must not submit watcher commands"
+  );
+  harness.events_with(|events| {
+    assert!(
+      !has_remoting_lifecycle_event(events, |event| matches!(event, RemotingLifecycleEvent::Connected { .. })),
+      "quarantined peer frames must not publish Connected lifecycle events"
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -641,7 +886,8 @@ async fn outbound_loop_waits_backoff_before_reconnect_and_recovers_association()
   ));
   let reconnects = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::<Address>::new());
   let reconnects_for_closure = reconnects.clone();
-  let policy = ReconnectBackoffPolicy::new(Duration::from_millis(20), Duration::from_millis(100), 3);
+  let policy =
+    ReconnectBackoffPolicy::new(Duration::from_millis(20), Duration::from_millis(100), Duration::from_millis(100), 3);
   let reconnect = move |remote: Address| {
     let reconnects = reconnects_for_closure.clone();
     async move {
@@ -704,7 +950,8 @@ async fn outbound_loop_returns_send_failure_when_restart_budget_is_exhausted() {
     SharedLock::new_with_driver::<DefaultMutex<_>>(FailingTransport::new(TransportError::SendFailed, sends.clone()));
   let reconnects = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::<Address>::new());
   let reconnects_for_closure = reconnects.clone();
-  let policy = ReconnectBackoffPolicy::new(Duration::from_millis(20), Duration::from_millis(100), 0);
+  let policy =
+    ReconnectBackoffPolicy::new(Duration::from_millis(20), Duration::from_millis(100), Duration::from_millis(100), 0);
   let reconnect = move |remote: Address| {
     let reconnects = reconnects_for_closure.clone();
     async move {
@@ -725,47 +972,39 @@ async fn outbound_loop_returns_send_failure_when_restart_budget_is_exhausted() {
   });
 }
 
-#[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn recover_with_restart_budget_resets_counter_on_successful_recovery() {
-  // 同じ outbound loop の中で複数の独立した障害サイクルが発生したとき、
-  // 過去サイクルで消費した restart カウントが残り続けると、十分な余裕
-  // (max_restarts) があってもサイクル N の途中で予算枯渇と誤判定して
-  // ループを終了させてしまう。successful recovery の直後に counter を
-  // 0 にリセットすることで、各サイクルが独立した予算で動くことを検証する。
-  use crate::std::association_runtime::{ReconnectBackoffPolicy, outbound_loop::recover_with_restart_budget};
+#[test]
+fn restart_counter_allows_restarts_until_budget_is_consumed_in_window() {
+  let mut counter = RestartCounter::new(2, Duration::from_millis(100));
 
-  let mut association = handshaking_association();
-  let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
-  association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
-  // run_outbound_loop_with_reconnect は recover_with_restart_budget を呼ぶ前に
-  // 必ず gate_for_reconnect を経由するので、テストでも association を一旦 Gated に
-  // 落としてから recover を呼び出す。これがないと Association::recover は Active 経路の
-  // `_ => Vec::new()` 分岐に入ってしまい、本来検証したい Gated → Handshaking 復旧の
-  // effect が発生しない。
-  let _gate_effects = association.gate(Some(0), 0);
-  let shared = AssociationShared::new(association);
+  let first = counter.restart(1_000);
+  let second = counter.restart(1_050);
 
-  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
-  let policy = ReconnectBackoffPolicy::new(Duration::from_millis(10), Duration::from_millis(100), 3);
-  let mut reconnect = |remote: Address| async move { Ok(TransportEndpoint::new(remote.to_string())) };
+  assert!(first, "first restart in a fresh window should be allowed");
+  assert!(second, "max_restarts represents the number of allowed restarts in the active window");
+  assert_eq!(counter.count(), 2, "count reflects the active restart-timeout window");
+}
 
-  // Simulate that prior failure cycles consumed 2 of the 3-budget.
-  let mut restarts: u32 = 2;
-  let started_at = tokio::time::Instant::now();
-  let harness = EventHarness::new();
-  let event_publisher = harness.publisher().clone();
+#[test]
+fn restart_counter_rejects_restart_after_budget_is_consumed_inside_window() {
+  let mut counter = RestartCounter::new(2, Duration::from_millis(100));
 
-  let ctx = RecoverContext { shared: &shared, policy: &policy, event_publisher: &event_publisher, started_at };
-  // start_paused = true + current_thread の auto-advance で reconnect_after_backoff 内の
-  // sleep(policy.backoff()) は await 中に自動的に進むため、明示的な advance は不要。
-  let result =
-    recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restarts, TransportError::SendFailed).await;
+  assert!(counter.restart(1_000), "first restart should consume one budget slot");
+  assert!(counter.restart(1_050), "second restart should consume the last budget slot");
+  let third = counter.restart(1_099);
 
-  assert_eq!(result, Ok(()));
-  assert_eq!(
-    restarts, 0,
-    "restart counter must reset to zero after successful recovery so a future independent failure starts with the full budget"
-  );
+  assert!(!third, "third restart inside the same restart-timeout window must be rejected");
+}
+
+#[test]
+fn restart_counter_resets_budget_after_restart_timeout_window_expires() {
+  let mut counter = RestartCounter::new(2, Duration::from_millis(100));
+
+  assert!(counter.restart(1_000), "first restart should open the restart-timeout window");
+  assert!(counter.restart(1_050), "second restart should consume the active window budget");
+  assert!(!counter.restart(1_099), "budget is still exhausted before the window expires");
+  let after_deadline = counter.restart(1_101);
+
+  assert!(after_deadline, "restart budget must reset only after the restart-timeout window expires");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -785,7 +1024,8 @@ async fn outbound_loop_treats_not_started_as_shutdown_without_reconnect() {
     SharedLock::new_with_driver::<DefaultMutex<_>>(FailingTransport::new(TransportError::NotStarted, sends.clone()));
   let reconnects = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::<Address>::new());
   let reconnects_for_closure = reconnects.clone();
-  let policy = ReconnectBackoffPolicy::new(Duration::from_millis(20), Duration::from_millis(100), 3);
+  let policy =
+    ReconnectBackoffPolicy::new(Duration::from_millis(20), Duration::from_millis(100), Duration::from_millis(100), 3);
   let reconnect = move |remote: Address| {
     let reconnects = reconnects_for_closure.clone();
     async move {
@@ -1209,4 +1449,151 @@ async fn inbound_dispatch_routes_handshake_to_matching_registered_association_on
       } if authority == "remote-a@10.0.0.1:2552"
     )));
   });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_replies_to_heartbeat_with_local_uid() {
+  let harness = EventHarness::new();
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), active_association_for(remote.clone()));
+  let sent_controls = new_sent_controls();
+  let submitted_commands = new_submitted_watcher_commands();
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(inbound_event_from(&remote, WireFrame::Control(ControlPdu::Heartbeat { authority: remote.to_string() })))
+    .expect("heartbeat frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch_with_control_probes(
+    rx,
+    registry,
+    300,
+    &harness,
+    sent_controls.clone(),
+    submitted_commands.clone(),
+  )
+  .await;
+
+  assert_eq!(sent_control_frames(&sent_controls), vec![(remote, ControlPdu::HeartbeatResponse {
+    authority: local_address().to_string(),
+    uid:       local_unique().uid(),
+  },)]);
+  assert!(
+    submitted_commands.with_lock(|items| items.is_empty()),
+    "heartbeat request should not be submitted as watcher response"
+  );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_drops_heartbeat_request_when_peer_does_not_match_authority() {
+  let harness = EventHarness::new();
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), active_association_for(remote.clone()));
+  let sent_controls = new_sent_controls();
+  let submitted_commands = new_submitted_watcher_commands();
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(inbound_event_from_peer(
+    "10.0.0.9:2552",
+    WireFrame::Control(ControlPdu::Heartbeat { authority: remote.to_string() }),
+  ))
+  .expect("heartbeat frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch_with_control_probes(
+    rx,
+    registry,
+    300,
+    &harness,
+    sent_controls.clone(),
+    submitted_commands.clone(),
+  )
+  .await;
+
+  assert!(
+    sent_control_frames(&sent_controls).is_empty(),
+    "mismatched heartbeat request must not receive a heartbeat response"
+  );
+  assert!(
+    submitted_commands.with_lock(|items| items.is_empty()),
+    "mismatched heartbeat request must not submit watcher commands"
+  );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_submits_heartbeat_response_to_watcher() {
+  let harness = EventHarness::new();
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), active_association_for(remote.clone()));
+  let sent_controls = new_sent_controls();
+  let submitted_commands = new_submitted_watcher_commands();
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(inbound_event_from(
+    &remote,
+    WireFrame::Control(ControlPdu::HeartbeatResponse { authority: remote.to_string(), uid: 42 }),
+  ))
+  .expect("heartbeat response frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch_with_control_probes(
+    rx,
+    registry,
+    333,
+    &harness,
+    sent_controls.clone(),
+    submitted_commands.clone(),
+  )
+  .await;
+
+  assert!(
+    sent_control_frames(&sent_controls).is_empty(),
+    "heartbeat response should not trigger another control response"
+  );
+  let commands = submitted_commands.with_lock(|items| items.clone());
+  assert_eq!(commands.len(), 1);
+  assert!(matches!(
+    &commands[0],
+    WatcherCommand::HeartbeatResponseReceived {
+      from,
+      uid,
+      now
+    } if from == &remote && *uid == 42 && *now == 333
+  ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_dispatch_drops_heartbeat_response_when_peer_does_not_match_authority() {
+  let harness = EventHarness::new();
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), active_association_for(remote.clone()));
+  let sent_controls = new_sent_controls();
+  let submitted_commands = new_submitted_watcher_commands();
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  tx.send(inbound_event_from_peer(
+    "10.0.0.9:2552",
+    WireFrame::Control(ControlPdu::HeartbeatResponse { authority: remote.to_string(), uid: 42 }),
+  ))
+  .expect("heartbeat response frame should be sent to inbound dispatch");
+  drop(tx);
+
+  run_inbound_dispatch_with_control_probes(
+    rx,
+    registry,
+    333,
+    &harness,
+    sent_controls.clone(),
+    submitted_commands.clone(),
+  )
+  .await;
+
+  assert!(
+    sent_control_frames(&sent_controls).is_empty(),
+    "mismatched heartbeat response must not trigger control responses"
+  );
+  assert!(
+    submitted_commands.with_lock(|items| items.is_empty()),
+    "mismatched heartbeat response must not be submitted to the watcher"
+  );
 }
