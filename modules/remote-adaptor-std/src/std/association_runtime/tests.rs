@@ -1600,3 +1600,38 @@ async fn inbound_dispatch_drops_heartbeat_response_when_peer_does_not_match_auth
     "mismatched heartbeat response must not be submitted to the watcher"
   );
 }
+
+#[test]
+fn parse_authority_strips_ipv6_brackets() {
+  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+
+  let address = parse_authority("remote-sys@[::1]:2552").expect("ipv6 authority");
+
+  assert_eq!(address.host(), "::1");
+  assert_eq!(address.port(), 2552);
+  assert_eq!(address.system(), "remote-sys");
+}
+
+#[test]
+fn parse_authority_handles_ipv4() {
+  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+
+  let address = parse_authority("remote-sys@10.0.0.1:2552").expect("ipv4 authority");
+
+  assert_eq!(address.host(), "10.0.0.1");
+  assert_eq!(address.port(), 2552);
+}
+
+#[test]
+fn parse_authority_rejects_authority_without_at_sign() {
+  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+
+  assert!(parse_authority("remote-sys").is_none());
+}
+
+#[test]
+fn parse_authority_rejects_invalid_port() {
+  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+
+  assert!(parse_authority("remote-sys@10.0.0.1:notaport").is_none());
+}

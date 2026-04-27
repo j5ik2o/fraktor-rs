@@ -188,7 +188,7 @@ fn registered_remote_address(
   Some(remote_address)
 }
 
-fn parse_authority(authority: &str) -> Option<Address> {
+pub(super) fn parse_authority(authority: &str) -> Option<Address> {
   let (system, endpoint) = authority.split_once('@')?;
   // IPv6 リテラルは `system@[::1]:2552` 形式で来るため、ホスト部の括弧を先に切り落とし、
   // `peer_matches_address` 側 (`Address::host()` は括弧なしを返す前提) と整合させる。
