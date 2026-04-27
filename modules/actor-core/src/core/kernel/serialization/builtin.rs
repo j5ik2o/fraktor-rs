@@ -16,7 +16,7 @@ use core::any::TypeId;
 pub use bool_serializer::BoolSerializer;
 pub use byte_string_serializer::ByteStringSerializer;
 pub use bytes_serializer::BytesSerializer;
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
 pub use i32_serializer::I32Serializer;
 pub use message_container_serializer::MessageContainerSerializer;
 pub use misc_message_serializer::MiscMessageSerializer;
@@ -27,12 +27,15 @@ pub use system_message_serializer::SystemMessageSerializer;
 use crate::core::kernel::{
   actor::{
     actor_selection::ActorSelectionMessage,
-    messaging::{Identify, system_message::SystemMessage},
+    deploy::RemoteScope,
+    messaging::{ActorIdentity, Identify, Status, system_message::SystemMessage},
   },
+  routing::{RemoteRouterConfig, SmallestMailboxPool},
   serialization::{
     error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
     serializer_id::SerializerId,
   },
+  system::state::SystemStateWeak,
   util::ByteString,
 };
 
@@ -70,6 +73,31 @@ pub const MISC_MESSAGE_ID: SerializerId = SerializerId::from_raw(9);
 /// Returns `SerializationError` if type binding registration fails during the process.
 pub fn register_defaults<F>(
   registry: &ArcShared<SerializationRegistry>,
+  on_collision: F,
+) -> Result<(), SerializationError>
+where
+  F: FnMut(&'static str, SerializerId), {
+  register_defaults_inner(registry, None, on_collision)
+}
+
+/// Registers built-in serializers with actor-system context for actor-ref resolution.
+///
+/// # Errors
+///
+/// Returns `SerializationError` if type binding registration fails during the process.
+pub fn register_defaults_with_system_state<F>(
+  registry: &ArcShared<SerializationRegistry>,
+  system_state: SystemStateWeak,
+  on_collision: F,
+) -> Result<(), SerializationError>
+where
+  F: FnMut(&'static str, SerializerId), {
+  register_defaults_inner(registry, Some(system_state), on_collision)
+}
+
+fn register_defaults_inner<F>(
+  registry: &ArcShared<SerializationRegistry>,
+  system_state: Option<SystemStateWeak>,
   mut on_collision: F,
 ) -> Result<(), SerializationError>
 where
@@ -141,12 +169,31 @@ where
   register::<_, _>(
     registry,
     MISC_MESSAGE_ID,
-    MiscMessageSerializer::new(MISC_MESSAGE_ID, registry.downgrade()),
+    misc_message_serializer(MISC_MESSAGE_ID, registry.downgrade(), system_state),
     "misc_message",
     Some((TypeId::of::<Identify>(), "Identify".into())),
     &mut on_collision,
   )?;
+  registry.register_binding(TypeId::of::<ActorIdentity>(), "ActorIdentity", MISC_MESSAGE_ID)?;
+  registry.register_binding(TypeId::of::<RemoteScope>(), "RemoteScope", MISC_MESSAGE_ID)?;
+  registry.register_binding(
+    TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>(),
+    "RemoteRouterConfig<SmallestMailboxPool>",
+    MISC_MESSAGE_ID,
+  )?;
+  registry.register_binding(TypeId::of::<Status>(), "Status", MISC_MESSAGE_ID)?;
   Ok(())
+}
+
+fn misc_message_serializer(
+  id: SerializerId,
+  registry: WeakShared<SerializationRegistry>,
+  system_state: Option<SystemStateWeak>,
+) -> MiscMessageSerializer {
+  match system_state {
+    | Some(system_state) => MiscMessageSerializer::new_with_system_state(id, registry, system_state),
+    | None => MiscMessageSerializer::new(id, registry),
+  }
 }
 
 fn register<S, F>(

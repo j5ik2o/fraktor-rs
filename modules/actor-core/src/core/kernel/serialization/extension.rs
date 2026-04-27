@@ -70,7 +70,7 @@ impl SerializationExtension {
     {
       // builtinシリアライザの登録を試み、失敗時には警告ログを出力してから継続
       // 通常は発生しないが、システム構成に重大な問題がある場合にパニックする
-      if let Err(error) = builtin::register_defaults(&registry, |name, id| {
+      if let Err(error) = builtin::register_defaults_with_system_state(&registry, state.downgrade(), |name, id| {
         let message = format!("serializer collision detected for built-in {name} (id {:?})", id);
         state.emit_log(LogLevel::Warn, message, None, None);
       }) {
