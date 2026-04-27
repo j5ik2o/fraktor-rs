@@ -44,11 +44,11 @@ where
   F: Fn(&K) -> D,
 {
   fn is_available(&self, resource: &K, now_ms: u64) -> bool {
-    self.detectors.get(resource).map_or(true, |detector| detector.is_available(now_ms))
+    self.detectors.get(resource).is_none_or(|detector| detector.is_available(now_ms))
   }
 
   fn is_monitoring(&self, resource: &K) -> bool {
-    self.detectors.get(resource).map_or(false, |detector| detector.is_monitoring())
+    self.detectors.get(resource).is_some_and(|detector| detector.is_monitoring())
   }
 
   fn heartbeat(&mut self, resource: &K, now_ms: u64) {
