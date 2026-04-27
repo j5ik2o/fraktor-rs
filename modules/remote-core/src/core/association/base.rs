@@ -12,11 +12,13 @@ use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, Remoting
 use crate::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{
-    association_effect::AssociationEffect, association_state::AssociationState, quarantine_reason::QuarantineReason,
-    send_queue::SendQueue,
+    association_effect::AssociationEffect, association_state::AssociationState,
+    handshake_rejected_state::HandshakeRejectedState, handshake_validation_error::HandshakeValidationError,
+    quarantine_reason::QuarantineReason, send_queue::SendQueue,
   },
   envelope::OutboundEnvelope,
   transport::{BackpressureSignal, TransportEndpoint},
+  wire::{HandshakeReq, HandshakeRsp},
 };
 
 /// Per-remote association aggregating the state machine, the send queue, and
@@ -71,6 +73,24 @@ impl Association {
     &self.send_queue
   }
 
+  /// Returns the last monotonic millis at which handshake activity was observed.
+  #[must_use]
+  pub const fn last_used_at(&self) -> Option<u64> {
+    match &self.state {
+      | AssociationState::Active { last_used_at, .. } => Some(*last_used_at),
+      | _ => None,
+    }
+  }
+
+  /// Returns `true` when an active association has been idle for `interval_ms`.
+  #[must_use]
+  pub const fn is_liveness_probe_due(&self, now_ms: u64, interval_ms: u64) -> bool {
+    match &self.state {
+      | AssociationState::Active { last_used_at, .. } => now_ms.saturating_sub(*last_used_at) >= interval_ms,
+      | _ => false,
+    }
+  }
+
   // -------------------------------------------------------------------------
   // state transitions
   // -------------------------------------------------------------------------
@@ -90,8 +110,59 @@ impl Association {
     }
   }
 
+  /// Accepts a handshake request after verifying both the remote origin and the local destination.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`HandshakeValidationError`] when the request does not belong to this association.
+  pub fn accept_handshake_request(
+    &mut self,
+    request: &HandshakeReq,
+    now_ms: u64,
+  ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
+    self.ensure_local_destination(request.to())?;
+    self.ensure_remote_origin(request.from().address())?;
+    self.handshake_accepted(remote_node_id_from_unique_address(request.from()), now_ms)
+  }
+
+  /// Accepts a handshake response after verifying the remote origin.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`HandshakeValidationError`] when the response does not belong to
+  /// this association, or when the association cannot transition into `Active`
+  /// from its current state (`Idle`, `Gated`, `Quarantined`).
+  pub fn accept_handshake_response(
+    &mut self,
+    response: &HandshakeRsp,
+    now_ms: u64,
+  ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
+    self.ensure_remote_origin(response.from().address())?;
+    self.handshake_accepted(remote_node_id_from_unique_address(response.from()), now_ms)
+  }
+
   /// Transitions `Handshaking` → `Active`, flushing any deferred envelopes.
-  pub fn handshake_accepted(&mut self, remote_node: RemoteNodeId, now_ms: u64) -> Vec<AssociationEffect> {
+  ///
+  /// Returns `Err(RejectedInState)` for `Idle` / `Gated` / `Quarantined`: those
+  /// states must not be silently promoted to `Active` because the inbound
+  /// dispatcher would otherwise reply with `HandshakeRsp` and the peer would
+  /// observe an `Active` association while the local side stays unreachable.
+  // Idle / Gated / Quarantined で `Ok(Vec::new())` を返すと、inbound dispatcher が
+  // 「accept_handshake_request が Ok = HandshakeRsp を返してよい」という規約に従い
+  // 応答 PDU を送信してしまう。リモートは Active と思い込むがローカルは引き続き
+  // 到達不能のまま、という非対称なプロトコル状態を作るため、ここで明示的に拒否する。
+  fn handshake_accepted(
+    &mut self,
+    remote_node: RemoteNodeId,
+    now_ms: u64,
+  ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
+    if let AssociationState::Active { remote_node: current, last_used_at, .. } = &mut self.state
+      && current == &remote_node
+    {
+      *last_used_at = now_ms;
+      return Ok(Vec::new());
+    }
+
     match &self.state {
       | AssociationState::Handshaking { .. } => {
         let mut effects = Vec::new();
@@ -105,10 +176,35 @@ impl Association {
         if !deferred.is_empty() {
           effects.push(AssociationEffect::SendEnvelopes { envelopes: deferred });
         }
-        self.state = AssociationState::Active { remote_node, established_at: now_ms };
-        effects
+        self.state = AssociationState::Active { remote_node, established_at: now_ms, last_used_at: now_ms };
+        Ok(effects)
       },
-      | _ => Vec::new(),
+      | AssociationState::Active { .. } => {
+        let effect = AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected {
+          authority:      self.authority_string(),
+          remote_system:  remote_node.system().to_string(),
+          remote_uid:     remote_node.uid(),
+          correlation_id: CorrelationId::nil(),
+        });
+        self.state = AssociationState::Active { remote_node, established_at: now_ms, last_used_at: now_ms };
+        Ok(vec![effect])
+      },
+      | AssociationState::Idle => {
+        Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })
+      },
+      | AssociationState::Gated { .. } => {
+        Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })
+      },
+      | AssociationState::Quarantined { .. } => {
+        Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Quarantined })
+      },
+    }
+  }
+
+  /// Records handshake activity for an active association.
+  pub const fn record_handshake_activity(&mut self, now_ms: u64) {
+    if let AssociationState::Active { last_used_at, .. } = &mut self.state {
+      *last_used_at = now_ms;
     }
   }
 
@@ -245,4 +341,27 @@ impl Association {
   fn authority_string(&self) -> String {
     self.remote.to_string()
   }
+
+  fn ensure_local_destination(&self, actual: &Address) -> Result<(), HandshakeValidationError> {
+    if self.local.address() == actual {
+      Ok(())
+    } else {
+      Err(HandshakeValidationError::UnexpectedDestination {
+        expected: self.local.address().clone(),
+        actual:   actual.clone(),
+      })
+    }
+  }
+
+  fn ensure_remote_origin(&self, actual: &Address) -> Result<(), HandshakeValidationError> {
+    if &self.remote == actual {
+      Ok(())
+    } else {
+      Err(HandshakeValidationError::UnexpectedRemote { expected: self.remote.clone(), actual: actual.clone() })
+    }
+  }
+}
+
+fn remote_node_id_from_unique_address(address: &UniqueAddress) -> RemoteNodeId {
+  RemoteNodeId::new(address.address().system(), address.address().host(), Some(address.address().port()), address.uid())
 }

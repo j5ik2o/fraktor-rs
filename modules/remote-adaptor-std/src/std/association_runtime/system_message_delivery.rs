@@ -6,12 +6,10 @@ use fraktor_remote_core_rs::core::wire::{AckPdu, EnvelopePdu};
 
 /// State machine for ack-based system message delivery.
 ///
-/// Phase B's minimum-viable implementation tracks the outgoing sequence
-/// number, the cumulative ack received from the peer, and a pending window
-/// of envelopes that have been sent but not yet acknowledged. The full
-/// retransmission timer (with `tokio::time::sleep`) and nack handling are
-/// declared as TODOs and will be filled in once the integration tests in
-/// Section 24 require them.
+/// The state tracks outgoing sequence numbers, the cumulative ack received
+/// from the peer, pending envelopes that have not been acknowledged yet, and
+/// the last time each pending envelope was emitted. The runtime driver owns
+/// the actual timer and transport send side effects.
 #[derive(Debug)]
 pub struct SystemMessageDeliveryState {
   /// Sequence number assigned to the next outbound system message.
@@ -21,7 +19,35 @@ pub struct SystemMessageDeliveryState {
   /// Maximum number of unacknowledged messages allowed in flight.
   send_window:    u32,
   /// Pending unacked envelopes (in order).
-  pending:        VecDeque<(u64, EnvelopePdu)>,
+  pending:        VecDeque<PendingSystemMessage>,
+}
+
+#[derive(Debug)]
+struct PendingSystemMessage {
+  sequence_number: u64,
+  envelope:        EnvelopePdu,
+  last_sent_at_ms: u64,
+}
+
+impl PendingSystemMessage {
+  fn new(sequence_number: u64, envelope: EnvelopePdu, last_sent_at_ms: u64) -> Self {
+    Self { sequence_number, envelope, last_sent_at_ms }
+  }
+
+  fn is_due(&self, now_ms: u64, resend_interval_ms: u64) -> bool {
+    now_ms.saturating_sub(self.last_sent_at_ms) >= resend_interval_ms
+  }
+
+  fn nacked_by(&self, ack: &AckPdu) -> bool {
+    let Some(offset_from_cumulative) = self.sequence_number.checked_sub(ack.cumulative_ack()) else {
+      return false;
+    };
+    if !(1..=u64::BITS as u64).contains(&offset_from_cumulative) {
+      return false;
+    }
+    let bit_index = offset_from_cumulative - 1;
+    ack.nack_bitmap() & (1_u64 << bit_index) != 0
+  }
 }
 
 impl SystemMessageDeliveryState {
@@ -66,14 +92,48 @@ impl SystemMessageDeliveryState {
   ///
   /// Returns `None` when the in-flight window is full and the envelope must
   /// be deferred to a later attempt.
-  pub fn record_send(&mut self, envelope: EnvelopePdu) -> Option<u64> {
+  pub fn record_send(&mut self, envelope: EnvelopePdu, now_ms: u64) -> Option<u64> {
     if self.is_window_full() {
       return None;
     }
     let seq = self.next_sequence;
     self.next_sequence = self.next_sequence.saturating_add(1);
-    self.pending.push_back((seq, envelope));
+    self.pending.push_back(PendingSystemMessage::new(seq, envelope, now_ms));
     Some(seq)
+  }
+
+  /// Returns pending envelopes whose last send time has reached
+  /// `resend_interval_ms`.
+  #[must_use]
+  pub fn due_retransmissions(&self, now_ms: u64, resend_interval_ms: u64) -> Vec<(u64, EnvelopePdu)> {
+    self
+      .pending
+      .iter()
+      .filter(|entry| entry.is_due(now_ms, resend_interval_ms))
+      .map(|entry| (entry.sequence_number, entry.envelope.clone()))
+      .collect()
+  }
+
+  /// Marks a pending envelope as retransmitted at `now_ms`.
+  ///
+  /// Returns `false` when `sequence_number` is no longer pending.
+  pub fn mark_retransmitted(&mut self, sequence_number: u64, now_ms: u64) -> bool {
+    let Some(entry) = self.pending.iter_mut().find(|entry| entry.sequence_number == sequence_number) else {
+      return false;
+    };
+    entry.last_sent_at_ms = now_ms;
+    true
+  }
+
+  /// Returns pending envelopes selected by the nack bitmap in `ack`.
+  #[must_use]
+  pub fn nacked_pending(&self, ack: &AckPdu) -> Vec<(u64, EnvelopePdu)> {
+    self
+      .pending
+      .iter()
+      .filter(|entry| entry.nacked_by(ack))
+      .map(|entry| (entry.sequence_number, entry.envelope.clone()))
+      .collect()
   }
 
   /// Applies an inbound [`AckPdu`], removing acknowledged envelopes from the
@@ -83,8 +143,8 @@ impl SystemMessageDeliveryState {
     if cumulative > self.cumulative_ack {
       self.cumulative_ack = cumulative;
     }
-    while let Some((seq, _)) = self.pending.front() {
-      if *seq <= cumulative {
+    while let Some(entry) = self.pending.front() {
+      if entry.sequence_number <= cumulative {
         self.pending.pop_front();
       } else {
         break;

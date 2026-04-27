@@ -26,6 +26,8 @@ pub enum AssociationState {
     remote_node:    RemoteNodeId,
     /// `now_ms` passed to `handshake_accepted`.
     established_at: u64,
+    /// Last monotonic millis at which handshake activity was observed.
+    last_used_at:   u64,
   },
   /// Temporarily gated after a transient failure.
   Gated {

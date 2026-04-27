@@ -1,6 +1,9 @@
 //! Phi Accrual failure detector.
 
-use crate::core::{address::Address, failure_detector::heartbeat_history::HeartbeatHistory};
+use crate::core::{
+  address::Address,
+  failure_detector::{FailureDetector, heartbeat_history::HeartbeatHistory},
+};
 
 /// Phi Accrual failure detector modelled after Apache Pekko's
 /// `PhiAccrualFailureDetector`.
@@ -189,5 +192,19 @@ impl PhiAccrualFailureDetector {
   #[must_use]
   pub const fn is_monitoring(&self) -> bool {
     self.last_heartbeat_ms.is_some()
+  }
+}
+
+impl FailureDetector for PhiAccrualFailureDetector {
+  fn is_available(&self, now_ms: u64) -> bool {
+    PhiAccrualFailureDetector::is_available(self, now_ms)
+  }
+
+  fn is_monitoring(&self) -> bool {
+    PhiAccrualFailureDetector::is_monitoring(self)
+  }
+
+  fn heartbeat(&mut self, now_ms: u64) {
+    PhiAccrualFailureDetector::heartbeat(self, now_ms);
   }
 }

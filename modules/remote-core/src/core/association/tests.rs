@@ -10,9 +10,13 @@ use fraktor_actor_core_rs::core::kernel::{
 
 use crate::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  association::{Association, AssociationEffect, AssociationState, OfferOutcome, QuarantineReason, SendQueue},
+  association::{
+    Association, AssociationEffect, AssociationState, HandshakeRejectedState, HandshakeValidationError, OfferOutcome,
+    QuarantineReason, SendQueue,
+  },
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{BackpressureSignal, TransportEndpoint},
+  wire::{HandshakeReq, HandshakeRsp},
 };
 
 // ---------------------------------------------------------------------------
@@ -33,6 +37,14 @@ fn sample_endpoint() -> TransportEndpoint {
 
 fn sample_remote_node() -> RemoteNodeId {
   RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 0xdead_beef)
+}
+
+fn sample_remote_unique() -> UniqueAddress {
+  UniqueAddress::new(sample_remote_addr(), 0xdead_beef)
+}
+
+fn other_remote_unique() -> UniqueAddress {
+  UniqueAddress::new(Address::new("other-sys", "10.0.0.9", 2559), 0xbeef)
 }
 
 fn sample_path() -> ActorPath {
@@ -129,13 +141,263 @@ fn idle_to_handshaking_to_active_happy_path() {
   assert!(matches!(a.state(), AssociationState::Handshaking { .. }));
   assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { .. }]));
 
-  let effects = a.handshake_accepted(sample_remote_node(), 200);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
   assert!(a.state().is_active());
   // First effect is the Connected lifecycle publish.
   assert!(matches!(
     effects.first(),
     Some(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected { .. }))
   ));
+}
+
+#[test]
+fn accept_handshake_request_transitions_to_active_when_from_and_to_match() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
+
+  let effects = a.accept_handshake_request(&request, 200).expect("matching handshake request should be accepted");
+
+  assert!(matches!(
+    a.state(),
+    AssociationState::Active {
+      remote_node,
+      established_at: 200,
+      ..
+    } if remote_node.system() == "remote-sys" && remote_node.uid() == 0xdead_beef
+  ));
+  assert!(matches!(
+    effects.first(),
+    Some(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected { .. }))
+  ));
+}
+
+#[test]
+fn accept_handshake_request_rejects_unexpected_destination_without_state_change() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let request = HandshakeReq::new(sample_remote_unique(), Address::new("other-local", "127.0.0.2", 2551));
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(result.is_err(), "request addressed to a different local address must be rejected");
+  assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 100, .. }));
+}
+
+#[test]
+fn accept_handshake_request_rejects_unexpected_remote_without_state_change() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let request = HandshakeReq::new(other_remote_unique(), sample_local().address().clone());
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(result.is_err(), "request from a different remote address must be rejected");
+  assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 100, .. }));
+}
+
+// `Idle` / `Gated` / `Quarantined` の各状態でハンドシェイクを受理してしまうと、
+// inbound dispatcher が Ok を見て HandshakeRsp を送り返し、リモートはハンドシェイク
+// 成立と認識する一方でローカルは到達不能のまま、という非対称なプロトコル状態が
+// 生まれる。これらの状態では accept_handshake_request / accept_handshake_response が
+// `RejectedInState` を返し、状態遷移しないことを回帰検証する。
+
+#[test]
+fn accept_handshake_request_rejects_idle_state_without_state_change() {
+  let mut a = new_association();
+  assert!(matches!(a.state(), AssociationState::Idle));
+  let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })));
+  assert!(matches!(a.state(), AssociationState::Idle));
+}
+
+#[test]
+fn accept_handshake_request_rejects_gated_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  // gate() は Active からしか遷移しないため、Handshaking → Gated は
+  // handshake_timed_out() 経由で作る。
+  let _ = a.handshake_timed_out(100, Some(500));
+  assert!(a.state().is_gated());
+  let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })));
+  assert!(a.state().is_gated());
+}
+
+#[test]
+fn accept_handshake_request_rejects_quarantined_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100);
+  assert!(a.state().is_quarantined());
+  let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
+
+  let result = a.accept_handshake_request(&request, 200);
+
+  assert!(matches!(
+    result,
+    Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Quarantined })
+  ));
+  assert!(a.state().is_quarantined());
+}
+
+#[test]
+fn accept_handshake_response_rejects_idle_state_without_state_change() {
+  let mut a = new_association();
+  assert!(matches!(a.state(), AssociationState::Idle));
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let result = a.accept_handshake_response(&response, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })));
+  assert!(matches!(a.state(), AssociationState::Idle));
+}
+
+#[test]
+fn accept_handshake_response_rejects_gated_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  let _ = a.handshake_timed_out(100, Some(500));
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let result = a.accept_handshake_response(&response, 200);
+
+  assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })));
+  assert!(a.state().is_gated());
+}
+
+#[test]
+fn accept_handshake_response_rejects_quarantined_state_without_state_change() {
+  let mut a = new_association();
+  let _ = a.associate(sample_endpoint(), 100);
+  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100);
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let result = a.accept_handshake_response(&response, 200);
+
+  assert!(matches!(
+    result,
+    Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Quarantined })
+  ));
+  assert!(a.state().is_quarantined());
+}
+
+#[test]
+fn accept_handshake_response_transitions_to_active_when_origin_matches_remote() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+
+  assert!(matches!(
+    a.state(),
+    AssociationState::Active {
+      remote_node,
+      established_at: 200,
+      ..
+    } if remote_node.system() == "remote-sys" && remote_node.uid() == 0xdead_beef
+  ));
+  assert!(matches!(
+    effects.first(),
+    Some(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected { .. }))
+  ));
+}
+
+#[test]
+fn accept_handshake_response_sets_last_used_to_acceptance_time() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+
+  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+
+  assert!(!effects.is_empty(), "first accepted response should publish lifecycle effects");
+  assert!(matches!(a.state(), AssociationState::Active { established_at: 200, last_used_at: 200, .. }));
+  assert_eq!(a.last_used_at(), Some(200));
+}
+
+#[test]
+fn accept_handshake_response_refreshes_last_used_for_active_association() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let initial_effects = a.accept_handshake_response(&response, 200).expect("initial response should be accepted");
+  assert!(!initial_effects.is_empty(), "initial response should complete the handshake");
+
+  let refresh_effects =
+    a.accept_handshake_response(&response, 260).expect("same-origin response should refresh activity");
+
+  assert!(refresh_effects.is_empty(), "refreshing last-used should not republish lifecycle events");
+  assert!(matches!(a.state(), AssociationState::Active { established_at: 200, last_used_at: 260, .. }));
+  assert_eq!(a.last_used_at(), Some(260));
+}
+
+#[test]
+fn record_handshake_activity_updates_last_used_without_changing_remote_identity() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  assert!(!effects.is_empty(), "handshake response should complete the handshake");
+
+  a.record_handshake_activity(275);
+
+  assert!(matches!(
+    a.state(),
+    AssociationState::Active {
+      remote_node,
+      established_at: 200,
+      last_used_at: 275
+    } if remote_node.system() == "remote-sys" && remote_node.uid() == 0xdead_beef
+  ));
+  assert_eq!(a.last_used_at(), Some(275));
+}
+
+#[test]
+fn liveness_probe_due_only_when_active_idle_interval_elapsed() {
+  let mut active = new_association();
+  let started = active.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let effects =
+    active.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  assert!(!effects.is_empty(), "handshake response should complete the handshake");
+
+  assert!(!active.is_liveness_probe_due(249, 50), "probe should not be due before the idle interval");
+  assert!(active.is_liveness_probe_due(250, 50), "probe should be due when idle interval elapsed");
+
+  let mut handshaking = new_association();
+  let started = handshaking.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  assert!(!handshaking.is_liveness_probe_due(10_000, 50), "non-active association must not request liveness probes");
+}
+
+#[test]
+fn accept_handshake_response_rejects_unexpected_origin_without_state_change() {
+  let mut a = new_association();
+  let started = a.associate(sample_endpoint(), 100);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(other_remote_unique());
+
+  let result = a.accept_handshake_response(&response, 200);
+
+  assert!(result.is_err(), "response from a different remote address must be rejected");
+  assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 100, .. }));
 }
 
 #[test]
@@ -167,7 +429,8 @@ fn handshaking_timeout_with_deferred_envelopes_emits_discard() {
 fn active_to_quarantined_publishes_and_discards_pending() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_accepted(sample_remote_node(), 10);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
 
   // Put an envelope into the send queue while Active.
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
@@ -224,7 +487,8 @@ fn recover_none_from_gated_returns_to_idle() {
 fn recover_from_active_is_no_op() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_accepted(sample_remote_node(), 5);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let _ = a.accept_handshake_response(&response, 5).expect("matching handshake response should be accepted");
   assert!(a.state().is_active());
 
   let effects = a.recover(Some(sample_endpoint()), 10);
@@ -260,7 +524,8 @@ fn recover_from_handshaking_is_no_op() {
 fn enqueue_in_active_pushes_into_send_queue() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_accepted(sample_remote_node(), 10);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
 
   let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
   assert!(effects.is_empty());
@@ -283,7 +548,8 @@ fn enqueue_in_handshaking_pushes_into_deferred() {
 fn enqueue_in_gated_pushes_into_deferred() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_accepted(sample_remote_node(), 10);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
   let _ = a.gate(Some(100), 20);
   assert!(a.state().is_gated());
 
@@ -321,7 +587,8 @@ fn deferred_envelopes_flush_on_handshake_accepted() {
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"));
 
-  let effects = a.handshake_accepted(sample_remote_node(), 10);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let effects = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
   // Expect a SendEnvelopes effect flushing the deferred queue.
   let send =
     effects.iter().find(|e| matches!(e, AssociationEffect::SendEnvelopes { .. })).expect("SendEnvelopes effect");
@@ -339,7 +606,8 @@ fn deferred_envelopes_flush_on_handshake_accepted() {
 fn next_outbound_returns_system_then_user_through_association() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_accepted(sample_remote_node(), 10);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
   let _ = a.enqueue(make_envelope(OutboundPriority::System, "s1"));
 
@@ -354,7 +622,8 @@ fn next_outbound_returns_system_then_user_through_association() {
 fn apply_backpressure_propagates_to_send_queue() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_accepted(sample_remote_node(), 10);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
 
   a.apply_backpressure(BackpressureSignal::Apply);

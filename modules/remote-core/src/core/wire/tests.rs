@@ -2,14 +2,25 @@ use alloc::{string::ToString, vec::Vec};
 
 use bytes::{Bytes, BytesMut};
 
-use crate::core::wire::{
-  AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, HandshakeCodec, HandshakePdu,
-  HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
-  WIRE_VERSION_1, WireError,
+use crate::core::{
+  address::{Address, UniqueAddress},
+  wire::{
+    AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, HandshakeCodec, HandshakePdu,
+    HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
+    WIRE_VERSION_1, WireError,
+  },
 };
 
 fn to_bytes(buf: BytesMut) -> Bytes {
   buf.freeze()
+}
+
+fn sample_handshake_from() -> UniqueAddress {
+  UniqueAddress::new(Address::new("sys", "host", 2552), 0xdead_beef)
+}
+
+fn sample_handshake_to() -> Address {
+  Address::new("local-sys", "127.0.0.1", 2551)
 }
 
 #[test]
@@ -83,7 +94,9 @@ fn envelope_sender_path_none_encodes_as_zero_tag() {
 
 #[test]
 fn handshake_req_roundtrip() {
-  let pdu = HandshakePdu::Req(HandshakeReq::new("sys".to_string(), "host".to_string(), 2552, 0xdead_beef));
+  let from = sample_handshake_from();
+  let to = sample_handshake_to();
+  let pdu = HandshakePdu::Req(HandshakeReq::new(from.clone(), to.clone()));
   let codec = HandshakeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
@@ -91,11 +104,16 @@ fn handshake_req_roundtrip() {
   let mut bytes = to_bytes(buf);
   let decoded = codec.decode(&mut bytes).unwrap();
   assert_eq!(decoded, pdu);
+  assert!(matches!(
+    decoded,
+    HandshakePdu::Req(req) if req.from() == &from && req.to() == &to
+  ));
 }
 
 #[test]
 fn handshake_rsp_roundtrip() {
-  let pdu = HandshakePdu::Rsp(HandshakeRsp::new("sys".to_string(), "host".to_string(), 2553, 0xabcd));
+  let from = sample_handshake_from();
+  let pdu = HandshakePdu::Rsp(HandshakeRsp::new(from.clone()));
   let codec = HandshakeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
@@ -103,6 +121,7 @@ fn handshake_rsp_roundtrip() {
   let mut bytes = to_bytes(buf);
   let decoded = codec.decode(&mut bytes).unwrap();
   assert_eq!(decoded, pdu);
+  assert!(matches!(decoded, HandshakePdu::Rsp(rsp) if rsp.from() == &from));
 }
 
 #[test]

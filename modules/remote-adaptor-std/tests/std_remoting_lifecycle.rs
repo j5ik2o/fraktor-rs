@@ -32,8 +32,8 @@ fn make_event_publisher() -> (ActorSystem, EventPublisher) {
   (system, publisher)
 }
 
-#[test]
-fn std_remoting_lifecycle_via_std_remoting_directly() {
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn std_remoting_lifecycle_via_std_remoting_directly() {
   let (system, publisher) = make_event_publisher();
   let mut remoting = StdRemoting::new(make_transport(), None, publisher);
   assert!(!remoting.lifecycle().is_running());
@@ -51,8 +51,8 @@ fn std_remoting_lifecycle_via_std_remoting_directly() {
   system.terminate().expect("terminate actor system");
 }
 
-#[test]
-fn std_remoting_lifecycle_via_extension_installer() {
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn std_remoting_lifecycle_via_extension_installer() {
   let installer = RemotingExtensionInstaller::new(make_transport());
   let system = new_empty_actor_system();
   installer.install(&system).expect("install remoting extension");

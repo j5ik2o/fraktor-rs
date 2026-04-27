@@ -107,6 +107,11 @@ impl SerializationSetup {
     &self.binding_names
   }
 
+  /// Returns remote manifest bindings (crate visibility).
+  pub(crate) const fn remote_manifests_ref(&self) -> &HashMap<TypeId, String, RandomState> {
+    &self.remote_manifests
+  }
+
   /// Returns manifest routes (crate visibility).
   pub(crate) const fn manifest_routes_ref(&self) -> &HashMap<String, Vec<(u8, SerializerId)>, RandomState> {
     &self.manifest_routes
