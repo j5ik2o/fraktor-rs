@@ -52,10 +52,34 @@ impl TcpClient {
     inbound_tx: UnboundedSender<InboundFrameEvent>,
   ) -> Result<Self, TransportError> {
     let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
+    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, WireFrameCodec::new()))
+  }
+
+  /// Connects to `peer_addr` using the given frame codec.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
+  /// established.
+  pub(crate) async fn connect_with_frame_codec(
+    peer_addr: String,
+    inbound_tx: UnboundedSender<InboundFrameEvent>,
+    frame_codec: WireFrameCodec,
+  ) -> Result<Self, TransportError> {
+    let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
+    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec))
+  }
+
+  fn from_connected_stream(
+    stream: TcpStream,
+    peer_addr: String,
+    inbound_tx: UnboundedSender<InboundFrameEvent>,
+    frame_codec: WireFrameCodec,
+  ) -> Self {
     let (writer_tx, writer_rx) = mpsc::unbounded_channel::<WireFrame>();
     let peer_for_task = peer_addr.clone();
-    let task = tokio::spawn(run(stream, peer_for_task, writer_rx, inbound_tx));
-    Ok(Self { peer_addr, writer_tx, task: Some(task) })
+    let task = tokio::spawn(run(stream, peer_for_task, writer_rx, inbound_tx, frame_codec));
+    Self { peer_addr, writer_tx, task: Some(task) }
   }
 
   /// Returns the peer address this client is connected to.
@@ -87,8 +111,9 @@ async fn run(
   peer_addr: String,
   mut writer_rx: UnboundedReceiver<WireFrame>,
   inbound_tx: UnboundedSender<InboundFrameEvent>,
+  frame_codec: WireFrameCodec,
 ) {
-  let mut framed = Framed::new(stream, WireFrameCodec::new());
+  let mut framed = Framed::new(stream, frame_codec);
   loop {
     tokio::select! {
       next = framed.next() => match next {

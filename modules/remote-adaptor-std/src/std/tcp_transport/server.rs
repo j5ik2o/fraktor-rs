@@ -24,6 +24,7 @@ use crate::std::tcp_transport::{frame_codec::WireFrameCodec, inbound_frame_event
 /// by the transport.
 pub struct TcpServer {
   bind_addr:   String,
+  frame_codec: WireFrameCodec,
   accept_task: Option<JoinHandle<()>>,
 }
 
@@ -40,7 +41,13 @@ impl TcpServer {
   /// Creates a new [`TcpServer`] that will bind to `bind_addr` on `start`.
   #[must_use]
   pub const fn new(bind_addr: String) -> Self {
-    Self { bind_addr, accept_task: None }
+    Self { bind_addr, frame_codec: WireFrameCodec::new(), accept_task: None }
+  }
+
+  /// Creates a new [`TcpServer`] with the given frame codec.
+  #[must_use]
+  pub(crate) const fn with_frame_codec(bind_addr: String, frame_codec: WireFrameCodec) -> Self {
+    Self { bind_addr, frame_codec, accept_task: None }
   }
 
   /// Returns `true` when the server is currently running.
@@ -66,13 +73,14 @@ impl TcpServer {
     let bound_addr = listener.local_addr().map_err(|_| TransportError::SendFailed)?;
     listener.set_nonblocking(true).map_err(|_| TransportError::SendFailed)?;
     let listener = TcpListener::from_std(listener).map_err(|_| TransportError::SendFailed)?;
+    let frame_codec = self.frame_codec;
     let task = handle.spawn(async move {
       loop {
         match listener.accept().await {
           | Ok((stream, peer)) => {
             let inbound_tx = inbound_tx.clone();
             let peer_addr = peer.to_string();
-            tokio::spawn(read_loop(stream, peer_addr, inbound_tx));
+            tokio::spawn(read_loop(stream, peer_addr, inbound_tx, frame_codec));
           },
           | Err(err) => {
             tracing::warn!(?err, "tcp accept loop failed");
@@ -93,8 +101,13 @@ impl TcpServer {
   }
 }
 
-async fn read_loop(stream: TcpStream, peer: String, inbound_tx: UnboundedSender<InboundFrameEvent>) {
-  let mut framed = Framed::new(stream, WireFrameCodec::new());
+async fn read_loop(
+  stream: TcpStream,
+  peer: String,
+  inbound_tx: UnboundedSender<InboundFrameEvent>,
+  frame_codec: WireFrameCodec,
+) {
+  let mut framed = Framed::new(stream, frame_codec);
   while let Some(next) = framed.next().await {
     match next {
       | Ok(frame) => {
