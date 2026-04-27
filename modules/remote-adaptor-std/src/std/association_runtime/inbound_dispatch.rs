@@ -85,7 +85,15 @@ fn dispatch_control_pdu(
 ) {
   match pdu {
     | ControlPdu::Heartbeat { authority } => {
-      dispatch_heartbeat_request(peer, authority, registry, local, send_control_response);
+      dispatch_heartbeat_request(
+        peer,
+        authority,
+        registry,
+        now_ms,
+        local,
+        send_control_response,
+        submit_watcher_command,
+      );
     },
     | ControlPdu::HeartbeatResponse { authority, uid } => {
       dispatch_heartbeat_response(peer, authority, *uid, registry, now_ms, submit_watcher_command);
@@ -103,12 +111,23 @@ fn dispatch_heartbeat_request(
   peer: &str,
   authority: &str,
   registry: &AssociationRegistry,
+  now_ms: u64,
   local: &UniqueAddress,
   send_control_response: &mut impl FnMut(&Address, ControlPdu) -> Result<(), TransportError>,
+  submit_watcher_command: &mut impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>>,
 ) {
   let Some(remote_address) = registered_remote_address(peer, authority, registry, "heartbeat request") else {
     return;
   };
+  // 受信した heartbeat 自身を liveness signal として watcher に流し込み、応答送信に
+  // 失敗・遅延したケースでも片方向疎通を検出できるようにする。
+  let received_command = WatcherCommand::HeartbeatReceived { from: remote_address.clone(), now: now_ms };
+  match submit_watcher_command(received_command) {
+    | Ok(()) => {},
+    | Err(command) => {
+      tracing::warn!(peer = %peer, origin = %remote_address, ?command, "heartbeat received submission failed");
+    },
+  }
   let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
   match send_control_response(&remote_address, response) {
     | Ok(()) => {},

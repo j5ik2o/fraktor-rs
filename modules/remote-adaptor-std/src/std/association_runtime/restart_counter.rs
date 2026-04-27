@@ -1,5 +1,8 @@
 //! Deadline-window restart counter for reconnect loops.
 
+#[cfg(test)]
+mod tests;
+
 use core::time::Duration;
 
 /// Counts restart attempts within a bounded timeout window.
@@ -38,5 +41,10 @@ impl RestartCounter {
 }
 
 fn duration_millis(duration: Duration) -> u64 {
-  duration.as_millis().min(u128::from(u64::MAX)) as u64
+  // `Duration::as_millis()` は 1ms 未満を 0 に切り捨てる。0 のまま使うと `deadline_ms == now_ms`
+  // となり、毎回 deadline が満了扱いで count が 1 にリセットされ、max_restarts による制限が
+  // 機能しなくなる。0 と非ゼロの Duration を同一視しないよう、非ゼロ Duration は最低 1ms に
+  // 引き上げる。
+  let millis = duration.as_millis().min(u128::from(u64::MAX)) as u64;
+  if millis == 0 && !duration.is_zero() { 1 } else { millis }
 }

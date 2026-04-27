@@ -1474,14 +1474,17 @@ async fn inbound_dispatch_replies_to_heartbeat_with_local_uid() {
   )
   .await;
 
-  assert_eq!(sent_control_frames(&sent_controls), vec![(remote, ControlPdu::HeartbeatResponse {
+  assert_eq!(sent_control_frames(&sent_controls), vec![(remote.clone(), ControlPdu::HeartbeatResponse {
     authority: local_address().to_string(),
     uid:       local_unique().uid(),
   },)]);
-  assert!(
-    submitted_commands.with_lock(|items| items.is_empty()),
-    "heartbeat request should not be submitted as watcher response"
-  );
+  // 受信した heartbeat 自体も liveness signal として watcher に転送し、片方向疎通を検出可能にする。
+  let submitted = submitted_commands.with_lock(|items| items.clone());
+  assert_eq!(submitted.len(), 1, "heartbeat request should advance failure detector via watcher submission");
+  assert!(matches!(
+    submitted.first(),
+    Some(WatcherCommand::HeartbeatReceived { from, .. }) if from == &remote,
+  ));
 }
 
 #[tokio::test(flavor = "current_thread")]

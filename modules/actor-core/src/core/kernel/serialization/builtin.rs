@@ -166,7 +166,7 @@ where
     Some((TypeId::of::<ActorSelectionMessage>(), "ActorSelectionMessage".into())),
     &mut on_collision,
   )?;
-  register::<_, _>(
+  let misc_registered = register::<_, _>(
     registry,
     MISC_MESSAGE_ID,
     misc_message_serializer(MISC_MESSAGE_ID, registry.downgrade(), system_state),
@@ -174,14 +174,16 @@ where
     Some((TypeId::of::<Identify>(), "Identify".into())),
     &mut on_collision,
   )?;
-  registry.register_binding(TypeId::of::<ActorIdentity>(), "ActorIdentity", MISC_MESSAGE_ID)?;
-  registry.register_binding(TypeId::of::<RemoteScope>(), "RemoteScope", MISC_MESSAGE_ID)?;
-  registry.register_binding(
-    TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>(),
-    "RemoteRouterConfig<SmallestMailboxPool>",
-    MISC_MESSAGE_ID,
-  )?;
-  registry.register_binding(TypeId::of::<Status>(), "Status", MISC_MESSAGE_ID)?;
+  if misc_registered {
+    registry.register_binding(TypeId::of::<ActorIdentity>(), "ActorIdentity", MISC_MESSAGE_ID)?;
+    registry.register_binding(TypeId::of::<RemoteScope>(), "RemoteScope", MISC_MESSAGE_ID)?;
+    registry.register_binding(
+      TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>(),
+      "RemoteRouterConfig<SmallestMailboxPool>",
+      MISC_MESSAGE_ID,
+    )?;
+    registry.register_binding(TypeId::of::<Status>(), "Status", MISC_MESSAGE_ID)?;
+  }
   Ok(())
 }
 
@@ -203,16 +205,16 @@ fn register<S, F>(
   name: &'static str,
   binding: Option<(TypeId, String)>,
   on_collision: &mut F,
-) -> Result<(), SerializationError>
+) -> Result<bool, SerializationError>
 where
   S: Serializer + 'static,
   F: FnMut(&'static str, SerializerId), {
   if !registry.register_serializer(id, ArcShared::new(serializer)) {
     on_collision(name, id);
-    return Ok(());
+    return Ok(false);
   }
   if let Some((type_id, type_name)) = binding {
     registry.register_binding(type_id, type_name, id)?;
   }
-  Ok(())
+  Ok(true)
 }

@@ -380,3 +380,35 @@ async fn remote_transport_send_handshake_writes_handshake_frame_to_connected_pee
   transport.shutdown().expect("transport shutdown should succeed");
   server.shutdown();
 }
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn server_shutdown_aborts_existing_connection_read_loops() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{client::TcpClient, server::TcpServer};
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = TcpServer::new("127.0.0.1:0".into());
+  let bind_addr = server.start(server_inbound_tx).expect("server should bind to a system-assigned port");
+
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let client = TcpClient::connect(bind_addr.to_string(), client_inbound_tx).await.unwrap();
+  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
+  client.send(WireFrame::Envelope(pdu.clone())).unwrap();
+  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
+    .await
+    .unwrap()
+    .expect("server inbound frame should arrive before shutdown");
+  assert_eq!(event.frame, WireFrame::Envelope(pdu));
+
+  server.shutdown();
+
+  // shutdown 後はサーバ側の inbound_tx がドロップされるため、 channel が close され受信が None
+  // を返す。
+  let after_shutdown = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv()).await;
+  match after_shutdown {
+    | Ok(None) => {},
+    | Ok(Some(event)) => panic!("no inbound frames should follow shutdown but got {event:?}"),
+    | Err(_) => panic!("shutdown must close the inbound channel within the timeout"),
+  }
+}

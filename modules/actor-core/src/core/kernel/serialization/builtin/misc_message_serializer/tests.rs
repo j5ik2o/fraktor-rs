@@ -234,17 +234,6 @@ fn default_registry_does_not_bind_consistent_hashing_remote_router_config() {
 }
 
 #[test]
-fn remote_scope_without_remote_authority_is_rejected() {
-  let registry = registry();
-  let s = serializer(&registry);
-  let scope = RemoteScope::new(Address::local("local-sys"));
-
-  let result = s.to_binary(&scope);
-
-  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
-}
-
-#[test]
 fn status_success_round_trips_string_payload_with_manifest() {
   let registry = registry();
   let s = serializer(&registry);

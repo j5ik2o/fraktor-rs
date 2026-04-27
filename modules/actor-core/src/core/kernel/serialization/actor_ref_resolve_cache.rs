@@ -123,8 +123,14 @@ struct ActorRefResolveCacheEntry<V> {
 }
 
 fn is_cacheable_path(path: &ActorPath) -> bool {
+  // Pekko の `/user/temp/<name>` 形式の一時 actor は終了済み参照を再利用しないよう cache から外す。
+  // `path.segments()` は guardian segment を先頭に保持しているため、 [guardian, temp, _] の 3
+  // 要素で判定する。
+  if path.guardian() != GuardianKind::User {
+    return true;
+  }
   !matches!(
     path.segments(),
-    [guardian, temp, _name] if guardian.as_str() == GuardianKind::User.segment() && temp.as_str() == TEMP_SEGMENT
+    [guardian, second, _name] if guardian.as_str() == GuardianKind::User.segment() && second.as_str() == TEMP_SEGMENT
   )
 }

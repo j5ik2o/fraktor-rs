@@ -90,12 +90,13 @@ async fn watcher_actor_forwards_heartbeat_response_rewatch_effect() {
     .await
     .unwrap()
     .expect("heartbeat response with initial UID should produce a rewatch effect");
+  let expected_targets = vec![remote_target()];
   assert!(matches!(
     effect,
     WatcherEffect::RewatchRemoteTargets {
-      node: effect_node,
-      ..
-    } if effect_node == node
+      node: ref effect_node,
+      ref targets,
+    } if effect_node == &node && targets == &expected_targets
   ));
 
   drop(handle);

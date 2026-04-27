@@ -258,6 +258,11 @@ impl MiscMessageSerializer {
     actor_ref.canonical_path().map(|path| path.to_canonical_uri()).ok_or_else(Self::actor_ref_not_serializable)
   }
 
+  // Phase 2 では `ActorIdentity::found` で運ばれた path をローカル `ActorPathRegistry`
+  // でしか解決しない。 送信側 system の authority を持つ remote path は本ローカル lookup
+  // ではヒットしないため `actor_ref_not_serializable` を返す。 cross-system での復元は remote
+  // `ActorRef` 構築が 整う Phase 3 hard 側で `RemoteActorRefProvider`
+  // 経由のブランチを追加して扱う。
   fn deserialize_actor_ref(&self, path: &str) -> Result<ActorRef, SerializationError> {
     let path = ActorPathParser::parse(path).map_err(|_| SerializationError::InvalidFormat)?;
     let Some(system_state) = self.system_state.as_ref().and_then(SystemStateWeak::upgrade) else {

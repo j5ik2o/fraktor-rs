@@ -11,8 +11,15 @@ pub struct RemoteScope {
 
 impl RemoteScope {
   /// Creates a remote deployment scope for the target node.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `node` is a local address (no host/port). `RemoteScope` is a
+  /// remote-only deployment marker and a local address would silently violate
+  /// that contract.
   #[must_use]
-  pub const fn new(node: Address) -> Self {
+  pub fn new(node: Address) -> Self {
+    assert!(node.has_global_scope(), "RemoteScope requires a remote address with host and port");
     Self { node }
   }
 
