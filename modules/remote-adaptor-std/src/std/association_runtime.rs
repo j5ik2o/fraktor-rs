@@ -42,7 +42,7 @@ pub use association_registry::AssociationRegistry;
 pub use association_shared::AssociationShared;
 pub(crate) use effect_application::apply_effects_in_place;
 pub use handshake_driver::HandshakeDriver;
-pub use inbound_dispatch::run_inbound_dispatch;
+pub use inbound_dispatch::{run_inbound_dispatch, run_inbound_task_with_restart_budget};
 pub use inbound_quarantine_check::InboundQuarantineCheck;
 pub use outbound_loop::{run_outbound_loop, run_outbound_loop_with_reconnect};
 pub use reconnect_backoff_policy::ReconnectBackoffPolicy;

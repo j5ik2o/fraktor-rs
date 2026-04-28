@@ -1,22 +1,51 @@
 //! Inbound dispatch loop: feeds incoming wire frames into the matching
 //! `Association`.
 
+use core::{future::Future, time::Duration};
+
 use fraktor_remote_core_rs::core::{
   address::{Address, UniqueAddress},
+  config::RemoteConfig,
   extension::EventPublisher,
   transport::TransportError,
   watcher::WatcherCommand,
   wire::{ControlPdu, HandshakePdu, HandshakeReq, HandshakeRsp},
 };
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
 use crate::std::{
   association_runtime::{
-    apply_effects_in_place, association_registry::AssociationRegistry,
+    RestartCounter, apply_effects_in_place, association_registry::AssociationRegistry,
     inbound_quarantine_check::InboundQuarantineCheck, peer_address_match::peer_matches_address,
   },
   tcp_transport::{InboundFrameEvent, WireFrame},
 };
+
+/// Re-runs an inbound task until it succeeds or the configured restart budget
+/// is exhausted.
+///
+/// # Errors
+///
+/// Returns the last task error once the configured inbound restart budget is
+/// consumed inside the active restart-timeout window.
+pub async fn run_inbound_task_with_restart_budget<F, Fut, E>(config: &RemoteConfig, mut run_task: F) -> Result<(), E>
+where
+  F: FnMut() -> Fut,
+  Fut: Future<Output = Result<(), E>>, {
+  let started_at = Instant::now();
+  let mut restart_counter = RestartCounter::new(config.inbound_max_restarts(), config.inbound_restart_timeout());
+
+  loop {
+    match run_task().await {
+      | Ok(()) => return Ok(()),
+      | Err(err) => {
+        if !restart_counter.restart(elapsed_ms(started_at)) {
+          return Err(err);
+        }
+      },
+    }
+  }
+}
 
 /// Reads inbound frames from the TCP transport's inbound channel and
 /// dispatches them into the matching `Association`.
@@ -280,4 +309,12 @@ fn dispatch_handshake_response(
       tracing::warn!(peer = %peer, ?err, "discarding invalid handshake response");
     },
   });
+}
+
+fn elapsed_ms(started_at: Instant) -> u64 {
+  duration_millis(started_at.elapsed())
+}
+
+fn duration_millis(duration: Duration) -> u64 {
+  duration.as_millis().min(u128::from(u64::MAX)) as u64
 }

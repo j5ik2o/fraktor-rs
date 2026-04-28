@@ -1,7 +1,7 @@
-use core::time::Duration;
+use core::{num::NonZeroUsize, time::Duration};
 use std::time::Instant;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
@@ -9,25 +9,29 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
-  config::RemoteConfig,
+  config::{LargeMessageDestinationPattern, LargeMessageDestinations, RemoteCompressionConfig, RemoteConfig},
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{RemoteTransport, TransportEndpoint, TransportError},
   watcher::WatcherCommand,
-  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp},
+  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, KIND_CONTROL, WIRE_VERSION_1},
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 use tokio::sync::{
   mpsc::{self, UnboundedReceiver},
   oneshot::{self, Sender},
 };
+use tokio_util::codec::Encoder;
 
 use crate::std::{
   association_runtime::{
-    InboundQuarantineCheck, RestartCounter, apply_effects_in_place, association_registry::AssociationRegistry,
-    association_shared::AssociationShared, handshake_driver::HandshakeDriver, inbound_dispatch::run_inbound_dispatch,
+    InboundQuarantineCheck, RestartCounter, apply_effects_in_place,
+    association_registry::AssociationRegistry,
+    association_shared::AssociationShared,
+    handshake_driver::HandshakeDriver,
+    inbound_dispatch::{run_inbound_dispatch, run_inbound_task_with_restart_budget},
     system_message_delivery::SystemMessageDeliveryState,
   },
-  tcp_transport::{InboundFrameEvent, WireFrame},
+  tcp_transport::{InboundFrameEvent, WireFrame, WireFrameCodec},
   tests::test_support::EventHarness,
 };
 
@@ -1104,6 +1108,106 @@ async fn outbound_loop_treats_not_started_as_shutdown_without_reconnect() {
   shared.with_write(|assoc| {
     assert!(assoc.state().is_active(), "shutdown must not gate an otherwise active association");
   });
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn inbound_restart_budget_allows_restarts_within_configured_budget() {
+  let config = RemoteConfig::new("localhost")
+    .with_inbound_restart_timeout(Duration::from_millis(100))
+    .with_inbound_max_restarts(2);
+  let attempts = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
+  let attempts_for_task = attempts.clone();
+
+  let result = run_inbound_task_with_restart_budget(&config, move || {
+    let attempts = attempts_for_task.clone();
+    async move {
+      let attempt = attempts.with_lock(|count| {
+        *count += 1;
+        *count
+      });
+      if attempt < 3 { Err(TransportError::ConnectionClosed) } else { Ok(()) }
+    }
+  })
+  .await;
+
+  assert_eq!(result, Ok(()));
+  assert_eq!(attempts.with_lock(|count| *count), 3, "two failures within budget should allow a third successful run");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn inbound_restart_budget_resets_after_timeout_window_expires() {
+  let config = RemoteConfig::new("localhost")
+    .with_inbound_restart_timeout(Duration::from_millis(100))
+    .with_inbound_max_restarts(1);
+  let attempts = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
+  let attempts_for_task = attempts.clone();
+
+  let result = run_inbound_task_with_restart_budget(&config, move || {
+    let attempts = attempts_for_task.clone();
+    async move {
+      let attempt = attempts.with_lock(|count| {
+        *count += 1;
+        *count
+      });
+      if attempt == 2 {
+        tokio::time::advance(Duration::from_millis(101)).await;
+      }
+      if attempt < 3 { Err(TransportError::ConnectionClosed) } else { Ok(()) }
+    }
+  })
+  .await;
+
+  assert_eq!(result, Ok(()));
+  assert_eq!(attempts.with_lock(|count| *count), 3, "restart budget should reopen after the timeout window expires");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn inbound_restart_budget_returns_error_when_exhausted() {
+  let config = RemoteConfig::new("localhost")
+    .with_inbound_restart_timeout(Duration::from_millis(100))
+    .with_inbound_max_restarts(1);
+  let attempts = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
+  let attempts_for_task = attempts.clone();
+
+  let result = run_inbound_task_with_restart_budget(&config, move || {
+    let attempts = attempts_for_task.clone();
+    async move {
+      attempts.with_lock(|count| *count += 1);
+      Err::<(), _>(TransportError::ConnectionClosed)
+    }
+  })
+  .await;
+
+  assert_eq!(result, Err(TransportError::ConnectionClosed));
+  assert_eq!(attempts.with_lock(|count| *count), 2, "one retry plus the initial failure should exhaust the budget");
+}
+
+#[test]
+fn advanced_settings_surface_remains_readable_without_altering_wire_frame_shape() {
+  let destinations = LargeMessageDestinations::new()
+    .with_pattern(LargeMessageDestinationPattern::new("/user/large"))
+    .with_pattern(LargeMessageDestinationPattern::new("/temp/session-ask-actor*"));
+  let compression = RemoteCompressionConfig::new()
+    .with_actor_ref_max(Some(NonZeroUsize::new(32).expect("non-zero limit")))
+    .with_manifest_max(None);
+  let config = RemoteConfig::new("localhost")
+    .with_outbound_large_message_queue_size(16)
+    .with_large_message_destinations(destinations.clone())
+    .with_compression_config(compression);
+
+  assert_eq!(config.outbound_large_message_queue_size(), 16);
+  assert_eq!(config.large_message_destinations(), &destinations);
+  assert!(config.large_message_destinations().matches_relative_path("/user/large"));
+  assert_eq!(config.compression_config(), compression);
+
+  let mut codec = WireFrameCodec::with_maximum_frame_size(config.maximum_frame_size());
+  let mut buf = BytesMut::new();
+  codec
+    .encode(WireFrame::Control(ControlPdu::Heartbeat { authority: "local-sys@127.0.0.1:2551".into() }), &mut buf)
+    .expect("control frame encode should succeed");
+
+  assert_eq!(buf[4], WIRE_VERSION_1, "wire version must remain the existing fraktor header version");
+  assert_eq!(buf[5], KIND_CONTROL, "large-message/compression settings must not change the control frame kind");
 }
 
 struct FailingTransport {
