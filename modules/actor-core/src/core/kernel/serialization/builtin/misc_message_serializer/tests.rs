@@ -1,5 +1,6 @@
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
+use std::panic::AssertUnwindSafe;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -14,7 +15,9 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, Identify, Status},
   },
-  routing::{ConsistentHashingPool, Pool, RemoteRouterConfig, RouterConfig, SmallestMailboxPool},
+  routing::{
+    ConsistentHashingPool, Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, RouterConfig, SmallestMailboxPool,
+  },
   serialization::{
     builtin::{MISC_MESSAGE_ID, register_defaults},
     default_serialization_setup,
@@ -103,6 +106,28 @@ fn manifest_for_remote_router_config_is_pekko_compatible_rorrc() {
   let s = serializer(&registry);
   let config = RemoteRouterConfig::new(SmallestMailboxPool::new(2), vec![remote_node()]);
   let view = s.as_string_manifest().expect("string manifest view");
+  assert_eq!(view.manifest(&config), REMOTE_ROUTER_CONFIG_MANIFEST);
+  assert_eq!(view.manifest(&config), "RORRC");
+}
+
+#[test]
+fn manifest_for_round_robin_remote_router_config_is_pekko_compatible_rorrc() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let config = RemoteRouterConfig::new(RoundRobinPool::new(2), vec![remote_node()]);
+  let view = s.as_string_manifest().expect("string manifest view");
+
+  assert_eq!(view.manifest(&config), REMOTE_ROUTER_CONFIG_MANIFEST);
+  assert_eq!(view.manifest(&config), "RORRC");
+}
+
+#[test]
+fn manifest_for_random_remote_router_config_is_pekko_compatible_rorrc() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let config = RemoteRouterConfig::new(RandomPool::new(2), vec![remote_node()]);
+  let view = s.as_string_manifest().expect("string manifest view");
+
   assert_eq!(view.manifest(&config), REMOTE_ROUTER_CONFIG_MANIFEST);
   assert_eq!(view.manifest(&config), "RORRC");
 }
@@ -213,6 +238,50 @@ fn remote_router_config_round_trips_smallest_mailbox_pool_with_manifest() {
 
   assert_eq!(config.local().nr_of_instances(), 3);
   assert_eq!(config.local().router_dispatcher(), "remote-router-dispatcher");
+  assert_eq!(config.nodes(), &[first, second]);
+}
+
+#[test]
+fn remote_router_config_round_trips_round_robin_pool_with_manifest() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let first = remote_node();
+  let second = Address::remote("remote-b", "10.0.0.2", 2553);
+  let local = RoundRobinPool::new(3).with_dispatcher(String::from("round-robin-router-dispatcher"));
+  let original = RemoteRouterConfig::new(local, vec![first.clone(), second.clone()]);
+
+  let bytes = s.to_binary(&original).expect("remote router config should encode");
+  let view = s.as_string_manifest().expect("string manifest view");
+  let decoded =
+    view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST).expect("remote router config should decode");
+  let config = decoded
+    .downcast::<RemoteRouterConfig<RoundRobinPool>>()
+    .expect("decoded payload should be RemoteRouterConfig<RoundRobinPool>");
+
+  assert_eq!(config.local().nr_of_instances(), 3);
+  assert_eq!(config.local().router_dispatcher(), "round-robin-router-dispatcher");
+  assert_eq!(config.nodes(), &[first, second]);
+}
+
+#[test]
+fn remote_router_config_round_trips_random_pool_with_manifest() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let first = remote_node();
+  let second = Address::remote("remote-b", "10.0.0.2", 2553);
+  let local = RandomPool::new(3).with_dispatcher(String::from("random-router-dispatcher"));
+  let original = RemoteRouterConfig::new(local, vec![first.clone(), second.clone()]);
+
+  let bytes = s.to_binary(&original).expect("remote router config should encode");
+  let view = s.as_string_manifest().expect("string manifest view");
+  let decoded =
+    view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST).expect("remote router config should decode");
+  let config = decoded
+    .downcast::<RemoteRouterConfig<RandomPool>>()
+    .expect("decoded payload should be RemoteRouterConfig<RandomPool>");
+
+  assert_eq!(config.local().nr_of_instances(), 3);
+  assert_eq!(config.local().router_dispatcher(), "random-router-dispatcher");
   assert_eq!(config.nodes(), &[first, second]);
 }
 
@@ -386,16 +455,14 @@ fn actor_identity_decode_with_some_ref_returns_not_serializable_when_system_stat
 }
 
 #[test]
-fn manifest_returns_empty_string_for_unsupported_type() {
+fn manifest_panics_for_unsupported_type() {
   let registry = registry();
   let s = serializer(&registry);
   let view = s.as_string_manifest().expect("string manifest view");
 
-  // 未対応型 (i32) は to_binary 側で弾かれる前提だが、 manifest() 単独で呼ばれた場合は
-  // 診断ログを出して空マニフェストを返すフォールバック経路が動く。
-  let manifest = view.manifest(&123_i32);
+  let result = std::panic::catch_unwind(AssertUnwindSafe(|| view.manifest(&123_i32)));
 
-  assert_eq!(manifest.as_ref(), "");
+  assert!(result.is_err(), "unsupported manifest lookup must fail immediately");
 }
 
 #[test]
@@ -479,6 +546,32 @@ fn from_binary_uses_type_hint_to_select_decoder_for_remote_router_config() {
   let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>())).expect("decode");
 
   assert!(decoded.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().is_some());
+}
+
+#[test]
+fn from_binary_uses_type_hint_to_select_decoder_for_round_robin_remote_router_config() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = RoundRobinPool::new(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<RoundRobinPool>>())).expect("decode");
+
+  assert!(decoded.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().is_some());
+}
+
+#[test]
+fn from_binary_uses_type_hint_to_select_decoder_for_random_remote_router_config() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = RandomPool::new(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<RandomPool>>())).expect("decode");
+
+  assert!(decoded.downcast_ref::<RemoteRouterConfig<RandomPool>>().is_some());
 }
 
 #[test]

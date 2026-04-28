@@ -33,7 +33,7 @@ use crate::core::kernel::{
     deploy::RemoteScope,
     messaging::{ActorIdentity, Identify, Status, system_message::SystemMessage},
   },
-  routing::{RemoteRouterConfig, SmallestMailboxPool},
+  routing::{RandomPool, RemoteRouterConfig, RoundRobinPool, SmallestMailboxPool},
   serialization::{
     error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
     serializer_id::SerializerId,
@@ -183,6 +183,16 @@ where
     registry.register_binding(
       TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>(),
       "RemoteRouterConfig<SmallestMailboxPool>",
+      MISC_MESSAGE_ID,
+    )?;
+    registry.register_binding(
+      TypeId::of::<RemoteRouterConfig<RoundRobinPool>>(),
+      "RemoteRouterConfig<RoundRobinPool>",
+      MISC_MESSAGE_ID,
+    )?;
+    registry.register_binding(
+      TypeId::of::<RemoteRouterConfig<RandomPool>>(),
+      "RemoteRouterConfig<RandomPool>",
       MISC_MESSAGE_ID,
     )?;
     registry.register_binding(TypeId::of::<Status>(), "Status", MISC_MESSAGE_ID)?;

@@ -20,7 +20,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, Identify, Status},
   },
-  routing::{ConsistentHashingPool, Pool, RemoteRouterConfig, SmallestMailboxPool},
+  routing::{ConsistentHashingPool, Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, SmallestMailboxPool},
   serialization::{
     delegator::SerializationDelegator, error::SerializationError, not_serializable_error::NotSerializableError,
     serialization_registry::SerializationRegistry, serialized_message::SerializedMessage, serializer::Serializer,
@@ -54,6 +54,8 @@ const RECOVERABLE_ERROR_TAG: u8 = 1;
 const FATAL_ERROR_TAG: u8 = 2;
 const ESCALATE_ERROR_TAG: u8 = 3;
 const SMALLEST_MAILBOX_POOL_TAG: u8 = 1;
+const ROUND_ROBIN_POOL_TAG: u8 = 2;
+const RANDOM_POOL_TAG: u8 = 3;
 
 /// Serializes a Pekko-compatible subset of misc remote messages.
 ///
@@ -194,6 +196,27 @@ impl MiscMessageSerializer {
       return Err(SerializationError::InvalidFormat);
     }
     let dispatcher = cursor.read_string()?;
+    match pool_tag {
+      | SmallestMailboxPool::WIRE_TAG => {
+        let local = SmallestMailboxPool::from_remote_router_wire(nr_of_instances, dispatcher);
+        let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
+        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
+      },
+      | RoundRobinPool::WIRE_TAG => {
+        let local = RoundRobinPool::from_remote_router_wire(nr_of_instances, dispatcher);
+        let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
+        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
+      },
+      | RandomPool::WIRE_TAG => {
+        let local = RandomPool::from_remote_router_wire(nr_of_instances, dispatcher);
+        let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
+        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
+      },
+      | _ => Err(SerializationError::InvalidFormat),
+    }
+  }
+
+  fn decode_remote_router_nodes(cursor: &mut Cursor<'_>) -> Result<Vec<Address>, SerializationError> {
     let node_count = cursor.read_u32()? as usize;
     if node_count == 0 {
       return Err(SerializationError::InvalidFormat);
@@ -211,13 +234,7 @@ impl MiscMessageSerializer {
     if !cursor.is_finished() {
       return Err(SerializationError::InvalidFormat);
     }
-    match pool_tag {
-      | SmallestMailboxPool::WIRE_TAG => {
-        let local = SmallestMailboxPool::from_remote_router_wire(nr_of_instances, dispatcher);
-        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
-      },
-      | _ => Err(SerializationError::InvalidFormat),
-    }
+    Ok(nodes)
   }
 
   fn write_address(buffer: &mut Vec<u8>, address: &Address) -> Result<(), SerializationError> {
@@ -307,6 +324,22 @@ impl SerializableRemoteRouterPool for SmallestMailboxPool {
   }
 }
 
+impl SerializableRemoteRouterPool for RoundRobinPool {
+  const WIRE_TAG: u8 = ROUND_ROBIN_POOL_TAG;
+
+  fn from_remote_router_wire(nr_of_instances: usize, router_dispatcher: String) -> Self {
+    Self::new(nr_of_instances).with_dispatcher(router_dispatcher)
+  }
+}
+
+impl SerializableRemoteRouterPool for RandomPool {
+  const WIRE_TAG: u8 = RANDOM_POOL_TAG;
+
+  fn from_remote_router_wire(nr_of_instances: usize, router_dispatcher: String) -> Self {
+    Self::new(nr_of_instances).with_dispatcher(router_dispatcher)
+  }
+}
+
 impl Serializer for MiscMessageSerializer {
   fn identifier(&self) -> SerializerId {
     self.id
@@ -333,6 +366,16 @@ impl Serializer for MiscMessageSerializer {
       | id if id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() => {
         let config =
           message.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().ok_or(SerializationError::InvalidFormat)?;
+        Self::encode_remote_router_config(config)
+      },
+      | id if id == TypeId::of::<RemoteRouterConfig<RoundRobinPool>>() => {
+        let config =
+          message.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().ok_or(SerializationError::InvalidFormat)?;
+        Self::encode_remote_router_config(config)
+      },
+      | id if id == TypeId::of::<RemoteRouterConfig<RandomPool>>() => {
+        let config =
+          message.downcast_ref::<RemoteRouterConfig<RandomPool>>().ok_or(SerializationError::InvalidFormat)?;
         Self::encode_remote_router_config(config)
       },
       | id if id == TypeId::of::<RemoteRouterConfig<ConsistentHashingPool>>() => {
@@ -374,6 +417,12 @@ impl Serializer for MiscMessageSerializer {
     if type_id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() {
       return Self::decode_remote_router_config(bytes);
     }
+    if type_id == TypeId::of::<RemoteRouterConfig<RoundRobinPool>>() {
+      return Self::decode_remote_router_config(bytes);
+    }
+    if type_id == TypeId::of::<RemoteRouterConfig<RandomPool>>() {
+      return Self::decode_remote_router_config(bytes);
+    }
     // Status は Success / Failure の判別に manifest が必要。 type_hint だけでは
     // どちらの variant か決まらないため、 from_binary_with_manifest 経由を要求する。
     Err(SerializationError::InvalidFormat)
@@ -402,18 +451,19 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
     if message.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().is_some() {
       return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
     }
+    if message.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().is_some() {
+      return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
+    }
+    if message.downcast_ref::<RemoteRouterConfig<RandomPool>>().is_some() {
+      return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
+    }
     if let Some(status) = message.downcast_ref::<Status>() {
       return match status {
         | Status::Success(_) => Cow::Borrowed(STATUS_SUCCESS_MANIFEST),
         | Status::Failure(_) => Cow::Borrowed(STATUS_FAILURE_MANIFEST),
       };
     }
-    // manifest() は to_binary が成功したメッセージにしか呼ばれない想定だが、予期しない型でも
-    // silent-corruption を避けるため診断ログを出して空マニフェストを返す（呼び出し元の
-    // to_binary が InvalidFormat を返すので最終的にエラーが伝播する）。
-    let type_id = message.type_id();
-    tracing::error!(serializer = "MiscMessageSerializer", ?type_id, "manifest() called with unsupported type");
-    Cow::Borrowed("")
+    panic!("Can't serialize unsupported object in MiscMessageSerializer: {:?}", message.type_id())
   }
 
   fn from_binary_with_manifest(

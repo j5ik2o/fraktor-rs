@@ -12,8 +12,25 @@ use crate::core::kernel::{
     deploy::RemoteScope,
     messaging::{ActorIdentity, Status},
   },
-  routing::{RemoteRouterConfig, SmallestMailboxPool},
+  routing::{RandomPool, RemoteRouterConfig, RoundRobinPool, SmallestMailboxPool},
 };
+
+#[test]
+fn register_defaults_binds_remote_router_config_pool_variants() {
+  let setup = default_serialization_setup();
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+
+  register_defaults(&registry, |_name, _id| {}).expect("register_defaults");
+
+  assert_eq!(
+    registry.binding_name(TypeId::of::<RemoteRouterConfig<RoundRobinPool>>()).as_deref(),
+    Some("RemoteRouterConfig<RoundRobinPool>")
+  );
+  assert_eq!(
+    registry.binding_name(TypeId::of::<RemoteRouterConfig<RandomPool>>()).as_deref(),
+    Some("RemoteRouterConfig<RandomPool>")
+  );
+}
 
 #[test]
 fn register_defaults_does_not_register_misc_bindings_when_misc_serializer_id_collides() {
@@ -36,6 +53,14 @@ fn register_defaults_does_not_register_misc_bindings_when_misc_serializer_id_col
   assert!(
     registry.binding_name(TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>()).is_none(),
     "RemoteRouterConfig<SmallestMailboxPool> must not bind on collision"
+  );
+  assert!(
+    registry.binding_name(TypeId::of::<RemoteRouterConfig<RoundRobinPool>>()).is_none(),
+    "RemoteRouterConfig<RoundRobinPool> must not bind on collision"
+  );
+  assert!(
+    registry.binding_name(TypeId::of::<RemoteRouterConfig<RandomPool>>()).is_none(),
+    "RemoteRouterConfig<RandomPool> must not bind on collision"
   );
   assert!(registry.binding_name(TypeId::of::<Status>()).is_none(), "Status must not bind on collision");
 }
