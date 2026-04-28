@@ -17,6 +17,7 @@ Pekko 代表 Spec ごとに、fraktor-rs で public API または public state m
 | Pekko 代表 Spec | 状態 | 根拠 |
 |-----------------|------|------|
 | `ActorLifeCycleSpec.scala` | `covered` | `modules/actor-core/tests/system_lifecycle.rs`, `modules/actor-core/tests/supervisor.rs`, `modules/actor-core/tests/classic_user_flow_e2e.rs` で system 起動、child spawn、stop、termination を public API から検証する。 |
+| `ActorSelectionSpec.scala` | `covered` | `modules/actor-core/tests/actor_selection_e2e.rs` で public `ActorPath` 由来の string selection、direct path resolution、missing path を public API から検証する。 |
 | `ActorMailboxSpec.scala` | `covered` | `modules/actor-core/tests/ping_pong.rs`, mailbox unit tests, `modules/actor-adaptor-std/tests/std_adaptor_boot_e2e.rs` で bounded mailbox / mailbox clock / dispatcher 接続を検証する。 |
 | `DeathWatchSpec.scala` | `covered` | `modules/actor-core/tests/death_watch.rs`, `modules/actor-core/tests/classic_user_flow_e2e.rs` で watch / unwatch / terminated / dead letter を public API から検証する。 |
 | `ReceiveTimeoutSpec.scala` | `covered` | `modules/actor-core/src/core/kernel/actor/actor_context/tests.rs` の receive-timeout contract が public state machine と marker API を検証する。 |
@@ -50,4 +51,5 @@ Pekko 代表 Spec ごとに、fraktor-rs で public API または public state m
 | classic E2E | `modules/actor-core/tests/classic_user_flow_e2e.rs` |
 | typed E2E | `modules/actor-core/tests/typed_user_flow_e2e.rs` |
 | std adaptor E2E | `modules/actor-adaptor-std/tests/std_adaptor_boot_e2e.rs` |
+| cross-crate E2E | `tests/e2e/tests/actor_runtime_boot.rs` |
 | sleep 依存排除 | `modules/actor-core/tests/death_watch.rs` と std dispatcher integration の待機を `yield_now` ベースに変更。 |

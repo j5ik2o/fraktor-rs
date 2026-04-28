@@ -1,0 +1,19 @@
+[package]
+name = "fraktor-e2e-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Cross-crate end-to-end tests for fraktor-rs"
+
+[features]
+default = []
+test-support = []
+
+[dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
+fraktor-actor-core-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+
+[lints]
+workspace = true
