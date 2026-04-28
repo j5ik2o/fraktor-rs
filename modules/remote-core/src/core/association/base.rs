@@ -1,11 +1,12 @@
 //! Per-remote association state machine.
 
 use alloc::{
+  format,
   string::{String, ToString},
   vec,
   vec::Vec,
 };
-use core::mem;
+use core::{mem, time::Duration};
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
 
@@ -14,7 +15,11 @@ use crate::core::{
   association::{
     association_effect::AssociationEffect, association_state::AssociationState,
     handshake_rejected_state::HandshakeRejectedState, handshake_validation_error::HandshakeValidationError,
-    quarantine_reason::QuarantineReason, send_queue::SendQueue,
+    offer_outcome::OfferOutcome, quarantine_reason::QuarantineReason, send_queue::SendQueue,
+  },
+  config::{
+    DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE, DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
+    DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER, RemoteConfig,
   },
   envelope::OutboundEnvelope,
   transport::{BackpressureSignal, TransportEndpoint},
@@ -29,18 +34,39 @@ use crate::core::{
 /// the legacy code; Decision 4 re-unifies the responsibilities here.
 #[derive(Debug)]
 pub struct Association {
-  state:      AssociationState,
+  state: AssociationState,
   send_queue: SendQueue,
-  deferred:   Vec<OutboundEnvelope>,
-  local:      UniqueAddress,
-  remote:     Address,
+  deferred: Vec<OutboundEnvelope>,
+  outbound_control_queue_size: usize,
+  outbound_message_queue_size: usize,
+  remove_quarantined_association_after: Duration,
+  local: UniqueAddress,
+  remote: Address,
 }
 
 impl Association {
   /// Creates a new [`Association`] in the [`AssociationState::Idle`] state.
   #[must_use]
   pub fn new(local: UniqueAddress, remote: Address) -> Self {
-    Self { state: AssociationState::Idle, send_queue: SendQueue::new(), deferred: Vec::new(), local, remote }
+    Self::with_limits(
+      local,
+      remote,
+      DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
+      DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
+      DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER,
+    )
+  }
+
+  /// Creates a new [`Association`] using queue limits from [`RemoteConfig`].
+  #[must_use]
+  pub fn from_config(local: UniqueAddress, remote: Address, config: &RemoteConfig) -> Self {
+    Self::with_limits(
+      local,
+      remote,
+      config.outbound_control_queue_size(),
+      config.outbound_message_queue_size(),
+      config.remove_quarantined_association_after(),
+    )
   }
 
   /// Returns the current state snapshot.
@@ -87,6 +113,15 @@ impl Association {
   pub const fn is_liveness_probe_due(&self, now_ms: u64, interval_ms: u64) -> bool {
     match &self.state {
       | AssociationState::Active { last_used_at, .. } => now_ms.saturating_sub(*last_used_at) >= interval_ms,
+      | _ => false,
+    }
+  }
+
+  /// Returns `true` when a quarantined association reached its removal deadline.
+  #[must_use]
+  pub const fn is_quarantine_removal_due(&self, now_ms: u64) -> bool {
+    match &self.state {
+      | AssociationState::Quarantined { resume_at: Some(resume_at), .. } => now_ms >= *resume_at,
       | _ => false,
     }
   }
@@ -234,7 +269,7 @@ impl Association {
 
   /// Transitions any non-terminal state into `Quarantined`, discarding both
   /// deferred and send-queue contents.
-  pub fn quarantine(&mut self, reason: QuarantineReason, _now_ms: u64) -> Vec<AssociationEffect> {
+  pub fn quarantine(&mut self, reason: QuarantineReason, now_ms: u64) -> Vec<AssociationEffect> {
     match &self.state {
       | AssociationState::Active { .. }
       | AssociationState::Handshaking { .. }
@@ -251,7 +286,8 @@ impl Association {
         if !discarded.is_empty() {
           effects.push(AssociationEffect::DiscardEnvelopes { reason: reason.clone(), envelopes: discarded });
         }
-        self.state = AssociationState::Quarantined { reason, resume_at: None };
+        self.state =
+          AssociationState::Quarantined { reason, resume_at: Some(self.quarantine_removal_deadline(now_ms)) };
         effects
       },
       | AssociationState::Quarantined { .. } => Vec::new(),
@@ -306,15 +342,11 @@ impl Association {
   /// - `Active` → push into the internal send queue.
   /// - `Handshaking` / `Gated` / `Idle` → push into the deferred buffer.
   /// - `Quarantined` → return a `DiscardEnvelopes` effect immediately.
-  pub fn enqueue(&mut self, envelope: OutboundEnvelope) -> Vec<AssociationEffect> {
+  pub fn enqueue(&mut self, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
     match &self.state {
-      | AssociationState::Active { .. } => {
-        let _ = self.send_queue.offer(envelope);
-        Vec::new()
-      },
+      | AssociationState::Active { .. } => self.enqueue_active(envelope, now_ms),
       | AssociationState::Handshaking { .. } | AssociationState::Gated { .. } | AssociationState::Idle => {
-        self.deferred.push(envelope);
-        Vec::new()
+        self.enqueue_deferred(envelope)
       },
       | AssociationState::Quarantined { reason, .. } => {
         vec![AssociationEffect::DiscardEnvelopes { reason: reason.clone(), envelopes: vec![envelope] }]
@@ -337,6 +369,83 @@ impl Association {
   // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
+
+  fn with_limits(
+    local: UniqueAddress,
+    remote: Address,
+    outbound_control_queue_size: usize,
+    outbound_message_queue_size: usize,
+    remove_quarantined_association_after: Duration,
+  ) -> Self {
+    Self {
+      state: AssociationState::Idle,
+      send_queue: SendQueue::with_capacity(outbound_control_queue_size, outbound_message_queue_size),
+      deferred: Vec::new(),
+      outbound_control_queue_size,
+      outbound_message_queue_size,
+      remove_quarantined_association_after,
+      local,
+      remote,
+    }
+  }
+
+  fn enqueue_active(&mut self, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
+    match self.send_queue.offer(envelope) {
+      | OfferOutcome::Accepted => Vec::new(),
+      | OfferOutcome::QueueFull { envelope } if envelope.priority().is_system() => {
+        self.control_queue_overflow_effects(*envelope, now_ms)
+      },
+      | OfferOutcome::QueueFull { envelope } => Self::queue_full_discard_effect(*envelope),
+    }
+  }
+
+  fn enqueue_deferred(&mut self, envelope: OutboundEnvelope) -> Vec<AssociationEffect> {
+    if self.deferred_has_capacity_for(&envelope) {
+      self.deferred.push(envelope);
+      Vec::new()
+    } else {
+      Self::queue_full_discard_effect(envelope)
+    }
+  }
+
+  fn deferred_has_capacity_for(&self, envelope: &OutboundEnvelope) -> bool {
+    let limit =
+      if envelope.priority().is_system() { self.outbound_control_queue_size } else { self.outbound_message_queue_size };
+    self.deferred.iter().filter(|queued| queued.priority() == envelope.priority()).count() < limit
+  }
+
+  fn queue_full_discard_effect(envelope: OutboundEnvelope) -> Vec<AssociationEffect> {
+    vec![AssociationEffect::DiscardEnvelopes {
+      reason:    QuarantineReason::new("outbound queue overflow"),
+      envelopes: vec![envelope],
+    }]
+  }
+
+  fn control_queue_overflow_effects(&mut self, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
+    let reason =
+      QuarantineReason::new(format!("Due to overflow of control queue, size [{}]", self.outbound_control_queue_size));
+    let mut effects = self.quarantine(reason.clone(), now_ms);
+    Self::append_discarded_envelope(&mut effects, reason, envelope);
+    effects
+  }
+
+  fn append_discarded_envelope(
+    effects: &mut Vec<AssociationEffect>,
+    reason: QuarantineReason,
+    envelope: OutboundEnvelope,
+  ) {
+    for effect in effects.iter_mut() {
+      if let AssociationEffect::DiscardEnvelopes { envelopes, .. } = effect {
+        envelopes.push(envelope);
+        return;
+      }
+    }
+    effects.push(AssociationEffect::DiscardEnvelopes { reason, envelopes: vec![envelope] });
+  }
+
+  fn quarantine_removal_deadline(&self, now_ms: u64) -> u64 {
+    now_ms.saturating_add(duration_to_non_zero_millis(self.remove_quarantined_association_after))
+  }
 
   fn authority_string(&self) -> String {
     self.remote.to_string()
@@ -364,4 +473,15 @@ impl Association {
 
 fn remote_node_id_from_unique_address(address: &UniqueAddress) -> RemoteNodeId {
   RemoteNodeId::new(address.address().system(), address.address().host(), Some(address.address().port()), address.uid())
+}
+
+fn duration_to_non_zero_millis(duration: Duration) -> u64 {
+  let millis = duration.as_millis();
+  if millis == 0 {
+    1
+  } else if millis > u128::from(u64::MAX) {
+    u64::MAX
+  } else {
+    millis as u64
+  }
 }

@@ -2,15 +2,18 @@
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
 use fraktor_remote_core_rs::core::{
-  address::Address,
-  association::QuarantineReason,
+  address::{Address, UniqueAddress},
+  association::{Association, QuarantineReason},
+  config::RemoteConfig,
   extension::{EventPublisher, Remoting, RemotingError, RemotingLifecycleState},
   transport::RemoteTransport,
 };
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::std::{
-  association_runtime::AssociationRegistry, tcp_transport::TcpRemoteTransport, watcher_actor::WatcherActorHandle,
+  association_runtime::{AssociationRegistry, AssociationShared},
+  tcp_transport::TcpRemoteTransport,
+  watcher_actor::WatcherActorHandle,
 };
 
 /// `std + tokio` implementation of [`Remoting`].
@@ -33,6 +36,7 @@ pub struct StdRemoting {
   lifecycle:            RemotingLifecycleState,
   transport:            SharedLock<TcpRemoteTransport>,
   registry:             AssociationRegistry,
+  config:               RemoteConfig,
   watcher:              Option<WatcherActorHandle>,
   event_publisher:      EventPublisher,
   advertised_addresses: Vec<Address>,
@@ -47,6 +51,7 @@ impl StdRemoting {
   #[must_use]
   pub fn new(
     transport: SharedLock<TcpRemoteTransport>,
+    config: RemoteConfig,
     watcher: Option<WatcherActorHandle>,
     event_publisher: EventPublisher,
   ) -> Self {
@@ -54,6 +59,7 @@ impl StdRemoting {
       lifecycle: RemotingLifecycleState::new(),
       transport,
       registry: AssociationRegistry::new(),
+      config,
       watcher,
       event_publisher,
       advertised_addresses: Vec::new(),
@@ -83,6 +89,19 @@ impl StdRemoting {
   /// Returns a mutable reference to the association registry.
   pub const fn registry_mut(&mut self) -> &mut AssociationRegistry {
     &mut self.registry
+  }
+
+  /// Registers a remote association using this remoting instance's [`RemoteConfig`].
+  pub fn register_association(&mut self, local: UniqueAddress, remote: UniqueAddress) {
+    let association = Association::from_config(local, remote.address().clone(), &self.config);
+    self.registry.insert(remote, AssociationShared::new(association));
+  }
+
+  /// Removes quarantined associations whose configured removal deadline has passed.
+  pub fn remove_quarantined_associations_due(&mut self, now_ms: u64) {
+    for remote in self.registry.remove_quarantined_due(now_ms) {
+      tracing::debug!(%remote, "removed quarantined association");
+    }
   }
 
   /// Returns the optional watcher actor handle.

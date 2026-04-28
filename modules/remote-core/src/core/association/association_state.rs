@@ -38,7 +38,7 @@ pub enum AssociationState {
   Quarantined {
     /// Reason recorded at quarantine time.
     reason:    QuarantineReason,
-    /// Monotonic millis at which the quarantine may be lifted, if known.
+    /// Monotonic millis at which the quarantined association may be removed, if known.
     resume_at: Option<u64>,
   },
 }

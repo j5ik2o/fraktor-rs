@@ -17,10 +17,17 @@ const MIN_FRAME_LENGTH: usize = 2;
 /// Default maximum allowed frame length declared in the 32-bit header.
 ///
 /// This value includes bytes after the length field itself (`version + kind + body`).
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 
 /// Minimum accepted maximum frame size.
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+
+fn declared_frame_length(frame: &[u8]) -> Result<usize, FrameCodecError> {
+  if frame.len() < FRAME_HEADER_LEN {
+    return Err(FrameCodecError::from(WireError::InvalidFormat));
+  }
+  Ok(u32::from_be_bytes([frame[0], frame[1], frame[2], frame[3]]) as usize)
+}
 
 /// Codec implementing `tokio_util::codec::{Encoder, Decoder}` for
 /// [`crate::std::tcp_transport::WireFrame`].
@@ -63,13 +70,21 @@ impl Encoder<WireFrame> for WireFrameCodec {
   type Error = FrameCodecError;
 
   fn encode(&mut self, item: WireFrame, dst: &mut BytesMut) -> Result<(), Self::Error> {
-    let result: Result<(), WireError> = match item {
-      | WireFrame::Envelope(pdu) => EnvelopeCodec::new().encode(&pdu, dst),
-      | WireFrame::Handshake(pdu) => HandshakeCodec::new().encode(&pdu, dst),
-      | WireFrame::Control(pdu) => ControlCodec::new().encode(&pdu, dst),
-      | WireFrame::Ack(pdu) => AckCodec::new().encode(&pdu, dst),
-    };
-    result.map_err(FrameCodecError::from)
+    let mut frame = BytesMut::new();
+    match item {
+      | WireFrame::Envelope(pdu) => EnvelopeCodec::new().encode(&pdu, &mut frame),
+      | WireFrame::Handshake(pdu) => HandshakeCodec::new().encode(&pdu, &mut frame),
+      | WireFrame::Control(pdu) => ControlCodec::new().encode(&pdu, &mut frame),
+      | WireFrame::Ack(pdu) => AckCodec::new().encode(&pdu, &mut frame),
+    }
+    .map_err(FrameCodecError::from)?;
+
+    let length = declared_frame_length(&frame)?;
+    if length > self.maximum_frame_size {
+      return Err(FrameCodecError::from(WireError::FrameTooLarge));
+    }
+    dst.unsplit(frame);
+    Ok(())
   }
 }
 
@@ -82,7 +97,7 @@ impl Decoder for WireFrameCodec {
       return Ok(None);
     }
     // Peek at the length prefix without consuming the buffer.
-    let length = u32::from_be_bytes([src[0], src[1], src[2], src[3]]) as usize;
+    let length = declared_frame_length(src)?;
     if length < MIN_FRAME_LENGTH {
       return Err(FrameCodecError::from(WireError::InvalidFormat));
     }

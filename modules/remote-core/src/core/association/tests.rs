@@ -1,4 +1,5 @@
 use alloc::{string::String, vec::Vec};
+use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -14,6 +15,7 @@ use crate::core::{
     Association, AssociationEffect, AssociationState, HandshakeRejectedState, HandshakeValidationError, OfferOutcome,
     QuarantineReason, SendQueue,
   },
+  config::RemoteConfig,
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{BackpressureSignal, TransportEndpoint},
   wire::{HandshakeReq, HandshakeRsp},
@@ -62,6 +64,10 @@ fn make_envelope(priority: OutboundPriority, payload: &str) -> OutboundEnvelope 
   )
 }
 
+fn assert_offer_accepted(outcome: &OfferOutcome) {
+  assert!(matches!(outcome, OfferOutcome::Accepted), "expected Accepted, got {outcome:?}");
+}
+
 fn new_association() -> Association {
   Association::new(sample_local(), sample_remote_addr())
 }
@@ -71,20 +77,20 @@ fn new_association() -> Association {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn send_queue_offer_always_accepts_in_phase_a() {
+fn send_queue_offer_accepts_when_lane_has_capacity() {
   let mut queue = SendQueue::new();
   let out = queue.offer(make_envelope(OutboundPriority::User, "x"));
-  assert_eq!(out, OfferOutcome::Accepted);
+  assert_offer_accepted(&out);
   assert_eq!(queue.len(), 1);
 }
 
 #[test]
 fn send_queue_drains_system_before_user() {
   let mut queue = SendQueue::new();
-  let _ = queue.offer(make_envelope(OutboundPriority::User, "u1"));
-  let _ = queue.offer(make_envelope(OutboundPriority::System, "s1"));
-  let _ = queue.offer(make_envelope(OutboundPriority::User, "u2"));
-  let _ = queue.offer(make_envelope(OutboundPriority::System, "s2"));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::User, "u1")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::System, "s1")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::User, "u2")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::System, "s2")));
 
   // System first (s1, s2), then user (u1, u2).
   let first = queue.next_outbound().expect("first");
@@ -101,8 +107,8 @@ fn send_queue_drains_system_before_user() {
 #[test]
 fn send_queue_backpressure_pauses_user_lane_but_not_system() {
   let mut queue = SendQueue::new();
-  let _ = queue.offer(make_envelope(OutboundPriority::User, "u1"));
-  let _ = queue.offer(make_envelope(OutboundPriority::System, "s1"));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::User, "u1")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::System, "s1")));
   queue.apply_backpressure(BackpressureSignal::Apply);
   assert!(queue.is_user_paused());
 
@@ -119,13 +125,50 @@ fn send_queue_backpressure_pauses_user_lane_but_not_system() {
 }
 
 #[test]
-fn send_queue_with_capacity_still_grows_beyond_hint() {
-  let mut queue = SendQueue::with_capacity(1, 1);
-  for i in 0..5 {
-    let _ = queue.offer(make_envelope(OutboundPriority::User, &alloc::format!("u{i}")));
+fn send_queue_rejects_user_envelope_when_user_lane_is_full() {
+  let mut queue = SendQueue::with_capacity(10, 2);
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::User, "u1")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::User, "u2")));
+
+  let outcome = queue.offer(make_envelope(OutboundPriority::User, "u3"));
+
+  match outcome {
+    | OfferOutcome::QueueFull { envelope } => {
+      assert!(matches!(envelope.priority(), OutboundPriority::User));
+    },
+    | other => panic!("expected QueueFull for full user lane, got {other:?}"),
   }
-  // Unbounded in Phase A — all 5 are retained.
-  assert_eq!(queue.len(), 5);
+  assert_eq!(queue.len(), 2);
+}
+
+#[test]
+fn send_queue_rejects_system_envelope_when_system_lane_is_full() {
+  let mut queue = SendQueue::with_capacity(1, 10);
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::System, "s1")));
+
+  let outcome = queue.offer(make_envelope(OutboundPriority::System, "s2"));
+
+  match outcome {
+    | OfferOutcome::QueueFull { envelope } => {
+      assert!(matches!(envelope.priority(), OutboundPriority::System));
+    },
+    | other => panic!("expected QueueFull for full system lane, got {other:?}"),
+  }
+  assert_eq!(queue.len(), 1);
+}
+
+#[test]
+fn send_queue_with_capacity_rejects_zero_system_capacity() {
+  let result = std::panic::catch_unwind(|| SendQueue::with_capacity(0, 1));
+
+  assert!(result.is_err(), "system lane capacity must reject zero");
+}
+
+#[test]
+fn send_queue_with_capacity_rejects_zero_user_capacity() {
+  let result = std::panic::catch_unwind(|| SendQueue::with_capacity(1, 0));
+
+  assert!(result.is_err(), "user lane capacity must reject zero");
 }
 
 // ---------------------------------------------------------------------------
@@ -416,8 +459,8 @@ fn handshaking_timeout_with_deferred_envelopes_emits_discard() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
   // Queue two deferred envelopes during handshake.
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"));
+  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
+  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
   assert_eq!(a.deferred_len(), 2);
 
   let effects = a.handshake_timed_out(100, None);
@@ -433,7 +476,7 @@ fn active_to_quarantined_publishes_and_discards_pending() {
   let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
 
   // Put an envelope into the send queue while Active.
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
+  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(!a.send_queue().is_empty());
 
   let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
@@ -445,6 +488,43 @@ fn active_to_quarantined_publishes_and_discards_pending() {
       .any(|e| matches!(e, AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined { .. })))
   );
   assert!(effects.iter().any(|e| matches!(e, AssociationEffect::DiscardEnvelopes { .. })));
+}
+
+#[test]
+fn quarantine_sets_removal_deadline_from_config() {
+  let config = RemoteConfig::new("localhost").with_remove_quarantined_association_after(Duration::from_secs(5));
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+
+  let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
+
+  assert!(
+    effects
+      .iter()
+      .any(|e| matches!(e, AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined { .. })))
+  );
+  assert!(matches!(a.state(), AssociationState::Quarantined { resume_at: Some(5_020), .. }));
+}
+
+#[test]
+fn quarantine_removal_due_uses_configured_deadline_boundary() {
+  let config = RemoteConfig::new("localhost").with_remove_quarantined_association_after(Duration::from_secs(5));
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+  let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
+  assert!(!effects.is_empty(), "quarantine should emit lifecycle effect");
+
+  assert!(!a.is_quarantine_removal_due(5_019));
+  assert!(a.is_quarantine_removal_due(5_020));
+}
+
+#[test]
+fn sub_millisecond_remove_quarantined_association_after_does_not_round_to_now() {
+  let config = RemoteConfig::new("localhost").with_remove_quarantined_association_after(Duration::from_nanos(1));
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+  let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
+  assert!(!effects.is_empty(), "quarantine should emit lifecycle effect");
+
+  assert!(!a.is_quarantine_removal_due(20));
+  assert!(a.is_quarantine_removal_due(21));
 }
 
 #[test]
@@ -527,10 +607,99 @@ fn enqueue_in_active_pushes_into_send_queue() {
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
+  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
   assert!(effects.is_empty());
   assert_eq!(a.send_queue().len(), 1);
   assert_eq!(a.deferred_len(), 0);
+}
+
+#[test]
+fn enqueue_in_active_discards_when_user_queue_is_full() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(1).with_outbound_control_queue_size(1);
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+  let started = a.associate(sample_endpoint(), 0);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let accepted = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
+  assert!(a.state().is_active());
+
+  let first = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 20);
+  let second = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 21);
+
+  assert!(first.is_empty());
+  assert_eq!(a.send_queue().len(), 1);
+  let discard = second
+    .iter()
+    .find(|effect| matches!(effect, AssociationEffect::DiscardEnvelopes { .. }))
+    .expect("queue overflow should discard the rejected envelope");
+  if let AssociationEffect::DiscardEnvelopes { reason, envelopes } = discard {
+    assert!(!reason.message().is_empty());
+    assert_eq!(envelopes.len(), 1);
+    assert!(matches!(envelopes[0].priority(), OutboundPriority::User));
+  }
+}
+
+#[test]
+fn enqueue_in_active_quarantines_when_control_queue_is_full() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+  let started = a.associate(sample_endpoint(), 0);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let accepted = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
+  assert!(a.state().is_active());
+
+  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 20);
+  assert!(first.is_empty());
+  assert_eq!(a.send_queue().len(), 1);
+
+  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 21);
+
+  assert!(a.state().is_quarantined(), "control queue overflow must quarantine the association");
+  assert!(matches!(a.state(), AssociationState::Quarantined { resume_at: Some(3_600_021), .. }));
+  assert!(
+    second
+      .iter()
+      .any(|effect| matches!(effect, AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined { .. }))),
+    "control queue overflow must publish a quarantine lifecycle event"
+  );
+  assert_discard_contains_priority(&second, OutboundPriority::System);
+}
+
+#[test]
+fn enqueue_in_idle_discards_when_user_deferred_capacity_is_full() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(1).with_outbound_control_queue_size(1);
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+
+  let first = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
+  let second = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
+
+  assert!(first.is_empty());
+  assert_eq!(a.deferred_len(), 1);
+  let discard = second
+    .iter()
+    .find(|effect| matches!(effect, AssociationEffect::DiscardEnvelopes { .. }))
+    .expect("deferred overflow should discard the rejected envelope");
+  if let AssociationEffect::DiscardEnvelopes { reason, envelopes } = discard {
+    assert!(!reason.message().is_empty());
+    assert_eq!(envelopes.len(), 1);
+    assert!(matches!(envelopes[0].priority(), OutboundPriority::User));
+  }
+}
+
+#[test]
+fn enqueue_in_idle_uses_configured_control_deferred_capacity_independently_from_message_queue_size() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+
+  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 0);
+  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 0);
+
+  assert!(first.is_empty());
+  assert_eq!(a.deferred_len(), 1);
+  assert_single_discard_with_priority(&second, OutboundPriority::System);
 }
 
 #[test]
@@ -538,10 +707,25 @@ fn enqueue_in_handshaking_pushes_into_deferred() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
+  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(effects.is_empty());
   assert_eq!(a.deferred_len(), 1);
   assert!(a.send_queue().is_empty());
+}
+
+#[test]
+fn enqueue_in_handshaking_uses_configured_control_deferred_capacity_independently_from_message_queue_size() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+  let started = a.associate(sample_endpoint(), 0);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+
+  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 0);
+  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 0);
+
+  assert!(first.is_empty());
+  assert_eq!(a.deferred_len(), 1);
+  assert_single_discard_with_priority(&second, OutboundPriority::System);
 }
 
 #[test]
@@ -553,15 +737,36 @@ fn enqueue_in_gated_pushes_into_deferred() {
   let _ = a.gate(Some(100), 20);
   assert!(a.state().is_gated());
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
+  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 20);
   assert!(effects.is_empty());
   assert_eq!(a.deferred_len(), 1);
 }
 
 #[test]
+fn enqueue_in_gated_uses_configured_control_deferred_capacity_independently_from_message_queue_size() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+  let started = a.associate(sample_endpoint(), 0);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let accepted = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
+  let gated = a.gate(Some(100), 20);
+  assert!(!gated.is_empty(), "active association should enter gated state");
+  assert!(a.state().is_gated());
+
+  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 20);
+  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 20);
+
+  assert!(first.is_empty());
+  assert_eq!(a.deferred_len(), 1);
+  assert_single_discard_with_priority(&second, OutboundPriority::System);
+}
+
+#[test]
 fn enqueue_in_idle_pushes_into_deferred() {
   let mut a = new_association();
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
+  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(effects.is_empty());
   assert_eq!(a.deferred_len(), 1);
 }
@@ -572,7 +777,7 @@ fn enqueue_in_quarantined_emits_discard_effect() {
   let _ = a.quarantine(QuarantineReason::new("nope"), 0);
   assert!(a.state().is_quarantined());
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
+  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   let discards: Vec<_> = effects.iter().filter(|e| matches!(e, AssociationEffect::DiscardEnvelopes { .. })).collect();
   assert_eq!(discards.len(), 1);
   // Nothing should have been deferred / enqueued.
@@ -584,8 +789,8 @@ fn enqueue_in_quarantined_emits_discard_effect() {
 fn deferred_envelopes_flush_on_handshake_accepted() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"));
+  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
+  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
 
   let response = HandshakeRsp::new(sample_remote_unique());
   let effects = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
@@ -608,8 +813,8 @@ fn next_outbound_returns_system_then_user_through_association() {
   let _ = a.associate(sample_endpoint(), 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
-  let _ = a.enqueue(make_envelope(OutboundPriority::System, "s1"));
+  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
+  let _ = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 10);
 
   let first = a.next_outbound().expect("first");
   assert!(matches!(first.priority(), OutboundPriority::System));
@@ -624,7 +829,7 @@ fn apply_backpressure_propagates_to_send_queue() {
   let _ = a.associate(sample_endpoint(), 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"));
+  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
 
   a.apply_backpressure(BackpressureSignal::Apply);
   assert!(a.send_queue().is_user_paused());
@@ -634,4 +839,30 @@ fn apply_backpressure_propagates_to_send_queue() {
   assert!(!a.send_queue().is_user_paused());
   let env = a.next_outbound().expect("released");
   assert!(matches!(env.priority(), OutboundPriority::User));
+}
+
+fn assert_single_discard_with_priority(effects: &[AssociationEffect], priority: OutboundPriority) {
+  let discard = effects
+    .iter()
+    .find(|effect| matches!(effect, AssociationEffect::DiscardEnvelopes { .. }))
+    .expect("queue overflow should discard the rejected envelope");
+  if let AssociationEffect::DiscardEnvelopes { reason, envelopes } = discard {
+    assert!(!reason.message().is_empty());
+    assert_eq!(envelopes.len(), 1);
+    assert_eq!(envelopes[0].priority(), priority);
+  }
+}
+
+fn assert_discard_contains_priority(effects: &[AssociationEffect], priority: OutboundPriority) {
+  let discard = effects
+    .iter()
+    .find(|effect| matches!(effect, AssociationEffect::DiscardEnvelopes { .. }))
+    .expect("queue overflow should discard envelopes");
+  if let AssociationEffect::DiscardEnvelopes { reason, envelopes } = discard {
+    assert!(!reason.message().is_empty());
+    assert!(
+      envelopes.iter().any(|envelope| envelope.priority() == priority),
+      "discarded envelopes should contain the rejected priority"
+    );
+  }
 }

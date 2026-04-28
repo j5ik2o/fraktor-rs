@@ -14,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_remote_adaptor_std_rs::std::{
   extension_installer::RemotingExtensionInstaller, tcp_transport::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{address::Address, extension::Remoting};
+use fraktor_remote_core_rs::core::{address::Address, config::RemoteConfig, extension::Remoting};
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock, SpinSyncMutex};
 
 struct NoopActor;
@@ -61,7 +61,8 @@ async fn main() {
   let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", vec![
     advertised_address.clone(),
   ]));
-  let installer = RemotingExtensionInstaller::new(transport);
+  let remote_config = RemoteConfig::new("127.0.0.1");
+  let installer = RemotingExtensionInstaller::new(transport, remote_config);
 
   installer.install(&system).expect("remote extension install");
   let remoting = installer.remoting().expect("installed remoting handle");

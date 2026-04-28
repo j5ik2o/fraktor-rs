@@ -76,7 +76,7 @@ impl HandshakeDriver {
         // every envelope buffered during the handshake. apply_effects_in_place
         // publishes the lifecycle event and logs the discard so the operator
         // can observe the loss.
-        apply_effects_in_place(assoc, effects, &event_publisher);
+        apply_effects_in_place(assoc, effects, &event_publisher, now_ms);
       });
     });
     self.timeout_task = Some(task);

@@ -48,6 +48,17 @@ impl AssociationRegistry {
     self.entries.remove(address)
   }
 
+  /// Removes quarantined entries whose removal deadline is due.
+  ///
+  /// Returns the removed addresses in key order.
+  pub fn remove_quarantined_due(&mut self, now_ms: u64) -> Vec<UniqueAddress> {
+    let due = self.quarantined_due_addresses(now_ms);
+    for address in &due {
+      self.entries.remove(address);
+    }
+    due
+  }
+
   /// Returns a reference to the entry for `address` if present.
   #[must_use]
   pub fn get(&self, address: &UniqueAddress) -> Option<&AssociationShared> {
@@ -63,5 +74,15 @@ impl AssociationRegistry {
   /// Iterates over every `(address, shared)` pair in the registry.
   pub fn iter(&self) -> impl Iterator<Item = (&UniqueAddress, &AssociationShared)> {
     self.entries.iter()
+  }
+
+  fn quarantined_due_addresses(&self, now_ms: u64) -> Vec<UniqueAddress> {
+    self
+      .entries
+      .iter()
+      .filter_map(|(address, shared)| {
+        shared.with_write(|association| association.is_quarantine_removal_due(now_ms)).then_some(address.clone())
+      })
+      .collect()
   }
 }

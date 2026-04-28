@@ -9,6 +9,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
+  config::RemoteConfig,
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{RemoteTransport, TransportEndpoint, TransportError},
   watcher::WatcherCommand,
@@ -327,6 +328,62 @@ fn registry_get_by_remote_address_returns_none_for_unknown_peer() {
   reg.insert(UniqueAddress::new(known.clone(), 42), AssociationShared::new(sample_association_for(known)));
 
   assert!(reg.get_by_remote_address(&unknown).is_none());
+}
+
+fn quarantined_association_with_remove_after(
+  remote: Address,
+  remove_after: Duration,
+  quarantined_at_ms: u64,
+) -> Association {
+  let config = RemoteConfig::new("localhost").with_remove_quarantined_association_after(remove_after);
+  let mut association = Association::from_config(local_unique(), remote, &config);
+  let effects = association.quarantine(QuarantineReason::new("test quarantine"), quarantined_at_ms);
+  assert!(!effects.is_empty(), "quarantine should emit lifecycle effect");
+  assert!(association.state().is_quarantined(), "association must be quarantined for cleanup tests");
+  association
+}
+
+#[test]
+fn registry_remove_quarantined_due_removes_only_expired_quarantined_associations() {
+  let mut reg = AssociationRegistry::new();
+  let active_remote = remote_address("active-sys", "10.0.0.1", 2552);
+  let due_remote = remote_address("due-sys", "10.0.0.2", 2553);
+  let pending_remote = remote_address("pending-sys", "10.0.0.3", 2554);
+  let active_key = UniqueAddress::new(active_remote.clone(), 1);
+  let due_key = UniqueAddress::new(due_remote.clone(), 2);
+  let pending_key = UniqueAddress::new(pending_remote.clone(), 3);
+  reg.insert(active_key.clone(), AssociationShared::new(active_association_for(active_remote)));
+  reg.insert(
+    due_key.clone(),
+    AssociationShared::new(quarantined_association_with_remove_after(due_remote, Duration::from_secs(5), 10)),
+  );
+  reg.insert(
+    pending_key.clone(),
+    AssociationShared::new(quarantined_association_with_remove_after(pending_remote, Duration::from_secs(5), 20)),
+  );
+
+  let removed = reg.remove_quarantined_due(5_010);
+
+  assert_eq!(removed, vec![due_key.clone()]);
+  assert!(reg.get(&active_key).is_some(), "active association must remain registered");
+  assert!(reg.get(&due_key).is_none(), "expired quarantined association must be removed");
+  assert!(reg.get(&pending_key).is_some(), "non-expired quarantined association must remain registered");
+}
+
+#[test]
+fn registry_remove_quarantined_due_returns_empty_when_nothing_is_due() {
+  let mut reg = AssociationRegistry::new();
+  let remote = remote_address("pending-sys", "10.0.0.3", 2554);
+  let key = UniqueAddress::new(remote.clone(), 3);
+  reg.insert(
+    key.clone(),
+    AssociationShared::new(quarantined_association_with_remove_after(remote, Duration::from_secs(5), 20)),
+  );
+
+  let removed = reg.remove_quarantined_due(5_019);
+
+  assert!(removed.is_empty());
+  assert!(reg.get(&key).is_some(), "non-expired quarantined association must remain registered");
 }
 
 // ---------------------------------------------------------------------------
@@ -832,7 +889,7 @@ async fn outbound_loop_drains_active_association() {
     RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
     CorrelationId::nil(),
   );
-  let enqueue_effects = association.enqueue(envelope);
+  let enqueue_effects = association.enqueue(envelope, 1);
   assert!(enqueue_effects.is_empty(), "active enqueue should only append to the send queue");
 
   let shared = AssociationShared::new(association);
@@ -876,7 +933,7 @@ async fn outbound_loop_waits_backoff_before_reconnect_and_recovers_association()
   let connected_effects =
     association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
   assert!(!connected_effects.is_empty(), "handshake response should activate the association");
-  assert!(association.enqueue(deferred_envelope()).is_empty(), "active enqueue should append to the send queue");
+  assert!(association.enqueue(deferred_envelope(), 1).is_empty(), "active enqueue should append to the send queue");
 
   let shared = AssociationShared::new(association);
   let sends = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
@@ -942,7 +999,7 @@ async fn outbound_loop_returns_send_failure_when_restart_budget_is_exhausted() {
   let connected_effects =
     association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
   assert!(!connected_effects.is_empty(), "handshake response should activate the association");
-  assert!(association.enqueue(deferred_envelope()).is_empty(), "active enqueue should append to the send queue");
+  assert!(association.enqueue(deferred_envelope(), 1).is_empty(), "active enqueue should append to the send queue");
 
   let shared = AssociationShared::new(association);
   let sends = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
@@ -1016,7 +1073,7 @@ async fn outbound_loop_treats_not_started_as_shutdown_without_reconnect() {
   let connected_effects =
     association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
   assert!(!connected_effects.is_empty(), "handshake response should activate the association");
-  assert!(association.enqueue(deferred_envelope()).is_empty(), "active enqueue should append to the send queue");
+  assert!(association.enqueue(deferred_envelope(), 1).is_empty(), "active enqueue should append to the send queue");
 
   let shared = AssociationShared::new(association);
   let sends = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
@@ -1119,8 +1176,8 @@ fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
   let harness = EventHarness::new();
   // associate 済み、かつ handshake 未完了のため deferred envelope を保持する association を作る。
   let mut association = handshaking_association();
-  assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
-  assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
+  assert!(association.enqueue(deferred_envelope(), 0).is_empty(), "handshaking enqueue should defer without effects");
+  assert!(association.enqueue(deferred_envelope(), 0).is_empty(), "handshaking enqueue should defer without effects");
   // handshake_accepted 前は send queue から drain できないことを確認する。
   assert!(association.next_outbound().is_none(), "deferred envelopes must not be drainable before handshake_accepted");
 
@@ -1129,7 +1186,7 @@ fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
   let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
   let effects =
     association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
-  apply_effects_in_place(&mut association, effects, harness.publisher());
+  apply_effects_in_place(&mut association, effects, harness.publisher(), 1);
 
   // deferred envelope が失われず、active の send queue へ再投入されたことを確認する。
   assert!(association.next_outbound().is_some(), "first deferred envelope must be re-enqueued");
@@ -1156,12 +1213,12 @@ fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
   let harness = EventHarness::new();
   // associate 済み、かつ handshake 未完了のため deferred envelope を保持する association を作る。
   let mut association = handshaking_association();
-  assert!(association.enqueue(deferred_envelope()).is_empty(), "handshaking enqueue should defer without effects");
+  assert!(association.enqueue(deferred_envelope(), 0).is_empty(), "handshaking enqueue should defer without effects");
 
   // timeout 遷移を発火し、effects をその場で適用する。
   // `handshake_driver::HandshakeDriver` が守る契約である。
   let effects = association.handshake_timed_out(0, None);
-  apply_effects_in_place(&mut association, effects, harness.publisher());
+  apply_effects_in_place(&mut association, effects, harness.publisher(), 0);
 
   // timeout path で deferred envelope を破棄するため、状態は Gated で send queue は空になる。
   assert!(association.state().is_gated(), "handshake_timed_out should have moved the association to Gated");
@@ -1180,7 +1237,7 @@ fn handshake_accepted_with_no_deferred_envelopes_is_a_noop() {
   let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
   let effects =
     association.accept_handshake_response(&response, 1).expect("matching handshake response should be accepted");
-  apply_effects_in_place(&mut association, effects, harness.publisher());
+  apply_effects_in_place(&mut association, effects, harness.publisher(), 1);
 
   assert!(association.next_outbound().is_none());
 }
@@ -1195,7 +1252,7 @@ fn apply_effects_in_place_publishes_lifecycle_events_to_event_stream() {
     correlation_id: CorrelationId::from_u128(99),
   })];
 
-  apply_effects_in_place(&mut association, effects, harness.publisher());
+  apply_effects_in_place(&mut association, effects, harness.publisher(), 0);
 
   harness.events_with(|events| {
     assert!(has_remoting_lifecycle_event(events, |event| matches!(

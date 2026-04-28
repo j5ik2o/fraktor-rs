@@ -18,6 +18,7 @@ use fraktor_remote_adaptor_std_rs::std::{
 use fraktor_remote_core_rs::core::{
   address::Address,
   association::QuarantineReason,
+  config::RemoteConfig,
   extension::{EventPublisher, Remoting, RemotingError},
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
@@ -32,10 +33,14 @@ fn make_event_publisher() -> (ActorSystem, EventPublisher) {
   (system, publisher)
 }
 
+fn remote_config() -> RemoteConfig {
+  RemoteConfig::new("127.0.0.1")
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn std_remoting_lifecycle_via_std_remoting_directly() {
   let (system, publisher) = make_event_publisher();
-  let mut remoting = StdRemoting::new(make_transport(), None, publisher);
+  let mut remoting = StdRemoting::new(make_transport(), remote_config(), None, publisher);
   assert!(!remoting.lifecycle().is_running());
 
   remoting.start().expect("start");
@@ -53,7 +58,7 @@ async fn std_remoting_lifecycle_via_std_remoting_directly() {
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn std_remoting_lifecycle_via_extension_installer() {
-  let installer = RemotingExtensionInstaller::new(make_transport());
+  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
   let system = new_empty_actor_system();
   installer.install(&system).expect("install remoting extension");
   let remoting = installer.remoting().expect("installed remoting should be available");

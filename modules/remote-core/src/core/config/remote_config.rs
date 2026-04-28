@@ -21,6 +21,12 @@ const DEFAULT_ACK_RECEIVE_WINDOW: u32 = 1024;
 /// Default system message buffer size.
 const DEFAULT_SYSTEM_MESSAGE_BUFFER_SIZE: usize = 20_000;
 
+/// Default outbound message queue size.
+pub(crate) const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
+
+/// Default outbound control queue size.
+pub(crate) const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
+
 /// Default system message resend interval.
 const DEFAULT_SYSTEM_MESSAGE_RESEND_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -42,6 +48,9 @@ const DEFAULT_QUARANTINE_IDLE_OUTBOUND_AFTER: Duration = Duration::from_secs(6 *
 /// Default idle timeout for stopping quarantined outbound streams.
 const DEFAULT_STOP_QUARANTINED_AFTER_IDLE: Duration = Duration::from_secs(3);
 
+/// Default duration before removing unused quarantined associations.
+pub(crate) const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
+
 /// Default outbound stream restart backoff.
 const DEFAULT_OUTBOUND_RESTART_BACKOFF: Duration = Duration::from_secs(1);
 
@@ -58,7 +67,7 @@ const DEFAULT_INBOUND_LANES: usize = 4;
 const DEFAULT_OUTBOUND_LANES: usize = 1;
 
 /// Default maximum wire frame size.
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 
 /// Default direct buffer pool size.
 const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
@@ -84,6 +93,8 @@ pub struct RemoteConfig {
   ack_send_window: u32,
   ack_receive_window: u32,
   system_message_buffer_size: usize,
+  outbound_message_queue_size: usize,
+  outbound_control_queue_size: usize,
   system_message_resend_interval: Duration,
   give_up_system_message_after: Duration,
   handshake_retry_interval: Duration,
@@ -91,6 +102,7 @@ pub struct RemoteConfig {
   stop_idle_outbound_after: Duration,
   quarantine_idle_outbound_after: Duration,
   stop_quarantined_after_idle: Duration,
+  remove_quarantined_association_after: Duration,
   outbound_restart_backoff: Duration,
   outbound_restart_timeout: Duration,
   outbound_max_restarts: u32,
@@ -120,6 +132,8 @@ impl RemoteConfig {
       ack_send_window: DEFAULT_ACK_SEND_WINDOW,
       ack_receive_window: DEFAULT_ACK_RECEIVE_WINDOW,
       system_message_buffer_size: DEFAULT_SYSTEM_MESSAGE_BUFFER_SIZE,
+      outbound_message_queue_size: DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
+      outbound_control_queue_size: DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
       system_message_resend_interval: DEFAULT_SYSTEM_MESSAGE_RESEND_INTERVAL,
       give_up_system_message_after: DEFAULT_GIVE_UP_SYSTEM_MESSAGE_AFTER,
       handshake_retry_interval: DEFAULT_HANDSHAKE_RETRY_INTERVAL,
@@ -127,6 +141,7 @@ impl RemoteConfig {
       stop_idle_outbound_after: DEFAULT_STOP_IDLE_OUTBOUND_AFTER,
       quarantine_idle_outbound_after: DEFAULT_QUARANTINE_IDLE_OUTBOUND_AFTER,
       stop_quarantined_after_idle: DEFAULT_STOP_QUARANTINED_AFTER_IDLE,
+      remove_quarantined_association_after: DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER,
       outbound_restart_backoff: DEFAULT_OUTBOUND_RESTART_BACKOFF,
       outbound_restart_timeout: DEFAULT_OUTBOUND_RESTART_TIMEOUT,
       outbound_max_restarts: DEFAULT_OUTBOUND_MAX_RESTARTS,
@@ -204,6 +219,30 @@ impl RemoteConfig {
     self
   }
 
+  /// Returns a copy with the given outbound message queue size.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `size` is zero.
+  #[must_use]
+  pub const fn with_outbound_message_queue_size(mut self, size: usize) -> Self {
+    assert!(size > 0, "outbound message queue size must be greater than zero");
+    self.outbound_message_queue_size = size;
+    self
+  }
+
+  /// Returns a copy with the given outbound control queue size.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `size` is zero.
+  #[must_use]
+  pub const fn with_outbound_control_queue_size(mut self, size: usize) -> Self {
+    assert!(size > 0, "outbound control queue size must be greater than zero");
+    self.outbound_control_queue_size = size;
+    self
+  }
+
   /// Returns a copy with the given system message resend interval.
   #[must_use]
   pub const fn with_system_message_resend_interval(mut self, interval: Duration) -> Self {
@@ -250,6 +289,18 @@ impl RemoteConfig {
   #[must_use]
   pub const fn with_stop_quarantined_after_idle(mut self, duration: Duration) -> Self {
     self.stop_quarantined_after_idle = duration;
+    self
+  }
+
+  /// Returns a copy with the duration before removing unused quarantined associations.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `duration` is zero.
+  #[must_use]
+  pub const fn with_remove_quarantined_association_after(mut self, duration: Duration) -> Self {
+    assert!(!duration.is_zero(), "remove quarantined association after must be greater than zero");
+    self.remove_quarantined_association_after = duration;
     self
   }
 
@@ -410,6 +461,18 @@ impl RemoteConfig {
     self.system_message_buffer_size
   }
 
+  /// Returns the outbound message queue size.
+  #[must_use]
+  pub const fn outbound_message_queue_size(&self) -> usize {
+    self.outbound_message_queue_size
+  }
+
+  /// Returns the outbound control queue size.
+  #[must_use]
+  pub const fn outbound_control_queue_size(&self) -> usize {
+    self.outbound_control_queue_size
+  }
+
   /// Returns the system message resend interval.
   #[must_use]
   pub const fn system_message_resend_interval(&self) -> Duration {
@@ -450,6 +513,12 @@ impl RemoteConfig {
   #[must_use]
   pub const fn stop_quarantined_after_idle(&self) -> Duration {
     self.stop_quarantined_after_idle
+  }
+
+  /// Returns the duration before removing unused quarantined associations.
+  #[must_use]
+  pub const fn remove_quarantined_association_after(&self) -> Duration {
+    self.remove_quarantined_association_after
   }
 
   /// Returns the outbound stream restart backoff.
