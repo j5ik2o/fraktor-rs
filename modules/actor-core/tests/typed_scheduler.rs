@@ -1,18 +1,15 @@
-use core::time::Duration;
-use std::{
-  sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-  },
-  thread::yield_now,
-  time::Instant,
+use core::{
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
 };
+use std::{thread::yield_now, time::Instant};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::{
   kernel::actor::{actor_ref::ActorRef, scheduler::ExecutionBatch, setup::ActorSystemConfig},
   typed::{TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
 };
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -142,7 +139,7 @@ fn schedule_once_runnable_returns_handle() {
 fn schedule_once_runnable_executes_when_context_runs() {
   let system = new_test_system();
   let scheduler = system.scheduler();
-  let executions = Arc::new(AtomicUsize::new(0));
+  let executions = ArcShared::new(AtomicUsize::new(0));
 
   let handle = scheduler
     .schedule_once_runnable(Duration::from_millis(1), {
