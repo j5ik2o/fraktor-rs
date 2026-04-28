@@ -158,6 +158,16 @@ fn send_queue_rejects_system_envelope_when_system_lane_is_full() {
 }
 
 #[test]
+fn send_queue_with_limits_enforces_bounds_without_requiring_preallocation() {
+  let mut queue = SendQueue::with_limits(1, 1);
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::System, "s1")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::User, "u1")));
+
+  assert!(matches!(queue.offer(make_envelope(OutboundPriority::System, "s2")), OfferOutcome::QueueFull { .. }));
+  assert!(matches!(queue.offer(make_envelope(OutboundPriority::User, "u2")), OfferOutcome::QueueFull { .. }));
+}
+
+#[test]
 fn send_queue_with_capacity_rejects_zero_system_capacity() {
   let result = std::panic::catch_unwind(|| SendQueue::with_capacity(0, 1));
 
@@ -169,6 +179,20 @@ fn send_queue_with_capacity_rejects_zero_user_capacity() {
   let result = std::panic::catch_unwind(|| SendQueue::with_capacity(1, 0));
 
   assert!(result.is_err(), "user lane capacity must reject zero");
+}
+
+#[test]
+fn send_queue_with_limits_rejects_zero_system_limit() {
+  let result = std::panic::catch_unwind(|| SendQueue::with_limits(0, 1));
+
+  assert!(result.is_err(), "system lane limit must reject zero");
+}
+
+#[test]
+fn send_queue_with_limits_rejects_zero_user_limit() {
+  let result = std::panic::catch_unwind(|| SendQueue::with_limits(1, 0));
+
+  assert!(result.is_err(), "user lane limit must reject zero");
 }
 
 // ---------------------------------------------------------------------------

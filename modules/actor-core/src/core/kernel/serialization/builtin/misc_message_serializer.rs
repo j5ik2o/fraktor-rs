@@ -56,6 +56,7 @@ const ESCALATE_ERROR_TAG: u8 = 3;
 const SMALLEST_MAILBOX_POOL_TAG: u8 = 1;
 const ROUND_ROBIN_POOL_TAG: u8 = 2;
 const RANDOM_POOL_TAG: u8 = 3;
+const MIN_ENCODED_ADDRESS_BYTES: usize = 16;
 
 /// Serializes a Pekko-compatible subset of misc remote messages.
 ///
@@ -221,10 +222,8 @@ impl MiscMessageSerializer {
     if node_count == 0 {
       return Err(SerializationError::InvalidFormat);
     }
-    // 不正な wire 値で `node_count == u32::MAX` のような値が来ても、 cursor の残りバイト数で
-    // 上限をかけて OOM を防ぐ。 1 ノードあたりの最小サイズは 1 バイト以上なので、 残りバイト数を
-    // そのまま上限として使えば pre-allocation で巨大な確保が起こらない。
-    if node_count > cursor.remaining() {
+    let max_nodes = cursor.remaining() / MIN_ENCODED_ADDRESS_BYTES;
+    if node_count > max_nodes {
       return Err(SerializationError::InvalidFormat);
     }
     let mut nodes = Vec::with_capacity(node_count);
@@ -307,6 +306,13 @@ impl MiscMessageSerializer {
 
   fn remote_router_config_not_serializable(type_name: &'static str, serializer_id: SerializerId) -> SerializationError {
     SerializationError::NotSerializable(NotSerializableError::new(type_name, Some(serializer_id), None, None, None))
+  }
+
+  fn decode_remote_router_config_with_type_hint<P: SerializableRemoteRouterPool + Send + Sync + 'static>(
+    bytes: &[u8],
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    let decoded = Self::decode_remote_router_config(bytes)?;
+    if decoded.is::<RemoteRouterConfig<P>>() { Ok(decoded) } else { Err(SerializationError::InvalidFormat) }
   }
 }
 
@@ -415,13 +421,13 @@ impl Serializer for MiscMessageSerializer {
       return Ok(Box::new(Self::decode_remote_scope(bytes)?));
     }
     if type_id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() {
-      return Self::decode_remote_router_config(bytes);
+      return Self::decode_remote_router_config_with_type_hint::<SmallestMailboxPool>(bytes);
     }
     if type_id == TypeId::of::<RemoteRouterConfig<RoundRobinPool>>() {
-      return Self::decode_remote_router_config(bytes);
+      return Self::decode_remote_router_config_with_type_hint::<RoundRobinPool>(bytes);
     }
     if type_id == TypeId::of::<RemoteRouterConfig<RandomPool>>() {
-      return Self::decode_remote_router_config(bytes);
+      return Self::decode_remote_router_config_with_type_hint::<RandomPool>(bytes);
     }
     // Status は Success / Failure の判別に manifest が必要。 type_hint だけでは
     // どちらの variant か決まらないため、 from_binary_with_manifest 経由を要求する。

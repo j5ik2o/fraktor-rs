@@ -29,13 +29,28 @@ pub struct SendQueue {
 }
 
 impl SendQueue {
-  /// Creates a new, empty [`SendQueue`] using default capacity hints.
+  /// Creates a new, empty [`SendQueue`] using default bounded lane limits.
   #[must_use]
   pub fn new() -> Self {
-    Self::with_capacity(DEFAULT_CAPACITY, DEFAULT_CAPACITY)
+    Self::with_limits(DEFAULT_CAPACITY, DEFAULT_CAPACITY)
   }
 
-  /// Creates a new, empty [`SendQueue`] with bounded capacity for each priority lane.
+  /// Creates a new, empty [`SendQueue`] with bounded limits for each priority lane.
+  ///
+  /// This does not pre-allocate lane storage; limits and initial allocation are
+  /// intentionally separate so per-association construction stays cheap.
+  ///
+  /// # Panics
+  ///
+  /// Panics when either limit is zero.
+  #[must_use]
+  pub fn with_limits(system_limit: usize, user_limit: usize) -> Self {
+    assert!(system_limit > 0, "system queue capacity must be greater than zero");
+    assert!(user_limit > 0, "user queue capacity must be greater than zero");
+    Self { system: VecDeque::new(), user: VecDeque::new(), system_limit, user_limit, user_paused: false }
+  }
+
+  /// Creates a new, empty [`SendQueue`] with bounded capacity pre-allocated for each priority lane.
   ///
   /// # Panics
   ///

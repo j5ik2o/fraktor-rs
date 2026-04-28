@@ -37,6 +37,8 @@ pub struct Association {
   state: AssociationState,
   send_queue: SendQueue,
   deferred: Vec<OutboundEnvelope>,
+  deferred_system_count: usize,
+  deferred_user_count: usize,
   outbound_control_queue_size: usize,
   outbound_message_queue_size: usize,
   remove_quarantined_association_after: Duration,
@@ -202,6 +204,7 @@ impl Association {
       | AssociationState::Handshaking { .. } => {
         let mut effects = Vec::new();
         let deferred = mem::take(&mut self.deferred);
+        self.clear_deferred_counts();
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected {
           authority:      self.authority_string(),
           remote_system:  remote_node.system().to_string(),
@@ -250,6 +253,7 @@ impl Association {
       | AssociationState::Handshaking { .. } => {
         let mut effects = Vec::new();
         let deferred = mem::take(&mut self.deferred);
+        self.clear_deferred_counts();
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Gated {
           authority:      self.authority_string(),
           correlation_id: CorrelationId::nil(),
@@ -277,6 +281,7 @@ impl Association {
       | AssociationState::Idle => {
         let mut effects = Vec::new();
         let mut discarded = mem::take(&mut self.deferred);
+        self.clear_deferred_counts();
         discarded.append(&mut self.send_queue.drain_all());
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined {
           authority:      self.authority_string(),
@@ -379,8 +384,10 @@ impl Association {
   ) -> Self {
     Self {
       state: AssociationState::Idle,
-      send_queue: SendQueue::with_capacity(outbound_control_queue_size, outbound_message_queue_size),
+      send_queue: SendQueue::with_limits(outbound_control_queue_size, outbound_message_queue_size),
       deferred: Vec::new(),
+      deferred_system_count: 0,
+      deferred_user_count: 0,
       outbound_control_queue_size,
       outbound_message_queue_size,
       remove_quarantined_association_after,
@@ -401,6 +408,7 @@ impl Association {
 
   fn enqueue_deferred(&mut self, envelope: OutboundEnvelope) -> Vec<AssociationEffect> {
     if self.deferred_has_capacity_for(&envelope) {
+      self.increment_deferred_count(&envelope);
       self.deferred.push(envelope);
       Vec::new()
     } else {
@@ -408,10 +416,25 @@ impl Association {
     }
   }
 
-  fn deferred_has_capacity_for(&self, envelope: &OutboundEnvelope) -> bool {
-    let limit =
-      if envelope.priority().is_system() { self.outbound_control_queue_size } else { self.outbound_message_queue_size };
-    self.deferred.iter().filter(|queued| queued.priority() == envelope.priority()).count() < limit
+  const fn deferred_has_capacity_for(&self, envelope: &OutboundEnvelope) -> bool {
+    if envelope.priority().is_system() {
+      self.deferred_system_count < self.outbound_control_queue_size
+    } else {
+      self.deferred_user_count < self.outbound_message_queue_size
+    }
+  }
+
+  const fn increment_deferred_count(&mut self, envelope: &OutboundEnvelope) {
+    if envelope.priority().is_system() {
+      self.deferred_system_count += 1;
+    } else {
+      self.deferred_user_count += 1;
+    }
+  }
+
+  const fn clear_deferred_counts(&mut self) {
+    self.deferred_system_count = 0;
+    self.deferred_user_count = 0;
   }
 
   fn queue_full_discard_effect(envelope: OutboundEnvelope) -> Vec<AssociationEffect> {

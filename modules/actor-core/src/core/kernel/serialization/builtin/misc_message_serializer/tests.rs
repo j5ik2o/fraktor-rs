@@ -562,6 +562,19 @@ fn from_binary_uses_type_hint_to_select_decoder_for_round_robin_remote_router_co
 }
 
 #[test]
+fn from_binary_rejects_remote_router_config_when_type_hint_pool_mismatches_wire_tag() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = RoundRobinPool::new(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let bytes = s.to_binary(&original).expect("encode");
+
+  let result = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<RandomPool>>()));
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
 fn from_binary_uses_type_hint_to_select_decoder_for_random_remote_router_config() {
   let registry = registry();
   let s = serializer(&registry);
@@ -697,6 +710,25 @@ fn remote_router_config_decode_rejects_node_count_exceeding_remaining_bytes() {
   bytes.extend_from_slice(dispatcher.as_bytes());
   // node_count を u32::MAX にして残りバイト数を遥かに超えさせる。 OOM 防御で InvalidFormat を返す。
   bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_node_count_exceeding_minimum_encoded_address_capacity() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let dispatcher = "remote-router-dispatcher";
+  let mut bytes = Vec::new();
+  bytes.push(1_u8);
+  bytes.extend_from_slice(&3_u32.to_le_bytes());
+  bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
+  bytes.extend_from_slice(dispatcher.as_bytes());
+  bytes.extend_from_slice(&65_u32.to_le_bytes());
+  bytes.extend(core::iter::repeat_n(0_u8, 1024));
 
   let view = s.as_string_manifest().expect("string manifest view");
   let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
