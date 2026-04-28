@@ -288,9 +288,22 @@ fn system_state_prefers_advertise_authority_for_canonical_path() {
   state.register_cell(child);
 
   let canonical = state.canonical_actor_path(&child_pid).expect("canonical path");
+  assert_eq!(state.canonical_authority_components(), Some(("public.example.com".to_string(), Some(4100))));
+  assert_eq!(state.canonical_authority_endpoint(), Some("public.example.com:4100".to_string()));
   assert_eq!(canonical.parts().scheme(), ActorPathScheme::FraktorTcp);
   assert_eq!(canonical.parts().authority_endpoint(), Some("public.example.com:4100".to_string()));
   assert!(canonical.to_canonical_uri().contains("public.example.com:4100"));
+}
+
+#[test]
+fn system_state_canonical_authority_endpoint_matches_complete_remoting_config() {
+  let remoting = RemotingConfig::default().with_canonical_host("public.example.com").with_canonical_port(4100);
+  let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting);
+  let state = SystemState::build_from_owned_config(config).expect("state");
+
+  assert_eq!(state.canonical_authority_components(), Some(("public.example.com".to_string(), Some(4100))));
+  assert_eq!(state.canonical_authority_endpoint(), Some("public.example.com:4100".to_string()));
+  assert!(!state.has_partial_canonical_authority());
 }
 
 #[test]
