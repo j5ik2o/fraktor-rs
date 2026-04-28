@@ -519,8 +519,16 @@ fn actor_identity_decode_rejects_unknown_actor_ref_tag() {
   let s = serializer(&registry);
   let identity = ActorIdentity::new(AnyMessage::new(String::from("correlation")), None);
   let mut bytes = s.to_binary(&identity).expect("encode");
-  let last_index = bytes.len() - 1;
-  bytes[last_index] = 9;
+  // encode_actor_identity の wire 形式: [u32 LE: correlation_id len] [correlation_id bytes]
+  // [u8: actor_ref tag] (Some の場合のみ以降に path)。
+  // `bytes.len() - 1` で tag 位置を取ると、 wire 形式の末尾にフィールドを追加した瞬間に false
+  // green になり得る。 length-prefix から actor_ref tag のオフセットを明示的に算出して、
+  // tag バイトだけを変異させたケースで `InvalidFormat` を返すかを確認する。
+  let correlation_len_prefix: [u8; 4] = bytes[..4].try_into().expect("correlation len prefix");
+  let correlation_len = usize::try_from(u32::from_le_bytes(correlation_len_prefix)).expect("correlation len fits");
+  let actor_ref_tag_index = 4 + correlation_len;
+  assert_eq!(bytes[actor_ref_tag_index], 0, "encoded ActorIdentity::None must place tag=0 at the computed offset",);
+  bytes[actor_ref_tag_index] = 9;
 
   let view = s.as_string_manifest().expect("string manifest view");
   let result = view.from_binary_with_manifest(&bytes, ACTOR_IDENTITY_MANIFEST);
