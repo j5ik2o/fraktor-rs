@@ -17,7 +17,7 @@ const MIN_FRAME_LENGTH: usize = 2;
 /// Default maximum allowed frame length declared in the 32-bit header.
 ///
 /// This value includes bytes after the length field itself (`version + kind + body`).
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 /// Minimum accepted maximum frame size.
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
