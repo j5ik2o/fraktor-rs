@@ -11,7 +11,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::std::tcp_transport::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
 
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
 
 fn append_declared_frame_header(buf: &mut BytesMut, length: usize) {

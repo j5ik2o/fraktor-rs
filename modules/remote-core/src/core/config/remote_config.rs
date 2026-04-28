@@ -58,7 +58,7 @@ const DEFAULT_INBOUND_LANES: usize = 4;
 const DEFAULT_OUTBOUND_LANES: usize = 1;
 
 /// Default maximum wire frame size.
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 /// Default direct buffer pool size.
 const DEFAULT_BUFFER_POOL_SIZE: usize = 128;

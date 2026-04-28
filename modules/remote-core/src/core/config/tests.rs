@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use crate::core::config::RemoteConfig;
 
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
 
