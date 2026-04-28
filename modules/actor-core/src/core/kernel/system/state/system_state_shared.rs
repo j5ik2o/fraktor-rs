@@ -424,11 +424,6 @@ impl SystemStateShared {
     self.inner.with_read(|inner| inner.guardian_pid(kind))
   }
 
-  /// Registers a PID for the specified guardian kind.
-  pub(crate) fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
-    self.inner.with_write(|inner| inner.register_guardian_pid(kind, pid));
-  }
-
   /// Returns whether the specified guardian is alive.
   #[must_use]
   pub fn guardian_alive(&self, kind: GuardianKind) -> bool {

@@ -9,7 +9,7 @@
 - `BootingSystemState` / `RunningSystemState` を削除する。
 - `modules/actor-core/src/core/kernel/system/state.rs` から `mod booting_state;` / `mod running_state;` を削除する。
 - `modules/actor-core/src/core/kernel/system/state/system_state/tests.rs` から `BootingSystemState` 専用の 2 テストと import を削除する。
-- `SystemState::register_guardian_pid` / `SystemStateShared::register_guardian_pid` はこの change では削除しない。現行テストが利用しているため、削除または test helper 化は別 change で判断する。
+- `SystemState::register_guardian_pid` / `SystemStateShared::register_guardian_pid` は wrapper 削除後に production dead code になるため削除する。既存テストは production API で表現できるものに置き換え、test-only API でしか表現できない unreachable case は削除する。
 
 ## Capabilities
 
@@ -27,11 +27,13 @@
   - `modules/actor-core/src/core/kernel/system/state/booting_state.rs`
   - `modules/actor-core/src/core/kernel/system/state/running_state.rs`
   - `modules/actor-core/src/core/kernel/system/state.rs`
+  - `modules/actor-core/src/core/kernel/system/state/system_state.rs`
+  - `modules/actor-core/src/core/kernel/system/state/system_state_shared.rs`
   - `modules/actor-core/src/core/kernel/system/state/system_state/tests.rs`
+  - `modules/actor-core/src/core/kernel/system/state/system_state_shared/tests.rs`
 - 影響しないもの:
   - workspace 外公開 API
   - production の actor system 初期化フロー
-  - `SystemStateShared` / `SystemState` の guardian 登録 API
   - remote B 方針および `remote-artery-settings-parity`
 - 後続候補:
-  - `register_guardian_pid` を production API として残すか、test helper へ移すか、呼び出しテストを置き換えて削除するかを別 change で判断する。
+  - guardian registration の追加テストが必要になった場合は、test-only PID registration API ではなく `set_*_guardian` と実 `ActorCell` 経由で表現する。

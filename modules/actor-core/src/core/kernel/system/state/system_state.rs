@@ -514,11 +514,6 @@ impl SystemState {
     self.root_guardian_alive.store(true, Ordering::Release);
   }
 
-  pub(crate) fn register_guardian_pid(&mut self, kind: GuardianKind, pid: Pid) {
-    self.guardians.register(kind, pid);
-    self.guardian_alive_flag(kind).store(true, Ordering::Release);
-  }
-
   /// Registers the system guardian PID.
   pub(crate) fn set_system_guardian(&mut self, cell: &ArcShared<ActorCell>) {
     self.guardians.register(GuardianKind::System, cell.pid());

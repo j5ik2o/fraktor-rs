@@ -6,7 +6,7 @@ use core::{
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
-use super::{super::booting_state::BootingSystemState, SystemState};
+use super::SystemState;
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -584,62 +584,6 @@ fn system_state_remote_authority_events() {
 }
 
 #[test]
-fn guardian_cell_via_cells_returns_none_when_missing() {
-  let state = build_shared_state();
-  let user_pid = state.allocate_pid();
-
-  state.register_guardian_pid(GuardianKind::User, user_pid);
-
-  assert!(state.user_guardian().is_none());
-  assert_eq!(state.user_guardian_pid(), Some(user_pid));
-}
-
-#[test]
-fn booting_into_running_requires_all_guardians() {
-  let state = build_shared_state();
-  let booting = BootingSystemState::new(state.clone());
-
-  let root_pid = state.allocate_pid();
-  let system_pid = state.allocate_pid();
-  let user_pid = state.allocate_pid();
-
-  let props = Props::from_fn(|| RestartProbeActor);
-  let root_cell =
-    ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root cell created");
-  let system_cell =
-    ActorCell::create(state.clone(), system_pid, Some(root_pid), "system".to_string(), &props).expect("system cell");
-  let user_cell =
-    ActorCell::create(state.clone(), user_pid, Some(root_pid), "user".to_string(), &props).expect("user cell");
-
-  state.register_cell(root_cell);
-  state.register_cell(system_cell.clone());
-  state.register_cell(user_cell.clone());
-
-  booting.register_guardian(GuardianKind::Root, root_pid);
-  booting.register_guardian(GuardianKind::System, system_pid);
-  booting.register_guardian(GuardianKind::User, user_pid);
-
-  let running = booting.into_running().expect("running state");
-  assert_eq!(running.guardian_pid(GuardianKind::User), user_pid);
-  assert!(running.guardian_cell(GuardianKind::User).is_some());
-  assert!(running.guardian_cell(GuardianKind::System).is_some());
-}
-
-#[test]
-fn booting_into_running_fails_when_guardian_missing() {
-  let state = build_shared_state();
-  let booting = BootingSystemState::new(state.clone());
-
-  let root_pid = state.allocate_pid();
-  let system_pid = state.allocate_pid();
-  booting.register_guardian(GuardianKind::Root, root_pid);
-  booting.register_guardian(GuardianKind::System, system_pid);
-
-  let result = booting.into_running();
-  assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::SystemNotBootstrapped)));
-}
-
-#[test]
 fn watch_on_missing_guardian_sends_death_watch_notification_to_watcher() {
   let state = build_shared_state_with_noop_dispatcher();
   let watcher_pid = state.allocate_pid();
@@ -760,7 +704,10 @@ fn remote_watch_hook_replaces_previous_registration() {
 fn termination_signal_completes_after_root_marked_terminated() {
   let state = build_shared_state();
   let root_pid = state.allocate_pid();
-  state.register_guardian_pid(GuardianKind::Root, root_pid);
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_cell =
+    ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root guardian cell");
+  state.set_root_guardian(&root_cell);
 
   assert!(!state.termination_signal().is_terminated());
   assert_eq!(state.guardian_kind_by_pid(root_pid), Some(GuardianKind::Root));
