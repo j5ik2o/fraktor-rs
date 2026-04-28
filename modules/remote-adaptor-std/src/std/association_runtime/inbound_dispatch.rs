@@ -5,12 +5,16 @@ use fraktor_remote_core_rs::core::{
   address::{Address, UniqueAddress},
   extension::EventPublisher,
   transport::TransportError,
-  wire::{HandshakePdu, HandshakeReq, HandshakeRsp},
+  watcher::WatcherCommand,
+  wire::{ControlPdu, HandshakePdu, HandshakeReq, HandshakeRsp},
 };
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::std::{
-  association_runtime::{apply_effects_in_place, association_registry::AssociationRegistry},
+  association_runtime::{
+    apply_effects_in_place, association_registry::AssociationRegistry,
+    inbound_quarantine_check::InboundQuarantineCheck, peer_address_match::peer_matches_address,
+  },
   tcp_transport::{InboundFrameEvent, WireFrame},
 };
 
@@ -21,10 +25,19 @@ pub async fn run_inbound_dispatch(
   registry: AssociationRegistry,
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
   event_publisher: EventPublisher,
-  local: UniqueAddress,
-  mut send_handshake_response: impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError> + Send + 'static,
+  sinks: (
+    UniqueAddress,
+    impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError> + Send + 'static,
+    impl FnMut(&Address, ControlPdu) -> Result<(), TransportError> + Send + 'static,
+    impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>> + Send + 'static,
+  ),
 ) {
+  let (local, mut send_handshake_response, mut send_control_response, mut submit_watcher_command) = sinks;
   while let Some(event) = inbound_rx.recv().await {
+    if !InboundQuarantineCheck::allows(&registry, &event) {
+      tracing::debug!(peer = %event.peer, "dropping inbound frame from quarantined association");
+      continue;
+    }
     match event.frame {
       | WireFrame::Handshake(pdu) => {
         let now = now_ms_provider();
@@ -42,14 +55,148 @@ pub async fn run_inbound_dispatch(
         // Local actor delivery is a separate provider integration contract.
         tracing::debug!(peer = %event.peer, "inbound envelope frame received");
       },
-      | WireFrame::Control(_pdu) => {
-        tracing::debug!(peer = %event.peer, "inbound control frame received");
+      | WireFrame::Control(pdu) => {
+        let now = now_ms_provider();
+        dispatch_control_pdu(
+          &event.peer,
+          &pdu,
+          &registry,
+          now,
+          &local,
+          &mut send_control_response,
+          &mut submit_watcher_command,
+        );
       },
       | WireFrame::Ack(_pdu) => {
         tracing::debug!(peer = %event.peer, "inbound ack frame received");
       },
     }
   }
+}
+
+fn dispatch_control_pdu(
+  peer: &str,
+  pdu: &ControlPdu,
+  registry: &AssociationRegistry,
+  now_ms: u64,
+  local: &UniqueAddress,
+  send_control_response: &mut impl FnMut(&Address, ControlPdu) -> Result<(), TransportError>,
+  submit_watcher_command: &mut impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>>,
+) {
+  match pdu {
+    | ControlPdu::Heartbeat { authority } => {
+      dispatch_heartbeat_request(
+        peer,
+        authority,
+        registry,
+        now_ms,
+        local,
+        send_control_response,
+        submit_watcher_command,
+      );
+    },
+    | ControlPdu::HeartbeatResponse { authority, uid } => {
+      dispatch_heartbeat_response(peer, authority, *uid, registry, now_ms, submit_watcher_command);
+    },
+    | ControlPdu::Quarantine { .. } => {
+      tracing::debug!(peer = %peer, "inbound quarantine control frame received");
+    },
+    | ControlPdu::Shutdown { .. } => {
+      tracing::debug!(peer = %peer, "inbound shutdown control frame received");
+    },
+  }
+}
+
+fn dispatch_heartbeat_request(
+  peer: &str,
+  authority: &str,
+  registry: &AssociationRegistry,
+  now_ms: u64,
+  local: &UniqueAddress,
+  send_control_response: &mut impl FnMut(&Address, ControlPdu) -> Result<(), TransportError>,
+  submit_watcher_command: &mut impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>>,
+) {
+  let Some(remote_address) = registered_remote_address(peer, authority, registry, "heartbeat request") else {
+    return;
+  };
+  // 受信した heartbeat 自身を liveness signal として watcher に流し込み、応答送信に
+  // 失敗・遅延したケースでも片方向疎通を検出できるようにする。
+  let received_command = WatcherCommand::HeartbeatReceived { from: remote_address.clone(), now: now_ms };
+  match submit_watcher_command(received_command) {
+    | Ok(()) => {},
+    | Err(command) => {
+      tracing::warn!(peer = %peer, origin = %remote_address, ?command, "heartbeat received submission failed");
+    },
+  }
+  let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
+  match send_control_response(&remote_address, response) {
+    | Ok(()) => {},
+    | Err(err) => {
+      tracing::warn!(peer = %peer, origin = %remote_address, ?err, "heartbeat response send failed");
+    },
+  }
+}
+
+fn dispatch_heartbeat_response(
+  peer: &str,
+  authority: &str,
+  uid: u64,
+  registry: &AssociationRegistry,
+  now_ms: u64,
+  submit_watcher_command: &mut impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>>,
+) {
+  let Some(remote_address) = registered_remote_address(peer, authority, registry, "heartbeat response") else {
+    return;
+  };
+  let origin = remote_address.clone();
+  let command = WatcherCommand::HeartbeatResponseReceived { from: remote_address, uid, now: now_ms };
+  match submit_watcher_command(command) {
+    | Ok(()) => {},
+    | Err(command) => {
+      tracing::warn!(peer = %peer, origin = %origin, ?command, "watcher command submission failed");
+    },
+  }
+}
+
+fn registered_remote_address(
+  peer: &str,
+  authority: &str,
+  registry: &AssociationRegistry,
+  frame_name: &str,
+) -> Option<Address> {
+  let Some(remote_address) = parse_authority(authority) else {
+    tracing::warn!(peer = %peer, authority, frame_name, "discarding control frame with invalid authority");
+    return None;
+  };
+  if !peer_matches_address(peer, &remote_address) {
+    tracing::warn!(
+      peer = %peer,
+      origin = %remote_address,
+      frame_name,
+      "discarding control frame whose authority does not match the peer socket",
+    );
+    return None;
+  }
+  if registry.get_by_remote_address(&remote_address).is_none() {
+    tracing::warn!(
+      peer = %peer,
+      origin = %remote_address,
+      frame_name,
+      "discarding control frame for an unregistered association",
+    );
+    return None;
+  }
+  Some(remote_address)
+}
+
+pub(super) fn parse_authority(authority: &str) -> Option<Address> {
+  let (system, endpoint) = authority.split_once('@')?;
+  // IPv6 リテラルでも最後の `:` がポート区切り。ホスト部のブラケット剥がしは
+  // `peer_matches_address` と同じく一律で行う。
+  let (host, port) = endpoint.rsplit_once(':')?;
+  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
+  let port = port.parse::<u16>().ok()?;
+  Some(Address::new(system, host, port))
 }
 
 fn dispatch_handshake_pdu(
@@ -100,10 +247,14 @@ fn dispatch_handshake_request(
       None
     },
   });
-  if let Some(response) = response
-    && let Err(err) = send_handshake_response(remote_address, response)
-  {
-    tracing::warn!(peer = %peer, origin = %remote_address, ?err, "handshake response send failed");
+  match response {
+    | Some(response) => match send_handshake_response(remote_address, response) {
+      | Ok(()) => {},
+      | Err(err) => {
+        tracing::warn!(peer = %peer, origin = %remote_address, ?err, "handshake response send failed");
+      },
+    },
+    | None => {},
   }
 }
 

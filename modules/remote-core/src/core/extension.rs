@@ -17,12 +17,18 @@ mod tests;
 
 mod event_publisher;
 mod lifecycle_state;
+mod remote_actor_ref_resolve_cache_event;
+mod remote_actor_ref_resolve_cache_outcome;
 mod remote_authority_snapshot;
 mod remoting;
 mod remoting_error;
 
 pub use event_publisher::EventPublisher;
 pub use lifecycle_state::RemotingLifecycleState;
+pub use remote_actor_ref_resolve_cache_event::{
+  REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent,
+};
+pub use remote_actor_ref_resolve_cache_outcome::RemoteActorRefResolveCacheOutcome;
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
 pub use remoting::Remoting;
 pub use remoting_error::RemotingError;

@@ -47,6 +47,8 @@ pub struct WatcherState {
   /// Remote nodes that have already been notified as terminated during the
   /// current session, so we do not re-emit effects on every tick.
   already_notified: Map<Address, ()>,
+  /// Per-remote-node actor-system incarnation UID observed from heartbeat responses.
+  address_uids:     Map<Address, u64>,
 }
 
 impl Debug for WatcherState {
@@ -68,6 +70,7 @@ impl WatcherState {
       targets_by_node:  Map::with_hasher(RandomState::new()),
       detectors:        DefaultFailureDetectorRegistry::new(detector_factory),
       already_notified: Map::with_hasher(RandomState::new()),
+      address_uids:     Map::with_hasher(RandomState::new()),
     }
   }
 
@@ -89,6 +92,7 @@ impl WatcherState {
       | WatcherCommand::Watch { target, watcher } => self.on_watch(target, watcher),
       | WatcherCommand::Unwatch { target, watcher } => self.on_unwatch(&target, &watcher),
       | WatcherCommand::HeartbeatReceived { from, now } => self.on_heartbeat(&from, now),
+      | WatcherCommand::HeartbeatResponseReceived { from, uid, now } => self.on_heartbeat_response(&from, uid, now),
       | WatcherCommand::HeartbeatTick { now } => self.on_tick(now),
     }
   }
@@ -126,19 +130,25 @@ impl WatcherState {
       if watchers.is_empty() {
         self.watching.remove(target);
         // Also remove target from its hosting node map.
-        if let Some(node) = address_from_path(target)
-          && let Some(targets) = self.targets_by_node.get_mut(&node)
-        {
-          targets.retain(|t| t != target);
-          if targets.is_empty() {
-            self.targets_by_node.remove(&node);
-            self.detectors.remove(&node);
-            self.already_notified.remove(&node);
-          }
+        if let Some(node) = address_from_path(target) {
+          self.remove_target_from_node(&node, target);
         }
       }
     }
     Vec::new()
+  }
+
+  fn remove_target_from_node(&mut self, node: &Address, target: &ActorPath) {
+    let Some(targets) = self.targets_by_node.get_mut(node) else {
+      return;
+    };
+    targets.retain(|t| t != target);
+    if targets.is_empty() {
+      self.targets_by_node.remove(node);
+      self.detectors.remove(node);
+      self.already_notified.remove(node);
+      self.address_uids.remove(node);
+    }
   }
 
   fn on_heartbeat(&mut self, from: &Address, now: u64) -> Vec<WatcherEffect> {
@@ -150,6 +160,24 @@ impl WatcherState {
     self.already_notified.remove(from);
     self.detectors.heartbeat(from, now);
     Vec::new()
+  }
+
+  fn on_heartbeat_response(&mut self, from: &Address, uid: u64, now: u64) -> Vec<WatcherEffect> {
+    let Some(targets) = self.targets_by_node.get(from).cloned() else {
+      return Vec::new();
+    };
+    self.already_notified.remove(from);
+    self.detectors.heartbeat(from, now);
+    let needs_rewatch = match self.address_uids.get(from) {
+      | Some(known_uid) => *known_uid != uid,
+      | None => true,
+    };
+    self.address_uids.insert(from.clone(), uid);
+    if needs_rewatch {
+      alloc::vec![WatcherEffect::RewatchRemoteTargets { node: from.clone(), targets }]
+    } else {
+      Vec::new()
+    }
   }
 
   fn on_tick(&mut self, now: u64) -> Vec<WatcherEffect> {

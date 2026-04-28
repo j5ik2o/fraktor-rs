@@ -28,7 +28,7 @@ impl Deploy {
 
   /// Replaces the deployment scope.
   #[must_use]
-  pub const fn with_scope(mut self, scope: Scope) -> Self {
+  pub fn with_scope(mut self, scope: Scope) -> Self {
     self.scope = scope;
     self
   }
@@ -41,8 +41,8 @@ impl Deploy {
 
   /// Returns the configured scope.
   #[must_use]
-  pub const fn scope(&self) -> Scope {
-    self.scope
+  pub const fn scope(&self) -> &Scope {
+    &self.scope
   }
 }
 

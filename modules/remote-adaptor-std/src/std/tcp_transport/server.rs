@@ -1,8 +1,11 @@
 //! TCP accept loop.
 
-use alloc::string::String;
+use alloc::{string::String, sync::Arc, vec::Vec};
 use core::fmt::{Debug, Formatter, Result as FmtResult};
-use std::net::{SocketAddr, TcpListener as StdTcpListener};
+use std::{
+  net::{SocketAddr, TcpListener as StdTcpListener},
+  sync::Mutex,
+};
 
 use fraktor_remote_core_rs::core::transport::TransportError;
 use futures::{SinkExt as _, StreamExt as _};
@@ -16,6 +19,8 @@ use tokio_util::codec::Framed;
 
 use crate::std::tcp_transport::{frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent};
 
+type ConnectionTasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
+
 /// Owns a `tokio::net::TcpListener` and drives an accept loop that spawns a
 /// reader task for every accepted connection.
 ///
@@ -23,8 +28,10 @@ use crate::std::tcp_transport::{frame_codec::WireFrameCodec, inbound_frame_event
 /// `Framed` stream and forwards them to the shared inbound channel owned
 /// by the transport.
 pub struct TcpServer {
-  bind_addr:   String,
-  accept_task: Option<JoinHandle<()>>,
+  bind_addr:        String,
+  frame_codec:      WireFrameCodec,
+  accept_task:      Option<JoinHandle<()>>,
+  connection_tasks: ConnectionTasks,
 }
 
 impl Debug for TcpServer {
@@ -39,8 +46,19 @@ impl Debug for TcpServer {
 impl TcpServer {
   /// Creates a new [`TcpServer`] that will bind to `bind_addr` on `start`.
   #[must_use]
-  pub const fn new(bind_addr: String) -> Self {
-    Self { bind_addr, accept_task: None }
+  pub fn new(bind_addr: String) -> Self {
+    Self {
+      bind_addr,
+      frame_codec: WireFrameCodec::new(),
+      accept_task: None,
+      connection_tasks: Arc::new(Mutex::new(Vec::new())),
+    }
+  }
+
+  /// Creates a new [`TcpServer`] with the given frame codec.
+  #[must_use]
+  pub(crate) fn with_frame_codec(bind_addr: String, frame_codec: WireFrameCodec) -> Self {
+    Self { bind_addr, frame_codec, accept_task: None, connection_tasks: Arc::new(Mutex::new(Vec::new())) }
   }
 
   /// Returns `true` when the server is currently running.
@@ -66,13 +84,26 @@ impl TcpServer {
     let bound_addr = listener.local_addr().map_err(|_| TransportError::SendFailed)?;
     listener.set_nonblocking(true).map_err(|_| TransportError::SendFailed)?;
     let listener = TcpListener::from_std(listener).map_err(|_| TransportError::SendFailed)?;
+    let frame_codec = self.frame_codec;
+    let connection_tasks = self.connection_tasks.clone();
     let task = handle.spawn(async move {
       loop {
         match listener.accept().await {
           | Ok((stream, peer)) => {
             let inbound_tx = inbound_tx.clone();
             let peer_addr = peer.to_string();
-            tokio::spawn(read_loop(stream, peer_addr, inbound_tx));
+            let connection = tokio::spawn(read_loop(stream, peer_addr, inbound_tx, frame_codec));
+            // 接続ごとの read_loop ハンドルを共有 Vec に蓄積し、 shutdown() から abort できるようにする。
+            // 終了済みハンドルはここでまとめて掃除し、長時間 accept を続けても無制限には膨れないようにする。
+            match connection_tasks.lock() {
+              | Ok(mut tasks) => {
+                tasks.retain(|task| !task.is_finished());
+                tasks.push(connection);
+              },
+              | Err(err) => {
+                tracing::warn!(?err, "tcp accept loop could not register connection task");
+              },
+            }
           },
           | Err(err) => {
             tracing::warn!(?err, "tcp accept loop failed");
@@ -85,16 +116,26 @@ impl TcpServer {
     Ok(bound_addr)
   }
 
-  /// Stops the accept loop task, aborting any in-flight accept.
+  /// Stops the accept loop task and aborts every accepted connection.
   pub fn shutdown(&mut self) {
     if let Some(handle) = self.accept_task.take() {
       handle.abort();
     }
+    if let Ok(mut tasks) = self.connection_tasks.lock() {
+      for task in tasks.drain(..) {
+        task.abort();
+      }
+    }
   }
 }
 
-async fn read_loop(stream: TcpStream, peer: String, inbound_tx: UnboundedSender<InboundFrameEvent>) {
-  let mut framed = Framed::new(stream, WireFrameCodec::new());
+async fn read_loop(
+  stream: TcpStream,
+  peer: String,
+  inbound_tx: UnboundedSender<InboundFrameEvent>,
+  frame_codec: WireFrameCodec,
+) {
+  let mut framed = Framed::new(stream, frame_codec);
   while let Some(next) = framed.next().await {
     match next {
       | Ok(frame) => {

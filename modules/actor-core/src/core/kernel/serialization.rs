@@ -1,5 +1,7 @@
 //! Serialization subsystem aggregation.
 
+mod actor_ref_resolve_cache;
+mod actor_ref_resolve_cache_outcome;
 mod async_serializer;
 mod builder;
 mod builder_error;
@@ -28,6 +30,8 @@ mod string_manifest_serializer;
 mod throwable_not_serializable_error;
 mod transport_information;
 
+pub use actor_ref_resolve_cache::ActorRefResolveCache;
+pub use actor_ref_resolve_cache_outcome::ActorRefResolveCacheOutcome;
 pub use async_serializer::{AsyncSerializer, SerializationFuture};
 pub use builder::SerializationSetupBuilder;
 pub use builder_error::SerializationBuilderError;

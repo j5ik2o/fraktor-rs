@@ -118,6 +118,85 @@ fn heartbeat_received_updates_detector_for_known_node() {
 }
 
 #[test]
+fn heartbeat_response_received_records_initial_uid_and_rewatches_targets() {
+  let mut state = new_state();
+  let target = remote_target(1);
+  let watcher = local_watcher();
+  let _ = state.handle(WatcherCommand::Watch { target: target.clone(), watcher });
+
+  let node = address_of("remote-sys", "10.0.0.1", 2552);
+  let effects = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node.clone(), uid: 42, now: 100 });
+
+  assert!(effects.iter().any(|effect| matches!(
+    effect,
+    WatcherEffect::RewatchRemoteTargets {
+      node: effect_node,
+      targets
+    } if effect_node == &node && targets == &alloc::vec![target.clone()]
+  )));
+}
+
+#[test]
+fn heartbeat_response_received_with_same_uid_does_not_rewatch() {
+  let mut state = new_state();
+  let target = remote_target(1);
+  let watcher = local_watcher();
+  let _ = state.handle(WatcherCommand::Watch { target, watcher });
+  let node = address_of("remote-sys", "10.0.0.1", 2552);
+
+  let _ = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node.clone(), uid: 42, now: 100 });
+  let effects = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node, uid: 42, now: 200 });
+
+  assert!(effects.iter().all(|effect| !matches!(effect, WatcherEffect::RewatchRemoteTargets { .. })));
+}
+
+#[test]
+fn heartbeat_response_received_with_changed_uid_rewatches_targets() {
+  let mut state = new_state();
+  let target = remote_target(1);
+  let watcher = local_watcher();
+  let _ = state.handle(WatcherCommand::Watch { target: target.clone(), watcher });
+  let node = address_of("remote-sys", "10.0.0.1", 2552);
+
+  let _ = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node.clone(), uid: 42, now: 100 });
+  let effects = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node.clone(), uid: 43, now: 200 });
+
+  assert!(effects.iter().any(|effect| matches!(
+    effect,
+    WatcherEffect::RewatchRemoteTargets {
+      node: effect_node,
+      targets
+    } if effect_node == &node && targets == &alloc::vec![target.clone()]
+  )));
+}
+
+#[test]
+fn heartbeat_response_received_for_unknown_node_is_ignored() {
+  let mut state = new_state();
+  let unknown = address_of("remote-sys", "10.0.0.9", 2552);
+
+  let effects = state.handle(WatcherCommand::HeartbeatResponseReceived { from: unknown, uid: 42, now: 100 });
+
+  assert!(effects.is_empty());
+}
+
+#[test]
+fn heartbeat_response_received_after_notification_reopens_the_detector() {
+  let mut state = new_state();
+  let _ = state.handle(WatcherCommand::Watch { target: remote_target(1), watcher: local_watcher() });
+  let node = address_of("remote-sys", "10.0.0.1", 2552);
+  for i in 0..10 {
+    let _ = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node.clone(), uid: 42, now: i * 100 });
+  }
+  let _first = state.handle(WatcherCommand::HeartbeatTick { now: 60_000 });
+
+  let _ = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node, uid: 42, now: 70_000 });
+  let effects = state.handle(WatcherCommand::HeartbeatTick { now: 200_000 });
+  let terminated_again = effects.iter().filter(|e| matches!(e, WatcherEffect::NotifyTerminated { .. })).count();
+  assert_eq!(terminated_again, 1);
+}
+
+#[test]
 fn heartbeat_tick_emits_send_heartbeat_for_every_tracked_node() {
   let mut state = new_state();
   let _ = state.handle(WatcherCommand::Watch {

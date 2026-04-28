@@ -34,6 +34,16 @@ pub enum WatcherCommand {
     /// Monotonic millis at which the heartbeat was observed.
     now:  u64,
   },
+  /// A heartbeat response arrived from `from` carrying the remote actor-system
+  /// incarnation UID.
+  HeartbeatResponseReceived {
+    /// Address of the remote node that emitted the heartbeat response.
+    from: Address,
+    /// Actor-system incarnation UID reported by the remote node.
+    uid:  u64,
+    /// Monotonic millis at which the heartbeat response was observed.
+    now:  u64,
+  },
   /// Periodic tick driving failure-detector evaluation at monotonic time
   /// `now` (millis).
   HeartbeatTick {

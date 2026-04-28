@@ -13,6 +13,7 @@ use tokio::time::{Instant, sleep, timeout};
 
 use crate::std::association_runtime::{
   apply_effects_in_place, association_shared::AssociationShared, reconnect_backoff_policy::ReconnectBackoffPolicy,
+  restart_counter::RestartCounter,
 };
 
 /// Polling interval used by the outbound drain loop.
@@ -62,12 +63,11 @@ pub async fn run_outbound_loop<T: RemoteTransport + Send + 'static>(
 /// run the supplied reconnect operation, and recover the association into a new
 /// handshake when reconnect succeeds.
 ///
-/// `gate_for_reconnect` is invoked **unconditionally** before
-/// `recover_with_restart_budget`, so even when `policy.max_restarts() == 0`
-/// (no reconnect attempt) the association still transitions to `Gated` and is
-/// observable to callers. This mirrors Pekko Artery's behaviour where a
-/// connection failure first surfaces as `Gated` regardless of whether any
-/// recovery is attempted.
+/// `gate_for_reconnect` is invoked before `recover_with_restart_budget`, so
+/// even when `policy.max_restarts() == 0` (no reconnect attempt) the
+/// association still transitions to `Gated` and is observable to callers. This mirrors Pekko
+/// Artery's behaviour where a connection failure first surfaces as `Gated` regardless of whether
+/// any recovery is attempted.
 ///
 /// # Errors
 ///
@@ -85,7 +85,7 @@ where
   F: FnMut(Address) -> Fut + Send + 'static,
   Fut: Future<Output = Result<TransportEndpoint, TransportError>> + Send, {
   let started_at = Instant::now();
-  let mut restarts = 0;
+  let mut restart_counter = RestartCounter::new(policy.max_restarts(), policy.restart_timeout());
   loop {
     let (remote, next_envelope) = shared.with_write(|assoc| (assoc.remote().clone(), assoc.next_outbound()));
     match next_envelope {
@@ -113,7 +113,7 @@ where
             gate_for_reconnect(&shared, &policy, elapsed_ms(started_at), &event_publisher);
             let ctx =
               RecoverContext { shared: &shared, policy: &policy, event_publisher: &event_publisher, started_at };
-            recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restarts, err).await?;
+            recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restart_counter, err).await?;
             // recover が成功すると association は Active 経路へ戻るため、保持していた
             // envelope を再投入する。これは Pekko Artery の AckedDeliveryQueue 相当の最低限
             // の振る舞いで、ack ベースの再送は別レイヤの責務として残してある。
@@ -142,20 +142,15 @@ pub(super) struct RecoverContext<'a> {
   pub started_at:      Instant,
 }
 
-/// Drives the reconnect retry loop bounded by `policy.max_restarts()`.
+/// Drives the reconnect retry loop bounded by a deadline-window restart budget.
 ///
-/// On a successful reconnect the function resets `*restarts` to `0` so a
-/// future independent failure cycle starts from a fresh budget rather than
-/// inheriting the consumed credits from prior recoveries.
-///
-/// Visibility is `pub(super)` to allow direct unit testing of the budget
-/// reset behaviour from the sibling test module without needing to drive a
-/// full transport / handshake fixture.
+/// Visibility is `pub(super)` to allow direct unit testing from the sibling
+/// test module without needing to drive a full transport / handshake fixture.
 pub(super) async fn recover_with_restart_budget<F, Fut>(
   ctx: RecoverContext<'_>,
   reconnect: &mut F,
   remote: Address,
-  restarts: &mut u32,
+  restart_counter: &mut RestartCounter,
   first_error: TransportError,
 ) -> Result<(), TransportError>
 where
@@ -163,10 +158,9 @@ where
   Fut: Future<Output = Result<TransportEndpoint, TransportError>>, {
   let mut last_error = first_error;
   loop {
-    if *restarts >= ctx.policy.max_restarts() {
+    if !restart_counter.restart(elapsed_ms(ctx.started_at)) {
       return Err(last_error);
     }
-    *restarts += 1;
     match reconnect_after_backoff(ctx.policy, reconnect, remote.clone()).await {
       | Ok(endpoint) => {
         // Association::recover が生成する PublishLifecycle / StartHandshake などを
@@ -177,10 +171,10 @@ where
           let effects = assoc.recover(Some(endpoint), elapsed_ms(ctx.started_at));
           apply_effects_in_place(assoc, effects, ctx.event_publisher);
         });
-        // Reset the restart counter on successful recovery so a future
-        // transient failure long after this point still has the full
-        // restart budget rather than the residue from prior failures.
-        *restarts = 0;
+        // 復旧成功後に予算をリセットし、次の独立した障害サイクルが満額の budget で始まるようにする。
+        // RestartCounter が時刻 window でしかリセットされないと、回復直後の連続失敗で前サイクルの
+        // 消費を引き継いでしまうため、ここで明示的にクリアする。
+        restart_counter.reset();
         return Ok(());
       },
       | Err(err) => {

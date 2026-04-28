@@ -1,12 +1,19 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::core::kernel::actor::{
-  Pid,
-  actor_path::{ActorPath, ActorPathParser},
-  actor_ref_provider::{ActorRefProviderHandleShared, LocalActorRefProvider},
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    Pid,
+    actor_path::{ActorPath, ActorPathParser},
+    actor_ref_provider::{ActorRefProviderHandleShared, LocalActorRefProvider},
+  },
+  event::stream::EventStreamEvent,
+  serialization::ActorRefResolveCache,
 };
 use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
+  extension::{
+    REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
+  },
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
@@ -14,6 +21,7 @@ use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 use crate::std::{
   provider::{dispatch::StdRemoteActorRefProvider, provider_dispatch_error::StdRemoteActorRefProviderError},
   tcp_transport::TcpRemoteTransport,
+  tests::test_support::EventHarness,
 };
 
 // ---------------------------------------------------------------------------
@@ -21,16 +29,21 @@ use crate::std::{
 // ---------------------------------------------------------------------------
 
 /// Tracks every call so tests can assert the dispatch path.
-#[derive(Default)]
 struct StubRemoteProvider {
-  actor_ref_calls: Vec<ActorPath>,
+  actor_ref_calls: SharedLock<Vec<ActorPath>>,
   watch_calls:     Vec<(ActorPath, Pid)>,
   unwatch_calls:   Vec<(ActorPath, Pid)>,
 }
 
+impl StubRemoteProvider {
+  fn new(actor_ref_calls: SharedLock<Vec<ActorPath>>) -> Self {
+    Self { actor_ref_calls, watch_calls: Vec::new(), unwatch_calls: Vec::new() }
+  }
+}
+
 impl RemoteActorRefProvider for StubRemoteProvider {
   fn actor_ref(&mut self, path: ActorPath) -> Result<RemoteActorRef, ProviderError> {
-    self.actor_ref_calls.push(path.clone());
+    self.actor_ref_calls.with_lock(|calls| calls.push(path.clone()));
     let node = RemoteNodeId::new("remote", "10.0.0.1", Some(2552), 1);
     Ok(RemoteActorRef::new(path, node))
   }
@@ -50,11 +63,52 @@ fn local_address() -> UniqueAddress {
   UniqueAddress::new(Address::new("local-sys", "127.0.0.1", 2551), 7)
 }
 
-fn make_provider() -> StdRemoteActorRefProvider {
+struct ProviderFixture {
+  provider:        StdRemoteActorRefProvider,
+  actor_ref_calls: SharedLock<Vec<ActorPath>>,
+  event_harness:   EventHarness,
+}
+
+impl ProviderFixture {
+  fn actor_ref_call_count(&self) -> usize {
+    self.actor_ref_calls.with_lock(|calls| calls.len())
+  }
+
+  fn resolve_cache_events(&self) -> Vec<RemoteActorRefResolveCacheEvent> {
+    self
+      .event_harness
+      .events()
+      .into_iter()
+      .filter_map(|event| match event {
+        | EventStreamEvent::Extension { name, payload } if name == REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION => {
+          payload.downcast_ref::<RemoteActorRefResolveCacheEvent>().cloned()
+        },
+        | _ => None,
+      })
+      .collect()
+  }
+}
+
+fn make_provider_fixture() -> ProviderFixture {
   let local_actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(LocalActorRefProvider::new());
-  let remote_provider = Box::new(StubRemoteProvider::default()) as Box<dyn RemoteActorRefProvider + Send + Sync>;
+  let actor_ref_calls = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
+  let remote_provider =
+    Box::new(StubRemoteProvider::new(actor_ref_calls.clone())) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", Vec::new()));
-  StdRemoteActorRefProvider::new(local_address(), local_actor_ref_provider_handle_shared, remote_provider, transport)
+  let event_harness = EventHarness::new();
+  let provider = StdRemoteActorRefProvider::new(
+    local_address(),
+    local_actor_ref_provider_handle_shared,
+    remote_provider,
+    transport,
+    ActorRefResolveCache::default(),
+    event_harness.publisher().clone(),
+  );
+  ProviderFixture { provider, actor_ref_calls, event_harness }
+}
+
+fn make_provider() -> StdRemoteActorRefProvider {
+  make_provider_fixture().provider
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +175,37 @@ fn local_authority_path_with_non_matching_uid_is_dispatched_to_remote() {
     matches!(err, StdRemoteActorRefProviderError::RemoteSenderBuildFailed),
     "expected RemoteSenderBuildFailed (remote branch via UID mismatch), got {err:?}"
   );
+}
+
+#[test]
+fn remote_actor_ref_resolution_uses_cache_after_first_miss() {
+  let mut fixture = make_provider_fixture();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+
+  let first = fixture.provider.actor_ref(remote_path.clone());
+  let second = fixture.provider.actor_ref(remote_path);
+
+  assert!(matches!(first, Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)));
+  assert!(matches!(second, Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)));
+  assert_eq!(fixture.actor_ref_call_count(), 1);
+}
+
+#[test]
+fn remote_actor_ref_resolution_publishes_cache_miss_then_hit_events() {
+  let mut fixture = make_provider_fixture();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+
+  let first = fixture.provider.actor_ref(remote_path.clone());
+  let second = fixture.provider.actor_ref(remote_path.clone());
+
+  assert!(matches!(first, Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)));
+  assert!(matches!(second, Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)));
+  let events = fixture.resolve_cache_events();
+  assert_eq!(events.len(), 2);
+  assert_eq!(events[0].path(), &remote_path);
+  assert_eq!(events[0].outcome(), RemoteActorRefResolveCacheOutcome::Miss);
+  assert_eq!(events[1].path(), &remote_path);
+  assert_eq!(events[1].outcome(), RemoteActorRefResolveCacheOutcome::Hit);
 }
 
 #[test]

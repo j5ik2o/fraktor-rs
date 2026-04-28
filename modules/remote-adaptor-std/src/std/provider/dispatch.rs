@@ -4,15 +4,22 @@
 
 use alloc::boxed::Box;
 
-use fraktor_actor_core_rs::core::kernel::actor::{
-  Pid,
-  actor_path::ActorPath,
-  actor_ref::ActorRef,
-  actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    Pid,
+    actor_path::ActorPath,
+    actor_ref::ActorRef,
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
+  },
+  serialization::{ActorRefResolveCache, ActorRefResolveCacheOutcome as ActorCoreResolveCacheOutcome},
 };
 use fraktor_remote_core_rs::core::{
   address::UniqueAddress,
-  provider::{RemoteActorRefProvider, resolve_remote_address},
+  extension::{
+    EventPublisher, REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent,
+    RemoteActorRefResolveCacheOutcome,
+  },
+  provider::{RemoteActorRef, RemoteActorRefProvider, resolve_remote_address},
 };
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
@@ -42,6 +49,8 @@ pub struct StdRemoteActorRefProvider {
   local_provider:  ActorRefProviderHandleShared<LocalActorRefProvider>,
   remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
   transport:       SharedLock<TcpRemoteTransport>,
+  resolve_cache:   ActorRefResolveCache<RemoteActorRef>,
+  event_publisher: EventPublisher,
 }
 
 impl StdRemoteActorRefProvider {
@@ -52,8 +61,10 @@ impl StdRemoteActorRefProvider {
     local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
     transport: SharedLock<TcpRemoteTransport>,
+    resolve_cache: ActorRefResolveCache<RemoteActorRef>,
+    event_publisher: EventPublisher,
   ) -> Self {
-    Self { local_address, local_provider, remote_provider, transport }
+    Self { local_address, local_provider, remote_provider, transport, resolve_cache, event_publisher }
   }
 
   /// Returns the local [`UniqueAddress`] used to determine the loopback
@@ -94,9 +105,8 @@ impl StdRemoteActorRefProvider {
       return self.local_provider.actor_ref(local_path).map_err(StdRemoteActorRefProviderError::from);
     }
     // Branch 3: authority does not match → core remote provider.
-    // Resolving the path validates remote routing; constructing the
-    // ActorRef wrapper requires actor system context wired in Section 22.
-    self.remote_provider.actor_ref(path).map_err(StdRemoteActorRefProviderError::from)?;
+    let outcome = self.resolve_remote_actor_ref(path.clone())?;
+    self.publish_resolve_cache_event(path, remote_cache_outcome(&outcome));
     Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)
   }
 
@@ -151,6 +161,29 @@ impl StdRemoteActorRefProvider {
       return false;
     };
     !self.is_local_authority(&resolved)
+  }
+
+  fn resolve_remote_actor_ref(
+    &mut self,
+    path: ActorPath,
+  ) -> Result<ActorCoreResolveCacheOutcome<RemoteActorRef>, StdRemoteActorRefProviderError> {
+    let remote_provider = &mut self.remote_provider;
+    self.resolve_cache.resolve(&path, |candidate| {
+      remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)
+    })
+  }
+
+  fn publish_resolve_cache_event(&self, path: ActorPath, outcome: RemoteActorRefResolveCacheOutcome) {
+    self
+      .event_publisher
+      .publish_extension(REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent::new(path, outcome));
+  }
+}
+
+fn remote_cache_outcome(outcome: &ActorCoreResolveCacheOutcome<RemoteActorRef>) -> RemoteActorRefResolveCacheOutcome {
+  match outcome {
+    | ActorCoreResolveCacheOutcome::Hit(_) => RemoteActorRefResolveCacheOutcome::Hit,
+    | ActorCoreResolveCacheOutcome::Miss(_) => RemoteActorRefResolveCacheOutcome::Miss,
   }
 }
 

@@ -3,12 +3,22 @@ use core::time::Duration;
 use bytes::{Bytes, BytesMut};
 use fraktor_remote_core_rs::core::{
   address::{Address, UniqueAddress},
+  config::RemoteConfig,
   transport::{RemoteTransport, TransportError},
   wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
 };
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::std::tcp_transport::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
+
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
+const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+
+fn append_declared_frame_header(buf: &mut BytesMut, length: usize) {
+  let length = u32::try_from(length).expect("test frame length should fit in u32");
+  buf.extend_from_slice(&length.to_be_bytes());
+  buf.extend_from_slice(&[1, 0]);
+}
 
 #[test]
 fn wire_frame_codec_roundtrips_envelope() {
@@ -102,10 +112,18 @@ fn wire_frame_codec_handles_multiple_frames_in_one_buffer() {
 fn wire_frame_codec_rejects_oversized_frame_length() {
   let mut codec = WireFrameCodec::new();
   let mut buf = BytesMut::new();
-  // 宣言されたフレーム長が 16 MiB 上限を超えるケースを作る。
-  buf.extend_from_slice(&(16 * 1024 * 1024 + 1_u32).to_be_bytes());
-  // ヘッダ事前チェックを通すための最小バイト数を追加する。
-  buf.extend_from_slice(&[1, 0]);
+  append_declared_frame_header(&mut buf, DEFAULT_MAXIMUM_FRAME_SIZE + 1);
+
+  let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
+  assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::FrameTooLarge)));
+  assert_eq!(buf.len(), 6, "oversized header must not partially consume the buffer");
+}
+
+#[test]
+fn wire_frame_codec_rejects_frame_above_configured_maximum_frame_size() {
+  let mut codec = WireFrameCodec::with_maximum_frame_size(64 * 1024);
+  let mut buf = BytesMut::new();
+  append_declared_frame_header(&mut buf, 64 * 1024 + 1);
 
   let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
   assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::FrameTooLarge)));
@@ -116,10 +134,7 @@ fn wire_frame_codec_rejects_oversized_frame_length() {
 fn wire_frame_codec_rejects_declared_frame_length_smaller_than_header() {
   let mut codec = WireFrameCodec::new();
   let mut buf = BytesMut::new();
-  // 宣言されたフレーム長には最低でも version + kind が必要。
-  buf.extend_from_slice(&1_u32.to_be_bytes());
-  // 外側のヘッダ長チェックを通すための十分なバイト数を追加する。
-  buf.extend_from_slice(&[1, 0]);
+  append_declared_frame_header(&mut buf, 1);
 
   let err = codec.decode(&mut buf).expect_err("too-small frame length must be rejected");
   assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::InvalidFormat)));
@@ -132,12 +147,12 @@ async fn remote_transport_start_binds_listener_and_receives_frame() {
 
   use crate::std::tcp_transport::{TcpClient, TcpRemoteTransport};
 
-  // Given
+  // Given: port 0 で listen する transport
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
   let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]);
   let mut inbound_rx = transport.take_inbound_receiver().expect("inbound receiver should be available");
 
-  // When
+  // When: transport を開始して peer から frame を送る
   transport.start().expect("start should bind listener");
   let bound_address = transport.default_address().expect("default address should be available").clone();
   assert_ne!(bound_address.port(), 0, "port 0 should be replaced by the actual bound port");
@@ -150,7 +165,7 @@ async fn remote_transport_start_binds_listener_and_receives_frame() {
   let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).expect("client send should succeed");
 
-  // Then
+  // Then: inbound receiver で frame を受け取れる
   let event = tokio::time::timeout(Duration::from_secs(5), inbound_rx.recv())
     .await
     .expect("frame should arrive before timeout")
@@ -165,14 +180,14 @@ async fn remote_transport_start_binds_listener_and_receives_frame() {
 async fn remote_transport_start_rewrites_port_zero_advertised_addresses() {
   use crate::std::tcp_transport::TcpRemoteTransport;
 
-  // Given
+  // Given: port 0 を含む advertised address
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
   let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]);
 
-  // When
+  // When: transport を開始する
   transport.start().expect("start should bind listener");
 
-  // Then
+  // Then: advertised address の port が実 bind port に置き換わる
   let addresses = transport.addresses();
   assert_eq!(addresses.len(), 1);
   assert_ne!(addresses[0].port(), 0);
@@ -185,19 +200,126 @@ async fn remote_transport_start_rewrites_port_zero_advertised_addresses() {
 fn remote_transport_start_without_tokio_runtime_returns_not_available() {
   use crate::std::tcp_transport::TcpRemoteTransport;
 
-  // Given
+  // Given: Tokio runtime 外で作成した transport
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
   let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]);
 
-  // When
+  // When: runtime 外で開始する
   let error = transport.start().expect_err("start without a tokio runtime should fail");
 
-  // Then
+  // Then: 未利用状態のまま NotAvailable を返す
   assert_eq!(error, TransportError::NotAvailable);
   assert_eq!(
     transport.shutdown().expect_err("failed start must not mark transport running"),
     TransportError::NotStarted
   );
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_from_config_uses_bind_override_and_advertises_canonical_address() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{TcpClient, TcpRemoteTransport};
+
+  // Given: canonical host と bind host を分けた構成
+  let config =
+    RemoteConfig::new("canonical.example").with_canonical_port(0).with_bind_hostname("127.0.0.1").with_bind_port(0);
+  let mut transport = TcpRemoteTransport::from_config("local-sys", config);
+  let mut inbound_rx = transport.take_inbound_receiver().expect("inbound receiver should be available");
+
+  // When: bind override 経由で接続する
+  transport.start().expect("transport should bind using configured bind address");
+  let advertised = transport.default_address().expect("default address should be available").clone();
+
+  // Then: advertised address は canonical host を保持する
+  assert_eq!(advertised.system(), "local-sys");
+  assert_eq!(advertised.host(), "canonical.example");
+  assert_ne!(advertised.port(), 0);
+
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let mut client = TcpClient::connect(alloc::format!("127.0.0.1:{}", advertised.port()), client_inbound_tx)
+    .await
+    .expect("client should connect through bind override");
+  let pdu = EnvelopePdu::new("/user/bind".into(), None, 0x12, 0, 1, Bytes::from_static(b"hi"));
+  client.send(WireFrame::Envelope(pdu.clone())).expect("client send should succeed");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), inbound_rx.recv())
+    .await
+    .expect("frame should arrive before timeout")
+    .expect("inbound frame should exist");
+  assert_eq!(event.frame, WireFrame::Envelope(pdu));
+
+  client.shutdown();
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_from_config_falls_back_to_canonical_bind_address() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{TcpClient, TcpRemoteTransport};
+
+  // Given: bind override を持たない canonical 構成
+  let config = RemoteConfig::new("127.0.0.1").with_canonical_port(0);
+  let mut transport = TcpRemoteTransport::from_config("local-sys", config);
+  let mut inbound_rx = transport.take_inbound_receiver().expect("inbound receiver should be available");
+
+  // When: canonical address 経由で接続する
+  transport.start().expect("transport should bind using canonical address");
+  let advertised = transport.default_address().expect("default address should be available").clone();
+
+  // Then: canonical address が bind と advertised address の両方に使われる
+  assert_eq!(advertised.system(), "local-sys");
+  assert_eq!(advertised.host(), "127.0.0.1");
+  assert_ne!(advertised.port(), 0);
+
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let mut client = TcpClient::connect(alloc::format!("{}:{}", advertised.host(), advertised.port()), client_inbound_tx)
+    .await
+    .expect("client should connect through canonical bind address");
+  let pdu = EnvelopePdu::new("/user/canonical".into(), None, 0x13, 0, 1, Bytes::from_static(b"hi"));
+  client.send(WireFrame::Envelope(pdu.clone())).expect("client send should succeed");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), inbound_rx.recv())
+    .await
+    .expect("frame should arrive before timeout")
+    .expect("inbound frame should exist");
+  assert_eq!(event.frame, WireFrame::Envelope(pdu));
+
+  client.shutdown();
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_from_config_applies_maximum_frame_size_to_inbound_decoder() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{TcpClient, TcpRemoteTransport};
+
+  // Given: inbound decoder の最大 frame size を最小値にした構成
+  let config =
+    RemoteConfig::new("127.0.0.1").with_canonical_port(0).with_maximum_frame_size(MINIMUM_MAXIMUM_FRAME_SIZE);
+  let mut transport = TcpRemoteTransport::from_config("local-sys", config);
+  let mut inbound_rx = transport.take_inbound_receiver().expect("inbound receiver should be available");
+
+  // When: 設定上限を超える frame を送る
+  transport.start().expect("transport should bind listener");
+  let advertised = transport.default_address().expect("default address should be available").clone();
+
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let mut client = TcpClient::connect(alloc::format!("{}:{}", advertised.host(), advertised.port()), client_inbound_tx)
+    .await
+    .expect("client should connect to started transport");
+  let pdu =
+    EnvelopePdu::new("/user/large".into(), None, 0x14, 0, 1, Bytes::from(vec![0_u8; MINIMUM_MAXIMUM_FRAME_SIZE]));
+  client.send(WireFrame::Envelope(pdu)).expect("client send should succeed");
+
+  // Then: inbound delivery 前に拒否される
+  let result = tokio::time::timeout(Duration::from_millis(200), inbound_rx.recv()).await;
+  assert!(result.is_err(), "oversized inbound frame should be rejected before delivery");
+
+  client.shutdown();
+  transport.shutdown().expect("transport shutdown should succeed");
 }
 
 // ---------------------------------------------------------------------------
@@ -257,4 +379,36 @@ async fn remote_transport_send_handshake_writes_handshake_frame_to_connected_pee
 
   transport.shutdown().expect("transport shutdown should succeed");
   server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn server_shutdown_aborts_existing_connection_read_loops() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{client::TcpClient, server::TcpServer};
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = TcpServer::new("127.0.0.1:0".into());
+  let bind_addr = server.start(server_inbound_tx).expect("server should bind to a system-assigned port");
+
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let client = TcpClient::connect(bind_addr.to_string(), client_inbound_tx).await.unwrap();
+  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
+  client.send(WireFrame::Envelope(pdu.clone())).unwrap();
+  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
+    .await
+    .unwrap()
+    .expect("server inbound frame should arrive before shutdown");
+  assert_eq!(event.frame, WireFrame::Envelope(pdu));
+
+  server.shutdown();
+
+  // shutdown 後はサーバ側の inbound_tx がドロップされるため、 channel が close され受信が None
+  // を返す。
+  let after_shutdown = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv()).await;
+  match after_shutdown {
+    | Ok(None) => {},
+    | Ok(Some(event)) => panic!("no inbound frames should follow shutdown but got {event:?}"),
+    | Err(_) => panic!("shutdown must close the inbound channel within the timeout"),
+  }
 }

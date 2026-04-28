@@ -18,17 +18,25 @@ use crate::core::kernel::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, NullSender, dead_letter::DeadLetterReason},
     error::ActorError,
-    messaging::AnyMessageView,
+    messaging::{ActorIdentity, AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick_driver::tests::TestTickDriver,
     setup::ActorSystemConfig,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   serialization::{
-    SerializationSetupBuilder, builtin::NullSerializer, call_scope::SerializationCallScope, error::SerializationError,
-    error_event::SerializationErrorEvent, not_serializable_error::NotSerializableError,
-    serialization_setup::SerializationSetup, serialized_message::SerializedMessage, serializer::Serializer,
-    serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
+    SerializationSetupBuilder,
+    builtin::{MISC_MESSAGE_ID, NullSerializer},
+    call_scope::SerializationCallScope,
+    default_serialization_setup,
+    error::SerializationError,
+    error_event::SerializationErrorEvent,
+    not_serializable_error::NotSerializableError,
+    serialization_setup::SerializationSetup,
+    serialized_message::SerializedMessage,
+    serializer::Serializer,
+    serializer_id::SerializerId,
+    string_manifest_serializer::SerializerWithStringManifest,
     transport_information::TransportInformation,
   },
   system::{
@@ -174,6 +182,10 @@ fn build_extension_with_system(system: &ActorSystem) -> SerializationExtension {
   SerializationExtension::new(system, setup)
 }
 
+fn build_default_extension_with_system(system: &ActorSystem) -> SerializationExtension {
+  SerializationExtension::new(system, default_serialization_setup())
+}
+
 fn build_actor_ref_with_path(system: &ActorSystem) -> ActorRef {
   let props = Props::from_fn(|| NoopActor);
   let state = system.state();
@@ -212,6 +224,59 @@ fn serialized_actor_path_falls_back_to_local_without_complete_canonical() {
 
   let dead_letters = system.state().dead_letters();
   assert_eq!(dead_letters.len(), 1);
+}
+
+#[test]
+fn builtin_actor_identity_without_ref_round_trips_through_extension() {
+  let system = ActorSystem::new_empty();
+  let extension = build_default_extension_with_system(&system);
+  let original = ActorIdentity::new(AnyMessage::new(String::from("correlation-none")), None);
+
+  let serialized = extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+  assert_eq!(serialized.serializer_id(), MISC_MESSAGE_ID);
+  assert_eq!(serialized.manifest(), Some("B"));
+
+  let decoded = extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>())).expect("deserialize");
+  let identity = decoded.downcast::<ActorIdentity>().expect("decoded payload should be ActorIdentity");
+  let restored = identity.correlation_id().downcast_ref::<String>().expect("correlation id should be String");
+  assert_eq!(restored, "correlation-none");
+  assert!(identity.actor_ref().is_none());
+}
+
+#[test]
+fn builtin_actor_identity_with_ref_round_trips_actor_ref_path_through_extension() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let system = build_system_with_remoting(Some(remoting), "identity-test");
+  system.state().mark_root_started();
+  let actor_ref = build_actor_ref_with_path(&system);
+  let expected_path = actor_ref.canonical_path().expect("canonical path").to_canonical_uri();
+  let extension = build_default_extension_with_system(&system);
+  let original = ActorIdentity::found(AnyMessage::new(String::from("correlation-found")), actor_ref);
+
+  let serialized = extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+  let decoded = extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>())).expect("deserialize");
+  let identity = decoded.downcast::<ActorIdentity>().expect("decoded payload should be ActorIdentity");
+
+  let restored_ref = identity.actor_ref().expect("actor ref should be restored");
+  let restored_path = restored_ref.canonical_path().expect("restored canonical path").to_canonical_uri();
+  assert_eq!(restored_path, expected_path);
+}
+
+#[test]
+fn builtin_actor_identity_with_ref_decode_fails_without_resolve_context() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let source_system = build_system_with_remoting(Some(remoting), "identity-test");
+  source_system.state().mark_root_started();
+  let actor_ref = build_actor_ref_with_path(&source_system);
+  let source_extension = build_default_extension_with_system(&source_system);
+  let original = ActorIdentity::found(AnyMessage::new(String::from("correlation-missing-context")), actor_ref);
+  let serialized = source_extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+
+  let target_system = ActorSystem::new_empty();
+  let target_extension = build_default_extension_with_system(&target_system);
+  let result = target_extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>()));
+
+  assert!(matches!(result, Err(SerializationError::NotSerializable(_))), "expected NotSerializable, got {result:?}");
 }
 
 #[test]

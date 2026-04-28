@@ -138,6 +138,19 @@ fn control_heartbeat_roundtrip() {
 }
 
 #[test]
+fn control_heartbeat_response_roundtrip_with_uid() {
+  let pdu = ControlPdu::HeartbeatResponse { authority: "sys@host:1".to_string(), uid: 0x0102_0304_0506_0708 };
+  let codec = ControlCodec::new();
+  let mut buf = BytesMut::new();
+  codec.encode(&pdu, &mut buf).unwrap();
+  assert_eq!(buf[5], KIND_CONTROL);
+  assert_eq!(buf[6], 0x03, "subkind for heartbeat response should be 0x03");
+  let mut bytes = to_bytes(buf);
+  let decoded = codec.decode(&mut bytes).unwrap();
+  assert_eq!(decoded, pdu);
+}
+
+#[test]
 fn control_quarantine_roundtrip_with_reason() {
   let pdu = ControlPdu::Quarantine { authority: "sys@host:2".to_string(), reason: Some("timed out".to_string()) };
   let codec = ControlCodec::new();

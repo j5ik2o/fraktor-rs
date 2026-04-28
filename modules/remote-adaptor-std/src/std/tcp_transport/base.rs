@@ -12,6 +12,7 @@ use bytes::Bytes;
 use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId},
   association::QuarantineReason,
+  config::RemoteConfig,
   envelope::OutboundEnvelope,
   transport::{RemoteTransport, TransportError},
   wire::{EnvelopePdu, HandshakePdu},
@@ -19,7 +20,8 @@ use fraktor_remote_core_rs::core::{
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::std::tcp_transport::{
-  client::TcpClient, inbound_frame_event::InboundFrameEvent, server::TcpServer, wire_frame::WireFrame,
+  client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
+  wire_frame::WireFrame,
 };
 
 /// TCP-backed implementation of [`RemoteTransport`].
@@ -39,6 +41,7 @@ pub struct TcpRemoteTransport {
   local_addresses: Vec<Address>,
   default_address: Option<Address>,
   bind_addr:       String,
+  frame_codec:     WireFrameCodec,
   server:          TcpServer,
   clients:         BTreeMap<String, TcpClient>,
   inbound_tx:      UnboundedSender<InboundFrameEvent>,
@@ -61,14 +64,44 @@ impl TcpRemoteTransport {
   /// given `local_addresses`.
   #[must_use]
   pub fn new(bind_addr: impl Into<String>, local_addresses: Vec<Address>) -> Self {
-    let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
     let bind_addr = bind_addr.into();
+    Self::with_frame_codec(bind_addr, local_addresses, WireFrameCodec::new())
+  }
+
+  /// Creates a new transport from [`RemoteConfig`].
+  #[must_use]
+  pub fn from_config(system_name: impl Into<String>, config: RemoteConfig) -> Self {
+    let bind_host = match config.bind_hostname() {
+      | Some(hostname) => hostname,
+      | None => config.canonical_host(),
+    };
+    let bind_port = match config.bind_port() {
+      | Some(port) => port,
+      | None => match config.canonical_port() {
+        | Some(port) => port,
+        | None => 0,
+      },
+    };
+    let advertised_port = match config.canonical_port() {
+      | Some(port) => port,
+      | None => bind_port,
+    };
+    let system_name = system_name.into();
+    let bind_addr = alloc::format!("{bind_host}:{bind_port}");
+    let local_addresses = vec![Address::new(system_name, config.canonical_host(), advertised_port)];
+    let frame_codec = WireFrameCodec::with_maximum_frame_size(config.maximum_frame_size());
+    Self::with_frame_codec(bind_addr, local_addresses, frame_codec)
+  }
+
+  fn with_frame_codec(bind_addr: String, local_addresses: Vec<Address>, frame_codec: WireFrameCodec) -> Self {
+    let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
     let default_address = local_addresses.first().cloned();
     Self {
       local_addresses,
       default_address,
-      server: TcpServer::new(bind_addr.clone()),
+      server: TcpServer::with_frame_codec(bind_addr.clone(), frame_codec),
       bind_addr,
+      frame_codec,
       clients: BTreeMap::new(),
       inbound_tx,
       inbound_rx: Some(inbound_rx),
@@ -113,7 +146,7 @@ impl TcpRemoteTransport {
       return Ok(());
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client = TcpClient::connect(connect_addr, self.inbound_tx.clone()).await?;
+    let client = TcpClient::connect_with_frame_codec(connect_addr, self.inbound_tx.clone(), self.frame_codec).await?;
     self.clients.insert(peer_key, client);
     Ok(())
   }
