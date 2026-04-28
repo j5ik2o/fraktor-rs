@@ -1,5 +1,6 @@
 #![cfg(not(target_os = "none"))]
 
+#[path = "../support/common.rs"]
 mod common;
 
 use std::vec::Vec;
