@@ -90,7 +90,16 @@ where
   }
 
   fn stale_entry_index(&self) -> Option<usize> {
-    self.entries.iter().position(|entry| self.epoch.saturating_sub(entry.accessed_at) >= self.evict_age_threshold)
+    // 複数 stale entry が存在する場合は最古 (accessed_at 最小) を選ぶ。 Vec の挿入順
+    // (`position`) で選ぶと、 age threshold を辛うじて越えた直近アクセスの entry が、 さらに古い
+    // 未アクセス entry より先に evict され LRU 意図を崩すため。
+    self
+      .entries
+      .iter()
+      .enumerate()
+      .filter(|(_, entry)| self.epoch.saturating_sub(entry.accessed_at) >= self.evict_age_threshold)
+      .min_by_key(|(_, entry)| entry.accessed_at)
+      .map(|(index, _)| index)
   }
 
   fn least_recently_used_index(&self) -> usize {
