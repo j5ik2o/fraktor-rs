@@ -150,6 +150,20 @@ fn from_binary_with_manifest_accepts_identify_manifest() {
 }
 
 #[test]
+fn from_binary_with_manifest_accepts_legacy_identify_manifest() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let original = Identify::new(AnyMessage::new(String::from("payload")));
+
+  let bytes = s.to_binary(&original).expect("identify should encode");
+  let view = s.as_string_manifest().expect("string manifest view");
+  let decoded = view.from_binary_with_manifest(&bytes, "ID").expect("legacy manifest decode should succeed");
+  let identify = decoded.downcast::<Identify>().expect("decoded payload should be Identify");
+  let restored = identify.correlation_id().downcast_ref::<String>().expect("correlation id should be String");
+  assert_eq!(restored, "payload");
+}
+
+#[test]
 fn actor_identity_without_ref_round_trips_correlation_id_with_manifest() {
   let registry = registry();
   let s = serializer(&registry);

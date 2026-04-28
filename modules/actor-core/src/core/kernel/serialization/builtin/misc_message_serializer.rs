@@ -31,6 +31,10 @@ use crate::core::kernel::{
 
 /// Manifest string identifying the [`Identify`] payload (matches Pekko `MiscMessageSerializer`).
 pub(crate) const IDENTIFY_MANIFEST: &str = "A";
+// Pekko 互換のため manifest を `"A"` に合わせたが、 旧 fraktor 実装で `"ID"` を発行していた
+// 系から流れてくるメッセージも復号できるよう `from_binary_with_manifest` 側で legacy
+// alias を許容する。 encode 経路は新 manifest だけを使う。
+const LEGACY_IDENTIFY_MANIFEST: &str = "ID";
 /// Manifest string identifying an [`ActorIdentity`] payload (matches Pekko
 /// `MiscMessageSerializer`).
 pub(crate) const ACTOR_IDENTITY_MANIFEST: &str = "B";
@@ -418,7 +422,7 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
     manifest: &str,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     match manifest {
-      | IDENTIFY_MANIFEST => Ok(Box::new(self.decode_identify(bytes)?)),
+      | IDENTIFY_MANIFEST | LEGACY_IDENTIFY_MANIFEST => Ok(Box::new(self.decode_identify(bytes)?)),
       | ACTOR_IDENTITY_MANIFEST => Ok(Box::new(self.decode_actor_identity(bytes)?)),
       | REMOTE_SCOPE_MANIFEST => Ok(Box::new(Self::decode_remote_scope(bytes)?)),
       | REMOTE_ROUTER_CONFIG_MANIFEST => Self::decode_remote_router_config(bytes),
