@@ -104,8 +104,9 @@ where
             // (next_outbound が Some を返した時点で Active のため、実際の戻り先は send_queue)
             // に戻して shutdown 後の再起動で再送できるようにする。
             shared.with_write(|assoc| {
-              let effects = assoc.enqueue(envelope_for_retry);
-              apply_effects_in_place(assoc, effects, &event_publisher);
+              let now_ms = elapsed_ms(started_at);
+              let effects = assoc.enqueue(envelope_for_retry, now_ms);
+              apply_effects_in_place(assoc, effects, &event_publisher, now_ms);
             });
             return Ok(());
           },
@@ -118,8 +119,9 @@ where
             // envelope を再投入する。これは Pekko Artery の AckedDeliveryQueue 相当の最低限
             // の振る舞いで、ack ベースの再送は別レイヤの責務として残してある。
             shared.with_write(|assoc| {
-              let effects = assoc.enqueue(envelope_for_retry);
-              apply_effects_in_place(assoc, effects, &event_publisher);
+              let now_ms = elapsed_ms(started_at);
+              let effects = assoc.enqueue(envelope_for_retry, now_ms);
+              apply_effects_in_place(assoc, effects, &event_publisher, now_ms);
             });
           },
         }
@@ -168,8 +170,9 @@ where
         // 流す。これにより observability (Connected lifecycle 等) が reconnect 経路でも
         // 維持される。
         ctx.shared.with_write(|assoc| {
-          let effects = assoc.recover(Some(endpoint), elapsed_ms(ctx.started_at));
-          apply_effects_in_place(assoc, effects, ctx.event_publisher);
+          let now_ms = elapsed_ms(ctx.started_at);
+          let effects = assoc.recover(Some(endpoint), now_ms);
+          apply_effects_in_place(assoc, effects, ctx.event_publisher, now_ms);
         });
         // 復旧成功後に予算をリセットし、次の独立した障害サイクルが満額の budget で始まるようにする。
         // RestartCounter が時刻 window でしかリセットされないと、回復直後の連続失敗で前サイクルの
@@ -195,7 +198,7 @@ fn gate_for_reconnect(
   // log_association_effects ではなく apply_effects_in_place を使う。
   shared.with_write(|assoc| {
     let effects = assoc.gate(Some(now_ms.saturating_add(backoff_ms)), now_ms);
-    apply_effects_in_place(assoc, effects, event_publisher);
+    apply_effects_in_place(assoc, effects, event_publisher, now_ms);
   });
 }
 

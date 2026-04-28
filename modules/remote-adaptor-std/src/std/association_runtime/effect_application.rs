@@ -35,12 +35,13 @@ pub fn apply_effects_in_place(
   assoc: &mut Association,
   effects: Vec<AssociationEffect>,
   event_publisher: &EventPublisher,
+  now_ms: u64,
 ) {
   // `pending` は LIFO の作業リストなので、再帰を使わずに出力順を保つため reverse してから処理する。
   let mut pending = effects;
   pending.reverse();
   while let Some(effect) = pending.pop() {
-    apply_one(assoc, effect, event_publisher, &mut pending);
+    apply_one(assoc, effect, event_publisher, now_ms, &mut pending);
   }
 }
 
@@ -48,11 +49,12 @@ fn apply_one(
   assoc: &mut Association,
   effect: AssociationEffect,
   event_publisher: &EventPublisher,
+  now_ms: u64,
   pending: &mut Vec<AssociationEffect>,
 ) {
   match effect {
     | AssociationEffect::SendEnvelopes { envelopes } => {
-      apply_send_envelopes(assoc, envelopes, pending);
+      apply_send_envelopes(assoc, envelopes, now_ms, pending);
     },
     | AssociationEffect::DiscardEnvelopes { reason, envelopes } => {
       tracing::warn!(
@@ -77,12 +79,13 @@ fn apply_one(
 fn apply_send_envelopes(
   assoc: &mut Association,
   envelopes: Vec<OutboundEnvelope>,
+  now_ms: u64,
   pending: &mut Vec<AssociationEffect>,
 ) {
   let count = envelopes.len();
   let mut recursive = Vec::new();
   for envelope in envelopes {
-    recursive.extend(assoc.enqueue(envelope));
+    recursive.extend(assoc.enqueue(envelope, now_ms));
   }
   push_effects_in_order(pending, recursive);
   tracing::debug!(count, "association re-enqueued envelopes");

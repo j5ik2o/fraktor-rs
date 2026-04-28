@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::borrow::Borrow;
 
-use super::super::{Pool, RemoteRouterConfig, RouterConfig, SmallestMailboxPool};
+use super::super::{Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, RouterConfig, SmallestMailboxPool};
 use crate::core::kernel::actor::{
   Address,
   deploy::{RemoteScope, Scope},
@@ -36,6 +36,30 @@ fn new_preserves_pool_contract() {
     config.stop_router_when_all_routees_removed(),
     SmallestMailboxPool::new(3).stop_router_when_all_routees_removed(),
   );
+}
+
+#[test]
+fn new_preserves_round_robin_pool_contract() {
+  let local_pool = RoundRobinPool::new(3).with_dispatcher(String::from("round-robin-router-dispatcher"));
+  let config = RemoteRouterConfig::new(local_pool, vec![node_a(), node_b()]);
+
+  assert_eq!(config.nr_of_instances(), 3);
+  assert_eq!(config.router_dispatcher(), "round-robin-router-dispatcher");
+  assert!(!config.has_resizer());
+  assert!(!config.use_pool_dispatcher());
+  assert_eq!(config.create_router().routees().len(), 0);
+}
+
+#[test]
+fn new_preserves_random_pool_contract() {
+  let local_pool = RandomPool::new(3).with_dispatcher(String::from("random-router-dispatcher"));
+  let config = RemoteRouterConfig::new(local_pool, vec![node_a(), node_b()]);
+
+  assert_eq!(config.nr_of_instances(), 3);
+  assert_eq!(config.router_dispatcher(), "random-router-dispatcher");
+  assert!(!config.has_resizer());
+  assert!(!config.use_pool_dispatcher());
+  assert_eq!(config.create_router().routees().len(), 0);
 }
 
 #[test]

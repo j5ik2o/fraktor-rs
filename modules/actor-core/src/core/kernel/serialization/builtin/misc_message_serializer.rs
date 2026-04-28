@@ -20,7 +20,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, Identify, Status},
   },
-  routing::{ConsistentHashingPool, Pool, RemoteRouterConfig, SmallestMailboxPool},
+  routing::{ConsistentHashingPool, Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, SmallestMailboxPool},
   serialization::{
     delegator::SerializationDelegator, error::SerializationError, not_serializable_error::NotSerializableError,
     serialization_registry::SerializationRegistry, serialized_message::SerializedMessage, serializer::Serializer,
@@ -54,6 +54,12 @@ const RECOVERABLE_ERROR_TAG: u8 = 1;
 const FATAL_ERROR_TAG: u8 = 2;
 const ESCALATE_ERROR_TAG: u8 = 3;
 const SMALLEST_MAILBOX_POOL_TAG: u8 = 1;
+const ROUND_ROBIN_POOL_TAG: u8 = 2;
+const RANDOM_POOL_TAG: u8 = 3;
+const LEN_PREFIX_BYTES: usize = core::mem::size_of::<u32>();
+const ENCODED_ADDRESS_STRING_FIELD_COUNT: usize = 3;
+const ENCODED_PORT_BYTES: usize = core::mem::size_of::<u32>();
+const MIN_ENCODED_ADDRESS_BYTES: usize = LEN_PREFIX_BYTES * ENCODED_ADDRESS_STRING_FIELD_COUNT + ENCODED_PORT_BYTES;
 
 /// Serializes a Pekko-compatible subset of misc remote messages.
 ///
@@ -194,14 +200,33 @@ impl MiscMessageSerializer {
       return Err(SerializationError::InvalidFormat);
     }
     let dispatcher = cursor.read_string()?;
+    match pool_tag {
+      | SmallestMailboxPool::WIRE_TAG => {
+        let local = SmallestMailboxPool::from_remote_router_wire(nr_of_instances, dispatcher);
+        let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
+        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
+      },
+      | RoundRobinPool::WIRE_TAG => {
+        let local = RoundRobinPool::from_remote_router_wire(nr_of_instances, dispatcher);
+        let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
+        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
+      },
+      | RandomPool::WIRE_TAG => {
+        let local = RandomPool::from_remote_router_wire(nr_of_instances, dispatcher);
+        let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
+        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
+      },
+      | _ => Err(SerializationError::InvalidFormat),
+    }
+  }
+
+  fn decode_remote_router_nodes(cursor: &mut Cursor<'_>) -> Result<Vec<Address>, SerializationError> {
     let node_count = cursor.read_u32()? as usize;
     if node_count == 0 {
       return Err(SerializationError::InvalidFormat);
     }
-    // 不正な wire 値で `node_count == u32::MAX` のような値が来ても、 cursor の残りバイト数で
-    // 上限をかけて OOM を防ぐ。 1 ノードあたりの最小サイズは 1 バイト以上なので、 残りバイト数を
-    // そのまま上限として使えば pre-allocation で巨大な確保が起こらない。
-    if node_count > cursor.remaining() {
+    let max_nodes = cursor.remaining() / MIN_ENCODED_ADDRESS_BYTES;
+    if node_count > max_nodes {
       return Err(SerializationError::InvalidFormat);
     }
     let mut nodes = Vec::with_capacity(node_count);
@@ -211,13 +236,7 @@ impl MiscMessageSerializer {
     if !cursor.is_finished() {
       return Err(SerializationError::InvalidFormat);
     }
-    match pool_tag {
-      | SmallestMailboxPool::WIRE_TAG => {
-        let local = SmallestMailboxPool::from_remote_router_wire(nr_of_instances, dispatcher);
-        Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
-      },
-      | _ => Err(SerializationError::InvalidFormat),
-    }
+    Ok(nodes)
   }
 
   fn write_address(buffer: &mut Vec<u8>, address: &Address) -> Result<(), SerializationError> {
@@ -291,6 +310,13 @@ impl MiscMessageSerializer {
   fn remote_router_config_not_serializable(type_name: &'static str, serializer_id: SerializerId) -> SerializationError {
     SerializationError::NotSerializable(NotSerializableError::new(type_name, Some(serializer_id), None, None, None))
   }
+
+  fn decode_remote_router_config_with_type_hint<P: SerializableRemoteRouterPool + Send + Sync + 'static>(
+    bytes: &[u8],
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    let decoded = Self::decode_remote_router_config(bytes)?;
+    if decoded.is::<RemoteRouterConfig<P>>() { Ok(decoded) } else { Err(SerializationError::InvalidFormat) }
+  }
 }
 
 trait SerializableRemoteRouterPool: Pool + Sized {
@@ -301,6 +327,22 @@ trait SerializableRemoteRouterPool: Pool + Sized {
 
 impl SerializableRemoteRouterPool for SmallestMailboxPool {
   const WIRE_TAG: u8 = SMALLEST_MAILBOX_POOL_TAG;
+
+  fn from_remote_router_wire(nr_of_instances: usize, router_dispatcher: String) -> Self {
+    Self::new(nr_of_instances).with_dispatcher(router_dispatcher)
+  }
+}
+
+impl SerializableRemoteRouterPool for RoundRobinPool {
+  const WIRE_TAG: u8 = ROUND_ROBIN_POOL_TAG;
+
+  fn from_remote_router_wire(nr_of_instances: usize, router_dispatcher: String) -> Self {
+    Self::new(nr_of_instances).with_dispatcher(router_dispatcher)
+  }
+}
+
+impl SerializableRemoteRouterPool for RandomPool {
+  const WIRE_TAG: u8 = RANDOM_POOL_TAG;
 
   fn from_remote_router_wire(nr_of_instances: usize, router_dispatcher: String) -> Self {
     Self::new(nr_of_instances).with_dispatcher(router_dispatcher)
@@ -333,6 +375,16 @@ impl Serializer for MiscMessageSerializer {
       | id if id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() => {
         let config =
           message.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().ok_or(SerializationError::InvalidFormat)?;
+        Self::encode_remote_router_config(config)
+      },
+      | id if id == TypeId::of::<RemoteRouterConfig<RoundRobinPool>>() => {
+        let config =
+          message.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().ok_or(SerializationError::InvalidFormat)?;
+        Self::encode_remote_router_config(config)
+      },
+      | id if id == TypeId::of::<RemoteRouterConfig<RandomPool>>() => {
+        let config =
+          message.downcast_ref::<RemoteRouterConfig<RandomPool>>().ok_or(SerializationError::InvalidFormat)?;
         Self::encode_remote_router_config(config)
       },
       | id if id == TypeId::of::<RemoteRouterConfig<ConsistentHashingPool>>() => {
@@ -372,7 +424,13 @@ impl Serializer for MiscMessageSerializer {
       return Ok(Box::new(Self::decode_remote_scope(bytes)?));
     }
     if type_id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() {
-      return Self::decode_remote_router_config(bytes);
+      return Self::decode_remote_router_config_with_type_hint::<SmallestMailboxPool>(bytes);
+    }
+    if type_id == TypeId::of::<RemoteRouterConfig<RoundRobinPool>>() {
+      return Self::decode_remote_router_config_with_type_hint::<RoundRobinPool>(bytes);
+    }
+    if type_id == TypeId::of::<RemoteRouterConfig<RandomPool>>() {
+      return Self::decode_remote_router_config_with_type_hint::<RandomPool>(bytes);
     }
     // Status は Success / Failure の判別に manifest が必要。 type_hint だけでは
     // どちらの variant か決まらないため、 from_binary_with_manifest 経由を要求する。
@@ -402,15 +460,20 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
     if message.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().is_some() {
       return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
     }
+    if message.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().is_some() {
+      return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
+    }
+    if message.downcast_ref::<RemoteRouterConfig<RandomPool>>().is_some() {
+      return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
+    }
     if let Some(status) = message.downcast_ref::<Status>() {
       return match status {
         | Status::Success(_) => Cow::Borrowed(STATUS_SUCCESS_MANIFEST),
         | Status::Failure(_) => Cow::Borrowed(STATUS_FAILURE_MANIFEST),
       };
     }
-    // manifest() は to_binary が成功したメッセージにしか呼ばれない想定だが、予期しない型でも
-    // silent-corruption を避けるため診断ログを出して空マニフェストを返す（呼び出し元の
-    // to_binary が InvalidFormat を返すので最終的にエラーが伝播する）。
+    // `manifest()` cannot return `Result`; normal serialization has already failed in
+    // `to_binary`. Keep direct manifest misuse observable without panicking the process.
     let type_id = message.type_id();
     tracing::error!(serializer = "MiscMessageSerializer", ?type_id, "manifest() called with unsupported type");
     Cow::Borrowed("")

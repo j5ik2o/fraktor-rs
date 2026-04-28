@@ -239,7 +239,7 @@ fn dispatch_handshake_request(
   // effect 適用、応答 PDU の構築までを lock 内で完結させ、送信は lock 解放後に行う。
   let response = target.with_write(|assoc| match assoc.accept_handshake_request(req, now_ms) {
     | Ok(effects) => {
-      apply_effects_in_place(assoc, effects, event_publisher);
+      apply_effects_in_place(assoc, effects, event_publisher, now_ms);
       Some(HandshakePdu::Rsp(HandshakeRsp::new(local.clone())))
     },
     | Err(err) => {
@@ -275,7 +275,7 @@ fn dispatch_handshake_response(
     return;
   };
   target.with_write(|assoc| match assoc.accept_handshake_response(rsp, now_ms) {
-    | Ok(effects) => apply_effects_in_place(assoc, effects, event_publisher),
+    | Ok(effects) => apply_effects_in_place(assoc, effects, event_publisher, now_ms),
     | Err(err) => {
       tracing::warn!(peer = %peer, ?err, "discarding invalid handshake response");
     },

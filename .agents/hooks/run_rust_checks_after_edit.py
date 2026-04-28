@@ -8,7 +8,8 @@ Claude Code と Codex CLI で共通利用するため、エージェント種別
   Codex は `apply_patch` コマンド本文も解釈する)
 * 自身の hook 用ロックファイルの配置先
 * 失敗時にエージェントへ返すブロック応答の形式 (Claude は stderr へ書き出し
-  て exit 2、Codex は `{should_block, reason}` の JSON を stdout へ出力)
+  て exit 2、Codex は `{should_block, reason}` の JSON を stdout へ出力し、
+  フック実行環境向けに同じ理由を stderr にも出力)
 
 排他制御は二段:
   1. `target/.ci-check.coordination.lock` で hook 同士 (エージェント横断) の
@@ -363,6 +364,7 @@ def block_claude(message: str) -> int:
 
 
 def block_codex(message: str) -> int:
+    print(message, file=sys.stderr)
     print(json.dumps({
         "should_block": True,
         "reason": message,

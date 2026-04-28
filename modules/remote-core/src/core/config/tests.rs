@@ -2,8 +2,11 @@ use core::time::Duration;
 
 use crate::core::config::RemoteConfig;
 
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
+const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
+const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
+const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
 
 #[test]
@@ -42,6 +45,9 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
   assert_eq!(s.outbound_lanes(), 1);
   assert_eq!(s.maximum_frame_size(), DEFAULT_MAXIMUM_FRAME_SIZE);
   assert_eq!(s.buffer_pool_size(), DEFAULT_BUFFER_POOL_SIZE);
+  assert_eq!(s.outbound_message_queue_size(), DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE);
+  assert_eq!(s.outbound_control_queue_size(), DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE);
+  assert_eq!(s.remove_quarantined_association_after(), DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER);
   assert!(!s.untrusted_mode());
   assert!(!s.log_received_messages());
   assert!(!s.log_sent_messages());
@@ -105,6 +111,9 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_outbound_lanes(2)
     .with_maximum_frame_size(512 * 1024)
     .with_buffer_pool_size(64)
+    .with_outbound_message_queue_size(32)
+    .with_outbound_control_queue_size(8)
+    .with_remove_quarantined_association_after(Duration::from_secs(30))
     .with_untrusted_mode(true)
     .with_log_received_messages(true)
     .with_log_sent_messages(true)
@@ -117,6 +126,9 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.outbound_lanes(), 2);
   assert_eq!(s.maximum_frame_size(), 512 * 1024);
   assert_eq!(s.buffer_pool_size(), 64);
+  assert_eq!(s.outbound_message_queue_size(), 32);
+  assert_eq!(s.outbound_control_queue_size(), 8);
+  assert_eq!(s.remove_quarantined_association_after(), Duration::from_secs(30));
   assert!(s.untrusted_mode());
   assert!(s.log_received_messages());
   assert!(s.log_sent_messages());
@@ -157,6 +169,35 @@ fn with_buffer_pool_size_rejects_zero() {
   let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_buffer_pool_size(0));
 
   // Then: 不正な pool size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_outbound_message_queue_size_rejects_zero() {
+  // When: outbound message queue size に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_message_queue_size(0));
+
+  // Then: 不正な queue size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_outbound_control_queue_size_rejects_zero() {
+  // When: outbound control queue size に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_control_queue_size(0));
+
+  // Then: 不正な queue size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_remove_quarantined_association_after_rejects_zero() {
+  // When: remove quarantined association after に 0 を指定する
+  let result = std::panic::catch_unwind(|| {
+    RemoteConfig::new("localhost").with_remove_quarantined_association_after(Duration::ZERO)
+  });
+
+  // Then: 不正な duration として拒否する
   assert!(result.is_err());
 }
 

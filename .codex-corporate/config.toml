@@ -37,7 +37,7 @@ config_file = "agents/worker.toml"
 status_line = ["current-dir", "git-branch"]
 
 [tui.model_availability_nux]
-"gpt-5.5" = 2
+"gpt-5.5" = 4
 
 [projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
 trust_level = "trusted"

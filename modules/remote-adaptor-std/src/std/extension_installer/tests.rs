@@ -1,11 +1,14 @@
+use core::time::Duration;
+
 use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
   event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
   system::ActorSystemBuildError,
 };
 use fraktor_remote_core_rs::core::{
-  address::Address,
+  address::{Address, UniqueAddress},
   association::QuarantineReason,
+  config::RemoteConfig,
   extension::{Remoting, RemotingError},
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
@@ -24,9 +27,13 @@ fn make_transport_with_addresses(addresses: Vec<Address>) -> SharedLock<TcpRemot
   SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", addresses))
 }
 
+fn remote_config() -> RemoteConfig {
+  RemoteConfig::new("127.0.0.1")
+}
+
 fn make_remoting(transport: SharedLock<TcpRemoteTransport>) -> (StdRemoting, EventHarness) {
   let harness = EventHarness::new();
-  let remoting = StdRemoting::new(transport, None, harness.publisher().clone());
+  let remoting = StdRemoting::new(transport, remote_config(), None, harness.publisher().clone());
   (remoting, harness)
 }
 
@@ -96,6 +103,28 @@ async fn std_remoting_quarantine_succeeds_while_running() {
   remoting.shutdown().expect("shutdown after quarantine");
 }
 
+#[test]
+fn std_remoting_registered_association_uses_configured_quarantine_cleanup_deadline() {
+  let harness = EventHarness::new();
+  let config = remote_config().with_remove_quarantined_association_after(Duration::from_secs(5));
+  let mut remoting = StdRemoting::new(make_transport(), config, None, harness.publisher().clone());
+  let local = UniqueAddress::new(Address::new("local-sys", "127.0.0.1", 2551), 1);
+  let remote = UniqueAddress::new(Address::new("remote-sys", "10.0.0.1", 2552), 2);
+
+  remoting.register_association(local, remote.clone());
+  let shared = remoting.registry().get(&remote).expect("registered association").clone();
+  shared.with_write(|association| {
+    let effects = association.quarantine(QuarantineReason::new("cleanup test"), 10);
+    assert!(!effects.is_empty(), "quarantine should emit lifecycle effects");
+  });
+
+  remoting.remove_quarantined_associations_due(5_009);
+  assert!(remoting.registry().get(&remote).is_some(), "association must remain before cleanup deadline");
+
+  remoting.remove_quarantined_associations_due(5_010);
+  assert!(remoting.registry().get(&remote).is_none(), "association must be removed at cleanup deadline");
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn std_remoting_start_snapshots_advertised_addresses() {
   let addresses = vec![Address::new("local-sys", "127.0.0.1", 2551), Address::new("local-sys", "127.0.0.2", 2552)];
@@ -131,7 +160,7 @@ async fn std_remoting_start_publishes_listen_started_for_each_advertised_address
 
 #[test]
 fn extension_installer_holds_a_shared_remoting_handle() {
-  let installer = RemotingExtensionInstaller::new(make_transport());
+  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should create remoting");
   let remoting_a = installer.remoting().expect("installed remoting should be available");
@@ -141,7 +170,7 @@ fn extension_installer_holds_a_shared_remoting_handle() {
 
 #[test]
 fn extension_installer_remoting_before_install_returns_configuration_error() {
-  let installer = RemotingExtensionInstaller::new(make_transport());
+  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
 
   let error = match installer.remoting() {
     | Ok(_) => panic!("remoting handle should not exist before install"),
@@ -153,7 +182,7 @@ fn extension_installer_remoting_before_install_returns_configuration_error() {
 
 #[test]
 fn extension_installer_double_install_returns_configuration_error() {
-  let installer = RemotingExtensionInstaller::new(make_transport());
+  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("first install should create remoting");
 
@@ -164,7 +193,7 @@ fn extension_installer_double_install_returns_configuration_error() {
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_remoting_lifecycle_drives_via_shared_lock() {
-  let installer = RemotingExtensionInstaller::new(make_transport());
+  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should wire event publisher");
   let remoting = installer.remoting().expect("installed remoting should be available");
@@ -177,7 +206,7 @@ async fn extension_installer_remoting_lifecycle_drives_via_shared_lock() {
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_install_wires_listen_event_publisher() {
   let listen_address = Address::new("local-sys", "127.0.0.1", 2551);
-  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]));
+  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should wire event publisher");
 
@@ -196,7 +225,7 @@ async fn extension_installer_install_wires_listen_event_publisher() {
 async fn extension_installer_start_binds_listener_and_publishes_actual_bound_port() {
   // Given
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
-  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]));
+  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should wire event publisher");
   let remoting = installer.remoting().expect("installed remoting should be available");

@@ -11,13 +11,29 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::std::tcp_transport::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
 
-const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
+const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
 
 fn append_declared_frame_header(buf: &mut BytesMut, length: usize) {
   let length = u32::try_from(length).expect("test frame length should fit in u32");
   buf.extend_from_slice(&length.to_be_bytes());
   buf.extend_from_slice(&[1, 0]);
+}
+
+fn declared_frame_length(buf: &BytesMut) -> usize {
+  let bytes = [buf[0], buf[1], buf[2], buf[3]];
+  u32::from_be_bytes(bytes) as usize
+}
+
+fn large_envelope_frame() -> WireFrame {
+  WireFrame::Envelope(EnvelopePdu::new(
+    "/user/large".into(),
+    None,
+    0x14,
+    0,
+    1,
+    Bytes::from(vec![0_u8; MINIMUM_MAXIMUM_FRAME_SIZE]),
+  ))
 }
 
 #[test]
@@ -128,6 +144,40 @@ fn wire_frame_codec_rejects_frame_above_configured_maximum_frame_size() {
   let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
   assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::FrameTooLarge)));
   assert_eq!(buf.len(), 6, "oversized header must not partially consume the buffer");
+}
+
+#[test]
+fn wire_frame_codec_rejects_outbound_frame_above_configured_maximum_frame_size() {
+  // Given: outbound codec の最大 frame size を最小値にした構成
+  let mut codec = WireFrameCodec::with_maximum_frame_size(MINIMUM_MAXIMUM_FRAME_SIZE);
+  let frame = large_envelope_frame();
+  let mut buf = BytesMut::from(&b"existing bytes"[..]);
+  let original = buf.clone();
+
+  // When: 設定上限を超える frame を encode する
+  let err = codec.encode(frame, &mut buf).expect_err("oversized outbound frame must be rejected");
+
+  // Then: FrameTooLarge を返し、既存の送信バッファを変更しない
+  assert!(matches!(err, crate::std::tcp_transport::FrameCodecError::Wire(WireError::FrameTooLarge)));
+  assert_eq!(buf, original, "failed outbound encode must not mutate the destination buffer");
+}
+
+#[test]
+fn wire_frame_codec_allows_outbound_frame_equal_to_configured_maximum_frame_size() {
+  // Given: declared length と同じ最大 frame size
+  let frame = large_envelope_frame();
+  let mut probe_codec = WireFrameCodec::new();
+  let mut probe = BytesMut::new();
+  probe_codec.encode(frame.clone(), &mut probe).expect("probe encode should succeed");
+  let declared_length = declared_frame_length(&probe);
+  let mut codec = WireFrameCodec::with_maximum_frame_size(declared_length);
+  let mut buf = BytesMut::new();
+
+  // When: declared length が上限ちょうどの frame を encode する
+  codec.encode(frame, &mut buf).expect("frame at the outbound limit should be accepted");
+
+  // Then: length prefix が表す値を境界として許可する
+  assert_eq!(declared_frame_length(&buf), declared_length);
 }
 
 #[test]

@@ -48,6 +48,21 @@ impl AssociationRegistry {
     self.entries.remove(address)
   }
 
+  /// Removes quarantined entries whose removal deadline is due.
+  ///
+  /// Returns the removed addresses in key order.
+  pub fn remove_quarantined_due(&mut self, now_ms: u64) -> Vec<UniqueAddress> {
+    let mut removed = Vec::new();
+    self.entries.retain(|address, shared| {
+      let should_remove = shared.with_write(|association| association.is_quarantine_removal_due(now_ms));
+      if should_remove {
+        removed.push(address.clone());
+      }
+      !should_remove
+    });
+    removed
+  }
+
   /// Returns a reference to the entry for `address` if present.
   #[must_use]
   pub fn get(&self, address: &UniqueAddress) -> Option<&AssociationShared> {

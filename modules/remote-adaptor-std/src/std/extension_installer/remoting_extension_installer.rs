@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_remote_core_rs::core::extension::EventPublisher;
+use fraktor_remote_core_rs::core::{config::RemoteConfig, extension::EventPublisher};
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::std::{extension_installer::base::StdRemoting, tcp_transport::TcpRemoteTransport};
@@ -17,14 +17,15 @@ const ALREADY_INSTALLED: &str = "remoting extension is already installed";
 /// Extension installer for the `fraktor-remote-adaptor-std-rs` runtime.
 pub struct RemotingExtensionInstaller {
   transport: SharedLock<TcpRemoteTransport>,
+  config:    RemoteConfig,
   remoting:  OnceLock<SharedLock<StdRemoting>>,
 }
 
 impl RemotingExtensionInstaller {
   /// Creates a new installer wrapping the given transport.
   #[must_use]
-  pub fn new(transport: SharedLock<TcpRemoteTransport>) -> Self {
-    Self { transport, remoting: OnceLock::new() }
+  pub fn new(transport: SharedLock<TcpRemoteTransport>, config: RemoteConfig) -> Self {
+    Self { transport, config, remoting: OnceLock::new() }
   }
 
   /// Returns a clone of the shared `StdRemoting` handle.
@@ -41,8 +42,12 @@ impl RemotingExtensionInstaller {
 impl ExtensionInstaller for RemotingExtensionInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let event_publisher = EventPublisher::new(system.downgrade());
-    let remoting =
-      SharedLock::new_with_driver::<DefaultMutex<_>>(StdRemoting::new(self.transport.clone(), None, event_publisher));
+    let remoting = SharedLock::new_with_driver::<DefaultMutex<_>>(StdRemoting::new(
+      self.transport.clone(),
+      self.config.clone(),
+      None,
+      event_publisher,
+    ));
     // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
     self.remoting.set(remoting).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
   }
