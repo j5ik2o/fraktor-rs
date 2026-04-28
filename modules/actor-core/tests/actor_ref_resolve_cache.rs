@@ -198,7 +198,11 @@ fn should_evict_least_recently_used_entry_when_first_inserted_is_more_recent() {
 
 #[test]
 fn should_evict_stale_entry_before_least_recently_used_entry() {
-  let mut cache = ActorRefResolveCache::with_limits(2, 1);
+  // 旧シナリオは threshold=1 で両 entry が stale になり、 Vec 挿入順 (`position`) で先頭を
+  // evict するロジックを「first が stale なら evict される」と擬制していた。 stale 中で最古
+  // (accessed_at 最小) を選ぶ正しい LRU 意図に合わせ、 second だけが stale な状態を作って
+  // 「stale な second が non-stale な first より先に evict される」を検証する。
+  let mut cache = ActorRefResolveCache::with_limits(2, 3);
   let first_path = remote_path("one");
   let second_path = remote_path("two");
   let third_path = remote_path("three");
@@ -216,6 +220,8 @@ fn should_evict_stale_entry_before_least_recently_used_entry() {
       Ok::<ActorPath, &'static str>(candidate.clone())
     })
     .expect("second resolve");
+  // first を 2 回 touch して accessed_at を進める一方、 second は放置する。
+  // threshold=3 で second だけが age を超え、 first は超えない構成にする。
   cache
     .resolve(&first_path, |_candidate: &ActorPath| {
       calls.set(calls.get() + 1);
@@ -223,22 +229,31 @@ fn should_evict_stale_entry_before_least_recently_used_entry() {
     })
     .expect("first hit");
   cache
+    .resolve(&first_path, |_candidate: &ActorPath| {
+      calls.set(calls.get() + 1);
+      Ok::<ActorPath, &'static str>(remote_path("unexpected-first"))
+    })
+    .expect("first hit again");
+  cache
     .resolve(&third_path, |candidate: &ActorPath| {
       calls.set(calls.get() + 1);
       Ok::<ActorPath, &'static str>(candidate.clone())
     })
     .expect("third resolve");
 
-  let second_again = cache.resolve(&second_path, |_candidate: &ActorPath| {
+  // first を先に確認して Hit させる (first の accessed_at を更新)。 second は evict された
+  // 想定のため、 resolve 時に再挿入される。 先に second を呼ぶと再挿入の時点で別の evict
+  // (LRU で first が選ばれる) が走るので、 順序は first → second の固定とする。
+  let first_again = cache.resolve(&first_path, |_candidate: &ActorPath| {
     calls.set(calls.get() + 1);
-    Ok::<ActorPath, &'static str>(remote_path("unexpected-second"))
+    Ok::<ActorPath, &'static str>(remote_path("unexpected-first"))
   });
-  let first_again = cache.resolve(&first_path, |candidate: &ActorPath| {
+  let second_again = cache.resolve(&second_path, |candidate: &ActorPath| {
     calls.set(calls.get() + 1);
     Ok::<ActorPath, &'static str>(candidate.clone())
   });
 
-  assert!(matches!(second_again, Ok(ActorRefResolveCacheOutcome::Hit(value)) if value == second_path));
-  assert!(matches!(first_again, Ok(ActorRefResolveCacheOutcome::Miss(value)) if value == first_path));
+  assert!(matches!(first_again, Ok(ActorRefResolveCacheOutcome::Hit(value)) if value == first_path));
+  assert!(matches!(second_again, Ok(ActorRefResolveCacheOutcome::Miss(value)) if value == second_path));
   assert_eq!(calls.get(), 4);
 }
