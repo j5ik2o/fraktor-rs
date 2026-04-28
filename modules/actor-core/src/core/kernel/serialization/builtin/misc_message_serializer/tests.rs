@@ -1,6 +1,5 @@
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
-use std::panic::AssertUnwindSafe;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -455,14 +454,14 @@ fn actor_identity_decode_with_some_ref_returns_not_serializable_when_system_stat
 }
 
 #[test]
-fn manifest_panics_for_unsupported_type() {
+fn manifest_returns_empty_for_unsupported_type() {
   let registry = registry();
   let s = serializer(&registry);
   let view = s.as_string_manifest().expect("string manifest view");
 
-  let result = std::panic::catch_unwind(AssertUnwindSafe(|| view.manifest(&123_i32)));
+  let manifest = view.manifest(&123_i32);
 
-  assert!(result.is_err(), "unsupported manifest lookup must fail immediately");
+  assert!(manifest.is_empty(), "unsupported manifest lookup must fail safely");
 }
 
 #[test]

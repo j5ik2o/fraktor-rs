@@ -653,15 +653,7 @@ fn enqueue_in_active_discards_when_user_queue_is_full() {
 
   assert!(first.is_empty());
   assert_eq!(a.send_queue().len(), 1);
-  let discard = second
-    .iter()
-    .find(|effect| matches!(effect, AssociationEffect::DiscardEnvelopes { .. }))
-    .expect("queue overflow should discard the rejected envelope");
-  if let AssociationEffect::DiscardEnvelopes { reason, envelopes } = discard {
-    assert!(!reason.message().is_empty());
-    assert_eq!(envelopes.len(), 1);
-    assert!(matches!(envelopes[0].priority(), OutboundPriority::User));
-  }
+  assert_single_discard_with_priority(&second, OutboundPriority::User);
 }
 
 #[test]
@@ -702,15 +694,7 @@ fn enqueue_in_idle_discards_when_user_deferred_capacity_is_full() {
 
   assert!(first.is_empty());
   assert_eq!(a.deferred_len(), 1);
-  let discard = second
-    .iter()
-    .find(|effect| matches!(effect, AssociationEffect::DiscardEnvelopes { .. }))
-    .expect("deferred overflow should discard the rejected envelope");
-  if let AssociationEffect::DiscardEnvelopes { reason, envelopes } = discard {
-    assert!(!reason.message().is_empty());
-    assert_eq!(envelopes.len(), 1);
-    assert!(matches!(envelopes[0].priority(), OutboundPriority::User));
-  }
+  assert_single_discard_with_priority(&second, OutboundPriority::User);
 }
 
 #[test]

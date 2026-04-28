@@ -56,7 +56,10 @@ const ESCALATE_ERROR_TAG: u8 = 3;
 const SMALLEST_MAILBOX_POOL_TAG: u8 = 1;
 const ROUND_ROBIN_POOL_TAG: u8 = 2;
 const RANDOM_POOL_TAG: u8 = 3;
-const MIN_ENCODED_ADDRESS_BYTES: usize = 16;
+const LEN_PREFIX_BYTES: usize = core::mem::size_of::<u32>();
+const ENCODED_ADDRESS_STRING_FIELD_COUNT: usize = 3;
+const ENCODED_PORT_BYTES: usize = core::mem::size_of::<u32>();
+const MIN_ENCODED_ADDRESS_BYTES: usize = LEN_PREFIX_BYTES * ENCODED_ADDRESS_STRING_FIELD_COUNT + ENCODED_PORT_BYTES;
 
 /// Serializes a Pekko-compatible subset of misc remote messages.
 ///
@@ -469,7 +472,11 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
         | Status::Failure(_) => Cow::Borrowed(STATUS_FAILURE_MANIFEST),
       };
     }
-    panic!("Can't serialize unsupported object in MiscMessageSerializer: {:?}", message.type_id())
+    // `manifest()` cannot return `Result`; normal serialization has already failed in
+    // `to_binary`. Keep direct manifest misuse observable without panicking the process.
+    let type_id = message.type_id();
+    tracing::error!(serializer = "MiscMessageSerializer", ?type_id, "manifest() called with unsupported type");
+    Cow::Borrowed("")
   }
 
   fn from_binary_with_manifest(
