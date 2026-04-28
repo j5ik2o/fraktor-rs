@@ -1,11 +1,17 @@
-use alloc::vec::Vec;
+use alloc::{string::ToString, vec::Vec};
 use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::SystemStateShared;
 use crate::core::kernel::{
-  actor::{actor_ref::ActorRef, error::ActorError, messaging::system_message::FailurePayload},
+  actor::{
+    Actor, ActorCell, ActorContext, Pid,
+    actor_ref::ActorRef,
+    error::ActorError,
+    messaging::{AnyMessageView, system_message::FailurePayload},
+    props::Props,
+  },
   event::{
     logging::{DefaultLoggingFilter, LogLevel},
     stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
@@ -66,6 +72,11 @@ fn assert_operation_does_not_block_on_read_lock(
   worker.join().expect("worker join");
 
   assert!(early.is_some(), "{operation_name} は outer read lock 中でもブロックしないはず");
+}
+
+fn root_guardian_cell(shared: SystemStateShared, pid: Pid) -> ArcShared<ActorCell> {
+  let props = Props::from_fn(|| GuardianProbeActor);
+  ActorCell::create(shared, pid, None, "root".to_string(), &props).expect("root guardian cell")
 }
 
 #[test]
@@ -190,8 +201,6 @@ fn extension_or_insert_with_after_root_started_succeeds() {
 
   let shared = SystemStateShared::new(SystemState::new());
 
-  let root_pid = shared.allocate_pid();
-  shared.register_guardian_pid(GuardianKind::Root, root_pid);
   shared.mark_root_started();
 
   // Pekko compatibility: extensions can be registered at any time (putIfAbsent semantics).
@@ -258,7 +267,8 @@ fn clear_guardian_does_not_block_on_read_lock() {
   let shared = SystemStateShared::new(SystemState::new());
 
   let root_pid = shared.allocate_pid();
-  shared.register_guardian_pid(GuardianKind::Root, root_pid);
+  let root_cell = root_guardian_cell(shared.clone(), root_pid);
+  shared.set_root_guardian(&root_cell);
 
   let inner = shared.inner().clone();
   let shared_for_clear = shared.clone();
@@ -293,6 +303,14 @@ fn clear_guardian_does_not_block_on_read_lock() {
   assert!(early.is_some(), "clear_guardianはreadロック中でもブロックしないはず");
   assert!(matches!(early.unwrap(), Some(GuardianKind::Root)));
   assert!(!shared.guardian_alive(GuardianKind::Root));
+}
+
+struct GuardianProbeActor;
+
+impl Actor for GuardianProbeActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
 }
 
 #[test]
