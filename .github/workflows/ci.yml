@@ -134,8 +134,9 @@ jobs:
   # 結合テスト / E2E
   #
   # `scripts/ci-check.sh integration-test` は workspace の `--tests --examples`
-  # を実行する。actor の classic/typed user flow や std adaptor boot など、
-  # テストピラミッド上の Integration / E2E 層はここで PR ごとに検証する。
+  # と cross-crate E2E 専用 crate を明示実行する。actor の classic/typed user flow
+  # や std adaptor boot、`tests/e2e` の runtime boot など、テストピラミッド上の
+  # Integration / E2E 層はここで PR ごとに検証する。
   integration-e2e:
     name: Integration / E2E
     runs-on: self-hosted
