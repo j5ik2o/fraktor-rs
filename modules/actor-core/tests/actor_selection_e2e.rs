@@ -111,7 +111,7 @@ fn actor_selection_resolves_string_and_direct_path_targets() {
     .expect("parent");
   parent.tell(AnyMessage::new(SpawnWorker));
 
-  assert!(wait_until(SELECTION_TIMEOUT_MS, || path_slot.lock().is_some()));
+  assert!(wait_until(SELECTION_TIMEOUT_MS, || { path_slot.lock().is_some() && worker_slot.lock().is_some() }));
   let worker = worker_slot.lock().clone().expect("worker");
   let worker_pid = worker.pid();
   let worker_path = path_slot.lock().clone().expect("worker path");
