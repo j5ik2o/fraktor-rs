@@ -42,9 +42,14 @@ where
     &self,
     provider: &mut StdRemoteActorRefProvider,
   ) -> Result<Router<P::Logic>, RemoteRouteeExpansionError> {
+    let nodes = self.config.nodes();
+    if nodes.is_empty() {
+      return Err(RemoteRouteeExpansionError::empty_nodes());
+    }
+
     let mut routees = Vec::with_capacity(self.config.nr_of_instances());
     for index in 0..self.config.nr_of_instances() {
-      let node = &self.config.nodes()[index % self.config.nodes().len()];
+      let node = &nodes[index % nodes.len()];
       let path =
         (self.path_factory)(index, node).map_err(|source| RemoteRouteeExpansionError::routee_path(index, source))?;
       let actor_ref =

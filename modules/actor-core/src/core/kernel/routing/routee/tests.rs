@@ -6,6 +6,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::Routee;
 use crate::core::kernel::actor::{
   Pid,
+  actor_path::ActorPathParser,
   actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   error::SendError,
   messaging::AnyMessage,
@@ -109,6 +110,17 @@ fn partial_eq_actorref_compares_by_pid() {
   let routee2 = Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(42, 0), sender2));
 
   // Then: they should be equal (ActorRef compares by pid)
+  assert_eq!(routee1, routee2);
+}
+
+#[test]
+fn partial_eq_actorref_delegates_to_actor_ref_equality() {
+  let (_, sender1) = CapturingSender::new();
+  let (_, sender2) = CapturingSender::new();
+  let path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+  let routee1 = Routee::ActorRef(ActorRef::with_canonical_path(Pid::new(42, 0), sender1, path.clone()));
+  let routee2 = Routee::ActorRef(ActorRef::with_canonical_path(Pid::new(43, 0), sender2, path));
+
   assert_eq!(routee1, routee2);
 }
 
