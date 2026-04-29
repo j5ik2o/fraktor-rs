@@ -193,8 +193,9 @@ impl StdRemoteActorRefProvider {
     remote_ref: RemoteActorRef,
   ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
     let pid = Self::allocate_remote_pid(next_remote_pid)?;
-    let sender = RemoteActorRefSender::new(remote_ref.clone());
-    Ok(ActorRef::with_canonical_path(pid, sender, remote_ref.path().clone()))
+    let path = remote_ref.path().clone();
+    let sender = RemoteActorRefSender::new(remote_ref);
+    Ok(ActorRef::with_canonical_path(pid, sender, path))
   }
 
   fn allocate_remote_pid(next_remote_pid: &mut u64) -> Result<Pid, StdRemoteActorRefProviderError> {
