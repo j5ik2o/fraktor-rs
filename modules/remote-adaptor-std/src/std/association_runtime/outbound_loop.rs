@@ -12,8 +12,8 @@ use fraktor_utils_core_rs::core::sync::SharedLock;
 use tokio::time::{Instant, sleep, timeout};
 
 use crate::std::association_runtime::{
-  apply_effects_in_place, association_shared::AssociationShared, reconnect_backoff_policy::ReconnectBackoffPolicy,
-  restart_counter::RestartCounter,
+  apply_effects_in_place, association_shared::AssociationShared, duration_millis_saturated,
+  reconnect_backoff_policy::ReconnectBackoffPolicy, restart_counter::RestartCounter, tokio_instant_elapsed_millis,
 };
 
 /// Polling interval used by the outbound drain loop.
@@ -104,14 +104,14 @@ where
             // (next_outbound が Some を返した時点で Active のため、実際の戻り先は send_queue)
             // に戻して shutdown 後の再起動で再送できるようにする。
             shared.with_write(|assoc| {
-              let now_ms = elapsed_ms(started_at);
+              let now_ms = tokio_instant_elapsed_millis(started_at);
               let effects = assoc.enqueue(envelope_for_retry, now_ms);
               apply_effects_in_place(assoc, effects, &event_publisher, now_ms);
             });
             return Ok(());
           },
           | Err(err) => {
-            gate_for_reconnect(&shared, &policy, elapsed_ms(started_at), &event_publisher);
+            gate_for_reconnect(&shared, &policy, tokio_instant_elapsed_millis(started_at), &event_publisher);
             let ctx =
               RecoverContext { shared: &shared, policy: &policy, event_publisher: &event_publisher, started_at };
             recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restart_counter, err).await?;
@@ -119,7 +119,7 @@ where
             // envelope を再投入する。これは Pekko Artery の AckedDeliveryQueue 相当の最低限
             // の振る舞いで、ack ベースの再送は別レイヤの責務として残してある。
             shared.with_write(|assoc| {
-              let now_ms = elapsed_ms(started_at);
+              let now_ms = tokio_instant_elapsed_millis(started_at);
               let effects = assoc.enqueue(envelope_for_retry, now_ms);
               apply_effects_in_place(assoc, effects, &event_publisher, now_ms);
             });
@@ -160,7 +160,7 @@ where
   Fut: Future<Output = Result<TransportEndpoint, TransportError>>, {
   let mut last_error = first_error;
   loop {
-    if !restart_counter.restart(elapsed_ms(ctx.started_at)) {
+    if !restart_counter.restart(tokio_instant_elapsed_millis(ctx.started_at)) {
       return Err(last_error);
     }
     match reconnect_after_backoff(ctx.policy, reconnect, remote.clone()).await {
@@ -170,7 +170,7 @@ where
         // 流す。これにより observability (Connected lifecycle 等) が reconnect 経路でも
         // 維持される。
         ctx.shared.with_write(|assoc| {
-          let now_ms = elapsed_ms(ctx.started_at);
+          let now_ms = tokio_instant_elapsed_millis(ctx.started_at);
           let effects = assoc.recover(Some(endpoint), now_ms);
           apply_effects_in_place(assoc, effects, ctx.event_publisher, now_ms);
         });
@@ -193,7 +193,7 @@ fn gate_for_reconnect(
   now_ms: u64,
   event_publisher: &EventPublisher,
 ) {
-  let backoff_ms = duration_millis(policy.backoff());
+  let backoff_ms = duration_millis_saturated(policy.backoff());
   // gate() が返す PublishLifecycle(Gated) / DiscardEnvelopes を event stream へ流すため、
   // log_association_effects ではなく apply_effects_in_place を使う。
   shared.with_write(|assoc| {
@@ -218,17 +218,8 @@ where
   match timeout(policy.timeout(), reconnect(remote)).await {
     | Ok(result) => result,
     | Err(_elapsed) => {
-      tracing::warn!(remote = %remote_for_log, timeout_ms = duration_millis(policy.timeout()), "reconnect attempt timed out");
+      tracing::warn!(remote = %remote_for_log, timeout_ms = duration_millis_saturated(policy.timeout()), "reconnect attempt timed out");
       Err(TransportError::ConnectionClosed)
     },
   }
-}
-
-fn elapsed_ms(started_at: Instant) -> u64 {
-  duration_millis(started_at.elapsed())
-}
-
-fn duration_millis(duration: Duration) -> u64 {
-  // handshake_driver::monotonic_millis_since と同じ saturating キャスト形式に揃える。
-  duration.as_millis().min(u128::from(u64::MAX)) as u64
 }

@@ -32,6 +32,7 @@ mod effect_application;
 mod handshake_driver;
 mod inbound_dispatch;
 mod inbound_quarantine_check;
+mod monotonic_millis;
 mod outbound_loop;
 mod peer_address_match;
 mod reconnect_backoff_policy;
@@ -44,6 +45,9 @@ pub(crate) use effect_application::apply_effects_in_place;
 pub use handshake_driver::HandshakeDriver;
 pub use inbound_dispatch::{run_inbound_dispatch, run_inbound_task_with_restart_budget};
 pub use inbound_quarantine_check::InboundQuarantineCheck;
+pub(crate) use monotonic_millis::{
+  duration_millis_saturated, std_instant_elapsed_millis, tokio_instant_elapsed_millis,
+};
 pub use outbound_loop::{run_outbound_loop, run_outbound_loop_with_reconnect};
 pub use reconnect_backoff_policy::ReconnectBackoffPolicy;
 pub use restart_counter::RestartCounter;

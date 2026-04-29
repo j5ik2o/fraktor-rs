@@ -1,7 +1,7 @@
 //! Inbound dispatch loop: feeds incoming wire frames into the matching
 //! `Association`.
 
-use core::{future::Future, time::Duration};
+use core::future::Future;
 use std::sync::{Arc, Mutex};
 
 use fraktor_remote_core_rs::core::{
@@ -18,6 +18,7 @@ use crate::std::{
   association_runtime::{
     RestartCounter, apply_effects_in_place, association_registry::AssociationRegistry,
     inbound_quarantine_check::InboundQuarantineCheck, peer_address_match::peer_matches_address,
+    tokio_instant_elapsed_millis,
   },
   tcp_transport::{InboundFrameEvent, WireFrame},
 };
@@ -57,7 +58,7 @@ where
     match run_task().await {
       | Ok(()) => return Ok(()),
       | Err(err) => {
-        if !restart_counter.restart(elapsed_ms(started_at)) {
+        if !restart_counter.restart(tokio_instant_elapsed_millis(started_at)) {
           return Err(err);
         }
       },
@@ -393,12 +394,4 @@ fn dispatch_handshake_response(
       tracing::warn!(peer = %peer, ?err, "discarding invalid handshake response");
     },
   });
-}
-
-fn elapsed_ms(started_at: Instant) -> u64 {
-  duration_millis(started_at.elapsed())
-}
-
-fn duration_millis(duration: Duration) -> u64 {
-  duration.as_millis().min(u128::from(u64::MAX)) as u64
 }
