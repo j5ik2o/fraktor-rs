@@ -345,15 +345,25 @@ impl RemoteConfig {
   }
 
   /// Returns a copy with the given outbound stream restart backoff.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `duration` is zero.
   #[must_use]
   pub const fn with_outbound_restart_backoff(mut self, duration: Duration) -> Self {
+    assert!(!duration.is_zero(), "outbound restart backoff must be greater than zero");
     self.outbound_restart_backoff = duration;
     self
   }
 
   /// Returns a copy with the given outbound stream restart timeout.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `duration` is zero.
   #[must_use]
   pub const fn with_outbound_restart_timeout(mut self, duration: Duration) -> Self {
+    assert!(!duration.is_zero(), "outbound restart timeout must be greater than zero");
     self.outbound_restart_timeout = duration;
     self
   }
@@ -366,8 +376,13 @@ impl RemoteConfig {
   }
 
   /// Returns a copy with the given inbound stream restart timeout.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `duration` is zero.
   #[must_use]
   pub const fn with_inbound_restart_timeout(mut self, duration: Duration) -> Self {
+    assert!(!duration.is_zero(), "inbound restart timeout must be greater than zero");
     self.inbound_restart_timeout = duration;
     self
   }
