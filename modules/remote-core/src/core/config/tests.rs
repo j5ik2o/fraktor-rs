@@ -157,7 +157,7 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.large_message_destinations(), &destinations);
   assert_eq!(s.inbound_restart_timeout(), Duration::from_secs(7));
   assert_eq!(s.inbound_max_restarts(), 9);
-  assert_eq!(s.compression_config(), compression);
+  assert_eq!(s.compression_config(), &compression);
   assert_eq!(s.inbound_lanes(), 8);
   assert_eq!(s.outbound_lanes(), 2);
   assert_eq!(s.maximum_frame_size(), 512 * 1024);
@@ -267,10 +267,10 @@ fn cloning_preserves_large_message_and_compression_immutability_of_original() {
 
   assert_eq!(a.outbound_large_message_queue_size(), DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE);
   assert!(a.large_message_destinations().is_empty());
-  assert_ne!(a.compression_config(), compression);
+  assert_ne!(a.compression_config(), &compression);
   assert_eq!(b.outbound_large_message_queue_size(), 8);
   assert_eq!(b.large_message_destinations(), &destinations);
-  assert_eq!(b.compression_config(), compression);
+  assert_eq!(b.compression_config(), &compression);
 }
 
 #[test]
@@ -294,12 +294,12 @@ fn large_message_destinations_match_exact_and_wildcard_paths() {
     .with_pattern(LargeMessageDestinationPattern::new("/user/thirdGroup/**"))
     .with_pattern(LargeMessageDestinationPattern::new("/temp/session-ask-actor*"));
 
-  assert!(destinations.matches_relative_path("/user/largeMessageActor"));
-  assert!(destinations.matches_relative_path("/user/largeMessagesGroup/actor1"));
-  assert!(destinations.matches_relative_path("/user/thirdGroup/actor3"));
-  assert!(destinations.matches_relative_path("/user/thirdGroup/actor4/actor5"));
-  assert!(destinations.matches_relative_path("/temp/session-ask-actor$abc"));
-  assert!(!destinations.matches_relative_path("/user/small"));
+  assert!(destinations.matches_absolute_path("/user/largeMessageActor"));
+  assert!(destinations.matches_absolute_path("/user/largeMessagesGroup/actor1"));
+  assert!(destinations.matches_absolute_path("/user/thirdGroup/actor3"));
+  assert!(destinations.matches_absolute_path("/user/thirdGroup/actor4/actor5"));
+  assert!(destinations.matches_absolute_path("/temp/session-ask-actor$abc"));
+  assert!(!destinations.matches_absolute_path("/user/small"));
 }
 
 #[test]

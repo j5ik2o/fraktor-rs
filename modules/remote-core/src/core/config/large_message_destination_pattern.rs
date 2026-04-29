@@ -51,7 +51,7 @@ impl LargeMessageDestinationPattern {
   ///
   /// Panics when `path` is not an absolute actor path.
   #[must_use]
-  pub fn matches_relative_path(&self, path: &str) -> bool {
+  pub fn matches_absolute_path(&self, path: &str) -> bool {
     let path_segments = parse_candidate_segments(path);
     matches_segments(&self.segments, &path_segments)
   }

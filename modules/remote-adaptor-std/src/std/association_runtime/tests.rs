@@ -176,9 +176,11 @@ async fn run_inbound_dispatch_with_response_probe(
   harness: &EventHarness,
   sent: SentHandshakes,
 ) {
+  let config = RemoteConfig::new("localhost");
   let sent_controls = new_sent_controls();
   let submitted_commands = new_submitted_watcher_commands();
   run_inbound_dispatch(
+    &config,
     rx,
     registry,
     move || now_ms,
@@ -190,7 +192,8 @@ async fn run_inbound_dispatch_with_response_probe(
       watcher_submit_probe(submitted_commands),
     ),
   )
-  .await;
+  .await
+  .expect("inbound dispatch should complete without transport send failure");
 }
 
 async fn run_inbound_dispatch_with_control_probes(
@@ -201,7 +204,9 @@ async fn run_inbound_dispatch_with_control_probes(
   sent_controls: SentControls,
   submitted_commands: SubmittedWatcherCommands,
 ) {
+  let config = RemoteConfig::new("localhost");
   run_inbound_dispatch(
+    &config,
     rx,
     registry,
     move || now_ms,
@@ -213,7 +218,8 @@ async fn run_inbound_dispatch_with_control_probes(
       watcher_submit_probe(submitted_commands),
     ),
   )
-  .await;
+  .await
+  .expect("inbound dispatch should complete without transport send failure");
 }
 
 async fn run_inbound_dispatch_with_all_probes(
@@ -225,7 +231,9 @@ async fn run_inbound_dispatch_with_all_probes(
   sent_controls: SentControls,
   submitted_commands: SubmittedWatcherCommands,
 ) {
+  let config = RemoteConfig::new("localhost");
   run_inbound_dispatch(
+    &config,
     rx,
     registry,
     move || now_ms,
@@ -237,7 +245,8 @@ async fn run_inbound_dispatch_with_all_probes(
       watcher_submit_probe(submitted_commands),
     ),
   )
-  .await;
+  .await
+  .expect("inbound dispatch should complete without transport send failure");
 }
 
 fn has_remoting_lifecycle_event(
@@ -1182,6 +1191,61 @@ async fn inbound_restart_budget_returns_error_when_exhausted() {
   assert_eq!(attempts.with_lock(|count| *count), 2, "one retry plus the initial failure should exhaust the budget");
 }
 
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn inbound_dispatch_uses_restart_budget_for_control_response_send_failures() {
+  let harness = EventHarness::new();
+  let remote = remote_address("remote-sys", "10.0.0.1", 2552);
+  let registry = registry_with(remote.clone(), active_association_for(remote.clone()));
+  let attempts = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
+  let attempts_for_closure = attempts.clone();
+  let sent_controls = new_sent_controls();
+  let sent_controls_for_closure = sent_controls.clone();
+  let submitted_commands = new_submitted_watcher_commands();
+  let config = RemoteConfig::new("localhost")
+    .with_inbound_restart_timeout(Duration::from_millis(100))
+    .with_inbound_max_restarts(2);
+  let (tx, rx) = mpsc::unbounded_channel();
+
+  for _ in 0..3 {
+    tx.send(inbound_event_from(&remote, WireFrame::Control(ControlPdu::Heartbeat { authority: remote.to_string() })))
+      .expect("heartbeat frame should be queued for inbound dispatch");
+  }
+  drop(tx);
+
+  let result = run_inbound_dispatch(
+    &config,
+    rx,
+    registry,
+    move || 300,
+    harness.publisher().clone(),
+    (
+      local_unique(),
+      handshake_send_probe(new_sent_handshakes()),
+      move |remote, pdu| {
+        let attempt = attempts_for_closure.with_lock(|count| {
+          *count += 1;
+          *count
+        });
+        if attempt < 3 {
+          Err(TransportError::ConnectionClosed)
+        } else {
+          sent_controls_for_closure.with_lock(|items| items.push((remote.clone(), pdu)));
+          Ok(())
+        }
+      },
+      watcher_submit_probe(submitted_commands),
+    ),
+  )
+  .await;
+
+  assert_eq!(result, Ok(()));
+  assert_eq!(attempts.with_lock(|count| *count), 3, "dispatch should consume restart budget before succeeding");
+  assert_eq!(sent_control_frames(&sent_controls), vec![(remote, ControlPdu::HeartbeatResponse {
+    authority: local_address().to_string(),
+    uid:       local_unique().uid(),
+  },)],);
+}
+
 #[test]
 fn advanced_settings_surface_remains_readable_without_altering_wire_frame_shape() {
   let destinations = LargeMessageDestinations::new()
@@ -1197,8 +1261,8 @@ fn advanced_settings_surface_remains_readable_without_altering_wire_frame_shape(
 
   assert_eq!(config.outbound_large_message_queue_size(), 16);
   assert_eq!(config.large_message_destinations(), &destinations);
-  assert!(config.large_message_destinations().matches_relative_path("/user/large"));
-  assert_eq!(config.compression_config(), compression);
+  assert!(config.large_message_destinations().matches_absolute_path("/user/large"));
+  assert_eq!(config.compression_config(), &compression);
 
   let mut codec = WireFrameCodec::with_maximum_frame_size(config.maximum_frame_size());
   let mut buf = BytesMut::new();

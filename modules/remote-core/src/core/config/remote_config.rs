@@ -626,8 +626,8 @@ impl RemoteConfig {
 
   /// Returns the compression settings surface.
   #[must_use]
-  pub const fn compression_config(&self) -> RemoteCompressionConfig {
-    self.compression_config
+  pub const fn compression_config(&self) -> &RemoteCompressionConfig {
+    &self.compression_config
   }
 
   /// Returns the inbound lane count.

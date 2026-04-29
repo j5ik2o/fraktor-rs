@@ -55,7 +55,7 @@ impl LargeMessageDestinations {
   ///
   /// Panics when `path` is not an absolute actor path.
   #[must_use]
-  pub fn matches_relative_path(&self, path: &str) -> bool {
-    self.patterns.iter().any(|pattern| pattern.matches_relative_path(path))
+  pub fn matches_absolute_path(&self, path: &str) -> bool {
+    self.patterns.iter().any(|pattern| pattern.matches_absolute_path(path))
   }
 }

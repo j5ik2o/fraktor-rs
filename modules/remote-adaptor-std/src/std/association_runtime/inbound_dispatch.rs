@@ -2,6 +2,7 @@
 //! `Association`.
 
 use core::{future::Future, time::Duration};
+use std::sync::{Arc, Mutex};
 
 use fraktor_remote_core_rs::core::{
   address::{Address, UniqueAddress},
@@ -20,6 +21,23 @@ use crate::std::{
   },
   tcp_transport::{InboundFrameEvent, WireFrame},
 };
+
+struct InboundDispatchState<HS, CS, WS> {
+  inbound_rx:              UnboundedReceiver<InboundFrameEvent>,
+  send_handshake_response: HS,
+  send_control_response:   CS,
+  submit_watcher_command:  WS,
+}
+
+struct InboundDispatchContext<'a, Now, HS, CS, WS> {
+  registry:                &'a AssociationRegistry,
+  now_ms_provider:         &'a Now,
+  event_publisher:         &'a EventPublisher,
+  local:                   &'a UniqueAddress,
+  send_handshake_response: &'a mut HS,
+  send_control_response:   &'a mut CS,
+  submit_watcher_command:  &'a mut WS,
+}
 
 /// Re-runs an inbound task until it succeeds or the configured restart budget
 /// is exhausted.
@@ -49,36 +67,105 @@ where
 
 /// Reads inbound frames from the TCP transport's inbound channel and
 /// dispatches them into the matching `Association`.
-pub async fn run_inbound_dispatch(
-  mut inbound_rx: UnboundedReceiver<InboundFrameEvent>,
+///
+/// # Errors
+///
+/// Returns the last transport send error when handshake/control response
+/// delivery keeps failing until the configured inbound restart budget is
+/// exhausted.
+pub async fn run_inbound_dispatch<HS, CS, WS>(
+  config: &RemoteConfig,
+  inbound_rx: UnboundedReceiver<InboundFrameEvent>,
   registry: AssociationRegistry,
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
   event_publisher: EventPublisher,
-  sinks: (
-    UniqueAddress,
-    impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError> + Send + 'static,
-    impl FnMut(&Address, ControlPdu) -> Result<(), TransportError> + Send + 'static,
-    impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>> + Send + 'static,
-  ),
-) {
-  let (local, mut send_handshake_response, mut send_control_response, mut submit_watcher_command) = sinks;
+  sinks: (UniqueAddress, HS, CS, WS),
+) -> Result<(), TransportError>
+where
+  HS: FnMut(&Address, HandshakePdu) -> Result<(), TransportError> + Send + 'static,
+  CS: FnMut(&Address, ControlPdu) -> Result<(), TransportError> + Send + 'static,
+  WS: FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>> + Send + 'static, {
+  let (local, send_handshake_response, send_control_response, submit_watcher_command) = sinks;
+  let state = Arc::new(Mutex::new(Some(InboundDispatchState {
+    inbound_rx,
+    send_handshake_response,
+    send_control_response,
+    submit_watcher_command,
+  })));
+  let registry = Arc::new(registry);
+  let now_ms_provider = Arc::new(now_ms_provider);
+  run_inbound_task_with_restart_budget(config, {
+    let state = Arc::clone(&state);
+    let registry = Arc::clone(&registry);
+    let now_ms_provider = Arc::clone(&now_ms_provider);
+    let event_publisher = event_publisher.clone();
+    let local = local.clone();
+    move || {
+      let state = Arc::clone(&state);
+      let registry = Arc::clone(&registry);
+      let now_ms_provider = Arc::clone(&now_ms_provider);
+      let event_publisher = event_publisher.clone();
+      let local = local.clone();
+      async move {
+        let mut dispatch_state = {
+          let mut guard = match state.lock() {
+            | Ok(guard) => guard,
+            | Err(poisoned) => poisoned.into_inner(),
+          };
+          match guard.take() {
+            | Some(state) => state,
+            | None => unreachable!("inbound dispatch state must be available before restart attempt"),
+          }
+        };
+        let ctx = InboundDispatchContext {
+          registry:                registry.as_ref(),
+          now_ms_provider:         now_ms_provider.as_ref(),
+          event_publisher:         &event_publisher,
+          local:                   &local,
+          send_handshake_response: &mut dispatch_state.send_handshake_response,
+          send_control_response:   &mut dispatch_state.send_control_response,
+          submit_watcher_command:  &mut dispatch_state.submit_watcher_command,
+        };
+        let result = run_inbound_dispatch_once(&mut dispatch_state.inbound_rx, ctx).await;
+        let mut guard = match state.lock() {
+          | Ok(guard) => guard,
+          | Err(poisoned) => poisoned.into_inner(),
+        };
+        *guard = Some(dispatch_state);
+        result
+      }
+    }
+  })
+  .await
+}
+
+async fn run_inbound_dispatch_once<Now, HS, CS, WS>(
+  inbound_rx: &mut UnboundedReceiver<InboundFrameEvent>,
+  ctx: InboundDispatchContext<'_, Now, HS, CS, WS>,
+) -> Result<(), TransportError>
+where
+  Now: Fn() -> u64,
+  HS: FnMut(&Address, HandshakePdu) -> Result<(), TransportError>,
+  CS: FnMut(&Address, ControlPdu) -> Result<(), TransportError>,
+  WS: FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>>, {
+  let InboundDispatchContext {
+    registry,
+    now_ms_provider,
+    event_publisher,
+    local,
+    send_handshake_response,
+    send_control_response,
+    submit_watcher_command,
+  } = ctx;
   while let Some(event) = inbound_rx.recv().await {
-    if !InboundQuarantineCheck::allows(&registry, &event) {
+    if !InboundQuarantineCheck::allows(registry, &event) {
       tracing::debug!(peer = %event.peer, "dropping inbound frame from quarantined association");
       continue;
     }
     match event.frame {
       | WireFrame::Handshake(pdu) => {
         let now = now_ms_provider();
-        dispatch_handshake_pdu(
-          &event.peer,
-          &pdu,
-          &registry,
-          now,
-          &event_publisher,
-          &local,
-          &mut send_handshake_response,
-        );
+        dispatch_handshake_pdu(&event.peer, &pdu, registry, now, event_publisher, local, send_handshake_response)?;
       },
       | WireFrame::Envelope(_pdu) => {
         // Local actor delivery is a separate provider integration contract.
@@ -86,21 +173,14 @@ pub async fn run_inbound_dispatch(
       },
       | WireFrame::Control(pdu) => {
         let now = now_ms_provider();
-        dispatch_control_pdu(
-          &event.peer,
-          &pdu,
-          &registry,
-          now,
-          &local,
-          &mut send_control_response,
-          &mut submit_watcher_command,
-        );
+        dispatch_control_pdu(&event.peer, &pdu, registry, now, local, send_control_response, submit_watcher_command)?;
       },
       | WireFrame::Ack(_pdu) => {
         tracing::debug!(peer = %event.peer, "inbound ack frame received");
       },
     }
   }
+  Ok(())
 }
 
 fn dispatch_control_pdu(
@@ -111,7 +191,7 @@ fn dispatch_control_pdu(
   local: &UniqueAddress,
   send_control_response: &mut impl FnMut(&Address, ControlPdu) -> Result<(), TransportError>,
   submit_watcher_command: &mut impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>>,
-) {
+) -> Result<(), TransportError> {
   match pdu {
     | ControlPdu::Heartbeat { authority } => {
       dispatch_heartbeat_request(
@@ -122,7 +202,7 @@ fn dispatch_control_pdu(
         local,
         send_control_response,
         submit_watcher_command,
-      );
+      )?;
     },
     | ControlPdu::HeartbeatResponse { authority, uid } => {
       dispatch_heartbeat_response(peer, authority, *uid, registry, now_ms, submit_watcher_command);
@@ -134,6 +214,7 @@ fn dispatch_control_pdu(
       tracing::debug!(peer = %peer, "inbound shutdown control frame received");
     },
   }
+  Ok(())
 }
 
 fn dispatch_heartbeat_request(
@@ -144,9 +225,9 @@ fn dispatch_heartbeat_request(
   local: &UniqueAddress,
   send_control_response: &mut impl FnMut(&Address, ControlPdu) -> Result<(), TransportError>,
   submit_watcher_command: &mut impl FnMut(WatcherCommand) -> Result<(), Box<WatcherCommand>>,
-) {
+) -> Result<(), TransportError> {
   let Some(remote_address) = registered_remote_address(peer, authority, registry, "heartbeat request") else {
-    return;
+    return Ok(());
   };
   // 受信した heartbeat 自身を liveness signal として watcher に流し込み、応答送信に
   // 失敗・遅延したケースでも片方向疎通を検出できるようにする。
@@ -159,9 +240,10 @@ fn dispatch_heartbeat_request(
   }
   let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
   match send_control_response(&remote_address, response) {
-    | Ok(()) => {},
+    | Ok(()) => Ok(()),
     | Err(err) => {
       tracing::warn!(peer = %peer, origin = %remote_address, ?err, "heartbeat response send failed");
+      Err(err)
     },
   }
 }
@@ -236,13 +318,14 @@ fn dispatch_handshake_pdu(
   event_publisher: &EventPublisher,
   local: &UniqueAddress,
   send_handshake_response: &mut impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError>,
-) {
+) -> Result<(), TransportError> {
   match pdu {
     | HandshakePdu::Req(req) => {
-      dispatch_handshake_request(peer, req, registry, now_ms, event_publisher, local, send_handshake_response);
+      dispatch_handshake_request(peer, req, registry, now_ms, event_publisher, local, send_handshake_response)?;
     },
     | HandshakePdu::Rsp(rsp) => dispatch_handshake_response(peer, rsp, registry, now_ms, event_publisher),
   }
+  Ok(())
 }
 
 fn dispatch_handshake_request(
@@ -253,7 +336,7 @@ fn dispatch_handshake_request(
   event_publisher: &EventPublisher,
   local: &UniqueAddress,
   send_handshake_response: &mut impl FnMut(&Address, HandshakePdu) -> Result<(), TransportError>,
-) {
+) -> Result<(), TransportError> {
   let remote_address = req.from().address();
   let Some(target) = registry.get_by_remote_address(remote_address).cloned() else {
     tracing::warn!(
@@ -261,7 +344,7 @@ fn dispatch_handshake_request(
       origin = %remote_address,
       "discarding handshake request for an unregistered association",
     );
-    return;
+    return Ok(());
   };
   // Lock 区間内で外部 I/O (send_handshake_response) を呼ぶと、send 側が再帰的に同じ
   // registry/association を参照するパスを持っていたとき deadlock し得る。受理判定と
@@ -278,12 +361,13 @@ fn dispatch_handshake_request(
   });
   match response {
     | Some(response) => match send_handshake_response(remote_address, response) {
-      | Ok(()) => {},
+      | Ok(()) => Ok(()),
       | Err(err) => {
         tracing::warn!(peer = %peer, origin = %remote_address, ?err, "handshake response send failed");
+        Err(err)
       },
     },
-    | None => {},
+    | None => Ok(()),
   }
 }
 
