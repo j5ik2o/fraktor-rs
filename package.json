@@ -6,7 +6,7 @@
     "takt": "./scripts/run-takt.sh",
     "takt:gap:actor":  "npm run pekko-porting -- \"pekko互換仕様を目指すタスクです。中心ロジックのkernel→タイプセーフラッパーのtypedの順序で実装してください。Phase A2+を対応してください。\n$(cat docs/gap-analysis/actor-gap-analysis.md)\"",
     "takt:gap:stream":  "npm run pekko-porting -- \"pekko互換仕様を目指すタスクです。Phaseごとに区切って作業してください。中心ロジックのkernel→タイプセーフラッパーのtypedの順序で実装してください。IOやNetに関する機能はremoteモジュールが進捗していから対応しましょう。\n$(cat docs/gap-analysis/stream-gap-analysis.md)\"",
-    "takt:gap:remote":  "npm run pekko-porting -- \"pekko互換仕様を目指すタスクです。Phaseごとに区切って作業してください。中心ロジックのkernel→タイプセーフラッパーのtypedの順序で実装してください。Phase 1,2だけを対応してください。\n$(cat docs/gap-analysis/remote-gap-analysis.md)\"",
+    "takt:gap:remote":  "npm run pekko-porting -- \"pekko互換仕様を目指すタスクです。Phaseごとに区切って作業してください。中心ロジックのkernel→タイプセーフラッパーのtypedの順序で実装してください。Phase 2だけを対応してください。\n$(cat docs/gap-analysis/remote-gap-analysis.md)\"",
     "takt:personal": "./scripts/run-takt.sh personal",
     "takt:corporate": "./scripts/run-takt.sh corporate",
     "cc-sdd:full": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-full -t",
