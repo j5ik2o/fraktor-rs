@@ -186,6 +186,16 @@ fn actor_ref_equality_matches_system_and_pid_only_refs() {
 }
 
 #[test]
+fn actor_ref_equality_separates_explicit_canonical_path_and_pid_only_refs() {
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
+  let path_based = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, remote_path);
+  let pid_based = ActorRef::new_with_builtin_lock(path_based.pid(), NullSender);
+
+  assert_ne!(path_based, pid_based);
+  assert_ne!(pid_based, path_based);
+}
+
+#[test]
 fn actor_ref_hash_separates_pid_and_path_domains() {
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
   let path_based = ActorRef::with_canonical_path(Pid::new(1, 0), NullSender, remote_path);
