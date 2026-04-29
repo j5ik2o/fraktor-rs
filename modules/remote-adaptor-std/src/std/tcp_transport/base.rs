@@ -6,7 +6,7 @@ use core::fmt::{Debug, Formatter, Result as FmtResult};
 use std::collections::BTreeMap;
 
 use fraktor_remote_core_rs::core::{
-  address::{Address, RemoteNodeId},
+  address::Address,
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::OutboundEnvelope,
@@ -170,10 +170,6 @@ impl TcpRemoteTransport {
     alloc::format!("{}:{}", address.host(), address.port())
   }
 
-  fn peer_key_for_remote_node(node: &RemoteNodeId) -> String {
-    alloc::format!("{}:{}", node.host(), node.port().unwrap_or(0))
-  }
-
   /// Sends a handshake PDU to an already connected peer.
   ///
   /// # Errors
@@ -216,13 +212,9 @@ impl RemoteTransport for TcpRemoteTransport {
     Ok(())
   }
 
-  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError> {
+  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
-    }
-    let peer_key = Self::peer_key_for_remote_node(envelope.remote_node());
-    if !self.clients.contains_key(&peer_key) {
-      return Err(TransportError::ConnectionClosed);
     }
     Err(TransportError::SendFailed)
   }

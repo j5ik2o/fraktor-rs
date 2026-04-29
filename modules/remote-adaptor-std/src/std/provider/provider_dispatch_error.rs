@@ -1,5 +1,6 @@
 //! Error type returned by [`crate::std::provider::StdRemoteActorRefProvider`].
 
+use alloc::format;
 use core::fmt::{Display, Formatter, Result as FmtResult};
 use std::error::Error;
 
@@ -28,6 +29,22 @@ pub enum StdRemoteActorRefProviderError {
   LocalProvider(ActorError),
   /// The adapter exhausted its synthetic pid space for remote actor refs.
   RemotePidExhausted,
+}
+
+impl StdRemoteActorRefProviderError {
+  pub(crate) fn into_actor_error(self) -> ActorError {
+    match self {
+      | StdRemoteActorRefProviderError::LocalProvider(error) => error,
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::InvalidPath)
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::MissingAuthority)
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::UnsupportedScheme) => {
+        ActorError::escalate(format!("{self}"))
+      },
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::NotRemote)
+      | StdRemoteActorRefProviderError::NotRemote
+      | StdRemoteActorRefProviderError::RemotePidExhausted => ActorError::fatal(format!("{self}")),
+    }
+  }
 }
 
 impl Display for StdRemoteActorRefProviderError {

@@ -30,7 +30,11 @@ use crate::std::{
   tcp_transport::TcpRemoteTransport,
 };
 
+// Remote actor refs use the upper quarter of the PID space so they stay
+// separated from local actor PIDs, which grow upward from the runtime
+// allocator. Changing this value must be coordinated with the local allocator.
 const REMOTE_ACTOR_REF_PID_START: u64 = u64::MAX / 4;
+// The std adapter currently materializes only fraktor.tcp remote paths.
 const SUPPORTED_SCHEMES: [ActorPathScheme; 1] = [ActorPathScheme::FraktorTcp];
 
 /// `std + tokio` actor ref provider that performs the loopback / remote
@@ -212,7 +216,7 @@ impl ActorRefProvider for StdRemoteActorRefProvider {
   }
 
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
-    StdRemoteActorRefProvider::actor_ref(self, path).map_err(|error| ActorError::fatal(error.to_string()))
+    StdRemoteActorRefProvider::actor_ref(self, path).map_err(StdRemoteActorRefProviderError::into_actor_error)
   }
 
   fn termination_signal(&self) -> TerminationSignal {

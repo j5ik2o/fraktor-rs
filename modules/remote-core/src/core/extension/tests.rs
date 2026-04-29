@@ -1,14 +1,84 @@
-use alloc::string::String;
+use alloc::{string::String, vec, vec::Vec};
 
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPathParser;
+use fraktor_actor_core_rs::core::kernel::{
+  actor::actor_path::ActorPathParser,
+  system::{
+    ActorSystem,
+    state::{SystemStateShared, system_state::SystemState},
+  },
+};
 
 use crate::core::{
   address::Address,
+  association::QuarantineReason,
+  config::RemoteConfig,
+  envelope::OutboundEnvelope,
   extension::{
-    RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome, RemoteAuthoritySnapshot, RemotingError,
-    RemotingLifecycleState,
+    EventPublisher, Remote, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
+    RemoteAuthoritySnapshot, Remoting, RemotingError, RemotingLifecycleState,
   },
+  transport::{RemoteTransport, TransportError},
 };
+
+struct RecordingTransport {
+  addresses:       Vec<Address>,
+  shutdown_result: Result<(), TransportError>,
+  running:         bool,
+}
+
+impl RecordingTransport {
+  fn new(addresses: Vec<Address>) -> Self {
+    Self { addresses, shutdown_result: Ok(()), running: false }
+  }
+
+  fn with_shutdown_result(addresses: Vec<Address>, shutdown_result: Result<(), TransportError>) -> Self {
+    Self { addresses, shutdown_result, running: false }
+  }
+}
+
+impl RemoteTransport for RecordingTransport {
+  fn start(&mut self) -> Result<(), TransportError> {
+    self.running = true;
+    Ok(())
+  }
+
+  fn shutdown(&mut self) -> Result<(), TransportError> {
+    if self.shutdown_result.is_ok() {
+      self.running = false;
+    }
+    self.shutdown_result.clone()
+  }
+
+  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
+    if self.running { Err(TransportError::SendFailed) } else { Err(TransportError::NotStarted) }
+  }
+
+  fn addresses(&self) -> &[Address] {
+    &self.addresses
+  }
+
+  fn default_address(&self) -> Option<&Address> {
+    self.addresses.first()
+  }
+
+  fn local_address_for_remote(&self, _remote: &Address) -> Option<&Address> {
+    self.default_address()
+  }
+
+  fn quarantine(
+    &mut self,
+    _address: &Address,
+    _uid: Option<u64>,
+    _reason: QuarantineReason,
+  ) -> Result<(), TransportError> {
+    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+  }
+}
+
+fn event_publisher() -> EventPublisher {
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  EventPublisher::new(system.downgrade())
+}
 
 // ---------------------------------------------------------------------------
 // RemotingLifecycleState — happy paths
@@ -52,6 +122,37 @@ fn start_failure_rolls_back_to_pending() {
   s.transition_to_start().unwrap();
   s.mark_started().unwrap();
   assert!(s.is_running());
+}
+
+#[test]
+fn remote_shutdown_clears_advertised_addresses_after_success() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let mut remote =
+    Remote::new(RecordingTransport::new(vec![address.clone()]), RemoteConfig::new("127.0.0.1"), event_publisher());
+
+  remote.start().unwrap();
+  assert_eq!(remote.addresses(), [address.clone()].as_slice());
+
+  remote.shutdown().unwrap();
+
+  assert!(remote.addresses().is_empty());
+  assert!(remote.lifecycle().is_terminated());
+}
+
+#[test]
+fn remote_shutdown_failure_keeps_advertised_addresses() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let mut remote = Remote::new(
+    RecordingTransport::with_shutdown_result(vec![address.clone()], Err(TransportError::NotAvailable)),
+    RemoteConfig::new("127.0.0.1"),
+    event_publisher(),
+  );
+
+  remote.start().unwrap();
+  assert_eq!(remote.shutdown().unwrap_err(), RemotingError::TransportUnavailable);
+
+  assert_eq!(remote.addresses(), [address].as_slice());
+  assert!(!remote.lifecycle().is_terminated());
 }
 
 // ---------------------------------------------------------------------------

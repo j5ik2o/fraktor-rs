@@ -85,9 +85,10 @@ impl Remoting for Remote {
     if self.lifecycle.is_terminated() {
       return Ok(());
     }
-    let shutdown_result = self.transport.shutdown();
+    self.transport.shutdown().map_err(|_| RemotingError::TransportUnavailable)?;
     self.lifecycle.mark_shutdown()?;
-    shutdown_result.map_err(|_| RemotingError::TransportUnavailable)
+    self.advertised_addresses.clear();
+    Ok(())
   }
 
   fn quarantine(&mut self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError> {

@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
     actor_path::{ActorPath, ActorPathError, ActorPathParser, ActorPathScheme},
     actor_ref::ActorRef,
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
-    error::SendError,
+    error::{ActorError, SendError},
     messaging::AnyMessage,
   },
   event::stream::EventStreamEvent,
@@ -62,6 +62,30 @@ impl RemoteActorRefProvider for StubRemoteProvider {
   fn unwatch(&mut self, watchee: ActorPath, watcher: Pid) -> Result<(), ProviderError> {
     self.unwatch_calls.push((watchee, watcher));
     Ok(())
+  }
+}
+
+struct RejectingRemoteProvider {
+  error: ProviderError,
+}
+
+impl RejectingRemoteProvider {
+  const fn new(error: ProviderError) -> Self {
+    Self { error }
+  }
+}
+
+impl RemoteActorRefProvider for RejectingRemoteProvider {
+  fn actor_ref(&mut self, _path: ActorPath) -> Result<RemoteActorRef, ProviderError> {
+    Err(self.error.clone())
+  }
+
+  fn watch(&mut self, _watchee: ActorPath, _watcher: Pid) -> Result<(), ProviderError> {
+    Err(self.error.clone())
+  }
+
+  fn unwatch(&mut self, _watchee: ActorPath, _watcher: Pid) -> Result<(), ProviderError> {
+    Err(self.error.clone())
   }
 }
 
@@ -145,6 +169,21 @@ fn make_provider_fixture() -> ProviderFixture {
 
 fn make_provider() -> StdRemoteActorRefProvider {
   make_provider_fixture().provider
+}
+
+fn make_provider_with_remote_error(error: ProviderError) -> StdRemoteActorRefProvider {
+  let local_actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(LocalActorRefProvider::new());
+  let remote_provider = Box::new(RejectingRemoteProvider::new(error)) as Box<dyn RemoteActorRefProvider + Send + Sync>;
+  let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", Vec::new()));
+  let event_harness = EventHarness::new();
+  StdRemoteActorRefProvider::new(
+    local_address(),
+    local_actor_ref_provider_handle_shared,
+    remote_provider,
+    transport,
+    ActorRefResolveCache::default(),
+    event_harness.publisher().clone(),
+  )
 }
 
 fn assert_remote_actor_ref_path(result: Result<ActorRef, StdRemoteActorRefProviderError>, expected_path: &ActorPath) {
@@ -265,6 +304,28 @@ fn actor_ref_provider_handle_shared_resolves_remote_path_through_std_provider_tr
   assert_eq!(provider.supported_schemes(), &[ActorPathScheme::FraktorTcp]);
   let canonical_path = actor_ref.canonical_path().expect("remote actor ref canonical path");
   assert_eq!(canonical_path.to_canonical_uri(), remote_path.to_canonical_uri());
+}
+
+#[test]
+fn actor_ref_provider_trait_preserves_local_provider_actor_error_classification() {
+  let mut provider = make_provider();
+  let local_path = ActorPath::root().child("user").child("worker");
+
+  let err = ActorRefProvider::actor_ref(&mut provider, local_path).unwrap_err();
+
+  assert!(matches!(err, ActorError::Fatal(_)));
+  assert_eq!(err.reason().as_str(), "LocalActorRefProvider is not bound to a system state");
+}
+
+#[test]
+fn actor_ref_provider_trait_maps_core_input_errors_to_escalate() {
+  let mut provider = make_provider_with_remote_error(ProviderError::UnsupportedScheme);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+
+  let err = ActorRefProvider::actor_ref(&mut provider, remote_path).unwrap_err();
+
+  assert!(matches!(err, ActorError::Escalate(_)));
+  assert_eq!(err.reason().as_str(), "std remote provider: core provider error: provider: unsupported path scheme");
 }
 
 #[test]
