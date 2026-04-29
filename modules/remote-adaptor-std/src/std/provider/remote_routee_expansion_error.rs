@@ -10,8 +10,6 @@ use crate::std::provider::StdRemoteActorRefProviderError;
 /// Errors returned while expanding remote router routees.
 #[derive(Debug)]
 pub enum RemoteRouteeExpansionError {
-  /// The remote router configuration has no target nodes.
-  EmptyNodes,
   /// The routee path factory failed for a routee index.
   RouteePath {
     /// Routee index being expanded.
@@ -31,10 +29,6 @@ pub enum RemoteRouteeExpansionError {
 }
 
 impl RemoteRouteeExpansionError {
-  pub(crate) const fn empty_nodes() -> Self {
-    Self::EmptyNodes
-  }
-
   pub(crate) const fn routee_path(index: usize, source: ActorPathError) -> Self {
     Self::RouteePath { index, source }
   }
@@ -47,7 +41,6 @@ impl RemoteRouteeExpansionError {
 impl Display for RemoteRouteeExpansionError {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
-      | RemoteRouteeExpansionError::EmptyNodes => write!(f, "remote routee expansion requires at least one node"),
       | RemoteRouteeExpansionError::RouteePath { index, source } => {
         write!(f, "remote routee expansion failed to build routee path at index {index}: {source}")
       },
@@ -65,7 +58,6 @@ impl Display for RemoteRouteeExpansionError {
 impl Error for RemoteRouteeExpansionError {
   fn source(&self) -> Option<&(dyn Error + 'static)> {
     match self {
-      | RemoteRouteeExpansionError::EmptyNodes => None,
       | RemoteRouteeExpansionError::RouteePath { .. } => None,
       | RemoteRouteeExpansionError::Provider { source, .. } => Some(source.as_ref()),
     }

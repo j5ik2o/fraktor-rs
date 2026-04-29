@@ -41,10 +41,6 @@ where
     provider: &mut StdRemoteActorRefProvider,
   ) -> Result<Router<RemoteRoutingLogic>, RemoteRouteeExpansionError> {
     let nodes = self.config.nodes();
-    if nodes.is_empty() {
-      return Err(RemoteRouteeExpansionError::empty_nodes());
-    }
-
     let mut routees = Vec::with_capacity(self.config.nr_of_instances());
     for index in 0..self.config.nr_of_instances() {
       let node = &nodes[index % nodes.len()];

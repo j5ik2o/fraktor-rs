@@ -180,7 +180,9 @@ impl MiscMessageSerializer {
 
   fn encode_remote_router_config(&self, config: &RemoteRouterConfig) -> Result<Vec<u8>, SerializationError> {
     let mut buffer = Vec::new();
-    let wire_tag = match config.local() {
+    let local = config.local();
+    self.ensure_serializable_remote_router_pool(local)?;
+    let wire_tag = match local {
       | RemoteRouterPool::SmallestMailbox(_) => SmallestMailboxPool::WIRE_TAG,
       | RemoteRouterPool::RoundRobin(_) => RoundRobinPool::WIRE_TAG,
       | RemoteRouterPool::Random(_) => RandomPool::WIRE_TAG,
@@ -189,13 +191,25 @@ impl MiscMessageSerializer {
       },
     };
     buffer.push(wire_tag);
-    write_u32(&mut buffer, config.local().nr_of_instances())?;
-    write_len_prefixed_bytes(&mut buffer, config.local().router_dispatcher().as_bytes())?;
+    write_u32(&mut buffer, local.nr_of_instances())?;
+    write_len_prefixed_bytes(&mut buffer, local.router_dispatcher().as_bytes())?;
     write_u32(&mut buffer, config.nodes().len())?;
     for node in config.nodes() {
       Self::write_address(&mut buffer, node)?;
     }
     Ok(buffer)
+  }
+
+  fn ensure_serializable_remote_router_pool(&self, local: &RemoteRouterPool) -> Result<(), SerializationError> {
+    [
+      (local.has_resizer(), "RemoteRouterPool.has_resizer"),
+      (local.use_pool_dispatcher(), "RemoteRouterPool.use_pool_dispatcher"),
+      (!local.stop_router_when_all_routees_removed(), "RemoteRouterPool.stop_router_when_all_routees_removed"),
+    ]
+    .into_iter()
+    .find_map(|(unsupported, type_name)| unsupported.then_some(type_name))
+    .map(|type_name| Self::remote_router_config_not_serializable(type_name, self.id))
+    .map_or(Ok(()), Err)
   }
 
   fn decode_remote_router_config(bytes: &[u8]) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {

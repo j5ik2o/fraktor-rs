@@ -206,7 +206,7 @@ Phase 3 hard の実装方針は、以下の判断により B に固定する。
 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
-| consistent-hashing pool remote router serialization | actor-core/serialization | 5 |
+| consistent-hashing pool remote router serialization（既定の `hash_key_mapper` を wire 表現できる場合に限定。任意クロージャの `hash_key_mapper` は wire 非対応） | actor-core/serialization | 5 |
 | advanced Artery settings runtime application | core/config + std/runtime | 7 |
 
 ### Phase 3: hard
@@ -229,6 +229,6 @@ B 方針により、Pekko wire byte compatibility 固有の項目は Phase 3 か
 
 remote は address primitives、association state machine、failure detector + registry、typed `RemoteConfig`、TCP transport shell、inbound quarantine、restart budget、watcher UID protocol、resolve cache、remote `ActorRef` materialization、主要 misc serialization までカバー済みで、基礎部品の parity は進んでいる。
 
-低コストで前進できる残タスクは Phase 2 の consistent-hashing pool remote router serialization と advanced Artery settings runtime application である。Phase 1 の未実装ギャップは現時点ではない。
+低コストで前進できる残タスクは Phase 2 の consistent-hashing pool remote router serialization（既定の `hash_key_mapper` を wire 表現できる場合に限定し、任意クロージャの `hash_key_mapper` は対象外）と advanced Artery settings runtime application である。Phase 1 の未実装ギャップは現時点ではない。
 
 主要ギャップは Phase 3 の end-to-end remote actor delivery に集中している。payload serialization、remote `send`、inbound envelope delivery、remote DeathWatch / `AddressTerminated` 統合が揃うまでは、Pekko parity としての remote actor messaging は未完成である。

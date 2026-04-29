@@ -41,6 +41,12 @@ fn remote_node() -> Address {
   Address::remote("remote-sys", "10.0.0.1", 2552)
 }
 
+fn assert_serializable_pool_flags(pool: &RemoteRouterPool) {
+  assert!(!pool.has_resizer());
+  assert!(!pool.use_pool_dispatcher());
+  assert!(pool.stop_router_when_all_routees_removed());
+}
+
 #[test]
 fn identifier_returns_configured_id() {
   let registry = registry();
@@ -235,6 +241,7 @@ fn remote_router_config_round_trips_smallest_mailbox_pool_with_manifest() {
 
   assert_eq!(config.local().nr_of_instances(), 3);
   assert_eq!(config.local().router_dispatcher(), "remote-router-dispatcher");
+  assert_serializable_pool_flags(config.local());
   assert!(matches!(config.local(), RemoteRouterPool::SmallestMailbox(_)));
   assert_eq!(config.nodes(), &[first, second]);
 }
@@ -256,6 +263,7 @@ fn remote_router_config_round_trips_round_robin_pool_with_manifest() {
 
   assert_eq!(config.local().nr_of_instances(), 3);
   assert_eq!(config.local().router_dispatcher(), "round-robin-router-dispatcher");
+  assert_serializable_pool_flags(config.local());
   assert!(matches!(config.local(), RemoteRouterPool::RoundRobin(_)));
   assert_eq!(config.nodes(), &[first, second]);
 }
@@ -277,6 +285,7 @@ fn remote_router_config_round_trips_random_pool_with_manifest() {
 
   assert_eq!(config.local().nr_of_instances(), 3);
   assert_eq!(config.local().router_dispatcher(), "random-router-dispatcher");
+  assert_serializable_pool_flags(config.local());
   assert!(matches!(config.local(), RemoteRouterPool::Random(_)));
   assert_eq!(config.nodes(), &[first, second]);
 }
