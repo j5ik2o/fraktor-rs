@@ -34,7 +34,7 @@ pub struct ActorRef {
   pid:                     Pid,
   sender:                  ActorRefSenderShared,
   system:                  Option<SystemStateWeak>,
-  explicit_canonical_path: Option<Box<ActorPath>>,
+  canonical_identity_path: Option<Box<ActorPath>>,
 }
 
 // Fallback reply pid generator used only when no system state is attached.
@@ -81,7 +81,7 @@ impl ActorRef {
   /// Creates a new actor reference backed by an existing shared sender.
   #[must_use]
   pub const fn new(pid: Pid, sender: ActorRefSenderShared) -> Self {
-    Self { pid, sender, system: None, explicit_canonical_path: None }
+    Self { pid, sender, system: None, canonical_identity_path: None }
   }
 
   /// Creates a new actor reference backed by the built-in sender lock.
@@ -94,7 +94,7 @@ impl ActorRef {
   where
     T: ActorRefSender + 'static, {
     let sender = ActorRefSenderShared::new(Box::new(sender));
-    Self { pid, sender, system: None, explicit_canonical_path: None }
+    Self { pid, sender, system: None, canonical_identity_path: None }
   }
 
   /// Creates an actor reference backed by the given sender and system state (path-aware).
@@ -109,7 +109,8 @@ impl ActorRef {
   /// Creates an actor reference from an existing shared sender.
   #[must_use]
   pub fn from_shared(pid: Pid, sender: ActorRefSenderShared, system: &SystemStateShared) -> Self {
-    Self { pid, sender, system: Some(system.downgrade()), explicit_canonical_path: None }
+    let canonical_identity_path = system.canonical_actor_path(&pid).map(Box::new);
+    Self { pid, sender, system: Some(system.downgrade()), canonical_identity_path }
   }
 
   /// Creates an actor reference whose canonical path is already known.
@@ -118,7 +119,7 @@ impl ActorRef {
   where
     T: ActorRefSender + 'static, {
     let sender = ActorRefSenderShared::new(Box::new(sender));
-    Self { pid, sender, system: None, explicit_canonical_path: Some(Box::new(canonical_path)) }
+    Self { pid, sender, system: None, canonical_identity_path: Some(Box::new(canonical_path)) }
   }
 
   /// Returns the unique process identifier.
@@ -135,7 +136,7 @@ impl ActorRef {
       .as_ref()
       .and_then(|weak| weak.upgrade())
       .and_then(|system| system.actor_path(&self.pid))
-      .or_else(|| self.explicit_canonical_path.as_ref().map(|path| (**path).clone()))
+      .or_else(|| self.canonical_identity_path.as_ref().map(|path| (**path).clone()))
   }
 
   /// Returns the canonical actor path including authority and UID when available.
@@ -146,7 +147,7 @@ impl ActorRef {
       .as_ref()
       .and_then(|weak| weak.upgrade())
       .and_then(|system| system.canonical_actor_path(&self.pid))
-      .or_else(|| self.explicit_canonical_path.as_ref().map(|path| (**path).clone()))
+      .or_else(|| self.canonical_identity_path.as_ref().map(|path| (**path).clone()))
   }
 
   /// Returns the underlying system state if available.
@@ -282,7 +283,7 @@ impl Clone for ActorRef {
       pid:                     self.pid,
       sender:                  self.sender.clone(),
       system:                  self.system.clone(),
-      explicit_canonical_path: self.explicit_canonical_path.clone(),
+      canonical_identity_path: self.canonical_identity_path.clone(),
     }
   }
 }
@@ -301,7 +302,7 @@ impl Debug for ActorRef {
 
 impl PartialEq for ActorRef {
   fn eq(&self, other: &Self) -> bool {
-    match (self.canonical_path(), other.canonical_path()) {
+    match (&self.canonical_identity_path, &other.canonical_identity_path) {
       | (Some(left), Some(right)) => left == right,
       | (None, None) => self.pid == other.pid,
       | _ => false,
@@ -313,15 +314,12 @@ impl Eq for ActorRef {}
 
 impl Hash for ActorRef {
   fn hash<H: Hasher>(&self, state: &mut H) {
-    match self.canonical_path() {
-      | Some(path) => {
-        true.hash(state);
-        path.hash(state);
-      },
-      | None => {
-        false.hash(state);
-        self.pid.hash(state);
-      },
+    if let Some(path) = &self.canonical_identity_path {
+      true.hash(state);
+      path.hash(state);
+    } else {
+      false.hash(state);
+      self.pid.hash(state);
     }
   }
 }

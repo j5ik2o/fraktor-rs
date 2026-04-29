@@ -217,6 +217,20 @@ fn actor_ref_hash_matches_system_and_explicit_canonical_paths() {
 }
 
 #[test]
+fn actor_ref_equality_and_hash_stay_stable_after_system_drop() {
+  let (system_ref, system) = build_path_aware_actor_ref();
+  let canonical_path = system_ref.canonical_path().expect("canonical path");
+  let explicit_ref = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, canonical_path);
+  let system_hash = hash_bytes(&system_ref);
+
+  assert_eq!(system_ref, explicit_ref);
+  drop(system);
+
+  assert_eq!(system_ref, explicit_ref);
+  assert_eq!(hash_bytes(&system_ref), system_hash);
+}
+
+#[test]
 fn actor_ref_try_tell_with_system_records_error() {
   let system = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
