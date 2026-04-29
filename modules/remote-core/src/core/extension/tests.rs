@@ -125,6 +125,18 @@ fn start_failure_rolls_back_to_pending() {
 }
 
 #[test]
+fn shutdown_failure_rolls_back_to_running() {
+  let mut s = RemotingLifecycleState::new();
+  s.transition_to_start().unwrap();
+  s.mark_started().unwrap();
+  s.transition_to_shutdown().unwrap();
+  s.mark_shutdown_failed().unwrap();
+
+  assert!(s.is_running());
+  s.ensure_running().unwrap();
+}
+
+#[test]
 fn remote_shutdown_clears_advertised_addresses_after_success() {
   let address = Address::new("sys", "127.0.0.1", 2552);
   let mut remote =
@@ -152,7 +164,7 @@ fn remote_shutdown_failure_keeps_advertised_addresses() {
   assert_eq!(remote.shutdown().unwrap_err(), RemotingError::TransportUnavailable);
 
   assert_eq!(remote.addresses(), [address].as_slice());
-  assert!(!remote.lifecycle().is_terminated());
+  assert!(remote.lifecycle().is_running());
 }
 
 // ---------------------------------------------------------------------------

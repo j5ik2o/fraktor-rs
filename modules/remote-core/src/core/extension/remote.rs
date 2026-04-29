@@ -85,7 +85,10 @@ impl Remoting for Remote {
     if self.lifecycle.is_terminated() {
       return Ok(());
     }
-    self.transport.shutdown().map_err(|_| RemotingError::TransportUnavailable)?;
+    if self.transport.shutdown().is_err() {
+      self.lifecycle.mark_shutdown_failed()?;
+      return Err(RemotingError::TransportUnavailable);
+    }
     self.lifecycle.mark_shutdown()?;
     self.advertised_addresses.clear();
     Ok(())
