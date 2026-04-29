@@ -12,8 +12,8 @@ use fraktor_actor_core_rs::core::kernel::{
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   },
   event::stream::{EventStreamEvent, EventStreamShared},
+  support::futures::{ActorFuture, ActorFutureShared},
   system::{ActorSystem, state::SystemStateShared},
-  util::futures::{ActorFuture, ActorFutureShared},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 

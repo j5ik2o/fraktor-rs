@@ -41,12 +41,12 @@ use crate::core::kernel::{
     string_manifest_serializer::SerializerWithStringManifest,
     transport_information::TransportInformation,
   },
+  support::ByteString,
   system::{
     ActorSystem, TerminationSignal,
     remote::RemotingConfig,
     state::{SystemStateShared, system_state::SystemState},
   },
-  util::ByteString,
 };
 
 #[derive(Debug, PartialEq)]

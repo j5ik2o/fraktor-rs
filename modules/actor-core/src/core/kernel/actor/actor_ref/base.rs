@@ -22,8 +22,8 @@ use crate::core::kernel::{
     messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
   },
   pattern,
+  support::futures::{ActorFuture, ActorFutureShared},
   system::state::{SystemStateShared, SystemStateWeak},
-  util::futures::{ActorFuture, ActorFutureShared},
 };
 
 /// Handle used to communicate with an actor instance.

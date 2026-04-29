@@ -8,7 +8,7 @@ use crate::core::kernel::{
     actor_ref::ActorRef,
     messaging::{AnyMessage, AskError},
   },
-  util::futures::ActorFutureShared,
+  support::futures::ActorFutureShared,
 };
 
 /// Result type returned by ask operations.

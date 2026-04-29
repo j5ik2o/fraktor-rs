@@ -38,8 +38,8 @@ use crate::core::kernel::{
     error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
     serializer_id::SerializerId,
   },
+  support::ByteString,
   system::state::SystemStateWeak,
-  util::ByteString,
 };
 
 /// Serializer ID for null/unit type.
@@ -57,7 +57,7 @@ pub const STRING_ID: SerializerId = SerializerId::from_raw(4);
 /// Serializer ID for byte array type.
 pub const BYTES_ID: SerializerId = SerializerId::from_raw(5);
 
-/// Serializer ID for [`ByteString`](crate::core::kernel::util::ByteString) type.
+/// Serializer ID for [`ByteString`](crate::core::kernel::support::ByteString) type.
 pub const BYTE_STRING_ID: SerializerId = SerializerId::from_raw(6);
 
 /// Serializer ID for [`SystemMessage`].

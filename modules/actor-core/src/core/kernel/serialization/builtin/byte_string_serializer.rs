@@ -8,7 +8,7 @@ use core::any::{Any, TypeId};
 
 use crate::core::kernel::{
   serialization::{error::SerializationError, serializer::Serializer, serializer_id::SerializerId},
-  util::ByteString,
+  support::ByteString,
 };
 
 /// Serializes [`ByteString`] values by copying the underlying byte payload.

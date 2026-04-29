@@ -12,7 +12,7 @@ use fraktor_remote_core_rs::core::{
 };
 use tokio::task::JoinHandle;
 
-use crate::std::association_runtime::{
+use crate::std::association::{
   apply_effects_in_place, association_shared::AssociationShared, duration_millis_saturated, std_instant_elapsed_millis,
 };
 

@@ -46,8 +46,8 @@ use crate::core::{
       },
     },
     serialization::default_serialization_extension_id,
+    support::futures::ActorFutureShared,
     system::state::{SystemStateShared, system_state::SystemState},
-    util::futures::ActorFutureShared,
   },
   typed::{
     ActorRefResolver, TypedActorSystemConfig, TypedProps,

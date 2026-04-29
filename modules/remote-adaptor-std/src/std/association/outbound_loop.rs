@@ -11,7 +11,7 @@ use fraktor_remote_core_rs::core::{
 use fraktor_utils_core_rs::core::sync::SharedLock;
 use tokio::time::{Instant, sleep, timeout};
 
-use crate::std::association_runtime::{
+use crate::std::association::{
   apply_effects_in_place, association_shared::AssociationShared, duration_millis_saturated,
   reconnect_backoff_policy::ReconnectBackoffPolicy, restart_counter::RestartCounter, tokio_instant_elapsed_millis,
 };

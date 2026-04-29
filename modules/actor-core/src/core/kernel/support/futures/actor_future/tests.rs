@@ -6,7 +6,7 @@ use core::{
 
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
-use crate::core::kernel::util::futures::{ActorFuture, ActorFutureListener, ActorFutureShared};
+use crate::core::kernel::support::futures::{ActorFuture, ActorFutureListener, ActorFutureShared};
 
 fn noop_waker() -> Waker {
   fn noop(_: *const ()) {}

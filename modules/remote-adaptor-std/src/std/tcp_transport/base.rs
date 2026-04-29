@@ -25,7 +25,7 @@ use crate::std::tcp_transport::{
 /// This struct aggregates a [`TcpServer`] (inbound) and a [`BTreeMap`] of
 /// [`TcpClient`]s (outbound, one per remote authority). Inbound frames land
 /// in an `mpsc::UnboundedReceiver` that callers (typically the
-/// `association_runtime` module added in Section 19) poll to feed the pure
+/// `association` module added in Section 19) poll to feed the pure
 /// `Association` state machines.
 ///
 /// Note: the trait [`RemoteTransport::send`] is **synchronous**; because
@@ -109,7 +109,7 @@ impl TcpRemoteTransport {
 
   /// Takes ownership of the inbound receiver.
   ///
-  /// Exactly one consumer (typically the `association_runtime` task) should
+  /// Exactly one consumer (typically the `association` task) should
   /// take the receiver to start processing inbound frames. Subsequent calls
   /// return `None`.
   #[must_use]

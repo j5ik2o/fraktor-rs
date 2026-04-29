@@ -6,7 +6,7 @@
 #### Scenario: kernel/util/ が新設され ByteString が移設される
 - **WHEN** `modules/actor/src/core/kernel/util/` を確認する
 - **THEN** `byte_string.rs` が `util/` 配下に存在する
-- **AND** `crate::core::kernel::messaging::ByteString` の旧 import path は削除され、`crate::core::kernel::util::ByteString` が正しいパスになる
+- **AND** `crate::core::kernel::messaging::ByteString` の旧 import path は削除され、`crate::core::kernel::support::ByteString` が正しいパスになる
 
 #### Scenario: kernel/io/ が stub として新設される
 - **WHEN** `modules/actor/src/core/kernel/io/` を確認する

@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
-use crate::core::kernel::{actor::messaging::AskResult, util::futures::ActorFutureShared};
+use crate::core::kernel::{actor::messaging::AskResult, support::futures::ActorFutureShared};
 
 /// Registry of pending ask futures.
 pub(crate) struct AskFutures {

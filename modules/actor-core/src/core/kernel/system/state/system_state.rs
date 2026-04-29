@@ -57,8 +57,8 @@ use crate::core::kernel::{
     logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
     stream::{EventStream, EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
+  support::futures::ActorFutureShared,
   system::{RegisterExtraTopLevelError, ReservationPolicy, shared_factory::MailboxSharedSet},
-  util::futures::ActorFutureShared,
 };
 
 mod failure_outcome;

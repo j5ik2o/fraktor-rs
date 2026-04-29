@@ -1,7 +1,7 @@
 //! Inbound quarantine filter for association runtime frames.
 
 use crate::std::{
-  association_runtime::{association_registry::AssociationRegistry, peer_address_match::peer_matches_address},
+  association::{association_registry::AssociationRegistry, peer_address_match::peer_matches_address},
   tcp_transport::InboundFrameEvent,
 };
 

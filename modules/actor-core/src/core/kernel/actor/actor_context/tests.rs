@@ -14,8 +14,8 @@ use crate::core::kernel::{
     scheduler::SchedulerHandle,
   },
   event::logging::LogLevel,
+  support::futures::{ActorFuture, ActorFutureListener},
   system::ActorSystem,
-  util::futures::{ActorFuture, ActorFutureListener},
 };
 
 struct TestActor;
@@ -251,7 +251,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
   });
   register_cell(&system, pid, "self", &props);
   let mut context = ActorContext::new(&system, pid);
-  use crate::core::kernel::util::futures::ActorFutureShared;
+  use crate::core::kernel::support::futures::ActorFutureShared;
   let signal = ActorFutureShared::new(ActorFuture::new());
   let future = {
     let handle = signal.clone();

@@ -22,8 +22,8 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
     subscriber_handle,
   },
+  support::futures::ActorFutureShared,
   system::ActorSystem,
-  util::futures::ActorFutureShared,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 

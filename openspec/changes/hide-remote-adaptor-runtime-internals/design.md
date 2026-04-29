@@ -18,7 +18,7 @@ remote-adaptor-std::std
 │  ├─ StdRemoteActorRefProvider           adapter bridge
 │  ├─ RemoteRouteeExpansion               手動配線 API
 │  └─ RemoteActorRefSender                runtime internal
-├─ association_runtime                    runtime internal
+├─ association                     runtime internal
 └─ watcher_actor                          runtime internal
 ```
 
@@ -35,7 +35,7 @@ remote-adaptor-std::std
 
 crate 内で閉じる API
 ┌────────────────────────────────────────────┐
-│ association_runtime                         │
+│ association                          │
 │ watcher_actor                               │
 │ tcp client/server/frame codec               │
 │ remote actor ref sender                     │
@@ -146,7 +146,7 @@ crate 外 integration test は public API のみを使う。内部 runtime drive
 
 1. public re-export 一覧を固定し、残す型 / 隠す型をテストで明文化する。
 2. `tcp_transport` の public re-export を `TcpRemoteTransport` のみに縮小する。
-3. `association_runtime` と `watcher_actor` を `pub(crate)` module または internal-only re-export に変更する。
+3. `association` と `watcher_actor` を `pub(crate)` module または internal-only re-export に変更する。
 4. `RemoteActorRefSender` を provider module 内部へ隠す。
 5. `StdRemoteActorRefProvider::new` を `pub(crate)` 化し、installer / config 経由の構築経路を追加または既存 installer に統合する。
 6. `RemoteRouteeExpansion` の public 必要性を再評価し、手動 provider 配線が必要なら public API から外す。

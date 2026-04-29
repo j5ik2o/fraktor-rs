@@ -44,7 +44,7 @@
 
 - `remote-adaptor-std/src/provider/tests.rs`
 - `remote-adaptor-std/src/extension_installer/tests.rs`
-- `remote-adaptor-std/src/association_runtime/tests.rs`
+- `remote-adaptor-std/src/association/tests.rs`
   - std adaptor crate なので no_std-sensitive cleanup の優先度を下げる。
 - `actor-core/src/core/kernel/pattern/circuit_breaker/tests.rs`
 - `actor-core/src/core/kernel/pattern/circuit_breaker_shared/tests.rs`
