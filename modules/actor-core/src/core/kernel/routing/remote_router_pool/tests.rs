@@ -55,3 +55,19 @@ fn create_router_returns_empty_router_for_every_supported_pool() {
     assert!(pool.create_router().routees().is_empty());
   }
 }
+
+#[test]
+fn delegates_pool_flags_for_every_supported_pool() {
+  let pools = [
+    RemoteRouterPool::from(RoundRobinPool::new(1)),
+    RemoteRouterPool::from(SmallestMailboxPool::new(1)),
+    RemoteRouterPool::from(RandomPool::new(1)),
+    RemoteRouterPool::from(ConsistentHashingPool::new(1, |_| 0)),
+  ];
+
+  for pool in pools {
+    assert!(!pool.has_resizer());
+    assert!(!pool.use_pool_dispatcher());
+    assert!(pool.stop_router_when_all_routees_removed());
+  }
+}
