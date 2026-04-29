@@ -57,7 +57,7 @@ impl Routee {
 impl PartialEq for Routee {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
-      | (Self::ActorRef(a), Self::ActorRef(b)) => actor_refs_match_for_routing(a, b),
+      | (Self::ActorRef(a), Self::ActorRef(b)) => a == b,
       | (Self::NoRoutee, Self::NoRoutee) => true,
       | (Self::Several(a), Self::Several(b)) => a == b,
       | _ => false,
@@ -66,11 +66,3 @@ impl PartialEq for Routee {
 }
 
 impl Eq for Routee {}
-
-fn actor_refs_match_for_routing(a: &ActorRef, b: &ActorRef) -> bool {
-  match (a.canonical_path(), b.canonical_path()) {
-    | (Some(a_path), Some(b_path)) => a_path == b_path,
-    | (None, None) => a.pid() == b.pid(),
-    | _ => false,
-  }
-}

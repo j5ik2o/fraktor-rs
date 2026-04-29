@@ -59,6 +59,30 @@ impl ActorRefSender for RecordingSender {
   }
 }
 
+fn build_path_aware_actor_ref() -> (ActorRef, ActorSystem) {
+  use crate::core::kernel::actor::{Actor, ActorCell, ActorContext, messaging::AnyMessageView, props::Props};
+
+  struct PathActor;
+  impl Actor for PathActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+  let root_pid = state.allocate_pid();
+  let child_pid = state.allocate_pid();
+  let props = Props::from_fn(|| PathActor);
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".into(), &props).expect("create root actor cell");
+  state.register_cell(root);
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".into(), &props).expect("create actor cell");
+  state.register_cell(child.clone());
+
+  (child.actor_ref(), system)
+}
+
 #[test]
 fn null_sender_try_tell_returns_closed() {
   let mut null: ActorRef = ActorRef::null();
@@ -153,6 +177,23 @@ fn actor_ref_with_canonical_path_equality_uses_explicit_path() {
 }
 
 #[test]
+fn actor_ref_equality_matches_system_and_explicit_canonical_paths() {
+  let (system_ref, _system) = build_path_aware_actor_ref();
+  let canonical_path = system_ref.canonical_path().expect("canonical path");
+  let explicit_ref = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, canonical_path);
+
+  assert_eq!(system_ref, explicit_ref);
+}
+
+#[test]
+fn actor_ref_equality_separates_path_aware_and_pid_only_refs() {
+  let (system_ref, _system) = build_path_aware_actor_ref();
+  let pid_only_ref = ActorRef::new_with_builtin_lock(system_ref.pid(), NullSender);
+
+  assert_ne!(system_ref, pid_only_ref);
+}
+
+#[test]
 fn actor_ref_hash_separates_pid_and_path_domains() {
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
   let path_based = ActorRef::with_canonical_path(Pid::new(1, 0), NullSender, remote_path);
@@ -164,6 +205,15 @@ fn actor_ref_hash_separates_pid_and_path_domains() {
   assert_eq!(path_hash_bytes.first().copied(), Some(1));
   assert_eq!(pid_hash_bytes.first().copied(), Some(0));
   assert_ne!(path_hash_bytes, pid_hash_bytes);
+}
+
+#[test]
+fn actor_ref_hash_matches_system_and_explicit_canonical_paths() {
+  let (system_ref, _system) = build_path_aware_actor_ref();
+  let canonical_path = system_ref.canonical_path().expect("canonical path");
+  let explicit_ref = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, canonical_path);
+
+  assert_eq!(hash_bytes(&system_ref), hash_bytes(&explicit_ref));
 }
 
 #[test]

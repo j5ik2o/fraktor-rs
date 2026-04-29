@@ -301,7 +301,7 @@ impl Debug for ActorRef {
 
 impl PartialEq for ActorRef {
   fn eq(&self, other: &Self) -> bool {
-    match (&self.explicit_canonical_path, &other.explicit_canonical_path) {
+    match (self.canonical_path(), other.canonical_path()) {
       | (Some(left), Some(right)) => left == right,
       | (None, None) => self.pid == other.pid,
       | _ => false,
@@ -313,12 +313,15 @@ impl Eq for ActorRef {}
 
 impl Hash for ActorRef {
   fn hash<H: Hasher>(&self, state: &mut H) {
-    if let Some(path) = &self.explicit_canonical_path {
-      true.hash(state);
-      path.hash(state);
-    } else {
-      false.hash(state);
-      self.pid.hash(state);
+    match self.canonical_path() {
+      | Some(path) => {
+        true.hash(state);
+        path.hash(state);
+      },
+      | None => {
+        false.hash(state);
+        self.pid.hash(state);
+      },
     }
   }
 }
