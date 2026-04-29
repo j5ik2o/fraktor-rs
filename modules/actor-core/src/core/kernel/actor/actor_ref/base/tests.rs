@@ -1,4 +1,8 @@
-use core::sync::atomic::{AtomicUsize, Ordering};
+use alloc::vec::Vec;
+use core::{
+  hash::{Hash, Hasher},
+  sync::atomic::{AtomicUsize, Ordering},
+};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
@@ -16,6 +20,27 @@ use crate::core::kernel::{
 
 struct RecordingSender {
   count: ArcShared<AtomicUsize>,
+}
+
+#[derive(Default)]
+struct RecordingHasher {
+  bytes: Vec<u8>,
+}
+
+impl Hasher for RecordingHasher {
+  fn finish(&self) -> u64 {
+    0
+  }
+
+  fn write(&mut self, bytes: &[u8]) {
+    self.bytes.extend_from_slice(bytes);
+  }
+}
+
+fn hash_bytes(actor_ref: &ActorRef) -> Vec<u8> {
+  let mut hasher = RecordingHasher::default();
+  actor_ref.hash(&mut hasher);
+  hasher.bytes
 }
 
 impl RecordingSender {
@@ -125,6 +150,20 @@ fn actor_ref_with_canonical_path_equality_uses_explicit_path() {
 
   assert_eq!(first, same);
   assert_ne!(first, different);
+}
+
+#[test]
+fn actor_ref_hash_separates_pid_and_path_domains() {
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
+  let path_based = ActorRef::with_canonical_path(Pid::new(1, 0), NullSender, remote_path);
+  let pid_based = ActorRef::new_with_builtin_lock(Pid::new(1, 0), NullSender);
+
+  let path_hash_bytes = hash_bytes(&path_based);
+  let pid_hash_bytes = hash_bytes(&pid_based);
+
+  assert_eq!(path_hash_bytes.first().copied(), Some(1));
+  assert_eq!(pid_hash_bytes.first().copied(), Some(0));
+  assert_ne!(path_hash_bytes, pid_hash_bytes);
 }
 
 #[test]

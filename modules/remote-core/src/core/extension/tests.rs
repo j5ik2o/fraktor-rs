@@ -1,4 +1,5 @@
 use alloc::{string::String, vec, vec::Vec};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::actor_path::ActorPathParser,
@@ -7,6 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   address::Address,
@@ -22,27 +24,52 @@ use crate::core::{
 
 struct RecordingTransport {
   addresses:       Vec<Address>,
+  start_result:    Result<(), TransportError>,
   shutdown_result: Result<(), TransportError>,
   running:         bool,
+  shutdown_calls:  ArcShared<AtomicUsize>,
 }
 
 impl RecordingTransport {
   fn new(addresses: Vec<Address>) -> Self {
-    Self { addresses, shutdown_result: Ok(()), running: false }
+    Self {
+      addresses,
+      start_result: Ok(()),
+      shutdown_result: Ok(()),
+      running: false,
+      shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
+    }
   }
 
   fn with_shutdown_result(addresses: Vec<Address>, shutdown_result: Result<(), TransportError>) -> Self {
-    Self { addresses, shutdown_result, running: false }
+    Self {
+      addresses,
+      start_result: Ok(()),
+      shutdown_result,
+      running: false,
+      shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
+    }
+  }
+
+  fn with_start_result(
+    addresses: Vec<Address>,
+    start_result: Result<(), TransportError>,
+  ) -> (ArcShared<AtomicUsize>, Self) {
+    let shutdown_calls = ArcShared::new(AtomicUsize::new(0));
+    (shutdown_calls.clone(), Self { addresses, start_result, shutdown_result: Ok(()), running: false, shutdown_calls })
   }
 }
 
 impl RemoteTransport for RecordingTransport {
   fn start(&mut self) -> Result<(), TransportError> {
-    self.running = true;
-    Ok(())
+    if self.start_result.is_ok() {
+      self.running = true;
+    }
+    self.start_result.clone()
   }
 
   fn shutdown(&mut self) -> Result<(), TransportError> {
+    self.shutdown_calls.fetch_add(1, Ordering::Relaxed);
     if self.shutdown_result.is_ok() {
       self.running = false;
     }
@@ -122,6 +149,20 @@ fn start_failure_rolls_back_to_pending() {
   s.transition_to_start().unwrap();
   s.mark_started().unwrap();
   assert!(s.is_running());
+}
+
+#[test]
+fn remote_start_failure_attempts_transport_cleanup_and_rolls_back() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let (shutdown_calls, transport) =
+    RecordingTransport::with_start_result(vec![address], Err(TransportError::NotAvailable));
+  let mut remote = Remote::new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+
+  assert_eq!(remote.start().unwrap_err(), RemotingError::TransportUnavailable);
+
+  assert_eq!(shutdown_calls.load(Ordering::Relaxed), 1);
+  assert!(remote.addresses().is_empty());
+  assert_eq!(remote.lifecycle().ensure_running().unwrap_err(), RemotingError::NotStarted);
 }
 
 #[test]

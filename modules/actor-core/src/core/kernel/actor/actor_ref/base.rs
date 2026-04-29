@@ -314,8 +314,10 @@ impl Eq for ActorRef {}
 impl Hash for ActorRef {
   fn hash<H: Hasher>(&self, state: &mut H) {
     if let Some(path) = &self.explicit_canonical_path {
+      true.hash(state);
       path.hash(state);
     } else {
+      false.hash(state);
       self.pid.hash(state);
     }
   }

@@ -70,6 +70,13 @@ impl Remoting for Remote {
     let advertised_addresses = match self.transport.start() {
       | Ok(()) => self.transport.addresses().to_vec(),
       | Err(_) => {
+        match self.transport.shutdown() {
+          | Ok(()) => {},
+          | Err(_cleanup_error) => {
+            // start 失敗後の cleanup 失敗は、元の起動失敗と同じ
+            // `TransportUnavailable` として呼び出し元へ返す。
+          },
+        }
         self.lifecycle.mark_start_failed()?;
         return Err(RemotingError::TransportUnavailable);
       },
