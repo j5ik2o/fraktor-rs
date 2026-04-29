@@ -177,20 +177,12 @@ fn actor_ref_with_canonical_path_equality_uses_explicit_path() {
 }
 
 #[test]
-fn actor_ref_equality_matches_system_and_explicit_canonical_paths() {
-  let (system_ref, _system) = build_path_aware_actor_ref();
-  let canonical_path = system_ref.canonical_path().expect("canonical path");
-  let explicit_ref = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, canonical_path);
-
-  assert_eq!(system_ref, explicit_ref);
-}
-
-#[test]
-fn actor_ref_equality_separates_path_aware_and_pid_only_refs() {
+fn actor_ref_equality_matches_system_and_pid_only_refs() {
   let (system_ref, _system) = build_path_aware_actor_ref();
   let pid_only_ref = ActorRef::new_with_builtin_lock(system_ref.pid(), NullSender);
 
-  assert_ne!(system_ref, pid_only_ref);
+  assert_eq!(system_ref, pid_only_ref);
+  assert_eq!(pid_only_ref, system_ref);
 }
 
 #[test]
@@ -208,25 +200,16 @@ fn actor_ref_hash_separates_pid_and_path_domains() {
 }
 
 #[test]
-fn actor_ref_hash_matches_system_and_explicit_canonical_paths() {
-  let (system_ref, _system) = build_path_aware_actor_ref();
-  let canonical_path = system_ref.canonical_path().expect("canonical path");
-  let explicit_ref = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, canonical_path);
-
-  assert_eq!(hash_bytes(&system_ref), hash_bytes(&explicit_ref));
-}
-
-#[test]
 fn actor_ref_equality_and_hash_stay_stable_after_system_drop() {
   let (system_ref, system) = build_path_aware_actor_ref();
-  let canonical_path = system_ref.canonical_path().expect("canonical path");
-  let explicit_ref = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, canonical_path);
+  let pid_only_ref = ActorRef::new_with_builtin_lock(system_ref.pid(), NullSender);
   let system_hash = hash_bytes(&system_ref);
 
-  assert_eq!(system_ref, explicit_ref);
+  assert_eq!(system_ref, pid_only_ref);
+  assert_eq!(hash_bytes(&system_ref), hash_bytes(&pid_only_ref));
   drop(system);
 
-  assert_eq!(system_ref, explicit_ref);
+  assert_eq!(system_ref, pid_only_ref);
   assert_eq!(hash_bytes(&system_ref), system_hash);
 }
 

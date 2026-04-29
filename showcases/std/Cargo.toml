@@ -105,11 +105,6 @@ path = "remote_lifecycle/main.rs"
 required-features = ["advanced"]
 
 [[example]]
-name = "remote_routee_expansion"
-path = "remote_routee_expansion/main.rs"
-required-features = ["advanced"]
-
-[[example]]
 name = "persistent_actor"
 path = "persistent_actor/main.rs"
 required-features = ["advanced"]

@@ -165,20 +165,7 @@ fn partial_eq_actorref_delegates_to_actor_ref_equality() {
 }
 
 #[test]
-fn partial_eq_actorref_matches_system_and_explicit_canonical_paths() {
-  let (system_ref, _state) = build_actor_ref_with_system();
-  let canonical_path = system_ref.canonical_path().expect("canonical path");
-  let (_, sender) = CapturingSender::new();
-  let explicit_ref = ActorRef::with_canonical_path(Pid::new(42, 0), sender, canonical_path);
-
-  let routee1 = Routee::ActorRef(system_ref);
-  let routee2 = Routee::ActorRef(explicit_ref);
-
-  assert_eq!(routee1, routee2);
-}
-
-#[test]
-fn partial_eq_actorref_path_aware_and_pid_only_are_distinct() {
+fn partial_eq_actorref_system_and_pid_only_same_pid_are_equal() {
   let (system_ref, _state) = build_actor_ref_with_system();
   let pid = system_ref.pid();
   let (_, sender) = CapturingSender::new();
@@ -187,7 +174,7 @@ fn partial_eq_actorref_path_aware_and_pid_only_are_distinct() {
   let routee1 = Routee::ActorRef(system_ref);
   let routee2 = Routee::ActorRef(pid_only_ref);
 
-  assert_ne!(routee1, routee2);
+  assert_eq!(routee1, routee2);
 }
 
 #[test]
