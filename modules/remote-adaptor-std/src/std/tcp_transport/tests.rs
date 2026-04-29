@@ -1,9 +1,14 @@
 use core::time::Duration;
 
 use bytes::{Bytes, BytesMut};
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{actor_path::ActorPathParser, messaging::AnyMessage},
+  event::stream::CorrelationId,
+};
 use fraktor_remote_core_rs::core::{
-  address::{Address, UniqueAddress},
+  address::{Address, RemoteNodeId, UniqueAddress},
   config::RemoteConfig,
+  envelope::{OutboundEnvelope, OutboundPriority},
   transport::{RemoteTransport, TransportError},
   wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
 };
@@ -427,6 +432,40 @@ async fn remote_transport_send_handshake_writes_handshake_frame_to_connected_pee
     .expect("server inbound frame");
   assert_eq!(event.frame, WireFrame::Handshake(pdu));
 
+  transport.shutdown().expect("transport shutdown should succeed");
+  server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_send_rejects_user_envelope_until_payload_serialization_is_installed() {
+  use tokio::sync::mpsc;
+
+  use crate::std::tcp_transport::{TcpRemoteTransport, server::TcpServer};
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = TcpServer::new("127.0.0.1:0".into());
+  let bind_addr = server.start(server_inbound_tx).expect("server should bind to a system-assigned port");
+
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  transport.start().expect("transport should start before connecting a peer");
+
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+  transport.connect_peer(&remote).await.expect("transport should connect to peer before sending envelope");
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@127.0.0.1:2552/user/worker").expect("parse");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", bind_addr.ip().to_string(), Some(bind_addr.port()), 1),
+    CorrelationId::nil(),
+  );
+
+  let result = transport.send(envelope);
+
+  assert_eq!(result, Err(TransportError::SendFailed));
+  let inbound = tokio::time::timeout(Duration::from_millis(200), server_inbound_rx.recv()).await;
+  assert!(inbound.is_err(), "failed envelope send must not emit an empty payload frame");
   transport.shutdown().expect("transport shutdown should succeed");
   server.shutdown();
 }

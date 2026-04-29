@@ -86,6 +86,22 @@ impl RemotingLifecycleState {
     }
   }
 
+  /// Rolls a failed shutdown attempt back from `ShuttingDown` to `Running`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::InvalidTransition`] from any state other
+  /// than `ShuttingDown`.
+  pub const fn mark_shutdown_failed(&mut self) -> Result<(), RemotingError> {
+    match self.phase {
+      | Phase::ShuttingDown => {
+        self.phase = Phase::Running;
+        Ok(())
+      },
+      | _ => Err(RemotingError::InvalidTransition),
+    }
+  }
+
   /// Moves out of the live states towards termination:
   ///
   /// - `Running` → `ShuttingDown`

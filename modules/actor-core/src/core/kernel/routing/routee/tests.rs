@@ -1,14 +1,24 @@
-use alloc::{format, vec};
+use alloc::{format, string::ToString, vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::Routee;
-use crate::core::kernel::actor::{
-  Pid,
-  actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-  error::SendError,
-  messaging::AnyMessage,
+use crate::core::kernel::{
+  actor::{
+    Actor, ActorCell, ActorContext, Pid,
+    actor_path::ActorPathParser,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::{SchedulerConfig, tick_driver::tests::TestTickDriver},
+    setup::ActorSystemConfig,
+  },
+  system::{
+    remote::RemotingConfig,
+    state::{SystemStateShared, system_state::SystemState},
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -42,6 +52,37 @@ impl ActorRefSender for ClosedSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     Err(SendError::closed(message))
   }
+}
+
+struct NoopActor;
+
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+fn build_actor_ref_with_system() -> (ActorRef, SystemStateShared) {
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let remoting = RemotingConfig::default().with_canonical_host("10.0.0.1").with_canonical_port(2552);
+  let config = ActorSystemConfig::default()
+    .with_system_name("remote-sys")
+    .with_scheduler_config(scheduler)
+    .with_tick_driver(TestTickDriver::default())
+    .with_remoting_config(remoting);
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
+
+  let props = Props::from_fn(|| NoopActor);
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root cell");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("child cell");
+  state.register_cell(child.clone());
+
+  (child.actor_ref(), state)
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +150,30 @@ fn partial_eq_actorref_compares_by_pid() {
   let routee2 = Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(42, 0), sender2));
 
   // Then: they should be equal (ActorRef compares by pid)
+  assert_eq!(routee1, routee2);
+}
+
+#[test]
+fn partial_eq_actorref_delegates_to_actor_ref_equality() {
+  let (_, sender1) = CapturingSender::new();
+  let (_, sender2) = CapturingSender::new();
+  let path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+  let routee1 = Routee::ActorRef(ActorRef::with_canonical_path(Pid::new(42, 0), sender1, path.clone()));
+  let routee2 = Routee::ActorRef(ActorRef::with_canonical_path(Pid::new(43, 0), sender2, path));
+
+  assert_eq!(routee1, routee2);
+}
+
+#[test]
+fn partial_eq_actorref_system_and_pid_only_same_pid_are_equal() {
+  let (system_ref, _state) = build_actor_ref_with_system();
+  let pid = system_ref.pid();
+  let (_, sender) = CapturingSender::new();
+  let pid_only_ref = ActorRef::new_with_builtin_lock(pid, sender);
+
+  let routee1 = Routee::ActorRef(system_ref);
+  let routee2 = Routee::ActorRef(pid_only_ref);
+
   assert_eq!(routee1, routee2);
 }
 

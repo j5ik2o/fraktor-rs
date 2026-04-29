@@ -4,11 +4,10 @@ use crate::core::{address::Address, association::QuarantineReason, extension::re
 
 /// Lifecycle port for the remote subsystem.
 ///
-/// This trait carries **only** the pure lifecycle responsibilities pulled
-/// out of the legacy god-object `RemotingControlHandle` per design Decision
-/// 5. Concrete implementations (e.g. `StdRemoting` in
-/// `fraktor-remote-adaptor-std-rs`) hold the transport, bridge factory,
-/// watcher daemon, and heartbeat channels — those **are not** exposed here.
+/// This trait carries **only** the remote lifecycle responsibilities. The
+/// default [`crate::core::extension::Remote`] implementation owns a
+/// [`crate::core::transport::RemoteTransport`] port supplied by adapter
+/// crates; runtime-specific task orchestration stays outside this trait.
 ///
 /// All methods are synchronous. No `async fn` and no `Future` return
 /// types, matching `RemoteTransport` and the `&mut self` principle of the

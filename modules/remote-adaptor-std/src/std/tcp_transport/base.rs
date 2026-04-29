@@ -1,21 +1,17 @@
 //! `TcpRemoteTransport` — `std::net`-backed implementation of the core
 //! [`RemoteTransport`] port.
 
-use alloc::{
-  string::{String, ToString},
-  vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 use std::collections::BTreeMap;
 
-use bytes::Bytes;
 use fraktor_remote_core_rs::core::{
-  address::{Address, RemoteNodeId},
+  address::Address,
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::OutboundEnvelope,
   transport::{RemoteTransport, TransportError},
-  wire::{EnvelopePdu, HandshakePdu},
+  wire::HandshakePdu,
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
@@ -36,7 +32,9 @@ use crate::std::tcp_transport::{
 /// establishing a brand-new outbound TCP connection is asynchronous, callers
 /// must call [`TcpRemoteTransport::connect_peer`] from an async context
 /// *before* calling `send` for a given peer. This mirrors Pekko Artery's
-/// explicit association lifecycle.
+/// explicit association lifecycle. User envelope delivery still requires the
+/// Phase 3 serialization driver, so `send` fails fast instead of emitting an
+/// empty payload frame.
 pub struct TcpRemoteTransport {
   local_addresses: Vec<Address>,
   default_address: Option<Address>,
@@ -172,10 +170,6 @@ impl TcpRemoteTransport {
     alloc::format!("{}:{}", address.host(), address.port())
   }
 
-  fn peer_key_for_remote_node(node: &RemoteNodeId) -> String {
-    alloc::format!("{}:{}", node.host(), node.port().unwrap_or(0))
-  }
-
   /// Sends a handshake PDU to an already connected peer.
   ///
   /// # Errors
@@ -218,16 +212,11 @@ impl RemoteTransport for TcpRemoteTransport {
     Ok(())
   }
 
-  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError> {
+  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
-    let peer_key = Self::peer_key_for_remote_node(envelope.remote_node());
-    let Some(client) = self.clients.get(&peer_key) else {
-      return Err(TransportError::ConnectionClosed);
-    };
-    let frame = build_envelope_frame(&envelope);
-    client.send(frame)
+    Err(TransportError::SendFailed)
   }
 
   fn addresses(&self) -> &[Address] {
@@ -259,16 +248,4 @@ impl RemoteTransport for TcpRemoteTransport {
     }
     Ok(())
   }
-}
-
-fn build_envelope_frame(envelope: &OutboundEnvelope) -> WireFrame {
-  let recipient_path = envelope.recipient().to_string();
-  let sender_path = envelope.sender().map(ToString::to_string);
-  let priority = envelope.priority().to_wire();
-  let correlation = envelope.correlation_id();
-  // Phase B minimum: an empty payload placeholder. The actual serialisation
-  // of `AnyMessage` is a responsibility of the association_runtime layer
-  // added in Section 19, which will invoke the serialization extension.
-  let pdu = EnvelopePdu::new(recipient_path, sender_path, correlation.hi(), correlation.lo(), priority, Bytes::new());
-  WireFrame::Envelope(pdu)
 }

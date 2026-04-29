@@ -247,6 +247,20 @@ fn with_remove_quarantined_association_after_rejects_zero() {
 }
 
 #[test]
+fn restart_timing_settings_reject_zero_duration() {
+  let outbound_backoff =
+    std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_restart_backoff(Duration::ZERO));
+  let outbound_timeout =
+    std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_restart_timeout(Duration::ZERO));
+  let inbound_timeout =
+    std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_inbound_restart_timeout(Duration::ZERO));
+
+  assert!(outbound_backoff.is_err());
+  assert!(outbound_timeout.is_err());
+  assert!(inbound_timeout.is_err());
+}
+
+#[test]
 fn cloning_preserves_immutability_of_original() {
   let a = RemoteConfig::new("localhost");
   let b = a.clone().with_canonical_port(8080);

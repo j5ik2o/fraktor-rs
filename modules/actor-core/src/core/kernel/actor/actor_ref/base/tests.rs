@@ -1,4 +1,8 @@
-use core::sync::atomic::{AtomicUsize, Ordering};
+use alloc::vec::Vec;
+use core::{
+  hash::{Hash, Hasher},
+  sync::atomic::{AtomicUsize, Ordering},
+};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
@@ -6,6 +10,7 @@ use super::ActorRef;
 use crate::core::kernel::{
   actor::{
     Pid,
+    actor_path::ActorPathParser,
     actor_ref::{ActorRefSender, NullSender, SendOutcome},
     error::{ActorError, SendError},
     messaging::AnyMessage,
@@ -15,6 +20,27 @@ use crate::core::kernel::{
 
 struct RecordingSender {
   count: ArcShared<AtomicUsize>,
+}
+
+#[derive(Default)]
+struct RecordingHasher {
+  bytes: Vec<u8>,
+}
+
+impl Hasher for RecordingHasher {
+  fn finish(&self) -> u64 {
+    0
+  }
+
+  fn write(&mut self, bytes: &[u8]) {
+    self.bytes.extend_from_slice(bytes);
+  }
+}
+
+fn hash_bytes(actor_ref: &ActorRef) -> Vec<u8> {
+  let mut hasher = RecordingHasher::default();
+  actor_ref.hash(&mut hasher);
+  hasher.bytes
 }
 
 impl RecordingSender {
@@ -31,6 +57,30 @@ impl ActorRefSender for RecordingSender {
     self.count.fetch_add(1, Ordering::Relaxed);
     Ok(SendOutcome::Delivered)
   }
+}
+
+fn build_path_aware_actor_ref() -> (ActorRef, ActorSystem) {
+  use crate::core::kernel::actor::{Actor, ActorCell, ActorContext, messaging::AnyMessageView, props::Props};
+
+  struct PathActor;
+  impl Actor for PathActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+  let root_pid = state.allocate_pid();
+  let child_pid = state.allocate_pid();
+  let props = Props::from_fn(|| PathActor);
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".into(), &props).expect("create root actor cell");
+  state.register_cell(root);
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".into(), &props).expect("create actor cell");
+  state.register_cell(child.clone());
+
+  (child.actor_ref(), system)
 }
 
 #[test]
@@ -103,6 +153,74 @@ fn actor_ref_path_resolves_segments() {
   use crate::core::kernel::actor::actor_ref::null_sender::NullSender;
   let actor: ActorRef = ActorRef::with_system(child_pid, NullSender, &system);
   assert_eq!(actor.path().expect("path").to_string(), "/user/worker");
+}
+
+#[test]
+fn actor_ref_with_canonical_path_returns_explicit_remote_path() {
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
+  let actor = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, remote_path.clone());
+
+  assert_eq!(actor.path().expect("path").to_canonical_uri(), remote_path.to_canonical_uri());
+  assert_eq!(actor.canonical_path().expect("canonical path").to_canonical_uri(), remote_path.to_canonical_uri());
+}
+
+#[test]
+fn actor_ref_with_canonical_path_equality_uses_explicit_path() {
+  let first_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("first path");
+  let second_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/other").expect("second path");
+  let first = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, first_path.clone());
+  let same = ActorRef::with_canonical_path(Pid::new(901, 0), NullSender, first_path);
+  let different = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, second_path);
+
+  assert_eq!(first, same);
+  assert_ne!(first, different);
+}
+
+#[test]
+fn actor_ref_equality_matches_system_and_pid_only_refs() {
+  let (system_ref, _system) = build_path_aware_actor_ref();
+  let pid_only_ref = ActorRef::new_with_builtin_lock(system_ref.pid(), NullSender);
+
+  assert_eq!(system_ref, pid_only_ref);
+  assert_eq!(pid_only_ref, system_ref);
+}
+
+#[test]
+fn actor_ref_equality_separates_explicit_canonical_path_and_pid_only_refs() {
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
+  let path_based = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, remote_path);
+  let pid_based = ActorRef::new_with_builtin_lock(path_based.pid(), NullSender);
+
+  assert_ne!(path_based, pid_based);
+  assert_ne!(pid_based, path_based);
+}
+
+#[test]
+fn actor_ref_hash_separates_pid_and_path_domains() {
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
+  let path_based = ActorRef::with_canonical_path(Pid::new(1, 0), NullSender, remote_path);
+  let pid_based = ActorRef::new_with_builtin_lock(Pid::new(1, 0), NullSender);
+
+  let path_hash_bytes = hash_bytes(&path_based);
+  let pid_hash_bytes = hash_bytes(&pid_based);
+
+  assert_eq!(path_hash_bytes.first().copied(), Some(1));
+  assert_eq!(pid_hash_bytes.first().copied(), Some(0));
+  assert_ne!(path_hash_bytes, pid_hash_bytes);
+}
+
+#[test]
+fn actor_ref_equality_and_hash_stay_stable_after_system_drop() {
+  let (system_ref, system) = build_path_aware_actor_ref();
+  let pid_only_ref = ActorRef::new_with_builtin_lock(system_ref.pid(), NullSender);
+  let system_hash = hash_bytes(&system_ref);
+
+  assert_eq!(system_ref, pid_only_ref);
+  assert_eq!(hash_bytes(&system_ref), hash_bytes(&pid_only_ref));
+  drop(system);
+
+  assert_eq!(system_ref, pid_only_ref);
+  assert_eq!(hash_bytes(&system_ref), system_hash);
 }
 
 #[test]

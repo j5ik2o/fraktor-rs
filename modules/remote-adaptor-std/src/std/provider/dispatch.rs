@@ -7,11 +7,13 @@ use alloc::boxed::Box;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Pid,
-    actor_path::ActorPath,
+    actor_path::{ActorPath, ActorPathScheme},
     actor_ref::ActorRef,
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
+    error::ActorError,
   },
   serialization::{ActorRefResolveCache, ActorRefResolveCacheOutcome as ActorCoreResolveCacheOutcome},
+  system::TerminationSignal,
 };
 use fraktor_remote_core_rs::core::{
   address::UniqueAddress,
@@ -24,8 +26,16 @@ use fraktor_remote_core_rs::core::{
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::std::{
-  provider::provider_dispatch_error::StdRemoteActorRefProviderError, tcp_transport::TcpRemoteTransport,
+  provider::{provider_dispatch_error::StdRemoteActorRefProviderError, remote_actor_ref_sender::RemoteActorRefSender},
+  tcp_transport::TcpRemoteTransport,
 };
+
+// remote actor ref は PID 空間の上位 1/4 を利用し、runtime allocator が
+// 0 から払い出す local actor PID と分離する。この値を変更する場合は
+// local 側 allocator との調整が必要。
+const REMOTE_ACTOR_REF_PID_START: u64 = u64::MAX / 4;
+// std アダプタが現在 materialize する remote path scheme は fraktor.tcp のみ。
+const SUPPORTED_SCHEMES: [ActorPathScheme; 1] = [ActorPathScheme::FraktorTcp];
 
 /// `std + tokio` actor ref provider that performs the loopback / remote
 /// dispatch demanded by design Decision 3-C.
@@ -49,8 +59,9 @@ pub struct StdRemoteActorRefProvider {
   local_provider:  ActorRefProviderHandleShared<LocalActorRefProvider>,
   remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
   transport:       SharedLock<TcpRemoteTransport>,
-  resolve_cache:   ActorRefResolveCache<RemoteActorRef>,
+  resolve_cache:   ActorRefResolveCache<ActorRef>,
   event_publisher: EventPublisher,
+  next_remote_pid: u64,
 }
 
 impl StdRemoteActorRefProvider {
@@ -61,10 +72,18 @@ impl StdRemoteActorRefProvider {
     local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
     transport: SharedLock<TcpRemoteTransport>,
-    resolve_cache: ActorRefResolveCache<RemoteActorRef>,
+    resolve_cache: ActorRefResolveCache<ActorRef>,
     event_publisher: EventPublisher,
   ) -> Self {
-    Self { local_address, local_provider, remote_provider, transport, resolve_cache, event_publisher }
+    Self {
+      local_address,
+      local_provider,
+      remote_provider,
+      transport,
+      resolve_cache,
+      event_publisher,
+      next_remote_pid: REMOTE_ACTOR_REF_PID_START,
+    }
   }
 
   /// Returns the local [`UniqueAddress`] used to determine the loopback
@@ -82,32 +101,26 @@ impl StdRemoteActorRefProvider {
   ///
   /// - the local provider rejects the path (`LocalProvider`),
   /// - the core remote provider rejects the path (`CoreProvider`), or
-  /// - the resolved [`fraktor_remote_core_rs::core::provider::RemoteActorRef`] cannot be wrapped
-  ///   into an `ActorRef` (`RemoteSenderBuildFailed`).
-  ///
-  /// # Panics
-  ///
-  /// Phase B minimum-viable: a non-loopback remote `actor_ref` returns
-  /// `RemoteSenderBuildFailed` because constructing a real
-  /// `ActorRef` requires extra system context (a live `ActorSystemState`)
-  /// that is wired up in Section 22's `StdRemoting` extension installer.
+  /// - the adapter exhausts its synthetic pid space for remote references.
   pub fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, StdRemoteActorRefProviderError> {
     if path.parts().authority_endpoint().is_none() {
-      // Branch 1: no authority → straight to the local provider.
+      // Branch 1: authority がなければ local provider へそのまま委譲する。
       return self.local_provider.actor_ref(path).map_err(StdRemoteActorRefProviderError::from);
     }
     if let Some(resolved) = resolve_remote_address(&path)
       && self.is_local_authority(&resolved)
     {
-      // Branch 2: authority matches the local node → strip the authority
-      // and forward the local-equivalent path to the local provider.
+      // Branch 2: authority が local node と一致する場合は authority を落とし、
+      // local 等価な path として local provider へ委譲する。
       let local_path = strip_authority(path);
       return self.local_provider.actor_ref(local_path).map_err(StdRemoteActorRefProviderError::from);
     }
-    // Branch 3: authority does not match → core remote provider.
+    // Branch 3: authority が一致しない場合は core remote provider へ委譲する。
     let outcome = self.resolve_remote_actor_ref(path.clone())?;
     self.publish_resolve_cache_event(path, remote_cache_outcome(&outcome));
-    Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)
+    Ok(match outcome {
+      | ActorCoreResolveCacheOutcome::Hit(actor_ref) | ActorCoreResolveCacheOutcome::Miss(actor_ref) => actor_ref,
+    })
   }
 
   /// Registers a remote death-watch.
@@ -152,7 +165,7 @@ impl StdRemoteActorRefProvider {
     if resolved.address() != self.local_address.address() {
       return false;
     }
-    // uid == 0 acts as a wildcard per design Decision 13.
+    // design Decision 13 により uid == 0 は wildcard として扱う。
     resolved.uid() == 0 || resolved.uid() == self.local_address.uid()
   }
 
@@ -166,11 +179,29 @@ impl StdRemoteActorRefProvider {
   fn resolve_remote_actor_ref(
     &mut self,
     path: ActorPath,
-  ) -> Result<ActorCoreResolveCacheOutcome<RemoteActorRef>, StdRemoteActorRefProviderError> {
+  ) -> Result<ActorCoreResolveCacheOutcome<ActorRef>, StdRemoteActorRefProviderError> {
     let remote_provider = &mut self.remote_provider;
+    let next_remote_pid = &mut self.next_remote_pid;
     self.resolve_cache.resolve(&path, |candidate| {
-      remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)
+      let remote_ref = remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)?;
+      Self::build_remote_actor_ref(next_remote_pid, remote_ref)
     })
+  }
+
+  fn build_remote_actor_ref(
+    next_remote_pid: &mut u64,
+    remote_ref: RemoteActorRef,
+  ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
+    let pid = Self::allocate_remote_pid(next_remote_pid)?;
+    let path = remote_ref.path().clone();
+    let sender = RemoteActorRefSender::new(remote_ref);
+    Ok(ActorRef::with_canonical_path(pid, sender, path))
+  }
+
+  fn allocate_remote_pid(next_remote_pid: &mut u64) -> Result<Pid, StdRemoteActorRefProviderError> {
+    let pid = Pid::new(*next_remote_pid, 0);
+    *next_remote_pid = next_remote_pid.checked_add(1).ok_or(StdRemoteActorRefProviderError::RemotePidExhausted)?;
+    Ok(pid)
   }
 
   fn publish_resolve_cache_event(&self, path: ActorPath, outcome: RemoteActorRefResolveCacheOutcome) {
@@ -180,7 +211,21 @@ impl StdRemoteActorRefProvider {
   }
 }
 
-fn remote_cache_outcome(outcome: &ActorCoreResolveCacheOutcome<RemoteActorRef>) -> RemoteActorRefResolveCacheOutcome {
+impl ActorRefProvider for StdRemoteActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &SUPPORTED_SCHEMES
+  }
+
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    StdRemoteActorRefProvider::actor_ref(self, path).map_err(StdRemoteActorRefProviderError::into_actor_error)
+  }
+
+  fn termination_signal(&self) -> TerminationSignal {
+    self.local_provider.termination_signal()
+  }
+}
+
+fn remote_cache_outcome<T>(outcome: &ActorCoreResolveCacheOutcome<T>) -> RemoteActorRefResolveCacheOutcome {
   match outcome {
     | ActorCoreResolveCacheOutcome::Hit(_) => RemoteActorRefResolveCacheOutcome::Hit,
     | ActorCoreResolveCacheOutcome::Miss(_) => RemoteActorRefResolveCacheOutcome::Miss,
@@ -193,11 +238,10 @@ fn remote_cache_outcome(outcome: &ActorCoreResolveCacheOutcome<RemoteActorRef>) 
 fn strip_authority(path: ActorPath) -> ActorPath {
   use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPathParser;
 
-  // Phase B minimum-viable: re-parse the path's relative form. The actor-core
-  // `ActorPath` does not currently expose a `with_authority(None)` builder so
-  // we go through the parser. The cost is acceptable for the slow path
-  // (loopback dispatch) and the conversion is lossless because the relative
-  // string contains every segment that the local provider needs.
+  // Phase B の最小実装として path の relative form を再 parse する。
+  // actor-core の `ActorPath` は `with_authority(None)` builder をまだ公開していない。
+  // loopback dispatch は slow path なので parse cost は許容し、relative 文字列は
+  // local provider が必要な segment をすべて含むため変換は lossless である。
   let relative = path.to_relative_string();
   ActorPathParser::parse(&relative).unwrap_or(path)
 }

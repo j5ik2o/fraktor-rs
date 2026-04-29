@@ -9,10 +9,9 @@ use crate::std::association_runtime::association_shared::AssociationShared;
 /// Registry mapping a [`UniqueAddress`] to its [`AssociationShared`] handle.
 ///
 /// Each remote node is represented by a single `AssociationShared`. The
-/// registry itself is owned by the higher-level runtime (typically by
-/// `StdRemoting` from Section 22) and is **not** internally synchronised —
-/// callers either own it via `&mut self` or wrap the entire registry in an
-/// outer lock if it must be shared across tasks.
+/// registry itself is owned by the runtime driver and is **not** internally
+/// synchronised — callers either own it via `&mut self` or wrap the entire
+/// registry in an outer lock if it must be shared across tasks.
 #[derive(Debug, Default)]
 pub struct AssociationRegistry {
   entries: BTreeMap<UniqueAddress, AssociationShared>,
