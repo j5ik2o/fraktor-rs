@@ -20,7 +20,7 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, Identify, Status},
   },
-  routing::{ConsistentHashingPool, Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, SmallestMailboxPool},
+  routing::{RandomPool, RemoteRouterConfig, RemoteRouterPool, RoundRobinPool, SmallestMailboxPool},
   serialization::{
     delegator::SerializationDelegator, error::SerializationError, not_serializable_error::NotSerializableError,
     serialization_registry::SerializationRegistry, serialized_message::SerializedMessage, serializer::Serializer,
@@ -178,18 +178,38 @@ impl MiscMessageSerializer {
     Ok(RemoteScope::new(address))
   }
 
-  fn encode_remote_router_config<P: SerializableRemoteRouterPool>(
-    config: &RemoteRouterConfig<P>,
-  ) -> Result<Vec<u8>, SerializationError> {
+  fn encode_remote_router_config(&self, config: &RemoteRouterConfig) -> Result<Vec<u8>, SerializationError> {
     let mut buffer = Vec::new();
-    buffer.push(P::WIRE_TAG);
-    write_u32(&mut buffer, config.local().nr_of_instances())?;
-    write_len_prefixed_bytes(&mut buffer, config.local().router_dispatcher().as_bytes())?;
+    let local = config.local();
+    self.ensure_serializable_remote_router_pool(local)?;
+    let wire_tag = match local {
+      | RemoteRouterPool::SmallestMailbox(_) => SmallestMailboxPool::WIRE_TAG,
+      | RemoteRouterPool::RoundRobin(_) => RoundRobinPool::WIRE_TAG,
+      | RemoteRouterPool::Random(_) => RandomPool::WIRE_TAG,
+      | RemoteRouterPool::ConsistentHashing(_) => {
+        return Err(Self::remote_router_config_not_serializable("ConsistentHashingPool", self.id));
+      },
+    };
+    buffer.push(wire_tag);
+    write_u32(&mut buffer, local.nr_of_instances())?;
+    write_len_prefixed_bytes(&mut buffer, local.router_dispatcher().as_bytes())?;
     write_u32(&mut buffer, config.nodes().len())?;
     for node in config.nodes() {
       Self::write_address(&mut buffer, node)?;
     }
     Ok(buffer)
+  }
+
+  fn ensure_serializable_remote_router_pool(&self, local: &RemoteRouterPool) -> Result<(), SerializationError> {
+    [
+      (local.has_resizer(), "RemoteRouterPool.has_resizer"),
+      (local.use_pool_dispatcher(), "RemoteRouterPool.use_pool_dispatcher"),
+      (!local.stop_router_when_all_routees_removed(), "RemoteRouterPool.stop_router_when_all_routees_removed"),
+    ]
+    .into_iter()
+    .find_map(|(unsupported, type_name)| unsupported.then_some(type_name))
+    .map(|type_name| Self::remote_router_config_not_serializable(type_name, self.id))
+    .map_or(Ok(()), Err)
   }
 
   fn decode_remote_router_config(bytes: &[u8]) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
@@ -315,16 +335,9 @@ impl MiscMessageSerializer {
   fn remote_router_config_not_serializable(type_name: &'static str, serializer_id: SerializerId) -> SerializationError {
     SerializationError::NotSerializable(NotSerializableError::new(type_name, Some(serializer_id), None, None, None))
   }
-
-  fn decode_remote_router_config_with_type_hint<P: SerializableRemoteRouterPool + Send + Sync + 'static>(
-    bytes: &[u8],
-  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    let decoded = Self::decode_remote_router_config(bytes)?;
-    if decoded.is::<RemoteRouterConfig<P>>() { Ok(decoded) } else { Err(SerializationError::InvalidFormat) }
-  }
 }
 
-trait SerializableRemoteRouterPool: Pool + Sized {
+trait SerializableRemoteRouterPool: Sized {
   const WIRE_TAG: u8;
 
   fn from_remote_router_wire(nr_of_instances: usize, router_dispatcher: String) -> Self;
@@ -377,23 +390,9 @@ impl Serializer for MiscMessageSerializer {
         let scope = message.downcast_ref::<RemoteScope>().ok_or(SerializationError::InvalidFormat)?;
         Self::encode_remote_scope(scope)
       },
-      | id if id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() => {
-        let config =
-          message.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().ok_or(SerializationError::InvalidFormat)?;
-        Self::encode_remote_router_config(config)
-      },
-      | id if id == TypeId::of::<RemoteRouterConfig<RoundRobinPool>>() => {
-        let config =
-          message.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().ok_or(SerializationError::InvalidFormat)?;
-        Self::encode_remote_router_config(config)
-      },
-      | id if id == TypeId::of::<RemoteRouterConfig<RandomPool>>() => {
-        let config =
-          message.downcast_ref::<RemoteRouterConfig<RandomPool>>().ok_or(SerializationError::InvalidFormat)?;
-        Self::encode_remote_router_config(config)
-      },
-      | id if id == TypeId::of::<RemoteRouterConfig<ConsistentHashingPool>>() => {
-        Err(Self::remote_router_config_not_serializable("RemoteRouterConfig<ConsistentHashingPool>", self.id))
+      | id if id == TypeId::of::<RemoteRouterConfig>() => {
+        let config = message.downcast_ref::<RemoteRouterConfig>().ok_or(SerializationError::InvalidFormat)?;
+        self.encode_remote_router_config(config)
       },
       | id if id == TypeId::of::<Status>() => {
         let status = message.downcast_ref::<Status>().ok_or(SerializationError::InvalidFormat)?;
@@ -428,14 +427,8 @@ impl Serializer for MiscMessageSerializer {
     if type_id == TypeId::of::<RemoteScope>() {
       return Ok(Box::new(Self::decode_remote_scope(bytes)?));
     }
-    if type_id == TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>() {
-      return Self::decode_remote_router_config_with_type_hint::<SmallestMailboxPool>(bytes);
-    }
-    if type_id == TypeId::of::<RemoteRouterConfig<RoundRobinPool>>() {
-      return Self::decode_remote_router_config_with_type_hint::<RoundRobinPool>(bytes);
-    }
-    if type_id == TypeId::of::<RemoteRouterConfig<RandomPool>>() {
-      return Self::decode_remote_router_config_with_type_hint::<RandomPool>(bytes);
+    if type_id == TypeId::of::<RemoteRouterConfig>() {
+      return Self::decode_remote_router_config(bytes);
     }
     // Status は Success / Failure の判別に manifest が必要。 type_hint だけでは
     // どちらの variant か決まらないため、 from_binary_with_manifest 経由を要求する。
@@ -462,13 +455,7 @@ impl SerializerWithStringManifest for MiscMessageSerializer {
     if message.downcast_ref::<RemoteScope>().is_some() {
       return Cow::Borrowed(REMOTE_SCOPE_MANIFEST);
     }
-    if message.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().is_some() {
-      return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
-    }
-    if message.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().is_some() {
-      return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
-    }
-    if message.downcast_ref::<RemoteRouterConfig<RandomPool>>().is_some() {
+    if message.downcast_ref::<RemoteRouterConfig>().is_some() {
       return Cow::Borrowed(REMOTE_ROUTER_CONFIG_MANIFEST);
     }
     if let Some(status) = message.downcast_ref::<Status>() {

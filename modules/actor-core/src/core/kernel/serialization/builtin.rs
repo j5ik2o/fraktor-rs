@@ -33,7 +33,7 @@ use crate::core::kernel::{
     deploy::RemoteScope,
     messaging::{ActorIdentity, Identify, Status, system_message::SystemMessage},
   },
-  routing::{RandomPool, RemoteRouterConfig, RoundRobinPool, SmallestMailboxPool},
+  routing::RemoteRouterConfig,
   serialization::{
     error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
     serializer_id::SerializerId,
@@ -180,21 +180,7 @@ where
   if misc_registered {
     registry.register_binding(TypeId::of::<ActorIdentity>(), "ActorIdentity", MISC_MESSAGE_ID)?;
     registry.register_binding(TypeId::of::<RemoteScope>(), "RemoteScope", MISC_MESSAGE_ID)?;
-    registry.register_binding(
-      TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>(),
-      "RemoteRouterConfig<SmallestMailboxPool>",
-      MISC_MESSAGE_ID,
-    )?;
-    registry.register_binding(
-      TypeId::of::<RemoteRouterConfig<RoundRobinPool>>(),
-      "RemoteRouterConfig<RoundRobinPool>",
-      MISC_MESSAGE_ID,
-    )?;
-    registry.register_binding(
-      TypeId::of::<RemoteRouterConfig<RandomPool>>(),
-      "RemoteRouterConfig<RandomPool>",
-      MISC_MESSAGE_ID,
-    )?;
+    registry.register_binding(TypeId::of::<RemoteRouterConfig>(), "RemoteRouterConfig", MISC_MESSAGE_ID)?;
     registry.register_binding(TypeId::of::<Status>(), "Status", MISC_MESSAGE_ID)?;
   }
   Ok(())

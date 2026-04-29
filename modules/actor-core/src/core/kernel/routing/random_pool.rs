@@ -7,7 +7,7 @@ use alloc::{string::String, vec::Vec};
 
 use super::{Router, pool::Pool, random_routing_logic::RandomRoutingLogic, router_config::RouterConfig};
 
-const DEFAULT_RANDOM_POOL_SEED: u64 = 1;
+pub(crate) const DEFAULT_RANDOM_POOL_SEED: u64 = 1;
 
 /// Pool router that selects routees pseudo-randomly.
 ///

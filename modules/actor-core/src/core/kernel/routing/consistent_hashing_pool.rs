@@ -69,15 +69,20 @@ impl ConsistentHashingPool {
     self.router_dispatcher = dispatcher;
     self
   }
+
+  /// Creates the routing logic represented by this pool.
+  #[must_use]
+  pub(crate) fn create_routing_logic(&self) -> ConsistentHashingRoutingLogic {
+    let mapper = self.hash_key_mapper.clone();
+    ConsistentHashingRoutingLogic::new(move |msg: &AnyMessage| mapper(msg))
+  }
 }
 
 impl RouterConfig for ConsistentHashingPool {
   type Logic = ConsistentHashingRoutingLogic;
 
   fn create_router(&self) -> Router<Self::Logic> {
-    let mapper = self.hash_key_mapper.clone();
-    let logic = ConsistentHashingRoutingLogic::new(move |msg: &AnyMessage| mapper(msg));
-    Router::new(logic, Vec::new())
+    Router::new(self.create_routing_logic(), Vec::new())
   }
 
   fn router_dispatcher(&self) -> String {
