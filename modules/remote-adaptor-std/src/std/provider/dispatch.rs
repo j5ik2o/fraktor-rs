@@ -59,7 +59,7 @@ pub struct StdRemoteActorRefProvider {
   local_provider:  ActorRefProviderHandleShared<LocalActorRefProvider>,
   remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
   transport:       SharedLock<TcpRemoteTransport>,
-  resolve_cache:   ActorRefResolveCache<RemoteActorRef>,
+  resolve_cache:   ActorRefResolveCache<ActorRef>,
   event_publisher: EventPublisher,
   next_remote_pid: u64,
 }
@@ -72,7 +72,7 @@ impl StdRemoteActorRefProvider {
     local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
     transport: SharedLock<TcpRemoteTransport>,
-    resolve_cache: ActorRefResolveCache<RemoteActorRef>,
+    resolve_cache: ActorRefResolveCache<ActorRef>,
     event_publisher: EventPublisher,
   ) -> Self {
     Self {
@@ -118,7 +118,9 @@ impl StdRemoteActorRefProvider {
     // Branch 3: authority does not match → core remote provider.
     let outcome = self.resolve_remote_actor_ref(path.clone())?;
     self.publish_resolve_cache_event(path, remote_cache_outcome(&outcome));
-    self.build_remote_actor_ref(outcome)
+    Ok(match outcome {
+      | ActorCoreResolveCacheOutcome::Hit(actor_ref) | ActorCoreResolveCacheOutcome::Miss(actor_ref) => actor_ref,
+    })
   }
 
   /// Registers a remote death-watch.
@@ -177,29 +179,27 @@ impl StdRemoteActorRefProvider {
   fn resolve_remote_actor_ref(
     &mut self,
     path: ActorPath,
-  ) -> Result<ActorCoreResolveCacheOutcome<RemoteActorRef>, StdRemoteActorRefProviderError> {
+  ) -> Result<ActorCoreResolveCacheOutcome<ActorRef>, StdRemoteActorRefProviderError> {
     let remote_provider = &mut self.remote_provider;
+    let next_remote_pid = &mut self.next_remote_pid;
     self.resolve_cache.resolve(&path, |candidate| {
-      remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)
+      let remote_ref = remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)?;
+      Self::build_remote_actor_ref(next_remote_pid, remote_ref)
     })
   }
 
   fn build_remote_actor_ref(
-    &mut self,
-    outcome: ActorCoreResolveCacheOutcome<RemoteActorRef>,
+    next_remote_pid: &mut u64,
+    remote_ref: RemoteActorRef,
   ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
-    let remote_ref = match outcome {
-      | ActorCoreResolveCacheOutcome::Hit(remote_ref) | ActorCoreResolveCacheOutcome::Miss(remote_ref) => remote_ref,
-    };
-    let pid = self.allocate_remote_pid()?;
+    let pid = Self::allocate_remote_pid(next_remote_pid)?;
     let sender = RemoteActorRefSender::new(remote_ref.clone());
     Ok(ActorRef::with_canonical_path(pid, sender, remote_ref.path().clone()))
   }
 
-  fn allocate_remote_pid(&mut self) -> Result<Pid, StdRemoteActorRefProviderError> {
-    let pid = Pid::new(self.next_remote_pid, 0);
-    self.next_remote_pid =
-      self.next_remote_pid.checked_add(1).ok_or(StdRemoteActorRefProviderError::RemotePidExhausted)?;
+  fn allocate_remote_pid(next_remote_pid: &mut u64) -> Result<Pid, StdRemoteActorRefProviderError> {
+    let pid = Pid::new(*next_remote_pid, 0);
+    *next_remote_pid = next_remote_pid.checked_add(1).ok_or(StdRemoteActorRefProviderError::RemotePidExhausted)?;
     Ok(pid)
   }
 
@@ -224,7 +224,7 @@ impl ActorRefProvider for StdRemoteActorRefProvider {
   }
 }
 
-fn remote_cache_outcome(outcome: &ActorCoreResolveCacheOutcome<RemoteActorRef>) -> RemoteActorRefResolveCacheOutcome {
+fn remote_cache_outcome<T>(outcome: &ActorCoreResolveCacheOutcome<T>) -> RemoteActorRefResolveCacheOutcome {
   match outcome {
     | ActorCoreResolveCacheOutcome::Hit(_) => RemoteActorRefResolveCacheOutcome::Hit,
     | ActorCoreResolveCacheOutcome::Miss(_) => RemoteActorRefResolveCacheOutcome::Miss,

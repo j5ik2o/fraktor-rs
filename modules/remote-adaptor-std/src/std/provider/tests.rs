@@ -261,6 +261,18 @@ fn remote_actor_ref_resolution_uses_cache_after_first_miss() {
 }
 
 #[test]
+fn remote_actor_ref_resolution_reuses_cached_actor_ref_pid() {
+  let mut fixture = make_provider_fixture();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+
+  let first = fixture.provider.actor_ref(remote_path.clone()).expect("first remote actor ref should resolve");
+  let second = fixture.provider.actor_ref(remote_path).expect("second remote actor ref should resolve");
+
+  assert_eq!(first.pid(), second.pid());
+  assert_eq!(fixture.actor_ref_call_count(), 1);
+}
+
+#[test]
 fn remote_actor_ref_resolution_publishes_cache_miss_then_hit_events() {
   let mut fixture = make_provider_fixture();
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
