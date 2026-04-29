@@ -11,7 +11,7 @@
 use core::time::Duration;
 
 use bytes::Bytes;
-use fraktor_remote_adaptor_std_rs::std::tcp_transport::{
+use fraktor_remote_adaptor_std_rs::std::transport::tcp::{
   InboundFrameEvent, TcpClient, TcpServer, WireFrame, WireFrameCodec,
 };
 use fraktor_remote_core_rs::core::wire::EnvelopePdu;

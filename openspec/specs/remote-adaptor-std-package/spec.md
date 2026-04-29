@@ -47,12 +47,13 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: モジュール構成
 
-クレートは以下のサブモジュールを `src/` 配下に持つ SHALL: `tcp_transport`、`association`、`watcher_actor`、`provider`、`extension_installer`。
+クレートは以下のサブモジュールを `src/` 配下に持つ SHALL: `transport`、`association`、`watcher_actor`、`provider`、`extension_installer`。
 
 #### Scenario: 必須サブモジュールの存在
 
 - **WHEN** `modules/remote-adaptor-std/src/` のディレクトリ一覧を取得する
-- **THEN** `tcp_transport.rs`、`association.rs`、`watcher_actor.rs`、`provider.rs`、`extension_installer.rs` および対応するディレクトリが存在する
+- **THEN** `transport.rs`、`association.rs`、`watcher_actor.rs`、`provider.rs`、`extension_installer.rs` および対応するディレクトリが存在する
+- **AND** TCP 実装は `transport/tcp.rs` と `transport/tcp/` 配下に配置される
 
 ### Requirement: ライセンスとメタデータ
 

@@ -12,7 +12,7 @@ use fraktor_remote_core_rs::core::{
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
-use crate::std::tcp_transport::TcpRemoteTransport;
+use crate::std::transport::tcp::TcpRemoteTransport;
 
 const NOT_INSTALLED: &str = "remote extension is not installed";
 const ALREADY_INSTALLED: &str = "remote extension is already installed";

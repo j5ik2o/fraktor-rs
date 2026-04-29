@@ -17,14 +17,14 @@ use tokio::{
 };
 use tokio_util::codec::Framed;
 
-use crate::std::tcp_transport::{frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent};
+use super::{frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent};
 
 type ConnectionTasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
 
 /// Owns a `tokio::net::TcpListener` and drives an accept loop that spawns a
 /// reader task for every accepted connection.
 ///
-/// Each reader task reads [`crate::std::tcp_transport::WireFrame`]s through a
+/// Each reader task reads [`crate::std::transport::tcp::WireFrame`]s through a
 /// `Framed` stream and forwards them to the shared inbound channel owned
 /// by the transport.
 pub struct TcpServer {

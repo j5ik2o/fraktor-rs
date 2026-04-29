@@ -48,7 +48,7 @@
 
 #### Scenario: TcpRemoteTransport の public method signature に内部型が現れない
 
-- **WHEN** `modules/remote-adaptor-std/src/std/tcp_transport/base.rs` の `impl TcpRemoteTransport` を検査する
+- **WHEN** `modules/remote-adaptor-std/src/std/transport/tcp/base.rs` の `impl TcpRemoteTransport` を検査する
 - **THEN** `pub fn` の signature に `TcpClient`、`TcpServer`、`WireFrame`、`WireFrameCodec`、`InboundFrameEvent` が現れない
 - **AND** それらを扱う method は `pub(crate)`、private、または module 内部 helper である
 

@@ -12,8 +12,8 @@ use fraktor_remote_core_rs::core::{
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::std::{
-  extension_installer::remoting_extension_installer::RemotingExtensionInstaller, tcp_transport::TcpRemoteTransport,
-  tests::test_support::EventHarness,
+  extension_installer::remoting_extension_installer::RemotingExtensionInstaller, tests::test_support::EventHarness,
+  transport::tcp::TcpRemoteTransport,
 };
 
 fn make_transport() -> TcpRemoteTransport {

@@ -31,8 +31,8 @@ use crate::std::{
     inbound_dispatch::{run_inbound_dispatch, run_inbound_task_with_restart_budget},
     system_message_delivery::SystemMessageDeliveryState,
   },
-  tcp_transport::{InboundFrameEvent, WireFrame, WireFrameCodec},
   tests::test_support::EventHarness,
+  transport::tcp::{InboundFrameEvent, WireFrame, WireFrameCodec},
 };
 
 // ---------------------------------------------------------------------------

@@ -12,9 +12,7 @@ use tokio::{
 };
 use tokio_util::codec::Framed;
 
-use crate::std::tcp_transport::{
-  frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, wire_frame::WireFrame,
-};
+use super::{frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, wire_frame::WireFrame};
 
 /// Single outbound TCP connection towards a remote authority.
 ///

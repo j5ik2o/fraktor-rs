@@ -77,7 +77,7 @@ remote routee expansion showcase は、`StdRemoteActorRefProvider::new(...)` を
 **影響を受けるコード:**
 
 - `modules/remote-adaptor-std/src/std.rs`
-- `modules/remote-adaptor-std/src/std/tcp_transport.rs`
+- `modules/remote-adaptor-std/src/std/transport.rs`
 - `modules/remote-adaptor-std/src/std/provider.rs`
 - `modules/remote-adaptor-std/src/std/association.rs`
 - `modules/remote-adaptor-std/src/std/watcher_actor.rs`

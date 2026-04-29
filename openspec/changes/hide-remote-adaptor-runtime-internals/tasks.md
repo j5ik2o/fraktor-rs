@@ -6,7 +6,7 @@
 
 ## 2. TCP transport 公開面の縮小
 
-- [ ] 2.1 `tcp_transport` の公開 re-export を `TcpRemoteTransport` 中心に整理し、`TcpClient` / `TcpServer` / frame codec 系型を crate 内部へ移す。
+- [ ] 2.1 `transport::tcp` の公開 re-export を `TcpRemoteTransport` 中心に整理し、`TcpClient` / `TcpServer` / frame codec 系型を crate 内部へ移す。
 - [ ] 2.2 `TcpRemoteTransport` の public method signature から内部 TCP 実装型や runtime channel 型を漏らさない。
 - [ ] 2.3 crate 内 runtime が必要とする transport 補助 API は `pub(crate)` に限定し、外部利用者向け API と分離する。
 

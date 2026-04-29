@@ -26,8 +26,8 @@ use crate::std::{
   provider::{
     RemoteRouteeExpansion, RemoteRouteeExpansionError, StdRemoteActorRefProvider, StdRemoteActorRefProviderError,
   },
-  tcp_transport::TcpRemoteTransport,
   tests::test_support::EventHarness,
+  transport::tcp::TcpRemoteTransport,
 };
 
 // ---------------------------------------------------------------------------

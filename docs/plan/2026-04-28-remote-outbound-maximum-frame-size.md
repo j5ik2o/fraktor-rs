@@ -10,8 +10,8 @@ Phase 2 の `ActorIdentity` remote ActorRef restoration、`RemoteRouterConfig` r
 
 | 種別 | ファイル |
 |------|---------|
-| 変更 | `modules/remote-adaptor-std/src/std/tcp_transport/frame_codec.rs` |
-| 変更 | `modules/remote-adaptor-std/src/std/tcp_transport/tests.rs` |
+| 変更 | `modules/remote-adaptor-std/src/std/transport/tcp/frame_codec.rs` |
+| 変更 | `modules/remote-adaptor-std/src/std/transport/tcp/tests.rs` |
 
 ## 実装方針
 

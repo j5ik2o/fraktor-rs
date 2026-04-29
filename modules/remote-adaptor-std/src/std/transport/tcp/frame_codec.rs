@@ -8,7 +8,7 @@ use fraktor_remote_core_rs::core::wire::{
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::std::tcp_transport::{frame_codec_error::FrameCodecError, wire_frame::WireFrame};
+use super::{frame_codec_error::FrameCodecError, wire_frame::WireFrame};
 
 /// Minimum bytes required to inspect the frame header (`length(4)` + `version(1)` + `kind(1)`).
 const FRAME_HEADER_LEN: usize = 6;
@@ -30,9 +30,9 @@ fn declared_frame_length(frame: &[u8]) -> Result<usize, FrameCodecError> {
 }
 
 /// Codec implementing `tokio_util::codec::{Encoder, Decoder}` for
-/// [`crate::std::tcp_transport::WireFrame`].
+/// [`crate::std::transport::tcp::WireFrame`].
 ///
-/// Encode dispatches on the [`crate::std::tcp_transport::WireFrame`] variant and delegates to the
+/// Encode dispatches on the [`crate::std::transport::tcp::WireFrame`] variant and delegates to the
 /// core `Codec<T>` implementor for that PDU. Decode peeks at the frame header to
 /// determine the `kind` byte, splits off the complete frame bytes, and feeds
 /// them back through the corresponding core decoder.

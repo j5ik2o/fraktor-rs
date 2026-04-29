@@ -5,11 +5,11 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: TcpRemoteTransport 型
 
-`fraktor_remote_adaptor_std_rs::std::tcp_transport::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。Pekko `ArteryTcpTransport` に対応する TCP ベースの remote transport を提供する。
+`fraktor_remote_adaptor_std_rs::std::transport::tcp::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。Pekko `ArteryTcpTransport` に対応する TCP ベースの remote transport を提供する。
 
 #### Scenario: 型の存在
 
-- **WHEN** `modules/remote-adaptor-std/src/tcp_transport/tcp_transport.rs` を読む
+- **WHEN** `modules/remote-adaptor-std/src/std/transport/tcp/base.rs` を読む
 - **THEN** `pub struct TcpRemoteTransport` が定義されている
 
 #### Scenario: RemoteTransport trait の実装
@@ -47,11 +47,11 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: Framed codec 統合
 
-`tcp_transport::frame_codec` モジュールは `tokio_util::codec::{Encoder, Decoder}` を実装し、core の `Codec<T>` trait と tokio の Framed streaming を統合する SHALL。
+`transport::tcp::frame_codec` モジュールは `tokio_util::codec::{Encoder, Decoder}` を実装し、core の `Codec<T>` trait と tokio の Framed streaming を統合する SHALL。
 
 #### Scenario: Framed の利用
 
-- **WHEN** `tcp_transport::connection` 系モジュールで `TcpStream` を Framed 化する箇所を検査する
+- **WHEN** `transport::tcp::{client,server}` 系モジュールで `TcpStream` を Framed 化する箇所を検査する
 - **THEN** `tokio_util::codec::Framed` が使われており、core の wire frame header (length+version+kind) を正しく解釈する
 
 #### Scenario: core Codec との整合
@@ -67,4 +67,3 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 - **WHEN** `modules/remote-adaptor-std/src/` 配下を `Instant::now()` で grep する
 - **THEN** 使用箇所は限定され、すべて monotonic millis への変換を伴う (wall clock `SystemTime::now()` は使わない)
-

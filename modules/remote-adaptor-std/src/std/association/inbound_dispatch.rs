@@ -20,7 +20,7 @@ use crate::std::{
     inbound_quarantine_check::InboundQuarantineCheck, peer_address_match::peer_matches_address,
     tokio_instant_elapsed_millis,
   },
-  tcp_transport::{InboundFrameEvent, WireFrame},
+  transport::tcp::{InboundFrameEvent, WireFrame},
 };
 
 struct InboundDispatchState<HS, CS, WS> {

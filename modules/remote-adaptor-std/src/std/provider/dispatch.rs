@@ -27,7 +27,7 @@ use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::std::{
   provider::{provider_dispatch_error::StdRemoteActorRefProviderError, remote_actor_ref_sender::RemoteActorRefSender},
-  tcp_transport::TcpRemoteTransport,
+  transport::tcp::TcpRemoteTransport,
 };
 
 // remote actor ref は PID 空間の上位 1/4 を利用し、runtime allocator が
