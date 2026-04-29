@@ -14,7 +14,11 @@ mod tests;
 mod dispatch;
 mod provider_dispatch_error;
 mod remote_actor_ref_sender;
+mod remote_routee_expansion;
+mod remote_routee_expansion_error;
 
 pub use dispatch::StdRemoteActorRefProvider;
 pub use provider_dispatch_error::StdRemoteActorRefProviderError;
 pub use remote_actor_ref_sender::RemoteActorRefSender;
+pub use remote_routee_expansion::RemoteRouteeExpansion;
+pub use remote_routee_expansion_error::RemoteRouteeExpansionError;

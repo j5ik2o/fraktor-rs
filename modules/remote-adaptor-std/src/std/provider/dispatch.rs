@@ -7,11 +7,13 @@ use alloc::boxed::Box;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Pid,
-    actor_path::ActorPath,
+    actor_path::{ActorPath, ActorPathScheme},
     actor_ref::ActorRef,
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
+    error::ActorError,
   },
   serialization::{ActorRefResolveCache, ActorRefResolveCacheOutcome as ActorCoreResolveCacheOutcome},
+  system::TerminationSignal,
 };
 use fraktor_remote_core_rs::core::{
   address::UniqueAddress,
@@ -24,8 +26,12 @@ use fraktor_remote_core_rs::core::{
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::std::{
-  provider::provider_dispatch_error::StdRemoteActorRefProviderError, tcp_transport::TcpRemoteTransport,
+  provider::{provider_dispatch_error::StdRemoteActorRefProviderError, remote_actor_ref_sender::RemoteActorRefSender},
+  tcp_transport::TcpRemoteTransport,
 };
+
+const REMOTE_ACTOR_REF_PID_START: u64 = u64::MAX / 4;
+const SUPPORTED_SCHEMES: [ActorPathScheme; 1] = [ActorPathScheme::FraktorTcp];
 
 /// `std + tokio` actor ref provider that performs the loopback / remote
 /// dispatch demanded by design Decision 3-C.
@@ -51,6 +57,7 @@ pub struct StdRemoteActorRefProvider {
   transport:       SharedLock<TcpRemoteTransport>,
   resolve_cache:   ActorRefResolveCache<RemoteActorRef>,
   event_publisher: EventPublisher,
+  next_remote_pid: u64,
 }
 
 impl StdRemoteActorRefProvider {
@@ -64,7 +71,15 @@ impl StdRemoteActorRefProvider {
     resolve_cache: ActorRefResolveCache<RemoteActorRef>,
     event_publisher: EventPublisher,
   ) -> Self {
-    Self { local_address, local_provider, remote_provider, transport, resolve_cache, event_publisher }
+    Self {
+      local_address,
+      local_provider,
+      remote_provider,
+      transport,
+      resolve_cache,
+      event_publisher,
+      next_remote_pid: REMOTE_ACTOR_REF_PID_START,
+    }
   }
 
   /// Returns the local [`UniqueAddress`] used to determine the loopback
@@ -82,15 +97,7 @@ impl StdRemoteActorRefProvider {
   ///
   /// - the local provider rejects the path (`LocalProvider`),
   /// - the core remote provider rejects the path (`CoreProvider`), or
-  /// - the resolved [`fraktor_remote_core_rs::core::provider::RemoteActorRef`] cannot be wrapped
-  ///   into an `ActorRef` (`RemoteSenderBuildFailed`).
-  ///
-  /// # Panics
-  ///
-  /// Phase B minimum-viable: a non-loopback remote `actor_ref` returns
-  /// `RemoteSenderBuildFailed` because constructing a real
-  /// `ActorRef` requires extra system context (a live `ActorSystemState`)
-  /// that is wired up in Section 22's `StdRemoting` extension installer.
+  /// - the adapter exhausts its synthetic pid space for remote references.
   pub fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, StdRemoteActorRefProviderError> {
     if path.parts().authority_endpoint().is_none() {
       // Branch 1: no authority → straight to the local provider.
@@ -107,7 +114,7 @@ impl StdRemoteActorRefProvider {
     // Branch 3: authority does not match → core remote provider.
     let outcome = self.resolve_remote_actor_ref(path.clone())?;
     self.publish_resolve_cache_event(path, remote_cache_outcome(&outcome));
-    Err(StdRemoteActorRefProviderError::RemoteSenderBuildFailed)
+    self.build_remote_actor_ref(outcome)
   }
 
   /// Registers a remote death-watch.
@@ -173,10 +180,43 @@ impl StdRemoteActorRefProvider {
     })
   }
 
+  fn build_remote_actor_ref(
+    &mut self,
+    outcome: ActorCoreResolveCacheOutcome<RemoteActorRef>,
+  ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
+    let remote_ref = match outcome {
+      | ActorCoreResolveCacheOutcome::Hit(remote_ref) | ActorCoreResolveCacheOutcome::Miss(remote_ref) => remote_ref,
+    };
+    let pid = self.allocate_remote_pid()?;
+    let sender = RemoteActorRefSender::new(remote_ref.clone());
+    Ok(ActorRef::with_canonical_path(pid, sender, remote_ref.path().clone()))
+  }
+
+  fn allocate_remote_pid(&mut self) -> Result<Pid, StdRemoteActorRefProviderError> {
+    let pid = Pid::new(self.next_remote_pid, 0);
+    self.next_remote_pid =
+      self.next_remote_pid.checked_add(1).ok_or(StdRemoteActorRefProviderError::RemotePidExhausted)?;
+    Ok(pid)
+  }
+
   fn publish_resolve_cache_event(&self, path: ActorPath, outcome: RemoteActorRefResolveCacheOutcome) {
     self
       .event_publisher
       .publish_extension(REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent::new(path, outcome));
+  }
+}
+
+impl ActorRefProvider for StdRemoteActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &SUPPORTED_SCHEMES
+  }
+
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    StdRemoteActorRefProvider::actor_ref(self, path).map_err(|error| ActorError::fatal(error.to_string()))
+  }
+
+  fn termination_signal(&self) -> TerminationSignal {
+    self.local_provider.termination_signal()
   }
 }
 

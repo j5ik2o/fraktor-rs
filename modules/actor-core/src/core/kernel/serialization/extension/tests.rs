@@ -16,7 +16,9 @@ use super::*;
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
+    actor_path::{ActorPath, ActorPathParser, ActorPathScheme},
     actor_ref::{ActorRef, NullSender, dead_letter::DeadLetterReason},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, AnyMessageView},
     props::Props,
@@ -40,7 +42,7 @@ use crate::core::kernel::{
     transport_information::TransportInformation,
   },
   system::{
-    ActorSystem,
+    ActorSystem, TerminationSignal,
     remote::RemotingConfig,
     state::{SystemStateShared, system_state::SystemState},
   },
@@ -159,6 +161,33 @@ impl Actor for NoopActor {
   }
 }
 
+struct RemotePathActorRefProvider {
+  system_state:   SystemStateShared,
+  resolved_paths: ArcShared<SpinSyncMutex<Vec<ActorPath>>>,
+}
+
+impl RemotePathActorRefProvider {
+  fn new(system_state: SystemStateShared, resolved_paths: ArcShared<SpinSyncMutex<Vec<ActorPath>>>) -> Self {
+    Self { system_state, resolved_paths }
+  }
+}
+
+impl ActorRefProvider for RemotePathActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::FraktorTcp]
+  }
+
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    self.resolved_paths.lock().push(path.clone());
+    let pid = self.system_state.allocate_pid();
+    Ok(ActorRef::with_canonical_path(pid, NullSender, path))
+  }
+
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
+  }
+}
+
 fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &str) -> ActorSystem {
   let mut config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name(system_name.to_string());
   if let Some(remoting) = remoting {
@@ -198,6 +227,14 @@ fn build_actor_ref_with_path(system: &ActorSystem) -> ActorRef {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
   state.register_cell(child.clone());
   child.actor_ref()
+}
+
+fn build_actor_ref_with_registered_path(system: &ActorSystem, canonical_path: &str) -> ActorRef {
+  let path = ActorPathParser::parse(canonical_path).expect("remote path");
+  let state = system.state();
+  let pid = state.allocate_pid();
+  state.register_actor_path(pid, &path);
+  ActorRef::with_system(pid, NullSender, &state)
 }
 
 #[test]
@@ -277,6 +314,36 @@ fn builtin_actor_identity_with_ref_decode_fails_without_resolve_context() {
   let result = target_extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>()));
 
   assert!(matches!(result, Err(SerializationError::NotSerializable(_))), "expected NotSerializable, got {result:?}");
+}
+
+#[test]
+fn builtin_actor_identity_with_remote_ref_restores_via_registered_scheme_provider() {
+  let remote_path = "fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker";
+  let remote_remoting = RemotingConfig::default().with_canonical_host("10.0.0.1").with_canonical_port(2552);
+  let source_system = build_system_with_remoting(Some(remote_remoting), "remote-sys");
+  let actor_ref = build_actor_ref_with_registered_path(&source_system, remote_path);
+  let source_extension = build_default_extension_with_system(&source_system);
+  let original = ActorIdentity::found(AnyMessage::new(String::from("correlation-remote")), actor_ref);
+  let serialized = source_extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+
+  let target_config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name(String::from("target-sys"));
+  let target_state = SystemStateShared::new(SystemState::build_from_owned_config(target_config).expect("target state"));
+  let target_system = ActorSystem::from_state(target_state);
+  let resolved_paths = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let provider =
+    ActorRefProviderHandleShared::new(RemotePathActorRefProvider::new(target_system.state(), resolved_paths.clone()));
+  target_system.extended().register_actor_ref_provider(&provider).expect("register provider");
+  target_system.state().mark_root_started();
+  let target_extension = build_default_extension_with_system(&target_system);
+
+  let decoded = target_extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>())).expect("deserialize");
+  let identity = decoded.downcast::<ActorIdentity>().expect("decoded payload should be ActorIdentity");
+  let restored_ref = identity.actor_ref().expect("remote actor ref should be restored");
+  let restored_path = restored_ref.canonical_path().expect("restored canonical path").to_canonical_uri();
+
+  assert_eq!(restored_path, remote_path);
+  let expected_path = ActorPathParser::parse(remote_path).expect("expected path");
+  assert_eq!(resolved_paths.lock().as_slice(), &[expected_path]);
 }
 
 #[test]

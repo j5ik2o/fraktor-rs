@@ -6,6 +6,7 @@ use super::ActorRef;
 use crate::core::kernel::{
   actor::{
     Pid,
+    actor_path::ActorPathParser,
     actor_ref::{ActorRefSender, NullSender, SendOutcome},
     error::{ActorError, SendError},
     messaging::AnyMessage,
@@ -103,6 +104,27 @@ fn actor_ref_path_resolves_segments() {
   use crate::core::kernel::actor::actor_ref::null_sender::NullSender;
   let actor: ActorRef = ActorRef::with_system(child_pid, NullSender, &system);
   assert_eq!(actor.path().expect("path").to_string(), "/user/worker");
+}
+
+#[test]
+fn actor_ref_with_canonical_path_returns_explicit_remote_path() {
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("remote path");
+  let actor = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, remote_path.clone());
+
+  assert_eq!(actor.path().expect("path").to_canonical_uri(), remote_path.to_canonical_uri());
+  assert_eq!(actor.canonical_path().expect("canonical path").to_canonical_uri(), remote_path.to_canonical_uri());
+}
+
+#[test]
+fn actor_ref_with_canonical_path_equality_uses_explicit_path() {
+  let first_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("first path");
+  let second_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/other").expect("second path");
+  let first = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, first_path.clone());
+  let same = ActorRef::with_canonical_path(Pid::new(901, 0), NullSender, first_path);
+  let different = ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, second_path);
+
+  assert_eq!(first, same);
+  assert_ne!(first, different);
 }
 
 #[test]

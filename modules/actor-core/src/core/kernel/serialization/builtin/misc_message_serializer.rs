@@ -14,7 +14,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
 use crate::core::kernel::{
   actor::{
     Address,
-    actor_path::ActorPathParser,
+    actor_path::{ActorPath, ActorPathParser},
     actor_ref::ActorRef,
     deploy::RemoteScope,
     error::ActorError,
@@ -26,7 +26,7 @@ use crate::core::kernel::{
     serialization_registry::SerializationRegistry, serialized_message::SerializedMessage, serializer::Serializer,
     serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
   },
-  system::state::SystemStateWeak,
+  system::state::{SystemStateShared, SystemStateWeak},
 };
 
 /// Manifest string identifying the [`Identify`] payload (matches Pekko `MiscMessageSerializer`).
@@ -284,20 +284,25 @@ impl MiscMessageSerializer {
     actor_ref.canonical_path().map(|path| path.to_canonical_uri()).ok_or_else(Self::actor_ref_not_serializable)
   }
 
-  // Phase 2 では `ActorIdentity::found` で運ばれた path をローカル `ActorPathRegistry`
-  // でしか解決しない。 送信側 system の authority を持つ remote path は本ローカル lookup
-  // ではヒットしないため `actor_ref_not_serializable` を返す。 cross-system での復元は remote
-  // `ActorRef` 構築が 整う Phase 3 hard 側で `RemoteActorRefProvider`
-  // 経由のブランチを追加して扱う。
   fn deserialize_actor_ref(&self, path: &str) -> Result<ActorRef, SerializationError> {
     let path = ActorPathParser::parse(path).map_err(|_| SerializationError::InvalidFormat)?;
     let Some(system_state) = self.system_state.as_ref().and_then(SystemStateWeak::upgrade) else {
       return Err(Self::actor_ref_not_serializable());
     };
+    if let Some(result) = system_state.actor_ref_provider_call_for_scheme(path.parts().scheme(), path.clone()) {
+      return result.map_err(|_| Self::actor_ref_not_serializable());
+    }
+    Self::deserialize_actor_ref_from_registry(&system_state, &path)
+  }
+
+  fn deserialize_actor_ref_from_registry(
+    system_state: &SystemStateShared,
+    path: &ActorPath,
+  ) -> Result<ActorRef, SerializationError> {
     // pid 解決と cell 取得の 2 段ルックアップ間で actor がライフサイクル終了する race も
     // ありうるため、両方の None を `actor_ref_not_serializable` に集約する。
     system_state
-      .with_actor_path_registry(|registry| registry.pid_for(&path))
+      .with_actor_path_registry(|registry| registry.pid_for(path))
       .and_then(|pid| system_state.cell(&pid))
       .map(|cell| cell.actor_ref())
       .ok_or_else(Self::actor_ref_not_serializable)
