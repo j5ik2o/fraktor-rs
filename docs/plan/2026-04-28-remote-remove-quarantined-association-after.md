@@ -10,7 +10,7 @@ Phase 2 の advanced Artery settings 残件から、実動作に接続できる 
 |------|----------|
 | remote-core config | `modules/remote-core/src/core/config/remote_config.rs`, `modules/remote-core/src/core/config/tests.rs` |
 | remote-core association | `modules/remote-core/src/core/association/base.rs`, `modules/remote-core/src/core/association/association_state.rs`, `modules/remote-core/src/core/association/tests.rs` |
-| remote-adaptor-std registry | `modules/remote-adaptor-std/src/std/association_runtime/association_registry.rs`, `modules/remote-adaptor-std/src/std/association_runtime/tests.rs` |
+| remote-adaptor-std registry | `modules/remote-adaptor-std/src/std/association/association_registry.rs`, `modules/remote-adaptor-std/src/std/association/tests.rs` |
 
 ## 実装方針
 

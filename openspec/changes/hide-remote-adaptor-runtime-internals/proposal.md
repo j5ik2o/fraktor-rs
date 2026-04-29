@@ -79,7 +79,7 @@ remote routee expansion showcase は、`StdRemoteActorRefProvider::new(...)` を
 - `modules/remote-adaptor-std/src/std.rs`
 - `modules/remote-adaptor-std/src/std/tcp_transport.rs`
 - `modules/remote-adaptor-std/src/std/provider.rs`
-- `modules/remote-adaptor-std/src/std/association_runtime.rs`
+- `modules/remote-adaptor-std/src/std/association.rs`
 - `modules/remote-adaptor-std/src/std/watcher_actor.rs`
 - `modules/remote-adaptor-std/src/std/extension_installer.rs`
 - `modules/remote-adaptor-std/src/std/provider/dispatch.rs`

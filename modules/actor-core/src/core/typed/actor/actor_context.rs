@@ -19,7 +19,7 @@ use crate::core::{
     },
     event::logging::LogLevel,
     pattern::install_ask_timeout,
-    util::futures::ActorFutureListener,
+    support::futures::ActorFutureListener,
   },
   typed::{
     TypedActorRef, TypedActorSystem,

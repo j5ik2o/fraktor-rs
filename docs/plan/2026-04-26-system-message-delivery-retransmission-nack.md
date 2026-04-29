@@ -6,8 +6,8 @@ remote Phase 2 medium 項目のうち、今回の対象は `system message deliv
 
 ## 対象
 
-- `modules/remote-adaptor-std/src/std/association_runtime/system_message_delivery.rs`
-- `modules/remote-adaptor-std/src/std/association_runtime/tests.rs`
+- `modules/remote-adaptor-std/src/std/association/system_message_delivery.rs`
+- `modules/remote-adaptor-std/src/std/association/tests.rs`
 
 ## 実装方針
 

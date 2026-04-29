@@ -437,7 +437,7 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use crate::core::kernel::util::futures::{ActorFuture, ActorFutureShared};
+  use crate::core::kernel::support::futures::{ActorFuture, ActorFutureShared};
 
   let mut state = build_state();
   let future = ActorFutureShared::new(ActorFuture::new());

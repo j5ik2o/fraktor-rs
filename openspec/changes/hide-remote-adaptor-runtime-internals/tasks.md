@@ -12,7 +12,7 @@
 
 ## 3. runtime driver の内部化
 
-- [ ] 3.1 `association_runtime` の registry / shared / handshake / reconnect / quarantine / inbound / outbound driver を crate 内部 API に変更する。
+- [ ] 3.1 `association` の registry / shared / handshake / reconnect / quarantine / inbound / outbound driver を crate 内部 API に変更する。
 - [ ] 3.2 `watcher_actor` と heartbeat 関連型を crate 内部 API に変更する。
 - [ ] 3.3 `RemoteActorRefSender` と送信エラー型を crate 内部 API に変更し、外部利用者に runtime 実装型を露出しない。
 - [ ] 3.4 内部 API に依存しているテストは crate 内部テストへ移し、外部 integration test は public API のみを使う。

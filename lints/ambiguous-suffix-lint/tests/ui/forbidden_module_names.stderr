@@ -1,0 +1,27 @@
+warning: `helper_runtime` (module) は曖昧なサフィックス `Runtime` を含んでいます
+  --> $DIR/forbidden_module_names.rs:5:1
+   |
+LL | / mod helper_runtime {
+LL | |   pub struct CleanRegistry;
+LL | | }
+   | |_^
+   |
+   = help: `Runtime` は責務の境界が不明確になりやすいサフィックスです。代替案: Executor, Scheduler, EventLoop, Environment
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `helper_runtime` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: Executor, Scheduler, EventLoop, Environment） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+   = note: `#[warn(ambiguous_suffix)]` on by default
+
+warning: `system_util` (module) は曖昧なサフィックス `Util` を含んでいます
+  --> $DIR/forbidden_module_names.rs:9:1
+   |
+LL | / pub mod system_util {
+LL | |   pub struct AnotherRegistry;
+LL | | }
+   | |_^
+   |
+   = help: `Util` は責務の境界が不明確になりやすいサフィックスです。代替案: 具体的な動詞を含む名前 (例: FormatHelper → DateFormatter)
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `system_util` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: 具体的な動詞を含む名前 (例: FormatHelper → DateFormatter)） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+
+warning: 2 warnings emitted
+

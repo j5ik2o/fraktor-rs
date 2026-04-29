@@ -15,7 +15,7 @@ use fraktor_remote_core_rs::core::{
 use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
 use crate::std::{
-  association_runtime::{
+  association::{
     RestartCounter, apply_effects_in_place, association_registry::AssociationRegistry,
     inbound_quarantine_check::InboundQuarantineCheck, peer_address_match::peer_matches_address,
     tokio_instant_elapsed_millis,

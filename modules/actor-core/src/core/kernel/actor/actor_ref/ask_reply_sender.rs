@@ -11,7 +11,7 @@ use crate::core::kernel::{
     error::SendError,
     messaging::{AnyMessage, AskResult},
   },
-  util::futures::ActorFutureShared,
+  support::futures::ActorFutureShared,
 };
 
 /// Sender that completes the associated `ActorFuture` when a reply arrives.

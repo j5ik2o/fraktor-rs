@@ -5,7 +5,7 @@ use crate::core::kernel::{
     actor_ref::ActorRef,
     messaging::{AnyMessage, AskError, ask_response::AskResponse},
   },
-  util::futures::{ActorFuture, ActorFutureShared},
+  support::futures::{ActorFuture, ActorFutureShared},
 };
 
 #[test]

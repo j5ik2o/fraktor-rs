@@ -22,5 +22,5 @@ remote Phase 1B として、std adapter に残っている advertised addresses 
 - `cargo fmt --all`
 - 変更範囲の型チェック / clippy
 - `cargo test -p fraktor-remote-adaptor-std-rs extension_installer`
-- `cargo test -p fraktor-remote-adaptor-std-rs association_runtime`
+- `cargo test -p fraktor-remote-adaptor-std-rs association`
 - `./scripts/ci-check.sh ai dylint`

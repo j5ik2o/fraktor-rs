@@ -23,7 +23,7 @@ use tokio::sync::{
 use tokio_util::codec::Encoder;
 
 use crate::std::{
-  association_runtime::{
+  association::{
     InboundQuarantineCheck, RestartCounter, apply_effects_in_place,
     association_registry::AssociationRegistry,
     association_shared::AssociationShared,
@@ -839,7 +839,7 @@ async fn handshake_driver_sends_liveness_probe_when_active_association_is_idle()
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_drains_active_association() {
-  use crate::std::association_runtime::outbound_loop::run_outbound_loop;
+  use crate::std::association::outbound_loop::run_outbound_loop;
 
   // 送信要求された envelope をすべて記録する transport。
   struct CapturingTransport {
@@ -939,7 +939,7 @@ async fn outbound_loop_drains_active_association() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_waits_backoff_before_reconnect_and_recovers_association() {
-  use crate::std::association_runtime::{ReconnectBackoffPolicy, run_outbound_loop_with_reconnect};
+  use crate::std::association::{ReconnectBackoffPolicy, run_outbound_loop_with_reconnect};
 
   let mut association = handshaking_association();
   let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
@@ -1005,7 +1005,7 @@ async fn outbound_loop_waits_backoff_before_reconnect_and_recovers_association()
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_returns_send_failure_when_restart_budget_is_exhausted() {
-  use crate::std::association_runtime::{ReconnectBackoffPolicy, run_outbound_loop_with_reconnect};
+  use crate::std::association::{ReconnectBackoffPolicy, run_outbound_loop_with_reconnect};
 
   let mut association = handshaking_association();
   let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
@@ -1079,7 +1079,7 @@ fn restart_counter_resets_budget_after_restart_timeout_window_expires() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_treats_not_started_as_shutdown_without_reconnect() {
-  use crate::std::association_runtime::{ReconnectBackoffPolicy, run_outbound_loop_with_reconnect};
+  use crate::std::association::{ReconnectBackoffPolicy, run_outbound_loop_with_reconnect};
 
   let mut association = handshaking_association();
   let response = HandshakeRsp::new(remote_unique("remote-sys", "10.0.0.1", 2552, 1));
@@ -1828,7 +1828,7 @@ async fn inbound_dispatch_drops_heartbeat_response_when_peer_does_not_match_auth
 
 #[test]
 fn parse_authority_strips_ipv6_brackets() {
-  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+  use crate::std::association::inbound_dispatch::parse_authority;
 
   let address = parse_authority("remote-sys@[::1]:2552").expect("ipv6 authority");
 
@@ -1839,7 +1839,7 @@ fn parse_authority_strips_ipv6_brackets() {
 
 #[test]
 fn parse_authority_handles_ipv4() {
-  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+  use crate::std::association::inbound_dispatch::parse_authority;
 
   let address = parse_authority("remote-sys@10.0.0.1:2552").expect("ipv4 authority");
 
@@ -1849,14 +1849,14 @@ fn parse_authority_handles_ipv4() {
 
 #[test]
 fn parse_authority_rejects_authority_without_at_sign() {
-  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+  use crate::std::association::inbound_dispatch::parse_authority;
 
   assert!(parse_authority("remote-sys").is_none());
 }
 
 #[test]
 fn parse_authority_rejects_invalid_port() {
-  use crate::std::association_runtime::inbound_dispatch::parse_authority;
+  use crate::std::association::inbound_dispatch::parse_authority;
 
   assert!(parse_authority("remote-sys@10.0.0.1:notaport").is_none());
 }

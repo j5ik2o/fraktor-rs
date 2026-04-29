@@ -50,8 +50,8 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel, LoggingFilter},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
+  support::futures::ActorFutureShared,
   system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, shared_factory::MailboxSharedSet},
-  util::futures::ActorFutureShared,
 };
 
 /// Shared wrapper for [`SystemState`] providing thread-safe access.

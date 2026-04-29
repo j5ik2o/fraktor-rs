@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use fraktor_remote_core_rs::core::address::{Address, UniqueAddress};
 
-use crate::std::association_runtime::association_shared::AssociationShared;
+use crate::std::association::association_shared::AssociationShared;
 
 /// Registry mapping a [`UniqueAddress`] to its [`AssociationShared`] handle.
 ///
