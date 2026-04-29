@@ -15,7 +15,7 @@ use crate::core::kernel::{
     messaging::{ActorIdentity, AnyMessage, Identify, Status},
   },
   routing::{
-    ConsistentHashingPool, Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, RouterConfig, SmallestMailboxPool,
+    ConsistentHashingPool, RandomPool, RemoteRouterConfig, RemoteRouterPool, RoundRobinPool, SmallestMailboxPool,
   },
   serialization::{
     builtin::{MISC_MESSAGE_ID, register_defaults},
@@ -231,12 +231,11 @@ fn remote_router_config_round_trips_smallest_mailbox_pool_with_manifest() {
   let view = s.as_string_manifest().expect("string manifest view");
   let decoded =
     view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST).expect("remote router config should decode");
-  let config = decoded
-    .downcast::<RemoteRouterConfig<SmallestMailboxPool>>()
-    .expect("decoded payload should be RemoteRouterConfig<SmallestMailboxPool>");
+  let config = decoded.downcast::<RemoteRouterConfig>().expect("decoded payload should be RemoteRouterConfig");
 
   assert_eq!(config.local().nr_of_instances(), 3);
   assert_eq!(config.local().router_dispatcher(), "remote-router-dispatcher");
+  assert!(matches!(config.local(), RemoteRouterPool::SmallestMailbox(_)));
   assert_eq!(config.nodes(), &[first, second]);
 }
 
@@ -253,12 +252,11 @@ fn remote_router_config_round_trips_round_robin_pool_with_manifest() {
   let view = s.as_string_manifest().expect("string manifest view");
   let decoded =
     view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST).expect("remote router config should decode");
-  let config = decoded
-    .downcast::<RemoteRouterConfig<RoundRobinPool>>()
-    .expect("decoded payload should be RemoteRouterConfig<RoundRobinPool>");
+  let config = decoded.downcast::<RemoteRouterConfig>().expect("decoded payload should be RemoteRouterConfig");
 
   assert_eq!(config.local().nr_of_instances(), 3);
   assert_eq!(config.local().router_dispatcher(), "round-robin-router-dispatcher");
+  assert!(matches!(config.local(), RemoteRouterPool::RoundRobin(_)));
   assert_eq!(config.nodes(), &[first, second]);
 }
 
@@ -275,12 +273,11 @@ fn remote_router_config_round_trips_random_pool_with_manifest() {
   let view = s.as_string_manifest().expect("string manifest view");
   let decoded =
     view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST).expect("remote router config should decode");
-  let config = decoded
-    .downcast::<RemoteRouterConfig<RandomPool>>()
-    .expect("decoded payload should be RemoteRouterConfig<RandomPool>");
+  let config = decoded.downcast::<RemoteRouterConfig>().expect("decoded payload should be RemoteRouterConfig");
 
   assert_eq!(config.local().nr_of_instances(), 3);
   assert_eq!(config.local().router_dispatcher(), "random-router-dispatcher");
+  assert!(matches!(config.local(), RemoteRouterPool::Random(_)));
   assert_eq!(config.nodes(), &[first, second]);
 }
 
@@ -298,21 +295,11 @@ fn remote_router_config_with_consistent_hashing_pool_is_rejected_without_lossy_m
 
   match result {
     | Err(SerializationError::NotSerializable(error)) => {
-      assert_eq!(error.type_name(), "RemoteRouterConfig<ConsistentHashingPool>");
+      assert_eq!(error.type_name(), "ConsistentHashingPool");
       assert_eq!(error.serializer_id(), Some(MISC_MESSAGE_ID));
     },
     | other => panic!("expected NotSerializable for ConsistentHashingPool, got {other:?}"),
   }
-}
-
-#[test]
-fn default_registry_does_not_bind_consistent_hashing_remote_router_config() {
-  let registry = registry();
-  let type_id = TypeId::of::<RemoteRouterConfig<ConsistentHashingPool>>();
-
-  let binding_name = registry.binding_name(type_id);
-
-  assert!(binding_name.is_none(), "ConsistentHashingPool binding must not select a lossy serializer");
 }
 
 #[test]
@@ -542,9 +529,9 @@ fn from_binary_uses_type_hint_to_select_decoder_for_remote_router_config() {
   let original = RemoteRouterConfig::new(local, vec![remote_node()]);
   let bytes = s.to_binary(&original).expect("encode");
 
-  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>())).expect("decode");
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig>())).expect("decode");
 
-  assert!(decoded.downcast_ref::<RemoteRouterConfig<SmallestMailboxPool>>().is_some());
+  assert!(decoded.downcast_ref::<RemoteRouterConfig>().is_some());
 }
 
 #[test]
@@ -555,22 +542,9 @@ fn from_binary_uses_type_hint_to_select_decoder_for_round_robin_remote_router_co
   let original = RemoteRouterConfig::new(local, vec![remote_node()]);
   let bytes = s.to_binary(&original).expect("encode");
 
-  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<RoundRobinPool>>())).expect("decode");
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig>())).expect("decode");
 
-  assert!(decoded.downcast_ref::<RemoteRouterConfig<RoundRobinPool>>().is_some());
-}
-
-#[test]
-fn from_binary_rejects_remote_router_config_when_type_hint_pool_mismatches_wire_tag() {
-  let registry = registry();
-  let s = serializer(&registry);
-  let local = RoundRobinPool::new(2).with_dispatcher(String::from("d"));
-  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
-  let bytes = s.to_binary(&original).expect("encode");
-
-  let result = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<RandomPool>>()));
-
-  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+  assert!(decoded.downcast_ref::<RemoteRouterConfig>().is_some());
 }
 
 #[test]
@@ -581,9 +555,9 @@ fn from_binary_uses_type_hint_to_select_decoder_for_random_remote_router_config(
   let original = RemoteRouterConfig::new(local, vec![remote_node()]);
   let bytes = s.to_binary(&original).expect("encode");
 
-  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig<RandomPool>>())).expect("decode");
+  let decoded = s.from_binary(&bytes, Some(TypeId::of::<RemoteRouterConfig>())).expect("decode");
 
-  assert!(decoded.downcast_ref::<RemoteRouterConfig<RandomPool>>().is_some());
+  assert!(decoded.downcast_ref::<RemoteRouterConfig>().is_some());
 }
 
 #[test]

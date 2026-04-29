@@ -10,7 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
     messaging::AnyMessage,
   },
   event::stream::EventStreamEvent,
-  routing::{RandomPool, RemoteRouterConfig, RoundRobinPool, Routee, SmallestMailboxPool},
+  routing::{ConsistentHashingPool, RandomPool, RemoteRouterConfig, RoundRobinPool, Routee, SmallestMailboxPool},
   serialization::ActorRefResolveCache,
 };
 use fraktor_remote_core_rs::core::{
@@ -422,6 +422,23 @@ fn remote_routee_expansion_supports_random_pool() {
 
   // When
   let router = expansion.expand(&mut fixture.provider).expect("random routees should expand");
+
+  // Then
+  assert_eq!(router.routees().len(), 2);
+  assert_routee_path(&router.routees()[0], "fraktor.tcp://remote-a@10.0.0.1:2552/user/worker-0");
+  assert_routee_path(&router.routees()[1], "fraktor.tcp://remote-b@10.0.0.2:2553/user/worker-1");
+}
+
+#[test]
+fn remote_routee_expansion_supports_consistent_hashing_pool() {
+  // Given
+  let mut fixture = make_provider_fixture();
+  let config =
+    RemoteRouterConfig::new(ConsistentHashingPool::new(2, |_message| 7), vec![remote_node_a(), remote_node_b()]);
+  let expansion = RemoteRouteeExpansion::new(config, indexed_worker_path);
+
+  // When
+  let router = expansion.expand(&mut fixture.provider).expect("consistent-hashing routees should expand");
 
   // Then
   assert_eq!(router.routees().len(), 2);

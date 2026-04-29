@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use super::{Pool, Router, RouterConfig};
+use super::{Pool, RemoteRouterPool, RemoteRoutingLogic, Router, RouterConfig};
 use crate::core::kernel::actor::{
   Address,
   deploy::{Deploy, RemoteScope, Scope},
@@ -15,12 +15,12 @@ use crate::core::kernel::actor::{
 ///
 /// Corresponds to Pekko's
 /// `org.apache.pekko.remote.routing.RemoteRouterConfig`.
-pub struct RemoteRouterConfig<P: Pool> {
-  local: P,
+pub struct RemoteRouterConfig {
+  local: RemoteRouterPool,
   nodes: Vec<Address>,
 }
 
-impl<P: Pool> RemoteRouterConfig<P> {
+impl RemoteRouterConfig {
   /// Creates a remote router configuration backed by a local pool.
   ///
   /// # Panics
@@ -30,13 +30,13 @@ impl<P: Pool> RemoteRouterConfig<P> {
   /// `deploy_for_routee_index` cannot construct a `RemoteScope` from a
   /// local-only `Address`.
   #[must_use]
-  pub fn new(local: P, nodes: Vec<Address>) -> Self {
+  pub fn new(local: impl Into<RemoteRouterPool>, nodes: Vec<Address>) -> Self {
     assert!(!nodes.is_empty(), "nodes must not be empty");
     assert!(
       nodes.iter().all(Address::has_global_scope),
       "RemoteRouterConfig requires every node to be a remote address with host and port",
     );
-    Self { local, nodes }
+    Self { local: local.into(), nodes }
   }
 
   /// Builds a deployment descriptor for a routee index.
@@ -51,7 +51,7 @@ impl<P: Pool> RemoteRouterConfig<P> {
 
   /// Returns the local pool configuration.
   #[must_use]
-  pub const fn local(&self) -> &P {
+  pub const fn local(&self) -> &RemoteRouterPool {
     &self.local
   }
 
@@ -62,8 +62,8 @@ impl<P: Pool> RemoteRouterConfig<P> {
   }
 }
 
-impl<P: Pool> RouterConfig for RemoteRouterConfig<P> {
-  type Logic = P::Logic;
+impl RouterConfig for RemoteRouterConfig {
+  type Logic = RemoteRoutingLogic;
 
   fn create_router(&self) -> Router<Self::Logic> {
     self.local.create_router()
@@ -78,7 +78,7 @@ impl<P: Pool> RouterConfig for RemoteRouterConfig<P> {
   }
 }
 
-impl<P: Pool> Pool for RemoteRouterConfig<P> {
+impl Pool for RemoteRouterConfig {
   fn nr_of_instances(&self) -> usize {
     self.local.nr_of_instances()
   }

@@ -12,24 +12,17 @@ use crate::core::kernel::{
     deploy::RemoteScope,
     messaging::{ActorIdentity, Status},
   },
-  routing::{RandomPool, RemoteRouterConfig, RoundRobinPool, SmallestMailboxPool},
+  routing::RemoteRouterConfig,
 };
 
 #[test]
-fn register_defaults_binds_remote_router_config_pool_variants() {
+fn register_defaults_binds_remote_router_config_once() {
   let setup = default_serialization_setup();
   let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
 
   register_defaults(&registry, |_name, _id| {}).expect("register_defaults");
 
-  assert_eq!(
-    registry.binding_name(TypeId::of::<RemoteRouterConfig<RoundRobinPool>>()).as_deref(),
-    Some("RemoteRouterConfig<RoundRobinPool>")
-  );
-  assert_eq!(
-    registry.binding_name(TypeId::of::<RemoteRouterConfig<RandomPool>>()).as_deref(),
-    Some("RemoteRouterConfig<RandomPool>")
-  );
+  assert_eq!(registry.binding_name(TypeId::of::<RemoteRouterConfig>()).as_deref(), Some("RemoteRouterConfig"));
 }
 
 #[test]
@@ -46,21 +39,13 @@ fn register_defaults_does_not_register_misc_bindings_when_misc_serializer_id_col
     collisions.iter().any(|(name, id)| *name == "misc_message" && *id == MISC_MESSAGE_ID),
     "misc_message collision must surface to the on_collision callback"
   );
-  // 衝突した場合 ActorIdentity / RemoteScope / RemoteRouterConfig<SmallestMailboxPool> /
-  // Status の追加 binding を MISC_MESSAGE_ID に固定登録してはならない。
+  // 衝突した場合 ActorIdentity / RemoteScope / RemoteRouterConfig / Status の追加 binding を
+  // MISC_MESSAGE_ID に固定登録してはならない。
   assert!(registry.binding_name(TypeId::of::<ActorIdentity>()).is_none(), "ActorIdentity must not bind on collision");
   assert!(registry.binding_name(TypeId::of::<RemoteScope>()).is_none(), "RemoteScope must not bind on collision");
   assert!(
-    registry.binding_name(TypeId::of::<RemoteRouterConfig<SmallestMailboxPool>>()).is_none(),
-    "RemoteRouterConfig<SmallestMailboxPool> must not bind on collision"
-  );
-  assert!(
-    registry.binding_name(TypeId::of::<RemoteRouterConfig<RoundRobinPool>>()).is_none(),
-    "RemoteRouterConfig<RoundRobinPool> must not bind on collision"
-  );
-  assert!(
-    registry.binding_name(TypeId::of::<RemoteRouterConfig<RandomPool>>()).is_none(),
-    "RemoteRouterConfig<RandomPool> must not bind on collision"
+    registry.binding_name(TypeId::of::<RemoteRouterConfig>()).is_none(),
+    "RemoteRouterConfig must not bind on collision"
   );
   assert!(registry.binding_name(TypeId::of::<Status>()).is_none(), "Status must not bind on collision");
 }

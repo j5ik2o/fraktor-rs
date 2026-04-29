@@ -1,7 +1,9 @@
 use alloc::{string::String, vec::Vec};
 use core::borrow::Borrow;
 
-use super::super::{Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, RouterConfig, SmallestMailboxPool};
+use super::super::{
+  ConsistentHashingPool, Pool, RandomPool, RemoteRouterConfig, RoundRobinPool, RouterConfig, SmallestMailboxPool,
+};
 use crate::core::kernel::actor::{
   Address,
   deploy::{RemoteScope, Scope},
@@ -57,6 +59,19 @@ fn new_preserves_random_pool_contract() {
 
   assert_eq!(config.nr_of_instances(), 3);
   assert_eq!(config.router_dispatcher(), "random-router-dispatcher");
+  assert!(!config.has_resizer());
+  assert!(!config.use_pool_dispatcher());
+  assert_eq!(config.create_router().routees().len(), 0);
+}
+
+#[test]
+fn new_preserves_consistent_hashing_pool_contract() {
+  let local_pool =
+    ConsistentHashingPool::new(3, |_message| 7).with_dispatcher(String::from("consistent-router-dispatcher"));
+  let config = RemoteRouterConfig::new(local_pool, vec![node_a(), node_b()]);
+
+  assert_eq!(config.nr_of_instances(), 3);
+  assert_eq!(config.router_dispatcher(), "consistent-router-dispatcher");
   assert!(!config.has_resizer());
   assert!(!config.use_pool_dispatcher());
   assert_eq!(config.create_router().routees().len(), 0);
