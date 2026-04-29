@@ -3,6 +3,8 @@
 use alloc::string::String;
 use core::time::Duration;
 
+use crate::core::config::{LargeMessageDestinations, RemoteCompressionConfig};
+
 /// Default handshake timeout (20 seconds), matching Pekko Artery advanced defaults.
 const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -26,6 +28,9 @@ pub(crate) const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
 
 /// Default outbound control queue size.
 pub(crate) const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
+
+/// Default outbound large-message queue size.
+const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
 
 /// Default system message resend interval.
 const DEFAULT_SYSTEM_MESSAGE_RESEND_INTERVAL: Duration = Duration::from_secs(1);
@@ -59,6 +64,12 @@ const DEFAULT_OUTBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Default maximum outbound stream restart count.
 const DEFAULT_OUTBOUND_MAX_RESTARTS: u32 = 5;
+
+/// Default inbound stream restart timeout.
+const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Default maximum inbound stream restart count.
+const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
 
 /// Default inbound lane count.
 const DEFAULT_INBOUND_LANES: usize = 4;
@@ -95,6 +106,8 @@ pub struct RemoteConfig {
   system_message_buffer_size: usize,
   outbound_message_queue_size: usize,
   outbound_control_queue_size: usize,
+  outbound_large_message_queue_size: usize,
+  large_message_destinations: LargeMessageDestinations,
   system_message_resend_interval: Duration,
   give_up_system_message_after: Duration,
   handshake_retry_interval: Duration,
@@ -106,6 +119,9 @@ pub struct RemoteConfig {
   outbound_restart_backoff: Duration,
   outbound_restart_timeout: Duration,
   outbound_max_restarts: u32,
+  inbound_restart_timeout: Duration,
+  inbound_max_restarts: u32,
+  compression_config: RemoteCompressionConfig,
   inbound_lanes: usize,
   outbound_lanes: usize,
   maximum_frame_size: usize,
@@ -134,6 +150,8 @@ impl RemoteConfig {
       system_message_buffer_size: DEFAULT_SYSTEM_MESSAGE_BUFFER_SIZE,
       outbound_message_queue_size: DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
       outbound_control_queue_size: DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
+      outbound_large_message_queue_size: DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+      large_message_destinations: LargeMessageDestinations::new(),
       system_message_resend_interval: DEFAULT_SYSTEM_MESSAGE_RESEND_INTERVAL,
       give_up_system_message_after: DEFAULT_GIVE_UP_SYSTEM_MESSAGE_AFTER,
       handshake_retry_interval: DEFAULT_HANDSHAKE_RETRY_INTERVAL,
@@ -145,6 +163,9 @@ impl RemoteConfig {
       outbound_restart_backoff: DEFAULT_OUTBOUND_RESTART_BACKOFF,
       outbound_restart_timeout: DEFAULT_OUTBOUND_RESTART_TIMEOUT,
       outbound_max_restarts: DEFAULT_OUTBOUND_MAX_RESTARTS,
+      inbound_restart_timeout: DEFAULT_INBOUND_RESTART_TIMEOUT,
+      inbound_max_restarts: DEFAULT_INBOUND_MAX_RESTARTS,
+      compression_config: RemoteCompressionConfig::new(),
       inbound_lanes: DEFAULT_INBOUND_LANES,
       outbound_lanes: DEFAULT_OUTBOUND_LANES,
       maximum_frame_size: DEFAULT_MAXIMUM_FRAME_SIZE,
@@ -243,6 +264,25 @@ impl RemoteConfig {
     self
   }
 
+  /// Returns a copy with the given outbound large-message queue size.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `size` is zero.
+  #[must_use]
+  pub const fn with_outbound_large_message_queue_size(mut self, size: usize) -> Self {
+    assert!(size > 0, "outbound large-message queue size must be greater than zero");
+    self.outbound_large_message_queue_size = size;
+    self
+  }
+
+  /// Returns a copy with the configured large-message destination patterns.
+  #[must_use]
+  pub fn with_large_message_destinations(mut self, destinations: LargeMessageDestinations) -> Self {
+    self.large_message_destinations = destinations;
+    self
+  }
+
   /// Returns a copy with the given system message resend interval.
   #[must_use]
   pub const fn with_system_message_resend_interval(mut self, interval: Duration) -> Self {
@@ -322,6 +362,27 @@ impl RemoteConfig {
   #[must_use]
   pub const fn with_outbound_max_restarts(mut self, max_restarts: u32) -> Self {
     self.outbound_max_restarts = max_restarts;
+    self
+  }
+
+  /// Returns a copy with the given inbound stream restart timeout.
+  #[must_use]
+  pub const fn with_inbound_restart_timeout(mut self, duration: Duration) -> Self {
+    self.inbound_restart_timeout = duration;
+    self
+  }
+
+  /// Returns a copy with the given maximum inbound stream restart count.
+  #[must_use]
+  pub const fn with_inbound_max_restarts(mut self, max_restarts: u32) -> Self {
+    self.inbound_max_restarts = max_restarts;
+    self
+  }
+
+  /// Returns a copy with the given compression settings.
+  #[must_use]
+  pub const fn with_compression_config(mut self, compression_config: RemoteCompressionConfig) -> Self {
+    self.compression_config = compression_config;
     self
   }
 
@@ -473,6 +534,18 @@ impl RemoteConfig {
     self.outbound_control_queue_size
   }
 
+  /// Returns the outbound large-message queue size.
+  #[must_use]
+  pub const fn outbound_large_message_queue_size(&self) -> usize {
+    self.outbound_large_message_queue_size
+  }
+
+  /// Returns the configured large-message destination patterns.
+  #[must_use]
+  pub const fn large_message_destinations(&self) -> &LargeMessageDestinations {
+    &self.large_message_destinations
+  }
+
   /// Returns the system message resend interval.
   #[must_use]
   pub const fn system_message_resend_interval(&self) -> Duration {
@@ -537,6 +610,24 @@ impl RemoteConfig {
   #[must_use]
   pub const fn outbound_max_restarts(&self) -> u32 {
     self.outbound_max_restarts
+  }
+
+  /// Returns the inbound stream restart timeout.
+  #[must_use]
+  pub const fn inbound_restart_timeout(&self) -> Duration {
+    self.inbound_restart_timeout
+  }
+
+  /// Returns the maximum inbound stream restart count.
+  #[must_use]
+  pub const fn inbound_max_restarts(&self) -> u32 {
+    self.inbound_max_restarts
+  }
+
+  /// Returns the compression settings surface.
+  #[must_use]
+  pub const fn compression_config(&self) -> &RemoteCompressionConfig {
+    &self.compression_config
   }
 
   /// Returns the inbound lane count.

@@ -1,13 +1,23 @@
-use core::time::Duration;
+use core::{num::NonZeroUsize, time::Duration};
 
-use crate::core::config::RemoteConfig;
+use crate::core::config::{
+  LargeMessageDestinationPattern, LargeMessageDestinations, RemoteCompressionConfig, RemoteConfig,
+};
 
 const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
 const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
 const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
+const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
 const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
+const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
+const DEFAULT_COMPRESSION_ADVERTISEMENT_INTERVAL: Duration = Duration::from_secs(60);
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+
+fn non_zero(value: usize) -> NonZeroUsize {
+  NonZeroUsize::new(value).expect("test value must be non-zero")
+}
 
 #[test]
 fn new_uses_defaults_for_optional_fields() {
@@ -47,7 +57,15 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
   assert_eq!(s.buffer_pool_size(), DEFAULT_BUFFER_POOL_SIZE);
   assert_eq!(s.outbound_message_queue_size(), DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE);
   assert_eq!(s.outbound_control_queue_size(), DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE);
+  assert_eq!(s.outbound_large_message_queue_size(), DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE);
+  assert!(s.large_message_destinations().is_empty());
   assert_eq!(s.remove_quarantined_association_after(), DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER);
+  assert_eq!(s.inbound_restart_timeout(), DEFAULT_INBOUND_RESTART_TIMEOUT);
+  assert_eq!(s.inbound_max_restarts(), DEFAULT_INBOUND_MAX_RESTARTS);
+  assert_eq!(s.compression_config().actor_ref_max(), Some(non_zero(256)));
+  assert_eq!(s.compression_config().manifest_max(), Some(non_zero(256)));
+  assert_eq!(s.compression_config().actor_ref_advertisement_interval(), DEFAULT_COMPRESSION_ADVERTISEMENT_INTERVAL);
+  assert_eq!(s.compression_config().manifest_advertisement_interval(), DEFAULT_COMPRESSION_ADVERTISEMENT_INTERVAL);
   assert!(!s.untrusted_mode());
   assert!(!s.log_received_messages());
   assert!(!s.log_sent_messages());
@@ -104,9 +122,22 @@ fn method_chain_applies_all_changes() {
 #[test]
 fn advanced_artery_settings_method_chain_applies_all_changes() {
   // Given: advanced 設定をすべて上書きした構成
+  let destinations = LargeMessageDestinations::new()
+    .with_pattern(LargeMessageDestinationPattern::new("/user/large"))
+    .with_pattern(LargeMessageDestinationPattern::new("/temp/session-ask-actor*"));
+  let compression = RemoteCompressionConfig::new()
+    .with_actor_ref_max(Some(non_zero(32)))
+    .with_actor_ref_advertisement_interval(Duration::from_secs(10))
+    .with_manifest_max(None)
+    .with_manifest_advertisement_interval(Duration::from_secs(20));
   let s = RemoteConfig::new("localhost")
     .with_bind_hostname("0.0.0.0")
     .with_bind_port(25520)
+    .with_outbound_large_message_queue_size(16)
+    .with_large_message_destinations(destinations.clone())
+    .with_inbound_restart_timeout(Duration::from_secs(7))
+    .with_inbound_max_restarts(9)
+    .with_compression_config(compression)
     .with_inbound_lanes(8)
     .with_outbound_lanes(2)
     .with_maximum_frame_size(512 * 1024)
@@ -122,6 +153,11 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   // Then: 上書きした値を保持する
   assert_eq!(s.bind_hostname(), Some("0.0.0.0"));
   assert_eq!(s.bind_port(), Some(25520));
+  assert_eq!(s.outbound_large_message_queue_size(), 16);
+  assert_eq!(s.large_message_destinations(), &destinations);
+  assert_eq!(s.inbound_restart_timeout(), Duration::from_secs(7));
+  assert_eq!(s.inbound_max_restarts(), 9);
+  assert_eq!(s.compression_config(), &compression);
   assert_eq!(s.inbound_lanes(), 8);
   assert_eq!(s.outbound_lanes(), 2);
   assert_eq!(s.maximum_frame_size(), 512 * 1024);
@@ -191,6 +227,15 @@ fn with_outbound_control_queue_size_rejects_zero() {
 }
 
 #[test]
+fn with_outbound_large_message_queue_size_rejects_zero() {
+  // When: outbound large-message queue size に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_large_message_queue_size(0));
+
+  // Then: 不正な queue size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
 fn with_remove_quarantined_association_after_rejects_zero() {
   // When: remove quarantined association after に 0 を指定する
   let result = std::panic::catch_unwind(|| {
@@ -210,6 +255,25 @@ fn cloning_preserves_immutability_of_original() {
 }
 
 #[test]
+fn cloning_preserves_large_message_and_compression_immutability_of_original() {
+  let a = RemoteConfig::new("localhost");
+  let compression = RemoteCompressionConfig::new().with_manifest_max(None);
+  let destinations = LargeMessageDestinations::new().with_pattern(LargeMessageDestinationPattern::new("/user/large"));
+  let b = a
+    .clone()
+    .with_outbound_large_message_queue_size(8)
+    .with_large_message_destinations(destinations.clone())
+    .with_compression_config(compression);
+
+  assert_eq!(a.outbound_large_message_queue_size(), DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE);
+  assert!(a.large_message_destinations().is_empty());
+  assert_ne!(a.compression_config(), &compression);
+  assert_eq!(b.outbound_large_message_queue_size(), 8);
+  assert_eq!(b.large_message_destinations(), &destinations);
+  assert_eq!(b.compression_config(), &compression);
+}
+
+#[test]
 fn equality_and_clone_are_consistent() {
   let a = RemoteConfig::new("localhost").with_canonical_port(1234);
   let b = a.clone();
@@ -220,4 +284,52 @@ fn equality_and_clone_are_consistent() {
 fn with_flight_recorder_capacity_respects_input() {
   let s = RemoteConfig::new("h").with_flight_recorder_capacity(1);
   assert_eq!(s.flight_recorder_capacity(), 1);
+}
+
+#[test]
+fn large_message_destinations_match_exact_and_wildcard_paths() {
+  let destinations = LargeMessageDestinations::new()
+    .with_pattern(LargeMessageDestinationPattern::new("/user/largeMessageActor"))
+    .with_pattern(LargeMessageDestinationPattern::new("/user/largeMessagesGroup/*"))
+    .with_pattern(LargeMessageDestinationPattern::new("/user/thirdGroup/**"))
+    .with_pattern(LargeMessageDestinationPattern::new("/temp/session-ask-actor*"));
+
+  assert!(destinations.matches_absolute_path("/user/largeMessageActor"));
+  assert!(destinations.matches_absolute_path("/user/largeMessagesGroup/actor1"));
+  assert!(destinations.matches_absolute_path("/user/thirdGroup/actor3"));
+  assert!(destinations.matches_absolute_path("/user/thirdGroup/actor4/actor5"));
+  assert!(destinations.matches_absolute_path("/temp/session-ask-actor$abc"));
+  assert!(!destinations.matches_absolute_path("/user/small"));
+}
+
+#[test]
+fn large_message_destination_pattern_rejects_relative_path_without_leading_slash() {
+  let result = std::panic::catch_unwind(|| LargeMessageDestinationPattern::new("user/large"));
+
+  assert!(result.is_err());
+}
+
+#[test]
+fn remote_compression_config_rejects_zero_advertisement_interval() {
+  let actor_ref_result =
+    std::panic::catch_unwind(|| RemoteCompressionConfig::new().with_actor_ref_advertisement_interval(Duration::ZERO));
+  let manifest_result =
+    std::panic::catch_unwind(|| RemoteCompressionConfig::new().with_manifest_advertisement_interval(Duration::ZERO));
+
+  assert!(actor_ref_result.is_err());
+  assert!(manifest_result.is_err());
+}
+
+#[test]
+fn advanced_settings_sources_keep_no_std_boundary() {
+  let sources = [
+    include_str!("remote_config.rs"),
+    include_str!("large_message_destination_pattern.rs"),
+    include_str!("large_message_destinations.rs"),
+    include_str!("remote_compression_config.rs"),
+  ];
+
+  for source in sources {
+    assert!(!source.contains("use std::"), "remote-core config advanced settings must remain no_std");
+  }
 }

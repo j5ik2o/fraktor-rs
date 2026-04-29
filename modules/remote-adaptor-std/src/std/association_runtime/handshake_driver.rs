@@ -12,7 +12,9 @@ use fraktor_remote_core_rs::core::{
 };
 use tokio::task::JoinHandle;
 
-use crate::std::association_runtime::{apply_effects_in_place, association_shared::AssociationShared};
+use crate::std::association_runtime::{
+  apply_effects_in_place, association_shared::AssociationShared, duration_millis_saturated, std_instant_elapsed_millis,
+};
 
 /// Drives handshake control tasks for one `Association`.
 ///
@@ -68,7 +70,7 @@ impl HandshakeDriver {
     }
     let task = tokio::spawn(async move {
       tokio::time::sleep(timeout).await;
-      let now_ms = monotonic_millis_since(started_at);
+      let now_ms = std_instant_elapsed_millis(started_at);
       shared.with_write(|assoc| {
         let effects = assoc.handshake_timed_out(now_ms, None);
         // Discarding `effects` here would silently drop the `Gated`
@@ -140,7 +142,7 @@ impl HandshakeDriver {
       let mut send_handshake = send_handshake;
       // u128 -> u64 のロッシーキャストを `monotonic_millis_since` と同じ防御パターンで揃え、
       // 極端な Duration が来ても silent な値変動を起こさないようにする。
-      let interval_ms = interval.as_millis().min(u128::from(u64::MAX)) as u64;
+      let interval_ms = duration_millis_saturated(interval);
       loop {
         tokio::time::sleep(interval).await;
         let now_ms = now_ms_provider();
@@ -166,14 +168,6 @@ impl HandshakeDriver {
       handle.abort();
     }
   }
-}
-
-/// Computes the monotonic millis elapsed between `started_at` and `now`.
-///
-/// This is the **only** place in the adapter that materialises an
-/// `Instant`-derived `u64` for the pure core layer (per design Decision 7).
-fn monotonic_millis_since(started_at: Instant) -> u64 {
-  started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }
 
 fn spawn_periodic_handshake_sender<F, P>(
