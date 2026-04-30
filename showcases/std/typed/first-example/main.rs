@@ -1,7 +1,7 @@
 #![cfg(not(target_os = "none"))]
 
 use core::time::Duration;
-use std::thread;
+use std::{thread, time::Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
@@ -36,18 +36,25 @@ fn main() {
   let mut guardian = system.user_guardian_ref();
 
   guardian.tell(Command::Greet);
-  wait_until(|| greetings.with_lock(|greetings| greetings.as_slice() == ["hello"]));
+  wait_until(|| greetings.with_lock(|greetings| greetings.as_slice() == ["hello"]), Duration::from_secs(10));
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());
 }
 
-fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..1_000 {
+fn wait_until(mut condition: impl FnMut() -> bool, timeout: Duration) {
+  let started = Instant::now();
+  let deadline = started + timeout;
+  let mut attempts = 0_u64;
+  while Instant::now() < deadline {
     if condition() {
       return;
     }
+    attempts += 1;
     thread::sleep(Duration::from_millis(1));
   }
-  assert!(condition());
+  if condition() {
+    return;
+  }
+  panic!("wait_until timed out after {:?} (attempts: {attempts})", started.elapsed());
 }

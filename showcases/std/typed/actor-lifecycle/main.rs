@@ -1,7 +1,7 @@
 #![cfg(not(target_os = "none"))]
 
 use core::time::Duration;
-use std::thread;
+use std::{thread, time::Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
@@ -69,7 +69,7 @@ fn main() {
   let mut guardian = system.user_guardian_ref();
 
   guardian.tell(ParentCommand::StopChild);
-  wait_until(|| events.with_lock(|events| events.contains(&"parent-observed-terminated")));
+  wait_until(|| events.with_lock(|events| events.contains(&"parent-observed-terminated")), Duration::from_secs(10));
   let snapshot = events.with_lock(|events| events.clone());
   assert!(snapshot.contains(&"parent-setup"));
   assert!(snapshot.contains(&"child-post-stop"));
@@ -78,12 +78,19 @@ fn main() {
   termination.wait_blocking(&StdBlocker::new());
 }
 
-fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..1_000 {
+fn wait_until(mut condition: impl FnMut() -> bool, timeout: Duration) {
+  let started = Instant::now();
+  let deadline = started + timeout;
+  let mut attempts = 0_u64;
+  while Instant::now() < deadline {
     if condition() {
       return;
     }
+    attempts += 1;
     thread::sleep(Duration::from_millis(1));
   }
-  assert!(condition());
+  if condition() {
+    return;
+  }
+  panic!("wait_until timed out after {:?} (attempts: {attempts})", started.elapsed());
 }

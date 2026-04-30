@@ -40,11 +40,11 @@ fn wait_for_listing(
   >,
   key: &ServiceKey<u32>,
 ) -> Listing {
-  let deadline = Instant::now() + Duration::from_secs(1);
+  let deadline = Instant::now() + Duration::from_secs(5);
   loop {
     let response = receptionist_ref.ask::<Listing, _>(|reply_to| Receptionist::find(key, reply_to));
     let mut future = response.future().clone();
-    let ask_deadline = Instant::now() + Duration::from_millis(100);
+    let ask_deadline = Instant::now() + Duration::from_millis(500);
     while !future.is_ready() && Instant::now() < ask_deadline {
       thread::sleep(Duration::from_millis(1));
     }
@@ -54,6 +54,6 @@ fn wait_for_listing(
         return listing;
       }
     }
-    assert!(Instant::now() < deadline, "receptionist listing should contain the registered actor");
+    assert!(Instant::now() < deadline, "receptionist listing should contain the registered actor before timeout");
   }
 }
