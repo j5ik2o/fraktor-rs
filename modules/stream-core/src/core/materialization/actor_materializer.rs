@@ -512,7 +512,7 @@ impl Materializer for ActorMaterializer {
       }
     }
 
-    let stream = streams.first().cloned().ok_or(StreamError::Failed)?;
+    let representative_stream = streams.first().cloned().ok_or(StreamError::Failed)?;
     let resources = Self::build_materialized_resources(
       &actor_system,
       streams,
@@ -527,7 +527,7 @@ impl Materializer for ActorMaterializer {
     self.streams.extend(resources.streams.iter().cloned());
     self.materialized.push(resources);
     self.total_materialized += 1;
-    Ok(Materialized::new_with_kill_switch_state(stream, graph_kill_switch_state, materialized))
+    Ok(Materialized::new(representative_stream, materialized))
   }
 
   fn shutdown(&mut self) -> Result<(), StreamError> {

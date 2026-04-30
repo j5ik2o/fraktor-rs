@@ -1,8 +1,9 @@
 use fraktor_actor_core_rs::core::kernel::actor::ChildRef;
-#[cfg(any(test, feature = "test-support"))]
-use fraktor_actor_core_rs::core::kernel::actor::Pid;
 
 use crate::core::r#impl::{interpreter::IslandBoundaryShared, materialization::StreamShared};
+
+#[cfg(test)]
+mod tests;
 
 pub(in crate::core::materialization) struct DownstreamCancellationRoute {
   boundary:             IslandBoundaryShared,
@@ -34,10 +35,5 @@ impl DownstreamCancellationRoute {
 
   pub(in crate::core::materialization) const fn record_cancel_command(&mut self) {
     self.cancel_command_count = self.cancel_command_count.saturating_add(1);
-  }
-
-  #[cfg(any(test, feature = "test-support"))]
-  pub(in crate::core::materialization) fn cancel_command_count_for_actor(&self, actor_pid: Pid) -> u32 {
-    if self.upstream_actor.pid() == actor_pid { self.cancel_command_count } else { 0 }
   }
 }

@@ -101,7 +101,6 @@ impl Stream {
     self.interpreter.abort(error);
   }
 
-  #[cfg(any(test, feature = "test-support"))]
   pub(in crate::core) fn kill_switch_state(&self) -> KillSwitchStateHandle {
     self.kill_switch_state.clone()
   }

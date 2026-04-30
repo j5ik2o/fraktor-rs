@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 
 use fraktor_actor_core_rs::core::kernel::actor::ChildRef;
-#[cfg(any(test, feature = "test-support"))]
-use fraktor_actor_core_rs::core::kernel::actor::Pid;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::downstream_cancellation_route::DownstreamCancellationRoute;
@@ -55,10 +53,5 @@ impl DownstreamCancellationControlPlane {
       }
     }
     Ok(())
-  }
-
-  #[cfg(any(test, feature = "test-support"))]
-  pub(in crate::core::materialization) fn cancel_command_count_for_actor(&self, actor_pid: Pid) -> u32 {
-    self.routes.iter().map(|route| route.cancel_command_count_for_actor(actor_pid)).sum()
   }
 }

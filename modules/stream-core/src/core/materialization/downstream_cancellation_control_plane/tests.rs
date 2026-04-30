@@ -1,5 +1,13 @@
+use fraktor_actor_core_rs::core::kernel::actor::Pid;
+
 use super::DownstreamCancellationControlPlane;
 use crate::core::StreamError;
+
+impl DownstreamCancellationControlPlane {
+  pub(in crate::core::materialization) fn cancel_command_count_for_actor(&self, actor_pid: Pid) -> u32 {
+    self.routes.iter().map(|route| route.cancel_command_count_for_actor(actor_pid)).sum()
+  }
+}
 
 #[test]
 fn replace_routes_resets_recorded_cancellation_failure() {
