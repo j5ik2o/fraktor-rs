@@ -1,7 +1,10 @@
 extern crate std;
 
-use core::time::Duration;
-use std::sync::mpsc;
+use core::{sync::atomic::AtomicBool, time::Duration};
+use std::{
+  sync::{Arc, mpsc},
+  thread,
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -11,14 +14,14 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
     scheduler::{
       SchedulerConfig,
-      tick_driver::{TickDriver, TickDriverKind},
+      tick_driver::{TickDriver, TickDriverKind, TickDriverStopper},
     },
     setup::ActorSystemConfig,
   },
   system::ActorSystem,
 };
 
-use super::StdTickDriver;
+use super::{StdTickDriver, StdTickDriverStopper};
 use crate::std::StdBlocker;
 
 struct GuardianActor;
@@ -117,6 +120,48 @@ fn std_tick_driver_provisions_and_stops_threads() {
   assert_eq!(provision.resolution, resolution);
   assert_eq!(provision.kind, TickDriverKind::Std);
   provision.stopper.stop();
+}
+
+#[test]
+fn std_tick_driver_emits_ticks_before_shutdown() {
+  use fraktor_actor_core_rs::core::kernel::actor::scheduler::{
+    SchedulerContext,
+    tick_driver::{SchedulerTickExecutor, TickDriver, TickExecutorSignal, TickFeed, TickFeedHandle},
+  };
+
+  fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
+    let config = SchedulerConfig::default();
+    let context = SchedulerContext::new(config);
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(config.resolution(), 8, signal.clone());
+    let executor = SchedulerTickExecutor::new(context.scheduler(), feed.clone(), signal);
+    (feed, executor)
+  }
+
+  let (feed, executor) = provision_inputs();
+  let provision =
+    Box::new(StdTickDriver::new(Duration::from_millis(1))).provision(feed.clone(), executor).expect("provision");
+
+  for _ in 0..10_000 {
+    if feed.driver_active() {
+      break;
+    }
+    thread::yield_now();
+  }
+
+  assert!(feed.driver_active(), "tick driver did not enqueue any tick before yielding budget was exhausted");
+  provision.stopper.stop();
+}
+
+#[test]
+fn std_tick_driver_stopper_absorbs_panicked_worker_threads() {
+  let stopper = StdTickDriverStopper {
+    running:     Arc::new(AtomicBool::new(true)),
+    tick_thread: Some(thread::spawn(|| panic!("tick thread panic for coverage"))),
+    exec_thread: Some(thread::spawn(|| panic!("executor thread panic for coverage"))),
+  };
+
+  Box::new(stopper).stop();
 }
 
 #[cfg(feature = "tokio-executor")]
