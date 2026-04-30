@@ -31,6 +31,8 @@ dispatcher 指定がない island は actor system の default dispatcher を使
 
 複数 island の materialization では、利用者へ返す handle は全 island actor の lifecycle を代表する composite handle として振る舞う。cancel / shutdown / snapshot は、先頭 island だけでなく materialized graph 全体に作用する。
 
+公開面では `Materialized::handle()` の戻り型を単に「先頭 island の `StreamHandleImpl`」として扱ってはならない。可能であれば既存の `StreamHandleImpl` を composite lifecycle を表す内部実装へ拡張し、型名を維持したまま複数 island graph 全体を代表させる。既存型名で表現できない場合は、本 change 内で公開 handle 型を破壊的に置き換え、先頭 island handle を返す互換経路は残さない。
+
 `ActorMaterializer::shutdown()` は、materializer が起動した全 island actor と tick / drive resource を決定的に停止する。停止失敗は握りつぶさず、観測可能な `StreamError` または actor error として扱う。
 
 ### 5. tests と showcases を Pekko 互換の意味論へ寄せる
@@ -68,7 +70,8 @@ dispatcher 指定がない island は actor system の default dispatcher を使
 **公開 API 影響:**
 
 - `Source::async_with_dispatcher()` / `Flow::async_with_dispatcher()` の dispatcher 指定が実行時に意味を持つようになる。
-- ActorSystem / Materializer なしの stream 実行入口は追加しない。
+- `Materialized::handle()` は複数 island graph では graph 全体を代表する composite handle を返す。先頭 island だけを cancel / snapshot する handle は公開しない。
+- ActorSystem / Materializer なしの stream 実行入口は追加しない。既存の ActorSystem なし materializer helper は公開実行入口として残さず、削除または `cfg(test)` / `pub(crate)` のテスト専用 API へ縮小する。
 - カスタム stream mailbox selector は本 change では追加しない。
 
 **挙動影響:**

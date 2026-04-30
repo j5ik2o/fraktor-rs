@@ -44,6 +44,13 @@ stream materialization は、`async()` によって分割された各 island を
 
 複数 island graph の materialized handle は、先頭 island だけではなく graph 全体の lifecycle を代表しなければならない（MUST）。cancel / terminal state / snapshot は、materialized graph に属する全 island を対象にしなければならない（MUST）。
 
+#### Scenario: 公開 handle は先頭 island だけを代表しない
+
+- **GIVEN** 複数 island graph が materialize 済みである
+- **WHEN** 利用者が `Materialized::handle()` から handle を取得する
+- **THEN** その handle は materialized graph 全体を代表する
+- **AND** 先頭 island の `StreamHandleImpl` だけを返す互換経路は存在しない
+
 #### Scenario: cancel は全 island actor に伝播する
 
 - **GIVEN** 複数 island graph が materialize 済みである
@@ -76,3 +83,21 @@ stream materialization は、`async()` によって分割された各 island を
 - **WHEN** `ActorMaterializer::shutdown()` が呼ばれる
 - **THEN** 失敗は `StreamError` または actor error として観測できる
 - **AND** best-effort コメントだけで失敗を黙殺しない
+
+### Requirement: ActorSystem なし materializer は公開実行入口であってはならない
+
+stream island actor 実行には ActorSystem が必須であるため、ActorSystem なし materializer helper は公開 runtime API として残してはならない（MUST NOT）。テスト補助として残す場合でも、`#[cfg(test)]` または `pub(crate)` に限定しなければならない（MUST）。
+
+#### Scenario: ActorSystem なしで materialization は成功しない
+
+- **GIVEN** ActorSystem を持たない materializer 構築経路が存在する
+- **WHEN** runtime API から stream を materialize しようとする
+- **THEN** materialization は成功しない
+- **AND** ActorSystem なし直実行 API は公開されない
+
+#### Scenario: テスト専用 helper は公開 API に現れない
+
+- **GIVEN** ActorSystem なし materializer helper を unit test のために残す
+- **WHEN** public API surface を確認する
+- **THEN** helper は `#[cfg(test)]` または `pub(crate)` に限定される
+- **AND** crate 利用者から runtime materializer として呼び出せない

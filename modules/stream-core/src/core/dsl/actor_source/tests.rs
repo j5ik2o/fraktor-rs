@@ -7,7 +7,7 @@ use crate::core::{
   dsl::{ActorSource, Sink},
   r#impl::{
     fusing::StreamBufferConfig,
-    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+    materialization::{Stream, StreamShared},
   },
   materialization::{Completion, KeepBoth, Materialized, Materializer, RunnableGraph, StreamCompletion},
 };
@@ -23,8 +23,7 @@ impl Materializer for TestMaterializer {
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamShared::new(stream);
-    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
+    let handle = StreamShared::new(stream);
     Ok(Materialized::new(handle, materialized))
   }
 
@@ -35,8 +34,8 @@ impl Materializer for TestMaterializer {
 
 fn drive_until_terminal<Mat>(materialized: &Materialized<Mat>) {
   for _ in 0..256 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       return;
     }
   }

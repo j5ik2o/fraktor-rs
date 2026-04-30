@@ -1,6 +1,6 @@
 /// Lifecycle state of a stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StreamState {
+pub(crate) enum StreamState {
   /// Stream is idle before start.
   Idle,
   /// Stream is running.
@@ -16,7 +16,7 @@ pub enum StreamState {
 impl StreamState {
   /// Returns `true` if the stream reached a terminal state.
   #[must_use]
-  pub const fn is_terminal(self) -> bool {
+  pub(crate) const fn is_terminal(self) -> bool {
     matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
   }
 }

@@ -140,7 +140,7 @@ fn stream_snapshots_after_shutdown_is_empty() {
   materializer.shutdown().expect("shutdown");
   let snapshots = MaterializerState::stream_snapshots(&materializer);
 
-  // Then: handles はクリアされ空 Vec を返す
+  // Then: streams はクリアされ空 Vec を返す
   assert!(snapshots.is_empty());
 }
 

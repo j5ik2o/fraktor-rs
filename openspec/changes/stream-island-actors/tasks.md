@@ -21,6 +21,8 @@
 - [ ] 3.3 dispatcher 指定がない island は default dispatcher を使うようにする。
 - [ ] 3.4 未登録 dispatcher 指定時に materialization が失敗し、default dispatcher へフォールバックしないことを integration test で固定する。
 - [ ] 3.5 island actor spawn 途中で失敗した場合、起動済み actor / tick resource / boundary resource を rollback する。
+- [ ] 3.6 `ActorMaterializer::new_without_system` 相当の公開 helper を削除するか、`#[cfg(test)] pub(crate)` のテスト専用 API に縮小する。
+- [ ] 3.7 ActorSystem なしで `start()` / `materialize()` が成功する経路が残っていないことを test または compile check で固定する。
 
 ## 4. tick 供給と lifecycle 管理
 
@@ -33,20 +35,23 @@
 ## 5. composite materialized handle
 
 - [ ] 5.1 複数 island graph 全体を代表する composite handle または同等の内部構造を追加する。
-- [ ] 5.2 `cancel()` が全 island actor へ cancel / shutdown を伝播することを integration test で固定する。
-- [ ] 5.3 terminal state が graph 全体の状態として導出されることを test で固定する。
-- [ ] 5.4 materializer snapshot または test-only diagnostic で island 数を観測できるようにする。
-- [ ] 5.5 dispatcher id または actor id を test から検証できる経路を追加する。
+- [ ] 5.2 `Materialized::handle()` が複数 island graph で先頭 island handle ではなく composite lifecycle handle を返すことを test で固定する。
+- [ ] 5.3 既存 `StreamHandleImpl` を維持する場合、single / composite の両方を表す内部構造へ変更し、先頭 island だけを指す互換経路を残さない。
+- [ ] 5.4 `cancel()` が全 island actor へ cancel / shutdown を伝播することを integration test で固定する。
+- [ ] 5.5 terminal state が graph 全体の状態として導出されることを test で固定する。
+- [ ] 5.6 materializer snapshot または test-only diagnostic で island 数を観測できるようにする。
+- [ ] 5.7 dispatcher id または actor id を test から検証できる経路を追加する。
 
 ## 6. boundary backpressure と terminal propagation
 
 - [ ] 6.1 `IslandBoundaryShared` が actor 分離後の full / empty / completed / failed / cancelled state を表現できるか確認する。
 - [ ] 6.2 表現できない場合、同じ contract を持つ boundary 型へ置き換える。
-- [ ] 6.3 boundary full 時に upstream island が要素を保持して pending になることを test で固定する。
-- [ ] 6.4 boundary empty かつ open 時に downstream island が pending になり、busy loop しないことを test で固定する。
-- [ ] 6.5 upstream completion が pending 要素の後に downstream completion として観測されることを test で固定する。
-- [ ] 6.6 upstream failure が downstream failure として観測されることを test で固定する。
-- [ ] 6.7 downstream cancellation が upstream island へ伝播することを test で固定する。
+- [ ] 6.3 downstream cancellation を upstream island actor へ送る control plane を `MaterializedStreamGroup` または同等の構造に追加する。
+- [ ] 6.4 boundary full 時に upstream island が要素を保持して pending になることを test で固定する。
+- [ ] 6.5 boundary empty かつ open 時に downstream island が pending になり、busy loop しないことを test で固定する。
+- [ ] 6.6 upstream completion が pending 要素の後に downstream completion として観測されることを test で固定する。
+- [ ] 6.7 upstream failure が downstream failure として観測されることを test で固定する。
+- [ ] 6.8 downstream cancellation が boundary state だけでなく upstream island actor への cancel / shutdown command として伝播することを test で固定する。
 
 ## 7. DSL / showcase / 公開面の整合
 
@@ -55,6 +60,7 @@
 - [ ] 7.3 ActorSystem なしの直実行 API や `collect_values()` 相当 helper を公開 API に戻さない。
 - [ ] 7.4 `async_with_dispatcher()` の rustdoc に downstream island dispatcher の意味を記載する。
 - [ ] 7.5 カスタム stream mailbox selector は本 change に含めず、必要なら別 change として整理する。
+- [ ] 7.6 `Materialized::handle()` の rustdoc に、複数 island graph では graph 全体を代表する handle であることを記載する。
 
 ## 8. 検証
 

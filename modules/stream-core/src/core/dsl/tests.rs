@@ -7,14 +7,14 @@ use crate::core::{
   r#impl::{
     fusing::StreamBufferConfig,
     interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter},
-    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+    materialization::{Stream, StreamShared},
   },
   materialization::{DriveOutcome, Materialized, Materializer},
 };
 
 #[derive(Default)]
 struct TestMaterializer {
-  handles: Vec<StreamHandleImpl>,
+  streams: Vec<StreamShared>,
 }
 
 impl TestMaterializer {
@@ -22,10 +22,10 @@ impl TestMaterializer {
 
   fn drive_until_terminal(&self) -> Result<(), StreamError> {
     let mut idle_budget = Self::DRIVE_LIMIT;
-    while self.handles.iter().any(|handle| !handle.state().is_terminal()) {
+    while self.streams.iter().any(|stream| !stream.state().is_terminal()) {
       let mut progressed = false;
-      for handle in &self.handles {
-        if !handle.state().is_terminal() && matches!(handle.drive(), DriveOutcome::Progressed) {
+      for stream in &self.streams {
+        if !stream.state().is_terminal() && matches!(stream.drive(), DriveOutcome::Progressed) {
           progressed = true;
         }
       }
@@ -54,9 +54,9 @@ impl Materializer for TestMaterializer {
     if island_plan.islands().len() <= 1 {
       let mut stream = Stream::new(island_plan.into_single_plan(), StreamBufferConfig::default());
       stream.start()?;
-      let handle = StreamHandleImpl::new(StreamHandleId::next(), StreamShared::new(stream));
-      self.handles.push(handle.clone());
-      return Ok(Materialized::new(handle, materialized));
+      let stream = StreamShared::new(stream);
+      self.streams.push(stream.clone());
+      return Ok(Materialized::new(stream, materialized));
     }
 
     let (mut islands, crossings) = island_plan.into_parts();
@@ -71,16 +71,16 @@ impl Materializer for TestMaterializer {
       islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), crossing.element_type());
     }
 
-    let mut handles = Vec::with_capacity(islands.len());
+    let mut streams = Vec::with_capacity(islands.len());
     for island in islands {
       let mut stream = Stream::new(island.into_stream_plan(), StreamBufferConfig::default());
       stream.start()?;
-      handles.push(StreamHandleImpl::new(StreamHandleId::next(), StreamShared::new(stream)));
+      streams.push(StreamShared::new(stream));
     }
 
-    let handle = handles.first().cloned().ok_or(StreamError::Failed)?;
-    self.handles.extend(handles);
-    Ok(Materialized::new(handle, materialized))
+    let stream = streams.first().cloned().ok_or(StreamError::Failed)?;
+    self.streams.extend(streams);
+    Ok(Materialized::new(stream, materialized))
   }
 
   fn shutdown(&mut self) -> Result<(), StreamError> {

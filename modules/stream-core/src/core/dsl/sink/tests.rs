@@ -13,7 +13,7 @@ use crate::core::{
   dsl::{Sink, Source, tests::RunWithCollectSink},
   r#impl::{
     fusing::{DemandTracker, StreamBufferConfig},
-    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+    materialization::{Stream, StreamShared},
   },
   materialization::{
     Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamDone,
@@ -48,8 +48,7 @@ impl Materializer for TestMaterializer {
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamShared::new(stream);
-    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
+    let handle = StreamShared::new(stream);
     Ok(Materialized::new(handle, materialized))
   }
 
@@ -96,8 +95,8 @@ where
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
@@ -106,8 +105,8 @@ where
 
 fn drive_steps<Mat>(materialized: &Materialized<Mat>, steps: usize) -> bool {
   for _ in 0..steps {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       return true;
     }
   }
@@ -125,13 +124,13 @@ fn sink_map_materialized_value_transforms_materialized_value_and_keeps_data_path
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
   assert_eq!(*materialized.materialized(), 7_u32);
-  assert!(materialized.handle().state().is_terminal());
+  assert!(materialized.stream().state().is_terminal());
 }
 
 #[test]
@@ -238,7 +237,7 @@ fn sink_never_keeps_completion_pending_after_upstream_finishes() {
 
   assert!(drive_steps(&materialized, 64));
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
-  assert!(materialized.handle().state().is_terminal());
+  assert!(materialized.stream().state().is_terminal());
 }
 
 #[test]
@@ -335,17 +334,17 @@ fn sink_fold_async_waits_for_pending_future_before_completion() {
   let materialized = graph.run(&mut materializer).expect("materialize");
 
   assert_eq!(materializer.calls, 1);
-  assert_eq!(materialized.handle().drive(), crate::core::materialization::DriveOutcome::Progressed);
+  assert_eq!(materialized.stream().drive(), crate::core::materialization::DriveOutcome::Progressed);
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
 
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
 
-  assert!(materialized.handle().state().is_terminal());
+  assert!(materialized.stream().state().is_terminal());
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(7_u32)));
 }
 
@@ -593,17 +592,17 @@ fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
   let materialized = graph.run(&mut materializer).expect("materialize");
 
   assert_eq!(materializer.calls, 1);
-  assert_eq!(materialized.handle().drive(), crate::core::materialization::DriveOutcome::Progressed);
+  assert_eq!(materialized.stream().drive(), crate::core::materialization::DriveOutcome::Progressed);
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
 
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
 
-  assert!(materialized.handle().state().is_terminal());
+  assert!(materialized.stream().state().is_terminal());
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone::new())));
   assert_eq!(*observed.lock(), vec![1_u32, 2_u32]);
 }
@@ -650,8 +649,8 @@ fn sink_queue_collects_elements() {
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
@@ -675,7 +674,7 @@ fn sink_never_does_not_complete_without_elements() {
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
+    let _ = materialized.stream().drive();
   }
 
   // 期待: materialized completion は成功完了しない
@@ -694,7 +693,7 @@ fn sink_never_accepts_elements_without_completing() {
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
+    let _ = materialized.stream().drive();
   }
 
   // 期待: sink 側の materialized completion は成功完了しない
@@ -731,14 +730,14 @@ fn sink_combine_with_empty_iterator_creates_cancelled_sink() {
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
 
   // 期待: 空の combine は退化した sink として終端に到達する
-  assert!(materialized.handle().state().is_terminal());
+  assert!(materialized.stream().state().is_terminal());
 }
 
 #[test]
