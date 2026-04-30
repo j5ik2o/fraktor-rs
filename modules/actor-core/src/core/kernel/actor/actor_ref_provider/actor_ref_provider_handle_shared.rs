@@ -1,5 +1,8 @@
 //! Shared wrapper for ActorRefProvider implementations.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 use core::{any::TypeId, marker::PhantomData};
 
