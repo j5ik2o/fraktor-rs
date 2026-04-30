@@ -13,8 +13,11 @@ use fraktor_actor_core_rs::core::kernel::{
     messaging::AnyMessageView,
     props::Props,
     scheduler::{
-      SchedulerConfig,
-      tick_driver::{TickDriver, TickDriverKind, TickDriverStopper},
+      SchedulerConfig, SchedulerContext,
+      tick_driver::{
+        SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind, TickDriverStopper, TickExecutorSignal,
+        TickFeed, TickFeedHandle,
+      },
     },
     setup::ActorSystemConfig,
   },
@@ -37,6 +40,15 @@ fn build_system_with_driver(driver: StdTickDriver) -> ActorSystem {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(driver).with_scheduler_config(scheduler);
   ActorSystem::create_with_config(&props, config).expect("system should build")
+}
+
+fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
+  let config = SchedulerConfig::default();
+  let context = SchedulerContext::new(config);
+  let signal = TickExecutorSignal::new();
+  let feed = TickFeed::new(config.resolution(), 8, signal.clone());
+  let executor = SchedulerTickExecutor::new(context.scheduler(), feed.clone(), signal);
+  (feed, executor)
 }
 
 fn assert_shutdown_completes(system: ActorSystem, operation: &str) {
@@ -77,20 +89,6 @@ fn std_tick_driver_new_default_and_kind_expose_std_contract() {
 
 #[test]
 fn std_tick_driver_rejects_zero_resolution() {
-  use fraktor_actor_core_rs::core::kernel::actor::scheduler::{
-    SchedulerContext,
-    tick_driver::{SchedulerTickExecutor, TickDriver, TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle},
-  };
-
-  fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
-    let config = SchedulerConfig::default();
-    let context = SchedulerContext::new(config);
-    let signal = TickExecutorSignal::new();
-    let feed = TickFeed::new(config.resolution(), 8, signal.clone());
-    let executor = SchedulerTickExecutor::new(context.scheduler(), feed.clone(), signal);
-    (feed, executor)
-  }
-
   let (feed, executor) = provision_inputs();
   let result = Box::new(StdTickDriver::new(Duration::ZERO)).provision(feed, executor);
 
@@ -99,20 +97,6 @@ fn std_tick_driver_rejects_zero_resolution() {
 
 #[test]
 fn std_tick_driver_provisions_and_stops_threads() {
-  use fraktor_actor_core_rs::core::kernel::actor::scheduler::{
-    SchedulerContext,
-    tick_driver::{SchedulerTickExecutor, TickDriver, TickDriverKind, TickExecutorSignal, TickFeed, TickFeedHandle},
-  };
-
-  fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
-    let config = SchedulerConfig::default();
-    let context = SchedulerContext::new(config);
-    let signal = TickExecutorSignal::new();
-    let feed = TickFeed::new(config.resolution(), 8, signal.clone());
-    let executor = SchedulerTickExecutor::new(context.scheduler(), feed.clone(), signal);
-    (feed, executor)
-  }
-
   let resolution = Duration::from_millis(1);
   let (feed, executor) = provision_inputs();
   let provision = Box::new(StdTickDriver::new(resolution)).provision(feed, executor).expect("provision");
@@ -124,31 +108,21 @@ fn std_tick_driver_provisions_and_stops_threads() {
 
 #[test]
 fn std_tick_driver_emits_ticks_before_shutdown() {
-  use fraktor_actor_core_rs::core::kernel::actor::scheduler::{
-    SchedulerContext,
-    tick_driver::{SchedulerTickExecutor, TickDriver, TickExecutorSignal, TickFeed, TickFeedHandle},
-  };
-
-  fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
-    let config = SchedulerConfig::default();
-    let context = SchedulerContext::new(config);
-    let signal = TickExecutorSignal::new();
-    let feed = TickFeed::new(config.resolution(), 8, signal.clone());
-    let executor = SchedulerTickExecutor::new(context.scheduler(), feed.clone(), signal);
-    (feed, executor)
-  }
-
   let (feed, executor) = provision_inputs();
+  let signal = feed.signal();
   let provision =
-    Box::new(StdTickDriver::new(Duration::from_millis(1))).provision(feed.clone(), executor).expect("provision");
+    Box::new(StdTickDriver::new(Duration::from_nanos(1))).provision(feed.clone(), executor).expect("provision");
 
-  for _ in 0..10_000 {
-    if feed.driver_active() {
+  let mut observed_tick = false;
+  for _ in 0..1_000_000 {
+    if signal.arm() {
+      observed_tick = true;
       break;
     }
     thread::yield_now();
   }
 
+  assert!(observed_tick, "tick driver did not signal any tick before yielding budget was exhausted");
   assert!(feed.driver_active(), "tick driver did not enqueue any tick before yielding budget was exhausted");
   provision.stopper.stop();
 }
