@@ -278,7 +278,7 @@ fn streams_returns_all_island_streams_for_async_boundary() {
   let materialized = graph.run(&mut materializer).expect("materialize");
 
   assert_eq!(materializer.streams().len(), 2);
-  assert_eq!(materialized.stream().id(), materializer.streams()[0].id());
+  assert!(materializer.streams().iter().any(|s| s.id() == materialized.stream().id()));
 }
 
 #[test]

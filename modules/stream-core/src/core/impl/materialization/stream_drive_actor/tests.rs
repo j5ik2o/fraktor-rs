@@ -78,16 +78,15 @@ fn shutdown_clears_registered_streams_and_marks_shutdown_requested() {
 }
 
 #[test]
-fn shutdown_keeps_streams_when_cancel_fails() {
+fn shutdown_clears_all_streams_even_when_cancel_fails() {
   let mut actor = StreamDriveActor::new();
   let stream = cancel_failing_stream();
-  let id = stream.id();
   actor.register(stream).expect("register");
 
   let result = actor.shutdown();
 
   assert!(result.is_err());
-  assert!(actor.streams.contains_key(&id));
+  assert!(actor.streams.is_empty());
   assert!(actor.shutdown_requested);
 }
 

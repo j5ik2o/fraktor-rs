@@ -48,15 +48,12 @@ impl StreamDriveActor {
         failed_ids.push((*id, e));
       }
     }
+    // Discard all streams regardless of cancel outcome and stop.
+    self.streams.clear();
+    self.shutdown_requested = true;
     if failed_ids.is_empty() {
-      self.streams.clear();
-      self.shutdown_requested = true;
       Ok(())
     } else {
-      // Remove only successfully cancelled streams; keep failed ones for retry
-      let failed_set: Vec<u64> = failed_ids.iter().map(|(id, _)| *id).collect();
-      self.streams.retain(|id, _| failed_set.contains(id));
-      self.shutdown_requested = true;
       let msg = failed_ids.iter().map(|(id, e)| format!("stream {id:?}: {e:?}")).collect::<Vec<_>>().join(", ");
       Err(ActorError::fatal(format!("stream cancel failed: [{msg}]")))
     }
