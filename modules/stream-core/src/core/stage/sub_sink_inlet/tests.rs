@@ -25,8 +25,7 @@ impl Materializer for TestMaterializer {
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamShared::new(stream);
-    let handle = shared;
+    let handle = StreamShared::new(stream);
     Ok(Materialized::new(handle, materialized))
   }
 
