@@ -1,3 +1,4 @@
+mod support;
 use fraktor_stream_core_rs::core::{
   StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source},
@@ -5,6 +6,7 @@ use fraktor_stream_core_rs::core::{
   shape::{Inlet, Outlet},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use support::RunWithCollectSink;
 
 #[test]
 fn graph_dsl_is_public_and_builds_linear_flow() {
@@ -13,7 +15,7 @@ fn graph_dsl_is_public_and_builds_linear_flow() {
     GraphDsl::builder::<u32>().via(Flow::<u32, u32, StreamNotUsed>::new().map(|value| value.saturating_mul(2))).build();
 
   // When: Source に接続して実行する
-  let values = Source::single(21_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(21_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: public facade 経由の graph が data path として機能する
   assert_eq!(values, vec![42_u32]);
@@ -26,7 +28,7 @@ fn graph_dsl_from_flow_is_public_and_builds_external_crate_flow() {
   let flow = builder.build();
 
   // When: 外部 crate 視点で Source に接続する
-  let values = Source::single(5_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: from_flow 経由の graph が data path として実行される
   assert_eq!(values, vec![15_u32]);
@@ -40,7 +42,7 @@ fn graph_dsl_create_flow_is_public_and_uses_builder_block() {
   });
 
   // When: public Source から実行する
-  let values = Source::single(3_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(3_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: builder block 内の graph が実行結果に反映される
   assert_eq!(values, vec![8_u32]);
@@ -71,7 +73,7 @@ fn graph_dsl_create_source_is_public_and_uses_explicit_wiring() {
   });
 
   // When: public Source として実行する
-  let values = source.collect_values().expect("collect_values");
+  let values = source.run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: 明示的な wiring が data path に反映される
   assert_eq!(values, vec![10_u32]);
@@ -87,7 +89,7 @@ fn graph_dsl_create_sink_is_public_and_builds_external_crate_sink() {
   });
 
   // When: public Source から作成済み Sink に到達させる
-  let values = Source::from_array([1_u32, 2, 3]).also_to(sink).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2, 3]).also_to(sink).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: create_sink 経由の sink へ要素が配送される
   assert_eq!(values, vec![1_u32, 2, 3]);

@@ -17,7 +17,7 @@ use crate::core::{
   DynValue, FlowLogic, OverflowStrategy, QueueOfferResult, RestartConfig, SourceLogic, StageDefinition, StreamDslError,
   StreamError, SubstreamCancelStrategy, ThrottleMode,
   attributes::{Attributes, DispatcherAttribute},
-  dsl::{Flow, FlowMonitorImpl, Sink, Source, TailSource},
+  dsl::{Flow, FlowMonitorImpl, Sink, Source, TailSource, tests::RunWithCollectSink},
   r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, fusing::StreamBufferConfig, materialization::Stream},
   materialization::{
     Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, StreamCompletion, StreamDone, StreamNotUsed,
@@ -137,10 +137,12 @@ where
 }
 
 #[test]
-fn broadcast_duplicates_each_element() {
-  let values =
-    Source::single(7_u32).via(Flow::new().broadcast(2).expect("broadcast")).collect_values().expect("collect_values");
-  assert_eq!(values, vec![7_u32, 7_u32]);
+fn broadcast_with_single_fan_out_keeps_element() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().broadcast(1).expect("broadcast"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
+  assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
@@ -151,8 +153,10 @@ fn broadcast_rejects_zero_fan_out() {
 
 #[test]
 fn balance_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().balance(1).expect("balance")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().balance(1).expect("balance"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -164,8 +168,10 @@ fn balance_rejects_zero_fan_out() {
 
 #[test]
 fn merge_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().merge(1).expect("merge")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge(1).expect("merge"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -177,7 +183,8 @@ fn merge_rejects_zero_fan_in() {
 
 #[test]
 fn zip_wraps_value_when_single_path() {
-  let values = Source::single(7_u32).via(Flow::new().zip(1).expect("zip")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().zip(1).expect("zip")).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -189,8 +196,10 @@ fn zip_rejects_zero_fan_in() {
 
 #[test]
 fn concat_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().concat(1).expect("concat")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().concat(1).expect("concat"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -204,14 +213,15 @@ fn concat_rejects_zero_fan_in() {
 fn partition_keeps_single_path_behavior() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().partition(|value| *value % 2 == 0))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
 
 #[test]
 fn unzip_emits_tuple_components() {
-  let values = Source::single((7_u32, 8_u32)).via(Flow::new().unzip()).collect_values().expect("collect_values");
+  let values =
+    Source::single((7_u32, 8_u32)).via(Flow::new().unzip()).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32, 8_u32]);
 }
 
@@ -219,15 +229,17 @@ fn unzip_emits_tuple_components() {
 fn unzip_with_emits_mapped_tuple_components() {
   let values = Source::single(7_u32)
     .via(Flow::new().unzip_with(|value: u32| (value, value.saturating_add(1))))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32, 8_u32]);
 }
 
 #[test]
 fn interleave_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().interleave(1).expect("interleave")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().interleave(1).expect("interleave"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -239,8 +251,10 @@ fn interleave_rejects_zero_fan_in() {
 
 #[test]
 fn prepend_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().prepend(1).expect("prepend")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().prepend(1).expect("prepend"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -254,8 +268,8 @@ fn prepend_rejects_zero_fan_in() {
 fn concat_lazy_appends_secondary_source_after_primary_completion() {
   let values = Source::from_array([1_u32, 2])
     .via(Flow::new().concat_lazy(Source::from_array([3_u32, 4])))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
 
@@ -267,7 +281,7 @@ fn concat_all_lazy_should_append_all_secondary_sources_when_primary_completes() 
     .expect("concat_all_lazy");
 
   // When: primary が完了するまで stream を実行
-  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: secondary source が指定順に連結される
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32, 5_u32]);
@@ -295,7 +309,7 @@ fn concat_all_lazy_should_materialize_secondary_sources_after_primary_completion
   assert!(materialized_sources.lock().is_empty());
 
   // When: primary が完了するまで stream を実行
-  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: secondary source は primary 後に指定順で評価される
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
@@ -334,8 +348,8 @@ fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion()
 fn prepend_lazy_emits_secondary_source_before_primary_values() {
   let values = Source::from_array([3_u32, 4])
     .via(Flow::new().prepend_lazy(Source::from_array([1_u32, 2])))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
 
@@ -359,8 +373,8 @@ fn prepend_lazy_emits_secondary_values_without_waiting_for_secondary_completion(
 fn or_else_uses_secondary_source_only_when_primary_is_empty() {
   let values = Source::<u32, _>::empty()
     .via(Flow::new().or_else(Source::from_array([5_u32, 6])))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![5_u32, 6_u32]);
 }
 
@@ -368,8 +382,8 @@ fn or_else_uses_secondary_source_only_when_primary_is_empty() {
 fn or_else_ignores_secondary_source_after_primary_emits() {
   let values = Source::from_array([7_u32, 8])
     .via(Flow::new().or_else(Source::from_array([1_u32, 2])))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32, 8_u32]);
 }
 
@@ -402,7 +416,7 @@ fn concat_lazy_materializes_secondary_after_primary_finishes() {
   });
   assert_eq!(*materialize_calls.lock(), 0_u32);
   let primary = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[Some(1_u32), None, None]));
-  let values = primary.via(Flow::new().concat_lazy(secondary)).collect_values().expect("collect_values");
+  let values = primary.via(Flow::new().concat_lazy(secondary)).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 3_u32, 4_u32]);
   assert_eq!(*materialize_calls.lock(), 1_u32);
 }
@@ -441,8 +455,10 @@ fn or_else_does_not_materialize_secondary_when_primary_emits() {
       Source::from_array([9_u32, 10_u32])
     }
   });
-  let values =
-    Source::from_array([7_u32, 8_u32]).via(Flow::new().or_else(secondary)).collect_values().expect("collect_values");
+  let values = Source::from_array([7_u32, 8_u32])
+    .via(Flow::new().or_else(secondary))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32, 8_u32]);
   assert_eq!(*materialize_calls.lock(), 0_u32);
 }
@@ -452,8 +468,8 @@ fn concat_lazy_accepts_non_clone_elements() {
   let values = Source::from_array([NonCloneValue(1_u32), NonCloneValue(2_u32)])
     .via(Flow::new().concat_lazy(Source::from_array([NonCloneValue(3_u32)])))
     .map(|value: NonCloneValue| value.0)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
@@ -462,8 +478,8 @@ fn prepend_lazy_accepts_non_clone_elements() {
   let values = Source::from_array([NonCloneValue(2_u32), NonCloneValue(3_u32)])
     .via(Flow::new().prepend_lazy(Source::from_array([NonCloneValue(1_u32)])))
     .map(|value: NonCloneValue| value.0)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
@@ -472,8 +488,8 @@ fn or_else_accepts_non_clone_elements() {
   let values = Source::from_array([NonCloneValue(7_u32)])
     .via(Flow::new().or_else(Source::from_array([NonCloneValue(9_u32)])))
     .map(|value: NonCloneValue| value.0)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -497,8 +513,8 @@ fn concat_lazy_mat_preserves_existing_data_path_behavior() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .concat_lazy_mat(Source::from_array([3_u32, 4_u32]).map_materialized_value(|_| 99_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -522,8 +538,8 @@ fn prepend_lazy_mat_preserves_existing_data_path_behavior() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .prepend_lazy_mat(Source::from_array([1_u32, 2_u32]).map_materialized_value(|_| 42_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -547,8 +563,8 @@ fn or_else_mat_preserves_existing_data_path_behavior() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .or_else_mat(Source::from_array([5_u32, 6_u32]).map_materialized_value(|_| 77_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![5_u32, 6_u32]);
 }
@@ -573,8 +589,8 @@ fn divert_to_mat_preserves_existing_data_path_behavior() {
       Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 1_u32),
       KeepLeft,
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 3_u32]);
 }
@@ -592,8 +608,8 @@ fn divert_to_mat_routes_matching_elements_to_sink() {
       }),
       KeepLeft,
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 3_u32]);
   assert_eq!(*diverted.lock(), vec![2_u32, 4_u32]);
@@ -647,8 +663,8 @@ fn concat_mat_preserves_existing_data_path_behavior() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .concat_mat(Source::from_array([3_u32, 4_u32]).map_materialized_value(|_| 99_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -689,8 +705,8 @@ fn prepend_mat_preserves_existing_data_path_behavior() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .prepend_mat(Source::from_array([1_u32, 2_u32]).map_materialized_value(|_| 42_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -729,8 +745,8 @@ fn merge_mat_preserves_existing_data_path_behavior() {
   let mut values = Source::single(7_u32)
     .map_materialized_value(|_| 0_u32)
     .merge_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   values.sort();
 
   assert!(values.contains(&7_u32));
@@ -772,8 +788,8 @@ fn merge_preferred_mat_preserves_existing_data_path_behavior() {
   let mut values = Source::single(7_u32)
     .map_materialized_value(|_| 0_u32)
     .merge_preferred_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   values.sort();
 
   assert!(values.contains(&7_u32));
@@ -815,8 +831,8 @@ fn merge_sorted_mat_preserves_existing_data_path_behavior() {
   let values = Source::from_array([1_u32, 3_u32, 5_u32])
     .map_materialized_value(|_| 0_u32)
     .merge_sorted_mat(Source::from_array([2_u32, 4_u32, 6_u32]).map_materialized_value(|_| 99_u32), KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32, 5_u32, 6_u32]);
 }
@@ -851,8 +867,8 @@ fn zip_mat_preserves_existing_data_path_behavior() {
   let values = Source::single(1_u32)
     .map_materialized_value(|_| 0_u32)
     .zip_mat(Source::single(2_u32).map_materialized_value(|_| 99_u32), KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![vec![1_u32, 2_u32]]);
 }
@@ -891,8 +907,8 @@ fn zip_all_mat_preserves_existing_data_path_behavior() {
   let values = Source::from_array([1_u32, 2_u32])
     .map_materialized_value(|_| 0_u32)
     .zip_all_mat(Source::from_array([3_u32]).map_materialized_value(|_| 99_u32), 0_u32, KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // zip_all pads shorter stream with fill_value (0)
   assert_eq!(values, vec![vec![1_u32, 3_u32], vec![2_u32, 0_u32]]);
@@ -936,8 +952,8 @@ fn zip_with_mat_preserves_existing_data_path_behavior() {
       |values: Vec<u32>| values.into_iter().sum::<u32>(),
       KeepLeft,
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![30_u32]);
 }
@@ -976,8 +992,8 @@ fn zip_latest_mat_preserves_existing_data_path_behavior() {
   let values = Source::single(1_u32)
     .map_materialized_value(|_| 0_u32)
     .zip_latest_mat(Source::single(2_u32).map_materialized_value(|_| 99_u32), KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![vec![1_u32, 2_u32]]);
 }
@@ -1020,8 +1036,8 @@ fn zip_latest_with_mat_preserves_existing_data_path_behavior() {
       |values: Vec<u32>| values.into_iter().sum::<u32>(),
       KeepLeft,
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![30_u32]);
 }
@@ -1060,8 +1076,8 @@ fn merge_latest_mat_preserves_existing_data_path_behavior() {
   let values = Source::single(7_u32)
     .map_materialized_value(|_| 0_u32)
     .merge_latest_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // merge_latest emits Vec of latest values from all inputs
   assert!(!values.is_empty());
@@ -1101,8 +1117,8 @@ fn merge_prioritized_mat_preserves_existing_data_path_behavior() {
   let mut values = Source::single(7_u32)
     .map_materialized_value(|_| 0_u32)
     .merge_prioritized_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   values.sort();
 
   assert!(values.contains(&7_u32));
@@ -1144,8 +1160,8 @@ fn interleave_mat_preserves_existing_data_path_behavior() {
   let mut values = Source::from_array([1_u32, 3_u32])
     .map_materialized_value(|_| 0_u32)
     .interleave_mat(Source::from_array([2_u32, 4_u32]).map_materialized_value(|_| 99_u32), 1, KeepLeft)
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   values.sort();
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
@@ -1192,8 +1208,8 @@ fn flat_map_prefix_mat_preserves_existing_data_path_behavior() {
       |_prefix: Vec<u32>| Flow::<u32, u32, StreamNotUsed>::new(),
       KeepLeft,
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // flat_map_prefix consumes prefix (1 element), then passes rest through the inner flow
   assert_eq!(values, vec![2_u32, 3_u32]);
@@ -1203,8 +1219,8 @@ fn flat_map_prefix_mat_preserves_existing_data_path_behavior() {
 fn zip_all_wraps_value_when_single_path() {
   let values = Source::single(7_u32)
     .via(Flow::new().zip_all(1, 0_u32).expect("zip_all"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -1216,8 +1232,10 @@ fn zip_all_rejects_zero_fan_in() {
 
 #[test]
 fn zip_latest_wraps_single_path_value_into_vec() {
-  let values =
-    Source::single(7_u32).via(Flow::new().zip_latest(1).expect("zip_latest")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().zip_latest(1).expect("zip_latest"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -1231,8 +1249,8 @@ fn zip_latest_rejects_zero_fan_in() {
 fn zip_latest_with_maps_latest_snapshot() {
   let values = Source::single(7_u32)
     .via(Flow::new().zip_latest_with(1, |latest: Vec<u32>| latest[0].saturating_add(1)).expect("zip_latest_with"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![8_u32]);
 }
 
@@ -1243,7 +1261,7 @@ fn materialize_into_source_emits_completed_sink_materialized_value() {
     .materialize_into_source(Source::single(1_u32), Sink::head())
     .into_parts();
   let materialized: Vec<u32> =
-    Source::from_graph(graph, StreamNotUsed::new()).collect_values().expect("collect_values");
+    Source::from_graph(graph, StreamNotUsed::new()).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(materialized, vec![2_u32]);
   assert_eq!(completion.poll(), Completion::Ready(Ok(())));
 }
@@ -1252,8 +1270,8 @@ fn materialize_into_source_emits_completed_sink_materialized_value() {
 fn flat_map_merge_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().flat_map_merge(2, Source::single).expect("flat_map_merge"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1320,8 +1338,8 @@ fn flat_map_merge_rejects_zero_breadth() {
 fn buffer_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().buffer(2, OverflowStrategy::Backpressure).expect("buffer"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1337,7 +1355,7 @@ fn buffer_rejects_zero_capacity() {
 
 #[test]
 fn async_boundary_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().r#async()).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().r#async()).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1345,8 +1363,8 @@ fn async_boundary_keeps_single_path_behavior() {
 fn throttle_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().throttle(2, ThrottleMode::Shaping).expect("throttle"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1362,8 +1380,10 @@ fn throttle_rejects_zero_capacity() {
 
 #[test]
 fn delay_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().delay(2).expect("delay")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().delay(2).expect("delay"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1381,8 +1401,8 @@ fn delay_rejects_zero_ticks() {
 fn initial_delay_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().initial_delay(2).expect("initial_delay"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1400,8 +1420,8 @@ fn initial_delay_rejects_zero_ticks() {
 fn take_within_limits_output_window() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().take_within(1).expect("take_within"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 }
 
@@ -1419,8 +1439,8 @@ fn take_within_rejects_zero_ticks() {
 fn batch_emits_fixed_size_chunks() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
     .via(Flow::new().batch(2).expect("batch"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
 }
 
@@ -1438,8 +1458,8 @@ fn batch_rejects_zero_size() {
 fn map_async_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().map_async(2, |value: u32| async move { value.saturating_add(1) }).expect("map_async"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![8_u32]);
 }
 
@@ -1465,8 +1485,8 @@ fn map_async_preserves_order_with_parallelism() {
         })
         .expect("map_async"),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 3_u32, 4_u32]);
 }
 
@@ -1633,8 +1653,8 @@ fn map_async_partitioned_serializes_same_partition_while_preserving_input_order(
         })
         .expect("map_async_partitioned"),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![11_u32, 13_u32, 12_u32, 14_u32]);
 }
 
@@ -1661,23 +1681,27 @@ fn map_async_partitioned_unordered_emits_completed_partitions_without_global_ord
         })
         .expect("map_async_partitioned_unordered"),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert!(*overlap_seen.lock(), "different partitions should overlap in flight");
   assert_eq!(values, vec![12_u32, 11_u32]);
 }
 
 #[test]
 fn filter_keeps_matching_elements() {
-  let values =
-    Source::single(7_u32).via(Flow::new().filter(|value| *value % 2 == 1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().filter(|value| *value % 2 == 1))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
 fn filter_discards_non_matching_elements() {
-  let values =
-    Source::single(8_u32).via(Flow::new().filter(|value| *value % 2 == 1)).collect_values().expect("collect_values");
+  let values = Source::single(8_u32)
+    .via(Flow::new().filter(|value| *value % 2 == 1))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, Vec::<u32>::new());
 }
 
@@ -1685,22 +1709,26 @@ fn filter_discards_non_matching_elements() {
 fn filter_not_discards_matching_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().filter_not(|value| *value % 2 == 0))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 3_u32]);
 }
 
 #[test]
 fn flatten_optional_emits_present_value() {
-  let values =
-    Source::single(Some(7_u32)).via(Flow::new().flatten_optional()).collect_values().expect("collect_values");
+  let values = Source::single(Some(7_u32))
+    .via(Flow::new().flatten_optional())
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
 fn flatten_optional_skips_none() {
-  let values =
-    Source::single(None::<u32>).via(Flow::new().flatten_optional()).collect_values().expect("collect_values");
+  let values = Source::single(None::<u32>)
+    .via(Flow::new().flatten_optional())
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, Vec::<u32>::new());
 }
 
@@ -1708,8 +1736,8 @@ fn flatten_optional_skips_none() {
 fn collect_maps_present_values_and_skips_absent_values() {
   let values = Source::from_array([1_i32, -1_i32, 2_i32])
     .via(Flow::new().collect(|value| u32::try_from(value).ok()))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
@@ -1727,8 +1755,8 @@ fn flatten_flattens_nested_sources_in_order_and_skips_empty_inner_sources() {
         })
         .flatten(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![22_u32, 32_u32, 23_u32, 33_u32]);
 }
@@ -1765,8 +1793,8 @@ fn flatten_emits_inner_head_without_waiting_for_inner_completion() {
 fn map_concat_expands_each_element() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().map_concat(|value: u32| [value, value.saturating_add(10)]))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 11_u32, 2_u32, 12_u32, 3_u32, 13_u32]);
 }
 
@@ -1774,8 +1802,8 @@ fn map_concat_expands_each_element() {
 fn map_option_emits_only_present_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().map_option(|value| if value % 2 == 0 { Some(value) } else { None }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 4_u32]);
 }
 
@@ -1789,8 +1817,8 @@ fn stateful_map_emits_stateful_results() {
         sum
       }
     }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
 }
 
@@ -1804,8 +1832,8 @@ fn stateful_map_concat_expands_with_stateful_mapper() {
         [sum, sum.saturating_add(100)]
       }
     }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 101_u32, 3_u32, 103_u32, 6_u32, 106_u32]);
 }
 
@@ -1821,8 +1849,8 @@ fn stateful_map_on_complete_emits_final_element() {
       },
       |state| Some(state),
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 通常要素に加え、on_complete が出力した合計値が末尾に追加される
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 6_u32]);
@@ -1840,8 +1868,8 @@ fn stateful_map_on_complete_none_emits_nothing_extra() {
       },
       |_state| None,
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: on_complete が None を返したため、通常要素のみ
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
@@ -1859,8 +1887,8 @@ fn stateful_map_on_complete_receives_accumulated_state() {
       },
       |state| Some(state),
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 各要素(10,20,30) + on_complete での蓄積合計(60)
   assert_eq!(values, vec![10_u32, 20, 30, 60]);
@@ -1881,8 +1909,8 @@ fn stateful_map_concat_with_accumulator_processes_elements() {
 
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().stateful_map_concat_with_accumulator(|| DoublingAccumulator))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 各要素が [value, value*2] に展開される
   assert_eq!(values, vec![1_u32, 2, 2, 4, 3, 6]);
@@ -1912,8 +1940,8 @@ fn stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
 
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: Vec::new() }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: [1,2] はバッファ満了で排出、[3] は on_complete で排出
   assert_eq!(values, vec![1_u32, 2, 3]);
@@ -1923,8 +1951,8 @@ fn stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
 fn drop_skips_first_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().drop(2))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![3_u32, 4_u32]);
 }
 
@@ -1932,8 +1960,8 @@ fn drop_skips_first_elements() {
 fn take_limits_emitted_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().take(2))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
@@ -1941,8 +1969,8 @@ fn take_limits_emitted_elements() {
 fn drop_while_skips_matching_prefix() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().drop_while(|value| *value < 3))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![3_u32, 4_u32]);
 }
 
@@ -1950,8 +1978,8 @@ fn drop_while_skips_matching_prefix() {
 fn take_while_keeps_matching_prefix() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().take_while(|value| *value < 3))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
@@ -1959,8 +1987,8 @@ fn take_while_keeps_matching_prefix() {
 fn take_until_includes_first_matching_element() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().take_until(|value| *value >= 3))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
@@ -1968,8 +1996,8 @@ fn take_until_includes_first_matching_element() {
 fn grouped_emits_fixed_size_chunks() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
     .via(Flow::new().grouped(2).expect("grouped"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
 }
 
@@ -1987,8 +2015,8 @@ fn grouped_rejects_zero_size() {
 fn sliding_emits_overlapping_windows() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().sliding(3).expect("sliding"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![1_u32, 2_u32, 3_u32], vec![2_u32, 3_u32, 4_u32]]);
 }
 
@@ -2006,8 +2034,8 @@ fn sliding_rejects_zero_size() {
 fn scan_emits_initial_and_running_accumulation() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().scan(0_u32, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![0_u32, 1_u32, 3_u32, 6_u32]);
 }
 
@@ -2015,8 +2043,8 @@ fn scan_emits_initial_and_running_accumulation() {
 fn intersperse_injects_markers() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().intersperse(10_u32, 99_u32, 11_u32))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![10_u32, 1_u32, 99_u32, 2_u32, 99_u32, 3_u32, 11_u32]);
 }
 
@@ -2024,8 +2052,8 @@ fn intersperse_injects_markers() {
 fn intersperse_on_empty_stream_emits_start_and_end() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
     .via(Flow::new().intersperse(10_u32, 99_u32, 11_u32))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![10_u32, 11_u32]);
 }
 
@@ -2033,8 +2061,8 @@ fn intersperse_on_empty_stream_emits_start_and_end() {
 fn zip_with_index_pairs_each_element_with_index() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[7, 8, 9]))
     .via(Flow::new().zip_with_index())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![(7_u32, 0_u64), (8_u32, 1_u64), (9_u32, 2_u64)]);
 }
 
@@ -2047,8 +2075,8 @@ fn group_by_keeps_single_path_behavior() {
         .expect("group_by")
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2088,8 +2116,8 @@ fn group_by_rejects_zero_max_substreams() {
 fn split_when_with_cancel_strategy_emits_single_segment_for_single_element() {
   let values = Source::single(7_u32)
     .via(Flow::new().split_when_with_cancel_strategy(SubstreamCancelStrategy::Drain, |_| false).into_flow())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -2097,8 +2125,8 @@ fn split_when_with_cancel_strategy_emits_single_segment_for_single_element() {
 fn split_after_with_cancel_strategy_emits_single_segment_for_single_element() {
   let values = Source::single(7_u32)
     .via(Flow::new().split_after_with_cancel_strategy(SubstreamCancelStrategy::Propagate, |_| false).into_flow())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -2106,8 +2134,8 @@ fn split_after_with_cancel_strategy_emits_single_segment_for_single_element() {
 fn split_when_emits_single_segment_for_single_element() {
   let values = Source::single(7_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::new().split_when(|_| false).into_flow())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -2115,8 +2143,8 @@ fn split_when_emits_single_segment_for_single_element() {
 fn split_after_emits_single_segment_for_single_element() {
   let values = Source::single(7_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::new().split_after(|_| false).into_flow())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -2124,8 +2152,8 @@ fn split_after_emits_single_segment_for_single_element() {
 fn merge_substreams_flattens_single_segment() {
   let values = Source::single(7_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::new().split_after(|_| true).merge_substreams())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2133,8 +2161,8 @@ fn merge_substreams_flattens_single_segment() {
 fn concat_substreams_flattens_single_segment() {
   let values = Source::single(7_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::new().split_after(|_| true).concat_substreams())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2147,8 +2175,8 @@ fn merge_substreams_with_parallelism_flattens_single_segment() {
         .merge_substreams_with_parallelism(2)
         .expect("merge_substreams_with_parallelism"),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2166,7 +2194,7 @@ fn merge_substreams_with_parallelism_rejects_zero_parallelism() {
 fn map_error_transforms_upstream_failure() {
   let result = Source::<u32, _>::failed(StreamError::Failed)
     .via(Flow::new().map_error(|_| StreamError::WouldBlock))
-    .collect_values();
+    .run_with_collect_sink();
   assert_eq!(result, Err(StreamError::WouldBlock));
 }
 
@@ -2177,8 +2205,8 @@ fn on_error_continue_resumes_after_upstream_failure() {
     FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
   )
   .via(Flow::new().on_error_continue())
-  .collect_values()
-  .expect("collect_values");
+  .run_with_collect_sink()
+  .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
@@ -2189,8 +2217,8 @@ fn on_error_resume_alias_resumes_after_upstream_failure() {
     FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
   )
   .via(Flow::new().on_error_resume())
-  .collect_values()
-  .expect("collect_values");
+  .run_with_collect_sink()
+  .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
@@ -2208,8 +2236,8 @@ fn on_error_continue_if_with_invokes_consumer_for_matching_failure() {
       captured.lock().push(error.clone());
     },
   ))
-  .collect_values()
-  .expect("collect_values");
+  .run_with_collect_sink()
+  .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
   assert_eq!(observed.lock().as_slice(), &[StreamError::Failed]);
 }
@@ -2221,8 +2249,8 @@ fn on_error_complete_stops_after_matching_upstream_failure() {
     FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
   )
   .via(Flow::new().on_error_complete())
-  .collect_values()
-  .expect("collect_values");
+  .run_with_collect_sink()
+  .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 }
 
@@ -2233,8 +2261,8 @@ fn on_error_complete_if_stops_on_matching_upstream_failure() {
     FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
   )
   .via(Flow::new().on_error_complete_if(|error| matches!(error, StreamError::Failed)))
-  .collect_values()
-  .expect("collect_values");
+  .run_with_collect_sink()
+  .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 }
 
@@ -2242,8 +2270,8 @@ fn on_error_complete_if_stops_on_matching_upstream_failure() {
 fn recover_replaces_upstream_failure_with_fallback() {
   let values = Source::<u32, _>::failed(StreamError::Failed)
     .via(Flow::new().recover(|_| Some(9_u32)))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![9_u32]);
 }
 
@@ -2254,8 +2282,8 @@ fn recover_drops_later_elements_after_upstream_failure() {
     FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
   )
   .via(Flow::new().recover(|_| Some(9_u32)))
-  .collect_values()
-  .expect("collect_values");
+  .run_with_collect_sink()
+  .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 9_u32]);
 }
 
@@ -2263,8 +2291,8 @@ fn recover_drops_later_elements_after_upstream_failure() {
 fn recover_with_alias_switches_to_recovery_source() {
   let values = Source::<u32, _>::failed(StreamError::Failed)
     .via(Flow::new().recover_with(|_| Some(Source::from_array([8_u32, 9_u32]))))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![8_u32, 9_u32]);
 }
 
@@ -2272,7 +2300,7 @@ fn recover_with_alias_switches_to_recovery_source() {
 fn recover_with_retries_fails_when_retry_budget_is_exhausted() {
   let result = Source::<u32, _>::failed(StreamError::Failed)
     .via(Flow::new().recover_with_retries(0, |_| Some(Source::single(9_u32))))
-    .collect_values();
+    .run_with_collect_sink();
   assert_eq!(result, Err(StreamError::Failed));
 }
 
@@ -2291,8 +2319,8 @@ fn recover_with_retries_switches_recovery_sources_incrementally() {
         Some(Source::from_array([10_u32, 11_u32]))
       }
     }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![9_u32, 10_u32, 11_u32]);
 }
 
@@ -2305,27 +2333,32 @@ fn recover_with_retries_fails_after_consuming_retry_budget() {
         FailureSequenceSourceLogic::new(&[Ok(9_u32), Err(StreamError::Failed)]),
       ))
     }))
-    .collect_values();
+    .run_with_collect_sink();
   assert_eq!(result, Err(StreamError::Failed));
 }
 
 #[test]
 fn restart_flow_with_backoff_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().restart_flow_with_backoff(1, 3)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().restart_flow_with_backoff(1, 3))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
 fn on_failures_with_backoff_alias_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().on_failures_with_backoff(1, 3)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().on_failures_with_backoff(1, 3))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
 fn with_backoff_alias_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().with_backoff(1, 3)).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().with_backoff(1, 3)).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2333,8 +2366,8 @@ fn with_backoff_alias_keeps_single_path_behavior() {
 fn with_backoff_and_context_alias_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().with_backoff_and_context(1, 3, "compat"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2346,8 +2379,8 @@ fn restart_flow_with_settings_keeps_single_path_behavior() {
     .with_jitter_seed(17);
   let values = Source::single(7_u32)
     .via(Flow::new().restart_flow_with_settings(settings))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2355,8 +2388,8 @@ fn restart_flow_with_settings_keeps_single_path_behavior() {
 fn supervision_variants_keep_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().supervision_stop().supervision_resume().supervision_restart())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2550,8 +2583,8 @@ fn stateful_map_concat_logic_on_restart_recreates_mapper() {
 fn collect_type_collects_convertible_values() {
   let values = Source::from_array([1_i32, -1_i32, 2_i32])
     .via(Flow::new().collect_type::<u32>())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
@@ -2559,22 +2592,22 @@ fn collect_type_collects_convertible_values() {
 fn fold_async_emits_running_accumulation_when_future_is_ready() {
   let values = Source::from_array([1_u32, 2, 3])
     .via(Flow::new().fold_async(0_u32, |acc, value| async move { acc + value }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
 }
 
 #[test]
 fn ask_alias_maps_values_asynchronously() {
   let flow = Flow::new().ask(1, |value: u32| async move { value + 1 }).expect("ask");
-  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 3_u32]);
 }
 
 #[test]
 fn ask_with_status_alias_maps_values_asynchronously() {
   let flow = Flow::new().ask_with_status(1, |value: u32| async move { value + 2 }).expect("ask_with_status");
-  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![3_u32, 4_u32]);
 }
 
@@ -2583,7 +2616,10 @@ fn ask_with_context_preserves_context_and_maps_value() {
   let flow = Flow::<(u32, u32), (u32, u32), StreamNotUsed>::new()
     .ask_with_context(1, |value| async move { value + 10 })
     .expect("ask_with_context");
-  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)])
+    .via(flow)
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![(7_u32, 11_u32), (8_u32, 12_u32)]);
 }
 
@@ -2592,7 +2628,10 @@ fn ask_with_status_and_context_preserves_context_and_maps_value() {
   let flow = Flow::<(u32, u32), (u32, u32), StreamNotUsed>::new()
     .ask_with_status_and_context(1, |value| async move { value + 20 })
     .expect("ask_with_status_and_context");
-  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)])
+    .via(flow)
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![(7_u32, 21_u32), (8_u32, 22_u32)]);
 }
 
@@ -2695,8 +2734,8 @@ fn operator_catalog_lookup_rejects_unknown_operator() {
 fn detach_preserves_elements_and_order() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().r#async())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
@@ -2704,8 +2743,8 @@ fn detach_preserves_elements_and_order() {
 fn log_passes_elements_through_unchanged_and_inserts_logging_stage() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().log("test"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 
   let (plan, completion) =
@@ -2726,8 +2765,8 @@ fn log_does_not_bypass_upstream_source_supervision_resume() {
   )
   .supervision_resume()
   .via(Flow::new().log("log-stage"))
-  .collect_values()
-  .expect("collect_values");
+  .run_with_collect_sink()
+  .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2735,8 +2774,8 @@ fn log_does_not_bypass_upstream_source_supervision_resume() {
 fn log_with_marker_passes_elements_through_unchanged_and_inserts_logging_stage() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().log_with_marker("test", "marker"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 
   let (plan, completion) = Source::single(7_u32)
@@ -2769,14 +2808,14 @@ fn compression_operators_round_trip_bytes_and_store_attributes() {
   let payload = vec![1_u8, 2, 3, 3, 3, 4, 5];
   let values = Source::single(payload.clone())
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip().gzip_decompress())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![payload.clone()]);
 
   let values = Source::single(payload.clone())
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate().inflate())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![payload]);
 
   let (graph, _mat) = Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip().inflate().into_parts();
@@ -2818,8 +2857,8 @@ fn gzip_decompress_accepts_member_with_filename_header() {
   let encoded = gzip_member_with_filename(&payload, "payload.bin");
   let values = Source::single(encoded)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![payload]);
 }
 
@@ -2832,8 +2871,8 @@ fn gzip_decompress_accepts_standard_gzip_payload() {
   ];
   let values = Source::single(encoded)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![b"hello-gzip-interop".to_vec()]);
 }
 
@@ -2843,8 +2882,8 @@ fn gzip_emits_raw_deflate_payload() {
   let payload = b"gzip-raw-deflate-check".to_vec();
   let encoded = Source::single(payload.clone())
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
-    .collect_values()
-    .expect("collect_values")
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink")
     .pop()
     .expect("encoded payload");
   let payload_end = encoded.len().saturating_sub(8);
@@ -2862,7 +2901,8 @@ fn inflate_rejects_payload_exceeding_decompression_limit() {
   let payload = vec![0x5a_u8; FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT.saturating_add(1)];
   let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
 
-  let result = Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).collect_values();
+  let result =
+    Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).run_with_collect_sink();
 
   assert!(matches!(result, Err(StreamError::CompressionError { .. })));
 }
@@ -2873,13 +2913,14 @@ fn gzip_decompress_rejects_payload_exceeding_decompression_limit() {
   let payload = vec![0x33_u8; FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT.saturating_add(1)];
   let encoded = Source::single(payload)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
-    .collect_values()
-    .expect("collect_values")
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink")
     .pop()
     .expect("encoded payload");
 
-  let result =
-    Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress()).collect_values();
+  let result = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
+    .run_with_collect_sink();
 
   assert!(matches!(result, Err(StreamError::CompressionError { kind: "gzip_too_large" })));
 }
@@ -2890,15 +2931,16 @@ fn gzip_decompress_rejects_payload_exceeding_decompression_limit_with_spoofed_is
   let payload = vec![0x44_u8; FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT.saturating_add(1)];
   let mut encoded = Source::single(payload)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
-    .collect_values()
-    .expect("collect_values")
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink")
     .pop()
     .expect("encoded payload");
   let trailer_start = encoded.len().saturating_sub(4);
   encoded[trailer_start..].copy_from_slice(&0_u32.to_le_bytes());
 
-  let result =
-    Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress()).collect_values();
+  let result = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
+    .run_with_collect_sink();
 
   assert!(matches!(result, Err(StreamError::CompressionError { kind: "gzip_too_large" })));
 }
@@ -2909,9 +2951,10 @@ fn inflate_accepts_payload_larger_than_compression_chunk_default() {
   let payload = vec![0x6a_u8; crate::core::dsl::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
   let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
 
-  let result = Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).collect_values();
+  let result =
+    Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).run_with_collect_sink();
 
-  assert_eq!(result.expect("collect_values"), vec![payload]);
+  assert_eq!(result.expect("run_with_collect_sink"), vec![payload]);
 }
 
 #[test]
@@ -2920,15 +2963,16 @@ fn gzip_decompress_accepts_payload_larger_than_compression_chunk_default() {
   let payload = vec![0x7b_u8; crate::core::dsl::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
   let encoded = Source::single(payload.clone())
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
-    .collect_values()
-    .expect("collect_values")
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink")
     .pop()
     .expect("encoded payload");
 
-  let result =
-    Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress()).collect_values();
+  let result = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
+    .run_with_collect_sink();
 
-  assert_eq!(result.expect("collect_values"), vec![payload]);
+  assert_eq!(result.expect("run_with_collect_sink"), vec![payload]);
 }
 
 #[test]
@@ -2937,7 +2981,7 @@ fn limit_should_pass_when_element_count_equals_max() {
   let source = Source::from_array([1_u32, 2_u32]);
 
   // When: limit を通して収集する
-  let values = source.via(Flow::new().limit(2)).collect_values().expect("collect_values");
+  let values = source.via(Flow::new().limit(2)).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: 境界値まではそのまま通過する
   assert_eq!(values, vec![1_u32, 2_u32]);
@@ -2949,7 +2993,7 @@ fn limit_should_fail_when_element_count_exceeds_max() {
   let source = Source::from_array([1_u32, 2_u32, 3_u32]);
 
   // When: limit を通して収集する
-  let error = source.via(Flow::new().limit(2)).collect_values().expect_err("limit should fail");
+  let error = source.via(Flow::new().limit(2)).run_with_collect_sink().expect_err("limit should fail");
 
   // Then: Pekko の StreamLimitReachedException 相当の failure になる
   assert_eq!(error, StreamError::StreamLimitReached { limit: 2 });
@@ -2961,8 +3005,10 @@ fn limit_weighted_should_pass_when_total_weight_equals_budget() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]));
 
   // When: limit_weighted を通して収集する
-  let values =
-    source.via(Flow::new().limit_weighted(3, |value| *value as usize)).collect_values().expect("collect_values");
+  let values = source
+    .via(Flow::new().limit_weighted(3, |value| *value as usize))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: budget 境界まではそのまま通過する
   assert_eq!(values, vec![1_u32, 2_u32]);
@@ -2974,8 +3020,10 @@ fn limit_weighted_should_fail_when_weight_exceeds_remaining_budget() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 2, 1]));
 
   // When: limit_weighted を通して収集する
-  let error =
-    source.via(Flow::new().limit_weighted(3, |value| *value as usize)).collect_values().expect_err("limit should fail");
+  let error = source
+    .via(Flow::new().limit_weighted(3, |value| *value as usize))
+    .run_with_collect_sink()
+    .expect_err("limit should fail");
 
   // Then: 超過を正常完了にせず failure として返す
   assert_eq!(error, StreamError::StreamLimitReached { limit: 3 });
@@ -2987,8 +3035,10 @@ fn limit_weighted_should_fail_when_zero_budget_receives_input() {
   let source = Source::single(1_u32);
 
   // When: 最初の要素が到達する
-  let error =
-    source.via(Flow::new().limit_weighted(0, |value| *value as usize)).collect_values().expect_err("limit should fail");
+  let error = source
+    .via(Flow::new().limit_weighted(0, |value| *value as usize))
+    .run_with_collect_sink()
+    .expect_err("limit should fail");
 
   // Then: 構築時ではなく要素到達時の limit reached failure になる
   assert_eq!(error, StreamError::StreamLimitReached { limit: 0 });
@@ -2998,8 +3048,8 @@ fn limit_weighted_should_fail_when_zero_budget_receives_input() {
 fn grouped_weighted_within_uses_weight_budget() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 1, 2]))
     .via(Flow::new().grouped_weighted_within(3, 10, |value| *value as usize).expect("grouped_weighted_within"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![2_u32, 1_u32], vec![2_u32]]);
 }
 
@@ -3007,8 +3057,8 @@ fn grouped_weighted_within_uses_weight_budget() {
 fn grouped_weighted_within_flushes_on_weight_add_overflow() {
   let values = Source::from_array([usize::MAX - 1, 2_usize])
     .via(Flow::new().grouped_weighted_within(usize::MAX, 10, |value| *value).expect("grouped_weighted_within"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![usize::MAX - 1], vec![2_usize]]);
 }
 
@@ -3016,8 +3066,8 @@ fn grouped_weighted_within_flushes_on_weight_add_overflow() {
 fn batch_weighted_uses_weight_budget() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 1, 2]))
     .via(Flow::new().batch_weighted(3, |value| *value as usize).expect("batch_weighted"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![2_u32, 1_u32], vec![2_u32]]);
 }
 
@@ -3041,8 +3091,8 @@ fn flat_map_prefix_uses_prefix_to_build_tail_flow() {
       let prefix_sum = prefix.into_iter().sum::<u32>();
       Flow::new().map(move |value: u32| value.saturating_add(prefix_sum))
     }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![6_u32, 7_u32]);
 }
 
@@ -3050,29 +3100,33 @@ fn flat_map_prefix_uses_prefix_to_build_tail_flow() {
 fn flat_map_prefix_accepts_zero_prefix() {
   let values = Source::from_array([1_u32, 2])
     .via(Flow::new().flat_map_prefix(0, |_prefix| Flow::new().map(|value: u32| value.saturating_add(5))))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![6_u32, 7_u32]);
 }
 
 #[test]
 fn prefix_and_tail_emits_prefix_and_remaining_tail() {
-  let values =
-    Source::from_array([1_u32, 2, 3, 4]).via(Flow::new().prefix_and_tail(2)).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2, 3, 4])
+    .via(Flow::new().prefix_and_tail(2))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values.len(), 1);
   let (prefix, tail): (Vec<u32>, TailSource<u32>) = values.into_iter().next().expect("prefix and tail");
   assert_eq!(prefix, vec![1_u32, 2_u32]);
-  assert_eq!(tail.collect_values().expect("tail values"), vec![3_u32, 4_u32]);
+  assert_eq!(tail.run_with_collect_sink().expect("tail values"), vec![3_u32, 4_u32]);
 }
 
 #[test]
 fn prefix_and_tail_accepts_zero_prefix() {
-  let values =
-    Source::from_array([7_u32, 8]).via(Flow::new().prefix_and_tail(0)).collect_values().expect("collect_values");
+  let values = Source::from_array([7_u32, 8])
+    .via(Flow::new().prefix_and_tail(0))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values.len(), 1);
   let (prefix, tail): (Vec<u32>, TailSource<u32>) = values.into_iter().next().expect("prefix and tail");
   assert_eq!(prefix, vec![]);
-  assert_eq!(tail.collect_values().expect("tail values"), vec![7_u32, 8_u32]);
+  assert_eq!(tail.run_with_collect_sink().expect("tail values"), vec![7_u32, 8_u32]);
 }
 
 #[test]
@@ -3087,8 +3141,8 @@ fn do_on_first_invokes_callback_on_first_element_only() {
     .via(Flow::new().do_on_first(move |_value| {
       counter_clone.fetch_add(1, Ordering::Relaxed);
     }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![10_u32, 20_u32, 30_u32]);
   assert_eq!(counter.load(Ordering::Relaxed), 1);
 }
@@ -3097,8 +3151,8 @@ fn do_on_first_invokes_callback_on_first_element_only() {
 fn conflate_preserves_elements_when_upstream_is_not_bursty() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().conflate(|acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
@@ -3106,8 +3160,8 @@ fn conflate_preserves_elements_when_upstream_is_not_bursty() {
 fn conflate_with_seed_applies_seed_and_aggregate() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().conflate_with_seed(|value| value + 10, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![11_u32, 12_u32, 13_u32]);
 }
 
@@ -3116,8 +3170,8 @@ fn conflate_aggregates_bursty_upstream_values() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
     .via(Flow::new().map_concat(|value: u32| vec![value, value.saturating_mul(10)]))
     .via(Flow::new().conflate(|acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![11_u32, 22_u32]);
 }
 
@@ -3126,8 +3180,8 @@ fn conflate_with_seed_aggregates_bursty_upstream_values() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
     .via(Flow::new().map_concat(|value: u32| vec![value, value.saturating_mul(10)]))
     .via(Flow::new().conflate_with_seed(|value| value + 100, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![111_u32, 122_u32]);
 }
 
@@ -3139,8 +3193,8 @@ fn conflate_accepts_non_clone_output_type() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().map(NonClone))
     .via(Flow::new().conflate(|acc: NonClone, value: NonClone| NonClone(acc.0 + value.0)))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![NonClone(1), NonClone(2), NonClone(3)]);
 }
@@ -3149,12 +3203,12 @@ fn conflate_accepts_non_clone_output_type() {
 fn expand_and_extrapolate_share_expand_behavior() {
   let expand_values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
     .via(Flow::new().expand(|value: &u32| vec![*value, value.saturating_mul(10)]))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   let extrapolate_values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
     .via(Flow::new().extrapolate(|value: &u32| vec![*value, value.saturating_mul(10)]))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(expand_values, vec![1_u32, 2_u32]);
   assert_eq!(expand_values, extrapolate_values);
 }
@@ -3256,8 +3310,8 @@ fn expand_and_extrapolate_do_not_hang_with_infinite_iterators() {
 fn grouped_within_preserves_size_grouping_behavior() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
     .via(Flow::new().grouped_within(2, 10).expect("grouped_within"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
 }
 
@@ -3266,8 +3320,8 @@ fn grouped_within_flushes_when_tick_window_expires() {
   let schedule = [Some(1_u32), None, None, Some(2_u32), Some(3_u32)];
   let values = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&schedule))
     .via(Flow::new().grouped_within(10, 2).expect("grouped_within"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![1_u32], vec![2_u32, 3_u32]]);
 }
 
@@ -3276,8 +3330,8 @@ fn grouped_within_expires_window_at_tick_boundary() {
   let schedule = [Some(1_u32), Some(2_u32)];
   let values = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&schedule))
     .via(Flow::new().grouped_within(10, 1).expect("grouped_within"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![1_u32], vec![2_u32]]);
 }
 
@@ -3295,8 +3349,8 @@ fn grouped_within_rejects_zero_ticks() {
 fn fold_emits_running_accumulation_without_initial() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().fold(0_u32, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
 }
 
@@ -3304,15 +3358,17 @@ fn fold_emits_running_accumulation_without_initial() {
 fn reduce_folds_with_first_element_as_seed() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().reduce(|acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
 }
 
 #[test]
 fn reduce_single_element_emits_that_element() {
-  let values =
-    Source::single(42_u32).via(Flow::new().reduce(|acc, value| acc + value)).collect_values().expect("collect_values");
+  let values = Source::single(42_u32)
+    .via(Flow::new().reduce(|acc, value| acc + value))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![42_u32]);
 }
 
@@ -3320,8 +3376,8 @@ fn reduce_single_element_emits_that_element() {
 fn fold_on_empty_stream_emits_nothing() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
     .via(Flow::new().fold(0_u32, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert!(values.is_empty());
 }
 
@@ -3329,8 +3385,8 @@ fn fold_on_empty_stream_emits_nothing() {
 fn reduce_on_empty_stream_emits_nothing() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
     .via(Flow::new().reduce(|acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert!(values.is_empty());
 }
 
@@ -3346,8 +3402,8 @@ fn do_on_first_does_not_fire_on_empty_stream() {
     .via(Flow::new().do_on_first(move |_value| {
       counter_clone.fetch_add(1, Ordering::Relaxed);
     }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert!(values.is_empty());
   assert_eq!(counter.load(Ordering::Relaxed), 0);
 }
@@ -3356,8 +3412,8 @@ fn do_on_first_does_not_fire_on_empty_stream() {
 fn from_function_transforms_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::from_function(|x: u32| x + 1))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 3_u32, 4_u32]);
 }
 
@@ -3365,8 +3421,8 @@ fn from_function_transforms_elements() {
 fn named_passes_elements_through_unchanged() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().named("test-stage"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
@@ -3383,8 +3439,8 @@ fn also_to_mat_combines_materialized_values() {
 fn also_to_mat_keeps_data_path_behavior() {
   let values = Source::single(1_u32)
     .via(Flow::new().map(|value: u32| value + 1).also_to_mat(Sink::ignore(), KeepBoth))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32]);
 }
 
@@ -3419,8 +3475,8 @@ fn wire_tap_mat_combines_materialized_values_and_keeps_data_path_behavior() {
 
   let values = Source::single(4_u32)
     .via(Flow::new().map(|value: u32| value + 1).wire_tap_mat(Sink::ignore(), KeepRight))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![5_u32]);
 }
 
@@ -3452,8 +3508,8 @@ fn wire_tap_mat_preserves_all_main_path_elements_with_multiple_inputs() {
   // 準備: 複数要素を wire_tap_mat に流す（main path が全要素を受け取ることを検証）
   let values = Source::from_array([1_u32, 2, 3, 4, 5])
     .via(Flow::new().wire_tap_mat(Sink::ignore(), KeepLeft))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: main path は全要素を受け取る
   assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
@@ -3469,8 +3525,8 @@ fn wire_tap_mat_callback_version_observes_all_elements() {
     .via(Flow::new().wire_tap(move |value| {
       observed_clone.lock().push(*value);
     }))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: main path は全要素を受け取り、callback も全要素を観測する
   assert_eq!(values, vec![10_u32, 20, 30]);
@@ -3514,8 +3570,8 @@ fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
 
   let values = Source::single(4_u32)
     .via(Flow::new().map(|value: u32| value + 1).monitor_mat(KeepLeft))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![5_u32]);
 }
 
@@ -3538,8 +3594,8 @@ fn from_sink_and_source_mat_preserves_single_path_behavior() {
 
   let values = Source::single(5_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_mat(sink, source, KeepLeft))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // from_sink_and_source_mat emits elements from the embedded source, not from upstream
   assert_eq!(values, vec![99_u32]);
@@ -3577,8 +3633,8 @@ fn from_sink_and_source_coupled_mat_preserves_single_path_behavior() {
 
   let values = Source::single(6_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_coupled_mat(sink, source, KeepLeft))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // from_sink_and_source_coupled_mat emits elements from the embedded source, not from upstream
   assert_eq!(values, vec![99_u32]);
@@ -3588,8 +3644,8 @@ fn from_sink_and_source_coupled_mat_preserves_single_path_behavior() {
 fn flow_lazy_flow_passes_elements_through_factory_flow() {
   let values = Source::single(5_u32)
     .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v * 2)))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![10_u32]);
 }
 
@@ -3597,8 +3653,8 @@ fn flow_lazy_flow_passes_elements_through_factory_flow() {
 fn flow_lazy_flow_defers_factory_call() {
   let values = Source::from_array([1_u32, 2, 3])
     .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v + 100)))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![101_u32, 102, 103]);
 }
 
@@ -3606,8 +3662,8 @@ fn flow_lazy_flow_defers_factory_call() {
 fn flow_lazy_flow_with_identity_flow_passes_through() {
   let values = Source::from_array([1_u32, 2, 3])
     .via(Flow::lazy_flow(Flow::<u32, u32, StreamNotUsed>::new))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
@@ -3615,8 +3671,8 @@ fn flow_lazy_flow_with_identity_flow_passes_through() {
 fn flow_lazy_flow_with_chained_operations() {
   let values = Source::from_array([1_u32, 2, 3, 4, 5])
     .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v * 2).filter(|v: &u32| *v > 4)))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![6_u32, 8, 10]);
 }
 
@@ -3624,8 +3680,8 @@ fn flow_lazy_flow_with_chained_operations() {
 fn flow_lazy_flow_with_empty_source() {
   let values = Source::<u32, _>::empty()
     .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v + 1)))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, Vec::<u32>::new());
 }
 
@@ -3638,8 +3694,8 @@ fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path
 
   let values = Source::single(4_u32)
     .via(Flow::new().map(|value: u32| value + 1).map_materialized_value(|_| 1_u32))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![5_u32]);
 }
 
@@ -3649,8 +3705,8 @@ fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path
 fn backpressure_timeout_passes_elements_within_threshold() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().backpressure_timeout(100).expect("backpressure_timeout"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
@@ -3659,7 +3715,7 @@ fn backpressure_timeout_fails_when_backpressure_exceeds_threshold() {
   let result =
     Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[Some(1), None, None, None, None]))
       .via(Flow::new().backpressure_timeout(2).expect("backpressure_timeout"))
-      .collect_values();
+      .run_with_collect_sink();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "backpressure", ticks: 2 })));
 }
 
@@ -3679,8 +3735,8 @@ fn backpressure_timeout_rejects_zero_ticks() {
 fn completion_timeout_passes_elements_within_threshold() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().completion_timeout(100).expect("completion_timeout"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
@@ -3688,7 +3744,7 @@ fn completion_timeout_passes_elements_within_threshold() {
 fn completion_timeout_fails_when_stream_exceeds_threshold() {
   let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
     .via(Flow::new().completion_timeout(2).expect("completion_timeout"))
-    .collect_values();
+    .run_with_collect_sink();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "completion", ticks: 2 })));
 }
 
@@ -3708,8 +3764,8 @@ fn completion_timeout_rejects_zero_ticks() {
 fn idle_timeout_passes_elements_within_threshold() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().idle_timeout(100).expect("idle_timeout"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
@@ -3717,7 +3773,7 @@ fn idle_timeout_passes_elements_within_threshold() {
 fn idle_timeout_fails_when_no_elements_within_threshold() {
   let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
     .via(Flow::new().idle_timeout(2).expect("idle_timeout"))
-    .collect_values();
+    .run_with_collect_sink();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "idle", ticks: 2 })));
 }
 
@@ -3737,8 +3793,8 @@ fn idle_timeout_rejects_zero_ticks() {
 fn initial_timeout_passes_elements_within_threshold() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().initial_timeout(100).expect("initial_timeout"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
@@ -3746,7 +3802,7 @@ fn initial_timeout_passes_elements_within_threshold() {
 fn initial_timeout_fails_when_first_element_exceeds_threshold() {
   let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
     .via(Flow::new().initial_timeout(2).expect("initial_timeout"))
-    .collect_values();
+    .run_with_collect_sink();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "initial", ticks: 2 })));
 }
 
@@ -3766,8 +3822,8 @@ fn initial_timeout_rejects_zero_ticks() {
 fn merge_preferred_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().merge_preferred(1).expect("merge_preferred"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -3886,8 +3942,8 @@ fn merge_preferred_logic_on_restart_clears_state() {
 fn merge_prioritized_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().merge_prioritized(1).expect("merge_prioritized"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -3901,8 +3957,8 @@ fn merge_prioritized_rejects_zero_fan_in() {
 fn merge_prioritized_n_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().merge_prioritized_n(1, &[1]).expect("merge_prioritized_n"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -4034,8 +4090,8 @@ fn merge_prioritized_logic_on_restart_clears_state() {
 fn merge_sorted_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().merge_sorted(1).expect("merge_sorted"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -4108,8 +4164,8 @@ fn merge_sorted_logic_on_restart_clears_state() {
 fn merge_latest_wraps_single_path_value_into_vec() {
   let values = Source::single(7_u32)
     .via(Flow::new().merge_latest(1).expect("merge_latest"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -4150,8 +4206,10 @@ fn merge_latest_emits_latest_snapshot_on_each_update() {
 
 #[test]
 fn watch_termination_passes_through_elements() {
-  let values =
-    Source::single(42_u32).via(Flow::new().watch_termination_mat(KeepLeft)).collect_values().expect("collect_values");
+  let values = Source::single(42_u32)
+    .via(Flow::new().watch_termination_mat(KeepLeft))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![42_u32]);
 }
 
@@ -4173,7 +4231,7 @@ fn watch_termination_should_pass_through_elements() {
   let flow = Flow::new().watch_termination();
 
   // When: 要素を流す
-  let values = Source::single(42_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(42_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: 要素は変更されない
   assert_eq!(values, vec![42_u32]);
@@ -4186,7 +4244,7 @@ fn watch_termination_completes_stream_completion_handle() {
   assert_eq!(completion.poll(), Completion::Pending);
 
   let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(graph, completion.clone());
-  let values = Source::single(1_u32).via(source_flow).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(source_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 
   // 実行後はReady
@@ -4325,8 +4383,8 @@ fn retry_flow_logic_queues_multiple_retries_before_restarting_inner() {
 fn throttle_enforcing_mode_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().throttle(2, ThrottleMode::Enforcing).expect("throttle"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -4337,7 +4395,7 @@ fn throttle_enforcing_mode_fails_on_capacity_overflow() {
   let result = Source::single(alloc::vec![1_u32, 2, 3])
     .via(Flow::new().map_concat(|v: Vec<u32>| v))
     .via(Flow::new().throttle(1, ThrottleMode::Enforcing).expect("throttle"))
-    .collect_values();
+    .run_with_collect_sink();
   assert_eq!(result, Err(StreamError::BufferOverflow));
 }
 
@@ -4410,14 +4468,19 @@ fn buffer_logic_fail_returns_buffer_overflow_when_full() {
 
 #[test]
 fn distinct_removes_duplicate_elements() {
-  let values =
-    Source::from_array([1_u32, 2, 1, 3, 2, 3, 4]).via(Flow::new().distinct()).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2, 1, 3, 2, 3, 4])
+    .via(Flow::new().distinct())
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3, 4]);
 }
 
 #[test]
 fn distinct_on_already_unique_passes_all() {
-  let values = Source::from_array([1_u32, 2, 3]).via(Flow::new().distinct()).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2, 3])
+    .via(Flow::new().distinct())
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
@@ -4425,8 +4488,8 @@ fn distinct_on_already_unique_passes_all() {
 fn distinct_by_removes_elements_with_duplicate_key() {
   let values = Source::from_array([(1_u32, "a"), (2, "b"), (1, "c"), (3, "d")])
     .via(Flow::new().distinct_by(|pair: &(u32, &str)| pair.0))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![(1_u32, "a"), (2, "b"), (3, "d")]);
 }
 
@@ -4435,14 +4498,17 @@ fn from_graph_creates_flow_from_existing_graph() {
   let original = Flow::<u32, u32, StreamNotUsed>::new().map(|x| x * 2);
   let (graph, mat) = original.into_parts();
   let reconstructed = Flow::<u32, u32, StreamNotUsed>::from_graph(graph, mat);
-  let values = Source::from_array([1_u32, 2, 3]).via(reconstructed).collect_values().expect("collect_values");
+  let values =
+    Source::from_array([1_u32, 2, 3]).via(reconstructed).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 4, 6]);
 }
 
 #[test]
 fn debounce_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().debounce(2).expect("debounce")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().debounce(2).expect("debounce"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -4458,8 +4524,10 @@ fn debounce_rejects_zero_ticks() {
 
 #[test]
 fn sample_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().sample(2).expect("sample")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().sample(2).expect("sample"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -4475,7 +4543,8 @@ fn sample_rejects_zero_ticks() {
 
 #[test]
 fn flow_named_keeps_elements_and_sets_attributes() {
-  let values = Source::single(7_u32).via(Flow::new().named("test-flow")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().named("test-flow")).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![7_u32]);
 
   let (graph, _mat) = Flow::<u32, u32, StreamNotUsed>::new().named("test-flow").into_parts();
@@ -4494,7 +4563,7 @@ fn flow_with_and_add_attributes_merge_names() {
 #[test]
 fn flow_from_materializer_creates_flow() {
   let flow = Flow::from_materializer(|| Flow::from_function(|x: u32| x * 2));
-  let values = Source::single(5_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![10_u32]);
 }
 
@@ -4524,7 +4593,7 @@ fn flow_dimap_applies_input_mapping_then_original_flow_then_output_mapping() {
   let flow = Flow::<u32, u32, StreamNotUsed>::from_function(|value| value.saturating_mul(2))
     .dimap(|text: &str| text.len() as u32, |value| value.saturating_add(10));
 
-  let values = Source::from_array(["abc", "hello"]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array(["abc", "hello"]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   assert_eq!(values, vec![16_u32, 20_u32]);
 }
@@ -4658,7 +4727,7 @@ fn flow_from_sink_and_source_coupled_mat_completes_wrapped_sink_when_source_fini
   let (_graph, right_completion) = flow.into_parts();
   let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(_graph, right_completion.clone());
 
-  let values = Source::single(1_u32).via(source_flow).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(source_flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   assert!(values.is_empty());
   assert!(sink_completed.load(Ordering::SeqCst));
@@ -4674,7 +4743,7 @@ fn flow_from_sink_and_source_coupled_mat_cancels_wrapped_source_when_sink_cancel
   let (_graph, right_completion) = flow.into_parts();
   let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(_graph, right_completion.clone());
 
-  let values = Source::single(1_u32).via(source_flow).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(source_flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   assert!(values.is_empty());
   assert_eq!(right_completion.poll(), Completion::Ready(Ok(())));
@@ -4716,7 +4785,7 @@ fn flow_group_by_with_drain_strategy_creates_subflow() {
 fn flow_async_passes_single_element_through() {
   // Given: a source emitting a single element
   // When: passing through a flow with an async boundary
-  let values = Source::single(7_u32).via(Flow::new().r#async()).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().r#async()).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: the element is forwarded unchanged
   assert_eq!(values, vec![7_u32]);
@@ -4728,7 +4797,7 @@ fn flow_async_passes_multiple_elements_through() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]));
 
   // When: passing through a flow with an async boundary
-  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+  let values = source.via(Flow::new().r#async()).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: all elements are forwarded in order
   assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
@@ -4740,7 +4809,7 @@ fn flow_async_preserves_element_order() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[5, 4, 3, 2, 1]));
 
   // When: passing through an async boundary
-  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+  let values = source.via(Flow::new().r#async()).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: elements arrive in original order
   assert_eq!(values, vec![5_u32, 4, 3, 2, 1]);
@@ -4752,7 +4821,7 @@ fn flow_async_handles_empty_source() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]));
 
   // When: passing through an async boundary
-  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+  let values = source.via(Flow::new().r#async()).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: no elements are emitted, stream completes normally
   assert!(values.is_empty());
@@ -4764,7 +4833,8 @@ fn flow_async_composes_with_map() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
 
   // When: map is applied before async boundary
-  let values = source.via(Flow::new().map(|x: u32| x * 10).r#async()).collect_values().expect("collect_values");
+  let values =
+    source.via(Flow::new().map(|x: u32| x * 10).r#async()).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: map is applied and elements pass through the boundary
   assert_eq!(values, vec![10_u32, 20, 30]);
@@ -4776,8 +4846,11 @@ fn flow_async_composes_with_map_after() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
 
   // When: async boundary is applied before map
-  let values =
-    source.via(Flow::new().r#async()).via(Flow::new().map(|x: u32| x + 100)).collect_values().expect("collect_values");
+  let values = source
+    .via(Flow::new().r#async())
+    .via(Flow::new().map(|x: u32| x + 100))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: both stages work correctly
   assert_eq!(values, vec![101_u32, 102, 103]);
@@ -4789,7 +4862,7 @@ fn flow_async_chained_multiple_boundaries() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
 
   // When: two async boundaries are chained
-  let values = source.via(Flow::new().r#async().r#async()).collect_values().expect("collect_values");
+  let values = source.via(Flow::new().r#async().r#async()).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: elements pass through both boundaries correctly
   assert_eq!(values, vec![1_u32, 2, 3]);
@@ -4804,7 +4877,7 @@ fn flow_async_propagates_upstream_error() {
   );
 
   // When: passing through an async boundary
-  let result = source.via(Flow::new().r#async()).collect_values();
+  let result = source.via(Flow::new().r#async()).run_with_collect_sink();
 
   // Then: the error propagates through the boundary
   assert!(result.is_err());
@@ -4816,7 +4889,10 @@ fn flow_async_with_filter_composition() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5, 6]));
 
   // When: filter even numbers, then async boundary
-  let values = source.via(Flow::new().filter(|x: &u32| x % 2 == 0).r#async()).collect_values().expect("collect_values");
+  let values = source
+    .via(Flow::new().filter(|x: &u32| x % 2 == 0).r#async())
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: only even numbers pass through
   assert_eq!(values, vec![2_u32, 4, 6]);
@@ -4933,8 +5009,8 @@ fn fold_while_accumulates_while_predicate_holds() {
   // When: fold_while accumulates while acc < 6
   let values = Source::from_array([1_u32, 2, 3, 4])
     .via(Flow::new().fold_while(0_u32, |acc, _| *acc < 6, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: accumulation stops updating at 6 (1+2+3=6, predicate false for 4)
   assert_eq!(values, vec![1_u32, 3_u32, 6_u32, 6_u32]);
@@ -4946,8 +5022,8 @@ fn fold_while_with_always_true_predicate_behaves_like_fold() {
   // When: fold_while with always-true predicate
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().fold_while(0_u32, |_, _| true, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: behaves identically to fold
   assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
@@ -4959,8 +5035,8 @@ fn fold_while_with_immediately_false_predicate_emits_initial_unchanged() {
   // When: fold_while with always-false predicate
   let values = Source::from_array([10_u32, 20, 30])
     .via(Flow::new().fold_while(0_u32, |_, _| false, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: accumulator never updates, emits initial value for each element
   assert_eq!(values, vec![0_u32, 0_u32, 0_u32]);
@@ -4972,8 +5048,8 @@ fn fold_while_on_empty_stream_emits_nothing() {
   // When: fold_while is applied
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
     .via(Flow::new().fold_while(99_u32, |_, _| true, |acc, value| acc + value))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: no output (same as fold on empty stream)
   assert!(values.is_empty());
@@ -4991,8 +5067,8 @@ fn deflate_with_level_round_trips_through_inflate() {
   let values = Source::single(payload.clone())
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate_with_level(9))
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: original payload is recovered
   assert_eq!(values, vec![payload]);
@@ -5010,8 +5086,8 @@ fn deflate_with_options_nowrap_round_trips() {
     .via(
       Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_options(FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT, true),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: original payload is recovered
   assert_eq!(values, vec![payload]);
@@ -5027,8 +5103,8 @@ fn gzip_with_level_round_trips_through_gzip_decompress() {
   let values = Source::single(payload.clone())
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_with_level(1))
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: original payload is recovered
   assert_eq!(values, vec![payload]);
@@ -5041,15 +5117,15 @@ fn gzip_decompress_with_max_bytes_rejects_oversized_payload() {
   let payload = vec![0xaa_u8; 256];
   let encoded = Source::single(payload)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
-    .collect_values()
-    .expect("collect_values")
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink")
     .pop()
     .expect("encoded payload");
 
   // When: decompressing with max_bytes = 64
   let result = Source::single(encoded)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress_with_max_bytes(64))
-    .collect_values();
+    .run_with_collect_sink();
 
   // Then: compression error
   assert!(matches!(result, Err(StreamError::CompressionError { .. })));
@@ -5065,7 +5141,7 @@ fn inflate_with_max_bytes_rejects_oversized_payload() {
   // When: inflating with max_bytes = 64
   let result = Source::single(encoded)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_max_bytes(64))
-    .collect_values();
+    .run_with_collect_sink();
 
   // Then: compression error
   assert!(matches!(result, Err(StreamError::CompressionError { .. })));
@@ -5083,8 +5159,8 @@ fn inflate_with_options_nowrap_false_decompresses_zlib_wrapped() {
     .via(
       Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_options(FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT, false),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: original payload is recovered
   assert_eq!(values, vec![payload]);
@@ -5229,7 +5305,7 @@ fn from_graph_stage_map_like_stage_produces_correct_values() {
   let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
 
   // When: running through a pipeline
-  let values = Source::from_array([1_u32, 2, 3]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2, 3]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: each value has 100 added
   assert_eq!(values, alloc::vec![101_u32, 102, 103]);
@@ -5241,7 +5317,8 @@ fn from_graph_stage_filter_like_stage_drops_elements() {
   let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(ThresholdFilterStage { threshold: 3 });
 
   // When: running through a pipeline
-  let values = Source::from_array([1_u32, 2, 3, 4, 5]).via(flow).collect_values().expect("collect_values");
+  let values =
+    Source::from_array([1_u32, 2, 3, 4, 5]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: only values > 3 pass through
   assert_eq!(values, alloc::vec![4_u32, 5]);
@@ -5254,7 +5331,7 @@ fn from_graph_stage_chained_with_standard_flow_operators() {
   let combined = custom_flow.via(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 2));
 
   // When: running through a pipeline
-  let values = Source::from_array([1_u32, 2]).via(combined).collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2]).via(combined).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: (1+100)*2=202, (2+100)*2=204
   assert_eq!(values, alloc::vec![202_u32, 204]);
@@ -5268,7 +5345,7 @@ fn from_graph_stage_with_materialized_value() {
   let flow = Flow::<u32, u32, ArcShared<SpinSyncMutex<usize>>>::from_graph_stage(stage);
 
   // When: running through a pipeline
-  let values = Source::from_array([10_u32, 20, 30]).via(flow).collect_values().expect("collect_values");
+  let values = Source::from_array([10_u32, 20, 30]).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: all values pass through and the counter reflects the count
   assert_eq!(values, alloc::vec![10_u32, 20, 30]);
@@ -5281,7 +5358,7 @@ fn from_graph_stage_empty_source_produces_no_output() {
   let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
 
   // When: running with an empty source
-  let values = Source::<u32, StreamNotUsed>::empty().via(flow).collect_values().expect("collect_values");
+  let values = Source::<u32, StreamNotUsed>::empty().via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: no output
   assert!(values.is_empty());
@@ -5293,7 +5370,7 @@ fn from_graph_stage_fail_should_propagate_to_materialized_completion() {
   let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(FailOnZeroStage);
 
   // When: 失敗対象の要素を流す
-  let result = Source::from_array([1_u32, 0, 2]).via(flow).collect_values();
+  let result = Source::from_array([1_u32, 0, 2]).via(flow).run_with_collect_sink();
 
   // Then: interpreter 経由でも failure は握りつぶされず completion に伝播する
   assert_eq!(result, Err(StreamError::Failed));
@@ -5309,8 +5386,8 @@ fn also_to_all_empty_sinks_passes_elements_through_unchanged() {
   let sinks: Vec<Sink<u32, StreamNotUsed>> = alloc::vec![];
   let values = Source::from_array([1_u32, 2_u32, 3_u32])
     .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: sink がなければ全要素がそのまま通過する（恒等動作）
   assert_eq!(values, alloc::vec![1_u32, 2_u32, 3_u32]);
@@ -5324,8 +5401,8 @@ fn also_to_all_single_sink_broadcasts_all_elements() {
   let sinks = alloc::vec![Sink::foreach(move |value: u32| observed_clone.lock().push(value))];
   let values = Source::from_array([10_u32, 20_u32])
     .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: main path は全要素を通し、side sink も同じ全要素を受け取る
   assert_eq!(values, alloc::vec![10_u32, 20_u32]);
@@ -5345,8 +5422,8 @@ fn also_to_all_multiple_sinks_each_receive_all_elements() {
   ];
   let values = Source::from_array([5_u32, 6_u32, 7_u32])
     .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: main path とすべての side sink が同じ全要素を受け取る
   assert_eq!(values, alloc::vec![5_u32, 6_u32, 7_u32]);
@@ -5373,8 +5450,8 @@ fn also_to_all_three_sinks_each_receive_elements_exactly_once() {
   ];
   let values = Source::from_array([1_u32, 2_u32])
     .via(Flow::<u32, u32, StreamNotUsed>::new().also_to_all(sinks))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: main path と 3 つの side sink がそれぞれ重複なく全要素を 1 回だけ受け取る
   assert_eq!(values, alloc::vec![1_u32, 2_u32]);
@@ -5392,8 +5469,8 @@ fn keep_alive_passes_elements_through_when_upstream_is_not_idle() {
   // Given: 十分大きな ticks（100）を指定した keep_alive を 3 要素シーケンスに適用
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().keep_alive(100, 0_u32).expect("keep_alive"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: アイドルが発生しないので元の 3 要素がそのまま通過する（injected は挿入されない）
   assert_eq!(values, alloc::vec![1_u32, 2_u32, 3_u32]);
@@ -5420,8 +5497,8 @@ fn keep_alive_injects_element_after_idle_ticks() {
   let schedule = [None, None, Some(99_u32)];
   let values = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&schedule))
     .via(Flow::new().keep_alive(2, 0_u32).expect("keep_alive"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: 2 tick アイドル後に injected_elem (0) が挿入され、その後 99 が流れる
   assert!(values.contains(&0_u32), "injected element should appear, got: {values:?}");
@@ -5437,8 +5514,8 @@ fn switch_map_emits_inner_source_values_for_single_outer_element() {
   // Given: 1 要素の outer Source に対し、値を 10 倍にした single Source を返す switch_map
   let values = Source::single(3_u32)
     .via(Flow::new().switch_map(|value: u32| Source::single(value.saturating_mul(10))).expect("switch_map"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: inner Source の値 30 が流れる
   assert_eq!(values, alloc::vec![30_u32]);
@@ -5449,8 +5526,8 @@ fn switch_map_rejects_empty_source_result() {
   // Given: empty を返す switch_map（境界条件: inner が空 Source）
   let values = Source::from_array([1_u32, 2_u32])
     .via(Flow::new().switch_map(|_: u32| Source::<u32, StreamNotUsed>::empty()).expect("switch_map"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: inner が空なので、main path の要素数の出力はゼロになる
   assert!(values.is_empty(), "empty inner sources should produce no output, got: {values:?}");
@@ -5468,8 +5545,8 @@ fn switch_map_only_most_recent_outer_element_produces_output_when_inner_has_mult
         .switch_map(|value: u32| Source::from_array([value.saturating_mul(10), value.saturating_mul(10) + 1]))
         .expect("switch_map"),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // Then: ストリームが正常に完了し、少なくとも最後の outer 要素に対する inner 値（30 or
   // 31）が含まれる

@@ -6,11 +6,13 @@
 //! NOTE: These tests will not compile until the production implementation is in place.
 //! They define the expected behavioral contract for Gate 0.
 
+mod support;
 use fraktor_stream_core_rs::core::{
   attributes::Attributes,
   dsl::{Flow, Source},
   materialization::StreamNotUsed,
 };
+use support::RunWithCollectSink;
 
 // --- アイランド境界を越える基本的な要素通過 ---
 
@@ -19,7 +21,8 @@ fn async_island_passes_single_element() {
   // 準備: 単一要素の source と async boundary
   // async boundary はグラフを2つのアイランドに分割するが、
   // 観測可能な振る舞いは boundary なしと同一。
-  let values = Source::single(42_u32).via(Flow::new().r#async()).collect_values().expect("collect_values");
+  let values =
+    Source::single(42_u32).via(Flow::new().r#async()).run_with_collect_sink().expect("run_with_collect_sink");
 
   // 検証: 要素が通過する
   assert_eq!(values, vec![42_u32]);
@@ -31,8 +34,8 @@ fn async_island_passes_large_sequence() {
   let input: Vec<u32> = (0..100).collect();
   let values = Source::from_iterator(input.clone().into_iter())
     .via(Flow::new().r#async())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 全要素が順序通りに到着する
   assert_eq!(values, input);
@@ -47,8 +50,8 @@ fn two_async_boundaries_create_three_islands() {
   let values = Source::from_iterator(input.clone().into_iter())
     .via(Flow::new().map(|x: u32| x * 2).r#async())
     .via(Flow::new().map(|x: u32| x + 1).r#async())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 両方の変換が適用され、要素が順序通りに到着する
   let expected: Vec<u32> = (1..=10).map(|x| x * 2 + 1).collect();
@@ -63,8 +66,8 @@ fn async_with_attributes_passes_elements() {
   // Pekko のアプローチを模倣: async() は属性を追加するだけ
   let values = Source::from_iterator(vec![1_u32, 2, 3].into_iter())
     .via(Flow::new().add_attributes(Attributes::async_boundary()))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 要素が正しく通過する
   assert_eq!(values, vec![1_u32, 2, 3]);
@@ -76,8 +79,8 @@ fn async_with_dispatcher_attribute_passes_elements() {
   let attrs = Attributes::async_boundary().and(Attributes::dispatcher("custom-dispatcher"));
   let values = Source::from_iterator(vec![1_u32, 2, 3].into_iter())
     .via(Flow::new().add_attributes(attrs))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 要素が正しく通過する（dispatcher は materializer が使用）
   assert_eq!(values, vec![1_u32, 2, 3]);
@@ -89,8 +92,8 @@ fn async_with_input_buffer_attribute_passes_elements() {
   let attrs = Attributes::async_boundary().and(Attributes::dispatcher("default")).and(Attributes::input_buffer(32, 32));
   let values = Source::from_iterator(vec![1_u32, 2, 3].into_iter())
     .via(Flow::new().add_attributes(attrs))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 設定されたバッファサイズで要素が通過する
   assert_eq!(values, vec![1_u32, 2, 3]);
@@ -103,8 +106,8 @@ fn async_island_propagates_normal_completion() {
   // 準備: async boundary を通る有限 source
   let values = Source::from_iterator(vec![1_u32, 2].into_iter())
     .via(Flow::new().r#async())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 全要素出力後にストリームが正常完了する
   assert_eq!(values, vec![1_u32, 2]);
@@ -113,8 +116,10 @@ fn async_island_propagates_normal_completion() {
 #[test]
 fn async_island_empty_source_completes() {
   // 準備: async boundary を通る空 source
-  let values =
-    Source::<u32, StreamNotUsed>::empty().via(Flow::new().r#async()).collect_values().expect("collect_values");
+  let values = Source::<u32, StreamNotUsed>::empty()
+    .via(Flow::new().r#async())
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 要素なしでストリームが完了する
   assert!(values.is_empty());
@@ -129,8 +134,8 @@ fn async_island_with_filter_and_map() {
     .via(Flow::new().filter(|x: &u32| x % 2 == 0))
     .via(Flow::new().r#async())
     .via(Flow::new().map(|x: u32| x * 10))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: filter はアイランド1で、map はアイランド2で実行される
   assert_eq!(values, vec![20_u32, 40, 60, 80, 100]);
@@ -142,8 +147,8 @@ fn async_island_with_take() {
   let values = Source::from_iterator((1_u32..=100).into_iter())
     .via(Flow::new().r#async())
     .via(Flow::new().take(3))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 最初の3要素のみが取得される
   assert_eq!(values, vec![1_u32, 2, 3]);
@@ -155,8 +160,8 @@ fn async_island_with_grouped() {
   let values = Source::from_iterator((1_u32..=6).into_iter())
     .via(Flow::new().r#async())
     .via(Flow::new().grouped(2).expect("grouped"))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: アイランド境界を越えた後、要素がペアにグループ化される
   assert_eq!(values, vec![vec![1_u32, 2], vec![3, 4], vec![5, 6]]);

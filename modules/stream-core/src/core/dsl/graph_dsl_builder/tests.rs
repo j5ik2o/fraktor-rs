@@ -1,6 +1,6 @@
 use crate::core::{
   StreamError,
-  dsl::{Flow, GraphDslBuilder, Sink, Source},
+  dsl::{Flow, GraphDslBuilder, Sink, Source, tests::RunWithCollectSink},
   materialization::{KeepBoth, KeepLeft, KeepRight, StreamNotUsed},
   shape::{Inlet, Outlet},
 };
@@ -13,7 +13,7 @@ fn builder_new_via_build_creates_linear_flow() {
     .build();
 
   // When: Source から実行する
-  let values = Source::single(1_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: builder で追加した flow が適用される
   assert_eq!(values, vec![2_u32]);

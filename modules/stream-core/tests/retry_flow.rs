@@ -1,3 +1,4 @@
+mod support;
 use std::sync::{
   Arc,
   atomic::{AtomicUsize, Ordering},
@@ -7,12 +8,14 @@ use fraktor_stream_core_rs::core::{
   dsl::{Flow, FlowWithContext, RetryFlow, Source},
   materialization::StreamNotUsed,
 };
+use support::RunWithCollectSink;
 
 #[test]
 fn retry_flow_passes_through_when_no_retry_needed() {
   let inner_flow: Flow<u32, u32, StreamNotUsed> = Flow::from_function(|x: u32| x.saturating_mul(2));
   let retry_flow = RetryFlow::with_backoff(1, 10, 0, 3, inner_flow, |_input: &u32, _output: &u32| None::<u32>);
-  let values = Source::from_iterator(vec![1_u32, 2, 3]).via(retry_flow).collect_values().expect("collect_values");
+  let values =
+    Source::from_iterator(vec![1_u32, 2, 3]).via(retry_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 4, 6]);
 }
 
@@ -37,7 +40,7 @@ fn retry_flow_retries_and_succeeds() {
     },
   );
 
-  let values = Source::single(42_u32).via(retry_flow).collect_values().expect("collect_values");
+  let values = Source::single(42_u32).via(retry_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![420_u32]);
 }
 
@@ -56,7 +59,7 @@ fn retry_flow_exhausts_max_retries_and_passes_through() {
     },
   );
 
-  let values = Source::single(5_u32).via(retry_flow).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).via(retry_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![0_u32]);
 }
 
@@ -75,7 +78,7 @@ fn retry_flow_with_zero_max_retries_never_retries() {
     },
   );
 
-  let values = Source::single(5_u32).via(retry_flow).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).via(retry_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![0_u32]);
 }
 
@@ -96,7 +99,7 @@ fn retry_flow_preserves_multiple_pending_retries_in_order() {
       },
     );
 
-  let values = Source::single(1_u32).via(retry_flow).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(retry_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![103_u32, 104_u32, 104_u32, 105_u32]);
 }
 
@@ -109,7 +112,7 @@ fn retry_flow_accepts_remaining_outputs_after_scheduling_retry() {
     if *input < 10 && *output == 0 { Some(input.saturating_add(100)) } else { None }
   });
 
-  let values = Source::single(1_u32).via(retry_flow).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(retry_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 202_u32, 0_u32]);
 }
 
@@ -125,8 +128,8 @@ fn retry_flow_with_context_passes_through_when_no_retry_needed() {
   let values =
     Source::from_iterator(vec![("a".to_string(), 1_u32), ("b".to_string(), 2_u32), ("c".to_string(), 3_u32)])
       .via(retry_fwc.into_flow())
-      .collect_values()
-      .expect("collect_values");
+      .run_with_collect_sink()
+      .expect("run_with_collect_sink");
   assert_eq!(values, vec![("a".to_string(), 2_u32), ("b".to_string(), 4_u32), ("c".to_string(), 6_u32),]);
 }
 
@@ -155,8 +158,8 @@ fn retry_flow_with_context_retries_preserving_context() {
 
   let values = Source::single(("ctx-val".to_string(), 42_u32))
     .via(retry_fwc.into_flow())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![("ctx-val".to_string(), 420_u32)]);
 }
 
@@ -177,6 +180,7 @@ fn retry_flow_with_context_exhausts_retries() {
     },
   );
 
-  let values = Source::single((99_i32, 5_u32)).via(retry_fwc.into_flow()).collect_values().expect("collect_values");
+  let values =
+    Source::single((99_i32, 5_u32)).via(retry_fwc.into_flow()).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![(99_i32, 0_u32)]);
 }

@@ -1,3 +1,4 @@
+mod support;
 use std::{
   collections::BTreeSet,
   thread,
@@ -19,6 +20,7 @@ use fraktor_stream_core_rs::core::{
   materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, StreamNotUsed},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use support::RunWithCollectSink;
 
 type VerifyFn = fn();
 
@@ -326,18 +328,21 @@ fn verify_substream_surface() {
   assert_split_after_surface(SubstreamCancelStrategy::Propagate);
 
   let merged_values =
-    Source::single(1_u32).split_after(|_| true).merge_substreams().collect_values().expect("merged values");
+    Source::single(1_u32).split_after(|_| true).merge_substreams().run_with_collect_sink().expect("merged values");
   assert_eq!(merged_values, vec![1_u32]);
 
-  let concatenated_values =
-    Source::single(1_u32).split_when(|_| false).concat_substreams().collect_values().expect("concatenated values");
+  let concatenated_values = Source::single(1_u32)
+    .split_when(|_| false)
+    .concat_substreams()
+    .run_with_collect_sink()
+    .expect("concatenated values");
   assert_eq!(concatenated_values, vec![1_u32]);
 
   let limited_values = Source::single(1_u32)
     .split_after(|_| true)
     .merge_substreams_with_parallelism(1)
     .expect("positive parallelism must be accepted")
-    .collect_values()
+    .run_with_collect_sink()
     .expect("limited values");
   assert_eq!(limited_values, vec![1_u32]);
 
@@ -363,13 +368,14 @@ fn verify_substream_surface() {
 }
 
 fn verify_flat_map_surface() {
-  let concat_values = Source::single(1_u32).flat_map_concat(Source::single).collect_values().expect("concat values");
+  let concat_values =
+    Source::single(1_u32).flat_map_concat(Source::single).run_with_collect_sink().expect("concat values");
   assert_eq!(concat_values, vec![1_u32]);
 
   let merge_values = Source::single(1_u32)
     .flat_map_merge(1, Source::single)
     .expect("positive breadth must be accepted")
-    .collect_values()
+    .run_with_collect_sink()
     .expect("merge values");
   assert_eq!(merge_values, vec![1_u32]);
 
@@ -434,7 +440,7 @@ fn verify_restart_supervision_surface() {
     .supervision_resume()
     .supervision_restart()
     .supervision_stop()
-    .collect_values()
+    .run_with_collect_sink()
     .expect("source values");
   assert_eq!(source_values, vec![1_u32]);
 
@@ -446,7 +452,7 @@ fn verify_restart_supervision_surface() {
         .supervision_restart()
         .supervision_stop(),
     )
-    .collect_values()
+    .run_with_collect_sink()
     .expect("flow values");
   assert_eq!(flow_values, vec![1_u32]);
 
@@ -459,12 +465,12 @@ fn verify_restart_supervision_surface() {
 }
 
 fn verify_async_boundary_surface() {
-  let source_values = Source::single(1_u32).r#async().collect_values().expect("source async values");
+  let source_values = Source::single(1_u32).r#async().run_with_collect_sink().expect("source async values");
   assert_eq!(source_values, vec![1_u32]);
 
   let flow_values = Source::single(1_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::new().r#async())
-    .collect_values()
+    .run_with_collect_sink()
     .expect("flow async values");
   assert_eq!(flow_values, vec![1_u32]);
 }
@@ -490,7 +496,7 @@ fn assert_group_by_surface() {
     .group_by(1, |value: &u32| *value, SubstreamCancelStrategy::default())
     .expect("positive max_substreams must be accepted")
     .merge_substreams()
-    .collect_values()
+    .run_with_collect_sink()
     .expect("grouped values");
   assert_eq!(grouped_values, vec![1_u32]);
 }

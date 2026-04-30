@@ -1,6 +1,6 @@
 use crate::core::{
   SubstreamCancelStrategy,
-  dsl::{Flow, Sink, Source},
+  dsl::{Flow, Sink, Source, tests::RunWithCollectSink},
   materialization::StreamNotUsed,
 };
 
@@ -13,8 +13,8 @@ fn flow_group_by_sub_flow_merge_substreams_preserves_repeated_keys() {
         .expect("group_by")
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   values.sort_unstable();
   assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
 }
@@ -42,8 +42,8 @@ fn flow_group_by_sub_flow_map_transforms_values_preserving_keys() {
         .map(|value| value * 10)
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 全要素が10倍される（順序は不定のためソート）
   values.sort_unstable();
@@ -61,8 +61,8 @@ fn flow_group_by_sub_flow_filter_removes_values_preserving_keys() {
         .filter(|value| value % 2 == 0)
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 偶数のみが残る（順序は不定のためソート）
   values.sort_unstable();
@@ -81,8 +81,8 @@ fn flow_group_by_sub_flow_map_then_filter_chains_correctly() {
         .filter(|value| value % 20 == 0)
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   // 検証: 偶数の10倍（20, 40）のみが20の倍数として残る
   values.sort_unstable();

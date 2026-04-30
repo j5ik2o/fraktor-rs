@@ -73,6 +73,8 @@ mod source_with_context;
 mod stateful_map_concat_accumulator;
 mod stream_refs;
 mod tail_source;
+#[cfg(test)]
+mod tests;
 mod topic_pub_sub;
 
 pub use actor_sink::ActorSink;

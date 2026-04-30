@@ -11,7 +11,7 @@ use std::{
 
 use crate::core::{
   StreamError, ThrottleMode,
-  dsl::{Flow, FlowWithContext, Sink, Source},
+  dsl::{Flow, FlowWithContext, Sink, Source, tests::RunWithCollectSink},
   materialization::{KeepBoth, StreamNotUsed},
 };
 
@@ -47,7 +47,7 @@ impl<T: Unpin> Future for YieldThenOutputFuture<T> {
 fn should_map_output_preserving_context() {
   let fwc: FlowWithContext<i32, &str, usize, StreamNotUsed> =
     FlowWithContext::from_flow(Flow::new().map(|v: (i32, &str)| v)).map(|s: &str| s.len());
-  let values = Source::from(vec![(1_i32, "hello"), (2, "world")]).via(fwc.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, "hello"), (2, "world")]).via(fwc.into_flow()).run_with_collect_sink().unwrap();
   assert_eq!(values, vec![(1, 5), (2, 5)]);
 }
 
@@ -55,7 +55,7 @@ fn should_map_output_preserving_context() {
 fn should_filter_by_value_preserving_context() {
   let fwc: FlowWithContext<i32, i32, i32, StreamNotUsed> =
     FlowWithContext::from_flow(Flow::new().map(|v: (i32, i32)| v)).filter(|v: &i32| *v > 0);
-  let values = Source::from(vec![(1_i32, 10), (2, -5), (3, 20)]).via(fwc.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 10), (2, -5), (3, 20)]).via(fwc.into_flow()).run_with_collect_sink().unwrap();
   assert_eq!(values, vec![(1, 10), (3, 20)]);
 }
 
@@ -70,7 +70,8 @@ fn should_map_context() {
   // → reverse(10) = 9, reverse(20) = 19
   // → inner (恒等): (9, "a"), (19, "b")
   // → forward(9) = 90, forward(19) = 190
-  let values = Source::from(vec![(10_i64, "a"), (20_i64, "b")]).via(mapped.into_flow()).collect_values().unwrap();
+  let values =
+    Source::from(vec![(10_i64, "a"), (20_i64, "b")]).via(mapped.into_flow()).run_with_collect_sink().unwrap();
   assert_eq!(values, vec![(90_i64, "a"), (190_i64, "b")]);
 }
 
@@ -81,7 +82,8 @@ fn should_compose_via() {
   let fwc2: FlowWithContext<i32, &str, usize, StreamNotUsed> =
     FlowWithContext::from_flow(Flow::new().map(|(ctx, s): (i32, &str)| (ctx, s.len())));
   let composed = fwc1.via(fwc2);
-  let values = Source::from(vec![(1_i32, "hello"), (2, "hi")]).via(composed.into_flow()).collect_values().unwrap();
+  let values =
+    Source::from(vec![(1_i32, "hello"), (2, "hi")]).via(composed.into_flow()).run_with_collect_sink().unwrap();
   assert_eq!(values, vec![(1, 5), (2, 2)]);
 }
 
@@ -95,7 +97,7 @@ fn map_concat_expands_elements_preserving_context() {
   let expanded = fwc.map_concat(|s: &str| s.chars().map(|c| c as u32).collect::<Vec<_>>());
 
   // 実行: 要素を流す
-  let values = Source::from(vec![(1_i32, "ab"), (2, "c")]).via(expanded.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, "ab"), (2, "c")]).via(expanded.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 展開された各要素は元のコンテキストを保持
   assert_eq!(values, vec![(1, 97), (1, 98), (2, 99)]);
@@ -109,7 +111,8 @@ fn map_concat_empty_expansion_drops_element() {
   let expanded = fwc.map_concat(|v: i32| if v > 0 { vec![v, v * 10] } else { vec![] });
 
   // 実行: 空イテレータを生成する要素を含めて流す
-  let values = Source::from(vec![(1_i32, 5), (2, -1), (3, 3)]).via(expanded.into_flow()).collect_values().unwrap();
+  let values =
+    Source::from(vec![(1_i32, 5), (2, -1), (3, 3)]).via(expanded.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 空展開の要素は除外、それ以外は同じコンテキストで展開
   assert_eq!(values, vec![(1, 5), (1, 50), (3, 3), (3, 30)]);
@@ -125,8 +128,10 @@ fn filter_not_passes_elements_where_predicate_is_false() {
   let filtered = fwc.filter_not(|v: &i32| *v > 0);
 
   // 実行: 要素を流す
-  let values =
-    Source::from(vec![(1_i32, 10), (2, -5), (3, 0), (4, 20)]).via(filtered.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 10), (2, -5), (3, 0), (4, 20)])
+    .via(filtered.into_flow())
+    .run_with_collect_sink()
+    .unwrap();
 
   // 検証: 述語が false の要素のみ通過、コンテキスト保持
   assert_eq!(values, vec![(2, -5), (3, 0)]);
@@ -140,7 +145,7 @@ fn filter_not_passes_all_when_predicate_always_false() {
   let filtered = fwc.filter_not(|_: &i32| false);
 
   // 実行: 要素を流す
-  let values = Source::from(vec![(1_i32, 10), (2, 20)]).via(filtered.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 10), (2, 20)]).via(filtered.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 全要素が通過
   assert_eq!(values, vec![(1, 10), (2, 20)]);
@@ -156,7 +161,8 @@ fn collect_filters_and_maps_preserving_context() {
   let collected = fwc.collect(|v: i32| if v > 0 { Some(v * 2) } else { None });
 
   // 実行: 要素を流す
-  let values = Source::from(vec![(1_i32, 5), (2, -3), (3, 10)]).via(collected.into_flow()).collect_values().unwrap();
+  let values =
+    Source::from(vec![(1_i32, 5), (2, -3), (3, 10)]).via(collected.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: Some の結果のみ通過、変換が適用
   assert_eq!(values, vec![(1, 10), (3, 20)]);
@@ -170,7 +176,7 @@ fn collect_drops_all_when_all_none() {
   let collected = fwc.collect(|_: i32| -> Option<i32> { None });
 
   // 実行: 要素を流す
-  let values = Source::from(vec![(1_i32, 5), (2, 10)]).via(collected.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 5), (2, 10)]).via(collected.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 要素なし
   assert!(values.is_empty());
@@ -186,7 +192,7 @@ fn map_async_transforms_preserving_context() {
   let mapped = fwc.map_async(1, |v: u32| async move { v * 2 }).expect("map_async");
 
   // 実行: 要素を流す
-  let values = Source::from(vec![(1_i32, 5_u32), (2, 3)]).via(mapped.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 5_u32), (2, 3)]).via(mapped.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 値は変換され、コンテキストは保持
   assert_eq!(values, vec![(1, 10_u32), (2, 6)]);
@@ -204,7 +210,7 @@ fn grouped_collects_elements_with_last_context() {
   // 実行: 5要素を流す
   let values = Source::from(vec![(10_i32, 1_u32), (20, 2), (30, 3), (40, 4), (50, 5)])
     .via(grouped.into_flow())
-    .collect_values()
+    .run_with_collect_sink()
     .unwrap();
 
   // 検証: 各グループのコンテキストは最後の要素のもの
@@ -219,7 +225,7 @@ fn grouped_single_element_per_group() {
   let grouped = fwc.grouped(1).expect("grouped");
 
   // 実行: 要素を流す
-  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(grouped.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(grouped.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 各要素が独立したグループ、コンテキスト保持
   assert_eq!(values, vec![(1, vec![10_u32]), (2, vec![20])]);
@@ -235,8 +241,10 @@ fn sliding_creates_windows_with_last_context() {
   let sliding = fwc.sliding(3).expect("sliding");
 
   // 実行: 要素を流す
-  let values =
-    Source::from(vec![(10_i32, 1_u32), (20, 2), (30, 3), (40, 4)]).via(sliding.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2), (30, 3), (40, 4)])
+    .via(sliding.into_flow())
+    .run_with_collect_sink()
+    .unwrap();
 
   // 検証: 各ウィンドウのコンテキストは最後の要素のもの
   assert_eq!(values, vec![(30, vec![1_u32, 2, 3]), (40, vec![2, 3, 4]),]);
@@ -250,7 +258,8 @@ fn sliding_window_size_2() {
   let sliding = fwc.sliding(2).expect("sliding");
 
   // 実行: 3要素を流す
-  let values = Source::from(vec![(1_i32, 10_u32), (2, 20), (3, 30)]).via(sliding.into_flow()).collect_values().unwrap();
+  let values =
+    Source::from(vec![(1_i32, 10_u32), (2, 20), (3, 30)]).via(sliding.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 2つのウィンドウ、各ウィンドウのコンテキストは最後の要素のもの
   assert_eq!(values, vec![(2, vec![10_u32, 20]), (3, vec![20, 30])]);
@@ -279,7 +288,7 @@ fn also_to_keeps_main_path_values_and_context() {
     FlowWithContext::from_flow(Flow::new().map(|value: (i32, u32)| value)).also_to(Sink::<u32, _>::ignore());
 
   // 実行: 要素を flow に流す
-  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: main path の値とコンテキストは変化しない
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
@@ -294,7 +303,7 @@ fn also_to_sends_values_to_side_sink_and_preserves_main_path() {
       seen_for_sink.lock().expect("side sink lock").push(value);
     }));
 
-  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).run_with_collect_sink().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![1_u32, 2]);
@@ -311,7 +320,7 @@ fn also_to_context_sends_only_contexts_to_side_sink() {
     seen_for_sink.lock().expect("context sink lock").push(ctx);
   }));
 
-  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).run_with_collect_sink().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![10_i32, 20]);
@@ -328,7 +337,7 @@ fn wire_tap_preserves_main_path_and_emits_values() {
     seen_for_sink.lock().expect("tap sink lock").push(value);
   }));
 
-  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).run_with_collect_sink().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![1_u32, 2]);
@@ -345,7 +354,7 @@ fn wire_tap_context_preserves_main_path_and_emits_contexts() {
     seen_for_sink.lock().expect("context tap lock").push(ctx);
   }));
 
-  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.into_flow()).run_with_collect_sink().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![10_i32, 20]);
@@ -368,7 +377,7 @@ fn map_async_partitioned_preserves_context_and_input_order() {
     .expect("map_async_partitioned");
 
   // 実行: source 経由で materialize して要素を収集する
-  let values = Source::from(vec![(100_i32, 1_u32), (200, 2)]).via(mapped.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(100_i32, 1_u32), (200, 2)]).via(mapped.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 入力順が保たれ、各要素は元のコンテキストを保持する
   assert_eq!(values, vec![(100_i32, 11_u32), (200, 12)]);
@@ -391,7 +400,7 @@ fn map_async_partitioned_unordered_can_emit_completion_order_while_preserving_co
     .expect("map_async_partitioned_unordered");
 
   // 実行: source 経由で materialize して要素を収集する
-  let values = Source::from(vec![(100_i32, 1_u32), (200, 2)]).via(mapped.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(100_i32, 1_u32), (200, 2)]).via(mapped.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 完了順は入れ替わりうるが、値とコンテキストの対応は維持される
   assert_eq!(values, vec![(200_i32, 12_u32), (100, 11)]);
@@ -407,7 +416,7 @@ fn map_error_passes_normal_elements_preserving_context() {
   let mapped = fwc.map_error(|_| StreamError::WouldBlock);
 
   // 実行: 正常な要素を流す
-  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(mapped.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(mapped.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 正常な要素はコンテキスト付きでそのまま通過する
   assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
@@ -421,7 +430,7 @@ fn map_error_transforms_upstream_failure_preserving_context_flow() {
   let mapped = fwc.map_error(|_| StreamError::WouldBlock);
 
   // 実行: 失敗する source を flow に接続
-  let result = Source::<(i32, u32), _>::failed(StreamError::Failed).via(mapped.into_flow()).collect_values();
+  let result = Source::<(i32, u32), _>::failed(StreamError::Failed).via(mapped.into_flow()).run_with_collect_sink();
 
   // 検証: エラーが変換される
   assert_eq!(result, Err(StreamError::WouldBlock));
@@ -437,7 +446,7 @@ fn throttle_passes_elements_preserving_context() {
   let throttled = fwc.throttle(2, ThrottleMode::Shaping).expect("throttle");
 
   // 実行: 要素を流す
-  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(throttled.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(throttled.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 要素はコンテキスト付きでそのまま通過する
   assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
@@ -451,7 +460,7 @@ fn throttle_enforcing_mode_preserves_context() {
   let throttled = fwc.throttle(2, ThrottleMode::Enforcing).expect("throttle");
 
   // 実行: 単一要素を流す（キャパシティ内）
-  let values = Source::from(vec![(1_i32, 10_u32)]).via(throttled.into_flow()).collect_values().unwrap();
+  let values = Source::from(vec![(1_i32, 10_u32)]).via(throttled.into_flow()).run_with_collect_sink().unwrap();
 
   // 検証: 要素はコンテキスト付きでそのまま通過する
   assert_eq!(values, vec![(1, 10_u32)]);

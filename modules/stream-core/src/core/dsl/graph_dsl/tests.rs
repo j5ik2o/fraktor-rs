@@ -1,6 +1,6 @@
 use crate::core::{
   StreamError,
-  dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source},
+  dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source, tests::RunWithCollectSink},
   materialization::{KeepLeft, KeepRight, StreamNotUsed},
   shape::{Inlet, Outlet},
 };
@@ -13,7 +13,7 @@ fn create_flow_builds_executable_flow_from_public_builder_block() {
   });
 
   // When: 利用者 API から Source に接続して実行する
-  let values = Source::single(4_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(4_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: builder block で追加した flow が data path に反映される
   assert_eq!(values, vec![12_u32]);
@@ -44,7 +44,7 @@ fn create_source_uses_explicit_builder_wiring() {
   });
 
   // When: public Source として実行する
-  let values = source.collect_values().expect("collect_values");
+  let values = source.run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: builder 内の明示的な接続順に値が流れる
   assert_eq!(values, vec![12_u32]);
