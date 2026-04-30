@@ -13,10 +13,13 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 
 use crate::core::{
-  StreamError,
+  DemandTracker, DynValue, SinkDecision, SinkLogic, StreamError,
   dsl::{Sink, Source},
   r#impl::materialization::StreamState,
-  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, MaterializerLifecycleState},
+  materialization::{
+    ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, MaterializerLifecycleState, StreamNotUsed,
+  },
+  stage::StageKind,
 };
 
 struct GuardianActor;
@@ -25,6 +28,24 @@ impl Actor for GuardianActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
+}
+
+struct FailOnStartSinkLogic;
+
+impl SinkLogic for FailOnStartSinkLogic {
+  fn on_start(&mut self, _demand: &mut DemandTracker) -> Result<(), StreamError> {
+    Err(StreamError::Failed)
+  }
+
+  fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
+  fn on_error(&mut self, _error: StreamError) {}
 }
 
 fn build_system() -> ActorSystem {
@@ -258,6 +279,22 @@ fn streams_returns_all_island_streams_for_async_boundary() {
 
   assert_eq!(materializer.streams().len(), 2);
   assert_eq!(materialized.stream().id(), materializer.streams()[0].id());
+}
+
+#[test]
+fn materialize_cancels_started_islands_when_later_island_start_fails() {
+  let system = build_system();
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
+  materializer.start().expect("start");
+
+  let sink: Sink<u32, StreamNotUsed> = Sink::from_logic(StageKind::SinkIgnore, FailOnStartSinkLogic);
+  let graph = Source::single(1_u32).r#async().into_mat(sink, KeepRight);
+  let result = graph.run(&mut materializer);
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+  assert!(materializer.streams().is_empty());
+  assert_eq!(materializer.snapshot().total_materialized(), 0);
 }
 
 #[test]
