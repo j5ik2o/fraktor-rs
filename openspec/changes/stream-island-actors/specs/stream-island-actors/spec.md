@@ -1,23 +1,44 @@
+> 前提: Pekko 互換仕様と Rust らしい設計の両立を、常に念頭に置いて判断する。
+
 ## ADDED Requirements
+
+### Requirement: Pekko 互換 island runtime capability は原子的に満たされなければならない
+
+`stream-island-actors` capability は、island split の基盤だけでは成立した扱いにしてはならない（MUST NOT）。この capability を満たしたと言えるのは、actor / mailbox 分離、dispatcher 反映、graph-wide lifecycle、cancellation 伝播、shutdown 契約が同時に成立するときだけである（MUST）。
+
+#### Scenario: island split だけでは capability 成立にならない
+
+- **GIVEN** graph は複数 island に split され、boundary も生成される
+- **AND** しかし runtime 実行は単一 actor の直列 drive に留まる
+- **WHEN** `stream-island-actors` capability の成立を判定する
+- **THEN** その runtime はこの capability を満たしたとはみなされない
+- **AND** actor / mailbox 分離、dispatcher 反映、graph-wide lifecycle、cancellation 伝播の残項目を満たす必要がある
 
 ### Requirement: async boundary は island ごとの actor 実行境界にならなければならない
 
-stream materialization は、`async()` によって分割された各 island を独立した actor 実行単位として起動しなければならない（MUST）。複数 island graph を 1 つの actor が全 handle を順番に `drive()` する実装にしてはならない（MUST NOT）。
+stream materialization は、`async()` によって分割された各 island を独立した actor 実行単位として起動しなければならない（MUST）。複数 island graph を 1 つの actor が全 island `StreamShared` を順番に `drive()` する実装にしてはならない（MUST NOT）。
 
 #### Scenario: 複数 island graph は island ごとの actor で drive される
 
 - **GIVEN** `Source` / `Flow` / `Sink` graph に少なくとも 1 つの `async()` boundary がある
 - **WHEN** `ActorMaterializer` が graph を materialize する
 - **THEN** `IslandSplitter` が生成した island ごとに stream 実行 actor が起動される
-- **AND** 各 actor は自分の island の `StreamHandleImpl` だけを所有する
-- **AND** `StreamHandleImpl::drive()` は対象 island actor の mailbox 内で実行される
+- **AND** 各 actor は自分の island の `StreamShared` だけを所有する
+- **AND** `StreamShared::drive()` は対象 island actor の mailbox 内で実行される
 
-#### Scenario: 1 つの actor が複数 island handle を直列 drive しない
+#### Scenario: 1 つの actor が複数 island `StreamShared` を直列 drive しない
 
 - **GIVEN** 3 つ以上の island に分割される graph
 - **WHEN** materialized stream が tick を受ける
-- **THEN** 1 つの actor が全 island handle を順番に `drive()` する経路は存在しない
+- **THEN** 1 つの actor が全 island `StreamShared` を順番に `drive()` する経路は存在しない
 - **AND** 各 island の drive はそれぞれの actor mailbox を通って実行される
+
+#### Scenario: island actor の進行は共有 fanout actor に依存しない
+
+- **GIVEN** 複数 island に分割された graph がある
+- **WHEN** stream 実行の進行契約を確認する
+- **THEN** 各 island actor は自分専用の scheduler wakeup で `Drive` を受け取る
+- **AND** 複数 island の drive を共有 fanout actor が扇形配信する runtime は、この capability の完成形として採用しない
 
 ### Requirement: async dispatcher は downstream island actor に反映されなければならない
 
@@ -40,23 +61,40 @@ stream materialization は、`async()` によって分割された各 island を
 - **AND** default dispatcher への暗黙フォールバックは発生しない
 - **AND** 失敗は `StreamError` として観測できる
 
-### Requirement: materialized handle は graph 全体を代表しなければならない
+### Requirement: materialized result の kill switch は graph 全体を代表しなければならない
 
-複数 island graph の materialized handle は、先頭 island だけではなく graph 全体の lifecycle を代表しなければならない（MUST）。cancel / terminal state / snapshot は、materialized graph に属する全 island を対象にしなければならない（MUST）。
+複数 island graph の materialized result は、公開 lifecycle API として graph 全体を代表しなければならない（MUST）。少なくとも `Materialized::unique_kill_switch()` / `shared_kill_switch()` は、materialized graph に属する全 island を対象に shutdown / abort を伝播しなければならない（MUST）。
 
-#### Scenario: 公開 handle は先頭 island だけを代表しない
-
-- **GIVEN** 複数 island graph が materialize 済みである
-- **WHEN** 利用者が `Materialized::handle()` から handle を取得する
-- **THEN** その handle は materialized graph 全体を代表する
-- **AND** 先頭 island の `StreamHandleImpl` だけを返す互換経路は存在しない
-
-#### Scenario: cancel は全 island actor に伝播する
+#### Scenario: 公開 kill switch は先頭 island だけを代表しない
 
 - **GIVEN** 複数 island graph が materialize 済みである
-- **WHEN** 利用者が materialized handle を cancel する
-- **THEN** materialized graph に属する全 island actor に cancel または shutdown command が送られる
+- **WHEN** 利用者が `Materialized::unique_kill_switch()` または `shared_kill_switch()` を取得する
+- **THEN** その kill switch は materialized graph 全体を代表する
+- **AND** 先頭 island の `StreamShared` だけに作用する互換経路は存在しない
+
+#### Scenario: kill switch shutdown は全 island actor に伝播する
+
+- **GIVEN** 複数 island graph が materialize 済みである
+- **WHEN** 利用者が materialized result の kill switch で `shutdown()` を呼ぶ
+- **THEN** materialized graph に属する全 island actor に graceful `Shutdown` command が送られる
 - **AND** boundary は terminal state へ遷移し、pending 要素を無言で捨てない
+
+#### Scenario: kill switch abort は graph-wide failure を優先する
+
+- **GIVEN** 複数 island graph が materialize 済みである
+- **WHEN** 利用者が materialized result の kill switch で `abort(error)` を呼ぶ
+- **THEN** materialized graph に属する全 island actor に `Abort(error)` が伝播する
+- **AND** graph は graceful completion ではなく failure として終端する
+- **AND** `shutdown()` の drain 契約を `abort(error)` に流用してはならない
+
+#### Scenario: terminal state の集約優先度は決定的である
+
+- **GIVEN** 複数 island graph で completion / cancel / failure / abort の候補が競合しうる
+- **WHEN** graph 全体の terminal state を導出する
+- **THEN** 明示的な `Abort(error)` は他の終端理由より優先される
+- **AND** `Abort` がなければ failure は graceful shutdown / cancellation / completion より優先される
+- **AND** graceful shutdown / cancellation は completion より優先される
+- **AND** normal completion は全 island 完了かつ全 boundary drain 済みの場合にのみ観測される
 
 #### Scenario: snapshot は island 単位の状態を観測できる
 
@@ -101,3 +139,5 @@ stream island actor 実行には ActorSystem が必須であるため、ActorSys
 - **WHEN** public API surface を確認する
 - **THEN** helper は `#[cfg(test)]` または `pub(crate)` に限定される
 - **AND** crate 利用者から runtime materializer として呼び出せない
+
+> 前提: Pekko 互換仕様と Rust らしい設計の両立を、常に念頭に置いて判断する。
