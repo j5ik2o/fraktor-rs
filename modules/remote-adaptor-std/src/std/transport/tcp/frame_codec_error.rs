@@ -1,4 +1,4 @@
-//! Error type produced by [`crate::std::tcp_transport::WireFrameCodec`].
+//! Error type produced by [`crate::std::transport::tcp::WireFrameCodec`].
 
 use std::{
   error::Error,
@@ -8,7 +8,7 @@ use std::{
 
 use fraktor_remote_core_rs::core::wire::WireError;
 
-/// Error returned by [`crate::std::tcp_transport::WireFrameCodec`] when used as a
+/// Error returned by [`crate::std::transport::tcp::WireFrameCodec`] when used as a
 /// `tokio_util::codec::{Encoder, Decoder}`.
 ///
 /// `tokio_util::codec::{Encoder, Decoder}` require their `Error` associated

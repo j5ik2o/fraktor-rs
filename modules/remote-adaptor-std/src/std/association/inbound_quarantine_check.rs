@@ -2,7 +2,7 @@
 
 use crate::std::{
   association::{association_registry::AssociationRegistry, peer_address_match::peer_matches_address},
-  tcp_transport::InboundFrameEvent,
+  transport::tcp::InboundFrameEvent,
 };
 
 /// Decides whether an inbound frame may pass a quarantined association.

@@ -15,7 +15,7 @@ use fraktor_remote_core_rs::core::{
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::std::tcp_transport::{
+use super::{
   client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
   wire_frame::WireFrame,
 };

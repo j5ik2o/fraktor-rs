@@ -7,7 +7,7 @@
 //!
 //! | Submodule | Purpose |
 //! |---|---|
-//! | `tcp_transport` | Pekko Artery TCP transport implementation built on `tokio::net` + `tokio_util::codec::Framed`. |
+//! | `transport` | Transport adapters grouped by protocol; currently the TCP transport lives in `transport::tcp`. |
 //! | `association` | `tokio` task group that drives the pure `Association` state machine with real I/O. |
 //! | `watcher_actor` | Wraps the pure `WatcherState` in an actor-core actor and drives it with a tokio timer. |
 //! | `provider` | `StdRemoteActorRefProvider` performing the loopback / remote dispatch per design Decision 3-C. |
@@ -21,5 +21,5 @@ mod tests;
 pub mod association;
 pub mod extension_installer;
 pub mod provider;
-pub mod tcp_transport;
+pub mod transport;
 pub mod watcher_actor;

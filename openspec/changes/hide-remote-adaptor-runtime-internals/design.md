@@ -10,8 +10,9 @@
 remote-adaptor-std::std
 ├─ extension_installer
 │  └─ RemotingExtensionInstaller          利用者向け境界
-├─ tcp_transport
-│  ├─ TcpRemoteTransport                  利用者向け境界
+├─ transport
+│  └─ tcp
+│     ├─ TcpRemoteTransport              利用者向け境界
 │  ├─ TcpClient / TcpServer               runtime internal
 │  └─ WireFrame / WireFrameCodec / ...    runtime internal
 ├─ provider
@@ -145,7 +146,7 @@ crate 外 integration test は public API のみを使う。内部 runtime drive
 ## Migration Plan
 
 1. public re-export 一覧を固定し、残す型 / 隠す型をテストで明文化する。
-2. `tcp_transport` の public re-export を `TcpRemoteTransport` のみに縮小する。
+2. `transport::tcp` の public re-export を `TcpRemoteTransport` のみに縮小する。
 3. `association` と `watcher_actor` を `pub(crate)` module または internal-only re-export に変更する。
 4. `RemoteActorRefSender` を provider module 内部へ隠す。
 5. `StdRemoteActorRefProvider::new` を `pub(crate)` 化し、installer / config 経由の構築経路を追加または既存 installer に統合する。

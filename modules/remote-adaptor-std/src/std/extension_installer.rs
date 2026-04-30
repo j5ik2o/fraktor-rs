@@ -1,4 +1,4 @@
-//! Extension installer that wires [`crate::std::tcp_transport::TcpRemoteTransport`]
+//! Extension installer that wires [`crate::std::transport::tcp::TcpRemoteTransport`]
 //! into `remote-core`'s `Remote` type.
 
 #[cfg(test)]
