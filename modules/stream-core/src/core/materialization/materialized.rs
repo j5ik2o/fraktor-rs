@@ -1,21 +1,21 @@
 use super::{SharedKillSwitch, UniqueKillSwitch};
-use crate::core::r#impl::materialization::StreamHandleImpl;
+use crate::core::r#impl::materialization::StreamShared;
 
 /// Result of materializing a stream graph.
 pub struct Materialized<Mat> {
-  handle:       StreamHandleImpl,
+  stream:       StreamShared,
   materialized: Mat,
 }
 
 impl<Mat> Materialized<Mat> {
-  pub(crate) const fn new(handle: StreamHandleImpl, materialized: Mat) -> Self {
-    Self { handle, materialized }
+  pub(crate) const fn new(stream: StreamShared, materialized: Mat) -> Self {
+    Self { stream, materialized }
   }
 
-  /// Returns the stream handle.
+  /// Returns the stream bound to this materialized value.
   #[must_use]
-  pub const fn handle(&self) -> &StreamHandleImpl {
-    &self.handle
+  pub(crate) const fn stream(&self) -> &StreamShared {
+    &self.stream
   }
 
   /// Returns the materialized value.
@@ -24,7 +24,7 @@ impl<Mat> Materialized<Mat> {
     &self.materialized
   }
 
-  /// Consumes this handle and returns the owned materialized value.
+  /// Consumes this value and returns the owned materialized value.
   #[must_use]
   pub fn into_materialized(self) -> Mat {
     self.materialized
@@ -33,12 +33,12 @@ impl<Mat> Materialized<Mat> {
   /// Returns a unique kill switch bound to this materialized stream.
   #[must_use]
   pub fn unique_kill_switch(&self) -> UniqueKillSwitch {
-    self.handle.unique_kill_switch()
+    self.stream().unique_kill_switch()
   }
 
   /// Returns a shared kill switch bound to this materialized stream.
   #[must_use]
   pub fn shared_kill_switch(&self) -> SharedKillSwitch {
-    self.handle.shared_kill_switch()
+    self.stream().shared_kill_switch()
   }
 }

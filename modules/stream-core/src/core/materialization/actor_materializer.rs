@@ -17,7 +17,7 @@ use crate::core::{
   StreamError,
   r#impl::{
     interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter},
-    materialization::{Stream, StreamDriveActor, StreamDriveCommand, StreamHandleId, StreamHandleImpl, StreamShared},
+    materialization::{Stream, StreamDriveActor, StreamDriveCommand, StreamShared},
   },
   snapshot::MaterializerSnapshot,
 };
@@ -33,7 +33,7 @@ pub struct ActorMaterializer {
   drive_actor:        Option<ChildRef>,
   tick_handle:        Option<SchedulerHandle>,
   total_materialized: u64,
-  handles:            Vec<StreamHandleImpl>,
+  streams:            Vec<StreamShared>,
 }
 
 impl ActorMaterializer {
@@ -47,7 +47,7 @@ impl ActorMaterializer {
       drive_actor: None,
       tick_handle: None,
       total_materialized: 0,
-      handles: Vec::new(),
+      streams: Vec::new(),
     }
   }
 
@@ -61,7 +61,7 @@ impl ActorMaterializer {
       drive_actor: None,
       tick_handle: None,
       total_materialized: 0,
-      handles: Vec::new(),
+      streams: Vec::new(),
     }
   }
 
@@ -69,8 +69,8 @@ impl ActorMaterializer {
     self.system.clone().ok_or(StreamError::ActorSystemMissing)
   }
 
-  fn register_handle(actor: &mut ChildRef, handle: StreamHandleImpl) -> Result<(), StreamError> {
-    let message = AnyMessage::new(StreamDriveCommand::Register { handle });
+  fn register_stream(actor: &mut ChildRef, stream: StreamShared) -> Result<(), StreamError> {
+    let message = AnyMessage::new(StreamDriveCommand::Register { stream });
     actor.try_tell(message).map_err(|_| StreamError::Failed)
   }
 
@@ -150,15 +150,15 @@ impl ActorMaterializer {
     matches!(self.state, MaterializerLifecycleState::Stopped)
   }
 
-  /// Returns the registered stream handles.
+  /// Returns the registered streams.
   ///
   /// Used by [`crate::core::snapshot::MaterializerState::stream_snapshots`] to
   /// collect diagnostic snapshots from all active streams. The slice reflects
-  /// the order in which handles were materialized, and is cleared on
+  /// the order in which streams were materialized, and is cleared on
   /// [`shutdown`](Self::shutdown).
   #[must_use]
-  pub(in crate::core) fn handles(&self) -> &[StreamHandleImpl] {
-    &self.handles
+  pub(in crate::core) fn streams(&self) -> &[StreamShared] {
+    &self.streams
   }
 }
 
@@ -204,12 +204,11 @@ impl Materializer for ActorMaterializer {
         &stream_ref_settings,
       );
       stream.start()?;
-      let shared = StreamShared::new(stream);
-      let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
-      Self::register_handle(drive_actor, handle.clone())?;
-      self.handles.push(handle.clone());
+      let stream = StreamShared::new(stream);
+      Self::register_stream(drive_actor, stream.clone())?;
+      self.streams.push(stream.clone());
       self.total_materialized += 1;
-      Ok(Materialized::new(handle, materialized))
+      Ok(Materialized::new(stream, materialized))
     } else {
       // Multi-island: create boundary buffers and register all streams
       let (mut islands, crossings) = island_plan.into_parts();
@@ -224,7 +223,7 @@ impl Materializer for ActorMaterializer {
         islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
         islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
       }
-      let mut handles: Vec<StreamHandleImpl> = Vec::with_capacity(islands.len());
+      let mut streams: Vec<StreamShared> = Vec::with_capacity(islands.len());
       for island in islands {
         let stream_plan = island.into_stream_plan();
         let mut stream = Stream::new_with_materializer_context(
@@ -234,23 +233,22 @@ impl Materializer for ActorMaterializer {
           &stream_ref_settings,
         );
         if let Err(error) = stream.start() {
-          for handle in &handles {
-            if let Err(_cleanup_error) = handle.cancel() {
+          for stream in &streams {
+            if let Err(_cleanup_error) = stream.cancel() {
               // Best-effort rollback: we still return the original startup failure.
             }
           }
           return Err(error);
         }
-        let shared = StreamShared::new(stream);
-        handles.push(StreamHandleImpl::new(StreamHandleId::next(), shared));
+        streams.push(StreamShared::new(stream));
       }
-      for handle in &handles {
-        Self::register_handle(drive_actor, handle.clone())?;
+      for stream in &streams {
+        Self::register_stream(drive_actor, stream.clone())?;
       }
-      let handle = handles.first().cloned().ok_or(StreamError::Failed)?;
-      self.handles.extend(handles);
+      let stream = streams.first().cloned().ok_or(StreamError::Failed)?;
+      self.streams.extend(streams);
       self.total_materialized += 1;
-      Ok(Materialized::new(handle, materialized))
+      Ok(Materialized::new(stream, materialized))
     }
   }
 
@@ -266,7 +264,7 @@ impl Materializer for ActorMaterializer {
     // succeed. Rolling back to Running after partial teardown (e.g. tick
     // cancelled but drive actor still alive) would leave a worse inconsistency.
     self.state = MaterializerLifecycleState::Stopped;
-    self.handles.clear();
+    self.streams.clear();
 
     let system = self.system()?;
     // cancel returns false when the job already fired or was not registered;

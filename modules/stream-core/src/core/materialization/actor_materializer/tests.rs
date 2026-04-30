@@ -66,7 +66,7 @@ fn actor_materializer_drives_stream() {
     }
     std::thread::yield_now();
   }
-  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(2)));
 }
 

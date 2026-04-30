@@ -7,7 +7,7 @@ use crate::core::{
   dsl::{ActorSink, Source},
   r#impl::{
     fusing::StreamBufferConfig,
-    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+    materialization::{Stream, StreamShared},
   },
   materialization::{
     Completion, DriveOutcome, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamDone,
@@ -29,8 +29,7 @@ impl Materializer for TestMaterializer {
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamShared::new(stream);
-    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
+    let handle = StreamShared::new(stream);
     Ok(Materialized::new(handle, materialized))
   }
 
@@ -41,10 +40,10 @@ impl Materializer for TestMaterializer {
 
 fn drive_until_terminal<Mat>(materialized: &Materialized<Mat>) {
   for _ in 0..64 {
-    match materialized.handle().drive() {
+    match materialized.stream().drive() {
       | DriveOutcome::Progressed | DriveOutcome::Idle => {},
     }
-    if materialized.handle().state().is_terminal() {
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
@@ -234,7 +233,7 @@ fn actor_sink_actor_ref_with_backpressure_should_pause_without_ack() {
   drive_until_terminal(&materialized);
 
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
-  assert!(!materialized.handle().state().is_terminal());
+  assert!(!materialized.stream().state().is_terminal());
   assert_eq!(messages.lock().as_slice(), &[BackpressureMessage::Init { ack: 1_u8 }, BackpressureMessage::Element {
     ack:   1_u8,
     value: 1_u32,
@@ -322,7 +321,7 @@ fn actor_sink_actor_ref_with_backpressure_any_ack_should_accept_different_ack_va
   drive_until_terminal(&materialized);
 
   // Then: Some(_) を ack として扱い、全要素を流して完了する
-  assert!(materialized.handle().state().is_terminal());
+  assert!(materialized.stream().state().is_terminal());
   assert_eq!(*materialized.materialized(), StreamNotUsed::new());
   assert_eq!(messages.lock().as_slice(), &[
     AnyAckBackpressureMessage::Init,
@@ -364,7 +363,7 @@ fn actor_sink_actor_ref_with_backpressure_any_ack_should_pause_until_ack_is_avai
   drive_until_terminal(&materialized);
 
   // Then: stream は pending のまま追加 demand を出さない
-  assert!(!materialized.handle().state().is_terminal());
+  assert!(!materialized.stream().state().is_terminal());
   assert_eq!(*materialized.materialized(), StreamNotUsed::new());
   assert_eq!(messages.lock().as_slice(), &[AnyAckBackpressureMessage::Init, AnyAckBackpressureMessage::Element {
     value: 1_u32,
@@ -376,7 +375,7 @@ fn actor_sink_actor_ref_with_backpressure_any_ack_should_pause_until_ack_is_avai
   drive_until_terminal(&materialized);
 
   // Then: ack 値を比較せず再開して完了する
-  assert!(materialized.handle().state().is_terminal());
+  assert!(materialized.stream().state().is_terminal());
   assert_eq!(*materialized.materialized(), StreamNotUsed::new());
   assert_eq!(messages.lock().as_slice(), &[
     AnyAckBackpressureMessage::Init,

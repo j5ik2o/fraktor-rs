@@ -11,7 +11,7 @@ use crate::core::{materialization::ActorMaterializer, snapshot::StreamSnapshot};
 /// version exposes `streamSnapshots(mat: Materializer): Future[Seq[StreamSnapshot]]`
 /// because Pekko's supervisor aggregates snapshots asynchronously via the
 /// `GetChildrenSnapshots` ask protocol. fraktor-rs instead reads each
-/// registered [`crate::core::impl::materialization::StreamHandleImpl`]
+/// registered [`crate::core::impl::materialization::StreamShared`]
 /// synchronously under its `SharedLock`, so the return type is a plain
 /// [`Vec<StreamSnapshot>`].
 ///
@@ -25,9 +25,9 @@ impl MaterializerState {
   ///
   /// Returns an empty [`Vec`] when the materializer has not materialized any
   /// streams yet, or after [`ActorMaterializer::shutdown`] has cleared the
-  /// registered handles.
+  /// registered streams.
   #[must_use]
   pub fn stream_snapshots(mat: &ActorMaterializer) -> Vec<StreamSnapshot> {
-    mat.handles().iter().map(|handle| handle.snapshot()).collect()
+    mat.streams().iter().map(|stream| stream.snapshot()).collect()
   }
 }

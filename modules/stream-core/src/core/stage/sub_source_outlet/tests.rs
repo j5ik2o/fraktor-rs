@@ -8,7 +8,7 @@ use crate::core::{
   dsl::Sink,
   r#impl::{
     fusing::StreamBufferConfig,
-    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+    materialization::{Stream, StreamShared},
   },
   materialization::{
     Completion, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamNotUsed,
@@ -28,7 +28,7 @@ impl Materializer for TestMaterializer {
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
     let shared = StreamShared::new(stream);
-    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
+    let handle = shared;
     Ok(Materialized::new(handle, materialized))
   }
 
@@ -60,8 +60,8 @@ where
     if predicate() {
       return;
     }
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() && !predicate() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() && !predicate() {
       break;
     }
   }
@@ -70,8 +70,8 @@ where
 
 fn drive_until_terminal<Mat>(materialized: &Materialized<Mat>) {
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       return;
     }
   }

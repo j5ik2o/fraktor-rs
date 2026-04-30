@@ -3,7 +3,7 @@ use crate::core::{
   dsl::{Sink, Source},
   r#impl::{
     fusing::StreamBufferConfig,
-    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
+    materialization::{Stream, StreamShared, StreamState},
   },
   materialization::{KeepLeft, KeepRight, Materialized, Materializer, RunnableGraph},
 };
@@ -34,9 +34,8 @@ impl Materializer for RecordingMaterializer {
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamShared::new(stream);
-    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
-    Ok(Materialized::new(handle, materialized))
+    let stream = StreamShared::new(stream);
+    Ok(Materialized::new(stream, materialized))
   }
 
   fn shutdown(&mut self) -> Result<(), StreamError> {

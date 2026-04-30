@@ -108,6 +108,8 @@ boundary contract は以下とする。
 - upstream failure は downstream failure として観測される。
 - downstream cancel は upstream island の cancel または shutdown command へ伝播する。
 
+boundary は data channel であり、actor lifecycle command の唯一の配送経路ではない。downstream cancel を upstream actor へ伝える制御経路は `MaterializedStreamGroup` が持つ island actor refs、または同等の control plane で実装する。`IslandBoundaryShared` を継続利用する場合でも、少なくとも cancellation state を boundary に記録し、group が upstream island actor へ `Cancel` または `Shutdown` を送れるようにする。boundary full / empty の data state だけで downstream cancellation を表現してはならない。
+
 ### Decision 5: materialized graph は composite lifecycle を持つ
 
 複数 island graph で利用者に返す handle は、先頭 island の handle だけではなく graph 全体を代表する composite handle として扱う。
@@ -119,7 +121,20 @@ boundary contract は以下とする。
 - snapshot は materialized graph 単位と island 単位の両方を観測できる。
 - materialization 途中で island actor 起動に失敗した場合、起動済み island actor と boundary resource を rollback する。
 
-### Decision 6: materializer shutdown は停止失敗を握りつぶさない
+`Materialized::handle()` が返す公開 handle は、この composite lifecycle を指す。既存の `StreamHandleImpl` を維持する場合は、内部状態を単一 `StreamShared` 専用から single / composite のどちらも表せる構造へ変更する。既存構造で無理に表現して先頭 island handle を返す実装は禁止する。
+
+### Decision 6: ActorSystem なし materializer helper は公開実行入口にしない
+
+island actor を起動するには ActorSystem が必須である。既存の `ActorMaterializer::new_without_system` 相当の helper は、本 change の完了時点で公開 runtime API として残してはならない。
+
+扱いは次のどちらかに限定する。
+
+- 削除する。
+- `#[cfg(test)]` かつ `pub(crate)` に縮小し、materialization 実行ではなく unit test の構築補助だけに使う。
+
+どちらの場合も、ActorSystem なしで `start()` / `materialize()` が成功する経路や、ActorSystem なし直実行 API を復活させてはならない。
+
+### Decision 7: materializer shutdown は停止失敗を握りつぶさない
 
 `ActorMaterializer::shutdown()` は materializer が所有する island actor、tick resource、boundary resource を決定的に停止する。停止中の partial failure は、best-effort コメントで黙殺せず、少なくとも返り値または actor error として観測できるようにする。
 
@@ -146,8 +161,10 @@ async boundary ごとに actor が増えるため、非常に細かい boundary 
 3. `ActorMaterializer` の materialization で、island ごとに actor を spawn する。
 4. `SingleIslandPlan::dispatcher()` を actor `Props::with_dispatcher_id(...)` へ反映する。
 5. composite handle / materialized graph state を導入し、cancel / snapshot / shutdown を graph 全体へ適用する。
-6. boundary backpressure / completion / failure / cancellation の regression tests を追加する。
-7. showcase と stream tests を ActorSystem + Materializer 経由の実行契約へ寄せる。
+6. downstream cancel を upstream actor へ届ける control plane を追加する。
+7. `ActorMaterializer::new_without_system` 相当の公開 helper を削除またはテスト専用へ縮小する。
+8. boundary backpressure / completion / failure / cancellation の regression tests を追加する。
+9. showcase と stream tests を ActorSystem + Materializer 経由の実行契約へ寄せる。
 
 ## Open Questions
 

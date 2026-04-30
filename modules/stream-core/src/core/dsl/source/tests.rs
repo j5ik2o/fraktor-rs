@@ -29,7 +29,7 @@ use crate::core::{
   dsl::{RunnableGraph, Sink, Source, tests::RunWithCollectSink},
   r#impl::{
     fusing::StreamBufferConfig,
-    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
+    materialization::{Stream, StreamShared, StreamState},
     queue::{SourceQueue, SourceQueueWithComplete},
   },
   materialization::{
@@ -141,8 +141,7 @@ impl Materializer for RecordingMaterializer {
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamShared::new(stream);
-    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
+    let handle = StreamShared::new(stream);
     Ok(Materialized::new(handle, materialized))
   }
 
@@ -348,8 +347,8 @@ fn drive_materialized_completion<T>(materialized: &Materialized<StreamCompletion
 where
   T: Clone, {
   for _ in 0..64 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
@@ -397,7 +396,7 @@ fn source_run_fold_async_waits_for_pending_future_before_completion() {
     .expect("run_fold_async");
 
   assert_eq!(materializer.calls, 1);
-  assert_eq!(materialized.handle().drive(), DriveOutcome::Progressed);
+  assert_eq!(materialized.stream().drive(), DriveOutcome::Progressed);
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
   assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(7_u32)));
 }
@@ -467,9 +466,9 @@ fn materialized_unique_kill_switch_abort_fails_stream() {
   let kill_switch = materialized.unique_kill_switch();
 
   kill_switch.abort(StreamError::Failed);
-  let _ = materialized.handle().drive();
+  let _ = materialized.stream().drive();
 
-  assert_eq!(materialized.handle().state(), StreamState::Failed);
+  assert_eq!(materialized.stream().state(), StreamState::Failed);
 }
 
 #[test]
@@ -481,9 +480,9 @@ fn materialized_unique_kill_switch_abort_stops_reporting_progress_after_failure(
   let kill_switch = materialized.unique_kill_switch();
 
   kill_switch.abort(StreamError::Failed);
-  assert_eq!(materialized.handle().drive(), DriveOutcome::Progressed);
-  assert_eq!(materialized.handle().state(), StreamState::Failed);
-  assert_eq!(materialized.handle().drive(), DriveOutcome::Idle);
+  assert_eq!(materialized.stream().drive(), DriveOutcome::Progressed);
+  assert_eq!(materialized.stream().state(), StreamState::Failed);
+  assert_eq!(materialized.stream().drive(), DriveOutcome::Idle);
 }
 
 #[test]
@@ -496,13 +495,13 @@ fn materialized_shared_kill_switch_shutdown_completes_stream() {
 
   kill_switch.shutdown();
   for _ in 0..4 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
 
-  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
 }
 
 #[test]
@@ -517,12 +516,12 @@ fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
   kill_switch.abort(StreamError::Failed);
 
   for _ in 0..4 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
-  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
 }
 
 #[test]
@@ -536,13 +535,13 @@ fn materialized_shared_kill_switch_shutdown_cancels_upstream_once() {
 
   kill_switch.shutdown();
   for _ in 0..4 {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
   }
 
-  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert_eq!(*cancel_count.lock(), 1);
 }
 
@@ -556,9 +555,9 @@ fn materialized_unique_kill_switch_abort_cancels_upstream_once() {
   let kill_switch = materialized.unique_kill_switch();
 
   kill_switch.abort(StreamError::Failed);
-  let _ = materialized.handle().drive();
+  let _ = materialized.stream().drive();
 
-  assert_eq!(materialized.handle().state(), StreamState::Failed);
+  assert_eq!(materialized.stream().state(), StreamState::Failed);
   assert_eq!(*cancel_count.lock(), 1);
 }
 
@@ -577,23 +576,23 @@ fn shared_kill_switch_created_before_materialization_controls_multiple_streams()
   let right = graph_right.run(&mut materializer).expect("right materialize");
 
   for _ in 0..3 {
-    let _ = left.handle().drive();
-    let _ = right.handle().drive();
+    let _ = left.stream().drive();
+    let _ = right.stream().drive();
   }
-  assert_eq!(left.handle().state(), StreamState::Running);
-  assert_eq!(right.handle().state(), StreamState::Running);
+  assert_eq!(left.stream().state(), StreamState::Running);
+  assert_eq!(right.stream().state(), StreamState::Running);
 
   shared_kill_switch.shutdown();
   for _ in 0..8 {
-    let _ = left.handle().drive();
-    let _ = right.handle().drive();
-    if left.handle().state().is_terminal() && right.handle().state().is_terminal() {
+    let _ = left.stream().drive();
+    let _ = right.stream().drive();
+    if left.stream().state().is_terminal() && right.stream().state().is_terminal() {
       break;
     }
   }
 
-  assert_eq!(left.handle().state(), StreamState::Completed);
-  assert_eq!(right.handle().state(), StreamState::Completed);
+  assert_eq!(left.stream().state(), StreamState::Completed);
+  assert_eq!(right.stream().state(), StreamState::Completed);
 }
 
 #[test]
@@ -1055,18 +1054,18 @@ fn source_create_defers_producer_until_source_is_materialized() {
   let mut values = Vec::new();
 
   for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
-    let _ = materialized.handle().drive();
+    let _ = materialized.stream().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
     }
-    if materialized.handle().state().is_terminal() {
+    if materialized.stream().state().is_terminal() {
       break;
     }
     thread::yield_now();
   }
 
   assert!(*called.lock());
-  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert_eq!(values, vec![40_u32, 41_u32]);
 }
 
@@ -1099,17 +1098,17 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
   let mut values = Vec::new();
 
   for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
-    let _ = materialized.handle().drive();
+    let _ = materialized.stream().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
     }
-    if materialized.handle().state().is_terminal() {
+    if materialized.stream().state().is_terminal() {
       break;
     }
     thread::yield_now();
   }
 
-  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert_eq!(values, vec![50_u32, 51_u32]);
 }
 
@@ -1156,7 +1155,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let mut first_value = None;
   for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
     let started_at = Instant::now();
-    let _ = materialized.handle().drive();
+    let _ = materialized.stream().drive();
     assert!(
       started_at.elapsed() < scaled_duration(Duration::from_millis(12)),
       "producer start wait must not block drive"
@@ -1171,7 +1170,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
 
   for _ in 0..scaled_attempts(4) {
     let started_at = Instant::now();
-    let outcome = materialized.handle().drive();
+    let outcome = materialized.stream().drive();
     assert_eq!(outcome, DriveOutcome::Idle, "paused producer must leave the stream idle without synthetic progress");
     assert!(started_at.elapsed() < scaled_duration(Duration::from_millis(12)), "paused producer must not block drive");
     assert!(producer_paused.load(Ordering::SeqCst));
@@ -1182,7 +1181,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
 
   let mut second_value = None;
   for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
-    let _ = materialized.handle().drive();
+    let _ = materialized.stream().drive();
     if let Some(value) = sink_queue.pull() {
       second_value = Some(value);
       break;
@@ -1192,13 +1191,13 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   assert_eq!(second_value, Some(61_u32));
 
   for _ in 0..scaled_attempts(16) {
-    let _ = materialized.handle().drive();
-    if materialized.handle().state().is_terminal() {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
       break;
     }
     thread::yield_now();
   }
-  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
 }
 
 #[test]
