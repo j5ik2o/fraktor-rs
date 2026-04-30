@@ -85,7 +85,7 @@
 
 ### 3. showcase / tests を core API に追随させる
 
-- `showcases/std/classic_logging/main.rs` は actor-adaptor の logging facade を使わず、`core` の新しい logging API だけで書き直す
+- `showcases/std/legacy/classic_logging/main.rs` は actor-adaptor の logging facade を使わず、`core` の新しい logging API だけで書き直す
   - `logger_name` は `ctx.set_logger_name(...)` を使う
   - marker / MDC は各ログ呼び出しで明示的に渡す
   - receive logging は `core` helper を使う

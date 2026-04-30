@@ -39,75 +39,195 @@ advanced = [
 name = "fraktor_showcases_std"
 path = "src/lib.rs"
 
+[[test]]
+name = "remote_lifecycle_surface"
+path = "legacy/tests/remote_lifecycle_surface.rs"
+
+[[test]]
+name = "routing_surface"
+path = "legacy/tests/routing_surface.rs"
+
+[[test]]
+name = "shared_lock_showcase_surface"
+path = "legacy/tests/shared_lock_showcase_surface.rs"
+
 # --- Basic examples ---
 
 [[example]]
 name = "getting_started"
-path = "getting_started/main.rs"
+path = "legacy/getting_started/main.rs"
 
 [[example]]
 name = "request_reply"
-path = "request_reply/main.rs"
+path = "legacy/request_reply/main.rs"
 
 [[example]]
 name = "state_management"
-path = "state_management/main.rs"
+path = "legacy/state_management/main.rs"
 
 [[example]]
 name = "child_lifecycle"
-path = "child_lifecycle/main.rs"
+path = "legacy/child_lifecycle/main.rs"
 
 [[example]]
 name = "timers"
-path = "timers/main.rs"
+path = "legacy/timers/main.rs"
 
 [[example]]
 name = "routing"
-path = "routing/main.rs"
+path = "legacy/routing/main.rs"
 
 [[example]]
 name = "stash"
-path = "stash/main.rs"
+path = "legacy/stash/main.rs"
 
 [[example]]
 name = "serialization"
-path = "serialization/main.rs"
+path = "legacy/serialization/main.rs"
 
 [[example]]
 name = "stream_pipeline"
-path = "stream_pipeline/main.rs"
+path = "legacy/stream_pipeline/main.rs"
 
 [[example]]
 name = "stream_authoring_apis"
-path = "stream_authoring_apis/main.rs"
+path = "legacy/stream_authoring_apis/main.rs"
 
 [[example]]
 name = "classic_logging"
-path = "classic_logging/main.rs"
+path = "legacy/classic_logging/main.rs"
 
 [[example]]
 name = "classic_timers"
-path = "classic_timers/main.rs"
+path = "legacy/classic_timers/main.rs"
 
 [[example]]
 name = "typed_event_stream"
-path = "typed_event_stream/main.rs"
+path = "legacy/typed_event_stream/main.rs"
 
 [[example]]
 name = "typed_receptionist_router"
-path = "typed_receptionist_router/main.rs"
+path = "legacy/typed_receptionist_router/main.rs"
 
 # --- Advanced examples ---
 
 [[example]]
 name = "remote_lifecycle"
-path = "remote_lifecycle/main.rs"
+path = "legacy/remote_lifecycle/main.rs"
 required-features = ["advanced"]
 
 [[example]]
 name = "persistent_actor"
-path = "persistent_actor/main.rs"
+path = "legacy/persistent_actor/main.rs"
 required-features = ["advanced"]
+
+# --- Strangler fig examples: Pekko classic/kernel ---
+
+[[example]]
+name = "kernel_first_example"
+path = "kernel/first-example/main.rs"
+
+[[example]]
+name = "kernel_supervision"
+path = "kernel/supervision/main.rs"
+
+[[example]]
+name = "kernel_fault_tolerance"
+path = "kernel/fault-tolerance/main.rs"
+
+[[example]]
+name = "kernel_dispatchers"
+path = "kernel/dispatchers/main.rs"
+
+[[example]]
+name = "kernel_mailboxes"
+path = "kernel/mailboxes/main.rs"
+
+[[example]]
+name = "kernel_routing"
+path = "kernel/routing/main.rs"
+
+[[example]]
+name = "kernel_fsm"
+path = "kernel/fsm/main.rs"
+
+[[example]]
+name = "kernel_persistence"
+path = "kernel/persistence/main.rs"
+required-features = ["advanced"]
+
+[[example]]
+name = "kernel_persistence_fsm"
+path = "kernel/persistence-fsm/main.rs"
+required-features = ["advanced"]
+
+# --- Strangler fig examples: Pekko typed ---
+
+[[example]]
+name = "typed_first_example"
+path = "typed/first-example/main.rs"
+
+[[example]]
+name = "typed_actor_lifecycle"
+path = "typed/actor-lifecycle/main.rs"
+
+[[example]]
+name = "typed_interaction_patterns"
+path = "typed/interaction-patterns/main.rs"
+
+[[example]]
+name = "typed_fault_tolerance"
+path = "typed/fault-tolerance/main.rs"
+
+[[example]]
+name = "typed_actor_discovery"
+path = "typed/actor-discovery/main.rs"
+
+[[example]]
+name = "typed_routers"
+path = "typed/routers/main.rs"
+
+[[example]]
+name = "typed_stash"
+path = "typed/stash/main.rs"
+
+[[example]]
+name = "typed_fsm"
+path = "typed/fsm/main.rs"
+
+[[example]]
+name = "typed_coordinated_shutdown"
+path = "typed/coordinated-shutdown/main.rs"
+
+[[example]]
+name = "typed_dispatchers"
+path = "typed/dispatchers/main.rs"
+
+[[example]]
+name = "typed_mailboxes"
+path = "typed/mailboxes/main.rs"
+
+# --- Strangler fig examples: Pekko streams ---
+
+[[example]]
+name = "stream_first_example"
+path = "stream/first-example/main.rs"
+
+[[example]]
+name = "stream_basics"
+path = "stream/basics/main.rs"
+
+[[example]]
+name = "stream_graphs"
+path = "stream/graphs/main.rs"
+
+[[example]]
+name = "stream_composition"
+path = "stream/composition/main.rs"
+
+[[example]]
+name = "stream_rate"
+path = "stream/rate/main.rs"
 
 [lints]
 workspace = true

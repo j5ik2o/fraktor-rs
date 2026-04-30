@@ -89,7 +89,11 @@ fn main() {
   let graph_dsl_flow = GraphDsl::create_flow(|builder: &mut GraphDslBuilder<u32, u32, StreamNotUsed>| {
     builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|value| value + 1)).expect("add flow");
   });
-  let graph_dsl_values = Source::from_array([1_u32, 2, 3]).via(graph_dsl_flow).collect_values().expect("graph dsl");
+  let graph_dsl_graph = Source::from_array([1_u32, 2, 3]).via(graph_dsl_flow).into_mat(Sink::collect(), KeepRight);
+  let graph_dsl_materialized = graph_dsl_graph.run(&mut materializer).expect("graph dsl run");
+  let graph_dsl_values = support::drive_until_ready(graph_dsl_materialized.materialized(), 64)
+    .expect("graph dsl completion")
+    .expect("graph dsl");
   println!("graph dsl values: {graph_dsl_values:?}");
 
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
