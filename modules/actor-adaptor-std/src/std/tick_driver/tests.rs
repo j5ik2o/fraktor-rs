@@ -5,7 +5,14 @@ use std::sync::mpsc;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig,
+    Actor, ActorContext,
+    error::ActorError,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{TickDriver, TickDriverKind},
+    },
     setup::ActorSystemConfig,
   },
   system::ActorSystem,
@@ -56,6 +63,60 @@ fn std_tick_driver_boots_actor_system() {
 fn std_tick_driver_default_boots_actor_system() {
   let system = build_system_with_driver(StdTickDriver::default());
   assert_shutdown_completes(system, "StdTickDriver::default");
+}
+
+#[test]
+fn std_tick_driver_new_default_and_kind_expose_std_contract() {
+  let driver = StdTickDriver::new(Duration::from_millis(3));
+  assert_eq!(driver.kind(), TickDriverKind::Std);
+  assert_eq!(StdTickDriver::default().kind(), TickDriverKind::Std);
+}
+
+#[test]
+fn std_tick_driver_rejects_zero_resolution() {
+  use fraktor_actor_core_rs::core::kernel::actor::scheduler::{
+    SchedulerContext,
+    tick_driver::{SchedulerTickExecutor, TickDriver, TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle},
+  };
+
+  fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
+    let config = SchedulerConfig::default();
+    let context = SchedulerContext::new(config);
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(config.resolution(), 8, signal.clone());
+    let executor = SchedulerTickExecutor::new(context.scheduler(), feed.clone(), signal);
+    (feed, executor)
+  }
+
+  let (feed, executor) = provision_inputs();
+  let result = Box::new(StdTickDriver::new(Duration::ZERO)).provision(feed, executor);
+
+  assert!(matches!(result, Err(TickDriverError::InvalidResolution)));
+}
+
+#[test]
+fn std_tick_driver_provisions_and_stops_threads() {
+  use fraktor_actor_core_rs::core::kernel::actor::scheduler::{
+    SchedulerContext,
+    tick_driver::{SchedulerTickExecutor, TickDriver, TickDriverKind, TickExecutorSignal, TickFeed, TickFeedHandle},
+  };
+
+  fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
+    let config = SchedulerConfig::default();
+    let context = SchedulerContext::new(config);
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(config.resolution(), 8, signal.clone());
+    let executor = SchedulerTickExecutor::new(context.scheduler(), feed.clone(), signal);
+    (feed, executor)
+  }
+
+  let resolution = Duration::from_millis(1);
+  let (feed, executor) = provision_inputs();
+  let provision = Box::new(StdTickDriver::new(resolution)).provision(feed, executor).expect("provision");
+
+  assert_eq!(provision.resolution, resolution);
+  assert_eq!(provision.kind, TickDriverKind::Std);
+  provision.stopper.stop();
 }
 
 #[cfg(feature = "tokio-executor")]
