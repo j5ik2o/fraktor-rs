@@ -24,8 +24,8 @@
 ### Requirement: examples と tests は pure wrapper ではなく core API に依存する
 `showcases/std/*`、`modules/actor-adaptor/src/std/tests.rs`、`modules/actor-adaptor/src/std/pattern/tests.rs`、および削除対象 wrapper に依存している内部コードは、pure wrapper ではなく `core` API に依存しなければならない。この依存は `std` façade ではなく `core` API へ MUST 向かなければならない。
 
-#### Scenario: std showcase が core logging API を使う
-- **WHEN** `showcases/std/classic_logging/main.rs` を確認する
+#### Scenario: std legacy showcase が core logging API を使う
+- **WHEN** `showcases/std/legacy/classic_logging/main.rs` を確認する
 - **THEN** classic logging capability は `core` 側の型と API を使って表現される
 - **AND** `fraktor_actor_adaptor_rs::std::event::logging` の facade には依存しない
 
@@ -67,4 +67,3 @@ std adapter は、core の `Blocker` port 契約を満たす termination 用 blo
 - **WHEN** std adapter の `Blocker` 実装を使って `TerminationSignal` の完了を待つ
 - **THEN** actor system termination 後に待機は解除される
 - **AND** 複数 observer が同じ `TerminationSignal` を観測しても終了状態が消費されない
-

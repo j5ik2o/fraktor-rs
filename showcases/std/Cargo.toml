@@ -39,73 +39,85 @@ advanced = [
 name = "fraktor_showcases_std"
 path = "src/lib.rs"
 
+[[test]]
+name = "remote_lifecycle_surface"
+path = "legacy/tests/remote_lifecycle_surface.rs"
+
+[[test]]
+name = "routing_surface"
+path = "legacy/tests/routing_surface.rs"
+
+[[test]]
+name = "shared_lock_showcase_surface"
+path = "legacy/tests/shared_lock_showcase_surface.rs"
+
 # --- Basic examples ---
 
 [[example]]
 name = "getting_started"
-path = "getting_started/main.rs"
+path = "legacy/getting_started/main.rs"
 
 [[example]]
 name = "request_reply"
-path = "request_reply/main.rs"
+path = "legacy/request_reply/main.rs"
 
 [[example]]
 name = "state_management"
-path = "state_management/main.rs"
+path = "legacy/state_management/main.rs"
 
 [[example]]
 name = "child_lifecycle"
-path = "child_lifecycle/main.rs"
+path = "legacy/child_lifecycle/main.rs"
 
 [[example]]
 name = "timers"
-path = "timers/main.rs"
+path = "legacy/timers/main.rs"
 
 [[example]]
 name = "routing"
-path = "routing/main.rs"
+path = "legacy/routing/main.rs"
 
 [[example]]
 name = "stash"
-path = "stash/main.rs"
+path = "legacy/stash/main.rs"
 
 [[example]]
 name = "serialization"
-path = "serialization/main.rs"
+path = "legacy/serialization/main.rs"
 
 [[example]]
 name = "stream_pipeline"
-path = "stream_pipeline/main.rs"
+path = "legacy/stream_pipeline/main.rs"
 
 [[example]]
 name = "stream_authoring_apis"
-path = "stream_authoring_apis/main.rs"
+path = "legacy/stream_authoring_apis/main.rs"
 
 [[example]]
 name = "classic_logging"
-path = "classic_logging/main.rs"
+path = "legacy/classic_logging/main.rs"
 
 [[example]]
 name = "classic_timers"
-path = "classic_timers/main.rs"
+path = "legacy/classic_timers/main.rs"
 
 [[example]]
 name = "typed_event_stream"
-path = "typed_event_stream/main.rs"
+path = "legacy/typed_event_stream/main.rs"
 
 [[example]]
 name = "typed_receptionist_router"
-path = "typed_receptionist_router/main.rs"
+path = "legacy/typed_receptionist_router/main.rs"
 
 [[example]]
 name = "remote_lifecycle"
-path = "remote_lifecycle/main.rs"
+path = "legacy/remote_lifecycle/main.rs"
 
 # --- Advanced examples ---
 
 [[example]]
 name = "persistent_actor"
-path = "persistent_actor/main.rs"
+path = "legacy/persistent_actor/main.rs"
 required-features = ["advanced"]
 
 # --- Strangler fig examples: Pekko classic/kernel ---

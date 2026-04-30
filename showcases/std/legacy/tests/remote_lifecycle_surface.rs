@@ -1,11 +1,14 @@
 #[test]
 fn remote_lifecycle_showcase_is_registered() {
-  let manifest = include_str!("../Cargo.toml");
+  let manifest = include_str!("../../Cargo.toml");
 
   assert!(manifest.contains("fraktor-remote-core-rs"), "remote core dependency must be registered");
   assert!(manifest.contains("fraktor-remote-adaptor-std-rs"), "remote std adaptor dependency must be registered");
   assert!(manifest.contains("name = \"remote_lifecycle\""), "remote lifecycle example must be registered");
-  assert!(manifest.contains("path = \"remote_lifecycle/main.rs\""), "remote lifecycle example path must be registered");
+  assert!(
+    manifest.contains("path = \"legacy/remote_lifecycle/main.rs\""),
+    "remote lifecycle example path must be registered",
+  );
 }
 
 #[test]
