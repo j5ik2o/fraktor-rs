@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use std::thread;
 
 use super::{RunnableGraph, Sink, Source, TailSource};
 use crate::core::{
@@ -33,6 +34,7 @@ impl TestMaterializer {
       } else if idle_budget == 0 {
         return Err(StreamError::WouldBlock);
       } else {
+        thread::yield_now();
         idle_budget = idle_budget.saturating_sub(1);
       }
     }

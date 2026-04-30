@@ -47,16 +47,21 @@ where
 {
   fn run_with_collect_sink(self) -> Result<Vec<Out>, StreamError> {
     let mut materializer = build_materializer();
-    let materialized = self.run_with(Sink::collect(), &mut materializer)?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let result = loop {
-      if let Some(result) = materialized.materialized().try_take() {
-        break result;
-      }
-      if Instant::now() >= deadline {
-        break Err(StreamError::WouldBlock);
-      }
-      thread::sleep(Duration::from_millis(1));
+    let run_result = self.run_with(Sink::collect(), &mut materializer);
+    let result = match run_result {
+      | Ok(materialized) => {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+          if let Some(result) = materialized.materialized().try_take() {
+            break result;
+          }
+          if Instant::now() >= deadline {
+            break Err(StreamError::WouldBlock);
+          }
+          thread::sleep(Duration::from_millis(1));
+        }
+      },
+      | Err(error) => Err(error),
     };
     materializer.shutdown()?;
     result

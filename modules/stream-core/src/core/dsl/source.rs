@@ -3222,6 +3222,7 @@ where
 
   if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
     for _ in 1..expected_fan_out {
+      // lazy_source でも multi-outlet source の fan-out 契約どおりに各複製を収集する。
       let branch = map_definition::<Out, Out, _>(|value| value);
       let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
       let branch_outlet = Outlet::<Out>::from_id(branch.outlet);

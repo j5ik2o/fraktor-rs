@@ -1208,14 +1208,8 @@ fn source_create_propagates_queue_failure_from_producer() {
   })
   .expect("create");
 
-  // producer スレッドの起動と fail() 反映にはタイミング依存がある。
-  // poll_or_drain により TOCTOU レースは排除されているが、producer スレッドの
-  // fail がまだ反映されていない場合は WouldBlock になる。
   let result = source.run_with_collect_sink();
-  assert!(
-    matches!(result, Err(StreamError::Failed) | Err(StreamError::WouldBlock)),
-    "expected Failed or WouldBlock, got {result:?}"
-  );
+  assert_eq!(result, Err(StreamError::Failed));
 }
 
 #[test]
