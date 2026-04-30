@@ -1,8 +1,10 @@
+mod support;
 use fraktor_stream_core_rs::core::{
   dsl::{Flow, Sink, Source},
   materialization::{KeepBoth, KeepLeft, KeepRight, StreamNotUsed},
   shape::{FanInShape3, FanInShape4, FanInShape5, FanInShape8, Inlet, Outlet, UniformFanOutShape},
 };
+use support::RunWithCollectSink;
 
 #[test]
 fn uniform_fan_out_shape_new_returns_ports_passed_at_construction() {
@@ -137,8 +139,8 @@ fn flow_from_sink_and_source_mat_is_public_and_preserves_existing_data_path_cont
       Source::single(99_u32).map_materialized_value(|_| 8_u32),
       KeepLeft,
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   // from_sink_and_source_mat emits elements from the embedded source, not from upstream
   assert_eq!(values, vec![99_u32]);
 }
@@ -163,8 +165,8 @@ fn flow_from_sink_and_source_coupled_mat_is_public_and_preserves_existing_data_p
       Source::single(99_u32).map_materialized_value(|_| 21_u32),
       KeepLeft,
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   // from_sink_and_source_coupled_mat emits elements from the embedded source, not from upstream
   assert_eq!(values, vec![99_u32]);
 }
@@ -185,8 +187,8 @@ fn flow_concat_lazy_mat_is_public_and_preserves_existing_data_path_contract() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .concat_lazy_mat(Source::from_array([3_u32, 4_u32]).map_materialized_value(|_| 8_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -207,8 +209,8 @@ fn flow_prepend_lazy_mat_is_public_and_preserves_existing_data_path_contract() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .prepend_lazy_mat(Source::from_array([1_u32, 2_u32]).map_materialized_value(|_| 21_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -229,8 +231,8 @@ fn flow_or_else_mat_is_public_and_preserves_existing_data_path_contract() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .or_else_mat(Source::from_array([5_u32, 6_u32]).map_materialized_value(|_| 34_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![5_u32, 6_u32]);
 }
@@ -255,8 +257,8 @@ fn flow_divert_to_mat_is_public_and_preserves_existing_data_path_contract() {
       Sink::<u32, _>::ignore().map_materialized_value(|_| 55_u32),
       KeepLeft,
     ))
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 3_u32]);
 }
@@ -281,8 +283,8 @@ fn flow_concat_mat_is_public_and_preserves_existing_data_path_contract() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .concat_mat(Source::from_array([3_u32, 4_u32]).map_materialized_value(|_| 8_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -307,8 +309,8 @@ fn flow_prepend_mat_is_public_and_preserves_existing_data_path_contract() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .prepend_mat(Source::from_array([1_u32, 2_u32]).map_materialized_value(|_| 21_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
@@ -343,8 +345,8 @@ fn flow_merge_mat_is_public_and_preserves_existing_data_path_contract() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .merge_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert!(values.contains(&7_u32));
   assert!(values.contains(&8_u32));
@@ -379,8 +381,8 @@ fn flow_merge_preferred_mat_is_public_and_preserves_existing_data_path_contract(
       Flow::<u32, u32, StreamNotUsed>::new()
         .merge_preferred_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert!(values.contains(&7_u32));
   assert!(values.contains(&8_u32));
@@ -415,8 +417,8 @@ fn flow_merge_sorted_mat_is_public_and_preserves_existing_data_path_contract() {
       Flow::<u32, u32, StreamNotUsed>::new()
         .merge_sorted_mat(Source::from_array([2_u32, 4_u32, 6_u32]).map_materialized_value(|_| 99_u32), KeepLeft),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32, 5_u32, 6_u32]);
 }

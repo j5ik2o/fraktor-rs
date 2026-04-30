@@ -1,3 +1,4 @@
+mod support;
 use std::{
   sync::{
     Arc,
@@ -22,6 +23,7 @@ use fraktor_stream_core_rs::core::{
     StreamNotUsed,
   },
 };
+use support::RunWithCollectSink;
 
 struct GuardianActor;
 
@@ -79,7 +81,7 @@ fn coupled_termination_flow_from_sink_and_source_emits_elements_from_embedded_so
   let source = Source::single(42_u32);
   let flow = CoupledTerminationFlow::from_sink_and_source(sink, source);
 
-  let values = Source::single(7_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   assert_eq!(values, vec![42_u32]);
 }
@@ -188,8 +190,8 @@ fn coupled_termination_flow_from_sink_and_source_is_equivalent_to_flow_from_sink
   let via_factory: Flow<u32, u32, StreamNotUsed> = CoupledTerminationFlow::from_sink_and_source(sink_a, source_a);
   let via_flow: Flow<u32, u32, StreamNotUsed> = Flow::from_sink_and_source_coupled(sink_b, source_b);
 
-  let values_factory = Source::single(0_u32).via(via_factory).collect_values().expect("collect_values");
-  let values_flow = Source::single(0_u32).via(via_flow).collect_values().expect("collect_values");
+  let values_factory = Source::single(0_u32).via(via_factory).run_with_collect_sink().expect("run_with_collect_sink");
+  let values_flow = Source::single(0_u32).via(via_flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   assert_eq!(values_factory, values_flow);
   assert_eq!(values_factory, vec![123_u32]);

@@ -1,7 +1,7 @@
 use super::RestartFlow;
 use crate::core::{
   RestartConfig,
-  dsl::{Flow, Sink, Source},
+  dsl::{Flow, Sink, Source, tests::RunWithCollectSink},
   r#impl::{
     fusing::StreamBufferConfig, interpreter::graph_interpreter::GraphInterpreter, materialization::StreamState,
   },
@@ -25,6 +25,6 @@ fn restart_flow_with_backoff_keeps_data_path_behavior() {
 fn restart_flow_with_settings_keeps_data_path_behavior() {
   let settings = RestartConfig::new(1, 2, 3);
   let flow = RestartFlow::with_settings(Flow::new().map(|value: u32| value + 1), settings);
-  let values = Source::single(2_u32).via(flow).collect_values().expect("collect_values");
+  let values = Source::single(2_u32).via(flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![3_u32]);
 }

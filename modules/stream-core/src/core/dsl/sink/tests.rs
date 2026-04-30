@@ -10,7 +10,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use crate::core::{
   DynValue, SinkDecision, SinkLogic, StreamDslError, StreamError,
   attributes::Attributes,
-  dsl::{Sink, Source},
+  dsl::{Sink, Source, tests::RunWithCollectSink},
   r#impl::{
     fusing::{DemandTracker, StreamBufferConfig},
     materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
@@ -439,7 +439,7 @@ fn sink_source_materializes_live_source_with_upstream_elements() {
 
   assert!(drive_steps(&materialized, 64));
   let source = materialized.into_materialized();
-  let values = source.collect_values().expect("collect_values");
+  let values = source.run_with_collect_sink().expect("run_with_collect_sink");
 
   assert_eq!(values, vec![1_u32, 2, 3]);
 }

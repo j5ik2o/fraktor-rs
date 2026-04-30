@@ -1,8 +1,6 @@
-use alloc::vec::Vec;
-
 use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
 
-use super::{StreamError, StreamNotUsed, source::Source};
+use super::{StreamNotUsed, source::Source};
 
 #[cfg(test)]
 mod tests;
@@ -24,14 +22,5 @@ where
   #[must_use]
   pub fn into_source(self) -> Source<Out, StreamNotUsed> {
     self.inner.into_inner()
-  }
-
-  /// Collects all remaining tail elements.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamError`] when source execution fails.
-  pub fn collect_values(self) -> Result<Vec<Out>, StreamError> {
-    self.into_source().collect_values()
   }
 }

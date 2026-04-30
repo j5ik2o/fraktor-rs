@@ -16,26 +16,18 @@
 - Pekko 互換の materialization 契約が不要に見える
 - `RunnableGraph::run(&mut Materializer)` と `ActorMaterializer` の位置づけが曖昧になる
 
-## 今回の暫定対応
+## 対応
 
 `showcases/std` 配下のサンプルでは `collect_values()` を使わない方針に寄せた。
 
 stream サンプルは `ActorSystem` backing の `ActorMaterializer` を起動し、`Source` を `Sink::collect()` などへ接続した `RunnableGraph` を `run(&mut materializer)` で materialize する形へ修正した。
 
-## 後続タスク
+さらに stream-core の公開 DSL から `collect_values()`、`TailSource::collect_values()`、`into_input_stream()`、`into_java_stream()`、`into_output_stream()` を削除した。これにより、利用者が `ActorSystem` / `Materializer` なしで stream を実行できるように見える公開入口はなくなった。
 
-`collect_values()` は公開 DSL から外す方向で整理する。
+stream-core の unit/integration tests は、テスト専用 helper を通じて `run_with(Sink::collect(), &mut materializer)` または `ActorMaterializer` 経由で materialize する形へ移行した。helper は公開 API ではなく、実装も Source を直接同期実行せず materializer 契約を通す。
 
-候補は次のいずれか。
+## 残課題
 
-- `pub(crate)` にして stream-core 内部テスト専用に閉じる
-- `core::testing` 配下の明示的なテスト補助 API へ移す
-- 公開のまま残す場合でも `#[deprecated]` を付け、`run_with(Sink::collect(), materializer)` への移行を促す
-
-ただし現状では stream-core の unit/integration tests と公開 API 契約テストで大量に使われているため、単純な `pub(crate)` 化は影響範囲が大きい。
-
-## 推奨方針
-
-まずテスト側に `run_collect_with_materializer` 相当の補助関数を導入し、テストを `Materializer` 経由へ寄せる。その後、公開 API としての `collect_values()` を削除または非推奨化する。
+`Source::lazy_source` の内部では nested source を評価するための private な drain 処理が残っている。これは公開 API ではないが、Pekko 互換の materializer-context 実行へ寄せる余地がある。
 
 最終状態では、ユーザーが stream を実行する入口は `RunnableGraph::run(&mut Materializer)` または `Source::run_with(..., &mut Materializer)` 系に集約する。

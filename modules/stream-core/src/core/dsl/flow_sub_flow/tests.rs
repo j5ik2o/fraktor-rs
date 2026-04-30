@@ -4,7 +4,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::FlowSubFlow;
 use crate::core::{
-  dsl::{Flow, Sink, Source},
+  dsl::{Flow, Sink, Source, tests::RunWithCollectSink},
   r#impl::{
     fusing::StreamBufferConfig,
     materialization::{Stream, StreamState},
@@ -42,8 +42,8 @@ fn run_to_completion<Mat>(graph: RunnableGraph<Mat>) {
 fn flow_sub_flow_merge_substreams_flattens_segment() {
   let values = Source::single(1_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::new().split_after(|_| true).merge_substreams())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 }
 
@@ -51,8 +51,8 @@ fn flow_sub_flow_merge_substreams_flattens_segment() {
 fn flow_sub_flow_concat_substreams_flattens_segment() {
   let values = Source::single(1_u32)
     .via(Flow::<u32, u32, StreamNotUsed>::new().split_after(|_| true).concat_substreams())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 }
 
@@ -66,8 +66,8 @@ fn flow_sub_flow_map_and_filter_delegate_to_inner_substreams() {
         .filter(|value| value % 20 == 0)
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![20_u32, 40_u32]);
 }
 
@@ -75,8 +75,8 @@ fn flow_sub_flow_map_and_filter_delegate_to_inner_substreams() {
 fn flow_sub_flow_take_and_drop_scope_to_each_substream() {
   let values = Source::from_array([1_u32, 2, 3, 4, 5])
     .via(Flow::<u32, u32, StreamNotUsed>::new().split_after(|value| value % 2 == 0).drop(1).take(1).merge_substreams())
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 4_u32]);
 }
 
@@ -90,8 +90,8 @@ fn flow_sub_flow_take_while_and_drop_while_scope_to_each_substream() {
         .take_while(|value| *value <= 4)
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![2_u32, 4_u32]);
 }
 
@@ -110,8 +110,8 @@ fn flow_sub_flow_map_clones_stateful_mapper_per_substream() {
         })
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![11_u32, 22_u32, 13_u32, 24_u32]);
 }
 
@@ -130,8 +130,8 @@ fn flow_sub_flow_take_while_clones_stateful_predicate_per_substream() {
         })
         .merge_substreams(),
     )
-    .collect_values()
-    .expect("collect_values");
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 3_u32]);
 }
 

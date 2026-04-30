@@ -2602,139 +2602,6 @@ where
     Source { graph: self.graph, mat, _pd: PhantomData }
   }
 
-  /// Runs this source to completion and collects emitted elements.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamError`] when graph construction or execution fails.
-  pub fn collect_values(self) -> Result<Vec<Out>, StreamError> {
-    let mut graph = self.graph;
-    let Some(tail_outlet_id) = graph.tail_outlet() else {
-      return Err(StreamError::InvalidConnection);
-    };
-    let tail_outlet = Outlet::<Out>::from_id(tail_outlet_id);
-    let sink = Sink::fold(Vec::new(), |mut acc: Vec<Out>, value| {
-      acc.push(value);
-      acc
-    });
-    let (sink_graph, completion) = sink.into_parts();
-    let Some(sink_inlet_id) = sink_graph.head_inlet() else {
-      return Err(StreamError::InvalidConnection);
-    };
-    graph.append(sink_graph);
-    let sink_inlet = Inlet::<Out>::from_id(sink_inlet_id);
-
-    if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
-      for _ in 1..expected_fan_out {
-        let branch = map_definition::<Out, Out, _>(|value| value);
-        let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
-        let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
-        graph.push_stage(StageDefinition::Flow(branch));
-        graph.connect_or_panic(&tail_outlet, &branch_inlet, MatCombine::Left);
-        graph.connect_or_panic(&branch_outlet, &sink_inlet, MatCombine::Right);
-      }
-    }
-
-    let plan = graph.into_plan()?;
-    let island_plan = IslandSplitter::split(plan);
-
-    if island_plan.islands().len() <= 1 {
-      // Single island: existing path
-      let single_plan = island_plan.into_single_plan();
-      let mut stream = Stream::new(single_plan, StreamBufferConfig::default());
-      stream.start()?;
-      let mut idle_budget = 1024_usize;
-      while !stream.state().is_terminal() {
-        match stream.drive() {
-          | DriveOutcome::Progressed => idle_budget = 1024,
-          | DriveOutcome::Idle => {
-            if idle_budget == 0 {
-              return Err(StreamError::WouldBlock);
-            }
-            idle_budget = idle_budget.saturating_sub(1);
-          },
-        }
-      }
-    } else {
-      // Multi-island: create boundary buffers and drive all streams
-      let (mut islands, crossings) = island_plan.into_parts();
-      let mut boundaries = Vec::with_capacity(crossings.len());
-      for crossing in crossings {
-        let upstream_idx = crossing.from_island().as_usize();
-        let downstream_idx = crossing.to_island().as_usize();
-        let element_type = crossing.element_type();
-        let boundary_capacity = islands[downstream_idx]
-          .input_buffer_capacity_for_inlet(crossing.to_port())
-          .unwrap_or(DEFAULT_BOUNDARY_CAPACITY);
-        let boundary = IslandBoundaryShared::new(boundary_capacity);
-        boundaries.push((boundary.clone(), downstream_idx));
-        islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
-        islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
-      }
-      let mut streams: Vec<Stream> = Vec::with_capacity(islands.len());
-      for island in islands {
-        let stream_plan = island.into_stream_plan();
-        let mut stream = Stream::new(stream_plan, StreamBufferConfig::default());
-        stream.start()?;
-        streams.push(stream);
-      }
-      let mut idle_budget = 4096_usize;
-      while streams.iter().any(|s| !s.state().is_terminal()) {
-        let mut any_progress = false;
-        for stream in &mut streams {
-          if !stream.state().is_terminal() && matches!(stream.drive(), DriveOutcome::Progressed) {
-            any_progress = true;
-          }
-        }
-        if any_progress {
-          idle_budget = 4096;
-        } else {
-          if boundaries
-            .iter()
-            .any(|(boundary, downstream_idx)| boundary.is_full() && streams[*downstream_idx].state().is_terminal())
-          {
-            return Err(StreamError::WouldBlock);
-          }
-          if idle_budget == 0 {
-            return Err(StreamError::WouldBlock);
-          }
-          idle_budget = idle_budget.saturating_sub(1);
-        }
-      }
-    }
-    match completion.try_take() {
-      | Some(result) => result,
-      | None => Err(StreamError::Failed),
-    }
-  }
-
-  /// Converts this source into an input-stream compatible collection.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamError`] when source execution fails.
-  pub fn into_input_stream(self) -> Result<Vec<Out>, StreamError> {
-    self.collect_values()
-  }
-
-  /// Converts this source into a Java-stream compatible collection.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamError`] when source execution fails.
-  pub fn into_java_stream(self) -> Result<Vec<Out>, StreamError> {
-    self.collect_values()
-  }
-
-  /// Converts this source into an output-stream compatible collection.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamError`] when source execution fails.
-  pub fn into_output_stream(self) -> Result<Vec<Out>, StreamError> {
-    self.collect_values()
-  }
-
   /// Creates a source from a pre-built stream graph and materialized value.
   #[must_use]
   pub(in crate::core) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
@@ -3302,7 +3169,7 @@ where
 struct LazySourceLogic<Out, F> {
   factory: Option<F>,
   buffer:  VecDeque<DynValue>,
-  // factory 消費後に collect_values が失敗した場合のエラー状態
+  // factory 消費後に nested source の評価が失敗した場合のエラー状態
   error:   Option<StreamError>,
   _pd:     PhantomData<fn() -> Out>,
 }
@@ -3318,7 +3185,7 @@ where
     }
     if let Some(factory) = self.factory.take() {
       let source = factory();
-      match source.collect_values() {
+      match drain_source_for_lazy_source(source) {
         | Ok(values) => {
           self.buffer = values.into_iter().map(|v| Box::new(v) as DynValue).collect();
         },
@@ -3337,6 +3204,93 @@ where
     }
     Ok(())
   }
+}
+
+fn drain_source_for_lazy_source<Out>(source: Source<Out, StreamNotUsed>) -> Result<Vec<Out>, StreamError>
+where
+  Out: Send + Sync + 'static, {
+  let mut graph = source.graph;
+  let Some(tail_outlet_id) = graph.tail_outlet() else {
+    return Err(StreamError::InvalidConnection);
+  };
+  let tail_outlet = Outlet::<Out>::from_id(tail_outlet_id);
+  let sink = Sink::collect();
+  let (sink_graph, completion) = sink.into_parts();
+  let sink_inlet_id = sink_graph.head_inlet().ok_or(StreamError::InvalidConnection)?;
+  graph.append(sink_graph);
+  let sink_inlet = Inlet::<Out>::from_id(sink_inlet_id);
+
+  if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
+    for _ in 1..expected_fan_out {
+      // lazy_source でも multi-outlet source の fan-out 契約どおりに各複製を収集する。
+      let branch = map_definition::<Out, Out, _>(|value| value);
+      let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
+      let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
+      graph.push_stage(StageDefinition::Flow(branch));
+      graph.connect_or_panic(&tail_outlet, &branch_inlet, MatCombine::Left);
+      graph.connect_or_panic(&branch_outlet, &sink_inlet, MatCombine::Right);
+    }
+  }
+
+  let plan = graph.into_plan()?;
+  let island_plan = IslandSplitter::split(plan);
+  if island_plan.islands().len() <= 1 {
+    let mut stream = Stream::new(island_plan.into_single_plan(), StreamBufferConfig::default());
+    stream.start()?;
+    let mut idle_budget = 1024_usize;
+    while !stream.state().is_terminal() {
+      match stream.drive() {
+        | DriveOutcome::Progressed => idle_budget = 1024,
+        | DriveOutcome::Idle => {
+          if idle_budget == 0 {
+            return Err(StreamError::WouldBlock);
+          }
+          idle_budget = idle_budget.saturating_sub(1);
+        },
+      }
+    }
+  } else {
+    let (mut islands, crossings) = island_plan.into_parts();
+    let mut boundaries = Vec::with_capacity(crossings.len());
+    for crossing in crossings {
+      let upstream_idx = crossing.from_island().as_usize();
+      let downstream_idx = crossing.to_island().as_usize();
+      let boundary_capacity = islands[downstream_idx]
+        .input_buffer_capacity_for_inlet(crossing.to_port())
+        .unwrap_or(DEFAULT_BOUNDARY_CAPACITY);
+      let boundary = IslandBoundaryShared::new(boundary_capacity);
+      boundaries.push((boundary.clone(), downstream_idx));
+      islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), crossing.element_type());
+      islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), crossing.element_type());
+    }
+    let mut streams = Vec::with_capacity(islands.len());
+    for island in islands {
+      let mut stream = Stream::new(island.into_stream_plan(), StreamBufferConfig::default());
+      stream.start()?;
+      streams.push(stream);
+    }
+    let mut idle_budget = 4096_usize;
+    while streams.iter().any(|stream| !stream.state().is_terminal()) {
+      let mut progressed = false;
+      for stream in &mut streams {
+        if !stream.state().is_terminal() && matches!(stream.drive(), DriveOutcome::Progressed) {
+          progressed = true;
+        }
+      }
+      if progressed {
+        idle_budget = 4096;
+      } else if idle_budget == 0
+        || boundaries
+          .iter()
+          .any(|(boundary, downstream_idx)| boundary.is_full() && streams[*downstream_idx].state().is_terminal())
+      {
+        return Err(StreamError::WouldBlock);
+      } else {
+        idle_budget = idle_budget.saturating_sub(1);
+      }
+    }
+  }
+  completion.try_take().unwrap_or(Err(StreamError::Failed))
 }
 
 impl<Out> GraphStageLogic<StreamNotUsed, Out, StreamNotUsed> for SingleSourceLogic<Out>

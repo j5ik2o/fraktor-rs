@@ -1,8 +1,10 @@
+mod support;
 use fraktor_stream_core_rs::core::{
   SubstreamCancelStrategy,
   dsl::{BroadcastHub, Source},
   r#impl::{OperatorKey, StreamError},
 };
+use support::RunWithCollectSink;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CompatObservation {
@@ -183,7 +185,7 @@ fn observe_group_by_merge_substreams() -> CompatObservation {
     .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
     .expect("group_by")
     .merge_substreams()
-    .collect_values()
+    .run_with_collect_sink()
   {
     | Ok(values) => CompatObservation::new(!values.is_empty(), false, true, false),
     | Err(_) => CompatObservation::new(false, false, false, true),

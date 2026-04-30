@@ -1,10 +1,13 @@
 use super::RestartSource;
-use crate::core::{RestartConfig, dsl::Source};
+use crate::core::{
+  RestartConfig,
+  dsl::{Source, tests::RunWithCollectSink},
+};
 
 #[test]
 fn restart_source_with_backoff_keeps_data_path_behavior() {
   let source = RestartSource::with_backoff(Source::single(1_u32), 1, 3);
-  let values = source.collect_values().expect("collect_values");
+  let values = source.run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 }
 
@@ -12,6 +15,6 @@ fn restart_source_with_backoff_keeps_data_path_behavior() {
 fn restart_source_with_settings_keeps_data_path_behavior() {
   let settings = RestartConfig::new(1, 2, 3);
   let source = RestartSource::with_settings(Source::from_array([1_u32, 2]), settings);
-  let values = source.collect_values().expect("collect_values");
+  let values = source.run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }

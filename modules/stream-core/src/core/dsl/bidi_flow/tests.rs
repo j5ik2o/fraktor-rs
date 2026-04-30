@@ -1,10 +1,10 @@
 use crate::core::{
-  dsl::{BidiFlow, Flow, Source},
+  dsl::{BidiFlow, Flow, Source, tests::RunWithCollectSink},
   materialization::StreamNotUsed,
 };
 
 fn collect_single(flow: Flow<u32, u32, StreamNotUsed>, value: u32) -> Vec<u32> {
-  Source::single(value).via(flow).collect_values().expect("collect_values")
+  Source::single(value).via(flow).run_with_collect_sink().expect("run_with_collect_sink")
 }
 
 #[test]
@@ -98,7 +98,7 @@ fn bidi_flow_join_composes_top_flow_and_bottom_and_keeps_materialized_value() {
   let joined = BidiFlow::from_flows(Flow::new().map(|value: u32| value + 1), Flow::new().map(|value: u32| value + 10))
     .join(Flow::new().map(|value: u32| value + 3));
 
-  let values = Source::single(1_u32).via(joined).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(joined).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![15_u32]);
 
   let (graph, materialized) =
@@ -137,8 +137,10 @@ fn bidi_flow_join_mat_combines_materialized_values() {
   assert_eq!(combined_mat, 30_u32);
 
   // Verify data flow: 1 → +1 → +3 → +10 = 15
-  let values: Vec<u32> =
-    Source::single(1_u32).via(Flow::from_graph(graph, StreamNotUsed::new())).collect_values().expect("collect_values");
+  let values: Vec<u32> = Source::single(1_u32)
+    .via(Flow::from_graph(graph, StreamNotUsed::new()))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
   assert_eq!(values, vec![15_u32]);
 }
 
@@ -151,7 +153,7 @@ fn bidi_flow_join_mat_preserves_data_flow() {
     .join_mat(Flow::new().map(|value: u32| value + 3), |_, _| 42_u32);
 
   // When: running the pipeline
-  let values = Source::single(1_u32).via(joined).collect_values().expect("collect_values");
+  let values = Source::single(1_u32).via(joined).run_with_collect_sink().expect("run_with_collect_sink");
 
   // Then: data flows through top → middle → bottom
   assert_eq!(values, vec![15_u32]);

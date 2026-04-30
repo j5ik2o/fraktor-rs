@@ -3,6 +3,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use super::{
   Framing, SimpleFramingDecoderLogic, checked_frame_length, find_delimiter, read_big_endian_u32, read_big_endian_uint,
 };
+use crate::core::dsl::tests::RunWithCollectSink;
 
 #[test]
 fn should_find_delimiter_at_start() {
@@ -58,7 +59,7 @@ fn should_create_delimiter_flow() {
 
   let framing = Framing::delimiter(vec![b'\n'], 1024, false);
   let source = Source::from(vec![b"hello\nwor".to_vec(), b"ld\nfoo".to_vec()]);
-  let result = source.via(framing).collect_values();
+  let result = source.via(framing).run_with_collect_sink();
   let frames = result.unwrap();
   assert_eq!(frames, vec![b"hello".to_vec(), b"world".to_vec()]);
 }
@@ -69,7 +70,7 @@ fn should_emit_trailing_bytes_when_allow_truncation_is_true() {
 
   let framing = Framing::delimiter(vec![b'\n'], 1024, true);
   let source = Source::from(vec![b"hello\ntrailing".to_vec()]);
-  let result = source.via(framing).collect_values();
+  let result = source.via(framing).run_with_collect_sink();
   let frames = result.unwrap();
   assert_eq!(frames, vec![b"hello".to_vec(), b"trailing".to_vec()]);
 }
@@ -80,7 +81,7 @@ fn should_discard_trailing_bytes_when_allow_truncation_is_false() {
 
   let framing = Framing::delimiter(vec![b'\n'], 1024, false);
   let source = Source::from(vec![b"hello\ntrailing".to_vec()]);
-  let result = source.via(framing).collect_values();
+  let result = source.via(framing).run_with_collect_sink();
   let frames = result.unwrap();
   assert_eq!(frames, vec![b"hello".to_vec()]);
 }
@@ -91,7 +92,7 @@ fn should_error_when_frame_exceeds_max_frame_length() {
 
   let framing = Framing::delimiter(vec![b'\n'], 5, false);
   let source = Source::from(vec![b"toolong\nok".to_vec()]);
-  let result = source.via(framing).collect_values();
+  let result = source.via(framing).run_with_collect_sink();
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
 
@@ -101,7 +102,7 @@ fn should_error_when_buffer_exceeds_max_frame_length_without_delimiter() {
 
   let framing = Framing::delimiter(vec![b'\n'], 5, false);
   let source = Source::from(vec![b"abcdef".to_vec()]);
-  let result = source.via(framing).collect_values();
+  let result = source.via(framing).run_with_collect_sink();
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
 
@@ -119,7 +120,7 @@ fn should_create_length_field_flow() {
   data.extend_from_slice(b"de");
 
   let source = Source::single(data);
-  let result = source.via(framing).collect_values();
+  let result = source.via(framing).run_with_collect_sink();
   let frames = result.unwrap();
   assert_eq!(frames.len(), 2);
   assert_eq!(&frames[0][2..], b"abc");
@@ -133,7 +134,7 @@ fn should_encode_payload_with_four_byte_big_endian_length_header() {
   let protocol = Framing::simple_framing_protocol(16);
   let (encoder, _decoder, _mat) = protocol.split();
 
-  let frames = Source::single(b"abc".to_vec()).via(encoder).collect_values().unwrap();
+  let frames = Source::single(b"abc".to_vec()).via(encoder).run_with_collect_sink().unwrap();
   assert_eq!(frames, vec![vec![0x00, 0x00, 0x00, 0x03, b'a', b'b', b'c']]);
 }
 
@@ -148,7 +149,7 @@ fn should_decode_chunked_frames_and_strip_length_header() {
     0x00, 0x02, b'd', b'e',
   ]])
   .via(decoder)
-  .collect_values()
+  .run_with_collect_sink()
   .unwrap();
 
   assert_eq!(frames, vec![b"abc".to_vec(), b"de".to_vec()]);
@@ -161,10 +162,10 @@ fn should_support_empty_payload_frame() {
   let protocol = Framing::simple_framing_protocol(16);
   let (encoder, decoder, _mat) = protocol.split();
 
-  let encoded = Source::single(Vec::new()).via(encoder).collect_values().unwrap();
+  let encoded = Source::single(Vec::new()).via(encoder).run_with_collect_sink().unwrap();
   assert_eq!(encoded, vec![vec![0x00, 0x00, 0x00, 0x00]]);
 
-  let decoded = Source::from(encoded).via(decoder).collect_values().unwrap();
+  let decoded = Source::from(encoded).via(decoder).run_with_collect_sink().unwrap();
   assert_eq!(decoded, vec![Vec::new()]);
 }
 
@@ -175,7 +176,8 @@ fn should_round_trip_payloads_through_simple_framing_protocol() {
   let protocol = Framing::simple_framing_protocol(16);
   let loopback = protocol.join(Flow::new());
 
-  let decoded = Source::from(vec![b"abc".to_vec(), Vec::new(), b"de".to_vec()]).via(loopback).collect_values().unwrap();
+  let decoded =
+    Source::from(vec![b"abc".to_vec(), Vec::new(), b"de".to_vec()]).via(loopback).run_with_collect_sink().unwrap();
 
   assert_eq!(decoded, vec![b"abc".to_vec(), Vec::new(), b"de".to_vec()]);
 }
@@ -187,7 +189,7 @@ fn should_error_when_payload_exceeds_maximum_message_length() {
   let protocol = Framing::simple_framing_protocol(3);
   let (encoder, _decoder, _mat) = protocol.split();
 
-  let result = Source::single(b"toolong".to_vec()).via(encoder).collect_values();
+  let result = Source::single(b"toolong".to_vec()).via(encoder).run_with_collect_sink();
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
 
@@ -198,7 +200,8 @@ fn should_error_when_decoded_length_header_exceeds_maximum_message_length() {
   let protocol = Framing::simple_framing_protocol(3);
   let (_encoder, decoder, _mat) = protocol.split();
 
-  let result = Source::single(vec![0x00, 0x00, 0x00, 0x04, b'a', b'b', b'c', b'd']).via(decoder).collect_values();
+  let result =
+    Source::single(vec![0x00, 0x00, 0x00, 0x04, b'a', b'b', b'c', b'd']).via(decoder).run_with_collect_sink();
 
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
@@ -210,7 +213,7 @@ fn should_error_when_source_ends_with_truncated_decoded_frame() {
   let protocol = Framing::simple_framing_protocol(16);
   let (_encoder, decoder, _mat) = protocol.split();
 
-  let result = Source::single(vec![0x00, 0x00, 0x00, 0x03, b'a', b'b']).via(decoder).collect_values();
+  let result = Source::single(vec![0x00, 0x00, 0x00, 0x03, b'a', b'b']).via(decoder).run_with_collect_sink();
 
   assert!(matches!(result, Err(StreamError::Failed)));
 }
