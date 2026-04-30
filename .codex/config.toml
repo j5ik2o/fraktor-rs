@@ -44,9 +44,9 @@ matcher = "^(apply_patch|Edit|Write)$"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
-command = '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.agents/hooks/run_dylint_after_rust_edit.py" --agent codex'
+command = '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.agents/hooks/run_rust_checks_after_edit.py" --agent codex'
 timeout = 1800
-statusMessage = "Rust 変更後の dylint を確認中"
+statusMessage = "Rust 変更後の fmt / dylint / clippy を確認中"
 
 [projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
 trust_level = "trusted"

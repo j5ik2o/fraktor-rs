@@ -50,8 +50,8 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel, LoggingFilter},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
+  support::futures::ActorFutureShared,
   system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, shared_factory::MailboxSharedSet},
-  util::futures::ActorFutureShared,
 };
 
 /// Shared wrapper for [`SystemState`] providing thread-safe access.
@@ -422,11 +422,6 @@ impl SystemStateShared {
   #[must_use]
   pub fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
     self.inner.with_read(|inner| inner.guardian_pid(kind))
-  }
-
-  /// Registers a PID for the specified guardian kind.
-  pub(crate) fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
-    self.inner.with_write(|inner| inner.register_guardian_pid(kind, pid));
   }
 
   /// Returns whether the specified guardian is alive.

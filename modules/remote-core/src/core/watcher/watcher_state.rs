@@ -11,11 +11,11 @@ use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use ahash::RandomState;
 use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath;
-use hashbrown::{HashMap, hash_map::Entry};
+use hashbrown::HashMap;
 
 use crate::core::{
   address::Address,
-  failure_detector::PhiAccrualFailureDetector,
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorRegistry, PhiAccrualFailureDetector},
   watcher::{watcher_command::WatcherCommand, watcher_effect::WatcherEffect},
 };
 
@@ -28,6 +28,7 @@ type Map<K, V> = HashMap<K, V, RandomState>;
 /// [`PhiAccrualFailureDetector`] on demand when a new remote node is
 /// encountered.
 type DetectorFactory = fn(&Address) -> PhiAccrualFailureDetector;
+type DetectorRegistry = DefaultFailureDetectorRegistry<Address, PhiAccrualFailureDetector, DetectorFactory>;
 
 /// Pure state portion of the remote watcher.
 ///
@@ -41,13 +42,13 @@ pub struct WatcherState {
   watching:         Map<ActorPath, Vec<ActorPath>>,
   /// Per-remote-node → set of targets hosted on that node.
   targets_by_node:  Map<Address, Vec<ActorPath>>,
-  /// Per-remote-node failure detector.
-  detectors:        Map<Address, PhiAccrualFailureDetector>,
+  /// Per-remote-node failure detector registry.
+  detectors:        DetectorRegistry,
   /// Remote nodes that have already been notified as terminated during the
   /// current session, so we do not re-emit effects on every tick.
   already_notified: Map<Address, ()>,
-  /// Factory used to build a fresh detector when a new remote node appears.
-  detector_factory: DetectorFactory,
+  /// Per-remote-node actor-system incarnation UID observed from heartbeat responses.
+  address_uids:     Map<Address, u64>,
 }
 
 impl Debug for WatcherState {
@@ -55,7 +56,6 @@ impl Debug for WatcherState {
     f.debug_struct("WatcherState")
       .field("watching", &self.watching.len())
       .field("targets_by_node", &self.targets_by_node.len())
-      .field("detectors", &self.detectors.len())
       .finish_non_exhaustive()
   }
 }
@@ -66,11 +66,11 @@ impl WatcherState {
   #[must_use]
   pub fn new(detector_factory: DetectorFactory) -> Self {
     Self {
-      watching: Map::with_hasher(RandomState::new()),
-      targets_by_node: Map::with_hasher(RandomState::new()),
-      detectors: Map::with_hasher(RandomState::new()),
+      watching:         Map::with_hasher(RandomState::new()),
+      targets_by_node:  Map::with_hasher(RandomState::new()),
+      detectors:        DefaultFailureDetectorRegistry::new(detector_factory),
       already_notified: Map::with_hasher(RandomState::new()),
-      detector_factory,
+      address_uids:     Map::with_hasher(RandomState::new()),
     }
   }
 
@@ -92,6 +92,7 @@ impl WatcherState {
       | WatcherCommand::Watch { target, watcher } => self.on_watch(target, watcher),
       | WatcherCommand::Unwatch { target, watcher } => self.on_unwatch(&target, &watcher),
       | WatcherCommand::HeartbeatReceived { from, now } => self.on_heartbeat(&from, now),
+      | WatcherCommand::HeartbeatResponseReceived { from, uid, now } => self.on_heartbeat_response(&from, uid, now),
       | WatcherCommand::HeartbeatTick { now } => self.on_tick(now),
     }
   }
@@ -118,8 +119,6 @@ impl WatcherState {
       node_targets.push(target);
     }
 
-    self.ensure_detector(&node);
-
     // Emit an initial heartbeat towards the new peer so that it can respond
     // and make itself observable.
     alloc::vec![WatcherEffect::SendHeartbeat { to: node }]
@@ -131,19 +130,25 @@ impl WatcherState {
       if watchers.is_empty() {
         self.watching.remove(target);
         // Also remove target from its hosting node map.
-        if let Some(node) = address_from_path(target)
-          && let Some(targets) = self.targets_by_node.get_mut(&node)
-        {
-          targets.retain(|t| t != target);
-          if targets.is_empty() {
-            self.targets_by_node.remove(&node);
-            self.detectors.remove(&node);
-            self.already_notified.remove(&node);
-          }
+        if let Some(node) = address_from_path(target) {
+          self.remove_target_from_node(&node, target);
         }
       }
     }
     Vec::new()
+  }
+
+  fn remove_target_from_node(&mut self, node: &Address, target: &ActorPath) {
+    let Some(targets) = self.targets_by_node.get_mut(node) else {
+      return;
+    };
+    targets.retain(|t| t != target);
+    if targets.is_empty() {
+      self.targets_by_node.remove(node);
+      self.detectors.remove(node);
+      self.already_notified.remove(node);
+      self.address_uids.remove(node);
+    }
   }
 
   fn on_heartbeat(&mut self, from: &Address, now: u64) -> Vec<WatcherEffect> {
@@ -153,8 +158,26 @@ impl WatcherState {
     }
     // 通知済みフラグを消して、再度沈黙した場合に検出できるようにする。
     self.already_notified.remove(from);
-    self.ensure_detector(from).heartbeat(now);
+    self.detectors.heartbeat(from, now);
     Vec::new()
+  }
+
+  fn on_heartbeat_response(&mut self, from: &Address, uid: u64, now: u64) -> Vec<WatcherEffect> {
+    let Some(targets) = self.targets_by_node.get(from).cloned() else {
+      return Vec::new();
+    };
+    self.already_notified.remove(from);
+    self.detectors.heartbeat(from, now);
+    let needs_rewatch = match self.address_uids.get(from) {
+      | Some(known_uid) => *known_uid != uid,
+      | None => true,
+    };
+    self.address_uids.insert(from.clone(), uid);
+    if needs_rewatch {
+      alloc::vec![WatcherEffect::RewatchRemoteTargets { node: from.clone(), targets }]
+    } else {
+      Vec::new()
+    }
   }
 
   fn on_tick(&mut self, now: u64) -> Vec<WatcherEffect> {
@@ -167,8 +190,8 @@ impl WatcherState {
 
     // Failure-detector evaluation.
     let mut unavailable_nodes: Vec<Address> = Vec::new();
-    for (node, detector) in &self.detectors {
-      if !detector.is_available(now) && !self.already_notified.contains_key(node) {
+    for node in self.targets_by_node.keys() {
+      if !self.detectors.is_available(node, now) && !self.already_notified.contains_key(node) {
         unavailable_nodes.push(node.clone());
       }
     }
@@ -186,13 +209,6 @@ impl WatcherState {
     }
 
     effects
-  }
-
-  fn ensure_detector(&mut self, node: &Address) -> &mut PhiAccrualFailureDetector {
-    match self.detectors.entry(node.clone()) {
-      | Entry::Occupied(entry) => entry.into_mut(),
-      | Entry::Vacant(entry) => entry.insert((self.detector_factory)(node)),
-    }
   }
 }
 

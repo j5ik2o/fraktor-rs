@@ -16,6 +16,7 @@ use crate::core::wire::{
 const SUBKIND_HEARTBEAT: u8 = 0x00;
 const SUBKIND_QUARANTINE: u8 = 0x01;
 const SUBKIND_SHUTDOWN: u8 = 0x02;
+const SUBKIND_HEARTBEAT_RESPONSE: u8 = 0x03;
 
 /// Zero-sized codec for [`ControlPdu`].
 #[derive(Clone, Copy, Debug, Default)]
@@ -38,6 +39,12 @@ impl Codec<ControlPdu> for ControlCodec {
         encode_string(authority, buf)?;
         encode_option_string(None, buf)?;
       },
+      | ControlPdu::HeartbeatResponse { authority, uid } => {
+        buf.put_u8(SUBKIND_HEARTBEAT_RESPONSE);
+        encode_string(authority, buf)?;
+        encode_option_string(None, buf)?;
+        buf.put_u64(*uid);
+      },
       | ControlPdu::Quarantine { authority, reason } => {
         buf.put_u8(SUBKIND_QUARANTINE);
         encode_string(authority, buf)?;
@@ -53,7 +60,7 @@ impl Codec<ControlPdu> for ControlCodec {
   }
 
   fn decode(&self, buf: &mut Bytes) -> Result<ControlPdu, WireError> {
-    let _ = read_frame_header(buf, KIND_CONTROL)?;
+    read_frame_header(buf, KIND_CONTROL)?;
     if buf.remaining() < 1 {
       return Err(WireError::Truncated);
     }
@@ -62,6 +69,12 @@ impl Codec<ControlPdu> for ControlCodec {
     let reason = decode_option_string(buf)?;
     match subkind {
       | SUBKIND_HEARTBEAT => Ok(ControlPdu::Heartbeat { authority }),
+      | SUBKIND_HEARTBEAT_RESPONSE => {
+        if buf.remaining() < 8 {
+          return Err(WireError::Truncated);
+        }
+        Ok(ControlPdu::HeartbeatResponse { authority, uid: buf.get_u64() })
+      },
       | SUBKIND_QUARANTINE => Ok(ControlPdu::Quarantine { authority, reason }),
       | SUBKIND_SHUTDOWN => Ok(ControlPdu::Shutdown { authority }),
       | _ => Err(WireError::InvalidFormat),

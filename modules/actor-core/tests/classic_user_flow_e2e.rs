@@ -15,8 +15,8 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
     setup::ActorSystemConfig,
   },
+  support::futures::ActorFutureShared,
   system::{ActorSystem, SpinBlocker},
-  util::futures::ActorFutureShared,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 

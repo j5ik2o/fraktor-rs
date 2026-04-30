@@ -53,6 +53,10 @@ name = "actor_path_e2e"
 path = "tests/actor_path_e2e.rs"
 
 [[test]]
+name = "actor_selection_e2e"
+path = "tests/actor_selection_e2e.rs"
+
+[[test]]
 name = "death_watch"
 path = "tests/death_watch.rs"
 

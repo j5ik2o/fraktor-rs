@@ -24,7 +24,7 @@ use crate::core::{
     dsl::Behaviors,
     receptionist::{
       Deregistered, Listing, Receptionist, ReceptionistCommand, Registered, ServiceKey,
-      runtime::{ReceptionistExtensionId, ReceptionistState, handle_command},
+      extension::{ReceptionistExtensionId, ReceptionistState, handle_command},
     },
   },
 };
@@ -539,7 +539,7 @@ fn get_registers_receptionist_extension_even_when_bootstrap_actor_is_missing() {
 
   let first = Receptionist::get(&system);
   let second = Receptionist::get(&system);
-  let registered = system.extension(&extension_id).expect("registered receptionist extension");
+  let registered: ArcShared<Receptionist> = system.extension(&extension_id).expect("registered receptionist extension");
 
   assert_eq!(first.r#ref().pid(), second.r#ref().pid());
   assert_eq!(first.r#ref().pid(), registered.with_ref(|receptionist| receptionist.r#ref().pid()));

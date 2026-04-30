@@ -57,8 +57,8 @@ use crate::core::kernel::{
     logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
     stream::{EventStream, EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
+  support::futures::ActorFutureShared,
   system::{RegisterExtraTopLevelError, ReservationPolicy, shared_factory::MailboxSharedSet},
-  util::futures::ActorFutureShared,
 };
 
 mod failure_outcome;
@@ -512,11 +512,6 @@ impl SystemState {
   pub(crate) fn set_root_guardian(&mut self, cell: &ArcShared<ActorCell>) {
     self.guardians.register(GuardianKind::Root, cell.pid());
     self.root_guardian_alive.store(true, Ordering::Release);
-  }
-
-  pub(crate) fn register_guardian_pid(&mut self, kind: GuardianKind, pid: Pid) {
-    self.guardians.register(kind, pid);
-    self.guardian_alive_flag(kind).store(true, Ordering::Release);
   }
 
   /// Registers the system guardian PID.

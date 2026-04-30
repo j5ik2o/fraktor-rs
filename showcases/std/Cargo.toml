@@ -109,11 +109,12 @@ path = "legacy/typed_event_stream/main.rs"
 name = "typed_receptionist_router"
 path = "legacy/typed_receptionist_router/main.rs"
 
+# --- Advanced examples ---
+
 [[example]]
 name = "remote_lifecycle"
 path = "legacy/remote_lifecycle/main.rs"
-
-# --- Advanced examples ---
+required-features = ["advanced"]
 
 [[example]]
 name = "persistent_actor"

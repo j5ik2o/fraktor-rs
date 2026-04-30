@@ -20,9 +20,7 @@ fn noop_invoke_guard_wrap_passes_through_ok_and_err() {
 fn noop_invoke_guard_does_not_catch_panic() {
   let guard = NoopInvokeGuard::new();
 
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    let _ = guard.wrap(|| panic!("boom"));
-  }));
+  let result = catch_unwind(AssertUnwindSafe(|| guard.wrap(|| panic!("boom"))));
 
   assert!(result.is_err());
 }

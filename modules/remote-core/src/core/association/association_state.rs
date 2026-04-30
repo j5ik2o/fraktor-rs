@@ -26,6 +26,8 @@ pub enum AssociationState {
     remote_node:    RemoteNodeId,
     /// `now_ms` passed to `handshake_accepted`.
     established_at: u64,
+    /// Last monotonic millis at which handshake activity was observed.
+    last_used_at:   u64,
   },
   /// Temporarily gated after a transient failure.
   Gated {
@@ -36,7 +38,7 @@ pub enum AssociationState {
   Quarantined {
     /// Reason recorded at quarantine time.
     reason:    QuarantineReason,
-    /// Monotonic millis at which the quarantine may be lifted, if known.
+    /// Monotonic millis at which the quarantined association may be removed, if known.
     resume_at: Option<u64>,
   },
 }

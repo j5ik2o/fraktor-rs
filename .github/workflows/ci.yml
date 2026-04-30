@@ -134,8 +134,9 @@ jobs:
   # 結合テスト / E2E
   #
   # `scripts/ci-check.sh integration-test` は workspace の `--tests --examples`
-  # を実行する。actor の classic/typed user flow や std adaptor boot など、
-  # テストピラミッド上の Integration / E2E 層はここで PR ごとに検証する。
+  # と cross-crate E2E 専用 crate を明示実行する。actor の classic/typed user flow
+  # や std adaptor boot、`tests/e2e` の runtime boot など、テストピラミッド上の
+  # Integration / E2E 層はここで PR ごとに検証する。
   integration-e2e:
     name: Integration / E2E
     runs-on: self-hosted
@@ -161,7 +162,7 @@ jobs:
 
   # カバレッジレポート
   #
-  # `scripts/coverage.sh` は actor 系 package の Unit / Contract /
+  # `scripts/coverage.sh` は actor / stream 系 package の Unit / Contract /
   # Integration / E2E をまとめて計測し、HTML レポートを生成する。
   # PR / main push / schedule で成果物として確認できるよう、
   # 通常テストとは別ジョブで実行して artifact に保存する。
@@ -188,13 +189,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: coverage
-      - name: Generate actor coverage reports
+      - name: Generate actor and stream coverage reports
         run: ./scripts/coverage.sh --tool llvm-cov --format html-lcov --output target/coverage
-      - name: Upload actor coverage HTML report
+      - name: Upload actor and stream coverage HTML report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: actor-coverage-html
+          name: actor-stream-coverage-html
           path: target/coverage/html
           if-no-files-found: warn
           retention-days: 14
@@ -205,8 +206,8 @@ jobs:
           use_oidc: true
           files: target/coverage/lcov.info
           disable_search: true
-          flags: actor
-          name: actor-coverage
+          flags: actor-stream
+          name: actor-stream-coverage
           fail_ci_if_error: true
 
   # Documentation build

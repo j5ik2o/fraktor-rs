@@ -1,5 +1,8 @@
 //! Handle wrapper for ActorRefProvider implementations.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 
 use super::ActorRefProvider;

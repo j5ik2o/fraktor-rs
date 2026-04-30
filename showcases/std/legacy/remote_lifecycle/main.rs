@@ -12,10 +12,10 @@ use fraktor_actor_core_rs::core::kernel::{
   system::ActorSystem,
 };
 use fraktor_remote_adaptor_std_rs::std::{
-  extension_installer::RemotingExtensionInstaller, tcp_transport::TcpRemoteTransport,
+  extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{address::Address, extension::Remoting};
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock, SpinSyncMutex};
+use fraktor_remote_core_rs::core::{address::Address, config::RemoteConfig, extension::Remoting};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 struct NoopActor;
 
@@ -45,7 +45,8 @@ fn subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubsc
   EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
 }
 
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
   let props = Props::from_fn(|| NoopActor);
   let system =
     ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
@@ -56,18 +57,16 @@ fn main() {
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   let advertised_address = Address::new("remote-showcase", "127.0.0.1", 2551);
-  // transport は I/O 境界を跨ぐため、長時間保持に備えて blocking mutex を使う。
-  let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", vec![
-    advertised_address.clone(),
-  ]));
-  let installer = RemotingExtensionInstaller::new(transport);
+  let transport = TcpRemoteTransport::new("127.0.0.1:0", vec![advertised_address.clone()]);
+  let remote_config = RemoteConfig::new("127.0.0.1");
+  let installer = RemotingExtensionInstaller::new(transport, remote_config);
 
   installer.install(&system).expect("remote extension install");
-  let remoting = installer.remoting().expect("installed remoting handle");
-  remoting.with_lock(|remoting| {
-    remoting.start().expect("remote lifecycle start");
-    assert_eq!(remoting.addresses(), core::slice::from_ref(&advertised_address));
-    remoting.shutdown().expect("remote lifecycle shutdown");
+  let remote = installer.remote().expect("installed remote handle");
+  remote.with_lock(|remote| {
+    remote.start().expect("remote lifecycle start");
+    assert_eq!(remote.addresses(), core::slice::from_ref(&advertised_address));
+    remote.shutdown().expect("remote lifecycle shutdown");
   });
 
   let expected_authority = advertised_address.to_string();

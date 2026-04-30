@@ -1,5 +1,7 @@
 //! Deadline-based failure detector.
 
+use crate::core::failure_detector::FailureDetector;
+
 /// Failure detector using an absolute timeout of missing heartbeats.
 #[derive(Debug, Clone)]
 pub struct DeadlineFailureDetector {
@@ -33,5 +35,19 @@ impl DeadlineFailureDetector {
   #[must_use]
   pub const fn is_monitoring(&self) -> bool {
     self.last_heartbeat_ms.is_some()
+  }
+}
+
+impl FailureDetector for DeadlineFailureDetector {
+  fn is_available(&self, now_ms: u64) -> bool {
+    DeadlineFailureDetector::is_available(self, now_ms)
+  }
+
+  fn is_monitoring(&self) -> bool {
+    DeadlineFailureDetector::is_monitoring(self)
+  }
+
+  fn heartbeat(&mut self, now_ms: u64) {
+    DeadlineFailureDetector::heartbeat(self, now_ms);
   }
 }

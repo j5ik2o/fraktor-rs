@@ -7,7 +7,7 @@ use crate::core::kernel::{
     actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender},
     messaging::AnyMessage,
   },
-  util::futures::{ActorFuture, ActorFutureShared},
+  support::futures::{ActorFuture, ActorFutureShared},
 };
 
 #[test]

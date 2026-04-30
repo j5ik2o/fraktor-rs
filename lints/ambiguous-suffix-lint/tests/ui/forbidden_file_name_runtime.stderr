@@ -1,0 +1,13 @@
+warning: `forbidden_file_name_runtime` (file) は曖昧なサフィックス `Runtime` を含んでいます
+  --> $DIR/forbidden_file_name_runtime.rs:5:1
+   |
+LL | pub struct CleanRegistry;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `Runtime` は責務の境界が不明確になりやすいサフィックスです。代替案: Executor, Scheduler, EventLoop, Environment
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `forbidden_file_name_runtime` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: Executor, Scheduler, EventLoop, Environment） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+   = note: `#[warn(ambiguous_suffix)]` on by default
+
+warning: 1 warning emitted
+

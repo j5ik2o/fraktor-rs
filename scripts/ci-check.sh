@@ -80,7 +80,8 @@ usage() {
   examples               : ワークスペース配下の examples をビルドします
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   unit-test              : ワークスペースの単体テスト (--lib --bins) を実行します
-  integration-test       : ワークスペースの統合テスト (--tests --examples) を実行します
+  integration-test       : ワークスペースの統合テスト (--tests --examples) と cross-crate E2E を実行します
+  e2e-test               : cross-crate E2E 専用 crate を実行します
   test                   : unit-test + integration-test を順に実行します
   check-unit-sleep       : unit テストパスに実時間 sleep が残っていないことを検査します
   perf                   : Scheduler ストレスと actor ベンチマークを実行します
@@ -1139,13 +1140,23 @@ run_unit_tests() {
 }
 
 run_integration_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --tests --examples --features test-support"
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --exclude fraktor-e2e-tests --verbose --tests --examples --features test-support"
   local timeout_override="${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC:-${CI_CHECK_GUARD_TIMEOUT_SEC}}"
   if [[ "${timeout_override}" == "0" ]]; then
-    run_cargo test --workspace --verbose --tests --examples --features test-support || return 1
+    run_cargo test --workspace --exclude fraktor-e2e-tests --verbose --tests --examples --features test-support || return 1
   else
-    run_cargo_with_timeout_override "${timeout_override}" test --workspace --verbose --tests --examples --features test-support \
-      || return 1
+    run_cargo_with_timeout_override "${timeout_override}" test --workspace --exclude fraktor-e2e-tests --verbose --tests --examples --features test-support || return 1
+  fi
+  run_e2e_tests || return 1
+}
+
+run_e2e_tests() {
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-e2e-tests --verbose --tests --features test-support"
+  local timeout_override="${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC:-${CI_CHECK_GUARD_TIMEOUT_SEC}}"
+  if [[ "${timeout_override}" == "0" ]]; then
+    run_cargo test -p fraktor-e2e-tests --verbose --tests --features test-support || return 1
+  else
+    run_cargo_with_timeout_override "${timeout_override}" test -p fraktor-e2e-tests --verbose --tests --features test-support || return 1
   fi
 }
 
@@ -1479,6 +1490,10 @@ main() {
         ;;
       integration-test|integration-tests)
         run_integration_tests || return 1
+        shift
+        ;;
+      e2e-test|e2e-tests)
+        run_e2e_tests || return 1
         shift
         ;;
       check-unit-sleep)

@@ -38,6 +38,7 @@ members = [
     "modules/stream-core",
     "modules/stream-adaptor-std",
     "showcases/std",
+    "tests/e2e",
 ]
 
 [workspace.package]

@@ -30,4 +30,12 @@ pub enum WatcherEffect {
     /// Quarantined remote node.
     node: Address,
   },
+  /// Remote actor-system incarnation changed or was observed for the first
+  /// time; re-issue watch messages for the node's targets.
+  RewatchRemoteTargets {
+    /// Remote node whose incarnation UID changed.
+    node:    Address,
+    /// Remote actor targets hosted by the node.
+    targets: Vec<ActorPath>,
+  },
 }

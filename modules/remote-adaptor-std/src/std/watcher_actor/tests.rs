@@ -75,6 +75,35 @@ async fn watcher_actor_handles_heartbeat_received_then_tick_without_terminating(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn watcher_actor_forwards_heartbeat_response_rewatch_effect() {
+  let (effect_tx, mut effect_rx) = mpsc::unbounded_channel::<WatcherEffect>();
+  let actor = WatcherActor::with_default_detectors(effect_tx);
+  let (handle, task) = actor.spawn();
+
+  handle.submit(WatcherCommand::Watch { target: remote_target(), watcher: local_watcher() }).unwrap();
+  drop(tokio::time::timeout(Duration::from_secs(1), effect_rx.recv()).await);
+
+  let node = Address::new("remote-sys", "10.0.0.1", 2552);
+  handle.submit(WatcherCommand::HeartbeatResponseReceived { from: node.clone(), uid: 42, now: 100 }).unwrap();
+
+  let effect = tokio::time::timeout(Duration::from_secs(1), effect_rx.recv())
+    .await
+    .unwrap()
+    .expect("heartbeat response with initial UID should produce a rewatch effect");
+  let expected_targets = vec![remote_target()];
+  assert!(matches!(
+    effect,
+    WatcherEffect::RewatchRemoteTargets {
+      node: ref effect_node,
+      ref targets,
+    } if effect_node == &node && targets == &expected_targets
+  ));
+
+  drop(handle);
+  task.await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn heartbeat_loop_delivers_ticks_at_configured_interval() {
   let (effect_tx, mut effect_rx) = mpsc::unbounded_channel::<WatcherEffect>();
   let actor = WatcherActor::with_default_detectors(effect_tx);

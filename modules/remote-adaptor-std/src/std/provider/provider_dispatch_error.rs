@@ -1,5 +1,6 @@
 //! Error type returned by [`crate::std::provider::StdRemoteActorRefProvider`].
 
+use alloc::format;
 use core::fmt::{Display, Formatter, Result as FmtResult};
 use std::error::Error;
 
@@ -16,9 +17,8 @@ use fraktor_remote_core_rs::core::provider::ProviderError;
 ///   `RemoteActorRefProvider`.
 /// - **`LocalProvider`**: an `ActorError` bubbled up from actor-core's local provider when the path
 ///   was dispatched to it.
-/// - **`RemoteSenderBuildFailed`**: the adapter could not construct a `RemoteActorRefSender` for
-///   the resolved `RemoteActorRef` (typically because the underlying transport is missing or has
-///   shut down).
+/// - **`RemotePidExhausted`**: the adapter exhausted its synthetic pid space for remote `ActorRef`
+///   values.
 #[derive(Debug)]
 pub enum StdRemoteActorRefProviderError {
   /// A local actor path was supplied to a remote-only entry point.
@@ -27,9 +27,24 @@ pub enum StdRemoteActorRefProviderError {
   CoreProvider(ProviderError),
   /// `actor-core`'s `LocalActorRefProvider` returned an error.
   LocalProvider(ActorError),
-  /// The adapter could not build a sender for the resolved
-  /// `RemoteActorRef`.
-  RemoteSenderBuildFailed,
+  /// The adapter exhausted its synthetic pid space for remote actor refs.
+  RemotePidExhausted,
+}
+
+impl StdRemoteActorRefProviderError {
+  pub(crate) fn into_actor_error(self) -> ActorError {
+    match self {
+      | StdRemoteActorRefProviderError::LocalProvider(error) => error,
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::InvalidPath)
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::MissingAuthority)
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::UnsupportedScheme) => {
+        ActorError::escalate(format!("{self}"))
+      },
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::NotRemote)
+      | StdRemoteActorRefProviderError::NotRemote
+      | StdRemoteActorRefProviderError::RemotePidExhausted => ActorError::fatal(format!("{self}")),
+    }
+  }
 }
 
 impl Display for StdRemoteActorRefProviderError {
@@ -44,8 +59,8 @@ impl Display for StdRemoteActorRefProviderError {
       | StdRemoteActorRefProviderError::LocalProvider(err) => {
         write!(f, "std remote provider: local provider error: {err:?}")
       },
-      | StdRemoteActorRefProviderError::RemoteSenderBuildFailed => {
-        f.write_str("std remote provider: failed to build remote sender")
+      | StdRemoteActorRefProviderError::RemotePidExhausted => {
+        f.write_str("std remote provider: remote actor ref pid space exhausted")
       },
     }
   }

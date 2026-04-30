@@ -54,8 +54,10 @@ Cargo.lock
 /.claude/settings.local.json
 /.claude/scheduled_tasks.lock
 /.claude/dylint-hook.lock
+/.claude/rust-check-hook.lock
 
 /.codex*/dylint-hook.lock
+/.codex*/rust-check-hook.lock
 /.codex*/cache/
 /.codex*/log/
 /.codex*/auth.json

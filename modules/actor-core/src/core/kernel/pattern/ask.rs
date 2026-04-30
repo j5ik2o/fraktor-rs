@@ -10,8 +10,8 @@ use crate::core::kernel::{
     messaging::{AnyMessage, AskError, AskResponse, AskResult},
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   },
+  support::futures::ActorFutureShared,
   system::state::SystemStateShared,
-  util::futures::ActorFutureShared,
 };
 
 /// Sends a request and arranges timeout completion on the returned ask future.

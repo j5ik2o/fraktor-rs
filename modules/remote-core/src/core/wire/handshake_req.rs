@@ -1,44 +1,30 @@
 //! Handshake request body.
 
-use alloc::string::String;
+use crate::core::address::{Address, UniqueAddress};
 
-/// Body of a handshake request carrying the origin node identity.
+/// Body of a handshake request carrying the origin node identity and destination address.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HandshakeReq {
-  origin_system: String,
-  origin_host:   String,
-  origin_port:   u16,
-  origin_uid:    u64,
+  from: UniqueAddress,
+  to:   Address,
 }
 
 impl HandshakeReq {
   /// Creates a new [`HandshakeReq`].
   #[must_use]
-  pub const fn new(origin_system: String, origin_host: String, origin_port: u16, origin_uid: u64) -> Self {
-    Self { origin_system, origin_host, origin_port, origin_uid }
+  pub const fn new(from: UniqueAddress, to: Address) -> Self {
+    Self { from, to }
   }
 
-  /// Returns the origin actor system name.
+  /// Returns the unique address of the sender.
   #[must_use]
-  pub fn origin_system(&self) -> &str {
-    &self.origin_system
+  pub const fn from(&self) -> &UniqueAddress {
+    &self.from
   }
 
-  /// Returns the origin host name.
+  /// Returns the expected local destination address.
   #[must_use]
-  pub fn origin_host(&self) -> &str {
-    &self.origin_host
-  }
-
-  /// Returns the origin port.
-  #[must_use]
-  pub const fn origin_port(&self) -> u16 {
-    self.origin_port
-  }
-
-  /// Returns the origin unique id.
-  #[must_use]
-  pub const fn origin_uid(&self) -> u64 {
-    self.origin_uid
+  pub const fn to(&self) -> &Address {
+    &self.to
   }
 }

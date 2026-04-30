@@ -30,8 +30,8 @@ use crate::core::{
         EventStreamSubscription,
       },
     },
+    support::futures::ActorFutureShared,
     system::{ActorSystem, TerminationSignal, state::SystemStateShared},
-    util::futures::ActorFutureShared,
   },
   typed::{
     TypedActorRef, TypedActorSystemConfig, TypedActorSystemLog,

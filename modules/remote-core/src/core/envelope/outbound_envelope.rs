@@ -13,7 +13,12 @@ use crate::core::{address::RemoteNodeId, envelope::priority::OutboundPriority};
 /// and the envelope cannot be mutated after construction. The higher-level
 /// `Association` state machine moves outbound envelopes through its `SendQueue`
 /// without ever re-writing them.
-#[derive(Debug)]
+///
+/// `Clone` is provided so the outbound runtime can buffer a copy before handing
+/// the envelope off to a fallible `RemoteTransport::send`; on transient send
+/// failure the buffered copy is re-enqueued through `Association::enqueue` so
+/// no message is silently lost across reconnect.
+#[derive(Debug, Clone)]
 pub struct OutboundEnvelope {
   recipient:      ActorPath,
   sender:         Option<ActorPath>,

@@ -1,6 +1,6 @@
 //! Dual-priority queue owned by an [`crate::core::association::Association`].
 
-use alloc::{collections::VecDeque, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::mem;
 
 use crate::core::{
@@ -9,7 +9,7 @@ use crate::core::{
   transport::BackpressureSignal,
 };
 
-/// Default capacity hint for each priority lane.
+/// Default bounded capacity for each priority lane.
 const DEFAULT_CAPACITY: usize = 16;
 
 /// Dual-priority queue used by [`crate::core::association::Association`] to buffer
@@ -21,35 +21,59 @@ const DEFAULT_CAPACITY: usize = 16;
 /// starving system signalling.
 #[derive(Debug)]
 pub struct SendQueue {
-  system:      VecDeque<OutboundEnvelope>,
-  user:        VecDeque<OutboundEnvelope>,
-  user_paused: bool,
+  system:       VecDeque<OutboundEnvelope>,
+  user:         VecDeque<OutboundEnvelope>,
+  system_limit: usize,
+  user_limit:   usize,
+  user_paused:  bool,
 }
 
 impl SendQueue {
-  /// Creates a new, empty [`SendQueue`] using default capacity hints.
+  /// Creates a new, empty [`SendQueue`] using default bounded lane limits.
   #[must_use]
   pub fn new() -> Self {
-    Self::with_capacity(DEFAULT_CAPACITY, DEFAULT_CAPACITY)
+    Self::with_limits(DEFAULT_CAPACITY, DEFAULT_CAPACITY)
   }
 
-  /// Creates a new, empty [`SendQueue`] with pre-reserved capacity for each
-  /// priority lane. The capacities are **hints** — the queue is unbounded in
-  /// Phase A and will grow as needed.
+  /// Creates a new, empty [`SendQueue`] with bounded limits for each priority lane.
+  ///
+  /// This does not pre-allocate lane storage; limits and initial allocation are
+  /// intentionally separate so per-association construction stays cheap.
+  ///
+  /// # Panics
+  ///
+  /// Panics when either limit is zero.
+  #[must_use]
+  pub fn with_limits(system_limit: usize, user_limit: usize) -> Self {
+    assert!(system_limit > 0, "system queue capacity must be greater than zero");
+    assert!(user_limit > 0, "user queue capacity must be greater than zero");
+    Self { system: VecDeque::new(), user: VecDeque::new(), system_limit, user_limit, user_paused: false }
+  }
+
+  /// Creates a new, empty [`SendQueue`] with bounded capacity pre-allocated for each priority lane.
+  ///
+  /// # Panics
+  ///
+  /// Panics when either capacity is zero.
   #[must_use]
   pub fn with_capacity(system: usize, user: usize) -> Self {
+    assert!(system > 0, "system queue capacity must be greater than zero");
+    assert!(user > 0, "user queue capacity must be greater than zero");
     Self {
-      system:      VecDeque::with_capacity(system),
-      user:        VecDeque::with_capacity(user),
-      user_paused: false,
+      system:       VecDeque::with_capacity(system),
+      user:         VecDeque::with_capacity(user),
+      system_limit: system,
+      user_limit:   user,
+      user_paused:  false,
     }
   }
 
   /// Enqueues `envelope` into the lane that matches its priority.
   pub fn offer(&mut self, envelope: OutboundEnvelope) -> OfferOutcome {
     match envelope.priority() {
-      | OutboundPriority::System => self.system.push_back(envelope),
-      | OutboundPriority::User => self.user.push_back(envelope),
+      | OutboundPriority::System if self.system.len() < self.system_limit => self.system.push_back(envelope),
+      | OutboundPriority::User if self.user.len() < self.user_limit => self.user.push_back(envelope),
+      | _ => return OfferOutcome::QueueFull { envelope: Box::new(envelope) },
     }
     OfferOutcome::Accepted
   }

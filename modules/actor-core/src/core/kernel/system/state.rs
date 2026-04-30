@@ -18,8 +18,6 @@ use crate::core::kernel::actor::actor_ref_provider::{
 };
 
 mod authority_state;
-mod booting_state;
-mod running_state;
 /// Shared, mutable state owned by the actor system.
 pub mod system_state;
 mod system_state_shared;
