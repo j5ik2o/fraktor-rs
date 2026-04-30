@@ -3216,9 +3216,7 @@ where
   let tail_outlet = Outlet::<Out>::from_id(tail_outlet_id);
   let sink = Sink::collect();
   let (sink_graph, completion) = sink.into_parts();
-  let Some(sink_inlet_id) = sink_graph.head_inlet() else {
-    return Err(StreamError::InvalidConnection);
-  };
+  let sink_inlet_id = sink_graph.head_inlet().ok_or(StreamError::InvalidConnection)?;
   graph.append(sink_graph);
   let sink_inlet = Inlet::<Out>::from_id(sink_inlet_id);
 

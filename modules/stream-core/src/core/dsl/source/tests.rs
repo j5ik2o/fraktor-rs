@@ -20,7 +20,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
   CycleSourceLogic, IterateSourceLogic, LazySourceLogic, QueueSourceLogic, QueueWithOverflowSourceLogic,
-  RepeatSourceLogic, UnboundedQueueSourceLogic,
+  RepeatSourceLogic, StreamGraph, UnboundedQueueSourceLogic,
 };
 use crate::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, QueueOfferResult, RestartConfig, SharedKillSwitch, SourceLogic,
@@ -233,6 +233,24 @@ impl<T: Unpin> Future for YieldThenOutputFuture<T> {
     } else {
       Poll::Ready(this.value.take().expect("future value"))
     }
+  }
+}
+
+struct NeverReadyFuture<T> {
+  _pd: PhantomData<fn() -> T>,
+}
+
+impl<T> NeverReadyFuture<T> {
+  const fn new() -> Self {
+    Self { _pd: PhantomData }
+  }
+}
+
+impl<T> Future for NeverReadyFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    Poll::Pending
   }
 }
 
@@ -817,6 +835,42 @@ fn source_lazy_source_with_mapped_source_emits_transformed() {
     .run_with_collect_sink()
     .expect("run_with_collect_sink");
   assert_eq!(values, vec![10_u32, 20, 30]);
+}
+
+#[test]
+fn source_lazy_source_collects_all_values_from_nested_broadcast() {
+  let values = Source::lazy_source(|| Source::single(7_u32).broadcast(2).expect("broadcast"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
+  assert_eq!(values, vec![7_u32, 7_u32]);
+}
+
+#[test]
+fn source_lazy_source_retries_single_island_until_nested_future_is_ready() {
+  let values = Source::lazy_source(|| Source::future(YieldThenOutputFuture::new(12_u32)))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
+  assert_eq!(values, vec![12_u32]);
+}
+
+#[test]
+fn source_lazy_source_returns_would_block_for_never_ready_single_island_future() {
+  let result = Source::lazy_source(|| Source::future(NeverReadyFuture::<u32>::new())).run_with_collect_sink();
+  assert_eq!(result, Err(StreamError::WouldBlock));
+}
+
+#[test]
+fn source_lazy_source_drains_multi_island_nested_source_until_ready() {
+  let values = Source::lazy_source(|| Source::future(YieldThenOutputFuture::new(21_u32)).r#async())
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
+  assert_eq!(values, vec![21_u32]);
+}
+
+#[test]
+fn source_lazy_source_returns_would_block_for_never_ready_multi_island_future() {
+  let result = Source::lazy_source(|| Source::future(NeverReadyFuture::<u32>::new()).r#async()).run_with_collect_sink();
+  assert_eq!(result, Err(StreamError::WouldBlock));
 }
 
 #[test]
@@ -2344,6 +2398,14 @@ fn source_lazy_source_persists_nested_source_failure() {
   // Then: エラー状態が永続化されリスタートも失敗する
   assert!(matches!(restart, Err(StreamError::Failed)));
 }
+
+#[test]
+fn drain_source_for_lazy_source_rejects_graph_without_tail_outlet() {
+  let source = Source::<u32, StreamNotUsed>::from_graph(StreamGraph::new(), StreamNotUsed::new());
+  let result = super::drain_source_for_lazy_source(source);
+  assert_eq!(result, Err(StreamError::InvalidConnection));
+}
+
 #[test]
 fn source_distinct_removes_duplicate_elements() {
   let values =

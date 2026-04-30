@@ -137,12 +137,13 @@ where
 }
 
 #[test]
-fn broadcast_with_single_fan_out_keeps_element() {
-  let values = Source::single(7_u32)
-    .via(Flow::new().broadcast(1).expect("broadcast"))
-    .run_with_collect_sink()
-    .expect("run_with_collect_sink");
-  assert_eq!(values, vec![7_u32]);
+fn broadcast_duplicates_each_element() {
+  let mut bridge = SecondarySourceBridge::new(Source::single(7_u32).via(Flow::new().broadcast(2).expect("broadcast")))
+    .expect("bridge");
+
+  assert_eq!(bridge.poll_next().expect("poll_next first"), Some(7_u32));
+  assert_eq!(bridge.poll_next().expect("poll_next second"), Some(7_u32));
+  assert_eq!(bridge.poll_next().expect("poll_next third"), None);
 }
 
 #[test]
