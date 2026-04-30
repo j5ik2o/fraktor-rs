@@ -108,5 +108,113 @@ name = "persistent_actor"
 path = "persistent_actor/main.rs"
 required-features = ["advanced"]
 
+# --- Strangler fig examples: Pekko classic/kernel ---
+
+[[example]]
+name = "kernel_first_example"
+path = "kernel/first-example/main.rs"
+
+[[example]]
+name = "kernel_supervision"
+path = "kernel/supervision/main.rs"
+
+[[example]]
+name = "kernel_fault_tolerance"
+path = "kernel/fault-tolerance/main.rs"
+
+[[example]]
+name = "kernel_dispatchers"
+path = "kernel/dispatchers/main.rs"
+
+[[example]]
+name = "kernel_mailboxes"
+path = "kernel/mailboxes/main.rs"
+
+[[example]]
+name = "kernel_routing"
+path = "kernel/routing/main.rs"
+
+[[example]]
+name = "kernel_fsm"
+path = "kernel/fsm/main.rs"
+
+[[example]]
+name = "kernel_persistence"
+path = "kernel/persistence/main.rs"
+required-features = ["advanced"]
+
+[[example]]
+name = "kernel_persistence_fsm"
+path = "kernel/persistence-fsm/main.rs"
+required-features = ["advanced"]
+
+# --- Strangler fig examples: Pekko typed ---
+
+[[example]]
+name = "typed_first_example"
+path = "typed/first-example/main.rs"
+
+[[example]]
+name = "typed_actor_lifecycle"
+path = "typed/actor-lifecycle/main.rs"
+
+[[example]]
+name = "typed_interaction_patterns"
+path = "typed/interaction-patterns/main.rs"
+
+[[example]]
+name = "typed_fault_tolerance"
+path = "typed/fault-tolerance/main.rs"
+
+[[example]]
+name = "typed_actor_discovery"
+path = "typed/actor-discovery/main.rs"
+
+[[example]]
+name = "typed_routers"
+path = "typed/routers/main.rs"
+
+[[example]]
+name = "typed_stash"
+path = "typed/stash/main.rs"
+
+[[example]]
+name = "typed_fsm"
+path = "typed/fsm/main.rs"
+
+[[example]]
+name = "typed_coordinated_shutdown"
+path = "typed/coordinated-shutdown/main.rs"
+
+[[example]]
+name = "typed_dispatchers"
+path = "typed/dispatchers/main.rs"
+
+[[example]]
+name = "typed_mailboxes"
+path = "typed/mailboxes/main.rs"
+
+# --- Strangler fig examples: Pekko streams ---
+
+[[example]]
+name = "stream_first_example"
+path = "stream/first-example/main.rs"
+
+[[example]]
+name = "stream_basics"
+path = "stream/basics/main.rs"
+
+[[example]]
+name = "stream_graphs"
+path = "stream/graphs/main.rs"
+
+[[example]]
+name = "stream_composition"
+path = "stream/composition/main.rs"
+
+[[example]]
+name = "stream_rate"
+path = "stream/rate/main.rs"
+
 [lints]
 workspace = true
