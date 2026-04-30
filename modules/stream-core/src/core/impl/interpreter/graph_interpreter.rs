@@ -158,11 +158,10 @@ impl GraphInterpreter {
   }
 
   pub(in crate::core) fn request_shutdown(&mut self) -> Result<(), StreamError> {
-    if self.state.is_terminal() || self.all_sources_done() {
+    if self.state.is_terminal() {
       return Ok(());
     }
-    self.cancel_source_if_needed()?;
-    self.set_all_sources_done()?;
+    self.shutdown_sources_if_needed()?;
     Ok(())
   }
 
@@ -191,7 +190,7 @@ impl GraphInterpreter {
     self.tick_count = self.tick_count.saturating_add(1);
 
     if let Err(error) = self.tick_restart_windows() {
-      self.fail(&error);
+      self.handle_drive_error(&error);
       return DriveOutcome::Progressed;
     }
 
@@ -201,7 +200,7 @@ impl GraphInterpreter {
       | Ok(true) => progressed = true,
       | Ok(false) => {},
       | Err(error) => {
-        self.fail(&error);
+        self.handle_drive_error(&error);
         return DriveOutcome::Progressed;
       },
     }
@@ -213,7 +212,7 @@ impl GraphInterpreter {
           progressed = true;
         },
         | Err(error) => {
-          self.fail(&error);
+          self.handle_drive_error(&error);
           return DriveOutcome::Progressed;
         },
       }
@@ -238,7 +237,7 @@ impl GraphInterpreter {
           }
         },
         | Err(error) => {
-          self.fail(&error);
+          self.handle_drive_error(&error);
           return DriveOutcome::Progressed;
         },
       }
@@ -248,7 +247,7 @@ impl GraphInterpreter {
           | Ok(true) => progressed = true,
           | Ok(false) => break,
           | Err(error) => {
-            self.fail(&error);
+            self.handle_drive_error(&error);
             return DriveOutcome::Progressed;
           },
         }
@@ -273,7 +272,7 @@ impl GraphInterpreter {
       | Ok(true) => progressed = true,
       | Ok(false) => {},
       | Err(error) => {
-        self.fail(&error);
+        self.handle_drive_error(&error);
         return DriveOutcome::Progressed;
       },
     }
@@ -290,7 +289,7 @@ impl GraphInterpreter {
           | Ok(true) => progressed = true,
           | Ok(false) => break,
           | Err(error) => {
-            self.fail(&error);
+            self.handle_drive_error(&error);
             return DriveOutcome::Progressed;
           },
         }
@@ -308,7 +307,7 @@ impl GraphInterpreter {
             }
           },
           | Err(error) => {
-            self.fail(&error);
+            self.handle_drive_error(&error);
             return DriveOutcome::Progressed;
           },
         }
@@ -406,6 +405,31 @@ impl GraphInterpreter {
       };
       source.logic.on_cancel()?;
       self.source_canceled[source_position] = true;
+    }
+    Ok(())
+  }
+
+  fn shutdown_sources_if_needed(&mut self) -> Result<(), StreamError> {
+    let mut source_done_changed = false;
+    for source_position in 0..self.source_indices.len() {
+      if self.source_done[source_position] || self.source_canceled[source_position] {
+        continue;
+      }
+      let source_index = self.source_indices[source_position];
+      let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+        return Err(StreamError::InvalidConnection);
+      };
+      if source.logic.should_drain_on_shutdown() {
+        continue;
+      }
+      source.logic.on_shutdown()?;
+      self.source_done[source_position] = true;
+      self.source_canceled[source_position] = true;
+      self.close_outgoing_edges_for_stage(source_index);
+      source_done_changed = true;
+    }
+    if source_done_changed {
+      self.notify_source_done_to_flows()?;
     }
     Ok(())
   }
@@ -948,8 +972,9 @@ impl GraphInterpreter {
       };
       sink.logic.on_complete()?;
     }
+    let incoming_edges = self.incoming_edge_indices_for_stage(sink_index);
     self.close_and_clear_incoming_edges_for_stage(sink_index)?;
-    self.cancel_upstream_stage(sink_index)?;
+    self.cancel_upstream_edges(incoming_edges)?;
     self.sink_done[sink_position] = true;
     if self.all_sinks_done() && !self.has_flow_requesting_upstream_drain() {
       self.state = StreamState::Completed;
@@ -968,6 +993,16 @@ impl GraphInterpreter {
         sink.logic.on_error(error.clone());
       }
     }
+  }
+
+  fn handle_drive_error(&mut self, error: &StreamError) {
+    if matches!(error, StreamError::StreamDetached) {
+      if let Err(cancel_error) = self.cancel() {
+        self.fail(&cancel_error);
+      }
+      return;
+    }
+    self.fail(error);
   }
 
   fn flow_has_pending_output(&self, stage_index: usize) -> bool {
@@ -1097,14 +1132,19 @@ impl GraphInterpreter {
   }
 
   fn shutdown_flow_stage(&mut self, stage_index: usize) -> Result<(), StreamError> {
+    let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
     self.close_and_clear_incoming_edges_for_stage(stage_index)?;
-    self.cancel_upstream_stage(stage_index)?;
+    self.cancel_upstream_edges(incoming_edges)?;
     self.mark_flow_source_done(stage_index)?;
     Ok(())
   }
 
   fn cancel_upstream_stage(&mut self, stage_index: usize) -> Result<(), StreamError> {
     let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
+    self.cancel_upstream_edges(incoming_edges)
+  }
+
+  fn cancel_upstream_edges(&mut self, incoming_edges: Vec<usize>) -> Result<(), StreamError> {
     for edge_index in incoming_edges {
       let upstream_port = self.connections.edge_from(edge_index);
       if let Some(upstream_stage_index) = self.stage_index_for_outlet(upstream_port)

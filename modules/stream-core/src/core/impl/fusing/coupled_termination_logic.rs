@@ -2,7 +2,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
-use crate::core::{DownstreamCancelAction, KillSwitchState, KillSwitchStateHandle};
+use crate::core::{DownstreamCancelAction, KillSwitchStateHandle, KillSwitchStatus};
 
 pub(in crate::core) struct CoupledTerminationLogic<In> {
   pub(in crate::core) state:              KillSwitchStateHandle,
@@ -15,20 +15,28 @@ where
   In: Send + Sync + 'static,
 {
   fn observe_state(&mut self) -> Result<(), StreamError> {
-    match self.state.lock().clone() {
-      | KillSwitchState::Running => Ok(()),
-      | KillSwitchState::Shutdown => {
+    match self.state.lock().status().clone() {
+      | KillSwitchStatus::Running => Ok(()),
+      | KillSwitchStatus::Shutdown => {
         self.shutdown_requested = true;
         Ok(())
       },
-      | KillSwitchState::Aborted(error) => Err(error),
+      | KillSwitchStatus::Aborted(error) => Err(error),
     }
   }
 
   fn request_coupled_shutdown(&mut self) {
-    let mut state = self.state.lock();
-    if matches!(&*state, KillSwitchState::Running) {
-      *state = KillSwitchState::Shutdown;
+    let command_targets = {
+      let mut state = self.state.lock();
+      state.request_shutdown()
+    };
+    if let Some(command_targets) = command_targets {
+      for target in command_targets {
+        if target.shutdown().is_err() {
+          // Actor command delivery is best-effort because the FlowLogic contract
+          // has no error channel for source-done initiated coupled shutdown.
+        }
+      }
     }
     self.shutdown_requested = true;
   }

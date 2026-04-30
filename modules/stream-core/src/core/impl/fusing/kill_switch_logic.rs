@@ -2,7 +2,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
-use crate::core::{KillSwitchState, KillSwitchStateHandle};
+use crate::core::{KillSwitchStateHandle, KillSwitchStatus};
 
 pub(in crate::core) struct KillSwitchLogic<In> {
   pub(in crate::core) state:              KillSwitchStateHandle,
@@ -15,13 +15,13 @@ where
   In: Send + Sync + 'static,
 {
   fn observe_state(&mut self) -> Result<(), StreamError> {
-    match self.state.lock().clone() {
-      | KillSwitchState::Running => Ok(()),
-      | KillSwitchState::Shutdown => {
+    match self.state.lock().status().clone() {
+      | KillSwitchStatus::Running => Ok(()),
+      | KillSwitchStatus::Shutdown => {
         self.shutdown_requested = true;
         Ok(())
       },
-      | KillSwitchState::Aborted(error) => Err(error),
+      | KillSwitchStatus::Aborted(error) => Err(error),
     }
   }
 }

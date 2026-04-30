@@ -28,6 +28,8 @@ pub(crate) enum BoundaryState {
   /// The upstream has failed. Remaining buffered elements should be
   /// drained before the downstream observes the error.
   Failed(StreamError),
+  /// The downstream island has cancelled demand across this boundary.
+  DownstreamCancelled,
 }
 
 /// Bounded FIFO buffer between two islands.
@@ -98,6 +100,12 @@ impl IslandBoundary {
       self.state = BoundaryState::Failed(error);
     }
   }
+
+  pub(crate) fn cancel_downstream(&mut self) {
+    if matches!(self.state, BoundaryState::Open) {
+      self.state = BoundaryState::DownstreamCancelled;
+    }
+  }
 }
 
 /// Shared, clone-able handle to an `IslandBoundary`.
@@ -145,6 +153,15 @@ impl IslandBoundaryShared {
 
   pub(crate) fn fail(&self, error: StreamError) {
     self.inner.lock().fail(error);
+  }
+
+  pub(crate) fn cancel_downstream(&self) {
+    self.inner.lock().cancel_downstream();
+  }
+
+  #[must_use]
+  pub(crate) fn is_downstream_cancelled(&self) -> bool {
+    matches!(self.inner.lock().state, BoundaryState::DownstreamCancelled)
   }
 
   pub(crate) fn try_push_then_complete(&self, value: DynValue) -> Result<(), (DynValue, BoundaryState)> {

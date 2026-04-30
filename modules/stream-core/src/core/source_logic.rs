@@ -24,6 +24,22 @@ pub trait SourceLogic: Send {
     Ok(())
   }
 
+  /// Returns whether this source should keep pulling already accepted data
+  /// during graph-wide shutdown.
+  #[must_use]
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
+
+  /// Handles graph-wide shutdown.
+  ///
+  /// # Errors
+  ///
+  /// Returns a [`StreamError`] when shutdown cleanup fails.
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    self.on_cancel()
+  }
+
   /// Resets internal state after a restart decision.
   ///
   /// # Errors

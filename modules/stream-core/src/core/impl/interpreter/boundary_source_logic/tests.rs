@@ -3,7 +3,10 @@
 //! NOTE: These tests will not compile until the production implementation is in place.
 //! They define the expected behavioral contract for Gate 0, step C-2b.
 
-use super::{super::island_boundary::IslandBoundaryShared, BoundarySourceLogic};
+use super::{
+  super::island_boundary::{BoundaryState, IslandBoundaryShared},
+  BoundarySourceLogic,
+};
 use crate::core::{DynValue, SourceLogic, StreamError};
 
 // --- Basic pull ---
@@ -37,6 +40,21 @@ fn pull_from_empty_open_boundary_returns_would_block() {
   // Then: WouldBlock (interpreter skips this source for the current tick)
   assert!(result.is_err());
   assert_eq!(result.unwrap_err(), StreamError::WouldBlock);
+}
+
+#[test]
+fn on_cancel_marks_boundary_as_downstream_cancelled() {
+  // Given: an open boundary observed by the downstream island
+  let boundary = IslandBoundaryShared::new(16);
+  let mut logic = BoundarySourceLogic::new(boundary.clone());
+
+  // When: downstream cancellation reaches the boundary source
+  logic.on_cancel().expect("cancel");
+
+  // Then: downstream cancellation is distinguishable from upstream completion
+  let (value, state) = boundary.try_pull_with_state();
+  assert!(value.is_none());
+  assert_eq!(state, BoundaryState::DownstreamCancelled);
 }
 
 // --- FIFO ordering ---

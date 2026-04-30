@@ -1500,8 +1500,9 @@ where
 
   /// Marks this source with an async boundary attribute and a named dispatcher.
   ///
-  /// The island created by the async boundary will use the specified
-  /// dispatcher for its execution context.
+  /// The dispatcher is attached to the island downstream of this
+  /// boundary. During materialization, that downstream island actor is
+  /// spawned with the specified dispatcher as its execution context.
   #[must_use]
   pub fn async_with_dispatcher(mut self, dispatcher: impl Into<String>) -> Source<Out, Mat> {
     self.graph.mark_last_node_async();
@@ -2931,6 +2932,10 @@ impl SourceLogic for EmptySourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(None)
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
+  }
 }
 
 struct IteratorSourceLogic<I> {
@@ -2991,6 +2996,10 @@ where
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.values.next().map(|value| Box::new(value) as DynValue))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
+  }
 }
 
 impl SourceLogic for FailedSourceLogic {
@@ -3046,6 +3055,10 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.value.take().map(|value| Box::new(value) as DynValue))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
   }
 }
 

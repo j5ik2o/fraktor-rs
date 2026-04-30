@@ -5,6 +5,8 @@ use super::{SharedKillSwitch, StreamError, StreamPlan, UniqueKillSwitch};
 mod actor_materializer;
 mod actor_materializer_config;
 mod completion;
+mod downstream_cancellation_control_plane;
+mod downstream_cancellation_route;
 mod drive_outcome;
 mod keep_both;
 mod keep_left;

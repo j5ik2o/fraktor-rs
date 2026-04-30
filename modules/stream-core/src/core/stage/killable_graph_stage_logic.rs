@@ -4,7 +4,7 @@ mod tests;
 use core::marker::PhantomData;
 
 use super::{GraphStageLogic, StageContext};
-use crate::core::{KillSwitchState, KillSwitchStateHandle, StreamError, UniqueKillSwitch};
+use crate::core::{KillSwitchStateHandle, KillSwitchStatus, StreamError, UniqueKillSwitch};
 
 /// Stage logic mixin that intercepts callbacks based on a kill-switch state.
 ///
@@ -56,18 +56,14 @@ where
   /// (`complete` or `fail(error)`) and returns `false`, so the calling
   /// callback must short-circuit and skip the inner delegation.
   fn check_state(&mut self, ctx: &mut dyn StageContext<In, Out>) -> bool {
-    // Clone the current state to release the lock before invoking the
-    // context methods. `KillSwitchState` is cheap to clone (unit / unit /
-    // `StreamError`) and keeping the lock across `ctx.complete` /
-    // `ctx.fail` would be a TOCTOU / reentrancy hazard.
-    let state = self.state.lock().clone();
+    let state = self.state.lock().status().clone();
     match state {
-      | KillSwitchState::Running => true,
-      | KillSwitchState::Shutdown => {
+      | KillSwitchStatus::Running => true,
+      | KillSwitchStatus::Shutdown => {
         ctx.complete();
         false
       },
-      | KillSwitchState::Aborted(error) => {
+      | KillSwitchStatus::Aborted(error) => {
         ctx.fail(error);
         false
       },

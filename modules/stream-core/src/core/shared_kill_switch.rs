@@ -4,7 +4,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
   KillSwitch, StreamError,
-  unique_kill_switch::{KillSwitchState, KillSwitchStateHandle},
+  unique_kill_switch::{KillSwitchState, KillSwitchStateHandle, KillSwitchStatus},
 };
 use crate::core::{
   attributes::Attributes,
@@ -26,13 +26,13 @@ impl SharedKillSwitch {
   /// Creates a new shared kill switch in running state.
   #[must_use]
   pub fn new() -> Self {
-    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)), name: None }
+    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::running())), name: None }
   }
 
   /// Creates a new shared kill switch with a debug name.
   #[must_use]
   pub fn new_named(name: impl Into<String>) -> Self {
-    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)), name: Some(name.into()) }
+    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::running())), name: Some(name.into()) }
   }
 
   pub(in crate::core) const fn from_state(state: KillSwitchStateHandle) -> Self {
@@ -83,41 +83,54 @@ impl SharedKillSwitch {
 
   /// Requests graceful shutdown.
   pub fn shutdown(&self) {
-    let mut state = self.state.lock();
-    if !matches!(&*state, KillSwitchState::Running) {
-      return;
+    let command_targets = {
+      let mut state = self.state.lock();
+      state.request_shutdown()
+    };
+    if let Some(command_targets) = command_targets {
+      for target in command_targets {
+        if target.shutdown().is_err() {
+          // Actor command delivery is best-effort because the public kill switch
+          // contract has no error channel; stream polling still observes the
+          // same kill switch state.
+        }
+      }
     }
-    *state = KillSwitchState::Shutdown;
   }
 
   /// Requests abort with an error.
   pub fn abort(&self, error: StreamError) {
-    let mut state = self.state.lock();
-    if !matches!(&*state, KillSwitchState::Running) {
-      return;
+    let abort = {
+      let mut state = self.state.lock();
+      state.request_abort(error)
+    };
+    if let Some((error, command_targets)) = abort {
+      for target in command_targets {
+        if target.abort(error.clone()).is_err() {
+          // Actor command delivery is best-effort because the public kill switch
+          // contract has no error channel; stream polling still observes the
+          // same kill switch state.
+        }
+      }
     }
-    *state = KillSwitchState::Aborted(error);
   }
 
   /// Returns true when the switch has been shut down.
   #[must_use]
   pub fn is_shutdown(&self) -> bool {
-    matches!(*self.state.lock(), KillSwitchState::Shutdown)
+    matches!(self.state.lock().status(), KillSwitchStatus::Shutdown)
   }
 
   /// Returns true when the switch has been aborted.
   #[must_use]
   pub fn is_aborted(&self) -> bool {
-    matches!(*self.state.lock(), KillSwitchState::Aborted(_))
+    matches!(self.state.lock().status(), KillSwitchStatus::Aborted(_))
   }
 
   /// Returns the abort error if the switch is aborted.
   #[must_use]
   pub fn abort_error(&self) -> Option<StreamError> {
-    match &*self.state.lock() {
-      | KillSwitchState::Aborted(error) => Some(error.clone()),
-      | _ => None,
-    }
+    self.state.lock().abort_error()
   }
 }
 

@@ -3,7 +3,10 @@
 //! NOTE: These tests will not compile until the production implementation is in place.
 //! They define the expected behavioral contract for Gate 0, step C-1.
 
+extern crate std;
+
 use core::any::Any;
+use std::{thread, vec::Vec};
 
 use super::{BoundaryState, IslandBoundary, IslandBoundaryShared};
 use crate::core::r#impl::StreamError;
@@ -290,4 +293,55 @@ fn shared_boundary_is_clone() {
   let value = *pulled.expect("pull").downcast::<u32>().expect("downcast");
   assert_eq!(value, 99_u32);
   assert_eq!(state, BoundaryState::Open);
+}
+
+#[test]
+fn shared_boundary_preserves_values_under_concurrent_push_pull() {
+  // Given: a shared boundary accessed by an upstream and downstream island
+  let shared = IslandBoundaryShared::new(8);
+  let producer_boundary = shared.clone();
+  let consumer_boundary = shared.clone();
+
+  // When: one side pushes while the other side pulls
+  let received = thread::scope(|scope| {
+    let producer = scope.spawn(move || {
+      for next in 0_u32..128 {
+        let mut value: Box<dyn Any + Send + 'static> = Box::new(next);
+        loop {
+          match producer_boundary.try_push_with_state(value) {
+            | Ok(()) => break,
+            | Err((rejected, BoundaryState::Open)) => {
+              value = rejected;
+              thread::yield_now();
+            },
+            | Err((_rejected, state)) => panic!("boundary should remain open while producing: {state:?}"),
+          }
+        }
+      }
+      producer_boundary.complete();
+    });
+
+    let consumer = scope.spawn(move || {
+      let mut received = Vec::new();
+      loop {
+        let (value, state) = consumer_boundary.try_pull_with_state();
+        match value {
+          | Some(value) => received.push(*value.downcast::<u32>().expect("u32")),
+          | None if state == BoundaryState::Completed => break received,
+          | None if state == BoundaryState::Open => thread::yield_now(),
+          | None => panic!("unexpected boundary state while consuming: {state:?}"),
+        }
+      }
+    });
+
+    producer.join().expect("producer thread");
+    consumer.join().expect("consumer thread")
+  });
+
+  // Then: every pushed value is observed once and the terminal state is consistent
+  assert_eq!(received.len(), 128);
+  for expected in 0_u32..128 {
+    assert_eq!(received[expected as usize], expected);
+  }
+  assert_eq!(shared.state(), BoundaryState::Completed);
 }

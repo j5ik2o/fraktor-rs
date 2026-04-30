@@ -6,7 +6,7 @@ use portable_atomic::{AtomicU64, Ordering};
 
 use super::StreamState;
 use crate::core::{
-  KillSwitchState, KillSwitchStateHandle, StreamError, StreamPlan,
+  KillSwitchState, KillSwitchStateHandle, KillSwitchStatus, StreamError, StreamPlan,
   r#impl::{fusing::StreamBufferConfig, interpreter::graph_interpreter::GraphInterpreter},
   materialization::DriveOutcome,
   snapshot::StreamSnapshot,
@@ -26,7 +26,7 @@ pub(crate) struct Stream {
 impl Stream {
   pub(crate) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
     let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
-    let kill_switch_state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
+    let kill_switch_state = Self::new_running_kill_switch_state();
     Self {
       id: STREAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
       interpreter: GraphInterpreter::new(plan, buffer_config),
@@ -35,14 +35,14 @@ impl Stream {
     }
   }
 
-  pub(crate) fn new_with_materializer_context(
+  pub(in crate::core) fn new_with_materializer_context(
     plan: StreamPlan,
     buffer_config: StreamBufferConfig,
+    kill_switch_state: KillSwitchStateHandle,
     actor_system: Option<&ActorSystem>,
     stream_ref_settings: &StreamRefSettings,
   ) -> Self {
     let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
-    let kill_switch_state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
     Self {
       id: STREAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
       interpreter: GraphInterpreter::new_with_materializer_context(
@@ -54,6 +54,10 @@ impl Stream {
       kill_switch_state,
       linked_kill_switch_states,
     }
+  }
+
+  pub(in crate::core) fn new_running_kill_switch_state() -> KillSwitchStateHandle {
+    ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()))
   }
 
   pub(crate) const fn id(&self) -> u64 {
@@ -76,7 +80,7 @@ impl Stream {
     }
 
     if self.shutdown_requested_from_kill_switches()
-      && let Err(error) = self.interpreter.request_shutdown()
+      && let Err(error) = self.shutdown()
     {
       self.interpreter.abort(&error);
       return DriveOutcome::Progressed;
@@ -85,10 +89,19 @@ impl Stream {
     self.interpreter.drive()
   }
 
+  pub(crate) fn shutdown(&mut self) -> Result<(), StreamError> {
+    self.interpreter.request_shutdown()
+  }
+
   pub(crate) fn cancel(&mut self) -> Result<(), StreamError> {
     self.interpreter.cancel()
   }
 
+  pub(crate) fn abort(&mut self, error: &StreamError) {
+    self.interpreter.abort(error);
+  }
+
+  #[cfg(any(test, feature = "test-support"))]
   pub(in crate::core) fn kill_switch_state(&self) -> KillSwitchStateHandle {
     self.kill_switch_state.clone()
   }
@@ -100,12 +113,12 @@ impl Stream {
   }
 
   fn abort_error_from_kill_switches(&self) -> Option<StreamError> {
-    if let KillSwitchState::Aborted(error) = self.kill_switch_state.lock().clone() {
+    if let KillSwitchStatus::Aborted(error) = self.kill_switch_state.lock().status().clone() {
       return Some(error);
     }
 
     for kill_switch_state in &self.linked_kill_switch_states {
-      if let KillSwitchState::Aborted(error) = kill_switch_state.lock().clone() {
+      if let KillSwitchStatus::Aborted(error) = kill_switch_state.lock().status().clone() {
         return Some(error);
       }
     }
@@ -114,13 +127,13 @@ impl Stream {
   }
 
   fn shutdown_requested_from_kill_switches(&self) -> bool {
-    if matches!(self.kill_switch_state.lock().clone(), KillSwitchState::Shutdown) {
+    if matches!(self.kill_switch_state.lock().status(), KillSwitchStatus::Shutdown) {
       return true;
     }
 
     self
       .linked_kill_switch_states
       .iter()
-      .any(|kill_switch_state| matches!(kill_switch_state.lock().clone(), KillSwitchState::Shutdown))
+      .any(|kill_switch_state| matches!(kill_switch_state.lock().status(), KillSwitchStatus::Shutdown))
   }
 }

@@ -18,7 +18,10 @@ use crate::core::{
   StreamError, SubstreamCancelStrategy, ThrottleMode,
   attributes::{Attributes, DispatcherAttribute},
   dsl::{Flow, FlowMonitorImpl, Sink, Source, TailSource, tests::RunWithCollectSink},
-  r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, fusing::StreamBufferConfig, materialization::Stream},
+  r#impl::{
+    DefaultOperatorCatalog, OperatorCatalog, OperatorKey, fusing::StreamBufferConfig, interpreter::IslandSplitter,
+    materialization::Stream,
+  },
   materialization::{
     Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, StreamCompletion, StreamDone, StreamNotUsed,
   },
@@ -4559,6 +4562,23 @@ fn flow_with_and_add_attributes_merge_names() {
     .add_attributes(Attributes::named("extra"))
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
+}
+
+#[test]
+fn flow_add_attributes_async_boundary_stays_graph_attribute_and_does_not_split_island() {
+  let flow = Flow::new().map(|value: u32| value).add_attributes(Attributes::async_boundary());
+  let (mut graph, _) = Source::single(1_u32).via(flow).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  assert!(graph.attributes().is_async());
+
+  let plan = graph.into_plan().expect("into_plan");
+  let stage_async_count = plan.stages.iter().filter(|stage| stage.attributes().is_async()).count();
+  let island_plan = IslandSplitter::split(plan);
+
+  assert_eq!(stage_async_count, 0);
+  assert_eq!(island_plan.islands().len(), 1);
+  assert!(island_plan.crossings().is_empty());
 }
 
 #[test]

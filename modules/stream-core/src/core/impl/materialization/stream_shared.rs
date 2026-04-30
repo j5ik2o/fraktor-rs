@@ -1,9 +1,7 @@
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{Stream, StreamState};
-use crate::core::{
-  SharedKillSwitch, StreamError, UniqueKillSwitch, materialization::DriveOutcome, snapshot::StreamSnapshot,
-};
+use crate::core::{StreamError, materialization::DriveOutcome, snapshot::StreamSnapshot};
 
 /// Shared access point for a materialized [`Stream`].
 pub(crate) struct StreamShared {
@@ -43,24 +41,24 @@ impl StreamShared {
     self.with_write(Stream::cancel)
   }
 
+  /// Requests graceful shutdown of the stream execution.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when shutdown cannot be requested.
+  pub(crate) fn shutdown(&self) -> Result<(), StreamError> {
+    self.with_write(Stream::shutdown)
+  }
+
+  /// Aborts the stream execution.
+  pub(crate) fn abort(&self, error: &StreamError) {
+    self.with_write(|stream| stream.abort(error));
+  }
+
   /// Drives the stream once.
   #[must_use]
   pub(crate) fn drive(&self) -> DriveOutcome {
     self.with_write(Stream::drive)
-  }
-
-  /// Returns a unique kill switch bound to this stream.
-  #[must_use]
-  pub(crate) fn unique_kill_switch(&self) -> UniqueKillSwitch {
-    let state = self.with_read(Stream::kill_switch_state);
-    UniqueKillSwitch::from_state(state)
-  }
-
-  /// Returns a shared kill switch bound to this stream.
-  #[must_use]
-  pub(crate) fn shared_kill_switch(&self) -> SharedKillSwitch {
-    let state = self.with_read(Stream::kill_switch_state);
-    SharedKillSwitch::from_state(state)
   }
 
   /// Returns a diagnostic snapshot of this stream.

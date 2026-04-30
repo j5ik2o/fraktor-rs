@@ -38,12 +38,16 @@ impl SourceLogic for BoundarySourceLogic {
       | BoundaryState::Completed => Ok(None),
       // Failed: upstream failed and buffer drained; propagate the error.
       | BoundaryState::Failed(err) => Err(err),
+      | BoundaryState::DownstreamCancelled => Ok(None),
     }
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    // downstream cancel を boundary 越しに伝播し、upstream 側の WouldBlock 張り付きを防ぐ。
-    self.boundary.complete();
+    self.boundary.cancel_downstream();
     Ok(())
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
   }
 }

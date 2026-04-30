@@ -3044,7 +3044,7 @@ fn supports_plan_with_multiple_sinks() {
 fn flow_kill_switch_shutdown_only_closes_bound_branch() {
   let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
   let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
-  let kill_switch_state: KillSwitchStateHandle = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
+  let kill_switch_state: KillSwitchStateHandle = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
   let source_outlet: Outlet<u32> = Outlet::new();
   let left_sink_inlet: Inlet<u32> = Inlet::new();
   let right_inlet: Inlet<u32> = Inlet::new();
@@ -3117,7 +3117,7 @@ fn flow_kill_switch_shutdown_only_closes_bound_branch() {
     assert_eq!(interpreter.state(), StreamState::Running);
   }
 
-  *kill_switch_state.lock() = KillSwitchState::Shutdown;
+  kill_switch_state.lock().request_shutdown();
   drive_to_completion(&mut interpreter);
 
   let Completion::Ready(Ok(left_values)) = left_completion.poll() else {
