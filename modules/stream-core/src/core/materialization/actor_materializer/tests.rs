@@ -230,6 +230,23 @@ fn snapshot_total_materialized_increments_on_successful_materialize() {
 }
 
 #[test]
+fn streams_returns_registered_streams_and_shutdown_clears_them() {
+  let system = build_system();
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
+  materializer.start().expect("start");
+
+  let graph = Source::single(1_u32).into_mat(Sink::head(), KeepRight);
+  let _materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert_eq!(materializer.streams().len(), 1);
+
+  materializer.shutdown().expect("shutdown");
+
+  assert!(materializer.streams().is_empty());
+}
+
+#[test]
 fn snapshot_reflects_stopped_state_after_shutdown() {
   // Given: a materializer that has been started, materialized, and shut down
   let system = build_system();

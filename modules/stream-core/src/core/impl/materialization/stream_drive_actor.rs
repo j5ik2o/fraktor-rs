@@ -4,6 +4,9 @@ use fraktor_actor_core_rs::core::kernel::actor::{Actor, ActorContext, error::Act
 
 use super::{StreamDriveCommand, StreamShared};
 
+#[cfg(test)]
+mod tests;
+
 /// Actor that drives registered streams on each tick.
 pub(crate) struct StreamDriveActor {
   streams:            BTreeMap<u64, StreamShared>,
