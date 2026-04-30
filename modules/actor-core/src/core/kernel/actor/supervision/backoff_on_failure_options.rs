@@ -12,6 +12,11 @@ mod tests;
 /// Options for creating a backoff supervisor that restarts its child on failure.
 ///
 /// Corresponds to Pekko's `BackoffOnFailureOptions`.
+///
+/// This intentionally mirrors [`BackoffOnStopOptions`](super::BackoffOnStopOptions)
+/// and shares storage through [`BackoffOptionsData`]. Keep the public option
+/// types separate unless future fields or behavior diverge enough to make a
+/// shared abstraction simpler than the duplicated API surface.
 #[derive(Clone)]
 pub struct BackoffOnFailureOptions {
   inner: BackoffOptionsData,
