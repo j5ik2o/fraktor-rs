@@ -94,7 +94,9 @@ impl ActorMaterializer {
           pid,
           cell.name().to_owned(),
           cell.new_dispatcher_shared().id(),
-          resources.downstream_cancellation_control_plane.lock().cancel_command_count_for_actor(pid),
+          resources
+            .downstream_cancellation_control_plane
+            .with_locked(|plane| plane.cancel_command_count_for_actor(pid)),
         ));
       }
     }
@@ -813,7 +815,7 @@ fn configure_downstream_cancellation_control_plane_groups_routes_by_upstream_isl
 
   first_boundary.cancel_downstream();
   second_boundary.cancel_downstream();
-  let reserved = control_plane.lock().reserve_cancellation_targets();
+  let reserved = control_plane.with_locked(|plane| plane.reserve_cancellation_targets());
 
   assert_eq!(reserved.len(), 1);
   assert_eq!(reserved[0].actor_pid(), upstream_actor.pid());

@@ -18,7 +18,10 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
-use super::{super::downstream_cancellation_route::DownstreamCancellationRoute, DownstreamCancellationControlPlane};
+use super::{
+  super::downstream_cancellation_route::DownstreamCancellationRoute, DownstreamCancellationControlPlane,
+  DownstreamCancellationControlPlaneShared,
+};
 use crate::core::{
   DynValue, SourceLogic, StreamError,
   dsl::{Sink, Source},
@@ -178,7 +181,11 @@ fn failed_delivery_aborts_graph_streams_and_finishes_in_flight_reservation() {
   let upstream_stream = running_stream();
   let owned_stream = running_stream();
   let route = DownstreamCancellationRoute::new(boundary, upstream_stream.clone(), running_stream(), upstream_actor);
-  let control_plane = ArcShared::new(SpinSyncMutex::new(DownstreamCancellationControlPlane::new(vec![route])));
+  let control_plane =
+    DownstreamCancellationControlPlaneShared::new(DownstreamCancellationControlPlane::new(vec![route]));
+  // The propagator's fast path skips the lock when this latch is false; we
+  // pre-arm it so the test does not have to also wire up a boundary signal.
+  control_plane.arm_pending();
   let tick_handle_slot = ArcShared::new(SpinSyncMutex::new(None));
   let mut island_actor = StreamIslandActor::new(
     owned_stream.clone(),
@@ -196,5 +203,5 @@ fn failed_delivery_aborts_graph_streams_and_finishes_in_flight_reservation() {
   assert!(result.is_err());
   assert_eq!(upstream_stream.state(), StreamState::Failed);
   assert_eq!(owned_stream.state(), StreamState::Failed);
-  assert!(control_plane.lock().reserve_cancellation_targets().is_empty());
+  assert!(control_plane.with_locked(|plane| plane.reserve_cancellation_targets()).is_empty());
 }

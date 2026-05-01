@@ -1,4 +1,5 @@
-use alloc::vec::Vec;
+use alloc::{sync::Arc, vec::Vec};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_actor_core_rs::core::kernel::actor::Pid;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
@@ -12,10 +13,52 @@ pub(crate) struct DownstreamCancellationControlPlane {
   routes: Vec<DownstreamCancellationRoute>,
 }
 
-pub(crate) type DownstreamCancellationControlPlaneShared = ArcShared<SpinSyncMutex<DownstreamCancellationControlPlane>>;
+/// Shared handle to a [`DownstreamCancellationControlPlane`].
+///
+/// Carries an additional `pending` flag so island actors can fast-skip
+/// the inner mutex when no boundary has signalled a downstream cancel
+/// since the last propagation cycle.
+#[derive(Clone)]
+pub(crate) struct DownstreamCancellationControlPlaneShared {
+  inner:   ArcShared<SpinSyncMutex<DownstreamCancellationControlPlane>>,
+  pending: Arc<AtomicBool>,
+}
+
+impl DownstreamCancellationControlPlaneShared {
+  pub(crate) fn new(plane: DownstreamCancellationControlPlane) -> Self {
+    Self { inner: ArcShared::new(SpinSyncMutex::new(plane)), pending: Arc::new(AtomicBool::new(false)) }
+  }
+
+  /// Runs `f` while holding the inner mutex. Closure-based to avoid
+  /// re-entry footguns (see `.agents/rules/rust/immutability-policy.md`).
+  pub(crate) fn with_locked<F, R>(&self, f: F) -> R
+  where
+    F: FnOnce(&mut DownstreamCancellationControlPlane) -> R, {
+    let mut guard = self.inner.lock();
+    f(&mut guard)
+  }
+
+  /// Returns a clone of the pending-cancellation signal so boundaries can
+  /// arm it from outside the mutex.
+  pub(crate) fn pending_signal(&self) -> Arc<AtomicBool> {
+    self.pending.clone()
+  }
+
+  /// Returns `true` and clears the flag if a propagation cycle is needed.
+  pub(crate) fn take_pending(&self) -> bool {
+    self.pending.swap(false, Ordering::AcqRel)
+  }
+
+  /// Re-arms the flag. Used by the propagator when it processed targets,
+  /// so any failed deliveries are retried on the next drive without
+  /// requiring a fresh boundary signal.
+  pub(crate) fn arm_pending(&self) {
+    self.pending.store(true, Ordering::Release);
+  }
+}
 
 pub(crate) fn empty_shared() -> DownstreamCancellationControlPlaneShared {
-  ArcShared::new(SpinSyncMutex::new(DownstreamCancellationControlPlane::new(Vec::new())))
+  DownstreamCancellationControlPlaneShared::new(DownstreamCancellationControlPlane::new(Vec::new()))
 }
 
 impl DownstreamCancellationControlPlane {

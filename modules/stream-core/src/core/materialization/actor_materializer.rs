@@ -311,7 +311,10 @@ impl ActorMaterializer {
       }
     }
     let routes = grouped_routes.into_values().collect();
-    downstream_cancellation_control_plane.lock().replace_routes(routes);
+    downstream_cancellation_control_plane.with_locked(|plane| plane.replace_routes(routes));
+    // Force the next propagation cycle to inspect the freshly installed routes
+    // even if no boundary has signalled a cancel yet.
+    downstream_cancellation_control_plane.arm_pending();
     Ok(())
   }
 
@@ -440,7 +443,7 @@ impl ActorMaterializer {
     resources: &MaterializedStreamResources,
   ) -> Result<(), StreamError> {
     let mut result = Ok(());
-    resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
+    resources.downstream_cancellation_control_plane.with_locked(|plane| plane.replace_routes(Vec::new()));
     for handle in &resources.tick_handles {
       if let Err(error) = Self::cancel_tick(system, handle) {
         Self::record_first_error(&mut result, error);
@@ -637,7 +640,10 @@ impl Materializer for ActorMaterializer {
       let boundary_capacity = islands[downstream_idx]
         .input_buffer_capacity_for_inlet(crossing.to_port())
         .unwrap_or(DEFAULT_BOUNDARY_CAPACITY);
-      let boundary = IslandBoundaryShared::new(boundary_capacity);
+      let mut boundary = IslandBoundaryShared::new(boundary_capacity);
+      // Wire the boundary's wakeup signal so cancel_downstream notifies the
+      // control plane lock-free.
+      boundary.attach_cancellation_signal(downstream_cancellation_control_plane.pending_signal());
       islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
       islands[downstream_idx].add_boundary_source(boundary.clone(), crossing.to_port(), element_type);
       downstream_cancellation_boundaries.push(DownstreamCancellationBoundary::new(

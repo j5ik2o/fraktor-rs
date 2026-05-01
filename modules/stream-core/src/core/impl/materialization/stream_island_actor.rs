@@ -59,10 +59,19 @@ impl StreamIslandActor {
   }
 
   fn propagate_downstream_cancellation(&self) -> Result<(), ActorError> {
-    let targets = {
-      let mut control_plane = self.downstream_cancellation_control_plane.lock();
-      control_plane.reserve_cancellation_targets()
-    };
+    // Fast path: skip the inner mutex entirely when no boundary has signalled
+    // a downstream cancel since the previous propagation cycle.
+    if !self.downstream_cancellation_control_plane.take_pending() {
+      return Ok(());
+    }
+
+    let targets = self
+      .downstream_cancellation_control_plane
+      .with_locked(|control_plane| control_plane.reserve_cancellation_targets());
+    if targets.is_empty() {
+      return Ok(());
+    }
+
     let mut delivery_results = Vec::with_capacity(targets.len());
     let mut first_error = None;
 
@@ -76,12 +85,15 @@ impl StreamIslandActor {
       delivery_results.push((actor_pid, delivered));
     }
 
-    {
-      let mut control_plane = self.downstream_cancellation_control_plane.lock();
+    self.downstream_cancellation_control_plane.with_locked(|control_plane| {
       for (actor_pid, delivered) in delivery_results {
         control_plane.finish_cancellation_delivery(actor_pid, delivered);
       }
-    }
+    });
+
+    // Re-arm so the next drive recovers any failed deliveries even though
+    // boundaries themselves did not signal a fresh cancel.
+    self.downstream_cancellation_control_plane.arm_pending();
 
     if let Some(error) = first_error {
       self.abort_graph_streams(&error);
