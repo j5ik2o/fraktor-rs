@@ -1,5 +1,5 @@
 use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
-use core::time::Duration;
+use core::{hint, time::Duration};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -47,6 +47,7 @@ pub struct ActorMaterializer {
 struct MaterializedStreamResources {
   streams: Vec<StreamShared>,
   island_actors: Vec<ChildRef>,
+  drive_gates: Vec<StreamIslandDriveGate>,
   tick_handles: Vec<SchedulerHandle>,
   downstream_cancellation_control_plane: DownstreamCancellationControlPlaneShared,
 }
@@ -99,6 +100,7 @@ impl MaterializedStreamResources {
     Self {
       streams,
       island_actors: Vec::new(),
+      drive_gates: Vec::new(),
       tick_handles: Vec::new(),
       downstream_cancellation_control_plane: control_plane,
     }
@@ -241,7 +243,6 @@ impl ActorMaterializer {
   ) -> Result<MaterializedStreamResources, StreamError> {
     let mut resources = MaterializedStreamResources::new(streams, downstream_cancellation_control_plane.clone());
     let actor_streams = resources.streams.clone();
-    let mut drive_gates = Vec::with_capacity(actor_streams.len());
     let mut tick_handle_slots = Vec::with_capacity(actor_streams.len());
     for (stream, dispatcher) in actor_streams.into_iter().zip(dispatchers) {
       let drive_gate = StreamIslandDriveGate::new();
@@ -259,7 +260,7 @@ impl ActorMaterializer {
         | Err(error) => return Err(Self::rollback_materialized_resources(system, resources, error)),
       };
       resources.island_actors.push(actor);
-      drive_gates.push(drive_gate);
+      resources.drive_gates.push(drive_gate);
       tick_handle_slots.push(tick_handle_slot);
     }
 
@@ -272,6 +273,7 @@ impl ActorMaterializer {
       return Err(Self::rollback_materialized_resources(system, resources, error));
     }
     let actors = resources.island_actors.clone();
+    let drive_gates = resources.drive_gates.clone();
     for ((actor, drive_gate), tick_handle_slot) in actors.into_iter().zip(drive_gates).zip(tick_handle_slots) {
       let tick_handle =
         match Self::schedule_ticks(system, &actor, drive_gate, interval, &resources.streams, &tick_handle_slot) {
@@ -382,8 +384,25 @@ impl ActorMaterializer {
     result
   }
 
+  fn request_actor_shutdown(actors: &[ChildRef]) -> Result<(), StreamError> {
+    let mut result = Ok(());
+    for actor in actors {
+      let mut actor = actor.clone();
+      if let Err(error) = Self::send_command(&mut actor, StreamIslandCommand::Shutdown) {
+        Self::record_first_error(&mut result, error);
+      }
+    }
+    result
+  }
+
+  fn all_streams_terminal(streams: &[StreamShared]) -> bool {
+    streams.iter().all(|stream| stream.state().is_terminal())
+  }
+
   fn drive_streams_until_terminal(streams: &[StreamShared]) -> Result<(), StreamError> {
-    loop {
+    const DIRECT_DRAIN_ROUND_LIMIT: usize = 4096;
+
+    for _ in 0..DIRECT_DRAIN_ROUND_LIMIT {
       let mut progressed = false;
       for stream in streams {
         if stream.state().is_terminal() {
@@ -393,13 +412,48 @@ impl ActorMaterializer {
           progressed = true;
         }
       }
-      if streams.iter().all(|stream| stream.state().is_terminal()) {
+      if Self::all_streams_terminal(streams) {
         return Ok(());
       }
       if !progressed {
-        return Err(StreamError::failed_with_context("graceful shutdown stalled before reaching terminal state"));
+        hint::spin_loop();
       }
     }
+    Err(StreamError::failed_with_context("graceful shutdown exceeded drain round limit"))
+  }
+
+  fn drive_actor_owned_streams_until_terminal(resources: &MaterializedStreamResources) -> Result<(), StreamError> {
+    const ACTOR_DRAIN_ROUND_LIMIT: usize = 4096;
+
+    if resources.island_actors.len() != resources.streams.len()
+      || resources.drive_gates.len() != resources.streams.len()
+    {
+      return Err(StreamError::InvalidConnection);
+    }
+
+    let mut result = Ok(());
+    for _ in 0..ACTOR_DRAIN_ROUND_LIMIT {
+      if Self::all_streams_terminal(&resources.streams) {
+        return result;
+      }
+      for ((actor, drive_gate), stream) in
+        resources.island_actors.iter().zip(&resources.drive_gates).zip(&resources.streams)
+      {
+        if stream.state().is_terminal() {
+          continue;
+        }
+        if let Err(error) = Self::send_drive_if_idle(actor, drive_gate) {
+          Self::record_first_error(&mut result, error);
+        }
+      }
+      hint::spin_loop();
+    }
+
+    Self::record_first_error(
+      &mut result,
+      StreamError::failed_with_context("graceful actor shutdown exceeded drain round limit"),
+    );
+    result
   }
 
   fn teardown_resources_with_command<F>(
@@ -436,16 +490,25 @@ impl ActorMaterializer {
     let mut result = Ok(());
     let resources = resources;
     resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
-    if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
-      Self::record_first_error(&mut result, error);
+    if resources.island_actors.is_empty() {
+      if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
+        Self::record_first_error(&mut result, error);
+      }
+      if let Err(error) = Self::drive_streams_until_terminal(&resources.streams) {
+        Self::record_first_error(&mut result, error);
+      }
+    } else {
+      if let Err(error) = Self::request_actor_shutdown(&resources.island_actors) {
+        Self::record_first_error(&mut result, error);
+      }
+      if let Err(error) = Self::drive_actor_owned_streams_until_terminal(&resources) {
+        Self::record_first_error(&mut result, error);
+      }
     }
     for handle in &resources.tick_handles {
       if let Err(error) = Self::cancel_tick(system, handle) {
         Self::record_first_error(&mut result, error);
       }
-    }
-    if let Err(error) = Self::drive_streams_until_terminal(&resources.streams) {
-      Self::record_first_error(&mut result, error);
     }
     for actor in &resources.island_actors {
       if actor.stop().is_err() {
