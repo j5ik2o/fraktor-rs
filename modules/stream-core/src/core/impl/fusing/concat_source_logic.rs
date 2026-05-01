@@ -27,37 +27,29 @@ where
   Out: Send + Sync + 'static,
 {
   pub(super) fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
+    // 単一ドライバ前提: stream が terminal になる前に必ず inner sink の
+    // on_complete/on_error が呼ばれ completion が確定する。よって outer
+    // try_take が結果を返さず is_terminal=true となるのは異常系または
+    // completion を外部から消費した後のみで、いずれの場合も Ok 完了として
+    // 扱う。後着 Err を厳密に拾うには framework 側で terminal cause を
+    // 公開する API が必要となり、別 PR で対応する (see #1720 review).
     match self.completion.try_take() {
       | Some(Ok(_)) => {
-        // completion が正常に取得できた → 終了
         self.finished = true;
         let _ = self.queue.complete_if_open();
-        Ok(())
-      },
-      | None => {
-        // completion 未到着。stream が terminal なら finalize するが、
-        // 一度の `try_take` と stream 状態確認の間で completion(Err) が
-        // 後着する可能性があるため、is_terminal を見た直後に再ポールして
-        // エラーを取りこぼさない。
-        if self.stream.state().is_terminal() {
-          match self.completion.try_take() {
-            | Some(Err(error)) => {
-              self.finished = true;
-              self.queue.fail(error.clone());
-              return Err(error);
-            },
-            | Some(Ok(_)) | None => {
-              self.finished = true;
-              let _ = self.queue.complete_if_open();
-            },
-          }
-        }
         Ok(())
       },
       | Some(Err(error)) => {
         self.finished = true;
         self.queue.fail(error.clone());
         Err(error)
+      },
+      | None => {
+        if self.stream.state().is_terminal() {
+          self.finished = true;
+          let _ = self.queue.complete_if_open();
+        }
+        Ok(())
       },
     }
   }
