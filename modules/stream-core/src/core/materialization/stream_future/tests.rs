@@ -165,6 +165,21 @@ fn is_ready_remains_true_after_try_take_consumes_result() {
 }
 
 #[test]
+fn future_poll_returns_detached_when_result_consumed_after_completion() {
+  // Future::poll must mirror wait_blocking's race handling: once `completed`
+  // is sticky-set and `try_take` has destructively consumed the result,
+  // poll() must wake observers with StreamDetached instead of leaving them
+  // in Poll::Pending forever (no further wake fires because complete is
+  // idempotent on the sticky flag).
+  let mut future: StreamFuture<u32> = StreamFuture::new();
+  let wake_counter = Arc::new(WakeCounter::new());
+  let waker = Waker::from(wake_counter.clone());
+  future.complete(Ok(7));
+  let _ = future.try_take();
+  assert_eq!(poll_once(&mut future, &waker), Poll::Ready(Err(StreamError::StreamDetached)));
+}
+
+#[test]
 fn wait_blocking_returns_detached_when_result_consumed_concurrently() {
   // Simulates the race where another clone consumes the result via try_take
   // before wait_blocking reads inner.result. The sticky `completed` flag lets

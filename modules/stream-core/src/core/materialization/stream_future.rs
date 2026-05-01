@@ -161,6 +161,12 @@ where
     if let Some(result) = guard.result.clone() {
       return Poll::Ready(result);
     }
+    if guard.completed {
+      // 結果は既に消費済 (try_take) 。`complete()` は sticky な completed
+      // フラグで再呼び出しを抑止するため、ここで Pending を返すと永久に
+      // wake されない。`wait_blocking` と整合させて StreamDetached を返す。
+      return Poll::Ready(Err(StreamError::StreamDetached));
+    }
     if !guard.wakers.iter().any(|registered| registered.will_wake(cx.waker())) {
       guard.wakers.push(cx.waker().clone());
     }
