@@ -56,8 +56,8 @@ FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
 # 解決されることがあり、その場合 `+<toolchain>` を解釈できずに
 # `error: no such command: '+<toolchain>'` で失敗する。
 # rustup が利用可能なら `rustup run <toolchain> cargo` 経由で起動して
-# PATH 順序に依存しないようにする。rustup が無い環境では従来の
-# `cargo +<toolchain>` にフォールバックする。
+# PATH 順序に依存しないようにする。pinned toolchain を使う場合は
+# rustup 必須であり、rustup が無い環境では明示的に失敗させる。
 _CI_CHECK_HAS_RUSTUP=0
 if command -v rustup >/dev/null 2>&1; then
   _CI_CHECK_HAS_RUSTUP=1
@@ -70,16 +70,17 @@ build_cargo_prefix_for() {
     if [[ "${_CI_CHECK_HAS_RUSTUP}" == "1" ]]; then
       CI_CHECK_CARGO_PREFIX=(rustup run "${toolchain}" cargo)
     else
-      CI_CHECK_CARGO_PREFIX=(cargo "+${toolchain}")
+      echo "エラー: pinned toolchain (${toolchain}) を使うには rustup が必要です。" >&2
+      return 1
     fi
   else
     CI_CHECK_CARGO_PREFIX=(cargo)
   fi
 }
 
-build_cargo_prefix_for "${DEFAULT_TOOLCHAIN}"
+build_cargo_prefix_for "${DEFAULT_TOOLCHAIN}" || exit 1
 DEFAULT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
-build_cargo_prefix_for "${FMT_TOOLCHAIN}"
+build_cargo_prefix_for "${FMT_TOOLCHAIN}" || exit 1
 FMT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export CARGO_BUILD_JOBS

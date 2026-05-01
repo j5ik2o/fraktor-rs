@@ -21,13 +21,14 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
-use super::{ActorMaterializer, DownstreamCancellationControlPlane, MaterializedStreamResources};
+use super::{ActorMaterializer, MaterializedStreamResources};
 use crate::core::{
   DemandTracker, DynValue, KillSwitchStateHandle, SharedKillSwitch, SinkDecision, SinkLogic, SourceLogic, StreamError,
   dsl::{Flow, Sink, Source},
   r#impl::materialization::{StreamIslandCommand, StreamIslandDriveGate, StreamState},
   materialization::{
     ActorMaterializerConfig, Completion, DriveOutcome, KeepRight, MaterializerLifecycleState, StreamNotUsed,
+    empty_downstream_cancellation_control_plane,
   },
   stage::StageKind,
 };
@@ -265,8 +266,7 @@ fn scheduler_job_count(system: &ActorSystem) -> usize {
 }
 
 fn resources_with_unknown_tick() -> MaterializedStreamResources {
-  let control_plane = ArcShared::new(SpinSyncMutex::new(DownstreamCancellationControlPlane::new(Vec::new())));
-  let mut resources = MaterializedStreamResources::new(Vec::new(), control_plane);
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
   resources.tick_handles.push(SchedulerHandle::new(u64::MAX));
   resources
 }
@@ -651,7 +651,7 @@ fn shutdown_stops_island_actors_and_cancels_scheduler_jobs() {
 }
 
 #[test]
-fn shutdown_returns_error_when_tick_resource_cannot_be_cancelled() {
+fn shutdown_succeeds_when_tick_resources_were_already_drained_by_scheduler_shutdown() {
   let system = build_system();
   let mut materializer = ActorMaterializer::new(
     system.clone(),
@@ -666,7 +666,7 @@ fn shutdown_returns_error_when_tick_resource_cannot_be_cancelled() {
   assert_eq!(shutdown_summary.failed_tasks, 0);
   let result = materializer.shutdown();
 
-  assert!(matches!(result, Err(StreamError::Failed)));
+  assert_eq!(result, Ok(()));
 }
 
 #[test]

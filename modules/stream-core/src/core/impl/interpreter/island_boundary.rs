@@ -161,7 +161,8 @@ impl IslandBoundaryShared {
 
   #[must_use]
   pub(crate) fn is_downstream_cancelled(&self) -> bool {
-    matches!(self.inner.lock().state, BoundaryState::DownstreamCancelled)
+    let guard = self.inner.lock();
+    matches!(&guard.state, BoundaryState::DownstreamCancelled)
   }
 
   pub(crate) fn try_push_then_complete(&self, value: DynValue) -> Result<(), (DynValue, BoundaryState)> {

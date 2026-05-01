@@ -1,7 +1,9 @@
 extern crate std;
 
 use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
-use fraktor_actor_core_rs::core::kernel::actor::{Actor, ActorContext, Pid, error::ActorError, messaging::AnyMessage};
+use fraktor_actor_core_rs::core::kernel::actor::{
+  Actor, ActorContext, Pid, error::ActorError, messaging::AnyMessage, scheduler::SchedulerHandle,
+};
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::super::{Stream, StreamIslandActor, StreamIslandCommand, StreamIslandDriveGate, StreamShared, StreamState};
@@ -9,7 +11,9 @@ use crate::core::{
   DynValue, SourceLogic, StreamError,
   dsl::{Sink, Source},
   r#impl::fusing::StreamBufferConfig,
-  materialization::{KeepRight, StreamNotUsed},
+  materialization::{
+    DownstreamCancellationControlPlaneShared, KeepRight, StreamNotUsed, empty_downstream_cancellation_control_plane,
+  },
   stage::StageKind,
 };
 
@@ -66,8 +70,22 @@ fn new_drive_gate() -> StreamIslandDriveGate {
   StreamIslandDriveGate::new()
 }
 
+fn new_downstream_cancellation_control_plane() -> DownstreamCancellationControlPlaneShared {
+  empty_downstream_cancellation_control_plane()
+}
+
+fn new_tick_handle_slot() -> ArcShared<SpinSyncMutex<Option<SchedulerHandle>>> {
+  ArcShared::new(SpinSyncMutex::new(None))
+}
+
 fn new_stream_island_actor(stream: StreamShared) -> StreamIslandActor {
-  StreamIslandActor::new(stream, new_drive_gate())
+  StreamIslandActor::new(
+    stream.clone(),
+    new_drive_gate(),
+    new_downstream_cancellation_control_plane(),
+    vec![stream],
+    new_tick_handle_slot(),
+  )
 }
 
 fn cancel_failing_stream() -> StreamShared {
@@ -192,7 +210,13 @@ fn drive_command_releases_pending_gate_after_processing() {
   let pulls = new_pull_counter();
   let stream = counting_stream(pulls);
   let gate = new_drive_gate();
-  let mut actor = StreamIslandActor::new(stream, gate.clone());
+  let mut actor = StreamIslandActor::new(
+    stream.clone(),
+    gate.clone(),
+    new_downstream_cancellation_control_plane(),
+    vec![stream],
+    new_tick_handle_slot(),
+  );
   assert!(gate.try_mark_pending());
 
   receive_command(&mut actor, StreamIslandCommand::Drive);
@@ -206,7 +230,13 @@ fn drive_command_releases_pending_gate_when_stream_is_terminal() {
   let stream = counting_stream(pulls);
   stream.cancel().expect("cancel should reach terminal state");
   let gate = new_drive_gate();
-  let mut actor = StreamIslandActor::new(stream, gate.clone());
+  let mut actor = StreamIslandActor::new(
+    stream.clone(),
+    gate.clone(),
+    new_downstream_cancellation_control_plane(),
+    vec![stream],
+    new_tick_handle_slot(),
+  );
   assert!(gate.try_mark_pending());
 
   receive_command(&mut actor, StreamIslandCommand::Drive);

@@ -1,4 +1,4 @@
-use alloc::{format, string::String, vec::Vec};
+use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::{
@@ -14,9 +14,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{
   ActorMaterializerConfig, Materialized, Materializer, MaterializerLifecycleState, RunnableGraph,
-  downstream_cancellation_control_plane::{
-    DownstreamCancellationControlPlane, DownstreamCancellationControlPlaneShared,
-  },
+  downstream_cancellation_control_plane::DownstreamCancellationControlPlaneShared,
   downstream_cancellation_route::DownstreamCancellationRoute,
 };
 use crate::core::{
@@ -24,8 +22,11 @@ use crate::core::{
   r#impl::{
     fusing::StreamBufferConfig,
     interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter, SingleIslandPlan},
-    materialization::{Stream, StreamIslandActor, StreamIslandCommand, StreamIslandDriveGate, StreamShared},
+    materialization::{
+      Stream, StreamIslandActor, StreamIslandCommand, StreamIslandDriveGate, StreamIslandTickHandleSlot, StreamShared,
+    },
   },
+  materialization::empty_downstream_cancellation_control_plane,
   snapshot::MaterializerSnapshot,
   stream_ref::StreamRefSettings,
 };
@@ -140,18 +141,8 @@ impl ActorMaterializer {
     Ok(())
   }
 
-  fn run_scheduled_tick(
-    actor: &ChildRef,
-    drive_gate: &StreamIslandDriveGate,
-    control_plane: &DownstreamCancellationControlPlaneShared,
-  ) -> Result<(), StreamError> {
-    control_plane
-      .lock()
-      .propagate(|upstream_actor| Self::send_command(upstream_actor, StreamIslandCommand::Cancel { cause: None }))?;
-    Self::send_drive_if_idle(actor, drive_gate)?;
-    control_plane
-      .lock()
-      .propagate(|upstream_actor| Self::send_command(upstream_actor, StreamIslandCommand::Cancel { cause: None }))
+  fn run_scheduled_tick(actor: &ChildRef, drive_gate: &StreamIslandDriveGate) -> Result<(), StreamError> {
+    Self::send_drive_if_idle(actor, drive_gate)
   }
 
   fn abort_streams(streams: &[StreamShared], error: &StreamError) {
@@ -165,13 +156,12 @@ impl ActorMaterializer {
     actor: &ChildRef,
     drive_gate: StreamIslandDriveGate,
     interval: Duration,
-    control_plane: DownstreamCancellationControlPlaneShared,
     streams: &[StreamShared],
   ) -> Result<SchedulerHandle, StreamError> {
     let actor = actor.clone();
     let streams = streams.to_vec();
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
-      if let Err(error) = Self::run_scheduled_tick(&actor, &drive_gate, &control_plane) {
+      if let Err(error) = Self::run_scheduled_tick(&actor, &drive_gate) {
         Self::abort_streams(&streams, &error);
       }
     });
@@ -207,10 +197,24 @@ impl ActorMaterializer {
     stream: &StreamShared,
     dispatcher: Option<String>,
     drive_gate: StreamIslandDriveGate,
+    downstream_cancellation_control_plane: &DownstreamCancellationControlPlaneShared,
+    graph_streams: &[StreamShared],
+    tick_handle_slot: &StreamIslandTickHandleSlot,
   ) -> Result<ChildRef, StreamError> {
     let actor_stream = stream.clone();
-    let mut props = Props::from_fn(move || StreamIslandActor::new(actor_stream.clone(), drive_gate.clone()))
-      .with_name(format!("stream-island-{}", stream.id()));
+    let actor_downstream_cancellation_control_plane = downstream_cancellation_control_plane.clone();
+    let actor_graph_streams = graph_streams.to_vec();
+    let actor_tick_handle_slot = tick_handle_slot.clone();
+    let mut props = Props::from_fn(move || {
+      StreamIslandActor::new(
+        actor_stream.clone(),
+        drive_gate.clone(),
+        actor_downstream_cancellation_control_plane.clone(),
+        actor_graph_streams.clone(),
+        actor_tick_handle_slot.clone(),
+      )
+    })
+    .with_name(format!("stream-island-{}", stream.id()));
     if let Some(dispatcher_id) = dispatcher {
       props = props.with_dispatcher_id(dispatcher_id);
     }
@@ -226,17 +230,27 @@ impl ActorMaterializer {
     downstream_cancellation_control_plane: &DownstreamCancellationControlPlaneShared,
   ) -> Result<MaterializedStreamResources, StreamError> {
     let mut resources = MaterializedStreamResources::new(streams, downstream_cancellation_control_plane.clone());
-    let expected_route_count = downstream_cancellation_boundaries.len();
     let actor_streams = resources.streams.clone();
     let mut drive_gates = Vec::with_capacity(actor_streams.len());
+    let mut tick_handle_slots = Vec::with_capacity(actor_streams.len());
     for (stream, dispatcher) in actor_streams.into_iter().zip(dispatchers) {
       let drive_gate = StreamIslandDriveGate::new();
-      let actor = match Self::spawn_island_actor(system, &stream, dispatcher, drive_gate.clone()) {
+      let tick_handle_slot = ArcShared::new(SpinSyncMutex::new(None));
+      let actor = match Self::spawn_island_actor(
+        system,
+        &stream,
+        dispatcher,
+        drive_gate.clone(),
+        downstream_cancellation_control_plane,
+        &resources.streams,
+        &tick_handle_slot,
+      ) {
         | Ok(actor) => actor,
         | Err(error) => return Err(Self::rollback_materialized_resources(system, resources, error)),
       };
       resources.island_actors.push(actor);
       drive_gates.push(drive_gate);
+      tick_handle_slots.push(tick_handle_slot);
     }
 
     if let Err(error) = Self::configure_downstream_cancellation_control_plane(
@@ -247,22 +261,13 @@ impl ActorMaterializer {
     ) {
       return Err(Self::rollback_materialized_resources(system, resources, error));
     }
-    if resources.downstream_cancellation_control_plane.lock().route_count() != expected_route_count {
-      return Err(Self::rollback_materialized_resources(system, resources, StreamError::InvalidConnection));
-    }
     let actors = resources.island_actors.clone();
-    for (actor, drive_gate) in actors.into_iter().zip(drive_gates) {
-      let tick_handle = match Self::schedule_ticks(
-        system,
-        &actor,
-        drive_gate,
-        interval,
-        downstream_cancellation_control_plane.clone(),
-        &resources.streams,
-      ) {
+    for ((actor, drive_gate), tick_handle_slot) in actors.into_iter().zip(drive_gates).zip(tick_handle_slots) {
+      let tick_handle = match Self::schedule_ticks(system, &actor, drive_gate, interval, &resources.streams) {
         | Ok(tick_handle) => tick_handle,
         | Err(error) => return Err(Self::rollback_materialized_resources(system, resources, error)),
       };
+      *tick_handle_slot.lock() = Some(tick_handle.clone());
       resources.tick_handles.push(tick_handle);
     }
     Ok(resources)
@@ -274,15 +279,26 @@ impl ActorMaterializer {
     streams: &[StreamShared],
     downstream_cancellation_control_plane: &DownstreamCancellationControlPlaneShared,
   ) -> Result<(), StreamError> {
-    let mut routes = Vec::with_capacity(downstream_cancellation_boundaries.len());
+    let mut grouped_routes: BTreeMap<usize, DownstreamCancellationRoute> = BTreeMap::new();
     for boundary in downstream_cancellation_boundaries {
       let actor = island_actors.get(boundary.upstream_island_index).cloned().ok_or(StreamError::InvalidConnection)?;
       let upstream_stream =
         streams.get(boundary.upstream_island_index).cloned().ok_or(StreamError::InvalidConnection)?;
       let downstream_stream =
         streams.get(boundary.downstream_island_index).cloned().ok_or(StreamError::InvalidConnection)?;
-      routes.push(DownstreamCancellationRoute::new(boundary.boundary, upstream_stream, downstream_stream, actor));
+      match grouped_routes.get_mut(&boundary.upstream_island_index) {
+        | Some(route) => {
+          route.add_downstream(boundary.boundary, downstream_stream);
+        },
+        | None => {
+          grouped_routes.insert(
+            boundary.upstream_island_index,
+            DownstreamCancellationRoute::new(boundary.boundary, upstream_stream, downstream_stream, actor),
+          );
+        },
+      }
     }
+    let routes = grouped_routes.into_values().collect();
     downstream_cancellation_control_plane.lock().replace_routes(routes);
     Ok(())
   }
@@ -305,7 +321,7 @@ impl ActorMaterializer {
 
   fn cancel_tick(system: &ActorSystem, handle: &SchedulerHandle) -> Result<(), StreamError> {
     let cancelled = system.scheduler().with_write(|scheduler| scheduler.cancel(handle));
-    if cancelled { Ok(()) } else { Err(StreamError::Failed) }
+    if cancelled || handle.is_cancelled() || handle.is_completed() { Ok(()) } else { Err(StreamError::Failed) }
   }
 
   fn cancel_streams(streams: &[StreamShared]) -> Result<(), StreamError> {
@@ -326,6 +342,7 @@ impl ActorMaterializer {
   where
     F: FnMut() -> StreamIslandCommand, {
     let mut result = Ok(());
+    resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
     for handle in &resources.tick_handles {
       if let Err(error) = Self::cancel_tick(system, handle) {
         Self::record_first_error(&mut result, error);
@@ -471,8 +488,7 @@ impl Materializer for ActorMaterializer {
     let (mut islands, crossings) = island_plan.into_parts();
     let graph_kill_switch_state = Stream::new_running_kill_switch_state();
     let mut downstream_cancellation_boundaries = Vec::new();
-    let downstream_cancellation_control_plane =
-      ArcShared::new(SpinSyncMutex::new(DownstreamCancellationControlPlane::new(Vec::new())));
+    let downstream_cancellation_control_plane = empty_downstream_cancellation_control_plane();
 
     for crossing in crossings {
       let upstream_idx = crossing.from_island().as_usize();

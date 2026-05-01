@@ -6,6 +6,7 @@ use alloc::{
 };
 use core::{
   any::TypeId,
+  array::IntoIter,
   future::Future,
   marker::PhantomData,
   pin::Pin,
@@ -106,7 +107,7 @@ where
   /// Creates a source from an array.
   #[must_use]
   pub fn from_array<const N: usize>(values: [Out; N]) -> Self {
-    Self::from_iterator(values)
+    Self::from_logic(StageKind::Custom, ArraySourceLogic { values: values.into_iter() })
   }
 
   /// Creates a source that emits a single element.
@@ -2942,6 +2943,10 @@ struct IteratorSourceLogic<I> {
   values: I,
 }
 
+struct ArraySourceLogic<Out, const N: usize> {
+  values: IntoIter<Out, N>,
+}
+
 struct FailedSourceLogic {
   error: StreamError,
 }
@@ -2992,6 +2997,15 @@ impl<Out, I> SourceLogic for IteratorSourceLogic<I>
 where
   Out: Send + 'static,
   I: Iterator<Item = Out> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(self.values.next().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+impl<Out, const N: usize> SourceLogic for ArraySourceLogic<Out, N>
+where
+  Out: Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.values.next().map(|value| Box::new(value) as DynValue))
