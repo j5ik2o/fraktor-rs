@@ -183,7 +183,7 @@ impl KillSwitchState {
     &mut self,
     error: StreamError,
   ) -> Option<(StreamError, Vec<KillSwitchCommandTargetShared>)> {
-    if !matches!(self.status, KillSwitchStatus::Running) {
+    if matches!(self.status, KillSwitchStatus::Aborted(_)) {
       return None;
     }
     self.status = KillSwitchStatus::Aborted(error.clone());

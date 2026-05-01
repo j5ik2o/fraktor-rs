@@ -19,7 +19,7 @@ use std::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
-  CycleSourceLogic, EmptySourceLogic, IterateSourceLogic, LazySourceLogic, QueueSourceLogic,
+  CycleSourceLogic, EmptySourceLogic, IterateSourceLogic, IteratorSourceLogic, LazySourceLogic, QueueSourceLogic,
   QueueWithOverflowSourceLogic, RepeatSourceLogic, StreamGraph, UnboundedQueueSourceLogic,
 };
 use crate::core::{
@@ -118,6 +118,13 @@ where
 #[test]
 fn empty_source_logic_drains_on_shutdown() {
   let logic = EmptySourceLogic;
+
+  assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn iterator_source_logic_drains_on_shutdown() {
+  let logic = IteratorSourceLogic { values: Vec::<u32>::new().into_iter() };
 
   assert!(logic.should_drain_on_shutdown());
 }

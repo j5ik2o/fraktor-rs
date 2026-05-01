@@ -3001,6 +3001,10 @@ where
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.values.next().map(|value| Box::new(value) as DynValue))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
+  }
 }
 
 impl<Out, const N: usize> SourceLogic for ArraySourceLogic<Out, N>
