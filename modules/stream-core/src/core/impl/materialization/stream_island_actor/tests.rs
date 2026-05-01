@@ -38,11 +38,19 @@ impl SourceLogic for CountingSourceLogic {
     *self.pulls.lock() += 1;
     Ok(self.next.take().map(|value| Box::new(value) as DynValue))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl SourceLogic for CancelFailingSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(None)
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {

@@ -341,6 +341,10 @@ impl SourceLogic for CancelAwareSourceLogic {
     Ok(Some(Box::new(self.next)))
   }
 
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
+
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     let mut count = self.cancel_count.lock();
     *count = count.saturating_add(1);
