@@ -191,6 +191,11 @@ struct ShutdownFailingSourceLogic {
   error: StreamError,
 }
 
+struct ShutdownFailingEndlessSourceLogic {
+  next:  u32,
+  error: StreamError,
+}
+
 impl CancelAwareSourceLogic {
   const fn new(cancel_count: ArcShared<SpinSyncMutex<u32>>) -> Self {
     Self { cancel_count }
@@ -206,6 +211,12 @@ impl DrainOnShutdownFailingSourceLogic {
 impl ShutdownFailingSourceLogic {
   const fn new(error: StreamError) -> Self {
     Self { error }
+  }
+}
+
+impl ShutdownFailingEndlessSourceLogic {
+  const fn new(error: StreamError) -> Self {
+    Self { next: 0, error }
   }
 }
 
@@ -244,6 +255,17 @@ impl SourceLogic for DrainOnShutdownFailingSourceLogic {
 impl SourceLogic for ShutdownFailingSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(StreamError::WouldBlock)
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    Err(self.error.clone())
+  }
+}
+
+impl SourceLogic for ShutdownFailingEndlessSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    self.next = self.next.saturating_add(1);
+    Ok(Some(Box::new(self.next)))
   }
 
   fn on_shutdown(&mut self) -> Result<(), StreamError> {
@@ -990,6 +1012,23 @@ fn shutdown_resources_drives_other_streams_even_when_one_shutdown_request_fails(
 
   assert_eq!(result, Err(shutdown_error));
   assert_eq!(observed_draining_stream.state(), StreamState::Completed);
+}
+
+#[test]
+fn shutdown_resources_fails_stream_terminal_when_shutdown_request_fails() {
+  let system = build_system();
+  let shutdown_error = StreamError::failed_with_context("endless shutdown request failed");
+  let failing_stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, ShutdownFailingEndlessSourceLogic::new(shutdown_error.clone()))
+      .into_mat(Sink::ignore(), KeepRight),
+  );
+  let resources =
+    MaterializedStreamResources::new(vec![failing_stream.clone()], empty_downstream_cancellation_control_plane());
+
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert_eq!(result, Err(shutdown_error));
+  assert_eq!(failing_stream.state(), StreamState::Failed);
 }
 
 #[test]

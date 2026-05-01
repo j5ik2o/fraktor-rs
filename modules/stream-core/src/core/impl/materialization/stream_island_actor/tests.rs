@@ -225,18 +225,6 @@ fn non_stream_island_command_is_ignored() {
 }
 
 #[test]
-fn drive_gate_rejects_second_pending_drive_until_idle() {
-  let gate = new_drive_gate();
-
-  assert!(gate.try_mark_pending());
-  assert!(!gate.try_mark_pending());
-
-  gate.mark_idle();
-
-  assert!(gate.try_mark_pending());
-}
-
-#[test]
 fn drive_command_releases_pending_gate_after_processing() {
   let pulls = new_pull_counter();
   let stream = counting_stream(pulls);

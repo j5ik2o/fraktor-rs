@@ -24,6 +24,12 @@ pub(crate) struct Stream {
   shutdown_requested: bool,
 }
 
+enum KillSwitchDriveDecision {
+  Abort(StreamError),
+  Shutdown,
+  Continue,
+}
+
 impl Stream {
   pub(crate) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
     let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
@@ -76,18 +82,18 @@ impl Stream {
   }
 
   pub(crate) fn drive(&mut self) -> DriveOutcome {
-    if let Some(error) = self.abort_error_from_kill_switches() {
-      let was_terminal = self.interpreter.state().is_terminal();
-      self.interpreter.abort(&error);
-      return if was_terminal { DriveOutcome::Idle } else { DriveOutcome::Progressed };
-    }
-
-    if self.shutdown_requested_from_kill_switches()
-      && !self.shutdown_requested
-      && let Err(error) = self.shutdown()
-    {
-      self.interpreter.abort(&error);
-      return DriveOutcome::Progressed;
+    match self.kill_switch_drive_decision() {
+      | KillSwitchDriveDecision::Abort(error) => {
+        let was_terminal = self.interpreter.state().is_terminal();
+        self.interpreter.abort(&error);
+        return if was_terminal { DriveOutcome::Idle } else { DriveOutcome::Progressed };
+      },
+      | KillSwitchDriveDecision::Shutdown if !self.shutdown_requested => {
+        if self.shutdown().is_err() {
+          return DriveOutcome::Progressed;
+        }
+      },
+      | KillSwitchDriveDecision::Shutdown | KillSwitchDriveDecision::Continue => {},
     }
 
     self.interpreter.drive()
@@ -97,7 +103,11 @@ impl Stream {
     if self.shutdown_requested {
       return Ok(());
     }
-    self.interpreter.request_shutdown()?;
+    if let Err(error) = self.interpreter.request_shutdown() {
+      self.shutdown_requested = true;
+      self.interpreter.abort(&error);
+      return Err(error);
+    }
     self.shutdown_requested = true;
     Ok(())
   }
@@ -120,28 +130,22 @@ impl Stream {
     StreamSnapshot::new(alloc::vec![active], Vec::new())
   }
 
-  fn abort_error_from_kill_switches(&self) -> Option<StreamError> {
-    if let KillSwitchStatus::Aborted(error) = self.kill_switch_state.lock().status().clone() {
-      return Some(error);
+  fn kill_switch_drive_decision(&self) -> KillSwitchDriveDecision {
+    let mut shutdown_requested = false;
+    match self.kill_switch_state.lock().status().clone() {
+      | KillSwitchStatus::Aborted(error) => return KillSwitchDriveDecision::Abort(error),
+      | KillSwitchStatus::Shutdown => shutdown_requested = true,
+      | KillSwitchStatus::Running => {},
     }
 
     for kill_switch_state in &self.linked_kill_switch_states {
-      if let KillSwitchStatus::Aborted(error) = kill_switch_state.lock().status().clone() {
-        return Some(error);
+      match kill_switch_state.lock().status().clone() {
+        | KillSwitchStatus::Aborted(error) => return KillSwitchDriveDecision::Abort(error),
+        | KillSwitchStatus::Shutdown => shutdown_requested = true,
+        | KillSwitchStatus::Running => {},
       }
     }
 
-    None
-  }
-
-  fn shutdown_requested_from_kill_switches(&self) -> bool {
-    if matches!(self.kill_switch_state.lock().status(), KillSwitchStatus::Shutdown) {
-      return true;
-    }
-
-    self
-      .linked_kill_switch_states
-      .iter()
-      .any(|kill_switch_state| matches!(kill_switch_state.lock().status(), KillSwitchStatus::Shutdown))
+    if shutdown_requested { KillSwitchDriveDecision::Shutdown } else { KillSwitchDriveDecision::Continue }
   }
 }

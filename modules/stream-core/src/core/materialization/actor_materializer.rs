@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
     ChildRef,
     messaging::AnyMessage,
     props::Props,
-    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerHandle, SchedulerRunnable},
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerRunnable},
   },
   system::ActorSystem,
 };
@@ -173,9 +173,12 @@ impl ActorMaterializer {
     let command = SchedulerCommand::RunRunnable { runnable };
     let handle = system
       .scheduler()
-      .with_write(|scheduler| scheduler.schedule_at_fixed_rate(interval, interval, command))
+      .with_write(|scheduler| {
+        let handle = scheduler.schedule_at_fixed_rate(interval, interval, command)?;
+        *tick_handle_slot.lock() = Some(handle.clone());
+        Ok::<SchedulerHandle, SchedulerError>(handle)
+      })
       .map_err(|_| StreamError::Failed)?;
-    *tick_handle_slot.lock() = Some(handle.clone());
     Ok(handle)
   }
 
@@ -419,13 +422,13 @@ impl ActorMaterializer {
     if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
       Self::record_first_error(&mut result, error);
     }
-    if let Err(error) = Self::drive_streams_until_terminal(&resources.streams) {
-      Self::record_first_error(&mut result, error);
-    }
     for handle in &resources.tick_handles {
       if let Err(error) = Self::cancel_tick(system, handle) {
         Self::record_first_error(&mut result, error);
       }
+    }
+    if let Err(error) = Self::drive_streams_until_terminal(&resources.streams) {
+      Self::record_first_error(&mut result, error);
     }
     for actor in &resources.island_actors {
       if actor.stop().is_err() {

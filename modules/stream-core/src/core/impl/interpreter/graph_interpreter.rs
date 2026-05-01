@@ -195,7 +195,7 @@ impl GraphInterpreter {
     self.tick_count = self.tick_count.saturating_add(1);
 
     if let Err(error) = self.tick_restart_windows() {
-      self.handle_drive_error(&error);
+      self.fail(&error);
       return DriveOutcome::Progressed;
     }
 
@@ -205,7 +205,7 @@ impl GraphInterpreter {
       | Ok(true) => progressed = true,
       | Ok(false) => {},
       | Err(error) => {
-        self.handle_drive_error(&error);
+        self.fail(&error);
         return DriveOutcome::Progressed;
       },
     }
@@ -217,7 +217,7 @@ impl GraphInterpreter {
           progressed = true;
         },
         | Err(error) => {
-          self.handle_drive_error(&error);
+          self.fail(&error);
           return DriveOutcome::Progressed;
         },
       }
@@ -242,7 +242,7 @@ impl GraphInterpreter {
           }
         },
         | Err(error) => {
-          self.handle_drive_error(&error);
+          self.fail(&error);
           return DriveOutcome::Progressed;
         },
       }
@@ -252,7 +252,7 @@ impl GraphInterpreter {
           | Ok(true) => progressed = true,
           | Ok(false) => break,
           | Err(error) => {
-            self.handle_drive_error(&error);
+            self.fail(&error);
             return DriveOutcome::Progressed;
           },
         }
@@ -277,7 +277,7 @@ impl GraphInterpreter {
       | Ok(true) => progressed = true,
       | Ok(false) => {},
       | Err(error) => {
-        self.handle_drive_error(&error);
+        self.fail(&error);
         return DriveOutcome::Progressed;
       },
     }
@@ -294,7 +294,7 @@ impl GraphInterpreter {
           | Ok(true) => progressed = true,
           | Ok(false) => break,
           | Err(error) => {
-            self.handle_drive_error(&error);
+            self.fail(&error);
             return DriveOutcome::Progressed;
           },
         }
@@ -312,7 +312,7 @@ impl GraphInterpreter {
             }
           },
           | Err(error) => {
-            self.handle_drive_error(&error);
+            self.fail(&error);
             return DriveOutcome::Progressed;
           },
         }
@@ -1029,10 +1029,6 @@ impl GraphInterpreter {
         sink.logic.on_error(error.clone());
       }
     }
-  }
-
-  fn handle_drive_error(&mut self, error: &StreamError) {
-    self.fail(error);
   }
 
   fn flow_has_pending_output(&self, stage_index: usize) -> bool {
