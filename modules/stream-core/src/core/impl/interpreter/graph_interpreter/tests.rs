@@ -3125,6 +3125,70 @@ fn complete_sink_marks_sink_done_before_complete_callback_error() {
 }
 
 #[test]
+fn cancel_reports_invalid_connection_when_source_index_is_corrupt() {
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  interpreter.source_indices[0] = interpreter.sink_indices[0];
+
+  let result = interpreter.cancel();
+
+  assert_eq!(result, Err(StreamError::InvalidConnection));
+}
+
+#[test]
+fn start_sinks_reports_invalid_connection_when_sink_index_is_corrupt() {
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.sink_indices[0] = interpreter.source_indices[0];
+
+  let result = interpreter.start();
+
+  assert_eq!(result, Err(StreamError::InvalidConnection));
+}
+
+#[test]
+fn start_sinks_skips_already_started_sinks_on_retry() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink1_inlet: Inlet<u32> = Inlet::new();
+  let sink2_inlet: Inlet<u32> = Inlet::new();
+  let completion1 = StreamCompletion::new();
+
+  let source = source_sequence_u32(source_outlet, 1);
+  let sink1 = collect_u32_sequence_sink(sink1_inlet, completion1);
+  let sink2 = SinkDefinition {
+    kind:        StageKind::Custom,
+    inlet:       sink2_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(StartFailingSinkLogic),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(
+    vec![StageDefinition::Source(source), StageDefinition::Sink(sink1), StageDefinition::Sink(sink2)],
+    vec![
+      (source_outlet.id(), sink1_inlet.id(), MatCombine::Left),
+      (source_outlet.id(), sink2_inlet.id(), MatCombine::Right),
+    ],
+  );
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  assert_eq!(interpreter.start(), Err(StreamError::Failed));
+  assert!(interpreter.sink_started[0]);
+  assert!(interpreter.sink_started[1]);
+
+  // drive() re-enters start_sinks while !on_start_done; the loop must
+  // skip both already-started sinks via the continue branch.
+  let _ = interpreter.drive();
+  assert!(interpreter.sink_started[0]);
+  assert!(interpreter.sink_started[1]);
+}
+
+#[test]
 fn start_sinks_marks_each_sink_started_before_start_callback_error() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink1_inlet: Inlet<u32> = Inlet::new();
