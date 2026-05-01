@@ -1,5 +1,8 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
+#[cfg(test)]
+mod tests;
+
 use super::map_definition;
 use crate::core::{
   DownstreamCancelAction, DynValue, FlowLogic, QueueOfferResult, StageDefinition, StreamError, downcast_value,
@@ -23,7 +26,7 @@ impl<Out> SecondarySourceBridge<Out>
 where
   Out: Send + Sync + 'static,
 {
-  fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
+  pub(super) fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
     match self.completion.try_take() {
       | Some(Ok(_)) => {
         // completion が正常に取得できた → 終了
