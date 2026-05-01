@@ -1012,7 +1012,7 @@ impl GraphInterpreter {
     if self.all_sinks_done() {
       if self.source_canceled.iter().any(|canceled| *canceled) {
         self.state = StreamState::Cancelled;
-      } else if self.all_sources_done() && !self.has_flow_requesting_upstream_drain() {
+      } else if !self.has_flow_requesting_upstream_drain() {
         self.state = StreamState::Completed;
       }
     }

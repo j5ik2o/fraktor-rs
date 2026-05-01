@@ -3255,6 +3255,32 @@ fn detach_sink_position_completes_when_all_sources_are_already_done_and_is_idemp
 }
 
 #[test]
+fn detach_sink_position_completes_when_last_sink_detaches_without_source_done() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let first_sink_inlet: Inlet<u32> = Inlet::new();
+  let second_sink_inlet: Inlet<u32> = Inlet::new();
+  let source = source_sequence_u32(source_outlet, 1);
+  let first_sink = collect_u32_sequence_sink(first_sink_inlet, StreamCompletion::new());
+  let second_sink = collect_u32_sequence_sink(second_sink_inlet, StreamCompletion::new());
+  let plan = stream_plan(
+    vec![StageDefinition::Source(source), StageDefinition::Sink(first_sink), StageDefinition::Sink(second_sink)],
+    vec![
+      (source_outlet.id(), first_sink_inlet.id(), MatCombine::Left),
+      (source_outlet.id(), second_sink_inlet.id(), MatCombine::Right),
+    ],
+  );
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  interpreter.sink_done[0] = true;
+
+  interpreter.detach_sink_position(1).expect("detach");
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert!(!interpreter.source_done[0]);
+  assert!(!interpreter.source_canceled[0]);
+}
+
+#[test]
 fn flow_kill_switch_shutdown_only_closes_bound_branch() {
   let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
   let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));

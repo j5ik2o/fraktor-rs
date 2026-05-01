@@ -4,7 +4,7 @@ use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
 use fraktor_actor_core_rs::core::kernel::actor::{
   Actor, ActorContext, Pid, error::ActorError, messaging::AnyMessage, scheduler::SchedulerHandle,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::super::{Stream, StreamIslandActor, StreamIslandCommand, StreamIslandDriveGate, StreamShared, StreamState};
 use crate::core::{
@@ -209,6 +209,19 @@ fn abort_command_fails_owned_stream_and_returns_error() {
 
   assert!(result.is_err());
   assert_eq!(observed.state(), StreamState::Failed);
+}
+
+#[test]
+fn abort_graph_streams_marks_graph_kill_switch_aborted() {
+  let pulls = new_pull_counter();
+  let stream = counting_stream(pulls);
+  let kill_switch_state = stream.with_read(|stream| stream.kill_switch_state());
+  let actor = new_stream_island_actor(stream.clone());
+
+  actor.abort_graph_streams(&StreamError::Failed);
+
+  assert_eq!(kill_switch_state.lock().abort_error(), Some(StreamError::Failed));
+  assert_eq!(stream.state(), StreamState::Failed);
 }
 
 #[test]

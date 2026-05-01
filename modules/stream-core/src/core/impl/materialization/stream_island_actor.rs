@@ -5,6 +5,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
 };
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::{StreamIslandCommand, StreamIslandDriveGate, StreamIslandTickHandleSlot, StreamShared};
 use crate::core::{StreamError, materialization::DownstreamCancellationControlPlaneShared};
@@ -47,6 +48,12 @@ impl StreamIslandActor {
 
   fn abort_graph_streams(&self, error: &StreamError) {
     for stream in &self.graph_streams {
+      let kill_switch_state = stream.with_read(|stream| stream.kill_switch_state());
+      if let Some((_abort_error, command_targets)) = kill_switch_state.lock().request_abort(error.clone()) {
+        // The failure path already aborts every graph stream directly below; re-sending
+        // actor abort commands through the returned targets would duplicate delivery.
+        drop(command_targets);
+      }
       stream.abort(error);
     }
   }
