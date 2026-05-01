@@ -1,10 +1,27 @@
 use alloc::string::String;
 
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+
+use super::super::unique_kill_switch::{
+  KillSwitchCommandTarget, KillSwitchCommandTargetShared, KillSwitchState, KillSwitchStatus,
+};
 use crate::core::{
   SharedKillSwitch, StreamError,
   dsl::{BidiFlow, Flow, Sink, Source},
   materialization::{KeepLeft, KeepRight, StreamNotUsed},
 };
+
+struct FailingKillSwitchCommandTarget;
+
+impl KillSwitchCommandTarget for FailingKillSwitchCommandTarget {
+  fn shutdown(&self) -> Result<(), StreamError> {
+    Err(StreamError::Failed)
+  }
+
+  fn abort(&self, error: StreamError) -> Result<(), StreamError> {
+    Err(error)
+  }
+}
 
 #[test]
 fn shared_kill_switch_shutdown_is_visible_across_clones() {
@@ -36,6 +53,34 @@ fn shared_kill_switch_keeps_first_control_signal_across_clones() {
   assert!(cloned.is_shutdown());
   assert!(!switch.is_aborted());
   assert_eq!(switch.abort_error(), None);
+}
+
+#[test]
+fn shared_kill_switch_shutdown_ignores_command_target_failure() {
+  let state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
+  let target: KillSwitchCommandTargetShared = ArcShared::new(FailingKillSwitchCommandTarget);
+  let status = state.lock().add_command_target(target);
+  assert!(matches!(status, KillSwitchStatus::Running));
+  let switch = SharedKillSwitch::from_state(state);
+
+  switch.shutdown();
+
+  assert!(switch.is_shutdown());
+  assert!(!switch.is_aborted());
+}
+
+#[test]
+fn shared_kill_switch_abort_ignores_command_target_failure() {
+  let state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
+  let target: KillSwitchCommandTargetShared = ArcShared::new(FailingKillSwitchCommandTarget);
+  let status = state.lock().add_command_target(target);
+  assert!(matches!(status, KillSwitchStatus::Running));
+  let switch = SharedKillSwitch::from_state(state);
+
+  switch.abort(StreamError::Failed);
+
+  assert!(switch.is_aborted());
+  assert_eq!(switch.abort_error(), Some(StreamError::Failed));
 }
 
 #[test]

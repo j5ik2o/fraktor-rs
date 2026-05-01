@@ -6,7 +6,7 @@ use std::{boxed::Box, thread, time::Instant};
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorContext, ChildRef, Pid,
     error::ActorError,
     messaging::{AnyMessageView, system_message::SystemMessage},
     props::Props,
@@ -21,12 +21,16 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
-use super::{ActorMaterializer, MaterializedStreamResources};
+use super::{
+  ActorMaterializer, DownstreamCancellationBoundary, GraphKillSwitchCommandTarget, MaterializedStreamResources,
+};
 use crate::core::{
-  DemandTracker, DynValue, KillSwitchStateHandle, SharedKillSwitch, SinkDecision, SinkLogic, SourceLogic, StreamError,
+  DemandTracker, DynValue, KillSwitchCommandTarget, KillSwitchState, KillSwitchStateHandle, SharedKillSwitch,
+  SinkDecision, SinkLogic, SourceLogic, StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source},
   r#impl::{
     fusing::StreamBufferConfig,
+    interpreter::IslandBoundaryShared,
     materialization::{Stream, StreamIslandCommand, StreamIslandDriveGate, StreamShared, StreamState},
   },
   materialization::{
@@ -111,9 +115,20 @@ struct DriveRecordingActor {
   drives: ArcShared<SpinSyncMutex<u32>>,
 }
 
+struct CommandRecordingActor {
+  shutdowns: ArcShared<SpinSyncMutex<u32>>,
+  aborts:    ArcShared<SpinSyncMutex<u32>>,
+}
+
 impl DriveRecordingActor {
   const fn new(drives: ArcShared<SpinSyncMutex<u32>>) -> Self {
     Self { drives }
+  }
+}
+
+impl CommandRecordingActor {
+  const fn new(shutdowns: ArcShared<SpinSyncMutex<u32>>, aborts: ArcShared<SpinSyncMutex<u32>>) -> Self {
+    Self { shutdowns, aborts }
   }
 }
 
@@ -122,6 +137,23 @@ impl Actor for DriveRecordingActor {
     if matches!(message.downcast_ref::<StreamIslandCommand>(), Some(StreamIslandCommand::Drive)) {
       let mut drives = self.drives.lock();
       *drives = drives.saturating_add(1);
+    }
+    Ok(())
+  }
+}
+
+impl Actor for CommandRecordingActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    match message.downcast_ref::<StreamIslandCommand>() {
+      | Some(StreamIslandCommand::Shutdown) => {
+        let mut shutdowns = self.shutdowns.lock();
+        *shutdowns = shutdowns.saturating_add(1);
+      },
+      | Some(StreamIslandCommand::Abort(_)) => {
+        let mut aborts = self.aborts.lock();
+        *aborts = aborts.saturating_add(1);
+      },
+      | _ => {},
     }
     Ok(())
   }
@@ -148,6 +180,8 @@ impl SinkLogic for FailOnStartSinkLogic {
 struct CancelAwareSourceLogic {
   cancel_count: ArcShared<SpinSyncMutex<u32>>,
 }
+
+struct CancelFailingSourceLogic;
 
 struct DrainOnShutdownFailingSourceLogic {
   error: StreamError,
@@ -184,6 +218,16 @@ impl SourceLogic for CancelAwareSourceLogic {
     let mut count = self.cancel_count.lock();
     *count = count.saturating_add(1);
     Ok(())
+  }
+}
+
+impl SourceLogic for CancelFailingSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    Err(StreamError::Failed)
   }
 }
 
@@ -316,6 +360,17 @@ fn wait_for_drive_count(drives: &ArcShared<SpinSyncMutex<u32>>, expected: u32) {
   assert_eq!(drive_count(drives), expected);
 }
 
+fn wait_for_counter(counter: &ArcShared<SpinSyncMutex<u32>>, expected: u32) {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if *counter.lock() == expected {
+      return;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(*counter.lock(), expected);
+}
+
 fn wait_for_actor_cell_removed(system: &ActorSystem, pid: Pid) {
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
@@ -325,6 +380,15 @@ fn wait_for_actor_cell_removed(system: &ActorSystem, pid: Pid) {
     thread::yield_now();
   }
   assert!(system.state().cell(&pid).is_none());
+}
+
+fn stopped_system_actor(system: &ActorSystem) -> ChildRef {
+  let props = Props::from_fn(|| GuardianActor);
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  let actor_pid = actor.pid();
+  actor.stop().expect("actor should stop");
+  wait_for_actor_cell_removed(system, actor_pid);
+  actor
 }
 
 fn upstream_cancel_command_count(materializer: &ActorMaterializer) -> u32 {
@@ -612,6 +676,127 @@ fn materialize_cancels_started_streams_when_later_dispatcher_is_missing() {
 }
 
 #[test]
+fn configure_downstream_cancellation_control_plane_groups_routes_by_upstream_island() {
+  let system = build_system();
+  let props = Props::from_fn(|| GuardianActor);
+  let upstream_actor = system.extended().spawn_system_actor(&props).expect("upstream actor should spawn");
+  let first_downstream_actor =
+    system.extended().spawn_system_actor(&props).expect("first downstream actor should spawn");
+  let second_downstream_actor =
+    system.extended().spawn_system_actor(&props).expect("second downstream actor should spawn");
+  let island_actors = vec![upstream_actor.clone(), first_downstream_actor, second_downstream_actor];
+  let upstream_stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let first_downstream_stream = running_stream_from_graph(Source::single(1_u32).into_mat(Sink::ignore(), KeepRight));
+  let second_downstream_stream = running_stream_from_graph(Source::single(2_u32).into_mat(Sink::ignore(), KeepRight));
+  let streams = vec![upstream_stream, first_downstream_stream, second_downstream_stream];
+  let first_boundary = IslandBoundaryShared::new(1);
+  let second_boundary = IslandBoundaryShared::new(1);
+  let control_plane = empty_downstream_cancellation_control_plane();
+  let boundaries = vec![
+    DownstreamCancellationBoundary::new(0, 1, first_boundary.clone()),
+    DownstreamCancellationBoundary::new(0, 2, second_boundary.clone()),
+  ];
+
+  ActorMaterializer::configure_downstream_cancellation_control_plane(
+    boundaries,
+    &island_actors,
+    &streams,
+    &control_plane,
+  )
+  .expect("control plane should configure");
+
+  first_boundary.cancel_downstream();
+  second_boundary.cancel_downstream();
+  let reserved = control_plane.lock().reserve_cancellation_targets();
+
+  assert_eq!(reserved.len(), 1);
+  assert_eq!(reserved[0].actor_pid(), upstream_actor.pid());
+}
+
+#[test]
+fn build_materialized_resources_rolls_back_when_cancellation_boundary_is_invalid() {
+  let system = build_system();
+  let child_count_before = system_child_names(&system).len();
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let control_plane = empty_downstream_cancellation_control_plane();
+  let boundaries = vec![DownstreamCancellationBoundary::new(0, 1, IslandBoundaryShared::new(1))];
+
+  let result = ActorMaterializer::build_materialized_resources(
+    &system,
+    vec![stream.clone()],
+    vec![None],
+    Duration::from_millis(1),
+    boundaries,
+    &control_plane,
+  );
+
+  assert_eq!(result.err(), Some(StreamError::InvalidConnection));
+  assert_eq!(stream.state(), StreamState::Cancelled);
+  assert_eq!(system_child_names(&system).len(), child_count_before);
+}
+
+#[test]
+fn build_materialized_resources_rolls_back_when_tick_scheduling_fails() {
+  let system = build_system();
+  let child_count_before = system_child_names(&system).len();
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let shutdown_summary = system.scheduler().with_write(|scheduler| scheduler.shutdown());
+  assert_eq!(shutdown_summary.failed_tasks, 0);
+  let control_plane = empty_downstream_cancellation_control_plane();
+
+  let result = ActorMaterializer::build_materialized_resources(
+    &system,
+    vec![stream.clone()],
+    vec![None],
+    Duration::from_millis(1),
+    Vec::new(),
+    &control_plane,
+  );
+
+  assert_eq!(result.err(), Some(StreamError::Failed));
+  assert_eq!(stream.state(), StreamState::Cancelled);
+  assert_eq!(system_child_names(&system).len(), child_count_before);
+}
+
+#[test]
+fn cancel_resources_reports_first_stream_cancel_failure() {
+  let system = build_system();
+  let failing_stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, CancelFailingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let healthy_stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let resources = MaterializedStreamResources::new(
+    vec![failing_stream, healthy_stream.clone()],
+    empty_downstream_cancellation_control_plane(),
+  );
+
+  let result = ActorMaterializer::cancel_resources(&system, resources, None);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert_eq!(healthy_stream.state(), StreamState::Cancelled);
+}
+
+#[test]
+fn cancel_resources_reports_stopped_island_actor_delivery_failure() {
+  let system = build_system();
+  let actor = stopped_system_actor(&system);
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor);
+
+  let result = ActorMaterializer::cancel_resources(&system, resources, None);
+
+  assert_eq!(result, Err(StreamError::Failed));
+}
+
+#[test]
 fn materialize_registers_one_scheduler_job_per_island_actor() {
   let system = build_system();
   let scheduler_jobs_before_start = scheduler_job_count(&system);
@@ -656,6 +841,70 @@ fn send_drive_if_idle_reports_delivery_failure_and_releases_gate() {
 
   assert!(matches!(result, Err(StreamError::Failed)));
   assert!(gate.try_mark_pending());
+}
+
+#[test]
+fn graph_kill_switch_target_reports_first_delivery_failure() {
+  let system = build_system();
+  let props = Props::from_fn(|| GuardianActor);
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  actor.stop().expect("stop actor");
+  wait_for_actor_cell_removed(&system, actor.pid());
+  let target = GraphKillSwitchCommandTarget::new(&[actor]);
+
+  let result = target.shutdown();
+
+  assert_eq!(result, Err(StreamError::Failed));
+}
+
+#[test]
+fn register_graph_kill_switch_target_sends_shutdown_when_state_already_shutdown() {
+  let system = build_system();
+  let shutdowns = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let aborts = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let actor_shutdowns = shutdowns.clone();
+  let actor_aborts = aborts.clone();
+  let props = Props::from_fn(move || CommandRecordingActor::new(actor_shutdowns.clone(), actor_aborts.clone()));
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  let state: KillSwitchStateHandle = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
+  assert!(state.lock().request_shutdown().is_some());
+
+  ActorMaterializer::register_graph_kill_switch_target(&state, &[actor]).expect("register kill switch target");
+
+  wait_for_counter(&shutdowns, 1);
+  assert_eq!(*aborts.lock(), 0);
+}
+
+#[test]
+fn register_graph_kill_switch_target_sends_abort_when_state_already_aborted() {
+  let system = build_system();
+  let shutdowns = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let aborts = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let actor_shutdowns = shutdowns.clone();
+  let actor_aborts = aborts.clone();
+  let props = Props::from_fn(move || CommandRecordingActor::new(actor_shutdowns.clone(), actor_aborts.clone()));
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  let state: KillSwitchStateHandle = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
+  assert!(state.lock().request_abort(StreamError::Failed).is_some());
+
+  ActorMaterializer::register_graph_kill_switch_target(&state, &[actor]).expect("register kill switch target");
+
+  wait_for_counter(&aborts, 1);
+  assert_eq!(*shutdowns.lock(), 0);
+}
+
+#[test]
+fn register_graph_kill_switch_target_or_rollback_reports_delivery_failure() {
+  let system = build_system();
+  let actor = stopped_system_actor(&system);
+  let state: KillSwitchStateHandle = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
+  assert!(state.lock().request_shutdown().is_some());
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor);
+
+  let result = ActorMaterializer::register_graph_kill_switch_target_or_rollback(&system, resources, &state);
+
+  assert!(result.is_err());
 }
 
 #[test]
@@ -741,6 +990,45 @@ fn shutdown_resources_drives_other_streams_even_when_one_shutdown_request_fails(
 
   assert_eq!(result, Err(shutdown_error));
   assert_eq!(observed_draining_stream.state(), StreamState::Completed);
+}
+
+#[test]
+fn shutdown_resources_reports_stopped_actor_and_cancel_failure() {
+  let system = build_system();
+  let actor = stopped_system_actor(&system);
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, CancelFailingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor);
+
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert_eq!(result, Err(StreamError::Failed));
+}
+
+#[test]
+fn shutdown_reports_resource_teardown_failure_and_clears_materialized_resources() {
+  let system = build_system();
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
+  materializer.start().expect("start");
+  materializer.materialized.push(resources_with_unknown_tick());
+
+  let result = materializer.shutdown();
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert_eq!(materializer.lifecycle_state(), MaterializerLifecycleState::Stopped);
+  assert!(materializer.materialized.is_empty());
+}
+
+#[test]
+fn stream_shutdown_is_idempotent_after_first_request() {
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+
+  assert_eq!(stream.shutdown(), Ok(()));
+  assert_eq!(stream.shutdown(), Ok(()));
 }
 
 // ---------------------------------------------------------------------------

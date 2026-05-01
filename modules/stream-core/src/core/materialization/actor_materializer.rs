@@ -326,6 +326,17 @@ impl ActorMaterializer {
     }
   }
 
+  fn register_graph_kill_switch_target_or_rollback(
+    system: &ActorSystem,
+    resources: MaterializedStreamResources,
+    kill_switch_state: &KillSwitchStateHandle,
+  ) -> Result<MaterializedStreamResources, StreamError> {
+    if let Err(error) = Self::register_graph_kill_switch_target(kill_switch_state, &resources.island_actors) {
+      return Err(Self::rollback_materialized_resources(system, resources, error));
+    }
+    Ok(resources)
+  }
+
   fn cancel_tick(system: &ActorSystem, handle: &SchedulerHandle) -> Result<(), StreamError> {
     let cancelled = system.scheduler().with_write(|scheduler| scheduler.cancel(handle));
     if cancelled || handle.is_cancelled() || handle.is_completed() { Ok(()) } else { Err(StreamError::Failed) }
@@ -596,9 +607,8 @@ impl Materializer for ActorMaterializer {
       downstream_cancellation_boundaries,
       &downstream_cancellation_control_plane,
     )?;
-    if let Err(error) = Self::register_graph_kill_switch_target(&graph_kill_switch_state, &resources.island_actors) {
-      return Err(Self::rollback_materialized_resources(&actor_system, resources, error));
-    }
+    let resources =
+      Self::register_graph_kill_switch_target_or_rollback(&actor_system, resources, &graph_kill_switch_state)?;
     self.streams.extend(resources.streams.iter().cloned());
     self.materialized.push(resources);
     self.total_materialized += 1;

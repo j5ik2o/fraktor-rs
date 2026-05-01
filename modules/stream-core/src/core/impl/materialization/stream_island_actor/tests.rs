@@ -110,6 +110,14 @@ fn receive_command(actor: &mut StreamIslandActor, command: StreamIslandCommand) 
   receive_command_result(actor, command).expect("receive failed");
 }
 
+fn receive_message_result(actor: &mut StreamIslandActor, message: AnyMessage) -> Result<(), ActorError> {
+  let system = new_empty_actor_system();
+  let pid = Pid::new(1, 1);
+  let mut context = ActorContext::new(&system, pid);
+
+  actor.receive(&mut context, message.as_view())
+}
+
 #[test]
 fn drive_command_drives_owned_stream_from_mailbox() {
   let pulls = new_pull_counter();
@@ -171,6 +179,16 @@ fn cancel_command_returns_error_when_cancel_fails() {
 }
 
 #[test]
+fn cancel_command_reports_cause_when_cancel_fails_after_abort() {
+  let stream = cancel_failing_stream();
+  let mut actor = new_stream_island_actor(stream);
+
+  let result = receive_command_result(&mut actor, StreamIslandCommand::Cancel { cause: Some(StreamError::Failed) });
+
+  assert!(result.is_err());
+}
+
+#[test]
 fn shutdown_command_returns_error_when_cancel_fails() {
   let stream = cancel_failing_stream();
   let mut actor = new_stream_island_actor(stream);
@@ -191,6 +209,19 @@ fn abort_command_fails_owned_stream_and_returns_error() {
 
   assert!(result.is_err());
   assert_eq!(observed.state(), StreamState::Failed);
+}
+
+#[test]
+fn non_stream_island_command_is_ignored() {
+  let pulls = new_pull_counter();
+  let stream = counting_stream(pulls);
+  let observed = stream.clone();
+  let mut actor = new_stream_island_actor(stream);
+
+  let result = receive_message_result(&mut actor, AnyMessage::new(123_u32));
+
+  assert_eq!(result, Ok(()));
+  assert_eq!(observed.state(), StreamState::Running);
 }
 
 #[test]
