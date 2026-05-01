@@ -7,9 +7,14 @@ use super::map_definition;
 use crate::core::{
   DownstreamCancelAction, DynValue, FlowLogic, QueueOfferResult, StageDefinition, StreamError, downcast_value,
   dsl::{Sink, Source},
-  r#impl::{fusing::StreamBufferConfig, materialization::Stream, queue::SourceQueue},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamState},
+    queue::SourceQueue,
+  },
   materialization::{DriveOutcome, MatCombine, StreamDone, StreamFuture},
   shape::{Inlet, Outlet},
+  stage::CancellationCause,
 };
 
 const IDLE_BUDGET: usize = 32;
@@ -27,12 +32,13 @@ where
   Out: Send + Sync + 'static,
 {
   pub(super) fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
-    // 単一ドライバ前提: stream が terminal になる前に必ず inner sink の
-    // on_complete/on_error が呼ばれ completion が確定する。よって outer
-    // try_take が結果を返さず is_terminal=true となるのは異常系または
-    // completion を外部から消費した後のみで、いずれの場合も Ok 完了として
-    // 扱う。後着 Err を厳密に拾うには framework 側で terminal cause を
-    // 公開する API が必要となり、別 PR で対応する (see #1720 review).
+    // 完了通知は2系統ある:
+    //   (1) inner sink (`Sink::foreach`) の completion future
+    //   (2) `Stream` 自体の terminal state (Completed/Failed/Cancelled)
+    // (1) が届いていればそれを優先し、未着の場合は (2) で終了種別を判別して
+    // 正常完了と異常完了を取り違えないようにする (`is_terminal()` だけだと
+    // Failed/Cancelled も正常完了として queue.complete_if_open に流れてしまい、
+    // 失敗を呼び出し側に伝えられない)。
     match self.completion.try_take() {
       | Some(Ok(_)) => {
         self.finished = true;
@@ -44,12 +50,28 @@ where
         self.queue.fail(error.clone());
         Err(error)
       },
-      | None => {
-        if self.stream.state().is_terminal() {
+      | None => match self.stream.state() {
+        | StreamState::Completed => {
           self.finished = true;
           let _ = self.queue.complete_if_open();
-        }
-        Ok(())
+          Ok(())
+        },
+        | StreamState::Failed => {
+          self.finished = true;
+          // Stream 側は具体的な StreamError を保持しないため、汎用 Failed を
+          // 通知する。原因取得には framework 側の terminal cause API が必要
+          // (別 issue で追跡)。
+          let error = StreamError::Failed;
+          self.queue.fail(error.clone());
+          Err(error)
+        },
+        | StreamState::Cancelled => {
+          self.finished = true;
+          let error = StreamError::CancellationCause { cause: CancellationCause::stage_was_completed() };
+          self.queue.fail(error.clone());
+          Err(error)
+        },
+        | StreamState::Idle | StreamState::Running => Ok(()),
       },
     }
   }
