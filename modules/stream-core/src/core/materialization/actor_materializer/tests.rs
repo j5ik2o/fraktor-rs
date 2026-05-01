@@ -1081,13 +1081,12 @@ fn drive_actor_owned_streams_until_terminal_reports_invalid_resource_shape() {
 }
 
 #[test]
-fn drive_actor_owned_streams_until_terminal_reports_round_limit_when_gate_never_releases() {
+fn drive_actor_owned_streams_until_terminal_reports_direct_drain_round_limit() {
   let system = build_system();
   let stream = running_stream_from_graph(
     Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
   );
   let drive_gate = StreamIslandDriveGate::new();
-  assert!(drive_gate.try_mark_pending());
   let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
   resources.island_actors.push(stopped_system_actor(&system));
   resources.drive_gates.push(drive_gate);

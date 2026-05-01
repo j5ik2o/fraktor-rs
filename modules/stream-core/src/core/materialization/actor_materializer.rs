@@ -423,37 +423,16 @@ impl ActorMaterializer {
   }
 
   fn drive_actor_owned_streams_until_terminal(resources: &MaterializedStreamResources) -> Result<(), StreamError> {
-    const ACTOR_DRAIN_ROUND_LIMIT: usize = 4096;
-
     if resources.island_actors.len() != resources.streams.len()
       || resources.drive_gates.len() != resources.streams.len()
     {
       return Err(StreamError::InvalidConnection);
     }
 
-    let mut result = Ok(());
-    for _ in 0..ACTOR_DRAIN_ROUND_LIMIT {
-      if Self::all_streams_terminal(&resources.streams) {
-        return result;
-      }
-      for ((actor, drive_gate), stream) in
-        resources.island_actors.iter().zip(&resources.drive_gates).zip(&resources.streams)
-      {
-        if stream.state().is_terminal() {
-          continue;
-        }
-        if let Err(error) = Self::send_drive_if_idle(actor, drive_gate) {
-          Self::record_first_error(&mut result, error);
-        }
-      }
-      hint::spin_loop();
-    }
-
-    Self::record_first_error(
-      &mut result,
-      StreamError::failed_with_context("graceful actor shutdown exceeded drain round limit"),
-    );
-    result
+    // Shutdown has already cancelled scheduled ticks and requested stream
+    // shutdown directly, so the caller owns the final bounded drain here.
+    // Any already-queued actor Drive is serialized by StreamShared's mutex.
+    Self::drive_streams_until_terminal(&resources.streams)
   }
 
   fn teardown_resources_with_command<F>(
@@ -490,6 +469,11 @@ impl ActorMaterializer {
     let mut result = Ok(());
     let resources = resources;
     resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
+    for handle in &resources.tick_handles {
+      if let Err(error) = Self::cancel_tick(system, handle) {
+        Self::record_first_error(&mut result, error);
+      }
+    }
     if resources.island_actors.is_empty() {
       if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
         Self::record_first_error(&mut result, error);
@@ -501,12 +485,10 @@ impl ActorMaterializer {
       if let Err(error) = Self::request_actor_shutdown(&resources.island_actors) {
         Self::record_first_error(&mut result, error);
       }
-      if let Err(error) = Self::drive_actor_owned_streams_until_terminal(&resources) {
+      if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
         Self::record_first_error(&mut result, error);
       }
-    }
-    for handle in &resources.tick_handles {
-      if let Err(error) = Self::cancel_tick(system, handle) {
+      if let Err(error) = Self::drive_actor_owned_streams_until_terminal(&resources) {
         Self::record_first_error(&mut result, error);
       }
     }
