@@ -427,18 +427,28 @@ impl GraphInterpreter {
         continue;
       }
       let source_index = self.source_indices[source_position];
-      let StageDefinition::Source(source) = &mut self.stages[source_index] else {
-        return Err(StreamError::InvalidConnection);
+      let (should_drain_on_shutdown, on_shutdown_result) = {
+        let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        let should_drain = source.logic.should_drain_on_shutdown();
+        let result = source.logic.on_shutdown();
+        (should_drain, result)
       };
-      let should_drain_on_shutdown = source.logic.should_drain_on_shutdown();
-      source.logic.on_shutdown()?;
       self.source_shutdown[source_position] = true;
+      on_shutdown_result?;
       if should_drain_on_shutdown {
         continue;
       }
-      source.logic.on_cancel()?;
+      let on_cancel_result = {
+        let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        source.logic.on_cancel()
+      };
       self.source_done[source_position] = true;
       self.source_canceled[source_position] = true;
+      on_cancel_result?;
       self.close_outgoing_edges_for_stage(source_index);
       source_done_changed = true;
     }

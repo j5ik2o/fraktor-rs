@@ -3071,6 +3071,19 @@ fn request_shutdown_reports_invalid_connection_when_source_index_is_corrupt() {
 }
 
 #[test]
+fn request_shutdown_marks_source_shutdown_before_shutdown_callback_error() {
+  let graph =
+    Source::<u32, _>::from_logic(StageKind::Custom, ShutdownFailingSourceLogic).into_mat(Sink::ignore(), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  let result = interpreter.request_shutdown();
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(interpreter.source_shutdown[0]);
+}
+
+#[test]
 fn request_shutdown_from_idle_reports_start_sink_failure() {
   let sink: Sink<u32, StreamNotUsed> = Sink::from_logic(StageKind::Custom, StartFailingSinkLogic);
   let graph = Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(sink, KeepRight);
@@ -4444,6 +4457,8 @@ struct SequenceSourceLogic {
 
 struct PendingSourceLogic;
 
+struct ShutdownFailingSourceLogic;
+
 struct EmptyTestSourceLogic;
 
 struct RestartFailingSourceLogic;
@@ -4455,6 +4470,16 @@ impl SourceLogic for PendingSourceLogic {
 
   fn should_drain_on_shutdown(&self) -> bool {
     false
+  }
+}
+
+impl SourceLogic for ShutdownFailingSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    Err(StreamError::Failed)
   }
 }
 
