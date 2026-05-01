@@ -48,7 +48,7 @@ fn collect_stream_examples(directory: &Path, out: &mut Vec<PathBuf>) {
       collect_stream_examples(&path, out);
       continue;
     }
-    if path.file_name().and_then(|file_name| file_name.to_str()) == Some("main.rs") {
+    if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
       out.push(path);
     }
   }

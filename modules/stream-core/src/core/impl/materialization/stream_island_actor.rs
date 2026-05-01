@@ -39,9 +39,9 @@ impl StreamIslandActor {
     };
     let cancelled = handle.cancel();
     if !(cancelled || handle.is_cancelled() || handle.is_completed()) {
-      // Best-effort: periodic execution may already be transitioning through
-      // the scheduler when the island reaches terminal state. In that case the
-      // next fired tick will observe terminal state and become a no-op.
+      // ベストエフォート: island が terminal に到達する瞬間は scheduler 側の
+      // 遷移と競合し得る。その場合は次に発火した tick が terminal 状態を観測して
+      // no-op になる。
     }
   }
 

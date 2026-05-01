@@ -161,20 +161,22 @@ impl ActorMaterializer {
   ) -> Result<SchedulerHandle, StreamError> {
     let actor = actor.clone();
     let streams = streams.to_vec();
-    let tick_handle_slot = tick_handle_slot.clone();
+    let tick_handle_slot_for_runnable = tick_handle_slot.clone();
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
       if let Err(error) = Self::run_scheduled_tick(&actor, &drive_gate) {
         Self::abort_streams(&streams, &error);
-        if let Some(handle) = tick_handle_slot.lock().take() {
+        if let Some(handle) = tick_handle_slot_for_runnable.lock().take() {
           let _cancelled = handle.cancel();
         }
       }
     });
     let command = SchedulerCommand::RunRunnable { runnable };
-    system
+    let handle = system
       .scheduler()
       .with_write(|scheduler| scheduler.schedule_at_fixed_rate(interval, interval, command))
-      .map_err(|_| StreamError::Failed)
+      .map_err(|_| StreamError::Failed)?;
+    *tick_handle_slot.lock() = Some(handle.clone());
+    Ok(handle)
   }
 
   fn stream_from_island(
@@ -273,7 +275,6 @@ impl ActorMaterializer {
           | Ok(tick_handle) => tick_handle,
           | Err(error) => return Err(Self::rollback_materialized_resources(system, resources, error)),
         };
-      *tick_handle_slot.lock() = Some(tick_handle.clone());
       resources.tick_handles.push(tick_handle);
     }
     Ok(resources)
@@ -340,6 +341,39 @@ impl ActorMaterializer {
     result
   }
 
+  fn request_stream_shutdown(streams: &[StreamShared]) -> Result<(), StreamError> {
+    let mut result = Ok(());
+    for stream in streams {
+      if let Err(error) = stream.shutdown() {
+        Self::record_first_error(&mut result, error);
+      }
+    }
+    result
+  }
+
+  fn drive_streams_until_terminal(streams: &[StreamShared]) -> Result<(), StreamError> {
+    for _ in 0..256 {
+      let mut all_terminal = true;
+      let mut progressed = false;
+      for stream in streams {
+        if stream.state().is_terminal() {
+          continue;
+        }
+        all_terminal = false;
+        if matches!(stream.drive(), crate::core::materialization::DriveOutcome::Progressed) {
+          progressed = true;
+        }
+      }
+      if all_terminal || streams.iter().all(|stream| stream.state().is_terminal()) {
+        return Ok(());
+      }
+      if !progressed {
+        break;
+      }
+    }
+    Err(StreamError::failed_with_context("graceful shutdown did not reach terminal state"))
+  }
+
   fn teardown_resources_with_command<F>(
     system: &ActorSystem,
     mut resources: MaterializedStreamResources,
@@ -371,7 +405,31 @@ impl ActorMaterializer {
   }
 
   fn shutdown_resources(system: &ActorSystem, resources: MaterializedStreamResources) -> Result<(), StreamError> {
-    Self::teardown_resources_with_command(system, resources, || StreamIslandCommand::Shutdown)
+    let mut result = Ok(());
+    let resources = resources;
+    resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
+    if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
+      Self::record_first_error(&mut result, error);
+    }
+    if result.is_ok()
+      && let Err(error) = Self::drive_streams_until_terminal(&resources.streams)
+    {
+      Self::record_first_error(&mut result, error);
+    }
+    for handle in &resources.tick_handles {
+      if let Err(error) = Self::cancel_tick(system, handle) {
+        Self::record_first_error(&mut result, error);
+      }
+    }
+    for actor in &resources.island_actors {
+      if actor.stop().is_err() {
+        Self::record_first_error(&mut result, StreamError::Failed);
+      }
+    }
+    if let Err(error) = Self::cancel_streams(&resources.streams) {
+      Self::record_first_error(&mut result, error);
+    }
+    result
   }
 
   fn cancel_resources(

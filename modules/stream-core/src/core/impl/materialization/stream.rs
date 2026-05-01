@@ -82,19 +82,24 @@ impl Stream {
       return if was_terminal { DriveOutcome::Idle } else { DriveOutcome::Progressed };
     }
 
-    if self.shutdown_requested_from_kill_switches() && !self.shutdown_requested {
-      if let Err(error) = self.shutdown() {
-        self.interpreter.abort(&error);
-        return DriveOutcome::Progressed;
-      }
-      self.shutdown_requested = true;
+    if self.shutdown_requested_from_kill_switches()
+      && !self.shutdown_requested
+      && let Err(error) = self.shutdown()
+    {
+      self.interpreter.abort(&error);
+      return DriveOutcome::Progressed;
     }
 
     self.interpreter.drive()
   }
 
   pub(crate) fn shutdown(&mut self) -> Result<(), StreamError> {
-    self.interpreter.request_shutdown()
+    if self.shutdown_requested {
+      return Ok(());
+    }
+    self.interpreter.request_shutdown()?;
+    self.shutdown_requested = true;
+    Ok(())
   }
 
   pub(crate) fn cancel(&mut self) -> Result<(), StreamError> {

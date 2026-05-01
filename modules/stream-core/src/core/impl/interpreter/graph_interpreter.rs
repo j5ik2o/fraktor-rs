@@ -34,6 +34,7 @@ pub(in crate::core) struct GraphInterpreter {
   state:                  StreamState,
   source_done:            Vec<bool>,
   source_canceled:        Vec<bool>,
+  source_shutdown:        Vec<bool>,
   sink_done:              Vec<bool>,
   flow_source_done:       Vec<bool>,
   flow_done:              Vec<bool>,
@@ -81,6 +82,7 @@ impl GraphInterpreter {
       state: StreamState::Idle,
       source_done: vec![false; source_indices_len],
       source_canceled: vec![false; source_indices_len],
+      source_shutdown: vec![false; source_indices_len],
       sink_done: vec![false; sink_indices_len],
       flow_source_done: vec![false; flow_count],
       flow_done: vec![false; flow_count],
@@ -160,6 +162,9 @@ impl GraphInterpreter {
   pub(in crate::core) fn request_shutdown(&mut self) -> Result<(), StreamError> {
     if self.state.is_terminal() {
       return Ok(());
+    }
+    if self.state == StreamState::Idle {
+      self.state = StreamState::Running;
     }
     self.shutdown_sources_if_needed()?;
     Ok(())
@@ -396,7 +401,7 @@ impl GraphInterpreter {
 
   fn cancel_source_if_needed(&mut self) -> Result<(), StreamError> {
     for source_position in 0..self.source_indices.len() {
-      if self.source_canceled[source_position] {
+      if self.source_done[source_position] || self.source_canceled[source_position] {
         continue;
       }
       let source_index = self.source_indices[source_position];
@@ -412,7 +417,10 @@ impl GraphInterpreter {
   fn shutdown_sources_if_needed(&mut self) -> Result<(), StreamError> {
     let mut source_done_changed = false;
     for source_position in 0..self.source_indices.len() {
-      if self.source_done[source_position] || self.source_canceled[source_position] {
+      if self.source_done[source_position]
+        || self.source_canceled[source_position]
+        || self.source_shutdown[source_position]
+      {
         continue;
       }
       let source_index = self.source_indices[source_position];
@@ -424,7 +432,7 @@ impl GraphInterpreter {
       }
       source.logic.on_shutdown()?;
       self.source_done[source_position] = true;
-      self.source_canceled[source_position] = true;
+      self.source_shutdown[source_position] = true;
       self.close_outgoing_edges_for_stage(source_index);
       source_done_changed = true;
     }
@@ -1003,7 +1011,7 @@ impl GraphInterpreter {
     if self.all_sinks_done() {
       if self.source_canceled.iter().any(|canceled| *canceled) {
         self.state = StreamState::Cancelled;
-      } else if !self.has_flow_requesting_upstream_drain() {
+      } else if self.all_sources_done() && !self.has_flow_requesting_upstream_drain() {
         self.state = StreamState::Completed;
       }
     }

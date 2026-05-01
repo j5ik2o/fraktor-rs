@@ -7,21 +7,53 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example stream_pipeline`
 
-use fraktor_showcases_std::support;
+use std::{thread, time::Duration};
+
+use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, setup::ActorSystemConfig},
+  system::ActorSystem,
+};
 use fraktor_stream_core_rs::core::{
   dsl::{Sink, Source},
-  materialization::KeepRight,
+  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight},
 };
+
+struct GuardianActor;
+
+impl Actor for GuardianActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+fn poll_until_ready<T: Clone>(
+  completion: &fraktor_stream_core_rs::core::materialization::StreamCompletion<T>,
+  max_ticks: usize,
+) -> Option<Result<T, fraktor_stream_core_rs::core::StreamError>> {
+  for _ in 0..max_ticks {
+    if let Completion::Ready(result) = completion.poll() {
+      return Some(result);
+    }
+    thread::sleep(Duration::from_millis(1));
+  }
+  None
+}
 
 #[allow(clippy::print_stdout)]
 fn main() {
-  let mut mat = support::start_materializer();
+  let props = Props::from_fn(|| GuardianActor);
+  let config = ActorSystemConfig::new(StdTickDriver::default());
+  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let mut mat =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
+  mat.start().expect("materializer start");
 
   // Part 1: Source → Map → Sink::head
   println!("=== Part 1: minimal pipeline (map + head) ===");
   let graph = Source::single(41_u32).map(|v| v + 1).into_mat(Sink::head(), KeepRight);
   let materialized = graph.run(&mut mat).expect("run");
-  let result = support::drive_until_ready(materialized.materialized(), 8);
+  let result = poll_until_ready(materialized.materialized(), 8);
   match result {
     | Some(Ok(value)) => println!("result: {value}"),
     | Some(Err(error)) => println!("failed: {error}"),
@@ -34,7 +66,7 @@ fn main() {
     .flat_map_concat(|v| Source::single(v + 3))
     .into_mat(Sink::fold(10_u32, |acc, v| acc + v), KeepRight);
   let materialized = graph.run(&mut mat).expect("run");
-  let result = support::drive_until_ready(materialized.materialized(), 8);
+  let result = poll_until_ready(materialized.materialized(), 8);
   match result {
     | Some(Ok(sum)) => println!("fold result: {sum}"),
     | Some(Err(error)) => println!("failed: {error}"),
@@ -53,7 +85,7 @@ fn main() {
     KeepRight,
   );
   let materialized = graph.run(&mut mat).expect("run");
-  let result = support::drive_until_ready(materialized.materialized(), 8);
+  let result = poll_until_ready(materialized.materialized(), 8);
   match result {
     | Some(Ok(values)) => println!("filtered values: {values:?}"),
     | Some(Err(error)) => println!("failed: {error}"),
