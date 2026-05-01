@@ -442,6 +442,8 @@ impl IslandSplitter {
 
       let dispatcher = dispatcher_for_island[isl_idx].take();
 
+      // These are only external graph-wide shared kill switches registered on the plan.
+      // Per-stage kill switch flow states stay inside their owning stage logic.
       islands.push(SingleIslandPlan {
         id: IslandId(isl_idx),
         stages,

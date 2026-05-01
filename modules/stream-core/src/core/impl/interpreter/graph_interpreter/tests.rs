@@ -3052,6 +3052,7 @@ fn request_shutdown_from_idle_is_idempotent_for_shutdown_sources() {
   interpreter.request_shutdown().expect("second shutdown request");
 
   assert_eq!(interpreter.state(), StreamState::Running);
+  assert!(interpreter.on_start_done);
   assert!(interpreter.source_shutdown[0]);
   assert!(interpreter.source_done[0]);
   assert!(interpreter.source_canceled[0]);
@@ -3070,16 +3071,15 @@ fn request_shutdown_reports_invalid_connection_when_source_index_is_corrupt() {
 }
 
 #[test]
-fn drive_handles_start_sink_failure_after_shutdown_started_from_idle() {
+fn request_shutdown_from_idle_reports_start_sink_failure() {
   let sink: Sink<u32, StreamNotUsed> = Sink::from_logic(StageKind::Custom, StartFailingSinkLogic);
   let graph = Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(sink, KeepRight);
   let (plan, _completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
-  interpreter.request_shutdown().expect("shutdown request");
 
-  let outcome = interpreter.drive();
+  let result = interpreter.request_shutdown();
 
-  assert_eq!(outcome, DriveOutcome::Progressed);
+  assert_eq!(result, Err(StreamError::Failed));
   assert_eq!(interpreter.state(), StreamState::Failed);
 }
 

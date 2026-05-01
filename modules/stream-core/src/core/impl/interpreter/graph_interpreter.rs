@@ -163,8 +163,11 @@ impl GraphInterpreter {
     if self.state.is_terminal() {
       return Ok(());
     }
-    if self.state == StreamState::Idle {
-      self.state = StreamState::Running;
+    if self.state == StreamState::Idle
+      && let Err(error) = self.start()
+    {
+      self.fail(&error);
+      return Err(error);
     }
     self.shutdown_sources_if_needed()?;
     Ok(())
