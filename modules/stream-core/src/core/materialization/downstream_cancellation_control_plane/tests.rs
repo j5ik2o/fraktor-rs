@@ -1,6 +1,9 @@
 extern crate std;
 
-use std::time::{Duration, Instant};
+use std::{
+  thread,
+  time::{Duration, Instant},
+};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
@@ -80,7 +83,7 @@ fn wait_for_actor_cell_removed(system: &ActorSystem, pid: Pid) {
     if system.state().cell(&pid).is_none() {
       return;
     }
-    std::thread::sleep(Duration::from_millis(1));
+    thread::yield_now();
   }
   assert!(system.state().cell(&pid).is_none());
 }
