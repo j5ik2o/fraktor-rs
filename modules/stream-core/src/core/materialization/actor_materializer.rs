@@ -435,6 +435,34 @@ impl ActorMaterializer {
     Self::drive_streams_until_terminal(&resources.streams)
   }
 
+  fn prepare_resource_teardown(
+    system: &ActorSystem,
+    resources: &MaterializedStreamResources,
+  ) -> Result<(), StreamError> {
+    let mut result = Ok(());
+    resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
+    for handle in &resources.tick_handles {
+      if let Err(error) = Self::cancel_tick(system, handle) {
+        Self::record_first_error(&mut result, error);
+      }
+    }
+    result
+  }
+
+  fn finish_resource_teardown(resources: MaterializedStreamResources) -> Result<(), StreamError> {
+    let MaterializedStreamResources { streams, island_actors, .. } = resources;
+    let mut result = Ok(());
+    for actor in &island_actors {
+      if actor.stop().is_err() {
+        Self::record_first_error(&mut result, StreamError::Failed);
+      }
+    }
+    if let Err(error) = Self::cancel_streams(&streams) {
+      Self::record_first_error(&mut result, error);
+    }
+    result
+  }
+
   fn teardown_resources_with_command<F>(
     system: &ActorSystem,
     mut resources: MaterializedStreamResources,
@@ -442,38 +470,20 @@ impl ActorMaterializer {
   ) -> Result<(), StreamError>
   where
     F: FnMut() -> StreamIslandCommand, {
-    let mut result = Ok(());
-    resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
-    for handle in &resources.tick_handles {
-      if let Err(error) = Self::cancel_tick(system, handle) {
-        Self::record_first_error(&mut result, error);
-      }
-    }
+    let mut result = Self::prepare_resource_teardown(system, &resources);
     for actor in &mut resources.island_actors {
       if let Err(error) = Self::send_command(actor, command_for_actor()) {
         Self::record_first_error(&mut result, error);
       }
     }
-    for actor in &resources.island_actors {
-      if actor.stop().is_err() {
-        Self::record_first_error(&mut result, StreamError::Failed);
-      }
-    }
-    if let Err(error) = Self::cancel_streams(&resources.streams) {
+    if let Err(error) = Self::finish_resource_teardown(resources) {
       Self::record_first_error(&mut result, error);
     }
     result
   }
 
   fn shutdown_resources(system: &ActorSystem, resources: MaterializedStreamResources) -> Result<(), StreamError> {
-    let mut result = Ok(());
-    let resources = resources;
-    resources.downstream_cancellation_control_plane.lock().replace_routes(Vec::new());
-    for handle in &resources.tick_handles {
-      if let Err(error) = Self::cancel_tick(system, handle) {
-        Self::record_first_error(&mut result, error);
-      }
-    }
+    let mut result = Self::prepare_resource_teardown(system, &resources);
     if resources.island_actors.is_empty() {
       if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
         Self::record_first_error(&mut result, error);
@@ -492,12 +502,7 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     }
-    for actor in &resources.island_actors {
-      if actor.stop().is_err() {
-        Self::record_first_error(&mut result, StreamError::Failed);
-      }
-    }
-    if let Err(error) = Self::cancel_streams(&resources.streams) {
+    if let Err(error) = Self::finish_resource_teardown(resources) {
       Self::record_first_error(&mut result, error);
     }
     result
