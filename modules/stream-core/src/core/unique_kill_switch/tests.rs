@@ -78,6 +78,16 @@ fn unique_kill_switch_abort_ignores_command_target_failure() {
 }
 
 #[test]
+fn kill_switch_state_remove_unknown_command_target_returns_false() {
+  let mut state = KillSwitchState::running();
+  let target: KillSwitchCommandTargetShared = ArcShared::new(FailingKillSwitchCommandTarget);
+
+  let removed = state.remove_command_target(&target);
+
+  assert!(!removed);
+}
+
+#[test]
 fn unique_kill_switch_flow_binds_state_to_graph() {
   let switch = UniqueKillSwitch::new();
   let graph = Source::single(1_u32).via_mat(switch.flow::<u32>(), KeepRight).into_mat(Sink::head(), KeepLeft);

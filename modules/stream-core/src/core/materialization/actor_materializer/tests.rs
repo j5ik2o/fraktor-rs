@@ -196,6 +196,8 @@ struct ShutdownFailingEndlessSourceLogic {
   error: StreamError,
 }
 
+struct DrainOnShutdownPendingSourceLogic;
+
 impl CancelAwareSourceLogic {
   const fn new(cancel_count: ArcShared<SpinSyncMutex<u32>>) -> Self {
     Self { cancel_count }
@@ -245,6 +247,16 @@ impl SourceLogic for CancelFailingSourceLogic {
 impl SourceLogic for DrainOnShutdownFailingSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(self.error.clone())
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
+  }
+}
+
+impl SourceLogic for DrainOnShutdownPendingSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
   }
 
   fn should_drain_on_shutdown(&self) -> bool {
@@ -1029,6 +1041,60 @@ fn shutdown_resources_fails_stream_terminal_when_shutdown_request_fails() {
 
   assert_eq!(result, Err(shutdown_error));
   assert_eq!(failing_stream.state(), StreamState::Failed);
+}
+
+#[test]
+fn send_drive_if_idle_releases_gate_when_delivery_fails() {
+  let system = build_system();
+  let actor = stopped_system_actor(&system);
+  let drive_gate = StreamIslandDriveGate::new();
+
+  let result = ActorMaterializer::send_drive_if_idle(&actor, &drive_gate);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(drive_gate.try_mark_pending());
+}
+
+#[test]
+fn drive_streams_until_terminal_reports_round_limit_when_drain_makes_no_progress() {
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, DrainOnShutdownPendingSourceLogic)
+      .into_mat(Sink::ignore(), KeepRight),
+  );
+  stream.shutdown().expect("shutdown request");
+
+  let result = ActorMaterializer::drive_streams_until_terminal(&[stream]);
+
+  assert!(result.is_err());
+}
+
+#[test]
+fn drive_actor_owned_streams_until_terminal_reports_invalid_resource_shape() {
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
+
+  let result = ActorMaterializer::drive_actor_owned_streams_until_terminal(&resources);
+
+  assert_eq!(result, Err(StreamError::InvalidConnection));
+}
+
+#[test]
+fn drive_actor_owned_streams_until_terminal_reports_round_limit_when_gate_never_releases() {
+  let system = build_system();
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+  );
+  let drive_gate = StreamIslandDriveGate::new();
+  assert!(drive_gate.try_mark_pending());
+  let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(stopped_system_actor(&system));
+  resources.drive_gates.push(drive_gate);
+
+  let result = ActorMaterializer::drive_actor_owned_streams_until_terminal(&resources);
+
+  assert!(result.is_err());
 }
 
 #[test]

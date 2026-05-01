@@ -12,7 +12,8 @@ use crate::core::{
   dsl::{Sink, Source},
   r#impl::fusing::StreamBufferConfig,
   materialization::{
-    DownstreamCancellationControlPlaneShared, KeepRight, StreamNotUsed, empty_downstream_cancellation_control_plane,
+    DownstreamCancellationControlPlaneShared, DriveOutcome, KeepRight, StreamNotUsed,
+    empty_downstream_cancellation_control_plane,
   },
   stage::StageKind,
 };
@@ -196,6 +197,22 @@ fn shutdown_command_returns_error_when_cancel_fails() {
   let result = receive_command_result(&mut actor, StreamIslandCommand::Shutdown);
 
   assert!(result.is_err());
+}
+
+#[test]
+fn drive_fails_stream_when_kill_switch_shutdown_request_fails() {
+  let graph = Source::<u32, StreamNotUsed>::from_logic(StageKind::SourceSingle, CancelFailingSourceLogic)
+    .into_mat(Sink::ignore(), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("stream should start");
+  let kill_switch_state = stream.kill_switch_state();
+  assert!(kill_switch_state.lock().request_shutdown().is_some());
+
+  let outcome = stream.drive();
+
+  assert_eq!(outcome, DriveOutcome::Progressed);
+  assert_eq!(stream.state(), StreamState::Failed);
 }
 
 #[test]
