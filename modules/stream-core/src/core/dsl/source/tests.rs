@@ -124,14 +124,23 @@ fn empty_source_logic_drains_on_shutdown() {
 
 #[test]
 fn iterator_source_logic_drains_bounded_iterator_on_shutdown() {
-  let logic = IteratorSourceLogic { values: Vec::<u32>::new().into_iter() };
+  let logic = IteratorSourceLogic { values: Vec::<u32>::new().into_iter(), drain_on_shutdown: true };
 
   assert!(logic.should_drain_on_shutdown());
 }
 
 #[test]
-fn iterator_source_logic_does_not_drain_unbounded_iterator_on_shutdown() {
-  let logic = IteratorSourceLogic { values: core::iter::repeat(1_u32) };
+fn iterator_source_logic_drains_unknown_upper_bound_iterator_on_shutdown() {
+  let values = (0_u32..3).flat_map(|value| 0..value);
+  assert_eq!(values.size_hint().1, None);
+  let logic = IteratorSourceLogic { values, drain_on_shutdown: true };
+
+  assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn iterator_source_logic_does_not_drain_explicit_unbounded_iterator_on_shutdown() {
+  let logic = IteratorSourceLogic { values: core::iter::repeat(1_u32), drain_on_shutdown: false };
 
   assert!(!logic.should_drain_on_shutdown());
 }
@@ -659,6 +668,13 @@ fn source_from_option_none_completes_without_elements() {
 #[test]
 fn source_from_iterator_emits_values_in_order() {
   let values = Source::from_iterator([1_u32, 2, 3, 4]).run_with_collect_sink().expect("run_with_collect_sink");
+  assert_eq!(values, vec![1_u32, 2, 3, 4]);
+}
+
+#[test]
+fn source_from_unbounded_iterator_emits_values_in_order() {
+  let values =
+    Source::from_unbounded_iterator([1_u32, 2, 3, 4]).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3, 4]);
 }
 

@@ -91,7 +91,22 @@ where
   where
     I: IntoIterator<Item = Out>,
     I::IntoIter: Send + 'static, {
-    Self::from_logic(StageKind::Custom, IteratorSourceLogic { values: values.into_iter() })
+    Self::from_logic(StageKind::Custom, IteratorSourceLogic {
+      values:            values.into_iter(),
+      drain_on_shutdown: true,
+    })
+  }
+
+  /// Creates a source from an iterator that must not be drained during shutdown.
+  #[must_use]
+  pub fn from_unbounded_iterator<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_logic(StageKind::Custom, IteratorSourceLogic {
+      values:            values.into_iter(),
+      drain_on_shutdown: false,
+    })
   }
 
   /// Compatibility alias of [`Source::from_iterator`].
@@ -2939,7 +2954,8 @@ impl SourceLogic for EmptySourceLogic {
 }
 
 struct IteratorSourceLogic<I> {
-  values: I,
+  values:            I,
+  drain_on_shutdown: bool,
 }
 
 struct FailedSourceLogic {
@@ -2998,7 +3014,7 @@ where
   }
 
   fn should_drain_on_shutdown(&self) -> bool {
-    self.values.size_hint().1.is_some()
+    self.drain_on_shutdown
   }
 }
 

@@ -196,6 +196,8 @@ struct ShutdownFailingEndlessSourceLogic {
   error: StreamError,
 }
 
+struct DrainOnShutdownCancelFailingPendingSourceLogic;
+
 struct DrainOnShutdownPendingSourceLogic;
 
 impl CancelAwareSourceLogic {
@@ -261,6 +263,20 @@ impl SourceLogic for DrainOnShutdownPendingSourceLogic {
 
   fn should_drain_on_shutdown(&self) -> bool {
     true
+  }
+}
+
+impl SourceLogic for DrainOnShutdownCancelFailingPendingSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    Err(StreamError::Failed)
   }
 }
 
@@ -1073,9 +1089,9 @@ fn shutdown_resources_drives_other_streams_even_when_one_shutdown_request_fails(
 }
 
 #[test]
-fn shutdown_resources_completes_unbounded_iterator_without_drain_round_limit() {
+fn shutdown_resources_completes_explicit_unbounded_iterator_without_drain_round_limit() {
   let system = build_system();
-  let stream = running_stream_from_graph(Source::from_iterator(0_u32..).into_mat(Sink::ignore(), KeepRight));
+  let stream = running_stream_from_graph(Source::from_unbounded_iterator(0_u32..).into_mat(Sink::ignore(), KeepRight));
   let resources = MaterializedStreamResources::new(vec![stream.clone()], empty_downstream_cancellation_control_plane());
 
   let result = ActorMaterializer::shutdown_resources(&system, resources);
@@ -1099,6 +1115,20 @@ fn shutdown_resources_fails_stream_terminal_when_shutdown_request_fails() {
 
   assert_eq!(result, Err(shutdown_error));
   assert_eq!(failing_stream.state(), StreamState::Failed);
+}
+
+#[test]
+fn shutdown_resources_reports_direct_drain_failure_before_cancel_failure() {
+  let system = build_system();
+  let stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, DrainOnShutdownCancelFailingPendingSourceLogic)
+      .into_mat(Sink::ignore(), KeepRight),
+  );
+  let resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
+
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert!(result.is_err());
 }
 
 #[test]
