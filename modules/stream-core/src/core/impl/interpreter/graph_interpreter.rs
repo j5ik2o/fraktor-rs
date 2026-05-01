@@ -36,6 +36,7 @@ pub(in crate::core) struct GraphInterpreter {
   source_canceled:        Vec<bool>,
   source_shutdown:        Vec<bool>,
   sink_done:              Vec<bool>,
+  sink_started:           Vec<bool>,
   flow_source_done:       Vec<bool>,
   flow_done:              Vec<bool>,
   sink_upstream_notified: Vec<bool>,
@@ -84,6 +85,7 @@ impl GraphInterpreter {
       source_canceled: vec![false; source_indices_len],
       source_shutdown: vec![false; source_indices_len],
       sink_done: vec![false; sink_indices_len],
+      sink_started: vec![false; sink_indices_len],
       flow_source_done: vec![false; flow_count],
       flow_done: vec![false; flow_count],
       sink_upstream_notified: vec![false; sink_indices_len],
@@ -385,11 +387,19 @@ impl GraphInterpreter {
   }
 
   fn start_sinks(&mut self) -> Result<(), StreamError> {
-    for sink_index in &self.sink_indices {
-      let StageDefinition::Sink(sink) = &mut self.stages[*sink_index] else {
-        return Err(StreamError::InvalidConnection);
+    for sink_position in 0..self.sink_indices.len() {
+      if self.sink_started[sink_position] {
+        continue;
+      }
+      let sink_index = self.sink_indices[sink_position];
+      let on_start_result = {
+        let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        sink.logic.on_start(&mut self.demand)
       };
-      sink.logic.on_start(&mut self.demand)?;
+      self.sink_started[sink_position] = true;
+      on_start_result?;
     }
     Ok(())
   }
@@ -408,11 +418,14 @@ impl GraphInterpreter {
         continue;
       }
       let source_index = self.source_indices[source_position];
-      let StageDefinition::Source(source) = &mut self.stages[source_index] else {
-        return Err(StreamError::InvalidConnection);
+      let on_cancel_result = {
+        let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        source.logic.on_cancel()
       };
-      source.logic.on_cancel()?;
       self.source_canceled[source_position] = true;
+      on_cancel_result?;
     }
     Ok(())
   }
@@ -998,16 +1011,17 @@ impl GraphInterpreter {
       return Ok(());
     }
     let sink_index = self.sink_indices[sink_position];
-    {
+    let on_complete_result = {
       let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
         return Err(StreamError::InvalidConnection);
       };
-      sink.logic.on_complete()?;
-    }
+      sink.logic.on_complete()
+    };
+    self.sink_done[sink_position] = true;
+    on_complete_result?;
     let incoming_edges = self.incoming_edge_indices_for_stage(sink_index);
     self.close_and_clear_incoming_edges_for_stage(sink_index)?;
     self.cancel_upstream_edges(incoming_edges)?;
-    self.sink_done[sink_position] = true;
     if self.all_sinks_done() && !self.has_flow_requesting_upstream_drain() {
       self.state = StreamState::Completed;
     }
