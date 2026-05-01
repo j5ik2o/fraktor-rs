@@ -1,5 +1,8 @@
 extern crate std;
 
+#[cfg(test)]
+mod tests;
+
 use std::{
   fs::{self, File, OpenOptions},
   io::{BufWriter, Error, ErrorKind, Read, Seek, SeekFrom, Write},

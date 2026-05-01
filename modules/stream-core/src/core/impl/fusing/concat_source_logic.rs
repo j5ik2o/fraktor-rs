@@ -5,7 +5,7 @@ use crate::core::{
   DownstreamCancelAction, DynValue, FlowLogic, QueueOfferResult, StageDefinition, StreamError, downcast_value,
   dsl::{Sink, Source},
   r#impl::{fusing::StreamBufferConfig, materialization::Stream, queue::SourceQueue},
-  materialization::{Completion, DriveOutcome, MatCombine, StreamDone, StreamFuture},
+  materialization::{DriveOutcome, MatCombine, StreamDone, StreamFuture},
   shape::{Inlet, Outlet},
 };
 
@@ -32,8 +32,9 @@ where
         Ok(())
       },
       | None => {
-        // まだ completion が来ていない → stream の状態を確認
-        if self.stream.state().is_terminal() || matches!(self.completion.value(), Completion::Ready(Ok(_))) {
+        // まだ completion が来ていない → stream の terminal 状態のみ確認
+        // completion が後から到着した場合は次回 sync_terminal_state 呼び出し時に try_take で拾う
+        if self.stream.state().is_terminal() {
           self.finished = true;
           let _ = self.queue.complete_if_open();
         }

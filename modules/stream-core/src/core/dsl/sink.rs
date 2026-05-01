@@ -9,8 +9,8 @@ use core::{
 
 use super::{
   DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, RestartBackoff, RestartConfig, SinkDecision,
-  SinkDefinition, SinkLogic, StageContext, StageDefinition, StageKind, StreamDone, StreamDslError, StreamError,
-  StreamFuture, StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value,
+  SinkDefinition, SinkLogic, StageDefinition, StageKind, StreamDone, StreamDslError, StreamError, StreamFuture,
+  StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value,
   flow::{Flow, broadcast_definition},
   shape::{Inlet, Outlet, StreamShape},
   source::Source,
@@ -22,7 +22,7 @@ use crate::core::{
     fusing::{DemandTracker, MaterializedSinkLogic, SinkSourceLogic},
     queue::SinkQueue,
   },
-  stage::{GraphStage, GraphStageLogic, StreamStage},
+  stage::StreamStage,
 };
 
 #[cfg(test)]
@@ -715,45 +715,6 @@ where
   }
 }
 
-impl<In> GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> for IgnoreSinkLogic<In>
-where
-  In: Send + Sync + 'static,
-{
-  fn on_start(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    ctx.pull();
-  }
-
-  fn on_push(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    let _ = ctx.grab();
-    ctx.pull();
-  }
-
-  fn on_complete(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    self.completion.complete(Ok(StreamDone::new()));
-  }
-
-  fn on_error(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>, error: StreamError) {
-    self.completion.complete(Err(error));
-  }
-
-  fn materialized(&mut self) -> StreamFuture<StreamDone> {
-    self.completion.clone()
-  }
-}
-
-impl<In> GraphStage<In, StreamNotUsed, StreamFuture<StreamDone>> for IgnoreSinkLogic<In>
-where
-  In: Send + Sync + 'static,
-{
-  fn shape(&self) -> StreamShape<In, StreamNotUsed> {
-    StreamShape::new(Inlet::new(), Outlet::new())
-  }
-
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> + Send> {
-    Box::new(IgnoreSinkLogic { completion: self.completion.clone(), _pd: PhantomData })
-  }
-}
-
 struct NeverSinkLogic<In> {
   completion: StreamFuture<StreamDone>,
   _pd:        PhantomData<fn(In)>,
@@ -816,52 +777,6 @@ where
 
   fn on_error(&mut self, error: StreamError) {
     self.completion.complete(Err(error));
-  }
-}
-
-impl<In, F> GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> for ForeachSinkLogic<In, F>
-where
-  In: Send + Sync + 'static,
-  F: FnMut(In) + Send + Sync + 'static,
-{
-  fn on_start(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    ctx.pull();
-  }
-
-  fn on_push(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    let value = ctx.grab();
-    (self.func)(value);
-    ctx.pull();
-  }
-
-  fn on_complete(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    self.completion.complete(Ok(StreamDone::new()));
-  }
-
-  fn on_error(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>, error: StreamError) {
-    self.completion.complete(Err(error));
-  }
-
-  fn materialized(&mut self) -> StreamFuture<StreamDone> {
-    self.completion.clone()
-  }
-}
-
-impl<In, F> GraphStage<In, StreamNotUsed, StreamFuture<StreamDone>> for ForeachSinkLogic<In, F>
-where
-  In: Send + Sync + 'static,
-  F: FnMut(In) + Send + Sync + Clone + 'static,
-{
-  fn shape(&self) -> StreamShape<In, StreamNotUsed> {
-    StreamShape::new(Inlet::new(), Outlet::new())
-  }
-
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> + Send> {
-    Box::new(ForeachSinkLogic {
-      func:       self.func.clone(),
-      completion: self.completion.clone(),
-      _pd:        PhantomData,
-    })
   }
 }
 
@@ -1035,64 +950,6 @@ where
   }
 }
 
-impl<In, Acc, F> GraphStageLogic<In, StreamNotUsed, StreamFuture<Acc>> for FoldSinkLogic<In, Acc, F>
-where
-  In: Send + Sync + 'static,
-  Acc: Send + Sync + 'static,
-  F: FnMut(Acc, In) -> Acc + Send + Sync + 'static,
-{
-  fn on_start(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    ctx.pull();
-  }
-
-  fn on_push(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    let value = ctx.grab();
-    let Some(current) = self.acc.take() else {
-      ctx.fail(StreamError::Failed);
-      return;
-    };
-    let next = (self.func)(current, value);
-    self.acc = Some(next);
-    ctx.pull();
-  }
-
-  fn on_complete(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    if let Some(value) = self.acc.take() {
-      self.completion.complete(Ok(value));
-    } else {
-      self.completion.complete(Err(StreamError::Failed));
-    }
-  }
-
-  fn on_error(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>, error: StreamError) {
-    self.completion.complete(Err(error));
-  }
-
-  fn materialized(&mut self) -> StreamFuture<Acc> {
-    self.completion.clone()
-  }
-}
-
-impl<In, Acc, F> GraphStage<In, StreamNotUsed, StreamFuture<Acc>> for FoldSinkLogic<In, Acc, F>
-where
-  In: Send + Sync + 'static,
-  Acc: Send + Sync + Clone + 'static,
-  F: FnMut(Acc, In) -> Acc + Send + Sync + Clone + 'static,
-{
-  fn shape(&self) -> StreamShape<In, StreamNotUsed> {
-    StreamShape::new(Inlet::new(), Outlet::new())
-  }
-
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<Acc>> + Send> {
-    Box::new(FoldSinkLogic {
-      acc:        self.acc.clone(),
-      func:       self.func.clone(),
-      completion: self.completion.clone(),
-      _pd:        PhantomData,
-    })
-  }
-}
-
 struct HeadSinkLogic<In> {
   completion: StreamFuture<In>,
   seen:       bool,
@@ -1129,53 +986,6 @@ where
   }
 }
 
-impl<In> GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> for HeadSinkLogic<In>
-where
-  In: Send + Sync + 'static,
-{
-  fn on_start(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    ctx.pull();
-  }
-
-  fn on_push(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    if self.seen {
-      ctx.complete();
-      return;
-    }
-    let value = ctx.grab();
-    self.seen = true;
-    self.completion.complete(Ok(value));
-    ctx.complete();
-  }
-
-  fn on_complete(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    if !self.seen {
-      self.completion.complete(Err(StreamError::Failed));
-    }
-  }
-
-  fn on_error(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>, error: StreamError) {
-    self.completion.complete(Err(error));
-  }
-
-  fn materialized(&mut self) -> StreamFuture<In> {
-    self.completion.clone()
-  }
-}
-
-impl<In> GraphStage<In, StreamNotUsed, StreamFuture<In>> for HeadSinkLogic<In>
-where
-  In: Send + Sync + 'static + Clone,
-{
-  fn shape(&self) -> StreamShape<In, StreamNotUsed> {
-    StreamShape::new(Inlet::new(), Outlet::new())
-  }
-
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> + Send> {
-    Box::new(HeadSinkLogic { completion: self.completion.clone(), seen: false, _pd: PhantomData })
-  }
-}
-
 struct LastSinkLogic<In> {
   last:       Option<In>,
   completion: StreamFuture<In>,
@@ -1207,49 +1017,6 @@ where
 
   fn on_error(&mut self, error: StreamError) {
     self.completion.complete(Err(error));
-  }
-}
-
-impl<In> GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> for LastSinkLogic<In>
-where
-  In: Send + Sync + 'static,
-{
-  fn on_start(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    ctx.pull();
-  }
-
-  fn on_push(&mut self, ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    let value = ctx.grab();
-    self.last = Some(value);
-    ctx.pull();
-  }
-
-  fn on_complete(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>) {
-    match self.last.take() {
-      | Some(value) => self.completion.complete(Ok(value)),
-      | None => self.completion.complete(Err(StreamError::Failed)),
-    }
-  }
-
-  fn on_error(&mut self, _ctx: &mut dyn StageContext<In, StreamNotUsed>, error: StreamError) {
-    self.completion.complete(Err(error));
-  }
-
-  fn materialized(&mut self) -> StreamFuture<In> {
-    self.completion.clone()
-  }
-}
-
-impl<In> GraphStage<In, StreamNotUsed, StreamFuture<In>> for LastSinkLogic<In>
-where
-  In: Send + Sync + 'static + Clone,
-{
-  fn shape(&self) -> StreamShape<In, StreamNotUsed> {
-    StreamShape::new(Inlet::new(), Outlet::new())
-  }
-
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> + Send> {
-    Box::new(LastSinkLogic { last: None, completion: self.completion.clone(), _pd: PhantomData })
   }
 }
 

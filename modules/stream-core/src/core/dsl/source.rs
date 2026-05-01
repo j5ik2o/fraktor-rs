@@ -206,22 +206,6 @@ where
     SourceWithContext::from_source(inner)
   }
 
-  /// Creates a sink endpoint that can be paired with a source subscriber bridge.
-  #[must_use]
-  pub fn as_subscriber() -> Sink<Out, StreamFuture<StreamDone>>
-  where
-    Out: Sync, {
-    Sink::ignore()
-  }
-
-  /// Creates a sink endpoint for actor interop entry points.
-  #[must_use]
-  pub fn sink() -> Sink<Out, StreamFuture<StreamDone>>
-  where
-    Out: Sync, {
-    Self::as_subscriber()
-  }
-
   /// Combines multiple sources by merging them into a single output stream.
   ///
   /// Elements from all sources are interleaved as they become available.

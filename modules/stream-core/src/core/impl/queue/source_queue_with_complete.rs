@@ -29,11 +29,7 @@ impl Future for QueueOfferFuture {
 
   fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
-    match Pin::new(&mut this.completion).poll(context) {
-      | Poll::Ready(Ok(result)) => Poll::Ready(result),
-      | Poll::Ready(Err(error)) => Poll::Ready(QueueOfferResult::Failure(error)),
-      | Poll::Pending => Poll::Pending,
-    }
+    Pin::new(&mut this.completion).poll(context).map(|result| result.unwrap_or_else(QueueOfferResult::Failure))
   }
 }
 
