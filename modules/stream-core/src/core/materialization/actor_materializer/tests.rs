@@ -1097,6 +1097,25 @@ fn shutdown_resources_drives_other_streams_even_when_one_shutdown_request_fails(
 }
 
 #[test]
+fn shutdown_resources_reports_actor_owned_stream_shutdown_request_failure() {
+  let system = build_system();
+  let props = Props::from_fn(|| GuardianActor);
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  let shutdown_error = StreamError::failed_with_context("actor-owned shutdown request failed");
+  let failing_stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, ShutdownFailingSourceLogic::new(shutdown_error.clone()))
+      .into_mat(Sink::ignore(), KeepRight),
+  );
+  let mut resources =
+    MaterializedStreamResources::new(vec![failing_stream], empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor);
+
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert_eq!(result, Err(shutdown_error));
+}
+
+#[test]
 fn shutdown_resources_completes_explicit_unbounded_iterator_without_drain_round_limit() {
   let system = build_system();
   let stream = running_stream_from_graph(Source::from_unbounded_iterator(0_u32..).into_mat(Sink::ignore(), KeepRight));
