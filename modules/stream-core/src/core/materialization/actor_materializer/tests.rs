@@ -30,8 +30,8 @@ use crate::core::{
     materialization::{Stream, StreamIslandCommand, StreamIslandDriveGate, StreamShared, StreamState},
   },
   materialization::{
-    ActorMaterializerConfig, Completion, DriveOutcome, KeepRight, MaterializerLifecycleState, StreamNotUsed,
-    empty_downstream_cancellation_control_plane,
+    ActorMaterializerConfig, Completion, DriveOutcome, KeepRight, MaterializerLifecycleState, RunnableGraph,
+    StreamNotUsed, empty_downstream_cancellation_control_plane,
   },
   stage::StageKind,
 };
@@ -294,7 +294,7 @@ fn resources_with_unknown_tick() -> MaterializedStreamResources {
   resources
 }
 
-fn running_stream_from_graph<Mat>(graph: crate::core::materialization::RunnableGraph<Mat>) -> StreamShared {
+fn running_stream_from_graph<Mat>(graph: RunnableGraph<Mat>) -> StreamShared {
   let (plan, _materialized) = graph.into_parts();
   let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("stream should start");

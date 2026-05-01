@@ -57,6 +57,17 @@ fn on_cancel_marks_boundary_as_downstream_cancelled() {
   assert_eq!(state, BoundaryState::DownstreamCancelled);
 }
 
+#[test]
+fn pull_from_downstream_cancelled_boundary_returns_none() {
+  let boundary = IslandBoundaryShared::new(16);
+  boundary.cancel_downstream();
+  let mut logic = BoundarySourceLogic::new(boundary);
+
+  let result = logic.pull().expect("cancelled boundary should complete source");
+
+  assert!(result.is_none());
+}
+
 // --- FIFO ordering ---
 
 #[test]

@@ -229,6 +229,25 @@ fn on_complete_with_pending_defers_until_flush() {
   assert_eq!(boundary.state(), BoundaryState::Completed);
 }
 
+#[test]
+fn on_tick_with_pending_complete_keeps_terminal_pending_when_boundary_stays_full() {
+  let boundary = IslandBoundaryShared::new(1);
+  let v: DynValue = Box::new(0_u32);
+  boundary.try_push_with_state(v).expect("fill");
+  let mut logic = BoundarySinkLogic::new(boundary);
+  let mut demand = DemandTracker::new();
+  logic.on_start(&mut demand).expect("on_start");
+
+  let pending_value: DynValue = Box::new(99_u32);
+  logic.on_push(pending_value, &mut demand).expect("on_push");
+  logic.on_complete().expect("on_complete");
+
+  let progress = logic.on_tick(&mut demand).expect("on_tick");
+
+  assert!(!progress);
+  assert!(logic.has_pending_work());
+}
+
 // --- Error propagation ---
 
 #[test]
@@ -272,6 +291,25 @@ fn on_error_with_pending_defers_until_flush() {
     | BoundaryState::Failed(err) => assert_eq!(err, StreamError::Failed),
     | other => panic!("expected Failed, got {other:?}"),
   }
+}
+
+#[test]
+fn on_tick_with_pending_error_keeps_terminal_pending_when_boundary_stays_full() {
+  let boundary = IslandBoundaryShared::new(1);
+  let v: DynValue = Box::new(0_u32);
+  boundary.try_push_with_state(v).expect("fill");
+  let mut logic = BoundarySinkLogic::new(boundary);
+  let mut demand = DemandTracker::new();
+  logic.on_start(&mut demand).expect("on_start");
+
+  let pending_value: DynValue = Box::new(99_u32);
+  logic.on_push(pending_value, &mut demand).expect("on_push");
+  logic.on_error(StreamError::Failed);
+
+  let progress = logic.on_tick(&mut demand).expect("on_tick");
+
+  assert!(!progress);
+  assert!(logic.has_pending_work());
 }
 
 #[test]

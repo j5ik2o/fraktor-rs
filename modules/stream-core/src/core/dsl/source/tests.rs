@@ -19,8 +19,8 @@ use std::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
-  CycleSourceLogic, IterateSourceLogic, LazySourceLogic, QueueSourceLogic, QueueWithOverflowSourceLogic,
-  RepeatSourceLogic, StreamGraph, UnboundedQueueSourceLogic,
+  CycleSourceLogic, EmptySourceLogic, IterateSourceLogic, LazySourceLogic, QueueSourceLogic,
+  QueueWithOverflowSourceLogic, RepeatSourceLogic, StreamGraph, UnboundedQueueSourceLogic,
 };
 use crate::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, QueueOfferResult, RestartConfig, SharedKillSwitch, SourceLogic,
@@ -113,6 +113,13 @@ where
     let logic = CreateSourceTestLogic::new(queue.clone(), producer);
     Ok(Source::from_logic(StageKind::Custom, logic).map_materialized_value(move |_| queue))
   }
+}
+
+#[test]
+fn empty_source_logic_drains_on_shutdown() {
+  let logic = EmptySourceLogic;
+
+  assert!(logic.should_drain_on_shutdown());
 }
 
 struct RecordingMaterializer {
