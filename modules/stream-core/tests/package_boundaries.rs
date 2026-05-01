@@ -3,7 +3,7 @@ use fraktor_stream_core_rs::core::{
     AsyncBoundaryAttr, Attributes, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
   },
   dsl::{Flow, Sink, Source},
-  materialization::{KeepBoth, KeepLeft, KeepNone, KeepRight, RunnableGraph, StreamCompletion, StreamNotUsed},
+  materialization::{KeepBoth, KeepLeft, KeepNone, KeepRight, RunnableGraph, StreamFuture, StreamNotUsed},
 };
 
 #[test]
@@ -29,16 +29,16 @@ fn materialization_package_exports_public_composition_rules() {
   let _ = KeepBoth;
   let _ = KeepNone;
 
-  let _graph: RunnableGraph<StreamCompletion<u32>> = Source::single(1_u32)
+  let _graph: RunnableGraph<StreamFuture<u32>> = Source::single(1_u32)
     .via_mat(Flow::<u32, u32, StreamNotUsed>::new().map(|value| value + 1), KeepLeft)
-    .into_mat(Sink::<u32, StreamCompletion<u32>>::head(), KeepRight);
+    .into_mat(Sink::<u32, StreamFuture<u32>>::head(), KeepRight);
 }
 
 #[test]
 fn dsl_package_exports_primary_stream_surface() {
-  let graph: RunnableGraph<StreamCompletion<u32>> = Source::single(2_u32)
+  let graph: RunnableGraph<StreamFuture<u32>> = Source::single(2_u32)
     .via_mat(Flow::<u32, u32, StreamNotUsed>::new().map(|value| value * 2), KeepLeft)
-    .into_mat(Sink::<u32, StreamCompletion<u32>>::head(), KeepRight);
+    .into_mat(Sink::<u32, StreamFuture<u32>>::head(), KeepRight);
 
   let _ = graph;
 }

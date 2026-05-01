@@ -25,7 +25,7 @@ use crate::core::{
   OverflowStrategy,
   dsl::{Sink, Source, TopicPubSub},
   materialization::{
-    ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamCompletion, StreamDone, StreamNotUsed,
+    ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamDone, StreamFuture, StreamNotUsed,
   },
 };
 
@@ -75,7 +75,7 @@ fn topic_pub_sub_source_should_materialize_without_error_after_publish() {
   let mut topic = spawn_topic::<u32>(&system, "test-source");
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
-  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamFuture<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -86,7 +86,7 @@ fn topic_pub_sub_source_should_materialize_without_error_after_publish() {
   topic.tell(Topic::publish(3_u32));
 
   // Pending のままであることを確認（有限 source でないので完了しない）
-  assert!(matches!(materialized.materialized().poll(), Completion::Pending));
+  assert!(matches!(materialized.materialized().value(), Completion::Pending));
 
   system.terminate().expect("terminate");
 }
@@ -100,7 +100,7 @@ fn topic_pub_sub_source_should_be_constructible_and_connectable_to_sink() {
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 8, OverflowStrategy::Fail, &system);
 
   // When: source を Sink に接続してグラフを構築
-  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamFuture<Vec<u32>>>::collect(), KeepRight);
 
   // Then: グラフが materialize できること
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
@@ -159,7 +159,7 @@ fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow()
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 2, OverflowStrategy::Fail, &system);
 
-  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamFuture<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -172,7 +172,7 @@ fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow()
   // バッファ超過の結果を待つ（エラーになるか Pending のまま）
   let deadline = Instant::now() + Duration::from_secs(2);
   while Instant::now() < deadline {
-    if matches!(materialized.materialized().poll(), Completion::Ready(_)) {
+    if matches!(materialized.materialized().value(), Completion::Ready(_)) {
       break;
     }
     thread::yield_now();
@@ -180,7 +180,7 @@ fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow()
 
   // Then: materialize 成功。ストリームはエラーまたは継続中のいずれか
   // （Fail 戦略ではバッファ超過時にエラーが発生しうる）
-  let poll = materialized.materialized().poll();
+  let poll = materialized.materialized().value();
   assert!(
     matches!(poll, Completion::Pending | Completion::Ready(Err(_))),
     "Fail 戦略でバッファ超過時は NotReady か Error のいずれか: {:?}",
@@ -197,7 +197,7 @@ fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
   let mut topic = spawn_topic::<u32>(&system, "test-multi-pub");
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
-  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamFuture<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -208,7 +208,7 @@ fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
   topic2.tell(Topic::publish(200_u32));
 
   // Pending のままであることを確認（無限 source なので完了しない）
-  assert!(matches!(materialized.materialized().poll(), Completion::Pending));
+  assert!(matches!(materialized.materialized().value(), Completion::Pending));
 
   system.terminate().expect("terminate");
 }
@@ -268,7 +268,7 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
   let materialized = graph.run(&mut materializer).expect("run");
 
   // Then: the subscriber should receive all published messages
-  wait_until(|| matches!(materialized.materialized().poll(), Completion::Ready(Ok(_))));
+  wait_until(|| matches!(materialized.materialized().value(), Completion::Ready(Ok(_))));
 
   wait_until(|| received.lock().len() >= 3);
   let mut values = received.lock().clone();
@@ -284,17 +284,17 @@ fn topic_pub_sub_sink_should_complete_normally_when_source_finishes() {
   let system = build_system();
   let topic = spawn_topic::<u32>(&system, "test-sink-complete");
 
-  let sink: Sink<u32, StreamCompletion<StreamDone>> = TopicPubSub::sink(topic.clone());
+  let sink: Sink<u32, StreamFuture<StreamDone>> = TopicPubSub::sink(topic.clone());
   let graph = Source::from_array([1_u32, 2_u32]).into_mat(sink, KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: waiting for the stream to complete
-  wait_until(|| matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+  wait_until(|| matches!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone))));
 
   // Then: the stream should complete successfully
-  assert!(matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+  assert!(matches!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone))));
 
   system.terminate().expect("terminate");
 }
@@ -305,17 +305,17 @@ fn topic_pub_sub_sink_should_handle_empty_source() {
   let system = build_system();
   let topic = spawn_topic::<u32>(&system, "test-sink-empty");
 
-  let sink: Sink<u32, StreamCompletion<StreamDone>> = TopicPubSub::sink(topic.clone());
+  let sink: Sink<u32, StreamFuture<StreamDone>> = TopicPubSub::sink(topic.clone());
   let graph = Source::<u32, _>::empty().into_mat(sink, KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: waiting for the stream to complete
-  wait_until(|| matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+  wait_until(|| matches!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone))));
 
   // Then: the stream should complete successfully with no messages published
-  assert!(matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+  assert!(matches!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone))));
 
   system.terminate().expect("terminate");
 }
@@ -330,7 +330,7 @@ fn topic_pub_sub_source_and_sink_should_materialize_pipeline_without_error() {
 
   // PubSub source（subscriber）をセットアップ
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
-  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamFuture<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let source_materialized = graph.run(&mut materializer).expect("run source");
@@ -363,13 +363,13 @@ fn topic_pub_sub_source_and_sink_should_materialize_pipeline_without_error() {
   let sink_materialized = graph.run(&mut materializer).expect("run sink");
 
   // Then: sink は有限 source なので完了する
-  wait_until(|| matches!(sink_materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+  wait_until(|| matches!(sink_materialized.materialized().value(), Completion::Ready(Ok(StreamDone))));
 
   assert!(
-    matches!(sink_materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))),
+    matches!(sink_materialized.materialized().value(), Completion::Ready(Ok(StreamDone))),
     "sink ストリームは有限 source の完了後に正常終了すべき"
   );
-  assert!(matches!(source_materialized.materialized().poll(), Completion::Pending));
+  assert!(matches!(source_materialized.materialized().value(), Completion::Pending));
 
   system.terminate().expect("terminate");
 }

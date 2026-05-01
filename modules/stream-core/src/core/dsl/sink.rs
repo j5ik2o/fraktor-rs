@@ -9,8 +9,8 @@ use core::{
 
 use super::{
   DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, RestartBackoff, RestartConfig, SinkDecision,
-  SinkDefinition, SinkLogic, StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError,
-  StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value,
+  SinkDefinition, SinkLogic, StageContext, StageDefinition, StageKind, StreamDone, StreamDslError, StreamError,
+  StreamFuture, StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value,
   flow::{Flow, broadcast_definition},
   shape::{Inlet, Outlet, StreamShape},
   source::Source,
@@ -35,14 +35,14 @@ pub struct Sink<In, Mat> {
   _pd:   PhantomData<fn(In)>,
 }
 
-impl<In> Sink<In, StreamCompletion<StreamDone>>
+impl<In> Sink<In, StreamFuture<StreamDone>>
 where
   In: Send + Sync + 'static,
 {
   /// Creates a sink that ignores elements.
   #[must_use]
   pub fn ignore() -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = IgnoreSinkLogic::<In> { completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::SinkIgnore, logic, completion)
   }
@@ -52,7 +52,7 @@ where
   pub fn foreach<F>(func: F) -> Self
   where
     F: FnMut(In) + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = ForeachSinkLogic::<In, F> { func, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::SinkForeach, logic, completion)
   }
@@ -60,7 +60,7 @@ where
   /// Creates a sink that cancels after receiving the first element.
   #[must_use]
   pub fn cancelled() -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = CancelledSinkLogic { completion: completion.clone() };
     Self::from_definition(StageKind::Custom, logic, completion)
   }
@@ -76,14 +76,14 @@ where
   pub fn on_complete<F>(callback: F) -> Self
   where
     F: FnMut(Result<StreamDone, StreamError>) + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = OnCompleteSinkLogic::<In, F> { callback, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::Custom, logic, completion)
   }
 
   /// Creates a sink that folds while a predicate remains true.
   #[must_use]
-  pub fn fold_while<Acc, P, F>(initial: Acc, mut predicate: P, mut func: F) -> Sink<In, StreamCompletion<Acc>>
+  pub fn fold_while<Acc, P, F>(initial: Acc, mut predicate: P, mut func: F) -> Sink<In, StreamFuture<Acc>>
   where
     Acc: Send + Sync + 'static,
     P: FnMut(&Acc, &In) -> bool + Send + Sync + 'static,
@@ -101,11 +101,11 @@ where
   /// Corresponds to Pekko `Sink.never` which accepts elements but never
   /// signals completion.
   ///
-  /// The materialized [`StreamCompletion`](super::StreamCompletion) stays
+  /// The materialized [`StreamFuture`](super::StreamFuture) stays
   /// pending even after upstream has finished.
   #[must_use]
   pub fn never() -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = NeverSinkLogic::<In> { completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::Custom, logic, completion)
   }
@@ -133,7 +133,7 @@ where
   pub fn lazy_sink<F>(factory: F) -> Self
   where
     F: FnOnce() -> Self + Send + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = LazySinkLogic::<In, F> {
       factory:    Some(factory),
       inner:      None,
@@ -146,12 +146,12 @@ where
 
   /// Converts this sink into a pre-materialized form.
   #[must_use]
-  pub fn pre_materialize(self) -> (Self, StreamCompletion<StreamDone>) {
-    (self, StreamCompletion::new())
+  pub fn pre_materialize(self) -> (Self, StreamFuture<StreamDone>) {
+    (self, StreamFuture::new())
   }
 }
 
-impl<In, T> Sink<In, StreamCompletion<T>>
+impl<In, T> Sink<In, StreamFuture<T>>
 where
   In: Send + Sync + 'static,
   T: Send + 'static,
@@ -161,7 +161,7 @@ where
   pub fn from_materializer<F>(factory: F) -> Self
   where
     F: FnOnce() -> Self + Send + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = MaterializedSinkLogic::<In, T, F>::new(factory, completion.clone());
     Self::from_definition(StageKind::Custom, logic, completion)
   }
@@ -181,7 +181,7 @@ where
   }
 }
 
-impl<In> Sink<In, StreamCompletion<Vec<In>>>
+impl<In> Sink<In, StreamFuture<Vec<In>>>
 where
   In: Send + Sync + 'static,
 {
@@ -221,7 +221,7 @@ where
   /// Creates a sink that stores only the last `limit` elements.
   #[must_use]
   pub fn take_last(limit: usize) -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = TakeLastSinkLogic::<In> {
       limit,
       values: VecDeque::with_capacity(limit),
@@ -232,7 +232,7 @@ where
   }
 }
 
-impl<In> Sink<In, StreamCompletion<usize>>
+impl<In> Sink<In, StreamFuture<usize>>
 where
   In: Send + Sync + 'static,
 {
@@ -243,7 +243,7 @@ where
   }
 }
 
-impl<In> Sink<In, StreamCompletion<bool>>
+impl<In> Sink<In, StreamFuture<bool>>
 where
   In: Send + Sync + 'static,
 {
@@ -264,14 +264,14 @@ where
   }
 }
 
-impl<In> Sink<In, StreamCompletion<Option<In>>>
+impl<In> Sink<In, StreamFuture<Option<In>>>
 where
   In: Send + Sync + 'static,
 {
   /// Creates a sink that completes with the first element if available.
   #[must_use]
   pub fn head_option() -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic =
       HeadOptionSinkLogic::<In> { completion: completion.clone(), seen: false, _pd: PhantomData };
     Self::from_definition(StageKind::Custom, logic, completion)
@@ -280,7 +280,7 @@ where
   /// Creates a sink that completes with the last element if available.
   #[must_use]
   pub fn last_option() -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = LastOptionSinkLogic::<In> { last: None, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::Custom, logic, completion)
   }
@@ -312,7 +312,7 @@ where
   }
 }
 
-impl<In, Acc> Sink<In, StreamCompletion<Acc>>
+impl<In, Acc> Sink<In, StreamFuture<Acc>>
 where
   In: Send + Sync + 'static,
   Acc: Send + Sync + 'static,
@@ -322,7 +322,7 @@ where
   pub fn fold<F>(initial: Acc, func: F) -> Self
   where
     F: FnMut(Acc, In) -> Acc + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic =
       FoldSinkLogic::<In, Acc, F> { acc: Some(initial), func, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::SinkFold, logic, completion)
@@ -338,7 +338,7 @@ where
     Acc: Clone,
     F: FnMut(Acc, In) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Acc> + Send + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = FoldAsyncSinkLogic::<In, Acc, F, Fut> {
       initial: initial.clone(),
       acc: Some(initial),
@@ -353,14 +353,14 @@ where
   }
 }
 
-impl<In> Sink<In, StreamCompletion<In>>
+impl<In> Sink<In, StreamFuture<In>>
 where
   In: Send + Sync + 'static,
 {
   /// Creates a sink that completes with the first element.
   #[must_use]
   pub fn head() -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = HeadSinkLogic::<In> { completion: completion.clone(), seen: false, _pd: PhantomData };
     Self::from_definition(StageKind::SinkHead, logic, completion)
   }
@@ -368,7 +368,7 @@ where
   /// Creates a sink that completes with the last element.
   #[must_use]
   pub fn last() -> Self {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = LastSinkLogic::<In> { last: None, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::SinkLast, logic, completion)
   }
@@ -378,7 +378,7 @@ where
   pub fn reduce<F>(func: F) -> Self
   where
     F: FnMut(In, In) -> In + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = ReduceSinkLogic::<In, F> { acc: None, func, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::Custom, logic, completion)
   }
@@ -401,7 +401,7 @@ where
     I: IntoIterator<Item = Self>, {
     let mut sinks: Vec<_> = sinks.into_iter().collect();
     if sinks.is_empty() {
-      let completion = StreamCompletion::new();
+      let completion = StreamFuture::new();
       let logic = CancelledSinkLogic { completion };
       let mut graph = StreamGraph::new();
       let inlet: Inlet<In> = Inlet::new();
@@ -579,7 +579,7 @@ impl<In, Mat> StreamStage for Sink<In, Mat> {
 struct LazySinkLogic<In, F> {
   factory:    Option<F>,
   inner:      Option<Box<dyn SinkLogic>>,
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   completed:  bool,
   _pd:        PhantomData<fn(In)>,
 }
@@ -587,7 +587,7 @@ struct LazySinkLogic<In, F> {
 impl<In, F> SinkLogic for LazySinkLogic<In, F>
 where
   In: Send + Sync + 'static,
-  F: FnOnce() -> Sink<In, StreamCompletion<StreamDone>> + Send + 'static,
+  F: FnOnce() -> Sink<In, StreamFuture<StreamDone>> + Send + 'static,
 {
   fn can_accept_input(&self) -> bool {
     match &self.inner {
@@ -688,7 +688,7 @@ where
 }
 
 struct IgnoreSinkLogic<In> {
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -715,7 +715,7 @@ where
   }
 }
 
-impl<In> GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>> for IgnoreSinkLogic<In>
+impl<In> GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> for IgnoreSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
@@ -736,12 +736,12 @@ where
     self.completion.complete(Err(error));
   }
 
-  fn materialized(&mut self) -> StreamCompletion<StreamDone> {
+  fn materialized(&mut self) -> StreamFuture<StreamDone> {
     self.completion.clone()
   }
 }
 
-impl<In> GraphStage<In, StreamNotUsed, StreamCompletion<StreamDone>> for IgnoreSinkLogic<In>
+impl<In> GraphStage<In, StreamNotUsed, StreamFuture<StreamDone>> for IgnoreSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
@@ -749,13 +749,13 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>> + Send> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> + Send> {
     Box::new(IgnoreSinkLogic { completion: self.completion.clone(), _pd: PhantomData })
   }
 }
 
 struct NeverSinkLogic<In> {
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -789,7 +789,7 @@ where
 
 struct ForeachSinkLogic<In, F> {
   func:       F,
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -819,7 +819,7 @@ where
   }
 }
 
-impl<In, F> GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>> for ForeachSinkLogic<In, F>
+impl<In, F> GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> for ForeachSinkLogic<In, F>
 where
   In: Send + Sync + 'static,
   F: FnMut(In) + Send + Sync + 'static,
@@ -842,12 +842,12 @@ where
     self.completion.complete(Err(error));
   }
 
-  fn materialized(&mut self) -> StreamCompletion<StreamDone> {
+  fn materialized(&mut self) -> StreamFuture<StreamDone> {
     self.completion.clone()
   }
 }
 
-impl<In, F> GraphStage<In, StreamNotUsed, StreamCompletion<StreamDone>> for ForeachSinkLogic<In, F>
+impl<In, F> GraphStage<In, StreamNotUsed, StreamFuture<StreamDone>> for ForeachSinkLogic<In, F>
 where
   In: Send + Sync + 'static,
   F: FnMut(In) + Send + Sync + Clone + 'static,
@@ -856,7 +856,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>> + Send> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<StreamDone>> + Send> {
     Box::new(ForeachSinkLogic {
       func:       self.func.clone(),
       completion: self.completion.clone(),
@@ -868,7 +868,7 @@ where
 struct FoldSinkLogic<In, Acc, F> {
   acc:        Option<Acc>,
   func:       F,
-  completion: StreamCompletion<Acc>,
+  completion: StreamFuture<Acc>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -879,7 +879,7 @@ where
   acc:               Option<Acc>,
   func:              F,
   pending:           Option<Pin<Box<Fut>>>,
-  completion:        StreamCompletion<Acc>,
+  completion:        StreamFuture<Acc>,
   upstream_finished: bool,
   completed:         bool,
   _pd:               PhantomData<fn(In)>,
@@ -1035,7 +1035,7 @@ where
   }
 }
 
-impl<In, Acc, F> GraphStageLogic<In, StreamNotUsed, StreamCompletion<Acc>> for FoldSinkLogic<In, Acc, F>
+impl<In, Acc, F> GraphStageLogic<In, StreamNotUsed, StreamFuture<Acc>> for FoldSinkLogic<In, Acc, F>
 where
   In: Send + Sync + 'static,
   Acc: Send + Sync + 'static,
@@ -1068,12 +1068,12 @@ where
     self.completion.complete(Err(error));
   }
 
-  fn materialized(&mut self) -> StreamCompletion<Acc> {
+  fn materialized(&mut self) -> StreamFuture<Acc> {
     self.completion.clone()
   }
 }
 
-impl<In, Acc, F> GraphStage<In, StreamNotUsed, StreamCompletion<Acc>> for FoldSinkLogic<In, Acc, F>
+impl<In, Acc, F> GraphStage<In, StreamNotUsed, StreamFuture<Acc>> for FoldSinkLogic<In, Acc, F>
 where
   In: Send + Sync + 'static,
   Acc: Send + Sync + Clone + 'static,
@@ -1083,7 +1083,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<Acc>> + Send> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<Acc>> + Send> {
     Box::new(FoldSinkLogic {
       acc:        self.acc.clone(),
       func:       self.func.clone(),
@@ -1094,7 +1094,7 @@ where
 }
 
 struct HeadSinkLogic<In> {
-  completion: StreamCompletion<In>,
+  completion: StreamFuture<In>,
   seen:       bool,
   _pd:        PhantomData<fn(In)>,
 }
@@ -1129,7 +1129,7 @@ where
   }
 }
 
-impl<In> GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>> for HeadSinkLogic<In>
+impl<In> GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> for HeadSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
@@ -1158,12 +1158,12 @@ where
     self.completion.complete(Err(error));
   }
 
-  fn materialized(&mut self) -> StreamCompletion<In> {
+  fn materialized(&mut self) -> StreamFuture<In> {
     self.completion.clone()
   }
 }
 
-impl<In> GraphStage<In, StreamNotUsed, StreamCompletion<In>> for HeadSinkLogic<In>
+impl<In> GraphStage<In, StreamNotUsed, StreamFuture<In>> for HeadSinkLogic<In>
 where
   In: Send + Sync + 'static + Clone,
 {
@@ -1171,14 +1171,14 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>> + Send> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> + Send> {
     Box::new(HeadSinkLogic { completion: self.completion.clone(), seen: false, _pd: PhantomData })
   }
 }
 
 struct LastSinkLogic<In> {
   last:       Option<In>,
-  completion: StreamCompletion<In>,
+  completion: StreamFuture<In>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -1210,7 +1210,7 @@ where
   }
 }
 
-impl<In> GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>> for LastSinkLogic<In>
+impl<In> GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> for LastSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
@@ -1235,12 +1235,12 @@ where
     self.completion.complete(Err(error));
   }
 
-  fn materialized(&mut self) -> StreamCompletion<In> {
+  fn materialized(&mut self) -> StreamFuture<In> {
     self.completion.clone()
   }
 }
 
-impl<In> GraphStage<In, StreamNotUsed, StreamCompletion<In>> for LastSinkLogic<In>
+impl<In> GraphStage<In, StreamNotUsed, StreamFuture<In>> for LastSinkLogic<In>
 where
   In: Send + Sync + 'static + Clone,
 {
@@ -1248,13 +1248,13 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>> + Send> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamFuture<In>> + Send> {
     Box::new(LastSinkLogic { last: None, completion: self.completion.clone(), _pd: PhantomData })
   }
 }
 
 struct CancelledSinkLogic {
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
 }
 
 impl SinkLogic for CancelledSinkLogic {
@@ -1279,7 +1279,7 @@ impl SinkLogic for CancelledSinkLogic {
 
 struct OnCompleteSinkLogic<In, F> {
   callback:   F,
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -1310,7 +1310,7 @@ where
 }
 
 struct HeadOptionSinkLogic<In> {
-  completion: StreamCompletion<Option<In>>,
+  completion: StreamFuture<Option<In>>,
   seen:       bool,
   _pd:        PhantomData<fn(In)>,
 }
@@ -1347,7 +1347,7 @@ where
 
 struct LastOptionSinkLogic<In> {
   last:       Option<In>,
-  completion: StreamCompletion<Option<In>>,
+  completion: StreamFuture<Option<In>>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -1379,7 +1379,7 @@ where
 struct ReduceSinkLogic<In, F> {
   acc:        Option<In>,
   func:       F,
-  completion: StreamCompletion<In>,
+  completion: StreamFuture<In>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -1446,7 +1446,7 @@ where
 struct TakeLastSinkLogic<In> {
   limit:      usize,
   values:     VecDeque<In>,
-  completion: StreamCompletion<Vec<In>>,
+  completion: StreamFuture<Vec<In>>,
   _pd:        PhantomData<fn(In)>,
 }
 

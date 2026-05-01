@@ -34,7 +34,7 @@ use crate::core::{
     queue::{SourceQueue, SourceQueueWithComplete},
   },
   materialization::{
-    Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, Materialized, Materializer, StreamCompletion, StreamDone,
+    Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, Materialized, Materializer, StreamDone, StreamFuture,
     StreamNotUsed,
   },
   stage::StageKind,
@@ -414,7 +414,7 @@ fn scaled_duration(base: Duration) -> Duration {
   base.mul_f64(test_time_factor())
 }
 
-fn drive_materialized_completion<T>(materialized: &Materialized<StreamCompletion<T>>) -> Completion<T>
+fn drive_materialized_completion<T>(materialized: &Materialized<StreamFuture<T>>) -> Completion<T>
 where
   T: Clone, {
   for _ in 0..64 {
@@ -423,12 +423,12 @@ where
       break;
     }
   }
-  materialized.materialized().poll()
+  materialized.materialized().value()
 }
 
 #[test]
 fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
-  let (graph, _completion) = Sink::<u32, StreamCompletion<StreamDone>>::ignore().into_parts();
+  let (graph, _completion) = Sink::<u32, StreamFuture<StreamDone>>::ignore().into_parts();
   let marker = 7_u32;
   let sink = Sink::from_graph(graph, marker);
   let source = Source::single(1_u32);
@@ -468,7 +468,7 @@ fn source_run_fold_async_waits_for_pending_future_before_completion() {
 
   assert_eq!(materializer.calls, 1);
   assert_eq!(materialized.stream().drive(), DriveOutcome::Progressed);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
   assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(7_u32)));
 }
 
@@ -833,7 +833,7 @@ fn source_watch_termination_mat_keep_left_passes_elements_through() {
 fn source_watch_termination_mat_keep_right_exposes_completion_handle() {
   let source = Source::from_array([1_u32, 2_u32]).watch_termination_mat(KeepRight);
   let completion = source.map_materialized_value(|c| {
-    assert_eq!(c.poll(), Completion::Pending);
+    assert_eq!(c.value(), Completion::Pending);
     c
   });
   let values = completion.run_with_collect_sink().expect("run_with_collect_sink");
@@ -844,7 +844,7 @@ fn source_watch_termination_mat_keep_right_exposes_completion_handle() {
 fn source_watch_termination_mat_keep_both() {
   let (_graph, (left, right)) = Source::<u32, StreamNotUsed>::empty().watch_termination_mat(KeepBoth).into_parts();
   assert_eq!(left, StreamNotUsed::new());
-  assert_eq!(right.poll(), Completion::Pending);
+  assert_eq!(right.value(), Completion::Pending);
 }
 
 #[test]
@@ -1059,12 +1059,12 @@ fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered
   assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
   assert_eq!(poll_ready(queue.offer(31_u32)), QueueOfferResult::Enqueued);
   let completion = queue.watch_completion();
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
   queue.complete();
   let values: Vec<u32> =
     Source::<u32, _>::from_graph(graph, queue).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![30_u32, 31_u32]);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -1151,7 +1151,7 @@ fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
 
   logic.on_cancel().expect("on_cancel");
   assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::QueueClosed));
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
   assert!(queue.is_closed());
   assert!(queue.is_empty());
 }
@@ -1165,7 +1165,7 @@ fn source_queue_with_overflow_shutdown_completes_queue_for_drain() {
   logic.on_shutdown().expect("on_shutdown");
 
   assert!(queue.is_closed());
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -2567,8 +2567,8 @@ fn source_from_graph_creates_source_from_existing_graph() {
 
 #[test]
 fn source_pre_materialize_returns_source_and_completion() {
-  let source: Source<u32, StreamCompletion<StreamDone>> =
-    Source::<u32, StreamNotUsed>::empty().map_materialized_value(|_| StreamCompletion::<StreamDone>::new());
+  let source: Source<u32, StreamFuture<StreamDone>> =
+    Source::<u32, StreamNotUsed>::empty().map_materialized_value(|_| StreamFuture::<StreamDone>::new());
   let (source, completion) = source.pre_materialize();
   let _ = source;
   assert!(completion.try_take().is_none());
@@ -3346,7 +3346,7 @@ fn source_also_to_mat_combines_materialized_values() {
 
   // Then: 左は StreamNotUsed、右は Sink::head() の Pending completion
   assert_eq!(left_mat, StreamNotUsed::new());
-  assert_eq!(right_mat.poll(), Completion::Pending);
+  assert_eq!(right_mat.value(), Completion::Pending);
 }
 
 #[test]
@@ -3385,14 +3385,14 @@ fn source_also_to_mat_routes_elements_to_side_sink() {
   }
 
   // Then: side sink は 9 を受け取り、main path は StreamDone で終わる
-  assert_eq!(side_completion.poll(), Completion::Ready(Ok(9_u32)));
-  assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(side_completion.value(), Completion::Ready(Ok(9_u32)));
+  assert_eq!(downstream_completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
 fn source_also_to_all_passes_main_path_elements_through() {
   // Given: also_to_all で 2 本の sink を接続
-  let sinks: Vec<Sink<u32, StreamCompletion<StreamDone>>> = alloc::vec![Sink::ignore(), Sink::ignore()];
+  let sinks: Vec<Sink<u32, StreamFuture<StreamDone>>> = alloc::vec![Sink::ignore(), Sink::ignore()];
   let values =
     Source::from_array([3_u32, 4_u32]).also_to_all(sinks).run_with_collect_sink().expect("run_with_collect_sink");
 
@@ -3437,7 +3437,7 @@ fn source_divert_to_routes_matching_and_passes_rest() {
   let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
     .divert_to(
       |value: &u32| (*value).is_multiple_of(2),
-      Sink::<u32, StreamCompletion<StreamDone>>::foreach(move |value| {
+      Sink::<u32, StreamFuture<StreamDone>>::foreach(move |value| {
         diverted_ref.lock().push(value);
       }),
     )
@@ -3452,7 +3452,7 @@ fn source_divert_to_routes_matching_and_passes_rest() {
 #[test]
 fn source_divert_to_mat_combines_materialized_values() {
   // Given: divert_to_mat で sink の materialized 値 23 を右に束ねる
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 23_u32);
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 23_u32);
   let source = Source::<u32, StreamNotUsed>::empty().map_materialized_value(|_| 19_u32).divert_to_mat(
     |value: &u32| (*value).is_multiple_of(2),
     sink,
@@ -3472,7 +3472,7 @@ fn source_divert_to_mat_preserves_main_path_behavior() {
   let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
     .divert_to_mat(
       |value: &u32| (*value).is_multiple_of(2),
-      Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 1_u32),
+      Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 1_u32),
       KeepLeft,
     )
     .run_with_collect_sink()

@@ -13,7 +13,7 @@ use fraktor_stream_core_rs::core::{
   StreamError,
   dsl::{Sink, Source, StreamRefs},
   materialization::{
-    ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepRight, StreamCompletion, StreamNotUsed,
+    ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepRight, StreamFuture, StreamNotUsed,
   },
   stream_ref::{SinkRef, SourceRef, StreamRefSettings},
 };
@@ -44,12 +44,12 @@ fn build_materializer_with_config(config: ActorMaterializerConfig) -> ActorMater
   materializer
 }
 
-fn poll_completion<T>(completion: &StreamCompletion<T>) -> Result<T, StreamError>
+fn poll_completion<T>(completion: &StreamFuture<T>) -> Result<T, StreamError>
 where
   T: Clone, {
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
-    if let Completion::Ready(result) = completion.poll() {
+    if let Completion::Ready(result) = completion.value() {
       return result;
     }
     std::thread::yield_now();
@@ -57,7 +57,7 @@ where
   panic!("stream did not complete");
 }
 
-fn collect_sink() -> Sink<u32, StreamCompletion<Vec<u32>>> {
+fn collect_sink() -> Sink<u32, StreamFuture<Vec<u32>>> {
   Sink::fold(Vec::<u32>::new(), |mut values, value| {
     values.push(value);
     values
@@ -87,7 +87,7 @@ fn sink_ref_materialized_from_source_accepts_remote_elements_and_completes_local
 
   // When: materialized SinkRef を Sink に変換し、反対側から要素を流す
   let materialized = graph.run(&mut materializer).expect("materialize sink ref");
-  let (sink_ref, received): (SinkRef<u32>, StreamCompletion<Vec<u32>>) = materialized.into_materialized();
+  let (sink_ref, received): (SinkRef<u32>, StreamFuture<Vec<u32>>) = materialized.into_materialized();
   let remote_done =
     Source::from_array([10_u32, 20, 30]).run_with(sink_ref.into_sink(), &mut materializer).expect("run remote sink");
 
@@ -116,7 +116,7 @@ fn sink_ref_source_fails_when_remote_sink_never_subscribes_before_timeout() {
 
   // When: SinkRef を materialize するが、反対側の Sink として使用しない
   let materialized = graph.run(&mut materializer).expect("materialize sink ref");
-  let (_sink_ref, received): (SinkRef<u32>, StreamCompletion<Vec<u32>>) = materialized.into_materialized();
+  let (_sink_ref, received): (SinkRef<u32>, StreamFuture<Vec<u32>>) = materialized.into_materialized();
 
   // Then: materializer の StreamRefSettings から来た timeout tick により local Source が失敗する
   let error = poll_completion(&received).expect_err("subscription timeout");

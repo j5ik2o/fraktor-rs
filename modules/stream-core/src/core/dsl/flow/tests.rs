@@ -22,9 +22,7 @@ use crate::core::{
     DefaultOperatorCatalog, OperatorCatalog, OperatorKey, fusing::StreamBufferConfig, interpreter::IslandSplitter,
     materialization::Stream,
   },
-  materialization::{
-    Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, StreamCompletion, StreamDone, StreamNotUsed,
-  },
+  materialization::{Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, StreamDone, StreamFuture, StreamNotUsed},
   shape::UniformFanInShape,
   stage::StageKind,
 };
@@ -121,12 +119,12 @@ impl SourceLogic for FailureSequenceSourceLogic {
   }
 }
 
-fn drive_until_completion<T>(stream: &mut Stream, completion: &StreamCompletion<T>)
+fn drive_until_completion<T>(stream: &mut Stream, completion: &StreamFuture<T>)
 where
   T: Clone, {
   let mut idle_budget = 1024_usize;
   let mut drive_budget = 16384_usize;
-  while !matches!(completion.poll(), Completion::Ready(_)) {
+  while !matches!(completion.value(), Completion::Ready(_)) {
     assert!(drive_budget > 0, "stream did not reach completion within drive budget");
     drive_budget = drive_budget.saturating_sub(1);
     match stream.drive() {
@@ -345,7 +343,7 @@ fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion()
 
   drive_until_completion(&mut stream, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(10_u32)));
 }
 
 #[test]
@@ -370,7 +368,7 @@ fn prepend_lazy_emits_secondary_values_without_waiting_for_secondary_completion(
 
   drive_until_completion(&mut stream, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
 }
 
 #[test]
@@ -404,7 +402,7 @@ fn or_else_emits_secondary_values_without_waiting_for_secondary_completion() {
 
   drive_until_completion(&mut stream, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(5_u32)));
 }
 
 #[test]
@@ -444,7 +442,7 @@ fn prepend_lazy_materializes_secondary_on_first_demand() {
   stream.start().expect("start");
   drive_until_completion(&mut stream, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*materialize_calls.lock(), 1_u32);
 }
 
@@ -575,7 +573,7 @@ fn or_else_mat_preserves_existing_data_path_behavior() {
 
 #[test]
 fn divert_to_mat_combines_materialized_values() {
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 23_u32);
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 23_u32);
 
   let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
     .map_materialized_value(|_| 19_u32)
@@ -590,7 +588,7 @@ fn divert_to_mat_preserves_existing_data_path_behavior() {
   let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
     .via(Flow::<u32, u32, StreamNotUsed>::new().divert_to_mat(
       |value: &u32| (*value).is_multiple_of(2),
-      Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 1_u32),
+      Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 1_u32),
       KeepLeft,
     ))
     .run_with_collect_sink()
@@ -607,7 +605,7 @@ fn divert_to_mat_routes_matching_elements_to_sink() {
   let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
     .via(Flow::<u32, u32, StreamNotUsed>::new().divert_to_mat(
       |value: &u32| (*value).is_multiple_of(2),
-      Sink::<u32, StreamCompletion<StreamDone>>::foreach(move |value| {
+      Sink::<u32, StreamFuture<StreamDone>>::foreach(move |value| {
         diverted_ref.lock().push(value);
       }),
       KeepLeft,
@@ -1267,7 +1265,7 @@ fn materialize_into_source_emits_completed_sink_materialized_value() {
   let materialized: Vec<u32> =
     Source::from_graph(graph, StreamNotUsed::new()).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(materialized, vec![2_u32]);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(())));
 }
 
 #[test]
@@ -1296,7 +1294,7 @@ fn flat_map_concat_emits_head_without_waiting_for_inner_completion() {
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(42_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(42_u32)));
   assert_eq!(*pulls.lock(), 1_usize);
 }
 
@@ -1324,7 +1322,7 @@ fn flat_map_merge_emits_head_without_waiting_for_inner_completion() {
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(42_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(42_u32)));
   assert_eq!(*pulls.lock(), 1_usize);
 }
 
@@ -1789,7 +1787,7 @@ fn flatten_emits_inner_head_without_waiting_for_inner_completion() {
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(42_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(42_u32)));
   assert_eq!(*pulls.lock(), 1_usize);
 }
 
@@ -2102,7 +2100,7 @@ fn group_by_cancels_upstream_after_head_completion_by_default() {
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 1_usize);
 }
 
@@ -2753,7 +2751,7 @@ fn log_passes_elements_through_unchanged_and_inserts_logging_stage() {
 
   let (plan, completion) =
     Source::single(7_u32).via(Flow::new().log("log-stage")).into_mat(Sink::head(), KeepRight).into_parts();
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
   assert_eq!(plan.flow_order.len(), 1);
   assert!(matches!(
     plan.stages[plan.flow_order[0]],
@@ -2786,7 +2784,7 @@ fn log_with_marker_passes_elements_through_unchanged_and_inserts_logging_stage()
     .via(Flow::new().log_with_marker("log-stage", "marker"))
     .into_mat(Sink::head(), KeepRight)
     .into_parts();
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
   assert_eq!(plan.flow_order.len(), 1);
   assert!(matches!(
     plan.stages[plan.flow_order[0]],
@@ -3436,7 +3434,7 @@ fn also_to_mat_combines_materialized_values() {
     Flow::<u32, u32, StreamNotUsed>::new().also_to_mat(Sink::head(), KeepBoth).into_parts();
   let _ = graph;
   assert_eq!(left_mat, StreamNotUsed::new());
-  assert_eq!(right_mat.poll(), Completion::Pending);
+  assert_eq!(right_mat.value(), Completion::Pending);
 }
 
 #[test]
@@ -3467,15 +3465,15 @@ fn also_to_mat_routes_elements_to_side_sink() {
       },
     }
   }
-  assert_eq!(side_completion.poll(), Completion::Ready(Ok(9_u32)));
-  assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(side_completion.value(), Completion::Ready(Ok(9_u32)));
+  assert_eq!(downstream_completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
 fn wire_tap_mat_combines_materialized_values_and_keeps_data_path_behavior() {
   let (graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new().wire_tap_mat(Sink::head(), KeepRight).into_parts();
   let _ = graph;
-  assert_eq!(materialized.poll(), Completion::Pending);
+  assert_eq!(materialized.value(), Completion::Pending);
 
   let values = Source::single(4_u32)
     .via(Flow::new().map(|value: u32| value + 1).wire_tap_mat(Sink::ignore(), KeepRight))
@@ -3503,8 +3501,8 @@ fn wire_tap_mat_routes_elements_to_side_sink() {
       },
     }
   }
-  assert_eq!(side_completion.poll(), Completion::Ready(Ok(4_u32)));
-  assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(side_completion.value(), Completion::Ready(Ok(4_u32)));
+  assert_eq!(downstream_completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -3561,7 +3559,7 @@ fn wire_tap_mat_side_sink_receives_elements() {
   }
 
   // 検証: side sink が全要素の合計を受け取る
-  assert_eq!(side_mat.poll(), Completion::Ready(Ok(6_u32)));
+  assert_eq!(side_mat.value(), Completion::Ready(Ok(6_u32)));
 }
 
 #[test]
@@ -3581,7 +3579,7 @@ fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
 
 #[test]
 fn from_sink_and_source_mat_combines_materialized_values() {
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32);
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 7_u32);
   let source = Source::single(99_u32).map_materialized_value(|_| 11_u32);
 
   let (_graph, (left_mat, right_mat)) =
@@ -3593,7 +3591,7 @@ fn from_sink_and_source_mat_combines_materialized_values() {
 
 #[test]
 fn from_sink_and_source_mat_preserves_single_path_behavior() {
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 1_u32);
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 1_u32);
   let source = Source::single(99_u32).map_materialized_value(|_| 2_u32);
 
   let values = Source::single(5_u32)
@@ -3607,7 +3605,7 @@ fn from_sink_and_source_mat_preserves_single_path_behavior() {
 
 #[test]
 fn from_sink_and_source_coupled_mat_keeps_requested_materialized_value() {
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 13_u32);
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 13_u32);
   let source = Source::single(99_u32).map_materialized_value(|_| 17_u32);
 
   let (_graph, materialized) =
@@ -3620,7 +3618,7 @@ fn from_sink_and_source_coupled_mat_keeps_requested_materialized_value() {
 fn from_sink_and_source_coupled_mat_accepts_non_send_materialized_values() {
   use alloc::rc::Rc;
 
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| Rc::new(13_u32));
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| Rc::new(13_u32));
   let source = Source::single(99_u32).map_materialized_value(|_| Rc::new(17_u32));
 
   let (_graph, (left_mat, right_mat)) =
@@ -3632,7 +3630,7 @@ fn from_sink_and_source_coupled_mat_accepts_non_send_materialized_values() {
 
 #[test]
 fn from_sink_and_source_coupled_mat_preserves_single_path_behavior() {
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 3_u32);
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 3_u32);
   let source = Source::single(99_u32).map_materialized_value(|_| 4_u32);
 
   let values = Source::single(6_u32)
@@ -4245,21 +4243,21 @@ fn watch_termination_should_pass_through_elements() {
 fn watch_termination_completes_stream_completion_handle() {
   let (graph, completion) = Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepRight).into_parts();
   // 実行前はPending
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
 
-  let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(graph, completion.clone());
+  let source_flow: Flow<u32, u32, StreamFuture<()>> = Flow::from_graph(graph, completion.clone());
   let values = Source::single(1_u32).via(source_flow).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32]);
 
   // 実行後はReady
-  assert_eq!(completion.poll(), Completion::Ready(Ok(())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(())));
 }
 
 #[test]
 fn watch_termination_mat_keeps_both() {
   let (_graph, (left, right)) = Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepBoth).into_parts();
   assert_eq!(left, StreamNotUsed::new());
-  assert_eq!(right.poll(), Completion::Pending);
+  assert_eq!(right.value(), Completion::Pending);
 }
 
 // --- UniformFanInShape tests ---
@@ -4606,7 +4604,7 @@ fn flow_contramap_transforms_input_before_original_flow_and_keeps_materialized_v
   }
 
   assert_eq!(flow_mat, 7_u32);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![3_u32, 5_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![3_u32, 5_u32])));
 }
 
 #[test]
@@ -4633,7 +4631,7 @@ fn flow_do_on_cancel_invokes_callback_once_when_downstream_cancels() {
 
   drive_until_completion(&mut stream, &completion);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*cancel_count.lock(), 1_u32);
 }
 
@@ -4746,13 +4744,13 @@ fn flow_from_sink_and_source_coupled_mat_completes_wrapped_sink_when_source_fini
 
   let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepRight);
   let (_graph, right_completion) = flow.into_parts();
-  let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(_graph, right_completion.clone());
+  let source_flow: Flow<u32, u32, StreamFuture<()>> = Flow::from_graph(_graph, right_completion.clone());
 
   let values = Source::single(1_u32).via(source_flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   assert!(values.is_empty());
   assert!(sink_completed.load(Ordering::SeqCst));
-  assert_eq!(right_completion.poll(), Completion::Ready(Ok(())));
+  assert_eq!(right_completion.value(), Completion::Ready(Ok(())));
 }
 
 #[test]
@@ -4762,12 +4760,12 @@ fn flow_from_sink_and_source_coupled_mat_cancels_wrapped_source_when_sink_cancel
 
   let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepRight);
   let (_graph, right_completion) = flow.into_parts();
-  let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(_graph, right_completion.clone());
+  let source_flow: Flow<u32, u32, StreamFuture<()>> = Flow::from_graph(_graph, right_completion.clone());
 
   let values = Source::single(1_u32).via(source_flow).run_with_collect_sink().expect("run_with_collect_sink");
 
   assert!(values.is_empty());
-  assert_eq!(right_completion.poll(), Completion::Ready(Ok(())));
+  assert_eq!(right_completion.value(), Completion::Ready(Ok(())));
 }
 
 // --- A4: group_by with SubstreamCancelStrategy ---

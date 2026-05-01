@@ -71,7 +71,7 @@ fn manual_wiring_source_flow_sink() -> Result<(), StreamError> {
   let plan = graph.into_plan()?;
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(10_u32)));
   Ok(())
 }
 
@@ -94,7 +94,7 @@ fn manual_wiring_source_two_flows_sink() -> Result<(), StreamError> {
   let plan = graph.into_plan()?;
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(40_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(40_u32)));
   Ok(())
 }
 
@@ -118,7 +118,7 @@ fn manual_wiring_source_three_flows_sink() -> Result<(), StreamError> {
   let plan = graph.into_plan()?;
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(16_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(16_u32)));
   Ok(())
 }
 

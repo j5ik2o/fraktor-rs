@@ -28,11 +28,11 @@ impl Actor for GuardianActor {
 }
 
 fn poll_until_ready<T: Clone>(
-  completion: &fraktor_stream_core_rs::core::materialization::StreamCompletion<T>,
+  completion: &fraktor_stream_core_rs::core::materialization::StreamFuture<T>,
   max_ticks: usize,
 ) -> Option<Result<T, fraktor_stream_core_rs::core::StreamError>> {
   for _ in 0..max_ticks {
-    if let Completion::Ready(result) = completion.poll() {
+    if let Completion::Ready(result) = completion.value() {
       return Some(result);
     }
     thread::sleep(Duration::from_millis(1));

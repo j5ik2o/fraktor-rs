@@ -31,7 +31,7 @@ fn main() {
   let materialized = graph.run(&mut materializer).expect("run");
   let mut result = None;
   for _ in 0..64 {
-    match materialized.materialized().poll() {
+    match materialized.materialized().value() {
       | Completion::Ready(ready) => {
         result = Some(ready.expect("stream should succeed"));
         break;

@@ -13,7 +13,7 @@ fn flow_fragment_builds_reusable_flow_fragment() {
   let flow = fragment.build();
   let graph = Source::single(1_u32).via(flow).into_mat(Sink::head(), KeepRight);
   let (_plan, completion) = graph.into_parts();
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
 }
 
 #[test]
@@ -27,7 +27,7 @@ fn flow_fragment_via_and_to_compose_fragment() {
   while interpreter.state() == StreamState::Running {
     let _ = interpreter.drive();
   }
-  assert_eq!(completion.poll(), Completion::Ready(Ok(3_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(3_u32)));
 }
 
 #[test]

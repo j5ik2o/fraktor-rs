@@ -22,7 +22,7 @@ use fraktor_actor_core_rs::core::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
-  StageContext, StreamCompletion, StreamDone, actor_sink::ActorSink, actor_source::ActorSource, flow::Flow, sink::Sink,
+  StageContext, StreamDone, StreamFuture, actor_sink::ActorSink, actor_source::ActorSource, flow::Flow, sink::Sink,
   source::Source,
 };
 use crate::core::{
@@ -180,7 +180,7 @@ impl TopicPubSub {
   /// Each element flowing through the sink is wrapped in a
   /// [`Topic::publish`] command and sent to the topic actor.
   #[must_use]
-  pub fn sink<T>(topic_actor: TypedActorRef<TopicCommand<T>>) -> Sink<T, StreamCompletion<StreamDone>>
+  pub fn sink<T>(topic_actor: TypedActorRef<TopicCommand<T>>) -> Sink<T, StreamFuture<StreamDone>>
   where
     T: Clone + Send + Sync + 'static, {
     let topic = topic_actor;

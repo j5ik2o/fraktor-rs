@@ -18,7 +18,7 @@ fn restart_sink_with_backoff_keeps_data_path_behavior() {
   while interpreter.state() == StreamState::Running {
     let _ = interpreter.drive();
   }
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -32,5 +32,5 @@ fn restart_sink_with_settings_keeps_data_path_behavior() {
   while interpreter.state() == StreamState::Running {
     let _ = interpreter.drive();
   }
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }

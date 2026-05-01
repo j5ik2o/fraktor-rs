@@ -1,10 +1,10 @@
 use alloc::{vec, vec::Vec};
 use core::marker::PhantomData;
 
-use crate::core::{DynValue, FlowLogic, StreamError, materialization::StreamCompletion};
+use crate::core::{DynValue, FlowLogic, StreamError, materialization::StreamFuture};
 
 pub(in crate::core) struct WatchTerminationLogic<In> {
-  pub(in crate::core) completion: StreamCompletion<()>,
+  pub(in crate::core) completion: StreamFuture<()>,
   pub(in crate::core) _pd:        PhantomData<fn(In)>,
 }
 

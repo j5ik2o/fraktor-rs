@@ -29,7 +29,7 @@ use crate::core::{
     interpreter::graph_interpreter::GraphInterpreter,
     materialization::StreamState,
   },
-  materialization::{Completion, DriveOutcome, KeepRight, MatCombine, StreamCompletion, StreamDone, StreamNotUsed},
+  materialization::{Completion, DriveOutcome, KeepRight, MatCombine, StreamDone, StreamFuture, StreamNotUsed},
   shape::{Inlet, Outlet, PortId},
   snapshot::{ConnectionState, InterpreterSnapshot},
   stage::{AsyncCallback, StageKind, TimerGraphStageLogic},
@@ -376,7 +376,7 @@ fn source_single_pair_u32(outlet: Outlet<(u32, u32)>, value: (u32, u32)) -> Sour
   }
 }
 
-fn sum_fold_u32_sink(inlet: Inlet<u32>, completion: StreamCompletion<u32>) -> SinkDefinition {
+fn sum_fold_u32_sink(inlet: Inlet<u32>, completion: StreamFuture<u32>) -> SinkDefinition {
   SinkDefinition {
     kind:        StageKind::SinkFold,
     inlet:       inlet.id(),
@@ -389,7 +389,7 @@ fn sum_fold_u32_sink(inlet: Inlet<u32>, completion: StreamCompletion<u32>) -> Si
   }
 }
 
-fn zip_sum_fold_u32_sink(inlet: &Inlet<Vec<u32>>, completion: StreamCompletion<u32>) -> SinkDefinition {
+fn zip_sum_fold_u32_sink(inlet: &Inlet<Vec<u32>>, completion: StreamFuture<u32>) -> SinkDefinition {
   SinkDefinition {
     kind:        StageKind::SinkFold,
     inlet:       inlet.id(),
@@ -402,7 +402,7 @@ fn zip_sum_fold_u32_sink(inlet: &Inlet<Vec<u32>>, completion: StreamCompletion<u
   }
 }
 
-fn collect_u32_sequence_sink(inlet: Inlet<u32>, completion: StreamCompletion<Vec<u32>>) -> SinkDefinition {
+fn collect_u32_sequence_sink(inlet: Inlet<u32>, completion: StreamFuture<Vec<u32>>) -> SinkDefinition {
   SinkDefinition {
     kind:        StageKind::SinkFold,
     inlet:       inlet.id(),
@@ -417,7 +417,7 @@ fn collect_u32_sequence_sink(inlet: Inlet<u32>, completion: StreamCompletion<Vec
 
 fn collect_u32_nested_sequence_sink(
   inlet: &Inlet<Vec<u32>>,
-  completion: StreamCompletion<Vec<Vec<u32>>>,
+  completion: StreamFuture<Vec<Vec<u32>>>,
 ) -> SinkDefinition {
   SinkDefinition {
     kind:        StageKind::SinkFold,
@@ -475,14 +475,14 @@ fn map_async_waits_for_pending_future_before_completion() {
   interpreter.start().expect("start");
   assert_eq!(interpreter.drive(), DriveOutcome::Progressed);
   assert_eq!(interpreter.state(), StreamState::Running);
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
 
   while interpreter.state() == StreamState::Running {
     let _ = interpreter.drive();
   }
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![8_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![8_u32])));
 }
 
 #[test]
@@ -493,7 +493,7 @@ fn source_map_fold_completes() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(2)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(2)));
 }
 
 #[test]
@@ -503,7 +503,7 @@ fn source_head_completes_after_first() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(5)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(5)));
 }
 
 #[test]
@@ -528,7 +528,7 @@ fn take_until_requests_source_shutdown_after_first_match() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
   assert_eq!(*cancels.lock(), 1_u32);
   assert!(*pulls.lock() < 100_u32);
 }
@@ -540,7 +540,7 @@ fn flat_map_concat_uses_inner_source() {
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(2)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(2)));
 }
 
 #[test]
@@ -558,7 +558,7 @@ fn flat_map_concat_respects_backpressure_when_inner_emits_multiple_elements() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 1_u32, 2_u32, 2_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1_u32, 1_u32, 2_u32, 2_u32])));
 }
 
 #[test]
@@ -583,7 +583,7 @@ fn merge_prioritized_n_preserves_weighted_order_through_interpreter() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(
-    completion.poll(),
+    completion.value(),
     Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32, 100_u32, 4_u32, 5_u32, 6_u32, 200_u32, 300_u32, 400_u32]))
   );
 }
@@ -592,7 +592,7 @@ fn merge_prioritized_n_preserves_weighted_order_through_interpreter() {
 fn flat_map_merge_uses_configured_breadth() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let flat_map_merge = flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(2, |value| {
@@ -613,7 +613,7 @@ fn flat_map_merge_uses_configured_breadth() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 2, 3, 3])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1, 1, 2, 2, 3, 3])));
 }
 
 #[test]
@@ -646,7 +646,7 @@ fn flat_map_merge_delays_new_inner_creation_until_breadth_slot_is_released() {
 
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(*created.lock(), 2);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -666,7 +666,7 @@ fn flat_map_concat_fails_stream_when_inner_source_fails_without_recovery() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -687,14 +687,14 @@ fn flat_map_merge_fails_stream_when_inner_source_fails_without_recovery() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
 fn buffer_flow_backpressure_keeps_buffered_elements_without_failing() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::<Vec<u32>>::new();
+  let completion = StreamFuture::<Vec<u32>>::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let buffer = buffer_definition::<u32>(2, OverflowStrategy::Backpressure);
@@ -710,14 +710,14 @@ fn buffer_flow_backpressure_keeps_buffered_elements_without_failing() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1, 2, 3])));
 }
 
 #[test]
 fn buffer_flow_fail_policy_fails_stream_on_overflow() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let buffer = buffer_definition::<u32>(2, OverflowStrategy::Fail);
@@ -742,14 +742,14 @@ fn buffer_flow_fail_policy_fails_stream_on_overflow() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::BufferOverflow)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::BufferOverflow)));
 }
 
 #[test]
 fn buffer_flow_drop_oldest_keeps_latest_elements() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let buffer = buffer_definition::<u32>(2, OverflowStrategy::DropHead);
@@ -765,14 +765,14 @@ fn buffer_flow_drop_oldest_keeps_latest_elements() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2, 3])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2, 3])));
 }
 
 #[test]
 fn async_boundary_flow_preserves_input_order() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let async_boundary = async_boundary_definition::<u32>();
@@ -791,7 +791,7 @@ fn async_boundary_flow_preserves_input_order() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1, 2, 3])));
 }
 
 #[test]
@@ -846,7 +846,7 @@ fn flow_async_callback_and_timer_hooks_are_driven_by_interpreter() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let flow = FlowDefinition {
@@ -872,7 +872,7 @@ fn flow_async_callback_and_timer_hooks_are_driven_by_interpreter() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
 }
 
 struct AsyncTimerFailureFlowLogic {
@@ -1049,7 +1049,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_resume() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let flow = FlowDefinition {
@@ -1075,7 +1075,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_resume() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
 }
 
 #[test]
@@ -1084,7 +1084,7 @@ fn flow_timer_outputs_survive_async_failure_with_complete() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let flow = FlowDefinition {
@@ -1110,7 +1110,7 @@ fn flow_timer_outputs_survive_async_failure_with_complete() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![101_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![101_u32])));
 }
 
 #[test]
@@ -1119,7 +1119,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_complete() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let flow = FlowDefinition {
@@ -1145,7 +1145,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_complete() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
 }
 
 #[test]
@@ -1156,7 +1156,7 @@ fn flow_tick_complete_shuts_down_stage_and_completes_downstream() {
   let second_flow_inlet: Inlet<u32> = Inlet::new();
   let second_flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source_done_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_single_u32(source_outlet, 1_u32);
@@ -1210,7 +1210,7 @@ fn flow_tick_complete_shuts_down_stage_and_completes_downstream() {
   }
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(Vec::<u32>::new())));
   assert_eq!(*source_done_calls.lock(), 1);
 }
 
@@ -1222,7 +1222,7 @@ fn flow_async_and_timer_complete_notifies_downstream_once() {
   let second_flow_inlet: Inlet<u32> = Inlet::new();
   let second_flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source_done_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_single_u32(source_outlet, 1_u32);
@@ -1276,7 +1276,7 @@ fn flow_async_and_timer_complete_notifies_downstream_once() {
   }
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(Vec::<u32>::new())));
   assert_eq!(*source_done_calls.lock(), 1);
 }
 
@@ -1291,7 +1291,7 @@ fn group_by_uses_key_function() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(3_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(3_u32)));
 }
 
 #[test]
@@ -1314,7 +1314,7 @@ fn group_by_default_cancels_upstream_after_head_completion() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 1_u32);
   assert_eq!(*cancels.lock(), 1_u32);
 }
@@ -1339,7 +1339,7 @@ fn group_by_drain_consumes_remaining_upstream_after_head_completion() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 4_u32);
   assert_eq!(*cancels.lock(), 0_u32);
 }
@@ -1364,7 +1364,7 @@ fn group_by_propagate_cancels_upstream_after_head_completion() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 1_u32);
   assert_eq!(*cancels.lock(), 1_u32);
 }
@@ -1388,7 +1388,7 @@ fn split_when_drain_consumes_remaining_upstream_after_head_completion() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 4_u32);
   assert_eq!(*cancels.lock(), 0_u32);
 }
@@ -1417,7 +1417,7 @@ fn split_when_propagate_cancels_upstream_after_head_completion() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   // split_when(|_| true) needs 2 pulls: element 1 starts the first group,
   // element 2 triggers the split and emits [1].  After head() receives 1 and
   // cancels, Propagate stops the source immediately.
@@ -1444,7 +1444,7 @@ fn split_after_drain_consumes_remaining_upstream_after_head_completion() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 4_u32);
   assert_eq!(*cancels.lock(), 0_u32);
 }
@@ -1468,7 +1468,7 @@ fn split_after_propagate_cancels_upstream_after_head_completion() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 1_u32);
   assert_eq!(*cancels.lock(), 1_u32);
 }
@@ -1480,7 +1480,7 @@ fn recover_flow_replaces_upstream_failure() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(10_u32)));
 }
 
 #[test]
@@ -1492,7 +1492,7 @@ fn recover_flow_intercepts_upstream_failure() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(10_u32)));
 }
 
 #[test]
@@ -1504,7 +1504,7 @@ fn recover_with_retries_flow_fails_when_retry_budget_is_zero() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -1514,7 +1514,7 @@ fn restart_sink_with_backoff_keeps_single_path_behavior() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(5_u32)));
 }
 
 #[test]
@@ -1525,14 +1525,14 @@ fn sink_supervision_variants_keep_single_path_behavior() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(5_u32)));
 }
 
 #[test]
 fn source_supervision_stop_fails_on_pull_error() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
@@ -1555,14 +1555,14 @@ fn source_supervision_stop_fails_on_pull_error() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
 fn source_supervision_resume_skips_failed_pull_and_continues() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
@@ -1585,14 +1585,14 @@ fn source_supervision_resume_skips_failed_pull_and_continues() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![7_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![7_u32])));
 }
 
 #[test]
 fn source_supervision_restart_invokes_on_restart_and_continues() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = SourceDefinition {
@@ -1621,7 +1621,7 @@ fn source_supervision_restart_invokes_on_restart_and_continues() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![11_u32])));
   assert_eq!(*restart_calls.lock(), 1_u32);
 }
 
@@ -1631,7 +1631,7 @@ fn flow_supervision_stop_fails_on_apply_error() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let flow = FlowDefinition {
@@ -1653,7 +1653,7 @@ fn flow_supervision_stop_fails_on_apply_error() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -1662,7 +1662,7 @@ fn flow_supervision_resume_skips_failed_input_and_continues() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let flow = FlowDefinition {
@@ -1684,14 +1684,14 @@ fn flow_supervision_resume_skips_failed_input_and_continues() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![3_u32, 4_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![3_u32, 4_u32])));
 }
 
 #[test]
 fn sink_supervision_stop_fails_on_push_error() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let sink = SinkDefinition {
@@ -1718,14 +1718,14 @@ fn sink_supervision_stop_fails_on_push_error() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
 fn sink_supervision_resume_skips_failed_input_and_continues() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let sink = SinkDefinition {
@@ -1752,14 +1752,14 @@ fn sink_supervision_resume_skips_failed_input_and_continues() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
 }
 
 #[test]
 fn sink_supervision_restart_invokes_on_restart_and_continues() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_sequence_u32(source_outlet, 3);
@@ -1788,7 +1788,7 @@ fn sink_supervision_restart_invokes_on_restart_and_continues() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
   assert_eq!(*restart_calls.lock(), 1_u32);
 }
 
@@ -1796,7 +1796,7 @@ fn sink_supervision_restart_invokes_on_restart_and_continues() {
 fn restart_budget_exhaustion_completes_with_default_terminal_action() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
     outlet:      source_outlet.id(),
@@ -1825,14 +1825,14 @@ fn restart_budget_exhaustion_completes_with_default_terminal_action() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
 fn source_completion_triggers_restart_until_budget_is_exhausted() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
     outlet:      source_outlet.id(),
@@ -1852,14 +1852,14 @@ fn source_completion_triggers_restart_until_budget_is_exhausted() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![9_u32, 9_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![9_u32, 9_u32])));
 }
 
 #[test]
 fn source_restart_with_backoff_recovers_after_failure_transition() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = SourceDefinition {
@@ -1888,7 +1888,7 @@ fn source_restart_with_backoff_recovers_after_failure_transition() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![13_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![13_u32])));
   assert_eq!(*restart_calls.lock(), 1_u32);
 }
 
@@ -1898,7 +1898,7 @@ fn source_restart_is_not_bypassed_by_downstream_propagate_failure_action() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source_restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
   let flow_failure_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
@@ -1936,7 +1936,7 @@ fn source_restart_is_not_bypassed_by_downstream_propagate_failure_action() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![13_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![13_u32])));
   assert_eq!(*source_restart_calls.lock(), 1_u32);
   assert_eq!(*flow_failure_calls.lock(), 1_u32);
 }
@@ -1945,7 +1945,7 @@ fn source_restart_is_not_bypassed_by_downstream_propagate_failure_action() {
 fn source_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
@@ -1968,7 +1968,7 @@ fn source_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -1977,7 +1977,7 @@ fn flow_restart_with_backoff_recovers_after_failure_transition() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_sequence_u32(source_outlet, 3);
@@ -2000,7 +2000,7 @@ fn flow_restart_with_backoff_recovers_after_failure_transition() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
   assert_eq!(*restart_calls.lock(), 1_u32);
 }
 
@@ -2010,7 +2010,7 @@ fn flow_restart_is_not_bypassed_when_on_failure_propagates() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
   let failure_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
@@ -2038,7 +2038,7 @@ fn flow_restart_is_not_bypassed_when_on_failure_propagates() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
   assert_eq!(*restart_calls.lock(), 1_u32);
   assert_eq!(*failure_calls.lock(), 1_u32);
 }
@@ -2049,7 +2049,7 @@ fn flow_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let flow = FlowDefinition {
@@ -2071,14 +2071,14 @@ fn flow_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
 fn sink_restart_with_backoff_recovers_after_failure_transition() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_sequence_u32(source_outlet, 3);
@@ -2107,7 +2107,7 @@ fn sink_restart_with_backoff_recovers_after_failure_transition() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
   assert_eq!(*restart_calls.lock(), 1_u32);
 }
 
@@ -2115,7 +2115,7 @@ fn sink_restart_with_backoff_recovers_after_failure_transition() {
 fn sink_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let sink = SinkDefinition {
@@ -2138,14 +2138,14 @@ fn sink_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
 fn abort_while_restart_waiting_keeps_restart_callback_uninvoked() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = SourceDefinition {
@@ -2182,14 +2182,14 @@ fn abort_while_restart_waiting_keeps_restart_callback_uninvoked() {
   let _ = interpreter.drive();
 
   assert_eq!(*restart_calls.lock(), 0_u32);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
 fn source_restart_backoff_waits_configured_ticks_before_on_restart() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = SourceDefinition {
@@ -2228,7 +2228,7 @@ fn source_restart_backoff_waits_configured_ticks_before_on_restart() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![17_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![17_u32])));
 }
 
 #[test]
@@ -2237,7 +2237,7 @@ fn flow_restart_backoff_waits_configured_ticks_before_on_restart() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_sequence_u32(source_outlet, 2);
@@ -2270,14 +2270,14 @@ fn flow_restart_backoff_waits_configured_ticks_before_on_restart() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2_u32])));
 }
 
 #[test]
 fn sink_restart_backoff_waits_configured_ticks_before_on_restart() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_sequence_u32(source_outlet, 3);
@@ -2316,7 +2316,7 @@ fn sink_restart_backoff_waits_configured_ticks_before_on_restart() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
 }
 
 #[test]
@@ -2325,7 +2325,7 @@ fn split_when_restart_supervision_behaves_like_resume() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_sequence_u32(source_outlet, 3);
@@ -2355,7 +2355,7 @@ fn split_when_restart_supervision_behaves_like_resume() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
   assert_eq!(*restart_calls.lock(), 0_u32);
 }
 
@@ -2365,7 +2365,7 @@ fn non_split_restart_supervision_calls_on_restart() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let source = source_sequence_u32(source_outlet, 3);
@@ -2395,7 +2395,7 @@ fn non_split_restart_supervision_calls_on_restart() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
   assert!(*restart_calls.lock() > 0_u32);
 }
 
@@ -2404,7 +2404,7 @@ fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
   let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
@@ -2450,7 +2450,7 @@ fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
 #[test]
 fn delay_backpressures_instead_of_failing_when_downstream_stalls() {
   let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let graph =
     Source::<u32, _>::from_logic(StageKind::Custom, CountingSourceLogic { remaining: 8, pulls: pulls.clone() })
@@ -2475,7 +2475,7 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
   let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
@@ -2541,7 +2541,7 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
 #[test]
 fn conflate_continues_aggregating_while_downstream_is_backpressured() {
   let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let graph = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic {
     schedule: VecDeque::from(vec![Some(1_u32), None, None, Some(2_u32), Some(3_u32), Some(4_u32), Some(5_u32)]),
     pulls:    pulls.clone(),
@@ -2565,12 +2565,12 @@ fn conflate_continues_aggregating_while_downstream_is_backpressured() {
 fn conflate_emits_aggregated_value_when_downstream_unblocks() {
   let gate_open = ArcShared::new(SpinSyncMutex::new(false));
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   struct GatedSinkLogic {
     gate_open:  ArcShared<SpinSyncMutex<bool>>,
     received:   ArcShared<SpinSyncMutex<Vec<u32>>>,
-    completion: StreamCompletion<StreamDone>,
+    completion: StreamFuture<StreamDone>,
   }
 
   impl SinkLogic for GatedSinkLogic {
@@ -2667,14 +2667,14 @@ fn cross_operator_failure_propagates_from_flat_map_to_substream_merge_chain() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
 fn source_restart_is_preserved_across_substream_and_async_boundary_chain() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = SourceDefinition {
     kind:        StageKind::SourceSingle,
@@ -2714,14 +2714,14 @@ fn source_restart_is_preserved_across_substream_and_async_boundary_chain() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![7_u32, 7_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![7_u32, 7_u32])));
 }
 
 #[test]
 fn split_when_flow_splits_before_predicate() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let split_when = split_when_definition::<u32, _>(|value| value % 2 == 0);
@@ -2740,14 +2740,14 @@ fn split_when_flow_splits_before_predicate() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![vec![1_u32], vec![2_u32, 3_u32], vec![4_u32]])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![vec![1_u32], vec![2_u32, 3_u32], vec![4_u32]])));
 }
 
 #[test]
 fn split_after_flow_splits_after_predicate() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let split_after = split_after_definition::<u32, _>(|value| value % 2 == 0);
@@ -2766,7 +2766,7 @@ fn split_after_flow_splits_after_predicate() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32]])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32]])));
 }
 
 #[test]
@@ -2782,7 +2782,7 @@ fn merge_substreams_flattens_segment_elements() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
 }
 
 #[test]
@@ -2798,7 +2798,7 @@ fn concat_substreams_flattens_segment_elements() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
 }
 
 #[test]
@@ -2826,7 +2826,7 @@ fn drive_does_not_pull_without_demand() {
     attributes:  Attributes::new(),
   };
   let inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let sink = SinkDefinition {
     kind:        StageKind::SinkIgnore,
     inlet:       inlet.id(),
@@ -2847,7 +2847,7 @@ fn drive_does_not_pull_without_demand() {
 
 #[test]
 fn drive_rejects_type_mismatch() {
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let outlet: Outlet<u32> = Outlet::new();
   let source = source_single_u32(outlet, 1_u32);
   let inlet: Inlet<u32> = Inlet::new();
@@ -2881,7 +2881,7 @@ fn drive_rejects_type_mismatch() {
     let _ = interpreter.drive();
   }
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::TypeMismatch)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::TypeMismatch)));
 }
 
 #[test]
@@ -2892,7 +2892,7 @@ fn executes_with_topologically_sorted_flow_order() {
   let flow2_inlet: Inlet<u32> = Inlet::new();
   let flow2_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let flow1 = FlowDefinition {
@@ -2947,7 +2947,7 @@ fn executes_with_topologically_sorted_flow_order() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -2956,7 +2956,7 @@ fn rejects_cycle_plan_on_construction() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let flow = FlowDefinition {
@@ -2997,7 +2997,7 @@ fn supports_plan_with_multiple_sources() {
   let source1_outlet: Outlet<u32> = Outlet::new();
   let source2_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source1 = source_single_u32(source1_outlet, 1_u32);
   let source2 = source_single_u32(source2_outlet, 2_u32);
@@ -3013,7 +3013,7 @@ fn supports_plan_with_multiple_sources() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
 }
 
 #[test]
@@ -3021,8 +3021,8 @@ fn supports_plan_with_multiple_sinks() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink1_inlet: Inlet<u32> = Inlet::new();
   let sink2_inlet: Inlet<u32> = Inlet::new();
-  let completion1 = StreamCompletion::new();
-  let completion2 = StreamCompletion::new();
+  let completion1 = StreamFuture::new();
+  let completion2 = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 2);
   let sink1 = collect_u32_sequence_sink(sink1_inlet, completion1.clone());
@@ -3038,8 +3038,8 @@ fn supports_plan_with_multiple_sinks() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion1.poll(), Completion::Ready(Ok(vec![1_u32])));
-  assert_eq!(completion2.poll(), Completion::Ready(Ok(vec![2_u32])));
+  assert_eq!(completion1.value(), Completion::Ready(Ok(vec![1_u32])));
+  assert_eq!(completion2.value(), Completion::Ready(Ok(vec![2_u32])));
 }
 
 #[test]
@@ -3154,7 +3154,7 @@ fn start_sinks_skips_already_started_sinks_on_retry() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink1_inlet: Inlet<u32> = Inlet::new();
   let sink2_inlet: Inlet<u32> = Inlet::new();
-  let completion1 = StreamCompletion::new();
+  let completion1 = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 1);
   let sink1 = collect_u32_sequence_sink(sink1_inlet, completion1);
@@ -3193,7 +3193,7 @@ fn start_sinks_marks_each_sink_started_before_start_callback_error() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink1_inlet: Inlet<u32> = Inlet::new();
   let sink2_inlet: Inlet<u32> = Inlet::new();
-  let completion1 = StreamCompletion::new();
+  let completion1 = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 1);
   let sink1 = collect_u32_sequence_sink(sink1_inlet, completion1);
@@ -3227,7 +3227,7 @@ fn start_sinks_marks_each_sink_started_before_start_callback_error() {
 fn drive_handles_restart_tick_error() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source = SourceDefinition {
     kind:        StageKind::Custom,
     outlet:      source_outlet.id(),
@@ -3258,7 +3258,7 @@ fn terminal_drain_loop_handles_flow_drain_failure() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source = source_sequence_u32(source_outlet, 0);
   let flow = FlowDefinition {
     kind:        StageKind::Custom,
@@ -3284,7 +3284,7 @@ fn terminal_drain_loop_handles_flow_drain_failure() {
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -3293,7 +3293,7 @@ fn terminal_drain_loop_handles_flow_error_after_sources_already_done() {
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
   let source = SourceDefinition {
     kind:        StageKind::Custom,
     outlet:      source_outlet.id(),
@@ -3403,8 +3403,8 @@ fn detach_sink_position_cancels_live_sources_when_last_sink_detaches() {
   let first_sink_inlet: Inlet<u32> = Inlet::new();
   let second_sink_inlet: Inlet<u32> = Inlet::new();
   let source = source_sequence_u32(source_outlet, 1);
-  let first_sink = collect_u32_sequence_sink(first_sink_inlet, StreamCompletion::new());
-  let second_sink = collect_u32_sequence_sink(second_sink_inlet, StreamCompletion::new());
+  let first_sink = collect_u32_sequence_sink(first_sink_inlet, StreamFuture::new());
+  let second_sink = collect_u32_sequence_sink(second_sink_inlet, StreamFuture::new());
   let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Sink(first_sink), StageDefinition::Sink(second_sink)],
     vec![
@@ -3433,8 +3433,8 @@ fn flow_kill_switch_shutdown_only_closes_bound_branch() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let right_sink_inlet: Inlet<u32> = Inlet::new();
-  let left_completion = StreamCompletion::new();
-  let right_completion = StreamCompletion::new();
+  let left_completion = StreamFuture::new();
+  let right_completion = StreamFuture::new();
 
   let source = SourceDefinition {
     kind:        StageKind::Custom,
@@ -3503,10 +3503,10 @@ fn flow_kill_switch_shutdown_only_closes_bound_branch() {
   kill_switch_state.lock().request_shutdown();
   drive_to_completion(&mut interpreter);
 
-  let Completion::Ready(Ok(left_values)) = left_completion.poll() else {
+  let Completion::Ready(Ok(left_values)) = left_completion.value() else {
     panic!("left branch should complete");
   };
-  let Completion::Ready(Ok(right_values)) = right_completion.poll() else {
+  let Completion::Ready(Ok(right_values)) = right_completion.value() else {
     panic!("right branch should complete");
   };
 
@@ -3563,7 +3563,7 @@ fn cancel_upstream_stage_calls_on_source_done_for_upstream_flow() {
   let shutdown_inlet: Inlet<u32> = Inlet::new();
   let shutdown_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 5);
   let tracking_flow = FlowDefinition {
@@ -3609,7 +3609,7 @@ fn cancel_upstream_stage_calls_on_source_done_for_upstream_flow() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1_u32])));
   assert_eq!(*source_done_calls.lock(), 1_u32);
 }
 
@@ -3620,7 +3620,7 @@ fn cancel_upstream_stage_calls_on_source_done_in_direct_upstream_cancellation_pa
   let flow_inlet: Inlet<u32> = Inlet::new();
   let flow_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 1);
   let flow = FlowDefinition {
@@ -3658,7 +3658,7 @@ fn supports_multiple_outgoing_edges_from_source() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
@@ -3705,7 +3705,7 @@ fn supports_multiple_outgoing_edges_from_source() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(230)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(230)));
 }
 
 #[test]
@@ -3716,7 +3716,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let split_flow = FlowDefinition {
@@ -3763,7 +3763,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(210)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(210)));
 }
 
 #[test]
@@ -3772,7 +3772,7 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 3);
   let broadcast = broadcast_definition::<u32>(2);
@@ -3810,7 +3810,7 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(312)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(312)));
 }
 
 #[test]
@@ -3821,8 +3821,8 @@ fn flow_fan_out_failure_uses_local_supervision_fallback() {
   let flow_outlet: Outlet<u32> = Outlet::new();
   let left_sink_inlet: Inlet<u32> = Inlet::new();
   let right_sink_inlet: Inlet<u32> = Inlet::new();
-  let left_completion = StreamCompletion::new();
-  let right_completion = StreamCompletion::new();
+  let left_completion = StreamFuture::new();
+  let right_completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let flow = FlowDefinition {
@@ -3858,15 +3858,15 @@ fn flow_fan_out_failure_uses_local_supervision_fallback() {
 
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(*failure_calls.lock(), 1_u32);
-  assert_eq!(left_completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
-  assert_eq!(right_completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
+  assert_eq!(left_completion.value(), Completion::Ready(Ok(Vec::<u32>::new())));
+  assert_eq!(right_completion.value(), Completion::Ready(Ok(Vec::<u32>::new())));
 }
 
 #[test]
 fn rejects_broadcast_flow_when_fan_out_does_not_match_wiring() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let broadcast = broadcast_definition::<u32>(2);
@@ -3899,7 +3899,7 @@ fn balance_flow_distributes_elements_round_robin() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let balance = balance_definition::<u32>(2);
@@ -3937,14 +3937,14 @@ fn balance_flow_distributes_elements_round_robin() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(210)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(210)));
 }
 
 #[test]
 fn rejects_balance_flow_when_fan_out_does_not_match_wiring() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let balance = balance_definition::<u32>(2);
@@ -3976,7 +3976,7 @@ fn merge_flow_combines_multiple_incoming_edges() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
@@ -4028,14 +4028,14 @@ fn merge_flow_combines_multiple_incoming_edges() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(230)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(230)));
 }
 
 #[test]
 fn rejects_merge_flow_when_fan_in_does_not_match_wiring() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let merge = merge_definition::<u32>(2);
@@ -4067,7 +4067,7 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
@@ -4119,14 +4119,14 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(230)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(230)));
 }
 
 #[test]
 fn rejects_zip_flow_when_fan_in_does_not_match_wiring() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let zip = zip_definition::<u32>(2);
@@ -4158,7 +4158,7 @@ fn concat_flow_emits_elements_in_input_order() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
@@ -4210,14 +4210,14 @@ fn concat_flow_emits_elements_in_input_order() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11, 13, 102, 104])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![11, 13, 102, 104])));
 }
 
 #[test]
 fn rejects_concat_flow_when_fan_in_does_not_match_wiring() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_u32(source_outlet, 1_u32);
   let concat = concat_definition::<u32>(2);
@@ -4247,7 +4247,7 @@ fn partition_flow_routes_elements_by_predicate_between_outgoing_edges() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let partition = partition_definition::<u32, _>(|value| value % 2 == 0);
@@ -4285,7 +4285,7 @@ fn partition_flow_routes_elements_by_predicate_between_outgoing_edges() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(210_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(210_u32)));
 }
 
 #[test]
@@ -4294,7 +4294,7 @@ fn unzip_flow_routes_tuple_components_to_two_edges() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_single_pair_u32(source_outlet, (7_u32, 8_u32));
   let unzip = unzip_definition::<u32>();
@@ -4332,7 +4332,7 @@ fn unzip_flow_routes_tuple_components_to_two_edges() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(115_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(115_u32)));
 }
 
 #[test]
@@ -4343,7 +4343,7 @@ fn interleave_flow_emits_round_robin_from_multiple_incoming_edges() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
@@ -4395,7 +4395,7 @@ fn interleave_flow_emits_round_robin_from_multiple_incoming_edges() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11_u32, 102_u32, 13_u32, 104_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![11_u32, 102_u32, 13_u32, 104_u32])));
 }
 
 #[test]
@@ -4406,7 +4406,7 @@ fn prepend_flow_prioritizes_lower_index_inputs() {
   let right_inlet: Inlet<u32> = Inlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
@@ -4458,7 +4458,7 @@ fn prepend_flow_prioritizes_lower_index_inputs() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11_u32, 13_u32, 102_u32, 104_u32])));
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![11_u32, 13_u32, 102_u32, 104_u32])));
 }
 
 #[test]
@@ -4466,7 +4466,7 @@ fn zip_all_flow_emits_fill_values_after_completion() {
   let left_outlet: Outlet<u32> = Outlet::new();
   let right_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
-  let completion = StreamCompletion::new();
+  let completion = StreamFuture::new();
 
   let left_source = source_sequence_u32(left_outlet, 3);
   let right_source = source_single_u32(right_outlet, 100_u32);
@@ -4493,7 +4493,7 @@ fn zip_all_flow_emits_fill_values_after_completion() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(
-    completion.poll(),
+    completion.value(),
     Completion::Ready(Ok(vec![vec![1_u32, 100_u32], vec![2_u32, 0_u32], vec![3_u32, 0_u32]]))
   );
 }
@@ -4725,7 +4725,7 @@ impl SourceLogic for RestartBeforeEmitSourceLogic {
 }
 
 struct NoDemandSinkLogic {
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
 }
 
 impl SinkLogic for NoDemandSinkLogic {
@@ -4748,7 +4748,7 @@ impl SinkLogic for NoDemandSinkLogic {
 }
 
 struct BlockedSinkLogic {
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
 }
 
 impl SinkLogic for BlockedSinkLogic {
@@ -4775,7 +4775,7 @@ impl SinkLogic for BlockedSinkLogic {
 }
 
 struct RecordingSinkLogic {
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
 }
 
 impl SinkLogic for RecordingSinkLogic {
@@ -5125,7 +5125,7 @@ impl FlowLogic for RestartingPropagateFlowLogic {
 }
 
 struct SumSinkLogic {
-  completion: StreamCompletion<u32>,
+  completion: StreamFuture<u32>,
   sum:        u32,
 }
 
@@ -5152,7 +5152,7 @@ impl SinkLogic for SumSinkLogic {
 }
 
 struct ZipSumSinkLogic {
-  completion: StreamCompletion<u32>,
+  completion: StreamFuture<u32>,
   sum:        u32,
 }
 
@@ -5180,7 +5180,7 @@ impl SinkLogic for ZipSumSinkLogic {
 }
 
 struct CollectSequenceSinkLogic {
-  completion: StreamCompletion<Vec<u32>>,
+  completion: StreamFuture<Vec<u32>>,
   values:     Vec<u32>,
 }
 
@@ -5208,7 +5208,7 @@ impl SinkLogic for CollectSequenceSinkLogic {
 }
 
 struct CollectNestedSequenceSinkLogic {
-  completion: StreamCompletion<Vec<Vec<u32>>>,
+  completion: StreamFuture<Vec<Vec<u32>>>,
   values:     Vec<Vec<u32>>,
 }
 
@@ -5236,7 +5236,7 @@ impl SinkLogic for CollectNestedSequenceSinkLogic {
 }
 
 struct FailFirstCollectSinkLogic {
-  completion:  StreamCompletion<Vec<u32>>,
+  completion:  StreamFuture<Vec<u32>>,
   values:      Vec<u32>,
   failed_once: bool,
 }
@@ -5269,7 +5269,7 @@ impl SinkLogic for FailFirstCollectSinkLogic {
 }
 
 struct RestartGateCollectSinkLogic {
-  completion:    StreamCompletion<Vec<u32>>,
+  completion:    StreamFuture<Vec<u32>>,
   values:        Vec<u32>,
   restarted:     bool,
   restart_calls: ArcShared<SpinSyncMutex<u32>>,
@@ -5309,7 +5309,7 @@ impl SinkLogic for RestartGateCollectSinkLogic {
 }
 
 struct AlwaysFailCollectSinkLogic {
-  completion: StreamCompletion<Vec<u32>>,
+  completion: StreamFuture<Vec<u32>>,
 }
 
 impl SinkLogic for AlwaysFailCollectSinkLogic {

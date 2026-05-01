@@ -5,7 +5,7 @@ use crate::core::{
   DownstreamCancelAction, DynValue, FlowLogic, QueueOfferResult, StageDefinition, StreamError, downcast_value,
   dsl::{Sink, Source},
   r#impl::{fusing::StreamBufferConfig, materialization::Stream, queue::SourceQueue},
-  materialization::{Completion, DriveOutcome, MatCombine, StreamCompletion, StreamDone},
+  materialization::{Completion, DriveOutcome, MatCombine, StreamDone, StreamFuture},
   shape::{Inlet, Outlet},
 };
 
@@ -14,7 +14,7 @@ const DRIVE_BUDGET: usize = 256;
 
 pub(in crate::core) struct SecondarySourceBridge<Out> {
   stream:     Stream,
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   queue:      SourceQueue<Out>,
   finished:   bool,
 }
@@ -33,7 +33,7 @@ where
       },
       | None => {
         // まだ completion が来ていない → stream の状態を確認
-        if self.stream.state().is_terminal() || matches!(self.completion.poll(), Completion::Ready(Ok(_))) {
+        if self.stream.state().is_terminal() || matches!(self.completion.value(), Completion::Ready(Ok(_))) {
           self.finished = true;
           let _ = self.queue.complete_if_open();
         }

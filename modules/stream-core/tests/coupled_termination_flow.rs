@@ -19,8 +19,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_stream_core_rs::core::{
   dsl::{CoupledTerminationFlow, Flow, Sink, Source},
   materialization::{
-    ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepLeft, KeepRight, StreamCompletion,
-    StreamNotUsed,
+    ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepLeft, KeepRight, StreamFuture, StreamNotUsed,
   },
 };
 use support::RunWithCollectSink;
@@ -40,12 +39,12 @@ fn build_system() -> ActorSystem {
   ActorSystem::create_with_config(&props, config).expect("system should build")
 }
 
-fn wait_until_ready<T>(completion: &StreamCompletion<T>)
+fn wait_until_ready<T>(completion: &StreamFuture<T>)
 where
   T: Clone, {
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
-    if matches!(completion.poll(), Completion::Ready(_)) {
+    if matches!(completion.value(), Completion::Ready(_)) {
       return;
     }
     thread::sleep(Duration::from_millis(10));
@@ -148,8 +147,8 @@ fn coupled_termination_flow_completes_wrapped_sink_when_embedded_source_finishes
   wait_until_ready(collected);
   wait_until_true(sink_completed.as_ref());
 
-  assert_eq!(right_completion.poll(), Completion::Ready(Ok(())));
-  assert_eq!(collected.poll(), Completion::Ready(Ok(Vec::new())));
+  assert_eq!(right_completion.value(), Completion::Ready(Ok(())));
+  assert_eq!(collected.value(), Completion::Ready(Ok(Vec::new())));
 }
 
 #[test]
@@ -176,8 +175,8 @@ fn coupled_termination_flow_cancels_embedded_source_when_wrapped_sink_cancels() 
   wait_until_ready(right_completion);
   wait_until_ready(collected);
 
-  assert_eq!(right_completion.poll(), Completion::Ready(Ok(())));
-  assert_eq!(collected.poll(), Completion::Ready(Ok(Vec::new())));
+  assert_eq!(right_completion.value(), Completion::Ready(Ok(())));
+  assert_eq!(collected.value(), Completion::Ready(Ok(Vec::new())));
 }
 
 #[test]

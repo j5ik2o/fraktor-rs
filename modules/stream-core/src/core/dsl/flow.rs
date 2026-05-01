@@ -15,7 +15,7 @@ use core::{
 use super::{
   DelayStrategy, FlowDefinition, FlowLogic, KeepLeft, KeepRight, MatCombine, MatCombineRule, OverflowStrategy,
   RestartBackoff, RestartConfig, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamBufferConfig,
-  StreamCompletion, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
+  StreamDslError, StreamError, StreamFuture, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow_group_by_sub_flow::FlowGroupBySubFlow,
   flow_monitor_impl::FlowMonitorImpl,
   flow_sub_flow::FlowSubFlow,
@@ -1678,8 +1678,8 @@ where
   pub fn materialize_into_source<Mat1, Mat2>(
     self,
     source: Source<In, Mat1>,
-    sink: Sink<Out, StreamCompletion<Mat2>>,
-  ) -> Source<Mat2, StreamCompletion<()>>
+    sink: Sink<Out, StreamFuture<Mat2>>,
+  ) -> Source<Mat2, StreamFuture<()>>
   where
     Mat1: Send + Sync + 'static,
     Mat: Send + Sync + 'static,
@@ -2992,14 +2992,14 @@ where
     Flow::from_graph(graph, mat)
   }
 
-  /// Watches stream termination and completes a `StreamCompletion<()>` handle.
+  /// Watches stream termination and completes a `StreamFuture<()>` handle.
   ///
   /// Elements are passed through unchanged. The materialized value is
-  /// combined with a fresh `StreamCompletion<()>` using the supplied
+  /// combined with a fresh `StreamFuture<()>` using the supplied
   /// `MatCombineRule`.
   #[must_use]
   pub fn watch_termination(mut self) -> Flow<In, Out, Mat> {
-    let completion = StreamCompletion::<()>::new();
+    let completion = StreamFuture::<()>::new();
     let definition = watch_termination_definition::<Out>(completion);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -3014,13 +3014,13 @@ where
   /// materialized value.
   ///
   /// Elements are passed through unchanged. The materialized value is
-  /// combined with a fresh `StreamCompletion<()>` using the supplied
+  /// combined with a fresh `StreamFuture<()>` using the supplied
   /// `MatCombineRule`.
   #[must_use]
   pub fn watch_termination_mat<C>(mut self, _combine: C) -> Flow<In, Out, C::Out>
   where
-    C: MatCombineRule<Mat, StreamCompletion<()>>, {
-    let completion = StreamCompletion::<()>::new();
+    C: MatCombineRule<Mat, StreamFuture<()>>, {
+    let completion = StreamFuture::<()>::new();
     let definition = watch_termination_definition::<Out>(completion.clone());
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -3028,7 +3028,7 @@ where
     if let Some(from) = from {
       self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
-    let mat = combine_mat::<Mat, StreamCompletion<()>, C>(self.mat, completion);
+    let mat = combine_mat::<Mat, StreamFuture<()>, C>(self.mat, completion);
     Flow { graph: self.graph, mat, _pd: PhantomData }
   }
 
@@ -4995,7 +4995,7 @@ where
   }
 }
 
-pub(in crate::core) fn watch_termination_definition<In>(completion: StreamCompletion<()>) -> FlowDefinition
+pub(in crate::core) fn watch_termination_definition<In>(completion: StreamFuture<()>) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
@@ -5207,7 +5207,7 @@ where
 struct MaterializeIntoSourceLogic<Out, F> {
   factory:    Option<F>,
   stream:     Option<Stream>,
-  completion: Option<StreamCompletion<Out>>,
+  completion: Option<StreamFuture<Out>>,
   emitted:    bool,
   _pd:        PhantomData<fn() -> Out>,
 }
@@ -5215,7 +5215,7 @@ struct MaterializeIntoSourceLogic<Out, F> {
 impl<Out, F> MaterializeIntoSourceLogic<Out, F>
 where
   Out: Send + Sync + 'static,
-  F: FnOnce() -> Result<(Stream, StreamCompletion<Out>), StreamError> + Send + 'static,
+  F: FnOnce() -> Result<(Stream, StreamFuture<Out>), StreamError> + Send + 'static,
 {
   fn ensure_stream(&mut self) -> Result<(), StreamError> {
     if self.stream.is_some() {
@@ -5248,7 +5248,7 @@ const MATERIALIZE_IDLE_BUDGET: usize = 1024;
 impl<Out, F> SourceLogic for MaterializeIntoSourceLogic<Out, F>
 where
   Out: Send + Sync + 'static,
-  F: FnOnce() -> Result<(Stream, StreamCompletion<Out>), StreamError> + Send + 'static,
+  F: FnOnce() -> Result<(Stream, StreamFuture<Out>), StreamError> + Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     if self.emitted {

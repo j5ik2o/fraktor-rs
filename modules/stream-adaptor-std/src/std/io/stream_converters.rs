@@ -14,7 +14,7 @@ use std::{
 use fraktor_stream_core_rs::core::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
   dsl::{Sink, Source},
-  materialization::StreamCompletion,
+  materialization::StreamFuture,
   stage::StageKind,
 };
 
@@ -44,14 +44,14 @@ impl StreamConverters {
   /// on each pull in `chunk_size`-byte chunks and each chunk is emitted as a
   /// `Vec<u8>` element (mirroring Pekko's `ByteString`).
   ///
-  /// The materialized value is a [`StreamCompletion<IOResult>`] that completes
+  /// The materialized value is a [`StreamFuture<IOResult>`] that completes
   /// with the total number of bytes read and the completion status.
   #[must_use]
-  pub fn from_input_stream<R, F>(factory: F, chunk_size: usize) -> Source<Vec<u8>, StreamCompletion<IOResult>>
+  pub fn from_input_stream<R, F>(factory: F, chunk_size: usize) -> Source<Vec<u8>, StreamFuture<IOResult>>
   where
     F: FnOnce() -> R + Send + 'static,
     R: Read + Send + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     if chunk_size == 0 {
       let error = Error::new(ErrorKind::InvalidInput, "chunk_size must be greater than 0");
       completion.complete(Ok(IOResult::failed(0, io_error_to_stream_error(&error))));
@@ -75,15 +75,15 @@ impl StreamConverters {
   /// called when the stream starts to obtain the writer. Each received
   /// `Vec<u8>` element (mirroring Pekko's `ByteString`) is written through a
   /// buffered writer. When `auto_flush` is `true`, the writer is flushed after
-  /// every chunk. The materialized value is a [`StreamCompletion<IOResult>`]
+  /// every chunk. The materialized value is a [`StreamFuture<IOResult>`]
   /// that completes with the total number of bytes written and the completion
   /// status.
   #[must_use]
-  pub fn from_output_stream<W, F>(factory: F, auto_flush: bool) -> Sink<Vec<u8>, StreamCompletion<IOResult>>
+  pub fn from_output_stream<W, F>(factory: F, auto_flush: bool) -> Sink<Vec<u8>, StreamFuture<IOResult>>
   where
     F: FnOnce() -> W + Send + 'static,
     W: Write + Send + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = WriteToWriterSinkLogic {
       factory: Some(factory),
       auto_flush,
@@ -254,7 +254,7 @@ where
   auto_flush: bool,
   writer:     Option<BufWriter<W>>,
   count:      u64,
-  completion: StreamCompletion<IOResult>,
+  completion: StreamFuture<IOResult>,
 }
 
 struct ReaderSourceLogic<F, R>
@@ -264,7 +264,7 @@ where
   reader:      Option<BufReader<R>>,
   chunk_size:  usize,
   total_bytes: u64,
-  completion:  StreamCompletion<IOResult>,
+  completion:  StreamFuture<IOResult>,
   done:        bool,
 }
 

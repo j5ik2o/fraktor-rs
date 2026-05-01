@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   OverflowStrategy, QueueOfferResult, StreamError,
-  materialization::{Completion, StreamCompletion, StreamDone},
+  materialization::{StreamDone, StreamFuture},
 };
 
 #[cfg(test)]
@@ -17,21 +17,22 @@ mod tests;
 
 struct PendingOffer<T> {
   value:      T,
-  completion: StreamCompletion<QueueOfferResult>,
+  completion: StreamFuture<QueueOfferResult>,
 }
 
 struct QueueOfferFuture {
-  completion: StreamCompletion<QueueOfferResult>,
+  completion: StreamFuture<QueueOfferResult>,
 }
 
 impl Future for QueueOfferFuture {
   type Output = QueueOfferResult;
 
   fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-    match self.completion.poll_with_waker(context.waker()) {
-      | Completion::Ready(Ok(result)) => Poll::Ready(result),
-      | Completion::Ready(Err(error)) => Poll::Ready(QueueOfferResult::Failure(error)),
-      | Completion::Pending => Poll::Pending,
+    let this = self.get_mut();
+    match Pin::new(&mut this.completion).poll(context) {
+      | Poll::Ready(Ok(result)) => Poll::Ready(result),
+      | Poll::Ready(Err(error)) => Poll::Ready(QueueOfferResult::Failure(error)),
+      | Poll::Pending => Poll::Pending,
     }
   }
 }
@@ -48,7 +49,7 @@ struct SourceQueueWithCompleteState<T> {
 /// The handle provides asynchronous offer acknowledgements and completion watching.
 pub struct SourceQueueWithComplete<T> {
   inner:                 ArcShared<SpinSyncMutex<SourceQueueWithCompleteState<T>>>,
-  completion:            StreamCompletion<StreamDone>,
+  completion:            StreamFuture<StreamDone>,
   capacity:              usize,
   overflow_strategy:     OverflowStrategy,
   max_concurrent_offers: usize,
@@ -81,7 +82,7 @@ impl<T> SourceQueueWithComplete<T> {
     };
     Self {
       inner: ArcShared::new(SpinSyncMutex::new(state)),
-      completion: StreamCompletion::new(),
+      completion: StreamFuture::new(),
       capacity,
       overflow_strategy,
       max_concurrent_offers,
@@ -93,8 +94,8 @@ impl<T> SourceQueueWithComplete<T> {
     QueueOfferFuture { completion: self.offer_now(value) }
   }
 
-  fn offer_now(&mut self, value: T) -> StreamCompletion<QueueOfferResult> {
-    let completion = StreamCompletion::new();
+  fn offer_now(&mut self, value: T) -> StreamFuture<QueueOfferResult> {
+    let completion = StreamFuture::new();
     let mut guard = self.inner.lock();
     if let Some(error) = &guard.failure {
       completion.complete(Ok(QueueOfferResult::Failure(error.clone())));
@@ -158,8 +159,8 @@ impl<T> SourceQueueWithComplete<T> {
     &self,
     guard: &mut SourceQueueWithCompleteState<T>,
     value: T,
-    completion: StreamCompletion<QueueOfferResult>,
-  ) -> StreamCompletion<QueueOfferResult> {
+    completion: StreamFuture<QueueOfferResult>,
+  ) -> StreamFuture<QueueOfferResult> {
     if guard.pending_offers.len() < self.max_concurrent_offers {
       guard.pending_offers.push_back(PendingOffer { value, completion: completion.clone() });
       return completion;
@@ -247,7 +248,7 @@ impl<T> SourceQueueWithComplete<T> {
 
   /// Returns a handle that can be used to observe stream completion.
   #[must_use]
-  pub fn watch_completion(&self) -> StreamCompletion<StreamDone> {
+  pub fn watch_completion(&self) -> StreamFuture<StreamDone> {
     self.completion.clone()
   }
 

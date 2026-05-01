@@ -76,7 +76,7 @@ fn partition_hub_source_for_drains_selected_partition() {
       break;
     }
   }
-  assert_eq!(first.materialized().poll(), Completion::Ready(Ok(7_u32)));
+  assert_eq!(first.materialized().value(), Completion::Ready(Ok(7_u32)));
 
   let second_graph = hub.source_for(0).into_mat(Sink::head(), KeepRight);
   let second = second_graph.run(&mut materializer).expect("second materialize");
@@ -86,7 +86,7 @@ fn partition_hub_source_for_drains_selected_partition() {
       break;
     }
   }
-  assert_eq!(second.materialized().poll(), Completion::Ready(Ok(9_u32)));
+  assert_eq!(second.materialized().value(), Completion::Ready(Ok(9_u32)));
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn partition_hub_source_waits_for_later_offer_without_completing() {
     let _ = materialized.stream().drive();
   }
   assert_eq!(materialized.stream().state(), StreamState::Running);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   hub.offer(1, 77_u32).expect("offer 77");
   for _ in 0..4 {
@@ -110,7 +110,7 @@ fn partition_hub_source_waits_for_later_offer_without_completing() {
     }
   }
   assert_eq!(materialized.stream().state(), StreamState::Completed);
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(77_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(77_u32)));
 }
 
 #[test]

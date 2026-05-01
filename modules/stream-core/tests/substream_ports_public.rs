@@ -1,7 +1,7 @@
 use fraktor_stream_core_rs::core::{
   StreamError,
   dsl::{Sink, Source},
-  materialization::{KeepLeft, KeepRight, StreamCompletion, StreamDone, StreamNotUsed},
+  materialization::{KeepLeft, KeepRight, StreamDone, StreamFuture, StreamNotUsed},
   stage::{CancellationCause, SubSinkInlet, SubSinkInletHandler, SubSourceOutlet, SubSourceOutletHandler},
 };
 
@@ -43,7 +43,7 @@ fn sub_source_outlet_is_public_and_exposes_source_endpoint() {
   let source = outlet.source();
 
   // When: public Sink に接続し Source 側の materialized value を保持する
-  let graph = source.into_mat(Sink::<u32, StreamCompletion<StreamDone>>::ignore(), KeepLeft);
+  let graph = source.into_mat(Sink::<u32, StreamFuture<StreamDone>>::ignore(), KeepLeft);
 
   // Then: SubSourceOutlet.source は NotUsed materialized value の Source として公開される
   assert_eq!(graph.materialized(), &StreamNotUsed::new());
