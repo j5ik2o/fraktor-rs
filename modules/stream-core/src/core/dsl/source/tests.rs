@@ -519,7 +519,7 @@ fn materialized_shared_kill_switch_shutdown_completes_stream() {
 }
 
 #[test]
-fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
+fn materialized_unique_kill_switch_abort_escalates_after_shutdown() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
   let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
@@ -535,7 +535,7 @@ fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
       break;
     }
   }
-  assert_eq!(materialized.stream().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Failed);
 }
 
 #[test]
