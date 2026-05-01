@@ -1,10 +1,9 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::core::kernel::actor::ChildRef;
+use fraktor_actor_core_rs::core::kernel::actor::Pid;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
-use super::downstream_cancellation_route::DownstreamCancellationRoute;
-use crate::core::StreamError;
+use super::downstream_cancellation_route::{DownstreamCancellationRoute, ReservedDownstreamCancellationTarget};
 
 #[cfg(test)]
 mod tests;
@@ -28,25 +27,21 @@ impl DownstreamCancellationControlPlane {
     self.routes = routes;
   }
 
-  pub(crate) fn propagate<F>(&mut self, mut cancel_actor: F) -> Result<(), StreamError>
-  where
-    F: FnMut(&mut ChildRef) -> Result<(), StreamError>, {
-    let mut result = Ok(());
+  pub(crate) fn reserve_cancellation_targets(&mut self) -> Vec<ReservedDownstreamCancellationTarget> {
+    let mut targets = Vec::new();
     for route in &mut self.routes {
-      if !route.should_propagate_cancellation() {
-        continue;
-      }
-      match cancel_actor(route.upstream_actor()) {
-        | Ok(()) => {
-          route.record_cancel_command();
-        },
-        | Err(error) => {
-          if result.is_ok() {
-            result = Err(error);
-          }
-        },
+      if let Some(target) = route.reserve_cancel_target() {
+        targets.push(target);
       }
     }
-    result
+    targets
+  }
+
+  pub(crate) fn finish_cancellation_delivery(&mut self, actor_pid: Pid, delivered: bool) {
+    for route in &mut self.routes {
+      if route.finish_cancel_delivery(actor_pid, delivered) {
+        break;
+      }
+    }
   }
 }

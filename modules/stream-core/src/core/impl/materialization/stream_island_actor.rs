@@ -52,18 +52,36 @@ impl StreamIslandActor {
   }
 
   fn propagate_downstream_cancellation(&self) -> Result<(), ActorError> {
-    self
-      .downstream_cancellation_control_plane
-      .lock()
-      .propagate(|upstream_actor: &mut ChildRef| {
-        upstream_actor
-          .try_tell(AnyMessage::new(StreamIslandCommand::Cancel { cause: None }))
-          .map_err(|_| StreamError::Failed)
-      })
-      .map_err(|error| {
-        self.abort_graph_streams(&error);
-        ActorError::fatal(format!("stream island cancellation propagation failed: {error:?}"))
-      })
+    let targets = {
+      let mut control_plane = self.downstream_cancellation_control_plane.lock();
+      control_plane.reserve_cancellation_targets()
+    };
+    let mut delivery_results = Vec::with_capacity(targets.len());
+    let mut first_error = None;
+
+    for target in targets {
+      let actor_pid = target.actor_pid();
+      let mut upstream_actor: ChildRef = target.into_actor();
+      let delivered = upstream_actor.try_tell(AnyMessage::new(StreamIslandCommand::Cancel { cause: None })).is_ok();
+      if !delivered && first_error.is_none() {
+        first_error = Some(StreamError::Failed);
+      }
+      delivery_results.push((actor_pid, delivered));
+    }
+
+    {
+      let mut control_plane = self.downstream_cancellation_control_plane.lock();
+      for (actor_pid, delivered) in delivery_results {
+        control_plane.finish_cancellation_delivery(actor_pid, delivered);
+      }
+    }
+
+    if let Some(error) = first_error {
+      self.abort_graph_streams(&error);
+      return Err(ActorError::fatal(format!("stream island cancellation propagation failed: {error:?}")));
+    }
+
+    Ok(())
   }
 
   fn drive(&self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {

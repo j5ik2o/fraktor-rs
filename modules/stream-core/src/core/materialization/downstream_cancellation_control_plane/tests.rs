@@ -1,10 +1,69 @@
-use fraktor_actor_core_rs::core::kernel::actor::Pid;
+extern crate std;
 
-use super::DownstreamCancellationControlPlane;
+use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    Actor, ActorContext, ChildRef, Pid, error::ActorError, messaging::AnyMessageView, props::Props,
+    setup::ActorSystemConfig,
+  },
+  system::ActorSystem,
+};
+
+use super::{super::downstream_cancellation_route::DownstreamCancellationRoute, DownstreamCancellationControlPlane};
+use crate::core::{
+  DynValue, SourceLogic, StreamError,
+  dsl::{Sink, Source},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    interpreter::IslandBoundaryShared,
+    materialization::{Stream, StreamShared},
+  },
+  materialization::{KeepRight, StreamNotUsed},
+  stage::StageKind,
+};
+
 impl DownstreamCancellationControlPlane {
   pub(in crate::core::materialization) fn cancel_command_count_for_actor(&self, actor_pid: Pid) -> u32 {
     self.routes.iter().map(|route| route.cancel_command_count_for_actor(actor_pid)).sum()
   }
+}
+
+struct GuardianActor;
+
+impl Actor for GuardianActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+struct PendingSourceLogic;
+
+impl SourceLogic for PendingSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+}
+
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| GuardianActor);
+  let config = ActorSystemConfig::new(TestTickDriver::default());
+  ActorSystem::create_with_config(&props, config).expect("system should build")
+}
+
+fn spawn_child_ref(system: &ActorSystem) -> ChildRef {
+  let parent_pid = system.state().system_guardian_pid().expect("system guardian should exist");
+  let props = Props::from_fn(|| GuardianActor);
+  let mut context = ActorContext::new(system, parent_pid);
+  context.spawn_child(&props).expect("child should spawn")
+}
+
+fn running_stream() -> StreamShared {
+  let graph =
+    Source::<u32, StreamNotUsed>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("stream should start");
+  StreamShared::new(stream)
 }
 
 #[test]
@@ -12,7 +71,54 @@ fn replace_routes_keeps_empty_control_plane_healthy() {
   let mut control_plane = DownstreamCancellationControlPlane::new(Vec::new());
 
   control_plane.replace_routes(Vec::new());
-  let result = control_plane.propagate(|_| Ok(()));
+  let result = control_plane.reserve_cancellation_targets();
 
-  assert_eq!(result, Ok(()));
+  assert!(result.is_empty());
+}
+
+#[test]
+fn reserve_targets_blocks_duplicate_delivery_until_completion_is_recorded() {
+  let system = build_system();
+  let actor = spawn_child_ref(&system);
+  let boundary = IslandBoundaryShared::new(1);
+  boundary.cancel_downstream();
+  let upstream_stream = running_stream();
+  let downstream_stream = running_stream();
+  let route = DownstreamCancellationRoute::new(boundary, upstream_stream, downstream_stream, actor.clone());
+  let mut control_plane = DownstreamCancellationControlPlane::new(vec![route]);
+
+  let reserved = control_plane.reserve_cancellation_targets();
+  assert_eq!(reserved.len(), 1);
+  let actor_pid = reserved[0].actor_pid();
+
+  assert!(control_plane.reserve_cancellation_targets().is_empty());
+
+  control_plane.finish_cancellation_delivery(actor_pid, false);
+
+  assert_eq!(control_plane.reserve_cancellation_targets().len(), 1);
+}
+
+#[test]
+fn successful_delivery_records_cancel_count_without_requiring_lock_held_during_send() {
+  let system = build_system();
+  let actor = spawn_child_ref(&system);
+  let actor_pid = actor.pid();
+  let boundary = IslandBoundaryShared::new(1);
+  boundary.cancel_downstream();
+  let upstream_stream = running_stream();
+  let downstream_stream = running_stream();
+  let route = DownstreamCancellationRoute::new(boundary, upstream_stream, downstream_stream, actor);
+  let mut control_plane = DownstreamCancellationControlPlane::new(vec![route]);
+
+  let reserved = control_plane.reserve_cancellation_targets();
+  assert_eq!(reserved.len(), 1);
+
+  let mut reentrant = control_plane.reserve_cancellation_targets();
+  assert!(reentrant.is_empty());
+
+  control_plane.finish_cancellation_delivery(actor_pid, true);
+
+  reentrant = control_plane.reserve_cancellation_targets();
+  assert!(reentrant.is_empty());
+  assert_eq!(control_plane.cancel_command_count_for_actor(actor_pid), 1);
 }
