@@ -4452,6 +4452,10 @@ impl SourceLogic for PendingSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(StreamError::WouldBlock)
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl SourceLogic for EmptyTestSourceLogic {

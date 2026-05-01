@@ -63,6 +63,10 @@ where
     Ok(())
   }
 
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
+
   fn attach_stream_ref_settings(&mut self, settings: StreamRefSettings) {
     self.handoff.configure_buffer_capacity(settings.buffer_capacity());
     self.settings = settings;

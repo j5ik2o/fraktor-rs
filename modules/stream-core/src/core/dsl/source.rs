@@ -3022,11 +3022,19 @@ impl SourceLogic for FailedSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(self.error.clone())
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl SourceLogic for NeverSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(StreamError::WouldBlock)
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 }
 
@@ -3036,6 +3044,10 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(Some(Box::new(self.value.clone()) as DynValue))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 }
 
@@ -3051,6 +3063,10 @@ where
     self.index = (self.index + 1) % self.values.len();
     Ok(Some(Box::new(value) as DynValue))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl<Out, F> SourceLogic for IterateSourceLogic<Out, F>
@@ -3062,6 +3078,10 @@ where
     let next = (self.func)(self.current.clone());
     let value = core::mem::replace(&mut self.current, next);
     Ok(Some(Box::new(value) as DynValue))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 }
 
@@ -3159,6 +3179,10 @@ where
     self.queue.close_for_cancel();
     Ok(())
   }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    if self.queue.complete_if_open() || self.queue.is_closed() { Ok(()) } else { Err(StreamError::Failed) }
+  }
 }
 
 impl<Out> SourceLogic for QueueWithOverflowSourceLogic<Out>
@@ -3174,6 +3198,11 @@ where
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     self.queue.close_for_cancel();
+    Ok(())
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    self.queue.complete();
     Ok(())
   }
 }
@@ -3192,6 +3221,10 @@ where
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     self.queue.close_for_cancel();
     Ok(())
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    if self.queue.complete_if_open() || self.queue.is_closed() { Ok(()) } else { Err(StreamError::Failed) }
   }
 }
 

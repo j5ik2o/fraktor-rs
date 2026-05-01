@@ -123,6 +123,13 @@ fn empty_source_logic_drains_on_shutdown() {
 }
 
 #[test]
+fn source_logic_default_drains_on_shutdown() {
+  let logic = DefaultDrainSourceLogic;
+
+  assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
 fn iterator_source_logic_drains_bounded_iterator_on_shutdown() {
   let logic = IteratorSourceLogic { values: Vec::<u32>::new().into_iter(), drain_on_shutdown: true };
 
@@ -184,6 +191,8 @@ struct EndlessSourceLogic {
   next: u32,
 }
 
+struct DefaultDrainSourceLogic;
+
 impl EndlessSourceLogic {
   const fn new() -> Self {
     Self { next: 0 }
@@ -194,6 +203,16 @@ impl SourceLogic for EndlessSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     self.next = self.next.saturating_add(1);
     Ok(Some(Box::new(self.next)))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
+}
+
+impl SourceLogic for DefaultDrainSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(None)
   }
 }
 

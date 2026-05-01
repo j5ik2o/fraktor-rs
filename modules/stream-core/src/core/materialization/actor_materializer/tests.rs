@@ -318,11 +318,19 @@ impl SourceLogic for EndlessSourceLogic {
     self.next = self.next.saturating_add(1);
     Ok(Some(Box::new(self.next)))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl SourceLogic for PendingSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(StreamError::WouldBlock)
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 }
 
