@@ -73,7 +73,12 @@ impl StreamIslandActor {
       return Ok(());
     }
 
-    self.propagate_downstream_cancellation()?;
+    if let Err(error) = self.propagate_downstream_cancellation() {
+      self.drive_gate.mark_idle();
+      self.cancel_scheduled_tick(ctx);
+      return Err(error);
+    }
+
     let _outcome = self.stream.drive();
     self.drive_gate.mark_idle();
     if self.stream.state().is_terminal() {
@@ -83,19 +88,25 @@ impl StreamIslandActor {
   }
 
   fn cancel(&self, ctx: &ActorContext<'_>, cause: Option<&StreamError>) -> Result<(), ActorError> {
-    self.stream.cancel().map_err(|e| match cause {
+    let result = self.stream.cancel().map_err(|e| match cause {
       | Some(cause) => ActorError::fatal(format!("stream island cancel failed after {cause:?}: {e:?}")),
       | None => ActorError::fatal(format!("stream island cancel failed: {e:?}")),
-    })?;
+    });
     self.cancel_scheduled_tick(ctx);
-    Ok(())
+    result
   }
 
   fn shutdown(&self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
-    self.stream.shutdown().map_err(|e| ActorError::fatal(format!("stream island shutdown failed: {e:?}")))?;
-    let _outcome = self.stream.drive();
-    self.cancel_scheduled_tick(ctx);
-    Ok(())
+    let result = self.stream.shutdown().map_err(|e| ActorError::fatal(format!("stream island shutdown failed: {e:?}")));
+    if result.is_ok() {
+      let _outcome = self.stream.drive();
+      if self.stream.state().is_terminal() {
+        self.cancel_scheduled_tick(ctx);
+      }
+    } else {
+      self.cancel_scheduled_tick(ctx);
+    }
+    result
   }
 
   fn abort(&self, ctx: &ActorContext<'_>, error: &StreamError) -> Result<(), ActorError> {

@@ -8,7 +8,13 @@ const FORBIDDEN_DIRECT_EXECUTION_HELPERS: &[&str] =
 
 #[test]
 fn stream_showcases_do_not_use_forbidden_helpers() {
-  for example in stream_examples() {
+  let examples = stream_examples();
+  assert!(
+    !examples.is_empty(),
+    "expected at least one stream showcase under {}",
+    manifest_dir().join("stream").display()
+  );
+  for example in examples {
     let content = fs::read_to_string(&example).expect("stream showcase should be readable");
 
     for forbidden in FORBIDDEN_DIRECT_EXECUTION_HELPERS {

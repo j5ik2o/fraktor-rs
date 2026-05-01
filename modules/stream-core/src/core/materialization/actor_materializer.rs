@@ -157,12 +157,17 @@ impl ActorMaterializer {
     drive_gate: StreamIslandDriveGate,
     interval: Duration,
     streams: &[StreamShared],
+    tick_handle_slot: &StreamIslandTickHandleSlot,
   ) -> Result<SchedulerHandle, StreamError> {
     let actor = actor.clone();
     let streams = streams.to_vec();
+    let tick_handle_slot = tick_handle_slot.clone();
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
       if let Err(error) = Self::run_scheduled_tick(&actor, &drive_gate) {
         Self::abort_streams(&streams, &error);
+        if let Some(handle) = tick_handle_slot.lock().take() {
+          let _cancelled = handle.cancel();
+        }
       }
     });
     let command = SchedulerCommand::RunRunnable { runnable };
@@ -263,10 +268,11 @@ impl ActorMaterializer {
     }
     let actors = resources.island_actors.clone();
     for ((actor, drive_gate), tick_handle_slot) in actors.into_iter().zip(drive_gates).zip(tick_handle_slots) {
-      let tick_handle = match Self::schedule_ticks(system, &actor, drive_gate, interval, &resources.streams) {
-        | Ok(tick_handle) => tick_handle,
-        | Err(error) => return Err(Self::rollback_materialized_resources(system, resources, error)),
-      };
+      let tick_handle =
+        match Self::schedule_ticks(system, &actor, drive_gate, interval, &resources.streams, &tick_handle_slot) {
+          | Ok(tick_handle) => tick_handle,
+          | Err(error) => return Err(Self::rollback_materialized_resources(system, resources, error)),
+        };
       *tick_handle_slot.lock() = Some(tick_handle.clone());
       resources.tick_handles.push(tick_handle);
     }

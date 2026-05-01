@@ -1,9 +1,6 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{
-  thread,
-  time::{Duration, Instant},
-};
+use std::{thread, time::Duration};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
@@ -34,14 +31,17 @@ fn main() {
     .via(Flow::new().concat_lazy(Source::from_array([3_u32, 4])))
     .into_mat(Sink::collect(), KeepRight);
   let materialized = graph.run(&mut materializer).expect("run");
-  let deadline = Instant::now() + Duration::from_millis(128);
-  let values = loop {
+  let mut values = None;
+  for _ in 0..128 {
     match materialized.materialized().poll() {
-      | Completion::Ready(result) => break result.expect("stream should succeed"),
-      | Completion::Pending if Instant::now() < deadline => thread::sleep(Duration::from_millis(1)),
-      | Completion::Pending => panic!("stream should complete"),
+      | Completion::Ready(ready) => {
+        values = Some(ready.expect("stream should succeed"));
+        break;
+      },
+      | Completion::Pending => thread::sleep(Duration::from_millis(1)),
     }
-  };
+  }
+  let values = values.expect("stream should complete");
   assert_eq!(values, vec![1, 2, 3, 4]);
   materializer.shutdown().expect("materializer shutdown");
 }
