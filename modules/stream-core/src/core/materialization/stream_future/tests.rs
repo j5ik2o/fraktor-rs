@@ -149,3 +149,29 @@ fn wait_blocking_returns_completion_error() {
   future.complete(Err(StreamError::Failed));
   assert_eq!(future.wait_blocking(&SpinBlocker), Err(StreamError::Failed));
 }
+
+#[test]
+fn is_ready_remains_true_after_try_take_consumes_result() {
+  // is_ready must reflect the sticky `completed` flag rather than
+  // `result.is_some()`. Otherwise wait_blocking deadlocks when another
+  // clone consumes the result via try_take before the blocker observes it.
+  let future: StreamFuture<u32> = StreamFuture::new();
+  future.complete(Ok(7));
+  assert!(future.is_ready());
+  assert_eq!(future.try_take(), Some(Ok(7)));
+  assert!(future.is_ready(), "is_ready must remain true after try_take consumes the result");
+  // value() still reports Pending because the result was destructively taken.
+  assert_eq!(future.value(), Completion::Pending);
+}
+
+#[test]
+fn wait_blocking_returns_detached_when_result_consumed_concurrently() {
+  // Simulates the race where another clone consumes the result via try_take
+  // before wait_blocking reads inner.result. The sticky `completed` flag lets
+  // the blocker exit; the missing result is surfaced as StreamDetached
+  // instead of hanging forever.
+  let future: StreamFuture<u32> = StreamFuture::new();
+  future.complete(Ok(99));
+  let _ = future.try_take();
+  assert_eq!(future.wait_blocking(&SpinBlocker), Err(StreamError::StreamDetached));
+}

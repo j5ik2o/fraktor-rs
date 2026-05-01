@@ -35,11 +35,22 @@ where
         Ok(())
       },
       | None => {
-        // まだ completion が来ていない → stream の terminal 状態のみ確認
-        // completion が後から到着した場合は次回 sync_terminal_state 呼び出し時に try_take で拾う
+        // completion 未到着。stream が terminal なら finalize するが、
+        // 一度の `try_take` と stream 状態確認の間で completion(Err) が
+        // 後着する可能性があるため、is_terminal を見た直後に再ポールして
+        // エラーを取りこぼさない。
         if self.stream.state().is_terminal() {
-          self.finished = true;
-          let _ = self.queue.complete_if_open();
+          match self.completion.try_take() {
+            | Some(Err(error)) => {
+              self.finished = true;
+              self.queue.fail(error.clone());
+              return Err(error);
+            },
+            | Some(Ok(_)) | None => {
+              self.finished = true;
+              let _ = self.queue.complete_if_open();
+            },
+          }
         }
         Ok(())
       },

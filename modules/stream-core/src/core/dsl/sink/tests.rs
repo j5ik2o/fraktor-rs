@@ -428,6 +428,23 @@ fn sink_pre_materialize_returns_pending_completion_handle() {
 }
 
 #[test]
+fn sink_pre_materialize_completion_resolves_when_sink_finishes() {
+  // The handle returned by pre_materialize must be the sink's own
+  // completion, not a freshly-allocated disconnected StreamFuture.
+  let (sink, completion) = Sink::<u32, StreamFuture<StreamDone>>::ignore().pre_materialize();
+  let graph = Source::from_array([1_u32, 2, 3]).into_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
 fn sink_source_materializes_live_source_with_upstream_elements() {
   let sink: Sink<u32, Source<u32, StreamNotUsed>> = Sink::source();
   let graph = Source::from_array([1_u32, 2, 3]).into_mat(sink, KeepRight);

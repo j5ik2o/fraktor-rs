@@ -145,9 +145,15 @@ where
   }
 
   /// Converts this sink into a pre-materialized form.
+  ///
+  /// The returned [`StreamFuture<StreamDone>`] is a clone of the sink's
+  /// own materialized handle, so it resolves when the sink completes.
+  /// Returning a freshly-constructed [`StreamFuture::new`] would be a
+  /// disconnected future that nothing ever completes.
   #[must_use]
   pub fn pre_materialize(self) -> (Self, StreamFuture<StreamDone>) {
-    (self, StreamFuture::new())
+    let completion = self.mat.clone();
+    (self, completion)
   }
 }
 

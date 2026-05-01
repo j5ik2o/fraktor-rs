@@ -14,13 +14,19 @@ use super::{Completion, StreamError};
 mod tests;
 
 struct CompletionState<T> {
-  result: Option<Result<T, StreamError>>,
-  wakers: Vec<Waker>,
+  result:    Option<Result<T, StreamError>>,
+  /// Sticky flag set on first `complete()` and never cleared.
+  ///
+  /// Decoupled from `result.is_some()` so that destructive readers like
+  /// `try_take` cannot revert observers (e.g. `wait_blocking`) into the
+  /// pending state and deadlock.
+  completed: bool,
+  wakers:    Vec<Waker>,
 }
 
 impl<T> CompletionState<T> {
   const fn new() -> Self {
-    Self { result: None, wakers: Vec::new() }
+    Self { result: None, completed: false, wakers: Vec::new() }
   }
 }
 
@@ -65,12 +71,14 @@ impl<T> StreamFuture<T> {
 
   /// Returns `true` once the future has resolved.
   ///
-  /// Lock-free of `T: Clone` because it only inspects the presence of a
-  /// stored result, not its value. Suitable as the predicate for
-  /// [`Blocker::block_until`].
+  /// Independent of `T: Clone` because it only inspects the sticky
+  /// `completed` flag, not the stored value. The flag is set on the first
+  /// [`complete`](Self::complete) and never cleared, so destructive readers
+  /// like [`try_take`](Self::try_take) cannot revert observers back into the
+  /// pending state. Suitable as the predicate for [`Blocker::block_until`].
   #[must_use]
   pub fn is_ready(&self) -> bool {
-    self.inner.lock().result.is_some()
+    self.inner.lock().completed
   }
 
   /// Blocks the current thread until the future resolves and returns the
@@ -87,8 +95,10 @@ impl<T> StreamFuture<T> {
   ///
   /// Returns the [`StreamError`] reported by the underlying stream when it
   /// terminated abnormally. Returns [`StreamError::StreamDetached`] if the
-  /// result was consumed via [`try_take`](Self::try_take) between the
-  /// blocker exit and the result read (a misuse pattern).
+  /// result was consumed via [`try_take`](Self::try_take) before this
+  /// reader could observe it (`is_ready` reports completion via a sticky
+  /// flag so the blocker still unblocks in that race, instead of waiting
+  /// forever).
   ///
   /// [`TerminationSignal::wait_blocking`]:
   /// fraktor_actor_core_rs::core::kernel::system::TerminationSignal::wait_blocking
@@ -119,10 +129,12 @@ impl<T> StreamFuture<T> {
   pub fn complete(&self, result: Result<T, StreamError>) {
     let wakers = {
       let mut guard = self.inner.lock();
-      // 既存結果の上書きを防止
-      if guard.result.is_some() {
+      // sticky な completed フラグで再呼び出しを抑止する
+      // (try_take 後の result.is_some() は false に戻るため使えない)
+      if guard.completed {
         return;
       }
+      guard.completed = true;
       guard.result = Some(result);
       core::mem::take(&mut guard.wakers)
     };
