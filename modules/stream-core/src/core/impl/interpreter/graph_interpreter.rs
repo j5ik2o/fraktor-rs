@@ -459,9 +459,7 @@ impl GraphInterpreter {
       }
       self.source_done[source_position] = true;
       self.source_canceled[source_position] = true;
-      if let Some(result) = on_cancel_result_opt {
-        result?;
-      }
+      on_cancel_result_opt.transpose()?;
       self.close_outgoing_edges_for_stage(source_index);
       source_done_changed = true;
     }
