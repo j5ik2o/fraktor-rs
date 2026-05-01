@@ -21,6 +21,7 @@ pub(crate) struct Stream {
   interpreter: GraphInterpreter,
   kill_switch_state: KillSwitchStateHandle,
   linked_kill_switch_states: Vec<KillSwitchStateHandle>,
+  shutdown_requested: bool,
 }
 
 impl Stream {
@@ -32,6 +33,7 @@ impl Stream {
       interpreter: GraphInterpreter::new(plan, buffer_config),
       kill_switch_state,
       linked_kill_switch_states,
+      shutdown_requested: false,
     }
   }
 
@@ -53,6 +55,7 @@ impl Stream {
       ),
       kill_switch_state,
       linked_kill_switch_states,
+      shutdown_requested: false,
     }
   }
 
@@ -79,11 +82,12 @@ impl Stream {
       return if was_terminal { DriveOutcome::Idle } else { DriveOutcome::Progressed };
     }
 
-    if self.shutdown_requested_from_kill_switches()
-      && let Err(error) = self.shutdown()
-    {
-      self.interpreter.abort(&error);
-      return DriveOutcome::Progressed;
+    if self.shutdown_requested_from_kill_switches() && !self.shutdown_requested {
+      if let Err(error) = self.shutdown() {
+        self.interpreter.abort(&error);
+        return DriveOutcome::Progressed;
+      }
+      self.shutdown_requested = true;
     }
 
     self.interpreter.drive()
