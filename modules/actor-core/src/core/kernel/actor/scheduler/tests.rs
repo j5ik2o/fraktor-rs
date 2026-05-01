@@ -192,6 +192,18 @@ fn cancel_existing_job_returns_true() {
 }
 
 #[test]
+fn cancel_removes_job_cancelled_through_handle() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect("handle");
+  assert!(handle.cancel());
+
+  assert!(scheduler.cancel(&handle));
+
+  assert_eq!(scheduler.job_count_for_test(), 0);
+  assert!(!scheduler.cancel(&handle));
+}
+
+#[test]
 fn shutdown_prevents_new_jobs() {
   let mut scheduler = build_scheduler();
   let _ = scheduler.shutdown();

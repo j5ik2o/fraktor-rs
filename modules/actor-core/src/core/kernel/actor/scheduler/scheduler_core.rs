@@ -235,7 +235,7 @@ impl Scheduler {
   /// Cancels the job identified by the provided handle.
   pub fn cancel(&mut self, handle: &SchedulerHandle) -> bool {
     if let Some(entry) = self.registry.get(handle.raw()) {
-      if !entry.try_cancel() {
+      if !entry.try_cancel() && !entry.is_cancelled() && !entry.is_completed() {
         return false;
       }
       if let Some(job) = self.jobs.remove(&handle.raw()) {
