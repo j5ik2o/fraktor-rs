@@ -1,5 +1,6 @@
+use super::MergeHubSourceLogic;
 use crate::core::{
-  StreamError,
+  SourceLogic, StreamError,
   dsl::{MergeHub, Sink},
   r#impl::{
     fusing::StreamBufferConfig,
@@ -108,6 +109,14 @@ fn merge_hub_source_waits_for_later_offer_without_completing() {
   }
   assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(42_u32)));
+}
+
+#[test]
+fn merge_hub_source_does_not_drain_on_shutdown() {
+  let hub = MergeHub::<u32>::new();
+  let logic = MergeHubSourceLogic { state: hub.state.clone() };
+
+  assert!(!logic.should_drain_on_shutdown());
 }
 
 #[test]

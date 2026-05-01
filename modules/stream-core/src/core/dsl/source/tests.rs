@@ -19,8 +19,9 @@ use std::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
-  CycleSourceLogic, EmptySourceLogic, IterateSourceLogic, IteratorSourceLogic, LazySourceLogic, QueueSourceLogic,
-  QueueWithOverflowSourceLogic, RepeatSourceLogic, StreamGraph, UnboundedQueueSourceLogic,
+  CycleSourceLogic, EmptySourceLogic, FailedSourceLogic, IterateSourceLogic, IteratorSourceLogic, LazySourceLogic,
+  NeverSourceLogic, QueueSourceLogic, QueueWithOverflowSourceLogic, RepeatSourceLogic, SingleSourceLogic, StreamGraph,
+  UnboundedQueueSourceLogic,
 };
 use crate::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, QueueOfferResult, RestartConfig, SharedKillSwitch, SourceLogic,
@@ -150,6 +151,23 @@ fn iterator_source_logic_does_not_drain_explicit_unbounded_iterator_on_shutdown(
   let logic = IteratorSourceLogic { values: core::iter::repeat(1_u32), drain_on_shutdown: false };
 
   assert!(!logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn built_in_source_logic_shutdown_policies_match_source_lifetime() {
+  let single = SingleSourceLogic { value: Some(1_u32) };
+  let failed = FailedSourceLogic { error: StreamError::Failed };
+  let never = NeverSourceLogic;
+  let repeat = RepeatSourceLogic { value: 1_u32 };
+  let cycle = CycleSourceLogic { values: vec![1_u32, 2_u32], index: 0 };
+  let iterate = IterateSourceLogic { current: 1_u32, func: |value| value + 1 };
+
+  assert!(single.should_drain_on_shutdown());
+  assert!(!failed.should_drain_on_shutdown());
+  assert!(!never.should_drain_on_shutdown());
+  assert!(!repeat.should_drain_on_shutdown());
+  assert!(!cycle.should_drain_on_shutdown());
+  assert!(!iterate.should_drain_on_shutdown());
 }
 
 struct RecordingMaterializer {
@@ -998,6 +1016,21 @@ fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
 }
 
 #[test]
+fn source_queue_shutdown_completes_unbounded_queue_for_drain() {
+  let mut queue = SourceQueue::new();
+  let mut logic = UnboundedQueueSourceLogic { queue: queue.clone() };
+
+  assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(queue.offer(13_u32), QueueOfferResult::QueueClosed);
+  assert!(logic.pull().expect("buffered").is_some());
+  assert!(logic.pull().expect("drained").is_none());
+}
+
+#[test]
 fn source_queue_unbounded_materializes_source_queue_and_emits_offered_values() {
   let source = Source::<u32, _>::queue_unbounded();
   let (graph, mut queue) = source.into_parts();
@@ -1048,6 +1081,21 @@ fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
   assert!(queue.is_empty());
   assert!(queue.is_drained());
   assert_eq!(queue.offer(22_u32), QueueOfferResult::QueueClosed);
+}
+
+#[test]
+fn source_bounded_queue_shutdown_completes_queue_for_drain() {
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut logic = QueueSourceLogic { queue: queue.clone() };
+
+  assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(queue.offer(21_u32), QueueOfferResult::QueueClosed);
+  assert!(logic.pull().expect("buffered").is_some());
+  assert!(logic.pull().expect("drained").is_none());
 }
 
 #[test]
@@ -1106,6 +1154,18 @@ fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
   assert!(queue.is_closed());
   assert!(queue.is_empty());
+}
+
+#[test]
+fn source_queue_with_overflow_shutdown_completes_queue_for_drain() {
+  let queue = SourceQueueWithComplete::<u32>::new(1, OverflowStrategy::Backpressure, 1);
+  let completion = queue.watch_completion();
+  let mut logic = QueueWithOverflowSourceLogic { queue: queue.clone() };
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]

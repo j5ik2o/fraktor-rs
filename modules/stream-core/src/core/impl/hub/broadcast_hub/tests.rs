@@ -1,5 +1,6 @@
+use super::BroadcastHubSourceLogic;
 use crate::core::{
-  StreamError,
+  SourceLogic, StreamError,
   dsl::{BroadcastHub, Sink},
   r#impl::{
     fusing::StreamBufferConfig,
@@ -111,6 +112,15 @@ fn broadcast_hub_source_waits_for_later_publish_without_completing() {
   }
   assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(55_u32)));
+}
+
+#[test]
+fn broadcast_hub_source_does_not_drain_on_shutdown() {
+  let hub = BroadcastHub::<u32>::new();
+  let subscriber_id = hub.subscribe();
+  let logic = BroadcastHubSourceLogic { subscribers: hub.subscribers.clone(), subscriber_id };
+
+  assert!(!logic.should_drain_on_shutdown());
 }
 
 #[test]

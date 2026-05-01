@@ -1165,6 +1165,18 @@ fn drive_streams_until_terminal_reports_round_limit_when_drain_makes_no_progress
 }
 
 #[test]
+fn drive_streams_until_terminal_ignores_already_terminal_streams() {
+  let stream = running_stream_from_graph(Source::<u32, _>::empty().into_mat(Sink::ignore(), KeepRight));
+  while !stream.state().is_terminal() {
+    let _ = stream.drive();
+  }
+
+  let result = ActorMaterializer::drive_streams_until_terminal(&[stream]);
+
+  assert_eq!(result, Ok(()));
+}
+
+#[test]
 fn drive_actor_owned_streams_until_terminal_reports_invalid_resource_shape() {
   let stream = running_stream_from_graph(
     Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic).into_mat(Sink::ignore(), KeepRight),

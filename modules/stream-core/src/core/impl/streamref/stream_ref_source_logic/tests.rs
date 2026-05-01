@@ -23,3 +23,11 @@ fn subscribed_source_polls_values_until_completion() {
   assert!(logic.pull().expect("value").is_some());
   assert!(logic.pull().expect("complete").is_none());
 }
+
+#[test]
+fn stream_ref_source_does_not_drain_on_shutdown() {
+  let handoff = StreamRefHandoff::<u32>::new();
+  let logic = StreamRefSourceLogic::subscribed(handoff);
+
+  assert!(!logic.should_drain_on_shutdown());
+}

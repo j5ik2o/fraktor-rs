@@ -1,5 +1,6 @@
+use super::PartitionHubSourceLogic;
 use crate::core::{
-  StreamError,
+  SourceLogic, StreamError,
   dsl::{PartitionHub, Sink},
   r#impl::{
     fusing::StreamBufferConfig,
@@ -110,6 +111,14 @@ fn partition_hub_source_waits_for_later_offer_without_completing() {
   }
   assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(77_u32)));
+}
+
+#[test]
+fn partition_hub_source_does_not_drain_on_shutdown() {
+  let hub = PartitionHub::<u32>::new(2);
+  let logic = PartitionHubSourceLogic { state: hub.state.clone(), partition: 0 };
+
+  assert!(!logic.should_drain_on_shutdown());
 }
 
 #[test]
