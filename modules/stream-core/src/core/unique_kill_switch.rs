@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{KillSwitch, StreamError};
@@ -19,7 +21,7 @@ impl UniqueKillSwitch {
   /// Creates a new unique kill switch in running state.
   #[must_use]
   pub fn new() -> Self {
-    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)) }
+    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::running())) }
   }
 
   pub(in crate::core) const fn from_state(state: KillSwitchStateHandle) -> Self {
@@ -51,41 +53,54 @@ impl UniqueKillSwitch {
 
   /// Requests graceful shutdown.
   pub fn shutdown(&self) {
-    let mut state = self.state.lock();
-    if !matches!(&*state, KillSwitchState::Running) {
-      return;
+    let command_targets = {
+      let mut state = self.state.lock();
+      state.request_shutdown()
+    };
+    if let Some(command_targets) = command_targets {
+      for target in command_targets {
+        if target.shutdown().is_err() {
+          // Actor command delivery is best-effort because the public kill switch
+          // contract has no error channel; stream polling still observes the
+          // same kill switch state.
+        }
+      }
     }
-    *state = KillSwitchState::Shutdown;
   }
 
   /// Requests abort with an error.
   pub fn abort(&self, error: StreamError) {
-    let mut state = self.state.lock();
-    if !matches!(&*state, KillSwitchState::Running) {
-      return;
+    let abort = {
+      let mut state = self.state.lock();
+      state.request_abort(error)
+    };
+    if let Some((error, command_targets)) = abort {
+      for target in command_targets {
+        if target.abort(error.clone()).is_err() {
+          // Actor command delivery is best-effort because the public kill switch
+          // contract has no error channel; stream polling still observes the
+          // same kill switch state.
+        }
+      }
     }
-    *state = KillSwitchState::Aborted(error);
   }
 
   /// Returns true when the switch has been shut down.
   #[must_use]
   pub fn is_shutdown(&self) -> bool {
-    matches!(*self.state.lock(), KillSwitchState::Shutdown)
+    matches!(self.state.lock().status(), KillSwitchStatus::Shutdown)
   }
 
   /// Returns true when the switch has been aborted.
   #[must_use]
   pub fn is_aborted(&self) -> bool {
-    matches!(*self.state.lock(), KillSwitchState::Aborted(_))
+    matches!(self.state.lock().status(), KillSwitchStatus::Aborted(_))
   }
 
   /// Returns the abort error if the switch is aborted.
   #[must_use]
   pub fn abort_error(&self) -> Option<StreamError> {
-    match &*self.state.lock() {
-      | KillSwitchState::Aborted(error) => Some(error.clone()),
-      | _ => None,
-    }
+    self.state.lock().abort_error()
   }
 }
 
@@ -120,8 +135,98 @@ impl Default for UniqueKillSwitch {
 pub(in crate::core) type KillSwitchStateHandle = ArcShared<SpinSyncMutex<KillSwitchState>>;
 
 #[derive(Clone)]
-pub(in crate::core) enum KillSwitchState {
+pub(in crate::core) struct KillSwitchState {
+  status:          KillSwitchStatus,
+  command_targets: Vec<KillSwitchCommandTargetShared>,
+}
+
+impl KillSwitchState {
+  /// Creates a running kill switch state.
+  #[must_use]
+  pub(in crate::core) fn running() -> Self {
+    Self { status: KillSwitchStatus::Running, command_targets: Vec::new() }
+  }
+
+  /// Returns the lifecycle status.
+  #[must_use]
+  pub(in crate::core) const fn status(&self) -> &KillSwitchStatus {
+    &self.status
+  }
+
+  /// Registers an actor command target and returns the current status.
+  pub(in crate::core) fn add_command_target(&mut self, target: KillSwitchCommandTargetShared) -> KillSwitchStatus {
+    self.command_targets.push(target);
+    self.status.clone()
+  }
+
+  /// Removes a previously registered actor command target.
+  pub(in crate::core) fn remove_command_target(&mut self, target: &KillSwitchCommandTargetShared) -> bool {
+    let Some(position) = self.command_targets.iter().position(|registered| ArcShared::ptr_eq(registered, target))
+    else {
+      return false;
+    };
+    drop(self.command_targets.remove(position));
+    true
+  }
+
+  /// Moves the state to shutdown and returns registered command targets.
+  pub(in crate::core) fn request_shutdown(&mut self) -> Option<Vec<KillSwitchCommandTargetShared>> {
+    if !matches!(self.status, KillSwitchStatus::Running) {
+      return None;
+    }
+    self.status = KillSwitchStatus::Shutdown;
+    Some(self.command_targets.clone())
+  }
+
+  /// Moves the state to aborted and returns the abort error with command targets.
+  pub(in crate::core) fn request_abort(
+    &mut self,
+    error: StreamError,
+  ) -> Option<(StreamError, Vec<KillSwitchCommandTargetShared>)> {
+    if matches!(self.status, KillSwitchStatus::Aborted(_)) {
+      return None;
+    }
+    self.status = KillSwitchStatus::Aborted(error.clone());
+    Some((error, self.command_targets.clone()))
+  }
+
+  /// Returns the abort error when the state is aborted.
+  #[must_use]
+  pub(in crate::core) fn abort_error(&self) -> Option<StreamError> {
+    match &self.status {
+      | KillSwitchStatus::Aborted(error) => Some(error.clone()),
+      | _ => None,
+    }
+  }
+}
+
+/// Shared command target used by graph kill switches.
+pub(in crate::core) type KillSwitchCommandTargetShared = ArcShared<dyn KillSwitchCommandTarget>;
+
+/// Internal command sink notified when a graph kill switch changes state.
+pub(in crate::core) trait KillSwitchCommandTarget: Send + Sync {
+  /// Sends a shutdown command to the target.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when command delivery fails.
+  fn shutdown(&self) -> Result<(), StreamError>;
+
+  /// Sends an abort command to the target.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when command delivery fails.
+  fn abort(&self, error: StreamError) -> Result<(), StreamError>;
+}
+
+/// Lifecycle status stored in a kill switch state.
+#[derive(Clone)]
+pub(in crate::core) enum KillSwitchStatus {
+  /// The stream graph is running.
   Running,
+  /// Shutdown was requested.
   Shutdown,
+  /// Abort was requested with the preserved error.
   Aborted(StreamError),
 }

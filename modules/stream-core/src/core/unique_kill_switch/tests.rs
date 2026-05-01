@@ -1,9 +1,25 @@
-use super::super::KillSwitches;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+
+use super::{
+  super::KillSwitches, KillSwitchCommandTarget, KillSwitchCommandTargetShared, KillSwitchState, KillSwitchStatus,
+};
 use crate::core::{
   StreamError, UniqueKillSwitch,
   dsl::{BidiFlow, Flow, Sink, Source},
   materialization::{KeepLeft, KeepRight, StreamNotUsed},
 };
+
+struct FailingKillSwitchCommandTarget;
+
+impl KillSwitchCommandTarget for FailingKillSwitchCommandTarget {
+  fn shutdown(&self) -> Result<(), StreamError> {
+    Err(StreamError::Failed)
+  }
+
+  fn abort(&self, error: StreamError) -> Result<(), StreamError> {
+    Err(error)
+  }
+}
 
 #[test]
 fn unique_kill_switch_shutdown_sets_state() {
@@ -22,15 +38,66 @@ fn unique_kill_switch_abort_sets_error() {
 }
 
 #[test]
-fn unique_kill_switch_keeps_first_control_signal() {
+fn unique_kill_switch_abort_escalates_shutdown() {
   let switch = UniqueKillSwitch::new();
 
   switch.shutdown();
   switch.abort(StreamError::Failed);
 
+  assert!(!switch.is_shutdown());
+  assert!(switch.is_aborted());
+  assert_eq!(switch.abort_error(), Some(StreamError::Failed));
+}
+
+#[test]
+fn unique_kill_switch_abort_keeps_first_error() {
+  let switch = UniqueKillSwitch::new();
+  let first_error = StreamError::failed_with_context("first abort");
+  let second_error = StreamError::failed_with_context("second abort");
+
+  switch.abort(first_error.clone());
+  switch.abort(second_error);
+
+  assert!(switch.is_aborted());
+  assert_eq!(switch.abort_error(), Some(first_error));
+}
+
+#[test]
+fn unique_kill_switch_shutdown_ignores_command_target_failure() {
+  let state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
+  let target: KillSwitchCommandTargetShared = ArcShared::new(FailingKillSwitchCommandTarget);
+  let status = state.lock().add_command_target(target);
+  assert!(matches!(status, KillSwitchStatus::Running));
+  let switch = UniqueKillSwitch::from_state(state);
+
+  switch.shutdown();
+
   assert!(switch.is_shutdown());
   assert!(!switch.is_aborted());
-  assert_eq!(switch.abort_error(), None);
+}
+
+#[test]
+fn unique_kill_switch_abort_ignores_command_target_failure() {
+  let state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
+  let target: KillSwitchCommandTargetShared = ArcShared::new(FailingKillSwitchCommandTarget);
+  let status = state.lock().add_command_target(target);
+  assert!(matches!(status, KillSwitchStatus::Running));
+  let switch = UniqueKillSwitch::from_state(state);
+
+  switch.abort(StreamError::Failed);
+
+  assert!(switch.is_aborted());
+  assert_eq!(switch.abort_error(), Some(StreamError::Failed));
+}
+
+#[test]
+fn kill_switch_state_remove_unknown_command_target_returns_false() {
+  let mut state = KillSwitchState::running();
+  let target: KillSwitchCommandTargetShared = ArcShared::new(FailingKillSwitchCommandTarget);
+
+  let removed = state.remove_command_target(&target);
+
+  assert!(!removed);
 }
 
 #[test]

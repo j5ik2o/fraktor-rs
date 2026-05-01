@@ -19,8 +19,9 @@ use std::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
-  CycleSourceLogic, IterateSourceLogic, LazySourceLogic, QueueSourceLogic, QueueWithOverflowSourceLogic,
-  RepeatSourceLogic, StreamGraph, UnboundedQueueSourceLogic,
+  CycleSourceLogic, EmptySourceLogic, FailedSourceLogic, IterateSourceLogic, IteratorSourceLogic, LazySourceLogic,
+  NeverSourceLogic, QueueSourceLogic, QueueWithOverflowSourceLogic, RepeatSourceLogic, SingleSourceLogic, StreamGraph,
+  UnboundedQueueSourceLogic,
 };
 use crate::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, QueueOfferResult, RestartConfig, SharedKillSwitch, SourceLogic,
@@ -115,6 +116,60 @@ where
   }
 }
 
+#[test]
+fn empty_source_logic_drains_on_shutdown() {
+  let logic = EmptySourceLogic;
+
+  assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn source_logic_default_drains_on_shutdown() {
+  let logic = DefaultDrainSourceLogic;
+
+  assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn iterator_source_logic_drains_bounded_iterator_on_shutdown() {
+  let logic = IteratorSourceLogic { values: Vec::<u32>::new().into_iter(), drain_on_shutdown: true };
+
+  assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn iterator_source_logic_drains_unknown_upper_bound_iterator_on_shutdown() {
+  let values = (0_u32..3).flat_map(|value| 0..value);
+  assert_eq!(values.size_hint().1, None);
+  let logic = IteratorSourceLogic { values, drain_on_shutdown: true };
+
+  assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn iterator_source_logic_does_not_drain_explicit_unbounded_iterator_on_shutdown() {
+  let logic = IteratorSourceLogic { values: core::iter::repeat(1_u32), drain_on_shutdown: false };
+
+  assert!(!logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn built_in_source_logic_shutdown_policies_match_source_lifetime() {
+  let single = SingleSourceLogic { value: Some(1_u32) };
+  let failed = FailedSourceLogic { error: StreamError::Failed };
+  let never = NeverSourceLogic;
+  let repeat = RepeatSourceLogic { value: 1_u32 };
+  let cycle = CycleSourceLogic { values: vec![1_u32, 2_u32], index: 0 };
+  let iterate = IterateSourceLogic { current: 1_u32, func: |value| value + 1 };
+
+  assert!(single.should_drain_on_shutdown());
+  assert!(!failed.should_drain_on_shutdown());
+  assert!(!never.should_drain_on_shutdown());
+  assert!(!repeat.should_drain_on_shutdown());
+  assert!(!cycle.should_drain_on_shutdown());
+  assert!(!iterate.should_drain_on_shutdown());
+}
+
 struct RecordingMaterializer {
   calls: usize,
 }
@@ -154,6 +209,8 @@ struct EndlessSourceLogic {
   next: u32,
 }
 
+struct DefaultDrainSourceLogic;
+
 impl EndlessSourceLogic {
   const fn new() -> Self {
     Self { next: 0 }
@@ -164,6 +221,16 @@ impl SourceLogic for EndlessSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     self.next = self.next.saturating_add(1);
     Ok(Some(Box::new(self.next)))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
+}
+
+impl SourceLogic for DefaultDrainSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(None)
   }
 }
 
@@ -290,6 +357,10 @@ impl SourceLogic for CancelAwareSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     self.next = self.next.saturating_add(1);
     Ok(Some(Box::new(self.next)))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
@@ -505,7 +576,7 @@ fn materialized_shared_kill_switch_shutdown_completes_stream() {
 }
 
 #[test]
-fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
+fn materialized_unique_kill_switch_abort_escalates_after_shutdown() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
   let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
@@ -521,7 +592,7 @@ fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
       break;
     }
   }
-  assert_eq!(materialized.stream().state(), StreamState::Completed);
+  assert_eq!(materialized.stream().state(), StreamState::Failed);
 }
 
 #[test]
@@ -596,6 +667,21 @@ fn shared_kill_switch_created_before_materialization_controls_multiple_streams()
 }
 
 #[test]
+fn shared_kill_switch_abort_before_materialized_unique_switch_fails_stream() {
+  let shared_kill_switch = SharedKillSwitch::new();
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new())
+    .into_mat(Sink::ignore(), KeepRight)
+    .with_shared_kill_switch(&shared_kill_switch);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  shared_kill_switch.abort(StreamError::Failed);
+
+  assert_eq!(materialized.stream().drive(), DriveOutcome::Progressed);
+  assert_eq!(materialized.stream().state(), StreamState::Failed);
+}
+
+#[test]
 fn source_broadcast_with_single_fan_out_keeps_element() {
   let values =
     Source::single(5_u32).broadcast(1).expect("broadcast").run_with_collect_sink().expect("run_with_collect_sink");
@@ -623,6 +709,13 @@ fn source_from_option_none_completes_without_elements() {
 #[test]
 fn source_from_iterator_emits_values_in_order() {
   let values = Source::from_iterator([1_u32, 2, 3, 4]).run_with_collect_sink().expect("run_with_collect_sink");
+  assert_eq!(values, vec![1_u32, 2, 3, 4]);
+}
+
+#[test]
+fn source_from_unbounded_iterator_emits_values_in_order() {
+  let values =
+    Source::from_unbounded_iterator([1_u32, 2, 3, 4]).run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2, 3, 4]);
 }
 
@@ -923,6 +1016,21 @@ fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
 }
 
 #[test]
+fn source_queue_shutdown_completes_unbounded_queue_for_drain() {
+  let mut queue = SourceQueue::new();
+  let mut logic = UnboundedQueueSourceLogic { queue: queue.clone() };
+
+  assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(queue.offer(13_u32), QueueOfferResult::QueueClosed);
+  assert!(logic.pull().expect("buffered").is_some());
+  assert!(logic.pull().expect("drained").is_none());
+}
+
+#[test]
 fn source_queue_unbounded_materializes_source_queue_and_emits_offered_values() {
   let source = Source::<u32, _>::queue_unbounded();
   let (graph, mut queue) = source.into_parts();
@@ -973,6 +1081,21 @@ fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
   assert!(queue.is_empty());
   assert!(queue.is_drained());
   assert_eq!(queue.offer(22_u32), QueueOfferResult::QueueClosed);
+}
+
+#[test]
+fn source_bounded_queue_shutdown_completes_queue_for_drain() {
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut logic = QueueSourceLogic { queue: queue.clone() };
+
+  assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(queue.offer(21_u32), QueueOfferResult::QueueClosed);
+  assert!(logic.pull().expect("buffered").is_some());
+  assert!(logic.pull().expect("drained").is_none());
 }
 
 #[test]
@@ -1031,6 +1154,18 @@ fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
   assert!(queue.is_closed());
   assert!(queue.is_empty());
+}
+
+#[test]
+fn source_queue_with_overflow_shutdown_completes_queue_for_drain() {
+  let queue = SourceQueueWithComplete::<u32>::new(1, OverflowStrategy::Backpressure, 1);
+  let completion = queue.watch_completion();
+  let mut logic = QueueWithOverflowSourceLogic { queue: queue.clone() };
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]

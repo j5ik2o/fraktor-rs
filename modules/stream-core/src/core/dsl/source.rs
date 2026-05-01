@@ -91,7 +91,22 @@ where
   where
     I: IntoIterator<Item = Out>,
     I::IntoIter: Send + 'static, {
-    Self::from_logic(StageKind::Custom, IteratorSourceLogic { values: values.into_iter() })
+    Self::from_logic(StageKind::Custom, IteratorSourceLogic {
+      values:            values.into_iter(),
+      drain_on_shutdown: true,
+    })
+  }
+
+  /// Creates a source from an iterator that must not be drained during shutdown.
+  #[must_use]
+  pub fn from_unbounded_iterator<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_logic(StageKind::Custom, IteratorSourceLogic {
+      values:            values.into_iter(),
+      drain_on_shutdown: false,
+    })
   }
 
   /// Compatibility alias of [`Source::from_iterator`].
@@ -1500,8 +1515,9 @@ where
 
   /// Marks this source with an async boundary attribute and a named dispatcher.
   ///
-  /// The island created by the async boundary will use the specified
-  /// dispatcher for its execution context.
+  /// The dispatcher is attached to the island downstream of this
+  /// boundary. During materialization, that downstream island actor is
+  /// spawned with the specified dispatcher as its execution context.
   #[must_use]
   pub fn async_with_dispatcher(mut self, dispatcher: impl Into<String>) -> Source<Out, Mat> {
     self.graph.mark_last_node_async();
@@ -2931,10 +2947,15 @@ impl SourceLogic for EmptySourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(None)
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
+  }
 }
 
 struct IteratorSourceLogic<I> {
-  values: I,
+  values:            I,
+  drain_on_shutdown: bool,
 }
 
 struct FailedSourceLogic {
@@ -2991,17 +3012,29 @@ where
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.values.next().map(|value| Box::new(value) as DynValue))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    self.drain_on_shutdown
+  }
 }
 
 impl SourceLogic for FailedSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(self.error.clone())
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl SourceLogic for NeverSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Err(StreamError::WouldBlock)
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 }
 
@@ -3011,6 +3044,10 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(Some(Box::new(self.value.clone()) as DynValue))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
   }
 }
 
@@ -3026,6 +3063,10 @@ where
     self.index = (self.index + 1) % self.values.len();
     Ok(Some(Box::new(value) as DynValue))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl<Out, F> SourceLogic for IterateSourceLogic<Out, F>
@@ -3038,6 +3079,10 @@ where
     let value = core::mem::replace(&mut self.current, next);
     Ok(Some(Box::new(value) as DynValue))
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 impl<Out> SourceLogic for SingleSourceLogic<Out>
@@ -3046,6 +3091,10 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.value.take().map(|value| Box::new(value) as DynValue))
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
   }
 }
 
@@ -3130,6 +3179,10 @@ where
     self.queue.close_for_cancel();
     Ok(())
   }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    if self.queue.complete_if_open() || self.queue.is_closed() { Ok(()) } else { Err(StreamError::Failed) }
+  }
 }
 
 impl<Out> SourceLogic for QueueWithOverflowSourceLogic<Out>
@@ -3145,6 +3198,11 @@ where
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     self.queue.close_for_cancel();
+    Ok(())
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    self.queue.complete();
     Ok(())
   }
 }
@@ -3163,6 +3221,10 @@ where
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     self.queue.close_for_cancel();
     Ok(())
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    if self.queue.complete_if_open() || self.queue.is_closed() { Ok(()) } else { Err(StreamError::Failed) }
   }
 }
 

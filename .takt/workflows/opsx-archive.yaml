@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 10
-initial_movement: archive
+max_steps: 10
+initial_step: archive
 
 personas:
   opsx-archiver: ../facets/personas/opsx-archiver.md

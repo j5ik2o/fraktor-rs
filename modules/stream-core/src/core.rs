@@ -98,7 +98,9 @@ pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
 pub use unique_kill_switch::UniqueKillSwitch;
-pub(in crate::core) use unique_kill_switch::{KillSwitchState, KillSwitchStateHandle};
+pub(in crate::core) use unique_kill_switch::{
+  KillSwitchCommandTarget, KillSwitchCommandTargetShared, KillSwitchState, KillSwitchStateHandle, KillSwitchStatus,
+};
 
 use self::attributes::Attributes;
 /// Type-erased value passed between runtime stages.
@@ -384,14 +386,15 @@ impl StreamPlan {
   ///
   /// The caller is responsible for ensuring that stages, edges, and indices
   /// are consistent. No validation is performed.
-  pub(crate) const fn from_raw_parts(
+  pub(in crate::core) const fn from_raw_parts(
     stages: Vec<StageDefinition>,
     edges: Vec<StreamPlanEdge>,
     source_indices: Vec<usize>,
     sink_indices: Vec<usize>,
     flow_order: Vec<usize>,
+    kill_switch_states: Vec<KillSwitchStateHandle>,
   ) -> Self {
-    Self { stages, edges, source_indices, sink_indices, flow_order, kill_switch_states: Vec::new() }
+    Self { stages, edges, source_indices, sink_indices, flow_order, kill_switch_states }
   }
 
   fn with_shared_kill_switch_state(mut self, kill_switch_state: KillSwitchStateHandle) -> Self {

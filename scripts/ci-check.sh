@@ -48,6 +48,40 @@ if [[ -n "${RUSTUP_TOOLCHAIN:-}" && "${RUSTUP_TOOLCHAIN}" != "${PINNED_TOOLCHAIN
 fi
 export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
+
+# cargo の呼び出し prefix を確定する。
+# `cargo +<toolchain>` は `cargo` が rustup の proxy (~/.cargo/bin/cargo) で
+# あることを前提とした構文だが、PATH 順序によっては toolchain 直下の
+# cargo バイナリ (例: ~/.rustup/toolchains/<toolchain>/bin/cargo) が先に
+# 解決されることがあり、その場合 `+<toolchain>` を解釈できずに
+# `error: no such command: '+<toolchain>'` で失敗する。
+# rustup が利用可能なら `rustup run <toolchain> cargo` 経由で起動して
+# PATH 順序に依存しないようにする。pinned toolchain を使う場合は
+# rustup 必須であり、rustup が無い環境では明示的に失敗させる。
+_CI_CHECK_HAS_RUSTUP=0
+if command -v rustup >/dev/null 2>&1; then
+  _CI_CHECK_HAS_RUSTUP=1
+fi
+
+build_cargo_prefix_for() {
+  local toolchain="${1:-}"
+  CI_CHECK_CARGO_PREFIX=()
+  if [[ -n "${toolchain}" ]]; then
+    if [[ "${_CI_CHECK_HAS_RUSTUP}" == "1" ]]; then
+      CI_CHECK_CARGO_PREFIX=(rustup run "${toolchain}" cargo)
+    else
+      echo "エラー: pinned toolchain (${toolchain}) を使うには rustup が必要です。" >&2
+      return 1
+    fi
+  else
+    CI_CHECK_CARGO_PREFIX=(cargo)
+  fi
+}
+
+build_cargo_prefix_for "${DEFAULT_TOOLCHAIN}" || exit 1
+DEFAULT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
+build_cargo_prefix_for "${FMT_TOOLCHAIN}" || exit 1
+FMT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export CARGO_BUILD_JOBS
 CI_CHECK_GUARD_TIMEOUT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC:-0}"
@@ -279,11 +313,7 @@ clean_stale_lint_targets() {
 
 run_cargo() {
   local -a cmd
-  if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    cmd=(cargo "+${DEFAULT_TOOLCHAIN}" -v "$@")
-  else
-    cmd=(cargo -v "$@")
-  fi
+  cmd=("${DEFAULT_CARGO_CMD[@]}" -v "$@")
 
   local command_string=""
   command_string="$(render_command "${cmd[@]}")"
@@ -575,11 +605,7 @@ ensure_dylint_installed() {
   fi
 
   local -a install_cmd
-  if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" -v install cargo-dylint --locked --version "${desired_version}")
-  else
-    install_cmd=(cargo -v install cargo-dylint --locked --version "${desired_version}")
-  fi
+  install_cmd=("${DEFAULT_CARGO_CMD[@]}" -v install cargo-dylint --locked --version "${desired_version}")
 
   if [[ -n "${current_version}" ]]; then
     install_cmd+=(--force)
@@ -596,23 +622,15 @@ ensure_dylint_installed() {
 }
 
 run_fmt() {
-  if [[ -n "${FMT_TOOLCHAIN}" ]]; then
-    log_step "cargo +${FMT_TOOLCHAIN} -v fmt --all"
-    cargo "+${FMT_TOOLCHAIN}" -v fmt --all || return 1
-  else
-    log_step "cargo -v fmt --all"
-    cargo -v fmt --all || return 1
-  fi
+  local -a fmt_cmd=("${FMT_CARGO_CMD[@]}" -v fmt --all)
+  log_step "$(render_command "${fmt_cmd[@]}")"
+  "${fmt_cmd[@]}" || return 1
 }
 
 run_lint() {
-  if [[ -n "${FMT_TOOLCHAIN}" ]]; then
-    log_step "cargo +${FMT_TOOLCHAIN} -v fmt --all --check"
-    cargo "+${FMT_TOOLCHAIN}" -v fmt --all --check || return 1
-  else
-    log_step "cargo -v fmt --all --check"
-    cargo -v fmt --all --check || return 1
-  fi
+  local -a lint_cmd=("${FMT_CARGO_CMD[@]}" -v fmt --all --check)
+  log_step "$(render_command "${lint_cmd[@]}")"
+  "${lint_cmd[@]}" || return 1
 }
 
 run_dylint() {
@@ -784,11 +802,13 @@ run_dylint() {
     local lint_path="${entry#*:}"
     local lib_name="${crate//-/_}"
 
-    log_step "cargo -v build --manifest-path ${lint_path}/Cargo.toml --release"
-    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
+    local -a build_cmd=("${DEFAULT_CARGO_CMD[@]}" -v build --manifest-path "${lint_path}/Cargo.toml" --release)
+    log_step "$(render_command "${build_cmd[@]}")"
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${build_cmd[@]}" || return 1
 
-    log_step "cargo -v test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
-    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
+    local -a test_cmd=("${DEFAULT_CARGO_CMD[@]}" -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet)
+    log_step "$(render_command "${test_cmd[@]}")"
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${test_cmd[@]}" || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"
@@ -851,18 +871,10 @@ run_dylint() {
     python_bin="$(resolve_python3_bin)" || return 1
     local metadata_file
     metadata_file="$(mktemp)" || return 1
-    if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-      if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo "+${DEFAULT_TOOLCHAIN}" metadata --format-version 1 --no-deps > "${metadata_file}"; then
-        rm -f "${metadata_file}"
-        echo "エラー: cargo metadata の取得に失敗しました。" >&2
-        return 1
-      fi
-    else
-      if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo metadata --format-version 1 --no-deps > "${metadata_file}"; then
-        rm -f "${metadata_file}"
-        echo "エラー: cargo metadata の取得に失敗しました。" >&2
-        return 1
-      fi
+    if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${DEFAULT_CARGO_CMD[@]}" metadata --format-version 1 --no-deps > "${metadata_file}"; then
+      rm -f "${metadata_file}"
+      echo "エラー: cargo metadata の取得に失敗しました。" >&2
+      return 1
     fi
     local -a python_cmd=("${python_bin}" - "${metadata_file}")
     if [[ ${#hardware_packages[@]} -gt 0 ]]; then
@@ -1253,20 +1265,11 @@ run_examples() {
     rm -f "${example_file}"
     return 1
   }
-  if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo "+${DEFAULT_TOOLCHAIN}" metadata --format-version 1 --no-deps > "${metadata_file}"; then
-      [[ -n "${example_file}" ]] && rm -f "${example_file}"
-      [[ -n "${metadata_file}" ]] && rm -f "${metadata_file}"
-      echo "エラー: cargo metadata の取得に失敗しました。" >&2
-      return 1
-    fi
-  else
-    if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo metadata --format-version 1 --no-deps > "${metadata_file}"; then
-      [[ -n "${example_file}" ]] && rm -f "${example_file}"
-      [[ -n "${metadata_file}" ]] && rm -f "${metadata_file}"
-      echo "エラー: cargo metadata の取得に失敗しました。" >&2
-      return 1
-    fi
+  if ! env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${DEFAULT_CARGO_CMD[@]}" metadata --format-version 1 --no-deps > "${metadata_file}"; then
+    [[ -n "${example_file}" ]] && rm -f "${example_file}"
+    [[ -n "${metadata_file}" ]] && rm -f "${metadata_file}"
+    echo "エラー: cargo metadata の取得に失敗しました。" >&2
+    return 1
   fi
   if ! "${python_bin}" - "${metadata_file}" <<'PY' >"${example_file}"; then
 import json

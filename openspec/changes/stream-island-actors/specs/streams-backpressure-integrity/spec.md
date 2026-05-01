@@ -1,3 +1,5 @@
+> 前提: Pekko 互換仕様と Rust らしい設計の両立を、常に念頭に置いて判断する。
+
 ## MODIFIED Requirements
 
 ### Requirement: island boundary は actor 分離後も backpressure と terminal signal を保持しなければならない
@@ -40,6 +42,9 @@ stream island boundary は、island が別 actor / 別 mailbox / 別 dispatcher 
 
 - **GIVEN** downstream island actor が cancel される
 - **WHEN** cancel が boundary に伝播する
-- **THEN** upstream island actor は cancel または shutdown command を受け取る
+- **THEN** upstream island actor は `Cancel(cause)` command を受け取る
 - **AND** upstream island は新しい要素を boundary へ publish し続けない
 - **AND** cancellation は boundary の data state だけで表現されず、materialized graph の control plane から upstream island actor へ配送される
+- **AND** downstream cancellation を graph-wide `Shutdown` と同一視してはならない
+
+> 前提: Pekko 互換仕様と Rust らしい設計の両立を、常に念頭に置いて判断する。

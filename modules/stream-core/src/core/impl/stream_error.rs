@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{borrow::Cow, format, string::String};
+use alloc::{borrow::Cow, boxed::Box, format, string::String};
 use core::{
   any::TypeId,
   fmt::{self, Formatter, Result as FmtResult},
@@ -57,6 +57,13 @@ pub enum StreamError {
     message:        Cow<'static, str>,
     /// Type identity of the original error, if recorded.
     source_type_id: Option<TypeId>,
+  },
+  /// Indicates that materialization failed and rollback also failed.
+  MaterializedResourceRollbackFailed {
+    /// Original materialization failure.
+    primary: Box<StreamError>,
+    /// Failure observed while rolling back resources.
+    cleanup: Box<StreamError>,
   },
   /// Indicates compression/decompression failed.
   CompressionError {
@@ -207,6 +214,30 @@ impl StreamError {
     Self::FailedWithContext { message: message.into(), source_type_id: Some(TypeId::of::<E>()) }
   }
 
+  /// Creates a rollback failure that keeps both the primary and cleanup errors.
+  #[must_use]
+  pub fn materialized_resource_rollback_failed(primary: Self, cleanup: Self) -> Self {
+    Self::MaterializedResourceRollbackFailed { primary: Box::new(primary), cleanup: Box::new(cleanup) }
+  }
+
+  /// Returns the original materialization failure if this error represents rollback failure.
+  #[must_use]
+  pub const fn materialization_primary_failure(&self) -> Option<&Self> {
+    match self {
+      | Self::MaterializedResourceRollbackFailed { primary, .. } => Some(primary),
+      | _ => None,
+    }
+  }
+
+  /// Returns the cleanup failure if this error represents rollback failure.
+  #[must_use]
+  pub const fn materialization_cleanup_failure(&self) -> Option<&Self> {
+    match self {
+      | Self::MaterializedResourceRollbackFailed { cleanup, .. } => Some(cleanup),
+      | _ => None,
+    }
+  }
+
   /// Returns the type identity of the original error when recorded.
   #[must_use]
   pub const fn source_type_id(&self) -> Option<TypeId> {
@@ -254,6 +285,9 @@ impl fmt::Display for StreamError {
       | Self::WouldBlock => write!(f, "stream would block"),
       | Self::Failed => write!(f, "stream failed"),
       | Self::FailedWithContext { message, .. } => write!(f, "{message}"),
+      | Self::MaterializedResourceRollbackFailed { primary, cleanup } => {
+        write!(f, "materialization failed: {primary}; rollback failed: {cleanup}")
+      },
       | Self::CompressionError { kind } => write!(f, "compression error: {kind}"),
       | Self::InvalidRoute { route, partition_count } => {
         write!(f, "invalid partition route: route={route} partition_count={partition_count}")

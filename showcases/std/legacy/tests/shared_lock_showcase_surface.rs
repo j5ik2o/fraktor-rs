@@ -5,7 +5,6 @@ const SHARED_LOCK_SHOWCASES: &[&str] = &[
   "../typed_event_stream/main.rs",
   "../typed_receptionist_router/main.rs",
   "../timers/main.rs",
-  "../../src/support/tick_driver.rs",
 ];
 
 fn shared_lock_showcase_sources() -> impl Iterator<Item = &'static str> {
@@ -16,7 +15,6 @@ fn shared_lock_showcase_sources() -> impl Iterator<Item = &'static str> {
     | "../typed_event_stream/main.rs" => include_str!("../typed_event_stream/main.rs"),
     | "../typed_receptionist_router/main.rs" => include_str!("../typed_receptionist_router/main.rs"),
     | "../timers/main.rs" => include_str!("../timers/main.rs"),
-    | "../../src/support/tick_driver.rs" => include_str!("../../src/support/tick_driver.rs"),
     | _ => unreachable!("unknown showcase path"),
   })
 }

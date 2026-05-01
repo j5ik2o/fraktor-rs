@@ -1,9 +1,11 @@
 use alloc::{collections::VecDeque, vec::Vec};
+use core::marker::PhantomData;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
+use super::{ActorRefBackpressureSourceLogic, ActorRefSourceLogic};
 use crate::core::{
-  OverflowStrategy, QueueOfferResult, StreamError,
+  BoundedSourceQueue, OverflowStrategy, QueueOfferResult, SourceLogic, StreamError,
   dsl::{ActorSource, Sink},
   r#impl::{
     fusing::StreamBufferConfig,
@@ -39,6 +41,42 @@ fn drive_until_terminal<Mat>(materialized: &Materialized<Mat>) {
       return;
     }
   }
+}
+
+#[test]
+fn actor_ref_source_shutdown_completes_queue_for_drain() {
+  let mut queue = BoundedSourceQueue::new(1, OverflowStrategy::Fail);
+  let mut logic = ActorRefSourceLogic::<u32> { queue: queue.clone(), _pd: PhantomData };
+
+  assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(queue.offer(2_u32), QueueOfferResult::QueueClosed);
+  assert!(logic.pull().expect("buffered").is_some());
+  assert!(logic.pull().expect("drained").is_none());
+}
+
+#[test]
+fn actor_ref_backpressure_source_shutdown_completes_queue_for_drain() {
+  let mut queue = BoundedSourceQueue::new(1, OverflowStrategy::Fail);
+  let mut logic = ActorRefBackpressureSourceLogic::<u32, u8, _> {
+    queue:        queue.clone(),
+    ack_message:  1_u8,
+    receive_ack:  || Some(1_u8),
+    awaiting_ack: false,
+    _pd:          PhantomData,
+  };
+
+  assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
+
+  logic.on_shutdown().expect("on_shutdown");
+
+  assert!(queue.is_closed());
+  assert_eq!(queue.offer(2_u32), QueueOfferResult::QueueClosed);
+  assert!(logic.pull().expect("buffered").is_some());
+  assert!(logic.pull().expect("drained").is_none());
 }
 
 // --- ActorSource::actor_ref ---

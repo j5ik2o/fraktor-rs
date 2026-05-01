@@ -55,7 +55,9 @@ impl SinkLogic for BoundarySinkLogic {
         self.pending = Some(rejected);
         Ok(SinkDecision::Continue)
       },
-      | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+      | Err((_rejected, BoundaryState::Completed | BoundaryState::DownstreamCancelled)) => {
+        Err(StreamError::StreamDetached)
+      },
       | Err((_rejected, BoundaryState::Failed(error))) => Err(error),
     }
   }
@@ -92,7 +94,9 @@ impl SinkLogic for BoundarySinkLogic {
           self.pending_terminal = Some(PendingTerminal::Complete);
           Ok(false)
         },
-        | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+        | Err((_rejected, BoundaryState::Completed | BoundaryState::DownstreamCancelled)) => {
+          Err(StreamError::StreamDetached)
+        },
         | Err((_rejected, BoundaryState::Failed(error))) => Err(error),
       },
       | Some(PendingTerminal::Failed(error)) => match self.boundary.try_push_then_fail(value, (*error).clone()) {
@@ -102,7 +106,9 @@ impl SinkLogic for BoundarySinkLogic {
           self.pending_terminal = Some(PendingTerminal::Failed(error.clone()));
           Ok(false)
         },
-        | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+        | Err((_rejected, BoundaryState::Completed | BoundaryState::DownstreamCancelled)) => {
+          Err(StreamError::StreamDetached)
+        },
         | Err((_rejected, BoundaryState::Failed(boundary_error))) => Err(boundary_error),
       },
       | None => match self.boundary.try_push_with_state(value) {
@@ -114,7 +120,9 @@ impl SinkLogic for BoundarySinkLogic {
           self.pending = Some(rejected);
           Ok(false)
         },
-        | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+        | Err((_rejected, BoundaryState::Completed | BoundaryState::DownstreamCancelled)) => {
+          Err(StreamError::StreamDetached)
+        },
         | Err((_rejected, BoundaryState::Failed(error))) => Err(error),
       },
     }

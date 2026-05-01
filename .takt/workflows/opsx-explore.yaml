@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 30
-initial_movement: explore
+max_steps: 30
+initial_step: explore
 
 personas:
   opsx-explorer: ../facets/personas/opsx-explorer.md
@@ -19,7 +19,7 @@ instructions:
 report_formats:
   opsx-exploration-memo: ../facets/output-contracts/opsx-exploration-memo.md
 
-movements:
+steps:
   - name: explore
     edit: false
     persona: opsx-explorer

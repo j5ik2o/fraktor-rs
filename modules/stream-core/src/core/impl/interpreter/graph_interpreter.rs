@@ -34,7 +34,9 @@ pub(in crate::core) struct GraphInterpreter {
   state:                  StreamState,
   source_done:            Vec<bool>,
   source_canceled:        Vec<bool>,
+  source_shutdown:        Vec<bool>,
   sink_done:              Vec<bool>,
+  sink_started:           Vec<bool>,
   flow_source_done:       Vec<bool>,
   flow_done:              Vec<bool>,
   sink_upstream_notified: Vec<bool>,
@@ -81,7 +83,9 @@ impl GraphInterpreter {
       state: StreamState::Idle,
       source_done: vec![false; source_indices_len],
       source_canceled: vec![false; source_indices_len],
+      source_shutdown: vec![false; source_indices_len],
       sink_done: vec![false; sink_indices_len],
+      sink_started: vec![false; sink_indices_len],
       flow_source_done: vec![false; flow_count],
       flow_done: vec![false; flow_count],
       sink_upstream_notified: vec![false; sink_indices_len],
@@ -158,11 +162,16 @@ impl GraphInterpreter {
   }
 
   pub(in crate::core) fn request_shutdown(&mut self) -> Result<(), StreamError> {
-    if self.state.is_terminal() || self.all_sources_done() {
+    if self.state.is_terminal() {
       return Ok(());
     }
-    self.cancel_source_if_needed()?;
-    self.set_all_sources_done()?;
+    if self.state == StreamState::Idle
+      && let Err(error) = self.start()
+    {
+      self.fail(&error);
+      return Err(error);
+    }
+    self.shutdown_sources_if_needed()?;
     Ok(())
   }
 
@@ -378,11 +387,19 @@ impl GraphInterpreter {
   }
 
   fn start_sinks(&mut self) -> Result<(), StreamError> {
-    for sink_index in &self.sink_indices {
-      let StageDefinition::Sink(sink) = &mut self.stages[*sink_index] else {
-        return Err(StreamError::InvalidConnection);
+    for sink_position in 0..self.sink_indices.len() {
+      if self.sink_started[sink_position] {
+        continue;
+      }
+      let sink_index = self.sink_indices[sink_position];
+      let on_start_result = {
+        let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        sink.logic.on_start(&mut self.demand)
       };
-      sink.logic.on_start(&mut self.demand)?;
+      self.sink_started[sink_position] = true;
+      on_start_result?;
     }
     Ok(())
   }
@@ -397,15 +414,57 @@ impl GraphInterpreter {
 
   fn cancel_source_if_needed(&mut self) -> Result<(), StreamError> {
     for source_position in 0..self.source_indices.len() {
-      if self.source_canceled[source_position] {
+      if self.source_done[source_position] || self.source_canceled[source_position] {
         continue;
       }
       let source_index = self.source_indices[source_position];
-      let StageDefinition::Source(source) = &mut self.stages[source_index] else {
-        return Err(StreamError::InvalidConnection);
+      let on_cancel_result = {
+        let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        source.logic.on_cancel()
       };
-      source.logic.on_cancel()?;
       self.source_canceled[source_position] = true;
+      on_cancel_result?;
+    }
+    Ok(())
+  }
+
+  fn shutdown_sources_if_needed(&mut self) -> Result<(), StreamError> {
+    let mut source_done_changed = false;
+    for source_position in 0..self.source_indices.len() {
+      if self.source_done[source_position]
+        || self.source_canceled[source_position]
+        || self.source_shutdown[source_position]
+      {
+        continue;
+      }
+      let source_index = self.source_indices[source_position];
+      let (should_drain_on_shutdown, on_shutdown_result, on_cancel_result_opt) = {
+        let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        let should_drain = source.logic.should_drain_on_shutdown();
+        let on_shutdown_result = source.logic.on_shutdown();
+        let on_cancel_result_opt = match (&on_shutdown_result, should_drain) {
+          | (Ok(()), false) => Some(source.logic.on_cancel()),
+          | _ => None,
+        };
+        (should_drain, on_shutdown_result, on_cancel_result_opt)
+      };
+      self.source_shutdown[source_position] = true;
+      on_shutdown_result?;
+      if should_drain_on_shutdown {
+        continue;
+      }
+      self.source_done[source_position] = true;
+      self.source_canceled[source_position] = true;
+      on_cancel_result_opt.transpose()?;
+      self.close_outgoing_edges_for_stage(source_index);
+      source_done_changed = true;
+    }
+    if source_done_changed {
+      self.notify_source_done_to_flows()?;
     }
     Ok(())
   }
@@ -755,6 +814,10 @@ impl GraphInterpreter {
     };
     let sink_tick_progressed = match on_tick_result {
       | Ok(sink_tick_progressed) => sink_tick_progressed,
+      | Err(StreamError::StreamDetached) => {
+        self.detach_sink_position(sink_position)?;
+        return Ok(true);
+      },
       | Err(error) => match self.handle_sink_failure(sink_index, error)? {
         | FailureDisposition::Continue => return Ok(true),
         | FailureDisposition::Complete => {
@@ -813,6 +876,10 @@ impl GraphInterpreter {
     };
     let decision = match decision_result {
       | Ok(decision) => decision,
+      | Err(StreamError::StreamDetached) => {
+        self.detach_sink_position(sink_position)?;
+        return Ok(true);
+      },
       | Err(error) => match self.handle_sink_failure(sink_index, error)? {
         | FailureDisposition::Continue => return Ok(true),
         | FailureDisposition::Complete => {
@@ -942,17 +1009,47 @@ impl GraphInterpreter {
       return Ok(());
     }
     let sink_index = self.sink_indices[sink_position];
-    {
+    let on_complete_result = {
       let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
         return Err(StreamError::InvalidConnection);
       };
-      sink.logic.on_complete()?;
-    }
-    self.close_and_clear_incoming_edges_for_stage(sink_index)?;
-    self.cancel_upstream_stage(sink_index)?;
+      sink.logic.on_complete()
+    };
     self.sink_done[sink_position] = true;
+    on_complete_result?;
+    let incoming_edges = self.incoming_edge_indices_for_stage(sink_index);
+    self.close_and_clear_incoming_edges_for_stage(sink_index)?;
+    self.cancel_upstream_edges(incoming_edges)?;
     if self.all_sinks_done() && !self.has_flow_requesting_upstream_drain() {
       self.state = StreamState::Completed;
+    }
+    Ok(())
+  }
+
+  fn detach_sink_position(&mut self, sink_position: usize) -> Result<(), StreamError> {
+    if self.sink_done[sink_position] {
+      return Ok(());
+    }
+    self.sink_upstream_notified[sink_position] = true;
+    let sink_index = self.sink_indices[sink_position];
+    let incoming_edges = self.incoming_edge_indices_for_stage(sink_index);
+    self.close_and_clear_incoming_edges_for_stage(sink_index)?;
+    self.cancel_upstream_edges(incoming_edges)?;
+    self.sink_done[sink_position] = true;
+    if self.all_sinks_done() && !self.has_flow_requesting_upstream_drain() {
+      // Snapshot the cancellation state BEFORE we forcibly cancel any source.
+      // Otherwise the `cancel_source_if_needed` call below would always make
+      // `source_canceled` non-empty, leaving the Completed branch unreachable.
+      let had_live_sources = !self.all_sources_done();
+      let any_canceled_before = self.source_canceled.iter().any(|canceled| *canceled);
+      if had_live_sources {
+        self.cancel_source_if_needed()?;
+        self.set_all_sources_done()?;
+      }
+      // Cancelled when either the upstream propagation already cancelled a
+      // source, or this method had to cancel a still-live source itself.
+      self.state =
+        if had_live_sources || any_canceled_before { StreamState::Cancelled } else { StreamState::Completed };
     }
     Ok(())
   }
@@ -1097,14 +1194,19 @@ impl GraphInterpreter {
   }
 
   fn shutdown_flow_stage(&mut self, stage_index: usize) -> Result<(), StreamError> {
+    let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
     self.close_and_clear_incoming_edges_for_stage(stage_index)?;
-    self.cancel_upstream_stage(stage_index)?;
+    self.cancel_upstream_edges(incoming_edges)?;
     self.mark_flow_source_done(stage_index)?;
     Ok(())
   }
 
   fn cancel_upstream_stage(&mut self, stage_index: usize) -> Result<(), StreamError> {
     let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
+    self.cancel_upstream_edges(incoming_edges)
+  }
+
+  fn cancel_upstream_edges(&mut self, incoming_edges: Vec<usize>) -> Result<(), StreamError> {
     for edge_index in incoming_edges {
       let upstream_port = self.connections.edge_from(edge_index);
       if let Some(upstream_stage_index) = self.stage_index_for_outlet(upstream_port)

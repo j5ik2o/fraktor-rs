@@ -9,7 +9,8 @@ use core::any::TypeId;
 
 use super::island_boundary::IslandBoundaryShared;
 use crate::core::{
-  SinkDefinition, SourceDefinition, StageDefinition, StreamPlan, StreamPlanEdge, SupervisionStrategy,
+  KillSwitchStateHandle, SinkDefinition, SourceDefinition, StageDefinition, StreamPlan, StreamPlanEdge,
+  SupervisionStrategy,
   attributes::{Attributes, DispatcherAttribute, InputBuffer},
   materialization::MatCombine,
   shape::PortId,
@@ -34,13 +35,14 @@ impl IslandId {
 /// A single island: a subset of stages from the original plan that
 /// execute together in one interpreter / mailbox.
 pub(crate) struct SingleIslandPlan {
-  id:             IslandId,
-  stages:         Vec<StageDefinition>,
-  edges:          Vec<StreamPlanEdge>,
-  source_indices: Vec<usize>,
-  sink_indices:   Vec<usize>,
-  flow_order:     Vec<usize>,
-  dispatcher:     Option<String>,
+  id:                 IslandId,
+  stages:             Vec<StageDefinition>,
+  edges:              Vec<StreamPlanEdge>,
+  source_indices:     Vec<usize>,
+  sink_indices:       Vec<usize>,
+  flow_order:         Vec<usize>,
+  dispatcher:         Option<String>,
+  kill_switch_states: Vec<KillSwitchStateHandle>,
 }
 
 #[allow(dead_code)] // Several accessors are exercised only by tests; keeping them as part of the internal API.
@@ -143,7 +145,14 @@ impl SingleIslandPlan {
   /// This bypasses `StreamPlan::from_parts()` validation because the plan
   /// was already validated before splitting.
   pub(crate) fn into_stream_plan(self) -> StreamPlan {
-    StreamPlan::from_raw_parts(self.stages, self.edges, self.source_indices, self.sink_indices, self.flow_order)
+    StreamPlan::from_raw_parts(
+      self.stages,
+      self.edges,
+      self.source_indices,
+      self.sink_indices,
+      self.flow_order,
+      self.kill_switch_states,
+    )
   }
 }
 
@@ -372,6 +381,7 @@ impl IslandSplitter {
   pub(crate) fn split(plan: StreamPlan) -> IslandPlan {
     let (stage_island, island_count, mut dispatcher_for_island) = Self::assign_islands(&plan);
     let (outlet_to_stage, inlet_to_stage) = Self::port_stage_maps(&plan);
+    let kill_switch_states = plan.shared_kill_switch_states().to_vec();
 
     // Classify edges as internal or crossing
     let mut island_edges: Vec<Vec<StreamPlanEdge>> = (0..island_count).map(|_| Vec::new()).collect();
@@ -432,6 +442,8 @@ impl IslandSplitter {
 
       let dispatcher = dispatcher_for_island[isl_idx].take();
 
+      // These are only external graph-wide shared kill switches registered on the plan.
+      // Per-stage kill switch flow states stay inside their owning stage logic.
       islands.push(SingleIslandPlan {
         id: IslandId(isl_idx),
         stages,
@@ -440,6 +452,7 @@ impl IslandSplitter {
         sink_indices,
         flow_order,
         dispatcher,
+        kill_switch_states: kill_switch_states.clone(),
       });
     }
 

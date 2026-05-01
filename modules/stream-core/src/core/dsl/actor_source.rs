@@ -124,6 +124,10 @@ where
     self.queue.close_for_cancel();
     Ok(())
   }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    if self.queue.complete_if_open() || self.queue.is_closed() { Ok(()) } else { Err(StreamError::Failed) }
+  }
 }
 
 struct ActorRefBackpressureSourceLogic<T, Ack, ReceiveAck> {
@@ -162,5 +166,9 @@ where
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     self.queue.close_for_cancel();
     Ok(())
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    if self.queue.complete_if_open() || self.queue.is_closed() { Ok(()) } else { Err(StreamError::Failed) }
   }
 }

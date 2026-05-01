@@ -172,7 +172,7 @@ const REQUIREMENT_EVIDENCE: &[RequirementEvidence] = &[
   ),
   RequirementEvidence::new(
     "5.3",
-    &["unique_kill_switch::tests::unique_kill_switch_keeps_first_control_signal"],
+    &["unique_kill_switch::tests::unique_kill_switch_abort_escalates_shutdown"],
     verify_kill_switch_surface,
   ),
   RequirementEvidence::new(
@@ -416,14 +416,14 @@ fn verify_kill_switch_surface() {
   let unique = UniqueKillSwitch::new();
   unique.shutdown();
   unique.abort(StreamError::Failed);
-  assert!(unique.is_shutdown());
-  assert!(!unique.is_aborted());
-  assert_eq!(unique.abort_error(), None);
+  assert!(!unique.is_shutdown());
+  assert!(unique.is_aborted());
+  assert_eq!(unique.abort_error(), Some(StreamError::Failed));
 
   let shared = SharedKillSwitch::new();
   let shared_clone = shared.clone();
-  shared_clone.abort(StreamError::Failed);
   shared.shutdown();
+  shared_clone.abort(StreamError::Failed);
   assert!(shared.is_aborted());
   assert!(!shared.is_shutdown());
   assert_eq!(shared.abort_error(), Some(StreamError::Failed));

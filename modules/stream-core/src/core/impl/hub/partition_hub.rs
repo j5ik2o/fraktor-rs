@@ -179,6 +179,10 @@ where
       | None => Err(StreamError::WouldBlock),
     }
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 struct PartitionHubSinkLogic<T> {

@@ -144,6 +144,10 @@ where
       },
     }
   }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
 }
 
 struct MergeHubSinkLogic<T> {

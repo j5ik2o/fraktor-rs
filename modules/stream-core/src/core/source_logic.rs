@@ -24,6 +24,26 @@ pub trait SourceLogic: Send {
     Ok(())
   }
 
+  /// Returns whether this source should keep pulling data during graph-wide
+  /// shutdown.
+  ///
+  /// Finite sources should drain by default so graceful shutdown does not drop
+  /// already accepted data. Infinite or externally driven sources must override
+  /// this to `false` when shutdown should cancel them immediately.
+  #[must_use]
+  fn should_drain_on_shutdown(&self) -> bool {
+    true
+  }
+
+  /// Handles graph-wide shutdown before any non-draining source is cancelled.
+  ///
+  /// # Errors
+  ///
+  /// Returns a [`StreamError`] when shutdown cleanup fails.
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
   /// Resets internal state after a restart decision.
   ///
   /// # Errors

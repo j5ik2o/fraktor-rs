@@ -68,6 +68,34 @@ fn stream_error_from_send_error_maps_backpressure_to_would_block() {
   assert_eq!(error, StreamError::WouldBlock);
 }
 
+#[test]
+fn materialized_resource_rollback_error_exposes_primary_and_cleanup_failures() {
+  let error =
+    StreamError::materialized_resource_rollback_failed(StreamError::MaterializerNotStarted, StreamError::Failed);
+
+  assert_eq!(error.materialization_primary_failure(), Some(&StreamError::MaterializerNotStarted));
+  assert_eq!(error.materialization_cleanup_failure(), Some(&StreamError::Failed));
+}
+
+#[test]
+fn non_rollback_error_has_no_materialization_failure_parts() {
+  let error = StreamError::Failed;
+
+  assert!(error.materialization_primary_failure().is_none());
+  assert!(error.materialization_cleanup_failure().is_none());
+}
+
+#[test]
+fn materialized_resource_rollback_display_includes_both_failures() {
+  let error =
+    StreamError::materialized_resource_rollback_failed(StreamError::MaterializerNotStarted, StreamError::Failed);
+  let rendered = alloc::format!("{error}");
+
+  assert!(rendered.contains("materialization failed"), "unexpected rendering: {rendered}");
+  assert!(rendered.contains("materializer not started"), "primary failure must be rendered: {rendered}");
+  assert!(rendered.contains("stream failed"), "cleanup failure must be rendered: {rendered}");
+}
+
 // --- StageActorRefNotInitialized variant (Pekko parity: StageActorRefNotInitializedException) ---
 
 #[test]

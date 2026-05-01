@@ -612,8 +612,9 @@ where
 
   /// Marks this flow with an async boundary attribute and a named dispatcher.
   ///
-  /// The island created by the async boundary will use the specified
-  /// dispatcher for its execution context.
+  /// The dispatcher is attached to the island downstream of this
+  /// boundary. During materialization, that downstream island actor is
+  /// spawned with the specified dispatcher as its execution context.
   #[must_use]
   pub fn async_with_dispatcher(mut self, dispatcher: impl Into<String>) -> Flow<In, Out, Mat> {
     self.graph.mark_last_node_async();

@@ -5,6 +5,8 @@ use super::{SharedKillSwitch, StreamError, StreamPlan, UniqueKillSwitch};
 mod actor_materializer;
 mod actor_materializer_config;
 mod completion;
+mod downstream_cancellation_control_plane;
+mod downstream_cancellation_route;
 mod drive_outcome;
 mod keep_both;
 mod keep_left;
@@ -26,6 +28,7 @@ mod subscription_timeout_mode;
 pub use actor_materializer::ActorMaterializer;
 pub use actor_materializer_config::ActorMaterializerConfig;
 pub use completion::Completion;
+pub(crate) use downstream_cancellation_control_plane::DownstreamCancellationControlPlaneShared;
 pub use drive_outcome::DriveOutcome;
 pub use keep_both::KeepBoth;
 pub use keep_left::KeepLeft;
@@ -43,3 +46,7 @@ pub use stream_done::StreamDone;
 pub use stream_not_used::StreamNotUsed;
 pub use subscription_timeout_config::SubscriptionTimeoutConfig;
 pub use subscription_timeout_mode::SubscriptionTimeoutMode;
+
+pub(in crate::core) fn empty_downstream_cancellation_control_plane() -> DownstreamCancellationControlPlaneShared {
+  downstream_cancellation_control_plane::empty_shared()
+}
