@@ -352,26 +352,23 @@ impl ActorMaterializer {
   }
 
   fn drive_streams_until_terminal(streams: &[StreamShared]) -> Result<(), StreamError> {
-    for _ in 0..256 {
-      let mut all_terminal = true;
+    loop {
       let mut progressed = false;
       for stream in streams {
         if stream.state().is_terminal() {
           continue;
         }
-        all_terminal = false;
         if matches!(stream.drive(), crate::core::materialization::DriveOutcome::Progressed) {
           progressed = true;
         }
       }
-      if all_terminal || streams.iter().all(|stream| stream.state().is_terminal()) {
+      if streams.iter().all(|stream| stream.state().is_terminal()) {
         return Ok(());
       }
       if !progressed {
-        break;
+        return Err(StreamError::failed_with_context("graceful shutdown stalled before reaching terminal state"));
       }
     }
-    Err(StreamError::failed_with_context("graceful shutdown did not reach terminal state"))
   }
 
   fn teardown_resources_with_command<F>(
@@ -411,9 +408,7 @@ impl ActorMaterializer {
     if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
       Self::record_first_error(&mut result, error);
     }
-    if result.is_ok()
-      && let Err(error) = Self::drive_streams_until_terminal(&resources.streams)
-    {
+    if let Err(error) = Self::drive_streams_until_terminal(&resources.streams) {
       Self::record_first_error(&mut result, error);
     }
     for handle in &resources.tick_handles {

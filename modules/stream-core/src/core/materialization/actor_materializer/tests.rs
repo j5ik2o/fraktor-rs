@@ -25,7 +25,10 @@ use super::{ActorMaterializer, MaterializedStreamResources};
 use crate::core::{
   DemandTracker, DynValue, KillSwitchStateHandle, SharedKillSwitch, SinkDecision, SinkLogic, SourceLogic, StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source},
-  r#impl::materialization::{StreamIslandCommand, StreamIslandDriveGate, StreamState},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamIslandCommand, StreamIslandDriveGate, StreamShared, StreamState},
+  },
   materialization::{
     ActorMaterializerConfig, Completion, DriveOutcome, KeepRight, MaterializerLifecycleState, StreamNotUsed,
     empty_downstream_cancellation_control_plane,
@@ -150,6 +153,10 @@ struct DrainOnShutdownFailingSourceLogic {
   error: StreamError,
 }
 
+struct ShutdownFailingSourceLogic {
+  error: StreamError,
+}
+
 impl CancelAwareSourceLogic {
   const fn new(cancel_count: ArcShared<SpinSyncMutex<u32>>) -> Self {
     Self { cancel_count }
@@ -157,6 +164,12 @@ impl CancelAwareSourceLogic {
 }
 
 impl DrainOnShutdownFailingSourceLogic {
+  const fn new(error: StreamError) -> Self {
+    Self { error }
+  }
+}
+
+impl ShutdownFailingSourceLogic {
   const fn new(error: StreamError) -> Self {
     Self { error }
   }
@@ -181,6 +194,16 @@ impl SourceLogic for DrainOnShutdownFailingSourceLogic {
 
   fn should_drain_on_shutdown(&self) -> bool {
     true
+  }
+}
+
+impl SourceLogic for ShutdownFailingSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    Err(self.error.clone())
   }
 }
 
@@ -269,6 +292,13 @@ fn resources_with_unknown_tick() -> MaterializedStreamResources {
   let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
   resources.tick_handles.push(SchedulerHandle::new(u64::MAX));
   resources
+}
+
+fn running_stream_from_graph<Mat>(graph: crate::core::materialization::RunnableGraph<Mat>) -> StreamShared {
+  let (plan, _materialized) = graph.into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("stream should start");
+  StreamShared::new(stream)
 }
 
 fn drive_count(drives: &ArcShared<SpinSyncMutex<u32>>) -> u32 {
@@ -690,6 +720,27 @@ fn shutdown_and_cancel_resources_report_the_same_tick_cleanup_failure() {
 
   assert_eq!(shutdown_result, Err(StreamError::Failed));
   assert_eq!(cancel_result, Err(StreamError::Failed));
+}
+
+#[test]
+fn shutdown_resources_drives_other_streams_even_when_one_shutdown_request_fails() {
+  let system = build_system();
+  let shutdown_error = StreamError::failed_with_context("shutdown request failed");
+  let failing_stream = running_stream_from_graph(
+    Source::<u32, _>::from_logic(StageKind::Custom, ShutdownFailingSourceLogic::new(shutdown_error.clone()))
+      .into_mat(Sink::ignore(), KeepRight),
+  );
+  let observed_draining_stream =
+    running_stream_from_graph(Source::from_array([1_u32, 2_u32]).into_mat(Sink::seq(), KeepRight));
+  let resources = MaterializedStreamResources::new(
+    vec![failing_stream, observed_draining_stream.clone()],
+    empty_downstream_cancellation_control_plane(),
+  );
+
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert_eq!(result, Err(shutdown_error));
+  assert_eq!(observed_draining_stream.state(), StreamState::Completed);
 }
 
 // ---------------------------------------------------------------------------
