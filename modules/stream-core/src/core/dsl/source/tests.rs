@@ -123,10 +123,17 @@ fn empty_source_logic_drains_on_shutdown() {
 }
 
 #[test]
-fn iterator_source_logic_drains_on_shutdown() {
+fn iterator_source_logic_drains_bounded_iterator_on_shutdown() {
   let logic = IteratorSourceLogic { values: Vec::<u32>::new().into_iter() };
 
   assert!(logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn iterator_source_logic_does_not_drain_unbounded_iterator_on_shutdown() {
+  let logic = IteratorSourceLogic { values: core::iter::repeat(1_u32) };
+
+  assert!(!logic.should_drain_on_shutdown());
 }
 
 struct RecordingMaterializer {

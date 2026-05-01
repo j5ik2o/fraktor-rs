@@ -50,6 +50,19 @@ fn unique_kill_switch_abort_escalates_shutdown() {
 }
 
 #[test]
+fn unique_kill_switch_abort_keeps_first_error() {
+  let switch = UniqueKillSwitch::new();
+  let first_error = StreamError::failed_with_context("first abort");
+  let second_error = StreamError::failed_with_context("second abort");
+
+  switch.abort(first_error.clone());
+  switch.abort(second_error);
+
+  assert!(switch.is_aborted());
+  assert_eq!(switch.abort_error(), Some(first_error));
+}
+
+#[test]
 fn unique_kill_switch_shutdown_ignores_command_target_failure() {
   let state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::running()));
   let target: KillSwitchCommandTargetShared = ArcShared::new(FailingKillSwitchCommandTarget);

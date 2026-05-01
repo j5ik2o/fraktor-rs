@@ -433,6 +433,7 @@ impl GraphInterpreter {
       if should_drain_on_shutdown {
         continue;
       }
+      source.logic.on_cancel()?;
       self.source_done[source_position] = true;
       self.close_outgoing_edges_for_stage(source_index);
       source_done_changed = true;

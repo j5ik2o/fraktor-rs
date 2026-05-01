@@ -2998,7 +2998,7 @@ where
   }
 
   fn should_drain_on_shutdown(&self) -> bool {
-    true
+    self.values.size_hint().1.is_some()
   }
 }
 

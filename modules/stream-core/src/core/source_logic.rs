@@ -31,13 +31,13 @@ pub trait SourceLogic: Send {
     false
   }
 
-  /// Handles graph-wide shutdown.
+  /// Handles graph-wide shutdown before any non-draining source is cancelled.
   ///
   /// # Errors
   ///
   /// Returns a [`StreamError`] when shutdown cleanup fails.
   fn on_shutdown(&mut self) -> Result<(), StreamError> {
-    self.on_cancel()
+    Ok(())
   }
 
   /// Resets internal state after a restart decision.

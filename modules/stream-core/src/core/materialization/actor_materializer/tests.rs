@@ -513,6 +513,17 @@ fn materialize_requires_start() {
 }
 
 #[test]
+fn shutdown_requires_start() {
+  let system = build_system();
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
+
+  let result = materializer.shutdown();
+
+  assert!(matches!(result, Err(StreamError::MaterializerNotStarted)));
+  assert_eq!(materializer.lifecycle_state(), MaterializerLifecycleState::Idle);
+}
+
+#[test]
 fn actor_materializer_drives_stream() {
   let system = build_system();
   let mut materializer =
@@ -540,6 +551,18 @@ fn shutdown_blocks_materialize() {
   materializer.shutdown().expect("shutdown");
   let graph = Source::single(1_u32).into_mat(Sink::head(), KeepRight);
   let result = graph.run(&mut materializer);
+  assert!(matches!(result, Err(StreamError::MaterializerStopped)));
+}
+
+#[test]
+fn shutdown_after_shutdown_returns_stopped_error() {
+  let system = build_system();
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
+  materializer.start().expect("start");
+  materializer.shutdown().expect("shutdown");
+
+  let result = materializer.shutdown();
+
   assert!(matches!(result, Err(StreamError::MaterializerStopped)));
 }
 
@@ -1024,6 +1047,18 @@ fn shutdown_resources_drives_other_streams_even_when_one_shutdown_request_fails(
 
   assert_eq!(result, Err(shutdown_error));
   assert_eq!(observed_draining_stream.state(), StreamState::Completed);
+}
+
+#[test]
+fn shutdown_resources_completes_unbounded_iterator_without_drain_round_limit() {
+  let system = build_system();
+  let stream = running_stream_from_graph(Source::from_iterator(0_u32..).into_mat(Sink::ignore(), KeepRight));
+  let resources = MaterializedStreamResources::new(vec![stream.clone()], empty_downstream_cancellation_control_plane());
+
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert_eq!(result, Ok(()));
+  assert_eq!(stream.state(), StreamState::Completed);
 }
 
 #[test]

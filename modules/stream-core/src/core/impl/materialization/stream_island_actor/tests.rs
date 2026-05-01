@@ -216,6 +216,19 @@ fn drive_fails_stream_when_kill_switch_shutdown_request_fails() {
 }
 
 #[test]
+fn drive_aborts_stream_when_graph_kill_switch_is_aborted() {
+  let pulls = new_pull_counter();
+  let stream = counting_stream(pulls);
+  let kill_switch_state = stream.with_read(|stream| stream.kill_switch_state());
+  assert!(kill_switch_state.lock().request_abort(StreamError::Failed).is_some());
+
+  let outcome = stream.drive();
+
+  assert_eq!(outcome, DriveOutcome::Progressed);
+  assert_eq!(stream.state(), StreamState::Failed);
+}
+
+#[test]
 fn abort_command_fails_owned_stream_and_returns_error() {
   let pulls = new_pull_counter();
   let stream = counting_stream(pulls);
