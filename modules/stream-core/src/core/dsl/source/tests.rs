@@ -617,6 +617,21 @@ fn shared_kill_switch_created_before_materialization_controls_multiple_streams()
 }
 
 #[test]
+fn shared_kill_switch_abort_before_materialized_unique_switch_fails_stream() {
+  let shared_kill_switch = SharedKillSwitch::new();
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new())
+    .into_mat(Sink::ignore(), KeepRight)
+    .with_shared_kill_switch(&shared_kill_switch);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  shared_kill_switch.abort(StreamError::Failed);
+
+  assert_eq!(materialized.stream().drive(), DriveOutcome::Progressed);
+  assert_eq!(materialized.stream().state(), StreamState::Failed);
+}
+
+#[test]
 fn source_broadcast_with_single_fan_out_keeps_element() {
   let values =
     Source::single(5_u32).broadcast(1).expect("broadcast").run_with_collect_sink().expect("run_with_collect_sink");

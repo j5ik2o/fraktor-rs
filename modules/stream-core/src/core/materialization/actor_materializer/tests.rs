@@ -524,6 +524,17 @@ fn shutdown_requires_start() {
 }
 
 #[test]
+fn start_fails_when_already_running() {
+  let system = build_system();
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
+  materializer.start().expect("start");
+
+  let result = materializer.start();
+
+  assert!(matches!(result, Err(StreamError::MaterializerAlreadyStarted)));
+}
+
+#[test]
 fn actor_materializer_drives_stream() {
   let system = build_system();
   let mut materializer =
@@ -562,6 +573,18 @@ fn shutdown_after_shutdown_returns_stopped_error() {
   materializer.shutdown().expect("shutdown");
 
   let result = materializer.shutdown();
+
+  assert!(matches!(result, Err(StreamError::MaterializerStopped)));
+}
+
+#[test]
+fn start_after_shutdown_returns_stopped_error() {
+  let system = build_system();
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
+  materializer.start().expect("start");
+  materializer.shutdown().expect("shutdown");
+
+  let result = materializer.start();
 
   assert!(matches!(result, Err(StreamError::MaterializerStopped)));
 }
