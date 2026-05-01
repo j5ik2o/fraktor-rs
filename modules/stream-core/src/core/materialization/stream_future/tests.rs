@@ -10,6 +10,8 @@ use std::{
   task::{Wake, Waker},
 };
 
+use fraktor_actor_core_rs::core::kernel::system::SpinBlocker;
+
 use super::StreamFuture;
 use crate::core::{r#impl::StreamError, materialization::Completion};
 
@@ -124,4 +126,26 @@ fn future_can_be_awaited_in_minimal_async_runtime() {
   assert_eq!(poll_once(&mut future, &waker), Poll::Pending);
   future.complete(Ok(123));
   assert_eq!(poll_once(&mut future, &waker), Poll::Ready(Ok(123)));
+}
+
+#[test]
+fn is_ready_reports_false_until_completion() {
+  let future: StreamFuture<u32> = StreamFuture::new();
+  assert!(!future.is_ready());
+  future.complete(Ok(7));
+  assert!(future.is_ready());
+}
+
+#[test]
+fn wait_blocking_returns_immediately_when_already_completed() {
+  let future: StreamFuture<u32> = StreamFuture::new();
+  future.complete(Ok(42));
+  assert_eq!(future.wait_blocking(&SpinBlocker), Ok(42));
+}
+
+#[test]
+fn wait_blocking_returns_completion_error() {
+  let future: StreamFuture<u32> = StreamFuture::new();
+  future.complete(Err(StreamError::Failed));
+  assert_eq!(future.wait_blocking(&SpinBlocker), Err(StreamError::Failed));
 }

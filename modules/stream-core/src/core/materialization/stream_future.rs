@@ -5,6 +5,7 @@ use core::{
   task::{Context, Poll, Waker},
 };
 
+use fraktor_actor_core_rs::core::kernel::system::Blocker;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{Completion, StreamError};
@@ -60,6 +61,42 @@ impl<T> StreamFuture<T> {
       | Some(result) => Completion::Ready(result),
       | None => Completion::Pending,
     }
+  }
+
+  /// Returns `true` once the future has resolved.
+  ///
+  /// Lock-free of `T: Clone` because it only inspects the presence of a
+  /// stored result, not its value. Suitable as the predicate for
+  /// [`Blocker::block_until`].
+  #[must_use]
+  pub fn is_ready(&self) -> bool {
+    self.inner.lock().result.is_some()
+  }
+
+  /// Blocks the current thread until the future resolves and returns the
+  /// result.
+  ///
+  /// Mirrors [`TerminationSignal::wait_blocking`] for sink-side awaiting:
+  /// callers without an async runtime can drive completion via a [`Blocker`]
+  /// implementation (`SpinBlocker` for `no_std`, `StdBlocker` for parking).
+  ///
+  /// Use [`Future::poll`] / `.await` instead when an async runtime is
+  /// available.
+  ///
+  /// # Errors
+  ///
+  /// Returns the [`StreamError`] reported by the underlying stream when it
+  /// terminated abnormally. Returns [`StreamError::StreamDetached`] if the
+  /// result was consumed via [`try_take`](Self::try_take) between the
+  /// blocker exit and the result read (a misuse pattern).
+  ///
+  /// [`TerminationSignal::wait_blocking`]:
+  /// fraktor_actor_core_rs::core::kernel::system::TerminationSignal::wait_blocking
+  pub fn wait_blocking(&self, blocker: &dyn Blocker) -> Result<T, StreamError>
+  where
+    T: Clone, {
+    blocker.block_until(&|| self.is_ready());
+    self.inner.lock().result.clone().unwrap_or(Err(StreamError::StreamDetached))
   }
 
   /// Attempts to take the completion result destructively.
