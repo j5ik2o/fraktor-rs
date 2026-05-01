@@ -91,11 +91,13 @@ impl StreamIslandActor {
       }
     });
 
-    // Re-arm so the next drive recovers any failed deliveries even though
-    // boundaries themselves did not signal a fresh cancel.
-    self.downstream_cancellation_control_plane.arm_pending();
-
     if let Some(error) = first_error {
+      // A failed delivery aborts the whole graph below, after which every
+      // island enters a terminal state and `drive` short-circuits before
+      // ever reaching the propagator again. Re-arming the pending latch is
+      // therefore unnecessary: on success, routes with delivered==true have
+      // their cancel_command_count incremented and become non-reservable,
+      // so the next drive's fast path correctly stays out of the lock.
       self.abort_graph_streams(&error);
       return Err(ActorError::fatal(format!("stream island cancellation propagation failed: {error:?}")));
     }

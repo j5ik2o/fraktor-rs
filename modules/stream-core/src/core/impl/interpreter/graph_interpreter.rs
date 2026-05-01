@@ -1037,15 +1037,19 @@ impl GraphInterpreter {
     self.cancel_upstream_edges(incoming_edges)?;
     self.sink_done[sink_position] = true;
     if self.all_sinks_done() && !self.has_flow_requesting_upstream_drain() {
-      if !self.all_sources_done() {
+      // Snapshot the cancellation state BEFORE we forcibly cancel any source.
+      // Otherwise the `cancel_source_if_needed` call below would always make
+      // `source_canceled` non-empty, leaving the Completed branch unreachable.
+      let had_live_sources = !self.all_sources_done();
+      let any_canceled_before = self.source_canceled.iter().any(|canceled| *canceled);
+      if had_live_sources {
         self.cancel_source_if_needed()?;
         self.set_all_sources_done()?;
       }
-      if self.source_canceled.iter().any(|canceled| *canceled) {
-        self.state = StreamState::Cancelled;
-      } else {
-        self.state = StreamState::Completed;
-      }
+      // Cancelled when either the upstream propagation already cancelled a
+      // source, or this method had to cancel a still-live source itself.
+      self.state =
+        if had_live_sources || any_canceled_before { StreamState::Cancelled } else { StreamState::Completed };
     }
     Ok(())
   }
