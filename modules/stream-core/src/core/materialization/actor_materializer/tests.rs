@@ -24,7 +24,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 use super::{ActorMaterializer, MaterializedStreamResources};
 use crate::core::{
   DemandTracker, DynValue, KillSwitchStateHandle, SharedKillSwitch, SinkDecision, SinkLogic, SourceLogic, StreamError,
-  dsl::{Flow, Sink, Source},
+  dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source},
   r#impl::materialization::{StreamIslandCommand, StreamIslandDriveGate, StreamState},
   materialization::{
     ActorMaterializerConfig, Completion, DriveOutcome, KeepRight, MaterializerLifecycleState, StreamNotUsed,
@@ -1089,6 +1089,31 @@ fn downstream_cancel_discards_in_flight_boundary_elements_after_head() {
 
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
   assert_eq!(materializer.streams()[0].state(), StreamState::Cancelled);
+}
+
+#[test]
+fn detached_async_branch_does_not_hang_sibling_async_branch() {
+  let system = build_system();
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_secs(60)));
+  materializer.start().expect("start");
+  let side_sink = GraphDsl::create_sink(|builder: &mut GraphDslBuilder<u32, (), StreamNotUsed>| {
+    let (async_inlet, async_outlet) =
+      builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|value| value).r#async()).expect("add async flow");
+    let side_head_inlet = builder.add_sink(Sink::<u32, _>::head()).expect("add side head sink");
+    builder.connect(&async_outlet, &side_head_inlet).expect("connect side async branch");
+    let _ = async_inlet.id();
+  });
+  let graph =
+    Source::from_array([1_u32, 2_u32]).also_to(side_sink).via(Flow::new().r#async()).into_mat(Sink::seq(), KeepRight);
+
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  assert!(materializer.streams().len() >= 2);
+
+  drive_registered_streams(&materializer, 16);
+
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
+  assert_eq!(materializer.streams().last().expect("main branch stream should exist").state(), StreamState::Completed);
 }
 
 #[test]

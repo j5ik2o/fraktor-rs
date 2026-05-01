@@ -779,6 +779,10 @@ impl GraphInterpreter {
     };
     let sink_tick_progressed = match on_tick_result {
       | Ok(sink_tick_progressed) => sink_tick_progressed,
+      | Err(StreamError::StreamDetached) => {
+        self.detach_sink_position(sink_position)?;
+        return Ok(true);
+      },
       | Err(error) => match self.handle_sink_failure(sink_index, error)? {
         | FailureDisposition::Continue => return Ok(true),
         | FailureDisposition::Complete => {
@@ -837,6 +841,10 @@ impl GraphInterpreter {
     };
     let decision = match decision_result {
       | Ok(decision) => decision,
+      | Err(StreamError::StreamDetached) => {
+        self.detach_sink_position(sink_position)?;
+        return Ok(true);
+      },
       | Err(error) => match self.handle_sink_failure(sink_index, error)? {
         | FailureDisposition::Continue => return Ok(true),
         | FailureDisposition::Complete => {
@@ -982,6 +990,26 @@ impl GraphInterpreter {
     Ok(())
   }
 
+  fn detach_sink_position(&mut self, sink_position: usize) -> Result<(), StreamError> {
+    if self.sink_done[sink_position] {
+      return Ok(());
+    }
+    self.sink_upstream_notified[sink_position] = true;
+    let sink_index = self.sink_indices[sink_position];
+    let incoming_edges = self.incoming_edge_indices_for_stage(sink_index);
+    self.close_and_clear_incoming_edges_for_stage(sink_index)?;
+    self.cancel_upstream_edges(incoming_edges)?;
+    self.sink_done[sink_position] = true;
+    if self.all_sinks_done() {
+      if self.source_canceled.iter().any(|canceled| *canceled) {
+        self.state = StreamState::Cancelled;
+      } else if !self.has_flow_requesting_upstream_drain() {
+        self.state = StreamState::Completed;
+      }
+    }
+    Ok(())
+  }
+
   fn fail(&mut self, error: &StreamError) {
     if self.state.is_terminal() {
       return;
@@ -996,12 +1024,6 @@ impl GraphInterpreter {
   }
 
   fn handle_drive_error(&mut self, error: &StreamError) {
-    if matches!(error, StreamError::StreamDetached) {
-      if let Err(cancel_error) = self.cancel() {
-        self.fail(&cancel_error);
-      }
-      return;
-    }
     self.fail(error);
   }
 
