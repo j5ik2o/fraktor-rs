@@ -3052,6 +3052,9 @@ fn request_shutdown_from_idle_is_idempotent_for_shutdown_sources() {
   interpreter.request_shutdown().expect("second shutdown request");
 
   assert_eq!(interpreter.state(), StreamState::Running);
+  assert!(interpreter.source_shutdown[0]);
+  assert!(interpreter.source_done[0]);
+  assert!(interpreter.source_canceled[0]);
 }
 
 #[test]
@@ -3255,7 +3258,7 @@ fn detach_sink_position_completes_when_all_sources_are_already_done_and_is_idemp
 }
 
 #[test]
-fn detach_sink_position_completes_when_last_sink_detaches_without_source_done() {
+fn detach_sink_position_cancels_live_sources_when_last_sink_detaches() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let first_sink_inlet: Inlet<u32> = Inlet::new();
   let second_sink_inlet: Inlet<u32> = Inlet::new();
@@ -3275,9 +3278,9 @@ fn detach_sink_position_completes_when_last_sink_detaches_without_source_done() 
 
   interpreter.detach_sink_position(1).expect("detach");
 
-  assert_eq!(interpreter.state(), StreamState::Completed);
-  assert!(!interpreter.source_done[0]);
-  assert!(!interpreter.source_canceled[0]);
+  assert_eq!(interpreter.state(), StreamState::Cancelled);
+  assert!(interpreter.source_done[0]);
+  assert!(interpreter.source_canceled[0]);
 }
 
 #[test]

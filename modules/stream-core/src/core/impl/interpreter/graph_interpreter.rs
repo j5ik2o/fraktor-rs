@@ -435,6 +435,7 @@ impl GraphInterpreter {
       }
       source.logic.on_cancel()?;
       self.source_done[source_position] = true;
+      self.source_canceled[source_position] = true;
       self.close_outgoing_edges_for_stage(source_index);
       source_done_changed = true;
     }
@@ -1010,10 +1011,14 @@ impl GraphInterpreter {
     self.close_and_clear_incoming_edges_for_stage(sink_index)?;
     self.cancel_upstream_edges(incoming_edges)?;
     self.sink_done[sink_position] = true;
-    if self.all_sinks_done() {
+    if self.all_sinks_done() && !self.has_flow_requesting_upstream_drain() {
+      if !self.all_sources_done() {
+        self.cancel_source_if_needed()?;
+        self.set_all_sources_done()?;
+      }
       if self.source_canceled.iter().any(|canceled| *canceled) {
         self.state = StreamState::Cancelled;
-      } else if !self.has_flow_requesting_upstream_drain() {
+      } else {
         self.state = StreamState::Completed;
       }
     }
