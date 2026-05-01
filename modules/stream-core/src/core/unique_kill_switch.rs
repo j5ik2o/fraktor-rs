@@ -159,6 +159,16 @@ impl KillSwitchState {
     self.status.clone()
   }
 
+  /// Removes a previously registered actor command target.
+  pub(in crate::core) fn remove_command_target(&mut self, target: &KillSwitchCommandTargetShared) -> bool {
+    let Some(position) = self.command_targets.iter().position(|registered| ArcShared::ptr_eq(registered, target))
+    else {
+      return false;
+    };
+    drop(self.command_targets.remove(position));
+    true
+  }
+
   /// Moves the state to shutdown and returns registered command targets.
   pub(in crate::core) fn request_shutdown(&mut self) -> Option<Vec<KillSwitchCommandTargetShared>> {
     if !matches!(self.status, KillSwitchStatus::Running) {

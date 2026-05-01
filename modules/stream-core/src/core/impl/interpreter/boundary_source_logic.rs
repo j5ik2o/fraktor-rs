@@ -47,6 +47,10 @@ impl SourceLogic for BoundarySourceLogic {
     Ok(())
   }
 
+  fn on_shutdown(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
   fn should_drain_on_shutdown(&self) -> bool {
     true
   }

@@ -1,5 +1,7 @@
 extern crate std;
 
+use std::time::{Duration, Instant};
+
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -73,11 +75,12 @@ fn running_stream() -> StreamShared {
 }
 
 fn wait_for_actor_cell_removed(system: &ActorSystem, pid: Pid) {
-  for _ in 0..1024 {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
     if system.state().cell(&pid).is_none() {
       return;
     }
-    std::thread::yield_now();
+    std::thread::sleep(Duration::from_millis(1));
   }
   assert!(system.state().cell(&pid).is_none());
 }

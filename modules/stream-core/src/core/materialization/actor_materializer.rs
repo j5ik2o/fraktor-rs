@@ -324,9 +324,26 @@ impl ActorMaterializer {
     };
     match status {
       | KillSwitchStatus::Running => Ok(()),
-      | KillSwitchStatus::Shutdown => target.shutdown(),
-      | KillSwitchStatus::Aborted(error) => target.abort(error),
+      | KillSwitchStatus::Shutdown => {
+        Self::synchronize_graph_kill_switch_target(kill_switch_state, &target, target.shutdown())
+      },
+      | KillSwitchStatus::Aborted(error) => {
+        Self::synchronize_graph_kill_switch_target(kill_switch_state, &target, target.abort(error))
+      },
     }
+  }
+
+  fn synchronize_graph_kill_switch_target(
+    kill_switch_state: &KillSwitchStateHandle,
+    target: &KillSwitchCommandTargetShared,
+    result: Result<(), StreamError>,
+  ) -> Result<(), StreamError> {
+    if let Err(error) = result {
+      let removed = kill_switch_state.lock().remove_command_target(target);
+      debug_assert!(removed, "registered kill switch target must be removable after synchronization failure");
+      return Err(error);
+    }
+    Ok(())
   }
 
   fn register_graph_kill_switch_target_or_rollback(

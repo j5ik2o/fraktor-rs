@@ -427,12 +427,13 @@ impl GraphInterpreter {
       let StageDefinition::Source(source) = &mut self.stages[source_index] else {
         return Err(StreamError::InvalidConnection);
       };
-      if source.logic.should_drain_on_shutdown() {
+      let should_drain_on_shutdown = source.logic.should_drain_on_shutdown();
+      source.logic.on_shutdown()?;
+      self.source_shutdown[source_position] = true;
+      if should_drain_on_shutdown {
         continue;
       }
-      source.logic.on_shutdown()?;
       self.source_done[source_position] = true;
-      self.source_shutdown[source_position] = true;
       self.close_outgoing_edges_for_stage(source_index);
       source_done_changed = true;
     }
