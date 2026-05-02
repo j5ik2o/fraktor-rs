@@ -14,7 +14,7 @@
 
 - **WHEN** `schedule_handshake_timeout` の rustdoc を読む
 - **THEN** `authority` は handshake 対象の remote authority、`timeout` は満了までの時間、`generation` は `Association` が当該 handshake 試行に発行した単調増加 `u64` 値であることが明記されている
-- **AND** adapter 実装は満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で source に push する責務を持つ
+- **AND** adapter 実装は満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で receiver に push する責務を持つ
 
 #### Scenario: 同 authority への重複呼出
 

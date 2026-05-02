@@ -35,23 +35,23 @@
 - **WHEN** `HandshakeTimerFired` バリアントの `generation` フィールド型を検査する
 - **THEN** 型は `u64` であり、`HandshakeGeneration` 等の newtype でラップされていない
 
-### Requirement: RemoteEventSource trait
+### Requirement: RemoteEventReceiver trait
 
-`fraktor_remote_core_rs::core::extension::RemoteEventSource` trait が定義され、`Remote::run` が消費する Port を表現する SHALL。
+`fraktor_remote_core_rs::core::extension::RemoteEventReceiver` trait が定義され、`Remote::run` が消費する Port を表現する SHALL。
 
 #### Scenario: trait の存在
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_event_source.rs` を読む
-- **THEN** `pub trait RemoteEventSource: Send` が定義されている
+- **WHEN** `modules/remote-core/src/core/extension/remote_event_receiver.rs` を読む
+- **THEN** `pub trait RemoteEventReceiver: Send` が定義されている
 
 #### Scenario: recv のシグネチャ
 
-- **WHEN** `RemoteEventSource::recv` の定義を読む
+- **WHEN** `RemoteEventReceiver::recv` の定義を読む
 - **THEN** `fn recv(&mut self) -> impl core::future::Future<Output = Option<RemoteEvent>> + Send + '_` または `async fn recv(&mut self) -> Option<RemoteEvent>` 形式で宣言されている
 
 #### Scenario: tokio 非依存
 
-- **WHEN** `modules/remote-core/src/core/extension/` 配下の RemoteEvent / RemoteEventSource 関連 import を検査する
+- **WHEN** `modules/remote-core/src/core/extension/` 配下の RemoteEvent / RemoteEventReceiver 関連 import を検査する
 - **THEN** `tokio` クレートへの参照が存在しない
 
 #### Scenario: RemoteEventSink trait の不在
@@ -61,13 +61,13 @@
 
 ### Requirement: Remote::run は inherent async method として駆動主導権を持つ
 
-`Remote` 構造体に inherent method `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。`Remoting` trait に async fn を追加してはならない（MUST NOT）。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
+`Remote` 構造体に inherent method `pub async fn run<S: RemoteEventReceiver>(&mut self, receiver: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。`Remoting` trait に async fn を追加してはならない（MUST NOT）。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
 
 #### Scenario: Remote::run のシグネチャ
 
 - **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
-- **THEN** `impl Remote` ブロックに `pub async fn run<S>(&mut self, source: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
-- **AND** `S: RemoteEventSource` が trait bound として要求される
+- **THEN** `impl Remote` ブロックに `pub async fn run<S>(&mut self, receiver: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
+- **AND** `S: RemoteEventReceiver` が trait bound として要求される
 - **AND** `Remote` 自体には型パラメータ `<I>` が宣言されていない
 
 #### Scenario: Remoting trait に async fn を追加しない
@@ -75,14 +75,14 @@
 - **WHEN** `Remoting` trait のメソッド一覧を検査する
 - **THEN** `async fn` は存在せず、戻り値に `Future` を含まない（既存の `start` / `shutdown` / `quarantine` / `addresses` のみ）
 
-#### Scenario: source 枯渇で Ok(())
+#### Scenario: receiver 枯渇で Ok(())
 
-- **WHEN** `RemoteEventSource::recv` が `None` を返す
+- **WHEN** `RemoteEventReceiver::recv` が `None` を返す
 - **THEN** `Remote::run` は `Ok(())` を返してループ終了する
 
 #### Scenario: TransportShutdown で Ok(())
 
-- **WHEN** source から `RemoteEvent::TransportShutdown` を受信する
+- **WHEN** receiver から `RemoteEvent::TransportShutdown` を受信する
 - **THEN** `Remote::run` は `Ok(())` を返してループ終了する
 
 #### Scenario: 復帰不能エラーで Err
@@ -133,7 +133,7 @@
 - **WHEN** ステップ 1 の send が成功して戻る
 - **THEN** `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)` を呼ぶ
 - **AND** 戻り値の `Result` を `?` で伝播する
-- **AND** adapter 側はこの呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を内部 sender 経由で source に push する責務を持つ（詳細は `remote-core-transport-port` capability および `remote-adaptor-std-io-worker` capability で要件化）
+- **AND** adapter 側はこの呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を内部 sender 経由で receiver に push する責務を持つ（詳細は `remote-core-transport-port` capability および `remote-adaptor-std-io-worker` capability で要件化）
 
 #### Scenario: 順序保証
 
@@ -230,7 +230,7 @@
 
 ### Requirement: 戻り値の握りつぶし禁止
 
-`Remote::run` 内で `RemoteEventSource::recv`（戻り値 `Option`）以外の `Result` 戻り値（`RemoteTransport::*`、`Codec::*` 等）を `let _ = ...` で握りつぶしてはならない（MUST NOT）。
+`Remote::run` 内で `RemoteEventReceiver::recv`（戻り値 `Option`）以外の `Result` 戻り値（`RemoteTransport::*`、`Codec::*` 等）を `let _ = ...` で握りつぶしてはならない（MUST NOT）。
 
 #### Scenario: 戻り値の明示的扱い
 
