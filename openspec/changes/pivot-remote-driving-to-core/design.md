@@ -247,6 +247,13 @@ pub enum RemoteEvent {
     HandshakeTimerFired { authority: TransportEndpoint, generation: u64 },
     // ...
 }
+
+// Remote::run 側の staleness 判定（疑似コード）
+fn is_stale_handshake_timer(current: u64, event_generation: u64) -> bool {
+    // `wrapping_add(1)` を使う以上、大小比較ではなく等値比較で判定する。
+    // u64::MAX → 0 の wrap でも漏れずに「現行 generation 以外＝ stale」と扱える。
+    current != event_generation
+}
 ```
 
 `u64` の意味付けは rustdoc に依存し、型安全性は若干落ちるが、`Association` 内部および `Remote::run` の判定経路でしか使わないため過剰設計を避ける。

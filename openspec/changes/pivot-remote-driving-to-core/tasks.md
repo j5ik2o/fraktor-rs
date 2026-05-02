@@ -31,7 +31,8 @@
 
 - [ ] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl<I: RemoteInstrument> Remote<I>` で `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` の skeleton を追加する。
 - [ ] 4.2 `RemoteEvent::InboundFrameReceived` 処理を実装する（`Codec::decode` → Association inbound dispatch → instrument `on_receive`）。
-- [ ] 4.3 `RemoteEvent::HandshakeTimerFired { generation }` 処理を実装する（`Association.handshake_generation` と比較し、古い event を破棄。一致時のみ `Association::handshake_timed_out` を呼ぶ）。
+- [ ] 4.3 `RemoteEvent::HandshakeTimerFired { generation }` 処理を実装する（`Association.handshake_generation` と `!=` で比較し、不一致時は event を破棄。一致時のみ `Association::handshake_timed_out` を呼ぶ。`>` / `<` 比較は使わない — `wrapping_add` の wrap で stale 判定が漏れないようにする）。
+- [ ] 4.3.1 wrap 境界の unit test を追加する（`handshake_generation = u64::MAX` → 次回 `Handshaking` で `0` になり、古い `g_event = u64::MAX` の `HandshakeTimerFired` を受信した際に `!=` 判定で正しく破棄されること）。
 - [ ] 4.4 `RemoteEvent::QuarantineTimerFired` 処理を実装する。
 - [ ] 4.5 `RemoteEvent::ConnectionLost` 処理を実装する（再接続判断と `Association::recover` 呼び出し）。
 - [ ] 4.6 `RemoteEvent::TransportShutdown` で `Ok(())` を返してループ終了する。

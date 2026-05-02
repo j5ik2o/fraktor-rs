@@ -113,9 +113,10 @@
 
 #### Scenario: 古い timeout の無視
 
-- **WHEN** `Remote::run` が `RemoteEvent::HandshakeTimerFired { authority, generation: g_old }` を受信し、現在の `Association` の generation が `g_new > g_old` である
+- **WHEN** `Remote::run` が `RemoteEvent::HandshakeTimerFired { authority, generation: g_event }` を受信し、現在の `Association` の generation が `g_current` であって `g_current != g_event` である
 - **THEN** `Remote::run` は `Association::handshake_timed_out` を呼ばず、event を破棄する
 - **AND** 破棄は instrument の `record_handshake` を発火しない（古いイベントなので観測対象外）
+- **AND** 比較演算子は `!=` を使用する（`>` は使用しない。`wrapping_add` で +1 を続けると `u64::MAX → 0` の wrap 時に `g_current > g_event` が成立せず stale 判定が漏れるため）
 
 #### Scenario: AssociationEffect::StartHandshake の generation フィールド
 

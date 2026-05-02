@@ -99,8 +99,9 @@ adapter 側に `tokio::sync::mpsc` 受信側ラッパとして `RemoteEventSourc
 #### Scenario: 古い timer の発火許容
 
 - **WHEN** Association の状態が次の Handshaking に進み、generation が +1 された後に古い timer が満了する
-- **THEN** adapter は generation 値を変更せずに `HandshakeTimerFired { generation: g_old }` を push する
-- **AND** `Remote::run` 側で「current generation > g_old なので破棄」する判定が行われる（adapter 側でのキャンセルは不要）
+- **THEN** adapter は generation 値を変更せずに `HandshakeTimerFired { generation: g_event }` を push する
+- **AND** `Remote::run` 側で「current generation `!=` g_event なので破棄」する判定が行われる（adapter 側でのキャンセルは不要）
+- **AND** 判定は `!=` 比較で行い、大小比較（`>` / `<`）は使わない（`wrapping_add` の wrap 時にも stale 判定が漏れないようにするため）
 
 ### Requirement: 効果適用から StartHandshake 分岐を削除する
 
