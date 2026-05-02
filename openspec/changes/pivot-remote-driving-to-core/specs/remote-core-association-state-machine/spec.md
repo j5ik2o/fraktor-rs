@@ -54,6 +54,13 @@
 - **AND** 呼び出し側（`Remote::run`）は `&mut *self.instrument`（`self.instrument: Box<dyn RemoteInstrument + Send>` から `DerefMut` 経由）で参照を取得する
 - **AND** メソッドシグネチャに型パラメータ `<I>` が出現しない
 
+#### Scenario: enqueue / next_outbound のシグネチャ
+
+- **WHEN** `Association::enqueue` および `Association::next_outbound` のシグネチャを検査する
+- **THEN** `Association::enqueue(envelope)` は instrument 引数を取らない（純粋な queue 投入のみで I/O を伴わないため）
+- **AND** `on_send` の発火は `Association::next_outbound` の戻り値経路（または `Remote::run` の outbound drain helper）で行い、その時点で `&mut dyn RemoteInstrument` を渡すか戻り値経由で発火する
+- **AND** 「enqueue で on_send」「next_outbound で on_send」の二重発火が起きない
+
 ### Requirement: outbound queue の総長クエリ
 
 `Association` は outbound queue（`SendQueue` の system + user）の合計長を返すクエリメソッドを提供する SHALL。これは `Remote::run` が watermark backpressure を制御するために使用する。
@@ -71,7 +78,7 @@
 
 ### Requirement: watermark 連動の自動 backpressure 発火経路
 
-`Remote::run` は `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、状態遷移時に `Association::apply_backpressure` を呼び出して signal を発火する SHALL。Association 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない（同じ signal セマンティクスで動作する）。
+`Remote::run` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure` を呼び出して signal を発火する SHALL。Association 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない（同じ signal セマンティクスで動作する）。
 
 #### Scenario: 既存 BackpressureSignal::Apply / Release の流用
 

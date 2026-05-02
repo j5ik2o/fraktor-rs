@@ -72,8 +72,9 @@ run task に対する外部制御は次の 2 種のみで行う SHALL。
 
 #### Scenario: addresses キャッシュの初期化
 
-- **WHEN** installer が `Remote::start`（または `transport.start()`）を呼び出して advertised addresses を取得する
-- **THEN** 取得した `Vec<Address>` を `cached_addresses` field に保存してから `Remote::run` を spawn する
+- **WHEN** installer が `Remote` を構築した直後に advertised addresses を取得する
+- **THEN** `transport.start()` で listening を確立した後、`Remote::addresses()`（既存 inherent method）の戻り値を `Vec<Address>` として `cached_addresses` field に保存してから `Remote::run` を spawn する
+- **AND** 取得経路は `Remote::addresses()` 一本に集約される（`Remote::start` 等の別 API は新設しない）
 - **AND** 起動後にキャッシュは変更されない（addresses が変わる場合は本 change のスコープ外、別 change で扱う）
 
 ### Requirement: Remoting::shutdown の停止プロトコル
@@ -119,7 +120,8 @@ adapter 側に `tokio::sync::mpsc` 受信側ラッパとして `RemoteEventSourc
 
 - **WHEN** Source 実装の channel 形式を検査する
 - **THEN** bounded（背圧あり）か unbounded（背圧なし）かが docstring に明記されている
-- **AND** 既定では bounded を選択し、capacity は `RemoteConfig` から読む経路を持つ
+- **AND** 既定では bounded を選択する
+- **AND** capacity の確定（固定値 / 別経路 / 既存 `RemoteConfig` 参照）は実装 PR で行う（design.md Open Questions 参照）。本 change では `RemoteConfig` に capacity 用の新フィールドを追加しない（純増ゼロ方針維持）
 
 ### Requirement: schedule_handshake_timeout は tokio task として timer を確保する
 

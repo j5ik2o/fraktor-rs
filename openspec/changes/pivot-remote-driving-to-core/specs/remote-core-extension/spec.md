@@ -91,6 +91,13 @@
 - **THEN** `Remote::run` は `Err(RemotingError::TransportUnavailable)` または同等の variant を返してループ終了する
 - **AND** 戻り値の `Result` を `let _ = ...` で握りつぶす経路は呼び出し側に存在しない
 
+#### Scenario: TransportError から RemotingError への変換
+
+- **WHEN** `Remote::run` 内で `RemoteTransport::send` / `RemoteTransport::schedule_handshake_timeout` 等が `Err(TransportError)` を返す
+- **THEN** `Remote::run` は `TransportError` を `RemotingError::TransportUnavailable`（または変換ロジックで対応する `RemotingError` variant）にマップして `?` で伝播する
+- **AND** `Codec::encode` / `Codec::decode` の失敗は `RemotingError::CodecFailed` 等の対応 variant にマップする
+- **AND** マッピングは `Remote::run` または専用 helper で集約され、呼び出し点ごとにアドホックに `match` する経路を作らない
+
 ### Requirement: 別 Driver 型を新設しない
 
 `Remote::run` の責務を担う `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` 等の新規型を core 側に追加してはならない（MUST NOT）。これらの責務は `Remote` の inherent method と既存 `Remoting` trait と `Result<(), RemotingError>` で表現する。
@@ -126,7 +133,7 @@
 - **WHEN** ステップ 1 の send が成功して戻る
 - **THEN** `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)` を呼ぶ
 - **AND** 戻り値の `Result` を `?` で伝播する
-- **AND** adapter 側はこの呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を内部 sender 経由で source に push する責務を持つ（詳細は `remote-core-transport-port` capability および `remote-adaptor-std-runtime` capability で要件化）
+- **AND** adapter 側はこの呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を内部 sender 経由で source に push する責務を持つ（詳細は `remote-core-transport-port` capability および `remote-adaptor-std-io-worker` capability で要件化）
 
 #### Scenario: 順序保証
 
@@ -171,8 +178,9 @@
 #### Scenario: addresses 等のクエリは installer のキャッシュから返す
 
 - **WHEN** `Remoting::addresses()` が呼ばれる
-- **THEN** installer が `transport.start()` 成功時に保存した `Vec<Address>` キャッシュから返す
+- **THEN** installer が `transport.start()` で listening を確立した直後に `Remote::addresses()`（既存 inherent method）を呼んで保存した `Vec<Address>` キャッシュから返す
 - **AND** run 中の `Remote` インスタンスにアクセスしない
+- **AND** 取得経路は `Remote::addresses()` 一本に集約され、`transport.start()` の戻り値を直接キャッシュに使う経路や `Remote::start` 等の新規 API は採用しない
 
 #### Scenario: Remoting::shutdown の停止プロトコル
 
@@ -199,19 +207,21 @@
 
 ### Requirement: outbound watermark backpressure の発火経路
 
-`Remote::run` は `Association::total_outbound_len()` を `RemoteConfig::outbound_high_watermark` / `outbound_low_watermark` と比較し、enqueue / dequeue のたびに `Association::apply_backpressure(BackpressureSignal::Apply)` または `Release` を発火する SHALL。
+`Remote::run` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `RemoteConfig::outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure(BackpressureSignal::Apply)` または `Release` を発火する SHALL。境界を跨がない通常の enqueue / dequeue では発火しない。
 
-#### Scenario: high watermark で Apply
+#### Scenario: high watermark で Apply（エッジでのみ発火）
 
-- **WHEN** `Remote::run` が outbound enqueue 後に `Association::total_outbound_len()` を確認し、`outbound_high_watermark` を超える
+- **WHEN** `Remote::run` が outbound enqueue 直後に `Association::total_outbound_len()` を確認し、enqueue 前は `outbound_high_watermark` 以下、enqueue 後は超過になった（境界を跨いだ）
 - **THEN** `Remote::run` は `Association::apply_backpressure(BackpressureSignal::Apply)` を呼ぶ
 - **AND** 該当 instrument の `record_backpressure(.., BackpressureSignal::Apply, ..)` が呼ばれる
+- **AND** 既に超過状態で連続 enqueue した場合、2 回目以降は `apply_backpressure` を呼ばない
 
-#### Scenario: low watermark で Release
+#### Scenario: low watermark で Release（エッジでのみ発火）
 
-- **WHEN** `Remote::run` が outbound dequeue 後に `Association::total_outbound_len()` を確認し、`outbound_low_watermark` を下回り、かつ直前の状態が Apply 中だった
+- **WHEN** `Remote::run` が outbound dequeue 直後に `Association::total_outbound_len()` を確認し、dequeue 前は `outbound_low_watermark` 以上で Apply 状態、dequeue 後は下回った（境界を跨いだ）
 - **THEN** `Remote::run` は `Association::apply_backpressure(BackpressureSignal::Release)` を呼ぶ
 - **AND** 該当 instrument の `record_backpressure(.., BackpressureSignal::Release, ..)` が呼ばれる
+- **AND** 既に Release 済み状態で連続 dequeue した場合、2 回目以降は `apply_backpressure` を呼ばない
 
 #### Scenario: 設定値の経路
 

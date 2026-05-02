@@ -1,6 +1,6 @@
 ## 1. instrument 配線基盤を core 側に整える（dyn dispatch 採用、純増ゼロ方針）
 
-- [ ] 1.1 `modules/remote-core/src/core/instrument/noop_instrument.rs`（または既存ファイル）に `pub(crate) struct NoopInstrument;` と `impl RemoteInstrument for NoopInstrument` を追加する（外部公開しない）。すべての method 本体は空。**`pub` での公開は禁止**（`pub(crate)` 限定）。
+- [ ] 1.1 `modules/remote-core/src/core/instrument/noop_instrument.rs` を新設し、`pub(crate) struct NoopInstrument;` と `impl RemoteInstrument for NoopInstrument` を追加する（1 file 1 type ルールに従い専用ファイルを作る、外部公開しない）。すべての method 本体は空。**`pub` での公開は禁止**（`pub(crate)` 限定）。
 - [ ] 1.2 `modules/remote-core/src/core/extension/remote.rs` の `Remote` に `instrument: alloc::boxed::Box<dyn RemoteInstrument + Send>` フィールドを追加する。**`Remote` に型パラメータ `<I>` を導入してはならない**。
 - [ ] 1.3 `Remote::new(transport, config, event_publisher)` を更新し、内部で `instrument: Box::new(NoopInstrument)` を割り当てる。既存呼出シグネチャは変更なし（フィールド追加のみのため非破壊）。
 - [ ] 1.4 `Remote::with_instrument(transport, config, event_publisher, instrument: Box<dyn RemoteInstrument + Send>) -> Self` を新規 public API として追加する。
@@ -26,18 +26,18 @@
 ## 3. core 側に RemoteEvent / RemoteEventSource / RemoteTransport::schedule_handshake_timeout を追加
 
 - [ ] 3.1 `modules/remote-core/src/core/extension/remote_event.rs` を新設し、`pub enum RemoteEvent` を closed enum で定義する（**5 variant のみ**: `InboundFrameReceived { authority, frame: Vec<u8> }` / `HandshakeTimerFired { authority, generation: u64 }` / `OutboundEnqueued { authority, envelope: OutboundEnvelope }` / `ConnectionLost { authority, cause: ConnectionLostCause }` / `TransportShutdown`）。**`OutboundFrameAcked` / `QuarantineTimerFired` / `BackpressureCleared` は本 change では追加しない**（必要時に別 change で variant 追加 + scheduling 経路 MODIFIED を一緒に行う）。
-- [ ] 3.5 `modules/remote-core/src/core/transport/remote_transport.rs` の `RemoteTransport` trait に `fn schedule_handshake_timeout(&mut self, authority: &TransportEndpoint, timeout: core::time::Duration, generation: u64) -> Result<(), TransportError>` を追加する（同期 method、`async fn` は使わない）。rustdoc に「adapter は満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で source に push する責務を持つ」を明記する。
 - [ ] 3.2 `modules/remote-core/src/core/extension/remote_event_source.rs` を新設し、`pub trait RemoteEventSource: Send` と `fn recv(&mut self) -> impl Future<Output = Option<RemoteEvent>> + Send + '_` を定義する。
-- [ ] 3.3 `modules/remote-core/src/core/extension.rs`（または `mod.rs`）から `RemoteEvent` / `RemoteEventSource` を `pub use` 経由で公開する。
-- [ ] 3.4 **`RemoteEventSink` / `Timer` / `RemoteDriver*` 系の trait・型は新設しないことを確認** する（dylint module-wiring と code review で担保）。
+- [ ] 3.3 `modules/remote-core/src/core/transport/remote_transport.rs` の `RemoteTransport` trait に `fn schedule_handshake_timeout(&mut self, authority: &TransportEndpoint, timeout: core::time::Duration, generation: u64) -> Result<(), TransportError>` を追加する（同期 method、`async fn` は使わない）。rustdoc に「adapter は満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で source に push する責務を持つ」を明記する。
+- [ ] 3.4 `modules/remote-core/src/core/extension.rs`（または `mod.rs`）から `RemoteEvent` / `RemoteEventSource` を `pub use` 経由で公開する。
+- [ ] 3.5 **`RemoteEventSink` / `Timer` / `RemoteDriver*` 系の trait・型は新設しないことを確認** する（dylint module-wiring と code review で担保）。
 
 ## 4. Remote::run を inherent method として実装
 
-- [ ] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl Remote` で `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` の skeleton を追加する。`Remote` 自体には型パラメータ `<I>` を持たせない（instrument は `Box<dyn RemoteInstrument + Send>` フィールド経由）。ループ内では `let instrument: &mut dyn RemoteInstrument = &mut *self.instrument;` で local 借用を作る。
+- [ ] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl Remote` で `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` の skeleton を追加する。`Remote` 自体には型パラメータ `<I>` を持たせない（instrument は `Box<dyn RemoteInstrument + Send>` フィールド経由）。event 処理は **inherent method `self.handle_event(...)` ではなく free function `fn handle_event(registry: &mut _, transport: &mut _, codec: &mut _, instrument: &mut dyn RemoteInstrument, event: RemoteEvent) -> Result<...>` に切り出すか、`let Self { registry, transport, codec, instrument, .. } = self;` のような destructuring で field 単位の split borrow を作って渡す**（`&mut self` 全体の reborrow と `&mut *self.instrument` の同時保持は借用衝突を起こすため）。
 - [ ] 4.2 `RemoteEvent::InboundFrameReceived` 処理を実装する（`Codec::decode` → Association inbound dispatch → instrument `on_receive`）。
 - [ ] 4.3 `RemoteEvent::HandshakeTimerFired { generation }` 処理を実装する（`Association.handshake_generation` と `!=` で比較し、不一致時は event を破棄。一致時のみ `Association::handshake_timed_out` を呼ぶ。`>` / `<` 比較は使わない — `wrapping_add` の wrap で stale 判定が漏れないようにする）。
 - [ ] 4.3.1 wrap 境界の unit test を追加する（`handshake_generation = u64::MAX` → 次回 `Handshaking` で `0` になり、古い `g_event = u64::MAX` の `HandshakeTimerFired` を受信した際に `!=` 判定で正しく破棄されること）。
-- [ ] 4.4 `RemoteEvent::OutboundEnqueued { authority, envelope }` 処理を実装する（該当 association を取得 → `Association::enqueue(envelope, &mut *self.instrument)` → 続けて outbound drain helper を起動して可能な限り queue を消化）。
+- [ ] 4.4 `RemoteEvent::OutboundEnqueued { authority, envelope }` 処理を実装する。順序は **(a) 該当 association を取得 → (b) enqueue 前の `total_outbound_len()` を `prev` として保存 → (c) `Association::enqueue(envelope)`（instrument 引数なし）→ (d) enqueue 後の `total_outbound_len()` を `curr` として取得し、`prev <= high && curr > high` なら `Association::apply_backpressure(BackpressureSignal::Apply, instrument)` をエッジで発火 → (e) outbound drain helper を起動** とする。drain helper では `next_outbound` の戻り値経路で `on_send` 発火、各 dequeue 後に `total_outbound_len()` を確認し、`prev_in_drain >= low && curr_in_drain < low && state == Apply` の条件を満たした時のみ `apply_backpressure(Release, instrument)` をエッジで発火する。`enqueue` 自体には instrument 引数を渡さない。
 - [ ] 4.5 `RemoteEvent::ConnectionLost` 処理を実装する（再接続判断と `Association::recover` 呼び出し）。
 - [ ] 4.6 `RemoteEvent::TransportShutdown` で `Ok(())` を返してループ終了する。
 - [ ] 4.7 source 枯渇（`recv` が `None`）で `Ok(())` を返してループ終了する。
@@ -68,7 +68,7 @@
 - [ ] 7.3 adapter 内部で `tokio::sync::mpsc::channel::<RemoteEvent>(capacity)` を生成し、`Sender` を I/O ワーカー / handshake timer task 群が clone して共有する経路を整備する（`RemoteEventSink` trait は core に追加しない）。
 - [ ] 7.4 `RemotingExtensionInstaller` に `Remote::run(&mut source)` を `tokio::spawn` で起動する経路を追加する。`Remote` は `async move` ブロックに **所有権移動** で渡し、`Arc<Mutex<Remote>>` 等の共有可変性は使わない。spawn の戻り値 `JoinHandle<Result<(), RemotingError>>` を保持する。
 - [ ] 7.4.1 installer の field を `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` / `run_handle: JoinHandle<Result<(), RemotingError>>` / `cached_addresses: Vec<Address>` に絞り、`Remote` への直接参照を持たないことを確認する。
-- [ ] 7.4.2 `Remoting::addresses()` を `cached_addresses` から返すように実装し、起動時に `transport.start()` の戻り値（または `remote.addresses()` 起動直後）をキャッシュする経路を追加する。
+- [ ] 7.4.2 `Remoting::addresses()` を `cached_addresses` から返すように実装する。キャッシュは `transport.start()` で listening を確立した直後に `remote.addresses()` を呼び、その戻り値（`Vec<Address>`）を保存することで初期化する。`Remote::start` 等の新規 API は追加しない。
 - [ ] 7.5 actor system 停止時に `Remoting::shutdown` 経由で次の手順を実行する経路を追加する。
   - 1. `event_sender.send(RemoteEvent::TransportShutdown).await?`
   - 2. `run_handle.await` で `Result<Result<(), RemotingError>, JoinError>` を観測し、`Ok(Ok(()))` のみ正常終了、それ以外は `RemotingError` に変換して伝播

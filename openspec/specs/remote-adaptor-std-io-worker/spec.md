@@ -1,4 +1,4 @@
-# remote-adaptor-std-runtime Specification
+# remote-adaptor-std-io-worker Specification
 
 ## Purpose
 TBD - created by archiving change remote-redesign. Update Purpose after archive.
