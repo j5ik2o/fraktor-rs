@@ -39,7 +39,7 @@
 
 ### Requirement: instrument 引数の渡し方
 
-`Association` の状態遷移メソッドおよび送受信メソッドは `&mut I: RemoteInstrument` または同等の参照を引数で受け取り、`Association` 自身が instrument を field として所有してはならない（MUST NOT）。
+`Association` の状態遷移メソッドおよび送受信メソッドは `&mut dyn RemoteInstrument` を引数で受け取り、`Association` 自身が instrument を field として所有してはならない（MUST NOT）。型パラメータ `<I: RemoteInstrument>` を `Association` メソッドに導入してはならない（MUST NOT）。
 
 #### Scenario: instrument を field 保持しない
 
@@ -50,10 +50,9 @@
 #### Scenario: hook 系メソッドの引数
 
 - **WHEN** `Association::associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `apply_backpressure` の最終シグネチャを検査する
-- **THEN** いずれも `instrument: &mut I` または `&I` を引数として受け取る経路が確立されている
-  - 直接引数として受け取る、または
-  - `Association` を保持する `Remote` のジェネリクス経路から `&mut self` 経由で渡される
-- **AND** 呼び出し側（`Remote::run`）から見て instrument 参照が一貫した型 `I` で渡されることが保証される
+- **THEN** いずれも `instrument: &mut dyn RemoteInstrument` を引数として受け取る経路が確立されている
+- **AND** 呼び出し側（`Remote::run`）は `&mut *self.instrument`（`self.instrument: Box<dyn RemoteInstrument + Send>` から `DerefMut` 経由）で参照を取得する
+- **AND** メソッドシグネチャに型パラメータ `<I>` が出現しない
 
 ### Requirement: outbound queue の総長クエリ
 

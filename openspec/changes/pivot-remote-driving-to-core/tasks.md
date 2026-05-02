@@ -1,18 +1,21 @@
-## 1. instrument 配線基盤を core 側に整える（純増ゼロ方針）
+## 1. instrument 配線基盤を core 側に整える（dyn dispatch 採用、純増ゼロ方針）
 
-- [ ] 1.1 `modules/remote-core/src/core/instrument/` 内の既存ファイル（または既存 `mod.rs` 相当）に `impl RemoteInstrument for ()` を追加する（**`NoopInstrument` 型は新設しない**）。すべての method 本体は空。
-- [ ] 1.2 `modules/remote-core/src/core/instrument/` 配下に tuple composite `impl RemoteInstrument for (A, B)` および `(A, B, C)` を追加する（既存ファイルへの追加で完結させる、新規ファイルが必要な場合のみ `composite.rs` を新設）。
-- [ ] 1.3 `modules/remote-core/src/core/extension/remote.rs` を `pub struct Remote<I: RemoteInstrument = ()>` に変更し、ビルダ・コンストラクタ・既存 method の型注釈を `<I>` 対応にする。既存呼出は `Remote<()>` に解決される。
-- [ ] 1.4 `modules/remote-core/src/core/instrument/flight_recorder.rs` に `impl RemoteInstrument for RemotingFlightRecorder` を追加し、record 系メソッドを RemoteInstrument hook 経由でも発火可能にする。
-- [ ] 1.5 instrument 単体 unit test を追加する。`Remote<()>` と `Remote<(RemotingFlightRecorder, MyMetrics)>` の両構築を確認し、tuple composite で順次 dispatch されることを検証する。
+- [ ] 1.1 `modules/remote-core/src/core/instrument/noop_instrument.rs`（または既存ファイル）に `pub(crate) struct NoopInstrument;` と `impl RemoteInstrument for NoopInstrument` を追加する（外部公開しない）。すべての method 本体は空。**`pub` での公開は禁止**（`pub(crate)` 限定）。
+- [ ] 1.2 `modules/remote-core/src/core/extension/remote.rs` の `Remote` に `instrument: alloc::boxed::Box<dyn RemoteInstrument + Send>` フィールドを追加する。**`Remote` に型パラメータ `<I>` を導入してはならない**。
+- [ ] 1.3 `Remote::new(transport, config, event_publisher)` を更新し、内部で `instrument: Box::new(NoopInstrument)` を割り当てる。既存呼出シグネチャは変更なし（フィールド追加のみのため非破壊）。
+- [ ] 1.4 `Remote::with_instrument(transport, config, event_publisher, instrument: Box<dyn RemoteInstrument + Send>) -> Self` を新規 public API として追加する。
+- [ ] 1.5 `Remote::set_instrument(&mut self, instrument: Box<dyn RemoteInstrument + Send>)` を新規 public API として追加し、rustdoc に「`run` 進行中に呼ばないこと」を明示する。
+- [ ] 1.6 `modules/remote-core/src/core/instrument/flight_recorder.rs` に `impl RemoteInstrument for RemotingFlightRecorder` を追加し、record 系メソッドを RemoteInstrument hook 経由でも発火可能にする。
+- [ ] 1.7 instrument 単体 unit test を追加する。`Remote::new` 既定（NoopInstrument）と `Remote::with_instrument(.., Box::new(RemotingFlightRecorder::new(..)))` の両構築を確認し、event loop で hook が ring buffer に届くことを検証する。
+- [ ] 1.8 **tuple composite と `() impl` は追加しない** ことを確認する。`grep -n 'impl<.*> RemoteInstrument for (' modules/remote-core/src/` および `grep -n 'impl RemoteInstrument for ()' modules/remote-core/src/` の出力が空であること。
 
 ## 2. Association に instrument hook と watermark 用 query を追加（newtype を作らない）
 
-- [ ] 2.1 `Association::associate` のシグネチャに `instrument: &mut I` を追加し、`record_handshake(authority, HandshakePhase::Started, now_ms)` を内部から呼び出す。
-- [ ] 2.2 `Association::handshake_accepted` に同様の instrument 引数を追加し、`record_handshake(.., HandshakePhase::Accepted, ..)` を呼び出す。
-- [ ] 2.3 `Association::handshake_timed_out` に instrument 引数を追加し、`record_handshake(.., HandshakePhase::Rejected, ..)` を呼び出す。
-- [ ] 2.4 `Association::quarantine` に instrument 引数を追加し、`record_quarantine(authority, reason, now_ms)` を呼び出す。
-- [ ] 2.5 `Association::apply_backpressure` に instrument 引数を追加し、`record_backpressure(authority, signal, correlation_id, now_ms)` を呼び出す（既存 `BackpressureSignal::Apply` / `Release` をそのまま流用、新 variant 追加なし）。
+- [ ] 2.1 `Association::associate` のシグネチャに `instrument: &mut dyn RemoteInstrument` を追加し、`record_handshake(authority, HandshakePhase::Started, now_ms)` を内部から呼び出す。**型パラメータ `<I>` は導入しない**。
+- [ ] 2.2 `Association::handshake_accepted` に同様の `instrument: &mut dyn RemoteInstrument` 引数を追加し、`record_handshake(.., HandshakePhase::Accepted, ..)` を呼び出す。
+- [ ] 2.3 `Association::handshake_timed_out` に `instrument: &mut dyn RemoteInstrument` 引数を追加し、`record_handshake(.., HandshakePhase::Rejected, ..)` を呼び出す。
+- [ ] 2.4 `Association::quarantine` に `instrument: &mut dyn RemoteInstrument` 引数を追加し、`record_quarantine(authority, reason, now_ms)` を呼び出す。
+- [ ] 2.5 `Association::apply_backpressure` に `instrument: &mut dyn RemoteInstrument` 引数を追加し、`record_backpressure(authority, signal, correlation_id, now_ms)` を呼び出す（既存 `BackpressureSignal::Apply` / `Release` をそのまま流用、新 variant 追加なし）。
 - [ ] 2.6 `Association::next_outbound` の戻り値経路（または直近の `Remote::run` 呼び出し点）で `on_send(envelope)` を発火する経路を確立する。
 - [ ] 2.7 inbound dispatch 経路で `on_receive(envelope)` を発火するための公開 method を Association に追加する（または既存 method に instrument 引数を渡す）。
 - [ ] 2.8 `Association::total_outbound_len(&self) -> usize` を追加する（`SendQueue` の system + user 合計、deferred は含めない）。
@@ -29,7 +32,7 @@
 
 ## 4. Remote::run を inherent method として実装
 
-- [ ] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl<I: RemoteInstrument> Remote<I>` で `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` の skeleton を追加する。
+- [ ] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl Remote` で `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` の skeleton を追加する。`Remote` 自体には型パラメータ `<I>` を持たせない（instrument は `Box<dyn RemoteInstrument + Send>` フィールド経由）。ループ内では `let instrument: &mut dyn RemoteInstrument = &mut *self.instrument;` で local 借用を作る。
 - [ ] 4.2 `RemoteEvent::InboundFrameReceived` 処理を実装する（`Codec::decode` → Association inbound dispatch → instrument `on_receive`）。
 - [ ] 4.3 `RemoteEvent::HandshakeTimerFired { generation }` 処理を実装する（`Association.handshake_generation` と `!=` で比較し、不一致時は event を破棄。一致時のみ `Association::handshake_timed_out` を呼ぶ。`>` / `<` 比較は使わない — `wrapping_add` の wrap で stale 判定が漏れないようにする）。
 - [ ] 4.3.1 wrap 境界の unit test を追加する（`handshake_generation = u64::MAX` → 次回 `Handshaking` で `0` になり、古い `g_event = u64::MAX` の `HandshakeTimerFired` を受信した際に `!=` 判定で正しく破棄されること）。
@@ -74,7 +77,12 @@
 ## 9. 純増ゼロ検証
 
 - [ ] 9.1 `git diff main..HEAD --stat` または同等で、新規追加された core 側公開型・公開 trait の数を数え、`RemoteEvent` enum と `RemoteEventSource` trait の **2 つだけ** であることを確認する。
-- [ ] 9.2 `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` / `Timer` / `TimerToken` / `RemoteEventSink` / `NoopInstrument` / `HandshakeGeneration` 等の禁止型・禁止 trait が core 側に追加されていないことを `grep -r "pub struct RemoteDriver\|pub trait Timer\|pub struct NoopInstrument\|pub trait RemoteEventSink\|pub struct HandshakeGeneration" modules/remote-core/src/` で確認する（出力が空であること）。
+- [ ] 9.2 公開禁止型・禁止 trait が core 側に追加されていないことを以下のクエリで確認する（出力が空であること）。
+  - `grep -rn 'pub struct RemoteDriver\|pub trait Timer\b\|pub trait RemoteEventSink\|pub struct HandshakeGeneration\|pub struct TimerToken\|pub struct RemoteDriverHandle\|pub enum RemoteDriverOutcome' modules/remote-core/src/`
+  - `grep -rn 'pub struct NoopInstrument' modules/remote-core/src/`（`NoopInstrument` は `pub(crate)` のみ許可）
+  - `grep -rn 'impl<.*> RemoteInstrument for (' modules/remote-core/src/`（tuple composite 禁止）
+  - `grep -rn 'impl RemoteInstrument for ()' modules/remote-core/src/`（`()` impl 禁止）
+  - `grep -rn 'pub struct Remote<' modules/remote-core/src/core/extension/`（`Remote` ジェネリクス化禁止）
 - [ ] 9.3 net file delta が `+1` 以下（`remote_event.rs` + `remote_event_source.rs` + `tokio_remote_event_source.rs` 追加 / `outbound_loop.rs` + `handshake_driver.rs` 削除）であることを確認する。
 
 ## 10. テスト

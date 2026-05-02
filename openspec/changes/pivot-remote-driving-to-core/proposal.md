@@ -46,13 +46,25 @@ handshake timeout / quarantine timer 等の遅延発火は adapter が tokio tas
 
 これにより、`utils-core` の既存 `DelayProvider` / `MonotonicClock` を再利用するための新規 trait 追加も不要になる。
 
-### 4. `RemoteInstrument` をジェネリクス + tuple composite で `Remote` に配線する
+### 4. `RemoteInstrument` を `Box<dyn>` で `Remote` に配線する（ジェネリクス採用しない）
 
-`Remote` を `pub struct Remote<I: RemoteInstrument = ()>` に変更する。**`NoopInstrument` 型は新設せず、`impl RemoteInstrument for ()` を提供して unit 型を no-op 既定として使う**。
+`Remote` は型パラメータを持たず、`instrument: Box<dyn RemoteInstrument + Send>` フィールドで instrument を保持する。
 
-複数 instrument の合成は `(A, B)` / `(A, B, C)` の tuple impl で行う。`RemotingFlightRecorder` は `RemoteInstrument` 実装として残し、ユーザーは `Remote<(RemotingFlightRecorder, MyMetrics)>` のように tuple 合成できる。
+ジェネリクス `Remote<I: RemoteInstrument = ()>` を採用しない理由：
 
-`Remote::associate` / `accept_handshake_*` / `quarantine` / `next_outbound` / inbound dispatch / `apply_backpressure` から instrument の対応 method を呼ぶ経路を確定する（呼び出し点は `remote-core-association-state-machine` capability で要件化）。
+- 参照実装（Apache Pekko の `RemoteInstrument` abstract class、protoactor-go の interface）はいずれも virtual / dyn dispatch を採用しており、production 規模で問題なく動いている
+- hot path での vtable lookup は ~1-2ns 程度であり、tokio mpsc send / codec encode / mutex acquisition 等のコストに対して noise レベル
+- ジェネリクスを採用するとテスト・showcase・cluster adapter まで `<I>` が伝播し、ユーザー API が複雑化する
+- runtime での instrument 差し替えができなくなる
+- `tracing-rs` / `metrics` / `opentelemetry-rs` 等の Rust 観測ライブラリも dyn 経由が通例
+
+既定 instrument は `pub(crate) struct NoopInstrument` を内部定義し、`Remote::new` で `Box::new(NoopInstrument)` を割り当てる。**`NoopInstrument` は `pub(crate)` で外部公開せず**、ユーザーは `Remote::new` を呼ぶだけで no-op 既定が得られる。
+
+`Remote::with_instrument(transport, config, event_publisher, instrument: Box<dyn RemoteInstrument + Send>)` および `Remote::set_instrument(&mut self, instrument: Box<dyn RemoteInstrument + Send>)` を公開し、ユーザーは構築時または構築後に instrument を差し替えられる。
+
+複数 instrument の合成は **ユーザー責務** とする（独自 composite struct を定義して `RemoteInstrument` を実装）。core 側で tuple impl などの composite ヘルパは提供しない（YAGNI、Pekko の `Vector[RemoteInstrument]` 同等の構造はユーザーが必要に応じて書く）。
+
+`Remote::associate` / `accept_handshake_*` / `quarantine` / `next_outbound` / inbound dispatch / `apply_backpressure` から instrument の対応 method を呼ぶ経路を確定する（呼び出し点は `remote-core-association-state-machine` capability で要件化）。`Association` メソッドは `&mut dyn RemoteInstrument` を引数で受け取り、型パラメータは導入しない。
 
 ### 5. system message 飢餓回避は既存の system / user 2 キュー分離で維持する
 
@@ -99,10 +111,11 @@ handshake timeout / quarantine timer 等の遅延発火は adapter が tokio tas
   - `Remoting` trait は既存通り同期 lifecycle 専用（async fn を増やさない）
 
 - **`remote-core-instrument`**
-  - `Remote` がジェネリクス `I: RemoteInstrument`（既定型 `()`）で instrument を保持する
-  - `impl RemoteInstrument for ()` を no-op 既定として提供（`NoopInstrument` 型は作らない）
-  - tuple ベースの composite 合成 `(A, B)` / `(A, B, C)` を提供する
-  - `Arc<dyn RemoteInstrument>` を hot path で経由しない
+  - `Remote` は型パラメータを持たず、`Box<dyn RemoteInstrument + Send>` で instrument を保持する
+  - 既定 instrument は `pub(crate) struct NoopInstrument`（`Remote::new` 内部で `Box::new(NoopInstrument)` を割り当てる、外部公開しない）
+  - `Remote::with_instrument(...)` および `Remote::set_instrument(...)` で差し替え可能
+  - tuple composite / `() impl` は提供しない（複数 instrument 合成はユーザー責務）
+  - `Arc<dyn RemoteInstrument>` を hot path で clone しない（所有 `Box<dyn>` 経由）
 
 - **`remote-core-association-state-machine`**
   - instrument hook を `associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `next_outbound` / inbound dispatch / `apply_backpressure` から呼ぶ
@@ -133,7 +146,7 @@ handshake timeout / quarantine timer 等の遅延発火は adapter が tokio tas
 - `modules/remote-core/src/core/association/base.rs`（instrument 引数追加、watermark 連動、handshake_generation field、total_outbound_len）
 - `modules/remote-core/src/core/association/effect.rs`（`StartHandshake` rustdoc 更新、generation を含めるなら variant 拡張）
 - `modules/remote-core/src/core/association/registry.rs`（instrument 参照経路、queue 分離追従）
-- `modules/remote-core/src/core/instrument/`（tuple composite 実装、`() impl`）
+- `modules/remote-core/src/core/instrument/`（`pub(crate) NoopInstrument` 内部定義、`RemotingFlightRecorder` への `RemoteInstrument` impl 追加）
 - `modules/remote-core/src/core/config/`（`outbound_high_watermark` / `outbound_low_watermark`）
 - `modules/remote-adaptor-std/src/std/outbound_loop.rs`（削除）
 - `modules/remote-adaptor-std/src/std/handshake_driver.rs`（削除）
@@ -150,7 +163,7 @@ handshake timeout / quarantine timer 等の遅延発火は adapter が tokio tas
 
 **公開 API 影響:**
 
-- `Remote` がジェネリクス `Remote<I = ()>` になる破壊的変更。`I = ()` をデフォルト型で吸収する。
+- `Remote` は型パラメータを持たないまま、`Box<dyn RemoteInstrument + Send>` フィールドを内部に追加する（型シグネチャは変わらない）。`Remote::with_instrument` / `Remote::set_instrument` を新規 public API として追加する。
 - `AssociationEffect::StartHandshake` の意味論が「adapter が無視」から「`Remote::run` が実行」へ変わる。
 - adapter 側の `outbound_loop` / `handshake_driver` 公開関数は削除される。これは前 change `hide-remote-adaptor-runtime-internals` で internal 化済みのため外部 API 影響は無い。
 - `RemoteEvent` enum と `RemoteEventSource` trait を新規 public 型として追加する。
@@ -175,3 +188,4 @@ handshake timeout / quarantine timer 等の遅延発火は adapter が tokio tas
 - `Codec<T>` trait 自体のシグネチャ変更
 - 後方互換 shim、deprecated alias、旧 API 残置
 - 新規 Driver 型 / Handle 型 / Outcome enum / Timer trait / Sink trait / Generation newtype の導入（純増ゼロを優先するため）
+- `Remote` の型パラメータ化、tuple composite `RemoteInstrument` 実装、`() impl RemoteInstrument` の提供（ユーザー API 単純化と参照実装整合のため、dyn dispatch を採用）

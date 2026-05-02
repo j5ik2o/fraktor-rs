@@ -74,7 +74,7 @@ remote-adaptor-std
 第一案では `RemoteDriver<S, K, T, I, C>` という 5 ジェネリクスの新規型を導入していたが、これは「Association を駆動するループを所有する」という責務以上のことをしておらず、`Remote` 構造体に統合できる。
 
 ```rust
-impl<I: RemoteInstrument> Remote<I> {
+impl Remote {
     pub async fn run<S>(&mut self, source: &mut S) -> Result<(), RemotingError>
     where
         S: RemoteEventSource,
@@ -90,9 +90,11 @@ impl<I: RemoteInstrument> Remote<I> {
 }
 ```
 
+`Remote` 自体は型パラメータを持たない（Decision 4 参照）。instrument は `Box<dyn RemoteInstrument + Send>` フィールドで保持するため、`run` 側のシグネチャは `S` のみがジェネリクス。
+
 **棄却した代替案:**
 
-- *`RemoteDriver` 新規型*: ジェネリクス連鎖（`<S, K, T, I, C>`）が拡散し、ユーザー API が複雑化する。`Remote<I>` で I だけ表面化する設計の方が利用しやすく、責務も同じ（registry + transport + lifecycle 駆動）。
+- *`RemoteDriver` 新規型*: ジェネリクス連鎖（`<S, K, T, I, C>`）が拡散し、ユーザー API が複雑化する。`Remote` の inherent method 化で責務を統合する方が利用しやすい（registry + transport + lifecycle 駆動）。
 - *`RemoteDriverHandle` / `RemoteDriverOutcome`*: `Result<(), RemotingError>` で「正常終了 / 異常終了 / 強制停止」を表現できるため、新規 Outcome enum は冗長。停止制御は既存 `Remoting::shutdown` が adapter 内部 sender 経由で `TransportShutdown` を push することで実現する。
 
 ### Decision 2: `RemoteEvent` を closed enum、`RemoteEventSource` を 1 メソッド trait にする
@@ -146,7 +148,7 @@ adapter:
 - *Core 側 Timer trait + adapter 実装*: schedule / cancel / TimerToken を core 公開 API に増やす。本質的に「event を遅延配信する」という責務は adapter で閉じられるため不要。
 - *`utils-core::DelayProvider` 経由*: actor-core scheduler との結合があり、layer 整合性を崩す。
 
-### Decision 4: `RemoteInstrument` をジェネリクス + tuple composite で配線する（`&mut self` 維持、`NoopInstrument` 型を作らない）
+### Decision 4: `RemoteInstrument` を `Box<dyn>` で配線する（ジェネリクス採用しない、`&mut self` 維持）
 
 既存仕様（`remote-core-instrument` capability）で `RemoteInstrument` は `&mut self` 系 hook を持つ。本 change はこのシグネチャを維持し、内部可変性（`Cell` / `SpinSyncMutex`）を instrument に持たせる必要を作らない。
 
@@ -160,10 +162,44 @@ pub trait RemoteInstrument {
 }
 ```
 
-`Remote<I: RemoteInstrument = ()>` 化する。**`NoopInstrument` 型は新設せず、`impl RemoteInstrument for ()` を提供して `()` を no-op 既定として使う**。
+`Remote` は型パラメータを持たず、`Box<dyn RemoteInstrument + Send>` を内部フィールドで保持する。
 
 ```rust
-impl RemoteInstrument for () {
+pub struct Remote {
+    // ...既存フィールド...
+    instrument: alloc::boxed::Box<dyn RemoteInstrument + Send>,
+}
+
+impl Remote {
+    pub fn new(transport: T, config: RemoteConfig, event_publisher: EventPublisher) -> Self
+    where T: RemoteTransport + Send + 'static
+    {
+        Self {
+            /* ... */
+            instrument: alloc::boxed::Box::new(NoopInstrument), // pub(crate) ZST、外部公開しない
+        }
+    }
+
+    pub fn with_instrument<T>(
+        transport: T,
+        config: RemoteConfig,
+        event_publisher: EventPublisher,
+        instrument: alloc::boxed::Box<dyn RemoteInstrument + Send>,
+    ) -> Self
+    where T: RemoteTransport + Send + 'static
+    {
+        Self { /* ... */ instrument }
+    }
+
+    pub fn set_instrument(&mut self, instrument: alloc::boxed::Box<dyn RemoteInstrument + Send>) {
+        self.instrument = instrument;
+    }
+}
+
+// 内部 ZST、pub(crate) で公開しない
+pub(crate) struct NoopInstrument;
+
+impl RemoteInstrument for NoopInstrument {
     fn on_send(&mut self, _: &OutboundEnvelope) {}
     fn on_receive(&mut self, _: &InboundEnvelope) {}
     fn record_handshake(&mut self, _: &TransportEndpoint, _: HandshakePhase, _: u64) {}
@@ -172,29 +208,49 @@ impl RemoteInstrument for () {
 }
 ```
 
-`Remote<()>` がデフォルトで zero-cost に振る舞う。これにより新規 ZST 型 `NoopInstrument` を追加せずに済む。
-
-複数 instrument の合成は tuple impl で行う。`&mut self` でも `self.0` と `self.1` は disjoint なフィールドなので順次借用が成立する。
+`Remote::run` での instrument 借用は `&mut *self.instrument`（`Box::deref_mut` 経由で `&mut dyn RemoteInstrument`）として取得し、`Association` の状態遷移メソッドに渡す。
 
 ```rust
-impl<A, B> RemoteInstrument for (A, B)
-where A: RemoteInstrument, B: RemoteInstrument
-{
-    fn on_send(&mut self, e: &OutboundEnvelope) {
-        self.0.on_send(e);
-        self.1.on_send(e);
+impl Remote {
+    pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError> {
+        loop {
+            match source.recv().await {
+                None => return Ok(()),
+                Some(RemoteEvent::TransportShutdown) => return Ok(()),
+                Some(event) => {
+                    let instrument: &mut dyn RemoteInstrument = &mut *self.instrument;
+                    self.handle_event(event, instrument)?;
+                }
+            }
+        }
     }
-    /* ... */
 }
 ```
 
-`RemotingFlightRecorder` は `RemoteInstrument` を実装する具象型として残し、ユーザーは `Remote<(RemotingFlightRecorder, MyMetrics)>` のように tuple 合成できる。
+**ジェネリクス `Remote<I: RemoteInstrument = ()>` を棄却した理由:**
 
-`&mut I` の伝播経路は次のとおり。
+- 参照実装（Apache Pekko の `RemoteInstrument` abstract class、protoactor-go の interface）は virtual / dyn dispatch で実装されており、production で問題なく稼働している。
+- vtable lookup の cost（~1-2ns）は tokio mpsc send（~100ns）/ codec encode（数十ns〜μs）/ mutex acquisition（~10ns）と比較して noise レベル。zero-cost を狙う動機が弱い。
+- `Remote<I>` を採用すると `<I>` がテスト・showcase・cluster adapter まで伝播し、ユーザー API が複雑化する。
+- runtime での instrument 差し替えができず、`set_instrument` 相当の API を持てない。
+- Rust の他の観測ライブラリ（`tracing-rs` の `Subscriber`、`metrics` の `Recorder`、`opentelemetry-rs` 等）も dyn dispatch を採用している。
 
-- `Remote<I>` の `&mut self` 経由で `&mut self.instrument: &mut I` を取得する。
-- `Remote::run` ループで `&mut self.instrument` を保持する。
-- `Association` の状態遷移メソッドに `&mut I` を引数として渡す（`Association` は instrument を field 保持しない）。
+**tuple composite `(A, B)` / `(A, B, C)` impl を棄却した理由:**
+
+- 複数 instrument 合成はユーザー側で composite struct を自作すれば足り、ライブラリ側で提供する必要がない（YAGNI）。
+- Pekko も `Vector[RemoteInstrument]` を内部 helper として持つだけで、ユーザー API としての tuple composite は提供していない。
+- tuple impl はジェネリクス前提のため、`Remote` を非ジェネリクス化した本 decision と整合しない。
+
+**`impl RemoteInstrument for ()` を棄却した理由:**
+
+- `Box<dyn>` ベース設計では `()` impl は不要（`Box::new(())` をデフォルトにすると semantic に「instrument が無い」を表現できず、`NoopInstrument` ZST の方が意図が明確）。
+- `pub(crate) NoopInstrument` は内部実体として隔離されており、公開 API 純増ゼロ条件を満たす。
+
+**`&mut dyn RemoteInstrument` の伝播経路:**
+
+- `Remote` の `&mut self` 経由で `&mut *self.instrument` を取得し、`&mut dyn RemoteInstrument` として扱う。
+- `Remote::run` ループ内で local 変数 `let instrument: &mut dyn RemoteInstrument = &mut *self.instrument;` として保持する。
+- `Association` の状態遷移メソッドは `instrument: &mut dyn RemoteInstrument` 引数で受け取り、型パラメータを導入しない。
 
 ### Decision 5: 既存の system / user 2 キュー分離を維持し、`total_outbound_len()` を追加する
 
@@ -296,17 +352,17 @@ fn handle_effect(&mut self, effect: AssociationEffect) -> Result<(), RemotingErr
 
 ## Risks / Trade-offs
 
-### Risk 1: `Remote<I>` のジェネリクス伝播
+### Risk 1: `Box<dyn RemoteInstrument>` の vtable オーバーヘッド
 
-`Remote<I>` から `Association` メソッドへ `&mut I` を渡す経路がコード全体に伝播する。既存呼出箇所（テスト、showcase、cluster adaptor 等）への影響を実装 PR で評価する。`I = ()` をデフォルト型にすることで、明示しない呼出は `Remote<()>` として動作する。
+hot path（`on_send` / `on_receive` / `record_*`）で 1-2ns の vtable lookup が常時発生する。`Remote<I>` で zero-cost にする選択肢もあったが、Decision 4 で参照実装（Pekko / protoactor-go）と Rust 観測ライブラリ（tracing / metrics）の慣行に倣い、API の単純化を優先して dyn dispatch を採用した。
 
-**緩和策:** `Remote::new(...)` のシグネチャを `Remote<()>` 既定で互換に保ち、instrument 指定時は `Remote::with_instrument(transport, config, event_publisher, instrument)` 等の builder method を提供する。
+**緩和策:** ベンチマークで vtable の影響を測定し、tokio mpsc send / codec encode / mutex acquisition のコストに対して noise 範囲であることを実装 PR で確認する。問題が顕在化したら、その時点でジェネリクス化を再検討する（YAGNI）。`NoopInstrument` 既定の場合は分岐予測が効きやすく、コンパイラが devirtualize する余地もある。
 
 ### Risk 2: `Remote::run` の長期保有
 
 `Remote::run` は `&mut self` を保持し続けるため、ループ実行中は `Remote` の他のメソッド（`addresses`、`shutdown`）を同時に呼べない。既存 `Remoting` 実装は同期メソッドのみで、shutdown が `&mut self` を要求するため衝突する。
 
-**緩和策:** adapter 側で `Remote` を `Arc<Mutex<Remote<I>>>` で保持し、`run` は別 task で動作させ、`shutdown` は adapter 内部 sender 経由の `TransportShutdown` push で間接的に終了させる。`Remote::shutdown` を呼ぶ前に `run` task が終了しているよう順序保証する。
+**緩和策:** adapter 側で `Remote` を `Arc<Mutex<Remote>>` で保持し、`run` は別 task で動作させ、`shutdown` は adapter 内部 sender 経由の `TransportShutdown` push で間接的に終了させる。`Remote::shutdown` を呼ぶ前に `run` task が終了しているよう順序保証する。
 
 ### Risk 3: handshake timer の責務分担曖昧さ
 
@@ -324,15 +380,16 @@ fn handle_effect(&mut self, effect: AssociationEffect) -> Result<(), RemotingErr
 
 ### Phase 1: instrument 配線基盤の整備（破壊的変更を含む）
 
-- `impl RemoteInstrument for ()` を追加
-- `(A, B)` / `(A, B, C)` の tuple composite を追加
-- `Remote<I: RemoteInstrument = ()>` ジェネリクス化（既存呼出は `()` で吸収）
-- `RemotingFlightRecorder: impl RemoteInstrument`
-- 既存テスト・showcase の `Remote::new` 呼出を `()` で吸収
+- `pub(crate) struct NoopInstrument` を内部定義し、`impl RemoteInstrument for NoopInstrument` を追加（外部公開しない）
+- `Remote` に `instrument: Box<dyn RemoteInstrument + Send>` フィールドを追加
+- `Remote::new(...)` を更新し、内部で `Box::new(NoopInstrument)` を割り当てる
+- `Remote::with_instrument(...)` および `Remote::set_instrument(...)` を新規 public API として追加
+- `RemotingFlightRecorder: impl RemoteInstrument` を追加
+- 既存テスト・showcase の `Remote::new` 呼出は型シグネチャ変更なしで動作（フィールド追加のみのため）
 
 ### Phase 2: Association 配線
 
-- `Association::associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `apply_backpressure` のシグネチャに `instrument: &mut I` を追加
+- `Association::associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `apply_backpressure` のシグネチャに `instrument: &mut dyn RemoteInstrument` を追加
 - `Association::total_outbound_len` を追加
 - `Association` に `handshake_generation: u64` フィールドを追加
 - `AssociationEffect::StartHandshake { authority, timeout, generation }` に generation を追加（既存変数名は維持）

@@ -57,13 +57,14 @@
 
 ### Requirement: Remote::run は inherent async method として駆動主導権を持つ
 
-`Remote<I>` 構造体に inherent method `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。`Remoting` trait に async fn を追加してはならない（MUST NOT）。
+`Remote` 構造体に inherent method `pub async fn run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。`Remoting` trait に async fn を追加してはならない（MUST NOT）。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
 
 #### Scenario: Remote::run のシグネチャ
 
 - **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
-- **THEN** `impl<I: RemoteInstrument> Remote<I>` ブロックに `pub async fn run<S>(&mut self, source: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
+- **THEN** `impl Remote` ブロックに `pub async fn run<S>(&mut self, source: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
 - **AND** `S: RemoteEventSource` が trait bound として要求される
+- **AND** `Remote` 自体には型パラメータ `<I>` が宣言されていない
 
 #### Scenario: Remoting trait に async fn を追加しない
 
@@ -88,7 +89,7 @@
 
 ### Requirement: 別 Driver 型を新設しない
 
-`Remote::run` の責務を担う `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` 等の新規型を core 側に追加してはならない（MUST NOT）。これらの責務は `Remote<I>` の inherent method と既存 `Remoting` trait と `Result<(), RemotingError>` で表現する。
+`Remote::run` の責務を担う `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` 等の新規型を core 側に追加してはならない（MUST NOT）。これらの責務は `Remote` の inherent method と既存 `Remoting` trait と `Result<(), RemotingError>` で表現する。
 
 #### Scenario: RemoteDriver 型の不在
 
