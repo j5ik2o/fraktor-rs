@@ -102,7 +102,7 @@
 - [ ] 9.4 `RemoteTransport::schedule_handshake_timeout` 以外の scheduling 系 method が `RemoteTransport` に追加されていないことを確認する。
   - `grep -nE 'fn schedule_' modules/remote-core/src/core/transport/remote_transport.rs` で `schedule_handshake_timeout` 1 件のみ
 - [ ] 9.5 adapter 側 installer に `Remote` への直接参照（`Arc<Mutex<Remote>>` / `Arc<Remote>` / `&Remote` field）がないことを確認する。
-  - `grep -nE 'Arc<.*Remote\b|Mutex<.*Remote\b|RwLock<.*Remote\b|AShared<.*Remote\b' modules/remote-adaptor-std/src/` の出力が空
+  - `grep -nE 'Arc<.*Remote\b|Mutex<.*Remote\b|RwLock<.*Remote\b|SharedLock<.*Remote\b' modules/remote-adaptor-std/src/` の出力が空（`SharedLock<T>` は `utils-core::SharedLock<T>`、旧 `AShared` パターンの実装実体）
 - [ ] 9.6 net file delta が `+1` 以下（`remote_event.rs` + `remote_event_source.rs` + `tokio_remote_event_source.rs` 追加 / `outbound_loop.rs` + `handshake_driver.rs` 削除）であることを確認する。
 
 ## 10. テスト

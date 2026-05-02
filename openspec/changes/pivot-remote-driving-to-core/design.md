@@ -455,7 +455,7 @@ RemotingExtensionInstaller::install(actor_system) {
 **棄却した代替案:**
 
 - *`Arc<Mutex<Remote>>` で共有*: run 中は常時ロック中で、shutdown / addresses が必ず blocking。デッドロック懸念。
-- *`AShared<Remote>` パターン*: 共有可変性を core に持ち込む。fraktor の `AShared` 原則は「どうしても共有が必要な場合の最終手段」であり、本ケースは run task 単独所有で済むため不要。
+- *`SharedLock<Remote>` パターン（旧 `AShared`、現在は `utils-core::SharedLock<T>` に内包）*: 共有可変性を core に持ち込む。fraktor の `SharedLock` / 旧 `AShared` 原則は「どうしても共有が必要な場合の最終手段」であり、本ケースは run task 単独所有で済むため不要。
 
 ### Decision 11: outbound enqueue は `RemoteEvent::OutboundEnqueued` で表現する
 

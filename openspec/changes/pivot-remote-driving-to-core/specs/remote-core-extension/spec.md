@@ -155,7 +155,7 @@
 
 - **WHEN** adapter 側の enqueue 経路（local actor からの tell 等）を検査する
 - **THEN** adapter は `AssociationRegistry` を直接 mutate せず、`RemoteEvent::OutboundEnqueued` を内部 sender に push する
-- **AND** `AssociationRegistry` の所有権は `Remote` に集約されており、`Mutex` / `RwLock` / `AShared` による共有可変性が core 側に存在しない
+- **AND** `AssociationRegistry` の所有権は `Remote` に集約されており、`Mutex` / `RwLock` / `SharedLock`（旧 `AShared` パターンの実装実体、`utils-core::SharedLock<T>`）による共有可変性が core 側に存在しない
 
 ### Requirement: Remote::run task の所有権モデル
 
@@ -164,7 +164,7 @@
 #### Scenario: 所有権の move
 
 - **WHEN** adapter 側 installer が `Remote::run` を tokio task として起動する経路を検査する
-- **THEN** `Remote` を `Arc` / `ArcShared` / `Mutex` / `RwLock` / `AShared` にラップせず、所有権を直接 task に move する
+- **THEN** `Remote` を `Arc` / `ArcShared` / `Mutex` / `RwLock` / `SharedLock`（`utils-core::SharedLock<T>`、旧 `AShared` パターンの実装実体）にラップせず、所有権を直接 task に move する
 - **AND** 起動後は `Remote` の field を外部から参照する経路が存在しない
 
 #### Scenario: 外部制御の surface
