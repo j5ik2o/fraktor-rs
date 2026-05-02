@@ -80,8 +80,8 @@
 - [x] 8.1 fast feedback として `rtk cargo test -p fraktor-stream-core-rs` を実行する。
 - [x] 8.2 必要に応じて `rtk cargo test -p fraktor-showcases-std --features advanced` を実行する。
 - [x] 8.3 `rtk git diff --check` を実行する。
-- [ ] 8.4 最終 gate として `rtk ./scripts/ci-check.sh ai all` を実行し、完了を待つ。
-- [ ] 8.5 core completion gate（2, 3, 4, 5, 6, 7 のうち core capability に関わる項目）がすべて満たされていることを確認する。
-- [ ] 8.6 core capability の未達が 1 つでも残る場合、この change を完了・archive しないことを確認する。
+- [x] 8.4 最終 gate として `rtk ./scripts/ci-check.sh ai all` を実行し、完了を待つ。
+- [x] 8.5 core completion gate（2, 3, 4, 5, 6, 7 のうち core capability に関わる項目）がすべて満たされていることを確認する。
+- [x] 8.6 core capability の未達が 1 つでも残る場合、この change を完了・archive しないことを確認する。
 
 > 前提: Pekko 互換仕様と Rust らしい設計の両立を、常に念頭に置いて判断する。
