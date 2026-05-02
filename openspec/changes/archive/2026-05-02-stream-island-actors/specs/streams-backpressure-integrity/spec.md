@@ -1,6 +1,6 @@
 > 前提: Pekko 互換仕様と Rust らしい設計の両立を、常に念頭に置いて判断する。
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: island boundary は actor 分離後も backpressure と terminal signal を保持しなければならない
 
