@@ -111,10 +111,20 @@ impl<T> StreamFuture<T> {
 
   /// Attempts to take the completion result destructively.
   ///
-  /// Subsequent calls to [`value`](Self::value) and [`Future::poll`] return
-  /// [`Completion::Pending`] / [`Poll::Pending`] until the stream completes
-  /// again, which never happens because completion is one-shot. Use only in
-  /// synchronous contexts where ownership of the result is required.
+  /// After this call returns [`Some`], the stored result is cleared but the
+  /// sticky `completed` flag remains set. Subsequent observers therefore see:
+  ///
+  /// - [`value`](Self::value) → [`Completion::Pending`] (only `result` is inspected; one-shot
+  ///   semantics, so it never re-arrives)
+  /// - [`is_ready`](Self::is_ready) → `true` (sticky `completed` flag)
+  /// - [`Future::poll`] → [`Poll::Ready`] with
+  ///   [`Err(StreamError::StreamDetached)`](StreamError::StreamDetached) so an awaiting clone is
+  ///   unblocked instead of hanging forever
+  /// - [`wait_blocking`](Self::wait_blocking) → `Err(StreamError::StreamDetached)` for the same
+  ///   reason
+  ///
+  /// Use only in synchronous contexts where ownership of the result is
+  /// required and no other clone observes the future.
   #[must_use]
   pub fn try_take(&self) -> Option<Result<T, StreamError>> {
     let mut guard = self.inner.lock();
