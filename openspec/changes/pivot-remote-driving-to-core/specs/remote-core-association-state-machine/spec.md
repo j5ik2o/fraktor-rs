@@ -89,11 +89,14 @@
 
 `Association::recover` および `associate` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を出力した場合、その effect は `Remote::run` の経路で `RemoteTransport` 経由の handshake 開始に dispatch されなければならない（MUST）。adapter 側で `StartHandshake` を ignore する分岐を持ってはならない（MUST NOT）。
 
-#### Scenario: Remote::run による StartHandshake 実行
+#### Scenario: Remote::run による StartHandshake 実行（2 ステップ）
 
-- **WHEN** `Association::recover(Some(endpoint), now)` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を返す
-- **THEN** `Remote::run` は同一 effect 列処理の中で `RemoteTransport` 経由で handshake request を送出する
-- **AND** adapter 側は同 effect 受領を契機に generation 付き timer を確保し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で source に push する
+- **WHEN** `Association::recover(Some(endpoint), now)` または `associate(...)` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を返す
+- **THEN** `Remote::run` は同一 effect 列処理の中で次の 2 ステップを順に実行する
+  1. `Codec::encode` で handshake request envelope を bytes 化し、既存 `RemoteTransport::send` で送出する
+  2. 続けて `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)`（`remote-core-transport-port` capability で要件化）を呼ぶ
+- **AND** ステップ 1 が `Err` の場合、ステップ 2 は呼ばれない
+- **AND** adapter 側は `schedule_handshake_timeout` 呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で source に push する
 
 #### Scenario: adapter 側の StartHandshake 無視分岐の不在
 

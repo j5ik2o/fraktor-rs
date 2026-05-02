@@ -12,14 +12,18 @@
 #### Scenario: 必要なバリアントの宣言
 
 - **WHEN** `RemoteEvent` のバリアント一覧を検査する
-- **THEN** 少なくとも以下を含む
+- **THEN** 以下のバリアントを **全て** 含み、これら以外を含まない（closed enum、本 change のスコープ）
   - `InboundFrameReceived { authority: TransportEndpoint, frame: alloc::vec::Vec<u8> }`
-  - `OutboundFrameAcked { authority: TransportEndpoint, sequence: u64 }`
   - `HandshakeTimerFired { authority: TransportEndpoint, generation: u64 }`
-  - `QuarantineTimerFired { authority: TransportEndpoint }`
+  - `OutboundEnqueued { authority: TransportEndpoint, envelope: OutboundEnvelope }`
   - `ConnectionLost { authority: TransportEndpoint, cause: ConnectionLostCause }`
   - `TransportShutdown`
-  - `BackpressureCleared { authority: TransportEndpoint }`
+
+#### Scenario: 本 change スコープ外の variant
+
+- **WHEN** `RemoteEvent` のバリアント一覧を検査する
+- **THEN** `OutboundFrameAcked` / `QuarantineTimerFired` / `BackpressureCleared` 等のバリアントは含まれない（本 change で scheduling 経路が確定していないため、必要時に別 change で variant 追加と scheduling 経路を一緒に拡張する）
+- **AND** これらの variant は本 change の `RemoteEvent` enum に **追加してはならない**（MUST NOT、closed enum を保ちつつ scope を絞る）
 
 #### Scenario: open hierarchy の不在
 
@@ -106,15 +110,76 @@
 - **WHEN** `modules/remote-core/src/core/` 配下を検査する
 - **THEN** `pub enum RemoteDriverOutcome` が定義されていない（`Result<(), RemotingError>` で「正常終了 / 異常終了」を表現する）
 
-### Requirement: AssociationEffect::StartHandshake は Remote::run で実行される
+### Requirement: AssociationEffect::StartHandshake は Remote::run で 2 ステップ処理される
 
-`Remote::run` のループ内で `AssociationEffect::StartHandshake { authority, timeout, generation }` を `RemoteTransport` 経由の handshake 開始に dispatch する SHALL。adapter 側の effect application からは該当分岐を削除する。
+`Remote::run` のループ内で `AssociationEffect::StartHandshake { authority, timeout, generation }` を次の **2 ステップ** で処理する SHALL。adapter 側の effect application からは該当分岐を削除する。
 
-#### Scenario: Remote::run による StartHandshake 実行
+#### Scenario: ステップ 1 — handshake request frame の送出
 
-- **WHEN** `Remote::run` が effect 列処理で `AssociationEffect::StartHandshake { authority, timeout, generation }` を見つける
-- **THEN** `RemoteTransport` 経由で handshake request を送出する
-- **AND** generation 値はそのまま adapter 側に伝わり、handshake timer task の管理に使われる
+- **WHEN** `Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を見つける
+- **THEN** 該当の handshake request envelope を `Codec::encode` で raw bytes 化する
+- **AND** 続いて既存の `RemoteTransport::send` で送出する
+- **AND** `Result` を `?` で伝播する（`let _ =` で握りつぶさない）
+
+#### Scenario: ステップ 2 — handshake timer の予約
+
+- **WHEN** ステップ 1 の send が成功して戻る
+- **THEN** `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)` を呼ぶ
+- **AND** 戻り値の `Result` を `?` で伝播する
+- **AND** adapter 側はこの呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を内部 sender 経由で source に push する責務を持つ（詳細は `remote-core-transport-port` capability および `remote-adaptor-std-runtime` capability で要件化）
+
+#### Scenario: 順序保証
+
+- **WHEN** ステップ 1 とステップ 2 の呼出順序を検査する
+- **THEN** ステップ 1（`send`）の戻り値を確認してからステップ 2（`schedule_handshake_timeout`）を呼ぶ
+- **AND** ステップ 1 が `Err` の場合、ステップ 2 は呼ばれない
+
+### Requirement: RemoteEvent::OutboundEnqueued 処理
+
+`Remote::run` は `RemoteEvent::OutboundEnqueued { authority, envelope }` を受信した際、該当 association に envelope を enqueue し、続けて outbound drain（next_outbound 処理）を実行する SHALL。
+
+#### Scenario: enqueue と drain の連鎖
+
+- **WHEN** `Remote::run` が `RemoteEvent::OutboundEnqueued { authority, envelope }` を受信する
+- **THEN** `AssociationRegistry` から `authority` 対応の `Association` を取得し、`Association::enqueue(envelope)` を呼ぶ
+- **AND** 続けて outbound drain helper（`next_outbound` → `Codec::encode` → `RemoteTransport::send`）を起動し、可能な限り queue を消化する
+
+#### Scenario: 内部可変性回避
+
+- **WHEN** adapter 側の enqueue 経路（local actor からの tell 等）を検査する
+- **THEN** adapter は `AssociationRegistry` を直接 mutate せず、`RemoteEvent::OutboundEnqueued` を内部 sender に push する
+- **AND** `AssociationRegistry` の所有権は `Remote` に集約されており、`Mutex` / `RwLock` / `AShared` による共有可変性が core 側に存在しない
+
+### Requirement: Remote::run task の所有権モデル
+
+`Remote::run` を別 task として起動する場合、`Remote` の所有権は **run task に move** されなければならない（MUST）。`Arc<Mutex<Remote>>` 等の共有可変性で `Remote` を保持してはならない（MUST NOT）。
+
+#### Scenario: 所有権の move
+
+- **WHEN** adapter 側 installer が `Remote::run` を tokio task として起動する経路を検査する
+- **THEN** `Remote` を `Arc` / `ArcShared` / `Mutex` / `RwLock` / `AShared` にラップせず、所有権を直接 task に move する
+- **AND** 起動後は `Remote` の field を外部から参照する経路が存在しない
+
+#### Scenario: 外部制御の surface
+
+- **WHEN** run task に対する外部制御手段を検査する
+- **THEN** 以下の **2 つだけ** が存在する
+  - `Sender<RemoteEvent>`（installer が clone 保持）
+  - `JoinHandle<Result<(), RemotingError>>`
+- **AND** これら以外（直接 method 呼出、shared state 経由）で run task の `Remote` に触れない
+
+#### Scenario: addresses 等のクエリは installer のキャッシュから返す
+
+- **WHEN** `Remoting::addresses()` が呼ばれる
+- **THEN** installer が `transport.start()` 成功時に保存した `Vec<Address>` キャッシュから返す
+- **AND** run 中の `Remote` インスタンスにアクセスしない
+
+#### Scenario: Remoting::shutdown の停止プロトコル
+
+- **WHEN** `Remoting::shutdown` が呼ばれる
+- **THEN** installer が保持する `Sender<RemoteEvent>` 経由で `RemoteEvent::TransportShutdown` を push する
+- **AND** 続けて `JoinHandle::await` で run task の終了（`Ok(())`）を待つ
+- **AND** `JoinHandle` が `Err` を返した場合、`RemotingError` に変換して呼出元に伝播する
 
 ### Requirement: Codec 経路の明文化
 
