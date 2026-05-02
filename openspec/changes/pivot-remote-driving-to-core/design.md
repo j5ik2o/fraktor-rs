@@ -19,31 +19,28 @@ remote-core
 └─ RemotingFlightRecorder         ★ snapshot 経路もない
 ```
 
-目指す経路は次の形である。
+目指す経路は次の形である（**新規型はゼロ。`Remote::run` という inherent method 1 つと、Port 2 つ追加のみ**）。
 
 ```text
 remote-core
-├─ RemoteDriver
-│   ├─ poll RemoteEventSource
+├─ Remote::run (async, inherent method)
+│   ├─ poll RemoteEventSource           ← Port (新規)
 │   ├─ Association メソッドへ dispatch
 │   ├─ Codec で encode / decode
 │   ├─ AssociationEffect 実行 (StartHandshake 含む)
-│   ├─ outbound queue (control / ordinary) を消化
+│   ├─ outbound queue (system / user) を消化
 │   └─ watermark で apply_backpressure を発火
-├─ RemoteDriverHandle             start / shutdown / outcome
-├─ RemoteEventSource              ← adapter
-├─ RemoteEventSink                → adapter
-├─ Timer                          → adapter
-├─ Codec                          → adapter (既存)
-└─ RemoteTransport                → adapter (既存)
+├─ RemoteEvent                            ← 新規 enum (closed)
+├─ RemoteEventSource                      ← 新規 trait (1 メソッド)
+└─ RemoteTransport                        → adapter (既存)
 
 remote-adaptor-std
 ├─ inbound I/O ワーカー
-│   └─ raw frame を RemoteEvent として sink に push
-├─ TokioMpscEventSource           tokio mpsc 実装
-├─ TokioMpscEventSink
-├─ TokioTimer
-└─ Driver 起動 (RemotingExtensionInstaller から spawn)
+│   └─ raw frame を RemoteEvent として adapter 内部 sender に push
+├─ handshake timer task (per association)
+│   └─ tokio::time::sleep → adapter 内部 sender に HandshakeTimerFired push
+├─ TokioMpscEventSource                   tokio mpsc 受信側ラッパ
+└─ Remote::run の spawn (RemotingExtensionInstaller から)
 ```
 
 `hide-remote-adaptor-runtime-internals` で std adapter の public surface は既に縮小されているため、本 change は内部実装の駆動主導権を反転することに集中できる。
@@ -54,98 +51,102 @@ remote-adaptor-std
 
 - 駆動主導権を `remote-core` に集約し、`remote-adaptor-std` は I/O とイベント通知だけを担当する形にする。
 - `RemoteInstrument` を hot path で機能させ、`RemotingFlightRecorder` を観測手段として稼働させる。
-- system message が ordinary message に飢餓されない保証を Pekko Artery 互換の形で表現する。
+- system message が ordinary message に飢餓されない既存保証を維持する。
 - outbound queue の watermark を超えたら backpressure signal を発火し、計測可能にする。
-- Driver の lifecycle（起動 / 正常停止 / 異常終了）を型で表現する。
-- `AssociationEffect::StartHandshake` を「adapter で無視」状態から「Driver で実行」状態に戻す。
+- `AssociationEffect::StartHandshake` を「adapter で無視」状態から「`Remote::run` で実行」状態に戻す。
+- handshake timeout の古い発火を `u64` generation で識別し、誤った状態遷移を防ぐ。
+- **新規型・新規 trait の純増を最小化する**（純増 2 個まで: `RemoteEvent` enum と `RemoteEventSource` trait のみ）。
 
 **Non-Goals:**
 
 - wire protocol、`Codec<T>` trait シグネチャ、payload serialization の再設計。
 - inbound 側 ack window、動的 receive buffer。
-- large message queue の追加（control / ordinary 分離のみ）。
+- large message queue の追加（control / ordinary 分離のみ維持）。
 - failure detector / heartbeat の駆動経路変更（別 change）。
 - cluster adaptor、persistence adaptor、stream adaptor の駆動見直し。
 - 後方互換 shim、deprecated alias の残置。
+- **新規 Driver / Handle / Outcome / Timer / Sink / Generation newtype の導入**（純増ゼロ最優先のため）。
 
 ## Decisions
 
-### Decision 1: `RemoteDriver` を `remote-core` に新設し、駆動主導権を反転する
+### Decision 1: `Remote::run` を inherent method として追加し、新規 Driver 型を作らない
 
-`modules/remote-core/src/core/driver/` 配下に以下を置く。
+第一案では `RemoteDriver<S, K, T, I, C>` という 5 ジェネリクスの新規型を導入していたが、これは「Association を駆動するループを所有する」という責務以上のことをしておらず、`Remote` 構造体に統合できる。
 
 ```rust
-pub struct RemoteDriver<S, K, T, I, C>
-where
-    S: RemoteEventSource,
-    K: Timer,
-    T: RemoteTransport,
-    I: RemoteInstrument,
-    C: Codec<InboundEnvelope>,
-{
-    registry: AssociationRegistry,
-    transport: T,
-    timer: K,
-    instrument: I,
-    codec: C,
-    config: RemoteConfig,
-}
-
-impl<S, K, T, I, C> RemoteDriver<S, K, T, I, C> { /* ... */
-    pub async fn run(mut self, mut source: S) -> RemoteDriverOutcome {
+impl<I: RemoteInstrument> Remote<I> {
+    pub async fn run<S>(&mut self, source: &mut S) -> Result<(), RemotingError>
+    where
+        S: RemoteEventSource,
+    {
         loop {
             match source.recv().await {
-                None => return RemoteDriverOutcome::SourceExhausted,
-                Some(RemoteEvent::TransportShutdown) => {
-                    return RemoteDriverOutcome::Shutdown { reason: ... };
-                }
-                Some(event) => {
-                    if let Err(error) = self.handle(event) {
-                        return RemoteDriverOutcome::Aborted { error };
-                    }
-                    self.drive_outbound();
-                }
+                None => return Ok(()),                       // source 枯渇 = 正常終了
+                Some(RemoteEvent::TransportShutdown) => return Ok(()),
+                Some(event) => self.handle_event(event)?,
             }
         }
     }
 }
 ```
 
-`run` は所有権を取り、終了時に `RemoteDriverOutcome` を返す（CQS 違反にならないよう、内部状態の所有を返さず outcome のみを返す）。
+**棄却した代替案:**
 
-Driver は `&mut self` ベースのループで動き、内部可変性（`Arc<Mutex<...>>` 等）を Driver 自身が持つことは原則禁止する。`AssociationRegistry` を所有し、外部から共有しない。
+- *`RemoteDriver` 新規型*: ジェネリクス連鎖（`<S, K, T, I, C>`）が拡散し、ユーザー API が複雑化する。`Remote<I>` で I だけ表面化する設計の方が利用しやすく、責務も同じ（registry + transport + lifecycle 駆動）。
+- *`RemoteDriverHandle` / `RemoteDriverOutcome`*: `Result<(), RemotingError>` で「正常終了 / 異常終了 / 強制停止」を表現できるため、新規 Outcome enum は冗長。停止制御は既存 `Remoting::shutdown` が adapter 内部 sender 経由で `TransportShutdown` を push することで実現する。
 
-### Decision 2: `RemoteEvent` を closed enum、`RemoteEventSource` / `RemoteEventSink` を Port にする
+### Decision 2: `RemoteEvent` を closed enum、`RemoteEventSource` を 1 メソッド trait にする
 
 `RemoteEvent` は core が adapter 側から受け取る closed enum。
 
 ```rust
 pub enum RemoteEvent {
-    InboundFrameReceived { authority: Authority, frame: WireFrameBytes },
-    OutboundFrameAcked   { authority: Authority, sequence: u64 },
-    HandshakeTimerFired  { authority: Authority, generation: HandshakeGeneration },
-    QuarantineTimerFired { authority: Authority },
-    ConnectionLost       { authority: Authority, cause: ConnectionLostCause },
+    InboundFrameReceived { authority: TransportEndpoint, frame: alloc::vec::Vec<u8> },
+    OutboundFrameAcked   { authority: TransportEndpoint, sequence: u64 },
+    HandshakeTimerFired  { authority: TransportEndpoint, generation: u64 },
+    QuarantineTimerFired { authority: TransportEndpoint },
+    ConnectionLost       { authority: TransportEndpoint, cause: ConnectionLostCause },
     TransportShutdown,
-    BackpressureCleared  { authority: Authority },
+    BackpressureCleared  { authority: TransportEndpoint },
 }
 ```
 
-`RemoteEventSource` は Driver が消費する側、`RemoteEventSink` は adapter が push する側。
+`RemoteEventSource` は `Remote::run` が消費する側のみ。
 
 ```rust
-pub trait RemoteEventSource {
-    fn recv(&mut self) -> impl Future<Output = Option<RemoteEvent>> + Send;
-}
-
-pub trait RemoteEventSink: Send + Sync {
-    fn push(&self, event: RemoteEvent) -> Result<(), RemoteEventDispatchError>;
+pub trait RemoteEventSource: Send {
+    fn recv(&mut self) -> impl core::future::Future<Output = Option<RemoteEvent>> + Send + '_;
 }
 ```
 
-`async fn` を trait に直書きせず `-> impl Future` にして dyn 互換性は意図的に外す（Driver 側はジェネリクス、adapter 側は具象実装で完結する）。
+`async fn` を trait に直書きせず `-> impl Future` にして dyn 互換性は意図的に外す（`Remote::run` 側はジェネリクス、adapter 側は具象実装で完結する）。
 
-### Decision 3: `RemoteInstrument` をジェネリクス + composite で配線する（`&mut self` 維持）
+**`RemoteEventSink` trait は core に追加しない**。adapter は内部で `tokio::sync::mpsc::channel` を作り、`Sender` clone を I/O ワーカー / handshake timer task に配り、`Receiver` を `TokioMpscEventSource` でラップして `Remote::run` に渡す。sender 側は adapter 内部の責務であり、core から見る必要がない。これにより new trait を 1 つ削減できる。
+
+### Decision 3: Timer Port を core に追加しない
+
+第一案では `Timer` trait（`schedule` / `cancel` / `TimerToken`）を新規追加していたが、これも純増ゼロ方針で削減できる。
+
+handshake timeout / quarantine timer は **adapter 側の tokio task が `tokio::time::sleep` し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を内部 sender 経由で source に push する** ことで実現する。core から見ると単に「ある時刻に event が来る」状態であり、専用 Port は不要。
+
+```text
+adapter:
+   when AssociationEffect::StartHandshake { authority, timeout, generation } を実行:
+     1. RemoteTransport::send で handshake request frame 送信
+     2. tokio::spawn(async move {
+          tokio::time::sleep(timeout).await;
+          let _ = sender.send(RemoteEvent::HandshakeTimerFired { authority, generation });
+        });
+```
+
+`utils-core::DelayProvider` は actor-core の scheduler に紐づいており、remote 用途で再利用するには結合が強い。adapter 内部の tokio sleep で完結させる方が層分離として健全。
+
+**棄却した代替案:**
+
+- *Core 側 Timer trait + adapter 実装*: schedule / cancel / TimerToken を core 公開 API に増やす。本質的に「event を遅延配信する」という責務は adapter で閉じられるため不要。
+- *`utils-core::DelayProvider` 経由*: actor-core scheduler との結合があり、layer 整合性を崩す。
+
+### Decision 4: `RemoteInstrument` をジェネリクス + tuple composite で配線する（`&mut self` 維持、`NoopInstrument` 型を作らない）
 
 既存仕様（`remote-core-instrument` capability）で `RemoteInstrument` は `&mut self` 系 hook を持つ。本 change はこのシグネチャを維持し、内部可変性（`Cell` / `SpinSyncMutex`）を instrument に持たせる必要を作らない。
 
@@ -153,13 +154,25 @@ pub trait RemoteEventSink: Send + Sync {
 pub trait RemoteInstrument {
     fn on_send(&mut self, envelope: &OutboundEnvelope);
     fn on_receive(&mut self, envelope: &InboundEnvelope);
-    fn record_handshake(&mut self, authority: &Authority, phase: HandshakePhase, now_ms: u64);
-    fn record_quarantine(&mut self, authority: &Authority, reason: QuarantineReason, now_ms: u64);
-    fn record_backpressure(&mut self, authority: &Authority, signal: BackpressureSignal, correlation: Option<u64>, now_ms: u64);
+    fn record_handshake(&mut self, authority: &TransportEndpoint, phase: HandshakePhase, now_ms: u64);
+    fn record_quarantine(&mut self, authority: &TransportEndpoint, reason: QuarantineReason, now_ms: u64);
+    fn record_backpressure(&mut self, authority: &TransportEndpoint, signal: BackpressureSignal, correlation: Option<u64>, now_ms: u64);
 }
 ```
 
-`Remote<I: RemoteInstrument = NoopInstrument>` 化し、Driver も同じ型パラメータを伝播する。`NoopInstrument` は何もしない実装で、デフォルト `I` で zero-cost に振る舞う。
+`Remote<I: RemoteInstrument = ()>` 化する。**`NoopInstrument` 型は新設せず、`impl RemoteInstrument for ()` を提供して `()` を no-op 既定として使う**。
+
+```rust
+impl RemoteInstrument for () {
+    fn on_send(&mut self, _: &OutboundEnvelope) {}
+    fn on_receive(&mut self, _: &InboundEnvelope) {}
+    fn record_handshake(&mut self, _: &TransportEndpoint, _: HandshakePhase, _: u64) {}
+    fn record_quarantine(&mut self, _: &TransportEndpoint, _: QuarantineReason, _: u64) {}
+    fn record_backpressure(&mut self, _: &TransportEndpoint, _: BackpressureSignal, _: Option<u64>, _: u64) {}
+}
+```
+
+`Remote<()>` がデフォルトで zero-cost に振る舞う。これにより新規 ZST 型 `NoopInstrument` を追加せずに済む。
 
 複数 instrument の合成は tuple impl で行う。`&mut self` でも `self.0` と `self.1` は disjoint なフィールドなので順次借用が成立する。
 
@@ -175,15 +188,15 @@ where A: RemoteInstrument, B: RemoteInstrument
 }
 ```
 
-`RemotingFlightRecorder` は `RemoteInstrument` を実装する具象型として残し、ユーザーは `(FlightRecorder, MyMetrics)` のように tuple 合成できる。
+`RemotingFlightRecorder` は `RemoteInstrument` を実装する具象型として残し、ユーザーは `Remote<(RemotingFlightRecorder, MyMetrics)>` のように tuple 合成できる。
 
 `&mut I` の伝播経路は次のとおり。
 
 - `Remote<I>` の `&mut self` 経由で `&mut self.instrument: &mut I` を取得する。
-- Driver は `RemoteDriver<S, K, T, I, C>` の `&mut self` ループで `&mut self.instrument` を保持する。
-- Driver は `Association` の状態遷移メソッドに `&mut I` を引数として渡す（`Association` は instrument を field 保持しない）。
+- `Remote::run` ループで `&mut self.instrument` を保持する。
+- `Association` の状態遷移メソッドに `&mut I` を引数として渡す（`Association` は instrument を field 保持しない）。
 
-### Decision 4: 既存の system / user 2 キュー分離を維持し、`total_outbound_len()` を追加する
+### Decision 5: 既存の system / user 2 キュー分離を維持し、`total_outbound_len()` を追加する
 
 既存仕様（`remote-core-association-state-machine` capability の "SendQueue priority logic" 要件）で `SendQueue` は system priority と user priority の 2 キュー分離を持ち、system 優先で取り出す。これは Pekko Artery の Control / Ordinary 分離と同等の飢餓回避をすでに提供している。本 change はこの構造を維持する。
 
@@ -198,147 +211,166 @@ impl Association {
 }
 ```
 
-これは Driver が watermark 判定に使うクエリで、CQS 準拠の `&self` query。`OutboundQueueSet` のような新型は導入しない（既存 `SendQueue` の構造変更を避ける）。
+### Decision 6: 既存 `BackpressureSignal::Apply` / `Release` を流用する
 
-### Decision 5: Watermark backpressure を導入する
+第一案では `BackpressureSignal::Engaged` / `Released` を新 variant として追加していたが、既存の `Apply` / `Release` でセマンティクスを満たすため新 variant は不要。
 
-`RemoteConfig` に追加する。
+watermark 連動の発火経路は `Remote::run` 内で `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、状態遷移時に `Association::apply_backpressure(BackpressureSignal::Apply)` または `Release` を呼ぶ。`Association` 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない。
 
-```rust
-pub struct RemoteConfig {
-    /* ... existing ... */
-    pub outbound_high_watermark: usize, // default: 1024
-    pub outbound_low_watermark: usize,  // default: 512
-}
-```
+### Decision 7: `handshake_generation` を `u64` で inline 表現する
 
-`Association` 内に backpressure 状態を持つ。
+第一案では `HandshakeGeneration` newtype を導入していたが、`u64` を直接使う方が型数を 1 個削減できる。
 
 ```rust
-enum BackpressureState { Released, Engaged }
-```
-
-`enqueue` 後に `total_len > high && state == Released` なら `Engaged` に遷移させ、`apply_backpressure(Engaged)` を発火する。`pop_next` 後に `total_len < low && state == Engaged` なら `Released` に遷移させ、`apply_backpressure(Released)` を発火する。
-
-`BackpressureSignal` は既存型を再利用するか、`Engaged` / `Released` を表す closed enum に再定義する（design 後半で確定）。
-
-### Decision 6: `AssociationEffect::StartHandshake` を Driver で実行する
-
-`AssociationEffect::StartHandshake { endpoint }` は Driver で `RemoteTransport::initiate_handshake(endpoint)` に dispatch する。adapter 側の `effect_application::apply_effects_in_place` から `StartHandshake` ignore 分岐を削除する。
-
-`RemoteTransport` に initiate_handshake が無ければ追加する。signature は以下を想定する。
-
-```rust
-pub trait RemoteTransport {
-    fn initiate_handshake(&self, endpoint: &Endpoint) -> Result<(), TransportError>;
-    /* ... */
-}
-```
-
-Driver は `Effect::StartHandshake` を実行した後、`Timer::schedule(handshake_timeout)` で timeout を予約する。timeout 発火時は `RemoteEvent::HandshakeTimerFired` が source に流れ、Driver が `Association::handshake_timed_out` を呼ぶ。
-
-### Decision 7: Driver lifecycle と `RemoteDriverOutcome`
-
-```rust
-pub struct RemoteDriverHandle {
-    sink: Box<dyn RemoteEventSink>,
-    join: BoxFuture<'static, RemoteDriverOutcome>,
+pub struct Association {
+    // ...
+    handshake_generation: u64,
 }
 
-impl RemoteDriverHandle {
-    pub fn shutdown(&self) -> Result<(), RemoteEventDispatchError> {
-        self.sink.push(RemoteEvent::TransportShutdown)
+impl Association {
+    fn enter_handshaking(&mut self) {
+        self.handshake_generation = self.handshake_generation.wrapping_add(1);
+        // ...
     }
-    pub async fn outcome(self) -> RemoteDriverOutcome { self.join.await }
+
+    fn current_generation(&self) -> u64 {
+        self.handshake_generation
+    }
 }
 
-pub enum RemoteDriverOutcome {
-    Shutdown { reason: ShutdownReason },
-    SourceExhausted,
-    Aborted { error: RemoteDriverError },
+pub enum AssociationEffect {
+    StartHandshake { authority: TransportEndpoint, timeout: Duration, generation: u64 },
+    // ...
+}
+
+pub enum RemoteEvent {
+    HandshakeTimerFired { authority: TransportEndpoint, generation: u64 },
+    // ...
 }
 ```
 
-adapter 側は Driver を tokio task として spawn し、`RemoteDriverHandle` を `RemotingExtensionInstaller` に保持させる。actor system 停止時に `shutdown()` を呼び、`outcome()` を待つ。
+`u64` の意味付けは rustdoc に依存し、型安全性は若干落ちるが、`Association` 内部および `Remote::run` の判定経路でしか使わないため過剰設計を避ける。
 
-### Decision 8: Codec 経路を Driver に明示する
+### Decision 8: lifecycle 制御は既存 `Remoting::start` / `shutdown` で完結する
 
-Driver は inbound 側で raw `WireFrameBytes` を受け、`Codec::decode` で `InboundEnvelope` に復号してから `Association::accept_handshake_*` / inbound dispatch に渡す。outbound 側は `Association::next_outbound` で得た `OutboundEnvelope` を `Codec::encode` で raw bytes 化してから `RemoteTransport::send_frame` を呼ぶ。
+`RemoteDriverHandle` / `RemoteDriverOutcome` を導入せず、既存 `Remoting` trait の `start` / `shutdown` で lifecycle を制御する。
 
-`Codec<T>` のシグネチャは変えない。Driver が `Codec<InboundEnvelope>` と `Codec<OutboundEnvelope>` を保持する形で、対応する型ごとに実装が選ばれる。
+- `Remoting::start`: tokio task として `Remote::run` を spawn する経路は adapter 側の `RemotingExtensionInstaller` が担当する（adapter は `Remote` の所有権を持つため、`run` を spawn できる）。
+- `Remoting::shutdown`: adapter 内部 sender 経由で `RemoteEvent::TransportShutdown` を push し、`Remote::run` ループの `match` で `Ok(())` を返してループ終了する。adapter 側は spawn した task の `JoinHandle` を待つ。
 
-adapter 側の TCP layer は raw bytes と frame boundary だけを扱い、payload type を知らない。これは前 change `hide-remote-adaptor-runtime-internals` の方針と整合する。
+`Remote::run` の戻り値 `Result<(), RemotingError>` は次の意味で使う。
 
-### Decision 9: `Timer` Port を追加する
+- `Ok(())`: source 枯渇または `TransportShutdown` 受信による正常終了
+- `Err(RemotingError::TransportUnavailable)`: 復帰不能エラー（transport 永続失敗、association registry 破損 等）
+
+### Decision 9: AssociationEffect::StartHandshake の adapter 無視を禁止し、`Remote::run` で実行する
+
+`AssociationEffect::StartHandshake` のセマンティクスを「`Remote::run` 経路で `RemoteTransport` 経由の handshake 開始 + adapter 内部 sender への timer task spawn」と明示する。adapter 側 `effect_application::apply_effects_in_place` から該当分岐を削除する。
 
 ```rust
-pub trait Timer: Send + Sync {
-    fn schedule(&self, delay: Duration, event: RemoteEvent) -> TimerToken;
-    fn cancel(&self, token: TimerToken);
+// Remote::run の effect 処理（疑似コード）
+fn handle_effect(&mut self, effect: AssociationEffect) -> Result<(), RemotingError> {
+    match effect {
+        AssociationEffect::StartHandshake { authority, timeout, generation } => {
+            self.transport.send(handshake_request_envelope(&authority))?;
+            // adapter 側で timer をスケジュールするための情報は、
+            // 将来的に別の effect (例: ScheduleEvent) として表出させる必要がある。
+            // ただし current scope では transport.send の延長で adapter 側 I/O ワーカーが
+            // 内部 sender 経由で HandshakeTimerFired を push する責務を持つ
+            // (詳細は adapter 側 capability で規定)。
+            Ok(())
+        }
+        // ...
+    }
 }
 ```
 
-adapter 側は tokio `sleep_until` で実装する。Driver は handshake / quarantine timer を `Timer::schedule` で予約し、トークンを `Association` 状態に保持する（再ハンドシェイク時に cancel する）。
-
-heartbeat / failure detector tick は本 change の対象外（別 change で扱う）。
-
-### Decision 10: ジェネリクス vs dyn の選択
-
-| 対象 | 選択 | 理由 |
-|---|---|---|
-| `RemoteInstrument` | ジェネリクス | hot path（全 envelope）で dyn dispatch を避ける |
-| `RemoteEventSource` | ジェネリクス | Driver が所有、複数実装を混在させない |
-| `RemoteEventSink` | dyn (`Box<dyn>`) | adapter 側で `RemoteDriverHandle` に保持し、`shutdown()` の signature 安定性を優先 |
-| `Timer` | ジェネリクス | Driver が所有、混在させない |
-| `RemoteTransport` | dyn (既存) | 既存の `Box<dyn RemoteTransport>` を踏襲 |
-| `Codec<T>` | ジェネリクス | hot path の encode / decode で dyn 越し dispatch を避ける |
-
-`RemoteTransport` は既存設計で dyn なので踏襲する。本 change で `Box<dyn>` から ジェネリクスに変更する利益は薄く、影響範囲が大きいため別 change で扱う。
-
-## Alternatives Considered
-
-### Alternative A: instrument を `AssociationEffect::Instrument(InstrumentEvent)` 経由で adapter 実行
-
-却下。`on_send` / `on_receive` は全 envelope に掛かる hot path で、Effect Vec への append + adapter 側 dispatch のオーバーヘッドが無視できない。Effect 経由は handshake / quarantine 等の低頻度イベントに限定する案も検討したが、配線が二系統になり認知負荷が増えるため採用しない。
-
-### Alternative B: 既存 `Remoting` trait に `drive` メソッドを追加して Driver を統合する
-
-却下。`Remoting` は薄い lifecycle trait で、駆動ループを持つ責務は別。trait を肥大化させると `Remoting` の意味が「lifecycle + driving + ...」と複合化し、責務境界が崩れる。
-
-### Alternative C: queue 細分化を Pekko Artery 完全互換（Control / Ordinary / LargeMessage）にする
-
-却下（現時点）。既存の system / user 2 キュー分離で飢餓回避は満たされている。Large message queue は frame size 上限と分割再送ロジックを伴うため独立 change で扱う。本 change はこの分離を維持し、追加するのは watermark 連動の発火経路と `total_outbound_len` クエリのみとする。
-
-### Alternative D: 1ms ポーリングを残したまま instrument だけ配線する
-
-却下。ユーザー要件「Port & Adapter 前提の core 主導駆動」を満たさない。instrument 配線は派生的な恩恵で、本質的には駆動主導権の反転が中心。
-
-### Alternative E: tokio mpsc を core 側に直接埋め込む
-
-却下。core は no_std 維持が原則（cfg-std-forbid lint）。`RemoteEventSource` Port を切って adapter 実装に閉じ込める。
+**Open issue (実装段階で詰める)**: handshake timer の予約タイミングを effect で表出させるか、`RemoteTransport::initiate_handshake(authority, timeout, generation)` のような形で transport 契約に折り込むか。本 change は capability spec で「adapter は generation 付きの timer を adapter 内部で確保する責務を持つ」と書き、具体的な経路は実装 PR で決める。
 
 ## Risks / Trade-offs
 
-- Driver のジェネリクス連鎖（`RemoteDriver<S, K, T, I, C>`）が monomorphization コストを増やす。ただし remote crate は単一バイナリで型確定するため二項展開は抑えられる。
-- `Remote<I = NoopInstrument>` のジェネリクス化により、`Remote` を保持する周辺型（`RemotingExtensionInstaller` など）にも `<I>` が伝播する。default 型で見かけ上は `Remote` と書けるが、型推論が複雑になる箇所は明示型注釈が必要。
-- adapter 側 task 削除に伴い、既存の reconnect / restart 制御が `RemoteEvent::ConnectionLost` 駆動に変わる。再接続ロジックが Driver 側に移るため、`reconnect_backoff_policy` / `restart_counter` の所有権が core 側に来る。これらは純粋な値オブジェクトなので core への移動は妥当。
-- `RemoteEvent` を closed enum にすると adapter 側で新規 event 種を増やす際に core 側 enum 拡張が必要になる。これは Pekko Artery の `InboundEnvelope` / `OutboundEnvelope` と同じ性質で、open hierarchy より型安全。
-- watermark 既定値（1024 / 512）は経験値。設定可能にしているので運用時に調整できる。
-- `RemoteEventSource` の `async fn` を `-> impl Future` で表現するとトレイトオブジェクト化できず、複数 source 実装の動的差し替えはコンパイル時固定となる。これは意図的な制約。
+### Risk 1: `Remote<I>` のジェネリクス伝播
+
+`Remote<I>` から `Association` メソッドへ `&mut I` を渡す経路がコード全体に伝播する。既存呼出箇所（テスト、showcase、cluster adaptor 等）への影響を実装 PR で評価する。`I = ()` をデフォルト型にすることで、明示しない呼出は `Remote<()>` として動作する。
+
+**緩和策:** `Remote::new(...)` のシグネチャを `Remote<()>` 既定で互換に保ち、instrument 指定時は `Remote::with_instrument(transport, config, event_publisher, instrument)` 等の builder method を提供する。
+
+### Risk 2: `Remote::run` の長期保有
+
+`Remote::run` は `&mut self` を保持し続けるため、ループ実行中は `Remote` の他のメソッド（`addresses`、`shutdown`）を同時に呼べない。既存 `Remoting` 実装は同期メソッドのみで、shutdown が `&mut self` を要求するため衝突する。
+
+**緩和策:** adapter 側で `Remote` を `Arc<Mutex<Remote<I>>>` で保持し、`run` は別 task で動作させ、`shutdown` は adapter 内部 sender 経由の `TransportShutdown` push で間接的に終了させる。`Remote::shutdown` を呼ぶ前に `run` task が終了しているよう順序保証する。
+
+### Risk 3: handshake timer の責務分担曖昧さ
+
+`AssociationEffect::StartHandshake` を実行する際の timer 予約責務が、`Remote::run` と adapter 側 `RemoteTransport` のどちらに帰属するかが Decision 9 で曖昧。実装 PR で transport API を拡張するか、effect variant を増やすかの判断が残る。
+
+**緩和策:** capability spec では「adapter が generation 付き timer を確保する」MUST 要件を書くにとどめ、API 形は実装 PR の判断とする。本 change の artifact レビューでは、その分担に「曖昧さ残置を許容する」ことを明示しレビュー対象から外す。
+
+### Risk 4: 設計純化と Pekko 互換性のトレードオフ
+
+`Timer` Port を作らないことで、組み込み / WASM 等での migration 時に「sleep 抽象を adapter ごとに再実装する」必要が出る。Pekko の `Scheduler` のような汎用 Timer 抽象は提供しない。
+
+**緩和策:** 必要が生じた段階で別 change として `Timer` Port を追加すれば良い。現時点では adapter が tokio sleep で十分であり、YAGNI を優先する。
 
 ## Migration Plan
 
-1. 既存 `AssociationEffect::StartHandshake` の adapter 側 ignore 分岐をコメントアウトせずに、Driver 経路を新設してから一括差し替える。
-2. Driver と adapter 側 I/O ワーカーは新規ファイルとして追加し、既存 `outbound_loop` / `handshake_driver` / `inbound_dispatch` は最後に削除する。
-3. `Remote` ジェネリクス化は `Remote<I = NoopInstrument>` のデフォルト型で既存呼び出し点をできる限り維持する。明示型注釈が必要な箇所は同一 commit で更新する。
-4. 既存 integration test は public API 経由で動かし続ける（Driver が裏で動く形）。internal test は Driver を直接構築する形に書き換える。
-5. `rtk cargo test -p fraktor-remote-core-rs`、`rtk cargo test -p fraktor-remote-adaptor-std-rs`、最後に `rtk ./scripts/ci-check.sh ai all` で確認する。
+### Phase 1: instrument 配線基盤の整備（破壊的変更を含む）
+
+- `impl RemoteInstrument for ()` を追加
+- `(A, B)` / `(A, B, C)` の tuple composite を追加
+- `Remote<I: RemoteInstrument = ()>` ジェネリクス化（既存呼出は `()` で吸収）
+- `RemotingFlightRecorder: impl RemoteInstrument`
+- 既存テスト・showcase の `Remote::new` 呼出を `()` で吸収
+
+### Phase 2: Association 配線
+
+- `Association::associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `apply_backpressure` のシグネチャに `instrument: &mut I` を追加
+- `Association::total_outbound_len` を追加
+- `Association` に `handshake_generation: u64` フィールドを追加
+- `AssociationEffect::StartHandshake { authority, timeout, generation }` に generation を追加（既存変数名は維持）
+
+### Phase 3: core 側 Port の追加
+
+- `RemoteEvent` enum を `core/extension/remote_event.rs` に追加
+- `RemoteEventSource` trait を `core/extension/remote_event_source.rs` に追加
+
+### Phase 4: `Remote::run` 実装
+
+- `Remote::run<S: RemoteEventSource>(&mut self, source: &mut S) -> Result<(), RemotingError>` の inherent method 実装
+- event match の dispatch 表
+- effect 列処理（`StartHandshake` / `SendEnvelopes` / `DiscardEnvelopes` / `PublishLifecycle`）
+- watermark 連動 backpressure 発火
+
+### Phase 5: adapter 側 I/O ワーカー化
+
+- `inbound_dispatch` を `RemoteEvent::InboundFrameReceived` push のみに退化
+- `outbound_loop` を削除
+- `handshake_driver` を削除（handshake timer は `StartHandshake` 実行時に adapter 側 I/O ワーカーが per-association tokio task として確保）
+- `effect_application` から `StartHandshake` ignore 削除
+
+### Phase 6: adapter 側 `RemoteEventSource` 実装と spawn 経路
+
+- `tokio_remote_event_source.rs` 新設（tokio mpsc 受信側ラッパ）
+- `RemotingExtensionInstaller` から `Remote::run` を tokio task として spawn する経路を追加
+- 停止時 `Remoting::shutdown` で adapter 内部 sender 経由 `TransportShutdown` push → `run` task の join
+
+### Phase 7: テスト・検証
+
+- `cargo test -p fraktor-remote-core-rs` / `-p fraktor-remote-adaptor-std-rs` / `-p fraktor-cluster-adaptor-std-rs` green
+- handshake / quarantine / watermark backpressure / instrument 通知の integration test
+- showcase（`showcases/std/remote_lifecycle/` 等）が新 API で起動
+
+各 Phase は独立して merge 可能な PR に分割する（tasks.md 参照）。
 
 ## Open Questions
 
-- `RemoteInstrument` の `on_send` / `on_receive` を `&self` にする場合、内部状態を持つ instrument が `SpinSyncMutex` を抱える形になる。これは fraktor-rs immutability policy の例外（計測責務に閉じる）として明文化するが、reviewer 確認が必要。
-- `RemoteEventSource::recv` の signature は `-> impl Future<Output = Option<RemoteEvent>>` か `async fn recv(&mut self) -> Option<RemoteEvent>` か。RPITIT が安定して使えるなら後者を選ぶ（Rust 1.75 以降）。
-- `Timer::schedule` が返す `TimerToken` の cancel idempotency 保証（複数回 cancel しても安全か、既に発火したトークンに対する cancel 挙動）。
-- `BackpressureSignal` を既存 enum と統合するか、`Engaged` / `Released` 専用 enum を新設するか。
-- `RemoteConfig::outbound_high_watermark` / `outbound_low_watermark` の既定値（1024 / 512）は適切か。Pekko Artery 既定値との整合を確認する。
-- adapter から sink に push したイベントが Driver で処理されるまでの遅延が、handshake タイムアウト等の判定に影響しないか（実測が必要）。
+1. **`AssociationEffect::StartHandshake` における handshake timer 予約の責務分担** — `RemoteTransport::initiate_handshake` を transport API に追加するか、別の `AssociationEffect::ScheduleEvent { delay, on_expire }` variant を追加するか。本 change の artifact レビューでは曖昧さを許容し、実装 PR で確定する。
+2. **`RemoteEvent::InboundFrameReceived` のフレーム所有権** — `alloc::vec::Vec<u8>` で渡すか、参照で渡すか。current scope では `Vec<u8>` で簡素に進める（zero-copy 最適化は別 change）。
+3. **adapter 内部 mpsc channel の bounded / unbounded 選択** — adapter 内部実装詳細であり capability spec では規定しない。実装 PR で判断する（既定 bounded、capacity は `RemoteConfig` から読む方向）。
+
+## References
+
+- 前段 change: `openspec/changes/hide-remote-adaptor-runtime-internals/`（adapter public surface 縮小）
+- 既存 capability: `openspec/specs/remote-core-extension/spec.md`、`openspec/specs/remote-core-association-state-machine/spec.md`、`openspec/specs/remote-core-instrument/spec.md`、`openspec/specs/remote-adaptor-std-runtime/spec.md`
+- 参照実装: `references/pekko/Association.scala`、`references/protoactor-go/`

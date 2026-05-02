@@ -23,12 +23,12 @@
 #### Scenario: enqueue / next_outbound で on_send 発火
 
 - **WHEN** `Association::next_outbound` が `Some(envelope)` を返す
-- **THEN** 同一呼出または直後の Driver 経路で `RemoteInstrument::on_send(&envelope)` が呼ばれる
-- **AND** 呼び出し点は Association 内部または Driver の outbound 駆動経路のいずれかで明文化される
+- **THEN** 同一呼出または直後の `Remote::run` 経路で `RemoteInstrument::on_send(&envelope)` が呼ばれる
+- **AND** 呼び出し点は Association 内部または `Remote::run` の outbound 駆動経路のいずれかで明文化される
 
 #### Scenario: inbound dispatch で on_receive 発火
 
-- **WHEN** Driver が `Codec::decode` した `InboundEnvelope` を Association に渡す
+- **WHEN** `Remote::run` が `Codec::decode` した `InboundEnvelope` を Association に渡す
 - **THEN** `RemoteInstrument::on_receive(&envelope)` が呼ばれる
 
 #### Scenario: apply_backpressure で record_backpressure
@@ -45,7 +45,7 @@
 
 - **WHEN** `Association` 構造体のフィールドを検査する
 - **THEN** `RemoteInstrument` を直接または間接的に保持しない
-- **AND** instrument 参照は呼び出し時に外部（`Remote` または Driver）から渡される
+- **AND** instrument 参照は呼び出し時に外部（`Remote::run`）から渡される
 
 #### Scenario: hook 系メソッドの引数
 
@@ -53,11 +53,11 @@
 - **THEN** いずれも `instrument: &mut I` または `&I` を引数として受け取る経路が確立されている
   - 直接引数として受け取る、または
   - `Association` を保持する `Remote` のジェネリクス経路から `&mut self` 経由で渡される
-- **AND** 呼び出し側（Driver / Remote）から見て instrument 参照が一貫した型 `I` で渡されることが保証される
+- **AND** 呼び出し側（`Remote::run`）から見て instrument 参照が一貫した型 `I` で渡されることが保証される
 
 ### Requirement: outbound queue の総長クエリ
 
-`Association` は outbound queue（`SendQueue` の system + user）の合計長を返すクエリメソッドを提供する SHALL。これは Driver が watermark backpressure を制御するために使用する。
+`Association` は outbound queue（`SendQueue` の system + user）の合計長を返すクエリメソッドを提供する SHALL。これは `Remote::run` が watermark backpressure を制御するために使用する。
 
 #### Scenario: total_outbound_len のシグネチャ
 
@@ -72,13 +72,13 @@
 
 ### Requirement: watermark 連動の自動 backpressure 発火経路
 
-Driver は `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、状態遷移時に `Association::apply_backpressure` を呼び出して signal を発火する SHALL。Association 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない（同じ signal セマンティクスで動作する）。
+`Remote::run` は `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、状態遷移時に `Association::apply_backpressure` を呼び出して signal を発火する SHALL。Association 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない（同じ signal セマンティクスで動作する）。
 
-#### Scenario: 既存 BackpressureSignal の意味の整合
+#### Scenario: 既存 BackpressureSignal::Apply / Release の流用
 
 - **WHEN** `BackpressureSignal` enum の variant を検査する
-- **THEN** `Engaged`（または `Apply`）と `Released`（または `Release`）が定義されている
-- **AND** Driver から発火された signal と adapter から発火された signal は同じ effect を生む
+- **THEN** 既存の `Apply` と `Release` のみが定義され、`Engaged` / `Released` 等の新 variant が追加されていない
+- **AND** watermark 連動の発火と adapter / 上位層からの手動発火は同じ variant を使う
 
 #### Scenario: backpressure state は Association が保持する
 
@@ -86,32 +86,39 @@ Driver は `Association::total_outbound_len()` を `outbound_high_watermark` / `
 - **THEN** `Association` は idempotent に動作し、2 回目は state 遷移を伴わない
 - **AND** instrument の `record_backpressure` は state 変化を伴った発火点でのみ呼ばれる（または instrument 側で重複を吸収する）
 
-### Requirement: AssociationEffect::StartHandshake は Driver で実行される（adapter 無視を禁止）
+### Requirement: AssociationEffect::StartHandshake は Remote::run で実行される（adapter 無視を禁止）
 
-`Association::recover` および `associate` が `AssociationEffect::StartHandshake { endpoint }` を出力した場合、その effect は Driver の経路で `RemoteTransport::initiate_handshake(&endpoint)` に dispatch されなければならない（MUST）。adapter 側で `StartHandshake` を ignore する分岐を持ってはならない（MUST NOT）。
+`Association::recover` および `associate` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を出力した場合、その effect は `Remote::run` の経路で `RemoteTransport` 経由の handshake 開始に dispatch されなければならない（MUST）。adapter 側で `StartHandshake` を ignore する分岐を持ってはならない（MUST NOT）。
 
-#### Scenario: Driver による StartHandshake 実行
+#### Scenario: Remote::run による StartHandshake 実行
 
-- **WHEN** `Association::recover(Some(endpoint), now)` が `AssociationEffect::StartHandshake` を返す
-- **THEN** Driver は同一 effect 列処理の中で `RemoteTransport::initiate_handshake(&endpoint)` を呼ぶ
-- **AND** Driver は `Timer::schedule(handshake_timeout, RemoteEvent::HandshakeTimerFired { authority, generation })` で timeout を予約する
+- **WHEN** `Association::recover(Some(endpoint), now)` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を返す
+- **THEN** `Remote::run` は同一 effect 列処理の中で `RemoteTransport` 経由で handshake request を送出する
+- **AND** adapter 側は同 effect 受領を契機に generation 付き timer を確保し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で source に push する
 
 #### Scenario: adapter 側の StartHandshake 無視分岐の不在
 
 - **WHEN** `modules/remote-adaptor-std/src/std/effect_application.rs` の dispatch を検査する
 - **THEN** `AssociationEffect::StartHandshake { .. } => /* ignore */` または同等の no-op 分岐が存在しない
 
-### Requirement: handshake generation の管理
+### Requirement: handshake generation の管理（u64 inline）
 
-`Association` は handshake ごとに単調増加する generation 値を保持し、`AssociationEffect::StartHandshake` および `RemoteEvent::HandshakeTimerFired` で同じ generation を参照することで、古い timeout の発火を無視する SHALL。
+`Association` は handshake ごとに単調増加する generation 値を `u64` フィールドとして保持し、`AssociationEffect::StartHandshake` および `RemoteEvent::HandshakeTimerFired` で同じ `u64` を参照することで、古い timeout の発火を無視する SHALL。`HandshakeGeneration` 等の newtype は新設してはならない（MUST NOT、純増ゼロ方針）。
 
 #### Scenario: generation の保持
 
 - **WHEN** `Association` 構造体のフィールドを検査する
-- **THEN** `handshake_generation: HandshakeGeneration`（または `u64` 単純型）が保持され、`Handshaking` 状態に入るたびに +1 される
+- **THEN** `handshake_generation: u64` が保持され、`Handshaking` 状態に入るたびに `wrapping_add(1)` で +1 される
+- **AND** `HandshakeGeneration` newtype や `pub struct HandshakeGeneration(u64)` が定義されていない
 
 #### Scenario: 古い timeout の無視
 
-- **WHEN** Driver が `RemoteEvent::HandshakeTimerFired { authority, generation: g_old }` を受信し、現在の `Association` の generation が `g_new > g_old` である
-- **THEN** Driver は `Association::handshake_timed_out` を呼ばず、event を破棄する
+- **WHEN** `Remote::run` が `RemoteEvent::HandshakeTimerFired { authority, generation: g_old }` を受信し、現在の `Association` の generation が `g_new > g_old` である
+- **THEN** `Remote::run` は `Association::handshake_timed_out` を呼ばず、event を破棄する
 - **AND** 破棄は instrument の `record_handshake` を発火しない（古いイベントなので観測対象外）
+
+#### Scenario: AssociationEffect::StartHandshake の generation フィールド
+
+- **WHEN** `AssociationEffect::StartHandshake` の variant 定義を検査する
+- **THEN** `StartHandshake { authority: TransportEndpoint, timeout: core::time::Duration, generation: u64 }` または同等のフィールド構成を持つ
+- **AND** generation の型は `u64` であり、newtype でラップされていない

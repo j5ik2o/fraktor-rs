@@ -2,19 +2,39 @@
 
 ### Requirement: Remote が RemoteInstrument をジェネリクスで保持する
 
-`fraktor_remote_core_rs::core::extension::Remote` は型パラメータ `I: RemoteInstrument`（既定型 `NoopInstrument`）で instrument を保持しなければならない（MUST）。`Arc<dyn RemoteInstrument>` を hot path で経由してはならない（MUST NOT）。
+`fraktor_remote_core_rs::core::extension::Remote` は型パラメータ `I: RemoteInstrument`（既定型 `()`）で instrument を保持しなければならない（MUST）。`Arc<dyn RemoteInstrument>` を hot path で経由してはならない（MUST NOT）。
 
 #### Scenario: Remote のジェネリクス署名
 
 - **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
-- **THEN** `pub struct Remote<I: RemoteInstrument = NoopInstrument>` または同等のジェネリクス署名が宣言されている
-- **AND** `instruments: I` または `instrument: I` フィールドを保持している
+- **THEN** `pub struct Remote<I: RemoteInstrument = ()>` または同等のジェネリクス署名が宣言されている
+- **AND** `instrument: I` フィールドを保持している
 
 #### Scenario: hot path での dyn 経由の不在
 
 - **WHEN** `Remote` から instrument の `on_send` / `on_receive` を呼び出す経路を検査する
 - **THEN** `Box<dyn RemoteInstrument>` または `Arc<dyn RemoteInstrument>` を経由しない
 - **AND** ジェネリクスによる static dispatch でメソッドが解決される
+
+### Requirement: () 型が RemoteInstrument の no-op 既定実装である
+
+`()` 型に対して `impl RemoteInstrument for ()` が提供され、すべての method が no-op として実装されなければならない（MUST）。`NoopInstrument` 等の専用 ZST 型は新設してはならない（MUST NOT）。
+
+#### Scenario: () 型の RemoteInstrument 実装の存在
+
+- **WHEN** `modules/remote-core/src/core/instrument/` 配下を検査する
+- **THEN** `impl RemoteInstrument for ()` が定義されている
+- **AND** すべての method（`on_send`、`on_receive`、`record_handshake`、`record_quarantine`、`record_backpressure`）の本体が空である
+
+#### Scenario: NoopInstrument 型の不在
+
+- **WHEN** `modules/remote-core/src/core/instrument/` 配下のソースを検査する
+- **THEN** `pub struct NoopInstrument` または `pub type NoopInstrument` が宣言されていない（純増ゼロ方針）
+
+#### Scenario: zero-cost であることの担保
+
+- **WHEN** `Remote<()>` を構築して `on_send` / `on_receive` 等の経路を辿る
+- **THEN** `()` の method 呼び出しは monomorphization で消去され、ランタイム側で命令が残らないことを期待する（最適化レベルが release のとき）
 
 ### Requirement: tuple ベースの composite RemoteInstrument
 
@@ -36,37 +56,6 @@
 - **WHEN** `(A, B): RemoteInstrument` の `on_send` 実装が `self.0.on_send(env); self.1.on_send(env);` を呼ぶ
 - **THEN** Rust の借用検査でコンパイルが通る（`&mut self.0` と `&mut self.1` は disjoint）
 
-### Requirement: NoopInstrument の存在
-
-`fraktor_remote_core_rs::core::instrument::NoopInstrument` 型が定義され、`RemoteInstrument` のすべての method を no-op として実装する SHALL。これは `Remote<I>` の既定型である。
-
-#### Scenario: NoopInstrument の存在
-
-- **WHEN** `modules/remote-core/src/core/instrument/noop_instrument.rs` を読む
-- **THEN** `pub struct NoopInstrument;` または同等の zero-sized type が定義されている
-- **AND** `impl RemoteInstrument for NoopInstrument` が存在し、すべての method 本体が空である
-
-#### Scenario: zero-cost であることの担保
-
-- **WHEN** `Remote<NoopInstrument>` を構築して `on_send` / `on_receive` 等の経路を辿る
-- **THEN** `NoopInstrument` の method 呼び出しは monomorphization で消去され、ランタイム側で命令が残らないことを期待する（最適化レベルが release のとき）
-
-### Requirement: instrument 配線の Driver 透過
-
-`RemoteDriver` は型パラメータ `I: RemoteInstrument` を受け取り、Driver 内で association メソッドに instrument 参照を渡す SHALL。Driver から `&mut I` を `Association` 関連メソッドへ渡す経路が確立されている。
-
-#### Scenario: Driver と Remote の I 一致
-
-- **WHEN** `RemoteDriver<S, K, T, I, C>` と `Remote<I>` の型パラメータを検査する
-- **THEN** 同じ `I` 型が両者で一貫している
-- **AND** ユーザーは `Remote::<MyInstrument>::new(...)` で構築すれば Driver 構築でも同じ `I` が要求される
-
-#### Scenario: instrument 参照の渡し方
-
-- **WHEN** Driver の outbound 駆動経路（`next_outbound` 呼出）を検査する
-- **THEN** `&mut I` または `&I` の参照が `Association` 関連メソッドまたはローカルラッパーに渡される
-- **AND** instrument が `Arc<dyn>` でラップされていない
-
 ### Requirement: RemotingFlightRecorder は RemoteInstrument を実装する
 
 `RemotingFlightRecorder` は `RemoteInstrument` trait を実装し、tuple 合成可能でなければならない（MUST）。既存の record 系メソッド（`record_handshake` / `record_quarantine` / `record_backpressure` / `record_send` / `record_receive`）は `RemoteInstrument` 経由で間接的に発火されてもよい。
@@ -82,12 +71,27 @@
 - **WHEN** `(RemotingFlightRecorder, MyMetricsInstrument)` を `Remote::with_instrument` または builder に渡す
 - **THEN** `Remote<(RemotingFlightRecorder, MyMetricsInstrument)>` が構築でき、両方の instrument に通知が分配される
 
+### Requirement: instrument 配線の Remote::run 透過
+
+`Remote::run` は `Remote<I>` の `&mut self` 経路で `&mut self.instrument: &mut I` を保持し、Association メソッドへ instrument 参照を渡す SHALL。
+
+#### Scenario: Remote::run 内での instrument 借用
+
+- **WHEN** `Remote::run` のループ実装を検査する
+- **THEN** `self.instrument` への `&mut` 参照が確保され、`Association` 関連メソッド呼び出しに渡される
+- **AND** instrument が `Arc<dyn>` でラップされていない
+
+#### Scenario: 別 Driver 型を作らない
+
+- **WHEN** `modules/remote-core/src/core/` 配下のソースを検査する
+- **THEN** `pub struct RemoteDriver` または同等の Driver 型が定義されていない（純増ゼロ方針、`Remote::run` がその責務を負う）
+
 ### Requirement: instrument hook 呼出は association state machine からトリガされる
 
 `RemoteInstrument` の各 method は `Association` の状態遷移または送受信メソッドからトリガされなければならない（MUST）。具体的な呼出点は `remote-core-association-state-machine` capability の要件で規定する。
 
-#### Scenario: Driver と instrument の独立性
+#### Scenario: Remote::run と instrument の独立性
 
-- **WHEN** Driver から instrument 直接呼出を検査する
-- **THEN** Driver は `Association` を経由して instrument を呼ぶか、または Association メソッドの戻り値（effect）を介して間接的にトリガする経路を持つ
-- **AND** Driver が状態遷移コンテキストを持たずに instrument 単体で何かを記録することはない（state-aware であるべき記録は association 経由）
+- **WHEN** `Remote::run` から instrument 直接呼出を検査する
+- **THEN** `Remote::run` は `Association` を経由して instrument を呼ぶか、または Association メソッドの戻り値（effect）を介して間接的にトリガする経路を持つ
+- **AND** `Remote::run` が状態遷移コンテキストを持たずに instrument 単体で何かを記録することはない（state-aware であるべき記録は association 経由）
