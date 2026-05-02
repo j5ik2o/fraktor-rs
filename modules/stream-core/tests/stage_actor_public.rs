@@ -17,9 +17,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_stream_core_rs::core::{
   StreamError,
   dsl::{Flow, Sink, Source},
-  materialization::{
-    ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamCompletion, StreamNotUsed,
-  },
+  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamFuture, StreamNotUsed},
   shape::{Inlet, Outlet, StreamShape},
   stage::{GraphStage, GraphStageLogic, StageActorEnvelope, StageActorReceive, StageContext},
 };
@@ -40,12 +38,12 @@ fn build_system() -> ActorSystem {
   ActorSystem::create_with_config(&props, config).expect("system should build")
 }
 
-fn poll_completion<T>(completion: &StreamCompletion<T>) -> Result<T, StreamError>
+fn poll_completion<T>(completion: &StreamFuture<T>) -> Result<T, StreamError>
 where
   T: Clone, {
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
-    if let Completion::Ready(result) = completion.poll() {
+    if let Completion::Ready(result) = completion.value() {
       return result;
     }
     std::thread::yield_now();

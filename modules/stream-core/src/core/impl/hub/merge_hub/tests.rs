@@ -74,7 +74,7 @@ fn merge_hub_source_drains_as_stream_source() {
       break;
     }
   }
-  assert_eq!(first.materialized().poll(), Completion::Ready(Ok(10_u32)));
+  assert_eq!(first.materialized().value(), Completion::Ready(Ok(10_u32)));
 
   let second_graph = hub.source().into_mat(Sink::head(), KeepRight);
   let second = second_graph.run(&mut materializer).expect("second materialize");
@@ -84,7 +84,7 @@ fn merge_hub_source_drains_as_stream_source() {
       break;
     }
   }
-  assert_eq!(second.materialized().poll(), Completion::Ready(Ok(20_u32)));
+  assert_eq!(second.materialized().value(), Completion::Ready(Ok(20_u32)));
 }
 
 #[test]
@@ -98,7 +98,7 @@ fn merge_hub_source_waits_for_later_offer_without_completing() {
     let _ = materialized.stream().drive();
   }
   assert_eq!(materialized.stream().state(), StreamState::Running);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   hub.offer(42_u32).expect("offer 42");
   for _ in 0..4 {
@@ -108,7 +108,7 @@ fn merge_hub_source_waits_for_later_offer_without_completing() {
     }
   }
   assert_eq!(materialized.stream().state(), StreamState::Completed);
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(42_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(42_u32)));
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn merge_hub_drain_and_complete_flushes_buffer_and_completes_source() {
     let _ = materialized.stream().drive();
   }
   assert_eq!(materialized.stream().state(), StreamState::Running);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   control.drain_and_complete();
 
@@ -174,7 +174,7 @@ fn merge_hub_drain_and_complete_flushes_buffer_and_completes_source() {
       break;
     }
   }
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(2_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(2_u32)));
   assert_eq!(materialized.stream().state(), StreamState::Completed);
   assert!(hub.is_empty());
 }

@@ -1,12 +1,20 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
+#[cfg(test)]
+mod tests;
+
 use super::map_definition;
 use crate::core::{
   DownstreamCancelAction, DynValue, FlowLogic, QueueOfferResult, StageDefinition, StreamError, downcast_value,
   dsl::{Sink, Source},
-  r#impl::{fusing::StreamBufferConfig, materialization::Stream, queue::SourceQueue},
-  materialization::{Completion, DriveOutcome, MatCombine, StreamCompletion, StreamDone},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamState},
+    queue::SourceQueue,
+  },
+  materialization::{DriveOutcome, MatCombine, StreamDone, StreamFuture},
   shape::{Inlet, Outlet},
+  stage::CancellationCause,
 };
 
 const IDLE_BUDGET: usize = 32;
@@ -14,7 +22,7 @@ const DRIVE_BUDGET: usize = 256;
 
 pub(in crate::core) struct SecondarySourceBridge<Out> {
   stream:     Stream,
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   queue:      SourceQueue<Out>,
   finished:   bool,
 }
@@ -23,26 +31,47 @@ impl<Out> SecondarySourceBridge<Out>
 where
   Out: Send + Sync + 'static,
 {
-  fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
+  pub(super) fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
+    // 完了通知は2系統ある:
+    //   (1) inner sink (`Sink::foreach`) の completion future
+    //   (2) `Stream` 自体の terminal state (Completed/Failed/Cancelled)
+    // (1) が届いていればそれを優先し、未着の場合は (2) で終了種別を判別して
+    // 正常完了と異常完了を取り違えないようにする (`is_terminal()` だけだと
+    // Failed/Cancelled も正常完了として queue.complete_if_open に流れてしまい、
+    // 失敗を呼び出し側に伝えられない)。
     match self.completion.try_take() {
       | Some(Ok(_)) => {
-        // completion が正常に取得できた → 終了
         self.finished = true;
         let _ = self.queue.complete_if_open();
-        Ok(())
-      },
-      | None => {
-        // まだ completion が来ていない → stream の状態を確認
-        if self.stream.state().is_terminal() || matches!(self.completion.poll(), Completion::Ready(Ok(_))) {
-          self.finished = true;
-          let _ = self.queue.complete_if_open();
-        }
         Ok(())
       },
       | Some(Err(error)) => {
         self.finished = true;
         self.queue.fail(error.clone());
         Err(error)
+      },
+      | None => match self.stream.state() {
+        | StreamState::Completed => {
+          self.finished = true;
+          let _ = self.queue.complete_if_open();
+          Ok(())
+        },
+        | StreamState::Failed => {
+          self.finished = true;
+          // Stream 側は具体的な StreamError を保持しないため、汎用 Failed を
+          // 通知する。原因取得には framework 側の terminal cause API が必要
+          // (別 issue で追跡)。
+          let error = StreamError::Failed;
+          self.queue.fail(error.clone());
+          Err(error)
+        },
+        | StreamState::Cancelled => {
+          self.finished = true;
+          let error = StreamError::CancellationCause { cause: CancellationCause::stage_was_completed() };
+          self.queue.fail(error.clone());
+          Err(error)
+        },
+        | StreamState::Idle | StreamState::Running => Ok(()),
       },
     }
   }

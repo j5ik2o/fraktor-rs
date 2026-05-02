@@ -22,7 +22,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_stream_core_rs::core::{
   dsl::{Sink, Source},
   materialization::{
-    ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepLeft, KeepRight, StreamCompletion,
+    ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepLeft, KeepRight, StreamFuture,
   },
 };
 
@@ -54,10 +54,10 @@ fn build_materializer(system: ActorSystem) -> ActorMaterializer {
   materializer
 }
 
-fn poll_completion<T: Clone + Send + 'static>(completion: &StreamCompletion<T>) -> Completion<T> {
+fn poll_completion<T: Clone + Send + 'static>(completion: &StreamFuture<T>) -> Completion<T> {
   let deadline = Instant::now() + Duration::from_secs(5);
   loop {
-    let poll = completion.poll();
+    let poll = completion.value();
     if matches!(poll, Completion::Ready(_)) {
       return poll;
     }
@@ -261,8 +261,8 @@ fn from_input_stream_reports_successful_io_result_on_eof() {
   // When: 両 completion が Ready になるまでポーリング
   let deadline = Instant::now() + Duration::from_secs(5);
   loop {
-    let io_ready = matches!(io_completion.poll(), Completion::Ready(_));
-    let chunks_ready = matches!(chunks_completion.poll(), Completion::Ready(_));
+    let io_ready = matches!(io_completion.value(), Completion::Ready(_));
+    let chunks_ready = matches!(chunks_completion.value(), Completion::Ready(_));
     if io_ready && chunks_ready {
       break;
     }
@@ -273,14 +273,14 @@ fn from_input_stream_reports_successful_io_result_on_eof() {
   }
 
   // Then: IOResult は成功かつバイト数=8、チャンクを連結すると元の入力と一致
-  let io_result = match io_completion.poll() {
+  let io_result = match io_completion.value() {
     | Completion::Ready(Ok(result)) => result,
     | other => panic!("expected Ready(Ok(_)) for IO but got {other:?}"),
   };
   assert!(io_result.was_successful());
   assert_eq!(io_result.count(), 8);
 
-  let chunks = match chunks_completion.poll() {
+  let chunks = match chunks_completion.value() {
     | Completion::Ready(Ok(result)) => result,
     | other => panic!("expected Ready(Ok(_)) for chunks but got {other:?}"),
   };

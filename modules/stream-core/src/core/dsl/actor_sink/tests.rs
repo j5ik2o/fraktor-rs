@@ -10,7 +10,7 @@ use crate::core::{
     materialization::{Stream, StreamShared},
   },
   materialization::{
-    Completion, DriveOutcome, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamDone,
+    Completion, DriveOutcome, KeepRight, Materialized, Materializer, RunnableGraph, StreamDone, StreamFuture,
     StreamNotUsed,
   },
 };
@@ -111,7 +111,7 @@ fn actor_sink_actor_ref_should_complete_stream() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone::new())));
   assert_eq!(forwarded.lock().as_slice(), &[1_u32, 2_u32]);
 }
 
@@ -152,7 +152,7 @@ fn actor_sink_actor_ref_with_result_should_fail_stream_when_callback_fails() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn actor_sink_actor_ref_with_result_should_complete_stream_when_callback_succeed
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn actor_sink_actor_ref_with_backpressure_should_complete_stream() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8, 1_u8, 1_u8])));
 
-  let graph: RunnableGraph<StreamCompletion<StreamDone>> = Source::from_array([1_u32, 2_u32]).into_mat(
+  let graph: RunnableGraph<StreamFuture<StreamDone>> = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_backpressure(
       {
         let messages = messages.clone();
@@ -194,7 +194,7 @@ fn actor_sink_actor_ref_with_backpressure_should_complete_stream() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
 
-  assert!(matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+  assert!(matches!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone))));
   assert_eq!(messages.lock().as_slice(), &[
     BackpressureMessage::Init { ack: 1_u8 },
     BackpressureMessage::Element { ack: 1_u8, value: 1_u32 },
@@ -208,7 +208,7 @@ fn actor_sink_actor_ref_with_backpressure_should_pause_without_ack() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8])));
 
-  let graph: RunnableGraph<StreamCompletion<StreamDone>> = Source::from_array([1_u32, 2_u32]).into_mat(
+  let graph: RunnableGraph<StreamFuture<StreamDone>> = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_backpressure(
       {
         let messages = messages.clone();
@@ -232,7 +232,7 @@ fn actor_sink_actor_ref_with_backpressure_should_pause_without_ack() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
   assert!(!materialized.stream().state().is_terminal());
   assert_eq!(messages.lock().as_slice(), &[BackpressureMessage::Init { ack: 1_u8 }, BackpressureMessage::Element {
     ack:   1_u8,
@@ -270,7 +270,7 @@ fn actor_sink_actor_ref_with_backpressure_should_resume_after_delayed_ack() {
 
   drive_until_terminal(&materialized);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
   assert_eq!(messages.lock().as_slice(), &[BackpressureMessage::Init { ack: 1_u8 }, BackpressureMessage::Element {
     ack:   1_u8,
     value: 1_u32,
@@ -280,7 +280,7 @@ fn actor_sink_actor_ref_with_backpressure_should_resume_after_delayed_ack() {
   acks.lock().push_back(1_u8);
   drive_until_terminal(&materialized);
 
-  assert!(matches!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone))));
+  assert!(matches!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone))));
   assert_eq!(messages.lock().as_slice(), &[
     BackpressureMessage::Init { ack: 1_u8 },
     BackpressureMessage::Element { ack: 1_u8, value: 1_u32 },

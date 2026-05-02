@@ -1,15 +1,15 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{thread, time::Duration};
+use std::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, setup::ActorSystemConfig},
   system::ActorSystem,
 };
 use fraktor_stream_core_rs::core::{
   dsl::{Sink, Source},
-  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight},
+  materialization::{ActorMaterializer, ActorMaterializerConfig, KeepRight},
 };
 
 struct GuardianActor;
@@ -32,17 +32,7 @@ fn main() {
     .flat_map_concat(|value| Source::single(value + 1))
     .into_mat(Sink::collect(), KeepRight);
   let materialized = graph.run(&mut materializer).expect("run");
-  let mut values = None;
-  for _ in 0..128 {
-    match materialized.materialized().poll() {
-      | Completion::Ready(ready) => {
-        values = Some(ready.expect("stream should succeed"));
-        break;
-      },
-      | Completion::Pending => thread::sleep(Duration::from_millis(1)),
-    }
-  }
-  let values = values.expect("stream should complete");
+  let values = materialized.materialized().wait_blocking(&StdBlocker::new()).expect("stream should succeed");
   assert_eq!(values, vec![3, 5, 7]);
   materializer.shutdown().expect("materializer shutdown");
 }

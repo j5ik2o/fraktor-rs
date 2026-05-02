@@ -15,8 +15,8 @@ use core::{
 use super::{
   BoundedSourceQueue, DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer,
   OverflowStrategy, RestartBackoff, RestartConfig, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue,
-  SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamCompletion,
-  StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
+  SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamDone,
+  StreamDslError, StreamError, StreamFuture, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow::{
     Flow, backpressure_timeout_definition, balance_definition, batch_definition, broadcast_definition,
     buffer_definition, completion_timeout_definition, concat_definition, concat_lazy_definition,
@@ -204,22 +204,6 @@ where
     Out: Sync, {
     let inner = self.map(|value| ((), value));
     SourceWithContext::from_source(inner)
-  }
-
-  /// Creates a sink endpoint that can be paired with a source subscriber bridge.
-  #[must_use]
-  pub fn as_subscriber() -> Sink<Out, StreamCompletion<StreamDone>>
-  where
-    Out: Sync, {
-    Sink::ignore()
-  }
-
-  /// Creates a sink endpoint for actor interop entry points.
-  #[must_use]
-  pub fn sink() -> Sink<Out, StreamCompletion<StreamDone>>
-  where
-    Out: Sync, {
-    Self::as_subscriber()
   }
 
   /// Combines multiple sources by merging them into a single output stream.
@@ -754,16 +738,16 @@ where
     Source { graph, mat: func(mat), _pd: PhantomData }
   }
 
-  /// Watches stream termination and completes a `StreamCompletion<()>` handle.
+  /// Watches stream termination and completes a `StreamFuture<()>` handle.
   ///
   /// Elements are passed through unchanged. The materialized value is
-  /// combined with a fresh `StreamCompletion<()>` using the supplied
+  /// combined with a fresh `StreamFuture<()>` using the supplied
   /// `MatCombineRule`.
   #[must_use]
   pub fn watch_termination_mat<C>(mut self, _combine: C) -> Source<Out, C::Out>
   where
-    C: MatCombineRule<Mat, StreamCompletion<()>>, {
-    let completion = StreamCompletion::<()>::new();
+    C: MatCombineRule<Mat, StreamFuture<()>>, {
+    let completion = StreamFuture::<()>::new();
     let definition = watch_termination_definition::<Out>(completion.clone());
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -771,7 +755,7 @@ where
     if let Some(from) = from {
       self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
-    let mat = combine_mat::<Mat, StreamCompletion<()>, C>(self.mat, completion);
+    let mat = combine_mat::<Mat, StreamFuture<()>, C>(self.mat, completion);
     Source { graph: self.graph, mat, _pd: PhantomData }
   }
 
@@ -1020,7 +1004,7 @@ where
     initial: Acc,
     func: F,
     materializer: &mut M,
-  ) -> Result<Materialized<StreamCompletion<Acc>>, StreamError>
+  ) -> Result<Materialized<StreamFuture<Acc>>, StreamError>
   where
     Acc: Send + Sync + 'static,
     F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static,
@@ -1038,7 +1022,7 @@ where
     initial: Acc,
     func: F,
     materializer: &mut M,
-  ) -> Result<Materialized<StreamCompletion<Acc>>, StreamError>
+  ) -> Result<Materialized<StreamFuture<Acc>>, StreamError>
   where
     Acc: Clone + Send + Sync + 'static,
     F: FnMut(Acc, Out) -> Fut + Send + Sync + 'static,
@@ -1052,11 +1036,7 @@ where
   /// # Errors
   ///
   /// Returns [`StreamError`] when materialization fails.
-  pub fn run_reduce<F, M>(
-    self,
-    func: F,
-    materializer: &mut M,
-  ) -> Result<Materialized<StreamCompletion<Out>>, StreamError>
+  pub fn run_reduce<F, M>(self, func: F, materializer: &mut M) -> Result<Materialized<StreamFuture<Out>>, StreamError>
   where
     F: FnMut(Out, Out) -> Out + Send + Sync + 'static,
     M: Materializer, {
@@ -1072,7 +1052,7 @@ where
     self,
     func: F,
     materializer: &mut M,
-  ) -> Result<Materialized<StreamCompletion<StreamDone>>, StreamError>
+  ) -> Result<Materialized<StreamFuture<StreamDone>>, StreamError>
   where
     F: FnMut(Out) + Send + Sync + 'static,
     M: Materializer, {
@@ -2914,13 +2894,13 @@ where
   }
 }
 
-impl<Out> Source<Out, StreamCompletion<StreamDone>>
+impl<Out> Source<Out, StreamFuture<StreamDone>>
 where
   Out: Send + Sync + 'static,
 {
   /// Converts this source into a pre-materialized form.
   #[must_use]
-  pub fn pre_materialize(self) -> (Self, StreamCompletion<StreamDone>) {
+  pub fn pre_materialize(self) -> (Self, StreamFuture<StreamDone>) {
     let (graph, mat) = self.into_parts();
     let source = Source { graph, mat: mat.clone(), _pd: PhantomData };
     (source, mat)

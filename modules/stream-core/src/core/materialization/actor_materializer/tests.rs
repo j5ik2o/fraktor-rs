@@ -571,13 +571,13 @@ fn actor_materializer_drives_stream() {
   let materialized = graph.run(&mut materializer).expect("materialize");
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
-    if matches!(materialized.materialized().poll(), Completion::Ready(_)) {
+    if matches!(materialized.materialized().value(), Completion::Ready(_)) {
       break;
     }
     std::thread::yield_now();
   }
   assert_eq!(materialized.stream().state(), StreamState::Completed);
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(2)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(2)));
 }
 
 #[test]
@@ -1566,13 +1566,13 @@ fn downstream_cancel_sends_cancel_command_to_upstream_island_actor() {
   let materialized = graph.run(&mut materializer).expect("materialize");
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
-    if matches!(materialized.materialized().poll(), Completion::Ready(_)) {
+    if matches!(materialized.materialized().value(), Completion::Ready(_)) {
       break;
     }
     thread::yield_now();
   }
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
   wait_for_upstream_cancel_command_count(&materializer, 1);
   assert_eq!(materializer.streams()[0].state(), StreamState::Cancelled);
 }
@@ -1591,7 +1591,7 @@ fn island_actor_diagnostics_does_not_propagate_downstream_cancellation() {
 
   assert_eq!(materializer.streams()[0].drive(), DriveOutcome::Progressed);
   drive_registered_streams(&materializer, 8);
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
 
   let diagnostics: Vec<StreamIslandActorDiagnostic> =
     materializer.island_actor_diagnostics_for_test().expect("island actor diagnostics should be available");
@@ -1640,7 +1640,7 @@ fn downstream_island_does_not_busy_loop_when_boundary_is_empty_and_open() {
     assert_eq!(materializer.streams()[1].drive(), DriveOutcome::Idle);
   }
 
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
   assert_eq!(materializer.streams()[1].state(), StreamState::Running);
 }
 
@@ -1659,7 +1659,7 @@ fn downstream_cancel_discards_in_flight_boundary_elements_after_head() {
   assert_eq!(materializer.streams()[0].drive(), DriveOutcome::Progressed);
   drive_registered_streams(&materializer, 8);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
   assert_eq!(materializer.streams()[0].state(), StreamState::Cancelled);
 }
 
@@ -1684,7 +1684,7 @@ fn detached_async_branch_does_not_hang_sibling_async_branch() {
 
   drive_registered_streams(&materializer, 16);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
   assert_eq!(materializer.streams().last().expect("main branch stream should exist").state(), StreamState::Completed);
 }
 
@@ -1699,12 +1699,12 @@ fn shutdown_drains_in_flight_boundary_elements_before_completing_graph() {
   assert_eq!(materializer.streams().len(), 2);
 
   assert_eq!(materializer.streams()[0].drive(), DriveOutcome::Progressed);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   materialized.unique_kill_switch().shutdown();
   drive_registered_streams(&materializer, 8);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
 }
 
 #[test]
@@ -1719,12 +1719,12 @@ fn abort_prioritizes_failure_over_in_flight_boundary_elements() {
   let abort_error = StreamError::failed_with_context("abort in-flight boundary");
 
   assert_eq!(materializer.streams()[0].drive(), DriveOutcome::Progressed);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   materialized.unique_kill_switch().abort(abort_error.clone());
   drive_registered_streams(&materializer, 8);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Err(abort_error)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Err(abort_error)));
 }
 
 #[test]
@@ -1742,7 +1742,7 @@ fn abort_prioritizes_source_failure_when_both_are_pending() {
   materialized.unique_kill_switch().abort(abort_error.clone());
   drive_registered_streams(&materializer, 8);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Err(abort_error)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Err(abort_error)));
   assert!(materializer.streams().iter().all(|stream| stream.state() == StreamState::Failed));
 }
 
@@ -1763,7 +1763,7 @@ fn source_failure_prioritizes_shutdown_for_drainable_source() {
   materialized.unique_kill_switch().shutdown();
   drive_registered_streams(&materializer, 8);
 
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Err(source_failure)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Err(source_failure)));
 }
 
 #[test]

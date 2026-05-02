@@ -16,8 +16,7 @@ use crate::core::{
     materialization::{Stream, StreamShared},
   },
   materialization::{
-    Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamDone,
-    StreamNotUsed,
+    Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamDone, StreamFuture, StreamNotUsed,
   },
   stage::StageKind,
 };
@@ -86,7 +85,7 @@ impl<T: Unpin> Future for YieldThenOutputFuture<T> {
 
 fn run_source_with_sink<In, Mat>(
   source: Source<In, StreamNotUsed>,
-  sink: Sink<In, StreamCompletion<Mat>>,
+  sink: Sink<In, StreamFuture<Mat>>,
 ) -> Completion<Mat>
 where
   In: Send + Sync + 'static,
@@ -100,7 +99,7 @@ where
       break;
     }
   }
-  materialized.materialized().poll()
+  materialized.materialized().value()
 }
 
 fn drive_steps<Mat>(materialized: &Materialized<Mat>, steps: usize) -> bool {
@@ -116,11 +115,11 @@ fn drive_steps<Mat>(materialized: &Materialized<Mat>, steps: usize) -> bool {
 #[test]
 fn sink_map_materialized_value_transforms_materialized_value_and_keeps_data_path_behavior() {
   let (_graph, materialized) =
-    Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32).into_parts();
+    Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 7_u32).into_parts();
   assert_eq!(materialized, 7_u32);
 
   let graph = Source::from_array([1_u32, 2_u32, 3_u32])
-    .into_mat(Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32), KeepRight);
+    .into_mat(Sink::<u32, StreamFuture<StreamDone>>::ignore().map_materialized_value(|_| 7_u32), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
@@ -236,7 +235,7 @@ fn sink_never_keeps_completion_pending_after_upstream_finishes() {
   let materialized = graph.run(&mut materializer).expect("materialize");
 
   assert!(drive_steps(&materialized, 64));
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
   assert!(materialized.stream().state().is_terminal());
 }
 
@@ -295,8 +294,8 @@ fn sink_combine_mat_combines_materialized_values_with_keep_both() {
 
   assert!(drive_steps(&materialized, 64));
   let combined = materialized.materialized();
-  assert_eq!(combined.0.poll(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
-  assert_eq!(combined.1.poll(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
+  assert_eq!(combined.0.value(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
+  assert_eq!(combined.1.value(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
 }
 
 #[test]
@@ -335,7 +334,7 @@ fn sink_fold_async_waits_for_pending_future_before_completion() {
 
   assert_eq!(materializer.calls, 1);
   assert_eq!(materialized.stream().drive(), crate::core::materialization::DriveOutcome::Progressed);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   for _ in 0..64 {
     let _ = materialized.stream().drive();
@@ -345,12 +344,12 @@ fn sink_fold_async_waits_for_pending_future_before_completion() {
   }
 
   assert!(materialized.stream().state().is_terminal());
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(7_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(7_u32)));
 }
 
 #[test]
 fn sink_foreach_async_rejects_zero_parallelism() {
-  let result = Sink::<u32, StreamCompletion<StreamDone>>::foreach_async(0, |_value| async move {});
+  let result = Sink::<u32, StreamFuture<StreamDone>>::foreach_async(0, |_value| async move {});
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
@@ -359,8 +358,7 @@ fn sink_foreach_async_rejects_zero_parallelism() {
 
 #[test]
 fn sink_foreach_async_accepts_positive_parallelism() {
-  let sink =
-    Sink::<u32, StreamCompletion<StreamDone>>::foreach_async(1, |_value| async move {}).expect("foreach_async");
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::foreach_async(1, |_value| async move {}).expect("foreach_async");
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), sink);
   assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
 }
@@ -369,7 +367,7 @@ fn sink_foreach_async_accepts_positive_parallelism() {
 fn sink_from_materializer_defers_factory_and_uses_created_sink() {
   let factory_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
   let factory_calls_ref = factory_calls.clone();
-  let sink = Sink::<u32, StreamCompletion<Vec<u32>>>::from_materializer(move || {
+  let sink = Sink::<u32, StreamFuture<Vec<u32>>>::from_materializer(move || {
     *factory_calls_ref.lock() += 1;
     Sink::collect()
   });
@@ -425,8 +423,25 @@ fn sink_lazy_sink_with_empty_source_completes() {
 
 #[test]
 fn sink_pre_materialize_returns_pending_completion_handle() {
-  let (_sink, completion) = Sink::<u32, StreamCompletion<StreamDone>>::ignore().pre_materialize();
-  assert_eq!(completion.poll(), Completion::Pending);
+  let (_sink, completion) = Sink::<u32, StreamFuture<StreamDone>>::ignore().pre_materialize();
+  assert_eq!(completion.value(), Completion::Pending);
+}
+
+#[test]
+fn sink_pre_materialize_completion_resolves_when_sink_finishes() {
+  // The handle returned by pre_materialize must be the sink's own
+  // completion, not a freshly-allocated disconnected StreamFuture.
+  let (sink, completion) = Sink::<u32, StreamFuture<StreamDone>>::ignore().pre_materialize();
+  let graph = Source::from_array([1_u32, 2, 3]).into_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -463,7 +478,7 @@ fn sink_to_path_collects_bytes() {
 
 // inner sink の on_complete エラーを検証するためのカスタム SinkLogic
 struct FailOnCompleteSinkLogic {
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
 }
 
 impl SinkLogic for FailOnCompleteSinkLogic {
@@ -488,8 +503,8 @@ impl SinkLogic for FailOnCompleteSinkLogic {
 
 #[test]
 fn sink_lazy_sink_propagates_inner_on_complete_error() {
-  let inner_completion = StreamCompletion::new();
-  let inner_sink = Sink::<u32, StreamCompletion<StreamDone>>::from_definition(
+  let inner_completion = StreamFuture::new();
+  let inner_sink = Sink::<u32, StreamFuture<StreamDone>>::from_definition(
     StageKind::Custom,
     FailOnCompleteSinkLogic { completion: inner_completion.clone() },
     inner_completion,
@@ -500,7 +515,7 @@ fn sink_lazy_sink_propagates_inner_on_complete_error() {
 }
 
 struct PendingInnerSinkLogic {
-  completion:        StreamCompletion<StreamDone>,
+  completion:        StreamFuture<StreamDone>,
   observed:          ArcShared<SpinSyncMutex<Vec<u32>>>,
   pending:           bool,
   upstream_finished: bool,
@@ -574,8 +589,8 @@ impl SinkLogic for PendingInnerSinkLogic {
 #[test]
 fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
   let observed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
-  let inner_completion = StreamCompletion::new();
-  let inner_sink = Sink::<u32, StreamCompletion<StreamDone>>::from_definition(
+  let inner_completion = StreamFuture::new();
+  let inner_sink = Sink::<u32, StreamFuture<StreamDone>>::from_definition(
     StageKind::Custom,
     PendingInnerSinkLogic {
       completion:        inner_completion.clone(),
@@ -593,7 +608,7 @@ fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
 
   assert_eq!(materializer.calls, 1);
   assert_eq!(materialized.stream().drive(), crate::core::materialization::DriveOutcome::Progressed);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   for _ in 0..64 {
     let _ = materialized.stream().drive();
@@ -603,22 +618,22 @@ fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
   }
 
   assert!(materialized.stream().state().is_terminal());
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(StreamDone::new())));
   assert_eq!(*observed.lock(), vec![1_u32, 2_u32]);
 }
 
 #[test]
 fn sink_contramap_transforms_input_type() {
-  let sink = Sink::<u32, StreamCompletion<Vec<u32>>>::collect().contramap(|s: &str| s.len() as u32);
+  let sink = Sink::<u32, StreamFuture<Vec<u32>>>::collect().contramap(|s: &str| s.len() as u32);
   let completion = run_source_with_sink(Source::from_array(["hello", "hi", "hey"]), sink);
   assert_eq!(completion, Completion::Ready(Ok(alloc::vec![5_u32, 2, 3])));
 }
 
 #[test]
 fn sink_from_graph_creates_sink_from_existing_graph() {
-  let original = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
+  let original = Sink::<u32, StreamFuture<Vec<u32>>>::collect();
   let (graph, mat) = original.into_parts();
-  let reconstructed = Sink::<u32, StreamCompletion<Vec<u32>>>::from_graph(graph, mat);
+  let reconstructed = Sink::<u32, StreamFuture<Vec<u32>>>::from_graph(graph, mat);
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), reconstructed);
   assert_eq!(completion, Completion::Ready(Ok(alloc::vec![1_u32, 2, 3])));
 }
@@ -667,7 +682,7 @@ fn sink_queue_collects_elements() {
 fn sink_never_does_not_complete_without_elements() {
   // 前提: 要素を流さない source と、成功完了しない sink を組み合わせる
   let source = Source::<u32, StreamNotUsed>::empty();
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::never();
 
   // 操作: ストリームを実行する
   let graph = source.into_mat(sink, KeepRight);
@@ -678,7 +693,7 @@ fn sink_never_does_not_complete_without_elements() {
   }
 
   // 期待: materialized completion は成功完了しない
-  let completion = materialized.materialized().poll();
+  let completion = materialized.materialized().value();
   assert!(!matches!(completion, Completion::Ready(Ok(_))), "Sink::never should not complete successfully on its own");
 }
 
@@ -686,7 +701,7 @@ fn sink_never_does_not_complete_without_elements() {
 fn sink_never_accepts_elements_without_completing() {
   // 前提: 要素を流す source と、成功完了しない sink を組み合わせる
   let source = Source::from_array([1_u32, 2, 3]);
-  let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
+  let sink = Sink::<u32, StreamFuture<StreamDone>>::never();
 
   // 操作: ストリームを実行する
   let graph = source.into_mat(sink, KeepRight);
@@ -697,7 +712,7 @@ fn sink_never_accepts_elements_without_completing() {
   }
 
   // 期待: sink 側の materialized completion は成功完了しない
-  let completion = materialized.materialized().poll();
+  let completion = materialized.materialized().value();
   assert!(!matches!(completion, Completion::Ready(Ok(_))), "Sink::never should not produce a successful completion");
 }
 
@@ -706,8 +721,8 @@ fn sink_never_accepts_elements_without_completing() {
 #[test]
 fn sink_combine_distributes_elements_to_all_sinks() {
   // 前提: 2 つの collect sink を combine する
-  let sink1 = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
-  let sink2 = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
+  let sink1 = Sink::<u32, StreamFuture<Vec<u32>>>::collect();
+  let sink2 = Sink::<u32, StreamFuture<Vec<u32>>>::collect();
   let combined = Sink::combine(vec![sink1, sink2]);
 
   // 操作: combine した sink に要素を流す
@@ -722,7 +737,7 @@ fn sink_combine_distributes_elements_to_all_sinks() {
 fn sink_combine_with_empty_iterator_creates_cancelled_sink() {
   // 前提: combine 対象の sink が 0 件である
   let combined =
-    Sink::<u32, StreamCompletion<StreamDone>>::combine(core::iter::empty::<Sink<u32, StreamCompletion<StreamDone>>>());
+    Sink::<u32, StreamFuture<StreamDone>>::combine(core::iter::empty::<Sink<u32, StreamFuture<StreamDone>>>());
 
   // 操作: source と接続して実行する
   let source = Source::from_array([1_u32, 2, 3]);
@@ -745,8 +760,8 @@ fn sink_combine_mat_keeps_both_materialized_values() {
   // 前提: 異なる materialized value を持つ 2 つの sink を KeepBoth で combine する
   use crate::core::materialization::KeepBoth;
 
-  let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
-  let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let sink1 = Sink::<u32, StreamFuture<StreamDone>>::ignore();
+  let sink2 = Sink::<u32, StreamFuture<StreamDone>>::ignore();
   let combined = Sink::combine_mat(sink1, sink2, KeepBoth);
 
   // 操作: materialized value を取り出す
@@ -754,8 +769,8 @@ fn sink_combine_mat_keeps_both_materialized_values() {
 
   // 期待: 両方の materialized value が pending のタプルとして返る
   let (left, right) = mat;
-  assert_eq!(left.poll(), Completion::Pending);
-  assert_eq!(right.poll(), Completion::Pending);
+  assert_eq!(left.value(), Completion::Pending);
+  assert_eq!(right.value(), Completion::Pending);
 }
 
 #[test]
@@ -763,13 +778,13 @@ fn sink_combine_mat_keeps_left_materialized_value() {
   // 前提: 2 つの sink を KeepLeft で combine する
   use crate::core::materialization::KeepLeft;
 
-  let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
-  let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let sink1 = Sink::<u32, StreamFuture<StreamDone>>::ignore();
+  let sink2 = Sink::<u32, StreamFuture<StreamDone>>::ignore();
   let combined = Sink::combine_mat(sink1, sink2, KeepLeft);
 
   // 操作: materialized value を取り出す
   let (_graph, mat) = combined.into_parts();
 
   // 期待: 左側の materialized value が pending のまま返る
-  assert_eq!(mat.poll(), Completion::Pending);
+  assert_eq!(mat.value(), Completion::Pending);
 }

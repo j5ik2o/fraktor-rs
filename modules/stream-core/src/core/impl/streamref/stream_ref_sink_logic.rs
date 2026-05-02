@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use super::StreamRefHandoff;
 use crate::core::{
   DemandTracker, DynValue, SinkDecision, SinkLogic, StreamError, downcast_value,
-  materialization::{StreamCompletion, StreamDone},
+  materialization::{StreamDone, StreamFuture},
   stream_ref::StreamRefSettings,
 };
 
@@ -19,7 +19,7 @@ enum StreamRefSinkSubscription {
 pub(in crate::core) struct StreamRefSinkLogic<T> {
   handoff:        StreamRefHandoff<T>,
   subscription:   StreamRefSinkSubscription,
-  completion:     Option<StreamCompletion<StreamDone>>,
+  completion:     Option<StreamFuture<StreamDone>>,
   settings:       StreamRefSettings,
   demand_started: bool,
   waiting_ticks:  u64,
@@ -33,7 +33,7 @@ impl<T> StreamRefSinkLogic<T> {
 
   pub(in crate::core) fn subscribed(
     handoff: StreamRefHandoff<T>,
-    completion: Option<StreamCompletion<StreamDone>>,
+    completion: Option<StreamFuture<StreamDone>>,
   ) -> Self {
     Self::new(handoff, StreamRefSinkSubscription::Subscribed, completion)
   }
@@ -41,7 +41,7 @@ impl<T> StreamRefSinkLogic<T> {
   fn new(
     handoff: StreamRefHandoff<T>,
     subscription: StreamRefSinkSubscription,
-    completion: Option<StreamCompletion<StreamDone>>,
+    completion: Option<StreamFuture<StreamDone>>,
   ) -> Self {
     Self {
       handoff,

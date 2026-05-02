@@ -24,8 +24,8 @@ use super::{
     fusing::{DemandTracker, StreamBufferConfig},
   },
   materialization::{
-    KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer, RunnableGraph, StreamCompletion,
-    StreamDone, StreamNotUsed,
+    KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer, RunnableGraph, StreamDone,
+    StreamFuture, StreamNotUsed,
   },
   shape,
   stage::{StageContext, StageKind, extract_last_ctx_and_values},

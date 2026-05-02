@@ -3,22 +3,22 @@ use core::marker::PhantomData;
 
 use crate::core::{
   DemandTracker, DynValue, SinkDecision, SinkLogic, StageDefinition, StreamError, dsl::Sink,
-  materialization::StreamCompletion,
+  materialization::StreamFuture,
 };
 
 /// Sink logic that materializes its inner sink from a factory.
 pub(in crate::core) struct MaterializedSinkLogic<In, Out, F> {
   factory:          Option<F>,
   inner:            Option<Box<dyn SinkLogic>>,
-  inner_completion: Option<StreamCompletion<Out>>,
-  completion:       StreamCompletion<Out>,
+  inner_completion: Option<StreamFuture<Out>>,
+  completion:       StreamFuture<Out>,
   completed:        bool,
   _pd:              PhantomData<fn(In)>,
 }
 
 impl<In, Out, F> MaterializedSinkLogic<In, Out, F> {
   /// Creates materialized sink logic.
-  pub(in crate::core) const fn new(factory: F, completion: StreamCompletion<Out>) -> Self {
+  pub(in crate::core) const fn new(factory: F, completion: StreamFuture<Out>) -> Self {
     Self { factory: Some(factory), inner: None, inner_completion: None, completion, completed: false, _pd: PhantomData }
   }
 
@@ -26,7 +26,7 @@ impl<In, Out, F> MaterializedSinkLogic<In, Out, F> {
     if self.completed {
       return;
     }
-    if let Some(result) = self.inner_completion.as_ref().and_then(StreamCompletion::try_take) {
+    if let Some(result) = self.inner_completion.as_ref().and_then(StreamFuture::try_take) {
       self.completion.complete(result);
       self.completed = true;
     }
@@ -45,7 +45,7 @@ impl<In, Out, F> MaterializedSinkLogic<In, Out, F>
 where
   In: Send + Sync + 'static,
   Out: Send + 'static,
-  F: FnOnce() -> Sink<In, StreamCompletion<Out>> + Send + 'static,
+  F: FnOnce() -> Sink<In, StreamFuture<Out>> + Send + 'static,
 {
   fn materialize_inner(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     if self.inner.is_some() {
@@ -76,7 +76,7 @@ impl<In, Out, F> SinkLogic for MaterializedSinkLogic<In, Out, F>
 where
   In: Send + Sync + 'static,
   Out: Send + 'static,
-  F: FnOnce() -> Sink<In, StreamCompletion<Out>> + Send + 'static,
+  F: FnOnce() -> Sink<In, StreamFuture<Out>> + Send + 'static,
 {
   fn can_accept_input(&self) -> bool {
     self.inner.as_ref().is_none_or(|inner| inner.can_accept_input())

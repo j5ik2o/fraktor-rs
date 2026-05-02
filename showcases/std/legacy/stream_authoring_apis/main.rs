@@ -2,9 +2,9 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example stream_authoring_apis`
 
-use std::{thread, time::Duration};
+use std::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -19,7 +19,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_stream_core_rs::core::{
   StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source, StreamRefs},
-  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepLeft, KeepRight, StreamNotUsed},
+  materialization::{ActorMaterializer, ActorMaterializerConfig, KeepLeft, KeepRight, StreamNotUsed},
   shape::{Inlet, Outlet, StreamShape},
   stage::{
     GraphStage, GraphStageLogic, StageActorEnvelope, StageActorReceive, StageContext, SubSinkInlet,
@@ -34,19 +34,6 @@ impl Actor for GuardianActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
-}
-
-fn poll_until_ready<T: Clone>(
-  completion: &fraktor_stream_core_rs::core::materialization::StreamCompletion<T>,
-  max_ticks: usize,
-) -> Option<Result<T, StreamError>> {
-  for _ in 0..max_ticks {
-    if let Completion::Ready(result) = completion.poll() {
-      return Some(result);
-    }
-    thread::sleep(Duration::from_millis(1));
-  }
-  None
 }
 
 struct RecordingReceive {
@@ -123,14 +110,14 @@ fn main() {
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("materializer start");
+  let blocker = StdBlocker::new();
 
   let graph_dsl_flow = GraphDsl::create_flow(|builder: &mut GraphDslBuilder<u32, u32, StreamNotUsed>| {
     builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|value| value + 1)).expect("add flow");
   });
   let graph_dsl_graph = Source::from_array([1_u32, 2, 3]).via(graph_dsl_flow).into_mat(Sink::collect(), KeepRight);
   let graph_dsl_materialized = graph_dsl_graph.run(&mut materializer).expect("graph dsl run");
-  let graph_dsl_values =
-    poll_until_ready(graph_dsl_materialized.materialized(), 64).expect("graph dsl completion").expect("graph dsl");
+  let graph_dsl_values = graph_dsl_materialized.materialized().wait_blocking(&blocker).expect("graph dsl");
   println!("graph dsl values: {graph_dsl_values:?}");
 
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
@@ -143,8 +130,7 @@ fn main() {
     KeepRight,
   );
   let materialized = stage_graph.run(&mut materializer).expect("stage graph run");
-  let stage_values =
-    poll_until_ready(materialized.materialized(), 64).expect("stage graph completion").expect("stage graph");
+  let stage_values = materialized.materialized().wait_blocking(&blocker).expect("stage graph");
   println!("stage graph values: {stage_values:?}, actor received: {:?}", *received.lock());
 
   let stream_ref_graph = Source::from_array([7_u32, 8, 9]).into_mat(StreamRefs::source_ref::<u32>(), KeepRight);
@@ -157,8 +143,7 @@ fn main() {
     KeepRight,
   );
   let remote_materialized = remote_graph.run(&mut materializer).expect("remote source run");
-  let stream_ref_values =
-    poll_until_ready(remote_materialized.materialized(), 64).expect("stream ref completion").expect("stream ref");
+  let stream_ref_values = remote_materialized.materialized().wait_blocking(&blocker).expect("stream ref");
   println!("stream ref values: {stream_ref_values:?}");
 
   let mut sub_sink = SubSinkInlet::<u32>::new("example-sub-sink");

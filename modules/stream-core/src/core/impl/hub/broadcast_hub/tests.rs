@@ -76,7 +76,7 @@ fn broadcast_hub_source_for_drains_subscriber_queue() {
       break;
     }
   }
-  assert_eq!(first.materialized().poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(first.materialized().value(), Completion::Ready(Ok(1_u32)));
 
   let second_graph = hub.source_for(left).into_mat(Sink::head(), KeepRight);
   let second = second_graph.run(&mut materializer).expect("second materialize");
@@ -86,7 +86,7 @@ fn broadcast_hub_source_for_drains_subscriber_queue() {
       break;
     }
   }
-  assert_eq!(second.materialized().poll(), Completion::Ready(Ok(2_u32)));
+  assert_eq!(second.materialized().value(), Completion::Ready(Ok(2_u32)));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn broadcast_hub_source_waits_for_later_publish_without_completing() {
     let _ = materialized.stream().drive();
   }
   assert_eq!(materialized.stream().state(), StreamState::Running);
-  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
 
   hub.publish(55_u32).expect("publish 55");
   for _ in 0..4 {
@@ -111,7 +111,7 @@ fn broadcast_hub_source_waits_for_later_publish_without_completing() {
     }
   }
   assert_eq!(materialized.stream().state(), StreamState::Completed);
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(55_u32)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(55_u32)));
 }
 
 #[test]

@@ -10,9 +10,7 @@ use crate::core::{
     fusing::StreamBufferConfig,
     materialization::{Stream, StreamShared},
   },
-  materialization::{
-    Completion, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamNotUsed,
-  },
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph, StreamFuture, StreamNotUsed},
   stage::{CancellationCause, SubSourceOutletHandler},
 };
 
@@ -83,7 +81,7 @@ fn source_emits_pushed_elements_after_downstream_pull() {
   let mut outlet = SubSourceOutlet::<u32>::new("sub-source");
   let events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
   outlet.set_handler(RecordingSubSourceOutletHandler { events: events.clone() });
-  let graph = outlet.source().into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = outlet.source().into_mat(Sink::<u32, StreamFuture<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("materialize");
 
@@ -96,7 +94,7 @@ fn source_emits_pushed_elements_after_downstream_pull() {
   drive_until_terminal(&materialized);
 
   // Then: push した要素が Source の data path に流れ、pull callback も観測される
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(vec![10_u32, 20_u32])));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(vec![10_u32, 20_u32])));
   assert_eq!(*events.lock(), vec!["pull", "pull"]);
   assert!(outlet.is_closed());
   assert!(!outlet.is_available());
@@ -134,7 +132,7 @@ fn push_after_complete_fails() {
 fn fail_propagates_error_to_source_consumer() {
   // Given: Sink::collect に接続した SubSourceOutlet
   let mut outlet = SubSourceOutlet::<u32>::new("sub-source");
-  let graph = outlet.source().into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = outlet.source().into_mat(Sink::<u32, StreamFuture<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("materialize");
 
@@ -145,7 +143,7 @@ fn fail_propagates_error_to_source_consumer() {
 
   // Then: source consumer は同じ StreamError を観測する
   assert!(outlet.is_closed());
-  assert_eq!(materialized.materialized().poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]

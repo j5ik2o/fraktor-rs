@@ -48,15 +48,15 @@ fn source_queue_with_complete_should_enqueue_and_complete_after_drain() {
 
   assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
   assert_eq!(poll_ready(queue.offer(2_u32)), QueueOfferResult::Enqueued);
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
 
   queue.complete();
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
 
   assert_eq!(queue.poll().expect("poll"), Some(1_u32));
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
   assert_eq!(queue.poll().expect("poll"), Some(2_u32));
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -120,9 +120,9 @@ fn source_queue_with_complete_should_reject_offer_after_complete() {
   queue.complete();
 
   assert_eq!(poll_ready(queue.offer(2_u32)), QueueOfferResult::QueueClosed);
-  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(completion.value(), Completion::Pending);
   assert_eq!(queue.poll().expect("poll"), Some(1_u32));
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn source_queue_with_complete_should_fail_offer_and_completion_after_fail() {
   queue.fail(StreamError::Failed);
 
   assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Failure(StreamError::Failed));
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn source_queue_with_complete_close_for_cancel_should_resolve_pending_offer_and_
 
   assert_eq!(wake_counter.wake_count(), 1);
   assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::QueueClosed));
-  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
   assert!(queue.is_closed());
   assert!(queue.is_empty());
 }

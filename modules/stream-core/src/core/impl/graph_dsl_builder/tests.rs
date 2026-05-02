@@ -34,7 +34,7 @@ fn build_creates_flow_from_builder() {
 
   drive_to_terminal(&mut interpreter);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(2_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(2_u32)));
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn graph_dsl_facade_creates_builder() {
 
   drive_to_terminal(&mut interpreter);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(6_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(6_u32)));
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn graph_dsl_from_flow_maps_materialized_value() {
   drive_to_terminal(&mut interpreter);
 
   assert_eq!(mat, 7_u32);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(6_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(6_u32)));
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn to_mat_keeps_sink_materialized_value_rule() {
 
   drive_to_terminal(&mut interpreter);
 
-  assert_eq!(completion.poll(), Completion::Ready(Ok(7_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(7_u32)));
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn wire_via_chained_produces_correct_result() {
   let plan = graph.into_plan().unwrap();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(40_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(40_u32)));
 }
 
 // --- wire_to ---

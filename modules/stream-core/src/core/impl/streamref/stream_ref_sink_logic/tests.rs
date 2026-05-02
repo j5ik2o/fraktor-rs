@@ -2,7 +2,7 @@ use super::StreamRefSinkLogic;
 use crate::core::{
   DemandTracker, DynValue, SinkLogic, StreamError,
   r#impl::streamref::StreamRefHandoff,
-  materialization::{Completion, StreamCompletion, StreamDone},
+  materialization::{Completion, StreamDone, StreamFuture},
   stream_ref::StreamRefSettings,
 };
 
@@ -36,12 +36,12 @@ fn awaiting_remote_subscription_fails_after_configured_ticks() {
 fn subscribed_sink_completes_materialized_completion() {
   let handoff = StreamRefHandoff::<u32>::new();
   handoff.subscribe();
-  let completion = StreamCompletion::<StreamDone>::new();
+  let completion = StreamFuture::<StreamDone>::new();
   let mut logic = StreamRefSinkLogic::subscribed(handoff, Some(completion.clone()));
 
   logic.on_complete().expect("complete");
 
-  assert!(matches!(completion.poll(), Completion::Ready(Ok(_))));
+  assert!(matches!(completion.value(), Completion::Ready(Ok(_))));
 }
 
 #[test]

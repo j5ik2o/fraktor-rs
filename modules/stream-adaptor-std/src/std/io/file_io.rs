@@ -1,5 +1,8 @@
 extern crate std;
 
+#[cfg(test)]
+mod tests;
+
 use std::{
   fs::{self, File, OpenOptions},
   io::{BufWriter, Error, ErrorKind, Read, Seek, SeekFrom, Write},
@@ -9,7 +12,7 @@ use std::{
 use fraktor_stream_core_rs::core::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, StreamError,
   dsl::{Sink, Source},
-  materialization::StreamCompletion,
+  materialization::StreamFuture,
   stage::StageKind,
 };
 
@@ -89,15 +92,15 @@ impl FileIO {
   /// The file is opened when the stream starts. Each byte is written through a
   /// buffered writer so that intermediate data is flushed to disk incrementally
   /// rather than accumulated entirely in memory. The materialized value is a
-  /// [`StreamCompletion<IOResult>`] that completes with the number of bytes
+  /// [`StreamFuture<IOResult>`] that completes with the number of bytes
   /// written and the completion status.
   ///
   /// The file is created (or truncated) at the given path. On write failure the
   /// `IOResult` records the error with a byte count of zero.
   #[must_use]
-  pub fn to_path<P: AsRef<Path>>(path: P) -> Sink<u8, StreamCompletion<IOResult>> {
+  pub fn to_path<P: AsRef<Path>>(path: P) -> Sink<u8, StreamFuture<IOResult>> {
     let path_buf = path.as_ref().to_path_buf();
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = WriteToPathSinkLogic {
       path:           path_buf,
       options:        None,
@@ -115,9 +118,9 @@ impl FileIO {
   /// The `options` parameter controls how the file is opened (e.g. append,
   /// create, truncate). Corresponds to Pekko's `FileIO.toPath(f, options)`.
   #[must_use]
-  pub fn to_path_with_options<P: AsRef<Path>>(path: P, options: OpenOptions) -> Sink<u8, StreamCompletion<IOResult>> {
+  pub fn to_path_with_options<P: AsRef<Path>>(path: P, options: OpenOptions) -> Sink<u8, StreamFuture<IOResult>> {
     let path_buf = path.as_ref().to_path_buf();
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = WriteToPathSinkLogic {
       path:           path_buf,
       options:        Some(options),
@@ -138,9 +141,9 @@ impl FileIO {
     path: P,
     options: OpenOptions,
     start_position: u64,
-  ) -> Sink<u8, StreamCompletion<IOResult>> {
+  ) -> Sink<u8, StreamFuture<IOResult>> {
     let path_buf = path.as_ref().to_path_buf();
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = WriteToPathSinkLogic {
       path:           path_buf,
       options:        Some(options),
@@ -159,7 +162,7 @@ struct WriteToPathSinkLogic {
   start_position: Option<u64>,
   writer:         Option<BufWriter<File>>,
   count:          u64,
-  completion:     StreamCompletion<IOResult>,
+  completion:     StreamFuture<IOResult>,
 }
 
 impl SinkLogic for WriteToPathSinkLogic {

@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use super::{
-  DemandTracker, DynValue, SinkDecision, SinkLogic, StageKind, StreamCompletion, StreamDone, StreamError,
-  StreamNotUsed, downcast_value, sink::Sink,
+  DemandTracker, DynValue, SinkDecision, SinkLogic, StageKind, StreamDone, StreamError, StreamFuture, StreamNotUsed,
+  downcast_value, sink::Sink,
 };
 
 #[cfg(test)]
@@ -13,21 +13,21 @@ pub struct ActorSink;
 
 impl ActorSink {
   /// Creates an actor-ref style sink.
-  pub fn actor_ref<In, Emit>(emit: Emit) -> Sink<In, StreamCompletion<StreamDone>>
+  pub fn actor_ref<In, Emit>(emit: Emit) -> Sink<In, StreamFuture<StreamDone>>
   where
     In: Send + Sync + 'static,
     Emit: FnMut(In) + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = ActorRefSinkLogic { emit, completion: completion.clone(), _pd: PhantomData };
     Sink::from_definition(StageKind::Custom, logic, completion)
   }
 
   /// Creates an actor-ref style sink whose callback can fail.
-  pub fn actor_ref_with_result<In, Emit>(emit: Emit) -> Sink<In, StreamCompletion<StreamDone>>
+  pub fn actor_ref_with_result<In, Emit>(emit: Emit) -> Sink<In, StreamFuture<StreamDone>>
   where
     In: Send + Sync + 'static,
     Emit: FnMut(In) -> Result<(), StreamError> + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = ActorRefResultSinkLogic { emit, completion: completion.clone(), _pd: PhantomData };
     Sink::from_definition(StageKind::Custom, logic, completion)
   }
@@ -55,7 +55,7 @@ impl ActorSink {
     ack_message: Ack,
     on_complete_message: Msg,
     on_failure_message: OnFailureMessage,
-  ) -> Sink<In, StreamCompletion<StreamDone>>
+  ) -> Sink<In, StreamFuture<StreamDone>>
   where
     In: Send + Sync + 'static,
     Ack: Clone + PartialEq + Send + Sync + 'static,
@@ -65,7 +65,7 @@ impl ActorSink {
     OnInitMessage: FnMut(Ack) -> Msg + Send + Sync + 'static,
     ReceiveAck: FnMut() -> Option<Ack> + Send + Sync + 'static,
     OnFailureMessage: FnMut(StreamError) -> Msg + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = ActorRefBackpressureSinkLogic::<
       In,
       Ack,
@@ -122,7 +122,7 @@ impl ActorSink {
     OnInitMessage: FnMut() -> Msg + Send + Sync + 'static,
     ReceiveAck: FnMut() -> Option<Ack> + Send + Sync + 'static,
     OnFailureMessage: FnMut(StreamError) -> Msg + Send + Sync + 'static, {
-    let completion = StreamCompletion::new();
+    let completion = StreamFuture::new();
     let logic = ActorRefBackpressureAnyAckSinkLogic::<
       In,
       Ack,
@@ -149,13 +149,13 @@ impl ActorSink {
 
 struct ActorRefSinkLogic<In, Emit> {
   emit:       Emit,
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   _pd:        PhantomData<fn(In)>,
 }
 
 struct ActorRefResultSinkLogic<In, Emit> {
   emit:       Emit,
-  completion: StreamCompletion<StreamDone>,
+  completion: StreamFuture<StreamDone>,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -217,7 +217,7 @@ struct ActorRefBackpressureSinkLogic<In, Ack, Msg, Emit, MessageAdapter, OnInitM
   ack_message:         Ack,
   on_complete_message: Msg,
   on_failure_message:  OnFailureMessage,
-  completion:          StreamCompletion<StreamDone>,
+  completion:          StreamFuture<StreamDone>,
   awaiting_ack:        bool,
   _pd:                 PhantomData<fn(In, Msg)>,
 }
@@ -312,7 +312,7 @@ struct ActorRefBackpressureAnyAckSinkLogic<
   receive_ack:         ReceiveAck,
   on_complete_message: Msg,
   on_failure_message:  OnFailureMessage,
-  completion:          StreamCompletion<StreamDone>,
+  completion:          StreamFuture<StreamDone>,
   awaiting_ack:        bool,
   _pd:                 PhantomData<fn(In, Ack, Msg)>,
 }

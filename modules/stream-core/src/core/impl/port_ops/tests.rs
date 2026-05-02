@@ -101,7 +101,7 @@ fn port_ops_via_chained_produces_correct_result() {
   let plan = graph.into_plan().unwrap();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(40_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(40_u32)));
 }
 
 // --- PortOps::to ---

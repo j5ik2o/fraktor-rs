@@ -18,7 +18,7 @@ fn restart_flow_with_backoff_keeps_data_path_behavior() {
   while interpreter.state() == StreamState::Running {
     let _ = interpreter.drive();
   }
-  assert_eq!(completion.poll(), Completion::Ready(Ok(2_u32)));
+  assert_eq!(completion.value(), Completion::Ready(Ok(2_u32)));
 }
 
 #[test]
