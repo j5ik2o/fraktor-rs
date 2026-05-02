@@ -2,7 +2,10 @@
 //! [`RemoteTransport`] port.
 
 use alloc::{string::String, vec::Vec};
-use core::fmt::{Debug, Formatter, Result as FmtResult};
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  time::Duration,
+};
 use std::collections::BTreeMap;
 
 use fraktor_remote_core_rs::core::{
@@ -10,10 +13,14 @@ use fraktor_remote_core_rs::core::{
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::OutboundEnvelope,
-  transport::{RemoteTransport, TransportError},
+  extension::RemoteEvent,
+  transport::{RemoteTransport, TransportEndpoint, TransportError},
   wire::HandshakePdu,
 };
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::{
+  sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
+  time::sleep,
+};
 
 use super::{
   client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
@@ -44,6 +51,7 @@ pub struct TcpRemoteTransport {
   clients:         BTreeMap<String, TcpClient>,
   inbound_tx:      UnboundedSender<InboundFrameEvent>,
   inbound_rx:      Option<UnboundedReceiver<InboundFrameEvent>>,
+  remote_event_tx: Option<Sender<RemoteEvent>>,
   running:         bool,
 }
 
@@ -103,8 +111,16 @@ impl TcpRemoteTransport {
       clients: BTreeMap::new(),
       inbound_tx,
       inbound_rx: Some(inbound_rx),
+      remote_event_tx: None,
       running: false,
     }
+  }
+
+  /// Returns a copy that emits scheduled remote events through `sender`.
+  #[must_use]
+  pub fn with_remote_event_sender(mut self, sender: Sender<RemoteEvent>) -> Self {
+    self.remote_event_tx = Some(sender);
+    self
   }
 
   /// Takes ownership of the inbound receiver.
@@ -217,6 +233,30 @@ impl RemoteTransport for TcpRemoteTransport {
       return Err(TransportError::NotStarted);
     }
     Err(TransportError::SendFailed)
+  }
+
+  fn schedule_handshake_timeout(
+    &mut self,
+    authority: &TransportEndpoint,
+    timeout: Duration,
+    generation: u64,
+  ) -> Result<(), TransportError> {
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    let Some(sender) = self.remote_event_tx.clone() else {
+      return Err(TransportError::NotAvailable);
+    };
+    let authority = authority.clone();
+    // タイマー task は transport 停止後でも generation 判定で破棄可能な閉じた通知だけを送る。
+    // JoinHandle は shutdown 契約に含めず、送信失敗は task 内で WARN に記録する。
+    let _timer_task = tokio::spawn(async move {
+      sleep(timeout).await;
+      if let Err(error) = sender.send(RemoteEvent::HandshakeTimerFired { authority, generation }).await {
+        tracing::warn!(?error, "handshake timeout event delivery failed");
+      }
+    });
+    Ok(())
   }
 
   fn addresses(&self) -> &[Address] {

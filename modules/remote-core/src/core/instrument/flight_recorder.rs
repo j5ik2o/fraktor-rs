@@ -1,15 +1,17 @@
 //! In-memory ring-buffer flight recorder.
 
-use alloc::{collections::VecDeque, string::String};
+use alloc::{collections::VecDeque, format, string::String};
 
 use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
 
 use crate::core::{
+  association::QuarantineReason,
+  envelope::{InboundEnvelope, OutboundEnvelope},
   instrument::{
     flight_recorder_event::FlightRecorderEvent, flight_recorder_snapshot::RemotingFlightRecorderSnapshot,
-    handshake_phase::HandshakePhase,
+    handshake_phase::HandshakePhase, remote_instrument::RemoteInstrument,
   },
-  transport::BackpressureSignal,
+  transport::{BackpressureSignal, TransportEndpoint},
 };
 
 /// Bounded ring buffer of [`FlightRecorderEvent`]s used for observability.
@@ -111,5 +113,59 @@ impl RemotingFlightRecorder {
   #[must_use]
   pub fn snapshot(&self) -> RemotingFlightRecorderSnapshot {
     RemotingFlightRecorderSnapshot::new(self.events.iter().cloned().collect())
+  }
+}
+
+impl RemoteInstrument for RemotingFlightRecorder {
+  fn on_send(&mut self, envelope: &OutboundEnvelope) {
+    self.record_send(
+      remote_node_authority(
+        envelope.remote_node().system(),
+        envelope.remote_node().host(),
+        envelope.remote_node().port(),
+      ),
+      envelope.correlation_id(),
+      envelope.priority().to_wire(),
+      0,
+      0,
+    );
+  }
+
+  fn on_receive(&mut self, envelope: &InboundEnvelope) {
+    self.record_receive(
+      remote_node_authority(
+        envelope.remote_node().system(),
+        envelope.remote_node().host(),
+        envelope.remote_node().port(),
+      ),
+      envelope.correlation_id(),
+      0,
+      0,
+    );
+  }
+
+  fn record_handshake(&mut self, authority: &TransportEndpoint, phase: HandshakePhase, now_ms: u64) {
+    self.record_handshake(authority.authority(), phase, now_ms);
+  }
+
+  fn record_quarantine(&mut self, authority: &TransportEndpoint, reason: &QuarantineReason, now_ms: u64) {
+    self.record_quarantine(authority.authority(), reason.message(), now_ms);
+  }
+
+  fn record_backpressure(
+    &mut self,
+    authority: &TransportEndpoint,
+    signal: BackpressureSignal,
+    correlation_id: CorrelationId,
+    now_ms: u64,
+  ) {
+    self.record_backpressure(authority.authority(), signal, correlation_id, now_ms);
+  }
+}
+
+fn remote_node_authority(system: &str, host: &str, port: Option<u16>) -> String {
+  match port {
+    | Some(port) => format!("{system}@{host}:{port}"),
+    | None => format!("{system}@{host}"),
   }
 }

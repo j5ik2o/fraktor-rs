@@ -21,5 +21,8 @@ mod tests;
 pub mod association;
 pub mod extension_installer;
 pub mod provider;
+mod tokio_remote_event_receiver;
 pub mod transport;
 pub mod watcher_actor;
+
+pub use tokio_remote_event_receiver::TokioMpscRemoteEventReceiver;

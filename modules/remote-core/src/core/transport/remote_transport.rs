@@ -1,8 +1,12 @@
 //! The single transport port the remote subsystem depends on.
 
+use core::time::Duration;
+
 use crate::core::{
-  address::Address, association::QuarantineReason, envelope::OutboundEnvelope,
-  transport::transport_error::TransportError,
+  address::Address,
+  association::QuarantineReason,
+  envelope::OutboundEnvelope,
+  transport::{transport_endpoint::TransportEndpoint, transport_error::TransportError},
 };
 
 /// The single transport port exposed by `fraktor-remote-core-rs`.
@@ -48,6 +52,26 @@ pub trait RemoteTransport {
   /// underlying channel has been closed, or [`TransportError::NotStarted`]
   /// if called before `start`.
   fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError>;
+
+  /// Schedules a generation-scoped handshake timeout for `authority`.
+  ///
+  /// Adapter implementations are responsible for pushing
+  /// `RemoteEvent::HandshakeTimerFired { authority, generation }` through their
+  /// internal event sender when the timeout expires. `Remote::run` compares the
+  /// event generation with the current association generation and discards stale
+  /// timer events, so adapters do not need a cancellation API for superseded
+  /// timers.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running, or
+  /// another transport-specific error if the timer cannot be scheduled.
+  fn schedule_handshake_timeout(
+    &mut self,
+    authority: &TransportEndpoint,
+    timeout: Duration,
+    generation: u64,
+  ) -> Result<(), TransportError>;
 
   /// Returns all addresses this transport currently advertises.
   fn addresses(&self) -> &[Address];

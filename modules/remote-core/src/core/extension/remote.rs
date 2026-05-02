@@ -8,7 +8,8 @@ use crate::core::{
   address::Address,
   association::QuarantineReason,
   config::RemoteConfig,
-  extension::{EventPublisher, Remoting, RemotingError, RemotingLifecycleState},
+  extension::{EventPublisher, RemoteEvent, RemoteEventReceiver, Remoting, RemotingError, RemotingLifecycleState},
+  instrument::{NoopInstrument, RemoteInstrument},
   transport::RemoteTransport,
 };
 
@@ -23,6 +24,7 @@ pub struct Remote {
   transport:            Box<dyn RemoteTransport + Send>,
   config:               RemoteConfig,
   event_publisher:      EventPublisher,
+  instrument:           Box<dyn RemoteInstrument + Send>,
   advertised_addresses: Vec<Address>,
 }
 
@@ -32,13 +34,51 @@ impl Remote {
   pub fn new<T>(transport: T, config: RemoteConfig, event_publisher: EventPublisher) -> Self
   where
     T: RemoteTransport + Send + 'static, {
+    Self::with_instrument(transport, config, event_publisher, Box::new(NoopInstrument))
+  }
+
+  /// Creates a new remote lifecycle instance with a custom instrument.
+  #[must_use]
+  pub fn with_instrument<T>(
+    transport: T,
+    config: RemoteConfig,
+    event_publisher: EventPublisher,
+    instrument: Box<dyn RemoteInstrument + Send>,
+  ) -> Self
+  where
+    T: RemoteTransport + Send + 'static, {
     Self {
       lifecycle: RemotingLifecycleState::new(),
       transport: Box::new(transport),
       config,
       event_publisher,
+      instrument,
       advertised_addresses: Vec::new(),
     }
+  }
+
+  /// Replaces the current instrument.
+  ///
+  /// Do not call this method while [`Remote::run`] is in progress.
+  pub fn set_instrument(&mut self, instrument: Box<dyn RemoteInstrument + Send>) {
+    self.instrument = instrument;
+  }
+
+  /// Runs the core remote event loop until the receiver closes or shutdown is requested.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::TransportUnavailable`] when transport delivery
+  /// fails or for event kinds whose concrete handling is not wired yet.
+  pub async fn run<S: RemoteEventReceiver>(&mut self, receiver: &mut S) -> Result<(), RemotingError> {
+    while let Some(event) = receiver.recv().await {
+      let transport = &mut *self.transport;
+      let instrument = &mut *self.instrument;
+      if handle_remote_event(transport, instrument, event)? {
+        return Ok(());
+      }
+    }
+    Ok(())
   }
 
   /// Returns the current lifecycle state snapshot.
@@ -61,6 +101,24 @@ impl Remote {
         correlation_id: CorrelationId::nil(),
       });
     }
+  }
+}
+
+fn handle_remote_event(
+  transport: &mut dyn RemoteTransport,
+  instrument: &mut dyn RemoteInstrument,
+  event: RemoteEvent,
+) -> Result<bool, RemotingError> {
+  match event {
+    | RemoteEvent::TransportShutdown => Ok(true),
+    | RemoteEvent::OutboundEnqueued { envelope, .. } => {
+      instrument.on_send(&envelope);
+      transport.send(*envelope).map_err(|_| RemotingError::TransportUnavailable)?;
+      Ok(false)
+    },
+    | RemoteEvent::InboundFrameReceived { .. }
+    | RemoteEvent::HandshakeTimerFired { .. }
+    | RemoteEvent::ConnectionLost { .. } => Err(RemotingError::TransportUnavailable),
   }
 }
 

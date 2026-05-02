@@ -9,7 +9,8 @@ use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   config::RemoteConfig,
   envelope::{OutboundEnvelope, OutboundPriority},
-  transport::{RemoteTransport, TransportError},
+  extension::RemoteEvent,
+  transport::{RemoteTransport, TransportEndpoint, TransportError},
   wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
 };
 use tokio_util::codec::{Decoder, Encoder};
@@ -268,6 +269,37 @@ fn remote_transport_start_without_tokio_runtime_returns_not_available() {
     transport.shutdown().expect_err("failed start must not mark transport running"),
     TransportError::NotStarted
   );
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_schedules_handshake_timeout_event() {
+  use tokio::sync::mpsc;
+
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]).with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before scheduling a timer");
+  let authority = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+
+  transport
+    .schedule_handshake_timeout(&authority, Duration::from_millis(1), 7)
+    .expect("timer scheduling should succeed");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("timeout event should arrive")
+    .expect("timeout event should be present");
+  assert!(matches!(
+    event,
+    RemoteEvent::HandshakeTimerFired {
+      authority: received_authority,
+      generation: 7
+    } if received_authority == authority
+  ));
+
+  transport.shutdown().expect("transport shutdown should succeed");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

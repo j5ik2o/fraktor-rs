@@ -9,6 +9,8 @@ const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
 const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
 const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
+const DEFAULT_OUTBOUND_HIGH_WATERMARK: usize = 1024;
+const DEFAULT_OUTBOUND_LOW_WATERMARK: usize = 512;
 const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
 const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
@@ -58,6 +60,8 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
   assert_eq!(s.outbound_message_queue_size(), DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE);
   assert_eq!(s.outbound_control_queue_size(), DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE);
   assert_eq!(s.outbound_large_message_queue_size(), DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE);
+  assert_eq!(s.outbound_high_watermark(), DEFAULT_OUTBOUND_HIGH_WATERMARK);
+  assert_eq!(s.outbound_low_watermark(), DEFAULT_OUTBOUND_LOW_WATERMARK);
   assert!(s.large_message_destinations().is_empty());
   assert_eq!(s.remove_quarantined_association_after(), DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER);
   assert_eq!(s.inbound_restart_timeout(), DEFAULT_INBOUND_RESTART_TIMEOUT);
@@ -144,6 +148,8 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_buffer_pool_size(64)
     .with_outbound_message_queue_size(32)
     .with_outbound_control_queue_size(8)
+    .with_outbound_low_watermark(16)
+    .with_outbound_high_watermark(64)
     .with_remove_quarantined_association_after(Duration::from_secs(30))
     .with_untrusted_mode(true)
     .with_log_received_messages(true)
@@ -164,6 +170,8 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.buffer_pool_size(), 64);
   assert_eq!(s.outbound_message_queue_size(), 32);
   assert_eq!(s.outbound_control_queue_size(), 8);
+  assert_eq!(s.outbound_high_watermark(), 64);
+  assert_eq!(s.outbound_low_watermark(), 16);
   assert_eq!(s.remove_quarantined_association_after(), Duration::from_secs(30));
   assert!(s.untrusted_mode());
   assert!(s.log_received_messages());
@@ -233,6 +241,15 @@ fn with_outbound_large_message_queue_size_rejects_zero() {
 
   // Then: 不正な queue size として拒否する
   assert!(result.is_err());
+}
+
+#[test]
+fn outbound_watermarks_require_low_lower_than_high() {
+  let high_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(512));
+  let low_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(1024));
+
+  assert!(high_result.is_err());
+  assert!(low_result.is_err());
 }
 
 #[test]

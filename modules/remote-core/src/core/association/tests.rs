@@ -17,6 +17,7 @@ use crate::core::{
   },
   config::RemoteConfig,
   envelope::{OutboundEnvelope, OutboundPriority},
+  instrument::{FlightRecorderEvent, HandshakePhase, RemotingFlightRecorder},
   transport::{BackpressureSignal, TransportEndpoint},
   wire::{HandshakeReq, HandshakeRsp},
 };
@@ -215,6 +216,26 @@ fn idle_to_handshaking_to_active_happy_path() {
   assert!(matches!(
     effects.first(),
     Some(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected { .. }))
+  ));
+}
+
+#[test]
+fn associate_start_handshake_carries_timeout_and_generation() {
+  let config = RemoteConfig::new("localhost").with_handshake_timeout(Duration::from_millis(250));
+  let mut association = Association::from_config(sample_local(), sample_remote_addr(), &config);
+
+  let effects = association.associate(sample_endpoint(), 100);
+
+  assert_eq!(association.handshake_generation(), 1);
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::StartHandshake {
+      authority,
+      timeout,
+      generation
+    }] if authority == &sample_endpoint()
+      && *timeout == Duration::from_millis(250)
+      && *generation == 1
   ));
 }
 
@@ -564,6 +585,25 @@ fn recover_some_endpoint_from_gated_starts_handshake() {
 }
 
 #[test]
+fn recover_start_handshake_increments_generation() {
+  let mut association = new_association();
+  let _ = association.associate(sample_endpoint(), 0);
+  let _ = association.handshake_timed_out(10, None);
+
+  let effects = association.recover(Some(sample_endpoint()), 30);
+
+  assert_eq!(association.handshake_generation(), 2);
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::StartHandshake {
+      authority,
+      generation,
+      ..
+    }] if authority == &sample_endpoint() && *generation == 2
+  ));
+}
+
+#[test]
 fn recover_some_endpoint_from_quarantined_starts_handshake() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);
@@ -823,6 +863,7 @@ fn next_outbound_returns_system_then_user_through_association() {
   let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
   let _ = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 10);
+  assert_eq!(a.total_outbound_len(), 2);
 
   let first = a.next_outbound().expect("first");
   assert!(matches!(first.priority(), OutboundPriority::System));
@@ -847,6 +888,84 @@ fn apply_backpressure_propagates_to_send_queue() {
   assert!(!a.send_queue().is_user_paused());
   let env = a.next_outbound().expect("released");
   assert!(matches!(env.priority(), OutboundPriority::User));
+}
+
+#[test]
+fn instrumented_association_methods_record_hooks_in_order() {
+  let mut association = new_association();
+  let mut recorder = RemotingFlightRecorder::new(8);
+
+  let started = association.associate_with_instrument(sample_endpoint(), 10, &mut recorder);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let accepted = association
+    .accept_handshake_response_with_instrument(&response, 20, &mut recorder)
+    .expect("matching handshake response should be accepted");
+  assert!(!accepted.is_empty(), "first handshake response should publish lifecycle effects");
+  association.apply_backpressure_with_instrument(BackpressureSignal::Apply, CorrelationId::nil(), 30, &mut recorder);
+  let quarantined = association.quarantine_with_instrument(QuarantineReason::new("fatal"), 40, &mut recorder);
+  assert!(!quarantined.is_empty(), "quarantine should emit lifecycle effects");
+
+  let events = recorder.snapshot().events().to_vec();
+  assert!(matches!(
+    events.as_slice(),
+    [
+      FlightRecorderEvent::Handshake {
+        authority,
+        phase: HandshakePhase::Started,
+        now_ms: 10
+      },
+      FlightRecorderEvent::Handshake {
+        authority: accepted_authority,
+        phase: HandshakePhase::Accepted,
+        now_ms: 20
+      },
+      FlightRecorderEvent::Backpressure {
+        authority: backpressure_authority,
+        signal: BackpressureSignal::Apply,
+        correlation_id,
+        now_ms: 30
+      },
+      FlightRecorderEvent::Quarantine {
+        authority: quarantined_authority,
+        reason,
+        now_ms: 40
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552"
+      && accepted_authority == "remote-sys@10.0.0.1:2552"
+      && backpressure_authority == "remote-sys@10.0.0.1:2552"
+      && quarantined_authority == "remote-sys@10.0.0.1:2552"
+      && *correlation_id == CorrelationId::nil()
+      && reason == "fatal"
+  ));
+}
+
+#[test]
+fn instrumented_timeout_records_timed_out_phase() {
+  let mut association = new_association();
+  let mut recorder = RemotingFlightRecorder::new(4);
+
+  let started = association.associate_with_instrument(sample_endpoint(), 10, &mut recorder);
+  assert!(!started.is_empty(), "associate should emit StartHandshake");
+  let timed_out = association.handshake_timed_out_with_instrument(20, Some(50), &mut recorder);
+  assert!(!timed_out.is_empty(), "timeout should emit lifecycle effects");
+
+  let events = recorder.snapshot().events().to_vec();
+  assert!(matches!(
+    events.as_slice(),
+    [
+      FlightRecorderEvent::Handshake {
+        phase: HandshakePhase::Started,
+        now_ms: 10,
+        ..
+      },
+      FlightRecorderEvent::Handshake {
+        authority,
+        phase: HandshakePhase::TimedOut,
+        now_ms: 20
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552"
+  ));
 }
 
 fn assert_single_discard_with_priority(effects: &[AssociationEffect], priority: OutboundPriority) {

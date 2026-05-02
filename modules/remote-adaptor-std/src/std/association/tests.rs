@@ -865,6 +865,15 @@ async fn outbound_loop_drains_active_association() {
       Ok(())
     }
 
+    fn schedule_handshake_timeout(
+      &mut self,
+      _authority: &TransportEndpoint,
+      _timeout: Duration,
+      _generation: u64,
+    ) -> Result<(), TransportError> {
+      Ok(())
+    }
+
     fn addresses(&self) -> &[Address] {
       &self.addresses
     }
@@ -1298,6 +1307,15 @@ impl RemoteTransport for FailingTransport {
   fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
     self.sends.with_lock(|count| *count += 1);
     Err(self.failure.clone())
+  }
+
+  fn schedule_handshake_timeout(
+    &mut self,
+    _authority: &TransportEndpoint,
+    _timeout: Duration,
+    _generation: u64,
+  ) -> Result<(), TransportError> {
+    Ok(())
   }
 
   fn addresses(&self) -> &[Address] {
