@@ -3,7 +3,7 @@ developer_instructions = """
 計画が存在しない場合はこの指示は無視して構わない。
 """
 hide_agent_reasoning = false
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_auto_compact_token_limit = 950000
 model_context_window = 1000000
 model_reasoning_effort = "xhigh"
