@@ -215,9 +215,12 @@ impl Remote {
     {
       let envelope_for_retry = envelope.clone();
       if self.transport.send(envelope).is_err() {
+        // 単一 envelope の送信失敗で event loop を終わらせると、他の peer 向け
+        // association まで巻き添えで停止してしまう。失敗した envelope は association
+        // へ戻し、drain は中断するが、event loop は次の event を引き続き処理する。
         let effects = self.associations[association_index].enqueue(envelope_for_retry, now_ms);
         self.apply_association_effects(association_index, effects, now_ms)?;
-        return Err(RemotingError::TransportUnavailable);
+        return Ok(());
       }
     }
     Ok(())

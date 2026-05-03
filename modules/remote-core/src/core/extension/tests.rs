@@ -38,6 +38,7 @@ struct RecordingTransport {
   addresses: Vec<Address>,
   start_result: Result<(), TransportError>,
   shutdown_result: Result<(), TransportError>,
+  send_result: Result<(), TransportError>,
   running: bool,
   shutdown_calls: ArcShared<AtomicUsize>,
   send_calls: ArcShared<AtomicUsize>,
@@ -123,6 +124,7 @@ impl RecordingTransport {
       addresses,
       start_result: Ok(()),
       shutdown_result: Ok(()),
+      send_result: Ok(()),
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -137,6 +139,7 @@ impl RecordingTransport {
       addresses,
       start_result: Ok(()),
       shutdown_result,
+      send_result: Ok(()),
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -155,6 +158,7 @@ impl RecordingTransport {
       addresses,
       start_result,
       shutdown_result: Ok(()),
+      send_result: Ok(()),
       running: false,
       shutdown_calls,
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -162,6 +166,21 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
     })
+  }
+
+  fn with_send_result(addresses: Vec<Address>, send_result: Result<(), TransportError>) -> Self {
+    Self {
+      addresses,
+      start_result: Ok(()),
+      shutdown_result: Ok(()),
+      send_result,
+      running: false,
+      shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
+      send_calls: ArcShared::new(AtomicUsize::new(0)),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+    }
   }
 }
 
@@ -183,7 +202,10 @@ impl RemoteTransport for RecordingTransport {
 
   fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
     self.send_calls.fetch_add(1, Ordering::Relaxed);
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    self.send_result.clone()
   }
 
   fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
@@ -401,6 +423,41 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
   assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
   assert_eq!(instrument_handshake_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn run_continues_event_loop_after_outbound_send_failure() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::NotAvailable));
+  let transport_send_calls = transport.send_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should start before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  let outbound_event = RemoteEvent::OutboundEnqueued {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    envelope:  Box::new(envelope),
+    now_ms:    42,
+  };
+  let mut receiver = VecRemoteEventReceiver::new([outbound_event, RemoteEvent::TransportShutdown]);
+
+  // 単一 envelope の送信失敗で event loop 全体が落ちると、後続の TransportShutdown
+  // を処理できず error 扱いになる。修正後は失敗した envelope を association に戻し
+  // event loop は継続するため、TransportShutdown が正常に処理されて Ok で抜ける。
+  block_on_ready(remote.run(&mut receiver)).unwrap();
+
+  // 失敗した envelope は association に戻されるため、drain は break して send は 1 回のみ。
+  assert_eq!(transport_send_calls.load(Ordering::Relaxed), 1);
 }
 
 #[test]
