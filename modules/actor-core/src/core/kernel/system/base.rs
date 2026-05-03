@@ -18,7 +18,7 @@ use fraktor_utils_core_rs::core::{
 
 use super::{
   ActorSystemWeak, Blocker, ExtendedActorSystem, TerminationSignal,
-  guardian::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
+  guardian::{NoopGuardianActor, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
   remote::RemotingConfig,
 };
 use crate::core::{
@@ -99,6 +99,19 @@ impl ActorSystem {
     Self::create_with_config_and(user_guardian_props, config, |_| Ok(()))
   }
 
+  /// Creates an actor system with a no-op user guardian and the provided configuration.
+  ///
+  /// This is intended for callers that need a fully bootstrapped actor system
+  /// but do not need custom user guardian behavior.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization fails.
+  pub fn noop_with_config(config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    let user_guardian_props = Props::from_fn(NoopGuardianActor::new);
+    Self::create_with_config(&user_guardian_props, config)
+  }
+
   /// Creates a new actor system from a Pekko-style setup facade.
   ///
   /// # Errors
@@ -106,6 +119,15 @@ impl ActorSystem {
   /// Returns [`SpawnError`] when guardian initialization or bootstrap fails.
   pub fn create_with_setup(user_guardian_props: &Props, setup: ActorSystemSetup) -> Result<Self, SpawnError> {
     Self::create_with_config(user_guardian_props, setup.into_actor_system_config())
+  }
+
+  /// Creates an actor system with a no-op user guardian from a Pekko-style setup facade.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization or bootstrap fails.
+  pub fn noop_with_setup(setup: ActorSystemSetup) -> Result<Self, SpawnError> {
+    Self::noop_with_config(setup.into_actor_system_config())
   }
 
   /// Creates an actor system with configuration and a bootstrap callback.
