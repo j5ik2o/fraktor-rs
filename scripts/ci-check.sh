@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT_REAL="$(cd "${REPO_ROOT}" && pwd -P)"
 
 cd "${REPO_ROOT}"
 
@@ -11,6 +12,7 @@ THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
 declare -a HARDWARE_PACKAGES=()
 declare -a PARALLEL_PIDS=()
 declare -a PARALLEL_LABELS=()
+PREPARED_CI_TARGET_DIR=""
 
 resolve_pinned_toolchain() {
   if [[ -f "${REPO_ROOT}/rust-toolchain.toml" ]]; then
@@ -266,13 +268,30 @@ render_cargo_command() {
   render_command "${cmd[@]}"
 }
 
+normalize_path() {
+  local path="${1:-}"
+  if [[ -z "${path}" ]]; then
+    echo "error: normalize_path に path が指定されていません。" >&2
+    return 1
+  fi
+
+  local python_bin=""
+  python_bin="$(resolve_python3_bin)" || return 1
+  "${python_bin}" - "${path}" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+}
+
 is_managed_target_dir() {
   local target_dir="${1:-}"
   case "${target_dir}" in
-    "${REPO_ROOT}/target/ci-check"|"${REPO_ROOT}/target/ci-check/"*)
+    "${REPO_ROOT_REAL}/target/ci-check"|"${REPO_ROOT_REAL}/target/ci-check/"*)
       return 0
       ;;
-    "${REPO_ROOT}/lints/"*"/target"|"${REPO_ROOT}/lints/"*"/target/"*)
+    "${REPO_ROOT_REAL}/lints/"*"/target"|"${REPO_ROOT_REAL}/lints/"*"/target/"*)
       return 0
       ;;
     *)
@@ -282,13 +301,16 @@ is_managed_target_dir() {
 }
 
 prepare_ci_target_dir() {
+  PREPARED_CI_TARGET_DIR=""
   local target_dir="${1:-}"
   if [[ -z "${target_dir}" ]]; then
     echo "error: prepare_ci_target_dir に target_dir が指定されていません。" >&2
     return 1
   fi
+  local original_target_dir="${target_dir}"
+  target_dir="$(normalize_path "${target_dir}")" || return 1
   if ! is_managed_target_dir "${target_dir}"; then
-    echo "error: 管理対象外の target ディレクトリは自動削除しません: ${target_dir}" >&2
+    echo "error: 管理対象外の target ディレクトリは自動削除しません: ${original_target_dir} -> ${target_dir}" >&2
     return 1
   fi
 
@@ -299,12 +321,25 @@ prepare_ci_target_dir() {
   fi
 
   if [[ -d "${target_dir}" && "${current_fingerprint}" != "${CI_CHECK_TOOLCHAIN_FINGERPRINT}" ]]; then
-    rm -rf -- "${target_dir}"
-    echo "info: ${target_dir#${REPO_ROOT}/} を削除しました (rustc/toolchain が変わったため)" >&2
+    local deletion_target=""
+    deletion_target="$(normalize_path "${target_dir}")" || return 1
+    if [[ "${deletion_target}" != "${target_dir}" ]] || ! is_managed_target_dir "${deletion_target}"; then
+      echo "error: 管理対象 target ディレクトリの再検証に失敗しました: ${target_dir} -> ${deletion_target}" >&2
+      return 1
+    fi
+    rm -rf -- "${deletion_target}"
+    echo "info: ${deletion_target#${REPO_ROOT_REAL}/} を削除しました (rustc/toolchain が変わったため)" >&2
   fi
 
   mkdir -p "${target_dir}"
+  target_dir="$(normalize_path "${target_dir}")" || return 1
+  if ! is_managed_target_dir "${target_dir}"; then
+    echo "error: 作成後の target ディレクトリが管理対象外です: ${target_dir}" >&2
+    return 1
+  fi
+  stamp_file="${target_dir}/${CI_CHECK_TOOLCHAIN_STAMP}"
   printf '%s\n' "${CI_CHECK_TOOLCHAIN_FINGERPRINT}" > "${stamp_file}"
+  PREPARED_CI_TARGET_DIR="${target_dir}"
 }
 
 should_guard_cargo_command() {
@@ -432,6 +467,13 @@ clean_stale_lint_targets() {
     if [[ ! -d "${lint_path}" || ! -d "${lint_path}/target" ]]; then
       continue
     fi
+    local lint_target_dir="${lint_path}/target"
+    local normalized_lint_target_dir=""
+    normalized_lint_target_dir="$(normalize_path "${lint_target_dir}")" || return 1
+    if ! is_managed_target_dir "${normalized_lint_target_dir}"; then
+      echo "error: 管理対象外の lint target ディレクトリは読み取り・自動削除しません: ${lint_target_dir} -> ${normalized_lint_target_dir}" >&2
+      return 1
+    fi
 
     local stale=""
     while IFS= read -r output_file; do
@@ -440,11 +482,11 @@ clean_stale_lint_targets() {
         stale="yes"
         break
       fi
-    done < <(find "${lint_path}/target" -path "*/libssh2-sys-*/output" -type f 2>/dev/null)
+    done < <(find "${normalized_lint_target_dir}" -path "*/libssh2-sys-*/output" -type f 2>/dev/null)
 
     if [[ -n "${stale}" ]]; then
-      rm -rf "${lint_path}/target"
-      echo "info: ${lint_path#${REPO_ROOT}/}/target を削除しました (libssh2-sys キャッシュの再生成)" >&2
+      rm -rf -- "${normalized_lint_target_dir}"
+      echo "info: ${normalized_lint_target_dir#${REPO_ROOT_REAL}/} を削除しました (libssh2-sys キャッシュの再生成)" >&2
       removed=1
     fi
   done
@@ -537,8 +579,9 @@ start_parallel_cargo() {
 
   local target_dir="${REPO_ROOT}/target/ci-check/${shard}"
   prepare_ci_target_dir "${target_dir}" || return 1
+  target_dir="${PREPARED_CI_TARGET_DIR}"
 
-  log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT}/})"
+  log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT_REAL}/})"
   (
     CARGO_TARGET_DIR="${target_dir}" run_cargo "$@"
   ) &
@@ -554,8 +597,9 @@ start_parallel_phase() {
 
   local target_dir="${REPO_ROOT}/target/ci-check/${shard}"
   prepare_ci_target_dir "${target_dir}" || return 1
+  target_dir="${PREPARED_CI_TARGET_DIR}"
 
-  log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT}/})"
+  log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT_REAL}/})"
   (
     export CARGO_TARGET_DIR="${target_dir}"
     "${func}"
@@ -1401,8 +1445,11 @@ run_examples() {
     /*) ;;
     *) absolute_target_dir="${REPO_ROOT}/${absolute_target_dir}" ;;
   esac
-  if is_managed_target_dir "${absolute_target_dir}"; then
-    prepare_ci_target_dir "${absolute_target_dir}" || return 1
+  local normalized_target_dir=""
+  normalized_target_dir="$(normalize_path "${absolute_target_dir}")" || return 1
+  if is_managed_target_dir "${normalized_target_dir}"; then
+    prepare_ci_target_dir "${normalized_target_dir}" || return 1
+    target_dir="${PREPARED_CI_TARGET_DIR}"
   else
     mkdir -p "${target_dir}"
   fi
