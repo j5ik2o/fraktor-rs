@@ -604,6 +604,30 @@ fn recover_start_handshake_increments_generation() {
 }
 
 #[test]
+fn recover_with_instrument_records_started_phase() {
+  let mut association = new_association();
+  let mut recorder = RemotingFlightRecorder::new(4);
+  let _ = association.associate(sample_endpoint(), 0);
+  let _ = association.handshake_timed_out(10, None);
+
+  let effects = association.recover_with_instrument(Some(sample_endpoint()), 30, &mut recorder);
+
+  assert!(matches!(association.state(), AssociationState::Handshaking { started_at: 30, .. }));
+  assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { .. }]));
+  let events = recorder.snapshot().events().to_vec();
+  assert!(matches!(
+    events.as_slice(),
+    [
+      FlightRecorderEvent::Handshake {
+        authority,
+        phase: HandshakePhase::Started,
+        now_ms: 30
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552"
+  ));
+}
+
+#[test]
 fn recover_some_endpoint_from_quarantined_starts_handshake() {
   let mut a = new_association();
   let _ = a.associate(sample_endpoint(), 0);

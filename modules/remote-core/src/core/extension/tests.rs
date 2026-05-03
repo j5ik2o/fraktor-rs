@@ -1,5 +1,6 @@
 use alloc::{collections::VecDeque, string::String, vec, vec::Vec};
 use core::{
+  any::type_name,
   future::{Future, ready},
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
@@ -64,12 +65,13 @@ impl RemoteEventReceiver for VecRemoteEventReceiver {
 struct NoopWaker;
 
 struct CountingInstrument {
-  send_calls: ArcShared<AtomicUsize>,
+  send_calls:      ArcShared<AtomicUsize>,
+  handshake_calls: ArcShared<AtomicUsize>,
 }
 
 impl CountingInstrument {
-  fn new(send_calls: ArcShared<AtomicUsize>) -> Self {
-    Self { send_calls }
+  fn new(send_calls: ArcShared<AtomicUsize>, handshake_calls: ArcShared<AtomicUsize>) -> Self {
+    Self { send_calls, handshake_calls }
   }
 }
 
@@ -80,7 +82,11 @@ impl RemoteInstrument for CountingInstrument {
 
   fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {}
 
-  fn record_handshake(&mut self, _authority: &TransportEndpoint, _phase: HandshakePhase, _now_ms: u64) {}
+  fn record_handshake(&mut self, _authority: &TransportEndpoint, phase: HandshakePhase, _now_ms: u64) {
+    if phase == HandshakePhase::Started {
+      self.handshake_calls.fetch_add(1, Ordering::Relaxed);
+    }
+  }
 
   fn record_quarantine(&mut self, _authority: &TransportEndpoint, _reason: &QuarantineReason, _now_ms: u64) {}
 
@@ -104,7 +110,10 @@ fn block_on_ready<F: Future>(future: F) -> F::Output {
   let mut future = Box::pin(future);
   match future.as_mut().poll(&mut context) {
     | Poll::Ready(output) => output,
-    | Poll::Pending => panic!("test future should be ready"),
+    | Poll::Pending => panic!(
+      "test future was still pending after one poll with a NoopWaker; future_type={}; add a ready receiver event or drive the async dependency explicitly",
+      type_name::<F>()
+    ),
   }
 }
 
@@ -363,7 +372,8 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
   let timeout_calls = transport.timeout_calls.clone();
   let timeout_before_handshake_calls = transport.timeout_before_handshake_calls.clone();
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
-  let instrument = CountingInstrument::new(instrument_send_calls.clone());
+  let instrument_handshake_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument = CountingInstrument::new(instrument_send_calls.clone(), instrument_handshake_calls.clone());
   let mut remote = Remote::with_instrument(transport, config.clone(), event_publisher(), Box::new(instrument));
   remote.start().expect("remote should start before outbound delivery");
   remote.insert_association(active_association(local_address, remote_address.clone(), &config));
@@ -390,6 +400,7 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 0);
   assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(instrument_handshake_calls.load(Ordering::Relaxed), 0);
 }
 
 #[test]
@@ -402,7 +413,8 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   let timeout_calls = transport.timeout_calls.clone();
   let timeout_before_handshake_calls = transport.timeout_before_handshake_calls.clone();
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
-  let instrument = CountingInstrument::new(instrument_send_calls.clone());
+  let instrument_handshake_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument = CountingInstrument::new(instrument_send_calls.clone(), instrument_handshake_calls.clone());
   let mut remote =
     Remote::with_instrument(transport, RemoteConfig::new("127.0.0.1"), event_publisher(), Box::new(instrument));
   remote.start().expect("remote should start before outbound delivery");
@@ -429,6 +441,7 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(instrument_handshake_calls.load(Ordering::Relaxed), 1);
 }
 
 #[test]

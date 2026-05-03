@@ -421,10 +421,23 @@ impl Association {
   ///
   /// Calls from `Idle`, `Handshaking`, or `Active` are no-ops.
   pub fn recover(&mut self, endpoint: Option<TransportEndpoint>, now_ms: u64) -> Vec<AssociationEffect> {
+    let mut instrument = NoopInstrument;
+    self.recover_with_instrument(endpoint, now_ms, &mut instrument)
+  }
+
+  /// Transitions out of `Gated` / `Quarantined` and records a restarted handshake through
+  /// `instrument`.
+  pub fn recover_with_instrument(
+    &mut self,
+    endpoint: Option<TransportEndpoint>,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     match &self.state {
       | AssociationState::Gated { .. } | AssociationState::Quarantined { .. } => match endpoint {
         | Some(endpoint) => {
           let generation = self.advance_handshake_generation();
+          instrument.record_handshake(&endpoint, HandshakePhase::Started, now_ms);
           let effect = AssociationEffect::StartHandshake {
             authority: endpoint.clone(),
             timeout: self.handshake_timeout,

@@ -142,7 +142,10 @@ impl Remote {
     let effects = self.associations[association_index].enqueue(*envelope, now_ms);
     self.apply_association_effects(association_index, effects, now_ms)?;
     if should_start_handshake {
-      let effects = self.associations[association_index].associate(authority.clone(), now_ms);
+      let effects = {
+        let association = &mut self.associations[association_index];
+        association.associate_with_instrument(authority.clone(), now_ms, &mut *self.instrument)
+      };
       self.apply_association_effects(association_index, effects, now_ms)?;
     }
     self.drain_outbound(association_index, now_ms)
