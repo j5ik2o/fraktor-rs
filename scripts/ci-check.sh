@@ -83,14 +83,95 @@ DEFAULT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
 build_cargo_prefix_for "${FMT_TOOLCHAIN}" || exit 1
 FMT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
 
-resolve_rustfmt_bin_for() {
+resolve_tool_bin_for() {
   local toolchain="${1:-}"
+  local tool="${2:-}"
+  if [[ -z "${tool}" ]]; then
+    echo "エラー: 解決するツール名が指定されていません。" >&2
+    return 1
+  fi
+
   if [[ -n "${toolchain}" ]]; then
-    rustup which --toolchain "${toolchain}" rustfmt
+    rustup which --toolchain "${toolchain}" "${tool}"
     return
   fi
 
-  command -v rustfmt
+  command -v "${tool}"
+}
+
+DEFAULT_RUSTC_BIN="$(resolve_tool_bin_for "${DEFAULT_TOOLCHAIN}" rustc)" || {
+  echo "エラー: rustc バイナリを特定できませんでした。" >&2
+  exit 1
+}
+DEFAULT_RUSTDOC_BIN="$(resolve_tool_bin_for "${DEFAULT_TOOLCHAIN}" rustdoc)" || {
+  echo "エラー: rustdoc バイナリを特定できませんでした。" >&2
+  exit 1
+}
+DEFAULT_CARGO_BIN="$(resolve_tool_bin_for "${DEFAULT_TOOLCHAIN}" cargo)" || {
+  echo "エラー: cargo バイナリを特定できませんでした。" >&2
+  exit 1
+}
+DEFAULT_CARGO_CLIPPY_BIN="$(resolve_tool_bin_for "${DEFAULT_TOOLCHAIN}" cargo-clippy 2>/dev/null || true)"
+DEFAULT_CLIPPY_DRIVER_BIN="$(resolve_tool_bin_for "${DEFAULT_TOOLCHAIN}" clippy-driver 2>/dev/null || true)"
+DEFAULT_TOOLCHAIN_BIN="${DEFAULT_RUSTC_BIN%/*}"
+
+case "${PATH}" in
+  "${DEFAULT_TOOLCHAIN_BIN}"|"${DEFAULT_TOOLCHAIN_BIN}:"*) ;;
+  *)
+    export PATH="${DEFAULT_TOOLCHAIN_BIN}:${PATH}"
+    ;;
+esac
+
+if [[ -n "${RUSTC:-}" && "${RUSTC}" != "${DEFAULT_RUSTC_BIN}" ]]; then
+  echo "info: RUSTC=${RUSTC} を上書きして ${DEFAULT_RUSTC_BIN} を使用します" >&2
+fi
+if [[ -n "${RUSTDOC:-}" && "${RUSTDOC}" != "${DEFAULT_RUSTDOC_BIN}" ]]; then
+  echo "info: RUSTDOC=${RUSTDOC} を上書きして ${DEFAULT_RUSTDOC_BIN} を使用します" >&2
+fi
+if [[ -n "${CARGO_BUILD_RUSTC:-}" && "${CARGO_BUILD_RUSTC}" != "${DEFAULT_RUSTC_BIN}" ]]; then
+  echo "info: CARGO_BUILD_RUSTC=${CARGO_BUILD_RUSTC} を上書きして ${DEFAULT_RUSTC_BIN} を使用します" >&2
+fi
+if [[ -n "${CARGO_BUILD_RUSTDOC:-}" && "${CARGO_BUILD_RUSTDOC}" != "${DEFAULT_RUSTDOC_BIN}" ]]; then
+  echo "info: CARGO_BUILD_RUSTDOC=${CARGO_BUILD_RUSTDOC} を上書きして ${DEFAULT_RUSTDOC_BIN} を使用します" >&2
+fi
+if [[ -n "${RUSTC_WRAPPER:-}" ]]; then
+  echo "info: RUSTC_WRAPPER=${RUSTC_WRAPPER} を解除します" >&2
+fi
+if [[ -n "${RUSTC_WORKSPACE_WRAPPER:-}" ]]; then
+  echo "info: RUSTC_WORKSPACE_WRAPPER=${RUSTC_WORKSPACE_WRAPPER} を解除します" >&2
+fi
+if [[ -n "${CARGO_BUILD_RUSTC_WRAPPER:-}" ]]; then
+  echo "info: CARGO_BUILD_RUSTC_WRAPPER=${CARGO_BUILD_RUSTC_WRAPPER} を解除します" >&2
+fi
+if [[ -n "${CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER:-}" ]]; then
+  echo "info: CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER=${CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER} を解除します" >&2
+fi
+export RUSTC="${DEFAULT_RUSTC_BIN}"
+export RUSTDOC="${DEFAULT_RUSTDOC_BIN}"
+export CARGO="${DEFAULT_CARGO_BIN}"
+export CARGO_BUILD_RUSTC="${DEFAULT_RUSTC_BIN}"
+export CARGO_BUILD_RUSTDOC="${DEFAULT_RUSTDOC_BIN}"
+unset RUSTC_WRAPPER
+unset RUSTC_WORKSPACE_WRAPPER
+unset CARGO_BUILD_RUSTC_WRAPPER
+unset CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER
+
+build_toolchain_fingerprint() {
+  printf 'toolchain=%s\n' "${DEFAULT_TOOLCHAIN}"
+  printf 'rustc=%s\n' "${DEFAULT_RUSTC_BIN}"
+  "${DEFAULT_RUSTC_BIN}" -vV
+  printf 'rustdoc=%s\n' "${DEFAULT_RUSTDOC_BIN}"
+  printf 'cargo=%s\n' "${DEFAULT_CARGO_BIN}"
+  printf 'cargo-clippy=%s\n' "${DEFAULT_CARGO_CLIPPY_BIN}"
+  printf 'clippy-driver=%s\n' "${DEFAULT_CLIPPY_DRIVER_BIN}"
+}
+
+CI_CHECK_TOOLCHAIN_FINGERPRINT="$(build_toolchain_fingerprint)"
+CI_CHECK_TOOLCHAIN_STAMP=".ci-check-toolchain"
+
+resolve_rustfmt_bin_for() {
+  local toolchain="${1:-}"
+  resolve_tool_bin_for "${toolchain}" rustfmt
 }
 
 FMT_RUSTFMT_BIN="$(resolve_rustfmt_bin_for "${FMT_TOOLCHAIN}")" || {
@@ -178,6 +259,52 @@ render_command() {
     rendered+="$(printf '%q' "${arg}")"
   done
   printf '%s\n' "${rendered}"
+}
+
+render_cargo_command() {
+  local -a cmd=("${DEFAULT_CARGO_CMD[@]}" -v "$@")
+  render_command "${cmd[@]}"
+}
+
+is_managed_target_dir() {
+  local target_dir="${1:-}"
+  case "${target_dir}" in
+    "${REPO_ROOT}/target/ci-check"|"${REPO_ROOT}/target/ci-check/"*)
+      return 0
+      ;;
+    "${REPO_ROOT}/lints/"*"/target"|"${REPO_ROOT}/lints/"*"/target/"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prepare_ci_target_dir() {
+  local target_dir="${1:-}"
+  if [[ -z "${target_dir}" ]]; then
+    echo "error: prepare_ci_target_dir に target_dir が指定されていません。" >&2
+    return 1
+  fi
+  if ! is_managed_target_dir "${target_dir}"; then
+    echo "error: 管理対象外の target ディレクトリは自動削除しません: ${target_dir}" >&2
+    return 1
+  fi
+
+  local stamp_file="${target_dir}/${CI_CHECK_TOOLCHAIN_STAMP}"
+  local current_fingerprint=""
+  if [[ -f "${stamp_file}" ]]; then
+    current_fingerprint="$(cat "${stamp_file}" 2>/dev/null || true)"
+  fi
+
+  if [[ -d "${target_dir}" && "${current_fingerprint}" != "${CI_CHECK_TOOLCHAIN_FINGERPRINT}" ]]; then
+    rm -rf -- "${target_dir}"
+    echo "info: ${target_dir#${REPO_ROOT}/} を削除しました (rustc/toolchain が変わったため)" >&2
+  fi
+
+  mkdir -p "${target_dir}"
+  printf '%s\n' "${CI_CHECK_TOOLCHAIN_FINGERPRINT}" > "${stamp_file}"
 }
 
 should_guard_cargo_command() {
@@ -409,7 +536,7 @@ start_parallel_cargo() {
   shift 2
 
   local target_dir="${REPO_ROOT}/target/ci-check/${shard}"
-  mkdir -p "${target_dir}"
+  prepare_ci_target_dir "${target_dir}" || return 1
 
   log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT}/})"
   (
@@ -426,7 +553,7 @@ start_parallel_phase() {
   local func="$3"
 
   local target_dir="${REPO_ROOT}/target/ci-check/${shard}"
-  mkdir -p "${target_dir}"
+  prepare_ci_target_dir "${target_dir}" || return 1
 
   log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT}/})"
   (
@@ -802,12 +929,12 @@ run_dylint() {
      local channel
      channel=$(awk -F'"' '/channel/ {print $2; exit}' "${REPO_ROOT}/rust-toolchain.toml")
      if [[ -n "${channel}" ]]; then
-       toolchain="${channel}-$(rustc -vV | awk '/^host:/{print $2}')"
+       toolchain="${channel}-$("${DEFAULT_RUSTC_BIN}" -vV | awk '/^host:/{print $2}')"
      else
-       toolchain="nightly-$(rustc -vV | awk '/^host:/{print $2}')"
+       toolchain="nightly-$("${DEFAULT_RUSTC_BIN}" -vV | awk '/^host:/{print $2}')"
      fi
   else
-     toolchain="nightly-$(rustc -vV | awk '/^host:/{print $2}')"
+     toolchain="nightly-$("${DEFAULT_RUSTC_BIN}" -vV | awk '/^host:/{print $2}')"
   fi
   local -a lib_dirs=()
   local -a dylint_args=()
@@ -817,6 +944,9 @@ run_dylint() {
     local crate="${entry%%:*}"
     local lint_path="${entry#*:}"
     local lib_name="${crate//-/_}"
+    local lint_target_dir="${REPO_ROOT}/${lint_path}/target"
+
+    prepare_ci_target_dir "${lint_target_dir}" || return 1
 
     local -a build_cmd=("${DEFAULT_CARGO_CMD[@]}" -v build --manifest-path "${lint_path}/Cargo.toml" --release)
     log_step "$(render_command "${build_cmd[@]}")"
@@ -863,7 +993,7 @@ run_dylint() {
 
   local -a common_dylint_args=("${dylint_args[@]}" "--no-metadata")
   local sysroot_lib=""
-  sysroot_lib="$(rustc --print sysroot)/lib"
+  sysroot_lib="$("${DEFAULT_RUSTC_BIN}" --print sysroot)/lib"
   local dynlib_path="${sysroot_lib}"
   if [[ "$(uname -s)" == "Darwin" ]]; then
     if [[ -n "${DYLD_FALLBACK_LIBRARY_PATH-}" ]]; then
@@ -969,12 +1099,11 @@ PY
   local -a main_invocation=()
   if [[ ${#main_package_args[@]} -gt 0 ]]; then
     main_invocation=("${main_package_args[@]}" "${common_dylint_args[@]}")
-    local log_main="${main_invocation[*]}"
-    local log_trailing=""
+    local -a log_main_cmd=(dylint "${main_invocation[@]}")
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
-      log_trailing=" -- ${trailing_args[*]}"
+      log_main_cmd+=(-- "${trailing_args[@]}")
     fi
-    log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_main}${log_trailing} (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
+    log_step "$(render_cargo_command "${log_main_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
       RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
     else
@@ -1002,7 +1131,7 @@ PY
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
       fqcn_tests_cargo_args+=("${trailing_args[@]}")
     fi
-    log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${fqcn_tests_invocation[*]} -- ${fqcn_tests_cargo_args[*]} (redundant-fqcn-lint --tests pass, RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
+    log_step "$(render_cargo_command dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}") (redundant-fqcn-lint --tests pass, RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
     RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}" || return 1
   fi
 
@@ -1010,12 +1139,11 @@ PY
     local pkg
     for pkg in "${hardware_targets[@]}"; do
       local -a pkg_invocation=("-p" "${pkg}" "${common_dylint_args[@]}")
-      local log_pkg="${pkg_invocation[*]}"
-      local log_trailing=""
+      local -a log_pkg_cmd=(dylint "${pkg_invocation[@]}")
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
-        log_trailing=" -- ${trailing_args[*]}"
+        log_pkg_cmd+=(-- "${trailing_args[@]}")
       fi
-      log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_pkg}${log_trailing} (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
+      log_step "$(render_cargo_command "${log_pkg_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
         RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
       else
@@ -1050,12 +1178,12 @@ PY
 
       local -a feature_invocation=("-p" "${feature_pkg}" "${common_dylint_args[@]}")
       local -a feature_trailing=(--features "${feature_list}")
-      local log_feature="${feature_invocation[*]} -- --features ${feature_list}"
+      local -a log_feature_cmd=(dylint "${feature_invocation[@]}" -- --features "${feature_list}")
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
-        log_feature+=" -- ${trailing_args[*]}"
+        log_feature_cmd+=("${trailing_args[@]}")
         feature_trailing+=("${trailing_args[@]}")
       fi
-      log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_feature} (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
+      log_step "$(render_cargo_command "${log_feature_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
       RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
     done
   fi
@@ -1065,7 +1193,7 @@ run_clippy() {
   # --all-targets は dev-dep 解決時に ahash/proptest のトランジティブ依存が
   # 壊れるため --lib --bins に限定する（テストコードは run_tests で検証される）。
   # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-core-rs / fraktor-cluster-adaptor-std-rs を一時的に除外する。
-  log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-std-rs --lib --bins -- -D warnings"
+  log_step "$(render_cargo_command clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-std-rs --lib --bins -- -D warnings)"
   run_cargo clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-std-rs --lib --bins -- -D warnings || return 1
 }
 
@@ -1073,11 +1201,11 @@ run_no_std() {
   PARALLEL_PIDS=()
   PARALLEL_LABELS=()
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --features alloc" \
+    "$(render_cargo_command check -p fraktor-utils-core-rs --no-default-features --features alloc)" \
     "no-std-host-utils" \
     check -p fraktor-utils-core-rs --no-default-features --features alloc
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features" \
+    "$(render_cargo_command check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features)" \
     "no-std-host-core" \
     check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features
   wait_parallel_cargo || return 1
@@ -1087,11 +1215,11 @@ run_no_std() {
     PARALLEL_PIDS=()
     PARALLEL_LABELS=()
     start_parallel_cargo \
-      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --target ${thumb_target} -F fraktor-utils-core-rs/alloc" \
+      "$(render_cargo_command check -p fraktor-utils-core-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-core-rs/alloc)" \
       "no-std-thumb-utils" \
       check -p fraktor-utils-core-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-core-rs/alloc
     start_parallel_cargo \
-      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target ${thumb_target}" \
+      "$(render_cargo_command check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}")" \
       "no-std-thumb-core" \
       check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}"
     wait_parallel_cargo || return 1
@@ -1113,7 +1241,7 @@ run_std() {
 }
 
 run_doc_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features"
+  log_step "$(render_cargo_command check -p fraktor-actor-core-rs --no-default-features)"
   run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
 }
 
@@ -1268,7 +1396,16 @@ run_examples() {
   python_bin="$(resolve_python3_bin)" || return 1
 
   local target_dir="${CARGO_TARGET_DIR:-${REPO_ROOT}/target/ci-check/integration-test}"
-  mkdir -p "${target_dir}"
+  local absolute_target_dir="${target_dir}"
+  case "${absolute_target_dir}" in
+    /*) ;;
+    *) absolute_target_dir="${REPO_ROOT}/${absolute_target_dir}" ;;
+  esac
+  if is_managed_target_dir "${absolute_target_dir}"; then
+    prepare_ci_target_dir "${absolute_target_dir}" || return 1
+  else
+    mkdir -p "${target_dir}"
+  fi
 
   local rustflags_value
   if [[ -n "${RUSTFLAGS-}" ]]; then
@@ -1335,10 +1472,8 @@ PY
     local -a cargo_args=(run --package "${package_name}" --example "${example_name}")
     if [[ -n "${features}" ]]; then
       cargo_args+=(--features "${features}")
-      log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name} --features ${features}"
-    else
-      log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name}"
     fi
+    log_step "$(render_cargo_command "${cargo_args[@]}")"
     CARGO_TARGET_DIR="${target_dir}" RUSTFLAGS="${rustflags_value}" run_cargo "${cargo_args[@]}" \
       || {
         [[ -n "${example_file}" ]] && rm -f "${example_file}"
