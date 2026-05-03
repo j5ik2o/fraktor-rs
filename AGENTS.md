@@ -966,7 +966,7 @@ fn pop_item(&mut self) -> Option<Item> {
    └─ Yes → 次へ
 
 2. 状態変更メソッドが必要か？
-   ├─ No → SharedRwLock<T> で共有（読み取り専用）
+   ├─ No → ArcShared<T> で共有（読み取り専用）
    └─ Yes → Shared ラッパーパターンを新設（第2選択）
 
 Shared ラッパーパターン:
@@ -1209,7 +1209,7 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 |--------------|------|------|
 | `*Shared` | 薄い同期ラッパー | `SharedLock<T>` または `SharedRwLock<T>`（`utils-core` 提供）を内包するだけ |
 | `*Handle` | ライフサイクル / 管理責務 | 起動・停止・リソース解放・複数構成要素の束ね |
-| サフィックスなし | 所有権一意・同期不要 | `ArcShared` やロックを持たない |
+| サフィックスなし | 所有権一意・同期不要 | `ArcShared<T>` やロックを持たない |
 
 ### 詳細
 
