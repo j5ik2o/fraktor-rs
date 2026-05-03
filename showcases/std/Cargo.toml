@@ -128,6 +128,10 @@ name = "kernel_first_example"
 path = "kernel/first-example/main.rs"
 
 [[example]]
+name = "kernel_affinity_executor"
+path = "kernel/affinity-executor/main.rs"
+
+[[example]]
 name = "kernel_supervision"
 path = "kernel/supervision/main.rs"
 
