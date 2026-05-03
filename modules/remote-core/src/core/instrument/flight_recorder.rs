@@ -1,9 +1,8 @@
 //! In-memory ring-buffer flight recorder.
 
 use alloc::{collections::VecDeque, format, string::String};
-use core::mem;
 
-use fraktor_actor_core_rs::core::kernel::{actor::messaging::AnyMessage, event::stream::CorrelationId};
+use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
 
 use crate::core::{
   association::QuarantineReason,
@@ -119,6 +118,10 @@ impl RemotingFlightRecorder {
 
 impl RemoteInstrument for RemotingFlightRecorder {
   fn on_send(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
+    // `AnyMessage` はトレイトオブジェクト経由でペイロードを保持しており、シリアライズ前に
+    // 実データ長を測ることはできない。`mem::size_of_val` は具象型のスタックサイズしか
+    // 返さないため (`String` なら常に 24 byte)、誤った値を記録するくらいなら 0 を入れて
+    // 「未計測」を明示する。実 wire size はシリアライズ層が導入された段階で配線する。
     self.record_send(
       remote_node_authority(
         envelope.remote_node().system(),
@@ -127,12 +130,13 @@ impl RemoteInstrument for RemotingFlightRecorder {
       ),
       envelope.correlation_id(),
       envelope.priority().to_wire(),
-      payload_size(envelope.message()),
+      0,
       now_ms,
     );
   }
 
   fn on_receive(&mut self, envelope: &InboundEnvelope, now_ms: u64) {
+    // `on_send` と同じ理由で、シリアライズ前は実データ長を測れないため 0 を記録する。
     self.record_receive(
       remote_node_authority(
         envelope.remote_node().system(),
@@ -140,7 +144,7 @@ impl RemoteInstrument for RemotingFlightRecorder {
         envelope.remote_node().port(),
       ),
       envelope.correlation_id(),
-      payload_size(envelope.message()),
+      0,
       now_ms,
     );
   }
@@ -169,12 +173,4 @@ fn remote_node_authority(system: &str, host: &str, port: Option<u16>) -> String 
     | Some(port) => format!("{system}@{host}:{port}"),
     | None => format!("{system}@{host}"),
   }
-}
-
-fn payload_size(message: &AnyMessage) -> u32 {
-  usize_to_u32_saturating(mem::size_of_val(message.payload()))
-}
-
-const fn usize_to_u32_saturating(size: usize) -> u32 {
-  if size > u32::MAX as usize { u32::MAX } else { size as u32 }
 }

@@ -1,5 +1,4 @@
 use alloc::{string::String, vec::Vec};
-use core::mem;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -275,14 +274,9 @@ fn flight_recorder_implements_remote_instrument_hooks() {
 
   let snap = recorder.snapshot();
   assert_eq!(snap.len(), 5);
-  assert!(matches!(
-    snap.events()[0],
-    FlightRecorderEvent::Send { size, now_ms: 10, .. } if size == mem::size_of::<String>() as u32
-  ));
-  assert!(matches!(
-    snap.events()[1],
-    FlightRecorderEvent::Receive { size, now_ms: 20, .. } if size == mem::size_of::<String>() as u32
-  ));
+  // wire size はシリアライズ層が入るまで配線できないため 0 で記録される。
+  assert!(matches!(snap.events()[0], FlightRecorderEvent::Send { size: 0, now_ms: 10, .. }));
+  assert!(matches!(snap.events()[1], FlightRecorderEvent::Receive { size: 0, now_ms: 20, .. }));
   assert!(matches!(snap.events()[2], FlightRecorderEvent::Handshake { phase: HandshakePhase::Started, .. }));
   assert!(matches!(snap.events()[3], FlightRecorderEvent::Quarantine { .. }));
   assert!(matches!(snap.events()[4], FlightRecorderEvent::Backpressure { signal: BackpressureSignal::Release, .. }));
