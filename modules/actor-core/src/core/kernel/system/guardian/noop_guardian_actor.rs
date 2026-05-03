@@ -1,5 +1,8 @@
 //! No-op user guardian actor used by convenience actor-system factories.
 
+#[cfg(test)]
+mod tests;
+
 use crate::core::kernel::actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView};
 
 /// User guardian actor that accepts every message without side effects.
