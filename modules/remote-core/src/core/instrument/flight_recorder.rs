@@ -1,15 +1,17 @@
 //! In-memory ring-buffer flight recorder.
 
-use alloc::{collections::VecDeque, string::String};
+use alloc::{collections::VecDeque, format, string::String};
 
 use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
 
 use crate::core::{
+  association::QuarantineReason,
+  envelope::{InboundEnvelope, OutboundEnvelope},
   instrument::{
     flight_recorder_event::FlightRecorderEvent, flight_recorder_snapshot::RemotingFlightRecorderSnapshot,
-    handshake_phase::HandshakePhase,
+    handshake_phase::HandshakePhase, remote_instrument::RemoteInstrument,
   },
-  transport::BackpressureSignal,
+  transport::{BackpressureSignal, TransportEndpoint},
 };
 
 /// Bounded ring buffer of [`FlightRecorderEvent`]s used for observability.
@@ -111,5 +113,64 @@ impl RemotingFlightRecorder {
   #[must_use]
   pub fn snapshot(&self) -> RemotingFlightRecorderSnapshot {
     RemotingFlightRecorderSnapshot::new(self.events.iter().cloned().collect())
+  }
+}
+
+impl RemoteInstrument for RemotingFlightRecorder {
+  fn on_send(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
+    // `AnyMessage` はトレイトオブジェクト経由でペイロードを保持しており、シリアライズ前に
+    // 実データ長を測ることはできない。`mem::size_of_val` は具象型のスタックサイズしか
+    // 返さないため (`String` なら常に 24 byte)、誤った値を記録するくらいなら 0 を入れて
+    // 「未計測」を明示する。実 wire size はシリアライズ層が導入された段階で配線する。
+    self.record_send(
+      remote_node_authority(
+        envelope.remote_node().system(),
+        envelope.remote_node().host(),
+        envelope.remote_node().port(),
+      ),
+      envelope.correlation_id(),
+      envelope.priority().to_wire(),
+      0,
+      now_ms,
+    );
+  }
+
+  fn on_receive(&mut self, envelope: &InboundEnvelope, now_ms: u64) {
+    // `on_send` と同じ理由で、シリアライズ前は実データ長を測れないため 0 を記録する。
+    self.record_receive(
+      remote_node_authority(
+        envelope.remote_node().system(),
+        envelope.remote_node().host(),
+        envelope.remote_node().port(),
+      ),
+      envelope.correlation_id(),
+      0,
+      now_ms,
+    );
+  }
+
+  fn record_handshake(&mut self, authority: &TransportEndpoint, phase: HandshakePhase, now_ms: u64) {
+    self.record_handshake(authority.authority(), phase, now_ms);
+  }
+
+  fn record_quarantine(&mut self, authority: &TransportEndpoint, reason: &QuarantineReason, now_ms: u64) {
+    self.record_quarantine(authority.authority(), reason.message(), now_ms);
+  }
+
+  fn record_backpressure(
+    &mut self,
+    authority: &TransportEndpoint,
+    signal: BackpressureSignal,
+    correlation_id: CorrelationId,
+    now_ms: u64,
+  ) {
+    self.record_backpressure(authority.authority(), signal, correlation_id, now_ms);
+  }
+}
+
+fn remote_node_authority(system: &str, host: &str, port: Option<u16>) -> String {
+  match port {
+    | Some(port) => format!("{system}@{host}:{port}"),
+    | None => format!("{system}@{host}"),
   }
 }

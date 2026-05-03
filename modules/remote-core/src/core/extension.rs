@@ -21,6 +21,8 @@ mod remote;
 mod remote_actor_ref_resolve_cache_event;
 mod remote_actor_ref_resolve_cache_outcome;
 mod remote_authority_snapshot;
+mod remote_event;
+mod remote_event_receiver;
 mod remoting;
 mod remoting_error;
 
@@ -32,5 +34,7 @@ pub use remote_actor_ref_resolve_cache_event::{
 };
 pub use remote_actor_ref_resolve_cache_outcome::RemoteActorRefResolveCacheOutcome;
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
+pub use remote_event::RemoteEvent;
+pub use remote_event_receiver::RemoteEventReceiver;
 pub use remoting::Remoting;
 pub use remoting_error::RemotingError;

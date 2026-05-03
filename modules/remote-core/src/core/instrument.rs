@@ -12,6 +12,7 @@ mod flight_recorder;
 mod flight_recorder_event;
 mod flight_recorder_snapshot;
 mod handshake_phase;
+mod noop_instrument;
 mod remote_instrument;
 mod remote_log_marker;
 
@@ -19,5 +20,6 @@ pub use flight_recorder::RemotingFlightRecorder;
 pub use flight_recorder_event::FlightRecorderEvent;
 pub use flight_recorder_snapshot::RemotingFlightRecorderSnapshot;
 pub use handshake_phase::HandshakePhase;
+pub(crate) use noop_instrument::NoopInstrument;
 pub use remote_instrument::RemoteInstrument;
 pub use remote_log_marker::RemoteLogMarker;

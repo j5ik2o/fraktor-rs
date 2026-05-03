@@ -44,8 +44,8 @@ pub async fn run_outbound_loop<T: RemoteTransport + Send + 'static>(
         let send_result = transport.with_lock(|transport| transport.send(envelope));
         match send_result {
           | Ok(()) => {},
-          | Err(TransportError::NotStarted) => break,
-          | Err(_err) => {
+          | Err((TransportError::NotStarted, _envelope)) => break,
+          | Err((_err, _envelope)) => {
             tracing::warn!("outbound loop transport send failed");
             break;
           },
@@ -90,37 +90,35 @@ where
     let (remote, next_envelope) = shared.with_write(|assoc| (assoc.remote().clone(), assoc.next_outbound()));
     match next_envelope {
       | Some(envelope) => {
-        // `RemoteTransport::send` は envelope を所有権で受け取り、失敗時にも返してくれない。
-        // `next_outbound` で send_queue から既に取り出してしまっているため、送信失敗を
-        // 復旧パスに乗せる前にコピーを保持しておき、reconnect 完了後に
-        // `Association::enqueue` で再投入する。これにより一過性の transport 失敗で
-        // メッセージが silent-drop されることを防ぐ。
-        let envelope_for_retry = envelope.clone();
+        // `RemoteTransport::send` は失敗時に envelope を返却するため、ここでは
+        // 防御クローンを取らずに send へ移譲し、失敗パスに乗ったときだけ
+        // `Association::enqueue` で再投入する。これにより成功側のホットパスは
+        // クローンコストを払わず、一過性 transport 失敗時の silent-drop も防げる。
         let send_result = transport.with_lock(|transport| transport.send(envelope));
         match send_result {
           | Ok(()) => {},
-          | Err(TransportError::NotStarted) => {
-            // shutdown 経路: 取り出し済み envelope を Association::enqueue 経由で内部キュー
+          | Err((TransportError::NotStarted, envelope_for_retry)) => {
+            // shutdown 経路: 返却された envelope を Association::enqueue 経由で内部キュー
             // (next_outbound が Some を返した時点で Active のため、実際の戻り先は send_queue)
             // に戻して shutdown 後の再起動で再送できるようにする。
             shared.with_write(|assoc| {
               let now_ms = tokio_instant_elapsed_millis(started_at);
-              let effects = assoc.enqueue(envelope_for_retry, now_ms);
+              let effects = assoc.enqueue(*envelope_for_retry, now_ms);
               apply_effects_in_place(assoc, effects, &event_publisher, now_ms);
             });
             return Ok(());
           },
-          | Err(err) => {
+          | Err((err, envelope_for_retry)) => {
             gate_for_reconnect(&shared, &policy, tokio_instant_elapsed_millis(started_at), &event_publisher);
             let ctx =
               RecoverContext { shared: &shared, policy: &policy, event_publisher: &event_publisher, started_at };
             recover_with_restart_budget(ctx, &mut reconnect, remote, &mut restart_counter, err).await?;
-            // recover が成功すると association は Active 経路へ戻るため、保持していた
+            // recover が成功すると association は Active 経路へ戻るため、返却された
             // envelope を再投入する。これは Pekko Artery の AckedDeliveryQueue 相当の最低限
             // の振る舞いで、ack ベースの再送は別レイヤの責務として残してある。
             shared.with_write(|assoc| {
               let now_ms = tokio_instant_elapsed_millis(started_at);
-              let effects = assoc.enqueue(envelope_for_retry, now_ms);
+              let effects = assoc.enqueue(*envelope_for_retry, now_ms);
               apply_effects_in_place(assoc, effects, &event_publisher, now_ms);
             });
           },

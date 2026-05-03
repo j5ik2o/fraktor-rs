@@ -26,7 +26,7 @@
 
 | ファイル | 内容 |
 |----------|------|
-| `immutability-policy.md` | 内部可変性禁止、&mut self 原則、AShared パターン |
+| `immutability-policy.md` | 内部可変性禁止、&mut self 原則、Shared ラッパーパターン（`SharedLock<T>` / `SharedRwLock<T>`） |
 | `cqs-principle.md` | CQS 原則、違反判定フロー |
 | `type-organization.md` | 1file1type + 例外基準、公開範囲の判断フロー |
 | `naming-conventions.md` | 曖昧サフィックス禁止、Shared/Handle 命名、ドキュメント言語 |

@@ -9,6 +9,8 @@ const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
 const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
 const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
+const DEFAULT_OUTBOUND_HIGH_WATERMARK: usize = 1024;
+const DEFAULT_OUTBOUND_LOW_WATERMARK: usize = 512;
 const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
 const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
@@ -58,6 +60,8 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
   assert_eq!(s.outbound_message_queue_size(), DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE);
   assert_eq!(s.outbound_control_queue_size(), DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE);
   assert_eq!(s.outbound_large_message_queue_size(), DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE);
+  assert_eq!(s.outbound_high_watermark(), DEFAULT_OUTBOUND_HIGH_WATERMARK);
+  assert_eq!(s.outbound_low_watermark(), DEFAULT_OUTBOUND_LOW_WATERMARK);
   assert!(s.large_message_destinations().is_empty());
   assert_eq!(s.remove_quarantined_association_after(), DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER);
   assert_eq!(s.inbound_restart_timeout(), DEFAULT_INBOUND_RESTART_TIMEOUT);
@@ -144,6 +148,7 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_buffer_pool_size(64)
     .with_outbound_message_queue_size(32)
     .with_outbound_control_queue_size(8)
+    .with_outbound_watermarks(16, 64)
     .with_remove_quarantined_association_after(Duration::from_secs(30))
     .with_untrusted_mode(true)
     .with_log_received_messages(true)
@@ -164,6 +169,8 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.buffer_pool_size(), 64);
   assert_eq!(s.outbound_message_queue_size(), 32);
   assert_eq!(s.outbound_control_queue_size(), 8);
+  assert_eq!(s.outbound_high_watermark(), 64);
+  assert_eq!(s.outbound_low_watermark(), 16);
   assert_eq!(s.remove_quarantined_association_after(), Duration::from_secs(30));
   assert!(s.untrusted_mode());
   assert!(s.log_received_messages());
@@ -233,6 +240,78 @@ fn with_outbound_large_message_queue_size_rejects_zero() {
 
   // Then: 不正な queue size として拒否する
   assert!(result.is_err());
+}
+
+#[test]
+fn outbound_watermark_setters_are_order_independent() {
+  // Given: default より小さい watermark に high -> low の順で変更する
+  let high_first = RemoteConfig::new("localhost").with_outbound_high_watermark(256).with_outbound_low_watermark(128);
+
+  // Given: 同じ watermark に low -> high の順で変更する
+  let low_first_small =
+    RemoteConfig::new("localhost").with_outbound_low_watermark(128).with_outbound_high_watermark(256);
+
+  // Given: default より大きい watermark に high -> low の順で変更する
+  let high_first_large =
+    RemoteConfig::new("localhost").with_outbound_high_watermark(4096).with_outbound_low_watermark(2048);
+
+  // Given: 同じ watermark に low -> high の順で変更する
+  let low_first_large =
+    RemoteConfig::new("localhost").with_outbound_low_watermark(2048).with_outbound_high_watermark(4096);
+
+  // Then: どちらの順序でも最終的な組み合わせを保持する
+  assert_eq!(high_first.outbound_high_watermark(), 256);
+  assert_eq!(high_first.outbound_low_watermark(), 128);
+  assert_eq!(low_first_small.outbound_high_watermark(), 256);
+  assert_eq!(low_first_small.outbound_low_watermark(), 128);
+  assert_eq!(high_first_large.outbound_high_watermark(), 4096);
+  assert_eq!(high_first_large.outbound_low_watermark(), 2048);
+  assert_eq!(low_first_large.outbound_high_watermark(), 4096);
+  assert_eq!(low_first_large.outbound_low_watermark(), 2048);
+}
+
+#[test]
+fn outbound_watermark_single_setters_keep_pair_valid() {
+  // When: high を現在の low 以下に下げる
+  let lowered_high = RemoteConfig::new("localhost").with_outbound_high_watermark(256);
+
+  // Then: low は high 未満に補正される
+  assert_eq!(lowered_high.outbound_high_watermark(), 256);
+  assert_eq!(lowered_high.outbound_low_watermark(), 255);
+
+  // When: low を現在の high 以上に上げる
+  let raised_low = RemoteConfig::new("localhost").with_outbound_low_watermark(1024);
+
+  // Then: high は low より大きく補正される
+  assert_eq!(raised_low.outbound_high_watermark(), 1025);
+  assert_eq!(raised_low.outbound_low_watermark(), 1024);
+}
+
+#[test]
+fn with_outbound_watermarks_rejects_invalid_pairs() {
+  let equal_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_watermarks(512, 512));
+  let inverted_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_watermarks(1024, 512));
+
+  assert!(equal_result.is_err());
+  assert!(inverted_result.is_err());
+}
+
+#[test]
+fn outbound_watermark_setters_reject_unreachable_values() {
+  let high_zero = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(0));
+  // high=1 だと auto-adjust で low=0 になり、release 条件 `queue_len < 0` が unreachable になるため
+  // reject。
+  let high_one = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(1));
+  // low=0 は release 条件が unreachable なので reject。
+  let low_zero = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(0));
+  let low_max = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(usize::MAX));
+  let pair_low_zero = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_watermarks(0, 1));
+
+  assert!(high_zero.is_err());
+  assert!(high_one.is_err());
+  assert!(low_zero.is_err());
+  assert!(low_max.is_err());
+  assert!(pair_low_zero.is_err());
 }
 
 #[test]

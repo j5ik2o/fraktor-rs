@@ -10,12 +10,13 @@ use fraktor_actor_core_rs::core::kernel::{
 
 use crate::core::{
   address::{Address, RemoteNodeId},
+  association::QuarantineReason,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   instrument::{
     FlightRecorderEvent, HandshakePhase, RemoteInstrument, RemoteLogMarker, RemotingFlightRecorder,
     RemotingFlightRecorderSnapshot,
   },
-  transport::BackpressureSignal,
+  transport::{BackpressureSignal, TransportEndpoint},
 };
 
 const REMOTE_ADDRESS: &str = "sys@host:2552";
@@ -188,23 +189,44 @@ fn snapshot_is_immutable_after_production() {
 // ---------------------------------------------------------------------------
 
 struct CountingInstrument {
-  sends:    usize,
-  receives: usize,
+  sends:         usize,
+  receives:      usize,
+  handshakes:    usize,
+  quarantines:   usize,
+  backpressures: usize,
 }
 
 impl CountingInstrument {
   const fn new() -> Self {
-    Self { sends: 0, receives: 0 }
+    Self { sends: 0, receives: 0, handshakes: 0, quarantines: 0, backpressures: 0 }
   }
 }
 
 impl RemoteInstrument for CountingInstrument {
-  fn on_send(&mut self, _envelope: &OutboundEnvelope) {
+  fn on_send(&mut self, _envelope: &OutboundEnvelope, _now_ms: u64) {
     self.sends += 1;
   }
 
-  fn on_receive(&mut self, _envelope: &InboundEnvelope) {
+  fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {
     self.receives += 1;
+  }
+
+  fn record_handshake(&mut self, _authority: &TransportEndpoint, _phase: HandshakePhase, _now_ms: u64) {
+    self.handshakes += 1;
+  }
+
+  fn record_quarantine(&mut self, _authority: &TransportEndpoint, _reason: &QuarantineReason, _now_ms: u64) {
+    self.quarantines += 1;
+  }
+
+  fn record_backpressure(
+    &mut self,
+    _authority: &TransportEndpoint,
+    _signal: BackpressureSignal,
+    _correlation_id: CorrelationId,
+    _now_ms: u64,
+  ) {
+    self.backpressures += 1;
   }
 }
 
@@ -213,11 +235,51 @@ fn remote_instrument_trait_can_be_implemented() {
   let mut inst = CountingInstrument::new();
   let out = sample_outbound();
   let inb = sample_inbound();
-  inst.on_send(&out);
-  inst.on_receive(&inb);
-  inst.on_send(&out);
+  inst.on_send(&out, 10);
+  inst.on_receive(&inb, 20);
+  inst.on_send(&out, 30);
+  inst.record_handshake(&TransportEndpoint::new("sys@host:2552"), HandshakePhase::Started, 10);
+  inst.record_quarantine(&TransportEndpoint::new("sys@host:2552"), &QuarantineReason::new("test"), 20);
+  inst.record_backpressure(
+    &TransportEndpoint::new("sys@host:2552"),
+    BackpressureSignal::Apply,
+    CorrelationId::nil(),
+    30,
+  );
   assert_eq!(inst.sends, 2);
   assert_eq!(inst.receives, 1);
+  assert_eq!(inst.handshakes, 1);
+  assert_eq!(inst.quarantines, 1);
+  assert_eq!(inst.backpressures, 1);
+}
+
+#[test]
+fn flight_recorder_implements_remote_instrument_hooks() {
+  let mut recorder = RemotingFlightRecorder::new(8);
+  let outbound = sample_outbound();
+  let inbound = sample_inbound();
+  let authority = TransportEndpoint::new("sys@host:2552");
+
+  recorder.on_send(&outbound, 10);
+  recorder.on_receive(&inbound, 20);
+  RemoteInstrument::record_handshake(&mut recorder, &authority, HandshakePhase::Started, 10);
+  RemoteInstrument::record_quarantine(&mut recorder, &authority, &QuarantineReason::new("boom"), 20);
+  RemoteInstrument::record_backpressure(
+    &mut recorder,
+    &authority,
+    BackpressureSignal::Release,
+    CorrelationId::new(9, 1),
+    30,
+  );
+
+  let snap = recorder.snapshot();
+  assert_eq!(snap.len(), 5);
+  // wire size はシリアライズ層が入るまで配線できないため 0 で記録される。
+  assert!(matches!(snap.events()[0], FlightRecorderEvent::Send { size: 0, now_ms: 10, .. }));
+  assert!(matches!(snap.events()[1], FlightRecorderEvent::Receive { size: 0, now_ms: 20, .. }));
+  assert!(matches!(snap.events()[2], FlightRecorderEvent::Handshake { phase: HandshakePhase::Started, .. }));
+  assert!(matches!(snap.events()[3], FlightRecorderEvent::Quarantine { .. }));
+  assert!(matches!(snap.events()[4], FlightRecorderEvent::Backpressure { signal: BackpressureSignal::Release, .. }));
 }
 
 #[test]

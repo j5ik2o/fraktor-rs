@@ -18,10 +18,11 @@ use crate::core::{
     offer_outcome::OfferOutcome, quarantine_reason::QuarantineReason, send_queue::SendQueue,
   },
   config::{
-    DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE, DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
+    DEFAULT_HANDSHAKE_TIMEOUT, DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE, DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
     DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER, RemoteConfig,
   },
-  envelope::OutboundEnvelope,
+  envelope::{InboundEnvelope, OutboundEnvelope},
+  instrument::{HandshakePhase, NoopInstrument, RemoteInstrument},
   transport::{BackpressureSignal, TransportEndpoint},
   wire::{HandshakeReq, HandshakeRsp},
 };
@@ -42,6 +43,8 @@ pub struct Association {
   outbound_control_queue_size: usize,
   outbound_message_queue_size: usize,
   remove_quarantined_association_after: Duration,
+  handshake_timeout: Duration,
+  handshake_generation: u64,
   local: UniqueAddress,
   remote: Address,
 }
@@ -56,6 +59,7 @@ impl Association {
       DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
       DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
       DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER,
+      DEFAULT_HANDSHAKE_TIMEOUT,
     )
   }
 
@@ -68,6 +72,7 @@ impl Association {
       config.outbound_control_queue_size(),
       config.outbound_message_queue_size(),
       config.remove_quarantined_association_after(),
+      config.handshake_timeout(),
     )
   }
 
@@ -99,6 +104,23 @@ impl Association {
   #[must_use]
   pub const fn send_queue(&self) -> &SendQueue {
     &self.send_queue
+  }
+
+  /// Returns the combined outbound queue length, excluding deferred envelopes.
+  #[must_use]
+  pub fn total_outbound_len(&self) -> usize {
+    self.send_queue.len()
+  }
+
+  /// Records an inbound envelope observation through `instrument`.
+  pub fn record_inbound(&self, envelope: &InboundEnvelope, now_ms: u64, instrument: &mut dyn RemoteInstrument) {
+    instrument.on_receive(envelope, now_ms);
+  }
+
+  /// Returns the current handshake generation.
+  #[must_use]
+  pub const fn handshake_generation(&self) -> u64 {
+    self.handshake_generation
   }
 
   /// Returns the last monotonic millis at which handshake activity was observed.
@@ -135,9 +157,26 @@ impl Association {
   /// Starts handshake against the given endpoint. Valid only from
   /// [`AssociationState::Idle`].
   pub fn associate(&mut self, endpoint: TransportEndpoint, now_ms: u64) -> Vec<AssociationEffect> {
+    let mut instrument = NoopInstrument;
+    self.associate_with_instrument(endpoint, now_ms, &mut instrument)
+  }
+
+  /// Starts handshake against `endpoint` and records the start through `instrument`.
+  pub fn associate_with_instrument(
+    &mut self,
+    endpoint: TransportEndpoint,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     match &self.state {
       | AssociationState::Idle => {
-        let effect = AssociationEffect::StartHandshake { endpoint: endpoint.clone() };
+        let generation = self.advance_handshake_generation();
+        instrument.record_handshake(&endpoint, HandshakePhase::Started, now_ms);
+        let effect = AssociationEffect::StartHandshake {
+          authority: endpoint.clone(),
+          timeout: self.handshake_timeout,
+          generation,
+        };
         self.state = AssociationState::Handshaking { endpoint, started_at: now_ms };
         vec![effect]
       },
@@ -157,9 +196,24 @@ impl Association {
     request: &HandshakeReq,
     now_ms: u64,
   ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
+    let mut instrument = NoopInstrument;
+    self.accept_handshake_request_with_instrument(request, now_ms, &mut instrument)
+  }
+
+  /// Accepts a handshake request and records accepted handshakes through `instrument`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`HandshakeValidationError`] when the request does not belong to this association.
+  pub fn accept_handshake_request_with_instrument(
+    &mut self,
+    request: &HandshakeReq,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
     self.ensure_local_destination(request.to())?;
     self.ensure_remote_origin(request.from().address())?;
-    self.handshake_accepted(remote_node_id_from_unique_address(request.from()), now_ms)
+    self.handshake_accepted(remote_node_id_from_unique_address(request.from()), now_ms, instrument)
   }
 
   /// Accepts a handshake response after verifying the remote origin.
@@ -174,8 +228,25 @@ impl Association {
     response: &HandshakeRsp,
     now_ms: u64,
   ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
+    let mut instrument = NoopInstrument;
+    self.accept_handshake_response_with_instrument(response, now_ms, &mut instrument)
+  }
+
+  /// Accepts a handshake response and records accepted handshakes through `instrument`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`HandshakeValidationError`] when the response does not belong to
+  /// this association, or when the association cannot transition into `Active`
+  /// from its current state (`Idle`, `Gated`, `Quarantined`).
+  pub fn accept_handshake_response_with_instrument(
+    &mut self,
+    response: &HandshakeRsp,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
     self.ensure_remote_origin(response.from().address())?;
-    self.handshake_accepted(remote_node_id_from_unique_address(response.from()), now_ms)
+    self.handshake_accepted(remote_node_id_from_unique_address(response.from()), now_ms, instrument)
   }
 
   /// Transitions `Handshaking` → `Active`, flushing any deferred envelopes.
@@ -192,11 +263,13 @@ impl Association {
     &mut self,
     remote_node: RemoteNodeId,
     now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
   ) -> Result<Vec<AssociationEffect>, HandshakeValidationError> {
     if let AssociationState::Active { remote_node: current, last_used_at, .. } = &mut self.state
       && current == &remote_node
     {
       *last_used_at = now_ms;
+      instrument.record_handshake(&self.authority_endpoint(), HandshakePhase::Accepted, now_ms);
       return Ok(Vec::new());
     }
 
@@ -205,6 +278,7 @@ impl Association {
         let mut effects = Vec::new();
         let deferred = mem::take(&mut self.deferred);
         self.clear_deferred_counts();
+        instrument.record_handshake(&self.authority_endpoint(), HandshakePhase::Accepted, now_ms);
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected {
           authority:      self.authority_string(),
           remote_system:  remote_node.system().to_string(),
@@ -218,6 +292,7 @@ impl Association {
         Ok(effects)
       },
       | AssociationState::Active { .. } => {
+        instrument.record_handshake(&self.authority_endpoint(), HandshakePhase::Accepted, now_ms);
         let effect = AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Connected {
           authority:      self.authority_string(),
           remote_system:  remote_node.system().to_string(),
@@ -249,11 +324,23 @@ impl Association {
   /// Transitions `Handshaking` → `Gated`, discarding deferred envelopes via an
   /// effect and publishing a `Gated` lifecycle event.
   pub fn handshake_timed_out(&mut self, _now_ms: u64, resume_at_ms: Option<u64>) -> Vec<AssociationEffect> {
+    let mut instrument = NoopInstrument;
+    self.handshake_timed_out_with_instrument(_now_ms, resume_at_ms, &mut instrument)
+  }
+
+  /// Transitions `Handshaking` → `Gated` and records the timeout through `instrument`.
+  pub fn handshake_timed_out_with_instrument(
+    &mut self,
+    now_ms: u64,
+    resume_at_ms: Option<u64>,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     match &self.state {
       | AssociationState::Handshaking { .. } => {
         let mut effects = Vec::new();
         let deferred = mem::take(&mut self.deferred);
         self.clear_deferred_counts();
+        instrument.record_handshake(&self.authority_endpoint(), HandshakePhase::TimedOut, now_ms);
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Gated {
           authority:      self.authority_string(),
           correlation_id: CorrelationId::nil(),
@@ -274,6 +361,17 @@ impl Association {
   /// Transitions any non-terminal state into `Quarantined`, discarding both
   /// deferred and send-queue contents.
   pub fn quarantine(&mut self, reason: QuarantineReason, now_ms: u64) -> Vec<AssociationEffect> {
+    let mut instrument = NoopInstrument;
+    self.quarantine_with_instrument(reason, now_ms, &mut instrument)
+  }
+
+  /// Transitions to `Quarantined` and records the quarantine through `instrument`.
+  pub fn quarantine_with_instrument(
+    &mut self,
+    reason: QuarantineReason,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     match &self.state {
       | AssociationState::Active { .. }
       | AssociationState::Handshaking { .. }
@@ -288,6 +386,7 @@ impl Association {
           reason:         reason.message().into(),
           correlation_id: CorrelationId::nil(),
         }));
+        instrument.record_quarantine(&self.authority_endpoint(), &reason, now_ms);
         if !discarded.is_empty() {
           effects.push(AssociationEffect::DiscardEnvelopes { reason: reason.clone(), envelopes: discarded });
         }
@@ -322,10 +421,28 @@ impl Association {
   ///
   /// Calls from `Idle`, `Handshaking`, or `Active` are no-ops.
   pub fn recover(&mut self, endpoint: Option<TransportEndpoint>, now_ms: u64) -> Vec<AssociationEffect> {
+    let mut instrument = NoopInstrument;
+    self.recover_with_instrument(endpoint, now_ms, &mut instrument)
+  }
+
+  /// Transitions out of `Gated` / `Quarantined` and records a restarted handshake through
+  /// `instrument`.
+  pub fn recover_with_instrument(
+    &mut self,
+    endpoint: Option<TransportEndpoint>,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     match &self.state {
       | AssociationState::Gated { .. } | AssociationState::Quarantined { .. } => match endpoint {
         | Some(endpoint) => {
-          let effect = AssociationEffect::StartHandshake { endpoint: endpoint.clone() };
+          let generation = self.advance_handshake_generation();
+          instrument.record_handshake(&endpoint, HandshakePhase::Started, now_ms);
+          let effect = AssociationEffect::StartHandshake {
+            authority: endpoint.clone(),
+            timeout: self.handshake_timeout,
+            generation,
+          };
           self.state = AssociationState::Handshaking { endpoint, started_at: now_ms };
           vec![effect]
         },
@@ -366,8 +483,34 @@ impl Association {
     self.send_queue.next_outbound()
   }
 
+  /// Returns the next outbound envelope and records it through `instrument`.
+  pub fn next_outbound_with_instrument(
+    &mut self,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Option<OutboundEnvelope> {
+    let envelope = self.send_queue.next_outbound();
+    if let Some(envelope) = &envelope {
+      instrument.on_send(envelope, now_ms);
+    }
+    envelope
+  }
+
   /// Applies a backpressure signal to the internal send queue.
-  pub const fn apply_backpressure(&mut self, signal: BackpressureSignal) {
+  pub fn apply_backpressure(&mut self, signal: BackpressureSignal) {
+    let mut instrument = NoopInstrument;
+    self.apply_backpressure_with_instrument(signal, CorrelationId::nil(), 0, &mut instrument);
+  }
+
+  /// Applies a backpressure signal and records it through `instrument`.
+  pub fn apply_backpressure_with_instrument(
+    &mut self,
+    signal: BackpressureSignal,
+    correlation_id: CorrelationId,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) {
+    instrument.record_backpressure(&self.authority_endpoint(), signal, correlation_id, now_ms);
     self.send_queue.apply_backpressure(signal);
   }
 
@@ -381,6 +524,7 @@ impl Association {
     outbound_control_queue_size: usize,
     outbound_message_queue_size: usize,
     remove_quarantined_association_after: Duration,
+    handshake_timeout: Duration,
   ) -> Self {
     Self {
       state: AssociationState::Idle,
@@ -391,9 +535,16 @@ impl Association {
       outbound_control_queue_size,
       outbound_message_queue_size,
       remove_quarantined_association_after,
+      handshake_timeout,
+      handshake_generation: 0,
       local,
       remote,
     }
+  }
+
+  const fn advance_handshake_generation(&mut self) -> u64 {
+    self.handshake_generation = self.handshake_generation.wrapping_add(1);
+    self.handshake_generation
   }
 
   fn enqueue_active(&mut self, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
@@ -472,6 +623,10 @@ impl Association {
 
   fn authority_string(&self) -> String {
     self.remote.to_string()
+  }
+
+  fn authority_endpoint(&self) -> TransportEndpoint {
+    TransportEndpoint::new(self.authority_string())
   }
 
   fn ensure_local_destination(&self, actual: &Address) -> Result<(), HandshakeValidationError> {

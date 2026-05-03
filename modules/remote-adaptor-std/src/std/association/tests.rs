@@ -857,11 +857,24 @@ async fn outbound_loop_drains_active_association() {
       Ok(())
     }
 
-    fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError> {
+    fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
       self.sent.with_lock(|sent| sent.push(envelope));
       if let Some(sent_signal) = self.sent_signal.take() {
         sent_signal.send(()).expect("send completion receiver should be alive");
       }
+      Ok(())
+    }
+
+    fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
+      Ok(())
+    }
+
+    fn schedule_handshake_timeout(
+      &mut self,
+      _authority: &TransportEndpoint,
+      _timeout: Duration,
+      _generation: u64,
+    ) -> Result<(), TransportError> {
       Ok(())
     }
 
@@ -1295,9 +1308,22 @@ impl RemoteTransport for FailingTransport {
     Ok(())
   }
 
-  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
+  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
     self.sends.with_lock(|count| *count += 1);
+    Err((self.failure.clone(), Box::new(envelope)))
+  }
+
+  fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
     Err(self.failure.clone())
+  }
+
+  fn schedule_handshake_timeout(
+    &mut self,
+    _authority: &TransportEndpoint,
+    _timeout: Duration,
+    _generation: u64,
+  ) -> Result<(), TransportError> {
+    Ok(())
   }
 
   fn addresses(&self) -> &[Address] {

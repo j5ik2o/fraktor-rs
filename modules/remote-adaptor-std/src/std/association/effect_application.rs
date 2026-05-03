@@ -29,8 +29,8 @@ use fraktor_remote_core_rs::core::{
 /// - **`DiscardEnvelopes`**: the discarded count and reason are logged via `tracing` so the
 ///   operator can observe the loss.
 /// - **`PublishLifecycle`**: published through the actor-system event stream.
-/// - **`StartHandshake`**: logged. The transport-driven start path lives on the caller side; this
-///   helper is not the place to launch a handshake.
+/// - **`StartHandshake`**: logged until the core `Remote::run` loop owns the transport-driven start
+///   path.
 pub fn apply_effects_in_place(
   assoc: &mut Association,
   effects: Vec<AssociationEffect>,
@@ -68,10 +68,10 @@ fn apply_one(
       tracing::info!(?event, "remoting lifecycle event");
       event_publisher.publish_lifecycle(event);
     },
-    | AssociationEffect::StartHandshake { endpoint } => {
+    | AssociationEffect::StartHandshake { authority, timeout, generation } => {
       // StartHandshake は transport 駆動の開始経路を呼び出し元が担うので、
       // このヘルパーでは観測した効果をログするだけに留める。
-      tracing::debug!(?endpoint, "association requested handshake start");
+      tracing::debug!(?authority, ?timeout, generation, "association requested handshake start");
     },
   }
 }

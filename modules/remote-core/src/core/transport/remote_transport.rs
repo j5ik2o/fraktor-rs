@@ -1,8 +1,14 @@
 //! The single transport port the remote subsystem depends on.
 
+use alloc::boxed::Box;
+use core::time::Duration;
+
 use crate::core::{
-  address::Address, association::QuarantineReason, envelope::OutboundEnvelope,
-  transport::transport_error::TransportError,
+  address::Address,
+  association::QuarantineReason,
+  envelope::OutboundEnvelope,
+  transport::{transport_endpoint::TransportEndpoint, transport_error::TransportError},
+  wire::HandshakePdu,
 };
 
 /// The single transport port exposed by `fraktor-remote-core-rs`.
@@ -41,13 +47,50 @@ pub trait RemoteTransport {
 
   /// Hands an [`OutboundEnvelope`] to the transport for delivery.
   ///
+  /// On failure the envelope is returned (boxed, matching `RemoteEvent::OutboundEnqueued`)
+  /// alongside the error so the caller can re-enqueue it for retry without paying for a
+  /// defensive clone on the hot success path. The `Box` keeps the `Err` variant small
+  /// enough for `clippy::result_large_err`.
+  ///
   /// # Errors
   ///
   /// Returns [`TransportError::SendFailed`] if the transport could not hand
   /// the envelope to the peer, [`TransportError::ConnectionClosed`] if the
   /// underlying channel has been closed, or [`TransportError::NotStarted`]
   /// if called before `start`.
-  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError>;
+  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)>;
+
+  /// Sends a wire-level handshake PDU to `remote`.
+  ///
+  /// `Remote::run` calls this before [`Self::schedule_handshake_timeout`] when
+  /// it executes `AssociationEffect::StartHandshake`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running,
+  /// [`TransportError::ConnectionClosed`] if no connection to `remote` exists,
+  /// or another transport-specific error when delivery fails.
+  fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError>;
+
+  /// Schedules a generation-scoped handshake timeout for `authority`.
+  ///
+  /// Adapter implementations are responsible for pushing
+  /// `RemoteEvent::HandshakeTimerFired { authority, generation }` through their
+  /// internal event sender when the timeout expires. `Remote::run` compares the
+  /// event generation with the current association generation and discards stale
+  /// timer events, so adapters do not need a cancellation API for superseded
+  /// timers.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running, or
+  /// another transport-specific error if the timer cannot be scheduled.
+  fn schedule_handshake_timeout(
+    &mut self,
+    authority: &TransportEndpoint,
+    timeout: Duration,
+    generation: u64,
+  ) -> Result<(), TransportError>;
 
   /// Returns all addresses this transport currently advertises.
   fn addresses(&self) -> &[Address];

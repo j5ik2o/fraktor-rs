@@ -6,7 +6,7 @@ use core::time::Duration;
 use crate::core::config::{LargeMessageDestinations, RemoteCompressionConfig};
 
 /// Default handshake timeout (20 seconds), matching Pekko Artery advanced defaults.
-const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
+pub(crate) const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Default shutdown flush timeout (5 seconds).
 const DEFAULT_SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
@@ -31,6 +31,12 @@ pub(crate) const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 
 /// Default outbound large-message queue size.
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
+
+/// Default outbound high watermark.
+const DEFAULT_OUTBOUND_HIGH_WATERMARK: usize = 1024;
+
+/// Default outbound low watermark.
+const DEFAULT_OUTBOUND_LOW_WATERMARK: usize = 512;
 
 /// Default system message resend interval.
 const DEFAULT_SYSTEM_MESSAGE_RESEND_INTERVAL: Duration = Duration::from_secs(1);
@@ -107,6 +113,8 @@ pub struct RemoteConfig {
   outbound_message_queue_size: usize,
   outbound_control_queue_size: usize,
   outbound_large_message_queue_size: usize,
+  outbound_high_watermark: usize,
+  outbound_low_watermark: usize,
   large_message_destinations: LargeMessageDestinations,
   system_message_resend_interval: Duration,
   give_up_system_message_after: Duration,
@@ -151,6 +159,8 @@ impl RemoteConfig {
       outbound_message_queue_size: DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
       outbound_control_queue_size: DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
       outbound_large_message_queue_size: DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+      outbound_high_watermark: DEFAULT_OUTBOUND_HIGH_WATERMARK,
+      outbound_low_watermark: DEFAULT_OUTBOUND_LOW_WATERMARK,
       large_message_destinations: LargeMessageDestinations::new(),
       system_message_resend_interval: DEFAULT_SYSTEM_MESSAGE_RESEND_INTERVAL,
       give_up_system_message_after: DEFAULT_GIVE_UP_SYSTEM_MESSAGE_AFTER,
@@ -273,6 +283,63 @@ impl RemoteConfig {
   pub const fn with_outbound_large_message_queue_size(mut self, size: usize) -> Self {
     assert!(size > 0, "outbound large-message queue size must be greater than zero");
     self.outbound_large_message_queue_size = size;
+    self
+  }
+
+  /// Returns a copy with the given outbound high watermark.
+  ///
+  /// If the current low watermark is no longer lower than `high`, the low
+  /// watermark is lowered to keep the pair valid. Use
+  /// [`Self::with_outbound_watermarks`] when changing both values explicitly.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `high < 2`. The auto-adjusted low watermark would otherwise
+  /// drop to zero, making the release condition `queue_len < low` unreachable.
+  #[must_use]
+  pub const fn with_outbound_high_watermark(mut self, high: usize) -> Self {
+    assert!(high >= 2, "outbound high watermark must be at least 2 to keep the auto-adjusted low watermark reachable");
+    self.outbound_high_watermark = high;
+    if self.outbound_low_watermark >= high {
+      self.outbound_low_watermark = high - 1;
+    }
+    self
+  }
+
+  /// Returns a copy with the given outbound low watermark.
+  ///
+  /// If the current high watermark is no longer higher than `low`, the high
+  /// watermark is raised to keep the pair valid. Use
+  /// [`Self::with_outbound_watermarks`] when changing both values explicitly.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `low` is `0` (the release condition `queue_len < low` would
+  /// be unreachable for any non-empty queue) or `low == usize::MAX` (no
+  /// representable high watermark above it).
+  #[must_use]
+  pub const fn with_outbound_low_watermark(mut self, low: usize) -> Self {
+    assert!(low > 0, "outbound low watermark must be greater than zero so the release condition can fire");
+    assert!(low < usize::MAX, "outbound low watermark must be lower than usize::MAX");
+    self.outbound_low_watermark = low;
+    if self.outbound_high_watermark <= low {
+      self.outbound_high_watermark = low + 1;
+    }
+    self
+  }
+
+  /// Returns a copy with both outbound watermarks set atomically.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `low == 0` (release condition unreachable) or
+  /// `low >= high` (invalid pair).
+  #[must_use]
+  pub const fn with_outbound_watermarks(mut self, low: usize, high: usize) -> Self {
+    assert!(low > 0, "outbound low watermark must be greater than zero so the release condition can fire");
+    assert!(low < high, "outbound low watermark must be lower than high watermark");
+    self.outbound_low_watermark = low;
+    self.outbound_high_watermark = high;
     self
   }
 
@@ -553,6 +620,18 @@ impl RemoteConfig {
   #[must_use]
   pub const fn outbound_large_message_queue_size(&self) -> usize {
     self.outbound_large_message_queue_size
+  }
+
+  /// Returns the outbound high watermark.
+  #[must_use]
+  pub const fn outbound_high_watermark(&self) -> usize {
+    self.outbound_high_watermark
+  }
+
+  /// Returns the outbound low watermark.
+  #[must_use]
+  pub const fn outbound_low_watermark(&self) -> usize {
+    self.outbound_low_watermark
   }
 
   /// Returns the configured large-message destination patterns.
