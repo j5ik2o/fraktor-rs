@@ -388,7 +388,7 @@ fn actor_system_noop_with_config_bootstraps_user_guardian() {
   assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
   let user_guardian = system.user_guardian_ref();
   let path = user_guardian.path().expect("user guardian path");
-  assert!(path.to_relative_string().starts_with("/user/"));
+  assert_eq!(path.to_relative_string(), "/user");
 }
 
 #[test]

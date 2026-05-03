@@ -639,7 +639,8 @@ impl ActorSystem {
     let root_pid = root_cell.pid();
     self.state.set_root_guardian(&root_cell);
 
-    let user_guardian = self.spawn_child(root_pid, user_guardian_props)?;
+    let user_guardian_props = user_guardian_props.clone().with_name("user");
+    let user_guardian = self.spawn_child(root_pid, &user_guardian_props)?;
     if let Some(cell) = self.state.cell(&user_guardian.pid()) {
       self.state.set_user_guardian(&cell);
     } else {
