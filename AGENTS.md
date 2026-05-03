@@ -1304,7 +1304,7 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 | `func(ctx Context)` | `&mut self` メソッド |
 | `go func()` | `spawn` / async task |
 | `chan T` | mailbox / mpsc channel |
-| `sync.Mutex` | `SharedLock<T>`（内部 driver として `SpinSyncMutex` を使用） |
+| `sync.Mutex` | `SharedLock<T>`（driver は `DefaultMutex<_>` を標準使用） |
 | `struct embedding` | trait 実装 + 委譲 |
 
 ### Scala/Pekko → Rust

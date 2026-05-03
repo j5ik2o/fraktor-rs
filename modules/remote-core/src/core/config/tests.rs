@@ -247,14 +247,27 @@ fn outbound_watermark_setters_are_order_independent() {
   // Given: default より小さい watermark に high -> low の順で変更する
   let high_first = RemoteConfig::new("localhost").with_outbound_high_watermark(256).with_outbound_low_watermark(128);
 
-  // Given: default より大きい watermark に low -> high の順で変更する
-  let low_first = RemoteConfig::new("localhost").with_outbound_low_watermark(2048).with_outbound_high_watermark(4096);
+  // Given: 同じ watermark に low -> high の順で変更する
+  let low_first_small =
+    RemoteConfig::new("localhost").with_outbound_low_watermark(128).with_outbound_high_watermark(256);
+
+  // Given: default より大きい watermark に high -> low の順で変更する
+  let high_first_large =
+    RemoteConfig::new("localhost").with_outbound_high_watermark(4096).with_outbound_low_watermark(2048);
+
+  // Given: 同じ watermark に low -> high の順で変更する
+  let low_first_large =
+    RemoteConfig::new("localhost").with_outbound_low_watermark(2048).with_outbound_high_watermark(4096);
 
   // Then: どちらの順序でも最終的な組み合わせを保持する
   assert_eq!(high_first.outbound_high_watermark(), 256);
   assert_eq!(high_first.outbound_low_watermark(), 128);
-  assert_eq!(low_first.outbound_high_watermark(), 4096);
-  assert_eq!(low_first.outbound_low_watermark(), 2048);
+  assert_eq!(low_first_small.outbound_high_watermark(), 256);
+  assert_eq!(low_first_small.outbound_low_watermark(), 128);
+  assert_eq!(high_first_large.outbound_high_watermark(), 4096);
+  assert_eq!(high_first_large.outbound_low_watermark(), 2048);
+  assert_eq!(low_first_large.outbound_high_watermark(), 4096);
+  assert_eq!(low_first_large.outbound_low_watermark(), 2048);
 }
 
 #[test]
