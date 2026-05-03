@@ -5,12 +5,13 @@ use alloc::{boxed::Box, string::ToString, vec::Vec};
 use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
 
 use crate::core::{
-  address::Address,
-  association::QuarantineReason,
+  address::{Address, UniqueAddress},
+  association::{Association, AssociationEffect, QuarantineReason},
   config::RemoteConfig,
+  envelope::OutboundEnvelope,
   extension::{EventPublisher, RemoteEvent, RemoteEventReceiver, Remoting, RemotingError, RemotingLifecycleState},
   instrument::{NoopInstrument, RemoteInstrument},
-  transport::RemoteTransport,
+  transport::{RemoteTransport, TransportEndpoint},
 };
 
 /// Core remoting lifecycle implementation backed by a transport port.
@@ -26,6 +27,7 @@ pub struct Remote {
   event_publisher:      EventPublisher,
   instrument:           Box<dyn RemoteInstrument + Send>,
   advertised_addresses: Vec<Address>,
+  associations:         Vec<Association>,
 }
 
 impl Remote {
@@ -54,6 +56,7 @@ impl Remote {
       event_publisher,
       instrument,
       advertised_addresses: Vec::new(),
+      associations: Vec::new(),
     }
   }
 
@@ -74,13 +77,16 @@ impl Remote {
   /// concrete handling is not wired yet.
   pub async fn run<S: RemoteEventReceiver>(mut self, receiver: &mut S) -> Result<(), RemotingError> {
     while let Some(event) = receiver.recv().await {
-      let transport = &mut *self.transport;
-      let instrument = &mut *self.instrument;
-      if handle_remote_event(transport, instrument, event)? {
+      if self.handle_remote_event(event)? {
         return Ok(());
       }
     }
     Ok(())
+  }
+
+  /// Registers an association that the core event loop can drive.
+  pub fn insert_association(&mut self, association: Association) {
+    self.associations.push(association);
   }
 
   /// Returns the current lifecycle state snapshot.
@@ -104,24 +110,104 @@ impl Remote {
       });
     }
   }
+
+  fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<bool, RemotingError> {
+    match event {
+      | RemoteEvent::TransportShutdown => Ok(true),
+      | RemoteEvent::OutboundEnqueued { authority, envelope, now_ms } => {
+        self.handle_outbound_enqueued(&authority, envelope, now_ms)?;
+        Ok(false)
+      },
+      | RemoteEvent::InboundFrameReceived { .. }
+      | RemoteEvent::HandshakeTimerFired { .. }
+      | RemoteEvent::ConnectionLost { .. } => Err(RemotingError::UnimplementedEvent),
+    }
+  }
+
+  fn handle_outbound_enqueued(
+    &mut self,
+    authority: &TransportEndpoint,
+    envelope: Box<OutboundEnvelope>,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.lifecycle.ensure_running()?;
+    let remote = parse_authority(authority.authority()).ok_or(RemotingError::TransportUnavailable)?;
+    let association_index = self.ensure_association(remote)?;
+    let effects = self.associations[association_index].enqueue(*envelope, now_ms);
+    self.apply_association_effects(association_index, effects, now_ms)?;
+    self.drain_outbound(association_index, now_ms)
+  }
+
+  fn ensure_association(&mut self, remote: Address) -> Result<usize, RemotingError> {
+    if let Some(index) = self.associations.iter().position(|association| association.remote() == &remote) {
+      return Ok(index);
+    }
+    let local = self.local_unique_address_for(&remote).ok_or(RemotingError::TransportUnavailable)?;
+    self.associations.push(Association::from_config(local, remote, &self.config));
+    Ok(self.associations.len() - 1)
+  }
+
+  fn local_unique_address_for(&self, remote: &Address) -> Option<UniqueAddress> {
+    self
+      .transport
+      .local_address_for_remote(remote)
+      .or_else(|| self.transport.default_address())
+      .or_else(|| self.advertised_addresses.first())
+      .cloned()
+      .map(|address| UniqueAddress::new(address, 0))
+  }
+
+  fn apply_association_effects(
+    &mut self,
+    association_index: usize,
+    effects: Vec<AssociationEffect>,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let mut pending = effects;
+    pending.reverse();
+    while let Some(effect) = pending.pop() {
+      match effect {
+        | AssociationEffect::SendEnvelopes { envelopes } => {
+          let mut recursive = Vec::new();
+          for envelope in envelopes {
+            recursive.extend(self.associations[association_index].enqueue(envelope, now_ms));
+          }
+          pending.extend(recursive.into_iter().rev());
+        },
+        | AssociationEffect::DiscardEnvelopes { .. } => {},
+        | AssociationEffect::PublishLifecycle(event) => self.event_publisher.publish_lifecycle(event),
+        | AssociationEffect::StartHandshake { authority, timeout, generation } => {
+          self
+            .transport
+            .schedule_handshake_timeout(&authority, timeout, generation)
+            .map_err(|_| RemotingError::TransportUnavailable)?;
+        },
+      }
+    }
+    Ok(())
+  }
+
+  fn drain_outbound(&mut self, association_index: usize, now_ms: u64) -> Result<(), RemotingError> {
+    while let Some(envelope) =
+      self.associations[association_index].next_outbound_with_instrument(now_ms, self.instrument.as_mut())
+    {
+      let envelope_for_retry = envelope.clone();
+      if self.transport.send(envelope).is_err() {
+        let effects = self.associations[association_index].enqueue(envelope_for_retry, now_ms);
+        self.apply_association_effects(association_index, effects, now_ms)?;
+        return Err(RemotingError::TransportUnavailable);
+      }
+    }
+    Ok(())
+  }
 }
 
-fn handle_remote_event(
-  transport: &mut dyn RemoteTransport,
-  instrument: &mut dyn RemoteInstrument,
-  event: RemoteEvent,
-) -> Result<bool, RemotingError> {
-  match event {
-    | RemoteEvent::TransportShutdown => Ok(true),
-    | RemoteEvent::OutboundEnqueued { envelope, now_ms, .. } => {
-      instrument.on_send(envelope.as_ref(), now_ms);
-      transport.send(*envelope).map_err(|_| RemotingError::TransportUnavailable)?;
-      Ok(false)
-    },
-    | RemoteEvent::InboundFrameReceived { .. }
-    | RemoteEvent::HandshakeTimerFired { .. }
-    | RemoteEvent::ConnectionLost { .. } => Err(RemotingError::UnimplementedEvent),
-  }
+fn parse_authority(authority: &str) -> Option<Address> {
+  let (system, endpoint) = authority.split_once('@')?;
+  let (host, port) = endpoint.rsplit_once(':')?;
+  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
+  let port = port.parse::<u16>().ok()?;
+  Some(Address::new(system, host, port))
 }
 
 impl Remoting for Remote {

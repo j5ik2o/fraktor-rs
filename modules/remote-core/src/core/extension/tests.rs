@@ -20,8 +20,8 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
-  address::{Address, RemoteNodeId},
-  association::QuarantineReason,
+  address::{Address, RemoteNodeId, UniqueAddress},
+  association::{Association, QuarantineReason},
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
@@ -30,6 +30,7 @@ use crate::core::{
   },
   instrument::{HandshakePhase, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
+  wire::HandshakeRsp,
 };
 
 struct RecordingTransport {
@@ -200,6 +201,17 @@ fn event_publisher() -> EventPublisher {
   EventPublisher::new(system.downgrade())
 }
 
+fn active_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
+  let mut association = Association::from_config(UniqueAddress::new(local, 1), remote.clone(), config);
+  let start_effects = association.associate(TransportEndpoint::new(remote.to_string()), 1);
+  assert_eq!(start_effects.len(), 1);
+  let accepted_effects = association
+    .accept_handshake_response(&HandshakeRsp::new(UniqueAddress::new(remote, 2)), 2)
+    .expect("matching handshake response should activate association");
+  assert!(!accepted_effects.is_empty());
+  association
+}
+
 // ---------------------------------------------------------------------------
 // RemotingLifecycleState — happy paths
 // ---------------------------------------------------------------------------
@@ -321,8 +333,43 @@ fn run_returns_ok_on_transport_shutdown_event() {
 
 #[test]
 fn run_sends_outbound_enqueued_event_and_records_instrument() {
-  let address = Address::new("sys", "127.0.0.1", 2552);
-  let transport = RecordingTransport::new(vec![address]);
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let transport_send_calls = transport.send_calls.clone();
+  let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument = CountingInstrument::new(instrument_send_calls.clone());
+  let mut remote = Remote::with_instrument(transport, config.clone(), event_publisher(), Box::new(instrument));
+  remote.start().expect("remote should start before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  let event = RemoteEvent::OutboundEnqueued {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    envelope:  Box::new(envelope),
+    now_ms:    42,
+  };
+  let mut receiver = VecRemoteEventReceiver::new([event]);
+
+  block_on_ready(remote.run(&mut receiver)).unwrap();
+
+  assert_eq!(transport_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
   let transport_send_calls = transport.send_calls.clone();
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument = CountingInstrument::new(instrument_send_calls.clone());
@@ -339,7 +386,7 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
     CorrelationId::nil(),
   );
   let event = RemoteEvent::OutboundEnqueued {
-    authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
+    authority: TransportEndpoint::new(remote_address.to_string()),
     envelope:  Box::new(envelope),
     now_ms:    42,
   };
@@ -347,8 +394,8 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
 
   block_on_ready(remote.run(&mut receiver)).unwrap();
 
-  assert_eq!(transport_send_calls.load(Ordering::Relaxed), 1);
-  assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(transport_send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 0);
 }
 
 #[test]
