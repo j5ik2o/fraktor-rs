@@ -50,18 +50,18 @@ use super::{
 /// entry or alias; callers must use this constant (or the raw Pekko string
 /// `"pekko.actor.default-dispatcher"` when a literal is required for
 /// external configuration such as HOCON-style config files).
-pub const DEFAULT_DISPATCHER_ID: &str = "pekko.actor.default-dispatcher";
+pub const DEFAULT_DISPATCHER_ID: &str = "fraktor.actor.default-dispatcher";
 /// Reserved registry identifier for the default blocking IO dispatcher.
 ///
 /// Matches Pekko `Dispatchers.DefaultBlockingDispatcherId`.
-pub const DEFAULT_BLOCKING_DISPATCHER_ID: &str = "pekko.actor.default-blocking-io-dispatcher";
+pub const DEFAULT_BLOCKING_DISPATCHER_ID: &str = "fraktor.actor.default-blocking-io-dispatcher";
 
 /// Pekko-style alias for the internal dispatcher.
 ///
 /// Matches Pekko `Dispatchers.InternalDispatcherId`. Registered as an alias
 /// of [`DEFAULT_DISPATCHER_ID`] by `ensure_default` so Pekko-style user code
 /// referring to the internal dispatcher resolves to the same entry.
-const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
+const PEKKO_INTERNAL_DISPATCHER_ID: &str = "fraktor.actor.internal-dispatcher";
 
 /// Registry mapping dispatcher identifiers to configurators.
 pub struct Dispatchers {
