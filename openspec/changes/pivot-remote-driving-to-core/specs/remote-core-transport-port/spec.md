@@ -2,7 +2,13 @@
 
 ### Requirement: schedule_handshake_timeout メソッド
 
-`RemoteTransport` trait は handshake timeout を adapter 側に予約させる method を持たなければならない（MUST）。`Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を実行する際、handshake request frame の送信（既存 `send` メソッド経由）に続けて本メソッドを呼び、adapter 側 timer task を起動する。
+`RemoteTransport` trait は handshake request を送信する method と handshake timeout を adapter 側に予約させる method を持たなければならない（MUST）。`Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を実行する際、handshake request frame の送信（`send_handshake`）に続けて timeout 予約 method を呼び、adapter 側 timer task を起動する。
+
+#### Scenario: send_handshake メソッドのシグネチャ
+
+- **WHEN** `modules/remote-core/src/core/transport/remote_transport.rs` の `RemoteTransport` trait 定義を読む
+- **THEN** `fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError>` または同等のシグネチャが宣言されている
+- **AND** メソッドは同期 `&mut self` で、`async fn` ではない（既存 trait 契約と整合）
 
 #### Scenario: メソッドのシグネチャ
 

@@ -40,10 +40,10 @@
 - [ ] 4.4 `RemoteEvent::OutboundEnqueued { authority, envelope }` 処理を実装する。順序は **(a) 該当 association を取得 → (b) enqueue 前の `total_outbound_len()` を `prev` として保存 → (c) `Association::enqueue(envelope)`（instrument 引数なし）→ (d) enqueue 後の `total_outbound_len()` を `curr` として取得し、`prev <= high && curr > high` なら `Association::apply_backpressure(BackpressureSignal::Apply, instrument)` をエッジで発火 → (e) outbound drain helper を起動** とする。drain helper では `next_outbound` の戻り値経路で `on_send` 発火、各 dequeue 後に `total_outbound_len()` を確認し、`prev_in_drain >= low && curr_in_drain < low && state == Apply` の条件を満たした時のみ `apply_backpressure(Release, instrument)` をエッジで発火する。`enqueue` 自体には instrument 引数を渡さない。
 - [ ] 4.5 `RemoteEvent::ConnectionLost` 処理を実装する（再接続判断と `Association::recover` 呼び出し）。
 - [x] 4.6 `RemoteEvent::TransportShutdown` で `Ok(())` を返してループ終了する。
-- [x] 4.7 receiver 枯渇（`recv` が `None`）で `Ok(())` を返してループ終了する。
+- [x] 4.7 receiver 枯渇（`recv` が `None`）で `Err(RemotingError::EventReceiverClosed)` を返してループ終了する。
 - [ ] 4.8 outbound 駆動 helper（`Association::next_outbound` → `Codec::encode` → `RemoteTransport::send`）を実装する。
-- [ ] 4.9 `AssociationEffect::StartHandshake { authority, timeout, generation }` 実行経路を **2 ステップ** で実装する。
-  - ステップ 1: `Codec::encode` で handshake request envelope を bytes 化 → `RemoteTransport::send`
+- [x] 4.9 `AssociationEffect::StartHandshake { authority, timeout, generation }` 実行経路を **2 ステップ** で実装する。
+  - ステップ 1: `HandshakePdu::Req(HandshakeReq::new(local, remote))` を構築 → `RemoteTransport::send_handshake`
   - ステップ 2: `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)`
   - ステップ 1 が `Err` の場合、ステップ 2 は呼ばない（`?` で早期 return）
 - [ ] 4.10 watermark 連動 backpressure 発火（`total_outbound_len` を high / low と比較し `apply_backpressure(Apply | Release)` を呼ぶ）を outbound helper に組み込む。

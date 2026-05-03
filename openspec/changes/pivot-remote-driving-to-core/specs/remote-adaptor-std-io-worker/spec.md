@@ -129,7 +129,7 @@ adapter は `RemoteTransport::schedule_handshake_timeout(authority, timeout, gen
 
 #### Scenario: schedule_handshake_timeout の発火経路
 
-- **WHEN** `Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を実行し、`RemoteTransport::send` の後に `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)` を呼ぶ
+- **WHEN** `Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を実行し、`RemoteTransport::send_handshake` の後に `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)` を呼ぶ
 - **THEN** adapter は `tokio::spawn(async move { tokio::time::sleep(timeout).await; sender.send(RemoteEvent::HandshakeTimerFired { authority, generation }).await; })` 相当の経路で timer を確保する
 - **AND** generation 値は呼出引数から受け取った値をそのまま timer task が保持する
 - **AND** 戻り値の `Result<(), TransportError>` は spawn 成功で `Ok(())` を返す（sleep の満了は非同期に行われるため、本メソッドは sleep を await しない）

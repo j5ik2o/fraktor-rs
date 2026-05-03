@@ -865,6 +865,10 @@ async fn outbound_loop_drains_active_association() {
       Ok(())
     }
 
+    fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
+      Ok(())
+    }
+
     fn schedule_handshake_timeout(
       &mut self,
       _authority: &TransportEndpoint,
@@ -1306,6 +1310,10 @@ impl RemoteTransport for FailingTransport {
 
   fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
     self.sends.with_lock(|count| *count += 1);
+    Err(self.failure.clone())
+  }
+
+  fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
     Err(self.failure.clone())
   }
 

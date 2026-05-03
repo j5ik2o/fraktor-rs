@@ -966,7 +966,7 @@ fn pop_item(&mut self) -> Option<Item> {
    └─ Yes → 次へ
 
 2. 状態変更メソッドが必要か？
-   ├─ No → ArcShared<T> で共有（読み取り専用）
+   ├─ No → SharedRwLock<T> で共有（読み取り専用）
    └─ Yes → Shared ラッパーパターンを新設（第2選択）
 
 Shared ラッパーパターン:

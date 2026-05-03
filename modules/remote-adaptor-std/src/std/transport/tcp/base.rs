@@ -235,6 +235,10 @@ impl RemoteTransport for TcpRemoteTransport {
     Err(TransportError::SendFailed)
   }
 
+  fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
+    TcpRemoteTransport::send_handshake(self, remote, pdu)
+  }
+
   fn schedule_handshake_timeout(
     &mut self,
     authority: &TransportEndpoint,

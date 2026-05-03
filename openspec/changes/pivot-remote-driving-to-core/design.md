@@ -81,7 +81,7 @@ impl Remote {
     {
         loop {
             match receiver.recv().await {
-                None => return Ok(()),                       // receiver 枯渇 = 正常終了
+                None => return Err(RemotingError::EventReceiverClosed),
                 Some(RemoteEvent::TransportShutdown) => return Ok(()),
                 Some(event) => self.handle_event(event)?,
             }
@@ -153,8 +153,8 @@ pub trait RemoteTransport {
 
 ```text
 when AssociationEffect::StartHandshake { authority, timeout, generation } を見つける:
-    1. let frame = self.codec.encode(handshake_request_envelope(&authority))?;
-       self.transport.send(frame)?;                                      // 既存
+    1. let request = HandshakePdu::Req(HandshakeReq::new(assoc.local().clone(), assoc.remote().clone()));
+       self.transport.send_handshake(assoc.remote(), request)?;
     2. self.transport.schedule_handshake_timeout(&authority, timeout, generation)?;  // 新
 ```
 
@@ -185,7 +185,7 @@ fn schedule_handshake_timeout(&mut self, authority, timeout, generation) -> Resu
 - *Core 側 `Timer` trait + adapter 実装*: schedule / cancel / TimerToken を core 公開 API に増やす。本質的に「handshake event を遅延配信する」というスコープでは過剰一般化。
 - *`utils-core::DelayProvider` 経由*: actor-core scheduler との結合があり、layer 整合性を崩す。
 - *`RemoteTransport::initiate_handshake(authority, timeout, generation, frame_bytes)` 統合形*: `send` との責務混在。`Codec::encode` の経路を transport の中に隠す形になり、Codec Port の見通しが悪化する。
-- *新 effect `ScheduleHandshakeTimeout`*: `StartHandshake` から自然に派生する 2 ステップ目を独立 effect にすると、Association の effect 列が冗長になる。`StartHandshake` 自身が「send + schedule」の 2 ステップを意味する効果と定義する方が圧縮的。
+- *新 effect `ScheduleHandshakeTimeout`*: `StartHandshake` から自然に派生する 2 ステップ目を独立 effect にすると、Association の effect 列が冗長になる。`StartHandshake` 自身が「send_handshake + schedule」の 2 ステップを意味する効果と定義する方が圧縮的。
 
 ### Decision 4: `RemoteInstrument` を `Box<dyn>` で配線する（ジェネリクス採用しない、`&mut self` 維持）
 
@@ -254,7 +254,7 @@ impl Remote {
     pub async fn run<S: RemoteEventReceiver>(&mut self, receiver: &mut S) -> Result<(), RemotingError> {
         loop {
             match receiver.recv().await {
-                None => return Ok(()),
+                None => return Err(RemotingError::EventReceiverClosed),
                 Some(RemoteEvent::TransportShutdown) => return Ok(()),
                 Some(event) => {
                     let instrument: &mut dyn RemoteInstrument = &mut *self.instrument;
@@ -371,12 +371,13 @@ fn is_stale_handshake_timer(current: u64, event_generation: u64) -> bool {
 
 `Remote::run` の戻り値 `Result<(), RemotingError>` は次の意味で使う。
 
-- `Ok(())`: receiver 枯渇または `TransportShutdown` 受信による正常終了
+- `Ok(())`: `TransportShutdown` 受信による正常終了
+- `Err(RemotingError::EventReceiverClosed)`: `TransportShutdown` 受信前に receiver が閉じた異常終了
 - `Err(RemotingError::TransportUnavailable)`: 復帰不能エラー（transport 永続失敗、association registry 破損 等）
 
 ### Decision 9: AssociationEffect::StartHandshake の adapter 無視を禁止し、`Remote::run` で 2 ステップ処理する
 
-`AssociationEffect::StartHandshake` のセマンティクスを「`Remote::run` 経路で **send + schedule_handshake_timeout** の 2 ステップ実行」と明示する。adapter 側 `effect_application::apply_effects_in_place` から該当分岐を削除する。
+`AssociationEffect::StartHandshake` のセマンティクスを「`Remote::run` 経路で **send_handshake + schedule_handshake_timeout** の 2 ステップ実行」と明示する。adapter 側 `effect_application::apply_effects_in_place` から該当分岐を削除する。
 
 ```rust
 // Remote::run の effect 処理（疑似コード）
@@ -384,9 +385,8 @@ fn handle_effect(&mut self, effect: AssociationEffect) -> Result<(), RemotingErr
     match effect {
         AssociationEffect::StartHandshake { authority, timeout, generation } => {
             // ステップ 1: handshake request frame の送出
-            let frame = self.codec.encode(handshake_request_envelope(&authority))
-                .map_err(RemotingError::CodecFailed)?;
-            self.transport.send(frame)
+            let request = HandshakePdu::Req(HandshakeReq::new(assoc.local().clone(), assoc.remote().clone()));
+            self.transport.send_handshake(assoc.remote(), request)
                 .map_err(RemotingError::TransportUnavailable)?;
 
             // ステップ 2: handshake timer の予約

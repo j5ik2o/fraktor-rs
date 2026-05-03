@@ -14,6 +14,8 @@ pub enum RemotingError {
   TransportUnavailable,
   /// The event is recognized but concrete core handling has not been wired yet.
   UnimplementedEvent,
+  /// The event receiver closed before an explicit shutdown event was observed.
+  EventReceiverClosed,
   /// `start` was invoked while remoting was already running.
   AlreadyRunning,
   /// A query or command requires a `Running` state but the remoting
@@ -27,6 +29,7 @@ impl Display for RemotingError {
       | RemotingError::InvalidTransition => f.write_str("remoting: invalid lifecycle transition"),
       | RemotingError::TransportUnavailable => f.write_str("remoting: transport unavailable"),
       | RemotingError::UnimplementedEvent => f.write_str("remoting: event handling is not implemented"),
+      | RemotingError::EventReceiverClosed => f.write_str("remoting: event receiver closed unexpectedly"),
       | RemotingError::AlreadyRunning => f.write_str("remoting: already running"),
       | RemotingError::NotStarted => f.write_str("remoting: not started"),
     }

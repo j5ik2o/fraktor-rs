@@ -30,16 +30,19 @@ use crate::core::{
   },
   instrument::{HandshakePhase, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::HandshakeRsp,
+  wire::{HandshakePdu, HandshakeRsp},
 };
 
 struct RecordingTransport {
-  addresses:       Vec<Address>,
-  start_result:    Result<(), TransportError>,
+  addresses: Vec<Address>,
+  start_result: Result<(), TransportError>,
   shutdown_result: Result<(), TransportError>,
-  running:         bool,
-  shutdown_calls:  ArcShared<AtomicUsize>,
-  send_calls:      ArcShared<AtomicUsize>,
+  running: bool,
+  shutdown_calls: ArcShared<AtomicUsize>,
+  send_calls: ArcShared<AtomicUsize>,
+  handshake_calls: ArcShared<AtomicUsize>,
+  timeout_calls: ArcShared<AtomicUsize>,
+  timeout_before_handshake_calls: ArcShared<AtomicUsize>,
 }
 
 struct VecRemoteEventReceiver {
@@ -114,6 +117,9 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 
@@ -125,6 +131,9 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 
@@ -140,6 +149,9 @@ impl RecordingTransport {
       running: false,
       shutdown_calls,
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
     })
   }
 }
@@ -165,12 +177,21 @@ impl RemoteTransport for RecordingTransport {
     if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
   }
 
+  fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
+    self.handshake_calls.fetch_add(1, Ordering::Relaxed);
+    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+  }
+
   fn schedule_handshake_timeout(
     &mut self,
     _authority: &TransportEndpoint,
     _timeout: Duration,
     _generation: u64,
   ) -> Result<(), TransportError> {
+    if self.handshake_calls.load(Ordering::Relaxed) == 0 {
+      self.timeout_before_handshake_calls.fetch_add(1, Ordering::Relaxed);
+    }
+    self.timeout_calls.fetch_add(1, Ordering::Relaxed);
     if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
   }
 
@@ -314,12 +335,12 @@ fn remote_shutdown_failure_keeps_advertised_addresses() {
 }
 
 #[test]
-fn run_returns_ok_when_receiver_is_closed() {
+fn run_returns_error_when_receiver_is_closed() {
   let address = Address::new("sys", "127.0.0.1", 2552);
   let remote = Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   let mut receiver = VecRemoteEventReceiver::new([]);
 
-  block_on_ready(remote.run(&mut receiver)).unwrap();
+  assert_eq!(block_on_ready(remote.run(&mut receiver)).unwrap_err(), RemotingError::EventReceiverClosed);
 }
 
 #[test]
@@ -338,6 +359,9 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
   let config = RemoteConfig::new("127.0.0.1");
   let transport = RecordingTransport::new(vec![local_address.clone()]);
   let transport_send_calls = transport.send_calls.clone();
+  let handshake_send_calls = transport.handshake_calls.clone();
+  let timeout_calls = transport.timeout_calls.clone();
+  let timeout_before_handshake_calls = transport.timeout_before_handshake_calls.clone();
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument = CountingInstrument::new(instrument_send_calls.clone());
   let mut remote = Remote::with_instrument(transport, config.clone(), event_publisher(), Box::new(instrument));
@@ -357,11 +381,14 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
     envelope:  Box::new(envelope),
     now_ms:    42,
   };
-  let mut receiver = VecRemoteEventReceiver::new([event]);
+  let mut receiver = VecRemoteEventReceiver::new([event, RemoteEvent::TransportShutdown]);
 
   block_on_ready(remote.run(&mut receiver)).unwrap();
 
   assert_eq!(transport_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(timeout_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
 }
 
@@ -371,6 +398,9 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let transport = RecordingTransport::new(vec![local_address]);
   let transport_send_calls = transport.send_calls.clone();
+  let handshake_send_calls = transport.handshake_calls.clone();
+  let timeout_calls = transport.timeout_calls.clone();
+  let timeout_before_handshake_calls = transport.timeout_before_handshake_calls.clone();
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument = CountingInstrument::new(instrument_send_calls.clone());
   let mut remote =
@@ -390,11 +420,14 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
     envelope:  Box::new(envelope),
     now_ms:    42,
   };
-  let mut receiver = VecRemoteEventReceiver::new([event]);
+  let mut receiver = VecRemoteEventReceiver::new([event, RemoteEvent::TransportShutdown]);
 
   block_on_ready(remote.run(&mut receiver)).unwrap();
 
   assert_eq!(transport_send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 0);
 }
 

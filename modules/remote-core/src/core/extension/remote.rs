@@ -12,6 +12,7 @@ use crate::core::{
   extension::{EventPublisher, RemoteEvent, RemoteEventReceiver, Remoting, RemotingError, RemotingLifecycleState},
   instrument::{NoopInstrument, RemoteInstrument},
   transport::{RemoteTransport, TransportEndpoint},
+  wire::{HandshakePdu, HandshakeReq},
 };
 
 /// Core remoting lifecycle implementation backed by a transport port.
@@ -68,24 +69,28 @@ impl Remote {
     self.instrument = instrument;
   }
 
-  /// Runs the core remote event loop until the receiver closes or shutdown is requested.
+  /// Runs the core remote event loop until shutdown is requested.
   ///
   /// # Errors
   ///
   /// Returns [`RemotingError::TransportUnavailable`] when transport delivery
   /// fails, or [`RemotingError::UnimplementedEvent`] for event kinds whose
-  /// concrete handling is not wired yet.
+  /// concrete handling is not wired yet. Returns
+  /// [`RemotingError::EventReceiverClosed`] when the event source closes before
+  /// [`RemoteEvent::TransportShutdown`] is observed.
   pub async fn run<S: RemoteEventReceiver>(mut self, receiver: &mut S) -> Result<(), RemotingError> {
-    while let Some(event) = receiver.recv().await {
+    loop {
+      let Some(event) = receiver.recv().await else {
+        return Err(RemotingError::EventReceiverClosed);
+      };
       if self.handle_remote_event(event)? {
         return Ok(());
       }
     }
-    Ok(())
   }
 
   /// Registers an association that the core event loop can drive.
-  pub fn insert_association(&mut self, association: Association) {
+  pub(crate) fn insert_association(&mut self, association: Association) {
     self.associations.push(association);
   }
 
@@ -133,8 +138,13 @@ impl Remote {
     self.lifecycle.ensure_running()?;
     let remote = parse_authority(authority.authority()).ok_or(RemotingError::TransportUnavailable)?;
     let association_index = self.ensure_association(remote)?;
+    let should_start_handshake = self.associations[association_index].state().is_idle();
     let effects = self.associations[association_index].enqueue(*envelope, now_ms);
     self.apply_association_effects(association_index, effects, now_ms)?;
+    if should_start_handshake {
+      let effects = self.associations[association_index].associate(authority.clone(), now_ms);
+      self.apply_association_effects(association_index, effects, now_ms)?;
+    }
     self.drain_outbound(association_index, now_ms)
   }
 
@@ -143,7 +153,8 @@ impl Remote {
       return Ok(index);
     }
     let local = self.local_unique_address_for(&remote).ok_or(RemotingError::TransportUnavailable)?;
-    self.associations.push(Association::from_config(local, remote, &self.config));
+    let association = Association::from_config(local, remote, &self.config);
+    self.insert_association(association);
     Ok(self.associations.len() - 1)
   }
 
@@ -177,6 +188,14 @@ impl Remote {
         | AssociationEffect::DiscardEnvelopes { .. } => {},
         | AssociationEffect::PublishLifecycle(event) => self.event_publisher.publish_lifecycle(event),
         | AssociationEffect::StartHandshake { authority, timeout, generation } => {
+          let (remote, request) = {
+            let association = &self.associations[association_index];
+            (
+              association.remote().clone(),
+              HandshakePdu::Req(HandshakeReq::new(association.local().clone(), association.remote().clone())),
+            )
+          };
+          self.transport.send_handshake(&remote, request).map_err(|_| RemotingError::TransportUnavailable)?;
           self
             .transport
             .schedule_handshake_timeout(&authority, timeout, generation)

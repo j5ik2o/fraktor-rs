@@ -100,7 +100,7 @@
 
 - **WHEN** `Association::recover(Some(endpoint), now)` または `associate(...)` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を返す
 - **THEN** `Remote::run` は同一 effect 列処理の中で次の 2 ステップを順に実行する
-  1. `Codec::encode` で handshake request envelope を bytes 化し、既存 `RemoteTransport::send` で送出する
+  1. `HandshakePdu::Req(HandshakeReq::new(local, remote))` を構築し、`RemoteTransport::send_handshake` で送出する
   2. 続けて `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)`（`remote-core-transport-port` capability で要件化）を呼ぶ
 - **AND** ステップ 1 が `Err` の場合、ステップ 2 は呼ばれない
 - **AND** adapter 側は `schedule_handshake_timeout` 呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で receiver に push する

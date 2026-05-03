@@ -7,6 +7,7 @@ use crate::core::{
   association::QuarantineReason,
   envelope::OutboundEnvelope,
   transport::{transport_endpoint::TransportEndpoint, transport_error::TransportError},
+  wire::HandshakePdu,
 };
 
 /// The single transport port exposed by `fraktor-remote-core-rs`.
@@ -52,6 +53,18 @@ pub trait RemoteTransport {
   /// underlying channel has been closed, or [`TransportError::NotStarted`]
   /// if called before `start`.
   fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError>;
+
+  /// Sends a wire-level handshake PDU to `remote`.
+  ///
+  /// `Remote::run` calls this before [`Self::schedule_handshake_timeout`] when
+  /// it executes `AssociationEffect::StartHandshake`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running,
+  /// [`TransportError::ConnectionClosed`] if no connection to `remote` exists,
+  /// or another transport-specific error when delivery fails.
+  fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError>;
 
   /// Schedules a generation-scoped handshake timeout for `authority`.
   ///

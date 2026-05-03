@@ -75,10 +75,10 @@
 - **WHEN** `Remoting` trait のメソッド一覧を検査する
 - **THEN** `async fn` は存在せず、戻り値に `Future` を含まない（既存の `start` / `shutdown` / `quarantine` / `addresses` のみ）
 
-#### Scenario: receiver 枯渇で Ok(())
+#### Scenario: receiver 枯渇で Err(EventReceiverClosed)
 
 - **WHEN** `RemoteEventReceiver::recv` が `None` を返す
-- **THEN** `Remote::run` は `Ok(())` を返してループ終了する
+- **THEN** `Remote::run` は `Err(RemotingError::EventReceiverClosed)` を返してループ終了する
 
 #### Scenario: TransportShutdown で Ok(())
 
@@ -124,8 +124,8 @@
 #### Scenario: ステップ 1 — handshake request frame の送出
 
 - **WHEN** `Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を見つける
-- **THEN** 該当の handshake request envelope を `Codec::encode` で raw bytes 化する
-- **AND** 続いて既存の `RemoteTransport::send` で送出する
+- **THEN** 該当 association の local / remote address から `HandshakePdu::Req(HandshakeReq::new(local, remote))` を構築する
+- **AND** 続いて `RemoteTransport::send_handshake` で送出する
 - **AND** `Result` を `?` で伝播する（`let _ =` で握りつぶさない）
 
 #### Scenario: ステップ 2 — handshake timer の予約
