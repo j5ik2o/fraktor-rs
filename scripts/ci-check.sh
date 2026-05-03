@@ -1365,8 +1365,11 @@ run_all() {
   PARALLEL_LABELS=()
   start_parallel_phase "unit-test" "unit-test" run_unit_tests
   start_parallel_phase "integration-test" "integration-test" run_integration_tests
-  start_parallel_phase "examples" "examples" run_examples
   wait_parallel_cargo || return 1
+
+  # Phase 4: examples（直列・最後）
+  log_step "=== Phase 4: examples ==="
+  run_examples || return 1
 }
 
 main() {
