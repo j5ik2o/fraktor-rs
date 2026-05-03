@@ -82,6 +82,22 @@ build_cargo_prefix_for "${DEFAULT_TOOLCHAIN}" || exit 1
 DEFAULT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
 build_cargo_prefix_for "${FMT_TOOLCHAIN}" || exit 1
 FMT_CARGO_CMD=("${CI_CHECK_CARGO_PREFIX[@]}")
+
+resolve_rustfmt_bin_for() {
+  local toolchain="${1:-}"
+  if [[ -n "${toolchain}" ]]; then
+    rustup which --toolchain "${toolchain}" rustfmt
+    return
+  fi
+
+  command -v rustfmt
+}
+
+FMT_RUSTFMT_BIN="$(resolve_rustfmt_bin_for "${FMT_TOOLCHAIN}")" || {
+  echo "エラー: rustfmt バイナリを特定できませんでした。" >&2
+  exit 1
+}
+
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export CARGO_BUILD_JOBS
 CI_CHECK_GUARD_TIMEOUT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC:-0}"
@@ -622,15 +638,15 @@ ensure_dylint_installed() {
 }
 
 run_fmt() {
-  local -a fmt_cmd=("${FMT_CARGO_CMD[@]}" -v fmt --all)
-  log_step "$(render_command "${fmt_cmd[@]}")"
-  "${fmt_cmd[@]}" || return 1
+  local -a fmt_cmd=("${FMT_CARGO_CMD[@]}" -v fmt --all -- --config-path "${REPO_ROOT}/rustfmt.toml")
+  log_step "RUSTFMT=${FMT_RUSTFMT_BIN} $(render_command "${fmt_cmd[@]}")"
+  RUSTFMT="${FMT_RUSTFMT_BIN}" "${fmt_cmd[@]}" || return 1
 }
 
 run_lint() {
-  local -a lint_cmd=("${FMT_CARGO_CMD[@]}" -v fmt --all --check)
-  log_step "$(render_command "${lint_cmd[@]}")"
-  "${lint_cmd[@]}" || return 1
+  local -a lint_cmd=("${FMT_CARGO_CMD[@]}" -v fmt --all --check -- --config-path "${REPO_ROOT}/rustfmt.toml")
+  log_step "RUSTFMT=${FMT_RUSTFMT_BIN} $(render_command "${lint_cmd[@]}")"
+  RUSTFMT="${FMT_RUSTFMT_BIN}" "${lint_cmd[@]}" || return 1
 }
 
 run_dylint() {
