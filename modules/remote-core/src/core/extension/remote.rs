@@ -59,7 +59,8 @@ impl Remote {
 
   /// Replaces the current instrument.
   ///
-  /// Do not call this method while [`Remote::run`] is in progress.
+  /// [`Remote::run`] consumes `self`, so the instrument must be installed before
+  /// starting the event loop.
   pub fn set_instrument(&mut self, instrument: Box<dyn RemoteInstrument + Send>) {
     self.instrument = instrument;
   }
@@ -69,8 +70,9 @@ impl Remote {
   /// # Errors
   ///
   /// Returns [`RemotingError::TransportUnavailable`] when transport delivery
-  /// fails or for event kinds whose concrete handling is not wired yet.
-  pub async fn run<S: RemoteEventReceiver>(&mut self, receiver: &mut S) -> Result<(), RemotingError> {
+  /// fails, or [`RemotingError::UnimplementedEvent`] for event kinds whose
+  /// concrete handling is not wired yet.
+  pub async fn run<S: RemoteEventReceiver>(mut self, receiver: &mut S) -> Result<(), RemotingError> {
     while let Some(event) = receiver.recv().await {
       let transport = &mut *self.transport;
       let instrument = &mut *self.instrument;
@@ -111,14 +113,14 @@ fn handle_remote_event(
 ) -> Result<bool, RemotingError> {
   match event {
     | RemoteEvent::TransportShutdown => Ok(true),
-    | RemoteEvent::OutboundEnqueued { envelope, .. } => {
-      instrument.on_send(&envelope);
+    | RemoteEvent::OutboundEnqueued { envelope, now_ms, .. } => {
+      instrument.on_send(envelope.as_ref(), now_ms);
       transport.send(*envelope).map_err(|_| RemotingError::TransportUnavailable)?;
       Ok(false)
     },
     | RemoteEvent::InboundFrameReceived { .. }
     | RemoteEvent::HandshakeTimerFired { .. }
-    | RemoteEvent::ConnectionLost { .. } => Err(RemotingError::TransportUnavailable),
+    | RemoteEvent::ConnectionLost { .. } => Err(RemotingError::UnimplementedEvent),
   }
 }
 

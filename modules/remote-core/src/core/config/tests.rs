@@ -148,8 +148,7 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_buffer_pool_size(64)
     .with_outbound_message_queue_size(32)
     .with_outbound_control_queue_size(8)
-    .with_outbound_low_watermark(16)
-    .with_outbound_high_watermark(64)
+    .with_outbound_watermarks(16, 64)
     .with_remove_quarantined_association_after(Duration::from_secs(30))
     .with_untrusted_mode(true)
     .with_log_received_messages(true)
@@ -244,9 +243,50 @@ fn with_outbound_large_message_queue_size_rejects_zero() {
 }
 
 #[test]
-fn outbound_watermarks_require_low_lower_than_high() {
-  let high_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(512));
-  let low_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(1024));
+fn outbound_watermark_setters_are_order_independent() {
+  // Given: default より小さい watermark に high -> low の順で変更する
+  let high_first = RemoteConfig::new("localhost").with_outbound_high_watermark(256).with_outbound_low_watermark(128);
+
+  // Given: default より大きい watermark に low -> high の順で変更する
+  let low_first = RemoteConfig::new("localhost").with_outbound_low_watermark(2048).with_outbound_high_watermark(4096);
+
+  // Then: どちらの順序でも最終的な組み合わせを保持する
+  assert_eq!(high_first.outbound_high_watermark(), 256);
+  assert_eq!(high_first.outbound_low_watermark(), 128);
+  assert_eq!(low_first.outbound_high_watermark(), 4096);
+  assert_eq!(low_first.outbound_low_watermark(), 2048);
+}
+
+#[test]
+fn outbound_watermark_single_setters_keep_pair_valid() {
+  // When: high を現在の low 以下に下げる
+  let lowered_high = RemoteConfig::new("localhost").with_outbound_high_watermark(256);
+
+  // Then: low は high 未満に補正される
+  assert_eq!(lowered_high.outbound_high_watermark(), 256);
+  assert_eq!(lowered_high.outbound_low_watermark(), 255);
+
+  // When: low を現在の high 以上に上げる
+  let raised_low = RemoteConfig::new("localhost").with_outbound_low_watermark(1024);
+
+  // Then: high は low より大きく補正される
+  assert_eq!(raised_low.outbound_high_watermark(), 1025);
+  assert_eq!(raised_low.outbound_low_watermark(), 1024);
+}
+
+#[test]
+fn with_outbound_watermarks_rejects_invalid_pairs() {
+  let equal_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_watermarks(512, 512));
+  let inverted_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_watermarks(1024, 512));
+
+  assert!(equal_result.is_err());
+  assert!(inverted_result.is_err());
+}
+
+#[test]
+fn outbound_watermark_setters_reject_unreachable_values() {
+  let high_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(0));
+  let low_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(usize::MAX));
 
   assert!(high_result.is_err());
   assert!(low_result.is_err());

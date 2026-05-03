@@ -70,11 +70,11 @@ impl CountingInstrument {
 }
 
 impl RemoteInstrument for CountingInstrument {
-  fn on_send(&mut self, _envelope: &OutboundEnvelope) {
+  fn on_send(&mut self, _envelope: &OutboundEnvelope, _now_ms: u64) {
     self.send_calls.fetch_add(1, Ordering::Relaxed);
   }
 
-  fn on_receive(&mut self, _envelope: &InboundEnvelope) {}
+  fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {}
 
   fn record_handshake(&mut self, _authority: &TransportEndpoint, _phase: HandshakePhase, _now_ms: u64) {}
 
@@ -304,8 +304,7 @@ fn remote_shutdown_failure_keeps_advertised_addresses() {
 #[test]
 fn run_returns_ok_when_receiver_is_closed() {
   let address = Address::new("sys", "127.0.0.1", 2552);
-  let mut remote =
-    Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let remote = Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   let mut receiver = VecRemoteEventReceiver::new([]);
 
   block_on_ready(remote.run(&mut receiver)).unwrap();
@@ -314,8 +313,7 @@ fn run_returns_ok_when_receiver_is_closed() {
 #[test]
 fn run_returns_ok_on_transport_shutdown_event() {
   let address = Address::new("sys", "127.0.0.1", 2552);
-  let mut remote =
-    Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let remote = Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   let mut receiver = VecRemoteEventReceiver::new([RemoteEvent::TransportShutdown]);
 
   block_on_ready(remote.run(&mut receiver)).unwrap();
@@ -343,6 +341,7 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
   let event = RemoteEvent::OutboundEnqueued {
     authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
     envelope:  Box::new(envelope),
+    now_ms:    42,
   };
   let mut receiver = VecRemoteEventReceiver::new([event]);
 
@@ -350,6 +349,24 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
 
   assert_eq!(transport_send_calls.load(Ordering::Relaxed), 1);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn run_returns_unimplemented_event_for_unwired_remote_events() {
+  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let events = [
+    RemoteEvent::InboundFrameReceived { authority: endpoint.clone(), frame: vec![1, 2, 3] },
+    RemoteEvent::HandshakeTimerFired { authority: endpoint.clone(), generation: 1 },
+    RemoteEvent::ConnectionLost { authority: endpoint, cause: TransportError::ConnectionClosed },
+  ];
+
+  for event in events {
+    let address = Address::new("sys", "127.0.0.1", 2552);
+    let remote = Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+    let mut receiver = VecRemoteEventReceiver::new([event]);
+
+    assert_eq!(block_on_ready(remote.run(&mut receiver)).unwrap_err(), RemotingError::UnimplementedEvent);
+  }
 }
 
 // ---------------------------------------------------------------------------

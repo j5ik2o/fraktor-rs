@@ -113,8 +113,8 @@ impl Association {
   }
 
   /// Records an inbound envelope observation through `instrument`.
-  pub fn record_inbound(&self, envelope: &InboundEnvelope, instrument: &mut dyn RemoteInstrument) {
-    instrument.on_receive(envelope);
+  pub fn record_inbound(&self, envelope: &InboundEnvelope, now_ms: u64, instrument: &mut dyn RemoteInstrument) {
+    instrument.on_receive(envelope, now_ms);
   }
 
   /// Returns the current handshake generation.
@@ -471,10 +471,14 @@ impl Association {
   }
 
   /// Returns the next outbound envelope and records it through `instrument`.
-  pub fn next_outbound_with_instrument(&mut self, instrument: &mut dyn RemoteInstrument) -> Option<OutboundEnvelope> {
+  pub fn next_outbound_with_instrument(
+    &mut self,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Option<OutboundEnvelope> {
     let envelope = self.send_queue.next_outbound();
     if let Some(envelope) = &envelope {
-      instrument.on_send(envelope);
+      instrument.on_send(envelope, now_ms);
     }
     envelope
   }

@@ -1,4 +1,5 @@
 use alloc::{string::String, vec::Vec};
+use core::mem;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -203,11 +204,11 @@ impl CountingInstrument {
 }
 
 impl RemoteInstrument for CountingInstrument {
-  fn on_send(&mut self, _envelope: &OutboundEnvelope) {
+  fn on_send(&mut self, _envelope: &OutboundEnvelope, _now_ms: u64) {
     self.sends += 1;
   }
 
-  fn on_receive(&mut self, _envelope: &InboundEnvelope) {
+  fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {
     self.receives += 1;
   }
 
@@ -235,9 +236,9 @@ fn remote_instrument_trait_can_be_implemented() {
   let mut inst = CountingInstrument::new();
   let out = sample_outbound();
   let inb = sample_inbound();
-  inst.on_send(&out);
-  inst.on_receive(&inb);
-  inst.on_send(&out);
+  inst.on_send(&out, 10);
+  inst.on_receive(&inb, 20);
+  inst.on_send(&out, 30);
   inst.record_handshake(&TransportEndpoint::new("sys@host:2552"), HandshakePhase::Started, 10);
   inst.record_quarantine(&TransportEndpoint::new("sys@host:2552"), &QuarantineReason::new("test"), 20);
   inst.record_backpressure(
@@ -260,8 +261,8 @@ fn flight_recorder_implements_remote_instrument_hooks() {
   let inbound = sample_inbound();
   let authority = TransportEndpoint::new("sys@host:2552");
 
-  recorder.on_send(&outbound);
-  recorder.on_receive(&inbound);
+  recorder.on_send(&outbound, 10);
+  recorder.on_receive(&inbound, 20);
   RemoteInstrument::record_handshake(&mut recorder, &authority, HandshakePhase::Started, 10);
   RemoteInstrument::record_quarantine(&mut recorder, &authority, &QuarantineReason::new("boom"), 20);
   RemoteInstrument::record_backpressure(
@@ -274,8 +275,14 @@ fn flight_recorder_implements_remote_instrument_hooks() {
 
   let snap = recorder.snapshot();
   assert_eq!(snap.len(), 5);
-  assert!(matches!(snap.events()[0], FlightRecorderEvent::Send { .. }));
-  assert!(matches!(snap.events()[1], FlightRecorderEvent::Receive { .. }));
+  assert!(matches!(
+    snap.events()[0],
+    FlightRecorderEvent::Send { size, now_ms: 10, .. } if size == mem::size_of::<String>() as u32
+  ));
+  assert!(matches!(
+    snap.events()[1],
+    FlightRecorderEvent::Receive { size, now_ms: 20, .. } if size == mem::size_of::<String>() as u32
+  ));
   assert!(matches!(snap.events()[2], FlightRecorderEvent::Handshake { phase: HandshakePhase::Started, .. }));
   assert!(matches!(snap.events()[3], FlightRecorderEvent::Quarantine { .. }));
   assert!(matches!(snap.events()[4], FlightRecorderEvent::Backpressure { signal: BackpressureSignal::Release, .. }));

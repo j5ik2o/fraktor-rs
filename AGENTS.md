@@ -1304,7 +1304,7 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 | `func(ctx Context)` | `&mut self` メソッド |
 | `go func()` | `spawn` / async task |
 | `chan T` | mailbox / mpsc channel |
-| `sync.Mutex` | `SpinSyncMutex` |
+| `sync.Mutex` | `SharedLock<T>`（内部 driver として `SpinSyncMutex` を使用） |
 | `struct embedding` | trait 実装 + 委譲 |
 
 ### Scala/Pekko → Rust
@@ -1441,4 +1441,3 @@ pub struct TickDriverId(u64);
 - lint の `#[allow]` による type-per-file-lint の無効化（人間の許可なしで）
 
 根拠: `claudedocs/actor-module-overengineering-analysis.md`（Phase 1-4 の分析実績）
-

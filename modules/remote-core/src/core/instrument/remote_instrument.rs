@@ -19,11 +19,11 @@ use crate::core::{
 /// able to operate in a fully synchronous `no_std` context.
 pub trait RemoteInstrument {
   /// Called just before an outbound envelope is handed to the transport.
-  fn on_send(&mut self, envelope: &OutboundEnvelope);
+  fn on_send(&mut self, envelope: &OutboundEnvelope, now_ms: u64);
 
   /// Called once an inbound envelope has been decoded and is about to be
   /// dispatched to the local recipient.
-  fn on_receive(&mut self, envelope: &InboundEnvelope);
+  fn on_receive(&mut self, envelope: &InboundEnvelope, now_ms: u64);
 
   /// Records a handshake lifecycle phase for `authority`.
   fn record_handshake(&mut self, authority: &TransportEndpoint, phase: HandshakePhase, now_ms: u64);

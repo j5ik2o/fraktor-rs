@@ -1,8 +1,9 @@
 //! In-memory ring-buffer flight recorder.
 
 use alloc::{collections::VecDeque, format, string::String};
+use core::mem;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
+use fraktor_actor_core_rs::core::kernel::{actor::messaging::AnyMessage, event::stream::CorrelationId};
 
 use crate::core::{
   association::QuarantineReason,
@@ -117,7 +118,7 @@ impl RemotingFlightRecorder {
 }
 
 impl RemoteInstrument for RemotingFlightRecorder {
-  fn on_send(&mut self, envelope: &OutboundEnvelope) {
+  fn on_send(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
     self.record_send(
       remote_node_authority(
         envelope.remote_node().system(),
@@ -126,12 +127,12 @@ impl RemoteInstrument for RemotingFlightRecorder {
       ),
       envelope.correlation_id(),
       envelope.priority().to_wire(),
-      0,
-      0,
+      payload_size(envelope.message()),
+      now_ms,
     );
   }
 
-  fn on_receive(&mut self, envelope: &InboundEnvelope) {
+  fn on_receive(&mut self, envelope: &InboundEnvelope, now_ms: u64) {
     self.record_receive(
       remote_node_authority(
         envelope.remote_node().system(),
@@ -139,8 +140,8 @@ impl RemoteInstrument for RemotingFlightRecorder {
         envelope.remote_node().port(),
       ),
       envelope.correlation_id(),
-      0,
-      0,
+      payload_size(envelope.message()),
+      now_ms,
     );
   }
 
@@ -168,4 +169,12 @@ fn remote_node_authority(system: &str, host: &str, port: Option<u16>) -> String 
     | Some(port) => format!("{system}@{host}:{port}"),
     | None => format!("{system}@{host}"),
   }
+}
+
+fn payload_size(message: &AnyMessage) -> u32 {
+  usize_to_u32_saturating(mem::size_of_val(message.payload()))
+}
+
+const fn usize_to_u32_saturating(size: usize) -> u32 {
+  if size > u32::MAX as usize { u32::MAX } else { size as u32 }
 }

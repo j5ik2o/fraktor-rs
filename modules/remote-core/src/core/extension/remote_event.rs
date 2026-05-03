@@ -30,6 +30,8 @@ pub enum RemoteEvent {
     authority: TransportEndpoint,
     /// Envelope to enqueue and drain.
     envelope:  Box<OutboundEnvelope>,
+    /// Monotonic millis at which the outbound envelope was observed.
+    now_ms:    u64,
   },
   /// A transport connection was lost.
   ConnectionLost {

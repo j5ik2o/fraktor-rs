@@ -288,25 +288,52 @@ impl RemoteConfig {
 
   /// Returns a copy with the given outbound high watermark.
   ///
+  /// If the current low watermark is no longer lower than `high`, the low
+  /// watermark is lowered to keep the pair valid. Use
+  /// [`Self::with_outbound_watermarks`] when changing both values explicitly.
+  ///
   /// # Panics
   ///
-  /// Panics when `high` is not greater than the current low watermark.
+  /// Panics when `high` is zero.
   #[must_use]
   pub const fn with_outbound_high_watermark(mut self, high: usize) -> Self {
-    assert!(self.outbound_low_watermark < high, "outbound high watermark must be greater than low watermark");
+    assert!(high > 0, "outbound high watermark must be greater than zero");
     self.outbound_high_watermark = high;
+    if self.outbound_low_watermark >= high {
+      self.outbound_low_watermark = high - 1;
+    }
     self
   }
 
   /// Returns a copy with the given outbound low watermark.
   ///
+  /// If the current high watermark is no longer higher than `low`, the high
+  /// watermark is raised to keep the pair valid. Use
+  /// [`Self::with_outbound_watermarks`] when changing both values explicitly.
+  ///
   /// # Panics
   ///
-  /// Panics when `low` is not smaller than the current high watermark.
+  /// Panics when `low` is [`usize::MAX`].
   #[must_use]
   pub const fn with_outbound_low_watermark(mut self, low: usize) -> Self {
-    assert!(low < self.outbound_high_watermark, "outbound low watermark must be lower than high watermark");
+    assert!(low < usize::MAX, "outbound low watermark must be lower than usize::MAX");
     self.outbound_low_watermark = low;
+    if self.outbound_high_watermark <= low {
+      self.outbound_high_watermark = low + 1;
+    }
+    self
+  }
+
+  /// Returns a copy with both outbound watermarks set atomically.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `low` is not lower than `high`.
+  #[must_use]
+  pub const fn with_outbound_watermarks(mut self, low: usize, high: usize) -> Self {
+    assert!(low < high, "outbound low watermark must be lower than high watermark");
+    self.outbound_low_watermark = low;
+    self.outbound_high_watermark = high;
     self
   }
 
