@@ -111,7 +111,7 @@ usage() {
   no-std                 : no_std 対応チェック (core/utils) を実行します
   std                    : std フィーチャーでのテストを実行します
   doc                    : ドキュメントテストを test-support フィーチャー付きで実行します
-  examples               : ワークスペース配下の examples をビルドします
+  examples               : ワークスペース配下の examples を実行します（example は自力で終了する必要があります）
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   unit-test              : ワークスペースの単体テスト (--lib --bins) を実行します
   integration-test       : ワークスペースの統合テスト (--tests --examples) と cross-crate E2E を実行します
@@ -1251,6 +1251,9 @@ run_examples() {
   local python_bin=""
   python_bin="$(resolve_python3_bin)" || return 1
 
+  local target_dir="${CARGO_TARGET_DIR:-${REPO_ROOT}/target/ci-check/integration-test}"
+  mkdir -p "${target_dir}"
+
   local rustflags_value
   if [[ -n "${RUSTFLAGS-}" ]]; then
     rustflags_value="${RUSTFLAGS} -Dwarnings --force-warn deprecated"
@@ -1320,7 +1323,7 @@ PY
     else
       log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name}"
     fi
-    RUSTFLAGS="${rustflags_value}" run_cargo "${cargo_args[@]}" \
+    CARGO_TARGET_DIR="${target_dir}" RUSTFLAGS="${rustflags_value}" run_cargo "${cargo_args[@]}" \
       || {
         [[ -n "${example_file}" ]] && rm -f "${example_file}"
         return 1
