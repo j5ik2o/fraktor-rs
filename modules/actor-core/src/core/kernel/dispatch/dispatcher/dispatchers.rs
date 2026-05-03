@@ -41,27 +41,27 @@ use super::{
 
 /// Primary registry identifier for the default dispatcher entry.
 ///
-/// Corresponds 1:1 to Pekko `Dispatchers.DefaultDispatcherId` in
-/// `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Dispatchers.scala:160-164`.
+/// The actual value is `"fraktor.actor.default-dispatcher"`. This uses the
+/// Fraktor namespace and no longer matches Pekko
+/// `Dispatchers.DefaultDispatcherId` (`"pekko.actor.default-dispatcher"`).
+/// Internal code should use [`DEFAULT_DISPATCHER_ID`]; external configuration
+/// should use the Fraktor literal when a literal is required.
 ///
-/// Historically fraktor-rs used `"default"` as the primary id, but change
-/// `pekko-dispatcher-primary-id-alignment` (2026-04-23) flipped the value to
-/// match Pekko. The legacy `"default"` token is no longer registered as an
-/// entry or alias; callers must use this constant (or the raw Pekko string
-/// `"pekko.actor.default-dispatcher"` when a literal is required for
-/// external configuration such as HOCON-style config files).
+/// Historically fraktor-rs used `"default"` as the primary id. The legacy
+/// `"default"` token is no longer registered as an entry or alias.
 pub const DEFAULT_DISPATCHER_ID: &str = "fraktor.actor.default-dispatcher";
 /// Reserved registry identifier for the default blocking IO dispatcher.
 ///
-/// Matches Pekko `Dispatchers.DefaultBlockingDispatcherId`.
+/// The actual value is `"fraktor.actor.default-blocking-io-dispatcher"`.
+/// This uses the Fraktor namespace and no longer matches Pekko
+/// `Dispatchers.DefaultBlockingDispatcherId`.
 pub const DEFAULT_BLOCKING_DISPATCHER_ID: &str = "fraktor.actor.default-blocking-io-dispatcher";
 
-/// Pekko-style alias for the internal dispatcher.
+/// Fraktor-style alias for the internal dispatcher.
 ///
-/// Matches Pekko `Dispatchers.InternalDispatcherId`. Registered as an alias
-/// of [`DEFAULT_DISPATCHER_ID`] by `ensure_default` so Pekko-style user code
-/// referring to the internal dispatcher resolves to the same entry.
-const PEKKO_INTERNAL_DISPATCHER_ID: &str = "fraktor.actor.internal-dispatcher";
+/// Registered as an alias of [`DEFAULT_DISPATCHER_ID`] by `ensure_default` so
+/// internal dispatcher references resolve to the same entry.
+const FRAKTOR_INTERNAL_DISPATCHER_ID: &str = "fraktor.actor.internal-dispatcher";
 
 /// Registry mapping dispatcher identifiers to configurators.
 pub struct Dispatchers {
@@ -275,11 +275,11 @@ impl Dispatchers {
     ArcShared::new(configurator)
   }
 
-  /// Registers the Pekko `InternalDispatcherId` alias pointing at
+  /// Registers the Fraktor internal dispatcher alias pointing at
   /// [`DEFAULT_DISPATCHER_ID`].
   ///
-  /// Only `pekko.actor.internal-dispatcher` is registered as an alias;
-  /// `pekko.actor.default-dispatcher` is the primary entry id itself after
+  /// Only `fraktor.actor.internal-dispatcher` is registered as an alias;
+  /// `fraktor.actor.default-dispatcher` is the primary entry id itself after
   /// change `pekko-dispatcher-primary-id-alignment` (2026-04-23), so it must
   /// not be registered as an alias. The legacy fraktor-rs `"default"` token
   /// is also not registered (completely retired by the same change).
@@ -291,7 +291,7 @@ impl Dispatchers {
     Self::register_alias_if_absent(
       &mut self.aliases,
       &self.entries,
-      PEKKO_INTERNAL_DISPATCHER_ID,
+      FRAKTOR_INTERNAL_DISPATCHER_ID,
       DEFAULT_DISPATCHER_ID,
     );
   }
@@ -317,7 +317,7 @@ impl Dispatchers {
   /// If `default` is missing, the supplied factory closure is called to
   /// produce a configurator that is then registered for both
   /// [`DEFAULT_DISPATCHER_ID`] and [`DEFAULT_BLOCKING_DISPATCHER_ID`], and the
-  /// Pekko-compatible aliases are registered against
+  /// Fraktor internal dispatcher alias is registered against
   /// [`DEFAULT_DISPATCHER_ID`].
   ///
   /// Any pre-existing alias registered under the same id is removed before

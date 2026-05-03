@@ -26,14 +26,14 @@ mod tests;
 
 /// Primary registry identifier for the default mailbox entry.
 ///
-/// Corresponds 1:1 to Pekko `Mailboxes.DefaultMailboxId` in
-/// `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Mailboxes.scala:58`.
+/// The actual value is `"fraktor.actor.default-mailbox"`. This uses the
+/// Fraktor namespace and intentionally differs from Pekko
+/// `Mailboxes.DefaultMailboxId` (`"pekko.actor.default-mailbox"`).
 ///
-/// Historically fraktor-rs used `"default"` as the primary id, but change
-/// `pekko-dispatcher-primary-id-alignment` (2026-04-23) flipped the value
-/// to match Pekko. `Mailboxes` does not currently support alias chain
-/// resolution (unlike `Dispatchers`), so the legacy `"default"` token is
-/// simply no longer registered.
+/// Historically fraktor-rs used `"default"` as the primary id. `Mailboxes`
+/// does not currently support alias chain resolution (unlike `Dispatchers`),
+/// so the legacy `"default"` token is no longer registered after the Fraktor
+/// namespace split.
 const DEFAULT_MAILBOX_ID: &str = "fraktor.actor.default-mailbox";
 
 pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn MessageQueue> {

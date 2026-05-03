@@ -1,7 +1,7 @@
 #![cfg(not(target_os = "none"))]
 
 use core::time::Duration;
-use std::{string::String, thread, vec::Vec};
+use std::{string::String, thread, time::Instant, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::{
   StdBlocker, dispatch::dispatcher::AffinityExecutor, tick_driver::StdTickDriver,
@@ -23,6 +23,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 const POOL_NAME: &str = "kernel-affinity-executor";
+const WAIT_TIMEOUT: Duration = Duration::from_secs(3);
 
 struct Greet;
 
@@ -50,7 +51,7 @@ fn main() {
     move || GreeterActor { greetings: greetings.clone() }
   });
 
-  // `pekko.actor.default-dispatcher` のデフォルトは Inline executor を指している。
+  // `fraktor.actor.default-dispatcher` のデフォルトは Inline executor を指している。
   // ここでは AffinityExecutor (Pekko の `AffinityPool` 相当) を直接ぶら下げて
   // default-dispatcher を上書きする: 4 本のワーカースレッドと、各ワーカーが
   // 64 スロットの bounded queue を持つ。mailbox は `key % parallelism` で
@@ -67,7 +68,7 @@ fn main() {
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Greet));
-  wait_until(|| greetings.with_lock(|greetings| greetings.len() == 1));
+  wait_until_deadline(Instant::now() + WAIT_TIMEOUT, || greetings.with_lock(|greetings| greetings.len() == 1));
 
   // receive は AffinityExecutor のワーカースレッド上で走るため、記録された
   // スレッド名はプール接頭辞で始まっているはず。Inline 版との挙動差を
@@ -82,8 +83,8 @@ fn main() {
   termination.wait_blocking(&StdBlocker::new());
 }
 
-fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..1_000 {
+fn wait_until_deadline(deadline: Instant, mut condition: impl FnMut() -> bool) {
+  while Instant::now() < deadline {
     if condition() {
       return;
     }
