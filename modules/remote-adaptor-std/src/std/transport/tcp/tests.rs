@@ -495,7 +495,8 @@ async fn remote_transport_send_rejects_user_envelope_until_payload_serialization
 
   let result = transport.send(envelope);
 
-  assert_eq!(result, Err(TransportError::SendFailed));
+  let (err, _envelope) = result.expect_err("send should fail when peer write loop is gone");
+  assert_eq!(err, TransportError::SendFailed);
   let inbound = tokio::time::timeout(Duration::from_millis(200), server_inbound_rx.recv()).await;
   assert!(inbound.is_err(), "failed envelope send must not emit an empty payload frame");
   transport.shutdown().expect("transport shutdown should succeed");

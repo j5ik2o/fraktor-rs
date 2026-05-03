@@ -294,10 +294,11 @@ impl RemoteConfig {
   ///
   /// # Panics
   ///
-  /// Panics when `high` is zero.
+  /// Panics when `high < 2`. The auto-adjusted low watermark would otherwise
+  /// drop to zero, making the release condition `queue_len < low` unreachable.
   #[must_use]
   pub const fn with_outbound_high_watermark(mut self, high: usize) -> Self {
-    assert!(high > 0, "outbound high watermark must be greater than zero");
+    assert!(high >= 2, "outbound high watermark must be at least 2 to keep the auto-adjusted low watermark reachable");
     self.outbound_high_watermark = high;
     if self.outbound_low_watermark >= high {
       self.outbound_low_watermark = high - 1;
@@ -313,9 +314,12 @@ impl RemoteConfig {
   ///
   /// # Panics
   ///
-  /// Panics when `low` is [`usize::MAX`].
+  /// Panics when `low` is `0` (the release condition `queue_len < low` would
+  /// be unreachable for any non-empty queue) or `low == usize::MAX` (no
+  /// representable high watermark above it).
   #[must_use]
   pub const fn with_outbound_low_watermark(mut self, low: usize) -> Self {
+    assert!(low > 0, "outbound low watermark must be greater than zero so the release condition can fire");
     assert!(low < usize::MAX, "outbound low watermark must be lower than usize::MAX");
     self.outbound_low_watermark = low;
     if self.outbound_high_watermark <= low {
@@ -328,9 +332,11 @@ impl RemoteConfig {
   ///
   /// # Panics
   ///
-  /// Panics when `low` is not lower than `high`.
+  /// Panics when `low == 0` (release condition unreachable) or
+  /// `low >= high` (invalid pair).
   #[must_use]
   pub const fn with_outbound_watermarks(mut self, low: usize, high: usize) -> Self {
+    assert!(low > 0, "outbound low watermark must be greater than zero so the release condition can fire");
     assert!(low < high, "outbound low watermark must be lower than high watermark");
     self.outbound_low_watermark = low;
     self.outbound_high_watermark = high;

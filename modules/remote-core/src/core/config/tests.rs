@@ -298,11 +298,20 @@ fn with_outbound_watermarks_rejects_invalid_pairs() {
 
 #[test]
 fn outbound_watermark_setters_reject_unreachable_values() {
-  let high_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(0));
-  let low_result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(usize::MAX));
+  let high_zero = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(0));
+  // high=1 だと auto-adjust で low=0 になり、release 条件 `queue_len < 0` が unreachable になるため
+  // reject。
+  let high_one = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_high_watermark(1));
+  // low=0 は release 条件が unreachable なので reject。
+  let low_zero = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(0));
+  let low_max = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_low_watermark(usize::MAX));
+  let pair_low_zero = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_watermarks(0, 1));
 
-  assert!(high_result.is_err());
-  assert!(low_result.is_err());
+  assert!(high_zero.is_err());
+  assert!(high_one.is_err());
+  assert!(low_zero.is_err());
+  assert!(low_max.is_err());
+  assert!(pair_low_zero.is_err());
 }
 
 #[test]

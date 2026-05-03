@@ -1,5 +1,6 @@
 //! The single transport port the remote subsystem depends on.
 
+use alloc::boxed::Box;
 use core::time::Duration;
 
 use crate::core::{
@@ -46,13 +47,18 @@ pub trait RemoteTransport {
 
   /// Hands an [`OutboundEnvelope`] to the transport for delivery.
   ///
+  /// On failure the envelope is returned (boxed, matching `RemoteEvent::OutboundEnqueued`)
+  /// alongside the error so the caller can re-enqueue it for retry without paying for a
+  /// defensive clone on the hot success path. The `Box` keeps the `Err` variant small
+  /// enough for `clippy::result_large_err`.
+  ///
   /// # Errors
   ///
   /// Returns [`TransportError::SendFailed`] if the transport could not hand
   /// the envelope to the peer, [`TransportError::ConnectionClosed`] if the
   /// underlying channel has been closed, or [`TransportError::NotStarted`]
   /// if called before `start`.
-  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), TransportError>;
+  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)>;
 
   /// Sends a wire-level handshake PDU to `remote`.
   ///

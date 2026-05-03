@@ -213,12 +213,12 @@ impl Remote {
     while let Some(envelope) =
       self.associations[association_index].next_outbound_with_instrument(now_ms, self.instrument.as_mut())
     {
-      let envelope_for_retry = envelope.clone();
-      if self.transport.send(envelope).is_err() {
+      if let Err((_err, envelope_for_retry)) = self.transport.send(envelope) {
         // 単一 envelope の送信失敗で event loop を終わらせると、他の peer 向け
-        // association まで巻き添えで停止してしまう。失敗した envelope は association
-        // へ戻し、drain は中断するが、event loop は次の event を引き続き処理する。
-        let effects = self.associations[association_index].enqueue(envelope_for_retry, now_ms);
+        // association まで巻き添えで停止してしまう。`RemoteTransport::send` が失敗時に
+        // 返してきた envelope を association に戻し、drain は中断するが、event loop は
+        // 次の event を引き続き処理する。成功側のホットパスでは clone は発生しない。
+        let effects = self.associations[association_index].enqueue(*envelope_for_retry, now_ms);
         self.apply_association_effects(association_index, effects, now_ms)?;
         return Ok(());
       }

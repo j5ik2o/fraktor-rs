@@ -200,12 +200,15 @@ impl RemoteTransport for RecordingTransport {
     self.shutdown_result.clone()
   }
 
-  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
+  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
     self.send_calls.fetch_add(1, Ordering::Relaxed);
     if !self.running {
-      return Err(TransportError::NotStarted);
+      return Err((TransportError::NotStarted, Box::new(envelope)));
     }
-    self.send_result.clone()
+    match self.send_result.clone() {
+      | Ok(()) => Ok(()),
+      | Err(err) => Err((err, Box::new(envelope))),
+    }
   }
 
   fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {

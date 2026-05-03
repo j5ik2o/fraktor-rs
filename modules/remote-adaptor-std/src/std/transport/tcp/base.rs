@@ -228,11 +228,11 @@ impl RemoteTransport for TcpRemoteTransport {
     Ok(())
   }
 
-  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), TransportError> {
+  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
     if !self.running {
-      return Err(TransportError::NotStarted);
+      return Err((TransportError::NotStarted, Box::new(envelope)));
     }
-    Err(TransportError::SendFailed)
+    Err((TransportError::SendFailed, Box::new(envelope)))
   }
 
   fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
