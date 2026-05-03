@@ -190,6 +190,7 @@ CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
 CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
 CI_CHECK_HANG_RECORD_FILE="${CI_CHECK_HANG_RECORD_FILE:-${REPO_ROOT}/target/.ci-check.last-hang}"
 CI_CHECK_ALLOW_RERUN_AFTER_HANG="${CI_CHECK_ALLOW_RERUN_AFTER_HANG:-0}"
+CI_CHECK_HEARTBEAT="${CI_CHECK_HEARTBEAT:-0}"
 export CI_CHECK_GUARD_TIMEOUT_SEC
 export CI_CHECK_GUARD_TIMEOUT_UNIT_SEC
 export CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC
@@ -197,6 +198,7 @@ export CI_CHECK_GUARD_KILL_AFTER_SEC
 export CI_CHECK_HANG_COOLDOWN_SEC
 export CI_CHECK_HANG_RECORD_FILE
 export CI_CHECK_ALLOW_RERUN_AFTER_HANG
+export CI_CHECK_HEARTBEAT
 
 usage() {
   cat <<'EOF'
@@ -230,6 +232,8 @@ usage() {
   CI_CHECK_GUARD_KILL_AFTER_SEC : タイムアウト後に強制終了へ移るまでの猶予秒数（既定 15）
   CI_CHECK_HANG_COOLDOWN_SEC  : HANG_SUSPECT 後に同一コマンドの再実行を拒否する秒数（既定 1800）
   CI_CHECK_ALLOW_RERUN_AFTER_HANG : 1 のとき HANG_SUSPECT 後の同一コマンド再実行を許可
+  CI_CHECK_HEARTBEAT          : 1 のとき長時間実行中の heartbeat ログを表示（既定 0）
+  CI_CHECK_HEARTBEAT_INTERVAL_SEC : heartbeat ログの表示間隔秒数（既定 30）
 EOF
 }
 
@@ -419,7 +423,12 @@ enable_ai_mode() {
   export CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
   export CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
 
-  echo "info: AI モードを有効化しました (default-timeout=${CI_CHECK_GUARD_TIMEOUT_SEC}s, unit-timeout=${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC}s, integration-timeout=${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC}s, cooldown=${CI_CHECK_HANG_COOLDOWN_SEC}s, heartbeat=${CI_CHECK_HEARTBEAT_INTERVAL_SEC}s)" >&2
+  local heartbeat_status="off"
+  if [[ "${CI_CHECK_HEARTBEAT}" != "0" ]]; then
+    heartbeat_status="${CI_CHECK_HEARTBEAT_INTERVAL_SEC}s"
+  fi
+
+  echo "info: AI モードを有効化しました (default-timeout=${CI_CHECK_GUARD_TIMEOUT_SEC}s, unit-timeout=${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC}s, integration-timeout=${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC}s, cooldown=${CI_CHECK_HANG_COOLDOWN_SEC}s, heartbeat=${heartbeat_status})" >&2
 }
 
 run_with_heartbeat() {
@@ -427,7 +436,7 @@ run_with_heartbeat() {
   shift
 
   local interval="${CI_CHECK_HEARTBEAT_INTERVAL_SEC:-60}"
-  local enabled="${CI_CHECK_HEARTBEAT:-1}"
+  local enabled="${CI_CHECK_HEARTBEAT:-0}"
   local heartbeat_pid=""
 
   if [[ ! "${interval}" =~ ^[0-9]+$ ]] || [[ "${interval}" -lt 1 ]]; then
