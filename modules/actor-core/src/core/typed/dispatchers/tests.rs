@@ -86,7 +86,7 @@ fn lookup_from_config_preserves_user_override_of_pekko_alias() {
     let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
     let custom: ArcShared<Box<dyn MessageDispatcherFactory>> =
       ArcShared::new(Box::new(DefaultDispatcherFactory::new(&custom_config, executor)));
-    config.with_dispatcher_factory("pekko.actor.default-dispatcher", custom)
+    config.with_dispatcher_factory("fraktor.actor.default-dispatcher", custom)
   });
 
   let dispatchers = Dispatchers::new(system.state());
@@ -139,13 +139,13 @@ fn lookup_blocking_selector_resolves_blocking_dispatcher() {
 #[test]
 fn default_dispatcher_id_matches_kernel_constant() {
   let id = Dispatchers::DEFAULT_DISPATCHER_ID;
-  assert_eq!(id, "pekko.actor.default-dispatcher");
+  assert_eq!(id, "fraktor.actor.default-dispatcher");
 }
 
 #[test]
 fn internal_dispatcher_id_matches_pekko_constant() {
   let id = Dispatchers::INTERNAL_DISPATCHER_ID;
-  assert_eq!(id, "pekko.actor.internal-dispatcher");
+  assert_eq!(id, "fraktor.actor.internal-dispatcher");
 }
 
 // --- shutdown --------------------------------------------------------------

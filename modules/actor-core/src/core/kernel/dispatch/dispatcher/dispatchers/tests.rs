@@ -60,10 +60,10 @@ fn pekko_default_dispatcher_id_resolves_as_primary_entry_after_ensure_default() 
   // alias ではなく entry 直接 lookup になることを確認する。
   let mut dispatchers = Dispatchers::new();
   dispatchers.ensure_default(|| make_default_configurator(DEFAULT_DISPATCHER_ID));
-  let resolved = dispatchers.resolve("pekko.actor.default-dispatcher").expect("resolve primary entry");
+  let resolved = dispatchers.resolve("fraktor.actor.default-dispatcher").expect("resolve primary entry");
   assert_eq!(resolved.id(), DEFAULT_DISPATCHER_ID);
   // canonical_id も同じ id を返す (alias chain を辿らず即時 entry 一致)。
-  assert_eq!(dispatchers.canonical_id("pekko.actor.default-dispatcher").expect("canonical"), DEFAULT_DISPATCHER_ID);
+  assert_eq!(dispatchers.canonical_id("fraktor.actor.default-dispatcher").expect("canonical"), DEFAULT_DISPATCHER_ID);
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn pekko_internal_dispatcher_id_resolves_via_alias_registered_by_ensure_default(
   // (Pekko `InternalDispatcherId` 互換のため)。
   let mut dispatchers = Dispatchers::new();
   dispatchers.ensure_default(|| make_default_configurator(DEFAULT_DISPATCHER_ID));
-  let resolved = dispatchers.resolve("pekko.actor.internal-dispatcher").expect("resolve internal");
+  let resolved = dispatchers.resolve("fraktor.actor.internal-dispatcher").expect("resolve internal");
   assert_eq!(resolved.id(), DEFAULT_DISPATCHER_ID);
 }
 
@@ -101,7 +101,7 @@ fn ensure_default_inline_registers_only_internal_dispatcher_alias() {
   // aliases map には internal-dispatcher の 1 件のみ存在 (legacy "default" は登録されない)。
   assert_eq!(dispatchers.aliases.len(), 1);
   assert_eq!(
-    dispatchers.aliases.get("pekko.actor.internal-dispatcher").map(String::as_str),
+    dispatchers.aliases.get("fraktor.actor.internal-dispatcher").map(String::as_str),
     Some(DEFAULT_DISPATCHER_ID)
   );
   assert!(!dispatchers.aliases.contains_key("default"), "legacy default must not be an alias");
@@ -383,7 +383,7 @@ fn canonical_id_returns_resolved_entry_id() {
   let mut dispatchers = Dispatchers::new();
   dispatchers.ensure_default(|| make_default_configurator(DEFAULT_DISPATCHER_ID));
 
-  let canonical = dispatchers.canonical_id("pekko.actor.internal-dispatcher").expect("canonical");
+  let canonical = dispatchers.canonical_id("fraktor.actor.internal-dispatcher").expect("canonical");
   assert_eq!(canonical, DEFAULT_DISPATCHER_ID);
 
   // canonical_id は resolve counter をインクリメントしない。
