@@ -34,7 +34,7 @@ mod tests;
 /// to match Pekko. `Mailboxes` does not currently support alias chain
 /// resolution (unlike `Dispatchers`), so the legacy `"default"` token is
 /// simply no longer registered.
-const DEFAULT_MAILBOX_ID: &str = "pekko.actor.default-mailbox";
+const DEFAULT_MAILBOX_ID: &str = "faktor.actor.default-mailbox";
 
 pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn MessageQueue> {
   mailbox_type_from_policy(policy).create()

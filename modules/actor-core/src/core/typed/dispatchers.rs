@@ -25,7 +25,7 @@ use crate::core::{
 /// Matches [`DEFAULT_DISPATCHER_ID`] (the kernel primary entry id).
 const PEKKO_DEFAULT_DISPATCHER_ID: &str = DEFAULT_DISPATCHER_ID;
 /// Pekko-compatible public identifier for the internal dispatcher.
-const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
+const PEKKO_INTERNAL_DISPATCHER_ID: &str = "fraktor.actor.internal-dispatcher";
 
 /// Typed facade for looking up dispatcher configurations by selector.
 ///
