@@ -139,13 +139,13 @@ fn lookup_blocking_selector_resolves_blocking_dispatcher() {
 #[test]
 fn default_dispatcher_id_matches_kernel_constant() {
   let id = Dispatchers::DEFAULT_DISPATCHER_ID;
-  assert_eq!(id, "faktor.actor.default-dispatcher");
+  assert_eq!(id, "fraktor.actor.default-dispatcher");
 }
 
 #[test]
 fn internal_dispatcher_id_matches_pekko_constant() {
   let id = Dispatchers::INTERNAL_DISPATCHER_ID;
-  assert_eq!(id, "faktor.actor.internal-dispatcher");
+  assert_eq!(id, "fraktor.actor.internal-dispatcher");
 }
 
 // --- shutdown --------------------------------------------------------------
