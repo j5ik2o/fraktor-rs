@@ -125,7 +125,7 @@
   - **install 内では `Remote::start` を呼ばない、`tokio::spawn` もしない**（外部から start / spawn_run_task を順次呼ぶ）
 - [ ] 7.4.2 `installer.remote()` の戻り値型を `SharedLock<Remote>` から `RemoteShared` に変更する（`&self` 契約、内部 `OnceLock` 経由）。
   - `pub fn remote(&self) -> Result<RemoteShared, RemotingError> { self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted) }` 相当
-  - 既存の `SharedLock<Remote>` を返すコードと callers を破壊的変更で更新（CLAUDE.md「後方互換は不要」）
+  - 既存の `SharedLock<Remote>` を返すコードと callers を破壊的変更で更新し、後方互換 shim は置かない
 - [ ] 7.4.3 `RemotingExtensionInstaller::spawn_run_task(&self) -> Result<(), RemotingError>` を新設する（**`&self` 契約、内部 Mutex 経由**）。
   - `let receiver = { let mut slot = self.event_receiver.lock().map_err(|_| RemotingError::TransportUnavailable)?; slot.take().ok_or(RemotingError::AlreadyRunning)? };`
   - `let run_target = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;`
@@ -157,6 +157,11 @@
   - `try_send` の `Full` / `Closed` は `SendError` 等の caller が観測できる error に変換し、`let _` / `.ok()` で握りつぶさない
   - `AssociationRegistry` を adapter から直接 mutate しない（`enqueue` / `next_outbound` 等の呼び出しは `RemoteShared::run` 経由のみ。`Remote::handle_remote_event` の `with_write` 区間内で行われる）
   - `Result` を `?` または `match` で扱う（`let _` 禁止）
+- [ ] 7.8.1 actor-core provider 経由の remote sender 契約を remote-adaptor 側で固定する。
+  - `StdRemoteActorRefProvider` 相当が remote authority の `ActorPath` を remote path として解決し、`RemoteActorRefSender` 相当を持つ `ActorRef` を返す
+  - その `ActorRef::tell` / `ActorRefSender::send` 経路が `RemoteEvent::OutboundEnqueued` を adapter 内部 sender に push する
+  - cluster-* からはこの provider surface が利用点になるため、remote-adaptor 側 test で `ActorSystem::resolve_actor_ref` 相当または provider handle 経由の解決から enqueue 到達までを確認する
+  - cluster 固有の `ClusterApi::get` / `GrainRef` / topology event integration は本 task に含めず、追加 change へ分離する
 
 ## 8. adapter 側で旧 task を削除
 
@@ -218,13 +223,20 @@
 
 - [ ] 10.1 `rtk cargo test -p fraktor-remote-core-rs` を実行し、green を確認する（二層構造への変更後、`Remote` / `RemoteShared` / `Remoting` trait の新シグネチャで test が green になること）。
 - [ ] 10.2 `rtk cargo test -p fraktor-remote-adaptor-std-rs` を実行し、green を確認する（installer の `RemoteShared` 化後、test が green になること）。
-- [ ] 10.3 `rtk cargo test -p fraktor-cluster-adaptor-std-rs` を実行し、依存先の green を確認する（`Remoting` trait シグネチャ変更の波及を吸収）。
+- [ ] 10.2.1 remote-adaptor 側に provider 経由 enqueue の test を追加または更新する。
+  - `StdRemoteActorRefProvider` / provider handle 経由で remote path を解決できること
+  - 解決した `ActorRef` への `tell` が `RemoteEvent::OutboundEnqueued` を adapter 内部 receiver から観測できること
+  - `try_send` 失敗時に caller が `SendError` 等を観測できること
+- [ ] 10.3 `rtk cargo test -p fraktor-cluster-adaptor-std-rs` を実行し、依存先の green を確認する（`Remoting` trait シグネチャ変更の波及を吸収するだけで、cluster/remoting end-to-end 利用性の証明は追加 change へ分離）。
 - [ ] 10.4 handshake / quarantine / watermark backpressure / instrument 通知 / handshake generation 破棄の integration test を追加または更新する。
   - `installer.install` → `installer.remote().start()` → `installer.spawn_run_task()` の起動順序を検証
   - `Remoting::quarantine` を run と並行して呼ぶケースも含めて検証（per-event lock の隙間で進行することを確認）
   - `installer.shutdown_and_join().await` で graceful shutdown が成立することを検証
   - `Remoting::shutdown` 単独呼び出し後、event 1 件で run loop が終了することも検証
 - [ ] 10.5 showcase（`showcases/std/remote_lifecycle/` 等）が新 API で起動することを確認する。
+- [ ] 10.6 follow-up change の境界を確認する。
+  - 本 change は remote 側契約（provider 経由 enqueue まで）で完了とする
+  - `ClusterApi::get` / `GrainRef` から remote delivery までの integration test、remoting lifecycle event の cluster topology 反映、`subscribe_remoting_events` の購読 lifetime 修正は追加 change（候補名: `prove-cluster-uses-remote-adaptor`）で扱う
 
 ## 11. 検証
 

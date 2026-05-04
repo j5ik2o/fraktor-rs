@@ -220,6 +220,25 @@ local actor が remote ref に tell する経路で、adapter は `OutboundEnvel
 - **THEN** adapter は失敗を caller が観測できる `SendError` 等に変換して返す
 - **AND** 補助的な metrics/log を追加する場合でも、主たる失敗を握りつぶしてはならない
 
+### Requirement: actor-core provider 経由の remote sender 契約
+
+adapter は actor-core の `ActorRefProvider` surface から remote path を解決した `ActorRef` について、送信時に `RemoteEvent::OutboundEnqueued` を adapter 内部 sender へ push する remote sender を提供する SHALL。cluster-* はこの provider surface 経由で remote actor ref を取得するため、本 requirement は cluster 固有の integration を持ち込まず remote-adaptor 側の利用契約だけを固定する。
+
+#### Scenario: remote path 解決後の ActorRef sender
+
+- **WHEN** actor-core が `StdRemoteActorRefProvider` 相当に remote authority を持つ `ActorPath` の解決を依頼する
+- **THEN** provider は remote path 用の `ActorRef` を返す
+- **AND** その sender は `RemoteActorRefSender` 相当であり、`ActorRefSender::send` 呼び出し時に `OutboundEnvelope` を構築する
+- **AND** 構築した envelope は `RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms }` として adapter 内部 sender に同期 push される
+- **AND** push 失敗は caller が観測できる `SendError` 等へ変換される
+
+#### Scenario: cluster 固有 integration は本 capability に含めない
+
+- **WHEN** 本 change の acceptance を定義する
+- **THEN** `ClusterApi::get` / `GrainRef` / cluster topology 更新の end-to-end integration test は要求しない
+- **AND** それらは remote 側契約完成後の追加 change で扱う
+- **AND** 本 change では `fraktor-cluster-adaptor-std-rs` の既存テスト green により `Remoting` trait 変更の波及だけを確認する
+
 ### Requirement: 効果適用から StartHandshake 分岐を削除する
 
 adapter 側の `effect_application::apply_effects_in_place`（または相当箇所）から `AssociationEffect::StartHandshake` の dispatch 分岐を削除する SHALL。`Remote::handle_remote_event` 側が `RemoteTransport` 経由で handshake を開始するため、adapter 側で同 effect を扱う必要がない。

@@ -77,7 +77,7 @@
 
 - **WHEN** ユーザーが複数 instrument を併用したい
 - **THEN** `pub struct MyComposite { recorder: RemotingFlightRecorder, metrics: MyMetrics }` のような独自 struct を定義し、`impl RemoteInstrument for MyComposite` で各 method を順次 dispatch する形にする
-- **AND** core 側ライブラリは composite ヘルパを提供しない（YAGNI、Pekko の `Vector[RemoteInstrument]` 同等の構造はユーザーが必要に応じて書く）
+- **AND** core 側ライブラリは composite ヘルパを提供しない（YAGNI、必要な場合はユーザーが独自 composite を書く）
 
 ### Requirement: RemotingFlightRecorder は RemoteInstrument を実装する
 
