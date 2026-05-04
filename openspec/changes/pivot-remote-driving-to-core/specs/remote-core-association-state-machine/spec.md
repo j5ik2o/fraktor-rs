@@ -23,12 +23,12 @@
 #### Scenario: enqueue / next_outbound で on_send 発火
 
 - **WHEN** `Association::next_outbound` が `Some(envelope)` を返す
-- **THEN** 同一呼出または直後の `Remote::run` 経路で `RemoteInstrument::on_send(&envelope)` が呼ばれる
-- **AND** 呼び出し点は Association 内部または `Remote::run` の outbound 駆動経路のいずれかで明文化される
+- **THEN** 同一呼出または直後の `Remote::handle_remote_event` 経路で `RemoteInstrument::on_send(&envelope)` が呼ばれる
+- **AND** 呼び出し点は Association 内部または `Remote::handle_remote_event` の outbound 駆動経路のいずれかで明文化される
 
 #### Scenario: inbound dispatch で on_receive 発火
 
-- **WHEN** `Remote::run` が `Codec::decode` した `InboundEnvelope` を Association に渡す
+- **WHEN** `Remote::handle_remote_event` が inbound core wire frame を decode し、復元した inbound envelope 相当の値を Association に渡す
 - **THEN** `RemoteInstrument::on_receive(&envelope)` が呼ばれる
 
 #### Scenario: apply_backpressure で record_backpressure
@@ -39,31 +39,32 @@
 
 ### Requirement: instrument 引数の渡し方
 
-`Association` の状態遷移メソッドおよび送受信メソッドは `&mut dyn RemoteInstrument` を引数で受け取り、`Association` 自身が instrument を field として所有してはならない（MUST NOT）。型パラメータ `<I: RemoteInstrument>` を `Association` メソッドに導入してはならない（MUST NOT）。
+`Association` の状態遷移メソッドおよび送受信メソッドは `&mut dyn RemoteInstrument` を引数で受け取り、`Association` 自身が instrument を field として所有してはならない（MUST NOT）。型パラメータ `<I: RemoteInstrument>` を `Association` メソッドに導入してはならない（MUST NOT）。正式リリース前の破壊的変更を許容し、最終形では instrument を通らない公開 mutation API と `*_with_instrument` 併設 API を残さない。
 
 #### Scenario: instrument を field 保持しない
 
 - **WHEN** `Association` 構造体のフィールドを検査する
 - **THEN** `RemoteInstrument` を直接または間接的に保持しない
-- **AND** instrument 参照は呼び出し時に外部（`Remote::run`）から渡される
+- **AND** instrument 参照は呼び出し時に外部（`Remote::handle_remote_event`）から渡される
 
 #### Scenario: hook 系メソッドの引数
 
 - **WHEN** `Association::associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `apply_backpressure` の最終シグネチャを検査する
-- **THEN** いずれも `instrument: &mut dyn RemoteInstrument` を引数として受け取る経路が確立されている
-- **AND** 呼び出し側（`Remote::run`）は `&mut *self.instrument`（`self.instrument: Box<dyn RemoteInstrument + Send>` から `DerefMut` 経由）で参照を取得する
+- **THEN** いずれも `instrument: &mut dyn RemoteInstrument` を引数として受け取る
+- **AND** 呼び出し側（`Remote::handle_remote_event`）は `&mut *self.instrument`（`self.instrument: Box<dyn RemoteInstrument + Send>` から `DerefMut` 経由）で参照を取得する
 - **AND** メソッドシグネチャに型パラメータ `<I>` が出現しない
+- **AND** 同じ責務を持つ `*_with_instrument` 併設 API と instrument 無し API が同時に公開されていない
 
 #### Scenario: enqueue / next_outbound のシグネチャ
 
 - **WHEN** `Association::enqueue` および `Association::next_outbound` のシグネチャを検査する
 - **THEN** `Association::enqueue(envelope)` は instrument 引数を取らない（純粋な queue 投入のみで I/O を伴わないため）
-- **AND** `on_send` の発火は `Association::next_outbound` の戻り値経路（または `Remote::run` の outbound drain helper）で行い、その時点で `&mut dyn RemoteInstrument` を渡すか戻り値経由で発火する
+- **AND** `on_send` の発火は `Association::next_outbound` の戻り値経路（または `Remote::handle_remote_event` の outbound drain helper）で行い、その時点で `&mut dyn RemoteInstrument` を渡すか戻り値経由で発火する
 - **AND** 「enqueue で on_send」「next_outbound で on_send」の二重発火が起きない
 
 ### Requirement: outbound queue の総長クエリ
 
-`Association` は outbound queue（`SendQueue` の system + user）の合計長を返すクエリメソッドを提供する SHALL。これは `Remote::run` が watermark backpressure を制御するために使用する。
+`Association` は outbound queue（`SendQueue` の system + user）の合計長を返すクエリメソッドを提供する SHALL。これは `Remote::handle_remote_event` が watermark backpressure を制御するために使用する。
 
 #### Scenario: total_outbound_len のシグネチャ
 
@@ -78,7 +79,7 @@
 
 ### Requirement: watermark 連動の自動 backpressure 発火経路
 
-`Remote::run` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure` を呼び出して signal を発火する SHALL。Association 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない（同じ signal セマンティクスで動作する）。
+`Remote::handle_remote_event` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure` を呼び出して signal を発火する SHALL。Association 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない（同じ signal セマンティクスで動作する）。
 
 #### Scenario: 既存 BackpressureSignal::Apply / Release の流用
 
@@ -92,18 +93,18 @@
 - **THEN** `Association` は idempotent に動作し、2 回目は state 遷移を伴わない
 - **AND** instrument の `record_backpressure` は state 変化を伴った発火点でのみ呼ばれる（または instrument 側で重複を吸収する）
 
-### Requirement: AssociationEffect::StartHandshake は Remote::run で実行される（adapter 無視を禁止）
+### Requirement: AssociationEffect::StartHandshake は Remote::handle_remote_event で実行される（adapter 無視を禁止）
 
-`Association::recover` および `associate` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を出力した場合、その effect は `Remote::run` の経路で `RemoteTransport` 経由の handshake 開始に dispatch されなければならない（MUST）。adapter 側で `StartHandshake` を ignore する分岐を持ってはならない（MUST NOT）。
+`Association::recover` および `associate` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を出力した場合、その effect は `Remote::handle_remote_event` の経路で `RemoteTransport` 経由の handshake 開始に dispatch されなければならない（MUST）。adapter 側で `StartHandshake` を ignore する分岐を持ってはならない（MUST NOT）。
 
-#### Scenario: Remote::run による StartHandshake 実行（2 ステップ）
+#### Scenario: Remote::handle_remote_event による StartHandshake 実行（2 ステップ）
 
 - **WHEN** `Association::recover(Some(endpoint), now)` または `associate(...)` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を返す
-- **THEN** `Remote::run` は同一 effect 列処理の中で次の 2 ステップを順に実行する
+- **THEN** `Remote::handle_remote_event` は同一 effect 列処理の中で次の 2 ステップを順に実行する
   1. `HandshakePdu::Req(HandshakeReq::new(local, remote))` を構築し、`RemoteTransport::send_handshake` で送出する
   2. 続けて `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)`（`remote-core-transport-port` capability で要件化）を呼ぶ
 - **AND** ステップ 1 が `Err` の場合、ステップ 2 は呼ばれない
-- **AND** adapter 側は `schedule_handshake_timeout` 呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で receiver に push する
+- **AND** adapter 側は `schedule_handshake_timeout` 呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }` を adapter 内部 sender 経由で receiver に push する
 
 #### Scenario: adapter 側の StartHandshake 無視分岐の不在
 
@@ -122,8 +123,8 @@
 
 #### Scenario: 古い timeout の無視
 
-- **WHEN** `Remote::run` が `RemoteEvent::HandshakeTimerFired { authority, generation: g_event }` を受信し、現在の `Association` の generation が `g_current` であって `g_current != g_event` である
-- **THEN** `Remote::run` は `Association::handshake_timed_out` を呼ばず、event を破棄する
+- **WHEN** `Remote::handle_remote_event` が `RemoteEvent::HandshakeTimerFired { authority, generation: g_event }` を受信し、現在の `Association` の generation が `g_current` であって `g_current != g_event` である
+- **THEN** `Remote::handle_remote_event` は `Association::handshake_timed_out` を呼ばず、event を破棄する
 - **AND** 破棄は instrument の `record_handshake` を発火しない（古いイベントなので観測対象外）
 - **AND** 比較演算子は `!=` を使用する（`>` は使用しない。`wrapping_add` で +1 を続けると `u64::MAX → 0` の wrap 時に `g_current > g_event` が成立せず stale 判定が漏れるため）
 
