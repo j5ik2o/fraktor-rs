@@ -19,13 +19,15 @@ use fraktor_remote_core_rs::core::{
 };
 use tokio::{
   sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
-  time::sleep,
+  task::JoinHandle,
+  time::{Instant, sleep},
 };
 
 use super::{
   client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
   wire_frame::WireFrame,
 };
+use crate::std::association::run_inbound_dispatch;
 
 /// TCP-backed implementation of [`RemoteTransport`].
 ///
@@ -52,6 +54,7 @@ pub struct TcpRemoteTransport {
   inbound_tx:      UnboundedSender<InboundFrameEvent>,
   inbound_rx:      Option<UnboundedReceiver<InboundFrameEvent>>,
   remote_event_tx: Option<Sender<RemoteEvent>>,
+  inbound_worker:  Option<JoinHandle<Result<(), TransportError>>>,
   running:         bool,
 }
 
@@ -112,6 +115,7 @@ impl TcpRemoteTransport {
       inbound_tx,
       inbound_rx: Some(inbound_rx),
       remote_event_tx: None,
+      inbound_worker: None,
       running: false,
     }
   }
@@ -131,6 +135,27 @@ impl TcpRemoteTransport {
   #[must_use]
   pub fn take_inbound_receiver(&mut self) -> Option<UnboundedReceiver<InboundFrameEvent>> {
     self.inbound_rx.take()
+  }
+
+  fn spawn_inbound_worker(&mut self) {
+    let Some(event_sender) = self.remote_event_tx.clone() else {
+      return;
+    };
+    let Some(inbound_rx) = self.inbound_rx.take() else {
+      return;
+    };
+    let frame_codec = self.frame_codec;
+    let started_at = Instant::now();
+    let handle = tokio::spawn(async move {
+      run_inbound_dispatch(
+        inbound_rx,
+        event_sender,
+        move || started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+        frame_codec,
+      )
+      .await
+    });
+    self.inbound_worker = Some(handle);
   }
 
   /// Establishes an outbound connection to `remote` and stores the client.
@@ -212,6 +237,7 @@ impl RemoteTransport for TcpRemoteTransport {
     let bound_addr = self.server.start(self.inbound_tx.clone())?;
     self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;
+    self.spawn_inbound_worker();
     Ok(())
   }
 
@@ -222,6 +248,9 @@ impl RemoteTransport for TcpRemoteTransport {
     self.server.shutdown();
     for (_peer, client) in self.clients.iter_mut() {
       client.shutdown();
+    }
+    if let Some(handle) = self.inbound_worker.take() {
+      handle.abort();
     }
     self.clients.clear();
     self.running = false;
@@ -252,11 +281,13 @@ impl RemoteTransport for TcpRemoteTransport {
       return Err(TransportError::NotAvailable);
     };
     let authority = authority.clone();
+    let started_at = Instant::now();
     // タイマー task は transport 停止後でも generation 判定で破棄可能な閉じた通知だけを送る。
     // JoinHandle は shutdown 契約に含めず、送信失敗は task 内で WARN に記録する。
     let _timer_task = tokio::spawn(async move {
       sleep(timeout).await;
-      if let Err(error) = sender.send(RemoteEvent::HandshakeTimerFired { authority, generation }).await {
+      let now_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+      if let Err(error) = sender.send(RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }).await {
         tracing::warn!(?error, "handshake timeout event delivery failed");
       }
     });

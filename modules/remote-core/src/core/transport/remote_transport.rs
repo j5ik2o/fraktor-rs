@@ -75,11 +75,12 @@ pub trait RemoteTransport {
   /// Schedules a generation-scoped handshake timeout for `authority`.
   ///
   /// Adapter implementations are responsible for pushing
-  /// `RemoteEvent::HandshakeTimerFired { authority, generation }` through their
-  /// internal event sender when the timeout expires. `Remote::run` compares the
-  /// event generation with the current association generation and discards stale
-  /// timer events, so adapters do not need a cancellation API for superseded
-  /// timers.
+  /// `RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }`
+  /// through their internal event sender when the timeout expires. `now_ms`
+  /// must come from a monotonic clock owned by the adapter. `Remote::run`
+  /// compares the event generation with the current association generation and
+  /// discards stale timer events, so adapters do not need a cancellation API for
+  /// superseded timers.
   ///
   /// # Errors
   ///

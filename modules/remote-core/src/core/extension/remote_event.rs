@@ -16,6 +16,8 @@ pub enum RemoteEvent {
     authority: TransportEndpoint,
     /// Raw frame bytes.
     frame:     Vec<u8>,
+    /// Monotonic millis at which the frame was observed.
+    now_ms:    u64,
   },
   /// A generation-scoped handshake timer fired.
   HandshakeTimerFired {
@@ -23,6 +25,8 @@ pub enum RemoteEvent {
     authority:  TransportEndpoint,
     /// Handshake generation carried by the scheduled timer.
     generation: u64,
+    /// Monotonic millis at which the timer fired.
+    now_ms:     u64,
   },
   /// An outbound envelope has been submitted by adapter code.
   OutboundEnqueued {
@@ -39,6 +43,8 @@ pub enum RemoteEvent {
     authority: TransportEndpoint,
     /// Transport-level cause.
     cause:     ConnectionLostCause,
+    /// Monotonic millis at which the loss was observed.
+    now_ms:    u64,
   },
   /// The transport should stop the event loop.
   TransportShutdown,

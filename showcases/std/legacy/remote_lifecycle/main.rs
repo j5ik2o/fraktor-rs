@@ -63,11 +63,9 @@ async fn main() {
 
   installer.install(&system).expect("remote extension install");
   let remote = installer.remote().expect("installed remote handle");
-  remote.with_lock(|remote| {
-    remote.start().expect("remote lifecycle start");
-    assert_eq!(remote.addresses(), core::slice::from_ref(&advertised_address));
-    remote.shutdown().expect("remote lifecycle shutdown");
-  });
+  remote.start().expect("remote lifecycle start");
+  assert_eq!(remote.addresses(), vec![advertised_address.clone()]);
+  installer.shutdown_and_join().await.expect("remote lifecycle shutdown");
 
   let expected_authority = advertised_address.to_string();
   let observed_events = events.with_lock(|events| events.clone());

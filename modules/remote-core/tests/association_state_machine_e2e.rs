@@ -17,6 +17,7 @@ use fraktor_remote_core_rs::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},
+  instrument::RemotingFlightRecorder,
   transport::{BackpressureSignal, TransportEndpoint},
   wire::HandshakeRsp,
 };
@@ -67,9 +68,10 @@ fn system_envelope(payload: &str) -> OutboundEnvelope {
 fn full_lifecycle_associate_handshake_send_quarantine_recover() {
   let mut association = Association::new(local_address(), remote_address());
   let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let mut instrument = RemotingFlightRecorder::new(0);
 
   // 1. Idle → Handshaking → Active
-  let effects = association.associate(endpoint.clone(), 100);
+  let effects = association.associate(endpoint.clone(), 100, &mut instrument);
   assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { .. }]));
 
   // While Handshaking, enqueue should defer messages.
@@ -79,8 +81,9 @@ fn full_lifecycle_associate_handshake_send_quarantine_recover() {
 
   // Complete the handshake → Active.
   let response = HandshakeRsp::new(remote_unique_address());
-  let effects =
-    association.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  let effects = association
+    .accept_handshake_response(&response, 200, &mut instrument)
+    .expect("matching handshake response should be accepted");
   let send_effect = effects.iter().find(|effect| matches!(effect, AssociationEffect::SendEnvelopes { .. }));
   assert!(send_effect.is_some(), "deferred queue should flush as SendEnvelopes");
   if let Some(AssociationEffect::SendEnvelopes { envelopes }) = send_effect {
@@ -94,25 +97,28 @@ fn full_lifecycle_associate_handshake_send_quarantine_recover() {
   assert!(!association.send_queue().is_empty());
 
   // System priority drains first.
-  let next = association.next_outbound().expect("system message");
+  let next = association.next_outbound(200, &mut instrument).expect("system message");
   assert!(matches!(next.priority(), OutboundPriority::System));
-  let next = association.next_outbound().expect("user message");
+  let next = association.next_outbound(200, &mut instrument).expect("user message");
   assert!(matches!(next.priority(), OutboundPriority::User));
 
   // 3. Backpressure pauses the user lane.
   let _ = association.enqueue(user_envelope("u4"), 300);
   let _ = association.enqueue(system_envelope("s2"), 300);
-  association.apply_backpressure(BackpressureSignal::Apply);
-  let next = association.next_outbound().expect("system bypasses backpressure");
+  association.apply_backpressure(BackpressureSignal::Apply, CorrelationId::nil(), 300, &mut instrument);
+  let next = association.next_outbound(300, &mut instrument).expect("system bypasses backpressure");
   assert!(matches!(next.priority(), OutboundPriority::System));
-  assert!(association.next_outbound().is_none(), "user lane must remain paused while backpressure is applied");
-  association.apply_backpressure(BackpressureSignal::Release);
-  let next = association.next_outbound().expect("user resumes after release");
+  assert!(
+    association.next_outbound(300, &mut instrument).is_none(),
+    "user lane must remain paused while backpressure is applied"
+  );
+  association.apply_backpressure(BackpressureSignal::Release, CorrelationId::nil(), 300, &mut instrument);
+  let next = association.next_outbound(300, &mut instrument).expect("user resumes after release");
   assert!(matches!(next.priority(), OutboundPriority::User));
 
   // 4. Quarantine discards every pending envelope.
   let _ = association.enqueue(user_envelope("u5"), 400);
-  let effects = association.quarantine(QuarantineReason::new("e2e test"), 1_000);
+  let effects = association.quarantine(QuarantineReason::new("e2e test"), 1_000, &mut instrument);
   assert!(association.state().is_quarantined());
   assert!(
     effects.iter().any(|e| matches!(e, AssociationEffect::DiscardEnvelopes { .. })),
@@ -120,7 +126,7 @@ fn full_lifecycle_associate_handshake_send_quarantine_recover() {
   );
 
   // 5. recover(Some(endpoint)) revives the association into Handshaking.
-  let effects = association.recover(Some(endpoint.clone()), 2_000);
+  let effects = association.recover(Some(endpoint.clone()), 2_000, &mut instrument);
   assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { .. }]));
   assert!(matches!(association.state(), AssociationState::Handshaking { .. }));
 }
@@ -128,7 +134,8 @@ fn full_lifecycle_associate_handshake_send_quarantine_recover() {
 #[test]
 fn enqueue_in_quarantined_state_immediately_emits_discard() {
   let mut association = Association::new(local_address(), remote_address());
-  let _ = association.quarantine(QuarantineReason::new("immediate"), 0);
+  let mut instrument = RemotingFlightRecorder::new(0);
+  let _ = association.quarantine(QuarantineReason::new("immediate"), 0, &mut instrument);
   let effects = association.enqueue(user_envelope("u1"), 0);
   let discards: Vec<_> =
     effects.iter().filter(|effect| matches!(effect, AssociationEffect::DiscardEnvelopes { .. })).collect();

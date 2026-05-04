@@ -17,7 +17,7 @@ use crate::core::{
   },
   config::RemoteConfig,
   envelope::{OutboundEnvelope, OutboundPriority},
-  instrument::{FlightRecorderEvent, HandshakePhase, RemotingFlightRecorder},
+  instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, TransportEndpoint},
   wire::{HandshakeReq, HandshakeRsp},
 };
@@ -205,12 +205,14 @@ fn idle_to_handshaking_to_active_happy_path() {
   let mut a = new_association();
   assert!(a.state().is_idle());
 
-  let effects = a.associate(sample_endpoint(), 100);
+  let effects = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(matches!(a.state(), AssociationState::Handshaking { .. }));
   assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { .. }]));
 
   let response = HandshakeRsp::new(sample_remote_unique());
-  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  let effects = a
+    .accept_handshake_response(&response, 200, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   assert!(a.state().is_active());
   // First effect is the Connected lifecycle publish.
   assert!(matches!(
@@ -224,7 +226,7 @@ fn associate_start_handshake_carries_timeout_and_generation() {
   let config = RemoteConfig::new("localhost").with_handshake_timeout(Duration::from_millis(250));
   let mut association = Association::from_config(sample_local(), sample_remote_addr(), &config);
 
-  let effects = association.associate(sample_endpoint(), 100);
+  let effects = association.associate(sample_endpoint(), 100, &mut NoopInstrument);
 
   assert_eq!(association.handshake_generation(), 1);
   assert!(matches!(
@@ -242,11 +244,13 @@ fn associate_start_handshake_carries_timeout_and_generation() {
 #[test]
 fn accept_handshake_request_transitions_to_active_when_from_and_to_match() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
 
-  let effects = a.accept_handshake_request(&request, 200).expect("matching handshake request should be accepted");
+  let effects = a
+    .accept_handshake_request(&request, 200, &mut NoopInstrument)
+    .expect("matching handshake request should be accepted");
 
   assert!(matches!(
     a.state(),
@@ -265,11 +269,11 @@ fn accept_handshake_request_transitions_to_active_when_from_and_to_match() {
 #[test]
 fn accept_handshake_request_rejects_unexpected_destination_without_state_change() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let request = HandshakeReq::new(sample_remote_unique(), Address::new("other-local", "127.0.0.2", 2551));
 
-  let result = a.accept_handshake_request(&request, 200);
+  let result = a.accept_handshake_request(&request, 200, &mut NoopInstrument);
 
   assert!(result.is_err(), "request addressed to a different local address must be rejected");
   assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 100, .. }));
@@ -278,11 +282,11 @@ fn accept_handshake_request_rejects_unexpected_destination_without_state_change(
 #[test]
 fn accept_handshake_request_rejects_unexpected_remote_without_state_change() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let request = HandshakeReq::new(other_remote_unique(), sample_local().address().clone());
 
-  let result = a.accept_handshake_request(&request, 200);
+  let result = a.accept_handshake_request(&request, 200, &mut NoopInstrument);
 
   assert!(result.is_err(), "request from a different remote address must be rejected");
   assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 100, .. }));
@@ -300,7 +304,7 @@ fn accept_handshake_request_rejects_idle_state_without_state_change() {
   assert!(matches!(a.state(), AssociationState::Idle));
   let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
 
-  let result = a.accept_handshake_request(&request, 200);
+  let result = a.accept_handshake_request(&request, 200, &mut NoopInstrument);
 
   assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })));
   assert!(matches!(a.state(), AssociationState::Idle));
@@ -309,14 +313,14 @@ fn accept_handshake_request_rejects_idle_state_without_state_change() {
 #[test]
 fn accept_handshake_request_rejects_gated_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100);
+  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   // gate() は Active からしか遷移しないため、Handshaking → Gated は
   // handshake_timed_out() 経由で作る。
-  let _ = a.handshake_timed_out(100, Some(500));
+  let _ = a.handshake_timed_out(100, Some(500), &mut NoopInstrument);
   assert!(a.state().is_gated());
   let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
 
-  let result = a.accept_handshake_request(&request, 200);
+  let result = a.accept_handshake_request(&request, 200, &mut NoopInstrument);
 
   assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })));
   assert!(a.state().is_gated());
@@ -325,12 +329,12 @@ fn accept_handshake_request_rejects_gated_state_without_state_change() {
 #[test]
 fn accept_handshake_request_rejects_quarantined_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100);
-  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100);
+  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
+  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100, &mut NoopInstrument);
   assert!(a.state().is_quarantined());
   let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
 
-  let result = a.accept_handshake_request(&request, 200);
+  let result = a.accept_handshake_request(&request, 200, &mut NoopInstrument);
 
   assert!(matches!(
     result,
@@ -345,7 +349,7 @@ fn accept_handshake_response_rejects_idle_state_without_state_change() {
   assert!(matches!(a.state(), AssociationState::Idle));
   let response = HandshakeRsp::new(sample_remote_unique());
 
-  let result = a.accept_handshake_response(&response, 200);
+  let result = a.accept_handshake_response(&response, 200, &mut NoopInstrument);
 
   assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Idle })));
   assert!(matches!(a.state(), AssociationState::Idle));
@@ -354,11 +358,11 @@ fn accept_handshake_response_rejects_idle_state_without_state_change() {
 #[test]
 fn accept_handshake_response_rejects_gated_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100);
-  let _ = a.handshake_timed_out(100, Some(500));
+  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
+  let _ = a.handshake_timed_out(100, Some(500), &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
 
-  let result = a.accept_handshake_response(&response, 200);
+  let result = a.accept_handshake_response(&response, 200, &mut NoopInstrument);
 
   assert!(matches!(result, Err(HandshakeValidationError::RejectedInState { state: HandshakeRejectedState::Gated })));
   assert!(a.state().is_gated());
@@ -367,11 +371,11 @@ fn accept_handshake_response_rejects_gated_state_without_state_change() {
 #[test]
 fn accept_handshake_response_rejects_quarantined_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100);
-  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100);
+  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
+  let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
 
-  let result = a.accept_handshake_response(&response, 200);
+  let result = a.accept_handshake_response(&response, 200, &mut NoopInstrument);
 
   assert!(matches!(
     result,
@@ -383,11 +387,13 @@ fn accept_handshake_response_rejects_quarantined_state_without_state_change() {
 #[test]
 fn accept_handshake_response_transitions_to_active_when_origin_matches_remote() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
 
-  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  let effects = a
+    .accept_handshake_response(&response, 200, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
 
   assert!(matches!(
     a.state(),
@@ -406,11 +412,13 @@ fn accept_handshake_response_transitions_to_active_when_origin_matches_remote() 
 #[test]
 fn accept_handshake_response_sets_last_used_to_acceptance_time() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
 
-  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  let effects = a
+    .accept_handshake_response(&response, 200, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
 
   assert!(!effects.is_empty(), "first accepted response should publish lifecycle effects");
   assert!(matches!(a.state(), AssociationState::Active { established_at: 200, last_used_at: 200, .. }));
@@ -420,14 +428,16 @@ fn accept_handshake_response_sets_last_used_to_acceptance_time() {
 #[test]
 fn accept_handshake_response_refreshes_last_used_for_active_association() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
-  let initial_effects = a.accept_handshake_response(&response, 200).expect("initial response should be accepted");
+  let initial_effects =
+    a.accept_handshake_response(&response, 200, &mut NoopInstrument).expect("initial response should be accepted");
   assert!(!initial_effects.is_empty(), "initial response should complete the handshake");
 
-  let refresh_effects =
-    a.accept_handshake_response(&response, 260).expect("same-origin response should refresh activity");
+  let refresh_effects = a
+    .accept_handshake_response(&response, 260, &mut NoopInstrument)
+    .expect("same-origin response should refresh activity");
 
   assert!(refresh_effects.is_empty(), "refreshing last-used should not republish lifecycle events");
   assert!(matches!(a.state(), AssociationState::Active { established_at: 200, last_used_at: 260, .. }));
@@ -437,10 +447,12 @@ fn accept_handshake_response_refreshes_last_used_for_active_association() {
 #[test]
 fn record_handshake_activity_updates_last_used_without_changing_remote_identity() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
-  let effects = a.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  let effects = a
+    .accept_handshake_response(&response, 200, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   assert!(!effects.is_empty(), "handshake response should complete the handshake");
 
   a.record_handshake_activity(275);
@@ -459,18 +471,19 @@ fn record_handshake_activity_updates_last_used_without_changing_remote_identity(
 #[test]
 fn liveness_probe_due_only_when_active_idle_interval_elapsed() {
   let mut active = new_association();
-  let started = active.associate(sample_endpoint(), 100);
+  let started = active.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
-  let effects =
-    active.accept_handshake_response(&response, 200).expect("matching handshake response should be accepted");
+  let effects = active
+    .accept_handshake_response(&response, 200, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   assert!(!effects.is_empty(), "handshake response should complete the handshake");
 
   assert!(!active.is_liveness_probe_due(249, 50), "probe should not be due before the idle interval");
   assert!(active.is_liveness_probe_due(250, 50), "probe should be due when idle interval elapsed");
 
   let mut handshaking = new_association();
-  let started = handshaking.associate(sample_endpoint(), 100);
+  let started = handshaking.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   assert!(!handshaking.is_liveness_probe_due(10_000, 50), "non-active association must not request liveness probes");
 }
@@ -478,11 +491,11 @@ fn liveness_probe_due_only_when_active_idle_interval_elapsed() {
 #[test]
 fn accept_handshake_response_rejects_unexpected_origin_without_state_change() {
   let mut a = new_association();
-  let started = a.associate(sample_endpoint(), 100);
+  let started = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(other_remote_unique());
 
-  let result = a.accept_handshake_response(&response, 200);
+  let result = a.accept_handshake_response(&response, 200, &mut NoopInstrument);
 
   assert!(result.is_err(), "response from a different remote address must be rejected");
   assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 100, .. }));
@@ -491,8 +504,8 @@ fn accept_handshake_response_rejects_unexpected_origin_without_state_change() {
 #[test]
 fn handshaking_timeout_transitions_to_gated_with_lifecycle() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
-  let effects = a.handshake_timed_out(100, Some(500));
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  let effects = a.handshake_timed_out(100, Some(500), &mut NoopInstrument);
   assert!(a.state().is_gated());
   // Publish Gated lifecycle (deferred queue empty → no DiscardEnvelopes).
   assert_eq!(effects.len(), 1);
@@ -502,13 +515,13 @@ fn handshaking_timeout_transitions_to_gated_with_lifecycle() {
 #[test]
 fn handshaking_timeout_with_deferred_envelopes_emits_discard() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   // Queue two deferred envelopes during handshake.
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
   assert_eq!(a.deferred_len(), 2);
 
-  let effects = a.handshake_timed_out(100, None);
+  let effects = a.handshake_timed_out(100, None, &mut NoopInstrument);
   assert!(effects.iter().any(|e| matches!(e, AssociationEffect::DiscardEnvelopes { .. })));
   assert_eq!(a.deferred_len(), 0);
 }
@@ -516,15 +529,17 @@ fn handshaking_timeout_with_deferred_envelopes_emits_discard() {
 #[test]
 fn active_to_quarantined_publishes_and_discards_pending() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
-  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let _ = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
 
   // Put an envelope into the send queue while Active.
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(!a.send_queue().is_empty());
 
-  let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
+  let effects = a.quarantine(QuarantineReason::new("fatal"), 20, &mut NoopInstrument);
   assert!(a.state().is_quarantined());
   assert!(a.send_queue().is_empty());
   assert!(
@@ -540,7 +555,7 @@ fn quarantine_sets_removal_deadline_from_config() {
   let config = RemoteConfig::new("localhost").with_remove_quarantined_association_after(Duration::from_secs(5));
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
 
-  let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
+  let effects = a.quarantine(QuarantineReason::new("fatal"), 20, &mut NoopInstrument);
 
   assert!(
     effects
@@ -554,7 +569,7 @@ fn quarantine_sets_removal_deadline_from_config() {
 fn quarantine_removal_due_uses_configured_deadline_boundary() {
   let config = RemoteConfig::new("localhost").with_remove_quarantined_association_after(Duration::from_secs(5));
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
-  let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
+  let effects = a.quarantine(QuarantineReason::new("fatal"), 20, &mut NoopInstrument);
   assert!(!effects.is_empty(), "quarantine should emit lifecycle effect");
 
   assert!(!a.is_quarantine_removal_due(5_019));
@@ -565,7 +580,7 @@ fn quarantine_removal_due_uses_configured_deadline_boundary() {
 fn sub_millisecond_remove_quarantined_association_after_does_not_round_to_now() {
   let config = RemoteConfig::new("localhost").with_remove_quarantined_association_after(Duration::from_nanos(1));
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
-  let effects = a.quarantine(QuarantineReason::new("fatal"), 20);
+  let effects = a.quarantine(QuarantineReason::new("fatal"), 20, &mut NoopInstrument);
   assert!(!effects.is_empty(), "quarantine should emit lifecycle effect");
 
   assert!(!a.is_quarantine_removal_due(20));
@@ -575,11 +590,11 @@ fn sub_millisecond_remove_quarantined_association_after_does_not_round_to_now() 
 #[test]
 fn recover_some_endpoint_from_gated_starts_handshake() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_timed_out(10, None); // Gated
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  let _ = a.handshake_timed_out(10, None, &mut NoopInstrument); // Gated
   assert!(a.state().is_gated());
 
-  let effects = a.recover(Some(sample_endpoint()), 30);
+  let effects = a.recover(Some(sample_endpoint()), 30, &mut NoopInstrument);
   assert!(matches!(a.state(), AssociationState::Handshaking { started_at: 30, .. }));
   assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { .. }]));
 }
@@ -587,10 +602,10 @@ fn recover_some_endpoint_from_gated_starts_handshake() {
 #[test]
 fn recover_start_handshake_increments_generation() {
   let mut association = new_association();
-  let _ = association.associate(sample_endpoint(), 0);
-  let _ = association.handshake_timed_out(10, None);
+  let _ = association.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  let _ = association.handshake_timed_out(10, None, &mut NoopInstrument);
 
-  let effects = association.recover(Some(sample_endpoint()), 30);
+  let effects = association.recover(Some(sample_endpoint()), 30, &mut NoopInstrument);
 
   assert_eq!(association.handshake_generation(), 2);
   assert!(matches!(
@@ -604,13 +619,13 @@ fn recover_start_handshake_increments_generation() {
 }
 
 #[test]
-fn recover_with_instrument_records_started_phase() {
+fn recover_records_started_phase() {
   let mut association = new_association();
   let mut recorder = RemotingFlightRecorder::new(4);
-  let _ = association.associate(sample_endpoint(), 0);
-  let _ = association.handshake_timed_out(10, None);
+  let _ = association.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  let _ = association.handshake_timed_out(10, None, &mut NoopInstrument);
 
-  let effects = association.recover_with_instrument(Some(sample_endpoint()), 30, &mut recorder);
+  let effects = association.recover(Some(sample_endpoint()), 30, &mut recorder);
 
   assert!(matches!(association.state(), AssociationState::Handshaking { started_at: 30, .. }));
   assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { .. }]));
@@ -630,11 +645,11 @@ fn recover_with_instrument_records_started_phase() {
 #[test]
 fn recover_some_endpoint_from_quarantined_starts_handshake() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.quarantine(QuarantineReason::new("boom"), 10);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  let _ = a.quarantine(QuarantineReason::new("boom"), 10, &mut NoopInstrument);
   assert!(a.state().is_quarantined());
 
-  let effects = a.recover(Some(sample_endpoint()), 50);
+  let effects = a.recover(Some(sample_endpoint()), 50, &mut NoopInstrument);
   assert!(matches!(a.state(), AssociationState::Handshaking { .. }));
   assert_eq!(effects.len(), 1);
   assert!(matches!(effects[0], AssociationEffect::StartHandshake { .. }));
@@ -643,10 +658,10 @@ fn recover_some_endpoint_from_quarantined_starts_handshake() {
 #[test]
 fn recover_none_from_gated_returns_to_idle() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
-  let _ = a.handshake_timed_out(10, None); // Gated
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  let _ = a.handshake_timed_out(10, None, &mut NoopInstrument); // Gated
 
-  let effects = a.recover(None, 20);
+  let effects = a.recover(None, 20, &mut NoopInstrument);
   assert!(a.state().is_idle());
   assert!(effects.is_empty());
 }
@@ -654,12 +669,14 @@ fn recover_none_from_gated_returns_to_idle() {
 #[test]
 fn recover_from_active_is_no_op() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
-  let _ = a.accept_handshake_response(&response, 5).expect("matching handshake response should be accepted");
+  let _ = a
+    .accept_handshake_response(&response, 5, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   assert!(a.state().is_active());
 
-  let effects = a.recover(Some(sample_endpoint()), 10);
+  let effects = a.recover(Some(sample_endpoint()), 10, &mut NoopInstrument);
   assert!(a.state().is_active(), "Active state should be untouched by recover");
   assert!(effects.is_empty());
 }
@@ -668,8 +685,8 @@ fn recover_from_active_is_no_op() {
 fn recover_from_idle_is_no_op() {
   let mut a = new_association();
   assert!(a.state().is_idle());
-  let e1 = a.recover(Some(sample_endpoint()), 10);
-  let e2 = a.recover(None, 10);
+  let e1 = a.recover(Some(sample_endpoint()), 10, &mut NoopInstrument);
+  let e2 = a.recover(None, 10, &mut NoopInstrument);
   assert!(a.state().is_idle());
   assert!(e1.is_empty());
   assert!(e2.is_empty());
@@ -678,8 +695,8 @@ fn recover_from_idle_is_no_op() {
 #[test]
 fn recover_from_handshaking_is_no_op() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
-  let effects = a.recover(Some(sample_endpoint()), 10);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  let effects = a.recover(Some(sample_endpoint()), 10, &mut NoopInstrument);
   assert!(matches!(a.state(), AssociationState::Handshaking { .. }));
   assert!(effects.is_empty());
 }
@@ -691,9 +708,11 @@ fn recover_from_handshaking_is_no_op() {
 #[test]
 fn enqueue_in_active_pushes_into_send_queue() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
-  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let _ = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
 
   let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
   assert!(effects.is_empty());
@@ -705,10 +724,12 @@ fn enqueue_in_active_pushes_into_send_queue() {
 fn enqueue_in_active_discards_when_user_queue_is_full() {
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(1).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
-  let started = a.associate(sample_endpoint(), 0);
+  let started = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
-  let accepted = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let accepted = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
   assert!(a.state().is_active());
 
@@ -724,10 +745,12 @@ fn enqueue_in_active_discards_when_user_queue_is_full() {
 fn enqueue_in_active_quarantines_when_control_queue_is_full() {
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
-  let started = a.associate(sample_endpoint(), 0);
+  let started = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
-  let accepted = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let accepted = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
   assert!(a.state().is_active());
 
@@ -777,7 +800,7 @@ fn enqueue_in_idle_uses_configured_control_deferred_capacity_independently_from_
 #[test]
 fn enqueue_in_handshaking_pushes_into_deferred() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
 
   let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(effects.is_empty());
@@ -789,7 +812,7 @@ fn enqueue_in_handshaking_pushes_into_deferred() {
 fn enqueue_in_handshaking_uses_configured_control_deferred_capacity_independently_from_message_queue_size() {
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
-  let started = a.associate(sample_endpoint(), 0);
+  let started = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
 
   let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 0);
@@ -803,9 +826,11 @@ fn enqueue_in_handshaking_uses_configured_control_deferred_capacity_independentl
 #[test]
 fn enqueue_in_gated_pushes_into_deferred() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
-  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let _ = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   let _ = a.gate(Some(100), 20);
   assert!(a.state().is_gated());
 
@@ -818,10 +843,12 @@ fn enqueue_in_gated_pushes_into_deferred() {
 fn enqueue_in_gated_uses_configured_control_deferred_capacity_independently_from_message_queue_size() {
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
-  let started = a.associate(sample_endpoint(), 0);
+  let started = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
-  let accepted = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let accepted = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
   let gated = a.gate(Some(100), 20);
   assert!(!gated.is_empty(), "active association should enter gated state");
@@ -846,7 +873,7 @@ fn enqueue_in_idle_pushes_into_deferred() {
 #[test]
 fn enqueue_in_quarantined_emits_discard_effect() {
   let mut a = new_association();
-  let _ = a.quarantine(QuarantineReason::new("nope"), 0);
+  let _ = a.quarantine(QuarantineReason::new("nope"), 0, &mut NoopInstrument);
   assert!(a.state().is_quarantined());
 
   let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
@@ -860,12 +887,14 @@ fn enqueue_in_quarantined_emits_discard_effect() {
 #[test]
 fn deferred_envelopes_flush_on_handshake_accepted() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
 
   let response = HandshakeRsp::new(sample_remote_unique());
-  let effects = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let effects = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   // Expect a SendEnvelopes effect flushing the deferred queue.
   let send =
     effects.iter().find(|e| matches!(e, AssociationEffect::SendEnvelopes { .. })).expect("SendEnvelopes effect");
@@ -882,35 +911,39 @@ fn deferred_envelopes_flush_on_handshake_accepted() {
 #[test]
 fn next_outbound_returns_system_then_user_through_association() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
-  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let _ = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
   let _ = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 10);
   assert_eq!(a.total_outbound_len(), 2);
 
-  let first = a.next_outbound().expect("first");
+  let first = a.next_outbound(0, &mut NoopInstrument).expect("first");
   assert!(matches!(first.priority(), OutboundPriority::System));
-  let second = a.next_outbound().expect("second");
+  let second = a.next_outbound(0, &mut NoopInstrument).expect("second");
   assert!(matches!(second.priority(), OutboundPriority::User));
-  assert!(a.next_outbound().is_none());
+  assert!(a.next_outbound(0, &mut NoopInstrument).is_none());
 }
 
 #[test]
 fn apply_backpressure_propagates_to_send_queue() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0);
+  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
-  let _ = a.accept_handshake_response(&response, 10).expect("matching handshake response should be accepted");
+  let _ = a
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
   let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
 
-  a.apply_backpressure(BackpressureSignal::Apply);
+  a.apply_backpressure(BackpressureSignal::Apply, CorrelationId::nil(), 0, &mut NoopInstrument);
   assert!(a.send_queue().is_user_paused());
-  assert!(a.next_outbound().is_none(), "user lane should be paused");
+  assert!(a.next_outbound(0, &mut NoopInstrument).is_none(), "user lane should be paused");
 
-  a.apply_backpressure(BackpressureSignal::Release);
+  a.apply_backpressure(BackpressureSignal::Release, CorrelationId::nil(), 0, &mut NoopInstrument);
   assert!(!a.send_queue().is_user_paused());
-  let env = a.next_outbound().expect("released");
+  let env = a.next_outbound(0, &mut NoopInstrument).expect("released");
   assert!(matches!(env.priority(), OutboundPriority::User));
 }
 
@@ -919,15 +952,15 @@ fn instrumented_association_methods_record_hooks_in_order() {
   let mut association = new_association();
   let mut recorder = RemotingFlightRecorder::new(8);
 
-  let started = association.associate_with_instrument(sample_endpoint(), 10, &mut recorder);
+  let started = association.associate(sample_endpoint(), 10, &mut recorder);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
   let accepted = association
-    .accept_handshake_response_with_instrument(&response, 20, &mut recorder)
+    .accept_handshake_response(&response, 20, &mut recorder)
     .expect("matching handshake response should be accepted");
   assert!(!accepted.is_empty(), "first handshake response should publish lifecycle effects");
-  association.apply_backpressure_with_instrument(BackpressureSignal::Apply, CorrelationId::nil(), 30, &mut recorder);
-  let quarantined = association.quarantine_with_instrument(QuarantineReason::new("fatal"), 40, &mut recorder);
+  association.apply_backpressure(BackpressureSignal::Apply, CorrelationId::nil(), 30, &mut recorder);
+  let quarantined = association.quarantine(QuarantineReason::new("fatal"), 40, &mut recorder);
   assert!(!quarantined.is_empty(), "quarantine should emit lifecycle effects");
 
   let events = recorder.snapshot().events().to_vec();
@@ -969,9 +1002,9 @@ fn instrumented_timeout_records_timed_out_phase() {
   let mut association = new_association();
   let mut recorder = RemotingFlightRecorder::new(4);
 
-  let started = association.associate_with_instrument(sample_endpoint(), 10, &mut recorder);
+  let started = association.associate(sample_endpoint(), 10, &mut recorder);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
-  let timed_out = association.handshake_timed_out_with_instrument(20, Some(50), &mut recorder);
+  let timed_out = association.handshake_timed_out(20, Some(50), &mut recorder);
   assert!(!timed_out.is_empty(), "timeout should emit lifecycle effects");
 
   let events = recorder.snapshot().events().to_vec();
@@ -985,7 +1018,7 @@ fn instrumented_timeout_records_timed_out_phase() {
       },
       FlightRecorderEvent::Handshake {
         authority,
-        phase: HandshakePhase::TimedOut,
+        phase: HandshakePhase::Rejected,
         now_ms: 20
       }
     ] if authority == "remote-sys@10.0.0.1:2552"

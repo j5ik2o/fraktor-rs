@@ -295,7 +295,8 @@ async fn remote_transport_schedules_handshake_timeout_event() {
     event,
     RemoteEvent::HandshakeTimerFired {
       authority: received_authority,
-      generation: 7
+      generation: 7,
+      ..
     } if received_authority == authority
   ));
 

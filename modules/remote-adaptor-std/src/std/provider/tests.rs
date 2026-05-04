@@ -17,17 +17,19 @@ use fraktor_remote_core_rs::core::{
   address::{Address as RemoteCoreAddress, RemoteNodeId, UniqueAddress},
   extension::{
     REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
+    RemoteEvent,
   },
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
+  transport::TransportEndpoint,
 };
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::std::{
   provider::{
     RemoteRouteeExpansion, RemoteRouteeExpansionError, StdRemoteActorRefProvider, StdRemoteActorRefProviderError,
   },
   tests::test_support::EventHarness,
-  transport::tcp::TcpRemoteTransport,
 };
 
 // ---------------------------------------------------------------------------
@@ -127,6 +129,7 @@ struct ProviderFixture {
   provider:        StdRemoteActorRefProvider,
   actor_ref_calls: SharedLock<Vec<ActorPath>>,
   event_harness:   EventHarness,
+  event_rx:        Receiver<RemoteEvent>,
 }
 
 impl ProviderFixture {
@@ -154,33 +157,49 @@ fn make_provider_fixture() -> ProviderFixture {
   let actor_ref_calls = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
   let remote_provider =
     Box::new(StubRemoteProvider::new(actor_ref_calls.clone())) as Box<dyn RemoteActorRefProvider + Send + Sync>;
-  let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", Vec::new()));
+  let (event_tx, event_rx) = mpsc::channel(8);
   let event_harness = EventHarness::new();
   let provider = StdRemoteActorRefProvider::new(
     local_address(),
     local_actor_ref_provider_handle_shared,
     remote_provider,
-    transport,
+    event_tx,
     ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
   );
-  ProviderFixture { provider, actor_ref_calls, event_harness }
+  ProviderFixture { provider, actor_ref_calls, event_harness, event_rx }
 }
 
 fn make_provider() -> StdRemoteActorRefProvider {
   make_provider_fixture().provider
 }
 
-fn make_provider_with_remote_error(error: ProviderError) -> StdRemoteActorRefProvider {
+fn make_provider_with_event_sender(event_sender: Sender<RemoteEvent>) -> StdRemoteActorRefProvider {
   let local_actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(LocalActorRefProvider::new());
-  let remote_provider = Box::new(RejectingRemoteProvider::new(error)) as Box<dyn RemoteActorRefProvider + Send + Sync>;
-  let transport = SharedLock::new_with_driver::<DefaultMutex<_>>(TcpRemoteTransport::new("127.0.0.1:0", Vec::new()));
+  let actor_ref_calls = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
+  let remote_provider =
+    Box::new(StubRemoteProvider::new(actor_ref_calls)) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let event_harness = EventHarness::new();
   StdRemoteActorRefProvider::new(
     local_address(),
     local_actor_ref_provider_handle_shared,
     remote_provider,
-    transport,
+    event_sender,
+    ActorRefResolveCache::default(),
+    event_harness.publisher().clone(),
+  )
+}
+
+fn make_provider_with_remote_error(error: ProviderError) -> StdRemoteActorRefProvider {
+  let local_actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(LocalActorRefProvider::new());
+  let remote_provider = Box::new(RejectingRemoteProvider::new(error)) as Box<dyn RemoteActorRefProvider + Send + Sync>;
+  let (event_tx, _event_rx) = mpsc::channel(8);
+  let event_harness = EventHarness::new();
+  StdRemoteActorRefProvider::new(
+    local_address(),
+    local_actor_ref_provider_handle_shared,
+    remote_provider,
+    event_tx,
     ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
   )
@@ -290,19 +309,63 @@ fn remote_actor_ref_resolution_publishes_cache_miss_then_hit_events() {
   assert_eq!(events[1].outcome(), RemoteActorRefResolveCacheOutcome::Hit);
 }
 
+fn assert_outbound_enqueued_event(event: RemoteEvent, expected_authority: &str, expected_path: &ActorPath) {
+  match event {
+    | RemoteEvent::OutboundEnqueued { authority, envelope, .. } => {
+      assert_eq!(authority, TransportEndpoint::new(expected_authority));
+      assert_eq!(envelope.recipient(), expected_path);
+      assert_eq!(envelope.sender(), None);
+      assert_eq!(envelope.remote_node().system(), "remote");
+      assert_eq!(envelope.remote_node().host(), "10.0.0.1");
+      assert_eq!(envelope.remote_node().port(), Some(2552));
+    },
+    | other => panic!("expected OutboundEnqueued, got {other:?}"),
+  }
+}
+
 #[test]
-fn remote_actor_ref_try_tell_fails_until_payload_serialization_is_installed() {
-  let mut provider = make_provider();
+fn remote_actor_ref_try_tell_pushes_outbound_enqueued_event() {
+  let mut fixture = make_provider_fixture();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+  let mut actor_ref = fixture.provider.actor_ref(remote_path.clone()).expect("remote actor ref should resolve");
+
+  actor_ref.try_tell(AnyMessage::new(String::from("remote-payload"))).expect("remote send should enqueue event");
+
+  let event = fixture.event_rx.try_recv().expect("outbound event should be available");
+  assert_outbound_enqueued_event(event, "remote@10.0.0.1:2552", &remote_path);
+}
+
+#[test]
+fn remote_actor_ref_try_tell_returns_full_when_event_channel_is_full() {
+  let (event_tx, _event_rx) = mpsc::channel(1);
+  let mut provider = make_provider_with_event_sender(event_tx);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+  let mut actor_ref = provider.actor_ref(remote_path).expect("remote actor ref should resolve");
+
+  actor_ref.try_tell(AnyMessage::new(String::from("first"))).expect("first send should fill event channel");
+  let err = actor_ref.try_tell(AnyMessage::new(String::from("second"))).unwrap_err();
+
+  let recovered = match err {
+    | SendError::Full(message) => message,
+    | other => panic!("expected full send error, got {other:?}"),
+  };
+  assert_eq!(recovered.downcast_ref::<String>().map(String::as_str), Some("second"));
+}
+
+#[test]
+fn remote_actor_ref_try_tell_returns_closed_when_event_channel_is_closed() {
+  let (event_tx, event_rx) = mpsc::channel(1);
+  drop(event_rx);
+  let mut provider = make_provider_with_event_sender(event_tx);
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
   let mut actor_ref = provider.actor_ref(remote_path).expect("remote actor ref should resolve");
 
   let err = actor_ref.try_tell(AnyMessage::new(String::from("remote-payload"))).unwrap_err();
-  let (recovered, context) = match err {
-    | SendError::InvalidPayload { message, context } => (message, context),
-    | other => panic!("expected payload serialization guard error, got {other:?}"),
-  };
 
-  assert_eq!(context, "remote payload serialization is not installed");
+  let recovered = match err {
+    | SendError::Closed(message) => message,
+    | other => panic!("expected closed send error, got {other:?}"),
+  };
   assert_eq!(recovered.downcast_ref::<String>().map(String::as_str), Some("remote-payload"));
 }
 

@@ -7,6 +7,6 @@ pub enum HandshakePhase {
   Started,
   /// Handshake completed successfully (Rsp received).
   Accepted,
-  /// Handshake timed out before a response arrived.
-  TimedOut,
+  /// Handshake was rejected or timed out before completion.
+  Rejected,
 }

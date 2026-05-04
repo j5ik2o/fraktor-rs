@@ -126,6 +126,23 @@ impl RemotingLifecycleState {
     }
   }
 
+  /// Requests shutdown for event-loop termination.
+  ///
+  /// Unlike [`Self::transition_to_shutdown`], this command is idempotent for
+  /// already-shutting-down states because adapter shutdown uses a wake event to
+  /// let the run loop observe termination.
+  pub const fn transition_to_shutdown_requested(&mut self) {
+    match self.phase {
+      | Phase::Pending => {
+        self.phase = Phase::Shutdown;
+      },
+      | Phase::Starting | Phase::Running => {
+        self.phase = Phase::ShuttingDown;
+      },
+      | Phase::ShuttingDown | Phase::Shutdown => {},
+    }
+  }
+
   /// Moves from `ShuttingDown` to `Shutdown`.
   ///
   /// # Errors
@@ -152,6 +169,12 @@ impl RemotingLifecycleState {
   #[must_use]
   pub const fn is_terminated(&self) -> bool {
     matches!(self.phase, Phase::Shutdown)
+  }
+
+  /// Returns `true` when shutdown has been requested but not fully marked down.
+  #[must_use]
+  pub const fn is_shutdown_requested(&self) -> bool {
+    matches!(self.phase, Phase::ShuttingDown)
   }
 
   /// Asserts that the lifecycle is in the `Running` state.

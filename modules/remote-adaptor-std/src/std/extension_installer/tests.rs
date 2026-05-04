@@ -9,7 +9,6 @@ use fraktor_remote_core_rs::core::{
   config::RemoteConfig,
   extension::{Remote, Remoting, RemotingError},
 };
-use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use crate::std::{
   extension_installer::remoting_extension_installer::RemotingExtensionInstaller, tests::test_support::EventHarness,
@@ -133,18 +132,21 @@ async fn remote_start_publishes_listen_started_for_each_advertised_address() {
   remote.shutdown().expect("shutdown after listen event check");
 }
 
-#[test]
-fn extension_installer_holds_a_shared_remote_handle() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn extension_installer_holds_a_shared_remote_handle() {
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should create remote");
   let remote_a = installer.remote().expect("installed remote should be available");
   let remote_b = installer.remote().expect("installed remote should be available");
-  assert!(SharedLock::ptr_eq(&remote_a, &remote_b), "installer should hand out the same shared lock");
+  remote_a.start().expect("start through first shared handle");
+  assert!(!remote_b.addresses().is_empty(), "second handle should observe the same remote state");
+  remote_b.shutdown().expect("shutdown through second shared handle");
 }
 
 #[test]
-fn extension_installer_remote_before_install_returns_configuration_error() {
+fn extension_installer_remote_before_install_returns_not_started() {
   let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
 
   let error = match installer.remote() {
@@ -152,7 +154,7 @@ fn extension_installer_remote_before_install_returns_configuration_error() {
     | Err(error) => error,
   };
 
-  assert_configuration_error(error, "remote extension is not installed");
+  assert_eq!(error, RemotingError::NotStarted);
 }
 
 #[test]
@@ -168,14 +170,14 @@ fn extension_installer_double_install_returns_configuration_error() {
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_remote_lifecycle_drives_via_shared_lock() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should wire event publisher");
   let remote = installer.remote().expect("installed remote should be available");
-  remote.with_lock(|remote| remote.start()).expect("start through installer-shared handle");
-  let snapshot_running = remote.with_lock(|remote| remote.lifecycle().is_running());
-  assert!(snapshot_running);
-  remote.with_lock(|remote| remote.shutdown()).expect("shutdown through installer-shared handle");
+  remote.start().expect("start through installer-shared handle");
+  assert!(!remote.addresses().is_empty());
+  remote.shutdown().expect("shutdown through installer-shared handle");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -187,13 +189,13 @@ async fn extension_installer_install_wires_listen_event_publisher() {
 
   {
     let remote = installer.remote().expect("installed remote should be available");
-    remote.with_lock(|remote| remote.start()).expect("start should publish through installed publisher");
+    remote.start().expect("start should publish through installed publisher");
   }
 
   let events = harness.events();
   assert_eq!(listen_started_authorities(&events), vec![String::from("local-sys@127.0.0.1:2551")]);
   let remote = installer.remote().expect("installed remote should be available");
-  remote.with_lock(|remote| remote.shutdown()).expect("shutdown after publisher check");
+  remote.shutdown().expect("shutdown after publisher check");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -206,10 +208,8 @@ async fn extension_installer_start_binds_listener_and_publishes_actual_bound_por
   let remote = installer.remote().expect("installed remote should be available");
 
   // When
-  let advertised_addresses = remote.with_lock(|remote| {
-    remote.start().expect("start through installer-shared handle");
-    remote.addresses().to_vec()
-  });
+  remote.start().expect("start through installer-shared handle");
+  let advertised_addresses = remote.addresses();
 
   // Then
   let actual_port = advertised_addresses.first().expect("advertised address").port();
@@ -217,5 +217,5 @@ async fn extension_installer_start_binds_listener_and_publishes_actual_bound_por
   let events = harness.events();
   assert_eq!(listen_started_authorities(&events), vec![alloc::format!("local-sys@127.0.0.1:{actual_port}")]);
 
-  remote.with_lock(|remote| remote.shutdown()).expect("shutdown after bound port check");
+  remote.shutdown().expect("shutdown after bound port check");
 }
