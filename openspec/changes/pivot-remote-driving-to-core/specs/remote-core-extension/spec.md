@@ -108,19 +108,20 @@
 
 ### Requirement: Remote::handle_remote_event は event 1 件分の dispatch を担う Command
 
-`Remote` 構造体に inherent method `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` が定義され、event 1 件分の状態遷移と effect 処理を担当する SHALL。**CQS Command として戻り値は `()` のみ**（停止判定 bool を返してはならない、MUST NOT）。停止判定は別の Query method `Remote::is_terminated()` で行う。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
+`Remote` 構造体に inherent method `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` が定義され、event 1 件分の状態遷移と effect 処理を担当する SHALL。**CQS Command として成功値は `()` のみ**（停止判定 bool を返してはならない、MUST NOT）。停止判定は別の Query method `Remote::is_terminated()` で行う。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
 
 #### Scenario: handle_remote_event のシグネチャ
 
 - **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
 - **THEN** `impl Remote` ブロックに `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
-- **AND** 戻り値は `()` であり、`bool` その他の停止判定値を返していない（CQS Command 準拠）
+- **AND** 成功値は `()` であり、`bool` その他の停止判定値を返していない（CQS Command 準拠）
 - **AND** `Remote` 自体には型パラメータ `<I>` が宣言されていない
 
 #### Scenario: TransportShutdown は lifecycle 状態変更で表現する
 
 - **WHEN** `Remote::handle_remote_event` が `RemoteEvent::TransportShutdown` を受信する
-- **THEN** 内部で `lifecycle.transition_to_shutdown_requested()` 等を呼んで状態を変更する（戻り値で停止信号は返さない）
+- **THEN** lifecycle が未停止なら内部で `lifecycle.transition_to_shutdown_requested()` 等を呼んで状態を変更する（戻り値で停止信号は返さない）
+- **AND** lifecycle が既に停止要求済みまたは停止済みなら no-op として `Ok(())` を返す（shutdown wake event として冪等に扱う）
 - **AND** 次回 `Remote::is_terminated()` Query が `true` を返すように lifecycle 側で観測可能になる
 - **AND** `RemoteShared::run` 側はこの Query を `with_read` で読んでループ終了を判定する
 
@@ -236,7 +237,8 @@
 #### Scenario: TransportShutdown 受信時のループ終了経路
 
 - **WHEN** `RemoteEvent::TransportShutdown` が受信される
-- **THEN** `Remote::handle_remote_event` 内で `lifecycle.transition_to_shutdown_requested()` が呼ばれて状態変更される（CQS Command）
+- **THEN** `Remote::handle_remote_event` 内で lifecycle が未停止なら `lifecycle.transition_to_shutdown_requested()` が呼ばれて状態変更される（CQS Command）
+- **AND** lifecycle が既に停止要求済みまたは停止済みなら no-op `Ok(())` になる
 - **AND** 続く `with_read(|remote| remote.is_terminated())` で `true` が観測され、`RemoteShared::run` は `Ok(())` を返してループ終了する
 
 #### Scenario: 並行 Remoting メソッドの進行（条件付き保証）
@@ -279,6 +281,7 @@
 
 - **WHEN** `RemoteShared::shutdown(&self)` が呼ばれる
 - **THEN** `with_write(|remote| remote.shutdown())` で `Remote::shutdown` を呼び lifecycle を terminated に遷移する
+- **AND** 既に停止要求済みまたは停止済みの場合は `Remote::shutdown` / `RemoteShared::shutdown` が no-op `Ok(())` になる（shutdown 系 API は冪等）
 - **AND** **wake はしない**（`RemoteShared` は `event_sender` を持たない、薄いラッパー原則）
 - **AND** `event_sender.send(...).await` や `run_handle.await` を内部で **実行しない**（同期 method、`async fn` を増やさない）
 - **AND** `Remote` が知らない責務（tokio sender、event push 等）を `RemoteShared::shutdown` 内で実行しない
@@ -423,16 +426,16 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 
 - **WHEN** `installer.shutdown_and_join().await` が呼ばれる
 - **THEN** 次の 3 ステップを順次実行する
-  1. `self.remote_shared.get().ok_or(RemotingError::NotStarted)?.shutdown()` を呼ぶ（lifecycle terminated 遷移、`RemoteShared::shutdown` の純デリゲート）。冪等失敗（`NotStarted`）は許容、それ以外の `Err` は伝播する
-  2. `self.event_sender.get()` で `Sender` を取得し、`try_send(RemoteEvent::TransportShutdown)` で wake（同期 try_send、`await` しない）
+  1. `self.remote_shared.get().ok_or(RemotingError::NotStarted)?.shutdown()` を呼ぶ（lifecycle terminated 遷移、`RemoteShared::shutdown` の純デリゲート。既に停止要求済みまたは停止済みなら no-op `Ok(())`）
+  2. `self.event_sender.get()` で `Sender` を取得し、`try_send(RemoteEvent::TransportShutdown)` で wake（同期 try_send、`await` しない。`TransportShutdown` handler は既に停止要求済み/停止済みなら no-op）
   3. `self.run_handle.lock().take()` で `JoinHandle` を取得し、存在すれば `await` で run task の終了を観測する
 - **AND** ステップ 3 の戻り値 `Result<Result<(), RemotingError>, JoinError>` を `Ok(Ok(())) → Ok(())` / `Ok(Err(e)) → Err(e)` / `Err(_) → Err(RemotingError::TransportUnavailable)` に変換して呼出元に返す
 
 #### Scenario: shutdown と try_send の失敗扱い（握りつぶし禁止に従う）
 
 - **WHEN** ステップ 1 の `RemoteShared::shutdown` が `Err` を返す
-- **THEN** `RemotingError::NotStarted` の場合のみ idempotent として無視（直前コメントで「すでに停止済み、idempotent」と明記）
-- **AND** それ以外の `Err` は呼出元に伝播する（`?` または `match` で）
+- **THEN** その `Err` は呼出元に伝播する（`?` または `match` で）
+- **AND** 既に停止要求済みまたは停止済みの場合は、`RemoteShared::shutdown` 自体が no-op `Ok(())` を返すため、error を idempotent として握りつぶす分岐を作らない
 - **WHEN** ステップ 2 の `event_sender.try_send` が `Err(TrySendError::Full)` または `Err(TrySendError::Closed)` を返す
 - **THEN** best-effort wake のため log 記録（`tracing::debug!` 等）に留め、shutdown_and_join 自体は継続する（直前コメントで「Full: event 待ちが滞留、次回 is_terminated() 観測で停止 / Closed: receiver drop 済、handle.await で観測される」と明記）
 - **AND** `let _ = ...` での無言握りつぶしを行わない（`if let Err(e) = ...` で error 値を log に渡す）

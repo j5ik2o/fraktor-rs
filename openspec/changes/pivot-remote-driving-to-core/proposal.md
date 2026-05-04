@@ -29,7 +29,7 @@
 
 ### 1. `Remote::run` を排他所有 API として残し、`RemoteShared::run` は共有時の薄い lock orchestration に限定する
 
-`Remote` は CQS 純粋ロジック（`&mut self` for Command, `&self` for Query）として残す。`Remote::run(&mut self, receiver)` は **排他所有時の core event loop API として残す**。ただし `remote-core` は `async fn` を採用しないため、`run` は `async fn` ではなく、名前を持つ concrete Future 型 `RemoteRunFuture<'a, S>` を返す。event 1 件分の dispatch は `Remote::handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` に分解し、`Remote::run` も `RemoteShared::run` もこの Command を呼ぶ。**戻り値で停止判定はしない**（CQS 分離）。停止判定は別の Query method `Remote::is_terminated(&self) -> bool` で行い、`RemoteEvent::TransportShutdown` 受信時は `handle_remote_event` 内部で `lifecycle.transition_to_shutdown_requested()` を呼んで状態変更する。
+`Remote` は CQS 純粋ロジック（`&mut self` for Command, `&self` for Query）として残す。`Remote::run(&mut self, receiver)` は **排他所有時の core event loop API として残す**。ただし `remote-core` は `async fn` を採用しないため、`run` は `async fn` ではなく、名前を持つ concrete Future 型 `RemoteRunFuture<'a, S>` を返す。event 1 件分の dispatch は `Remote::handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` に分解し、`Remote::run` も `RemoteShared::run` もこの Command を呼ぶ。**戻り値で停止判定はしない**（CQS 分離）。停止判定は別の Query method `Remote::is_terminated(&self) -> bool` で行う。`RemoteEvent::TransportShutdown` 受信時は、未停止なら `handle_remote_event` 内部で `lifecycle.transition_to_shutdown_requested()` を呼んで状態変更し、既に停止要求済みまたは停止済みなら no-op `Ok(())` とする。
 
 並行性吸収層として `RemoteShared(SharedLock<Remote>)` を新設する。`#[derive(Clone)]` で複数 clone 可能、`SharedLock` 内部で `Remote` の所有権を保持する。
 
@@ -70,6 +70,8 @@ impl RemoteShared {
 `Remote::handle_remote_event` 内で event を dispatch し、対応する `Association` メソッドを呼んで effect 列を実行する。`AssociationEffect::StartHandshake` を復活させ、`RemoteTransport` 経由で handshake を開始する。
 
 新規 core 型（`RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome`）は **作らない**。`Remote::run` / `RemoteShared::run` の終了結果は `Result<(), RemotingError>` で表現する。同期 `Remoting::shutdown` は `RemoteShared` から `Remote::shutdown` へデリゲートして lifecycle を停止要求状態に遷移させるだけで、`event_sender` による wake は行わない。run task の即時 wake と完了観測が必要な場合は、adapter 固有の `RemotingExtensionInstaller::shutdown_and_join` が `event_sender.try_send(TransportShutdown)` と `JoinHandle::await` を担う。同期 `Remoting::shutdown` の内部で `await` してはならない。
+
+`TransportShutdown` は shutdown 要求 event であると同時に、既に `RemoteShared::shutdown` で停止要求済みの run loop を起こす wake event でもある。そのため `Remote::handle_remote_event(TransportShutdown)` は冪等でなければならない。lifecycle が既に停止要求済みまたは停止済みなら no-op で `Ok(())` を返し、未停止の場合だけ lifecycle を停止要求状態へ遷移させる。
 
 ### 2. `RemoteEvent` を closed enum、`RemoteEventReceiver` を 1 メソッド trait として追加する
 
@@ -222,7 +224,7 @@ pub async fn shutdown_and_join(&self) -> Result<(), RemotingError> { ... } // wa
 
 ```rust
 fn shutdown(&self) -> Result<(), RemotingError> {
-    self.with_write(|remote| remote.shutdown())  // lifecycle を terminated に遷移するだけ
+    self.with_write(|remote| remote.shutdown())  // lifecycle を terminated に遷移するだけ。既に停止済みなら no-op
 }
 ```
 
@@ -235,7 +237,7 @@ graceful shutdown と完了保証が必要なら、adapter 固有の async surfa
 ```rust
 installer.shutdown_and_join().await?;
 //   1. RemoteShared::shutdown()                                 — lifecycle 遷移
-//   2. event_sender.try_send(RemoteEvent::TransportShutdown)    — wake (sync try_send、await しない)
+//   2. event_sender.try_send(RemoteEvent::TransportShutdown)    — wake (sync try_send、await しない、handler は冪等)
 //   3. run_handle.await                                          — 完了観測 (ここでだけ await)
 ```
 

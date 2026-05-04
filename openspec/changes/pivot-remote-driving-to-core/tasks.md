@@ -38,14 +38,14 @@
 ## 4. Remote::run / Remote::handle_remote_event と RemoteShared::run を実装
 
 - [ ] 4.0 既存の `Remote::run(self, ..)` consume 形を **`Remote::run(&mut self, ..) -> RemoteRunFuture<'_, S>` に変更して残す**。`Remote::run` は排他所有時の core event loop とし、poll 内部を `Remote::handle_remote_event` + `Remote::is_terminated` に分解する。`Remote::run` を削除して `RemoteShared::run` へ置き換えてはならない（MUST NOT）。`async fn` / `impl Future` 戻り値 / `Send` 境界は禁止。
-- [ ] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl Remote` で `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` の skeleton を追加する（**CQS Command、戻り値は `()` のみ**、bool で停止判定を返さない）。`Remote` 自体には型パラメータ `<I>` を持たせない（instrument は `Box<dyn RemoteInstrument + Send>` フィールド経由）。event 処理で instrument と他 field を同時に扱う場合は、field 単位の split borrow が成立する helper へ切り出す。
+- [ ] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl Remote` で `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` の skeleton を追加する（**CQS Command、成功値は `()` のみ**、bool で停止判定を返さない）。`Remote` 自体には型パラメータ `<I>` を持たせない（instrument は `Box<dyn RemoteInstrument + Send>` フィールド経由）。event 処理で instrument と他 field を同時に扱う場合は、field 単位の split borrow が成立する helper へ切り出す。
 - [ ] 4.1.1 `Remote::is_terminated(&self) -> bool` Query method を追加する（`#[must_use]` 属性付き）。`lifecycle.is_terminated()` または `lifecycle.is_shutdown_requested()` のいずれかなら `true` を返す。`Remote::run` が直接、`RemoteShared::run` が per-event 後に `with_read` で確認してループ終了判定する。
 - [ ] 4.2 `RemoteEvent::InboundFrameReceived { authority, frame, now_ms }` 処理を `handle_remote_event` 内に実装する（core wire frame header の kind に応じて既存 `EnvelopeCodec` / `HandshakeCodec` / `ControlCodec` / `AckCodec` で decode → Association inbound dispatch → instrument `on_receive`）。decode 失敗は `RemotingError::CodecFailed` 等の caller が観測できる error に変換する。
 - [ ] 4.3 `RemoteEvent::HandshakeTimerFired { generation, now_ms }` 処理を実装する（`Association.handshake_generation` と `!=` で比較し、不一致時は event を破棄。一致時のみ `Association::handshake_timed_out(now_ms, ...)` を呼ぶ。`>` / `<` 比較は使わない — `wrapping_add` の wrap で stale 判定が漏れないようにする）。
 - [ ] 4.3.1 wrap 境界の unit test を追加する（`handshake_generation = u64::MAX` → 次回 `Handshaking` で `0` になり、古い `g_event = u64::MAX` の `HandshakeTimerFired` を受信した際に `!=` 判定で正しく破棄されること）。
 - [ ] 4.4 `RemoteEvent::OutboundEnqueued { authority, envelope, now_ms }` 処理を実装する。順序は **(a) 該当 association を取得 → (b) enqueue 前の `total_outbound_len()` を `prev` として保存 → (c) `Association::enqueue(*envelope, now_ms)`（instrument 引数なし）→ (d) enqueue 後の `total_outbound_len()` を `curr` として取得し、`prev <= high && curr > high` なら `Association::apply_backpressure(BackpressureSignal::Apply, instrument)` をエッジで発火 → (e) outbound drain helper を起動** とする。drain helper では `next_outbound` の戻り値経路で `on_send` 発火、各 dequeue 後に `total_outbound_len()` を確認し、`prev_in_drain >= low && curr_in_drain < low && state == Apply` の条件を満たした時のみ `apply_backpressure(Release, instrument)` をエッジで発火する。`enqueue` 自体には instrument 引数を渡さない。
 - [ ] 4.5 `RemoteEvent::ConnectionLost { authority, cause, now_ms }` 処理を実装する（再接続判断と `Association::recover(..., now_ms)` 呼び出し）。
-- [ ] 4.6 `RemoteEvent::TransportShutdown` 受信時は `lifecycle.transition_to_shutdown_requested()` で状態を変更し、`Ok(())` を返す（戻り値で停止判定はしない、状態変更で表現）。`Remote::run` / `RemoteShared::run` 側が次の `is_terminated()` Query で停止を観測する。
+- [ ] 4.6 `RemoteEvent::TransportShutdown` 受信時は lifecycle が未停止なら `lifecycle.transition_to_shutdown_requested()` で状態を変更し、既に停止要求済みまたは停止済みなら no-op `Ok(())` とする（`shutdown_and_join` が先に `RemoteShared::shutdown()` してから wake として `TransportShutdown` を送るため冪等に扱う）。戻り値で停止判定はせず、`Remote::run` / `RemoteShared::run` 側が次の `is_terminated()` Query で停止を観測する。
 - [ ] 4.7 必要に応じて `RemotingLifecycleState` に `transition_to_shutdown_requested()` Command と `is_shutdown_requested(&self) -> bool` Query を追加する（既存の `transition_to_shutdown` / `is_terminated` で十分なら不要）。`Remote::is_terminated()` がこれらを観測して `true` を返せるようにする。
 - [ ] 4.8 outbound 駆動 helper（`Association::next_outbound` → `RemoteTransport::send(OutboundEnvelope)`）を実装する。core 側で `Codec<OutboundEnvelope>` / `Codec<InboundEnvelope>` を新設して raw bytes を transport に渡す形にはしない。
 - [ ] 4.9 `AssociationEffect::StartHandshake { authority, timeout, generation }` 実行経路を **2 ステップ** で実装する。
@@ -81,7 +81,7 @@
 - [ ] 4.5.2 `impl Remoting for Remote` を **削除** する（`Remote` は CQS 純粋ロジック層であり port を実装しない）。`Remote::start` / `shutdown` / `quarantine` / `addresses` は inherent method として残す（`RemoteShared` がデリゲートで使う）。
 - [ ] 4.5.3 `impl Remoting for RemoteShared` を `remote_shared.rs` に追加する。**すべて純デリゲートのみ**（`RemoteShared` は薄いラッパー、`Remote` が知らない責務を追加しない）。
   - `start(&self)`: `self.with_write(|remote| remote.start())`
-  - `shutdown(&self)`: `self.with_write(|remote| remote.shutdown())` のみ（**wake しない、`event_sender` を持たない**、wake は adapter 側 `installer.shutdown_and_join` で行う）
+  - `shutdown(&self)`: `self.with_write(|remote| remote.shutdown())` のみ（**wake しない、`event_sender` を持たない**、wake は adapter 側 `installer.shutdown_and_join` で行う）。既に停止要求済みまたは停止済みなら no-op `Ok(())` とする
   - `quarantine(&self, ..)`: `self.with_write(|remote| remote.quarantine(addr, uid, reason))`
   - `addresses(&self)`: `self.with_read(|remote| remote.addresses().to_vec())`
 - [ ] 4.5.4 `Remoting` trait の `addresses` 戻り値変更により他 module への影響を吸収する（`fraktor-cluster-adaptor-std-rs` 等が `&[Address]` を期待していたら `Vec<Address>` に追従）。
@@ -140,8 +140,8 @@
 - [ ] 7.4.5 PR 分割上、`RemoteShared::run` spawn 経路を有効化する前に 4.3 / 4.3.1（HandshakeTimerFired handler 実装）を同一 PR で完了させる。`StartHandshake` 経由で予約された timeout が `RemoteEvent::HandshakeTimerFired` を push した際に `Err(RemotingError::UnimplementedEvent)` で run loop を落とさないことを確認する。
 - [ ] 7.5 `RemotingExtensionInstaller::shutdown_and_join(&self) -> impl Future<Output = Result<(), RemotingError>>` を新設する（**`&self` 契約、握りつぶし禁止に従う、wake + 完了観測を集約**）。
   - 1. `let remote_shared = self.remote_shared.get().ok_or(RemotingError::NotStarted)?;` で `RemoteShared` 参照取得
-  - 2. `match remote_shared.shutdown() { Ok(()) => {}, Err(RemotingError::NotStarted) => { /* idempotent: すでに停止済み */ }, Err(e) => return Err(e), }` で lifecycle terminated 遷移（**`let _ =` で握りつぶさない、`NotStarted` のみコメント付きで idempotent 許容**）
-  - 3. `if let Some(sender) = self.event_sender.get() { if let Err(send_err) = sender.try_send(RemoteEvent::TransportShutdown) { tracing::debug!(?send_err, "shutdown wake failed (best-effort)"); } }` で wake（**`let _ =` で握りつぶさない、log 記録**）
+  - 2. `remote_shared.shutdown()?;` で lifecycle terminated 遷移（既に停止要求済みまたは停止済みなら `RemoteShared::shutdown` 側が no-op `Ok(())` とする。`NotStarted` は `remote_shared` 未取得時のみ error として扱う）
+  - 3. `if let Some(sender) = self.event_sender.get() { if let Err(send_err) = sender.try_send(RemoteEvent::TransportShutdown) { tracing::debug!(?send_err, "shutdown wake failed (best-effort)"); } }` で wake（**`let _ =` で握りつぶさない、log 記録**。`TransportShutdown` handler は既に停止要求済み/停止済みなら no-op）
   - 4. `let handle = { let mut slot = self.run_handle.lock().map_err(|_| RemotingError::TransportUnavailable)?; slot.take() };`
   - 5. `let Some(handle) = handle else { return Ok(()); };` で run task が無い場合は即 Ok
   - 6. `match handle.await { Ok(Ok(())) => Ok(()), Ok(Err(e)) => Err(e), Err(join_err) => { tracing::error!(?join_err, "run task join failed"); Err(RemotingError::TransportUnavailable) }, }` で完了観測 + 結果伝播
