@@ -28,7 +28,7 @@
 
 #### Scenario: inbound dispatch で on_receive 発火
 
-- **WHEN** `Remote::handle_remote_event` が `Codec::decode` した `InboundEnvelope` を Association に渡す
+- **WHEN** `Remote::handle_remote_event` が inbound core wire frame を decode し、復元した inbound envelope 相当の値を Association に渡す
 - **THEN** `RemoteInstrument::on_receive(&envelope)` が呼ばれる
 
 #### Scenario: apply_backpressure で record_backpressure
@@ -104,7 +104,7 @@
   1. `HandshakePdu::Req(HandshakeReq::new(local, remote))` を構築し、`RemoteTransport::send_handshake` で送出する
   2. 続けて `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)`（`remote-core-transport-port` capability で要件化）を呼ぶ
 - **AND** ステップ 1 が `Err` の場合、ステップ 2 は呼ばれない
-- **AND** adapter 側は `schedule_handshake_timeout` 呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation }` を adapter 内部 sender 経由で receiver に push する
+- **AND** adapter 側は `schedule_handshake_timeout` 呼出を契機に tokio task で sleep を起動し、満了時に `RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }` を adapter 内部 sender 経由で receiver に push する
 
 #### Scenario: adapter 側の StartHandshake 無視分岐の不在
 
