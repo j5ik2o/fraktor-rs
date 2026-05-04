@@ -22,6 +22,10 @@
 - [x] 2.9 `Association` に `handshake_generation: u64` フィールドを追加し、`Handshaking` 状態に入るたびに `wrapping_add(1)` で +1 する（**`HandshakeGeneration` newtype は新設しない**）。
 - [x] 2.10 `AssociationEffect::StartHandshake` を `{ authority: TransportEndpoint, timeout: core::time::Duration, generation: u64 }` に拡張し、rustdoc に「`Remote::handle_remote_event`（`RemoteShared::run` の `with_write` 区間内）が実行する責務」と「adapter は generation 付き timer を確保する責務」を明示する。
 - [x] 2.11 上記変更の unit test を追加する（各 hook 呼び出し点で記録された FlightRecorder snapshot で順序を検証）。
+- [ ] 2.12 既存の `Association::*_with_instrument` 併設 API（例: `associate_with_instrument` / `accept_handshake_request_with_instrument` / `accept_handshake_response_with_instrument` 等）を削除し、instrument 必須シグネチャ 1 本に統合する（`remote-core-association-state-machine` capability の「最終形では `*_with_instrument` 併設 API を残さない」要件に従う）。
+  - `rtk grep -rn '_with_instrument' modules/remote-core/src/ modules/remote-adaptor-std/src/` で対象を洗い出す
+  - 各 callers を instrument 必須シグネチャに更新
+  - `rtk grep -rn '_with_instrument' modules/` の出力が空（または `pub(crate)` 内部 helper のみ）になることを確認
 
 ## 3. core 側に RemoteEvent / RemoteEventReceiver / RemoteTransport::schedule_handshake_timeout を追加
 
@@ -64,9 +68,9 @@
   - `fn addresses(&self) -> Vec<Address>`（owned 戻り値、`&[Address]` から変更）
   - rustdoc を更新し「並行性の吸収責任は実装側が持つ」「すべて同期 method」を明記する
 - [ ] 4.5.2 `impl Remoting for Remote` を **削除** する（`Remote` は CQS 純粋ロジック層であり port を実装しない）。`Remote::start` / `shutdown` / `quarantine` / `addresses` は inherent method として残す（`RemoteShared` がデリゲートで使う）。
-- [ ] 4.5.3 `impl Remoting for RemoteShared` を `remote_shared.rs` に追加する。
+- [ ] 4.5.3 `impl Remoting for RemoteShared` を `remote_shared.rs` に追加する。**すべて純デリゲートのみ**（`RemoteShared` は薄いラッパー、`Remote` が知らない責務を追加しない）。
   - `start(&self)`: `self.with_write(|remote| remote.start())`
-  - `shutdown(&self)`: `self.with_write(|remote| remote.shutdown())` の後に `event_sender.try_send(TransportShutdown).ok()` で best-effort wake（`event_sender` の `RemoteShared` への持たせ方は実装 PR で確定。案: `RemoteShared` に `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` field を持たせる、または adapter 側 wrapper で持つ）
+  - `shutdown(&self)`: `self.with_write(|remote| remote.shutdown())` のみ（**wake しない、`event_sender` を持たない**、wake は adapter 側 `installer.shutdown_and_join` で行う）
   - `quarantine(&self, ..)`: `self.with_write(|remote| remote.quarantine(addr, uid, reason))`
   - `addresses(&self)`: `self.with_read(|remote| remote.addresses().to_vec())`
 - [ ] 4.5.4 `Remoting` trait の `addresses` 戻り値変更により他 module への影響を吸収する（`fraktor-cluster-adaptor-std-rs` 等が `&[Address]` を期待していたら `Vec<Address>` に追従）。
@@ -90,29 +94,43 @@
 - [ ] 7.1 `modules/remote-adaptor-std/src/std/inbound_dispatch.rs` を I/O ワーカーに変更し、TCP frame 受信後に `RemoteEvent::InboundFrameReceived` を adapter 内部 sender 経由で push するだけの処理にする。`Association::handshake_accepted` 等の直接呼び出しを削除する。
 - [x] 7.2 `modules/remote-adaptor-std/src/std/tokio_remote_event_receiver.rs` を新設し、`TokioMpscRemoteEventReceiver: RemoteEventReceiver` を実装する（`tokio::sync::mpsc::Receiver<RemoteEvent>` を保持。bounded、capacity は `RemoteConfig` 経由）。
 - [ ] 7.3 adapter 内部で `tokio::sync::mpsc::channel::<RemoteEvent>(capacity)` を生成し、`Sender` を I/O ワーカー / handshake timer task 群が clone して共有する経路を整備する（`RemoteEventSink` trait は core に追加しない）。
-- [ ] 7.4 `RemotingExtensionInstaller` の field を二層構造に合わせて再構成する。
+- [ ] 7.4 `RemotingExtensionInstaller` の field を二層構造（Y 方針）に合わせて再構成する。
   - `remote_shared: RemoteShared` を保持する（`RemoteShared::new(remote)` で構築）
-  - `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` / `run_handle: JoinHandle<Result<(), RemotingError>>` を保持する
+  - `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` を保持する（**adapter 側で保持、`RemoteShared` には持たせない**）
+  - `event_receiver: Option<TokioMpscRemoteEventReceiver>` を保持する（spawn_run_task で take して spawn task に move）
+  - `run_handle: Option<JoinHandle<Result<(), RemotingError>>>` を保持する（spawn_run_task で Some に、shutdown_and_join で take）
   - **削除する field**: 旧 `OnceLock<SharedLock<Remote>>` / `cached_addresses: Vec<Address>`（`RemoteShared::addresses` で source of truth から取得するため）
   - raw `Remote` 参照や raw `SharedLock<Remote>` field を持たないことを確認する
-- [ ] 7.4.1 `RemotingExtensionInstaller::install` を更新する。
+- [ ] 7.4.1 `RemotingExtensionInstaller::install` を更新する（**install / start / spawn の3段階分離**）。
   - `Remote::with_instrument(transport, config, event_publisher, instrument)` で `Remote` を構築
   - `RemoteShared::new(remote)` で `RemoteShared` を構築し `remote_shared` field に保存
-  - `let run_target = self.remote_shared.clone();` の後 `tokio::spawn(async move { run_target.run(&mut event_receiver).await })` で起動し `JoinHandle` を `run_handle` に保存
-  - spawn 前に `remote_shared.start()` で `Remote::start` を完了させ、transport の listening を確立する
+  - `tokio::sync::mpsc::channel(capacity)` で channel を作り `event_sender` / `event_receiver` を field に保存
+  - **install 内では `Remote::start` を呼ばない、`tokio::spawn` もしない**（外部から start / spawn_run_task を順次呼ぶ）
 - [ ] 7.4.2 `installer.remote()` の戻り値型を `SharedLock<Remote>` から `RemoteShared` に変更する。
   - `pub fn remote(&self) -> RemoteShared { self.remote_shared.clone() }` 相当
   - 既存の `SharedLock<Remote>` を返すコードと callers を破壊的変更で更新（CLAUDE.md「後方互換は不要」）
-- [ ] 7.4.3 既存 test（`extension_installer/tests.rs`）を `RemoteShared` ベースに書き換える。
-  - `installer.remote()?.with_lock(|remote| remote.start())` のような raw lock 経由の呼び出しを `installer.remote().start()` のような `Remoting` trait 経由に変更
+- [ ] 7.4.3 `RemotingExtensionInstaller::spawn_run_task(&mut self) -> Result<(), RemotingError>` を新設する。
+  - `let receiver = self.event_receiver.take().ok_or(RemotingError::AlreadyRunning)?;`
+  - `let run_target = self.remote_shared.clone();`
+  - `let handle = tokio::spawn(async move { let mut receiver = receiver; run_target.run(&mut receiver).await });`
+  - `self.run_handle = Some(handle);` で保存
+- [ ] 7.4.4 既存 test（`extension_installer/tests.rs`）を Y 方針に書き換える。
+  - `installer.install(harness.system())?;` の後 `let remote = installer.remote();` で `RemoteShared` clone を取得
+  - `remote.start()?;` で `Remoting::start` を呼ぶ（`with_lock(|r| r.start())` のような raw lock 直接呼び出しを除去）
+  - 必要に応じて `installer.spawn_run_task()?;` で run task 起動
+  - 停止時は `installer.shutdown_and_join().await?;` を呼ぶ（テスト用の async runtime 必要）
   - `with_lock` 等の `SharedLock` 直接 API を test からも除去する
-- [ ] 7.4.4 PR 分割上、`RemoteShared::run` spawn 経路を有効化する前に 4.3 / 4.3.1（HandshakeTimerFired handler 実装）を同一 PR で完了させる。`StartHandshake` 経由で予約された timeout が `RemoteEvent::HandshakeTimerFired` を push した際に `Err(RemotingError::UnimplementedEvent)` で run loop を落とさないことを確認する。
-- [ ] 7.5 adapter 固有の async wait surface を追加する。同期 `Remoting::shutdown` の内部では `await` しない（`RemoteShared::shutdown` 側で `with_write(|r| r.shutdown())` + `event_sender.try_send(TransportShutdown).ok()` のみ）。
-  - async wait surface（例: `RemotingExtensionInstaller::wait_shutdown(self) -> impl Future<Output = Result<(), RemotingError>>` 相当）で `run_handle.await` を実行
-  - `Result<Result<(), RemotingError>, JoinError>` を観測し、`Ok(Ok(()))` のみ正常終了、それ以外は `RemotingError` に変換して伝播
-  - `let _` で握りつぶさない、log にも記録
-  - 具体的な surface 名（`wait_shutdown` 等）と配置は実装 PR で確定する
-- [ ] 7.5.1 `RemoteShared::shutdown` の `event_sender` 注入方法を確定する（実装 PR で決定）。案 A: `RemoteShared` に `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` field を持たせて `RemoteShared::new_with_sender(remote, sender)` で構築。案 B: adapter 側 wrapper（installer 自身）が `Remoting::shutdown` 後に明示的に `try_send` する。**推奨は案 A**（`Remoting::shutdown` 1 call で停止要求が完結し、呼び出し側が wake を意識しなくて済む）。
+- [ ] 7.4.5 PR 分割上、`RemoteShared::run` spawn 経路を有効化する前に 4.3 / 4.3.1（HandshakeTimerFired handler 実装）を同一 PR で完了させる。`StartHandshake` 経由で予約された timeout が `RemoteEvent::HandshakeTimerFired` を push した際に `Err(RemotingError::UnimplementedEvent)` で run loop を落とさないことを確認する。
+- [ ] 7.5 `RemotingExtensionInstaller::shutdown_and_join(self) -> impl Future<Output = Result<(), RemotingError>>` を新設する（**adapter 固有 async surface、wake + 完了観測を集約**）。
+  - 1. `let _ = self.remote_shared.shutdown();`（`RemoteShared::shutdown` で lifecycle terminated 遷移、戻り値の `Result` は best-effort で無視可、log 記録は望ましい）
+  - 2. `let _ = self.event_sender.try_send(RemoteEvent::TransportShutdown);`（同期 try_send、`await` しない、Full / Closed 失敗は無視）
+  - 3. `let Some(handle) = self.run_handle.take() else { return Ok(()); };` で `JoinHandle` を取り出し
+  - 4. `match handle.await { Ok(Ok(())) => Ok(()), Ok(Err(e)) => Err(e), Err(_) => Err(RemotingError::TransportUnavailable) }` で完了観測 + 結果伝播
+  - `RemoteShared::shutdown` 側に wake を持ち込まない（`RemoteShared` は `event_sender` を持たない、薄いラッパー原則）
+- [ ] 7.5.1 `Remoting::shutdown` の単独呼び出し（`shutdown_and_join` を経由しない）の挙動を test で確認する。
+  - lifecycle が terminated に遷移する
+  - run task は次の event 受信時に `Remote::handle_remote_event` 末尾で lifecycle terminated を観測してループ終了する
+  - `recv().await` で blocked のまま event が来なければ即座には停止しないことも明示的に検証する（doc test or 注釈付き unit test）
 - [ ] 7.6 `modules/remote-adaptor-std/src/std/effect_application.rs` から `AssociationEffect::StartHandshake` の dispatch 分岐を削除する。
 - [x] 7.7 `RemoteTransport::schedule_handshake_timeout` の adapter 実装を追加する（`tokio::spawn(async move { tokio::time::sleep(timeout).await; sender.send(RemoteEvent::HandshakeTimerFired { authority, generation }).await; })` 相当）。spawn 成功で `Ok(())` を返し、内部 sleep を await しない。`Timer` trait は core に新設しない。
 - [ ] 7.8 adapter 側 RemoteActorRef 等の outbound 経路を `RemoteEvent::OutboundEnqueued` push に切り替える。
@@ -146,10 +164,18 @@
   - `rtk grep -n 'pub async fn run\|pub fn run' modules/remote-core/src/core/extension/remote.rs` の出力が空（`Remote` 自身に `run` を持たせない）
   - `rtk grep -n 'pub async fn run' modules/remote-core/src/core/extension/remote_shared.rs` で `RemoteShared::run` が定義されている
   - `rtk grep -nE 'pub fn .*&mut self\|pub async fn .*&mut self' modules/remote-core/src/core/extension/remote_shared.rs` の出力が空（`RemoteShared` の公開 method はすべて `&self`）
+- [ ] 9.5.1 `RemoteShared` の薄いラッパー原則の遵守を以下のクエリで確認する。
+  - `rtk grep -n 'event_sender\|EventSink\|tokio' modules/remote-core/src/core/extension/remote_shared.rs` の出力が空（`RemoteShared` は `Remote` が知らない responsibility を持たない）
+  - `RemoteShared` の field が `inner: SharedLock<Remote>` 1 個のみであることを目視確認
+  - `cargo tree -p fraktor-remote-core-rs` で `tokio` 等の runtime crate への依存が含まれていないことを確認
 - [ ] 9.6 adapter 側 installer に raw `Remote` 参照がないことを確認する。
   - `rtk grep -nE 'Arc<.*Remote\b|Mutex<.*Remote\b|RwLock<.*Remote\b|SharedLock<.*Remote\b' modules/remote-adaptor-std/src/` を実行し、`remote_shared: RemoteShared` field 以外に raw 参照が残っていないことを確認する
   - `rtk grep -n 'cached_addresses' modules/remote-adaptor-std/src/` の出力が空（addresses cache は削除されている、`RemoteShared::addresses` で取得）
   - `installer.remote()` の戻り値型が `RemoteShared` であることを確認（`SharedLock<Remote>` は返さない）
+- [ ] 9.6.1 adapter installer の wake / 完了観測責務の遵守を確認する。
+  - `RemotingExtensionInstaller` に `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` field が存在
+  - `RemotingExtensionInstaller::shutdown_and_join(self) -> impl Future<Output = Result<(), RemotingError>>` 等の adapter 固有 async API が存在
+  - `RemotingExtensionInstaller::spawn_run_task(&mut self) -> Result<(), RemotingError>` 等の明示的 spawn API が存在（install と spawn の分離）
 - [ ] 9.7 net file delta が `+2` 程度（core 新規 `remote_event.rs` + `remote_event_receiver.rs` + `remote_shared.rs` / adapter 新規 `tokio_remote_event_receiver.rs` / adapter 削除 `outbound_loop.rs` + `handshake_driver.rs`）であることを確認する。
 
 ## 10. テスト
@@ -157,7 +183,11 @@
 - [ ] 10.1 `rtk cargo test -p fraktor-remote-core-rs` を実行し、green を確認する（二層構造への変更後、`Remote` / `RemoteShared` / `Remoting` trait の新シグネチャで test が green になること）。
 - [ ] 10.2 `rtk cargo test -p fraktor-remote-adaptor-std-rs` を実行し、green を確認する（installer の `RemoteShared` 化後、test が green になること）。
 - [ ] 10.3 `rtk cargo test -p fraktor-cluster-adaptor-std-rs` を実行し、依存先の green を確認する（`Remoting` trait シグネチャ変更の波及を吸収）。
-- [ ] 10.4 handshake / quarantine / watermark backpressure / instrument 通知 / handshake generation 破棄の integration test を追加または更新する（public API 経由で `RemoteShared::run` を起動し、`Remoting::quarantine` を run と並行して呼ぶケースも含めて検証）。
+- [ ] 10.4 handshake / quarantine / watermark backpressure / instrument 通知 / handshake generation 破棄の integration test を追加または更新する。
+  - `installer.install` → `installer.remote().start()` → `installer.spawn_run_task()` の起動順序を検証
+  - `Remoting::quarantine` を run と並行して呼ぶケースも含めて検証（per-event lock の隙間で進行することを確認）
+  - `installer.shutdown_and_join().await` で graceful shutdown が成立することを検証
+  - `Remoting::shutdown` 単独呼び出し後、event 1 件で run loop が終了することも検証
 - [ ] 10.5 showcase（`showcases/std/remote_lifecycle/` 等）が新 API で起動することを確認する。
 
 ## 11. 検証
