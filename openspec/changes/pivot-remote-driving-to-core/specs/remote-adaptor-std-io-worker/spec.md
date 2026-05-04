@@ -159,6 +159,7 @@ adapter 側に `tokio::sync::mpsc` 受信側ラッパとして `RemoteEventRecei
 - **WHEN** `modules/remote-adaptor-std/src/std/tokio_remote_event_receiver.rs` を読む
 - **THEN** `pub struct TokioMpscRemoteEventReceiver` または同等の型が定義され、`impl RemoteEventReceiver` を持つ
 - **AND** 内部で `tokio::sync::mpsc::Receiver<RemoteEvent>` を保持する
+- **AND** `RemoteEventReceiver::poll_recv` 実装は `tokio::sync::mpsc::Receiver::poll_recv` へ委譲する（core 側 trait に `async fn recv` は存在しない）
 
 #### Scenario: Sink trait の不在
 

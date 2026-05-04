@@ -42,12 +42,14 @@
 #### Scenario: trait の存在
 
 - **WHEN** `modules/remote-core/src/core/extension/remote_event_receiver.rs` を読む
-- **THEN** `pub trait RemoteEventReceiver: Send` が定義されている
+- **THEN** `pub trait RemoteEventReceiver` が定義されている
+- **AND** trait 自体に `Send` supertrait は要求されていない（single-thread executor / no_std 利用を妨げない）
 
-#### Scenario: recv のシグネチャ
+#### Scenario: poll_recv のシグネチャ
 
-- **WHEN** `RemoteEventReceiver::recv` の定義を読む
-- **THEN** `fn recv(&mut self) -> impl core::future::Future<Output = Option<RemoteEvent>> + Send + '_` または `async fn recv(&mut self) -> Option<RemoteEvent>` 形式で宣言されている
+- **WHEN** `RemoteEventReceiver::poll_recv` の定義を読む
+- **THEN** `fn poll_recv(&mut self, cx: &mut core::task::Context<'_>) -> core::task::Poll<Option<RemoteEvent>>` または同等の poll 型シグネチャで宣言されている
+- **AND** `async fn recv` や `fn recv(..) -> impl Future<...>` は存在しない
 
 #### Scenario: tokio 非依存
 
@@ -78,10 +80,31 @@
 #### Scenario: Remote::run の存在と所有権
 
 - **WHEN** `impl Remote` ブロックの method 一覧を検査する
-- **THEN** `pub async fn run<S: RemoteEventReceiver>(&mut self, receiver: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが存在する
-- **AND** `self` consume ではなく `&mut self` を取る（`pub async fn run(self, ..)` は存在しない）
+- **THEN** `pub fn run<'a, S: RemoteEventReceiver + ?Sized>(&'a mut self, receiver: &'a mut S) -> RemoteRunFuture<'a, S>` または同等の concrete Future 型を返すシグネチャが存在する
+- **AND** `self` consume ではなく `&mut self` を取る（`pub fn run(self, ..)` は存在しない）
+- **AND** `async fn run` や `-> impl Future<...>` を public run API に使わない
 - **AND** 内部で `Remote::handle_remote_event(event)?` と `Remote::is_terminated()` を使い、event semantics は `Remote` 内に閉じる
 - **AND** `RemoteShared::run` に置き換える目的で `Remote::run` を削除してはならない（MUST NOT）
+
+### Requirement: RemoteRunFuture は concrete Future 型
+
+`Remote::run` が返す concrete Future 型として `RemoteRunFuture<'a, S>` が定義される SHALL。`RemoteRunFuture` は `core::future::Future<Output = Result<(), RemotingError>>` を実装し、`Remote` の排他借用と `RemoteEventReceiver` の排他借用を保持する。`Send` 境界を型定義または `run` method の public API に要求してはならない（MUST NOT）。
+
+#### Scenario: RemoteRunFuture の存在
+
+- **WHEN** `modules/remote-core/src/core/extension/remote_run_future.rs` を読む
+- **THEN** `pub struct RemoteRunFuture<'a, S: RemoteEventReceiver + ?Sized>` または同等の公開 concrete Future 型が定義されている
+- **AND** `impl Future for RemoteRunFuture<'_, S>` が定義されている
+- **AND** `Remote::run` の戻り値型としてこの concrete type 名が現れる
+
+#### Scenario: RemoteRunFuture の poll 処理
+
+- **WHEN** `RemoteRunFuture::poll` の実装を検査する
+- **THEN** `receiver.poll_recv(cx)` を呼んで event を取得する
+- **AND** `Poll::Pending` の場合は `Poll::Pending` を返し、状態遷移を行わない
+- **AND** `Poll::Ready(None)` の場合は `Poll::Ready(Err(RemotingError::EventReceiverClosed))` を返す
+- **AND** `Poll::Ready(Some(event))` の場合は `remote.handle_remote_event(event)?` を呼び、続けて `remote.is_terminated()` を確認する
+- **AND** `remote-core` 内で `async fn` / `async move` / `.await` を使わない
 
 ### Requirement: Remote::handle_remote_event は event 1 件分の dispatch を担う Command
 
@@ -169,22 +192,35 @@
 
 ### Requirement: RemoteShared::run は Remote::run の共有 wrapper
 
-`RemoteShared` に inherent method `pub async fn run<S: RemoteEventReceiver>(&self, receiver: &mut S) -> Result<(), RemotingError>` が定義され、共有時に `Remote::run` と同じ core event loop semantics を per-event lock で実行する SHALL。各 event の dispatch は `with_write(|remote| remote.handle_remote_event(event))` で行い、ロック区間は event 1 件分のみ。`RemoteShared::run` は event variant を match せず、lifecycle 遷移、effect 実行、transport 呼び出しを実装しない。これらはすべて `Remote` 側に閉じる。
+`RemoteShared` に inherent method `pub fn run<'a, S: RemoteEventReceiver + ?Sized>(&'a self, receiver: &'a mut S) -> RemoteSharedRunFuture<'a, S>` が定義され、共有時に `Remote::run` と同じ core event loop semantics を per-event lock で実行する SHALL。各 event の dispatch は `with_write(|remote| remote.handle_remote_event(event))` で行い、ロック区間は event 1 件分のみ。`RemoteShared::run` は event variant を match せず、lifecycle 遷移、effect 実行、transport 呼び出しを実装しない。これらはすべて `Remote` 側に閉じる。
 
 #### Scenario: RemoteShared::run のシグネチャ
 
 - **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を読む
-- **THEN** `impl RemoteShared` ブロックに `pub async fn run<S>(&self, receiver: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
+- **THEN** `impl RemoteShared` ブロックに `pub fn run<'a, S>(&'a self, receiver: &'a mut S) -> RemoteSharedRunFuture<'a, S>` または同等の concrete Future 型を返すシグネチャが宣言されている
 - **AND** `S: RemoteEventReceiver` が trait bound として要求される
+- **AND** `async fn run` や `-> impl Future<...>` を public run API に使わない
+
+### Requirement: RemoteSharedRunFuture は concrete Future 型
+
+`RemoteShared::run` が返す concrete Future 型として `RemoteSharedRunFuture<'a, S>` が定義される SHALL。`RemoteSharedRunFuture` は `core::future::Future<Output = Result<(), RemotingError>>` を実装し、`RemoteShared` と `RemoteEventReceiver` の借用を保持する。`Send` 境界を型定義または `run` method の public API に要求してはならない（MUST NOT）。
+
+#### Scenario: RemoteSharedRunFuture の存在
+
+- **WHEN** `modules/remote-core/src/core/extension/remote_shared_run_future.rs` を読む
+- **THEN** `pub struct RemoteSharedRunFuture<'a, S: RemoteEventReceiver + ?Sized>` または同等の公開 concrete Future 型が定義されている
+- **AND** `impl Future for RemoteSharedRunFuture<'_, S>` が定義されている
+- **AND** `RemoteShared::run` の戻り値型としてこの concrete type 名が現れる
 
 #### Scenario: per-event の Command + Query 分離
 
-- **WHEN** `RemoteShared::run` の実装を検査する
+- **WHEN** `RemoteSharedRunFuture::poll` の実装を検査する
 - **THEN** event 1 件あたり次の順で実行する
-  1. `with_write(|remote| remote.handle_remote_event(event))?` で Command 実行（状態変更のみ、戻り値 `()`）
-  2. `with_read(|remote| remote.is_terminated())` で Query 確認（停止判定）
+  1. `receiver.poll_recv(cx)` で event を poll する
+  2. `with_write(|remote| remote.handle_remote_event(event))?` で Command 実行（状態変更のみ、戻り値 `()`）
+  3. `with_read(|remote| remote.is_terminated())` で Query 確認（停止判定）
 - **AND** Query が `true` を返したらループ終了 `Ok(())`
-- **AND** lock を `await` 越しに保持しない（`receiver.recv().await` 中はロックを取らない）
+- **AND** `Poll::Pending` の間は lock を取らない
 - **AND** Command の戻り値で停止判定する経路（`Result<bool, _>` 等）は存在しない
 - **AND** `RemoteShared::run` 自身が `match event` 等で event variant を解釈する経路は存在しない
 - **AND** `RemoteShared::run` 自身が `RemoteTransport` や `Association` を直接触る経路は存在しない
@@ -203,7 +239,7 @@
 #### Scenario: 並行 Remoting メソッドの進行（条件付き保証）
 
 - **WHEN** `RemoteShared::run` が走っている間に、別の clone から `RemoteShared::quarantine` / `shutdown` / `addresses` が呼ばれる
-- **THEN** これらは `run` の event 処理間の隙間（`receiver.recv().await` 中、または event 1 件処理完了後）で write/read lock を取って進行する
+- **THEN** これらは `run` の event 処理間の隙間（`poll_recv(cx)` が `Poll::Pending` を返して lock を持っていない間、または event 1 件処理完了後）で write/read lock を取って進行する
 - **AND** **次の前提条件下で** lock の取り合いがあってもデッドロックや無限待機が発生しない
   - `RemoteTransport` の同期 method（`send` / `send_handshake` / `schedule_handshake_timeout` 等）は `RemoteShared` / `Remote` への再入を行わない（remote-core-transport-port capability で要件化、後述）
   - `RemoteTransport` の各 method は bounded 時間内に return する（無限ブロックしない）
@@ -253,7 +289,7 @@
 
 ### Requirement: 別 Driver 型を新設しない
 
-`Remote::run` / `RemoteShared::run` のために `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` 等の新規型を core 側に追加してはならない（MUST NOT）。排他所有時の event loop は `Remote::run(&mut self, ..)`、共有時の lock orchestration は `RemoteShared::run(&self, ..)`、終了結果は `Result<(), RemotingError>` で表現する。
+`Remote::run` / `RemoteShared::run` のために `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` 等の新規型を core 側に追加してはならない（MUST NOT）。排他所有時の event loop は `Remote::run(&mut self, ..) -> RemoteRunFuture<'_, S>`、共有時の lock orchestration は `RemoteShared::run(&self, ..) -> RemoteSharedRunFuture<'_, S>`、終了結果は各 concrete Future の `Output = Result<(), RemotingError>` で表現する。
 
 #### Scenario: RemoteDriver 型の不在
 
@@ -405,7 +441,7 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 - **WHEN** `Remoting::shutdown`（`RemoteShared::shutdown` 経由）が単独で呼ばれる
 - **THEN** lifecycle terminated 遷移のみを行う（`with_write(|r| r.shutdown())` の純デリゲート）
 - **AND** `event_sender.try_send` を内部で呼ばない（`RemoteShared` は `event_sender` を持たない）
-- **AND** run task は次の event 受信時に `Remote::handle_remote_event` 末尾で lifecycle terminated を観測してループ終了する。`recv().await` で blocked のまま event が来なければ即座には停止しない
+- **AND** run task は次の event 受信時に `Remote::handle_remote_event` 末尾で lifecycle terminated を観測してループ終了する。`poll_recv(cx)` が `Poll::Pending` のまま event が来なければ即座には停止しない
 
 #### Scenario: 同期 shutdown の制約
 
