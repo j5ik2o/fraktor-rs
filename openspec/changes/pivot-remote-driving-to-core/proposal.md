@@ -69,7 +69,7 @@ impl RemoteShared {
 
 `Remote::handle_remote_event` 内で event を dispatch し、対応する `Association` メソッドを呼んで effect 列を実行する。`AssociationEffect::StartHandshake` を復活させ、`RemoteTransport` 経由で handshake を開始する。
 
-新規 core 型（`RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome`）は **作らない**。`Remote::run` / `RemoteShared::run` の終了結果は `Result<(), RemotingError>` で表現する。run task の停止要求は `Remoting::shutdown`（lifecycle terminated 遷移 + `event_sender.try_send(TransportShutdown)` の best-effort wake）で行い、完了観測は adapter 固有の async wait surface で `JoinHandle::await` する。同期 `Remoting::shutdown` の内部で `await` してはならない。
+新規 core 型（`RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome`）は **作らない**。`Remote::run` / `RemoteShared::run` の終了結果は `Result<(), RemotingError>` で表現する。同期 `Remoting::shutdown` は `RemoteShared` から `Remote::shutdown` へデリゲートして lifecycle を停止要求状態に遷移させるだけで、`event_sender` による wake は行わない。run task の即時 wake と完了観測が必要な場合は、adapter 固有の `RemotingExtensionInstaller::shutdown_and_join` が `event_sender.try_send(TransportShutdown)` と `JoinHandle::await` を担う。同期 `Remoting::shutdown` の内部で `await` してはならない。
 
 ### 2. `RemoteEvent` を closed enum、`RemoteEventReceiver` を 1 メソッド trait として追加する
 

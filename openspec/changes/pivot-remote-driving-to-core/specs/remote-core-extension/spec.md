@@ -175,7 +175,7 @@
 #### Scenario: 公開メソッドはすべて &self
 
 - **WHEN** `impl RemoteShared` ブロックの公開 method 一覧を検査する
-- **THEN** すべての公開 method は `&self`（または `self` consume だが `&self` が圧倒的多数）であり、`&mut self` を取る公開 method が存在しない
+- **THEN** constructor (`new`) を除く公開 instance method はすべて `&self` を取り、`self` consume または `&mut self` を取る公開 instance method は存在しない
 
 #### Scenario: raw SharedLock<Remote> を露出しない
 
