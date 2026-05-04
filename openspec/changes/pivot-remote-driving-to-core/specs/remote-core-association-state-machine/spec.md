@@ -39,7 +39,7 @@
 
 ### Requirement: instrument 引数の渡し方
 
-`Association` の状態遷移メソッドおよび送受信メソッドは `&mut dyn RemoteInstrument` を引数で受け取り、`Association` 自身が instrument を field として所有してはならない（MUST NOT）。型パラメータ `<I: RemoteInstrument>` を `Association` メソッドに導入してはならない（MUST NOT）。
+`Association` の状態遷移メソッドおよび送受信メソッドは `&mut dyn RemoteInstrument` を引数で受け取り、`Association` 自身が instrument を field として所有してはならない（MUST NOT）。型パラメータ `<I: RemoteInstrument>` を `Association` メソッドに導入してはならない（MUST NOT）。正式リリース前の破壊的変更を許容し、最終形では instrument を通らない公開 mutation API と `*_with_instrument` 併設 API を残さない。
 
 #### Scenario: instrument を field 保持しない
 
@@ -50,9 +50,10 @@
 #### Scenario: hook 系メソッドの引数
 
 - **WHEN** `Association::associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `apply_backpressure` の最終シグネチャを検査する
-- **THEN** いずれも `instrument: &mut dyn RemoteInstrument` を引数として受け取る経路が確立されている
+- **THEN** いずれも `instrument: &mut dyn RemoteInstrument` を引数として受け取る
 - **AND** 呼び出し側（`Remote::run`）は `&mut *self.instrument`（`self.instrument: Box<dyn RemoteInstrument + Send>` から `DerefMut` 経由）で参照を取得する
 - **AND** メソッドシグネチャに型パラメータ `<I>` が出現しない
+- **AND** 同じ責務を持つ `*_with_instrument` 併設 API と instrument 無し API が同時に公開されていない
 
 #### Scenario: enqueue / next_outbound のシグネチャ
 

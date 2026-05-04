@@ -33,7 +33,7 @@
 
 ## 4. Remote::run を inherent method として実装
 
-- [x] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl Remote` で `pub async fn run<S: RemoteEventReceiver>(&mut self, receiver: &mut S) -> Result<(), RemotingError>` の skeleton を追加する。`Remote` 自体には型パラメータ `<I>` を持たせない（instrument は `Box<dyn RemoteInstrument + Send>` フィールド経由）。event 処理は **inherent method `self.handle_event(...)` ではなく free function `fn handle_event(registry: &mut _, transport: &mut _, codec: &mut _, instrument: &mut dyn RemoteInstrument, event: RemoteEvent) -> Result<...>` に切り出すか、`let Self { registry, transport, codec, instrument, .. } = self;` のような destructuring で field 単位の split borrow を作って渡す**（`&mut self` 全体の reborrow と `&mut *self.instrument` の同時保持は借用衝突を起こすため）。
+- [x] 4.1 `modules/remote-core/src/core/extension/remote.rs` に `impl Remote` で `pub async fn run<S: RemoteEventReceiver>(self, receiver: &mut S) -> Result<(), RemotingError>` の skeleton を追加する。`Remote` 自体には型パラメータ `<I>` を持たせない（instrument は `Box<dyn RemoteInstrument + Send>` フィールド経由）。event 処理で instrument と他 field を同時に扱う場合は、field 単位の split borrow が成立する helper へ切り出す。
 - [ ] 4.2 `RemoteEvent::InboundFrameReceived` 処理を実装する（`Codec::decode` → Association inbound dispatch → instrument `on_receive`）。
 - [ ] 4.3 `RemoteEvent::HandshakeTimerFired { generation }` 処理を実装する（`Association.handshake_generation` と `!=` で比較し、不一致時は event を破棄。一致時のみ `Association::handshake_timed_out` を呼ぶ。`>` / `<` 比較は使わない — `wrapping_add` の wrap で stale 判定が漏れないようにする）。
 - [ ] 4.3.1 wrap 境界の unit test を追加する（`handshake_generation = u64::MAX` → 次回 `Handshaking` で `0` になり、古い `g_event = u64::MAX` の `HandshakeTimerFired` を受信した際に `!=` 判定で正しく破棄されること）。
@@ -66,13 +66,15 @@
 - [ ] 7.1 `modules/remote-adaptor-std/src/std/inbound_dispatch.rs` を I/O ワーカーに変更し、TCP frame 受信後に `RemoteEvent::InboundFrameReceived` を adapter 内部 sender 経由で push するだけの処理にする。`Association::handshake_accepted` 等の直接呼び出しを削除する。
 - [x] 7.2 `modules/remote-adaptor-std/src/std/tokio_remote_event_receiver.rs` を新設し、`TokioMpscRemoteEventReceiver: RemoteEventReceiver` を実装する（`tokio::sync::mpsc::Receiver<RemoteEvent>` を保持。bounded、capacity は `RemoteConfig` 経由）。
 - [ ] 7.3 adapter 内部で `tokio::sync::mpsc::channel::<RemoteEvent>(capacity)` を生成し、`Sender` を I/O ワーカー / handshake timer task 群が clone して共有する経路を整備する（`RemoteEventSink` trait は core に追加しない）。
-- [ ] 7.4 `RemotingExtensionInstaller` に `Remote::run(&mut receiver)` を `tokio::spawn` で起動する経路を追加する。`Remote` は `async move` ブロックに **所有権移動** で渡し、`Arc<Mutex<Remote>>` 等の共有可変性は使わない。spawn の戻り値 `JoinHandle<Result<(), RemotingError>>` を保持する。
-- [ ] 7.4.1 installer の field を `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` / `run_handle: JoinHandle<Result<(), RemotingError>>` / `cached_addresses: Vec<Address>` に絞り、`Remote` への直接参照を持たないことを確認する。
+- [ ] 7.4 `RemotingExtensionInstaller` に `remote.run(&mut receiver)` を `tokio::spawn` で起動する経路を追加する。`Remote` は `async move` ブロックに **所有権移動** で渡す。本 change の主経路では installer が raw `SharedLock<Remote>` / `Arc<Mutex<Remote>>` を field として保持しない。共有設計へ切り替える場合は `RemoteShared(SharedLock<Remote>)` のような専用 `*Shared` 型で CQS を保つ。
+- [ ] 7.4.1 installer の field を `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` / `run_handle: JoinHandle<Result<(), RemotingError>>` / `cached_addresses: Vec<Address>` に絞る。raw `Remote` 参照や raw `SharedLock<Remote>` field を持たないことを確認する。
 - [ ] 7.4.2 `Remoting::addresses()` を `cached_addresses` から返すように実装する。キャッシュは `transport.start()` で listening を確立した直後に `remote.addresses()` を呼び、その戻り値（`Vec<Address>`）を保存することで初期化する。`Remote::start` 等の新規 API は追加しない。
-- [ ] 7.5 actor system 停止時に `Remoting::shutdown` 経由で次の手順を実行する経路を追加する。
+- [ ] 7.4.3 PR 分割上、`Remote::run` spawn 経路を有効化する前に 4.3 / 4.3.1 を同一 PR で完了させる。`StartHandshake` 経由で予約された timeout が `RemoteEvent::HandshakeTimerFired` を push した際に `Err(RemotingError::UnimplementedEvent)` で run loop を落とさないことを確認する。
+- [ ] 7.5 adapter 固有の async shutdown / wait surface で次の手順を実行する経路を追加する。同期 `Remoting::shutdown` の内部では `await` しない。
   - 1. `event_sender.send(RemoteEvent::TransportShutdown).await?`
   - 2. `run_handle.await` で `Result<Result<(), RemotingError>, JoinError>` を観測し、`Ok(Ok(()))` のみ正常終了、それ以外は `RemotingError` に変換して伝播
   - 3. `let _` で握りつぶさない、log にも記録
+- [ ] 7.5.1 同期 shutdown surface を adapter 側に残す場合は、停止要求の受理可否だけを `try_send` 等で観測可能に返すか、別途 supervisor task が `JoinHandle` を await して結果を log / metric に記録する。同期 API が run task の終了完了まで保証したように見せない。
 - [ ] 7.6 `modules/remote-adaptor-std/src/std/effect_application.rs` から `AssociationEffect::StartHandshake` の dispatch 分岐を削除する。
 - [x] 7.7 `RemoteTransport::schedule_handshake_timeout` の adapter 実装を追加する（`tokio::spawn(async move { tokio::time::sleep(timeout).await; sender.send(RemoteEvent::HandshakeTimerFired { authority, generation }).await; })` 相当）。spawn 成功で `Ok(())` を返し、内部 sleep を await しない。`Timer` trait は core に新設しない。
 - [ ] 7.8 adapter 側 RemoteActorRef 等の outbound 経路を `RemoteEvent::OutboundEnqueued` push に切り替える。
@@ -101,8 +103,8 @@
   - `grep -nE '(OutboundFrameAcked|QuarantineTimerFired|BackpressureCleared)' modules/remote-core/src/core/extension/remote_event.rs` の出力が空（本 change のスコープ外）
 - [x] 9.4 `RemoteTransport::schedule_handshake_timeout` 以外の scheduling 系 method が `RemoteTransport` に追加されていないことを確認する。
   - `grep -nE 'fn schedule_' modules/remote-core/src/core/transport/remote_transport.rs` で `schedule_handshake_timeout` 1 件のみ
-- [ ] 9.5 adapter 側 installer に `Remote` への直接参照（`Arc<Mutex<Remote>>` / `Arc<Remote>` / `&Remote` field）がないことを確認する。
-  - `grep -nE 'Arc<.*Remote\b|Mutex<.*Remote\b|RwLock<.*Remote\b|SharedLock<.*Remote\b' modules/remote-adaptor-std/src/` の出力が空（`SharedLock<T>` は `utils-core::SharedLock<T>`、旧 `AShared` パターンの実装実体）
+- [ ] 9.5 adapter 側 installer に raw `Remote` 参照（`Arc<Remote>` / `&Remote` / raw `SharedLock<Remote>` field）がないことを確認する。`RemoteShared(SharedLock<Remote>)` のような専用 `*Shared` 型を導入する場合は CQS を守る API に閉じ、呼び出し側へ raw `SharedLock<Remote>` を露出しない。
+  - `grep -nE 'Arc<.*Remote\b|Mutex<.*Remote\b|RwLock<.*Remote\b|SharedLock<.*Remote\b' modules/remote-adaptor-std/src/` を実行し、raw field として残っていないことを確認する。専用 `*Shared` 型を導入した場合は該当箇所を手動レビューする。
 - [ ] 9.6 net file delta が `+1` 以下（`remote_event.rs` + `remote_event_receiver.rs` + `tokio_remote_event_receiver.rs` 追加 / `outbound_loop.rs` + `handshake_driver.rs` 削除）であることを確認する。
 
 ## 10. テスト

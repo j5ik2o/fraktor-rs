@@ -61,12 +61,12 @@
 
 ### Requirement: Remote::run は inherent async method として駆動主導権を持つ
 
-`Remote` 構造体に inherent method `pub async fn run<S: RemoteEventReceiver>(&mut self, receiver: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。`Remoting` trait に async fn を追加してはならない（MUST NOT）。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
+`Remote` 構造体に inherent method `pub async fn run<S: RemoteEventReceiver>(self, receiver: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。`Remote::run` は `Remote` を consume し、spawn された run task が単独所有する。`Remoting` trait に async fn を追加してはならない（MUST NOT）。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
 
 #### Scenario: Remote::run のシグネチャ
 
 - **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
-- **THEN** `impl Remote` ブロックに `pub async fn run<S>(&mut self, receiver: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
+- **THEN** `impl Remote` ブロックに `pub async fn run<S>(self, receiver: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
 - **AND** `S: RemoteEventReceiver` が trait bound として要求される
 - **AND** `Remote` 自体には型パラメータ `<I>` が宣言されていない
 
@@ -155,22 +155,23 @@
 
 - **WHEN** adapter 側の enqueue 経路（local actor からの tell 等）を検査する
 - **THEN** adapter は `AssociationRegistry` を直接 mutate せず、`RemoteEvent::OutboundEnqueued` を内部 sender に push する
-- **AND** `AssociationRegistry` の所有権は `Remote` に集約されており、`Mutex` / `RwLock` / `SharedLock`（旧 `AShared` パターンの実装実体、`utils-core::SharedLock<T>`）による共有可変性が core 側に存在しない
+- **AND** `AssociationRegistry` の所有権は本 change の主経路では `Remote` に集約されており、adapter 側から raw shared handle 経由で直接 mutate しない
 
 ### Requirement: Remote::run task の所有権モデル
 
-`Remote::run` を別 task として起動する場合、`Remote` の所有権は **run task に move** されなければならない（MUST）。`Arc<Mutex<Remote>>` 等の共有可変性で `Remote` を保持してはならない（MUST NOT）。
+本 change の主経路では、`Remote::run` を別 task として起動する場合、`Remote` の所有権は **run task に move** されなければならない（MUST）。installer は raw `SharedLock<Remote>` / `Arc<Mutex<Remote>>` を field として保持してはならない（MUST NOT）。`Remote` 共有設計を採る場合は、別途 `RemoteShared(SharedLock<Remote>)` のような専用 `*Shared` 型を定義し、`Remote` の CQS 境界を保たなければならない。
 
 #### Scenario: 所有権の move
 
 - **WHEN** adapter 側 installer が `Remote::run` を tokio task として起動する経路を検査する
-- **THEN** `Remote` を `Arc` / `ArcShared` / `Mutex` / `RwLock` / `SharedLock`（`utils-core::SharedLock<T>`、旧 `AShared` パターンの実装実体）にラップせず、所有権を直接 task に move する
-- **AND** 起動後は `Remote` の field を外部から参照する経路が存在しない
+- **THEN** 本 change の主経路では `Remote` の所有権を直接 task に move する
+- **AND** installer は raw `Arc<Remote>` / `Mutex<Remote>` / `RwLock<Remote>` / `SharedLock<Remote>` field を保持しない
+- **AND** `RemoteShared` のような専用 `*Shared` 型を導入する場合は、その型の API が CQS を守り、呼び出し側に raw `SharedLock<Remote>` を露出しない
 
 #### Scenario: 外部制御の surface
 
 - **WHEN** run task に対する外部制御手段を検査する
-- **THEN** 以下の **2 つだけ** が存在する
+- **THEN** adapter 内部には以下の **2 つだけ** が存在する
   - `Sender<RemoteEvent>`（installer が clone 保持）
   - `JoinHandle<Result<(), RemotingError>>`
 - **AND** これら以外（直接 method 呼出、shared state 経由）で run task の `Remote` に触れない
@@ -179,13 +180,20 @@
 
 - **WHEN** `Remoting::addresses()` が呼ばれる
 - **THEN** installer が `transport.start()` で listening を確立した直後に `Remote::addresses()`（既存 inherent method）を呼んで保存した `Vec<Address>` キャッシュから返す
-- **AND** run 中の `Remote` インスタンスにアクセスしない
+- **AND** run task 起動後に raw shared handle 経由で `Remote` 本体を直接操作しない
 - **AND** 取得経路は `Remote::addresses()` 一本に集約され、`transport.start()` の戻り値を直接キャッシュに使う経路や `Remote::start` 等の新規 API は採用しない
 
-#### Scenario: Remoting::shutdown の停止プロトコル
+#### Scenario: 同期 Remoting::shutdown では await しない
 
 - **WHEN** `Remoting::shutdown` が呼ばれる
-- **THEN** installer が保持する `Sender<RemoteEvent>` 経由で `RemoteEvent::TransportShutdown` を push する
+- **THEN** `event_sender.send(...).await` または `run_handle.await` を内部で実行しない
+- **AND** `Remoting` trait には `async fn` および `Future` 戻り値を追加しない
+- **AND** 同期 shutdown surface を adapter 側に残す場合は、停止要求の受理可否を `try_send` 等の観測可能な結果として返すか、別途 supervisor task が `JoinHandle` を await して log / metric に記録する
+
+#### Scenario: adapter 固有 async shutdown / wait surface
+
+- **WHEN** adapter 固有の async shutdown / wait surface が呼ばれる
+- **THEN** installer / adapter handle が保持する `Sender<RemoteEvent>` 経由で `RemoteEvent::TransportShutdown` を push する
 - **AND** 続けて `JoinHandle::await` で run task の終了（`Ok(())`）を待つ
 - **AND** `JoinHandle` が `Err` を返した場合、`RemotingError` に変換して呼出元に伝播する
 
