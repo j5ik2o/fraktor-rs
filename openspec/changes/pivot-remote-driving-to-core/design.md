@@ -110,7 +110,9 @@ impl RemoteShared {
 }
 ```
 
-`RemoteRunFuture` / `RemoteSharedRunFuture` は public concrete Future 型にし、poll 内で `RemoteEventReceiver::poll_recv(cx)` を呼ぶ。`Poll::Pending` の間は lock を持たず、`Poll::Ready(Some(event))` の event 1 件分だけ `handle_remote_event` を呼ぶ。`remote-core` 内に `async fn` / `async move` / `.await` は書かない。`Send` は run API の境界に含めず、multi-thread tokio spawn が必要な adapter 実装側だけで要求する。
+`RemoteShared::run` は概念上 `Remote::run` の共有版だが、`SharedLock` の write guard を保持したまま `Remote::run(&mut remote, receiver)` が返す `RemoteRunFuture` を保存してはならない。future が `Poll::Pending` を返す間も write lock を保持してしまい、別 clone からの `start` / `shutdown` / `quarantine` / `addresses` が進行できなくなるためである。
+
+そのため `RemoteRunFuture` / `RemoteSharedRunFuture` は別々の public concrete Future 型にする。`RemoteRunFuture` は `&mut Remote` を借用して poll し、`RemoteSharedRunFuture` は `RemoteShared` を借用し、`poll_recv(cx)` が `Ready(Some(event))` を返した event 1 件ごとに短い `with_write` で `Remote::handle_remote_event` を呼ぶ。続けて `with_read` で `Remote::is_terminated` を読む。`Poll::Pending` の間、`RemoteSharedRunFuture` は lock を取らない。これは poll orchestration の違いだけであり、event semantics / lifecycle / effect / transport logic は引き続き `Remote` 側に閉じる。`remote-core` 内に `async fn` / `async move` / `.await` は書かない。`Send` は run API の境界に含めず、multi-thread tokio spawn が必要な adapter 実装側だけで要求する。
 
 **この設計の利点:**
 
@@ -519,6 +521,8 @@ impl RemoteShared {
     }
 
     /// `Remote::run` の共有 wrapper。&self なので Clone と並行に呼べる。
+    /// write guard を Pending 跨ぎで保持しないため、poll は per-event
+    /// delegate として実装する。
     /// RemoteShared 自身は event semantics / lifecycle / effect / transport logic を持たない。
     pub fn run<'a, S>(&'a self, receiver: &'a mut S)
         -> RemoteSharedRunFuture<'a, S>

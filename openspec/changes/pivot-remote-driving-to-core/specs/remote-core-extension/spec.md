@@ -194,6 +194,8 @@
 
 `RemoteShared` に inherent method `pub fn run<'a, S: RemoteEventReceiver + ?Sized>(&'a self, receiver: &'a mut S) -> RemoteSharedRunFuture<'a, S>` が定義され、共有時に `Remote::run` と同じ core event loop semantics を per-event lock で実行する SHALL。各 event の dispatch は `with_write(|remote| remote.handle_remote_event(event))` で行い、ロック区間は event 1 件分のみ。`RemoteShared::run` は event variant を match せず、lifecycle 遷移、effect 実行、transport 呼び出しを実装しない。これらはすべて `Remote` 側に閉じる。
 
+`RemoteShared::run` は `Remote::run` の共有 wrapper だが、`SharedLock` の write guard を取得したまま `Remote::run(&mut remote, receiver)` が返す `RemoteRunFuture` を保持してはならない（MUST NOT）。future が `Poll::Pending` の間も lock を保持すると、他 clone からの `Remoting` method が進行できないためである。`RemoteSharedRunFuture` は receiver の poll と per-event lock orchestration だけを持ち、event 1 件ごとの処理を `Remote::handle_remote_event` と `Remote::is_terminated` にデリゲートする SHALL。
+
 #### Scenario: RemoteShared::run のシグネチャ
 
 - **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を読む
@@ -221,13 +223,14 @@
   3. `with_read(|remote| remote.is_terminated())` で Query 確認（停止判定）
 - **AND** Query が `true` を返したらループ終了 `Ok(())`
 - **AND** `Poll::Pending` の間は lock を取らない
+- **AND** `SharedLock` の write guard を保持したまま `Remote::run` が返す `RemoteRunFuture` を保持する経路は存在しない
 - **AND** Command の戻り値で停止判定する経路（`Result<bool, _>` 等）は存在しない
 - **AND** `RemoteShared::run` 自身が `match event` 等で event variant を解釈する経路は存在しない
 - **AND** `RemoteShared::run` 自身が `RemoteTransport` や `Association` を直接触る経路は存在しない
 
 #### Scenario: receiver 枯渇で Err(EventReceiverClosed)
 
-- **WHEN** `RemoteEventReceiver::recv` が `None` を返す
+- **WHEN** `RemoteEventReceiver::poll_recv(cx)` が `Poll::Ready(None)` を返す
 - **THEN** `RemoteShared::run` は `Err(RemotingError::EventReceiverClosed)` を返してループ終了する
 
 #### Scenario: TransportShutdown 受信時のループ終了経路
@@ -491,7 +494,7 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 
 ### Requirement: 戻り値の握りつぶし禁止
 
-`Remote::handle_remote_event` 内で `RemoteEventReceiver::recv`（戻り値 `Option`）以外の `Result` 戻り値（`RemoteTransport::*`、`Codec::*` 等）を `let _ = ...` で握りつぶしてはならない（MUST NOT）。
+`RemoteRunFuture` / `RemoteSharedRunFuture` 内で `RemoteEventReceiver::poll_recv(cx)` の `Poll<Option<RemoteEvent>>` は明示的に扱う SHALL。`Remote::handle_remote_event` 内で `Result` 戻り値（`RemoteTransport::*`、`Codec::*` 等）を `let _ = ...` で握りつぶしてはならない（MUST NOT）。
 
 #### Scenario: 戻り値の明示的扱い
 

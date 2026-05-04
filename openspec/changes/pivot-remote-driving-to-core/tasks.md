@@ -63,6 +63,7 @@
   - `Poll::Pending` の間は lock を取らず `Poll::Pending` を返す
   - `Poll::Ready(Some(event))` で `self.with_write(|remote| remote.handle_remote_event(event))?` を実行（状態変更のみ、戻り値 `()`）
   - `if self.with_read(|remote| remote.is_terminated()) { return Poll::Ready(Ok(())); }` で Query 確認（停止判定）
+  - `SharedLock` の write guard を保持したまま `Remote::run` が返す `RemoteRunFuture` を保持しない
   - `async fn` / `.await` / `impl Future` 戻り値 / `Send` 境界を作らない
   - 戻り値 bool で停止判定する経路（`Result<bool, _>` 等）を作らない
   - `RemoteSharedRunFuture` 自身が `match event`、`Association` 直接操作、`RemoteTransport` 直接呼び出しを行わないことを確認する（固有 core logic を持たせない）
@@ -193,6 +194,7 @@
 - [ ] 9.5.1 `RemoteShared` の薄いラッパー原則の遵守を以下のクエリで確認する。
   - `rtk grep -n 'event_sender\|EventSink\|tokio' modules/remote-core/src/core/extension/remote_shared.rs` の出力が空（`RemoteShared` は `Remote` が知らない responsibility を持たない）
   - `rtk grep -n 'match event\|RemoteTransport\|Association' modules/remote-core/src/core/extension/remote_shared.rs` の出力が空（`RemoteShared` に固有 core logic を持たせない）
+  - `rtk grep -n 'RemoteRunFuture\|remote.run' modules/remote-core/src/core/extension/remote_shared_run_future.rs` の出力が空（write guard から `Remote::run` future を保持しない）
   - `RemoteShared` の field が `inner: SharedLock<Remote>` 1 個のみであることを目視確認
   - `cargo tree -p fraktor-remote-core-rs` で `tokio` 等の runtime crate への依存が含まれていないことを確認
 - [ ] 9.6 adapter 側 installer に raw `Remote` 参照がないことを確認する。
