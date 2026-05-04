@@ -94,27 +94,27 @@
 - **WHEN** `Remote::with_instrument(transport, config, event_publisher, Box::new(RemotingFlightRecorder::new(...)))` を呼ぶ
 - **THEN** `Remote` が `RemotingFlightRecorder` を所有し、event loop 中の hook 発火が ring buffer に蓄積される
 
-### Requirement: instrument 配線の Remote::run 透過
+### Requirement: instrument 配線の Remote::handle_remote_event 透過
 
-`Remote::run` は `Remote` の `&mut self` 経由で `&mut *self.instrument: &mut dyn RemoteInstrument` を取得し、Association メソッドへ渡す SHALL。
+`Remote::handle_remote_event` は `Remote` の `&mut self` 経由で `&mut *self.instrument: &mut dyn RemoteInstrument` を取得し、Association メソッドへ渡す SHALL。
 
-#### Scenario: Remote::run 内での instrument 借用
+#### Scenario: Remote::handle_remote_event 内での instrument 借用
 
-- **WHEN** `Remote::run` のループ実装を検査する
+- **WHEN** `Remote::handle_remote_event` のループ実装を検査する
 - **THEN** `self.instrument` への `&mut dyn RemoteInstrument` 参照が確保され、`Association` 関連メソッド呼び出しに渡される
 - **AND** `Arc<dyn>` clone は発生しない
 
 #### Scenario: 別 Driver 型を作らない
 
 - **WHEN** `modules/remote-core/src/core/` 配下のソースを検査する
-- **THEN** `pub struct RemoteDriver` または同等の Driver 型が定義されていない（純増ゼロ方針、`Remote::run` がその責務を負う）
+- **THEN** `pub struct RemoteDriver` または同等の Driver 型が定義されていない（純増ゼロ方針、`Remote::handle_remote_event` がその責務を負う）
 
 ### Requirement: instrument hook 呼出は association state machine からトリガされる
 
 `RemoteInstrument` の各 method は `Association` の状態遷移または送受信メソッドからトリガされなければならない（MUST）。具体的な呼出点は `remote-core-association-state-machine` capability の要件で規定する。
 
-#### Scenario: Remote::run と instrument の独立性
+#### Scenario: Remote::handle_remote_event と instrument の独立性
 
-- **WHEN** `Remote::run` から instrument 直接呼出を検査する
-- **THEN** `Remote::run` は `Association` を経由して instrument を呼ぶか、または Association メソッドの戻り値（effect）を介して間接的にトリガする経路を持つ
-- **AND** `Remote::run` が状態遷移コンテキストを持たずに instrument 単体で何かを記録することはない（state-aware であるべき記録は association 経由）
+- **WHEN** `Remote::handle_remote_event` から instrument 直接呼出を検査する
+- **THEN** `Remote::handle_remote_event` は `Association` を経由して instrument を呼ぶか、または Association メソッドの戻り値（effect）を介して間接的にトリガする経路を持つ
+- **AND** `Remote::handle_remote_event` が状態遷移コンテキストを持たずに instrument 単体で何かを記録することはない（state-aware であるべき記録は association 経由）

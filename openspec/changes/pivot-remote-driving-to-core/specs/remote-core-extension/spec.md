@@ -37,7 +37,7 @@
 
 ### Requirement: RemoteEventReceiver trait
 
-`fraktor_remote_core_rs::core::extension::RemoteEventReceiver` trait が定義され、`Remote::run` が消費する Port を表現する SHALL。
+`fraktor_remote_core_rs::core::extension::RemoteEventReceiver` trait が定義され、`RemoteShared::run` が消費する Port を表現する SHALL。
 
 #### Scenario: trait の存在
 
@@ -59,48 +59,156 @@
 - **WHEN** `modules/remote-core/src/core/extension/` 配下のソースを検査する
 - **THEN** `pub trait RemoteEventSink` または同等の adapter→core push 用 trait が定義されていない（adapter 内部 sender で完結し、純増ゼロ方針を維持する）
 
-### Requirement: Remote::run は inherent async method として駆動主導権を持つ
+### Requirement: Remote は CQS 純粋ロジック層であり run を持たない
 
-`Remote` 構造体に inherent method `pub async fn run<S: RemoteEventReceiver>(self, receiver: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。`Remote::run` は `Remote` を consume し、spawn された run task が単独所有する。`Remoting` trait に async fn を追加してはならない（MUST NOT）。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
+`Remote` 構造体は CQS 原則を厳格に守る純粋ロジック層 SHALL。状態を変更する method はすべて `&mut self`（Command）、状態を読む method は `&self`（Query）。`Remote` 自体に並行性責務を持たせてはならない（MUST NOT、内部可変性 / `Arc` / `Mutex` を field に持たない）。`Remote` には `run` method を **持たせない**（MUST NOT、`run` は `RemoteShared` 側に置く）。
 
-#### Scenario: Remote::run のシグネチャ
+#### Scenario: Remote の CQS 遵守
+
+- **WHEN** `impl Remote` ブロックの method 一覧を検査する
+- **THEN** 状態を変更する method（`start` / `shutdown` / `quarantine` / `handle_remote_event` / `set_instrument` 等）はすべて `&mut self` を取る
+- **AND** 状態を読む method（`addresses` / `lifecycle` / `config` 等）はすべて `&self` を取る
+
+#### Scenario: Remote 内部の並行性吸収責務の不在
+
+- **WHEN** `Remote` の field を検査する
+- **THEN** `Arc<Mutex<..>>` / `RwLock<..>` / `Cell<..>` / `RefCell<..>` 等の内部可変性を持つ field が存在しない
+- **AND** instrument 用の `Box<dyn RemoteInstrument + Send>` 以外に動的ディスパッチ用の field を持たない
+
+#### Scenario: Remote::run の不在
+
+- **WHEN** `impl Remote` ブロックの method 一覧を検査する
+- **THEN** `pub async fn run<..>(..)` または `pub fn run<..>(..)` という名の method が存在しない（`run` は `RemoteShared::run` として実装される）
+
+### Requirement: Remote::handle_remote_event は event 1 件分の dispatch を担う
+
+`Remote` 構造体に inherent method `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<bool, RemotingError>` が定義され、event 1 件分の状態遷移と effect 処理を担当する SHALL。戻り値が `true` ならループ終了を意味する（`TransportShutdown` 受信または lifecycle terminated 観測時）。`Remote` 自体に型パラメータ `<I>` を導入してはならない（MUST NOT、instrument は `Box<dyn RemoteInstrument + Send>` で保持する）。
+
+#### Scenario: handle_remote_event のシグネチャ
 
 - **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
-- **THEN** `impl Remote` ブロックに `pub async fn run<S>(self, receiver: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
-- **AND** `S: RemoteEventReceiver` が trait bound として要求される
+- **THEN** `impl Remote` ブロックに `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<bool, RemotingError>` または同等のシグネチャが宣言されている
 - **AND** `Remote` 自体には型パラメータ `<I>` が宣言されていない
 
-#### Scenario: Remoting trait に async fn を追加しない
+#### Scenario: TransportShutdown で true
 
-- **WHEN** `Remoting` trait のメソッド一覧を検査する
-- **THEN** `async fn` は存在せず、戻り値に `Future` を含まない（既存の `start` / `shutdown` / `quarantine` / `addresses` のみ）
-
-#### Scenario: receiver 枯渇で Err(EventReceiverClosed)
-
-- **WHEN** `RemoteEventReceiver::recv` が `None` を返す
-- **THEN** `Remote::run` は `Err(RemotingError::EventReceiverClosed)` を返してループ終了する
-
-#### Scenario: TransportShutdown で Ok(())
-
-- **WHEN** receiver から `RemoteEvent::TransportShutdown` を受信する
-- **THEN** `Remote::run` は `Ok(())` を返してループ終了する
+- **WHEN** `Remote::handle_remote_event` が `RemoteEvent::TransportShutdown` を受信する
+- **THEN** 戻り値は `Ok(true)` であり、`RemoteShared::run` 側はこれを観測してループ終了する
 
 #### Scenario: 復帰不能エラーで Err
 
 - **WHEN** event 処理中に transport が永続的に失敗するなど復帰不能なエラーが発生する
-- **THEN** `Remote::run` は `Err(RemotingError::TransportUnavailable)` または同等の variant を返してループ終了する
+- **THEN** `Remote::handle_remote_event` は `Err(RemotingError::TransportUnavailable)` または同等の variant を返す
 - **AND** 戻り値の `Result` を `let _ = ...` で握りつぶす経路は呼び出し側に存在しない
 
 #### Scenario: TransportError から RemotingError への変換
 
-- **WHEN** `Remote::run` 内で `RemoteTransport::send` / `RemoteTransport::schedule_handshake_timeout` 等が `Err(TransportError)` を返す
-- **THEN** `Remote::run` は `TransportError` を `RemotingError::TransportUnavailable`（または変換ロジックで対応する `RemotingError` variant）にマップして `?` で伝播する
+- **WHEN** `Remote::handle_remote_event` 内で `RemoteTransport::send` / `RemoteTransport::schedule_handshake_timeout` 等が `Err(TransportError)` を返す
+- **THEN** `Remote::handle_remote_event` は `TransportError` を `RemotingError::TransportUnavailable`（または変換ロジックで対応する `RemotingError` variant）にマップして `?` で伝播する
 - **AND** `Codec::encode` / `Codec::decode` の失敗は `RemotingError::CodecFailed` 等の対応 variant にマップする
-- **AND** マッピングは `Remote::run` または専用 helper で集約され、呼び出し点ごとにアドホックに `match` する経路を作らない
+- **AND** マッピングは `Remote::handle_remote_event` または専用 helper で集約され、呼び出し点ごとにアドホックに `match` する経路を作らない
+
+### Requirement: RemoteShared は Sharing 層として並行性を吸収する
+
+`fraktor_remote_core_rs::core::extension::RemoteShared` 型が定義され、`SharedLock<Remote>` を内包する Sharing 層として並行性責務を吸収する SHALL。`#[derive(Clone)]` で複数 clone 可能、すべての公開 method は `&self` を取る。raw `SharedLock<Remote>` を呼び出し側に露出してはならない（MUST NOT）。
+
+#### Scenario: RemoteShared の存在と Clone
+
+- **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を読む
+- **THEN** `pub struct RemoteShared` が定義され、`#[derive(Clone)]` または同等の手書き `impl Clone for RemoteShared` を持つ
+- **AND** 内部 field は `SharedLock<Remote>` 1 個のみ（`utils-core::sync::SharedLock<T>`）
+
+#### Scenario: 構築 API
+
+- **WHEN** `RemoteShared::new` を検査する
+- **THEN** `pub fn new(remote: Remote) -> Self` が定義され、内部で `SharedLock::new_with_driver::<DefaultMutex<_>>(remote)` 相当で構築する
+- **AND** `Remote` の所有権は `SharedLock` 内に常駐し、外部から取り出す経路（`into_inner` 等）を公開 API として提供しない
+
+#### Scenario: 公開メソッドはすべて &self
+
+- **WHEN** `impl RemoteShared` ブロックの公開 method 一覧を検査する
+- **THEN** すべての公開 method は `&self`（または `self` consume だが `&self` が圧倒的多数）であり、`&mut self` を取る公開 method が存在しない
+
+#### Scenario: raw SharedLock<Remote> を露出しない
+
+- **WHEN** `RemoteShared` の公開 API を検査する
+- **THEN** `pub fn inner() -> SharedLock<Remote>` や `pub fn shared_lock() -> SharedLock<Remote>` のような raw lock を返す API が存在しない
+- **AND** 内部の `with_write` / `with_read` は `pub(crate)` 以下の visibility に閉じる
+
+### Requirement: RemoteShared::run は per-event lock の長期実行ループ
+
+`RemoteShared` に inherent method `pub async fn run<S: RemoteEventReceiver>(&self, receiver: &mut S) -> Result<(), RemotingError>` が定義され、event loop の主導権を core 側に集約する SHALL。各 event の dispatch は `with_write(|remote| remote.handle_remote_event(event))` で行い、ロック区間は event 1 件分のみ。これにより `Clone` で配った他の `RemoteShared` から並行に `Remoting` メソッドを呼べる。
+
+#### Scenario: RemoteShared::run のシグネチャ
+
+- **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を読む
+- **THEN** `impl RemoteShared` ブロックに `pub async fn run<S>(&self, receiver: &mut S) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
+- **AND** `S: RemoteEventReceiver` が trait bound として要求される
+
+#### Scenario: per-event lock
+
+- **WHEN** `RemoteShared::run` の実装を検査する
+- **THEN** event 1 件あたり `with_write(|remote| remote.handle_remote_event(event))` で 1 回の write lock を取り、戻り値が `true` ならループ終了する
+- **AND** lock を `await` 越しに保持しない（`receiver.recv().await` 中はロックを取らない）
+
+#### Scenario: receiver 枯渇で Err(EventReceiverClosed)
+
+- **WHEN** `RemoteEventReceiver::recv` が `None` を返す
+- **THEN** `RemoteShared::run` は `Err(RemotingError::EventReceiverClosed)` を返してループ終了する
+
+#### Scenario: handle_remote_event の戻り値 true でループ終了
+
+- **WHEN** `Remote::handle_remote_event` が `Ok(true)` を返す
+- **THEN** `RemoteShared::run` は `Ok(())` を返してループ終了する
+
+#### Scenario: 並行 Remoting メソッドの進行
+
+- **WHEN** `RemoteShared::run` が走っている間に、別の clone から `RemoteShared::quarantine` / `shutdown` / `addresses` が呼ばれる
+- **THEN** これらは `run` の event 処理間の隙間（`receiver.recv().await` 中、または event 1 件処理完了後）で write/read lock を取って進行する
+- **AND** lock の取り合いは存在するが、デッドロックや無限待機は発生しない
+
+### Requirement: Remoting trait は &self ベースで RemoteShared に実装される
+
+`Remoting` trait のすべてのメソッドは `&self` を取る同期 method SHALL。`async fn` および `Future` 戻り値を **追加してはならない**（MUST NOT）。`addresses` の戻り値は owned `Vec<Address>`（read lock 中に clone するため slice 不可）。`impl Remoting for Remote` を **削除** し、`impl Remoting for RemoteShared` を新設する SHALL。
+
+#### Scenario: Remoting trait のシグネチャ
+
+- **WHEN** `modules/remote-core/src/core/extension/remoting.rs` を読む
+- **THEN** trait `Remoting` の各メソッドは次のシグネチャを持つ
+  - `fn start(&self) -> Result<(), RemotingError>`
+  - `fn shutdown(&self) -> Result<(), RemotingError>`
+  - `fn quarantine(&self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError>`
+  - `fn addresses(&self) -> Vec<Address>`
+- **AND** `async fn` および `Future` 戻り値が存在しない
+
+#### Scenario: impl Remoting for Remote の不在
+
+- **WHEN** `modules/remote-core/src/core/extension/remote.rs` を検査する
+- **THEN** `impl Remoting for Remote` が存在しない（`Remote` は CQS 純粋ロジック層であり `Remoting` port を実装しない）
+
+#### Scenario: impl Remoting for RemoteShared
+
+- **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を検査する
+- **THEN** `impl Remoting for RemoteShared` が定義され、各メソッドは `with_write` または `with_read` で内部 `Remote` のメソッドにデリゲートする
+- **AND** `start` / `shutdown` / `quarantine` は `with_write` 経由
+- **AND** `addresses` は `with_read(|remote| remote.addresses().to_vec())` で owned `Vec<Address>` を返す
+
+#### Scenario: Remoting::shutdown の挙動
+
+- **WHEN** `RemoteShared::shutdown(&self)` が呼ばれる
+- **THEN** `with_write(|remote| remote.shutdown())` で `Remote::shutdown` を呼び lifecycle を terminated に遷移する
+- **AND** （adapter 側で sender を保持している場合）`event_sender.try_send(RemoteEvent::TransportShutdown)` 相当で best-effort wake する。`try_send` の失敗は無視可能（次の event 処理時に lifecycle が観測されてループは正常終了する）
+- **AND** `event_sender.send(...).await` や `run_handle.await` を内部で **実行しない**（同期 method、`async fn` を増やさない）
+
+#### Scenario: 完了観測は async wait surface に分離する
+
+- **WHEN** run task の完了完了を保証したい呼び出し側がいる
+- **THEN** adapter 固有の async wait surface（`Remoting` trait 外）で `JoinHandle::await` を行う
+- **AND** 同期 `Remoting::shutdown` は run task の終了完了まで保証したように **見せない**
 
 ### Requirement: 別 Driver 型を新設しない
 
-`Remote::run` の責務を担う `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` 等の新規型を core 側に追加してはならない（MUST NOT）。これらの責務は `Remote` の inherent method と既存 `Remoting` trait と `Result<(), RemotingError>` で表現する。
+`RemoteShared::run` の責務を担う `RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome` 等の新規型を core 側に追加してはならない（MUST NOT）。これらの責務は `RemoteShared::run` の inherent method と `Remoting` trait と `Result<(), RemotingError>` で表現する。
 
 #### Scenario: RemoteDriver 型の不在
 
@@ -117,13 +225,13 @@
 - **WHEN** `modules/remote-core/src/core/` 配下を検査する
 - **THEN** `pub enum RemoteDriverOutcome` が定義されていない（`Result<(), RemotingError>` で「正常終了 / 異常終了」を表現する）
 
-### Requirement: AssociationEffect::StartHandshake は Remote::run で 2 ステップ処理される
+### Requirement: AssociationEffect::StartHandshake は Remote::handle_remote_event で 2 ステップ処理される
 
-`Remote::run` のループ内で `AssociationEffect::StartHandshake { authority, timeout, generation }` を次の **2 ステップ** で処理する SHALL。adapter 側の effect application からは該当分岐を削除する。
+`Remote::handle_remote_event` 内で `AssociationEffect::StartHandshake { authority, timeout, generation }` を次の **2 ステップ** で処理する SHALL。adapter 側の effect application からは該当分岐を削除する。
 
 #### Scenario: ステップ 1 — handshake request frame の送出
 
-- **WHEN** `Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を見つける
+- **WHEN** `Remote::handle_remote_event` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を見つける
 - **THEN** 該当 association の local / remote address から `HandshakePdu::Req(HandshakeReq::new(local, remote))` を構築する
 - **AND** 続いて `RemoteTransport::send_handshake` で送出する
 - **AND** `Result` を `?` で伝播する（`let _ =` で握りつぶさない）
@@ -143,11 +251,11 @@
 
 ### Requirement: RemoteEvent::OutboundEnqueued 処理
 
-`Remote::run` は `RemoteEvent::OutboundEnqueued { authority, envelope }` を受信した際、該当 association に envelope を enqueue し、続けて outbound drain（next_outbound 処理）を実行する SHALL。
+`Remote::handle_remote_event` は `RemoteEvent::OutboundEnqueued { authority, envelope }` を受信した際、該当 association に envelope を enqueue し、続けて outbound drain（next_outbound 処理）を実行する SHALL。
 
 #### Scenario: enqueue と drain の連鎖
 
-- **WHEN** `Remote::run` が `RemoteEvent::OutboundEnqueued { authority, envelope }` を受信する
+- **WHEN** `Remote::handle_remote_event` が `RemoteEvent::OutboundEnqueued { authority, envelope }` を受信する
 - **THEN** `AssociationRegistry` から `authority` 対応の `Association` を取得し、`Association::enqueue(envelope)` を呼ぶ
 - **AND** 続けて outbound drain helper（`next_outbound` → `Codec::encode` → `RemoteTransport::send`）を起動し、可能な限り queue を消化する
 
@@ -157,77 +265,103 @@
 - **THEN** adapter は `AssociationRegistry` を直接 mutate せず、`RemoteEvent::OutboundEnqueued` を内部 sender に push する
 - **AND** `AssociationRegistry` の所有権は本 change の主経路では `Remote` に集約されており、adapter 側から raw shared handle 経由で直接 mutate しない
 
-### Requirement: Remote::run task の所有権モデル
+### Requirement: Installer は RemoteShared を保持し外部公開する
 
-本 change の主経路では、`Remote::run` を別 task として起動する場合、`Remote` の所有権は **run task に move** されなければならない（MUST）。installer は raw `SharedLock<Remote>` / `Arc<Mutex<Remote>>` を field として保持してはならない（MUST NOT）。`Remote` 共有設計を採る場合は、別途 `RemoteShared(SharedLock<Remote>)` のような専用 `*Shared` 型を定義し、`Remote` の CQS 境界を保たなければならない。
+adapter 側の `RemotingExtensionInstaller` は `RemoteShared` を field として保持し、`installer.remote() -> RemoteShared` で外部公開しなければならない（MUST）。raw `SharedLock<Remote>` / `Arc<Mutex<Remote>>` / `Arc<Remote>` を field として保持してはならない（MUST NOT）。`installer.remote()` の戻り値型は `RemoteShared` であり、raw `SharedLock<Remote>` を返してはならない（MUST NOT）。
 
-#### Scenario: 所有権の move
+#### Scenario: installer の field 構成
 
-- **WHEN** adapter 側 installer が `Remote::run` を tokio task として起動する経路を検査する
-- **THEN** 本 change の主経路では `Remote` の所有権を直接 task に move する
-- **AND** installer は raw `Arc<Remote>` / `Mutex<Remote>` / `RwLock<Remote>` / `SharedLock<Remote>` field を保持しない
-- **AND** `RemoteShared` のような専用 `*Shared` 型を導入する場合は、その型の API が CQS を守り、呼び出し側に raw `SharedLock<Remote>` を露出しない
+- **WHEN** `RemotingExtensionInstaller` の field を検査する
+- **THEN** `remote_shared: RemoteShared` / `event_sender: tokio::sync::mpsc::Sender<RemoteEvent>` / `run_handle: JoinHandle<Result<(), RemotingError>>` 程度のみを保持する
+- **AND** raw `SharedLock<Remote>` / `Arc<Mutex<Remote>>` / `Arc<Remote>` の field が存在しない
+- **AND** `cached_addresses: Vec<Address>` のような addresses cache field を持たない（`RemoteShared::addresses` で source of truth から取得するため）
 
-#### Scenario: 外部制御の surface
+#### Scenario: 公開 getter のシグネチャ
+
+- **WHEN** `RemotingExtensionInstaller::remote` の戻り値型を検査する
+- **THEN** `pub fn remote(&self) -> RemoteShared`（または `Result<RemoteShared, _>`）を返す
+- **AND** raw `SharedLock<Remote>` を返す API が公開されていない
+
+#### Scenario: spawn 経路
+
+- **WHEN** installer が `RemoteShared::run` を spawn する経路を検査する
+- **THEN** `let run_target = self.remote_shared.clone();` の後 `tokio::spawn(async move { run_target.run(&mut receiver).await })` 相当で起動する
+- **AND** spawn 後も installer は `remote_shared` を保持し続け、外部から `installer.remote()` で取得できる
+
+### Requirement: 外部制御 surface
+
+run task の停止経路は次の 2 種で構成される SHALL。
+
+- `Sender<RemoteEvent>`（installer が clone 保持） — `try_send(TransportShutdown)` で best-effort wake
+- `JoinHandle<Result<(), RemotingError>>` — adapter 固有の async wait surface で await し、結果を観測
+
+これらに加え、`Remoting` trait（`RemoteShared` 実装）経由で `start` / `shutdown` / `quarantine` / `addresses` を同期 method として呼ぶ。`Remoting::shutdown` は内部で lifecycle 遷移と `event_sender.try_send` を行う（`await` しない）。
+
+#### Scenario: 外部制御の手段
 
 - **WHEN** run task に対する外部制御手段を検査する
 - **THEN** adapter 内部には以下の **2 つだけ** が存在する
   - `Sender<RemoteEvent>`（installer が clone 保持）
   - `JoinHandle<Result<(), RemotingError>>`
-- **AND** これら以外（直接 method 呼出、shared state 経由）で run task の `Remote` に触れない
+- **AND** これら以外で run task の `Remote` に触れる経路（直接 method 呼出、raw shared state 経由）を作らない（`RemoteShared` の `Remoting` trait API は許容される）
 
-#### Scenario: addresses 等のクエリは installer のキャッシュから返す
+#### Scenario: addresses クエリは RemoteShared 経由で source of truth から返す
 
-- **WHEN** `Remoting::addresses()` が呼ばれる
-- **THEN** installer が `transport.start()` で listening を確立した直後に `Remote::addresses()`（既存 inherent method）を呼んで保存した `Vec<Address>` キャッシュから返す
-- **AND** run task 起動後に raw shared handle 経由で `Remote` 本体を直接操作しない
-- **AND** 取得経路は `Remote::addresses()` 一本に集約され、`transport.start()` の戻り値を直接キャッシュに使う経路や `Remote::start` 等の新規 API は採用しない
+- **WHEN** `Remoting::addresses()`（`RemoteShared::addresses` 経由）が呼ばれる
+- **THEN** `RemoteShared::addresses(&self)` が `with_read(|remote| remote.addresses().to_vec())` で内部 `Remote` から owned `Vec<Address>` を返す
+- **AND** installer 側の `cached_addresses` を経由しない（キャッシュを持たない）
+- **AND** `transport.start()` の戻り値を直接キャッシュに使う経路や `Remote::start` 等の新規 API は採用しない
 
-#### Scenario: 同期 Remoting::shutdown では await しない
+### Requirement: adapter 固有 async wait surface での完了観測
 
-- **WHEN** `Remoting::shutdown` が呼ばれる
+run task の完了完了を保証する経路は `Remoting` trait の外側、adapter 固有の async wait surface に分離する SHALL。同期 `Remoting::shutdown`（`RemoteShared::shutdown` 経由）の中では `event_sender.send(...).await` や `run_handle.await` を実行してはならない（MUST NOT）。
+
+#### Scenario: async wait surface の手順
+
+- **WHEN** adapter 固有の async wait surface が呼ばれる
+- **THEN** （任意）`RemoteShared::shutdown` で停止要求を送る（同期、`await` 不要、内部で lifecycle 遷移と `event_sender.try_send(TransportShutdown)` を行う）
+- **AND** 続けて `run_handle.await` で run task の終了（`Ok(())`）を待つ
+- **AND** `JoinHandle` が `Err` を返した場合、`RemotingError` に変換して呼出元に伝播する
+
+#### Scenario: 同期 shutdown の制約
+
+- **WHEN** `Remoting::shutdown`（`RemoteShared::shutdown` 経由）が呼ばれる
 - **THEN** `event_sender.send(...).await` または `run_handle.await` を内部で実行しない
 - **AND** `Remoting` trait には `async fn` および `Future` 戻り値を追加しない
-- **AND** 同期 shutdown surface を adapter 側に残す場合は、停止要求の受理可否を `try_send` 等の観測可能な結果として返すか、別途 supervisor task が `JoinHandle` を await して log / metric に記録する
-
-#### Scenario: adapter 固有 async shutdown / wait surface
-
-- **WHEN** adapter 固有の async shutdown / wait surface が呼ばれる
-- **THEN** installer / adapter handle が保持する `Sender<RemoteEvent>` 経由で `RemoteEvent::TransportShutdown` を push する
-- **AND** 続けて `JoinHandle::await` で run task の終了（`Ok(())`）を待つ
-- **AND** `JoinHandle` が `Err` を返した場合、`RemotingError` に変換して呼出元に伝播する
+- **AND** lifecycle の terminated 遷移と `event_sender.try_send(TransportShutdown).ok()` による best-effort wake のみを行う
+- **AND** run task の終了完了まで保証したように見せない
 
 ### Requirement: Codec 経路の明文化
 
-`Remote::run` は inbound 側で raw frame を `Codec::decode` で復号してから `Association` に渡し、outbound 側で `Association::next_outbound` の戻り値を `Codec::encode` で raw bytes 化してから `RemoteTransport` に渡す SHALL。
+`Remote::handle_remote_event` は inbound 側で raw frame を `Codec::decode` で復号してから `Association` に渡し、outbound 側で `Association::next_outbound` の戻り値を `Codec::encode` で raw bytes 化してから `RemoteTransport` に渡す SHALL。
 
 #### Scenario: inbound decode の経路
 
-- **WHEN** `Remote::run` が `RemoteEvent::InboundFrameReceived { authority, frame }` を受信する
+- **WHEN** `Remote::handle_remote_event` が `RemoteEvent::InboundFrameReceived { authority, frame }` を受信する
 - **THEN** `Codec<InboundEnvelope>::decode(&frame)` で復号する
 - **AND** 復号した `InboundEnvelope` を該当 association の dispatch 経路に渡す
 
 #### Scenario: outbound encode の経路
 
-- **WHEN** `Remote::run` が `Association::next_outbound()` で `OutboundEnvelope` を取得する
+- **WHEN** `Remote::handle_remote_event` が `Association::next_outbound()` で `OutboundEnvelope` を取得する
 - **THEN** `Codec<OutboundEnvelope>::encode(&envelope)` で raw bytes 化する
 - **AND** その raw bytes を `RemoteTransport::send` または同等の API に渡す
 
 ### Requirement: outbound watermark backpressure の発火経路
 
-`Remote::run` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `RemoteConfig::outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure(BackpressureSignal::Apply)` または `Release` を発火する SHALL。境界を跨がない通常の enqueue / dequeue では発火しない。
+`Remote::handle_remote_event` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `RemoteConfig::outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure(BackpressureSignal::Apply)` または `Release` を発火する SHALL。境界を跨がない通常の enqueue / dequeue では発火しない。
 
 #### Scenario: high watermark で Apply（エッジでのみ発火）
 
-- **WHEN** `Remote::run` が outbound enqueue 直後に `Association::total_outbound_len()` を確認し、enqueue 前は `outbound_high_watermark` 以下、enqueue 後は超過になった（境界を跨いだ）
-- **THEN** `Remote::run` は `Association::apply_backpressure(BackpressureSignal::Apply)` を呼ぶ
+- **WHEN** `Remote::handle_remote_event` が outbound enqueue 直後に `Association::total_outbound_len()` を確認し、enqueue 前は `outbound_high_watermark` 以下、enqueue 後は超過になった（境界を跨いだ）
+- **THEN** `Remote::handle_remote_event` は `Association::apply_backpressure(BackpressureSignal::Apply)` を呼ぶ
 - **AND** 該当 instrument の `record_backpressure(.., BackpressureSignal::Apply, ..)` が呼ばれる
 - **AND** 既に超過状態で連続 enqueue した場合、2 回目以降は `apply_backpressure` を呼ばない
 
 #### Scenario: low watermark で Release（エッジでのみ発火）
 
-- **WHEN** `Remote::run` が outbound dequeue 直後に `Association::total_outbound_len()` を確認し、dequeue 前は `outbound_low_watermark` 以上で Apply 状態、dequeue 後は下回った（境界を跨いだ）
-- **THEN** `Remote::run` は `Association::apply_backpressure(BackpressureSignal::Release)` を呼ぶ
+- **WHEN** `Remote::handle_remote_event` が outbound dequeue 直後に `Association::total_outbound_len()` を確認し、dequeue 前は `outbound_low_watermark` 以上で Apply 状態、dequeue 後は下回った（境界を跨いだ）
+- **THEN** `Remote::handle_remote_event` は `Association::apply_backpressure(BackpressureSignal::Release)` を呼ぶ
 - **AND** 該当 instrument の `record_backpressure(.., BackpressureSignal::Release, ..)` が呼ばれる
 - **AND** 既に Release 済み状態で連続 dequeue した場合、2 回目以降は `apply_backpressure` を呼ばない
 
@@ -238,10 +372,10 @@
 
 ### Requirement: 戻り値の握りつぶし禁止
 
-`Remote::run` 内で `RemoteEventReceiver::recv`（戻り値 `Option`）以外の `Result` 戻り値（`RemoteTransport::*`、`Codec::*` 等）を `let _ = ...` で握りつぶしてはならない（MUST NOT）。
+`Remote::handle_remote_event` 内で `RemoteEventReceiver::recv`（戻り値 `Option`）以外の `Result` 戻り値（`RemoteTransport::*`、`Codec::*` 等）を `let _ = ...` で握りつぶしてはならない（MUST NOT）。
 
 #### Scenario: 戻り値の明示的扱い
 
-- **WHEN** `Remote::run` の実装ソースを検査する
+- **WHEN** `Remote::handle_remote_event` の実装ソースを検査する
 - **THEN** `let _ = ...` による `Result` 握りつぶしが存在しない
 - **AND** 失敗は `?` で伝播するか、`match` で観測可能な経路（log / metric / instrument）に分岐する

@@ -2,7 +2,7 @@
 
 ### Requirement: schedule_handshake_timeout メソッド
 
-`RemoteTransport` trait は handshake request を送信する method と handshake timeout を adapter 側に予約させる method を持たなければならない（MUST）。`Remote::run` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を実行する際、handshake request frame の送信（`send_handshake`）に続けて timeout 予約 method を呼び、adapter 側 timer task を起動する。
+`RemoteTransport` trait は handshake request を送信する method と handshake timeout を adapter 側に予約させる method を持たなければならない（MUST）。`Remote::handle_remote_event` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を実行する際、handshake request frame の送信（`send_handshake`）に続けて timeout 予約 method を呼び、adapter 側 timer task を起動する。
 
 #### Scenario: send_handshake メソッドのシグネチャ
 
@@ -26,11 +26,11 @@
 
 - **WHEN** 同じ `authority` に対して `schedule_handshake_timeout` を 2 回連続で呼ぶ
 - **THEN** 2 回目の呼出は前回の timer task をキャンセルせず、独立した task として動作してよい
-- **AND** 古い timer が満了して push する `HandshakeTimerFired` は `generation` 値が古いため `Remote::run` 側で `!=` 判定により破棄される（adapter 側でキャンセル責務を負わない）
+- **AND** 古い timer が満了して push する `HandshakeTimerFired` は `generation` 値が古いため `Remote::handle_remote_event` 側で `!=` 判定により破棄される（adapter 側でキャンセル責務を負わない）
 
 #### Scenario: 戻り値の握りつぶし禁止
 
-- **WHEN** `Remote::run` が `schedule_handshake_timeout` を呼ぶ実装を検査する
+- **WHEN** `Remote::handle_remote_event` が `schedule_handshake_timeout` を呼ぶ実装を検査する
 - **THEN** 戻り値の `Result<(), TransportError>` は `?` で伝播するか `match` で観測する
 - **AND** `let _ = ...` で握りつぶしている経路が存在しない
 
