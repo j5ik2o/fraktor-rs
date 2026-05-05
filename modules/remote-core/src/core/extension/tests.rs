@@ -503,13 +503,16 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
 }
 
 #[test]
-fn remote_new_defaults_to_noop_and_flight_recorder_instrument_records_send_hook() {
+fn remote_new_default_instrument_accepts_event_loop_hooks() {
   let noop_address = Address::new("sys", "127.0.0.1", 2552);
   let mut noop_remote =
     Remote::new(RecordingTransport::new(vec![noop_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   let mut noop_receiver = VecRemoteEventReceiver::new([RemoteEvent::TransportShutdown]);
   block_on_ready(noop_remote.run(&mut noop_receiver)).expect("NoopInstrument should accept event loop hooks");
+}
 
+#[test]
+fn flight_recorder_instrument_records_send_hook() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");

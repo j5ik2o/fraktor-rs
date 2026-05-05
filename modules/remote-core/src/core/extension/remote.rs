@@ -398,6 +398,7 @@ impl Remote {
   }
 
   fn handle_inbound_ack_pdu(&mut self, authority: &TransportEndpoint, pdu: &AckPdu, now_ms: u64) {
+    // TODO(remote-redelivery): ACK window に基づく再送状態更新は redelivery 状態導入時に実装する。
     tracing::debug!(
       authority = %authority.authority(),
       sequence_number = pdu.sequence_number(),

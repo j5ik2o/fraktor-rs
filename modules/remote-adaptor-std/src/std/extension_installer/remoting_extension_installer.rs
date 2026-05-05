@@ -148,9 +148,6 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     ));
     let mut receiver_slot =
       self.receiver.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(RECEIVER_LOCK_POISONED)))?;
-    if receiver_slot.is_some() {
-      return Err(ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)));
-    }
     *receiver_slot = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
     self
       .event_sender
