@@ -138,8 +138,9 @@ async fn read_loop(
   let mut framed = Framed::new(stream, frame_codec);
   while let Some(next) = framed.next().await {
     match next {
-      | Ok(frame) => {
-        if inbound_tx.send(InboundFrameEvent { peer: peer.clone(), frame }).is_err() {
+      | Ok(decoded) => {
+        let (frame, frame_bytes) = decoded.into_parts();
+        if inbound_tx.send(InboundFrameEvent { peer: peer.clone(), frame, frame_bytes }).is_err() {
           // Receiver dropped — the transport is shutting down.
           break;
         }

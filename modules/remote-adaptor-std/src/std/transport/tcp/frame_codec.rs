@@ -8,7 +8,7 @@ use fraktor_remote_core_rs::core::wire::{
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::{frame_codec_error::FrameCodecError, wire_frame::WireFrame};
+use super::{decoded_wire_frame::DecodedWireFrame, frame_codec_error::FrameCodecError, wire_frame::WireFrame};
 
 /// Minimum bytes required to inspect the frame header (`length(4)` + `version(1)` + `kind(1)`).
 const FRAME_HEADER_LEN: usize = 6;
@@ -34,8 +34,9 @@ fn declared_frame_length(frame: &[u8]) -> Result<usize, FrameCodecError> {
 ///
 /// Encode dispatches on the [`crate::std::transport::tcp::WireFrame`] variant and delegates to the
 /// core `Codec<T>` implementor for that PDU. Decode peeks at the frame header to
-/// determine the `kind` byte, splits off the complete frame bytes, and feeds
-/// them back through the corresponding core decoder.
+/// determine the `kind` byte, splits off the complete frame bytes, feeds them
+/// through the corresponding core decoder, and keeps the original bytes next
+/// to the decoded frame.
 #[derive(Clone, Copy, Debug)]
 pub struct WireFrameCodec {
   maximum_frame_size: usize,
@@ -90,7 +91,7 @@ impl Encoder<WireFrame> for WireFrameCodec {
 
 impl Decoder for WireFrameCodec {
   type Error = FrameCodecError;
-  type Item = WireFrame;
+  type Item = DecodedWireFrame;
 
   fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
     if src.len() < FRAME_HEADER_LEN {
@@ -113,7 +114,7 @@ impl Decoder for WireFrameCodec {
     let kind = src[5];
     // Split off exactly one complete frame and feed it to the core decoder.
     let frame_bytes: Bytes = src.split_to(total).freeze();
-    let mut frame = frame_bytes;
+    let mut frame = frame_bytes.clone();
     let decoded: Result<WireFrame, WireError> = match kind {
       | KIND_ENVELOPE => EnvelopeCodec::new().decode(&mut frame).map(WireFrame::Envelope),
       | KIND_HANDSHAKE_REQ | KIND_HANDSHAKE_RSP => HandshakeCodec::new().decode(&mut frame).map(WireFrame::Handshake),
@@ -121,6 +122,6 @@ impl Decoder for WireFrameCodec {
       | KIND_ACK => AckCodec::new().decode(&mut frame).map(WireFrame::Ack),
       | _ => Err(WireError::UnknownKind),
     };
-    Ok(Some(decoded?))
+    Ok(Some(DecodedWireFrame::new(decoded?, frame_bytes)))
   }
 }

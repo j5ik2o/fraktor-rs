@@ -183,7 +183,6 @@ impl TcpRemoteTransport {
       tracing::debug!("inbound receiver was already consumed; inbound worker not spawned");
       return Err(TransportError::NotAvailable);
     };
-    let frame_codec = self.frame_codec;
     let monotonic_epoch = self.monotonic_epoch;
     let inbound_max_restarts = self.inbound_max_restarts;
     let inbound_restart_timeout = self.inbound_restart_timeout;
@@ -192,7 +191,6 @@ impl TcpRemoteTransport {
         inbound_rx,
         event_sender,
         move || std_instant_elapsed_millis(monotonic_epoch),
-        frame_codec,
         inbound_max_restarts,
         inbound_restart_timeout,
       )

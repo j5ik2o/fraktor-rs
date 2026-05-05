@@ -115,8 +115,9 @@ async fn run(
   loop {
     tokio::select! {
       next = framed.next() => match next {
-        | Some(Ok(frame)) => {
-          if inbound_tx.send(InboundFrameEvent { peer: peer_addr.clone(), frame }).is_err() {
+        | Some(Ok(decoded)) => {
+          let (frame, frame_bytes) = decoded.into_parts();
+          if inbound_tx.send(InboundFrameEvent { peer: peer_addr.clone(), frame, frame_bytes }).is_err() {
             break;
           }
         }

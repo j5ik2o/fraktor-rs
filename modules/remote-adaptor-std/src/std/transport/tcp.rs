@@ -15,6 +15,7 @@ mod tests;
 
 mod base;
 mod client;
+mod decoded_wire_frame;
 mod frame_codec;
 mod frame_codec_error;
 mod inbound_frame_event;
@@ -23,6 +24,7 @@ mod wire_frame;
 
 pub use base::TcpRemoteTransport;
 pub use client::TcpClient;
+pub use decoded_wire_frame::DecodedWireFrame;
 pub use frame_codec::WireFrameCodec;
 pub use frame_codec_error::FrameCodecError;
 pub use inbound_frame_event::InboundFrameEvent;
