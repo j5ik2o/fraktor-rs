@@ -3,11 +3,10 @@
 #[cfg(test)]
 mod tests;
 
-use core::future::Future;
+use core::time::Duration;
 
 use bytes::BytesMut;
 use fraktor_remote_core_rs::core::{
-  config::RemoteConfig,
   extension::RemoteEvent,
   transport::{TransportEndpoint, TransportError},
   wire::{ControlPdu, HandshakePdu},
@@ -23,32 +22,6 @@ use crate::std::{
   transport::tcp::{InboundFrameEvent, WireFrame, WireFrameCodec},
 };
 
-/// Re-runs an inbound task until it succeeds or the configured restart budget
-/// is exhausted.
-///
-/// # Errors
-///
-/// Returns the last task error once the configured inbound restart budget is
-/// consumed inside the active restart-timeout window.
-pub async fn run_inbound_task_with_restart_budget<F, Fut, E>(config: &RemoteConfig, mut run_task: F) -> Result<(), E>
-where
-  F: FnMut() -> Fut,
-  Fut: Future<Output = Result<(), E>>, {
-  let started_at = Instant::now();
-  let mut restart_counter = RestartCounter::new(config.inbound_max_restarts(), config.inbound_restart_timeout());
-
-  loop {
-    match run_task().await {
-      | Ok(()) => return Ok(()),
-      | Err(err) => {
-        if !restart_counter.restart(tokio_instant_elapsed_millis(started_at)) {
-          return Err(err);
-        }
-      },
-    }
-  }
-}
-
 /// Reads decoded inbound frames and pushes raw core `RemoteEvent`s.
 ///
 /// # Errors
@@ -60,9 +33,22 @@ pub async fn run_inbound_dispatch(
   event_sender: Sender<RemoteEvent>,
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
   frame_codec: WireFrameCodec,
+  inbound_max_restarts: u32,
+  inbound_restart_timeout: Duration,
 ) -> Result<(), TransportError> {
   let mut inbound_rx = inbound_rx;
-  run_inbound_dispatch_once(&mut inbound_rx, event_sender, &now_ms_provider, frame_codec).await
+  let started_at = Instant::now();
+  let mut restart_counter = RestartCounter::new(inbound_max_restarts, inbound_restart_timeout);
+  loop {
+    match run_inbound_dispatch_once(&mut inbound_rx, event_sender.clone(), &now_ms_provider, frame_codec).await {
+      | Ok(()) => return Ok(()),
+      | Err(error) => {
+        if !restart_counter.restart(tokio_instant_elapsed_millis(started_at)) {
+          return Err(error);
+        }
+      },
+    }
+  }
 }
 
 async fn run_inbound_dispatch_once(

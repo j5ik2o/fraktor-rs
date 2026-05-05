@@ -130,7 +130,10 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     };
     let (event_sender, event_receiver) = mpsc::channel(self.config.outbound_message_queue_size());
     let monotonic_epoch = Instant::now();
-    let transport = transport.with_monotonic_epoch(monotonic_epoch).with_remote_event_sender(event_sender.clone());
+    let transport = transport
+      .with_monotonic_epoch(monotonic_epoch)
+      .with_inbound_restart_budget(self.config.inbound_max_restarts(), self.config.inbound_restart_timeout())
+      .with_remote_event_sender(event_sender.clone());
     let event_publisher = EventPublisher::new(system.downgrade());
     let remote = RemoteShared::new(Remote::with_instrument(
       transport,

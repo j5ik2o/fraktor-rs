@@ -45,18 +45,20 @@ use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 /// Phase 3 serialization driver, so `send` fails fast instead of emitting an
 /// empty payload frame.
 pub struct TcpRemoteTransport {
-  local_addresses: Vec<Address>,
-  default_address: Option<Address>,
-  bind_addr:       String,
-  frame_codec:     WireFrameCodec,
-  server:          TcpServer,
-  clients:         BTreeMap<String, TcpClient>,
-  inbound_tx:      UnboundedSender<InboundFrameEvent>,
-  inbound_rx:      Option<UnboundedReceiver<InboundFrameEvent>>,
-  remote_event_tx: Option<Sender<RemoteEvent>>,
-  monotonic_epoch: Instant,
-  inbound_worker:  Option<JoinHandle<Result<(), TransportError>>>,
-  running:         bool,
+  local_addresses:         Vec<Address>,
+  default_address:         Option<Address>,
+  bind_addr:               String,
+  frame_codec:             WireFrameCodec,
+  server:                  TcpServer,
+  clients:                 BTreeMap<String, TcpClient>,
+  inbound_tx:              UnboundedSender<InboundFrameEvent>,
+  inbound_rx:              Option<UnboundedReceiver<InboundFrameEvent>>,
+  remote_event_tx:         Option<Sender<RemoteEvent>>,
+  monotonic_epoch:         Instant,
+  inbound_restart_timeout: Duration,
+  inbound_max_restarts:    u32,
+  inbound_worker:          Option<JoinHandle<Result<(), TransportError>>>,
+  running:                 bool,
 }
 
 impl Debug for TcpRemoteTransport {
@@ -101,11 +103,13 @@ impl TcpRemoteTransport {
     let local_addresses = vec![Address::new(system_name, config.canonical_host(), advertised_port)];
     let frame_codec = WireFrameCodec::with_maximum_frame_size(config.maximum_frame_size());
     Self::with_frame_codec(bind_addr, local_addresses, frame_codec)
+      .with_inbound_restart_budget(config.inbound_max_restarts(), config.inbound_restart_timeout())
   }
 
   fn with_frame_codec(bind_addr: String, local_addresses: Vec<Address>, frame_codec: WireFrameCodec) -> Self {
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
     let default_address = local_addresses.first().cloned();
+    let default_config = RemoteConfig::new("localhost");
     Self {
       local_addresses,
       default_address,
@@ -117,6 +121,8 @@ impl TcpRemoteTransport {
       inbound_rx: Some(inbound_rx),
       remote_event_tx: None,
       monotonic_epoch: Instant::now(),
+      inbound_restart_timeout: default_config.inbound_restart_timeout(),
+      inbound_max_restarts: default_config.inbound_max_restarts(),
       inbound_worker: None,
       running: false,
     }
@@ -133,6 +139,14 @@ impl TcpRemoteTransport {
   #[must_use]
   pub fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
     self.monotonic_epoch = monotonic_epoch;
+    self
+  }
+
+  /// Configures the inbound worker restart budget.
+  #[must_use]
+  pub fn with_inbound_restart_budget(mut self, max_restarts: u32, restart_timeout: Duration) -> Self {
+    self.inbound_max_restarts = max_restarts;
+    self.inbound_restart_timeout = restart_timeout;
     self
   }
 
@@ -163,9 +177,18 @@ impl TcpRemoteTransport {
     };
     let frame_codec = self.frame_codec;
     let monotonic_epoch = self.monotonic_epoch;
+    let inbound_max_restarts = self.inbound_max_restarts;
+    let inbound_restart_timeout = self.inbound_restart_timeout;
     let handle = tokio::spawn(async move {
-      run_inbound_dispatch(inbound_rx, event_sender, move || std_instant_elapsed_millis(monotonic_epoch), frame_codec)
-        .await
+      run_inbound_dispatch(
+        inbound_rx,
+        event_sender,
+        move || std_instant_elapsed_millis(monotonic_epoch),
+        frame_codec,
+        inbound_max_restarts,
+        inbound_restart_timeout,
+      )
+      .await
     });
     self.inbound_worker = Some(handle);
   }
