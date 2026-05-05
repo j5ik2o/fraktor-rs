@@ -23,9 +23,7 @@ use crate::std::{TokioMpscRemoteEventReceiver, transport::tcp::TcpRemoteTranspor
 
 const ALREADY_INSTALLED: &str = "remote extension is already installed";
 const TRANSPORT_LOCK_POISONED: &str = "remote extension transport lock is poisoned";
-const RECEIVER_LOCK_POISONED: &str = "remote extension receiver lock is poisoned";
-const RUN_HANDLE_LOCK_POISONED: &str = "remote run_handle lock should not be poisoned";
-const RUN_RECEIVER_LOCK_POISONED: &str = "remote receiver lock should not be poisoned";
+const RUN_STATE_LOCK_POISONED: &str = "remote run_state lock should not be poisoned";
 
 /// Extension installer for the `fraktor-remote-adaptor-std-rs` runtime.
 pub struct RemotingExtensionInstaller {
@@ -33,8 +31,18 @@ pub struct RemotingExtensionInstaller {
   config:        RemoteConfig,
   remote_shared: OnceLock<RemoteShared>,
   event_sender:  OnceLock<Sender<RemoteEvent>>,
-  receiver:      Mutex<Option<TokioMpscRemoteEventReceiver>>,
-  run_handle:    Mutex<Option<JoinHandle<Result<(), RemotingError>>>>,
+  run_state:     Mutex<RemotingRunState>,
+}
+
+struct RemotingRunState {
+  receiver: Option<TokioMpscRemoteEventReceiver>,
+  handle:   Option<JoinHandle<Result<(), RemotingError>>>,
+}
+
+impl RemotingRunState {
+  const fn new() -> Self {
+    Self { receiver: None, handle: None }
+  }
 }
 
 impl RemotingExtensionInstaller {
@@ -47,8 +55,7 @@ impl RemotingExtensionInstaller {
       config,
       remote_shared: OnceLock::new(),
       event_sender: OnceLock::new(),
-      receiver: Mutex::new(None),
-      run_handle: Mutex::new(None),
+      run_state: Mutex::new(RemotingRunState::new()),
     }
   }
 
@@ -75,16 +82,15 @@ impl RemotingExtensionInstaller {
   /// already spawned.
   pub fn spawn_run_task(&self) -> Result<(), RemotingError> {
     let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
-    let mut handle_slot = self.run_handle.lock().expect(RUN_HANDLE_LOCK_POISONED);
-    if handle_slot.is_some() {
+    let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
+    if run_state.handle.is_some() {
       return Err(RemotingError::AlreadyRunning);
     }
-    let mut receiver_slot = self.receiver.lock().expect(RUN_RECEIVER_LOCK_POISONED);
-    let Some(mut receiver) = receiver_slot.take() else {
-      return Err(RemotingError::NotStarted);
+    let Some(mut receiver) = run_state.receiver.take() else {
+      return Err(RemotingError::AlreadyRunning);
     };
     let handle = tokio::spawn(async move { remote.run(&mut receiver).await });
-    *handle_slot = Some(handle);
+    run_state.handle = Some(handle);
     Ok(())
   }
 
@@ -103,8 +109,8 @@ impl RemotingExtensionInstaller {
       }
     }
     let handle = {
-      let mut handle_slot = self.run_handle.lock().expect(RUN_HANDLE_LOCK_POISONED);
-      handle_slot.take()
+      let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
+      run_state.handle.take()
     };
     let Some(handle) = handle else {
       return shutdown_result;
@@ -146,9 +152,9 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       event_publisher,
       Box::new(RemotingFlightRecorder::new(self.config.flight_recorder_capacity())),
     ));
-    let mut receiver_slot =
-      self.receiver.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(RECEIVER_LOCK_POISONED)))?;
-    *receiver_slot = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
+    let mut run_state =
+      self.run_state.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
+    run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
     self
       .event_sender
       .set(event_sender)
