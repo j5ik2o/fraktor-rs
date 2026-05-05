@@ -385,7 +385,8 @@ impl Remote {
 
   fn handle_inbound_control_pdu(&mut self, pdu: &ControlPdu, now_ms: u64) -> Result<(), RemotingError> {
     match pdu {
-      | ControlPdu::Heartbeat { authority } | ControlPdu::HeartbeatResponse { authority, .. } => {
+      | ControlPdu::Heartbeat { authority } => self.handle_inbound_heartbeat_control(authority, now_ms),
+      | ControlPdu::HeartbeatResponse { authority, .. } => {
         self.record_control_activity(authority, now_ms);
         Ok(())
       },
@@ -394,6 +395,19 @@ impl Remote {
       },
       | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(authority, now_ms),
     }
+  }
+
+  fn handle_inbound_heartbeat_control(&mut self, authority: &str, now_ms: u64) -> Result<(), RemotingError> {
+    self.record_control_activity(authority, now_ms);
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    let local = self.associations[index].local().clone();
+    let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
+    self.transport.send_control(&remote, response).map_err(|_| RemotingError::TransportUnavailable)
   }
 
   fn handle_inbound_ack_pdu(&mut self, authority: &TransportEndpoint, pdu: &AckPdu, now_ms: u64) {

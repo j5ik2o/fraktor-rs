@@ -44,6 +44,8 @@ struct RecordingTransport {
   running: bool,
   shutdown_calls: ArcShared<AtomicUsize>,
   send_calls: ArcShared<AtomicUsize>,
+  control_calls: ArcShared<AtomicUsize>,
+  control_frames: SharedLock<Vec<(Address, ControlPdu)>>,
   handshake_calls: ArcShared<AtomicUsize>,
   timeout_calls: ArcShared<AtomicUsize>,
   timeout_before_handshake_calls: ArcShared<AtomicUsize>,
@@ -189,6 +191,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -204,6 +208,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -223,6 +229,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls,
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -238,6 +246,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -270,6 +280,15 @@ impl RemoteTransport for RecordingTransport {
       | Ok(()) => Ok(()),
       | Err(err) => Err((err, Box::new(envelope))),
     }
+  }
+
+  fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+    self.control_calls.fetch_add(1, Ordering::Relaxed);
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
+    Ok(())
   }
 
   fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
@@ -834,6 +853,39 @@ fn inbound_quarantine_control_quarantines_matching_association() {
         now_ms: 70
       }
     ] if authority == "remote-sys@10.0.0.1:2552" && reason == "remote says no"
+  ));
+}
+
+#[test]
+fn inbound_heartbeat_control_sends_response_to_remote_peer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let control_frames = transport.control_frames.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address.clone(), remote_address.clone(), &config));
+  let pdu = ControlPdu::Heartbeat { authority: remote_address.to_string() };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(pdu),
+      now_ms:    75,
+    })
+    .expect("heartbeat control should send a response");
+
+  let frames = control_frames.with_lock(|frames| frames.clone());
+  let local_authority = local_address.to_string();
+  assert_eq!(frames.len(), 1);
+  assert_eq!(frames[0].0, remote_address);
+  assert!(matches!(
+    &frames[0].1,
+    ControlPdu::HeartbeatResponse {
+      authority,
+      uid: 1
+    } if authority.as_str() == local_authority
   ));
 }
 

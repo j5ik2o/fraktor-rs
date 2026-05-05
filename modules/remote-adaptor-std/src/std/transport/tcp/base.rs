@@ -15,7 +15,7 @@ use fraktor_remote_core_rs::core::{
   envelope::OutboundEnvelope,
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::HandshakePdu,
+  wire::{ControlPdu, HandshakePdu},
 };
 use tokio::{
   sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
@@ -236,6 +236,20 @@ impl TcpRemoteTransport {
   /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
   /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
   pub fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
+    self.send_wire_frame(remote, WireFrame::Handshake(pdu))
+  }
+
+  /// Sends a control PDU to an already connected peer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
+  /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
+  pub fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+    self.send_wire_frame(remote, WireFrame::Control(pdu))
+  }
+
+  fn send_wire_frame(&mut self, remote: &Address, frame: WireFrame) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
@@ -243,7 +257,7 @@ impl TcpRemoteTransport {
     let Some(client) = self.clients.get(&peer_key) else {
       return Err(TransportError::ConnectionClosed);
     };
-    client.send(WireFrame::Handshake(pdu))
+    client.send(frame)
   }
 }
 
@@ -287,6 +301,10 @@ impl RemoteTransport for TcpRemoteTransport {
       return Err((TransportError::NotStarted, Box::new(envelope)));
     }
     Err((TransportError::SendFailed, Box::new(envelope)))
+  }
+
+  fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+    TcpRemoteTransport::send_control(self, remote, pdu)
   }
 
   fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
