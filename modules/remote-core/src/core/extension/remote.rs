@@ -1,18 +1,28 @@
 //! Default core implementation of the remoting lifecycle API.
 
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{
+  boxed::Box,
+  string::{String, ToString},
+  vec::Vec,
+};
+use core::mem;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{actor_path::ActorPathParser, messaging::AnyMessage},
+  event::stream::{CorrelationId, RemotingLifecycleEvent},
+};
 
 use crate::core::{
   address::{Address, UniqueAddress},
   association::{Association, AssociationEffect, QuarantineReason},
   config::RemoteConfig,
-  envelope::OutboundEnvelope,
-  extension::{EventPublisher, RemoteEvent, RemoteEventReceiver, Remoting, RemotingError, RemotingLifecycleState},
+  envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
+  extension::{
+    EventPublisher, RemoteEvent, RemoteEventReceiver, RemoteRunFuture, RemotingError, RemotingLifecycleState,
+  },
   instrument::{NoopInstrument, RemoteInstrument},
-  transport::{RemoteTransport, TransportEndpoint},
-  wire::{HandshakePdu, HandshakeReq},
+  transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
+  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
 };
 
 /// Core remoting lifecycle implementation backed by a transport port.
@@ -29,6 +39,7 @@ pub struct Remote {
   instrument:           Box<dyn RemoteInstrument + Send>,
   advertised_addresses: Vec<Address>,
   associations:         Vec<Association>,
+  inbound_envelopes:    Vec<InboundEnvelope>,
 }
 
 impl Remote {
@@ -58,13 +69,14 @@ impl Remote {
       instrument,
       advertised_addresses: Vec::new(),
       associations: Vec::new(),
+      inbound_envelopes: Vec::new(),
     }
   }
 
   /// Replaces the current instrument.
   ///
-  /// [`Remote::run`] consumes `self`, so the instrument must be installed before
-  /// starting the event loop.
+  /// Do not call this while [`Remote::run`] is being polled; the run loop uses
+  /// the installed instrument for event handling.
   pub fn set_instrument(&mut self, instrument: Box<dyn RemoteInstrument + Send>) {
     self.instrument = instrument;
   }
@@ -78,15 +90,9 @@ impl Remote {
   /// concrete handling is not wired yet. Returns
   /// [`RemotingError::EventReceiverClosed`] when the event source closes before
   /// [`RemoteEvent::TransportShutdown`] is observed.
-  pub async fn run<S: RemoteEventReceiver>(mut self, receiver: &mut S) -> Result<(), RemotingError> {
-    loop {
-      let Some(event) = receiver.recv().await else {
-        return Err(RemotingError::EventReceiverClosed);
-      };
-      if self.handle_remote_event(event)? {
-        return Ok(());
-      }
-    }
+  #[must_use]
+  pub const fn run<'a, S: RemoteEventReceiver + ?Sized>(&'a mut self, receiver: &'a mut S) -> RemoteRunFuture<'a, S> {
+    RemoteRunFuture::new(self, receiver)
   }
 
   /// Registers an association that the core event loop can drive.
@@ -98,6 +104,12 @@ impl Remote {
   #[must_use]
   pub const fn lifecycle(&self) -> &RemotingLifecycleState {
     &self.lifecycle
+  }
+
+  /// Consumes buffered inbound envelopes observed by the core event loop.
+  #[must_use]
+  pub fn drain_inbound_envelopes(&mut self) -> Vec<InboundEnvelope> {
+    mem::take(&mut self.inbound_envelopes)
   }
 
   /// Returns the remote configuration used by this instance.
@@ -116,17 +128,39 @@ impl Remote {
     }
   }
 
-  fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<bool, RemotingError> {
+  /// Handles one remote event.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::TransportUnavailable`] when transport delivery
+  /// fails, or [`RemotingError::UnimplementedEvent`] for event kinds whose
+  /// concrete handling is not wired yet.
+  pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError> {
     match event {
-      | RemoteEvent::TransportShutdown => Ok(true),
+      | RemoteEvent::TransportShutdown => {
+        self.lifecycle.transition_to_shutdown_requested();
+        Ok(())
+      },
       | RemoteEvent::OutboundEnqueued { authority, envelope, now_ms } => {
         self.handle_outbound_enqueued(&authority, envelope, now_ms)?;
-        Ok(false)
+        Ok(())
       },
-      | RemoteEvent::InboundFrameReceived { .. }
-      | RemoteEvent::HandshakeTimerFired { .. }
-      | RemoteEvent::ConnectionLost { .. } => Err(RemotingError::UnimplementedEvent),
+      | RemoteEvent::HandshakeTimerFired { authority, generation, now_ms } => {
+        self.handle_handshake_timer_fired(&authority, generation, now_ms)
+      },
+      | RemoteEvent::InboundFrameReceived { authority, frame, now_ms } => {
+        self.handle_inbound_frame_received(&authority, frame, now_ms)
+      },
+      | RemoteEvent::ConnectionLost { authority, cause, now_ms } => {
+        self.handle_connection_lost(&authority, &cause, now_ms)
+      },
     }
+  }
+
+  /// Returns `true` when the event loop should stop polling events.
+  #[must_use]
+  pub const fn should_stop_event_loop(&self) -> bool {
+    self.lifecycle.is_terminated() || self.lifecycle.is_shutdown_requested()
   }
 
   fn handle_outbound_enqueued(
@@ -139,12 +173,23 @@ impl Remote {
     let remote = parse_authority(authority.authority()).ok_or(RemotingError::TransportUnavailable)?;
     let association_index = self.ensure_association(remote)?;
     let should_start_handshake = self.associations[association_index].state().is_idle();
-    let effects = self.associations[association_index].enqueue(*envelope, now_ms);
+    let should_recover_handshake = self.associations[association_index].state().is_gated();
+    let prev_len = self.associations[association_index].total_outbound_len();
+    let effects = self.associations[association_index].enqueue(*envelope, now_ms, self.instrument.as_mut());
+    let curr_len = self.associations[association_index].total_outbound_len();
+    self.apply_high_watermark_if_crossed(association_index, prev_len, curr_len, now_ms);
     self.apply_association_effects(association_index, effects, now_ms)?;
     if should_start_handshake {
       let effects = {
         let association = &mut self.associations[association_index];
-        association.associate_with_instrument(authority.clone(), now_ms, &mut *self.instrument)
+        association.associate(authority.clone(), now_ms, &mut *self.instrument)
+      };
+      self.apply_association_effects(association_index, effects, now_ms)?;
+    }
+    if should_recover_handshake {
+      let effects = {
+        let association = &mut self.associations[association_index];
+        association.recover(Some(authority.clone()), now_ms, &mut *self.instrument)
       };
       self.apply_association_effects(association_index, effects, now_ms)?;
     }
@@ -152,13 +197,260 @@ impl Remote {
   }
 
   fn ensure_association(&mut self, remote: Address) -> Result<usize, RemotingError> {
-    if let Some(index) = self.associations.iter().position(|association| association.remote() == &remote) {
+    if let Some(index) = self.association_index_for_remote(&remote) {
       return Ok(index);
     }
     let local = self.local_unique_address_for(&remote).ok_or(RemotingError::TransportUnavailable)?;
     let association = Association::from_config(local, remote, &self.config);
     self.insert_association(association);
     Ok(self.associations.len() - 1)
+  }
+
+  fn ensure_association_for_handshake_request(&mut self, request: &HandshakeReq) -> Option<usize> {
+    if !self.is_local_handshake_destination(request.to()) {
+      return None;
+    }
+    if let Some(index) = self.association_index_for_remote(request.from().address()) {
+      return Some(index);
+    }
+    let association = Association::from_config(
+      UniqueAddress::new(request.to().clone(), 0),
+      request.from().address().clone(),
+      &self.config,
+    );
+    self.insert_association(association);
+    Some(self.associations.len() - 1)
+  }
+
+  fn association_index_for_remote(&self, remote: &Address) -> Option<usize> {
+    self.associations.iter().position(|association| association.remote() == remote)
+  }
+
+  fn association_index_for_authority(&self, authority: &TransportEndpoint) -> Option<usize> {
+    if let Some(remote) = parse_authority(authority.authority()) {
+      return self.association_index_for_remote(&remote);
+    }
+    let (host, port) = parse_endpoint(authority.authority())?;
+    self
+      .associations
+      .iter()
+      .position(|association| association.remote().host() == host && association.remote().port() == port)
+  }
+
+  fn handle_handshake_timer_fired(
+    &mut self,
+    authority: &TransportEndpoint,
+    generation: u64,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let Some(association_index) = self.association_index_for_authority(authority) else {
+      return Ok(());
+    };
+    if self.associations[association_index].handshake_generation() != generation {
+      return Ok(());
+    }
+    let effects = {
+      let association = &mut self.associations[association_index];
+      association.handshake_timed_out(now_ms, None, &mut *self.instrument)
+    };
+    self.apply_association_effects(association_index, effects, now_ms)
+  }
+
+  fn handle_inbound_frame_received(
+    &mut self,
+    authority: &TransportEndpoint,
+    frame: WireFrame,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.lifecycle.ensure_running()?;
+    match frame {
+      | WireFrame::Envelope(pdu) => self.handle_inbound_envelope_pdu(authority, &pdu, now_ms),
+      | WireFrame::Handshake(pdu) => self.handle_inbound_handshake_pdu(pdu, now_ms),
+      | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(&pdu, now_ms),
+      | WireFrame::Ack(pdu) => {
+        self.handle_inbound_ack_pdu(authority, &pdu, now_ms);
+        Ok(())
+      },
+    }
+  }
+
+  fn handle_inbound_handshake_pdu(&mut self, pdu: HandshakePdu, now_ms: u64) -> Result<(), RemotingError> {
+    match pdu {
+      | HandshakePdu::Req(request) => self.handle_inbound_handshake_request(&request, now_ms),
+      | HandshakePdu::Rsp(response) => self.handle_inbound_handshake_response(&response, now_ms),
+    }
+  }
+
+  fn handle_inbound_handshake_request(&mut self, request: &HandshakeReq, now_ms: u64) -> Result<(), RemotingError> {
+    let Some(association_index) = self.ensure_association_for_handshake_request(request) else {
+      return Ok(());
+    };
+    let accepted = {
+      let association = &mut self.associations[association_index];
+      match association.accept_handshake_request(request, now_ms, self.instrument.as_mut()) {
+        | Ok(effects) => {
+          let remote = association.remote().clone();
+          let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
+          Some((remote, response, effects))
+        },
+        | Err(error) => {
+          tracing::debug!(
+            ?error,
+            association_index,
+            remote = %association.remote(),
+            "accept handshake request failed"
+          );
+          None
+        },
+      }
+    };
+    let Some((remote, response, effects)) = accepted else {
+      return Ok(());
+    };
+    self.apply_association_effects(association_index, effects, now_ms)?;
+    self.transport.send_handshake(&remote, response).map_err(|_| RemotingError::TransportUnavailable)?;
+    self.drain_outbound(association_index, now_ms)
+  }
+
+  fn handle_inbound_handshake_response(&mut self, response: &HandshakeRsp, now_ms: u64) -> Result<(), RemotingError> {
+    let Some(association_index) = self.association_index_for_remote(response.from().address()) else {
+      return Ok(());
+    };
+    let effects = {
+      let association = &mut self.associations[association_index];
+      match association.accept_handshake_response(response, now_ms, self.instrument.as_mut()) {
+        | Ok(effects) => effects,
+        | Err(error) => {
+          tracing::debug!(
+            ?error,
+            association_index,
+            remote = %association.remote(),
+            "accept handshake response failed"
+          );
+          return Ok(());
+        },
+      }
+    };
+    self.apply_association_effects(association_index, effects, now_ms)?;
+    self.drain_outbound(association_index, now_ms)
+  }
+
+  fn handle_inbound_envelope_pdu(
+    &mut self,
+    authority: &TransportEndpoint,
+    pdu: &EnvelopePdu,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let Some(association_index) = self.association_index_for_authority(authority) else {
+      return Ok(());
+    };
+    let Some(remote_node) = self.associations[association_index].active_remote_node().cloned() else {
+      return Ok(());
+    };
+    let recipient = ActorPathParser::parse(pdu.recipient_path()).map_err(|_| RemotingError::CodecFailed)?;
+    let sender = match pdu.sender_path() {
+      | Some(path) => Some(ActorPathParser::parse(path).map_err(|_| RemotingError::CodecFailed)?),
+      | None => None,
+    };
+    let priority = OutboundPriority::from_wire(pdu.priority()).ok_or(RemotingError::CodecFailed)?;
+    let envelope = InboundEnvelope::new(
+      recipient,
+      remote_node,
+      AnyMessage::new(pdu.payload().clone()),
+      sender,
+      CorrelationId::new(pdu.correlation_hi(), pdu.correlation_lo()),
+      priority,
+    );
+    self.buffer_inbound_envelope(association_index, envelope, now_ms);
+    Ok(())
+  }
+
+  fn buffer_inbound_envelope(&mut self, association_index: usize, envelope: InboundEnvelope, now_ms: u64) {
+    let limit = self.config.system_message_buffer_size();
+    if self.inbound_envelopes.len() >= limit {
+      tracing::warn!(
+        remote = %self.associations[association_index].remote(),
+        buffered = self.inbound_envelopes.len(),
+        limit,
+        correlation_id_hi = envelope.correlation_id().hi(),
+        correlation_id_lo = envelope.correlation_id().lo(),
+        priority = envelope.priority().to_wire(),
+        "dropping inbound envelope because inbound delivery buffer is full"
+      );
+      return;
+    }
+    self.associations[association_index].record_inbound(&envelope, now_ms, self.instrument.as_mut());
+    self.inbound_envelopes.push(envelope);
+  }
+
+  fn handle_inbound_control_pdu(&mut self, pdu: &ControlPdu, now_ms: u64) -> Result<(), RemotingError> {
+    match pdu {
+      | ControlPdu::Heartbeat { authority } => self.handle_inbound_heartbeat_control(authority, now_ms),
+      | ControlPdu::HeartbeatResponse { authority, .. } => {
+        self.record_control_activity(authority, now_ms);
+        Ok(())
+      },
+      | ControlPdu::Quarantine { authority, reason } => {
+        self.handle_inbound_quarantine_control(authority, reason, now_ms)
+      },
+      | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(authority, now_ms),
+    }
+  }
+
+  fn handle_inbound_heartbeat_control(&mut self, authority: &str, now_ms: u64) -> Result<(), RemotingError> {
+    self.record_control_activity(authority, now_ms);
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    let local = self.associations[index].local().clone();
+    let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
+    self.transport.send_control(&remote, response).map_err(|_| RemotingError::TransportUnavailable)
+  }
+
+  fn handle_inbound_ack_pdu(&mut self, authority: &TransportEndpoint, pdu: &AckPdu, now_ms: u64) {
+    // TODO(remote-redelivery): ACK window に基づく再送状態更新は redelivery 状態導入時に実装する。
+    tracing::debug!(
+      authority = %authority.authority(),
+      sequence_number = pdu.sequence_number(),
+      cumulative_ack = pdu.cumulative_ack(),
+      nack_bitmap = pdu.nack_bitmap(),
+      now_ms,
+      "inbound ack pdu observed"
+    );
+    if let Some(index) = self.association_index_for_authority(authority) {
+      self.associations[index].record_handshake_activity(now_ms);
+    }
+  }
+
+  fn handle_connection_lost(
+    &mut self,
+    authority: &TransportEndpoint,
+    cause: &TransportError,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.lifecycle.ensure_running()?;
+    match cause {
+      | TransportError::ConnectionClosed | TransportError::SendFailed => {},
+      | TransportError::UnsupportedScheme
+      | TransportError::NotAvailable
+      | TransportError::AlreadyRunning
+      | TransportError::NotStarted => return Err(RemotingError::TransportUnavailable),
+    }
+    let Some(association_index) = self.association_index_for_authority(authority) else {
+      return Ok(());
+    };
+    let gate_effects = self.associations[association_index].gate(Some(now_ms), now_ms);
+    self.apply_association_effects(association_index, gate_effects, now_ms)?;
+    let recover_effects = {
+      let association = &mut self.associations[association_index];
+      // `gate` で設定した deadline と `recover` 側の状態遷移に backoff 判定を委譲し、
+      // connection lost のイベント処理自体は単一の再起動指示として完結させる。
+      association.recover(Some(authority.clone()), now_ms, self.instrument.as_mut())
+    };
+    self.apply_association_effects(association_index, recover_effects, now_ms)
   }
 
   fn local_unique_address_for(&self, remote: &Address) -> Option<UniqueAddress> {
@@ -169,6 +461,50 @@ impl Remote {
       .or_else(|| self.advertised_addresses.first())
       .cloned()
       .map(|address| UniqueAddress::new(address, 0))
+  }
+
+  fn is_local_handshake_destination(&self, destination: &Address) -> bool {
+    self.advertised_addresses.iter().any(|address| address == destination)
+      || self.transport.addresses().iter().any(|address| address == destination)
+      || self.transport.default_address().is_some_and(|address| address == destination)
+  }
+
+  fn record_control_activity(&mut self, authority: &str, now_ms: u64) {
+    if let Some(remote) = parse_authority(authority)
+      && let Some(index) = self.association_index_for_remote(&remote)
+    {
+      self.associations[index].record_handshake_activity(now_ms);
+    }
+  }
+
+  fn handle_inbound_quarantine_control(
+    &mut self,
+    authority: &str,
+    reason: &Option<String>,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    let reason = QuarantineReason::new(reason.as_deref().unwrap_or("remote quarantine"));
+    let effects = self.associations[index].quarantine(reason, now_ms, self.instrument.as_mut());
+    self.apply_association_effects(index, effects, now_ms)
+  }
+
+  fn handle_inbound_shutdown_control(&mut self, authority: &str, now_ms: u64) -> Result<(), RemotingError> {
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    self.associations[index].record_handshake_activity(now_ms);
+    let reason = QuarantineReason::new("remote shutdown");
+    let effects = self.associations[index].quarantine(reason, now_ms, self.instrument.as_mut());
+    self.apply_association_effects(index, effects, now_ms)
   }
 
   fn apply_association_effects(
@@ -184,7 +520,7 @@ impl Remote {
         | AssociationEffect::SendEnvelopes { envelopes } => {
           let mut recursive = Vec::new();
           for envelope in envelopes {
-            recursive.extend(self.associations[association_index].enqueue(envelope, now_ms));
+            recursive.extend(self.associations[association_index].enqueue(envelope, now_ms, self.instrument.as_mut()));
           }
           pending.extend(recursive.into_iter().rev());
         },
@@ -210,33 +546,104 @@ impl Remote {
   }
 
   fn drain_outbound(&mut self, association_index: usize, now_ms: u64) -> Result<(), RemotingError> {
-    while let Some(envelope) =
-      self.associations[association_index].next_outbound_with_instrument(now_ms, self.instrument.as_mut())
-    {
-      if let Err((_err, envelope_for_retry)) = self.transport.send(envelope) {
-        // 単一 envelope の送信失敗で event loop を終わらせると、他の peer 向け
-        // association まで巻き添えで停止してしまう。`RemoteTransport::send` が失敗時に
-        // 返してきた envelope を association に戻し、drain は中断するが、event loop は
-        // 次の event を引き続き処理する。成功側のホットパスでは clone は発生しない。
-        let effects = self.associations[association_index].enqueue(*envelope_for_retry, now_ms);
-        self.apply_association_effects(association_index, effects, now_ms)?;
+    loop {
+      let prev_len = self.associations[association_index].total_outbound_len();
+      let was_user_paused = self.associations[association_index].send_queue().is_user_paused();
+      let Some(envelope) = self.associations[association_index].next_outbound(now_ms, self.instrument.as_mut()) else {
         return Ok(());
+      };
+      match self.transport.send(envelope) {
+        | Ok(()) => {},
+        | Err((TransportError::SendFailed, envelope)) => {
+          // 永久的な payload 送信失敗を再投入すると、次のイベントごとに同じ envelope が
+          // 先頭で失敗し続ける。呼び出し元へ同期的に戻せないため、ログに残して蓄積を止める。
+          let authority = TransportEndpoint::new(self.associations[association_index].remote().to_string());
+          self.instrument.record_dropped_envelope(&authority, &envelope, now_ms);
+          tracing::warn!(
+            remote = %authority.authority(),
+            correlation_id_hi = envelope.correlation_id().hi(),
+            correlation_id_lo = envelope.correlation_id().lo(),
+            priority = envelope.priority().to_wire(),
+            "discarding outbound envelope after transport send failed"
+          );
+          return Ok(());
+        },
+        | Err((_err, envelope_for_retry)) => {
+          // 単一 envelope の送信失敗で event loop を終わらせると、他の peer 向け
+          // association まで巻き添えで停止してしまう。`RemoteTransport::send` が失敗時に
+          // 返してきた envelope を association に戻し、drain は中断するが、event loop は
+          // 次の event を引き続き処理する。成功側のホットパスでは clone は発生しない。
+          let effects =
+            self.associations[association_index].enqueue(*envelope_for_retry, now_ms, self.instrument.as_mut());
+          self.apply_association_effects(association_index, effects, now_ms)?;
+          return Ok(());
+        },
       }
+      let curr_len = self.associations[association_index].total_outbound_len();
+      self.apply_low_watermark_if_crossed(association_index, prev_len, curr_len, was_user_paused, now_ms);
     }
-    Ok(())
+  }
+
+  fn apply_high_watermark_if_crossed(
+    &mut self,
+    association_index: usize,
+    prev_len: usize,
+    curr_len: usize,
+    now_ms: u64,
+  ) {
+    let high = self.config.outbound_high_watermark();
+    if prev_len <= high && curr_len > high {
+      self.associations[association_index].apply_backpressure(
+        BackpressureSignal::Notify,
+        CorrelationId::nil(),
+        now_ms,
+        self.instrument.as_mut(),
+      );
+    }
+  }
+
+  fn apply_low_watermark_if_crossed(
+    &mut self,
+    association_index: usize,
+    prev_len: usize,
+    curr_len: usize,
+    was_user_paused: bool,
+    now_ms: u64,
+  ) {
+    let low = self.config.outbound_low_watermark();
+    if was_user_paused && prev_len >= low && curr_len < low {
+      self.associations[association_index].apply_backpressure(
+        BackpressureSignal::Release,
+        CorrelationId::nil(),
+        now_ms,
+        self.instrument.as_mut(),
+      );
+    }
   }
 }
 
 fn parse_authority(authority: &str) -> Option<Address> {
   let (system, endpoint) = authority.split_once('@')?;
-  let (host, port) = endpoint.rsplit_once(':')?;
-  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
-  let port = port.parse::<u16>().ok()?;
+  let (host, port) = parse_endpoint(endpoint)?;
   Some(Address::new(system, host, port))
 }
 
-impl Remoting for Remote {
-  fn start(&mut self) -> Result<(), RemotingError> {
+fn parse_endpoint(endpoint: &str) -> Option<(&str, u16)> {
+  let (host, port) = endpoint.rsplit_once(':')?;
+  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
+  Some((host, port.parse::<u16>().ok()?))
+}
+
+impl Remote {
+  /// Starts the remote subsystem.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::AlreadyRunning`] if remoting is already running,
+  /// or [`RemotingError::TransportUnavailable`] /
+  /// [`RemotingError::InvalidTransition`] if the underlying transport could not
+  /// be brought up.
+  pub fn start(&mut self) -> Result<(), RemotingError> {
     self.lifecycle.transition_to_start()?;
     let advertised_addresses = match self.transport.start() {
       | Ok(()) => self.transport.addresses().to_vec(),
@@ -258,8 +665,18 @@ impl Remoting for Remote {
     Ok(())
   }
 
-  fn shutdown(&mut self) -> Result<(), RemotingError> {
-    self.lifecycle.transition_to_shutdown()?;
+  /// Shuts the remote subsystem down.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::NotStarted`] if remoting was never running.
+  pub fn shutdown(&mut self) -> Result<(), RemotingError> {
+    if self.lifecycle.is_terminated() {
+      return Ok(());
+    }
+    if !self.lifecycle.is_shutdown_requested() {
+      self.lifecycle.transition_to_shutdown()?;
+    }
     if self.lifecycle.is_terminated() {
       return Ok(());
     }
@@ -272,12 +689,34 @@ impl Remoting for Remote {
     Ok(())
   }
 
-  fn quarantine(&mut self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError> {
+  /// Quarantines the given remote authority.
+  ///
+  /// `now_ms` is the caller-provided monotonic millis used for local
+  /// association deadlines and instrumentation.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::NotStarted`] if remoting is not currently
+  /// running, or [`RemotingError::TransportUnavailable`] if the quarantine
+  /// signal could not be propagated through the transport.
+  pub fn quarantine(
+    &mut self,
+    address: &Address,
+    uid: Option<u64>,
+    reason: QuarantineReason,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
+    if let Some(index) = self.association_index_for_remote(address) {
+      let effects = self.associations[index].quarantine(reason.clone(), now_ms, self.instrument.as_mut());
+      self.apply_association_effects(index, effects, now_ms)?;
+    }
     self.transport.quarantine(address, uid, reason).map_err(|_| RemotingError::TransportUnavailable)
   }
 
-  fn addresses(&self) -> &[Address] {
+  /// Returns the local addresses this remoting instance advertises.
+  #[must_use]
+  pub fn addresses(&self) -> &[Address] {
     &self.advertised_addresses
   }
 }

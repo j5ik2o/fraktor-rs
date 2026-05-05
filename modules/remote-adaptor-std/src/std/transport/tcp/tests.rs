@@ -1,4 +1,5 @@
 use core::time::Duration;
+use std::time::Instant;
 
 use bytes::{Bytes, BytesMut};
 use fraktor_actor_core_rs::core::kernel::{
@@ -15,7 +16,7 @@ use fraktor_remote_core_rs::core::{
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::std::transport::tcp::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
+use crate::std::transport::tcp::{WireFrame, frame_codec::WireFrameCodec};
 
 const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
@@ -295,8 +296,85 @@ async fn remote_transport_schedules_handshake_timeout_event() {
     event,
     RemoteEvent::HandshakeTimerFired {
       authority: received_authority,
-      generation: 7
+      generation: 7,
+      ..
     } if received_authority == authority
+  ));
+
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_restart_respawns_inbound_worker() {
+  use tokio::sync::mpsc;
+
+  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]).with_remote_event_sender(event_tx);
+
+  transport.start().expect("initial transport start should succeed");
+  transport.shutdown().expect("initial transport shutdown should succeed");
+  transport.start().expect("restart should recreate the inbound worker");
+
+  let bound_address = transport.default_address().expect("default address should be available").clone();
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let mut client =
+    TcpClient::connect(alloc::format!("{}:{}", bound_address.host(), bound_address.port()), client_inbound_tx)
+      .await
+      .expect("client should connect to restarted transport");
+  let remote = Address::new("remote-sys", "127.0.0.1", 2552);
+  let from = UniqueAddress::new(remote.clone(), 7);
+  let pdu = HandshakePdu::Req(HandshakeReq::new(from, bound_address));
+
+  client.send(WireFrame::Handshake(pdu)).expect("client send should succeed");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("restarted inbound worker should emit a remote event")
+    .expect("remote event should be present");
+  assert!(matches!(
+    event,
+    RemoteEvent::InboundFrameReceived {
+      authority,
+      ..
+    } if authority == TransportEndpoint::new(remote.to_string())
+  ));
+
+  client.shutdown();
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_handshake_timeout_uses_configured_monotonic_epoch() {
+  use tokio::sync::mpsc;
+
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let monotonic_epoch = Instant::now() - Duration::from_secs(1);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address])
+    .with_monotonic_epoch(monotonic_epoch)
+    .with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before scheduling a timer");
+  let authority = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+
+  transport
+    .schedule_handshake_timeout(&authority, Duration::from_millis(1), 7)
+    .expect("timer scheduling should succeed");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("timeout event should arrive")
+    .expect("timeout event should be present");
+  assert!(matches!(
+    event,
+    RemoteEvent::HandshakeTimerFired {
+      now_ms,
+      ..
+    } if now_ms >= 1_000
   ));
 
   transport.shutdown().expect("transport shutdown should succeed");

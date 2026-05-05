@@ -3,17 +3,9 @@
 use core::time::Duration;
 use std::time::Instant as StdInstant;
 
-use tokio::time::Instant as TokioInstant;
-
 /// Converts elapsed monotonic time since `started_at` into saturated millis.
 #[must_use]
 pub fn std_instant_elapsed_millis(started_at: StdInstant) -> u64 {
-  duration_millis_saturated(started_at.elapsed())
-}
-
-/// Converts elapsed tokio monotonic time since `started_at` into saturated millis.
-#[must_use]
-pub fn tokio_instant_elapsed_millis(started_at: TokioInstant) -> u64 {
   duration_millis_saturated(started_at.elapsed())
 }
 

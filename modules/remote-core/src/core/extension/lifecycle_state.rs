@@ -59,7 +59,10 @@ impl RemotingLifecycleState {
   /// # Errors
   ///
   /// Returns [`RemotingError::InvalidTransition`] from any state other
-  /// than `Starting`.
+  /// than `Starting`. When `transition_to_shutdown_requested` wins a
+  /// concurrent startup/shutdown race and moves `Starting` to `ShuttingDown`,
+  /// the later startup-completion side must observe this error instead of
+  /// promoting the lifecycle back to `Running`.
   pub const fn mark_started(&mut self) -> Result<(), RemotingError> {
     match self.phase {
       | Phase::Starting => {
@@ -126,6 +129,28 @@ impl RemotingLifecycleState {
     }
   }
 
+  /// Requests shutdown for event-loop termination.
+  ///
+  /// Unlike [`Self::transition_to_shutdown`], this command is idempotent for
+  /// already-shutting-down states because adapter shutdown uses a wake event to
+  /// let the run loop observe termination.
+  ///
+  /// This command may move `Starting` directly to `ShuttingDown`. If that wins
+  /// a startup/shutdown race, a later [`Self::mark_started`] call returns
+  /// [`RemotingError::InvalidTransition`]; callers should treat that as a
+  /// normal shutdown race.
+  pub const fn transition_to_shutdown_requested(&mut self) {
+    match self.phase {
+      | Phase::Pending => {
+        self.phase = Phase::Shutdown;
+      },
+      | Phase::Starting | Phase::Running => {
+        self.phase = Phase::ShuttingDown;
+      },
+      | Phase::ShuttingDown | Phase::Shutdown => {},
+    }
+  }
+
   /// Moves from `ShuttingDown` to `Shutdown`.
   ///
   /// # Errors
@@ -150,8 +175,20 @@ impl RemotingLifecycleState {
 
   /// Returns `true` when the state is terminal (`Shutdown`).
   #[must_use]
-  pub const fn is_terminated(&self) -> bool {
+  pub const fn is_shutdown(&self) -> bool {
     matches!(self.phase, Phase::Shutdown)
+  }
+
+  /// Returns `true` when the state is terminal (`Shutdown`).
+  #[must_use]
+  pub const fn is_terminated(&self) -> bool {
+    self.is_shutdown()
+  }
+
+  /// Returns `true` when shutdown has been requested but not fully marked down.
+  #[must_use]
+  pub const fn is_shutdown_requested(&self) -> bool {
+    matches!(self.phase, Phase::ShuttingDown)
   }
 
   /// Asserts that the lifecycle is in the `Running` state.

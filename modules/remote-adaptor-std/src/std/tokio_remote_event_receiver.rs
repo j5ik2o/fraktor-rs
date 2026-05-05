@@ -1,6 +1,6 @@
 //! Tokio MPSC-backed remote event receiver.
 
-use core::future::Future;
+use core::task::{Context, Poll};
 
 use fraktor_remote_core_rs::core::extension::{RemoteEvent, RemoteEventReceiver};
 use tokio::sync::mpsc::Receiver;
@@ -19,7 +19,7 @@ impl TokioMpscRemoteEventReceiver {
 }
 
 impl RemoteEventReceiver for TokioMpscRemoteEventReceiver {
-  fn recv(&mut self) -> impl Future<Output = Option<RemoteEvent>> + Send + '_ {
-    self.receiver.recv()
+  fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<RemoteEvent>> {
+    self.receiver.poll_recv(cx)
   }
 }

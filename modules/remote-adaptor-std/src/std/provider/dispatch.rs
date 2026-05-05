@@ -3,6 +3,7 @@
 //! design Decision 3-C.
 
 use alloc::boxed::Box;
+use std::time::Instant;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -19,15 +20,14 @@ use fraktor_remote_core_rs::core::{
   address::UniqueAddress,
   extension::{
     EventPublisher, REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent,
-    RemoteActorRefResolveCacheOutcome,
+    RemoteActorRefResolveCacheOutcome, RemoteEvent,
   },
   provider::{RemoteActorRef, RemoteActorRefProvider, resolve_remote_address},
 };
-use fraktor_utils_core_rs::core::sync::SharedLock;
+use tokio::sync::mpsc::Sender;
 
-use crate::std::{
-  provider::{provider_dispatch_error::StdRemoteActorRefProviderError, remote_actor_ref_sender::RemoteActorRefSender},
-  transport::tcp::TcpRemoteTransport,
+use crate::std::provider::{
+  provider_dispatch_error::StdRemoteActorRefProviderError, remote_actor_ref_sender::RemoteActorRefSender,
 };
 
 // remote actor ref は PID 空間の上位 1/4 を利用し、runtime allocator が
@@ -58,9 +58,10 @@ pub struct StdRemoteActorRefProvider {
   local_address:   UniqueAddress,
   local_provider:  ActorRefProviderHandleShared<LocalActorRefProvider>,
   remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
-  transport:       SharedLock<TcpRemoteTransport>,
+  event_sender:    Sender<RemoteEvent>,
   resolve_cache:   ActorRefResolveCache<ActorRef>,
   event_publisher: EventPublisher,
+  monotonic_epoch: Instant,
   next_remote_pid: u64,
 }
 
@@ -71,17 +72,19 @@ impl StdRemoteActorRefProvider {
     local_address: UniqueAddress,
     local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
-    transport: SharedLock<TcpRemoteTransport>,
+    event_sender: Sender<RemoteEvent>,
     resolve_cache: ActorRefResolveCache<ActorRef>,
     event_publisher: EventPublisher,
+    monotonic_epoch: Instant,
   ) -> Self {
     Self {
       local_address,
       local_provider,
       remote_provider,
-      transport,
+      event_sender,
       resolve_cache,
       event_publisher,
+      monotonic_epoch,
       next_remote_pid: REMOTE_ACTOR_REF_PID_START,
     }
   }
@@ -151,16 +154,6 @@ impl StdRemoteActorRefProvider {
     self.remote_provider.unwatch(watchee, watcher).map_err(StdRemoteActorRefProviderError::from)
   }
 
-  /// Returns the underlying transport handle.
-  ///
-  /// Exposed for the `extension_installer` (Section 22) so it can wire the
-  /// transport into other adapter components without going through this
-  /// type's mutable methods.
-  #[must_use]
-  pub fn transport(&self) -> SharedLock<TcpRemoteTransport> {
-    self.transport.clone()
-  }
-
   fn is_local_authority(&self, resolved: &UniqueAddress) -> bool {
     if resolved.address() != self.local_address.address() {
       return false;
@@ -182,19 +175,23 @@ impl StdRemoteActorRefProvider {
   ) -> Result<ActorCoreResolveCacheOutcome<ActorRef>, StdRemoteActorRefProviderError> {
     let remote_provider = &mut self.remote_provider;
     let next_remote_pid = &mut self.next_remote_pid;
+    let event_sender = self.event_sender.clone();
+    let monotonic_epoch = self.monotonic_epoch;
     self.resolve_cache.resolve(&path, |candidate| {
       let remote_ref = remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)?;
-      Self::build_remote_actor_ref(next_remote_pid, remote_ref)
+      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender.clone(), monotonic_epoch)
     })
   }
 
   fn build_remote_actor_ref(
     next_remote_pid: &mut u64,
     remote_ref: RemoteActorRef,
+    event_sender: Sender<RemoteEvent>,
+    monotonic_epoch: Instant,
   ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
     let pid = Self::allocate_remote_pid(next_remote_pid)?;
     let path = remote_ref.path().clone();
-    let sender = RemoteActorRefSender::new(remote_ref);
+    let sender = RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch);
     Ok(ActorRef::with_canonical_path(pid, sender, path))
   }
 

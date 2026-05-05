@@ -11,6 +11,14 @@
 //! new `RemotingLifecycleEvent`; the already-shipped
 //! `fraktor_actor_core_rs::core::kernel::event::stream::RemotingLifecycleEvent`
 //! is re-used everywhere.
+//!
+//! [`RemoteShared::run`] uses a [`RemoteEventReceiver`]-driven wake-on-event
+//! contract. If shutdown happens while the shared run future is pending on the
+//! receiver, the task still needs a receiver wake event such as
+//! [`RemoteEvent::TransportShutdown`] before it can observe termination. This
+//! differs from exclusive [`RemoteRunFuture`], which checks termination at the
+//! head of its loop whenever it is polled and therefore completes immediately
+//! when it is polled after shutdown.
 
 #[cfg(test)]
 mod tests;
@@ -23,6 +31,9 @@ mod remote_actor_ref_resolve_cache_outcome;
 mod remote_authority_snapshot;
 mod remote_event;
 mod remote_event_receiver;
+mod remote_run_future;
+mod remote_shared;
+mod remote_shared_run_future;
 mod remoting;
 mod remoting_error;
 
@@ -36,5 +47,8 @@ pub use remote_actor_ref_resolve_cache_outcome::RemoteActorRefResolveCacheOutcom
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
 pub use remote_event::RemoteEvent;
 pub use remote_event_receiver::RemoteEventReceiver;
+pub use remote_run_future::RemoteRunFuture;
+pub use remote_shared::RemoteShared;
+pub use remote_shared_run_future::RemoteSharedRunFuture;
 pub use remoting::Remoting;
 pub use remoting_error::RemotingError;

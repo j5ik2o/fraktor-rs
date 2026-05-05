@@ -8,7 +8,7 @@ use crate::core::{
   association::QuarantineReason,
   envelope::OutboundEnvelope,
   transport::{transport_endpoint::TransportEndpoint, transport_error::TransportError},
-  wire::HandshakePdu,
+  wire::{ControlPdu, HandshakePdu},
 };
 
 /// The single transport port exposed by `fraktor-remote-core-rs`.
@@ -60,6 +60,15 @@ pub trait RemoteTransport {
   /// if called before `start`.
   fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)>;
 
+  /// Sends a wire-level control PDU to `remote`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running,
+  /// [`TransportError::ConnectionClosed`] if no connection to `remote` exists,
+  /// or another transport-specific error when delivery fails.
+  fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError>;
+
   /// Sends a wire-level handshake PDU to `remote`.
   ///
   /// `Remote::run` calls this before [`Self::schedule_handshake_timeout`] when
@@ -75,11 +84,12 @@ pub trait RemoteTransport {
   /// Schedules a generation-scoped handshake timeout for `authority`.
   ///
   /// Adapter implementations are responsible for pushing
-  /// `RemoteEvent::HandshakeTimerFired { authority, generation }` through their
-  /// internal event sender when the timeout expires. `Remote::run` compares the
-  /// event generation with the current association generation and discards stale
-  /// timer events, so adapters do not need a cancellation API for superseded
-  /// timers.
+  /// `RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }`
+  /// through their internal event sender when the timeout expires. `now_ms`
+  /// must come from a monotonic clock owned by the adapter. `Remote::run`
+  /// compares the event generation with the current association generation and
+  /// discards stale timer events, so adapters do not need a cancellation API for
+  /// superseded timers.
   ///
   /// # Errors
   ///

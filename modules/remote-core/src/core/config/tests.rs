@@ -9,11 +9,11 @@ const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
 const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
 const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
+const DEFAULT_REMOTE_EVENT_QUEUE_SIZE: usize =
+  DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE + DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE;
 const DEFAULT_OUTBOUND_HIGH_WATERMARK: usize = 1024;
 const DEFAULT_OUTBOUND_LOW_WATERMARK: usize = 512;
 const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
-const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
 const DEFAULT_COMPRESSION_ADVERTISEMENT_INTERVAL: Duration = Duration::from_secs(60);
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
 
@@ -60,12 +60,11 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
   assert_eq!(s.outbound_message_queue_size(), DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE);
   assert_eq!(s.outbound_control_queue_size(), DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE);
   assert_eq!(s.outbound_large_message_queue_size(), DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE);
+  assert_eq!(s.remote_event_queue_size(), DEFAULT_REMOTE_EVENT_QUEUE_SIZE);
   assert_eq!(s.outbound_high_watermark(), DEFAULT_OUTBOUND_HIGH_WATERMARK);
   assert_eq!(s.outbound_low_watermark(), DEFAULT_OUTBOUND_LOW_WATERMARK);
   assert!(s.large_message_destinations().is_empty());
   assert_eq!(s.remove_quarantined_association_after(), DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER);
-  assert_eq!(s.inbound_restart_timeout(), DEFAULT_INBOUND_RESTART_TIMEOUT);
-  assert_eq!(s.inbound_max_restarts(), DEFAULT_INBOUND_MAX_RESTARTS);
   assert_eq!(s.compression_config().actor_ref_max(), Some(non_zero(256)));
   assert_eq!(s.compression_config().manifest_max(), Some(non_zero(256)));
   assert_eq!(s.compression_config().actor_ref_advertisement_interval(), DEFAULT_COMPRESSION_ADVERTISEMENT_INTERVAL);
@@ -139,8 +138,6 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_bind_port(25520)
     .with_outbound_large_message_queue_size(16)
     .with_large_message_destinations(destinations.clone())
-    .with_inbound_restart_timeout(Duration::from_secs(7))
-    .with_inbound_max_restarts(9)
     .with_compression_config(compression)
     .with_inbound_lanes(8)
     .with_outbound_lanes(2)
@@ -148,6 +145,7 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_buffer_pool_size(64)
     .with_outbound_message_queue_size(32)
     .with_outbound_control_queue_size(8)
+    .with_remote_event_queue_size(64)
     .with_outbound_watermarks(16, 64)
     .with_remove_quarantined_association_after(Duration::from_secs(30))
     .with_untrusted_mode(true)
@@ -160,8 +158,6 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.bind_port(), Some(25520));
   assert_eq!(s.outbound_large_message_queue_size(), 16);
   assert_eq!(s.large_message_destinations(), &destinations);
-  assert_eq!(s.inbound_restart_timeout(), Duration::from_secs(7));
-  assert_eq!(s.inbound_max_restarts(), 9);
   assert_eq!(s.compression_config(), &compression);
   assert_eq!(s.inbound_lanes(), 8);
   assert_eq!(s.outbound_lanes(), 2);
@@ -169,6 +165,7 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.buffer_pool_size(), 64);
   assert_eq!(s.outbound_message_queue_size(), 32);
   assert_eq!(s.outbound_control_queue_size(), 8);
+  assert_eq!(s.remote_event_queue_size(), 64);
   assert_eq!(s.outbound_high_watermark(), 64);
   assert_eq!(s.outbound_low_watermark(), 16);
   assert_eq!(s.remove_quarantined_association_after(), Duration::from_secs(30));
@@ -237,6 +234,15 @@ fn with_outbound_control_queue_size_rejects_zero() {
 fn with_outbound_large_message_queue_size_rejects_zero() {
   // When: outbound large-message queue size に 0 を指定する
   let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_large_message_queue_size(0));
+
+  // Then: 不正な queue size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_remote_event_queue_size_rejects_zero() {
+  // When: remote event queue size に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_remote_event_queue_size(0));
 
   // Then: 不正な queue size として拒否する
   assert!(result.is_err());
@@ -331,12 +337,9 @@ fn restart_timing_settings_reject_zero_duration() {
     std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_restart_backoff(Duration::ZERO));
   let outbound_timeout =
     std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_restart_timeout(Duration::ZERO));
-  let inbound_timeout =
-    std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_inbound_restart_timeout(Duration::ZERO));
 
   assert!(outbound_backoff.is_err());
   assert!(outbound_timeout.is_err());
-  assert!(inbound_timeout.is_err());
 }
 
 #[test]

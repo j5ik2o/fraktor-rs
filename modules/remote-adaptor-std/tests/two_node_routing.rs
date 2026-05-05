@@ -21,7 +21,7 @@ use tokio_util::codec::Framed;
 
 #[tokio::test(flavor = "current_thread")]
 async fn two_independent_servers_route_frames_to_distinct_remotes() {
-  // Server A
+  // Server A を起動する。
   let (tx_a, mut rx_a) = mpsc::unbounded_channel::<InboundFrameEvent>();
   let listener_a = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let addr_a = listener_a.local_addr().unwrap();
@@ -34,7 +34,7 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
     }
   });
 
-  // Server B
+  // Server B を起動する。
   let (tx_b, mut rx_b) = mpsc::unbounded_channel::<InboundFrameEvent>();
   let listener_b = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let addr_b = listener_b.local_addr().unwrap();
@@ -47,27 +47,26 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
     }
   });
 
-  // Client A → Server A
+  // Client A から Server A へ送る。
   let (client_inbound_a, _) = mpsc::unbounded_channel::<InboundFrameEvent>();
   let client_a = TcpClient::connect(addr_a.to_string(), client_inbound_a).await.unwrap();
   let pdu_a = EnvelopePdu::new("/user/svc-a".into(), None, 1, 0, 1, Bytes::from_static(b"to-a"));
   client_a.send(WireFrame::Envelope(pdu_a.clone())).unwrap();
 
-  // Client B → Server B
+  // Client B から Server B へ送る。
   let (client_inbound_b, _) = mpsc::unbounded_channel::<InboundFrameEvent>();
   let client_b = TcpClient::connect(addr_b.to_string(), client_inbound_b).await.unwrap();
   let pdu_b = EnvelopePdu::new("/user/svc-b".into(), None, 2, 0, 1, Bytes::from_static(b"to-b"));
   client_b.send(WireFrame::Envelope(pdu_b.clone())).unwrap();
 
-  // Wait for both servers to receive their frames.
+  // 両方の server が frame を受信するまで待つ。
   let event_a = tokio::time::timeout(Duration::from_secs(5), rx_a.recv()).await.unwrap().expect("server A inbound");
   let event_b = tokio::time::timeout(Duration::from_secs(5), rx_b.recv()).await.unwrap().expect("server B inbound");
 
   assert_eq!(event_a.frame, WireFrame::Envelope(pdu_a));
   assert_eq!(event_b.frame, WireFrame::Envelope(pdu_b));
 
-  // Smoke-construct the unused TcpServer; we used the manual accept loop
-  // above so the server type itself only needs to compile.
+  // 手動 accept loop を使うため、TcpServer は型自体のコンパイル確認だけ行う。
   drop(TcpServer::new("127.0.0.1:0".into()));
 
   accept_a.await.unwrap();

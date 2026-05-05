@@ -32,6 +32,13 @@ pub(crate) const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 /// Default outbound large-message queue size.
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
 
+/// Default remote event queue size.
+///
+/// The core event queue absorbs both outbound message and outbound control
+/// producers, so the default capacity is sized to their combined queues.
+const DEFAULT_REMOTE_EVENT_QUEUE_SIZE: usize =
+  DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE + DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE;
+
 /// Default outbound high watermark.
 const DEFAULT_OUTBOUND_HIGH_WATERMARK: usize = 1024;
 
@@ -71,12 +78,6 @@ const DEFAULT_OUTBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default maximum outbound stream restart count.
 const DEFAULT_OUTBOUND_MAX_RESTARTS: u32 = 5;
 
-/// Default inbound stream restart timeout.
-const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Default maximum inbound stream restart count.
-const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
-
 /// Default inbound lane count.
 const DEFAULT_INBOUND_LANES: usize = 4;
 
@@ -113,6 +114,7 @@ pub struct RemoteConfig {
   outbound_message_queue_size: usize,
   outbound_control_queue_size: usize,
   outbound_large_message_queue_size: usize,
+  remote_event_queue_size: usize,
   outbound_high_watermark: usize,
   outbound_low_watermark: usize,
   large_message_destinations: LargeMessageDestinations,
@@ -127,8 +129,6 @@ pub struct RemoteConfig {
   outbound_restart_backoff: Duration,
   outbound_restart_timeout: Duration,
   outbound_max_restarts: u32,
-  inbound_restart_timeout: Duration,
-  inbound_max_restarts: u32,
   compression_config: RemoteCompressionConfig,
   inbound_lanes: usize,
   outbound_lanes: usize,
@@ -159,6 +159,7 @@ impl RemoteConfig {
       outbound_message_queue_size: DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
       outbound_control_queue_size: DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
       outbound_large_message_queue_size: DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+      remote_event_queue_size: DEFAULT_REMOTE_EVENT_QUEUE_SIZE,
       outbound_high_watermark: DEFAULT_OUTBOUND_HIGH_WATERMARK,
       outbound_low_watermark: DEFAULT_OUTBOUND_LOW_WATERMARK,
       large_message_destinations: LargeMessageDestinations::new(),
@@ -173,8 +174,6 @@ impl RemoteConfig {
       outbound_restart_backoff: DEFAULT_OUTBOUND_RESTART_BACKOFF,
       outbound_restart_timeout: DEFAULT_OUTBOUND_RESTART_TIMEOUT,
       outbound_max_restarts: DEFAULT_OUTBOUND_MAX_RESTARTS,
-      inbound_restart_timeout: DEFAULT_INBOUND_RESTART_TIMEOUT,
-      inbound_max_restarts: DEFAULT_INBOUND_MAX_RESTARTS,
       compression_config: RemoteCompressionConfig::new(),
       inbound_lanes: DEFAULT_INBOUND_LANES,
       outbound_lanes: DEFAULT_OUTBOUND_LANES,
@@ -283,6 +282,18 @@ impl RemoteConfig {
   pub const fn with_outbound_large_message_queue_size(mut self, size: usize) -> Self {
     assert!(size > 0, "outbound large-message queue size must be greater than zero");
     self.outbound_large_message_queue_size = size;
+    self
+  }
+
+  /// Returns a copy with the given remote event queue size.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `size` is zero.
+  #[must_use]
+  pub const fn with_remote_event_queue_size(mut self, size: usize) -> Self {
+    assert!(size > 0, "remote event queue size must be greater than zero");
+    self.remote_event_queue_size = size;
     self
   }
 
@@ -439,25 +450,6 @@ impl RemoteConfig {
   #[must_use]
   pub const fn with_outbound_max_restarts(mut self, max_restarts: u32) -> Self {
     self.outbound_max_restarts = max_restarts;
-    self
-  }
-
-  /// Returns a copy with the given inbound stream restart timeout.
-  ///
-  /// # Panics
-  ///
-  /// Panics when `duration` is zero.
-  #[must_use]
-  pub const fn with_inbound_restart_timeout(mut self, duration: Duration) -> Self {
-    assert!(!duration.is_zero(), "inbound restart timeout must be greater than zero");
-    self.inbound_restart_timeout = duration;
-    self
-  }
-
-  /// Returns a copy with the given maximum inbound stream restart count.
-  #[must_use]
-  pub const fn with_inbound_max_restarts(mut self, max_restarts: u32) -> Self {
-    self.inbound_max_restarts = max_restarts;
     self
   }
 
@@ -622,6 +614,12 @@ impl RemoteConfig {
     self.outbound_large_message_queue_size
   }
 
+  /// Returns the remote event queue size.
+  #[must_use]
+  pub const fn remote_event_queue_size(&self) -> usize {
+    self.remote_event_queue_size
+  }
+
   /// Returns the outbound high watermark.
   #[must_use]
   pub const fn outbound_high_watermark(&self) -> usize {
@@ -704,18 +702,6 @@ impl RemoteConfig {
   #[must_use]
   pub const fn outbound_max_restarts(&self) -> u32 {
     self.outbound_max_restarts
-  }
-
-  /// Returns the inbound stream restart timeout.
-  #[must_use]
-  pub const fn inbound_restart_timeout(&self) -> Duration {
-    self.inbound_restart_timeout
-  }
-
-  /// Returns the maximum inbound stream restart count.
-  #[must_use]
-  pub const fn inbound_max_restarts(&self) -> u32 {
-    self.inbound_max_restarts
   }
 
   /// Returns the compression settings surface.

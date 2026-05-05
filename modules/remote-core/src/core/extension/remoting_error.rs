@@ -12,6 +12,8 @@ pub enum RemotingError {
   /// The transport layer is unavailable (e.g. because `start` was never
   /// called successfully, or the underlying transport refused to bind).
   TransportUnavailable,
+  /// A wire frame or decoded remote payload could not be interpreted.
+  CodecFailed,
   /// The event is recognized but concrete core handling has not been wired yet.
   UnimplementedEvent,
   /// The event receiver closed before an explicit shutdown event was observed.
@@ -28,6 +30,7 @@ impl Display for RemotingError {
     match self {
       | RemotingError::InvalidTransition => f.write_str("remoting: invalid lifecycle transition"),
       | RemotingError::TransportUnavailable => f.write_str("remoting: transport unavailable"),
+      | RemotingError::CodecFailed => f.write_str("remoting: codec failed"),
       | RemotingError::UnimplementedEvent => f.write_str("remoting: event handling is not implemented"),
       | RemotingError::EventReceiverClosed => f.write_str("remoting: event receiver closed unexpectedly"),
       | RemotingError::AlreadyRunning => f.write_str("remoting: already running"),

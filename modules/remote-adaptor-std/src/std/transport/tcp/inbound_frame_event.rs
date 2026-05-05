@@ -3,7 +3,7 @@
 
 use alloc::string::String;
 
-use super::wire_frame::WireFrame;
+use super::WireFrame;
 
 /// Inbound event emitted when a [`crate::std::transport::tcp::WireFrame`]
 /// arrives from a peer.

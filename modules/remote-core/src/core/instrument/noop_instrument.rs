@@ -15,6 +15,8 @@ pub(crate) struct NoopInstrument;
 impl RemoteInstrument for NoopInstrument {
   fn on_send(&mut self, _envelope: &OutboundEnvelope, _now_ms: u64) {}
 
+  fn record_dropped_envelope(&mut self, _authority: &TransportEndpoint, _envelope: &OutboundEnvelope, _now_ms: u64) {}
+
   fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {}
 
   fn record_handshake(&mut self, _authority: &TransportEndpoint, _phase: HandshakePhase, _now_ms: u64) {}

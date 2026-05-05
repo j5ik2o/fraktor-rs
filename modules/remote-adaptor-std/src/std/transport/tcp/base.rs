@@ -6,7 +6,7 @@ use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
   time::Duration,
 };
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 
 use fraktor_remote_core_rs::core::{
   address::Address,
@@ -15,17 +15,18 @@ use fraktor_remote_core_rs::core::{
   envelope::OutboundEnvelope,
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::HandshakePdu,
+  wire::{ControlPdu, HandshakePdu},
 };
 use tokio::{
   sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
+  task::JoinHandle,
   time::sleep,
 };
 
 use super::{
-  client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
-  wire_frame::WireFrame,
+  WireFrame, client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
 };
+use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 
 /// TCP-backed implementation of [`RemoteTransport`].
 ///
@@ -43,16 +44,19 @@ use super::{
 /// Phase 3 serialization driver, so `send` fails fast instead of emitting an
 /// empty payload frame.
 pub struct TcpRemoteTransport {
-  local_addresses: Vec<Address>,
-  default_address: Option<Address>,
-  bind_addr:       String,
-  frame_codec:     WireFrameCodec,
-  server:          TcpServer,
-  clients:         BTreeMap<String, TcpClient>,
-  inbound_tx:      UnboundedSender<InboundFrameEvent>,
-  inbound_rx:      Option<UnboundedReceiver<InboundFrameEvent>>,
-  remote_event_tx: Option<Sender<RemoteEvent>>,
-  running:         bool,
+  configured_local_addresses: Vec<Address>,
+  local_addresses:            Vec<Address>,
+  default_address:            Option<Address>,
+  bind_addr:                  String,
+  frame_codec:                WireFrameCodec,
+  server:                     TcpServer,
+  clients:                    BTreeMap<String, TcpClient>,
+  inbound_tx:                 UnboundedSender<InboundFrameEvent>,
+  inbound_rx:                 Option<UnboundedReceiver<InboundFrameEvent>>,
+  remote_event_tx:            Option<Sender<RemoteEvent>>,
+  monotonic_epoch:            Instant,
+  inbound_worker:             Option<JoinHandle<Result<(), TransportError>>>,
+  running:                    bool,
 }
 
 impl Debug for TcpRemoteTransport {
@@ -103,6 +107,7 @@ impl TcpRemoteTransport {
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
     let default_address = local_addresses.first().cloned();
     Self {
+      configured_local_addresses: local_addresses.clone(),
       local_addresses,
       default_address,
       server: TcpServer::with_frame_codec(bind_addr.clone(), frame_codec),
@@ -112,8 +117,16 @@ impl TcpRemoteTransport {
       inbound_tx,
       inbound_rx: Some(inbound_rx),
       remote_event_tx: None,
+      monotonic_epoch: Instant::now(),
+      inbound_worker: None,
       running: false,
     }
+  }
+
+  fn reset_inbound_channel(&mut self) {
+    let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
+    self.inbound_tx = inbound_tx;
+    self.inbound_rx = Some(inbound_rx);
   }
 
   /// Returns a copy that emits scheduled remote events through `sender`.
@@ -121,6 +134,19 @@ impl TcpRemoteTransport {
   pub fn with_remote_event_sender(mut self, sender: Sender<RemoteEvent>) -> Self {
     self.remote_event_tx = Some(sender);
     self
+  }
+
+  /// Returns a copy that uses the given monotonic epoch for all emitted remote event timestamps.
+  #[must_use]
+  pub fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
+    self.monotonic_epoch = monotonic_epoch;
+    self
+  }
+
+  /// Returns the monotonic epoch used to calculate remote event timestamps.
+  #[must_use]
+  pub fn monotonic_epoch(&self) -> Instant {
+    self.monotonic_epoch
   }
 
   /// Takes ownership of the inbound receiver.
@@ -131,6 +157,23 @@ impl TcpRemoteTransport {
   #[must_use]
   pub fn take_inbound_receiver(&mut self) -> Option<UnboundedReceiver<InboundFrameEvent>> {
     self.inbound_rx.take()
+  }
+
+  fn spawn_inbound_worker(&mut self) -> Result<(), TransportError> {
+    let Some(event_sender) = self.remote_event_tx.clone() else {
+      tracing::debug!("with_remote_event_sender was not called; inbound worker not spawned");
+      return Ok(());
+    };
+    let Some(inbound_rx) = self.inbound_rx.take() else {
+      tracing::debug!("inbound receiver was already consumed; inbound worker not spawned");
+      return Err(TransportError::NotAvailable);
+    };
+    let monotonic_epoch = self.monotonic_epoch;
+    let handle = tokio::spawn(async move {
+      run_inbound_dispatch(inbound_rx, event_sender, move || std_instant_elapsed_millis(monotonic_epoch)).await
+    });
+    self.inbound_worker = Some(handle);
+    Ok(())
   }
 
   /// Establishes an outbound connection to `remote` and stores the client.
@@ -173,7 +216,7 @@ impl TcpRemoteTransport {
 
   fn apply_bound_port_to_advertised_addresses(&mut self, bound_port: u16) {
     self.local_addresses = self
-      .local_addresses
+      .configured_local_addresses
       .iter()
       .map(|address| {
         if address.port() == 0 { Address::new(address.system(), address.host(), bound_port) } else { address.clone() }
@@ -193,6 +236,20 @@ impl TcpRemoteTransport {
   /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
   /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
   pub fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
+    self.send_wire_frame(remote, WireFrame::Handshake(pdu))
+  }
+
+  /// Sends a control PDU to an already connected peer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
+  /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
+  pub fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+    self.send_wire_frame(remote, WireFrame::Control(pdu))
+  }
+
+  fn send_wire_frame(&mut self, remote: &Address, frame: WireFrame) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
@@ -200,7 +257,7 @@ impl TcpRemoteTransport {
     let Some(client) = self.clients.get(&peer_key) else {
       return Err(TransportError::ConnectionClosed);
     };
-    client.send(WireFrame::Handshake(pdu))
+    client.send(frame)
   }
 }
 
@@ -212,6 +269,11 @@ impl RemoteTransport for TcpRemoteTransport {
     let bound_addr = self.server.start(self.inbound_tx.clone())?;
     self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;
+    if let Err(error) = self.spawn_inbound_worker() {
+      self.server.shutdown();
+      self.running = false;
+      return Err(error);
+    }
     Ok(())
   }
 
@@ -223,6 +285,12 @@ impl RemoteTransport for TcpRemoteTransport {
     for (_peer, client) in self.clients.iter_mut() {
       client.shutdown();
     }
+    if let Some(handle) = self.inbound_worker.take() {
+      handle.abort();
+    }
+    if self.remote_event_tx.is_some() && self.inbound_rx.is_none() {
+      self.reset_inbound_channel();
+    }
     self.clients.clear();
     self.running = false;
     Ok(())
@@ -233,6 +301,10 @@ impl RemoteTransport for TcpRemoteTransport {
       return Err((TransportError::NotStarted, Box::new(envelope)));
     }
     Err((TransportError::SendFailed, Box::new(envelope)))
+  }
+
+  fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+    TcpRemoteTransport::send_control(self, remote, pdu)
   }
 
   fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
@@ -252,11 +324,13 @@ impl RemoteTransport for TcpRemoteTransport {
       return Err(TransportError::NotAvailable);
     };
     let authority = authority.clone();
+    let monotonic_epoch = self.monotonic_epoch;
     // タイマー task は transport 停止後でも generation 判定で破棄可能な閉じた通知だけを送る。
     // JoinHandle は shutdown 契約に含めず、送信失敗は task 内で WARN に記録する。
     let _timer_task = tokio::spawn(async move {
       sleep(timeout).await;
-      if let Err(error) = sender.send(RemoteEvent::HandshakeTimerFired { authority, generation }).await {
+      let now_ms = std_instant_elapsed_millis(monotonic_epoch);
+      if let Err(error) = sender.send(RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }).await {
         tracing::warn!(?error, "handshake timeout event delivery failed");
       }
     });

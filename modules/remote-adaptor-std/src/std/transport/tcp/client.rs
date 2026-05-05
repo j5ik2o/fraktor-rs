@@ -12,7 +12,7 @@ use tokio::{
 };
 use tokio_util::codec::Framed;
 
-use super::{frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, wire_frame::WireFrame};
+use super::{WireFrame, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent};
 
 /// Single outbound TCP connection towards a remote authority.
 ///
@@ -115,8 +115,8 @@ async fn run(
   loop {
     tokio::select! {
       next = framed.next() => match next {
-        | Some(Ok(frame)) => {
-          if inbound_tx.send(InboundFrameEvent { peer: peer_addr.clone(), frame }).is_err() {
+        | Some(Ok(decoded)) => {
+          if inbound_tx.send(InboundFrameEvent { peer: peer_addr.clone(), frame: decoded }).is_err() {
             break;
           }
         }

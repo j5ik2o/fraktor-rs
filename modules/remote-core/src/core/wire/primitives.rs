@@ -6,7 +6,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::core::wire::{
   WireError,
-  frame_header::{FrameHeader, WIRE_VERSION_1},
+  frame_header::{FRAME_KIND_OFFSET, FrameHeader, WIRE_VERSION_1},
 };
 
 /// Writes a frame header placeholder (zero length) and returns the buffer offset
@@ -71,8 +71,7 @@ pub(crate) fn peek_frame_kind(buf: &Bytes) -> Result<u8, WireError> {
   if buf.remaining() < HEADER_SIZE {
     return Err(WireError::Truncated);
   }
-  // length(4) + version(1) = 5 → kind is at index 5.
-  Ok(buf[5])
+  Ok(buf[FRAME_KIND_OFFSET])
 }
 
 pub(crate) fn encode_string(value: &str, buf: &mut BytesMut) -> Result<(), WireError> {

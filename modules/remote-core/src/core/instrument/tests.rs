@@ -92,6 +92,23 @@ fn record_send_captures_all_fields() {
 }
 
 #[test]
+fn record_dropped_envelope_captures_all_fields() {
+  let mut r = RemotingFlightRecorder::new(10);
+  r.record_dropped_envelope("sys@host:2552", CorrelationId::new(3, 4), 1, 150);
+  let snap = r.snapshot();
+  assert_eq!(snap.len(), 1);
+  let Some(FlightRecorderEvent::DroppedEnvelope { authority, correlation_id, priority, now_ms }) =
+    snap.events().first().cloned()
+  else {
+    panic!("expected DroppedEnvelope event");
+  };
+  assert_eq!(authority, "sys@host:2552");
+  assert_eq!(correlation_id, CorrelationId::new(3, 4));
+  assert_eq!(priority, 1);
+  assert_eq!(now_ms, 150);
+}
+
+#[test]
 fn record_receive_captures_all_fields() {
   let mut r = RemotingFlightRecorder::new(10);
   r.record_receive("sys@host:2552", CorrelationId::nil(), 5, 200);
@@ -190,6 +207,7 @@ fn snapshot_is_immutable_after_production() {
 
 struct CountingInstrument {
   sends:         usize,
+  dropped:       usize,
   receives:      usize,
   handshakes:    usize,
   quarantines:   usize,
@@ -198,13 +216,17 @@ struct CountingInstrument {
 
 impl CountingInstrument {
   const fn new() -> Self {
-    Self { sends: 0, receives: 0, handshakes: 0, quarantines: 0, backpressures: 0 }
+    Self { sends: 0, dropped: 0, receives: 0, handshakes: 0, quarantines: 0, backpressures: 0 }
   }
 }
 
 impl RemoteInstrument for CountingInstrument {
   fn on_send(&mut self, _envelope: &OutboundEnvelope, _now_ms: u64) {
     self.sends += 1;
+  }
+
+  fn record_dropped_envelope(&mut self, _authority: &TransportEndpoint, _envelope: &OutboundEnvelope, _now_ms: u64) {
+    self.dropped += 1;
   }
 
   fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {
@@ -236,6 +258,7 @@ fn remote_instrument_trait_can_be_implemented() {
   let out = sample_outbound();
   let inb = sample_inbound();
   inst.on_send(&out, 10);
+  inst.record_dropped_envelope(&TransportEndpoint::new("sys@host:2552"), &out, 15);
   inst.on_receive(&inb, 20);
   inst.on_send(&out, 30);
   inst.record_handshake(&TransportEndpoint::new("sys@host:2552"), HandshakePhase::Started, 10);
@@ -247,6 +270,7 @@ fn remote_instrument_trait_can_be_implemented() {
     30,
   );
   assert_eq!(inst.sends, 2);
+  assert_eq!(inst.dropped, 1);
   assert_eq!(inst.receives, 1);
   assert_eq!(inst.handshakes, 1);
   assert_eq!(inst.quarantines, 1);
@@ -261,6 +285,7 @@ fn flight_recorder_implements_remote_instrument_hooks() {
   let authority = TransportEndpoint::new("sys@host:2552");
 
   recorder.on_send(&outbound, 10);
+  RemoteInstrument::record_dropped_envelope(&mut recorder, &authority, &outbound, 15);
   recorder.on_receive(&inbound, 20);
   RemoteInstrument::record_handshake(&mut recorder, &authority, HandshakePhase::Started, 10);
   RemoteInstrument::record_quarantine(&mut recorder, &authority, &QuarantineReason::new("boom"), 20);
@@ -273,13 +298,14 @@ fn flight_recorder_implements_remote_instrument_hooks() {
   );
 
   let snap = recorder.snapshot();
-  assert_eq!(snap.len(), 5);
+  assert_eq!(snap.len(), 6);
   // wire size はシリアライズ層が入るまで配線できないため 0 で記録される。
   assert!(matches!(snap.events()[0], FlightRecorderEvent::Send { size: 0, now_ms: 10, .. }));
-  assert!(matches!(snap.events()[1], FlightRecorderEvent::Receive { size: 0, now_ms: 20, .. }));
-  assert!(matches!(snap.events()[2], FlightRecorderEvent::Handshake { phase: HandshakePhase::Started, .. }));
-  assert!(matches!(snap.events()[3], FlightRecorderEvent::Quarantine { .. }));
-  assert!(matches!(snap.events()[4], FlightRecorderEvent::Backpressure { signal: BackpressureSignal::Release, .. }));
+  assert!(matches!(snap.events()[1], FlightRecorderEvent::DroppedEnvelope { now_ms: 15, .. }));
+  assert!(matches!(snap.events()[2], FlightRecorderEvent::Receive { size: 0, now_ms: 20, .. }));
+  assert!(matches!(snap.events()[3], FlightRecorderEvent::Handshake { phase: HandshakePhase::Started, .. }));
+  assert!(matches!(snap.events()[4], FlightRecorderEvent::Quarantine { .. }));
+  assert!(matches!(snap.events()[5], FlightRecorderEvent::Backpressure { signal: BackpressureSignal::Release, .. }));
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use alloc::{collections::VecDeque, string::String, vec, vec::Vec};
 use core::{
   any::type_name,
-  future::{Future, ready},
+  future::Future,
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
@@ -10,6 +10,7 @@ use std::{
   task::{Context, Poll, Wake, Waker},
 };
 
+use bytes::Bytes;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
@@ -18,20 +19,21 @@ use fraktor_actor_core_rs::core::kernel::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::core::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  association::{Association, QuarantineReason},
+  association::{Association, AssociationEffect, QuarantineReason},
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
     EventPublisher, Remote, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
-    RemoteAuthoritySnapshot, RemoteEvent, RemoteEventReceiver, Remoting, RemotingError, RemotingLifecycleState,
+    RemoteAuthoritySnapshot, RemoteEvent, RemoteEventReceiver, RemoteShared, Remoting, RemotingError,
+    RemotingLifecycleState,
   },
-  instrument::{HandshakePhase, RemoteInstrument},
+  instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemoteInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{HandshakePdu, HandshakeRsp},
+  wire::{ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
 };
 
 struct RecordingTransport {
@@ -42,6 +44,8 @@ struct RecordingTransport {
   running: bool,
   shutdown_calls: ArcShared<AtomicUsize>,
   send_calls: ArcShared<AtomicUsize>,
+  control_calls: ArcShared<AtomicUsize>,
+  control_frames: SharedLock<Vec<(Address, ControlPdu)>>,
   handshake_calls: ArcShared<AtomicUsize>,
   timeout_calls: ArcShared<AtomicUsize>,
   timeout_before_handshake_calls: ArcShared<AtomicUsize>,
@@ -51,6 +55,8 @@ struct VecRemoteEventReceiver {
   events: VecDeque<RemoteEvent>,
 }
 
+struct PendingRemoteEventReceiver;
+
 impl VecRemoteEventReceiver {
   fn new(events: impl IntoIterator<Item = RemoteEvent>) -> Self {
     Self { events: events.into_iter().collect() }
@@ -58,8 +64,14 @@ impl VecRemoteEventReceiver {
 }
 
 impl RemoteEventReceiver for VecRemoteEventReceiver {
-  fn recv(&mut self) -> impl Future<Output = Option<RemoteEvent>> + Send + '_ {
-    ready(self.events.pop_front())
+  fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<Option<RemoteEvent>> {
+    Poll::Ready(self.events.pop_front())
+  }
+}
+
+impl RemoteEventReceiver for PendingRemoteEventReceiver {
+  fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<Option<RemoteEvent>> {
+    Poll::Pending
   }
 }
 
@@ -67,18 +79,33 @@ struct NoopWaker;
 
 struct CountingInstrument {
   send_calls:      ArcShared<AtomicUsize>,
+  dropped_calls:   ArcShared<AtomicUsize>,
   handshake_calls: ArcShared<AtomicUsize>,
+}
+
+struct SharedRecorderInstrument {
+  recorder: SharedLock<RemotingFlightRecorder>,
 }
 
 impl CountingInstrument {
   fn new(send_calls: ArcShared<AtomicUsize>, handshake_calls: ArcShared<AtomicUsize>) -> Self {
-    Self { send_calls, handshake_calls }
+    Self { send_calls, dropped_calls: ArcShared::new(AtomicUsize::new(0)), handshake_calls }
+  }
+}
+
+impl SharedRecorderInstrument {
+  fn new(recorder: SharedLock<RemotingFlightRecorder>) -> Self {
+    Self { recorder }
   }
 }
 
 impl RemoteInstrument for CountingInstrument {
   fn on_send(&mut self, _envelope: &OutboundEnvelope, _now_ms: u64) {
     self.send_calls.fetch_add(1, Ordering::Relaxed);
+  }
+
+  fn record_dropped_envelope(&mut self, _authority: &TransportEndpoint, _envelope: &OutboundEnvelope, _now_ms: u64) {
+    self.dropped_calls.fetch_add(1, Ordering::Relaxed);
   }
 
   fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {}
@@ -98,6 +125,42 @@ impl RemoteInstrument for CountingInstrument {
     _correlation_id: CorrelationId,
     _now_ms: u64,
   ) {
+  }
+}
+
+impl RemoteInstrument for SharedRecorderInstrument {
+  fn on_send(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
+    self.recorder.with_lock(|recorder| recorder.on_send(envelope, now_ms));
+  }
+
+  fn record_dropped_envelope(&mut self, authority: &TransportEndpoint, envelope: &OutboundEnvelope, now_ms: u64) {
+    self
+      .recorder
+      .with_lock(|recorder| RemoteInstrument::record_dropped_envelope(recorder, authority, envelope, now_ms));
+  }
+
+  fn on_receive(&mut self, envelope: &InboundEnvelope, now_ms: u64) {
+    self.recorder.with_lock(|recorder| recorder.on_receive(envelope, now_ms));
+  }
+
+  fn record_handshake(&mut self, authority: &TransportEndpoint, phase: HandshakePhase, now_ms: u64) {
+    self.recorder.with_lock(|recorder| RemoteInstrument::record_handshake(recorder, authority, phase, now_ms));
+  }
+
+  fn record_quarantine(&mut self, authority: &TransportEndpoint, reason: &QuarantineReason, now_ms: u64) {
+    self.recorder.with_lock(|recorder| RemoteInstrument::record_quarantine(recorder, authority, reason, now_ms));
+  }
+
+  fn record_backpressure(
+    &mut self,
+    authority: &TransportEndpoint,
+    signal: BackpressureSignal,
+    correlation_id: CorrelationId,
+    now_ms: u64,
+  ) {
+    self
+      .recorder
+      .with_lock(|recorder| RemoteInstrument::record_backpressure(recorder, authority, signal, correlation_id, now_ms));
   }
 }
 
@@ -128,6 +191,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -143,6 +208,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -162,6 +229,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls,
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -177,6 +246,8 @@ impl RecordingTransport {
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -209,6 +280,15 @@ impl RemoteTransport for RecordingTransport {
       | Ok(()) => Ok(()),
       | Err(err) => Err((err, Box::new(envelope))),
     }
+  }
+
+  fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+    self.control_calls.fetch_add(1, Ordering::Relaxed);
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
+    Ok(())
   }
 
   fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
@@ -258,10 +338,11 @@ fn event_publisher() -> EventPublisher {
 
 fn active_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
   let mut association = Association::from_config(UniqueAddress::new(local, 1), remote.clone(), config);
-  let start_effects = association.associate(TransportEndpoint::new(remote.to_string()), 1);
+  let mut instrument = NoopInstrument;
+  let start_effects = association.associate(TransportEndpoint::new(remote.to_string()), 1, &mut instrument);
   assert_eq!(start_effects.len(), 1);
   let accepted_effects = association
-    .accept_handshake_response(&HandshakeRsp::new(UniqueAddress::new(remote, 2)), 2)
+    .accept_handshake_response(&HandshakeRsp::new(UniqueAddress::new(remote, 2)), 2, &mut instrument)
     .expect("matching handshake response should activate association");
   assert!(!accepted_effects.is_empty());
   association
@@ -371,7 +452,8 @@ fn remote_shutdown_failure_keeps_advertised_addresses() {
 #[test]
 fn run_returns_error_when_receiver_is_closed() {
   let address = Address::new("sys", "127.0.0.1", 2552);
-  let remote = Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let mut remote =
+    Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   let mut receiver = VecRemoteEventReceiver::new([]);
 
   assert_eq!(block_on_ready(remote.run(&mut receiver)).unwrap_err(), RemotingError::EventReceiverClosed);
@@ -380,7 +462,8 @@ fn run_returns_error_when_receiver_is_closed() {
 #[test]
 fn run_returns_ok_on_transport_shutdown_event() {
   let address = Address::new("sys", "127.0.0.1", 2552);
-  let remote = Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let mut remote =
+    Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   let mut receiver = VecRemoteEventReceiver::new([RemoteEvent::TransportShutdown]);
 
   block_on_ready(remote.run(&mut receiver)).unwrap();
@@ -426,6 +509,121 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
   assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
   assert_eq!(instrument_handshake_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn remote_new_default_instrument_accepts_event_loop_hooks() {
+  let noop_address = Address::new("sys", "127.0.0.1", 2552);
+  let mut noop_remote =
+    Remote::new(RecordingTransport::new(vec![noop_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let mut noop_receiver = VecRemoteEventReceiver::new([RemoteEvent::TransportShutdown]);
+  block_on_ready(noop_remote.run(&mut noop_receiver)).expect("NoopInstrument should accept event loop hooks");
+}
+
+#[test]
+fn flight_recorder_instrument_records_send_hook() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(8));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut remote = Remote::with_instrument(
+    RecordingTransport::new(vec![local_address.clone()]),
+    config.clone(),
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.start().expect("remote should start before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    42,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("flight recorder instrument should not fail the event loop");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(matches!(
+    snapshot.events(),
+    [
+      FlightRecorderEvent::Send {
+        authority,
+        priority: 1,
+        now_ms: 42,
+        ..
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552"
+  ));
+}
+
+#[test]
+fn flight_recorder_instrument_records_dropped_envelope_after_send_failed() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(8));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut remote = Remote::with_instrument(
+    RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::SendFailed)),
+    config.clone(),
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.start().expect("remote should start before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::new(7, 8),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    43,
+    })
+    .expect("send failure should be recorded without failing the event loop");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(matches!(
+    snapshot.events(),
+    [
+      FlightRecorderEvent::Send {
+        authority: send_authority,
+        correlation_id: send_correlation_id,
+        priority: 1,
+        now_ms: 43,
+        ..
+      },
+      FlightRecorderEvent::DroppedEnvelope {
+        authority: drop_authority,
+        correlation_id: drop_correlation_id,
+        priority: 1,
+        now_ms: 43
+      }
+    ] if send_authority == "remote-sys@10.0.0.1:2552"
+      && drop_authority == "remote-sys@10.0.0.1:2552"
+      && *send_correlation_id == CorrelationId::new(7, 8)
+      && *drop_correlation_id == CorrelationId::new(7, 8)
+  ));
 }
 
 #[test]
@@ -505,21 +703,417 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
 }
 
 #[test]
-fn run_returns_unimplemented_event_for_unwired_remote_events() {
-  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let events = [
-    RemoteEvent::InboundFrameReceived { authority: endpoint.clone(), frame: vec![1, 2, 3] },
-    RemoteEvent::HandshakeTimerFired { authority: endpoint.clone(), generation: 1 },
-    RemoteEvent::ConnectionLost { authority: endpoint, cause: TransportError::ConnectionClosed },
-  ];
+fn inbound_handshake_request_rejects_forged_local_destination() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = Remote::new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  let forged_local = Address::new("sys", "127.0.0.2", 2552);
+  let request = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), forged_local));
 
-  for event in events {
-    let address = Address::new("sys", "127.0.0.1", 2552);
-    let remote = Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
-    let mut receiver = VecRemoteEventReceiver::new([event]);
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Handshake(request),
+      now_ms:    42,
+    })
+    .expect("forged destination should be ignored without failing the event loop");
 
-    assert_eq!(block_on_ready(remote.run(&mut receiver)).unwrap_err(), RemotingError::UnimplementedEvent);
-  }
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_envelope_is_buffered_for_local_delivery() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut remote = Remote::new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = EnvelopePdu::new(
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+    Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/sender")),
+    1,
+    2,
+    1,
+    Bytes::from_static(b"inbound-payload"),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Envelope(pdu),
+      now_ms:    55,
+    })
+    .expect("active inbound envelope should be accepted");
+
+  let deliveries = remote.drain_inbound_envelopes();
+  assert_eq!(deliveries.len(), 1);
+  assert_eq!(deliveries[0].recipient().to_canonical_uri(), "fraktor.tcp://sys@127.0.0.1:2552/user/local");
+  assert_eq!(deliveries[0].remote_node().system(), "remote-sys");
+  assert_eq!(deliveries[0].message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"inbound-payload")));
+}
+
+#[test]
+fn inbound_envelope_buffer_is_bounded_by_system_message_buffer_size() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_system_message_buffer_size(1);
+  let mut remote = Remote::new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let make_event = |payload: &'static [u8], correlation_hi: u64| RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Envelope(EnvelopePdu::new(
+      String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+      Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/sender")),
+      correlation_hi,
+      0,
+      1,
+      Bytes::from_static(payload),
+    )),
+    now_ms:    55,
+  };
+
+  remote.handle_remote_event(make_event(b"first", 1)).expect("first inbound envelope should be accepted");
+  remote.handle_remote_event(make_event(b"second", 2)).expect("full inbound buffer should drop the next envelope");
+
+  let deliveries = remote.drain_inbound_envelopes();
+  assert_eq!(deliveries.len(), 1);
+  assert_eq!(deliveries[0].message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"first")));
+  assert!(remote.drain_inbound_envelopes().is_empty());
+}
+
+#[test]
+fn inbound_senderless_envelope_matches_existing_association_by_peer_endpoint() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut remote = Remote::new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = EnvelopePdu::new(
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+    None,
+    3,
+    4,
+    1,
+    Bytes::from_static(b"senderless-payload"),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new("10.0.0.1:2552"),
+      frame:     WireFrame::Envelope(pdu),
+      now_ms:    56,
+    })
+    .expect("senderless inbound envelope should match the existing peer association");
+
+  let deliveries = remote.drain_inbound_envelopes();
+  assert_eq!(deliveries.len(), 1);
+  assert_eq!(deliveries[0].sender(), None);
+  assert_eq!(deliveries[0].message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"senderless-payload")));
+}
+
+#[test]
+fn inbound_quarantine_control_quarantines_matching_association() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(4));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut remote = Remote::with_instrument(
+    RecordingTransport::new(vec![local_address.clone()]),
+    config.clone(),
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu =
+    ControlPdu::Quarantine { authority: remote_address.to_string(), reason: Some(String::from("remote says no")) };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(pdu),
+      now_ms:    70,
+    })
+    .expect("quarantine control should be applied");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(matches!(
+    snapshot.events(),
+    [
+      FlightRecorderEvent::Quarantine {
+        authority,
+        reason,
+        now_ms: 70
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552" && reason == "remote says no"
+  ));
+}
+
+#[test]
+fn inbound_heartbeat_control_sends_response_to_remote_peer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let control_frames = transport.control_frames.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address.clone(), remote_address.clone(), &config));
+  let pdu = ControlPdu::Heartbeat { authority: remote_address.to_string() };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(pdu),
+      now_ms:    75,
+    })
+    .expect("heartbeat control should send a response");
+
+  let frames = control_frames.with_lock(|frames| frames.clone());
+  let local_authority = local_address.to_string();
+  assert_eq!(frames.len(), 1);
+  assert_eq!(frames[0].0, remote_address);
+  assert!(matches!(
+    &frames[0].1,
+    ControlPdu::HeartbeatResponse {
+      authority,
+      uid: 1
+    } if authority.as_str() == local_authority
+  ));
+}
+
+#[test]
+fn inbound_shutdown_control_quarantines_matching_association() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let send_calls = transport.send_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let timeout_calls = transport.timeout_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = ControlPdu::Shutdown { authority: remote_address.to_string() };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(pdu),
+      now_ms:    80,
+    })
+    .expect("shutdown control should be applied");
+
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    81,
+    })
+    .expect("quarantined association should discard outbound");
+
+  assert_eq!(send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(timeout_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn outbound_high_watermark_notification_does_not_pause_internal_drain() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_outbound_watermarks(1, 2);
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::SendFailed));
+  let send_calls = transport.send_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let make_event = || {
+    let recipient =
+      ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+    let envelope = OutboundEnvelope::new(
+      recipient,
+      None,
+      AnyMessage::new(String::from("payload")),
+      OutboundPriority::User,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      CorrelationId::nil(),
+    );
+    RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    90,
+    }
+  };
+
+  remote.handle_remote_event(make_event()).expect("first enqueue should be handled");
+  remote.handle_remote_event(make_event()).expect("second enqueue should be handled");
+  remote.handle_remote_event(make_event()).expect("third enqueue should be handled");
+
+  assert_eq!(send_calls.load(Ordering::Relaxed), 3);
+}
+
+#[test]
+fn connection_lost_recovers_active_association() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let handshake_send_calls = transport.handshake_calls.clone();
+  let timeout_calls = transport.timeout_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before connection loss");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let event = RemoteEvent::ConnectionLost {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    cause:     TransportError::ConnectionClosed,
+    now_ms:    42,
+  };
+  let mut receiver = VecRemoteEventReceiver::new([event, RemoteEvent::TransportShutdown]);
+
+  block_on_ready(remote.run(&mut receiver)).unwrap();
+
+  assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn handle_remote_event_ignores_handshake_timer_for_unknown_association() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let mut remote =
+    Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let event = RemoteEvent::HandshakeTimerFired {
+    authority:  TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
+    generation: 1,
+    now_ms:     1,
+  };
+
+  remote.handle_remote_event(event).expect("unknown timer should be ignored");
+}
+
+#[test]
+fn handle_remote_event_discards_wrapped_stale_handshake_timer_generation() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let endpoint = TransportEndpoint::new(remote_address.to_string());
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(4));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut association =
+    Association::from_config(UniqueAddress::new(local_address.clone(), 1), remote_address.clone(), &config);
+  association.set_handshake_generation_for_test(u64::MAX);
+  let effects = association.associate(endpoint.clone(), 10, &mut NoopInstrument);
+  assert_eq!(association.handshake_generation(), 0);
+  assert!(matches!(effects.as_slice(), [AssociationEffect::StartHandshake { generation: 0, .. }]));
+  let mut remote = Remote::with_instrument(
+    RecordingTransport::new(vec![local_address]),
+    config,
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.insert_association(association);
+
+  remote
+    .handle_remote_event(RemoteEvent::HandshakeTimerFired {
+      authority:  endpoint.clone(),
+      generation: u64::MAX,
+      now_ms:     100,
+    })
+    .expect("stale wrapped timer should be discarded");
+  remote
+    .handle_remote_event(RemoteEvent::HandshakeTimerFired { authority: endpoint, generation: 0, now_ms: 101 })
+    .expect("current wrapped timer should be handled");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(matches!(
+    snapshot.events(),
+    [
+      FlightRecorderEvent::Handshake {
+        authority,
+        phase: HandshakePhase::Rejected,
+        now_ms: 101
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552"
+  ));
+}
+
+#[test]
+fn remote_shared_remoting_methods_delegate_to_remote() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let shared = RemoteShared::new(Remote::new(
+    RecordingTransport::new(vec![address.clone()]),
+    RemoteConfig::new("127.0.0.1"),
+    event_publisher(),
+  ));
+
+  shared.start().expect("shared start");
+
+  assert_eq!(shared.addresses(), vec![address.clone()]);
+  shared.quarantine(&address, Some(1), QuarantineReason::new("shared"), 1).expect("shared quarantine");
+  shared.shutdown().expect("shared shutdown");
+  shared.shutdown().expect("second shared shutdown should be idempotent after termination");
+}
+
+#[test]
+fn remote_shared_clones_observe_same_remote_state() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let starter = RemoteShared::new(Remote::new(
+    RecordingTransport::new(vec![address.clone()]),
+    RemoteConfig::new("127.0.0.1"),
+    event_publisher(),
+  ));
+  let reader = starter.clone();
+
+  starter.start().expect("start through first clone");
+
+  assert_eq!(reader.addresses(), vec![address]);
+  reader.shutdown().expect("shutdown through second clone");
+}
+
+#[test]
+fn remote_shared_run_returns_ok_after_transport_shutdown_event() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let shared = RemoteShared::new(Remote::new(
+    RecordingTransport::new(vec![address]),
+    RemoteConfig::new("127.0.0.1"),
+    event_publisher(),
+  ));
+  let mut receiver = VecRemoteEventReceiver::new([RemoteEvent::TransportShutdown]);
+
+  block_on_ready(shared.run(&mut receiver)).expect("transport shutdown should stop shared run loop");
+}
+
+#[test]
+fn remote_shared_run_returns_ready_after_shutdown_when_polled() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let shared = RemoteShared::new(Remote::new(
+    RecordingTransport::new(vec![address]),
+    RemoteConfig::new("127.0.0.1"),
+    event_publisher(),
+  ));
+  shared.start().expect("shared remote should start");
+  shared.shutdown().expect("standalone shutdown should update lifecycle");
+  let mut receiver = PendingRemoteEventReceiver;
+  let waker = Waker::from(Arc::new(NoopWaker));
+  let mut context = Context::from_waker(&waker);
+  let mut future = Box::pin(shared.run(&mut receiver));
+
+  assert!(future.as_mut().poll(&mut context).is_ready());
 }
 
 // ---------------------------------------------------------------------------

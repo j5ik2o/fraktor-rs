@@ -1,14 +1,14 @@
 //! `tokio_util::codec::{Encoder, Decoder}` wrapper around the core [`Codec<T>`]
 //! implementations.
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use fraktor_remote_core_rs::core::wire::{
-  AckCodec, Codec, ControlCodec, EnvelopeCodec, HandshakeCodec, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE,
-  KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WireError,
+  AckCodec, Codec, ControlCodec, EnvelopeCodec, FRAME_KIND_OFFSET, HandshakeCodec, KIND_ACK, KIND_CONTROL,
+  KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WireError, WireFrame,
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::{frame_codec_error::FrameCodecError, wire_frame::WireFrame};
+use super::frame_codec_error::FrameCodecError;
 
 /// Minimum bytes required to inspect the frame header (`length(4)` + `version(1)` + `kind(1)`).
 const FRAME_HEADER_LEN: usize = 6;
@@ -35,7 +35,7 @@ fn declared_frame_length(frame: &[u8]) -> Result<usize, FrameCodecError> {
 /// Encode dispatches on the [`crate::std::transport::tcp::WireFrame`] variant and delegates to the
 /// core `Codec<T>` implementor for that PDU. Decode peeks at the frame header to
 /// determine the `kind` byte, splits off the complete frame bytes, and feeds
-/// them back through the corresponding core decoder.
+/// them through the corresponding core decoder.
 #[derive(Clone, Copy, Debug)]
 pub struct WireFrameCodec {
   maximum_frame_size: usize,
@@ -96,7 +96,7 @@ impl Decoder for WireFrameCodec {
     if src.len() < FRAME_HEADER_LEN {
       return Ok(None);
     }
-    // Peek at the length prefix without consuming the buffer.
+    // バッファを消費せず length prefix だけ確認する。
     let length = declared_frame_length(src)?;
     if length < MIN_FRAME_LENGTH {
       return Err(FrameCodecError::from(WireError::InvalidFormat));
@@ -106,14 +106,12 @@ impl Decoder for WireFrameCodec {
     }
     let total = 4 + length;
     if src.len() < total {
-      // Wait for the remainder of the frame.
+      // frame の残りが届くまで待つ。
       return Ok(None);
     }
-    // `kind` byte lives at `length(4) + version(1) = 5`.
-    let kind = src[5];
-    // Split off exactly one complete frame and feed it to the core decoder.
-    let frame_bytes: Bytes = src.split_to(total).freeze();
-    let mut frame = frame_bytes;
+    let kind = src[FRAME_KIND_OFFSET];
+    // 完全な frame 1件だけを切り出して core decoder に渡す。
+    let mut frame = src.split_to(total).freeze();
     let decoded: Result<WireFrame, WireError> = match kind {
       | KIND_ENVELOPE => EnvelopeCodec::new().decode(&mut frame).map(WireFrame::Envelope),
       | KIND_HANDSHAKE_REQ | KIND_HANDSHAKE_RSP => HandshakeCodec::new().decode(&mut frame).map(WireFrame::Handshake),
