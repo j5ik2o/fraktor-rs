@@ -10,7 +10,7 @@ use std::{
   task::{Context, Poll, Wake, Waker},
 };
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
@@ -33,10 +33,7 @@ use crate::core::{
   },
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemoteInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{
-    Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, HandshakeCodec, HandshakePdu, HandshakeReq,
-    HandshakeRsp,
-  },
+  wire::{ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
 };
 
 struct RecordingTransport {
@@ -307,24 +304,6 @@ impl RemoteTransport for RecordingTransport {
 fn event_publisher() -> EventPublisher {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   EventPublisher::new(system.downgrade())
-}
-
-fn encode_envelope_pdu(pdu: &EnvelopePdu) -> Bytes {
-  let mut buffer = BytesMut::new();
-  EnvelopeCodec::new().encode(pdu, &mut buffer).expect("envelope pdu should encode");
-  buffer.freeze()
-}
-
-fn encode_control_pdu(pdu: &ControlPdu) -> Bytes {
-  let mut buffer = BytesMut::new();
-  ControlCodec::new().encode(pdu, &mut buffer).expect("control pdu should encode");
-  buffer.freeze()
-}
-
-fn encode_handshake_pdu(pdu: &HandshakePdu) -> Bytes {
-  let mut buffer = BytesMut::new();
-  HandshakeCodec::new().encode(pdu, &mut buffer).expect("handshake pdu should encode");
-  buffer.freeze()
 }
 
 fn active_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
@@ -637,22 +616,6 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
 }
 
 #[test]
-fn run_returns_codec_failed_for_invalid_inbound_frame() {
-  let address = Address::new("sys", "127.0.0.1", 2552);
-  let mut remote =
-    Remote::new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
-  remote.start().expect("remote should be running before inbound frame dispatch");
-  let event = RemoteEvent::InboundFrameReceived {
-    authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
-    frame:     Bytes::from_static(&[1, 2, 3]),
-    now_ms:    1,
-  };
-  let mut receiver = VecRemoteEventReceiver::new([event]);
-
-  assert_eq!(block_on_ready(remote.run(&mut receiver)).unwrap_err(), RemotingError::CodecFailed);
-}
-
-#[test]
 fn inbound_handshake_request_rejects_forged_local_destination() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -666,7 +629,7 @@ fn inbound_handshake_request_rejects_forged_local_destination() {
   remote
     .handle_remote_event(RemoteEvent::InboundFrameReceived {
       authority: TransportEndpoint::new(remote_address.to_string()),
-      frame:     encode_handshake_pdu(&request),
+      frame:     WireFrame::Handshake(request),
       now_ms:    42,
     })
     .expect("forged destination should be ignored without failing the event loop");
@@ -694,7 +657,7 @@ fn inbound_envelope_is_buffered_for_local_delivery() {
   remote
     .handle_remote_event(RemoteEvent::InboundFrameReceived {
       authority: TransportEndpoint::new(remote_address.to_string()),
-      frame:     encode_envelope_pdu(&pdu),
+      frame:     WireFrame::Envelope(pdu),
       now_ms:    55,
     })
     .expect("active inbound envelope should be accepted");
@@ -726,7 +689,7 @@ fn inbound_senderless_envelope_matches_existing_association_by_peer_endpoint() {
   remote
     .handle_remote_event(RemoteEvent::InboundFrameReceived {
       authority: TransportEndpoint::new("10.0.0.1:2552"),
-      frame:     encode_envelope_pdu(&pdu),
+      frame:     WireFrame::Envelope(pdu),
       now_ms:    56,
     })
     .expect("senderless inbound envelope should match the existing peer association");
@@ -758,7 +721,7 @@ fn inbound_quarantine_control_quarantines_matching_association() {
   remote
     .handle_remote_event(RemoteEvent::InboundFrameReceived {
       authority: TransportEndpoint::new(remote_address.to_string()),
-      frame:     encode_control_pdu(&pdu),
+      frame:     WireFrame::Control(pdu),
       now_ms:    70,
     })
     .expect("quarantine control should be applied");
@@ -793,7 +756,7 @@ fn inbound_shutdown_control_quarantines_matching_association() {
   remote
     .handle_remote_event(RemoteEvent::InboundFrameReceived {
       authority: TransportEndpoint::new(remote_address.to_string()),
-      frame:     encode_control_pdu(&pdu),
+      frame:     WireFrame::Control(pdu),
       now_ms:    80,
     })
     .expect("shutdown control should be applied");

@@ -23,6 +23,7 @@ mod handshake_req;
 mod handshake_rsp;
 mod primitives;
 mod wire_error;
+mod wire_frame;
 
 pub use ack_codec::AckCodec;
 pub use ack_pdu::AckPdu;
@@ -40,3 +41,4 @@ pub use handshake_pdu::HandshakePdu;
 pub use handshake_req::HandshakeReq;
 pub use handshake_rsp::HandshakeRsp;
 pub use wire_error::WireError;
+pub use wire_frame::WireFrame;

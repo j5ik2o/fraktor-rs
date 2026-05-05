@@ -29,10 +29,8 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
   let accept_a = tokio::spawn(async move {
     let (stream, peer) = listener_a.accept().await.unwrap();
     let mut framed = Framed::new(stream, WireFrameCodec::new());
-    if let Some(Ok(decoded)) = framed.next().await {
-      let (frame, frame_bytes) = decoded.into_parts();
-      assert!(!frame_bytes.is_empty(), "server A frame_bytes should not be empty");
-      accept_tx_a.send(InboundFrameEvent { peer: peer.to_string(), frame, frame_bytes }).unwrap();
+    if let Some(Ok(frame)) = framed.next().await {
+      accept_tx_a.send(InboundFrameEvent { peer: peer.to_string(), frame }).unwrap();
     }
   });
 
@@ -44,10 +42,8 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
   let accept_b = tokio::spawn(async move {
     let (stream, peer) = listener_b.accept().await.unwrap();
     let mut framed = Framed::new(stream, WireFrameCodec::new());
-    if let Some(Ok(decoded)) = framed.next().await {
-      let (frame, frame_bytes) = decoded.into_parts();
-      assert!(!frame_bytes.is_empty(), "server B frame_bytes should not be empty");
-      accept_tx_b.send(InboundFrameEvent { peer: peer.to_string(), frame, frame_bytes }).unwrap();
+    if let Some(Ok(frame)) = framed.next().await {
+      accept_tx_b.send(InboundFrameEvent { peer: peer.to_string(), frame }).unwrap();
     }
   });
 

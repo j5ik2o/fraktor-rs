@@ -139,8 +139,7 @@ async fn read_loop(
   while let Some(next) = framed.next().await {
     match next {
       | Ok(decoded) => {
-        let (frame, frame_bytes) = decoded.into_parts();
-        if inbound_tx.send(InboundFrameEvent { peer: peer.clone(), frame, frame_bytes }).is_err() {
+        if inbound_tx.send(InboundFrameEvent { peer: peer.clone(), frame: decoded }).is_err() {
           // Receiver dropped — the transport is shutting down.
           break;
         }

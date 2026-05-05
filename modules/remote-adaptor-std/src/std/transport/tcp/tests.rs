@@ -16,7 +16,7 @@ use fraktor_remote_core_rs::core::{
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::std::transport::tcp::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
+use crate::std::transport::tcp::{WireFrame, frame_codec::WireFrameCodec};
 
 const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
@@ -53,7 +53,7 @@ fn wire_frame_codec_roundtrips_envelope() {
   codec.encode(frame, &mut buf).unwrap();
 
   let decoded = codec.decode(&mut buf).unwrap().expect("complete frame");
-  assert_eq!(decoded.frame(), &WireFrame::Envelope(pdu));
+  assert_eq!(decoded, WireFrame::Envelope(pdu));
   assert!(buf.is_empty(), "decoder should fully consume the buffer");
 }
 
@@ -69,7 +69,7 @@ fn wire_frame_codec_roundtrips_handshake() {
   codec.encode(frame, &mut buf).unwrap();
 
   let decoded = codec.decode(&mut buf).unwrap().expect("complete frame");
-  assert_eq!(decoded.frame(), &WireFrame::Handshake(pdu));
+  assert_eq!(decoded, WireFrame::Handshake(pdu));
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn wire_frame_codec_roundtrips_control() {
   codec.encode(frame, &mut buf).unwrap();
 
   let decoded = codec.decode(&mut buf).unwrap().expect("complete frame");
-  assert_eq!(decoded.frame(), &WireFrame::Control(pdu));
+  assert_eq!(decoded, WireFrame::Control(pdu));
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn wire_frame_codec_roundtrips_ack() {
   codec.encode(frame, &mut buf).unwrap();
 
   let decoded = codec.decode(&mut buf).unwrap().expect("complete frame");
-  assert_eq!(decoded.frame(), &WireFrame::Ack(pdu));
+  assert_eq!(decoded, WireFrame::Ack(pdu));
 }
 
 #[test]
@@ -125,9 +125,9 @@ fn wire_frame_codec_handles_multiple_frames_in_one_buffer() {
   codec.encode(b.clone(), &mut buf).unwrap();
 
   let decoded_a = codec.decode(&mut buf).unwrap().expect("first frame");
-  assert_eq!(decoded_a.frame(), &a);
+  assert_eq!(decoded_a, a);
   let decoded_b = codec.decode(&mut buf).unwrap().expect("second frame");
-  assert_eq!(decoded_b.frame(), &b);
+  assert_eq!(decoded_b, b);
   assert!(buf.is_empty());
 }
 

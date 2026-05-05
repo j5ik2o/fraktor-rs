@@ -2,8 +2,8 @@
 //!
 //! The module is structured as a thin I/O layer over the pure `remote-core` types:
 //!
-//! - [`wire_frame::WireFrame`] is the unified on-the-wire enum that multiplexes all five PDU kinds
-//!   over a single `tokio_util::codec::Framed` stream.
+//! - [`WireFrame`] is the unified on-the-wire enum that multiplexes all five PDU kinds over a
+//!   single `tokio_util::codec::Framed` stream.
 //! - [`frame_codec::WireFrameCodec`] implements `tokio_util::codec::{Encoder, Decoder}` and
 //!   delegates the actual encoding to the core `Codec<T>` implementations.
 //! - [`server::TcpServer`] owns a `tokio::net::TcpListener` + the accept loop task.
@@ -15,7 +15,6 @@ mod tests;
 
 mod base;
 mod client;
-mod decoded_wire_frame;
 mod frame_codec;
 mod frame_codec_error;
 mod inbound_frame_event;
@@ -24,7 +23,6 @@ mod wire_frame;
 
 pub use base::TcpRemoteTransport;
 pub use client::TcpClient;
-pub use decoded_wire_frame::DecodedWireFrame;
 pub use frame_codec::WireFrameCodec;
 pub use frame_codec_error::FrameCodecError;
 pub use inbound_frame_event::InboundFrameEvent;

@@ -25,8 +25,7 @@ pub async fn run_inbound_dispatch(
 ) -> Result<(), TransportError> {
   while let Some(event) = inbound_rx.recv().await {
     let authority = authority_for_frame(&event.frame).unwrap_or_else(|| TransportEndpoint::new(event.peer.clone()));
-    let remote_event =
-      RemoteEvent::InboundFrameReceived { authority, frame: event.frame_bytes.clone(), now_ms: now_ms_provider() };
+    let remote_event = RemoteEvent::InboundFrameReceived { authority, frame: event.frame, now_ms: now_ms_provider() };
     if let Err(error) = event_sender.send(remote_event).await {
       tracing::warn!(?error, "inbound remote event delivery failed");
       return Err(TransportError::NotAvailable);

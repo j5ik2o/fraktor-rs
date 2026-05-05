@@ -7,7 +7,6 @@ use alloc::{
 };
 use core::mem;
 
-use bytes::Bytes;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::{CorrelationId, RemotingLifecycleEvent},
@@ -23,11 +22,7 @@ use crate::core::{
   },
   instrument::{NoopInstrument, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{
-    AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, FRAME_KIND_OFFSET, HandshakeCodec,
-    HandshakePdu, HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ,
-    KIND_HANDSHAKE_RSP,
-  },
+  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
 };
 
 /// Core remoting lifecycle implementation backed by a transport port.
@@ -264,31 +259,18 @@ impl Remote {
   fn handle_inbound_frame_received(
     &mut self,
     authority: &TransportEndpoint,
-    frame: Bytes,
+    frame: WireFrame,
     now_ms: u64,
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
-    let kind = frame_kind(&frame)?;
-    let mut bytes = frame;
-    match kind {
-      | KIND_ENVELOPE => {
-        let pdu = EnvelopeCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
-        self.handle_inbound_envelope_pdu(authority, &pdu, now_ms)
-      },
-      | KIND_HANDSHAKE_REQ | KIND_HANDSHAKE_RSP => {
-        let pdu = HandshakeCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
-        self.handle_inbound_handshake_pdu(pdu, now_ms)
-      },
-      | KIND_CONTROL => {
-        let pdu = ControlCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
-        self.handle_inbound_control_pdu(&pdu, now_ms)
-      },
-      | KIND_ACK => {
-        let pdu = AckCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
+    match frame {
+      | WireFrame::Envelope(pdu) => self.handle_inbound_envelope_pdu(authority, &pdu, now_ms),
+      | WireFrame::Handshake(pdu) => self.handle_inbound_handshake_pdu(pdu, now_ms),
+      | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(&pdu, now_ms),
+      | WireFrame::Ack(pdu) => {
         self.handle_inbound_ack_pdu(authority, &pdu, now_ms);
         Ok(())
       },
-      | _ => Err(RemotingError::CodecFailed),
     }
   }
 
@@ -600,10 +582,6 @@ impl Remote {
       );
     }
   }
-}
-
-fn frame_kind(frame: &[u8]) -> Result<u8, RemotingError> {
-  frame.get(FRAME_KIND_OFFSET).copied().ok_or(RemotingError::CodecFailed)
 }
 
 fn parse_authority(authority: &str) -> Option<Address> {

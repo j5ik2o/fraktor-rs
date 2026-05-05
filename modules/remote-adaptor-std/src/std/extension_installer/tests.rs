@@ -184,6 +184,20 @@ async fn extension_installer_double_spawn_run_task_returns_already_running() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn extension_installer_spawn_run_task_after_shutdown_join_reuses_receiver() {
+  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
+  let harness = EventHarness::new();
+  installer.install(harness.system()).expect("install should create remote");
+  let remote = installer.remote().expect("installed remote should be available");
+  remote.start().expect("start through installer-shared handle");
+  installer.spawn_run_task().expect("first run task should spawn");
+  installer.shutdown_and_join().await.expect("shutdown should restore run receiver");
+
+  installer.spawn_run_task().expect("run task should spawn again after join");
+  installer.shutdown_and_join().await.expect("second shutdown should join second run task");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_remote_lifecycle_drives_via_shared_lock() {
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
   let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());

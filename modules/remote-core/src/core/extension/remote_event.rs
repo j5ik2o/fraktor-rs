@@ -2,22 +2,21 @@
 
 use alloc::boxed::Box;
 
-use bytes::Bytes;
-
 use crate::core::{
   envelope::OutboundEnvelope,
   transport::{TransportEndpoint, TransportError as ConnectionLostCause},
+  wire::WireFrame,
 };
 
 /// Events pushed by adapter code and consumed by the core remote event loop.
 #[derive(Debug)]
 pub enum RemoteEvent {
-  /// A raw inbound frame was received from `authority`.
+  /// An inbound frame was received from `authority`.
   InboundFrameReceived {
     /// Remote authority that produced the frame.
     authority: TransportEndpoint,
-    /// Raw frame bytes.
-    frame:     Bytes,
+    /// Decoded frame.
+    frame:     WireFrame,
     /// Monotonic millis at which the frame was observed.
     now_ms:    u64,
   },

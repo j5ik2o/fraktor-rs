@@ -36,7 +36,7 @@ pub struct RemotingExtensionInstaller {
 
 struct RemotingRunState {
   receiver: Option<TokioMpscRemoteEventReceiver>,
-  handle:   Option<JoinHandle<Result<(), RemotingError>>>,
+  handle:   Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
 }
 
 impl RemotingRunState {
@@ -89,7 +89,10 @@ impl RemotingExtensionInstaller {
     let Some(mut receiver) = run_state.receiver.take() else {
       return Err(RemotingError::AlreadyRunning);
     };
-    let handle = tokio::spawn(async move { remote.run(&mut receiver).await });
+    let handle = tokio::spawn(async move {
+      let result = remote.run(&mut receiver).await;
+      (receiver, result)
+    });
     run_state.handle = Some(handle);
     Ok(())
   }
@@ -115,7 +118,14 @@ impl RemotingExtensionInstaller {
     let Some(handle) = handle else {
       return shutdown_result;
     };
-    let join_result = join_run_handle(handle).await;
+    let join_result = match join_run_handle(handle).await {
+      | Ok((receiver, result)) => {
+        let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
+        run_state.receiver = Some(receiver);
+        result
+      },
+      | Err(error) => Err(error),
+    };
     match (shutdown_result, join_result) {
       | (shutdown_result, Err(error)) => {
         if let Err(shutdown_error) = shutdown_result {
@@ -161,9 +171,11 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
   }
 }
 
-async fn join_run_handle(handle: JoinHandle<Result<(), RemotingError>>) -> Result<(), RemotingError> {
+async fn join_run_handle(
+  handle: JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>,
+) -> Result<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>), RemotingError> {
   match handle.await {
-    | Ok(result) => result,
+    | Ok(result) => Ok(result),
     | Err(join_error) => {
       tracing::error!(?join_error, "remote run task join failed");
       Err(RemotingError::TransportUnavailable)
