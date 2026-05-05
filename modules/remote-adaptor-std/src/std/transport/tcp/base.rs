@@ -45,20 +45,21 @@ use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 /// Phase 3 serialization driver, so `send` fails fast instead of emitting an
 /// empty payload frame.
 pub struct TcpRemoteTransport {
-  local_addresses:         Vec<Address>,
-  default_address:         Option<Address>,
-  bind_addr:               String,
-  frame_codec:             WireFrameCodec,
-  server:                  TcpServer,
-  clients:                 BTreeMap<String, TcpClient>,
-  inbound_tx:              UnboundedSender<InboundFrameEvent>,
-  inbound_rx:              Option<UnboundedReceiver<InboundFrameEvent>>,
-  remote_event_tx:         Option<Sender<RemoteEvent>>,
-  monotonic_epoch:         Instant,
-  inbound_restart_timeout: Duration,
-  inbound_max_restarts:    u32,
-  inbound_worker:          Option<JoinHandle<Result<(), TransportError>>>,
-  running:                 bool,
+  configured_local_addresses: Vec<Address>,
+  local_addresses:            Vec<Address>,
+  default_address:            Option<Address>,
+  bind_addr:                  String,
+  frame_codec:                WireFrameCodec,
+  server:                     TcpServer,
+  clients:                    BTreeMap<String, TcpClient>,
+  inbound_tx:                 UnboundedSender<InboundFrameEvent>,
+  inbound_rx:                 Option<UnboundedReceiver<InboundFrameEvent>>,
+  remote_event_tx:            Option<Sender<RemoteEvent>>,
+  monotonic_epoch:            Instant,
+  inbound_restart_timeout:    Duration,
+  inbound_max_restarts:       u32,
+  inbound_worker:             Option<JoinHandle<Result<(), TransportError>>>,
+  running:                    bool,
 }
 
 impl Debug for TcpRemoteTransport {
@@ -111,6 +112,7 @@ impl TcpRemoteTransport {
     let default_address = local_addresses.first().cloned();
     let default_config = RemoteConfig::new("localhost");
     Self {
+      configured_local_addresses: local_addresses.clone(),
       local_addresses,
       default_address,
       server: TcpServer::with_frame_codec(bind_addr.clone(), frame_codec),
@@ -126,6 +128,12 @@ impl TcpRemoteTransport {
       inbound_worker: None,
       running: false,
     }
+  }
+
+  fn reset_inbound_channel(&mut self) {
+    let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
+    self.inbound_tx = inbound_tx;
+    self.inbound_rx = Some(inbound_rx);
   }
 
   /// Returns a copy that emits scheduled remote events through `sender`.
@@ -166,14 +174,14 @@ impl TcpRemoteTransport {
     self.inbound_rx.take()
   }
 
-  fn spawn_inbound_worker(&mut self) {
+  fn spawn_inbound_worker(&mut self) -> Result<(), TransportError> {
     let Some(event_sender) = self.remote_event_tx.clone() else {
       tracing::debug!("with_remote_event_sender was not called; inbound worker not spawned");
-      return;
+      return Ok(());
     };
     let Some(inbound_rx) = self.inbound_rx.take() else {
       tracing::debug!("inbound receiver was already consumed; inbound worker not spawned");
-      return;
+      return Err(TransportError::NotAvailable);
     };
     let frame_codec = self.frame_codec;
     let monotonic_epoch = self.monotonic_epoch;
@@ -191,6 +199,7 @@ impl TcpRemoteTransport {
       .await
     });
     self.inbound_worker = Some(handle);
+    Ok(())
   }
 
   /// Establishes an outbound connection to `remote` and stores the client.
@@ -233,7 +242,7 @@ impl TcpRemoteTransport {
 
   fn apply_bound_port_to_advertised_addresses(&mut self, bound_port: u16) {
     self.local_addresses = self
-      .local_addresses
+      .configured_local_addresses
       .iter()
       .map(|address| {
         if address.port() == 0 { Address::new(address.system(), address.host(), bound_port) } else { address.clone() }
@@ -272,7 +281,11 @@ impl RemoteTransport for TcpRemoteTransport {
     let bound_addr = self.server.start(self.inbound_tx.clone())?;
     self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;
-    self.spawn_inbound_worker();
+    if let Err(error) = self.spawn_inbound_worker() {
+      self.server.shutdown();
+      self.running = false;
+      return Err(error);
+    }
     Ok(())
   }
 
@@ -286,6 +299,9 @@ impl RemoteTransport for TcpRemoteTransport {
     }
     if let Some(handle) = self.inbound_worker.take() {
       handle.abort();
+    }
+    if self.remote_event_tx.is_some() && self.inbound_rx.is_none() {
+      self.reset_inbound_channel();
     }
     self.clients.clear();
     self.running = false;
