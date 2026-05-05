@@ -35,17 +35,17 @@ impl<S: RemoteEventReceiver + ?Sized> Future for RemoteSharedRunFuture<'_, S> {
     // events in one poll. If fairness becomes a concern, cap the number of
     // `poll_recv` / `handle_remote_event` iterations per poll.
     loop {
-      if this.remote.with_read(|remote| remote.is_terminated()) {
+      if this.remote.with_read(|remote| remote.should_stop_event_loop()) {
         return Poll::Ready(Ok(()));
       }
       match this.receiver.poll_recv(cx) {
         | Poll::Ready(Some(event)) => {
           match this.remote.with_write(|remote| {
-            if remote.is_terminated() {
+            if remote.should_stop_event_loop() {
               return Ok(true);
             }
             remote.handle_remote_event(event)?;
-            Ok(remote.is_terminated())
+            Ok(remote.should_stop_event_loop())
           }) {
             | Ok(true) => return Poll::Ready(Ok(())),
             | Ok(false) => {},

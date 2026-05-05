@@ -77,6 +77,7 @@ struct NoopWaker;
 
 struct CountingInstrument {
   send_calls:      ArcShared<AtomicUsize>,
+  dropped_calls:   ArcShared<AtomicUsize>,
   handshake_calls: ArcShared<AtomicUsize>,
 }
 
@@ -86,7 +87,7 @@ struct SharedRecorderInstrument {
 
 impl CountingInstrument {
   fn new(send_calls: ArcShared<AtomicUsize>, handshake_calls: ArcShared<AtomicUsize>) -> Self {
-    Self { send_calls, handshake_calls }
+    Self { send_calls, dropped_calls: ArcShared::new(AtomicUsize::new(0)), handshake_calls }
   }
 }
 
@@ -99,6 +100,10 @@ impl SharedRecorderInstrument {
 impl RemoteInstrument for CountingInstrument {
   fn on_send(&mut self, _envelope: &OutboundEnvelope, _now_ms: u64) {
     self.send_calls.fetch_add(1, Ordering::Relaxed);
+  }
+
+  fn record_dropped_envelope(&mut self, _authority: &TransportEndpoint, _envelope: &OutboundEnvelope, _now_ms: u64) {
+    self.dropped_calls.fetch_add(1, Ordering::Relaxed);
   }
 
   fn on_receive(&mut self, _envelope: &InboundEnvelope, _now_ms: u64) {}
@@ -124,6 +129,12 @@ impl RemoteInstrument for CountingInstrument {
 impl RemoteInstrument for SharedRecorderInstrument {
   fn on_send(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
     self.recorder.with_lock(|recorder| recorder.on_send(envelope, now_ms));
+  }
+
+  fn record_dropped_envelope(&mut self, authority: &TransportEndpoint, envelope: &OutboundEnvelope, now_ms: u64) {
+    self
+      .recorder
+      .with_lock(|recorder| RemoteInstrument::record_dropped_envelope(recorder, authority, envelope, now_ms));
   }
 
   fn on_receive(&mut self, envelope: &InboundEnvelope, now_ms: u64) {
@@ -540,6 +551,63 @@ fn flight_recorder_instrument_records_send_hook() {
 }
 
 #[test]
+fn flight_recorder_instrument_records_dropped_envelope_after_send_failed() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(8));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut remote = Remote::with_instrument(
+    RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::SendFailed)),
+    config.clone(),
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.start().expect("remote should start before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::new(7, 8),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    43,
+    })
+    .expect("send failure should be recorded without failing the event loop");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(matches!(
+    snapshot.events(),
+    [
+      FlightRecorderEvent::Send {
+        authority: send_authority,
+        correlation_id: send_correlation_id,
+        priority: 1,
+        now_ms: 43,
+        ..
+      },
+      FlightRecorderEvent::DroppedEnvelope {
+        authority: drop_authority,
+        correlation_id: drop_correlation_id,
+        priority: 1,
+        now_ms: 43
+      }
+    ] if send_authority == "remote-sys@10.0.0.1:2552"
+      && drop_authority == "remote-sys@10.0.0.1:2552"
+      && *send_correlation_id == CorrelationId::new(7, 8)
+      && *drop_correlation_id == CorrelationId::new(7, 8)
+  ));
+}
+
+#[test]
 fn run_continues_event_loop_after_outbound_send_failure() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -667,6 +735,36 @@ fn inbound_envelope_is_buffered_for_local_delivery() {
   assert_eq!(deliveries[0].recipient().to_canonical_uri(), "fraktor.tcp://sys@127.0.0.1:2552/user/local");
   assert_eq!(deliveries[0].remote_node().system(), "remote-sys");
   assert_eq!(deliveries[0].message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"inbound-payload")));
+}
+
+#[test]
+fn inbound_envelope_buffer_is_bounded_by_system_message_buffer_size() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_system_message_buffer_size(1);
+  let mut remote = Remote::new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let make_event = |payload: &'static [u8], correlation_hi: u64| RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Envelope(EnvelopePdu::new(
+      String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+      Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/sender")),
+      correlation_hi,
+      0,
+      1,
+      Bytes::from_static(payload),
+    )),
+    now_ms:    55,
+  };
+
+  remote.handle_remote_event(make_event(b"first", 1)).expect("first inbound envelope should be accepted");
+  remote.handle_remote_event(make_event(b"second", 2)).expect("full inbound buffer should drop the next envelope");
+
+  let deliveries = remote.drain_inbound_envelopes();
+  assert_eq!(deliveries.len(), 1);
+  assert_eq!(deliveries[0].message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"first")));
+  assert!(remote.drain_inbound_envelopes().is_empty());
 }
 
 #[test]

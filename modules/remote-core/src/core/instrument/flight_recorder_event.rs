@@ -26,6 +26,17 @@ pub enum FlightRecorderEvent {
     /// Monotonic millis at which the event occurred.
     now_ms:         u64,
   },
+  /// An outbound envelope was discarded after an unrecoverable send failure.
+  DroppedEnvelope {
+    /// Authority of the destination node.
+    authority:      String,
+    /// Correlation id attached to the discarded envelope.
+    correlation_id: CorrelationId,
+    /// Priority byte (`0 = System`, `1 = User`).
+    priority:       u8,
+    /// Monotonic millis at which the event occurred.
+    now_ms:         u64,
+  },
   /// An envelope was decoded from an inbound frame.
   Receive {
     /// Authority of the source node.

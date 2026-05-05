@@ -33,6 +33,9 @@ pub(crate) const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
 
 /// Default remote event queue size.
+///
+/// The core event queue absorbs both outbound message and outbound control
+/// producers, so the default capacity is sized to their combined queues.
 const DEFAULT_REMOTE_EVENT_QUEUE_SIZE: usize =
   DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE + DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE;
 

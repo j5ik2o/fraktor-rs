@@ -157,9 +157,9 @@ impl Remote {
     }
   }
 
-  /// Returns `true` when the event loop should terminate.
+  /// Returns `true` when the event loop should stop polling events.
   #[must_use]
-  pub const fn is_terminated(&self) -> bool {
+  pub const fn should_stop_event_loop(&self) -> bool {
     self.lifecycle.is_terminated() || self.lifecycle.is_shutdown_requested()
   }
 
@@ -361,9 +361,26 @@ impl Remote {
       CorrelationId::new(pdu.correlation_hi(), pdu.correlation_lo()),
       priority,
     );
+    self.buffer_inbound_envelope(association_index, envelope, now_ms);
+    Ok(())
+  }
+
+  fn buffer_inbound_envelope(&mut self, association_index: usize, envelope: InboundEnvelope, now_ms: u64) {
+    let limit = self.config.system_message_buffer_size();
+    if self.inbound_envelopes.len() >= limit {
+      tracing::warn!(
+        remote = %self.associations[association_index].remote(),
+        buffered = self.inbound_envelopes.len(),
+        limit,
+        correlation_id_hi = envelope.correlation_id().hi(),
+        correlation_id_lo = envelope.correlation_id().lo(),
+        priority = envelope.priority().to_wire(),
+        "dropping inbound envelope because inbound delivery buffer is full"
+      );
+      return;
+    }
     self.associations[association_index].record_inbound(&envelope, now_ms, self.instrument.as_mut());
     self.inbound_envelopes.push(envelope);
-    Ok(())
   }
 
   fn handle_inbound_control_pdu(&mut self, pdu: &ControlPdu, now_ms: u64) -> Result<(), RemotingError> {
@@ -415,6 +432,8 @@ impl Remote {
     self.apply_association_effects(association_index, gate_effects, now_ms)?;
     let recover_effects = {
       let association = &mut self.associations[association_index];
+      // `gate` で設定した deadline と `recover` 側の状態遷移に backoff 判定を委譲し、
+      // connection lost のイベント処理自体は単一の再起動指示として完結させる。
       association.recover(Some(authority.clone()), now_ms, self.instrument.as_mut())
     };
     self.apply_association_effects(association_index, recover_effects, now_ms)
@@ -521,11 +540,16 @@ impl Remote {
       };
       match self.transport.send(envelope) {
         | Ok(()) => {},
-        | Err((TransportError::SendFailed, _envelope)) => {
+        | Err((TransportError::SendFailed, envelope)) => {
           // 永久的な payload 送信失敗を再投入すると、次のイベントごとに同じ envelope が
           // 先頭で失敗し続ける。呼び出し元へ同期的に戻せないため、ログに残して蓄積を止める。
+          let authority = TransportEndpoint::new(self.associations[association_index].remote().to_string());
+          self.instrument.record_dropped_envelope(&authority, &envelope, now_ms);
           tracing::warn!(
-            remote = %self.associations[association_index].remote(),
+            remote = %authority.authority(),
+            correlation_id_hi = envelope.correlation_id().hi(),
+            correlation_id_lo = envelope.correlation_id().lo(),
+            priority = envelope.priority().to_wire(),
             "discarding outbound envelope after transport send failed"
           );
           return Ok(());

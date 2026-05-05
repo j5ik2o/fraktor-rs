@@ -21,6 +21,9 @@ pub trait RemoteInstrument {
   /// Called just before an outbound envelope is handed to the transport.
   fn on_send(&mut self, envelope: &OutboundEnvelope, now_ms: u64);
 
+  /// Records an outbound envelope discarded after an unrecoverable send failure.
+  fn record_dropped_envelope(&mut self, authority: &TransportEndpoint, envelope: &OutboundEnvelope, now_ms: u64);
+
   /// Called once an inbound envelope has been decoded and is about to be
   /// dispatched to the local recipient.
   fn on_receive(&mut self, envelope: &InboundEnvelope, now_ms: u64);

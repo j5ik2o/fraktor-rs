@@ -28,7 +28,7 @@ impl<S: RemoteEventReceiver + ?Sized> Future for RemoteRunFuture<'_, S> {
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     loop {
-      if this.remote.is_terminated() {
+      if this.remote.should_stop_event_loop() {
         return Poll::Ready(Ok(()));
       }
       match this.receiver.poll_recv(cx) {
@@ -36,7 +36,7 @@ impl<S: RemoteEventReceiver + ?Sized> Future for RemoteRunFuture<'_, S> {
           if let Err(error) = this.remote.handle_remote_event(event) {
             return Poll::Ready(Err(error));
           }
-          if this.remote.is_terminated() {
+          if this.remote.should_stop_event_loop() {
             return Poll::Ready(Ok(()));
           }
         },

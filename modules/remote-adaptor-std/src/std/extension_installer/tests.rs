@@ -198,7 +198,7 @@ async fn extension_installer_spawn_run_task_after_shutdown_join_reuses_receiver(
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn extension_installer_remote_lifecycle_drives_via_shared_lock() {
+async fn extension_installer_remote_lifecycle_drives_via_remote_shared_handle() {
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
   let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
   let harness = EventHarness::new();

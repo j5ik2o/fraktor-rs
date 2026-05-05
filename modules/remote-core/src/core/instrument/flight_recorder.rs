@@ -76,6 +76,17 @@ impl RemotingFlightRecorder {
     self.record(FlightRecorderEvent::Send { authority: authority.into(), correlation_id, priority, size, now_ms });
   }
 
+  /// Records a `DroppedEnvelope` event at `now_ms` (monotonic millis).
+  pub fn record_dropped_envelope(
+    &mut self,
+    authority: impl Into<String>,
+    correlation_id: CorrelationId,
+    priority: u8,
+    now_ms: u64,
+  ) {
+    self.record(FlightRecorderEvent::DroppedEnvelope { authority: authority.into(), correlation_id, priority, now_ms });
+  }
+
   /// Records a `Receive` event at `now_ms` (monotonic millis).
   pub fn record_receive(
     &mut self,
@@ -131,6 +142,15 @@ impl RemoteInstrument for RemotingFlightRecorder {
       envelope.correlation_id(),
       envelope.priority().to_wire(),
       0,
+      now_ms,
+    );
+  }
+
+  fn record_dropped_envelope(&mut self, authority: &TransportEndpoint, envelope: &OutboundEnvelope, now_ms: u64) {
+    self.record_dropped_envelope(
+      authority.authority(),
+      envelope.correlation_id(),
+      envelope.priority().to_wire(),
       now_ms,
     );
   }
