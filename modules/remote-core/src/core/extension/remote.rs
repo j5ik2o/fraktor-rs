@@ -177,6 +177,7 @@ impl Remote {
     let remote = parse_authority(authority.authority()).ok_or(RemotingError::TransportUnavailable)?;
     let association_index = self.ensure_association(remote)?;
     let should_start_handshake = self.associations[association_index].state().is_idle();
+    let should_recover_handshake = self.associations[association_index].state().is_gated();
     let prev_len = self.associations[association_index].total_outbound_len();
     let effects = self.associations[association_index].enqueue(*envelope, now_ms, self.instrument.as_mut());
     let curr_len = self.associations[association_index].total_outbound_len();
@@ -186,6 +187,13 @@ impl Remote {
       let effects = {
         let association = &mut self.associations[association_index];
         association.associate(authority.clone(), now_ms, &mut *self.instrument)
+      };
+      self.apply_association_effects(association_index, effects, now_ms)?;
+    }
+    if should_recover_handshake {
+      let effects = {
+        let association = &mut self.associations[association_index];
+        association.recover(Some(authority.clone()), now_ms, &mut *self.instrument)
       };
       self.apply_association_effects(association_index, effects, now_ms)?;
     }
@@ -223,8 +231,14 @@ impl Remote {
   }
 
   fn association_index_for_authority(&self, authority: &TransportEndpoint) -> Option<usize> {
-    let remote = parse_authority(authority.authority())?;
-    self.association_index_for_remote(&remote)
+    if let Some(remote) = parse_authority(authority.authority()) {
+      return self.association_index_for_remote(&remote);
+    }
+    let (host, port) = parse_endpoint(authority.authority())?;
+    self
+      .associations
+      .iter()
+      .position(|association| association.remote().host() == host && association.remote().port() == port)
   }
 
   fn handle_handshake_timer_fired(
@@ -514,7 +528,7 @@ impl Remote {
     let high = self.config.outbound_high_watermark();
     if prev_len <= high && curr_len > high {
       self.associations[association_index].apply_backpressure(
-        BackpressureSignal::Apply,
+        BackpressureSignal::Notify,
         CorrelationId::nil(),
         now_ms,
         self.instrument.as_mut(),
@@ -549,10 +563,14 @@ fn frame_kind(frame: &[u8]) -> Result<u8, RemotingError> {
 
 fn parse_authority(authority: &str) -> Option<Address> {
   let (system, endpoint) = authority.split_once('@')?;
+  let (host, port) = parse_endpoint(endpoint)?;
+  Some(Address::new(system, host, port))
+}
+
+fn parse_endpoint(endpoint: &str) -> Option<(&str, u16)> {
   let (host, port) = endpoint.rsplit_once(':')?;
   let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
-  let port = port.parse::<u16>().ok()?;
-  Some(Address::new(system, host, port))
+  Some((host, port.parse::<u16>().ok()?))
 }
 
 impl Remote {

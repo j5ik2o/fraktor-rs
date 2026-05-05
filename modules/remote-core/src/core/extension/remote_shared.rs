@@ -4,6 +4,8 @@
 //! remote is already terminated. If shutdown is requested while the run future
 //! is pending on a receiver, the receiver must still wake the task with an
 //! event such as [`crate::core::extension::RemoteEvent::TransportShutdown`].
+//! This differs from exclusive [`crate::core::extension::RemoteRunFuture`],
+//! which checks termination at the head of its loop whenever it is polled.
 
 use alloc::vec::Vec;
 
@@ -50,7 +52,11 @@ impl RemoteShared {
     RemoteSharedRunFuture::new(self, receiver)
   }
 
-  /// Consumes buffered inbound envelopes observed by the shared core event loop.
+  /// Drains buffered inbound envelopes observed by the shared core event loop.
+  ///
+  /// This is a mutating consume operation, not a pure query. The `&self`
+  /// signature follows the shared-handle pattern, but the method internally
+  /// uses a write lock and delegates to [`Remote::drain_inbound_envelopes`].
   #[must_use]
   pub fn drain_inbound_envelopes(&self) -> Vec<InboundEnvelope> {
     self.with_write(Remote::drain_inbound_envelopes)

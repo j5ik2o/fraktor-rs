@@ -9,6 +9,9 @@
 pub enum BackpressureSignal {
   /// Pause user traffic until a corresponding `Release` arrives.
   Apply,
+  /// Notify producers that an internal high watermark was crossed without
+  /// pausing the association's own send queue.
+  Notify,
   /// Resume user traffic after a previous `Apply`.
   Release,
 }

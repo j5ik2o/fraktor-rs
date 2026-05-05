@@ -24,6 +24,8 @@ use crate::std::{TokioMpscRemoteEventReceiver, transport::tcp::TcpRemoteTranspor
 const ALREADY_INSTALLED: &str = "remote extension is already installed";
 const TRANSPORT_LOCK_POISONED: &str = "remote extension transport lock is poisoned";
 const RECEIVER_LOCK_POISONED: &str = "remote extension receiver lock is poisoned";
+const RUN_HANDLE_LOCK_POISONED: &str = "remote run_handle lock should not be poisoned";
+const RUN_RECEIVER_LOCK_POISONED: &str = "remote receiver lock should not be poisoned";
 
 /// Extension installer for the `fraktor-remote-adaptor-std-rs` runtime.
 pub struct RemotingExtensionInstaller {
@@ -62,6 +64,10 @@ impl RemotingExtensionInstaller {
 
   /// Spawns the core remote run loop once.
   ///
+  /// Must be called from within a Tokio runtime context because it uses
+  /// `tokio::spawn` to drive [`RemoteShared::run`]. Call it from async code, a
+  /// Tokio task, or a `tokio::Runtime::block_on` context.
+  ///
   /// # Errors
   ///
   /// Returns [`RemotingError::NotStarted`] if the installer has not been
@@ -69,13 +75,13 @@ impl RemotingExtensionInstaller {
   /// already spawned.
   pub fn spawn_run_task(&self) -> Result<(), RemotingError> {
     let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
-    let mut handle_slot = self.run_handle.lock().map_err(|_| RemotingError::TransportUnavailable)?;
+    let mut handle_slot = self.run_handle.lock().expect(RUN_HANDLE_LOCK_POISONED);
     if handle_slot.is_some() {
       return Err(RemotingError::AlreadyRunning);
     }
-    let mut receiver_slot = self.receiver.lock().map_err(|_| RemotingError::TransportUnavailable)?;
+    let mut receiver_slot = self.receiver.lock().expect(RUN_RECEIVER_LOCK_POISONED);
     let Some(mut receiver) = receiver_slot.take() else {
-      return Err(RemotingError::AlreadyRunning);
+      return Err(RemotingError::NotStarted);
     };
     let handle = tokio::spawn(async move { remote.run(&mut receiver).await });
     *handle_slot = Some(handle);
@@ -85,7 +91,10 @@ impl RemotingExtensionInstaller {
   /// Shuts the remote subsystem down, wakes the run loop, and waits for it.
   pub async fn shutdown_and_join(&self) -> Result<(), RemotingError> {
     let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
-    remote.shutdown()?;
+    let shutdown_result = remote.shutdown();
+    if let Err(error) = &shutdown_result {
+      tracing::debug!(?error, "remote shutdown failed; still attempting to join run task");
+    }
     if let Some(sender) = self.event_sender.get() {
       // Best-effort wake: Full means pending events can still observe shutdown,
       // Closed means the receiver has already gone away and join observes it.
@@ -94,13 +103,18 @@ impl RemotingExtensionInstaller {
       }
     }
     let handle = {
-      let mut handle_slot = self.run_handle.lock().map_err(|_| RemotingError::TransportUnavailable)?;
+      let mut handle_slot = self.run_handle.lock().expect(RUN_HANDLE_LOCK_POISONED);
       handle_slot.take()
     };
     let Some(handle) = handle else {
-      return Ok(());
+      return shutdown_result;
     };
-    join_run_handle(handle).await
+    let join_result = join_run_handle(handle).await;
+    match (shutdown_result, join_result) {
+      | (_, Err(error)) => Err(error),
+      | (Err(error), Ok(())) => Err(error),
+      | (Ok(()), Ok(())) => Ok(()),
+    }
   }
 }
 

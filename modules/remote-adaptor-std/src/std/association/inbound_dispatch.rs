@@ -53,8 +53,8 @@ where
 ///
 /// # Errors
 ///
-/// Returns [`TransportError::NotAvailable`] when frame encoding fails or the
-/// remote event receiver has already closed.
+/// Returns [`TransportError::NotAvailable`] when the remote event receiver has
+/// already closed.
 pub async fn run_inbound_dispatch(
   inbound_rx: UnboundedReceiver<InboundFrameEvent>,
   event_sender: Sender<RemoteEvent>,
@@ -74,10 +74,10 @@ async fn run_inbound_dispatch_once(
   while let Some(event) = inbound_rx.recv().await {
     let authority = authority_for_frame(&event.frame).unwrap_or_else(|| TransportEndpoint::new(event.peer.clone()));
     let mut bytes = BytesMut::new();
-    frame_codec.encode(event.frame, &mut bytes).map_err(|error| {
-      tracing::warn!(?error, "inbound frame re-encoding failed");
-      TransportError::NotAvailable
-    })?;
+    if let Err(error) = frame_codec.encode(event.frame, &mut bytes) {
+      tracing::warn!(?error, "inbound frame re-encoding failed; skipping frame");
+      continue;
+    }
     let remote_event =
       RemoteEvent::InboundFrameReceived { authority, frame: bytes.freeze().to_vec(), now_ms: now_ms_provider() };
     if let Err(error) = event_sender.send(remote_event).await {

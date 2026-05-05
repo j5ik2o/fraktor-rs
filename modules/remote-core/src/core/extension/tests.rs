@@ -704,6 +704,37 @@ fn inbound_envelope_is_buffered_for_local_delivery() {
 }
 
 #[test]
+fn inbound_senderless_envelope_matches_existing_association_by_peer_endpoint() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut remote = Remote::new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = EnvelopePdu::new(
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+    None,
+    3,
+    4,
+    1,
+    Bytes::from_static(b"senderless-payload"),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new("10.0.0.1:2552"),
+      frame:     encode_envelope_pdu(&pdu),
+      now_ms:    56,
+    })
+    .expect("senderless inbound envelope should match the existing peer association");
+
+  let deliveries = remote.drain_inbound_envelopes();
+  assert_eq!(deliveries.len(), 1);
+  assert_eq!(deliveries[0].sender(), None);
+  assert_eq!(deliveries[0].message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"senderless-payload")));
+}
+
+#[test]
 fn inbound_quarantine_control_quarantines_matching_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -749,6 +780,8 @@ fn inbound_shutdown_control_gates_matching_association() {
   let config = RemoteConfig::new("127.0.0.1");
   let transport = RecordingTransport::new(vec![local_address.clone()]);
   let send_calls = transport.send_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let timeout_calls = transport.timeout_calls.clone();
   let mut remote = Remote::new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before inbound control");
   remote.insert_association(active_association(local_address, remote_address.clone(), &config));
@@ -780,6 +813,43 @@ fn inbound_shutdown_control_gates_matching_association() {
     .expect("gated association should keep outbound deferred");
 
   assert_eq!(send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn outbound_high_watermark_notification_does_not_pause_internal_drain() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_outbound_watermarks(1, 2);
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::SendFailed));
+  let send_calls = transport.send_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let make_event = || {
+    let recipient =
+      ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+    let envelope = OutboundEnvelope::new(
+      recipient,
+      None,
+      AnyMessage::new(String::from("payload")),
+      OutboundPriority::User,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      CorrelationId::nil(),
+    );
+    RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    90,
+    }
+  };
+
+  remote.handle_remote_event(make_event()).expect("first enqueue should be handled");
+  remote.handle_remote_event(make_event()).expect("second enqueue should be handled");
+  remote.handle_remote_event(make_event()).expect("third enqueue should be handled");
+
+  assert_eq!(send_calls.load(Ordering::Relaxed), 3);
 }
 
 #[test]

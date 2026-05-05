@@ -96,6 +96,7 @@ impl SendQueue {
   pub const fn apply_backpressure(&mut self, signal: BackpressureSignal) {
     match signal {
       | BackpressureSignal::Apply => self.user_paused = true,
+      | BackpressureSignal::Notify => {},
       | BackpressureSignal::Release => self.user_paused = false,
     }
   }
