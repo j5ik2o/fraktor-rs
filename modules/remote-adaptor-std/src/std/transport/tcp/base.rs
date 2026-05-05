@@ -29,9 +29,6 @@ use super::{
 };
 use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 
-const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
-
 /// TCP-backed implementation of [`RemoteTransport`].
 ///
 /// This struct aggregates a [`TcpServer`] (inbound) and a [`BTreeMap`] of
@@ -59,8 +56,6 @@ pub struct TcpRemoteTransport {
   inbound_rx:                 Option<UnboundedReceiver<InboundFrameEvent>>,
   remote_event_tx:            Option<Sender<RemoteEvent>>,
   monotonic_epoch:            Instant,
-  inbound_restart_timeout:    Duration,
-  inbound_max_restarts:       u32,
   inbound_worker:             Option<JoinHandle<Result<(), TransportError>>>,
   running:                    bool,
 }
@@ -107,7 +102,6 @@ impl TcpRemoteTransport {
     let local_addresses = vec![Address::new(system_name, config.canonical_host(), advertised_port)];
     let frame_codec = WireFrameCodec::with_maximum_frame_size(config.maximum_frame_size());
     Self::with_frame_codec(bind_addr, local_addresses, frame_codec)
-      .with_inbound_restart_budget(config.inbound_max_restarts(), config.inbound_restart_timeout())
   }
 
   fn with_frame_codec(bind_addr: String, local_addresses: Vec<Address>, frame_codec: WireFrameCodec) -> Self {
@@ -125,8 +119,6 @@ impl TcpRemoteTransport {
       inbound_rx: Some(inbound_rx),
       remote_event_tx: None,
       monotonic_epoch: Instant::now(),
-      inbound_restart_timeout: DEFAULT_INBOUND_RESTART_TIMEOUT,
-      inbound_max_restarts: DEFAULT_INBOUND_MAX_RESTARTS,
       inbound_worker: None,
       running: false,
     }
@@ -149,14 +141,6 @@ impl TcpRemoteTransport {
   #[must_use]
   pub fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
     self.monotonic_epoch = monotonic_epoch;
-    self
-  }
-
-  /// Configures the inbound worker restart budget.
-  #[must_use]
-  pub fn with_inbound_restart_budget(mut self, max_restarts: u32, restart_timeout: Duration) -> Self {
-    self.inbound_max_restarts = max_restarts;
-    self.inbound_restart_timeout = restart_timeout;
     self
   }
 
@@ -186,17 +170,8 @@ impl TcpRemoteTransport {
       return Err(TransportError::NotAvailable);
     };
     let monotonic_epoch = self.monotonic_epoch;
-    let inbound_max_restarts = self.inbound_max_restarts;
-    let inbound_restart_timeout = self.inbound_restart_timeout;
     let handle = tokio::spawn(async move {
-      run_inbound_dispatch(
-        inbound_rx,
-        event_sender,
-        move || std_instant_elapsed_millis(monotonic_epoch),
-        inbound_max_restarts,
-        inbound_restart_timeout,
-      )
-      .await
+      run_inbound_dispatch(inbound_rx, event_sender, move || std_instant_elapsed_millis(monotonic_epoch)).await
     });
     self.inbound_worker = Some(handle);
     Ok(())

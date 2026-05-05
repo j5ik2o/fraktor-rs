@@ -75,12 +75,6 @@ const DEFAULT_OUTBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default maximum outbound stream restart count.
 const DEFAULT_OUTBOUND_MAX_RESTARTS: u32 = 5;
 
-/// Default inbound stream restart timeout.
-const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Default maximum inbound stream restart count.
-const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
-
 /// Default inbound lane count.
 const DEFAULT_INBOUND_LANES: usize = 4;
 
@@ -132,8 +126,6 @@ pub struct RemoteConfig {
   outbound_restart_backoff: Duration,
   outbound_restart_timeout: Duration,
   outbound_max_restarts: u32,
-  inbound_restart_timeout: Duration,
-  inbound_max_restarts: u32,
   compression_config: RemoteCompressionConfig,
   inbound_lanes: usize,
   outbound_lanes: usize,
@@ -179,8 +171,6 @@ impl RemoteConfig {
       outbound_restart_backoff: DEFAULT_OUTBOUND_RESTART_BACKOFF,
       outbound_restart_timeout: DEFAULT_OUTBOUND_RESTART_TIMEOUT,
       outbound_max_restarts: DEFAULT_OUTBOUND_MAX_RESTARTS,
-      inbound_restart_timeout: DEFAULT_INBOUND_RESTART_TIMEOUT,
-      inbound_max_restarts: DEFAULT_INBOUND_MAX_RESTARTS,
       compression_config: RemoteCompressionConfig::new(),
       inbound_lanes: DEFAULT_INBOUND_LANES,
       outbound_lanes: DEFAULT_OUTBOUND_LANES,
@@ -460,25 +450,6 @@ impl RemoteConfig {
     self
   }
 
-  /// Returns a copy with the given inbound stream restart timeout.
-  ///
-  /// # Panics
-  ///
-  /// Panics when `duration` is zero.
-  #[must_use]
-  pub const fn with_inbound_restart_timeout(mut self, duration: Duration) -> Self {
-    assert!(!duration.is_zero(), "inbound restart timeout must be greater than zero");
-    self.inbound_restart_timeout = duration;
-    self
-  }
-
-  /// Returns a copy with the given maximum inbound stream restart count.
-  #[must_use]
-  pub const fn with_inbound_max_restarts(mut self, max_restarts: u32) -> Self {
-    self.inbound_max_restarts = max_restarts;
-    self
-  }
-
   /// Returns a copy with the given compression settings.
   #[must_use]
   pub const fn with_compression_config(mut self, compression_config: RemoteCompressionConfig) -> Self {
@@ -728,18 +699,6 @@ impl RemoteConfig {
   #[must_use]
   pub const fn outbound_max_restarts(&self) -> u32 {
     self.outbound_max_restarts
-  }
-
-  /// Returns the inbound stream restart timeout.
-  #[must_use]
-  pub const fn inbound_restart_timeout(&self) -> Duration {
-    self.inbound_restart_timeout
-  }
-
-  /// Returns the maximum inbound stream restart count.
-  #[must_use]
-  pub const fn inbound_max_restarts(&self) -> u32 {
-    self.inbound_max_restarts
   }
 
   /// Returns the compression settings surface.

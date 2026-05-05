@@ -3,22 +3,14 @@
 #[cfg(test)]
 mod tests;
 
-use core::time::Duration;
-
 use fraktor_remote_core_rs::core::{
   extension::RemoteEvent,
   transport::{TransportEndpoint, TransportError},
   wire::{ControlPdu, HandshakePdu},
 };
-use tokio::{
-  sync::mpsc::{Sender, UnboundedReceiver},
-  time::Instant,
-};
+use tokio::sync::mpsc::{Sender, UnboundedReceiver};
 
-use crate::std::{
-  association::{RestartCounter, tokio_instant_elapsed_millis},
-  transport::tcp::{InboundFrameEvent, WireFrame},
-};
+use crate::std::transport::tcp::{InboundFrameEvent, WireFrame};
 
 /// Reads decoded inbound frames and pushes raw core `RemoteEvent`s.
 ///
@@ -30,30 +22,6 @@ pub async fn run_inbound_dispatch(
   mut inbound_rx: UnboundedReceiver<InboundFrameEvent>,
   event_sender: Sender<RemoteEvent>,
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
-  inbound_max_restarts: u32,
-  inbound_restart_timeout: Duration,
-) -> Result<(), TransportError> {
-  let started_at = Instant::now();
-  let mut restart_counter = RestartCounter::new(inbound_max_restarts, inbound_restart_timeout);
-  loop {
-    match run_inbound_dispatch_once(&mut inbound_rx, event_sender.clone(), &now_ms_provider).await {
-      | Ok(()) => return Ok(()),
-      | Err(error) => {
-        if event_sender.is_closed() {
-          return Err(error);
-        }
-        if !restart_counter.restart(tokio_instant_elapsed_millis(started_at)) {
-          return Err(error);
-        }
-      },
-    }
-  }
-}
-
-async fn run_inbound_dispatch_once(
-  inbound_rx: &mut UnboundedReceiver<InboundFrameEvent>,
-  event_sender: Sender<RemoteEvent>,
-  now_ms_provider: &impl Fn() -> u64,
 ) -> Result<(), TransportError> {
   while let Some(event) = inbound_rx.recv().await {
     let authority = authority_for_frame(&event.frame).unwrap_or_else(|| TransportEndpoint::new(event.peer.clone()));

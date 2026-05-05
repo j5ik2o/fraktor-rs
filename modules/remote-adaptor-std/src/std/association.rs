@@ -6,8 +6,6 @@
 
 mod inbound_dispatch;
 mod monotonic_millis;
-mod restart_counter;
 
 pub use inbound_dispatch::run_inbound_dispatch;
-pub(crate) use monotonic_millis::{std_instant_elapsed_millis, tokio_instant_elapsed_millis};
-pub use restart_counter::RestartCounter;
+pub(crate) use monotonic_millis::std_instant_elapsed_millis;
