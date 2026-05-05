@@ -36,7 +36,7 @@ async fn remote_lifecycle_directly() {
   assert!(remote.lifecycle().is_running());
 
   let address = Address::new("remote-sys", "10.0.0.1", 2552);
-  remote.quarantine(&address, Some(7), QuarantineReason::new("remote-lifecycle")).expect("quarantine while running");
+  remote.quarantine(&address, Some(7), QuarantineReason::new("remote-lifecycle"), 1).expect("quarantine while running");
 
   remote.shutdown().expect("shutdown");
   assert!(remote.lifecycle().is_terminated());
@@ -55,7 +55,7 @@ async fn remote_lifecycle_via_extension_installer() {
 
   let address = Address::new("remote-sys", "10.0.0.1", 2552);
   remote
-    .quarantine(&address, None, QuarantineReason::new("via installer"))
+    .quarantine(&address, None, QuarantineReason::new("via installer"), 1)
     .expect("quarantine via installer-shared handle");
 
   remote.shutdown().expect("first shutdown");
@@ -74,7 +74,7 @@ async fn remote_lifecycle_installer_spawn_run_task_and_shutdown_join() {
 
   let address = Address::new("remote-sys", "10.0.0.1", 2552);
   remote
-    .quarantine(&address, None, QuarantineReason::new("parallel command while run task is pending"))
+    .quarantine(&address, None, QuarantineReason::new("parallel command while run task is pending"), 1)
     .expect("quarantine via shared handle while run task owns event loop");
 
   installer.shutdown_and_join().await.expect("shutdown wake should join run task");

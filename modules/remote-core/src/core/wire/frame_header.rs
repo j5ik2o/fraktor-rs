@@ -3,6 +3,9 @@
 /// Current wire format version (initial release).
 pub const WIRE_VERSION_1: u8 = 0x01;
 
+/// Offset of the PDU kind byte in an encoded frame.
+pub const FRAME_KIND_OFFSET: usize = 5;
+
 /// Kind byte for [`crate::core::wire::EnvelopePdu`].
 pub const KIND_ENVELOPE: u8 = 0x01;
 

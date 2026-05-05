@@ -86,7 +86,7 @@ async fn remote_double_start_returns_already_running() {
 fn remote_quarantine_requires_running_state() {
   let (mut remote, _harness) = make_remote(make_transport());
   let address = Address::new("remote-sys", "10.0.0.1", 2552);
-  let err = remote.quarantine(&address, Some(1), QuarantineReason::new("not started")).unwrap_err();
+  let err = remote.quarantine(&address, Some(1), QuarantineReason::new("not started"), 1).unwrap_err();
   assert_eq!(err, RemotingError::NotStarted);
 }
 
@@ -95,7 +95,7 @@ async fn remote_quarantine_succeeds_while_running() {
   let (mut remote, _harness) = make_remote(make_transport());
   remote.start().expect("start");
   let address = Address::new("remote-sys", "10.0.0.1", 2552);
-  remote.quarantine(&address, Some(1), QuarantineReason::new("test")).expect("quarantine while running");
+  remote.quarantine(&address, Some(1), QuarantineReason::new("test"), 1).expect("quarantine while running");
   remote.shutdown().expect("shutdown after quarantine");
 }
 

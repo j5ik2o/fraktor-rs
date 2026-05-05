@@ -24,8 +24,9 @@ use crate::core::{
   instrument::{NoopInstrument, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
   wire::{
-    AckCodec, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, HandshakeCodec, HandshakePdu, HandshakeReq,
-    HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
+    AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, FRAME_KIND_OFFSET, HandshakeCodec,
+    HandshakePdu, HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ,
+    KIND_HANDSHAKE_RSP,
   },
 };
 
@@ -263,12 +264,12 @@ impl Remote {
   fn handle_inbound_frame_received(
     &mut self,
     authority: &TransportEndpoint,
-    frame: Vec<u8>,
+    frame: Bytes,
     now_ms: u64,
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
     let kind = frame_kind(&frame)?;
-    let mut bytes = Bytes::from(frame);
+    let mut bytes = frame;
     match kind {
       | KIND_ENVELOPE => {
         let pdu = EnvelopeCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
@@ -283,7 +284,8 @@ impl Remote {
         self.handle_inbound_control_pdu(&pdu, now_ms)
       },
       | KIND_ACK => {
-        AckCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
+        let pdu = AckCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
+        self.handle_inbound_ack_pdu(authority, &pdu, now_ms);
         Ok(())
       },
       | _ => Err(RemotingError::CodecFailed),
@@ -309,7 +311,15 @@ impl Remote {
           let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
           Some((remote, response, effects))
         },
-        | Err(_err) => None,
+        | Err(error) => {
+          tracing::debug!(
+            ?error,
+            association_index,
+            remote = %association.remote(),
+            "accept handshake request failed"
+          );
+          None
+        },
       }
     };
     let Some((remote, response, effects)) = accepted else {
@@ -328,7 +338,15 @@ impl Remote {
       let association = &mut self.associations[association_index];
       match association.accept_handshake_response(response, now_ms, self.instrument.as_mut()) {
         | Ok(effects) => effects,
-        | Err(_err) => return Ok(()),
+        | Err(error) => {
+          tracing::debug!(
+            ?error,
+            association_index,
+            remote = %association.remote(),
+            "accept handshake response failed"
+          );
+          return Ok(());
+        },
       }
     };
     self.apply_association_effects(association_index, effects, now_ms)?;
@@ -376,6 +394,20 @@ impl Remote {
         self.handle_inbound_quarantine_control(authority, reason, now_ms)
       },
       | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(authority, now_ms),
+    }
+  }
+
+  fn handle_inbound_ack_pdu(&mut self, authority: &TransportEndpoint, pdu: &AckPdu, now_ms: u64) {
+    tracing::debug!(
+      authority = %authority.authority(),
+      sequence_number = pdu.sequence_number(),
+      cumulative_ack = pdu.cumulative_ack(),
+      nack_bitmap = pdu.nack_bitmap(),
+      now_ms,
+      "inbound ack pdu observed"
+    );
+    if let Some(index) = self.association_index_for_authority(authority) {
+      self.associations[index].record_handshake_activity(now_ms);
     }
   }
 
@@ -454,7 +486,8 @@ impl Remote {
       return Ok(());
     };
     self.associations[index].record_handshake_activity(now_ms);
-    let effects = self.associations[index].gate(None, now_ms);
+    let reason = QuarantineReason::new("remote shutdown");
+    let effects = self.associations[index].quarantine(reason, now_ms, self.instrument.as_mut());
     self.apply_association_effects(index, effects, now_ms)
   }
 
@@ -557,8 +590,7 @@ impl Remote {
 }
 
 fn frame_kind(frame: &[u8]) -> Result<u8, RemotingError> {
-  const KIND_OFFSET: usize = 5;
-  frame.get(KIND_OFFSET).copied().ok_or(RemotingError::CodecFailed)
+  frame.get(FRAME_KIND_OFFSET).copied().ok_or(RemotingError::CodecFailed)
 }
 
 fn parse_authority(authority: &str) -> Option<Address> {
@@ -630,6 +662,9 @@ impl Remote {
 
   /// Quarantines the given remote authority.
   ///
+  /// `now_ms` is the caller-provided monotonic millis used for local
+  /// association deadlines and instrumentation.
+  ///
   /// # Errors
   ///
   /// Returns [`RemotingError::NotStarted`] if remoting is not currently
@@ -640,8 +675,13 @@ impl Remote {
     address: &Address,
     uid: Option<u64>,
     reason: QuarantineReason,
+    now_ms: u64,
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
+    if let Some(index) = self.association_index_for_remote(address) {
+      let effects = self.associations[index].quarantine(reason.clone(), now_ms, self.instrument.as_mut());
+      self.apply_association_effects(index, effects, now_ms)?;
+    }
     self.transport.quarantine(address, uid, reason).map_err(|_| RemotingError::TransportUnavailable)
   }
 

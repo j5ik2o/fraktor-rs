@@ -96,8 +96,8 @@ impl RemotingExtensionInstaller {
       tracing::debug!(?error, "remote shutdown failed; still attempting to join run task");
     }
     if let Some(sender) = self.event_sender.get() {
-      // Best-effort wake: Full means pending events can still observe shutdown,
-      // Closed means the receiver has already gone away and join observes it.
+      // ベストエフォートの wake。Full は pending event が shutdown を観測できる状態、
+      // Closed は receiver が既に終了しており join 側がそれを観測する状態として扱う。
       if let Err(send_err) = sender.try_send(RemoteEvent::TransportShutdown) {
         tracing::debug!(?send_err, "shutdown wake failed");
       }
@@ -111,7 +111,12 @@ impl RemotingExtensionInstaller {
     };
     let join_result = join_run_handle(handle).await;
     match (shutdown_result, join_result) {
-      | (_, Err(error)) => Err(error),
+      | (shutdown_result, Err(error)) => {
+        if let Err(shutdown_error) = shutdown_result {
+          tracing::warn!(?shutdown_error, ?error, "remote shutdown failed before run task join failed");
+        }
+        Err(error)
+      },
       | (Err(error), Ok(())) => Err(error),
       | (Ok(()), Ok(())) => Ok(()),
     }

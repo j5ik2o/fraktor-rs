@@ -3,8 +3,8 @@
 
 use bytes::{Bytes, BytesMut};
 use fraktor_remote_core_rs::core::wire::{
-  AckCodec, Codec, ControlCodec, EnvelopeCodec, HandshakeCodec, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE,
-  KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WireError,
+  AckCodec, Codec, ControlCodec, EnvelopeCodec, FRAME_KIND_OFFSET, HandshakeCodec, KIND_ACK, KIND_CONTROL,
+  KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WireError,
 };
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -97,7 +97,7 @@ impl Decoder for WireFrameCodec {
     if src.len() < FRAME_HEADER_LEN {
       return Ok(None);
     }
-    // Peek at the length prefix without consuming the buffer.
+    // バッファを消費せず length prefix だけ確認する。
     let length = declared_frame_length(src)?;
     if length < MIN_FRAME_LENGTH {
       return Err(FrameCodecError::from(WireError::InvalidFormat));
@@ -107,12 +107,11 @@ impl Decoder for WireFrameCodec {
     }
     let total = 4 + length;
     if src.len() < total {
-      // Wait for the remainder of the frame.
+      // frame の残りが届くまで待つ。
       return Ok(None);
     }
-    // `kind` byte lives at `length(4) + version(1) = 5`.
-    let kind = src[5];
-    // Split off exactly one complete frame and feed it to the core decoder.
+    let kind = src[FRAME_KIND_OFFSET];
+    // 完全な frame 1件だけを切り出して core decoder に渡す。
     let frame_bytes: Bytes = src.split_to(total).freeze();
     let mut frame = frame_bytes.clone();
     let decoded: Result<WireFrame, WireError> = match kind {

@@ -309,22 +309,22 @@ fn event_publisher() -> EventPublisher {
   EventPublisher::new(system.downgrade())
 }
 
-fn encode_envelope_pdu(pdu: &EnvelopePdu) -> Vec<u8> {
+fn encode_envelope_pdu(pdu: &EnvelopePdu) -> Bytes {
   let mut buffer = BytesMut::new();
   EnvelopeCodec::new().encode(pdu, &mut buffer).expect("envelope pdu should encode");
-  buffer.freeze().to_vec()
+  buffer.freeze()
 }
 
-fn encode_control_pdu(pdu: &ControlPdu) -> Vec<u8> {
+fn encode_control_pdu(pdu: &ControlPdu) -> Bytes {
   let mut buffer = BytesMut::new();
   ControlCodec::new().encode(pdu, &mut buffer).expect("control pdu should encode");
-  buffer.freeze().to_vec()
+  buffer.freeze()
 }
 
-fn encode_handshake_pdu(pdu: &HandshakePdu) -> Vec<u8> {
+fn encode_handshake_pdu(pdu: &HandshakePdu) -> Bytes {
   let mut buffer = BytesMut::new();
   HandshakeCodec::new().encode(pdu, &mut buffer).expect("handshake pdu should encode");
-  buffer.freeze().to_vec()
+  buffer.freeze()
 }
 
 fn active_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
@@ -641,7 +641,7 @@ fn run_returns_codec_failed_for_invalid_inbound_frame() {
   remote.start().expect("remote should be running before inbound frame dispatch");
   let event = RemoteEvent::InboundFrameReceived {
     authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
-    frame:     vec![1, 2, 3],
+    frame:     Bytes::from_static(&[1, 2, 3]),
     now_ms:    1,
   };
   let mut receiver = VecRemoteEventReceiver::new([event]);
@@ -774,7 +774,7 @@ fn inbound_quarantine_control_quarantines_matching_association() {
 }
 
 #[test]
-fn inbound_shutdown_control_gates_matching_association() {
+fn inbound_shutdown_control_quarantines_matching_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");
@@ -810,11 +810,11 @@ fn inbound_shutdown_control_gates_matching_association() {
       envelope:  Box::new(envelope),
       now_ms:    81,
     })
-    .expect("gated association should keep outbound deferred");
+    .expect("quarantined association should discard outbound");
 
   assert_eq!(send_calls.load(Ordering::Relaxed), 0);
-  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
-  assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(timeout_calls.load(Ordering::Relaxed), 0);
 }
 
 #[test]
@@ -948,7 +948,7 @@ fn remote_shared_remoting_methods_delegate_to_remote() {
   shared.start().expect("shared start");
 
   assert_eq!(shared.addresses(), vec![address.clone()]);
-  shared.quarantine(&address, Some(1), QuarantineReason::new("shared")).expect("shared quarantine");
+  shared.quarantine(&address, Some(1), QuarantineReason::new("shared"), 1).expect("shared quarantine");
   shared.shutdown().expect("shared shutdown");
   shared.shutdown().expect("second shared shutdown should be idempotent after termination");
 }

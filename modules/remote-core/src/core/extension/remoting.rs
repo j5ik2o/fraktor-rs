@@ -31,12 +31,21 @@ pub trait Remoting {
 
   /// Quarantines the given remote authority.
   ///
+  /// `now_ms` is the caller-provided monotonic millis used for local
+  /// association deadlines and instrumentation.
+  ///
   /// # Errors
   ///
   /// Returns [`RemotingError::NotStarted`] if remoting is not currently
   /// running, or [`RemotingError::TransportUnavailable`] if the quarantine
   /// signal could not be propagated through the transport.
-  fn quarantine(&self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError>;
+  fn quarantine(
+    &self,
+    address: &Address,
+    uid: Option<u64>,
+    reason: QuarantineReason,
+    now_ms: u64,
+  ) -> Result<(), RemotingError>;
 
   /// Returns the local addresses this remoting instance advertises.
   fn addresses(&self) -> Vec<Address>;

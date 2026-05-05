@@ -1,6 +1,8 @@
 //! Event values consumed by [`crate::core::extension::Remote::run`].
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::boxed::Box;
+
+use bytes::Bytes;
 
 use crate::core::{
   envelope::OutboundEnvelope,
@@ -15,7 +17,7 @@ pub enum RemoteEvent {
     /// Remote authority that produced the frame.
     authority: TransportEndpoint,
     /// Raw frame bytes.
-    frame:     Vec<u8>,
+    frame:     Bytes,
     /// Monotonic millis at which the frame was observed.
     now_ms:    u64,
   },

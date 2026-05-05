@@ -29,6 +29,9 @@ use super::{
 };
 use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 
+const DEFAULT_INBOUND_RESTART_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_INBOUND_MAX_RESTARTS: u32 = 5;
+
 /// TCP-backed implementation of [`RemoteTransport`].
 ///
 /// This struct aggregates a [`TcpServer`] (inbound) and a [`BTreeMap`] of
@@ -110,7 +113,6 @@ impl TcpRemoteTransport {
   fn with_frame_codec(bind_addr: String, local_addresses: Vec<Address>, frame_codec: WireFrameCodec) -> Self {
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
     let default_address = local_addresses.first().cloned();
-    let default_config = RemoteConfig::new("localhost");
     Self {
       configured_local_addresses: local_addresses.clone(),
       local_addresses,
@@ -123,8 +125,8 @@ impl TcpRemoteTransport {
       inbound_rx: Some(inbound_rx),
       remote_event_tx: None,
       monotonic_epoch: Instant::now(),
-      inbound_restart_timeout: default_config.inbound_restart_timeout(),
-      inbound_max_restarts: default_config.inbound_max_restarts(),
+      inbound_restart_timeout: DEFAULT_INBOUND_RESTART_TIMEOUT,
+      inbound_max_restarts: DEFAULT_INBOUND_MAX_RESTARTS,
       inbound_worker: None,
       running: false,
     }

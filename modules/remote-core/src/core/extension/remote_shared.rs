@@ -72,8 +72,14 @@ impl Remoting for RemoteShared {
     self.with_write(|remote| if remote.lifecycle().is_shutdown() { Ok(()) } else { remote.shutdown() })
   }
 
-  fn quarantine(&self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError> {
-    self.with_write(|remote| remote.quarantine(address, uid, reason))
+  fn quarantine(
+    &self,
+    address: &Address,
+    uid: Option<u64>,
+    reason: QuarantineReason,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.with_write(|remote| remote.quarantine(address, uid, reason, now_ms))
   }
 
   fn addresses(&self) -> Vec<Address> {
