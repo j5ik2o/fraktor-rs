@@ -1,6 +1,9 @@
 //! Actor system extension installer for `remote-core`'s `Remote`.
 
-use std::sync::{Mutex, OnceLock};
+use std::{
+  sync::{Mutex, OnceLock},
+  time::Instant,
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
@@ -112,7 +115,8 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       return Err(ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)));
     };
     let (event_sender, event_receiver) = mpsc::channel(self.config.outbound_message_queue_size());
-    let transport = transport.with_remote_event_sender(event_sender.clone());
+    let monotonic_epoch = Instant::now();
+    let transport = transport.with_monotonic_epoch(monotonic_epoch).with_remote_event_sender(event_sender.clone());
     let event_publisher = EventPublisher::new(system.downgrade());
     let remote = RemoteShared::new(Remote::with_instrument(
       transport,

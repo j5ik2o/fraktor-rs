@@ -1,6 +1,11 @@
 //! Default core implementation of the remoting lifecycle API.
 
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{
+  boxed::Box,
+  string::{String, ToString},
+  vec::Vec,
+};
+use core::mem;
 
 use bytes::Bytes;
 use fraktor_actor_core_rs::core::kernel::{
@@ -38,6 +43,7 @@ pub struct Remote {
   instrument:           Box<dyn RemoteInstrument + Send>,
   advertised_addresses: Vec<Address>,
   associations:         Vec<Association>,
+  inbound_envelopes:    Vec<InboundEnvelope>,
 }
 
 impl Remote {
@@ -67,6 +73,7 @@ impl Remote {
       instrument,
       advertised_addresses: Vec::new(),
       associations: Vec::new(),
+      inbound_envelopes: Vec::new(),
     }
   }
 
@@ -101,6 +108,12 @@ impl Remote {
   #[must_use]
   pub const fn lifecycle(&self) -> &RemotingLifecycleState {
     &self.lifecycle
+  }
+
+  /// Consumes buffered inbound envelopes observed by the core event loop.
+  #[must_use]
+  pub fn drain_inbound_envelopes(&mut self) -> Vec<InboundEnvelope> {
+    mem::take(&mut self.inbound_envelopes)
   }
 
   /// Returns the remote configuration used by this instance.
@@ -165,7 +178,7 @@ impl Remote {
     let association_index = self.ensure_association(remote)?;
     let should_start_handshake = self.associations[association_index].state().is_idle();
     let prev_len = self.associations[association_index].total_outbound_len();
-    let effects = self.associations[association_index].enqueue(*envelope, now_ms);
+    let effects = self.associations[association_index].enqueue(*envelope, now_ms, self.instrument.as_mut());
     let curr_len = self.associations[association_index].total_outbound_len();
     self.apply_high_watermark_if_crossed(association_index, prev_len, curr_len, now_ms);
     self.apply_association_effects(association_index, effects, now_ms)?;
@@ -189,9 +202,12 @@ impl Remote {
     Ok(self.associations.len() - 1)
   }
 
-  fn ensure_association_for_handshake_request(&mut self, request: &HandshakeReq) -> usize {
+  fn ensure_association_for_handshake_request(&mut self, request: &HandshakeReq) -> Option<usize> {
+    if !self.is_local_handshake_destination(request.to()) {
+      return None;
+    }
     if let Some(index) = self.association_index_for_remote(request.from().address()) {
-      return index;
+      return Some(index);
     }
     let association = Association::from_config(
       UniqueAddress::new(request.to().clone(), 0),
@@ -199,7 +215,7 @@ impl Remote {
       &self.config,
     );
     self.insert_association(association);
-    self.associations.len() - 1
+    Some(self.associations.len() - 1)
   }
 
   fn association_index_for_remote(&self, remote: &Address) -> Option<usize> {
@@ -250,8 +266,7 @@ impl Remote {
       },
       | KIND_CONTROL => {
         let pdu = ControlCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
-        self.handle_inbound_control_pdu(&pdu, now_ms);
-        Ok(())
+        self.handle_inbound_control_pdu(&pdu, now_ms)
       },
       | KIND_ACK => {
         AckCodec::new().decode(&mut bytes).map_err(|_| RemotingError::CodecFailed)?;
@@ -269,7 +284,9 @@ impl Remote {
   }
 
   fn handle_inbound_handshake_request(&mut self, request: &HandshakeReq, now_ms: u64) -> Result<(), RemotingError> {
-    let association_index = self.ensure_association_for_handshake_request(request);
+    let Some(association_index) = self.ensure_association_for_handshake_request(request) else {
+      return Ok(());
+    };
     let accepted = {
       let association = &mut self.associations[association_index];
       match association.accept_handshake_request(request, now_ms, self.instrument.as_mut()) {
@@ -331,20 +348,20 @@ impl Remote {
       priority,
     );
     self.associations[association_index].record_inbound(&envelope, now_ms, self.instrument.as_mut());
+    self.inbound_envelopes.push(envelope);
     Ok(())
   }
 
-  fn handle_inbound_control_pdu(&mut self, pdu: &ControlPdu, now_ms: u64) {
-    let authority = match pdu {
-      | ControlPdu::Heartbeat { authority }
-      | ControlPdu::HeartbeatResponse { authority, .. }
-      | ControlPdu::Quarantine { authority, .. }
-      | ControlPdu::Shutdown { authority } => authority,
-    };
-    if let Some(remote) = parse_authority(authority)
-      && let Some(index) = self.association_index_for_remote(&remote)
-    {
-      self.associations[index].record_handshake_activity(now_ms);
+  fn handle_inbound_control_pdu(&mut self, pdu: &ControlPdu, now_ms: u64) -> Result<(), RemotingError> {
+    match pdu {
+      | ControlPdu::Heartbeat { authority } | ControlPdu::HeartbeatResponse { authority, .. } => {
+        self.record_control_activity(authority, now_ms);
+        Ok(())
+      },
+      | ControlPdu::Quarantine { authority, reason } => {
+        self.handle_inbound_quarantine_control(authority, reason, now_ms)
+      },
+      | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(authority, now_ms),
     }
   }
 
@@ -384,6 +401,49 @@ impl Remote {
       .map(|address| UniqueAddress::new(address, 0))
   }
 
+  fn is_local_handshake_destination(&self, destination: &Address) -> bool {
+    self.advertised_addresses.iter().any(|address| address == destination)
+      || self.transport.addresses().iter().any(|address| address == destination)
+      || self.transport.default_address().is_some_and(|address| address == destination)
+  }
+
+  fn record_control_activity(&mut self, authority: &str, now_ms: u64) {
+    if let Some(remote) = parse_authority(authority)
+      && let Some(index) = self.association_index_for_remote(&remote)
+    {
+      self.associations[index].record_handshake_activity(now_ms);
+    }
+  }
+
+  fn handle_inbound_quarantine_control(
+    &mut self,
+    authority: &str,
+    reason: &Option<String>,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    let reason = QuarantineReason::new(reason.as_deref().unwrap_or("remote quarantine"));
+    let effects = self.associations[index].quarantine(reason, now_ms, self.instrument.as_mut());
+    self.apply_association_effects(index, effects, now_ms)
+  }
+
+  fn handle_inbound_shutdown_control(&mut self, authority: &str, now_ms: u64) -> Result<(), RemotingError> {
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    self.associations[index].record_handshake_activity(now_ms);
+    let effects = self.associations[index].gate(None, now_ms);
+    self.apply_association_effects(index, effects, now_ms)
+  }
+
   fn apply_association_effects(
     &mut self,
     association_index: usize,
@@ -397,7 +457,7 @@ impl Remote {
         | AssociationEffect::SendEnvelopes { envelopes } => {
           let mut recursive = Vec::new();
           for envelope in envelopes {
-            recursive.extend(self.associations[association_index].enqueue(envelope, now_ms));
+            recursive.extend(self.associations[association_index].enqueue(envelope, now_ms, self.instrument.as_mut()));
           }
           pending.extend(recursive.into_iter().rev());
         },
@@ -434,7 +494,8 @@ impl Remote {
         // association まで巻き添えで停止してしまう。`RemoteTransport::send` が失敗時に
         // 返してきた envelope を association に戻し、drain は中断するが、event loop は
         // 次の event を引き続き処理する。成功側のホットパスでは clone は発生しない。
-        let effects = self.associations[association_index].enqueue(*envelope_for_retry, now_ms);
+        let effects =
+          self.associations[association_index].enqueue(*envelope_for_retry, now_ms, self.instrument.as_mut());
         self.apply_association_effects(association_index, effects, now_ms)?;
         return Ok(());
       }
@@ -531,7 +592,12 @@ impl Remote {
   ///
   /// Returns [`RemotingError::NotStarted`] if remoting was never running.
   pub fn shutdown(&mut self) -> Result<(), RemotingError> {
-    self.lifecycle.transition_to_shutdown()?;
+    if self.lifecycle.is_terminated() {
+      return Ok(());
+    }
+    if !self.lifecycle.is_shutdown_requested() {
+      self.lifecycle.transition_to_shutdown()?;
+    }
     if self.lifecycle.is_terminated() {
       return Ok(());
     }

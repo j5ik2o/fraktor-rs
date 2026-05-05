@@ -7,6 +7,7 @@ use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 use crate::core::{
   address::Address,
   association::QuarantineReason,
+  envelope::InboundEnvelope,
   extension::{Remote, RemoteEventReceiver, RemoteSharedRunFuture, Remoting, RemotingError},
 };
 
@@ -32,9 +33,20 @@ impl RemoteShared {
   }
 
   /// Runs the shared core remote event loop until shutdown is requested.
+  ///
+  /// If the future is polled after the shared remote is already terminated it
+  /// completes immediately. If shutdown is requested while a previously polled
+  /// future is pending on the receiver, the executor still needs a wake event
+  /// (for example [`crate::core::extension::RemoteEvent::TransportShutdown`]) to poll it again.
   #[must_use]
   pub const fn run<'a, S: RemoteEventReceiver + ?Sized>(&'a self, receiver: &'a mut S) -> RemoteSharedRunFuture<'a, S> {
     RemoteSharedRunFuture::new(self, receiver)
+  }
+
+  /// Consumes buffered inbound envelopes observed by the shared core event loop.
+  #[must_use]
+  pub fn drain_inbound_envelopes(&self) -> Vec<InboundEnvelope> {
+    self.with_write(Remote::drain_inbound_envelopes)
   }
 }
 
@@ -44,7 +56,7 @@ impl Remoting for RemoteShared {
   }
 
   fn shutdown(&self) -> Result<(), RemotingError> {
-    self.with_write(|remote| if remote.is_terminated() { Ok(()) } else { remote.shutdown() })
+    self.with_write(|remote| if remote.lifecycle().is_terminated() { Ok(()) } else { remote.shutdown() })
   }
 
   fn quarantine(&self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError> {

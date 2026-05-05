@@ -10,6 +10,7 @@ use std::{
   task::{Context, Poll, Wake, Waker},
 };
 
+use bytes::{Bytes, BytesMut};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
@@ -32,7 +33,10 @@ use crate::core::{
   },
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemoteInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{HandshakePdu, HandshakeRsp},
+  wire::{
+    Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, HandshakeCodec, HandshakePdu, HandshakeReq,
+    HandshakeRsp,
+  },
 };
 
 struct RecordingTransport {
@@ -303,6 +307,24 @@ impl RemoteTransport for RecordingTransport {
 fn event_publisher() -> EventPublisher {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   EventPublisher::new(system.downgrade())
+}
+
+fn encode_envelope_pdu(pdu: &EnvelopePdu) -> Vec<u8> {
+  let mut buffer = BytesMut::new();
+  EnvelopeCodec::new().encode(pdu, &mut buffer).expect("envelope pdu should encode");
+  buffer.freeze().to_vec()
+}
+
+fn encode_control_pdu(pdu: &ControlPdu) -> Vec<u8> {
+  let mut buffer = BytesMut::new();
+  ControlCodec::new().encode(pdu, &mut buffer).expect("control pdu should encode");
+  buffer.freeze().to_vec()
+}
+
+fn encode_handshake_pdu(pdu: &HandshakePdu) -> Vec<u8> {
+  let mut buffer = BytesMut::new();
+  HandshakeCodec::new().encode(pdu, &mut buffer).expect("handshake pdu should encode");
+  buffer.freeze().to_vec()
 }
 
 fn active_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
@@ -628,6 +650,139 @@ fn run_returns_codec_failed_for_invalid_inbound_frame() {
 }
 
 #[test]
+fn inbound_handshake_request_rejects_forged_local_destination() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = Remote::new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  let forged_local = Address::new("sys", "127.0.0.2", 2552);
+  let request = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), forged_local));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     encode_handshake_pdu(&request),
+      now_ms:    42,
+    })
+    .expect("forged destination should be ignored without failing the event loop");
+
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_envelope_is_buffered_for_local_delivery() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut remote = Remote::new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = EnvelopePdu::new(
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+    Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/sender")),
+    1,
+    2,
+    1,
+    Bytes::from_static(b"inbound-payload"),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     encode_envelope_pdu(&pdu),
+      now_ms:    55,
+    })
+    .expect("active inbound envelope should be accepted");
+
+  let deliveries = remote.drain_inbound_envelopes();
+  assert_eq!(deliveries.len(), 1);
+  assert_eq!(deliveries[0].recipient().to_canonical_uri(), "fraktor.tcp://sys@127.0.0.1:2552/user/local");
+  assert_eq!(deliveries[0].remote_node().system(), "remote-sys");
+  assert_eq!(deliveries[0].message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"inbound-payload")));
+}
+
+#[test]
+fn inbound_quarantine_control_quarantines_matching_association() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(4));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut remote = Remote::with_instrument(
+    RecordingTransport::new(vec![local_address.clone()]),
+    config.clone(),
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu =
+    ControlPdu::Quarantine { authority: remote_address.to_string(), reason: Some(String::from("remote says no")) };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     encode_control_pdu(&pdu),
+      now_ms:    70,
+    })
+    .expect("quarantine control should be applied");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(matches!(
+    snapshot.events(),
+    [
+      FlightRecorderEvent::Quarantine {
+        authority,
+        reason,
+        now_ms: 70
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552" && reason == "remote says no"
+  ));
+}
+
+#[test]
+fn inbound_shutdown_control_gates_matching_association() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let send_calls = transport.send_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = ControlPdu::Shutdown { authority: remote_address.to_string() };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     encode_control_pdu(&pdu),
+      now_ms:    80,
+    })
+    .expect("shutdown control should be applied");
+
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    81,
+    })
+    .expect("gated association should keep outbound deferred");
+
+  assert_eq!(send_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
 fn connection_lost_recovers_active_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -758,7 +913,7 @@ fn remote_shared_run_returns_ok_after_transport_shutdown_event() {
 }
 
 #[test]
-fn remote_shared_shutdown_without_wake_keeps_run_pending_until_next_event() {
+fn remote_shared_run_returns_ready_after_shutdown_when_polled() {
   let address = Address::new("sys", "127.0.0.1", 2552);
   let shared = RemoteShared::new(Remote::new(
     RecordingTransport::new(vec![address]),
@@ -772,7 +927,7 @@ fn remote_shared_shutdown_without_wake_keeps_run_pending_until_next_event() {
   let mut context = Context::from_waker(&waker);
   let mut future = Box::pin(shared.run(&mut receiver));
 
-  assert!(future.as_mut().poll(&mut context).is_pending());
+  assert!(future.as_mut().poll(&mut context).is_ready());
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
   time::Duration,
 };
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 
 use fraktor_remote_core_rs::core::{
   address::Address,
@@ -20,14 +20,14 @@ use fraktor_remote_core_rs::core::{
 use tokio::{
   sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
   task::JoinHandle,
-  time::{Instant, sleep},
+  time::sleep,
 };
 
 use super::{
   client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
   wire_frame::WireFrame,
 };
-use crate::std::association::run_inbound_dispatch;
+use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 
 /// TCP-backed implementation of [`RemoteTransport`].
 ///
@@ -54,6 +54,7 @@ pub struct TcpRemoteTransport {
   inbound_tx:      UnboundedSender<InboundFrameEvent>,
   inbound_rx:      Option<UnboundedReceiver<InboundFrameEvent>>,
   remote_event_tx: Option<Sender<RemoteEvent>>,
+  monotonic_epoch: Instant,
   inbound_worker:  Option<JoinHandle<Result<(), TransportError>>>,
   running:         bool,
 }
@@ -115,6 +116,7 @@ impl TcpRemoteTransport {
       inbound_tx,
       inbound_rx: Some(inbound_rx),
       remote_event_tx: None,
+      monotonic_epoch: Instant::now(),
       inbound_worker: None,
       running: false,
     }
@@ -125,6 +127,19 @@ impl TcpRemoteTransport {
   pub fn with_remote_event_sender(mut self, sender: Sender<RemoteEvent>) -> Self {
     self.remote_event_tx = Some(sender);
     self
+  }
+
+  /// Returns a copy that uses the given monotonic epoch for all emitted remote event timestamps.
+  #[must_use]
+  pub fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
+    self.monotonic_epoch = monotonic_epoch;
+    self
+  }
+
+  /// Returns the monotonic epoch used to calculate remote event timestamps.
+  #[must_use]
+  pub fn monotonic_epoch(&self) -> Instant {
+    self.monotonic_epoch
   }
 
   /// Takes ownership of the inbound receiver.
@@ -139,21 +154,18 @@ impl TcpRemoteTransport {
 
   fn spawn_inbound_worker(&mut self) {
     let Some(event_sender) = self.remote_event_tx.clone() else {
+      tracing::debug!("remote event sender is not configured; inbound worker not spawned");
       return;
     };
     let Some(inbound_rx) = self.inbound_rx.take() else {
+      tracing::debug!("inbound receiver is already taken; inbound worker not spawned");
       return;
     };
     let frame_codec = self.frame_codec;
-    let started_at = Instant::now();
+    let monotonic_epoch = self.monotonic_epoch;
     let handle = tokio::spawn(async move {
-      run_inbound_dispatch(
-        inbound_rx,
-        event_sender,
-        move || started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-        frame_codec,
-      )
-      .await
+      run_inbound_dispatch(inbound_rx, event_sender, move || std_instant_elapsed_millis(monotonic_epoch), frame_codec)
+        .await
     });
     self.inbound_worker = Some(handle);
   }
@@ -281,12 +293,12 @@ impl RemoteTransport for TcpRemoteTransport {
       return Err(TransportError::NotAvailable);
     };
     let authority = authority.clone();
-    let started_at = Instant::now();
+    let monotonic_epoch = self.monotonic_epoch;
     // タイマー task は transport 停止後でも generation 判定で破棄可能な閉じた通知だけを送る。
     // JoinHandle は shutdown 契約に含めず、送信失敗は task 内で WARN に記録する。
     let _timer_task = tokio::spawn(async move {
       sleep(timeout).await;
-      let now_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+      let now_ms = std_instant_elapsed_millis(monotonic_epoch);
       if let Err(error) = sender.send(RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }).await {
         tracing::warn!(?error, "handshake timeout event delivery failed");
       }

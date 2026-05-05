@@ -61,7 +61,7 @@ pub struct StdRemoteActorRefProvider {
   event_sender:    Sender<RemoteEvent>,
   resolve_cache:   ActorRefResolveCache<ActorRef>,
   event_publisher: EventPublisher,
-  started_at:      Instant,
+  monotonic_epoch: Instant,
   next_remote_pid: u64,
 }
 
@@ -75,6 +75,7 @@ impl StdRemoteActorRefProvider {
     event_sender: Sender<RemoteEvent>,
     resolve_cache: ActorRefResolveCache<ActorRef>,
     event_publisher: EventPublisher,
+    monotonic_epoch: Instant,
   ) -> Self {
     Self {
       local_address,
@@ -83,7 +84,7 @@ impl StdRemoteActorRefProvider {
       event_sender,
       resolve_cache,
       event_publisher,
-      started_at: Instant::now(),
+      monotonic_epoch,
       next_remote_pid: REMOTE_ACTOR_REF_PID_START,
     }
   }
@@ -175,10 +176,10 @@ impl StdRemoteActorRefProvider {
     let remote_provider = &mut self.remote_provider;
     let next_remote_pid = &mut self.next_remote_pid;
     let event_sender = self.event_sender.clone();
-    let started_at = self.started_at;
+    let monotonic_epoch = self.monotonic_epoch;
     self.resolve_cache.resolve(&path, |candidate| {
       let remote_ref = remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)?;
-      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender.clone(), started_at)
+      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender.clone(), monotonic_epoch)
     })
   }
 
@@ -186,11 +187,11 @@ impl StdRemoteActorRefProvider {
     next_remote_pid: &mut u64,
     remote_ref: RemoteActorRef,
     event_sender: Sender<RemoteEvent>,
-    started_at: Instant,
+    monotonic_epoch: Instant,
   ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
     let pid = Self::allocate_remote_pid(next_remote_pid)?;
     let path = remote_ref.path().clone();
-    let sender = RemoteActorRefSender::new(remote_ref, event_sender, started_at);
+    let sender = RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch);
     Ok(ActorRef::with_canonical_path(pid, sender, path))
   }
 

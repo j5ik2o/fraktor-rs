@@ -59,7 +59,10 @@ impl RemotingLifecycleState {
   /// # Errors
   ///
   /// Returns [`RemotingError::InvalidTransition`] from any state other
-  /// than `Starting`.
+  /// than `Starting`. When `transition_to_shutdown_requested` wins a
+  /// concurrent startup/shutdown race and moves `Starting` to `ShuttingDown`,
+  /// the later startup-completion side must observe this error instead of
+  /// promoting the lifecycle back to `Running`.
   pub const fn mark_started(&mut self) -> Result<(), RemotingError> {
     match self.phase {
       | Phase::Starting => {

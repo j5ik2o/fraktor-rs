@@ -1,5 +1,8 @@
 //! Inbound I/O worker that forwards decoded TCP frames to `Remote`.
 
+#[cfg(test)]
+mod tests;
+
 use core::future::Future;
 
 use bytes::BytesMut;
@@ -97,11 +100,7 @@ fn authority_for_frame(frame: &WireFrame) -> Option<TransportEndpoint> {
     | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, .. })
     | WireFrame::Control(ControlPdu::Quarantine { authority, .. })
     | WireFrame::Control(ControlPdu::Shutdown { authority }) => Some(TransportEndpoint::new(authority.clone())),
-    | WireFrame::Envelope(pdu) => pdu
-      .sender_path()
-      .or_else(|| Some(pdu.recipient_path()))
-      .and_then(authority_from_actor_path)
-      .map(TransportEndpoint::new),
+    | WireFrame::Envelope(pdu) => pdu.sender_path().and_then(authority_from_actor_path).map(TransportEndpoint::new),
     | WireFrame::Ack(_) => None,
   }
 }

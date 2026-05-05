@@ -1,4 +1,5 @@
 use core::time::Duration;
+use std::time::Instant;
 
 use bytes::{Bytes, BytesMut};
 use fraktor_actor_core_rs::core::kernel::{
@@ -298,6 +299,40 @@ async fn remote_transport_schedules_handshake_timeout_event() {
       generation: 7,
       ..
     } if received_authority == authority
+  ));
+
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_handshake_timeout_uses_configured_monotonic_epoch() {
+  use tokio::sync::mpsc;
+
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let monotonic_epoch = Instant::now() - Duration::from_secs(1);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address])
+    .with_monotonic_epoch(monotonic_epoch)
+    .with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before scheduling a timer");
+  let authority = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+
+  transport
+    .schedule_handshake_timeout(&authority, Duration::from_millis(1), 7)
+    .expect("timer scheduling should succeed");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("timeout event should arrive")
+    .expect("timeout event should be present");
+  assert!(matches!(
+    event,
+    RemoteEvent::HandshakeTimerFired {
+      now_ms,
+      ..
+    } if now_ms >= 1_000
   ));
 
   transport.shutdown().expect("transport shutdown should succeed");

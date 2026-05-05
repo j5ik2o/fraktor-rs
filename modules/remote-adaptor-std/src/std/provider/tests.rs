@@ -1,4 +1,5 @@
 use alloc::{format, vec::Vec};
+use std::time::Instant;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -166,6 +167,7 @@ fn make_provider_fixture() -> ProviderFixture {
     event_tx,
     ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
+    Instant::now(),
   );
   ProviderFixture { provider, actor_ref_calls, event_harness, event_rx }
 }
@@ -187,6 +189,7 @@ fn make_provider_with_event_sender(event_sender: Sender<RemoteEvent>) -> StdRemo
     event_sender,
     ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
+    Instant::now(),
   )
 }
 
@@ -202,6 +205,7 @@ fn make_provider_with_remote_error(error: ProviderError) -> StdRemoteActorRefPro
     event_tx,
     ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
+    Instant::now(),
   )
 }
 

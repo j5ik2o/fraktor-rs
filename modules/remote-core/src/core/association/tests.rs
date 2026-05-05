@@ -73,6 +73,20 @@ fn new_association() -> Association {
   Association::new(sample_local(), sample_remote_addr())
 }
 
+fn enqueue(association: &mut Association, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
+  association.enqueue(envelope, now_ms, &mut NoopInstrument)
+}
+
+fn associate_idle(association: &mut Association, now_ms: u64) {
+  let effects = association.associate(sample_endpoint(), now_ms, &mut NoopInstrument);
+  assert!(!effects.is_empty(), "associate should emit StartHandshake");
+}
+
+fn time_out_handshake(association: &mut Association, now_ms: u64, resume_at_ms: Option<u64>) {
+  let effects = association.handshake_timed_out(now_ms, resume_at_ms, &mut NoopInstrument);
+  assert!(!effects.is_empty(), "handshake timeout should emit lifecycle effects");
+}
+
 // ---------------------------------------------------------------------------
 // SendQueue behaviour
 // ---------------------------------------------------------------------------
@@ -313,10 +327,10 @@ fn accept_handshake_request_rejects_idle_state_without_state_change() {
 #[test]
 fn accept_handshake_request_rejects_gated_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
+  associate_idle(&mut a, 100);
   // gate() は Active からしか遷移しないため、Handshaking → Gated は
   // handshake_timed_out() 経由で作る。
-  let _ = a.handshake_timed_out(100, Some(500), &mut NoopInstrument);
+  time_out_handshake(&mut a, 100, Some(500));
   assert!(a.state().is_gated());
   let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
 
@@ -329,7 +343,7 @@ fn accept_handshake_request_rejects_gated_state_without_state_change() {
 #[test]
 fn accept_handshake_request_rejects_quarantined_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
+  associate_idle(&mut a, 100);
   let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100, &mut NoopInstrument);
   assert!(a.state().is_quarantined());
   let request = HandshakeReq::new(sample_remote_unique(), sample_local().address().clone());
@@ -358,8 +372,8 @@ fn accept_handshake_response_rejects_idle_state_without_state_change() {
 #[test]
 fn accept_handshake_response_rejects_gated_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
-  let _ = a.handshake_timed_out(100, Some(500), &mut NoopInstrument);
+  associate_idle(&mut a, 100);
+  time_out_handshake(&mut a, 100, Some(500));
   let response = HandshakeRsp::new(sample_remote_unique());
 
   let result = a.accept_handshake_response(&response, 200, &mut NoopInstrument);
@@ -371,7 +385,7 @@ fn accept_handshake_response_rejects_gated_state_without_state_change() {
 #[test]
 fn accept_handshake_response_rejects_quarantined_state_without_state_change() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 100, &mut NoopInstrument);
+  associate_idle(&mut a, 100);
   let _ = a.quarantine(QuarantineReason::new("handshake-timeout"), 100, &mut NoopInstrument);
   let response = HandshakeRsp::new(sample_remote_unique());
 
@@ -504,7 +518,7 @@ fn accept_handshake_response_rejects_unexpected_origin_without_state_change() {
 #[test]
 fn handshaking_timeout_transitions_to_gated_with_lifecycle() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let effects = a.handshake_timed_out(100, Some(500), &mut NoopInstrument);
   assert!(a.state().is_gated());
   // Publish Gated lifecycle (deferred queue empty → no DiscardEnvelopes).
@@ -515,10 +529,10 @@ fn handshaking_timeout_transitions_to_gated_with_lifecycle() {
 #[test]
 fn handshaking_timeout_with_deferred_envelopes_emits_discard() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   // Queue two deferred envelopes during handshake.
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 0);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u2"), 0);
   assert_eq!(a.deferred_len(), 2);
 
   let effects = a.handshake_timed_out(100, None, &mut NoopInstrument);
@@ -529,14 +543,14 @@ fn handshaking_timeout_with_deferred_envelopes_emits_discard() {
 #[test]
 fn active_to_quarantined_publishes_and_discards_pending() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a
     .accept_handshake_response(&response, 10, &mut NoopInstrument)
     .expect("matching handshake response should be accepted");
 
   // Put an envelope into the send queue while Active.
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(!a.send_queue().is_empty());
 
   let effects = a.quarantine(QuarantineReason::new("fatal"), 20, &mut NoopInstrument);
@@ -590,8 +604,8 @@ fn sub_millisecond_remove_quarantined_association_after_does_not_round_to_now() 
 #[test]
 fn recover_some_endpoint_from_gated_starts_handshake() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
-  let _ = a.handshake_timed_out(10, None, &mut NoopInstrument); // Gated
+  associate_idle(&mut a, 0);
+  time_out_handshake(&mut a, 10, None); // Gated
   assert!(a.state().is_gated());
 
   let effects = a.recover(Some(sample_endpoint()), 30, &mut NoopInstrument);
@@ -602,8 +616,8 @@ fn recover_some_endpoint_from_gated_starts_handshake() {
 #[test]
 fn recover_start_handshake_increments_generation() {
   let mut association = new_association();
-  let _ = association.associate(sample_endpoint(), 0, &mut NoopInstrument);
-  let _ = association.handshake_timed_out(10, None, &mut NoopInstrument);
+  associate_idle(&mut association, 0);
+  time_out_handshake(&mut association, 10, None);
 
   let effects = association.recover(Some(sample_endpoint()), 30, &mut NoopInstrument);
 
@@ -622,8 +636,8 @@ fn recover_start_handshake_increments_generation() {
 fn recover_records_started_phase() {
   let mut association = new_association();
   let mut recorder = RemotingFlightRecorder::new(4);
-  let _ = association.associate(sample_endpoint(), 0, &mut NoopInstrument);
-  let _ = association.handshake_timed_out(10, None, &mut NoopInstrument);
+  associate_idle(&mut association, 0);
+  time_out_handshake(&mut association, 10, None);
 
   let effects = association.recover(Some(sample_endpoint()), 30, &mut recorder);
 
@@ -645,7 +659,7 @@ fn recover_records_started_phase() {
 #[test]
 fn recover_some_endpoint_from_quarantined_starts_handshake() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let _ = a.quarantine(QuarantineReason::new("boom"), 10, &mut NoopInstrument);
   assert!(a.state().is_quarantined());
 
@@ -658,8 +672,8 @@ fn recover_some_endpoint_from_quarantined_starts_handshake() {
 #[test]
 fn recover_none_from_gated_returns_to_idle() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
-  let _ = a.handshake_timed_out(10, None, &mut NoopInstrument); // Gated
+  associate_idle(&mut a, 0);
+  time_out_handshake(&mut a, 10, None); // Gated
 
   let effects = a.recover(None, 20, &mut NoopInstrument);
   assert!(a.state().is_idle());
@@ -669,7 +683,7 @@ fn recover_none_from_gated_returns_to_idle() {
 #[test]
 fn recover_from_active_is_no_op() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a
     .accept_handshake_response(&response, 5, &mut NoopInstrument)
@@ -695,7 +709,7 @@ fn recover_from_idle_is_no_op() {
 #[test]
 fn recover_from_handshaking_is_no_op() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let effects = a.recover(Some(sample_endpoint()), 10, &mut NoopInstrument);
   assert!(matches!(a.state(), AssociationState::Handshaking { .. }));
   assert!(effects.is_empty());
@@ -708,13 +722,13 @@ fn recover_from_handshaking_is_no_op() {
 #[test]
 fn enqueue_in_active_pushes_into_send_queue() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a
     .accept_handshake_response(&response, 10, &mut NoopInstrument)
     .expect("matching handshake response should be accepted");
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
+  let effects = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 10);
   assert!(effects.is_empty());
   assert_eq!(a.send_queue().len(), 1);
   assert_eq!(a.deferred_len(), 0);
@@ -733,8 +747,8 @@ fn enqueue_in_active_discards_when_user_queue_is_full() {
   assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
   assert!(a.state().is_active());
 
-  let first = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 20);
-  let second = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 21);
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 20);
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::User, "u2"), 21);
 
   assert!(first.is_empty());
   assert_eq!(a.send_queue().len(), 1);
@@ -745,6 +759,7 @@ fn enqueue_in_active_discards_when_user_queue_is_full() {
 fn enqueue_in_active_quarantines_when_control_queue_is_full() {
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+  let mut recorder = RemotingFlightRecorder::new(4);
   let started = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
   let response = HandshakeRsp::new(sample_remote_unique());
@@ -754,11 +769,11 @@ fn enqueue_in_active_quarantines_when_control_queue_is_full() {
   assert!(!accepted.is_empty(), "handshake response should emit lifecycle effects");
   assert!(a.state().is_active());
 
-  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 20);
+  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 20, &mut recorder);
   assert!(first.is_empty());
   assert_eq!(a.send_queue().len(), 1);
 
-  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 21);
+  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 21, &mut recorder);
 
   assert!(a.state().is_quarantined(), "control queue overflow must quarantine the association");
   assert!(matches!(a.state(), AssociationState::Quarantined { resume_at: Some(3_600_021), .. }));
@@ -769,6 +784,18 @@ fn enqueue_in_active_quarantines_when_control_queue_is_full() {
     "control queue overflow must publish a quarantine lifecycle event"
   );
   assert_discard_contains_priority(&second, OutboundPriority::System);
+  let events = recorder.snapshot().events().to_vec();
+  assert!(matches!(
+    events.as_slice(),
+    [
+      FlightRecorderEvent::Quarantine {
+        authority,
+        reason,
+        now_ms: 21
+      }
+    ] if authority == "remote-sys@10.0.0.1:2552"
+      && reason == "Due to overflow of control queue, size [1]"
+  ));
 }
 
 #[test]
@@ -776,8 +803,8 @@ fn enqueue_in_idle_discards_when_user_deferred_capacity_is_full() {
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(1).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
 
-  let first = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
-  let second = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 0);
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::User, "u2"), 0);
 
   assert!(first.is_empty());
   assert_eq!(a.deferred_len(), 1);
@@ -789,8 +816,8 @@ fn enqueue_in_idle_uses_configured_control_deferred_capacity_independently_from_
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
 
-  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 0);
-  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 0);
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 0);
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 0);
 
   assert!(first.is_empty());
   assert_eq!(a.deferred_len(), 1);
@@ -800,9 +827,9 @@ fn enqueue_in_idle_uses_configured_control_deferred_capacity_independently_from_
 #[test]
 fn enqueue_in_handshaking_pushes_into_deferred() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
+  let effects = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(effects.is_empty());
   assert_eq!(a.deferred_len(), 1);
   assert!(a.send_queue().is_empty());
@@ -815,8 +842,8 @@ fn enqueue_in_handshaking_uses_configured_control_deferred_capacity_independentl
   let started = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
   assert!(!started.is_empty(), "associate should emit StartHandshake");
 
-  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 0);
-  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 0);
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 0);
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 0);
 
   assert!(first.is_empty());
   assert_eq!(a.deferred_len(), 1);
@@ -826,7 +853,7 @@ fn enqueue_in_handshaking_uses_configured_control_deferred_capacity_independentl
 #[test]
 fn enqueue_in_gated_pushes_into_deferred() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a
     .accept_handshake_response(&response, 10, &mut NoopInstrument)
@@ -834,7 +861,7 @@ fn enqueue_in_gated_pushes_into_deferred() {
   let _ = a.gate(Some(100), 20);
   assert!(a.state().is_gated());
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 20);
+  let effects = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 20);
   assert!(effects.is_empty());
   assert_eq!(a.deferred_len(), 1);
 }
@@ -854,8 +881,8 @@ fn enqueue_in_gated_uses_configured_control_deferred_capacity_independently_from
   assert!(!gated.is_empty(), "active association should enter gated state");
   assert!(a.state().is_gated());
 
-  let first = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 20);
-  let second = a.enqueue(make_envelope(OutboundPriority::System, "s2"), 20);
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 20);
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 20);
 
   assert!(first.is_empty());
   assert_eq!(a.deferred_len(), 1);
@@ -865,7 +892,7 @@ fn enqueue_in_gated_uses_configured_control_deferred_capacity_independently_from
 #[test]
 fn enqueue_in_idle_pushes_into_deferred() {
   let mut a = new_association();
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
+  let effects = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 0);
   assert!(effects.is_empty());
   assert_eq!(a.deferred_len(), 1);
 }
@@ -876,7 +903,7 @@ fn enqueue_in_quarantined_emits_discard_effect() {
   let _ = a.quarantine(QuarantineReason::new("nope"), 0, &mut NoopInstrument);
   assert!(a.state().is_quarantined());
 
-  let effects = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
+  let effects = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 0);
   let discards: Vec<_> = effects.iter().filter(|e| matches!(e, AssociationEffect::DiscardEnvelopes { .. })).collect();
   assert_eq!(discards.len(), 1);
   // Nothing should have been deferred / enqueued.
@@ -887,9 +914,9 @@ fn enqueue_in_quarantined_emits_discard_effect() {
 #[test]
 fn deferred_envelopes_flush_on_handshake_accepted() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 0);
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u2"), 0);
+  associate_idle(&mut a, 0);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 0);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u2"), 0);
 
   let response = HandshakeRsp::new(sample_remote_unique());
   let effects = a
@@ -911,13 +938,13 @@ fn deferred_envelopes_flush_on_handshake_accepted() {
 #[test]
 fn next_outbound_returns_system_then_user_through_association() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a
     .accept_handshake_response(&response, 10, &mut NoopInstrument)
     .expect("matching handshake response should be accepted");
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
-  let _ = a.enqueue(make_envelope(OutboundPriority::System, "s1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
   assert_eq!(a.total_outbound_len(), 2);
 
   let first = a.next_outbound(0, &mut NoopInstrument).expect("first");
@@ -930,12 +957,12 @@ fn next_outbound_returns_system_then_user_through_association() {
 #[test]
 fn apply_backpressure_propagates_to_send_queue() {
   let mut a = new_association();
-  let _ = a.associate(sample_endpoint(), 0, &mut NoopInstrument);
+  associate_idle(&mut a, 0);
   let response = HandshakeRsp::new(sample_remote_unique());
   let _ = a
     .accept_handshake_response(&response, 10, &mut NoopInstrument)
     .expect("matching handshake response should be accepted");
-  let _ = a.enqueue(make_envelope(OutboundPriority::User, "u1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 10);
 
   a.apply_backpressure(BackpressureSignal::Apply, CorrelationId::nil(), 0, &mut NoopInstrument);
   assert!(a.send_queue().is_user_paused());

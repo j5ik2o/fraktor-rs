@@ -22,16 +22,16 @@ use crate::std::association::std_instant_elapsed_millis;
 
 /// Sender that wraps a [`RemoteActorRef`] and pushes outbound work to `Remote`.
 pub struct RemoteActorRefSender {
-  remote_ref: RemoteActorRef,
-  event_tx:   Sender<RemoteEvent>,
-  started_at: Instant,
+  remote_ref:      RemoteActorRef,
+  event_tx:        Sender<RemoteEvent>,
+  monotonic_epoch: Instant,
 }
 
 impl RemoteActorRefSender {
   /// Creates a new sender for the given `remote_ref`.
   #[must_use]
-  pub fn new(remote_ref: RemoteActorRef, event_tx: Sender<RemoteEvent>, started_at: Instant) -> Self {
-    Self { remote_ref, event_tx, started_at }
+  pub fn new(remote_ref: RemoteActorRef, event_tx: Sender<RemoteEvent>, monotonic_epoch: Instant) -> Self {
+    Self { remote_ref, event_tx, monotonic_epoch }
   }
 
   /// Returns the wrapped [`RemoteActorRef`].
@@ -79,7 +79,7 @@ impl ActorRefSender for RemoteActorRefSender {
     let event = RemoteEvent::OutboundEnqueued {
       authority,
       envelope: Box::new(envelope),
-      now_ms: std_instant_elapsed_millis(self.started_at),
+      now_ms: std_instant_elapsed_millis(self.monotonic_epoch),
     };
     match self.event_tx.try_send(event) {
       | Ok(()) => Ok(SendOutcome::Delivered),

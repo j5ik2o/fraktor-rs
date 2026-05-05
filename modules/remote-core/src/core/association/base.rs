@@ -25,7 +25,7 @@ use crate::core::{
     DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER, RemoteConfig,
   },
   envelope::{InboundEnvelope, OutboundEnvelope},
-  instrument::{HandshakePhase, NoopInstrument, RemoteInstrument},
+  instrument::{HandshakePhase, RemoteInstrument},
   transport::{BackpressureSignal, TransportEndpoint},
   wire::{HandshakeReq, HandshakeRsp},
 };
@@ -421,9 +421,14 @@ impl Association {
   /// - `Active` → push into the internal send queue.
   /// - `Handshaking` / `Gated` / `Idle` → push into the deferred buffer.
   /// - `Quarantined` → return a `DiscardEnvelopes` effect immediately.
-  pub fn enqueue(&mut self, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
+  pub fn enqueue(
+    &mut self,
+    envelope: OutboundEnvelope,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     match &self.state {
-      | AssociationState::Active { .. } => self.enqueue_active(envelope, now_ms),
+      | AssociationState::Active { .. } => self.enqueue_active(envelope, now_ms, instrument),
       | AssociationState::Handshaking { .. } | AssociationState::Gated { .. } | AssociationState::Idle => {
         self.enqueue_deferred(envelope)
       },
@@ -489,11 +494,16 @@ impl Association {
     self.handshake_generation
   }
 
-  fn enqueue_active(&mut self, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
+  fn enqueue_active(
+    &mut self,
+    envelope: OutboundEnvelope,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     match self.send_queue.offer(envelope) {
       | OfferOutcome::Accepted => Vec::new(),
       | OfferOutcome::QueueFull { envelope } if envelope.priority().is_system() => {
-        self.control_queue_overflow_effects(*envelope, now_ms)
+        self.control_queue_overflow_effects(*envelope, now_ms, instrument)
       },
       | OfferOutcome::QueueFull { envelope } => Self::queue_full_discard_effect(*envelope),
     }
@@ -537,11 +547,15 @@ impl Association {
     }]
   }
 
-  fn control_queue_overflow_effects(&mut self, envelope: OutboundEnvelope, now_ms: u64) -> Vec<AssociationEffect> {
+  fn control_queue_overflow_effects(
+    &mut self,
+    envelope: OutboundEnvelope,
+    now_ms: u64,
+    instrument: &mut dyn RemoteInstrument,
+  ) -> Vec<AssociationEffect> {
     let reason =
       QuarantineReason::new(format!("Due to overflow of control queue, size [{}]", self.outbound_control_queue_size));
-    let mut instrument = NoopInstrument;
-    let mut effects = self.quarantine(reason.clone(), now_ms, &mut instrument);
+    let mut effects = self.quarantine(reason.clone(), now_ms, instrument);
     Self::append_discarded_envelope(&mut effects, reason, envelope);
     effects
   }
