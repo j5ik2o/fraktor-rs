@@ -1,4 +1,8 @@
 //! Concrete future returned by [`crate::core::extension::RemoteShared::run`].
+//!
+//! The future checks termination before polling the receiver, so a shared
+//! remote that is already shut down completes without waiting for another
+//! event.
 
 use core::{
   future::Future,

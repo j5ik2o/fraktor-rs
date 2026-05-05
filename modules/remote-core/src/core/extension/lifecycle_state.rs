@@ -134,6 +134,11 @@ impl RemotingLifecycleState {
   /// Unlike [`Self::transition_to_shutdown`], this command is idempotent for
   /// already-shutting-down states because adapter shutdown uses a wake event to
   /// let the run loop observe termination.
+  ///
+  /// This command may move `Starting` directly to `ShuttingDown`. If that wins
+  /// a startup/shutdown race, a later [`Self::mark_started`] call returns
+  /// [`RemotingError::InvalidTransition`]; callers should treat that as a
+  /// normal shutdown race.
   pub const fn transition_to_shutdown_requested(&mut self) {
     match self.phase {
       | Phase::Pending => {
@@ -170,8 +175,14 @@ impl RemotingLifecycleState {
 
   /// Returns `true` when the state is terminal (`Shutdown`).
   #[must_use]
-  pub const fn is_terminated(&self) -> bool {
+  pub const fn is_shutdown(&self) -> bool {
     matches!(self.phase, Phase::Shutdown)
+  }
+
+  /// Returns `true` when the state is terminal (`Shutdown`).
+  #[must_use]
+  pub const fn is_terminated(&self) -> bool {
+    self.is_shutdown()
   }
 
   /// Returns `true` when shutdown has been requested but not fully marked down.

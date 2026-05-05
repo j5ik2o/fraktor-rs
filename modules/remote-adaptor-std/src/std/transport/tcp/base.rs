@@ -154,11 +154,11 @@ impl TcpRemoteTransport {
 
   fn spawn_inbound_worker(&mut self) {
     let Some(event_sender) = self.remote_event_tx.clone() else {
-      tracing::debug!("remote event sender is not configured; inbound worker not spawned");
+      tracing::debug!("with_remote_event_sender was not called; inbound worker not spawned");
       return;
     };
     let Some(inbound_rx) = self.inbound_rx.take() else {
-      tracing::debug!("inbound receiver is already taken; inbound worker not spawned");
+      tracing::debug!("inbound receiver was already consumed; inbound worker not spawned");
       return;
     };
     let frame_codec = self.frame_codec;
