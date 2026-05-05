@@ -133,7 +133,7 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     let Some(transport) = transport_slot.take() else {
       return Err(ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)));
     };
-    let (event_sender, event_receiver) = mpsc::channel(self.config.outbound_message_queue_size());
+    let (event_sender, event_receiver) = mpsc::channel(self.config.remote_event_queue_size());
     let monotonic_epoch = Instant::now();
     let transport = transport
       .with_monotonic_epoch(monotonic_epoch)

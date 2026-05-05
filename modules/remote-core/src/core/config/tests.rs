@@ -9,6 +9,8 @@ const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
 const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
 const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
+const DEFAULT_REMOTE_EVENT_QUEUE_SIZE: usize =
+  DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE + DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE;
 const DEFAULT_OUTBOUND_HIGH_WATERMARK: usize = 1024;
 const DEFAULT_OUTBOUND_LOW_WATERMARK: usize = 512;
 const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
@@ -60,6 +62,7 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
   assert_eq!(s.outbound_message_queue_size(), DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE);
   assert_eq!(s.outbound_control_queue_size(), DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE);
   assert_eq!(s.outbound_large_message_queue_size(), DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE);
+  assert_eq!(s.remote_event_queue_size(), DEFAULT_REMOTE_EVENT_QUEUE_SIZE);
   assert_eq!(s.outbound_high_watermark(), DEFAULT_OUTBOUND_HIGH_WATERMARK);
   assert_eq!(s.outbound_low_watermark(), DEFAULT_OUTBOUND_LOW_WATERMARK);
   assert!(s.large_message_destinations().is_empty());
@@ -148,6 +151,7 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_buffer_pool_size(64)
     .with_outbound_message_queue_size(32)
     .with_outbound_control_queue_size(8)
+    .with_remote_event_queue_size(64)
     .with_outbound_watermarks(16, 64)
     .with_remove_quarantined_association_after(Duration::from_secs(30))
     .with_untrusted_mode(true)
@@ -169,6 +173,7 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.buffer_pool_size(), 64);
   assert_eq!(s.outbound_message_queue_size(), 32);
   assert_eq!(s.outbound_control_queue_size(), 8);
+  assert_eq!(s.remote_event_queue_size(), 64);
   assert_eq!(s.outbound_high_watermark(), 64);
   assert_eq!(s.outbound_low_watermark(), 16);
   assert_eq!(s.remove_quarantined_association_after(), Duration::from_secs(30));
@@ -237,6 +242,15 @@ fn with_outbound_control_queue_size_rejects_zero() {
 fn with_outbound_large_message_queue_size_rejects_zero() {
   // When: outbound large-message queue size に 0 を指定する
   let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_large_message_queue_size(0));
+
+  // Then: 不正な queue size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
+fn with_remote_event_queue_size_rejects_zero() {
+  // When: remote event queue size に 0 を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_remote_event_queue_size(0));
 
   // Then: 不正な queue size として拒否する
   assert!(result.is_err());

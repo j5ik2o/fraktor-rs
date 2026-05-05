@@ -537,15 +537,27 @@ impl Remote {
       let Some(envelope) = self.associations[association_index].next_outbound(now_ms, self.instrument.as_mut()) else {
         return Ok(());
       };
-      if let Err((_err, envelope_for_retry)) = self.transport.send(envelope) {
-        // 単一 envelope の送信失敗で event loop を終わらせると、他の peer 向け
-        // association まで巻き添えで停止してしまう。`RemoteTransport::send` が失敗時に
-        // 返してきた envelope を association に戻し、drain は中断するが、event loop は
-        // 次の event を引き続き処理する。成功側のホットパスでは clone は発生しない。
-        let effects =
-          self.associations[association_index].enqueue(*envelope_for_retry, now_ms, self.instrument.as_mut());
-        self.apply_association_effects(association_index, effects, now_ms)?;
-        return Ok(());
+      match self.transport.send(envelope) {
+        | Ok(()) => {},
+        | Err((TransportError::SendFailed, _envelope)) => {
+          // 永久的な payload 送信失敗を再投入すると、次のイベントごとに同じ envelope が
+          // 先頭で失敗し続ける。呼び出し元へ同期的に戻せないため、ログに残して蓄積を止める。
+          tracing::warn!(
+            remote = %self.associations[association_index].remote(),
+            "discarding outbound envelope after transport send failed"
+          );
+          return Ok(());
+        },
+        | Err((_err, envelope_for_retry)) => {
+          // 単一 envelope の送信失敗で event loop を終わらせると、他の peer 向け
+          // association まで巻き添えで停止してしまう。`RemoteTransport::send` が失敗時に
+          // 返してきた envelope を association に戻し、drain は中断するが、event loop は
+          // 次の event を引き続き処理する。成功側のホットパスでは clone は発生しない。
+          let effects =
+            self.associations[association_index].enqueue(*envelope_for_retry, now_ms, self.instrument.as_mut());
+          self.apply_association_effects(association_index, effects, now_ms)?;
+          return Ok(());
+        },
       }
       let curr_len = self.associations[association_index].total_outbound_len();
       self.apply_low_watermark_if_crossed(association_index, prev_len, curr_len, was_user_paused, now_ms);

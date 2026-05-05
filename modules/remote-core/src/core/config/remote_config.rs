@@ -32,6 +32,10 @@ pub(crate) const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 /// Default outbound large-message queue size.
 const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
 
+/// Default remote event queue size.
+const DEFAULT_REMOTE_EVENT_QUEUE_SIZE: usize =
+  DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE + DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE;
+
 /// Default outbound high watermark.
 const DEFAULT_OUTBOUND_HIGH_WATERMARK: usize = 1024;
 
@@ -113,6 +117,7 @@ pub struct RemoteConfig {
   outbound_message_queue_size: usize,
   outbound_control_queue_size: usize,
   outbound_large_message_queue_size: usize,
+  remote_event_queue_size: usize,
   outbound_high_watermark: usize,
   outbound_low_watermark: usize,
   large_message_destinations: LargeMessageDestinations,
@@ -159,6 +164,7 @@ impl RemoteConfig {
       outbound_message_queue_size: DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
       outbound_control_queue_size: DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
       outbound_large_message_queue_size: DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+      remote_event_queue_size: DEFAULT_REMOTE_EVENT_QUEUE_SIZE,
       outbound_high_watermark: DEFAULT_OUTBOUND_HIGH_WATERMARK,
       outbound_low_watermark: DEFAULT_OUTBOUND_LOW_WATERMARK,
       large_message_destinations: LargeMessageDestinations::new(),
@@ -283,6 +289,18 @@ impl RemoteConfig {
   pub const fn with_outbound_large_message_queue_size(mut self, size: usize) -> Self {
     assert!(size > 0, "outbound large-message queue size must be greater than zero");
     self.outbound_large_message_queue_size = size;
+    self
+  }
+
+  /// Returns a copy with the given remote event queue size.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `size` is zero.
+  #[must_use]
+  pub const fn with_remote_event_queue_size(mut self, size: usize) -> Self {
+    assert!(size > 0, "remote event queue size must be greater than zero");
+    self.remote_event_queue_size = size;
     self
   }
 
@@ -620,6 +638,12 @@ impl RemoteConfig {
   #[must_use]
   pub const fn outbound_large_message_queue_size(&self) -> usize {
     self.outbound_large_message_queue_size
+  }
+
+  /// Returns the remote event queue size.
+  #[must_use]
+  pub const fn remote_event_queue_size(&self) -> usize {
+    self.remote_event_queue_size
   }
 
   /// Returns the outbound high watermark.
