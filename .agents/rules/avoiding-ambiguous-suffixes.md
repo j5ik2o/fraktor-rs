@@ -14,18 +14,18 @@
 - 名前は責務・境界・依存方向を最小限の語で符号化する
 - プロジェクト内で意味が一意に定義できない語はサフィックスとして使わない
 
-## 禁止サフィックス
+## 禁止サフィックスと代替案
 
 新規の型名・モジュール名・ファイル名では以下を使用しない：
 
-| サフィックス | 問題 |
-|--------------|------|
-| Manager | 「Xxxに関することを全部やる箱」になる |
-| Util | 「設計されていない再利用コード」 |
-| Facade | 責務の境界が不明確 |
-| Service | 層や責務が未整理 |
-| Runtime | 何が動くのか不明 |
-| Engine | 実行体の責務が不明確 |
+| サフィックス | 問題 | 代替案 |
+|--------------|------|--------|
+| Manager | 「Xxxに関することを全部やる箱」になる | `*Registry`, `*Coordinator`, `*Dispatcher`, `*Controller` |
+| Util | 設計されていない再利用コードになる | 具体的な責務名。例: `*Formatter`, `*Parser`, `*Mapper` |
+| Facade | 責務の境界が不明確になる | `*Gateway`, `*Adapter`, `*Bridge` |
+| Service | 層や責務が未整理になる | `*Executor`, `*Scheduler`, `*Evaluator`, `*Repository`, `*Policy` |
+| Runtime | 何が動くのか不明になる | `*Executor`, `*Scheduler`, `*EventLoop`, `*Environment` |
+| Engine | 実行体の責務が不明確になる | `*Executor`, `*Evaluator`, `*Processor`, `*Pipeline` |
 
 ## 責務別 命名パターン
 
