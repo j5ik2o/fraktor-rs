@@ -47,11 +47,14 @@
 - [ ] 6.2 `RemotingExtensionInstaller` を `ActorSystemConfig::with_extension_installers` 経由で install しても、caller が同じ handle から `remote()` / `spawn_run_task()` / `shutdown_and_join()` を呼べるようにする。
 - [ ] 6.3 `showcases/std/legacy/remote_lifecycle/main.rs` を修正し、`installer.install(&system)` を削除して `ActorSystemConfig::with_extension_installers` に installer を渡す。
 - [ ] 6.4 `showcases/std/legacy/tests/remote_lifecycle_surface.rs` または同等の surface test を更新し、remote lifecycle showcase が config install 経路を使い、direct install を含まないことを検証する。
+- [ ] 6.5 std remote adapter の actor-ref provider installer または builder helper を追加し、`StdRemoteActorRefProvider` を `ActorSystemConfig::with_actor_ref_provider_installer` 経由で登録できるようにする。
+- [ ] 6.6 `ActorSystem::resolve_actor_ref(remote path)` が config 登録済み `StdRemoteActorRefProvider` を通り、resolved `ActorRef` への tell が `RemoteEvent::OutboundEnqueued` を push する regression test を追加する。`StdRemoteActorRefProvider::actor_ref` の direct unit test だけで済ませない。
 
 ## 7. end-to-end 証明
 
 - [ ] 7.1 two-node `remote-adaptor-std` integration test を追加する。
   - 両 system に remote installer を `ActorSystemConfig::with_extension_installers` 経由で登録する。
+  - 両 system に remote-aware actor-ref provider を `ActorSystemConfig::with_actor_ref_provider_installer` 経由で登録する。
   - remote を start し run task を起動する。
   - 必要な TCP peer connection を確立する。
   - actor-core provider dispatch 経由で remote actor ref を resolve する。
@@ -62,8 +65,10 @@
 
 ## 8. 検証
 
-- [ ] 8.1 `rtk cargo test -p fraktor-remote-core-rs`
-- [ ] 8.2 `rtk cargo test -p fraktor-remote-adaptor-std-rs`
-- [ ] 8.3 `rtk cargo test -p fraktor-cluster-adaptor-std-rs`
-- [ ] 8.4 `rtk cargo check --tests`
-- [ ] 8.5 `rtk ./scripts/ci-check.sh ai all`
+- [ ] 8.1 `rtk cargo test -p fraktor-actor-core-rs`
+- [ ] 8.2 `rtk cargo test -p fraktor-remote-core-rs`
+- [ ] 8.3 `rtk cargo test -p fraktor-remote-adaptor-std-rs`
+- [ ] 8.4 `rtk cargo test -p fraktor-cluster-adaptor-std-rs`
+- [ ] 8.5 `rtk cargo test -p fraktor-showcases-std --test remote_lifecycle_surface`
+- [ ] 8.6 `rtk cargo check --tests`
+- [ ] 8.7 `rtk ./scripts/ci-check.sh ai all`

@@ -63,6 +63,8 @@ ActorSystem::resolve_actor_ref(remote path)
 
 remote-adaptor test は、選択した serializer contract でサポートされる payload の two-node round trip を検証する。cluster-adaptor test は、`ClusterApi::get` / `GrainRef` または既存の最も近い cluster remote entry point が actor-core provider resolution 経由で remote actor ref を取得し、std remote 配送経路に到達することを証明する。
 
+この証明では、`StdRemoteActorRefProvider` を test から直接 new して呼ぶだけでは不十分である。std remote adapter は actor-core の `ActorRefProviderInstaller` / `ActorSystemConfig::with_actor_ref_provider_installer` 経由で `ActorSystem` に remote-aware provider を登録し、`ActorSystem::resolve_actor_ref(remote path)` がその provider を通ることを検証する。
+
 ### 5. cluster remoting event subscription の lifetime を修正する
 
 `subscribe_remoting_events` は返された `EventStreamSubscription` を、`LocalClusterProviderShared` が remoting topology update を必要とする期間保持しなければならない。handle を即 drop すると unsubscribe される。subscription は provider state に保存するか、caller が保持できるように返す。test では、helper return 後に publish された event が topology に反映されることを証明する。
@@ -96,10 +98,10 @@ remote extension の install は application `main` から `installer.install(&s
   - `RemotingExtensionInstaller` は `ActorSystemConfig::with_extension_installers` 経由で install でき、caller は install 後も同じ handle から `remote()` / `shutdown_and_join()` を呼べる。
   - remote lifecycle showcase は direct install ではなく config install 経路を示す。
 
-### 変更する Capability
-
 - **`actor-core-extension-installers`**
   - stateful installer を caller-retained shared handle として登録できるようにし、application code が `ExtensionInstaller::install` を直接呼ばなくても bootstrap-time install と post-install control を両立できる。
+
+### 変更する Capability
 
 - **`remote-adaptor-std-tcp-transport`**
   - `TcpRemoteTransport::send` は常時失敗ではなく、outbound envelope frame を serialize して enqueue する。
@@ -111,6 +113,7 @@ remote extension の install は application `main` から `installer.install(&s
 
 - **`remote-adaptor-std-provider-dispatch`**
   - actor-core provider dispatch 経由で解決された remote actor ref は、std remote event sender と real transport send path に到達しなければならない。
+  - std remote adapter は `ActorSystemConfig::with_actor_ref_provider_installer` 経由で `StdRemoteActorRefProvider` を actor system に登録し、`ActorSystem::resolve_actor_ref(remote path)` を remote-aware provider に接続する。
 
 - **`remote-core-extension`**
   - live spec を `RemoteShared` `&self` remoting と選択した watermark signal の意味に揃える。
@@ -130,6 +133,7 @@ remote extension の install は application `main` から `installer.install(&s
 - `modules/remote-adaptor-std/src/std/extension_installer/remoting_extension_installer.rs`
 - `modules/remote-adaptor-std/src/std/tokio_remote_event_receiver.rs`
 - `modules/remote-adaptor-std/src/std/provider/*`
+- `modules/actor-core/src/core/kernel/actor/actor_ref_provider/*`
 - `modules/actor-core/src/core/kernel/actor/extension/*`
 - `modules/actor-core/src/core/kernel/actor/setup/actor_system_config.rs`
 - `modules/remote-core/src/core/extension/*`
