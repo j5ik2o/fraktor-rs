@@ -2,7 +2,7 @@
 
 ### Requirement: RemotingExtensionInstaller は config install 経路で使える
 
-`RemotingExtensionInstaller` は `ActorSystemConfig::with_extension_installers` 経由で install できなければならない（MUST）。caller は install 後も同じ installer handle から `remote()`、`spawn_run_task()`、`shutdown_and_join()` を呼べなければならない（MUST）。remote lifecycle の user-facing showcase は `installer.install(&system)` を直接呼んではならない（MUST NOT）。
+`RemotingExtensionInstaller` は `ActorSystemConfig::with_extension_installers` 経由で install できなければならない（MUST）。caller は install 後も同じ installer handle から `remote()` を取得し、`start()` 後に `spawn_run_task()` と `shutdown_and_join()` を呼べなければならない（MUST）。remote lifecycle の user-facing showcase は `installer.install(&system)` を直接呼んではならない（MUST NOT）。
 
 #### Scenario: config install 後に remote handle を取得できる
 
@@ -16,7 +16,8 @@
 #### Scenario: remote run task lifecycle は retained handle から制御できる
 
 - **GIVEN** `RemotingExtensionInstaller` が config install 経路で install 済みである
-- **WHEN** caller が保持している installer handle から `spawn_run_task()` を呼ぶ
+- **AND** caller が保持している installer handle から取得した `RemoteShared` は `start()` 済みである
+- **WHEN** caller が同じ installer handle から `spawn_run_task()` を呼ぶ
 - **THEN** installer は install 時に作成した `RemoteEventReceiver` を使って run task を起動する
 - **AND** caller は同じ handle から `shutdown_and_join().await` を呼んで run task を停止できる
 

@@ -9,6 +9,8 @@ use crate::core::cluster_provider_error::ClusterProviderError;
 mod local_cluster_provider_generic;
 /// Shared wrapper for LocalClusterProvider implementations.
 mod local_cluster_provider_shared_generic;
+/// Weak wrapper for LocalClusterProvider shared handles.
+mod local_cluster_provider_weak;
 /// No-op provider useful for tests and single-process runs.
 mod noop_cluster_provider;
 /// Static cluster provider for predetermined topology scenarios.
@@ -16,6 +18,7 @@ mod static_cluster_provider;
 
 pub use local_cluster_provider_generic::LocalClusterProvider;
 pub use local_cluster_provider_shared_generic::LocalClusterProviderShared;
+pub use local_cluster_provider_weak::LocalClusterProviderWeak;
 pub use noop_cluster_provider::NoopClusterProvider;
 pub use static_cluster_provider::StaticClusterProvider;
 

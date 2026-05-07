@@ -4,11 +4,16 @@
 //! that is only available in std environments.
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{
-  EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+  ClassifierKey, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
   RemotingLifecycleEvent, subscriber_handle,
 };
-use fraktor_cluster_core_rs::core::cluster_provider::{LocalClusterProvider, LocalClusterProviderShared};
+use fraktor_cluster_core_rs::core::cluster_provider::{
+  LocalClusterProvider, LocalClusterProviderShared, LocalClusterProviderWeak,
+};
 use fraktor_utils_core_rs::core::sync::SharedAccess;
+
+#[cfg(test)]
+mod tests;
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///
@@ -17,30 +22,29 @@ use fraktor_utils_core_rs::core::sync::SharedAccess;
 /// triggering `TopologyUpdated` events when nodes join or leave.
 ///
 /// **Note**: This function is only available in std environments.
-pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) {
+pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) -> EventStreamSubscription {
   struct RemotingEventHandler {
-    provider: LocalClusterProviderShared,
+    provider: LocalClusterProviderWeak,
   }
 
   impl EventStreamSubscriber for RemotingEventHandler {
     fn on_event(&mut self, event: &EventStreamEvent) {
-      if let EventStreamEvent::Extension { name, payload } = event {
-        if name == "remoting" {
-          // 起動前は無視
-          if !self.provider.with_read(|p| p.is_started()) {
-            return;
-          }
-          if let Some(lifecycle_event) = payload.payload().downcast_ref::<RemotingLifecycleEvent>() {
-            match lifecycle_event {
-              | RemotingLifecycleEvent::Connected { authority, .. } => {
-                self.provider.with_write(|p| p.handle_connected(authority));
-              },
-              | RemotingLifecycleEvent::Quarantined { authority, .. } => {
-                self.provider.with_write(|p| p.handle_quarantined(authority));
-              },
-              | _ => {},
-            }
-          }
+      let Some(provider) = self.provider.upgrade() else {
+        return;
+      };
+      if let EventStreamEvent::RemotingLifecycle(lifecycle_event) = event {
+        // 起動前は無視
+        if !provider.with_read(|p| p.is_started()) {
+          return;
+        }
+        match lifecycle_event {
+          | RemotingLifecycleEvent::Connected { authority, .. } => {
+            provider.with_write(|p| p.handle_connected(authority));
+          },
+          | RemotingLifecycleEvent::Quarantined { authority, .. } => {
+            provider.with_write(|p| p.handle_quarantined(authority));
+          },
+          | _ => {},
         }
       }
     }
@@ -48,11 +52,9 @@ pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) {
 
   // event_stream への参照を取得
   let event_stream = provider.with_read(|p| p.event_stream().clone());
-  let handler = RemotingEventHandler { provider: provider.clone() };
+  let handler = RemotingEventHandler { provider: provider.downgrade() };
   let subscriber: EventStreamSubscriberShared = subscriber_handle(handler);
-  let _subscription: EventStreamSubscription = event_stream.subscribe(&subscriber);
-  // Note: subscription は provider のライフタイムに依存するので、
-  // provider がドロップされるまで有効
+  event_stream.subscribe_with_key(ClassifierKey::RemotingLifecycle, &subscriber)
 }
 
 /// Creates a shared, thread-safe LocalClusterProvider wrapped in a mutex.

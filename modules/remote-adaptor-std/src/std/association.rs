@@ -7,5 +7,6 @@
 mod inbound_dispatch;
 mod monotonic_millis;
 
+pub(crate) use inbound_dispatch::authority_for_frame;
 pub use inbound_dispatch::run_inbound_dispatch;
 pub(crate) use monotonic_millis::std_instant_elapsed_millis;

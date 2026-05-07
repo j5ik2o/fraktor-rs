@@ -27,7 +27,7 @@ transport port は同期 API なので、この change では `RemoteTransport::
 - serialization に失敗した場合、`send` は元 envelope とともに `SendFailed` を返す。
 - send error は無言で握りつぶさない。
 
-payload serialization は明示的な契約にする。最初の実装は `bytes::Bytes` / `Vec<u8>` payload のような小さい std adapter codec をサポートし、未サポート payload は観測可能な失敗として拒否してよい。任意の typed `AnyMessage` を暗黙に serialize してはならない。より広い serializer registry が必要なら、この change 内で設計し、cluster / grain e2e scenario が依存する前に test で固定する。
+payload serialization は明示的な契約にする。最初の実装は `bytes::Bytes` と `Vec<u8>` payload の両方を扱う小さい std adapter codec をサポートし、未サポート payload は観測可能な失敗として拒否してよい。任意の typed `AnyMessage` を暗黙に serialize してはならない。より広い serializer registry が必要なら、この change 内で設計し、cluster / grain e2e scenario が依存する前に test で固定する。
 
 ### 2. inbound local-delivery worker を追加する
 
@@ -63,6 +63,8 @@ ActorSystem::resolve_actor_ref(remote path)
 
 remote-adaptor test は、選択した serializer contract でサポートされる payload の two-node round trip を検証する。cluster-adaptor test は、`ClusterApi::get` / `GrainRef` または既存の最も近い cluster remote entry point が actor-core provider resolution 経由で remote actor ref を取得し、std remote 配送経路に到達することを証明する。
 
+この証明では、`StdRemoteActorRefProvider` を test から直接 new して呼ぶだけでは不十分である。std remote adapter は actor-core の `ActorRefProviderInstaller` / `ActorSystemConfig::with_actor_ref_provider_installer` 経由で `ActorSystem` に remote-aware provider を登録し、`ActorSystem::resolve_actor_ref(remote path)` がその provider を通ることを検証する。
+
 ### 5. cluster remoting event subscription の lifetime を修正する
 
 `subscribe_remoting_events` は返された `EventStreamSubscription` を、`LocalClusterProviderShared` が remoting topology update を必要とする期間保持しなければならない。handle を即 drop すると unsubscribe される。subscription は provider state に保存するか、caller が保持できるように返す。test では、helper return 後に publish された event が topology に反映されることを証明する。
@@ -71,7 +73,7 @@ remote-adaptor test は、選択した serializer contract でサポートされ
 
 remote extension の install は application `main` から `installer.install(&system)` を直接呼ぶ形にしてはならない。`RemotingExtensionInstaller` は `ExtensionInstallers` に登録し、`ActorSystemConfig::with_extension_installers` 経由で `ActorSystem::create_with_config` 中に install される必要がある。
 
-ただし `RemotingExtensionInstaller` は stateful installer であり、install 後に caller が `remote()` / `spawn_run_task()` / `shutdown_and_join()` を呼ぶ必要がある。そのため actor-core の extension installer registry は、caller が同じ shared handle を保持したまま config に登録できる API を提供しなければならない。既存の値消費 API だけで caller から installer handle が失われる場合は、shared installer 登録 API または同等の adapter helper を追加する。
+ただし `RemotingExtensionInstaller` は stateful installer であり、install 後に caller が `remote()` を取得し、`start()` 後に `spawn_run_task()` / `shutdown_and_join()` を呼ぶ必要がある。そのため actor-core の extension installer registry は、caller が同じ shared handle を保持したまま config に登録できる API を提供しなければならない。既存の値消費 API だけで caller から installer handle が失われる場合は、shared installer 登録 API または同等の adapter helper を追加する。
 
 `showcases/std/legacy/remote_lifecycle/main.rs` はこの正規経路を示す例に修正する。showcase は `ExtensionInstallers` を作り、`ActorSystemConfig::new(...).with_extension_installers(installers)` を `ActorSystem::create_with_config` に渡す。`installer.install(&system)` は低レベル unit test 以外の user-facing code から除去する。
 
@@ -93,13 +95,13 @@ remote extension の install は application `main` から `installer.install(&s
   - remoting lifecycle subscription は provider lifetime 中に保持されるか、caller が保持できる guard として返る。
 
 - **`remote-adaptor-std-extension-installer`**
-  - `RemotingExtensionInstaller` は `ActorSystemConfig::with_extension_installers` 経由で install でき、caller は install 後も同じ handle から `remote()` / `shutdown_and_join()` を呼べる。
+  - `RemotingExtensionInstaller` は `ActorSystemConfig::with_extension_installers` 経由で install でき、caller は install 後も同じ handle から `remote()` を取得し、`start()` 後に `spawn_run_task()` / `shutdown_and_join()` を呼べる。
   - remote lifecycle showcase は direct install ではなく config install 経路を示す。
-
-### 変更する Capability
 
 - **`actor-core-extension-installers`**
   - stateful installer を caller-retained shared handle として登録できるようにし、application code が `ExtensionInstaller::install` を直接呼ばなくても bootstrap-time install と post-install control を両立できる。
+
+### 変更する Capability
 
 - **`remote-adaptor-std-tcp-transport`**
   - `TcpRemoteTransport::send` は常時失敗ではなく、outbound envelope frame を serialize して enqueue する。
@@ -111,6 +113,7 @@ remote extension の install は application `main` から `installer.install(&s
 
 - **`remote-adaptor-std-provider-dispatch`**
   - actor-core provider dispatch 経由で解決された remote actor ref は、std remote event sender と real transport send path に到達しなければならない。
+  - std remote adapter は `ActorSystemConfig::with_actor_ref_provider_installer` 経由で `StdRemoteActorRefProvider` を actor system に登録し、`ActorSystem::resolve_actor_ref(remote path)` を remote-aware provider に接続する。
 
 - **`remote-core-extension`**
   - live spec を `RemoteShared` `&self` remoting と選択した watermark signal の意味に揃える。
@@ -130,6 +133,7 @@ remote extension の install は application `main` から `installer.install(&s
 - `modules/remote-adaptor-std/src/std/extension_installer/remoting_extension_installer.rs`
 - `modules/remote-adaptor-std/src/std/tokio_remote_event_receiver.rs`
 - `modules/remote-adaptor-std/src/std/provider/*`
+- `modules/actor-core/src/core/kernel/actor/actor_ref_provider/*`
 - `modules/actor-core/src/core/kernel/actor/extension/*`
 - `modules/actor-core/src/core/kernel/actor/setup/actor_system_config.rs`
 - `modules/remote-core/src/core/extension/*`

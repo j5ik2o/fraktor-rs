@@ -23,6 +23,16 @@ impl ExtensionInstallers {
     self
   }
 
+  /// Adds a caller-retained shared installer handle.
+  #[must_use]
+  pub fn with_shared_extension_installer<E>(mut self, installer: ArcShared<E>) -> Self
+  where
+    E: ExtensionInstaller + 'static, {
+    let installer: ArcShared<dyn ExtensionInstaller> = installer;
+    self.installers.push(installer);
+    self
+  }
+
   pub(crate) fn install_all(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     for installer in &self.installers {
       installer.install(system)?;

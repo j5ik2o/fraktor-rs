@@ -3,6 +3,7 @@
 use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::LocalClusterProvider;
+use crate::core::cluster_provider::LocalClusterProviderWeak;
 
 /// Shared wrapper for [`LocalClusterProvider`].
 ///
@@ -10,7 +11,7 @@ use super::LocalClusterProvider;
 /// that internally lock the underlying provider, allowing safe
 /// concurrent access from multiple owners.
 pub struct LocalClusterProviderShared {
-  inner: SharedLock<LocalClusterProvider>,
+  pub(crate) inner: SharedLock<LocalClusterProvider>,
 }
 
 impl LocalClusterProviderShared {
@@ -18,6 +19,12 @@ impl LocalClusterProviderShared {
   #[must_use]
   pub fn new(provider: LocalClusterProvider) -> Self {
     Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(provider) }
+  }
+
+  /// Creates a weak provider handle that does not keep the provider alive.
+  #[must_use]
+  pub fn downgrade(&self) -> LocalClusterProviderWeak {
+    LocalClusterProviderWeak { inner: self.inner.downgrade() }
   }
 }
 

@@ -13,7 +13,7 @@ adapter I/O task
 
 足りないのは、この loop の外側の edge である。outbound は `RemoteTransport::send` まで到達して止まる。inbound は `Remote::inbound_envelopes` まで到達して止まる。cluster lifecycle subscription は RAII subscription handle を drop するため、登録直後に解除される。
 
-もう 1 つ、remote lifecycle showcase は extension install の正規経路を外している。`ActorSystemConfig::with_extension_installers` は既に存在するが、現在の `ExtensionInstallers::with_extension_installer` は installer を値で受け取り registry 内へ隠す。`RemotingExtensionInstaller` は install 後も `remote()` / `spawn_run_task()` / `shutdown_and_join()` を呼ぶ stateful installer なので、caller が同じ handle を保持できないと direct install へ逃げやすい。
+もう 1 つ、remote lifecycle showcase は extension install の正規経路を外している。`ActorSystemConfig::with_extension_installers` は既に存在するが、現在の `ExtensionInstallers::with_extension_installer` は installer を値で受け取り registry 内へ隠す。`RemotingExtensionInstaller` は install 後も `remote()` を取得し、`start()` 後に `spawn_run_task()` / `shutdown_and_join()` を呼ぶ stateful installer なので、caller が同じ handle を保持できないと direct install へ逃げやすい。
 
 ## 設計判断
 
@@ -124,10 +124,24 @@ let config = ActorSystemConfig::new(...).with_extension_installers(installers)
 let system = ActorSystem::create_with_config(&props, config)
 let remote = installer.remote()
 remote.start()
+installer.spawn_run_task()
 installer.shutdown_and_join()
 ```
 
 registry が shared handle をさらに別 allocation で包んでも構わないが、install される対象と caller が保持する対象は同じ `RemotingExtensionInstaller` state でなければならない。`remote()` が `NotStarted` のままになる clone / wrapper split は許容しない。
+
+### 判断 8: remote actor-ref provider も ActorSystemConfig 経由で登録する
+
+remote delivery の E2E は `StdRemoteActorRefProvider` を直接 new して呼ぶ test では完了扱いにしない。user-facing 経路は `ActorSystem::resolve_actor_ref(remote path)` から始まるため、std remote adapter は actor-core の provider installer 経路に接続されなければならない。
+
+actor-core には `ActorSystemConfig::with_actor_ref_provider_installer` がある。remote-adaptor-std はこれを使って `StdRemoteActorRefProvider` を actor system に登録する installer または builder helper を提供する。installer は local provider を wrap し、remote authority の path は `RemoteActorRefSender` へ、local authority の path は既存 local provider へ振り分ける。
+
+受け入れ条件は次の通り。
+
+- `ActorSystem::create_with_config` に渡した config だけで remote-aware provider が install される。
+- `ActorSystem::resolve_actor_ref(remote path)` が `StdRemoteActorRefProvider` を通る。
+- resolved `ActorRef` への tell が `RemoteEvent::OutboundEnqueued` を adapter event sender へ push する。
+- test は `StdRemoteActorRefProvider::actor_ref` を直接呼ぶだけで済ませない。
 
 ## 処理の流れ
 
@@ -178,7 +192,20 @@ RemotingExtensionInstaller shared handle
   -> ExtensionInstallers::install_all
   -> installer.remote() from retained handle
   -> remote.start()
+  -> installer.spawn_run_task()
   -> installer.shutdown_and_join()
+```
+
+remote actor-ref provider wiring:
+
+```text
+remote provider installer
+  -> ActorSystemConfig::with_actor_ref_provider_installer
+  -> ActorSystem::create_with_config
+  -> ActorSystem::resolve_actor_ref(remote path)
+  -> StdRemoteActorRefProvider
+  -> RemoteActorRefSender
+  -> RemoteEvent::OutboundEnqueued
 ```
 
 ## リスク
@@ -188,6 +215,7 @@ RemotingExtensionInstaller shared handle
 - remote write lock を保持したまま inbound delivery すると、actor callback と lock-order hazard を作りうる。drain してから lock 外で deliver する。
 - spec drift を同じ change で直さないと、後続作業が pivot 前の pattern を再導入する。
 - stateful installer の shared handle 登録を用意しないと、showcase や user code が `install(&system)` direct call に戻り、bootstrap-time install order と root-start ordering を迂回してしまう。
+- remote actor-ref provider の config wiring を要求しないと、E2E が provider の direct unit test に留まり、`ActorSystem::resolve_actor_ref` から remote path を解決する user-facing 経路が未証明になる。
 
 ## 検証方針
 
@@ -197,5 +225,6 @@ RemotingExtensionInstaller shared handle
 - TCP task failure が `RemoteEvent::ConnectionLost` を emit し、core recovery path が起動する test。
 - cluster-adaptor test。helper return 後も remoting lifecycle subscription が active であることを証明する。
 - remote lifecycle showcase surface test。`RemotingExtensionInstaller` が `ActorSystemConfig::with_extension_installers` 経由で install され、`main` に direct `installer.install(&system)` が残らないことを確認する。
+- actor-core provider wiring test。remote-aware provider が `ActorSystemConfig::with_actor_ref_provider_installer` 経由で install され、`ActorSystem::resolve_actor_ref(remote path)` から `RemoteEvent::OutboundEnqueued` まで到達することを確認する。
 - `ClusterApi::get` / `GrainRef` または既存 provider path 経由の cluster 向け remote delivery test。
 - spec validation、package tests、repo-wide CI。

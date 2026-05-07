@@ -45,6 +45,23 @@ pub trait RemoteTransport {
   /// successfully started.
   fn shutdown(&mut self) -> Result<(), TransportError>;
 
+  /// Establishes a peer writer for a remote address.
+  ///
+  /// Implementations that do not own connection state may return
+  /// [`TransportError::NotAvailable`]. Delivery through [`Self::send`] remains
+  /// synchronous; callers that use connection-oriented transports must
+  /// establish peers before expecting envelope sends to succeed.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running,
+  /// [`TransportError::SendFailed`] if the connection cannot be established,
+  /// or [`TransportError::NotAvailable`] when unsupported by the transport.
+  fn connect_peer(&mut self, remote: &Address) -> Result<(), TransportError> {
+    let _ = remote;
+    Err(TransportError::NotAvailable)
+  }
+
   /// Hands an [`OutboundEnvelope`] to the transport for delivery.
   ///
   /// On failure the envelope is returned (boxed, matching `RemoteEvent::OutboundEnqueued`)

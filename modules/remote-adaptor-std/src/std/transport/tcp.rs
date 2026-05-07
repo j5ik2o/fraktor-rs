@@ -15,6 +15,7 @@ mod tests;
 
 mod base;
 mod client;
+mod connection_loss_reporter;
 mod frame_codec;
 mod frame_codec_error;
 mod inbound_frame_event;

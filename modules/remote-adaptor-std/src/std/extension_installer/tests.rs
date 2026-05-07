@@ -1,19 +1,55 @@
-use fraktor_actor_core_rs::core::kernel::{
-  actor::extension::ExtensionInstaller,
-  event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
-  system::ActorSystemBuildError,
-};
-use fraktor_remote_core_rs::core::{
-  address::Address,
-  association::QuarantineReason,
-  config::RemoteConfig,
-  extension::{Remote, Remoting, RemotingError},
+use std::{
+  sync::mpsc::{self, Sender},
+  time::Duration,
 };
 
+use bytes::Bytes;
+use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    Actor, ActorContext,
+    actor_ref_provider::LocalActorRefProviderInstaller,
+    error::ActorError,
+    extension::{ExtensionInstaller, ExtensionInstallers},
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+  },
+  event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
+  system::{ActorSystem, ActorSystemBuildError},
+};
+use fraktor_remote_core_rs::core::{
+  address::{Address, RemoteNodeId},
+  association::QuarantineReason,
+  config::RemoteConfig,
+  envelope::{InboundEnvelope, OutboundPriority},
+  extension::{Remote, Remoting, RemotingError},
+};
+use fraktor_utils_core_rs::core::sync::ArcShared;
+
 use crate::std::{
-  extension_installer::remoting_extension_installer::RemotingExtensionInstaller, tests::test_support::EventHarness,
+  extension_installer::remoting_extension_installer::{RemotingExtensionInstaller, deliver_inbound_envelope},
+  tests::test_support::EventHarness,
   transport::tcp::TcpRemoteTransport,
 };
+
+struct RecordingBytesActor {
+  tx: Sender<Bytes>,
+}
+
+impl RecordingBytesActor {
+  fn new(tx: Sender<Bytes>) -> Self {
+    Self { tx }
+  }
+}
+
+impl Actor for RecordingBytesActor {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(bytes) = message.downcast_ref::<Bytes>() {
+      self.tx.send(bytes.clone()).expect("recording channel should be open");
+    }
+    Ok(())
+  }
+}
 
 fn make_transport() -> TcpRemoteTransport {
   TcpRemoteTransport::new("127.0.0.1:0", Vec::new())
@@ -145,6 +181,20 @@ async fn extension_installer_holds_a_shared_remote_handle() {
   remote_b.shutdown().expect("shutdown through second shared handle");
 }
 
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn extension_installer_config_install_retains_lifecycle_handle() {
+  let installer = ArcShared::new(RemotingExtensionInstaller::new(make_transport(), remote_config()));
+  let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
+  let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
+  let system = ActorSystem::noop_with_config(config).expect("system should install remoting extension");
+  let remote = installer.remote().expect("config-installed remote should be available");
+
+  remote.start().expect("config-installed remote should start");
+  installer.spawn_run_task().expect("caller-retained installer should spawn run task");
+  installer.shutdown_and_join().await.expect("caller-retained installer should shut down");
+  system.terminate().expect("terminate");
+}
+
 #[test]
 fn extension_installer_remote_before_install_returns_not_started() {
   let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
@@ -166,6 +216,33 @@ fn extension_installer_double_install_returns_configuration_error() {
   let error = installer.install(harness.system()).expect_err("second install should fail");
 
   assert_configuration_error(error, "remote extension is already installed");
+}
+
+#[test]
+fn inbound_delivery_bridge_sends_bytes_payload_to_local_actor() {
+  let config = std_actor_system_config(TestTickDriver::default())
+    .with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default());
+  let system = ActorSystem::noop_with_config(config).expect("noop actor system should build");
+  let (tx, rx) = mpsc::channel();
+  let props = Props::from_fn({
+    let tx = tx.clone();
+    move || RecordingBytesActor::new(tx.clone())
+  });
+  let child = system.actor_of_named(&props, "remote-target").expect("spawn recording actor");
+  let recipient = child.actor_ref().path().expect("recording actor path");
+  let envelope = InboundEnvelope::new(
+    recipient,
+    RemoteNodeId::new("remote-sys", "127.0.0.1", Some(2552), 1),
+    AnyMessage::new(Bytes::from_static(b"inbound payload")),
+    None,
+    CorrelationId::nil(),
+    OutboundPriority::User,
+  );
+
+  deliver_inbound_envelope(envelope, &system);
+
+  let received = rx.recv_timeout(Duration::from_secs(1)).expect("local actor should receive inbound remote payload");
+  assert_eq!(received, Bytes::from_static(b"inbound payload"));
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

@@ -1,6 +1,7 @@
 use alloc::{format, vec::Vec};
 use std::time::Instant;
 
+use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Address as ActorAddress, Pid,
@@ -13,6 +14,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::EventStreamEvent,
   routing::{ConsistentHashingPool, RandomPool, RemoteRouterConfig, RoundRobinPool, Routee, SmallestMailboxPool},
   serialization::ActorRefResolveCache,
+  system::ActorSystem,
 };
 use fraktor_remote_core_rs::core::{
   address::{Address as RemoteCoreAddress, RemoteNodeId, UniqueAddress},
@@ -28,7 +30,8 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::std::{
   provider::{
-    RemoteRouteeExpansion, RemoteRouteeExpansionError, StdRemoteActorRefProvider, StdRemoteActorRefProviderError,
+    PathRemoteActorRefProvider, RemoteRouteeExpansion, RemoteRouteeExpansionError, StdRemoteActorRefProvider,
+    StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
   },
   tests::test_support::EventHarness,
 };
@@ -313,13 +316,18 @@ fn remote_actor_ref_resolution_publishes_cache_miss_then_hit_events() {
   assert_eq!(events[1].outcome(), RemoteActorRefResolveCacheOutcome::Hit);
 }
 
-fn assert_outbound_enqueued_event(event: RemoteEvent, expected_authority: &str, expected_path: &ActorPath) {
+fn assert_outbound_enqueued_event(
+  event: RemoteEvent,
+  expected_authority: &str,
+  expected_system: &str,
+  expected_path: &ActorPath,
+) {
   match event {
     | RemoteEvent::OutboundEnqueued { authority, envelope, .. } => {
       assert_eq!(authority, TransportEndpoint::new(expected_authority));
       assert_eq!(envelope.recipient(), expected_path);
       assert_eq!(envelope.sender(), None);
-      assert_eq!(envelope.remote_node().system(), "remote");
+      assert_eq!(envelope.remote_node().system(), expected_system);
       assert_eq!(envelope.remote_node().host(), "10.0.0.1");
       assert_eq!(envelope.remote_node().port(), Some(2552));
     },
@@ -336,7 +344,28 @@ fn remote_actor_ref_try_tell_pushes_outbound_enqueued_event() {
   actor_ref.try_tell(AnyMessage::new(String::from("remote-payload"))).expect("remote send should enqueue event");
 
   let event = fixture.event_rx.try_recv().expect("outbound event should be available");
-  assert_outbound_enqueued_event(event, "remote@10.0.0.1:2552", &remote_path);
+  assert_outbound_enqueued_event(event, "remote@10.0.0.1:2552", "remote", &remote_path);
+}
+
+#[test]
+fn actor_system_config_registered_std_remote_actor_ref_provider_pushes_outbound_enqueued() {
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let installer = StdRemoteActorRefProviderInstaller::new(
+    local_address(),
+    Box::new(PathRemoteActorRefProvider),
+    event_tx,
+    Instant::now(),
+  );
+  let config = std_actor_system_config(TestTickDriver::default()).with_actor_ref_provider_installer(installer);
+  let system = ActorSystem::noop_with_config(config).expect("system");
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
+  let mut actor_ref = system.resolve_actor_ref(remote_path.clone()).expect("remote actor ref should resolve");
+
+  actor_ref.try_tell(AnyMessage::new(String::from("remote-payload"))).expect("remote send should enqueue event");
+
+  let event = event_rx.try_recv().expect("outbound event should be available");
+  assert_outbound_enqueued_event(event, "remote-sys@10.0.0.1:2552", "remote-sys", &remote_path);
+  system.terminate().expect("terminate");
 }
 
 #[test]

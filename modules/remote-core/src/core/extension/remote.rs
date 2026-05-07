@@ -118,6 +118,18 @@ impl Remote {
     &self.config
   }
 
+  /// Establishes a transport peer writer for `remote`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::NotStarted`] when remoting is not running, or
+  /// [`RemotingError::TransportUnavailable`] when the transport cannot
+  /// establish the peer.
+  pub fn connect_peer(&mut self, remote: &Address) -> Result<(), RemotingError> {
+    self.lifecycle.ensure_running()?;
+    self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)
+  }
+
   fn publish_listen_started(&self) {
     for address in &self.advertised_addresses {
       self.event_publisher.publish_lifecycle(RemotingLifecycleEvent::ListenStarted {

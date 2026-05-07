@@ -5,7 +5,7 @@ use std::{boxed::Box, string::ToString, vec::Vec};
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext, error::ActorError, extension::ExtensionInstaller, messaging::AnyMessageView, props::Props,
+    Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
     setup::ActorSystemConfig,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, RemotingLifecycleEvent},
@@ -15,7 +15,7 @@ use fraktor_remote_adaptor_std_rs::std::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };
 use fraktor_remote_core_rs::core::{address::Address, config::RemoteConfig, extension::Remoting};
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 struct NoopActor;
 
@@ -48,20 +48,19 @@ fn subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubsc
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
   let props = Props::from_fn(|| NoopActor);
-  let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let advertised_address = Address::new("remote-showcase", "127.0.0.1", 2551);
+  let transport = TcpRemoteTransport::new("127.0.0.1:0", vec![advertised_address.clone()]);
+  let remote_config = RemoteConfig::new("127.0.0.1");
+  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config));
+  let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
+  let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
+  let system = ActorSystem::create_with_config(&props, config).expect("system");
 
   // events は短時間の記録だけなので、低オーバーヘッドな spin lock を使う。
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.event_stream().subscribe(&subscriber);
 
-  let advertised_address = Address::new("remote-showcase", "127.0.0.1", 2551);
-  let transport = TcpRemoteTransport::new("127.0.0.1:0", vec![advertised_address.clone()]);
-  let remote_config = RemoteConfig::new("127.0.0.1");
-  let installer = RemotingExtensionInstaller::new(transport, remote_config);
-
-  installer.install(&system).expect("remote extension install");
   let remote = installer.remote().expect("installed remote handle");
   remote.start().expect("remote lifecycle start");
   assert_eq!(remote.addresses(), vec![advertised_address.clone()]);
