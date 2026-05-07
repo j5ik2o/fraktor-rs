@@ -51,6 +51,12 @@
       "sourceType": "github",
       "computedHash": "8297fc7c44942bd50a9eae080b3331c9f2016cd39c42d84607566b869a383600"
     },
+    "extract-rules": {
+      "source": "hiroro-work/claude-plugins",
+      "sourceType": "github",
+      "skillPath": "skills/extract-rules/SKILL.md",
+      "computedHash": "02778db6ea1d8af42d3dec2c864886c33d8e0aaea28c6b32052e1cece56470b1"
+    },
     "first-class-collection": {
       "source": "j5ik2o/okite-ai",
       "sourceType": "github",
