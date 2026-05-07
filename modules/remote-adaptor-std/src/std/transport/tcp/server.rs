@@ -5,19 +5,23 @@ use core::fmt::{Debug, Formatter, Result as FmtResult};
 use std::{
   net::{SocketAddr, TcpListener as StdTcpListener},
   sync::Mutex,
+  time::Instant,
 };
 
-use fraktor_remote_core_rs::core::transport::TransportError;
+use fraktor_remote_core_rs::core::{extension::RemoteEvent, transport::TransportError};
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::{TcpListener, TcpStream},
   runtime::Handle,
-  sync::mpsc::UnboundedSender,
+  sync::mpsc::{Sender, UnboundedSender},
   task::JoinHandle,
 };
 use tokio_util::codec::Framed;
 
-use super::{frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent};
+use super::{
+  connection_loss_reporter::ConnectionLossReporter, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent,
+};
+use crate::std::association::authority_for_frame;
 
 type ConnectionTasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
 
@@ -76,6 +80,15 @@ impl TcpServer {
   /// Returns [`TransportError::NotAvailable`] if no Tokio runtime is available,
   /// or [`TransportError::SendFailed`] if the listener cannot be bound.
   pub fn start(&mut self, inbound_tx: UnboundedSender<InboundFrameEvent>) -> Result<SocketAddr, TransportError> {
+    self.start_with_remote_events(inbound_tx, None, Instant::now())
+  }
+
+  pub(crate) fn start_with_remote_events(
+    &mut self,
+    inbound_tx: UnboundedSender<InboundFrameEvent>,
+    remote_event_tx: Option<Sender<RemoteEvent>>,
+    monotonic_epoch: Instant,
+  ) -> Result<SocketAddr, TransportError> {
     if self.accept_task.is_some() {
       return Err(TransportError::AlreadyRunning);
     }
@@ -91,8 +104,10 @@ impl TcpServer {
         match listener.accept().await {
           | Ok((stream, peer)) => {
             let inbound_tx = inbound_tx.clone();
+            let remote_event_tx = remote_event_tx.clone();
             let peer_addr = peer.to_string();
-            let connection = tokio::spawn(read_loop(stream, peer_addr, inbound_tx, frame_codec));
+            let connection =
+              tokio::spawn(read_loop(stream, peer_addr, inbound_tx, frame_codec, remote_event_tx, monotonic_epoch));
             // 接続ごとの read_loop ハンドルを共有 Vec に蓄積し、 shutdown() から abort できるようにする。
             // 終了済みハンドルはここでまとめて掃除し、長時間 accept を続けても無制限には膨れないようにする。
             match connection_tasks.lock() {
@@ -134,21 +149,34 @@ async fn read_loop(
   peer: String,
   inbound_tx: UnboundedSender<InboundFrameEvent>,
   frame_codec: WireFrameCodec,
+  remote_event_tx: Option<Sender<RemoteEvent>>,
+  monotonic_epoch: Instant,
 ) {
   let mut framed = Framed::new(stream, frame_codec);
-  while let Some(next) = framed.next().await {
-    match next {
-      | Ok(decoded) => {
-        if inbound_tx.send(InboundFrameEvent { peer: peer.clone(), frame: decoded }).is_err() {
+  let mut authority = None;
+  let exit_cause = loop {
+    match framed.next().await {
+      | Some(Ok(decoded)) => {
+        if let Some(frame_authority) = authority_for_frame(&decoded) {
+          authority = Some(frame_authority);
+        }
+        if inbound_tx
+          .send(InboundFrameEvent { peer: peer.clone(), authority: authority.clone(), frame: decoded })
+          .is_err()
+        {
           // Receiver dropped — the transport is shutting down.
-          break;
+          break None;
         }
       },
-      | Err(err) => {
+      | Some(Err(err)) => {
         tracing::warn!(?err, peer = %peer, "tcp frame decode error");
-        break;
+        break Some(TransportError::SendFailed);
       },
+      | None => break Some(TransportError::ConnectionClosed),
     }
+  };
+  if let (Some(cause), Some(authority), Some(sender)) = (exit_cause, authority, remote_event_tx) {
+    ConnectionLossReporter::new(sender, authority, monotonic_epoch).report(cause).await;
   }
   // write buffer を flush し、peer が end-of-stream を観測できるよう half-close を明示する。
   // shutdown 経路なので close 失敗は非致命として debug ログに留める。

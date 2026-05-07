@@ -1099,6 +1099,20 @@ fn remote_shared_run_returns_ok_after_transport_shutdown_event() {
 }
 
 #[test]
+fn remote_shared_handle_event_delegates_and_returns_stop_query() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let shared = RemoteShared::new(Remote::new(
+    RecordingTransport::new(vec![address]),
+    RemoteConfig::new("127.0.0.1"),
+    event_publisher(),
+  ));
+
+  let should_stop = shared.handle_event(RemoteEvent::TransportShutdown).expect("transport shutdown should be handled");
+
+  assert!(should_stop);
+}
+
+#[test]
 fn remote_shared_run_returns_ready_after_shutdown_when_polled() {
   let address = Address::new("sys", "127.0.0.1", 2552);
   let shared = RemoteShared::new(Remote::new(

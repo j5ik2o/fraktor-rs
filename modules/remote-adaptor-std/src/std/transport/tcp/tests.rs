@@ -3,7 +3,10 @@ use std::time::Instant;
 
 use bytes::{Bytes, BytesMut};
 use fraktor_actor_core_rs::core::kernel::{
-  actor::{actor_path::ActorPathParser, messaging::AnyMessage},
+  actor::{
+    actor_path::{ActorPath, ActorPathParser},
+    messaging::AnyMessage,
+  },
   event::stream::CorrelationId,
 };
 use fraktor_remote_core_rs::core::{
@@ -16,6 +19,7 @@ use fraktor_remote_core_rs::core::{
 };
 use tokio_util::codec::{Decoder, Encoder};
 
+use super::base::outbound_envelope_to_pdu;
 use crate::std::transport::tcp::{WireFrame, frame_codec::WireFrameCodec};
 
 const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
@@ -41,6 +45,79 @@ fn large_envelope_frame() -> WireFrame {
     1,
     Bytes::from(vec![0_u8; MINIMUM_MAXIMUM_FRAME_SIZE]),
   ))
+}
+
+fn test_remote_node(port: u16) -> RemoteNodeId {
+  RemoteNodeId::new("remote-sys", "127.0.0.1", Some(port), 1)
+}
+
+fn test_recipient(port: u16) -> ActorPath {
+  ActorPathParser::parse(&alloc::format!("fraktor.tcp://remote-sys@127.0.0.1:{port}/user/worker")).expect("parse")
+}
+
+fn test_envelope(
+  port: u16,
+  message: AnyMessage,
+  correlation_id: CorrelationId,
+  sender: Option<ActorPath>,
+) -> OutboundEnvelope {
+  OutboundEnvelope::new(
+    test_recipient(port),
+    sender,
+    message,
+    OutboundPriority::User,
+    test_remote_node(port),
+    correlation_id,
+  )
+}
+
+fn assert_connection_lost_event(
+  event: RemoteEvent,
+  expected_authority: TransportEndpoint,
+  expected_cause: TransportError,
+) {
+  match event {
+    | RemoteEvent::ConnectionLost { authority, cause, .. } => {
+      assert_eq!(authority, expected_authority);
+      assert_eq!(cause, expected_cause);
+    },
+    | other => panic!("expected connection-lost event, got {other:?}"),
+  }
+}
+
+#[test]
+fn outbound_envelope_to_pdu_preserves_metadata_for_bytes_payload() {
+  let sender = ActorPathParser::parse("fraktor.tcp://local-sys@127.0.0.1:2551/user/source").expect("parse sender");
+  let correlation_id = CorrelationId::new(0x1111_2222_3333_4444, 0x5566_7788);
+  let envelope =
+    test_envelope(2552, AnyMessage::new(Bytes::from_static(b"bytes payload")), correlation_id, Some(sender.clone()));
+
+  let pdu = outbound_envelope_to_pdu(&envelope).expect("bytes payload should be supported");
+
+  assert_eq!(pdu.recipient_path(), envelope.recipient().to_canonical_uri());
+  assert_eq!(pdu.sender_path(), Some(sender.to_canonical_uri().as_str()));
+  assert_eq!(pdu.priority(), OutboundPriority::User.to_wire());
+  assert_eq!(pdu.correlation_hi(), correlation_id.hi());
+  assert_eq!(pdu.correlation_lo(), correlation_id.lo());
+  assert_eq!(pdu.payload(), &Bytes::from_static(b"bytes payload"));
+}
+
+#[test]
+fn outbound_envelope_to_pdu_supports_vec_u8_payload() {
+  let envelope = test_envelope(2552, AnyMessage::new(Vec::from(&b"vec payload"[..])), CorrelationId::nil(), None);
+
+  let pdu = outbound_envelope_to_pdu(&envelope).expect("Vec<u8> payload should be supported");
+
+  assert_eq!(pdu.payload(), &Bytes::from_static(b"vec payload"));
+}
+
+#[test]
+fn outbound_envelope_to_pdu_rejects_unsupported_payload() {
+  let envelope = test_envelope(2552, AnyMessage::new(String::from("payload")), CorrelationId::nil(), None);
+
+  let err = outbound_envelope_to_pdu(&envelope).expect_err("String payload is not part of the std remote codec");
+
+  assert_eq!(err, TransportError::SendFailed);
 }
 
 #[test]
@@ -305,6 +382,103 @@ async fn remote_transport_schedules_handshake_timeout_event() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_client_connection_close_emits_connection_lost() {
+  use tokio::{net::TcpListener, sync::mpsc};
+
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.expect("peer listener should bind");
+  let bind_addr = listener.local_addr().expect("peer listener local addr");
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
+    .with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before connecting a peer");
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+
+  transport.connect_peer(&remote).await.expect("transport should connect to peer");
+  let (accepted_stream, _) = listener.accept().await.expect("peer should accept transport connection");
+  drop(accepted_stream);
+
+  let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("connection-lost event should arrive")
+    .expect("connection-lost event should be present");
+  assert_connection_lost_event(event, TransportEndpoint::new(remote.to_string()), TransportError::ConnectionClosed);
+
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_server_connection_close_emits_connection_lost_after_authority_is_known() {
+  use tokio::sync::mpsc;
+
+  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
+    .with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before accepting a peer");
+  let bound_address = transport.default_address().expect("default address should be available").clone();
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let mut client =
+    TcpClient::connect(alloc::format!("{}:{}", bound_address.host(), bound_address.port()), client_inbound_tx)
+      .await
+      .expect("client should connect to started transport");
+  let remote = Address::new("remote-sys", "127.0.0.1", 2552);
+  let from = UniqueAddress::new(remote.clone(), 7);
+  let pdu = HandshakePdu::Req(HandshakeReq::new(from, bound_address));
+
+  client.send(WireFrame::Handshake(pdu)).expect("client send should succeed");
+  let inbound_event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("inbound frame event should arrive")
+    .expect("inbound frame event should be present");
+  assert!(matches!(
+    inbound_event,
+    RemoteEvent::InboundFrameReceived {
+      authority,
+      ..
+    } if authority == TransportEndpoint::new(remote.to_string())
+  ));
+
+  client.shutdown();
+  let connection_lost = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("connection-lost event should arrive")
+    .expect("connection-lost event should be present");
+  assert_connection_lost_event(
+    connection_lost,
+    TransportEndpoint::new(remote.to_string()),
+    TransportError::ConnectionClosed,
+  );
+
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_shutdown_does_not_emit_connection_lost() {
+  use tokio::{net::TcpListener, sync::mpsc};
+
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.expect("peer listener should bind");
+  let bind_addr = listener.local_addr().expect("peer listener local addr");
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
+    .with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before connecting a peer");
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+
+  transport.connect_peer(&remote).await.expect("transport should connect to peer");
+  let (accepted_stream, _) = listener.accept().await.expect("peer should accept transport connection");
+  transport.shutdown().expect("transport shutdown should succeed");
+
+  let event = tokio::time::timeout(Duration::from_millis(100), event_rx.recv()).await;
+  assert!(event.is_err(), "transport shutdown must not emit connection-lost recovery events");
+  drop(accepted_stream);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn remote_transport_restart_respawns_inbound_worker() {
   use tokio::sync::mpsc;
 
@@ -547,7 +721,105 @@ async fn remote_transport_send_handshake_writes_handshake_frame_to_connected_pee
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn remote_transport_send_rejects_user_envelope_until_payload_serialization_is_installed() {
+async fn remote_transport_send_writes_envelope_frame_to_connected_peer() {
+  use tokio::sync::mpsc;
+
+  use crate::std::transport::tcp::{TcpRemoteTransport, server::TcpServer};
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = TcpServer::new("127.0.0.1:0".into());
+  let bind_addr = server.start(server_inbound_tx).expect("server should bind to a system-assigned port");
+
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  transport.start().expect("transport should start before connecting a peer");
+
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+  transport.connect_peer(&remote).await.expect("transport should connect to peer before sending envelope");
+  let envelope = test_envelope(
+    bind_addr.port(),
+    AnyMessage::new(Bytes::from_static(b"payload")),
+    CorrelationId::new(0x1234, 0x5678),
+    None,
+  );
+  let expected = outbound_envelope_to_pdu(&envelope).expect("test payload should encode");
+
+  transport.send(envelope).expect("supported envelope should be enqueued");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
+    .await
+    .expect("envelope should arrive before timeout")
+    .expect("server inbound frame");
+  assert_eq!(event.frame, WireFrame::Envelope(expected));
+
+  transport.shutdown().expect("transport shutdown should succeed");
+  server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_send_writes_envelope_frame_to_blocking_connected_peer() {
+  use tokio::sync::mpsc;
+
+  use crate::std::transport::tcp::{TcpRemoteTransport, server::TcpServer};
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = TcpServer::new("127.0.0.1:0".into());
+  let bind_addr = server.start(server_inbound_tx).expect("server should bind to a system-assigned port");
+
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  transport.start().expect("transport should start before connecting a peer");
+
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+  transport.connect_peer_blocking(&remote).expect("transport should connect to peer before sending envelope");
+  let envelope = test_envelope(
+    bind_addr.port(),
+    AnyMessage::new(Bytes::from_static(b"payload")),
+    CorrelationId::new(0x1234, 0x5678),
+    None,
+  );
+  let expected = outbound_envelope_to_pdu(&envelope).expect("test payload should encode");
+
+  transport.send(envelope).expect("supported envelope should be enqueued");
+
+  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
+    .await
+    .expect("envelope should arrive before timeout")
+    .expect("server inbound frame");
+  assert_eq!(event.frame, WireFrame::Envelope(expected));
+
+  transport.shutdown().expect("transport shutdown should succeed");
+  server.shutdown();
+}
+
+#[test]
+fn remote_transport_send_before_start_returns_original_envelope() {
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  let envelope = test_envelope(2552, AnyMessage::new(Bytes::from_static(b"payload")), CorrelationId::nil(), None);
+
+  let (err, returned) = transport.send(envelope).expect_err("send before start should fail with the original envelope");
+
+  assert_eq!(err, TransportError::NotStarted);
+  assert_eq!(returned.message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"payload")));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_send_without_peer_writer_returns_original_envelope() {
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  transport.start().expect("transport should start");
+  let envelope = test_envelope(2552, AnyMessage::new(Bytes::from_static(b"payload")), CorrelationId::nil(), None);
+
+  let (err, returned) = transport.send(envelope).expect_err("missing peer writer should return the original envelope");
+
+  assert_eq!(err, TransportError::ConnectionClosed);
+  assert_eq!(returned.message().downcast_ref::<Bytes>(), Some(&Bytes::from_static(b"payload")));
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_send_rejects_unsupported_payload_without_emitting_frame() {
   use tokio::sync::mpsc;
 
   use crate::std::transport::tcp::{TcpRemoteTransport, server::TcpServer};

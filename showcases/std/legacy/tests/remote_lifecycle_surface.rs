@@ -18,6 +18,15 @@ fn remote_lifecycle_showcase_uses_public_remote_lifecycle_api() {
   assert!(source.contains("RemotingExtensionInstaller"), "showcase must install the remote extension");
   assert!(source.contains("TcpRemoteTransport"), "showcase must configure the std TCP transport");
   assert!(source.contains("RemoteConfig::new"), "showcase must pass remote config to the extension installer");
+  assert!(source.contains("with_extension_installers"), "showcase must install remoting through ActorSystemConfig");
+  assert!(
+    source.contains("with_shared_extension_installer"),
+    "showcase must retain the installer handle passed to ActorSystemConfig",
+  );
+  assert!(
+    !source.contains(".install(&system)"),
+    "showcase must not install remoting directly after ActorSystem bootstrap",
+  );
   assert!(source.contains("RemotingLifecycleEvent::ListenStarted"), "showcase must observe listen lifecycle events");
   // showcase は println! ではなくイベント観測で挙動を示すため、print_stdout 抑制を許可しない。
   assert!(!source.contains("#[allow(clippy::print_stdout)]"), "showcase must not suppress print stdout lint");

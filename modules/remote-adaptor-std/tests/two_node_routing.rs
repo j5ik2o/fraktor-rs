@@ -30,7 +30,7 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
     let (stream, peer) = listener_a.accept().await.unwrap();
     let mut framed = Framed::new(stream, WireFrameCodec::new());
     if let Some(Ok(frame)) = framed.next().await {
-      accept_tx_a.send(InboundFrameEvent { peer: peer.to_string(), frame }).unwrap();
+      accept_tx_a.send(InboundFrameEvent { peer: peer.to_string(), authority: None, frame }).unwrap();
     }
   });
 
@@ -43,7 +43,7 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
     let (stream, peer) = listener_b.accept().await.unwrap();
     let mut framed = Framed::new(stream, WireFrameCodec::new());
     if let Some(Ok(frame)) = framed.next().await {
-      accept_tx_b.send(InboundFrameEvent { peer: peer.to_string(), frame }).unwrap();
+      accept_tx_b.send(InboundFrameEvent { peer: peer.to_string(), authority: None, frame }).unwrap();
     }
   });
 

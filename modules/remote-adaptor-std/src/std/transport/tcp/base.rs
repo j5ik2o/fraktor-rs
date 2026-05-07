@@ -1,13 +1,18 @@
 //! `TcpRemoteTransport` — `std::net`-backed implementation of the core
 //! [`RemoteTransport`] port.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
   time::Duration,
 };
 use std::{collections::BTreeMap, time::Instant};
 
+use bytes::Bytes;
+use fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage;
 use fraktor_remote_core_rs::core::{
   address::Address,
   association::QuarantineReason,
@@ -15,7 +20,7 @@ use fraktor_remote_core_rs::core::{
   envelope::OutboundEnvelope,
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::{ControlPdu, HandshakePdu},
+  wire::{ControlPdu, EnvelopePdu, HandshakePdu},
 };
 use tokio::{
   sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
@@ -40,9 +45,9 @@ use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 /// establishing a brand-new outbound TCP connection is asynchronous, callers
 /// must call [`TcpRemoteTransport::connect_peer`] from an async context
 /// *before* calling `send` for a given peer. This mirrors Pekko Artery's
-/// explicit association lifecycle. User envelope delivery still requires the
-/// Phase 3 serialization driver, so `send` fails fast instead of emitting an
-/// empty payload frame.
+/// explicit association lifecycle. User envelope delivery is intentionally
+/// limited to the adapter-owned byte payload contract; arbitrary `AnyMessage`
+/// payloads fail visibly instead of being silently encoded as empty bytes.
 pub struct TcpRemoteTransport {
   configured_local_addresses: Vec<Address>,
   local_addresses:            Vec<Address>,
@@ -203,7 +208,55 @@ impl TcpRemoteTransport {
       return Ok(());
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client = TcpClient::connect_with_frame_codec(connect_addr, self.inbound_tx.clone(), self.frame_codec).await?;
+    let client = if let Some(event_sender) = self.remote_event_tx.clone() {
+      TcpClient::connect_with_connection_loss_reporter(
+        connect_addr,
+        self.inbound_tx.clone(),
+        self.frame_codec,
+        event_sender,
+        TransportEndpoint::new(remote.to_string()),
+        self.monotonic_epoch,
+      )
+      .await?
+    } else {
+      TcpClient::connect_with_frame_codec(connect_addr, self.inbound_tx.clone(), self.frame_codec).await?
+    };
+    self.clients.insert(peer_key, client);
+    Ok(())
+  }
+
+  /// Establishes an outbound connection without requiring an async caller.
+  ///
+  /// This is the explicit peer setup path used by actor-system integration
+  /// tests and small applications before they hand envelopes to the
+  /// synchronous `RemoteTransport::send` path.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport has not yet been
+  /// started, or [`TransportError::SendFailed`] if the outbound connection
+  /// cannot be established.
+  pub fn connect_peer_blocking(&mut self, remote: &Address) -> Result<(), TransportError> {
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    let peer_key = Self::peer_key_for_address(remote);
+    if self.clients.contains_key(&peer_key) {
+      return Ok(());
+    }
+    let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
+    let client = if let Some(event_sender) = self.remote_event_tx.clone() {
+      TcpClient::connect_blocking_with_connection_loss_reporter(
+        connect_addr,
+        self.inbound_tx.clone(),
+        self.frame_codec,
+        event_sender,
+        TransportEndpoint::new(remote.to_string()),
+        self.monotonic_epoch,
+      )?
+    } else {
+      TcpClient::connect_blocking_with_frame_codec(connect_addr, self.inbound_tx.clone(), self.frame_codec)?
+    };
     self.clients.insert(peer_key, client);
     Ok(())
   }
@@ -261,12 +314,43 @@ impl TcpRemoteTransport {
   }
 }
 
+pub(super) fn outbound_envelope_to_pdu(envelope: &OutboundEnvelope) -> Result<EnvelopePdu, TransportError> {
+  let payload = outbound_payload_bytes(envelope.message()).ok_or(TransportError::SendFailed)?;
+  Ok(EnvelopePdu::new(
+    envelope.recipient().to_canonical_uri(),
+    envelope.sender().map(|sender| sender.to_canonical_uri()),
+    envelope.correlation_id().hi(),
+    envelope.correlation_id().lo(),
+    envelope.priority().to_wire(),
+    payload,
+  ))
+}
+
+fn outbound_payload_bytes(message: &AnyMessage) -> Option<Bytes> {
+  if let Some(bytes) = message.downcast_ref::<Bytes>() {
+    return Some(bytes.clone());
+  }
+  message.downcast_ref::<Vec<u8>>().map(|bytes| Bytes::from(bytes.clone()))
+}
+
+fn remote_address_from_envelope(envelope: &OutboundEnvelope) -> Result<Address, TransportError> {
+  let remote_node = envelope.remote_node();
+  let Some(port) = remote_node.port() else {
+    return Err(TransportError::ConnectionClosed);
+  };
+  Ok(Address::new(remote_node.system(), remote_node.host(), port))
+}
+
 impl RemoteTransport for TcpRemoteTransport {
   fn start(&mut self) -> Result<(), TransportError> {
     if self.running {
       return Err(TransportError::AlreadyRunning);
     }
-    let bound_addr = self.server.start(self.inbound_tx.clone())?;
+    let bound_addr = self.server.start_with_remote_events(
+      self.inbound_tx.clone(),
+      self.remote_event_tx.clone(),
+      self.monotonic_epoch,
+    )?;
     self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;
     if let Err(error) = self.spawn_inbound_worker() {
@@ -296,11 +380,30 @@ impl RemoteTransport for TcpRemoteTransport {
     Ok(())
   }
 
+  fn connect_peer(&mut self, remote: &Address) -> Result<(), TransportError> {
+    self.connect_peer_blocking(remote)
+  }
+
   fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
     if !self.running {
       return Err((TransportError::NotStarted, Box::new(envelope)));
     }
-    Err((TransportError::SendFailed, Box::new(envelope)))
+    let remote = match remote_address_from_envelope(&envelope) {
+      | Ok(remote) => remote,
+      | Err(error) => return Err((error, Box::new(envelope))),
+    };
+    let peer_key = Self::peer_key_for_address(&remote);
+    if !self.clients.contains_key(&peer_key) {
+      return Err((TransportError::ConnectionClosed, Box::new(envelope)));
+    }
+    let frame = match outbound_envelope_to_pdu(&envelope) {
+      | Ok(pdu) => WireFrame::Envelope(pdu),
+      | Err(error) => return Err((error, Box::new(envelope))),
+    };
+    match self.send_wire_frame(&remote, frame) {
+      | Ok(()) => Ok(()),
+      | Err(error) => Err((error, Box::new(envelope))),
+    }
   }
 
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {

@@ -5,17 +5,19 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: Remoting trait
 
-`fraktor_remote_core_rs::domain::extension::Remoting` trait が定義され、リモートサブシステムの lifecycle API を提供する SHALL。god object `RemotingControlHandle` (旧 `fraktor-remote-rs`, 479行) の純粋 lifecycle 責務のみを受け持つ。transport 参照、bridge factory、watcher daemon、heartbeat channels 等の runtime 配線は **一切保持しない**。
+`fraktor_remote_core_rs::core::extension::Remoting` trait が定義され、リモートサブシステムの lifecycle API を提供する SHALL。god object `RemotingControlHandle` (旧 `fraktor-remote-rs`, 479行) の純粋 lifecycle 責務のみを受け持つ。transport 参照、bridge factory、watcher daemon、heartbeat channels 等の runtime 配線は **一切保持しない**。`Remoting` trait のすべてのメソッドは `&self` を取る同期 method SHALL。`async fn` および `Future` 戻り値を追加してはならない（MUST NOT）。`addresses` の戻り値は owned `Vec<Address>`。`impl Remoting for Remote` は存在してはならず、共有 surface である `RemoteShared` が `Remoting` を実装する SHALL。
 
 #### Scenario: trait の存在
 
 - **WHEN** `modules/remote-core/src/extension/remoting.rs` を読む
 - **THEN** `pub trait Remoting` が定義されている
 
-#### Scenario: lifecycle メソッドのシグネチャ
+#### Scenario: lifecycle メソッドの共有 surface シグネチャ
 
 - **WHEN** `Remoting` trait のメソッド一覧を読む
-- **THEN** `start(&mut self) -> Result<(), RemotingError>`、`shutdown(&mut self) -> Result<(), RemotingError>`、`quarantine(&mut self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError>`、`addresses(&self) -> &[Address]` が宣言されている
+- **THEN** `fn start(&self) -> Result<(), RemotingError>`、`fn shutdown(&self) -> Result<(), RemotingError>`、`fn quarantine(&self, address: &Address, uid: Option<u64>, reason: QuarantineReason, now_ms: u64) -> Result<(), RemotingError>`、`fn addresses(&self) -> Vec<Address>` が宣言されている
+- **AND** `start(&mut self)` / `shutdown(&mut self)` / `addresses(&self) -> &[Address]` を要求する scenario は存在しない
+- **AND** 実装は `RemoteShared` に対して `impl Remoting for RemoteShared` を提供し、`impl Remoting for Remote` を提供しない
 
 #### Scenario: async / runtime 依存の不在
 
@@ -25,7 +27,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 #### Scenario: transport / bridge factory / watcher daemon を持たない
 
 - **WHEN** `Remoting` trait のメソッド一覧を検査する
-- **THEN** `transport_ref`・`bridge_factory`・`watcher_daemon`・`heartbeat_channels`・`writer`・`reader` 等のランタイム配線を直接操作するメソッドを持たない (それらは Phase B で adapter 側 `StdRemoting` 実装が担う)
+- **THEN** `transport_ref`・`bridge_factory`・`watcher_daemon`・`heartbeat_channels`・`writer`・`reader` 等のランタイム配線を直接操作するメソッドを持たない (それらは adapter 側 runtime wiring が担う)
 
 ### Requirement: RemotingLifecycleState 状態機械
 
@@ -373,6 +375,17 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 - **AND** `S: RemoteEventReceiver` が trait bound として要求される
 - **AND** `async fn run` や `-> impl Future<...>` を public run API に使わない
 
+### Requirement: RemoteShared の event-step orchestration
+
+adapter が inbound delivery hook を必要とする場合、`RemoteShared` は 1 件の `RemoteEvent` を core logic に委譲して処理する最小 orchestration API を提供してよい（MAY）。この API は raw lock を露出してはならず（MUST NOT）、event semantics を `RemoteShared` に重複実装してはならない（MUST NOT）。
+
+#### Scenario: raw SharedLock を露出しない event-step API
+
+- **WHEN** `RemoteShared` に event-step API を追加する
+- **THEN** 戻り値や引数に `SharedLock<Remote>` / lock guard 型は現れない
+- **AND** 実装は内部で `Remote::handle_remote_event(event)` と `Remote::is_terminated()` または同等 Query に委譲する
+- **AND** `RemoteShared` 自身は `match event` で association / transport semantics を実装しない
+
 ### Requirement: RemoteSharedRunFuture は concrete Future 型
 
 `RemoteShared::run` が返す concrete Future 型として `RemoteSharedRunFuture<'a, S>` が定義される SHALL。`RemoteSharedRunFuture` は `core::future::Future<Output = Result<(), RemotingError>>` を実装し、`RemoteShared` と `RemoteEventReceiver` の借用を保持する。`Send` 境界を型定義または `run` method の public API に要求してはならない（MUST NOT）。
@@ -430,7 +443,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 - **THEN** trait `Remoting` の各メソッドは次のシグネチャを持つ
   - `fn start(&self) -> Result<(), RemotingError>`
   - `fn shutdown(&self) -> Result<(), RemotingError>`
-  - `fn quarantine(&self, address: &Address, uid: Option<u64>, reason: QuarantineReason) -> Result<(), RemotingError>`
+  - `fn quarantine(&self, address: &Address, uid: Option<u64>, reason: QuarantineReason, now_ms: u64) -> Result<(), RemotingError>`
   - `fn addresses(&self) -> Vec<Address>`
 - **AND** `async fn` および `Future` 戻り値が存在しない
 
@@ -512,14 +525,14 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 #### Scenario: enqueue と drain の連鎖
 
 - **WHEN** `Remote::handle_remote_event` が `RemoteEvent::OutboundEnqueued { authority, envelope, now_ms }` を受信する
-- **THEN** `AssociationRegistry` から `authority` 対応の `Association` を取得し、`Association::enqueue(*envelope, now_ms)` を呼ぶ
+- **THEN** `Remote` が所有する association collection から `authority` 対応の `Association` を取得または作成し、`Association::enqueue(*envelope, now_ms)` を呼ぶ
 - **AND** 続けて outbound drain helper（`next_outbound` → `RemoteTransport::send`）を起動し、可能な限り queue を消化する
 
 #### Scenario: 内部可変性回避
 
 - **WHEN** adapter 側の enqueue 経路（local actor からの tell 等）を検査する
-- **THEN** adapter は `AssociationRegistry` を直接 mutate せず、`RemoteEvent::OutboundEnqueued` を内部 sender に push する
-- **AND** `AssociationRegistry` の所有権は本 change の主経路では `Remote` に集約されており、adapter 側から raw shared handle 経由で直接 mutate しない
+- **THEN** adapter は `Association` を直接 mutate せず、`RemoteEvent::OutboundEnqueued` を内部 sender に push する
+- **AND** association の所有権は `Remote` に集約されており、adapter 側から raw shared handle 経由で直接 mutate しない
 
 ### Requirement: Installer は RemoteShared を保持し外部公開する
 
@@ -643,13 +656,14 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 
 ### Requirement: outbound watermark backpressure の発火経路
 
-`Remote::handle_remote_event` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `RemoteConfig::outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure(BackpressureSignal::Apply)` または `Release` を発火する SHALL。境界を跨がない通常の enqueue / dequeue では発火しない。
+`Remote::handle_remote_event` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `RemoteConfig::outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ backpressure signal を発火する SHALL。high watermark は internal drain を止めない signal を使わなければならない（MUST）。
 
-#### Scenario: high watermark で Apply（エッジでのみ発火）
+#### Scenario: high watermark は internal drain を止めない
 
 - **WHEN** `Remote::handle_remote_event` が outbound enqueue 直後に `Association::total_outbound_len()` を確認し、enqueue 前は `outbound_high_watermark` 以下、enqueue 後は超過になった（境界を跨いだ）
-- **THEN** `Remote::handle_remote_event` は `Association::apply_backpressure(BackpressureSignal::Apply)` を呼ぶ
-- **AND** 該当 instrument の `record_backpressure(.., BackpressureSignal::Apply, ..)` が呼ばれる
+- **THEN** 実装は internal drain が同じ user queue を dequeue できる状態を保つ
+- **AND** `BackpressureSignal::Notify` を採用する場合は `record_backpressure(.., Notify, ..)` で観測可能にする
+- **AND** `BackpressureSignal::Apply` を採用する場合は drain helper が user queue pause によって停止しないことを test で証明する
 - **AND** 既に超過状態で連続 enqueue した場合、2 回目以降は `apply_backpressure` を呼ばない
 
 #### Scenario: low watermark で Release（エッジでのみ発火）
@@ -658,6 +672,12 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 - **THEN** `Remote::handle_remote_event` は `Association::apply_backpressure(BackpressureSignal::Release)` を呼ぶ
 - **AND** 該当 instrument の `record_backpressure(.., BackpressureSignal::Release, ..)` が呼ばれる
 - **AND** 既に Release 済み状態で連続 dequeue した場合、2 回目以降は `apply_backpressure` を呼ばない
+
+#### Scenario: live spec と実装が同じ signal を要求する
+
+- **WHEN** `openspec/specs/remote-core-extension/spec.md`, `openspec/specs/remote-core-association-state-machine/spec.md`, `modules/remote-core/src/core/extension/remote.rs` を比較する
+- **THEN** high watermark で使う signal が一致している
+- **AND** `Notify` が public enum に残る場合、spec は `Apply` / `Release` のみと主張しない
 
 #### Scenario: 設定値の経路
 
@@ -673,4 +693,3 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 - **WHEN** `Remote::handle_remote_event` の実装ソースを検査する
 - **THEN** `let _ = ...` による `Result` 握りつぶしが存在しない
 - **AND** 失敗は `?` で伝播するか、`match` で観測可能な経路（log / metric / instrument）に分岐する
-

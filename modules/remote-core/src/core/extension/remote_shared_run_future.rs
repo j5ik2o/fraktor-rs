@@ -39,18 +39,10 @@ impl<S: RemoteEventReceiver + ?Sized> Future for RemoteSharedRunFuture<'_, S> {
         return Poll::Ready(Ok(()));
       }
       match this.receiver.poll_recv(cx) {
-        | Poll::Ready(Some(event)) => {
-          match this.remote.with_write(|remote| {
-            if remote.should_stop_event_loop() {
-              return Ok(true);
-            }
-            remote.handle_remote_event(event)?;
-            Ok(remote.should_stop_event_loop())
-          }) {
-            | Ok(true) => return Poll::Ready(Ok(())),
-            | Ok(false) => {},
-            | Err(error) => return Poll::Ready(Err(error)),
-          }
+        | Poll::Ready(Some(event)) => match this.remote.handle_event(event) {
+          | Ok(true) => return Poll::Ready(Ok(())),
+          | Ok(false) => {},
+          | Err(error) => return Poll::Ready(Err(error)),
         },
         | Poll::Ready(None) => return Poll::Ready(Err(RemotingError::EventReceiverClosed)),
         | Poll::Pending => return Poll::Pending,

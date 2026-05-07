@@ -325,13 +325,27 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: watermark 連動の自動 backpressure 発火経路
 
-`Remote::handle_remote_event` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure` を呼び出して signal を発火する SHALL。Association 側は手動 `apply_backpressure` 呼び出しと watermark 経由の自動呼び出しを区別しない（同じ signal セマンティクスで動作する）。
+`Remote::handle_remote_event` は outbound enqueue / dequeue のたびに `Association::total_outbound_len()` を `outbound_high_watermark` / `outbound_low_watermark` と比較し、watermark 境界をエッジで跨いだ時にのみ `Association::apply_backpressure` を呼び出す SHALL。high watermark の signal は、internal drain を止めない意味と一致していなければならない（MUST）。
 
-#### Scenario: 既存 BackpressureSignal::Apply / Release の流用
+#### Scenario: BackpressureSignal variant の仕様は実装と一致する
 
 - **WHEN** `BackpressureSignal` enum の variant を検査する
-- **THEN** 既存の `Apply` と `Release` のみが定義され、`Engaged` / `Released` 等の新 variant が追加されていない
-- **AND** watermark 連動の発火と adapter / 上位層からの手動発火は同じ variant を使う
+- **THEN** live OpenSpec は実装に存在する variant だけを仕様化する
+- **AND** `Notify` variant が存在する場合、その意味は「internal high watermark を跨いだことの通知であり、user lane pause はしない」として明記されている
+- **AND** `Apply` variant は「user lane を pause する」意味として残る
+
+#### Scenario: Notify は user lane を pause しない
+
+- **GIVEN** `BackpressureSignal::Notify` が high watermark 用に採用されている
+- **WHEN** `Association::apply_backpressure(Notify, ...)` を呼ぶ
+- **THEN** `SendQueue` の user lane は paused にならない
+- **AND** instrumentation には high watermark crossing が記録される
+
+#### Scenario: Apply は明示的な pause を表す
+
+- **WHEN** adapter / upper layer が明示的な backpressure として `BackpressureSignal::Apply` を呼ぶ
+- **THEN** user lane は paused になる
+- **AND** `BackpressureSignal::Release` で resume する
 
 #### Scenario: backpressure state は Association が保持する
 
@@ -379,4 +393,3 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 - **WHEN** `AssociationEffect::StartHandshake` の variant 定義を検査する
 - **THEN** `StartHandshake { authority: TransportEndpoint, timeout: core::time::Duration, generation: u64 }` または同等のフィールド構成を持つ
 - **AND** generation の型は `u64` であり、newtype でラップされていない
-

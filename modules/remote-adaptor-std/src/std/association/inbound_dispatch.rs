@@ -24,7 +24,10 @@ pub async fn run_inbound_dispatch(
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
 ) -> Result<(), TransportError> {
   while let Some(event) = inbound_rx.recv().await {
-    let authority = authority_for_frame(&event.frame).unwrap_or_else(|| TransportEndpoint::new(event.peer.clone()));
+    let authority = event
+      .authority
+      .or_else(|| authority_for_frame(&event.frame))
+      .unwrap_or_else(|| TransportEndpoint::new(event.peer.clone()));
     let remote_event = RemoteEvent::InboundFrameReceived { authority, frame: event.frame, now_ms: now_ms_provider() };
     if let Err(error) = event_sender.send(remote_event).await {
       tracing::warn!(?error, "inbound remote event delivery failed");
@@ -34,7 +37,7 @@ pub async fn run_inbound_dispatch(
   Ok(())
 }
 
-fn authority_for_frame(frame: &WireFrame) -> Option<TransportEndpoint> {
+pub(crate) fn authority_for_frame(frame: &WireFrame) -> Option<TransportEndpoint> {
   match frame {
     | WireFrame::Handshake(HandshakePdu::Req(request)) => {
       Some(TransportEndpoint::new(request.from().address().to_string()))

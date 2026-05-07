@@ -3,6 +3,8 @@
 
 use alloc::string::String;
 
+use fraktor_remote_core_rs::core::transport::TransportEndpoint;
+
 use super::WireFrame;
 
 /// Inbound event emitted when a [`crate::std::transport::tcp::WireFrame`]
@@ -10,7 +12,9 @@ use super::WireFrame;
 #[derive(Debug)]
 pub struct InboundFrameEvent {
   /// Peer socket address (as a display-friendly string).
-  pub peer:  String,
+  pub peer:      String,
+  /// Remote authority learned from previous frames on this connection.
+  pub authority: Option<TransportEndpoint>,
   /// Frame that was received.
-  pub frame: WireFrame,
+  pub frame:     WireFrame,
 }

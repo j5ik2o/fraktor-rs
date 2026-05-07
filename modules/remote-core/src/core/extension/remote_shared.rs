@@ -15,7 +15,7 @@ use crate::core::{
   address::Address,
   association::QuarantineReason,
   envelope::InboundEnvelope,
-  extension::{Remote, RemoteEventReceiver, RemoteSharedRunFuture, Remoting, RemotingError},
+  extension::{Remote, RemoteEvent, RemoteEventReceiver, RemoteSharedRunFuture, Remoting, RemotingError},
 };
 
 /// Shared wrapper for driving remoting through interior locking.
@@ -52,6 +52,27 @@ impl RemoteShared {
     RemoteSharedRunFuture::new(self, receiver)
   }
 
+  /// Handles one remote event and returns whether the event loop should stop.
+  ///
+  /// This is the minimal per-event hook used by std adapters that must run
+  /// local delivery immediately after core event processing. Event semantics
+  /// remain owned by [`Remote::handle_remote_event`]; this method only manages
+  /// the shared lock and the post-command termination query.
+  ///
+  /// # Errors
+  ///
+  /// Returns the same error as [`Remote::handle_remote_event`] when core event
+  /// processing fails.
+  pub fn handle_event(&self, event: RemoteEvent) -> Result<bool, RemotingError> {
+    self.with_write(|remote| {
+      if remote.should_stop_event_loop() {
+        return Ok(true);
+      }
+      remote.handle_remote_event(event)?;
+      Ok(remote.should_stop_event_loop())
+    })
+  }
+
   /// Drains buffered inbound envelopes observed by the shared core event loop.
   ///
   /// This is a mutating consume operation, not a pure query. The `&self`
@@ -60,6 +81,21 @@ impl RemoteShared {
   #[must_use]
   pub fn drain_inbound_envelopes(&self) -> Vec<InboundEnvelope> {
     self.with_write(Remote::drain_inbound_envelopes)
+  }
+
+  /// Establishes a transport peer writer for `remote`.
+  ///
+  /// This keeps peer connection setup as an explicit adapter/application
+  /// lifecycle step while preserving the synchronous `RemoteTransport::send`
+  /// contract.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::NotStarted`] when remoting is not running, or
+  /// [`RemotingError::TransportUnavailable`] when the transport cannot
+  /// establish the peer.
+  pub fn connect_peer(&self, remote: &Address) -> Result<(), RemotingError> {
+    self.with_write(|remote_shared| remote_shared.connect_peer(remote))
   }
 }
 

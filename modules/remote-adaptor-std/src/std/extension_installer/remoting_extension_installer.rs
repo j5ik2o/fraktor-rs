@@ -6,14 +6,19 @@ use std::{
 };
 
 use fraktor_actor_core_rs::core::kernel::{
-  actor::extension::ExtensionInstaller,
+  actor::{
+    actor_path::ActorPath, actor_ref::dead_letter::DeadLetterReason, extension::ExtensionInstaller,
+    messaging::AnyMessage,
+  },
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::core::{
   config::RemoteConfig,
-  extension::{EventPublisher, Remote, RemoteEvent, RemoteShared, Remoting, RemotingError},
+  envelope::InboundEnvelope,
+  extension::{EventPublisher, Remote, RemoteEvent, RemoteEventReceiver, RemoteShared, Remoting, RemotingError},
   instrument::RemotingFlightRecorder,
 };
+use futures::future::poll_fn;
 use tokio::{
   sync::mpsc::{self, Sender},
   task::JoinHandle,
@@ -27,11 +32,13 @@ const RUN_STATE_LOCK_POISONED: &str = "remote run_state lock should not be poiso
 
 /// Extension installer for the `fraktor-remote-adaptor-std-rs` runtime.
 pub struct RemotingExtensionInstaller {
-  transport:     Mutex<Option<TcpRemoteTransport>>,
-  config:        RemoteConfig,
-  remote_shared: OnceLock<RemoteShared>,
-  event_sender:  OnceLock<Sender<RemoteEvent>>,
-  run_state:     Mutex<RemotingRunState>,
+  transport:       Mutex<Option<TcpRemoteTransport>>,
+  config:          RemoteConfig,
+  remote_shared:   OnceLock<RemoteShared>,
+  event_sender:    OnceLock<Sender<RemoteEvent>>,
+  monotonic_epoch: OnceLock<Instant>,
+  system:          OnceLock<ActorSystem>,
+  run_state:       Mutex<RemotingRunState>,
 }
 
 struct RemotingRunState {
@@ -55,6 +62,8 @@ impl RemotingExtensionInstaller {
       config,
       remote_shared: OnceLock::new(),
       event_sender: OnceLock::new(),
+      monotonic_epoch: OnceLock::new(),
+      system: OnceLock::new(),
       run_state: Mutex::new(RemotingRunState::new()),
     }
   }
@@ -67,6 +76,22 @@ impl RemotingExtensionInstaller {
   /// installed into an actor system yet.
   pub fn remote(&self) -> Result<RemoteShared, RemotingError> {
     self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)
+  }
+
+  /// Returns the adapter event sender and monotonic epoch created during install.
+  ///
+  /// This is used by companion actor-ref provider installers that are also
+  /// installed during `ActorSystemConfig` bootstrap and must enqueue into the
+  /// same remote event loop.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::NotStarted`] when the remote extension has not
+  /// been installed yet.
+  pub fn remote_event_sender_and_epoch(&self) -> Result<(Sender<RemoteEvent>, Instant), RemotingError> {
+    let sender = self.event_sender.get().cloned().ok_or(RemotingError::NotStarted)?;
+    let monotonic_epoch = self.monotonic_epoch.get().copied().ok_or(RemotingError::NotStarted)?;
+    Ok((sender, monotonic_epoch))
   }
 
   /// Spawns the core remote run loop once.
@@ -82,6 +107,7 @@ impl RemotingExtensionInstaller {
   /// already spawned.
   pub fn spawn_run_task(&self) -> Result<(), RemotingError> {
     let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
+    let system = self.system.get().cloned().ok_or(RemotingError::NotStarted)?;
     let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
     if run_state.handle.is_some() {
       return Err(RemotingError::AlreadyRunning);
@@ -90,7 +116,7 @@ impl RemotingExtensionInstaller {
       return Err(RemotingError::AlreadyRunning);
     };
     let handle = tokio::spawn(async move {
-      let result = remote.run(&mut receiver).await;
+      let result = run_remote_with_delivery(&remote, &mut receiver, &system).await;
       (receiver, result)
     });
     run_state.handle = Some(handle);
@@ -166,8 +192,69 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       .event_sender
       .set(event_sender)
       .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+    self
+      .monotonic_epoch
+      .set(monotonic_epoch)
+      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+    self
+      .system
+      .set(system.clone())
+      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
     // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
     self.remote_shared.set(remote).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
+  }
+}
+
+async fn run_remote_with_delivery(
+  remote: &RemoteShared,
+  receiver: &mut TokioMpscRemoteEventReceiver,
+  system: &ActorSystem,
+) -> Result<(), RemotingError> {
+  loop {
+    let event = match poll_fn(|cx| receiver.poll_recv(cx)).await {
+      | Some(event) => event,
+      | None => return Err(RemotingError::EventReceiverClosed),
+    };
+    let should_stop = remote.handle_event(event)?;
+    deliver_inbound_envelopes(remote, system);
+    if should_stop {
+      return Ok(());
+    }
+  }
+}
+
+fn deliver_inbound_envelopes(remote: &RemoteShared, system: &ActorSystem) {
+  for envelope in remote.drain_inbound_envelopes() {
+    deliver_inbound_envelope(envelope, system);
+  }
+}
+
+pub(super) fn deliver_inbound_envelope(envelope: InboundEnvelope, system: &ActorSystem) {
+  let (recipient, _remote_node, message, sender, _correlation_id, _priority) = envelope.into_parts();
+  let message = attach_sender(system, sender, message);
+  let mut actor_ref = match system.resolve_actor_ref(recipient.clone()) {
+    | Ok(actor_ref) => actor_ref,
+    | Err(error) => {
+      tracing::warn!(?error, recipient = %recipient, "remote inbound delivery recipient resolution failed");
+      system.record_dead_letter(message, DeadLetterReason::RecipientUnavailable, None);
+      return;
+    },
+  };
+  if let Err(error) = actor_ref.try_tell(message) {
+    tracing::warn!(?error, recipient = %recipient, "remote inbound delivery send failed");
+  }
+}
+
+fn attach_sender(system: &ActorSystem, sender: Option<ActorPath>, message: AnyMessage) -> AnyMessage {
+  let Some(sender_path) = sender else {
+    return message;
+  };
+  match system.resolve_actor_ref(sender_path.clone()) {
+    | Ok(sender_ref) => message.with_sender(sender_ref),
+    | Err(error) => {
+      tracing::debug!(?error, sender = %sender_path, "remote inbound sender restoration failed");
+      message
+    },
   }
 }
 

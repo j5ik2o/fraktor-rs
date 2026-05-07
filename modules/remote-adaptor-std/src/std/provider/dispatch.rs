@@ -233,12 +233,6 @@ fn remote_cache_outcome<T>(outcome: &ActorCoreResolveCacheOutcome<T>) -> RemoteA
 ///
 /// Authority-less paths are unchanged.
 fn strip_authority(path: ActorPath) -> ActorPath {
-  use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPathParser;
-
-  // Phase B の最小実装として path の relative form を再 parse する。
-  // actor-core の `ActorPath` は `with_authority(None)` builder をまだ公開していない。
-  // loopback dispatch は slow path なので parse cost は許容し、relative 文字列は
-  // local provider が必要な segment をすべて含むため変換は lossless である。
-  let relative = path.to_relative_string();
-  ActorPathParser::parse(&relative).unwrap_or(path)
+  let segments = path.segments().iter().map(|segment| segment.as_str());
+  ActorPath::try_from_segments(segments).unwrap_or(path)
 }
