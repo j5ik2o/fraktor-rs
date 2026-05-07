@@ -38,6 +38,8 @@ rmcp_client = true
 shell_snapshot = true
 steer = true
 unified_exec = true
+goals = true
+browser_use = true
 
 [[hooks.PostToolUse]]
 matcher = "^(apply_patch|Edit|Write)$"
