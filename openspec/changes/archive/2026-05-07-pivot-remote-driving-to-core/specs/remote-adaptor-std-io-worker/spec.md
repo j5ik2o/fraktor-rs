@@ -10,7 +10,7 @@
 
 ## MODIFIED Requirements
 
-### Requirement: inbound dispatch (受信 I/O ワーカー)
+### Requirement: inbound dispatch (受信 tokio task)
 
 adapter 側に受信 tokio task が定義され、TCP から受信した core wire frame bytes を `RemoteEvent::InboundFrameReceived { authority, frame, now_ms }` として adapter 内部 sender 経由で `RemoteEventReceiver` に push する SHALL。`Association` の `handshake_accepted` 等を **直接呼んではならない**（MUST NOT）— state machine への反映は core 側の `Remote::handle_remote_event`（`RemoteShared::run` の `with_write` 区間内）が担当する。
 
