@@ -4,6 +4,7 @@ hide_agent_reasoning = true
 network_access = true
 web_search = "live"
 personality = "pragmatic"
+approvals_reviewer = "user"
 
 [features]
 codex_hooks = true
@@ -16,6 +17,10 @@ steer = true
 multi_agent = true
 js_repl = true
 prevent_idle_sleep = true
+terminal_resize_reflow = true
+memories = true
+goals = true
+browser_use = true
 
 [agents]
 max_threads = 4

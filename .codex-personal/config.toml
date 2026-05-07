@@ -14,6 +14,8 @@ apps = false
 shell_snapshot = true
 steer = true
 multi_agent = true
+goals = true
+browser_use = true
 
 [agents]
 max_threads = 4
