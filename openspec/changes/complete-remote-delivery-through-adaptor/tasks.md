@@ -9,7 +9,7 @@
 
 ## 2. outbound TCP 配送
 
-- [ ] 2.1 std remote 配送用の絞った outbound payload codec contract を追加する（最小 `Bytes` / `Vec<u8>`）。任意 `AnyMessage` が serialize 可能であるかのように扱わない。
+- [ ] 2.1 std remote 配送用の絞った outbound payload codec contract を追加する（最小 `Bytes` と `Vec<u8>` の両方）。任意 `AnyMessage` が serialize 可能であるかのように扱わない。
 - [ ] 2.2 `OutboundEnvelope -> EnvelopePdu` 変換を実装し、recipient path、optional sender path、priority、correlation id high/low fields、payload bytes を保持する。
 - [ ] 2.3 `TcpRemoteTransport::send` を変更し、transport が running かつ既存 peer writer がある場合は、無条件 `SendFailed` ではなく `WireFrame::Envelope` を enqueue する。
 - [ ] 2.4 error path を観測可能かつ retry 可能にする。
@@ -44,7 +44,7 @@
 ## 6. extension installer の config 経路
 
 - [ ] 6.1 `ExtensionInstallers` または同等の actor-core extension registry に、caller が保持する shared installer handle を登録できる API を追加する。
-- [ ] 6.2 `RemotingExtensionInstaller` を `ActorSystemConfig::with_extension_installers` 経由で install しても、caller が同じ handle から `remote()` / `spawn_run_task()` / `shutdown_and_join()` を呼べるようにする。
+- [ ] 6.2 `RemotingExtensionInstaller` を `ActorSystemConfig::with_extension_installers` 経由で install しても、caller が同じ handle から `remote()` を取得し、`remote().start()` 後に `spawn_run_task()` / `shutdown_and_join()` を呼べるようにする。
 - [ ] 6.3 `showcases/std/legacy/remote_lifecycle/main.rs` を修正し、`installer.install(&system)` を削除して `ActorSystemConfig::with_extension_installers` に installer を渡す。
 - [ ] 6.4 `showcases/std/legacy/tests/remote_lifecycle_surface.rs` または同等の surface test を更新し、remote lifecycle showcase が config install 経路を使い、direct install を含まないことを検証する。
 - [ ] 6.5 std remote adapter の actor-ref provider installer または builder helper を追加し、`StdRemoteActorRefProvider` を `ActorSystemConfig::with_actor_ref_provider_installer` 経由で登録できるようにする。

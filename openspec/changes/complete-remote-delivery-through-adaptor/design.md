@@ -13,7 +13,7 @@ adapter I/O task
 
 足りないのは、この loop の外側の edge である。outbound は `RemoteTransport::send` まで到達して止まる。inbound は `Remote::inbound_envelopes` まで到達して止まる。cluster lifecycle subscription は RAII subscription handle を drop するため、登録直後に解除される。
 
-もう 1 つ、remote lifecycle showcase は extension install の正規経路を外している。`ActorSystemConfig::with_extension_installers` は既に存在するが、現在の `ExtensionInstallers::with_extension_installer` は installer を値で受け取り registry 内へ隠す。`RemotingExtensionInstaller` は install 後も `remote()` / `spawn_run_task()` / `shutdown_and_join()` を呼ぶ stateful installer なので、caller が同じ handle を保持できないと direct install へ逃げやすい。
+もう 1 つ、remote lifecycle showcase は extension install の正規経路を外している。`ActorSystemConfig::with_extension_installers` は既に存在するが、現在の `ExtensionInstallers::with_extension_installer` は installer を値で受け取り registry 内へ隠す。`RemotingExtensionInstaller` は install 後も `remote()` を取得し、`start()` 後に `spawn_run_task()` / `shutdown_and_join()` を呼ぶ stateful installer なので、caller が同じ handle を保持できないと direct install へ逃げやすい。
 
 ## 設計判断
 
@@ -124,6 +124,7 @@ let config = ActorSystemConfig::new(...).with_extension_installers(installers)
 let system = ActorSystem::create_with_config(&props, config)
 let remote = installer.remote()
 remote.start()
+installer.spawn_run_task()
 installer.shutdown_and_join()
 ```
 
@@ -191,6 +192,7 @@ RemotingExtensionInstaller shared handle
   -> ExtensionInstallers::install_all
   -> installer.remote() from retained handle
   -> remote.start()
+  -> installer.spawn_run_task()
   -> installer.shutdown_and_join()
 ```
 

@@ -42,7 +42,7 @@
 
 ### Requirement: outbound payload codec contract
 
-std TCP adapter は `OutboundEnvelope` の `AnyMessage` payload を wire payload bytes に変換する契約を明示しなければならない（MUST）。少なくとも `bytes::Bytes` または `Vec<u8>` のいずれかをサポートしなければならない（MUST）。任意の typed payload を暗黙に serialize してはならない（MUST NOT）。
+std TCP adapter は `OutboundEnvelope` の `AnyMessage` payload を wire payload bytes に変換する契約を明示しなければならない（MUST）。少なくとも `bytes::Bytes` と `Vec<u8>` の両方をサポートしなければならない（MUST）。任意の typed payload を暗黙に serialize してはならない（MUST NOT）。
 
 #### Scenario: サポート対象 bytes payload
 
