@@ -395,7 +395,7 @@ async fn remote_transport_client_connection_close_emits_connection_lost() {
   transport.start().expect("transport should start before connecting a peer");
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
 
-  transport.connect_peer(&remote).await.expect("transport should connect to peer");
+  transport.connect_peer_async(&remote).await.expect("transport should connect to peer");
   let (accepted_stream, _) = listener.accept().await.expect("peer should accept transport connection");
   drop(accepted_stream);
 
@@ -469,7 +469,7 @@ async fn remote_transport_shutdown_does_not_emit_connection_lost() {
   transport.start().expect("transport should start before connecting a peer");
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
 
-  transport.connect_peer(&remote).await.expect("transport should connect to peer");
+  transport.connect_peer_async(&remote).await.expect("transport should connect to peer");
   let (accepted_stream, _) = listener.accept().await.expect("peer should accept transport connection");
   transport.shutdown().expect("transport shutdown should succeed");
 
@@ -704,7 +704,7 @@ async fn remote_transport_send_handshake_writes_handshake_frame_to_connected_pee
   transport.start().expect("transport should start before connecting a peer");
 
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
-  transport.connect_peer(&remote).await.expect("transport should connect to peer before sending handshake");
+  transport.connect_peer_async(&remote).await.expect("transport should connect to peer before sending handshake");
 
   let from = UniqueAddress::new(transport.default_address().expect("default local address").clone(), 1);
   let pdu = HandshakePdu::Req(HandshakeReq::new(from, remote.clone()));
@@ -734,7 +734,7 @@ async fn remote_transport_send_writes_envelope_frame_to_connected_peer() {
   transport.start().expect("transport should start before connecting a peer");
 
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
-  transport.connect_peer(&remote).await.expect("transport should connect to peer before sending envelope");
+  transport.connect_peer_async(&remote).await.expect("transport should connect to peer before sending envelope");
   let envelope = test_envelope(
     bind_addr.port(),
     AnyMessage::new(Bytes::from_static(b"payload")),
@@ -832,7 +832,7 @@ async fn remote_transport_send_rejects_unsupported_payload_without_emitting_fram
   transport.start().expect("transport should start before connecting a peer");
 
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
-  transport.connect_peer(&remote).await.expect("transport should connect to peer before sending envelope");
+  transport.connect_peer_async(&remote).await.expect("transport should connect to peer before sending envelope");
   let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@127.0.0.1:2552/user/worker").expect("parse");
   let envelope = OutboundEnvelope::new(
     recipient,
@@ -845,10 +845,10 @@ async fn remote_transport_send_rejects_unsupported_payload_without_emitting_fram
 
   let result = transport.send(envelope);
 
-  let (err, _envelope) = result.expect_err("send should fail when peer write loop is gone");
+  let (err, _envelope) = result.expect_err("send should reject unsupported payload before emitting any frame");
   assert_eq!(err, TransportError::SendFailed);
   let inbound = tokio::time::timeout(Duration::from_millis(200), server_inbound_rx.recv()).await;
-  assert!(inbound.is_err(), "failed envelope send must not emit an empty payload frame");
+  assert!(inbound.is_err(), "unsupported payload send must not emit an empty payload frame");
   transport.shutdown().expect("transport shutdown should succeed");
   server.shutdown();
 }

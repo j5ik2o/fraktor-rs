@@ -234,5 +234,5 @@ fn remote_cache_outcome<T>(outcome: &ActorCoreResolveCacheOutcome<T>) -> RemoteA
 /// Authority-less paths are unchanged.
 fn strip_authority(path: ActorPath) -> ActorPath {
   let segments = path.segments().iter().map(|segment| segment.as_str());
-  ActorPath::try_from_segments(segments).unwrap_or(path)
+  ActorPath::try_from_segments(segments).expect("try_from_segments must succeed for a path with valid segments")
 }

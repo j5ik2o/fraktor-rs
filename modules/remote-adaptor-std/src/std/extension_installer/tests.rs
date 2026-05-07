@@ -230,7 +230,6 @@ fn inbound_delivery_bridge_sends_bytes_payload_to_local_actor() {
   });
   let child = system.actor_of_named(&props, "remote-target").expect("spawn recording actor");
   let recipient = child.actor_ref().path().expect("recording actor path");
-  let _resolved = system.resolve_actor_ref(recipient.clone()).expect("recording actor path should resolve locally");
   let envelope = InboundEnvelope::new(
     recipient,
     RemoteNodeId::new("remote-sys", "127.0.0.1", Some(2552), 1),

@@ -230,18 +230,32 @@ fn deliver_inbound_envelopes(remote: &RemoteShared, system: &ActorSystem) {
 }
 
 pub(super) fn deliver_inbound_envelope(envelope: InboundEnvelope, system: &ActorSystem) {
-  let (recipient, _remote_node, message, sender, _correlation_id, _priority) = envelope.into_parts();
+  let (recipient, remote_node, message, sender, correlation_id, priority) = envelope.into_parts();
   let message = attach_sender(system, sender, message);
   let mut actor_ref = match system.resolve_actor_ref(recipient.clone()) {
     | Ok(actor_ref) => actor_ref,
     | Err(error) => {
-      tracing::warn!(?error, recipient = %recipient, "remote inbound delivery recipient resolution failed");
+      tracing::warn!(
+        ?error,
+        recipient = %recipient,
+        ?remote_node,
+        ?correlation_id,
+        ?priority,
+        "remote inbound delivery recipient resolution failed"
+      );
       system.record_dead_letter(message, DeadLetterReason::RecipientUnavailable, None);
       return;
     },
   };
   if let Err(error) = actor_ref.try_tell(message) {
-    tracing::warn!(?error, recipient = %recipient, "remote inbound delivery send failed");
+    tracing::warn!(
+      ?error,
+      recipient = %recipient,
+      ?remote_node,
+      ?correlation_id,
+      ?priority,
+      "remote inbound delivery send failed"
+    );
   }
 }
 

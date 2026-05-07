@@ -35,6 +35,40 @@ pub struct TcpClient {
   task:      Option<JoinHandle<()>>,
 }
 
+pub(crate) struct TcpClientConnectOptions {
+  frame_codec: WireFrameCodec,
+  reporter:    Option<TcpClientConnectionLossReporterOptions>,
+}
+
+struct TcpClientConnectionLossReporterOptions {
+  event_sender:    Sender<RemoteEvent>,
+  authority:       TransportEndpoint,
+  monotonic_epoch: Instant,
+}
+
+impl TcpClientConnectOptions {
+  pub(crate) const fn new(frame_codec: WireFrameCodec) -> Self {
+    Self { frame_codec, reporter: None }
+  }
+
+  pub(crate) fn with_connection_loss_reporter(
+    mut self,
+    event_sender: Sender<RemoteEvent>,
+    authority: TransportEndpoint,
+    monotonic_epoch: Instant,
+  ) -> Self {
+    self.reporter = Some(TcpClientConnectionLossReporterOptions { event_sender, authority, monotonic_epoch });
+    self
+  }
+
+  fn into_parts(self) -> (WireFrameCodec, Option<ConnectionLossReporter>) {
+    let reporter = self
+      .reporter
+      .map(|options| ConnectionLossReporter::new(options.event_sender, options.authority, options.monotonic_epoch));
+    (self.frame_codec, reporter)
+  }
+}
+
 impl Debug for TcpClient {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("TcpClient")
@@ -57,58 +91,46 @@ impl TcpClient {
     peer_addr: String,
     inbound_tx: UnboundedSender<InboundFrameEvent>,
   ) -> Result<Self, TransportError> {
-    let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, WireFrameCodec::new(), None))
+    Self::connect_async(peer_addr, inbound_tx, TcpClientConnectOptions::new(WireFrameCodec::new())).await
   }
 
-  /// Connects to `peer_addr` using the given frame codec.
+  /// Connects to `peer_addr` with explicit frame and lifecycle options.
   ///
   /// # Errors
   ///
   /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
   /// established.
-  pub(crate) async fn connect_with_frame_codec(
+  pub(crate) async fn connect_async(
     peer_addr: String,
     inbound_tx: UnboundedSender<InboundFrameEvent>,
-    frame_codec: WireFrameCodec,
+    options: TcpClientConnectOptions,
   ) -> Result<Self, TransportError> {
     let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, None))
+    let (frame_codec, connection_loss_reporter) = options.into_parts();
+    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, connection_loss_reporter))
   }
 
-  pub(crate) fn connect_blocking_with_frame_codec(
+  /// Connects to `peer_addr` with explicit frame and lifecycle options from a
+  /// synchronous context.
+  ///
+  /// This function calls [`connected_tokio_stream`], which uses
+  /// `std::net::TcpStream::connect` before converting the socket into a Tokio
+  /// stream. It blocks the current thread and must not run directly on a Tokio
+  /// worker thread; Tokio callers must use `tokio::task::spawn_blocking` or a
+  /// dedicated synchronous context.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
+  /// established.
+  pub(crate) fn connect_blocking(
     peer_addr: String,
     inbound_tx: UnboundedSender<InboundFrameEvent>,
-    frame_codec: WireFrameCodec,
+    options: TcpClientConnectOptions,
   ) -> Result<Self, TransportError> {
     let stream = connected_tokio_stream(&peer_addr)?;
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, None))
-  }
-
-  pub(crate) async fn connect_with_connection_loss_reporter(
-    peer_addr: String,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
-    frame_codec: WireFrameCodec,
-    event_sender: Sender<RemoteEvent>,
-    authority: TransportEndpoint,
-    monotonic_epoch: Instant,
-  ) -> Result<Self, TransportError> {
-    let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
-    let reporter = ConnectionLossReporter::new(event_sender, authority, monotonic_epoch);
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, Some(reporter)))
-  }
-
-  pub(crate) fn connect_blocking_with_connection_loss_reporter(
-    peer_addr: String,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
-    frame_codec: WireFrameCodec,
-    event_sender: Sender<RemoteEvent>,
-    authority: TransportEndpoint,
-    monotonic_epoch: Instant,
-  ) -> Result<Self, TransportError> {
-    let stream = connected_tokio_stream(&peer_addr)?;
-    let reporter = ConnectionLossReporter::new(event_sender, authority, monotonic_epoch);
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, Some(reporter)))
+    let (frame_codec, connection_loss_reporter) = options.into_parts();
+    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, connection_loss_reporter))
   }
 
   fn from_connected_stream(

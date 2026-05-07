@@ -63,6 +63,8 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
   let event_a = tokio::time::timeout(Duration::from_secs(5), rx_a.recv()).await.unwrap().expect("server A inbound");
   let event_b = tokio::time::timeout(Duration::from_secs(5), rx_b.recv()).await.unwrap().expect("server B inbound");
 
+  assert_eq!(event_a.authority, None);
+  assert_eq!(event_b.authority, None);
   assert_eq!(event_a.frame, WireFrame::Envelope(pdu_a));
   assert_eq!(event_b.frame, WireFrame::Envelope(pdu_b));
 

@@ -29,7 +29,11 @@ use tokio::{
 };
 
 use super::{
-  WireFrame, client::TcpClient, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, server::TcpServer,
+  WireFrame,
+  client::{TcpClient, TcpClientConnectOptions},
+  frame_codec::WireFrameCodec,
+  inbound_frame_event::InboundFrameEvent,
+  server::TcpServer,
 };
 use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 
@@ -43,7 +47,7 @@ use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 ///
 /// Note: the trait [`RemoteTransport::send`] is **synchronous**; because
 /// establishing a brand-new outbound TCP connection is asynchronous, callers
-/// must call [`TcpRemoteTransport::connect_peer`] from an async context
+/// must call [`TcpRemoteTransport::connect_peer_async`] from an async context
 /// *before* calling `send` for a given peer. This mirrors Pekko Artery's
 /// explicit association lifecycle. User envelope delivery is intentionally
 /// limited to the adapter-owned byte payload contract; arbitrary `AnyMessage`
@@ -199,7 +203,7 @@ impl TcpRemoteTransport {
   /// Returns [`TransportError::NotStarted`] if the transport has not yet been
   /// started, or [`TransportError::SendFailed`] if the outbound connection
   /// cannot be established.
-  pub async fn connect_peer(&mut self, remote: &Address) -> Result<(), TransportError> {
+  pub async fn connect_peer_async(&mut self, remote: &Address) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
@@ -208,28 +212,24 @@ impl TcpRemoteTransport {
       return Ok(());
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client = if let Some(event_sender) = self.remote_event_tx.clone() {
-      TcpClient::connect_with_connection_loss_reporter(
-        connect_addr,
-        self.inbound_tx.clone(),
-        self.frame_codec,
-        event_sender,
-        TransportEndpoint::new(remote.to_string()),
-        self.monotonic_epoch,
-      )
-      .await?
-    } else {
-      TcpClient::connect_with_frame_codec(connect_addr, self.inbound_tx.clone(), self.frame_codec).await?
-    };
+    let client =
+      TcpClient::connect_async(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote)).await?;
     self.clients.insert(peer_key, client);
     Ok(())
   }
 
   /// Establishes an outbound connection without requiring an async caller.
   ///
-  /// This is the explicit peer setup path used by actor-system integration
-  /// tests and small applications before they hand envelopes to the
-  /// synchronous `RemoteTransport::send` path.
+  /// `connect_peer_blocking` performs a synchronous TCP connect via
+  /// [`TcpClient::connect_blocking`], which calls `std::net::TcpStream::connect`
+  /// under the hood. It is intended for synchronous contexts such as
+  /// actor-system integration tests and small applications before they hand
+  /// envelopes to the synchronous `RemoteTransport::send` path.
+  ///
+  /// Do not call this from a Tokio worker thread directly: it can block the
+  /// executor for the duration of DNS / TCP connect. Tokio callers must wrap
+  /// it in `tokio::task::spawn_blocking` or use another dedicated synchronous
+  /// context.
   ///
   /// # Errors
   ///
@@ -245,20 +245,23 @@ impl TcpRemoteTransport {
       return Ok(());
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client = if let Some(event_sender) = self.remote_event_tx.clone() {
-      TcpClient::connect_blocking_with_connection_loss_reporter(
-        connect_addr,
-        self.inbound_tx.clone(),
-        self.frame_codec,
+    let client =
+      TcpClient::connect_blocking(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote))?;
+    self.clients.insert(peer_key, client);
+    Ok(())
+  }
+
+  fn client_connect_options(&self, remote: &Address) -> TcpClientConnectOptions {
+    let options = TcpClientConnectOptions::new(self.frame_codec);
+    if let Some(event_sender) = self.remote_event_tx.clone() {
+      options.with_connection_loss_reporter(
         event_sender,
         TransportEndpoint::new(remote.to_string()),
         self.monotonic_epoch,
-      )?
+      )
     } else {
-      TcpClient::connect_blocking_with_frame_codec(connect_addr, self.inbound_tx.clone(), self.frame_codec)?
-    };
-    self.clients.insert(peer_key, client);
-    Ok(())
+      options
+    }
   }
 
   /// Returns an immutable reference to the client registry.
