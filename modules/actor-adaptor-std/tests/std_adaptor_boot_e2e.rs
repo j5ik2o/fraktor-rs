@@ -76,7 +76,7 @@ fn std_adaptor_boot_flow_wires_config_dispatcher_mailbox_scheduler_logging_and_t
     let message_log = message_log.clone();
     move || BootActor::new(message_log.clone())
   });
-  let system = ActorSystem::create_with_config(&props, config).expect("std actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("std actor system");
   let subscriber = subscriber_handle(LogRecorder::new(log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

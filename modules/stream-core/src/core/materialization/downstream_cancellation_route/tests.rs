@@ -41,7 +41,7 @@ impl SourceLogic for PendingSourceLogic {
 fn build_system() -> ActorSystem {
   let props = Props::from_fn(|| GuardianActor);
   let config = ActorSystemConfig::new(TestTickDriver::default());
-  ActorSystem::create_with_config(&props, config).expect("system should build")
+  ActorSystem::create_from_props(&props, config).expect("system should build")
 }
 
 fn spawn_child_ref(system: &ActorSystem) -> ChildRef {

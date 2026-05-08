@@ -125,7 +125,7 @@ fn actor_runtime_boot_wires_std_config_scheduler_logging_watch_stop_and_dead_let
     let terminated_log = terminated_log.clone();
     move || Guardian::new(deliveries.clone(), child_slot.clone(), terminated_log.clone())
   });
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("actor system");
   let subscriber = subscriber_handle(LogRecorder::new(log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

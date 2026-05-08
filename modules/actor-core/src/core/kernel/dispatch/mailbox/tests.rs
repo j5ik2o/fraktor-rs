@@ -48,7 +48,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
     .with_warn_threshold(Some(warn_threshold));
   let props = Props::from_fn(|| PassiveActor).with_mailbox_config(mailbox_config);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });

@@ -30,7 +30,7 @@ fn main() {
   })
   .with_dispatcher_from_config(DEFAULT_BLOCKING_DISPATCHER_ID);
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut actor = system.user_guardian_ref();
 

@@ -50,7 +50,7 @@ fn main() {
     move || TimerActor::new(events.clone())
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 

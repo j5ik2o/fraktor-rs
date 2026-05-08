@@ -164,7 +164,7 @@ fn tail_chopping_returns_first_reply() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -269,7 +269,7 @@ fn tail_chopping_retries_to_next_routee_after_interval() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -352,7 +352,7 @@ fn tail_chopping_returns_timeout_reply_when_no_routee_responds() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 

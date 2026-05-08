@@ -97,7 +97,7 @@ fn spawn_router_system(pool_size: usize, strategy: PoolTestStrategy) -> RouterSy
     }
   });
 
-  let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+  let system = TypedActorSystem::<u32>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
     .expect("system");
   let router = system.user_guardian_ref();
   (system, router, records)
@@ -195,7 +195,7 @@ fn pool_router_public_type_with_broadcast_delivers_to_all_routees() {
     }
   });
 
-  let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+  let system = TypedActorSystem::<u32>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
     .expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -237,7 +237,7 @@ fn pool_router_with_broadcast_predicate_only_broadcasts_matching_messages() {
     }
   });
 
-  let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+  let system = TypedActorSystem::<u32>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
     .expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -401,7 +401,7 @@ fn pool_router_with_resizer_scales_up_to_lower_bound() {
     }
   });
 
-  let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+  let system = TypedActorSystem::<u32>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
     .expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -453,7 +453,7 @@ fn pool_router_with_resizer_scales_down_to_upper_bound() {
     }
   });
 
-  let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+  let system = TypedActorSystem::<u32>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
     .expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -528,7 +528,7 @@ fn pool_router_with_routee_props_applies_tags_to_routees() {
     }
   });
 
-  let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+  let system = TypedActorSystem::<u32>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
     .expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -679,7 +679,7 @@ mod optimal_size_exploring_resizer_smoke {
       }
     });
 
-    let system = TypedActorSystem::<u32>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    let system = TypedActorSystem::<u32>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
     let mut router = system.user_guardian_ref();
 

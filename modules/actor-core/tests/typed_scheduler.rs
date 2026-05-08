@@ -14,7 +14,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(Duration::from_secs(1));
-  TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system")
+  TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system")
 }
 
 fn null_receiver() -> TypedActorRef<u32> {

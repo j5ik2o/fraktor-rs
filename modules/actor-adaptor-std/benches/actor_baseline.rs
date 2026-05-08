@@ -142,7 +142,7 @@ impl TokioBenchSystem {
       let configurator: Box<dyn MessageDispatcherFactory> =
         Box::new(DefaultDispatcherFactory::new(&settings, executor));
       let config = config.with_dispatcher_factory(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
-      ActorSystem::create_with_config(props, config).expect("actor system")
+      ActorSystem::create_from_props(props, config).expect("actor system")
     });
     Self { runtime, system }
   }

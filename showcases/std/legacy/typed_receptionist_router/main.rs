@@ -24,7 +24,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
       .expect("system");
 
   let key = ServiceKey::<u32>::new("typed-receptionist-router-example");

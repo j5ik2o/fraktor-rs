@@ -45,11 +45,9 @@ fn ask_pattern_behavior() -> Behavior<AskPatternCommand> {
 #[test]
 fn ask_pattern_exposes_timeout_aware_standalone_ask() {
   let props = TypedProps::<AskPatternCommand>::from_behavior_factory(ask_pattern_behavior);
-  let system = TypedActorSystem::<AskPatternCommand>::create_with_config(
-    &props,
-    ActorSystemConfig::new(TestTickDriver::default()),
-  )
-  .expect("system");
+  let system =
+    TypedActorSystem::<AskPatternCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   let response =
@@ -65,11 +63,9 @@ fn ask_pattern_exposes_timeout_aware_standalone_ask() {
 #[test]
 fn ask_pattern_exposes_timeout_aware_status_ask() {
   let props = TypedProps::<AskPatternCommand>::from_behavior_factory(ask_pattern_behavior);
-  let system = TypedActorSystem::<AskPatternCommand>::create_with_config(
-    &props,
-    ActorSystemConfig::new(TestTickDriver::default()),
-  )
-  .expect("system");
+  let system =
+    TypedActorSystem::<AskPatternCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   let response = AskPattern::ask_with_status(
@@ -89,11 +85,9 @@ fn ask_pattern_exposes_timeout_aware_status_ask() {
 #[test]
 fn ask_pattern_times_out_when_target_does_not_reply() {
   let props = TypedProps::<AskPatternCommand>::from_behavior_factory(ask_pattern_behavior);
-  let system = TypedActorSystem::<AskPatternCommand>::create_with_config(
-    &props,
-    ActorSystemConfig::new(TestTickDriver::default()),
-  )
-  .expect("system");
+  let system =
+    TypedActorSystem::<AskPatternCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   let response =

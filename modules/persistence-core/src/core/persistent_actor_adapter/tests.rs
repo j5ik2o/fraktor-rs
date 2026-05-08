@@ -224,7 +224,7 @@ fn adapter_pre_start_binds_context() {
     .with_scheduler_config(scheduler)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -247,7 +247,7 @@ fn adapter_pre_start_schedules_recovery_timeout() {
     .with_scheduler_config(scheduler)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -269,7 +269,7 @@ fn adapter_pre_start_rejects_persistence_id_mismatch() {
     .with_scheduler_config(scheduler)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = MismatchPersistentActor::new();
@@ -290,7 +290,7 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
     .with_scheduler_config(scheduler)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -378,7 +378,7 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
     .with_scheduler_config(scheduler)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();

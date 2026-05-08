@@ -43,7 +43,7 @@ impl ActorRefSender for CollectorSender {
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
       .expect("system");
 
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());

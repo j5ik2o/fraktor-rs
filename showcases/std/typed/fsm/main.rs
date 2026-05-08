@@ -41,7 +41,7 @@ fn open(pass_count: u32) -> Behavior<Command> {
 fn main() {
   let props = TypedProps::from_behavior_factory(|| locked(0));
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut gate = system.user_guardian_ref();
 

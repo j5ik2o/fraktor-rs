@@ -38,7 +38,7 @@ fn main() {
   })
   .with_dispatcher_id(DEFAULT_BLOCKING_DISPATCHER_ID);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(RunBlockingWork));

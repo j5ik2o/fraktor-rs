@@ -34,7 +34,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 /// Helper to create a test actor system.
 fn test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+  TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
     .expect("system")
 }
 

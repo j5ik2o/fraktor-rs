@@ -125,7 +125,7 @@ fn build_system() -> ActorSystem {
     .with_dispatcher_factory(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
     .with_dispatcher_factory(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
   let props = Props::from_fn(|| TeamGuardian);
-  ActorSystem::create_with_config(&props, config).expect("actor system")
+  ActorSystem::create_from_props(&props, config).expect("actor system")
 }
 
 fn spawn_team(

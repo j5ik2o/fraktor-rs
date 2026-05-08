@@ -95,8 +95,8 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn create_with_config(user_guardian_props: &Props, config: ActorSystemConfig) -> Result<Self, SpawnError> {
-    Self::create_with_config_and(user_guardian_props, config, |_| Ok(()))
+  pub fn create_from_props(user_guardian_props: &Props, config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    Self::create_from_props_with_init(user_guardian_props, config, |_| Ok(()))
   }
 
   /// Creates an actor system with a no-op user guardian and the provided configuration.
@@ -109,7 +109,7 @@ impl ActorSystem {
   /// Returns [`SpawnError`] when guardian initialization fails.
   pub fn noop_with_config(config: ActorSystemConfig) -> Result<Self, SpawnError> {
     let user_guardian_props = Props::from_fn(NoopGuardianActor::new);
-    Self::create_with_config(&user_guardian_props, config)
+    Self::create_from_props(&user_guardian_props, config)
   }
 
   /// Creates a new actor system from a Pekko-style setup facade.
@@ -118,7 +118,7 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError`] when guardian initialization or bootstrap fails.
   pub fn create_with_setup(user_guardian_props: &Props, setup: ActorSystemSetup) -> Result<Self, SpawnError> {
-    Self::create_with_config(user_guardian_props, setup.into_actor_system_config())
+    Self::create_from_props(user_guardian_props, setup.into_actor_system_config())
   }
 
   /// Creates an actor system with a no-op user guardian from a Pekko-style setup facade.
@@ -135,7 +135,7 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization or configuration fails.
-  pub fn create_with_config_and<F>(
+  pub fn create_from_props_with_init<F>(
     user_guardian_props: &Props,
     mut config: ActorSystemConfig,
     configure: F,

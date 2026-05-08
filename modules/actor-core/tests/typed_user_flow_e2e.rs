@@ -146,7 +146,7 @@ fn typed_user_flow_observes_spawn_adapter_ask_pipe_stop_and_signal() {
     move || Root::new(adapted_log.clone(), pipe_log.clone(), ask_log.clone(), terminated_log.clone())
   });
   let system =
-    TypedActorSystem::<RootMsg>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<RootMsg>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("typed system");
   let mut guardian = system.user_guardian_ref();
 

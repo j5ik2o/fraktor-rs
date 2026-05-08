@@ -112,7 +112,7 @@ fn classic_user_flow_observes_spawn_tell_ask_watch_stop_and_dead_letter() {
     move || Guardian::new(tell_log.clone(), child_slot.clone(), ask_future.clone(), terminated_log.clone())
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 

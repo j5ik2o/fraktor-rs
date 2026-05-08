@@ -13,7 +13,7 @@ use fraktor_actor_core_rs::core::{
 
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let system = TypedActorSystem::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+  let system = TypedActorSystem::create_from_props(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
     .expect("system");
   let termination = system.when_terminated();
   let key = ServiceKey::<u32>::new("typed-discovery-example");

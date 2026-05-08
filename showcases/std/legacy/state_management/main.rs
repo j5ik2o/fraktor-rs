@@ -109,7 +109,7 @@ fn run_counter() {
 
   let props = TypedProps::from_behavior_factory(|| counter(0));
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut counter_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
@@ -142,7 +142,7 @@ fn run_gate() {
 
   let props = TypedProps::from_behavior_factory(|| locked(0));
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let _log_subscription = subscribe_typed_tracing_logger(&system);
   let mut gate = system.user_guardian_ref();
   let termination = system.when_terminated();

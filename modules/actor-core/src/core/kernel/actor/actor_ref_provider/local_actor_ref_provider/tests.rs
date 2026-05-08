@@ -40,7 +40,7 @@ impl ActorRefSender for TempProbeSender {
 fn local_actor_ref_provider_exposes_guardians_dead_letters_and_temp_path() {
   let props = Props::from_fn(|| ProbeActor);
   let config = ActorSystemConfig::new(TestTickDriver::default());
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
 
   assert!(provider.root_guardian().is_some());
@@ -88,7 +88,7 @@ fn local_actor_ref_provider_unbound_dead_letters_debug_asserts() {
 fn local_actor_ref_provider_exposes_root_path_and_resolves_actor_ref_str() {
   let props = Props::from_fn(|| ProbeActor).with_name("user-root");
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-compat");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
 
@@ -103,7 +103,7 @@ fn local_actor_ref_provider_exposes_root_path_and_resolves_actor_ref_str() {
 fn local_actor_ref_provider_resolves_guardians_and_reports_missing_local_path() {
   let props = Props::from_fn(|| ProbeActor).with_name("user-root");
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-guards");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let mut provider = LocalActorRefProvider::new_with_state(&system.state());
 
   let user_path = ActorPathParser::parse("fraktor://provider-guards/user").expect("user path");
@@ -126,7 +126,7 @@ fn local_actor_ref_provider_resolves_guardians_and_reports_missing_local_path() 
 fn local_actor_ref_provider_temp_helpers_handle_empty_prefix_and_invalid_path() {
   let props = Props::from_fn(|| ProbeActor);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-temp");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
 
   // 空 prefix は LocalActorRefProvider 側で "tmp" prefix にフォールバックする契約。
@@ -142,7 +142,7 @@ fn local_actor_ref_provider_temp_helpers_handle_empty_prefix_and_invalid_path() 
 fn local_actor_ref_provider_external_address_rejects_unrelated_local_system() {
   let props = Props::from_fn(|| ProbeActor);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-address");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
 
   assert!(provider.root_guardian_at(&Address::local("other-system")).is_none());
@@ -153,7 +153,7 @@ fn local_actor_ref_provider_external_address_rejects_unrelated_local_system() {
 fn local_actor_ref_provider_supports_temp_actor_round_trip() {
   let props = Props::from_fn(|| ProbeActor);
   let config = ActorSystemConfig::new(TestTickDriver::default());
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
   let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(4242, 0), TempProbeSender);
 
@@ -174,7 +174,7 @@ fn local_actor_ref_provider_supports_temp_actor_round_trip() {
 fn local_actor_ref_provider_exposes_classic_contract_helpers() {
   let props = Props::from_fn(|| ProbeActor);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-helpers");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
 
   let root_at = provider.root_guardian_at(&Address::local("provider-helpers")).expect("root guardian at local");
@@ -233,7 +233,7 @@ fn local_actor_ref_provider_does_not_keep_system_state_alive_after_registration(
 fn actor_ref_provider_shared_resolves_actor_refs_via_shared_borrow() {
   let props = Props::from_fn(|| ProbeActor).with_name("user-root");
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-shared");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
 
@@ -248,7 +248,7 @@ fn actor_ref_provider_shared_resolves_actor_refs_via_shared_borrow() {
 fn actor_ref_provider_shared_delegates_shared_access() {
   let props = Props::from_fn(|| ProbeActor).with_name("user-root");
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-shared-full");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
   let shared = ActorRefProviderHandleShared::new(LocalActorRefProvider::new_with_state(&system.state()));
@@ -265,7 +265,7 @@ fn actor_ref_provider_shared_delegates_shared_access() {
 fn local_actor_ref_provider_accessors_and_resolve_cover_public_contract() {
   let props = Props::from_fn(|| ProbeActor).with_name("user-root");
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-accessors");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
   let child_path = ActorPathParser::parse(&canonical).expect("canonical child path");
@@ -281,7 +281,7 @@ fn local_actor_ref_provider_accessors_and_resolve_cover_public_contract() {
 fn local_actor_ref_provider_temp_actor_path_round_trip() {
   let props = Props::from_fn(|| ProbeActor);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-temp-path");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
   let prefixed = provider.temp_path_with_prefix("reply").expect("prefixed temp path");
   assert!(prefixed.to_relative_string().starts_with("/user/temp/reply-"));
@@ -300,7 +300,7 @@ fn local_actor_ref_provider_temp_actor_path_round_trip() {
 fn local_actor_ref_provider_temp_actor_name_round_trip() {
   let props = Props::from_fn(|| ProbeActor);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("provider-temp-name");
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
   let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(6363, 0), TempProbeSender);
   let name = provider.register_temp_actor(temp_ref).expect("temp actor");

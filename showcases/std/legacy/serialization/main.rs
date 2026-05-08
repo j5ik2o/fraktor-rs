@@ -257,7 +257,7 @@ fn main() {
 
   let props = Props::from_fn(|| NullActor).with_name("serialization-demo");
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("actor system");
 
   let serialization: SerializationExtensionShared =
     (*system.extended().extension(&serialization_id).expect("extension registered")).clone();

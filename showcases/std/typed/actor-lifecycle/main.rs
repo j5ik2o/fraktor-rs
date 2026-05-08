@@ -62,7 +62,7 @@ fn main() {
     move || parent(events.clone())
   });
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut guardian = system.user_guardian_ref();
 

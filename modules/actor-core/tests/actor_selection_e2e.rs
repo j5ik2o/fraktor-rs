@@ -90,7 +90,7 @@ fn actor_selection_resolves_string_and_direct_path_targets() {
   let deliveries = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let worker_slot = ArcShared::new(SpinSyncMutex::new(None));
   let path_slot = ArcShared::new(SpinSyncMutex::new(None));
-  let system = ActorSystem::create_with_config(
+  let system = ActorSystem::create_from_props(
     &Props::from_fn(|| NoopGuardian),
     ActorSystemConfig::new(TestTickDriver::default())
       .with_system_name("selection-e2e")

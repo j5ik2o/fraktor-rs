@@ -63,7 +63,7 @@ fn actor_ref_resolver_setup_overrides_default_extension_factory() {
   let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_extension_installers(ExtensionInstallers::default().with_extension_installer(setup));
 
-  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
+  let system = TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system");
   assert!(ActorRefResolver::get(&system).is_some());
   assert!(*invoked.lock(), "custom resolver factory should be invoked");
   system.terminate().expect("terminate");
