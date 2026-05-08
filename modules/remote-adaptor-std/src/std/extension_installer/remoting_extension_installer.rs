@@ -272,6 +272,9 @@ async fn run_remote_with_delivery(
   system: &ActorSystem,
 ) -> Result<(), RemotingError> {
   loop {
+    if remote.should_stop_event_loop() {
+      return Ok(());
+    }
     let event = match poll_fn(|cx| receiver.poll_recv(cx)).await {
       | Some(event) => event,
       | None => return Err(RemotingError::EventReceiverClosed),

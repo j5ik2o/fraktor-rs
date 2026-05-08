@@ -12,7 +12,7 @@ use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::TcpStream,
   runtime::Handle,
-  sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
+  sync::mpsc::{self, Receiver, Sender, UnboundedSender, error::TrySendError},
   task::JoinHandle,
 };
 use tokio_util::codec::Framed;
@@ -23,6 +23,8 @@ use super::{
 };
 use crate::std::association::authority_for_frame;
 
+const WRITER_QUEUE_CAPACITY: usize = 1024;
+
 /// Single outbound TCP connection towards a remote authority.
 ///
 /// Owns a writer channel used by the synchronous
@@ -32,7 +34,7 @@ use crate::std::association::authority_for_frame;
 /// the shared inbound channel owned by the transport.
 pub struct TcpClient {
   peer_addr: String,
-  writer_tx: UnboundedSender<WireFrame>,
+  writer_tx: Sender<WireFrame>,
   task:      Option<JoinHandle<()>>,
 }
 
@@ -93,7 +95,7 @@ impl TcpClient {
     options: TcpClientConnectOptions,
   ) -> Result<Self, TransportError> {
     let handle = Handle::try_current().map_err(|_| TransportError::NotAvailable)?;
-    let (writer_tx, writer_rx) = mpsc::unbounded_channel::<WireFrame>();
+    let (writer_tx, writer_rx) = mpsc::channel::<WireFrame>(WRITER_QUEUE_CAPACITY);
     let peer_for_task = peer_addr.clone();
     let task = handle.spawn(connect_and_run(peer_for_task, writer_rx, inbound_tx, options));
     Ok(Self { peer_addr, writer_tx, task: Some(task) })
@@ -103,10 +105,13 @@ impl TcpClient {
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::ConnectionClosed`] if the writer task has
-  /// already exited.
+  /// Returns [`TransportError::SendFailed`] if the bounded writer queue is full,
+  /// or [`TransportError::ConnectionClosed`] if the writer task has exited.
   pub fn send(&self, frame: WireFrame) -> Result<(), TransportError> {
-    self.writer_tx.send(frame).map_err(|_| TransportError::ConnectionClosed)
+    self.writer_tx.try_send(frame).map_err(|error| match error {
+      | TrySendError::Full(_) => TransportError::SendFailed,
+      | TrySendError::Closed(_) => TransportError::ConnectionClosed,
+    })
   }
 
   pub(crate) fn is_alive(&self) -> bool {
@@ -123,7 +128,7 @@ impl TcpClient {
 
 async fn connect_and_run(
   peer_addr: String,
-  writer_rx: UnboundedReceiver<WireFrame>,
+  writer_rx: Receiver<WireFrame>,
   inbound_tx: UnboundedSender<InboundFrameEvent>,
   options: TcpClientConnectOptions,
 ) {
@@ -142,7 +147,7 @@ async fn connect_and_run(
 async fn run(
   stream: TcpStream,
   peer_addr: String,
-  mut writer_rx: UnboundedReceiver<WireFrame>,
+  mut writer_rx: Receiver<WireFrame>,
   inbound_tx: UnboundedSender<InboundFrameEvent>,
   frame_codec: WireFrameCodec,
   connection_loss_reporter: Option<ConnectionLossReporter>,
