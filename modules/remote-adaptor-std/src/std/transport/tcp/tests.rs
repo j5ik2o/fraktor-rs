@@ -20,7 +20,9 @@ use fraktor_remote_core_rs::core::{
 use tokio_util::codec::{Decoder, Encoder};
 
 use super::base::outbound_envelope_to_pdu;
-use crate::std::transport::tcp::{WireFrame, frame_codec::WireFrameCodec};
+use crate::std::transport::tcp::{
+  WireFrame, client::TcpClient, frame_codec::WireFrameCodec, frame_codec_error::FrameCodecError,
+};
 
 const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
@@ -215,7 +217,7 @@ fn wire_frame_codec_rejects_oversized_frame_length() {
   append_declared_frame_header(&mut buf, DEFAULT_MAXIMUM_FRAME_SIZE + 1);
 
   let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
-  assert!(matches!(err, crate::std::transport::tcp::FrameCodecError::Wire(WireError::FrameTooLarge)));
+  assert!(matches!(err, FrameCodecError::Wire(WireError::FrameTooLarge)));
   assert_eq!(buf.len(), 6, "oversized header must not partially consume the buffer");
 }
 
@@ -226,7 +228,7 @@ fn wire_frame_codec_rejects_frame_above_configured_maximum_frame_size() {
   append_declared_frame_header(&mut buf, 64 * 1024 + 1);
 
   let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
-  assert!(matches!(err, crate::std::transport::tcp::FrameCodecError::Wire(WireError::FrameTooLarge)));
+  assert!(matches!(err, FrameCodecError::Wire(WireError::FrameTooLarge)));
   assert_eq!(buf.len(), 6, "oversized header must not partially consume the buffer");
 }
 
@@ -242,7 +244,7 @@ fn wire_frame_codec_rejects_outbound_frame_above_configured_maximum_frame_size()
   let err = codec.encode(frame, &mut buf).expect_err("oversized outbound frame must be rejected");
 
   // Then: FrameTooLarge を返し、既存の送信バッファを変更しない
-  assert!(matches!(err, crate::std::transport::tcp::FrameCodecError::Wire(WireError::FrameTooLarge)));
+  assert!(matches!(err, FrameCodecError::Wire(WireError::FrameTooLarge)));
   assert_eq!(buf, original, "failed outbound encode must not mutate the destination buffer");
 }
 
@@ -271,7 +273,7 @@ fn wire_frame_codec_rejects_declared_frame_length_smaller_than_header() {
   append_declared_frame_header(&mut buf, 1);
 
   let err = codec.decode(&mut buf).expect_err("too-small frame length must be rejected");
-  assert!(matches!(err, crate::std::transport::tcp::FrameCodecError::Wire(WireError::InvalidFormat)));
+  assert!(matches!(err, FrameCodecError::Wire(WireError::InvalidFormat)));
   assert_eq!(buf.len(), 6, "invalid header must not partially consume the buffer");
 }
 
@@ -279,7 +281,7 @@ fn wire_frame_codec_rejects_declared_frame_length_smaller_than_header() {
 async fn remote_transport_start_binds_listener_and_receives_frame() {
   use tokio::sync::mpsc;
 
-  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+  use crate::std::transport::tcp::TcpRemoteTransport;
 
   // Given: port 0 で listen する transport
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
@@ -412,7 +414,7 @@ async fn remote_transport_client_connection_close_emits_connection_lost() {
 async fn remote_transport_server_connection_close_emits_connection_lost_after_authority_is_known() {
   use tokio::sync::mpsc;
 
-  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+  use crate::std::transport::tcp::TcpRemoteTransport;
 
   let (event_tx, mut event_rx) = mpsc::channel(4);
   let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
@@ -482,7 +484,7 @@ async fn remote_transport_shutdown_does_not_emit_connection_lost() {
 async fn remote_transport_restart_respawns_inbound_worker() {
   use tokio::sync::mpsc;
 
-  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+  use crate::std::transport::tcp::TcpRemoteTransport;
 
   let (event_tx, mut event_rx) = mpsc::channel(4);
   let listen_address = Address::new("local-sys", "127.0.0.1", 0);
@@ -558,7 +560,7 @@ async fn remote_transport_handshake_timeout_uses_configured_monotonic_epoch() {
 async fn remote_transport_from_config_uses_bind_override_and_advertises_canonical_address() {
   use tokio::sync::mpsc;
 
-  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+  use crate::std::transport::tcp::TcpRemoteTransport;
 
   // Given: canonical host と bind host を分けた構成
   let config =
@@ -596,7 +598,7 @@ async fn remote_transport_from_config_uses_bind_override_and_advertises_canonica
 async fn remote_transport_from_config_falls_back_to_canonical_bind_address() {
   use tokio::sync::mpsc;
 
-  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+  use crate::std::transport::tcp::TcpRemoteTransport;
 
   // Given: bind override を持たない canonical 構成
   let config = RemoteConfig::new("127.0.0.1").with_canonical_port(0);
@@ -633,7 +635,7 @@ async fn remote_transport_from_config_falls_back_to_canonical_bind_address() {
 async fn remote_transport_from_config_applies_maximum_frame_size_to_inbound_decoder() {
   use tokio::sync::mpsc;
 
-  use crate::std::transport::tcp::{TcpClient, TcpRemoteTransport};
+  use crate::std::transport::tcp::TcpRemoteTransport;
 
   // Given: inbound decoder の最大 frame size を最小値にした構成
   let config =

@@ -20,7 +20,3 @@ mod tests;
 mod base;
 mod heartbeat_loop;
 mod watcher_actor_handle;
-
-pub use base::WatcherActor;
-pub use heartbeat_loop::run_heartbeat_loop;
-pub use watcher_actor_handle::{SubmitError, WatcherActorHandle};

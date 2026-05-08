@@ -34,12 +34,6 @@ impl RemoteActorRefSender {
     Self { remote_ref, event_tx, monotonic_epoch }
   }
 
-  /// Returns the wrapped [`RemoteActorRef`].
-  #[must_use]
-  pub const fn remote_ref(&self) -> &RemoteActorRef {
-    &self.remote_ref
-  }
-
   fn remote_authority(&self) -> Option<String> {
     let remote_node = self.remote_ref.remote_node();
     let port = remote_node.port()?;

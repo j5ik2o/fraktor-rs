@@ -87,6 +87,7 @@ impl TcpClient {
   ///
   /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
   /// established.
+  #[allow(dead_code)]
   pub async fn connect(
     peer_addr: String,
     inbound_tx: UnboundedSender<InboundFrameEvent>,
@@ -100,6 +101,7 @@ impl TcpClient {
   ///
   /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
   /// established.
+  #[allow(dead_code)]
   pub(crate) async fn connect_async(
     peer_addr: String,
     inbound_tx: UnboundedSender<InboundFrameEvent>,
@@ -148,6 +150,7 @@ impl TcpClient {
 
   /// Returns the peer address this client is connected to.
   #[must_use]
+  #[allow(dead_code)]
   pub fn peer_addr(&self) -> &str {
     &self.peer_addr
   }

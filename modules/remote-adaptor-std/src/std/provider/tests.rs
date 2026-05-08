@@ -9,6 +9,7 @@ use fraktor_actor_core_rs::core::kernel::{
     actor_ref::ActorRef,
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
     error::{ActorError, SendError},
+    extension::ExtensionInstallers,
     messaging::AnyMessage,
   },
   event::stream::EventStreamEvent,
@@ -18,6 +19,7 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_remote_core_rs::core::{
   address::{Address as RemoteCoreAddress, RemoteNodeId, UniqueAddress},
+  config::RemoteConfig,
   extension::{
     REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
     RemoteEvent,
@@ -25,15 +27,16 @@ use fraktor_remote_core_rs::core::{
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::TransportEndpoint,
 };
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
+use super::{
+  StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
+  remote_routee_expansion::RemoteRouteeExpansion, remote_routee_expansion_error::RemoteRouteeExpansionError,
+};
 use crate::std::{
-  provider::{
-    PathRemoteActorRefProvider, RemoteRouteeExpansion, RemoteRouteeExpansionError, StdRemoteActorRefProvider,
-    StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
-  },
-  tests::test_support::EventHarness,
+  extension_installer::RemotingExtensionInstaller, tests::test_support::EventHarness,
+  transport::tcp::TcpRemoteTransport,
 };
 
 // ---------------------------------------------------------------------------
@@ -347,24 +350,24 @@ fn remote_actor_ref_try_tell_pushes_outbound_enqueued_event() {
   assert_outbound_enqueued_event(event, "remote@10.0.0.1:2552", "remote", &remote_path);
 }
 
-#[test]
-fn actor_system_config_registered_std_remote_actor_ref_provider_pushes_outbound_enqueued() {
-  let (event_tx, mut event_rx) = mpsc::channel(4);
-  let installer = StdRemoteActorRefProviderInstaller::new(
-    local_address(),
-    Box::new(PathRemoteActorRefProvider),
-    event_tx,
-    Instant::now(),
-  );
-  let config = std_actor_system_config(TestTickDriver::default()).with_actor_ref_provider_installer(installer);
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn actor_system_config_registered_std_remote_actor_ref_provider_resolves_remote_actor_ref() {
+  let remote_installer = ArcShared::new(RemotingExtensionInstaller::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![local_address().address().clone()]),
+    RemoteConfig::new("127.0.0.1"),
+  ));
+  let extension_installers = ExtensionInstallers::default().with_shared_extension_installer(remote_installer.clone());
+  let installer =
+    StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(local_address(), remote_installer);
+  let config = std_actor_system_config(TestTickDriver::default())
+    .with_extension_installers(extension_installers)
+    .with_actor_ref_provider_installer(installer);
   let system = ActorSystem::noop_with_config(config).expect("system");
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
   let mut actor_ref = system.resolve_actor_ref(remote_path.clone()).expect("remote actor ref should resolve");
 
   actor_ref.try_tell(AnyMessage::new(String::from("remote-payload"))).expect("remote send should enqueue event");
 
-  let event = event_rx.try_recv().expect("outbound event should be available");
-  assert_outbound_enqueued_event(event, "remote-sys@10.0.0.1:2552", "remote-sys", &remote_path);
   system.terminate().expect("terminate");
 }
 

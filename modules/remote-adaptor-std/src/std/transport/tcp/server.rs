@@ -50,6 +50,7 @@ impl Debug for TcpServer {
 impl TcpServer {
   /// Creates a new [`TcpServer`] that will bind to `bind_addr` on `start`.
   #[must_use]
+  #[allow(dead_code)]
   pub fn new(bind_addr: String) -> Self {
     Self {
       bind_addr,
@@ -67,6 +68,7 @@ impl TcpServer {
 
   /// Returns `true` when the server is currently running.
   #[must_use]
+  #[allow(dead_code)]
   pub const fn is_running(&self) -> bool {
     self.accept_task.is_some()
   }
@@ -79,6 +81,7 @@ impl TcpServer {
   ///
   /// Returns [`TransportError::NotAvailable`] if no Tokio runtime is available,
   /// or [`TransportError::SendFailed`] if the listener cannot be bound.
+  #[allow(dead_code)]
   pub fn start(&mut self, inbound_tx: UnboundedSender<InboundFrameEvent>) -> Result<SocketAddr, TransportError> {
     self.start_with_remote_events(inbound_tx, None, Instant::now())
   }

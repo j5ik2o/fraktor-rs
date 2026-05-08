@@ -39,17 +39,14 @@ use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 
 /// TCP-backed implementation of [`RemoteTransport`].
 ///
-/// This struct aggregates a [`TcpServer`] (inbound) and a [`BTreeMap`] of
-/// [`TcpClient`]s (outbound, one per remote authority). Inbound frames land
-/// in an `mpsc::UnboundedReceiver` that callers (typically the
-/// `association` module added in Section 19) poll to feed the pure
-/// `Association` state machines.
+/// This struct aggregates the adapter-owned TCP listener and outbound
+/// connections. Inbound frames are driven by crate-internal workers and fed
+/// into `remote-core` through its event port.
 ///
 /// Note: the trait [`RemoteTransport::send`] is **synchronous**; because
-/// establishing a brand-new outbound TCP connection is asynchronous, callers
-/// must call [`TcpRemoteTransport::connect_peer_async`] from an async context
-/// *before* calling `send` for a given peer. This mirrors Pekko Artery's
-/// explicit association lifecycle. User envelope delivery is intentionally
+/// establishing a brand-new outbound TCP connection may involve I/O, the
+/// adapter connects peers through the core transport port when an association
+/// starts. User envelope delivery is intentionally
 /// limited to the adapter-owned byte payload contract; arbitrary `AnyMessage`
 /// payloads fail visibly instead of being silently encoded as empty bytes.
 pub struct TcpRemoteTransport {
@@ -140,22 +137,16 @@ impl TcpRemoteTransport {
 
   /// Returns a copy that emits scheduled remote events through `sender`.
   #[must_use]
-  pub fn with_remote_event_sender(mut self, sender: Sender<RemoteEvent>) -> Self {
+  pub(crate) fn with_remote_event_sender(mut self, sender: Sender<RemoteEvent>) -> Self {
     self.remote_event_tx = Some(sender);
     self
   }
 
   /// Returns a copy that uses the given monotonic epoch for all emitted remote event timestamps.
   #[must_use]
-  pub fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
+  pub(crate) fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
     self.monotonic_epoch = monotonic_epoch;
     self
-  }
-
-  /// Returns the monotonic epoch used to calculate remote event timestamps.
-  #[must_use]
-  pub fn monotonic_epoch(&self) -> Instant {
-    self.monotonic_epoch
   }
 
   /// Takes ownership of the inbound receiver.
@@ -164,7 +155,8 @@ impl TcpRemoteTransport {
   /// take the receiver to start processing inbound frames. Subsequent calls
   /// return `None`.
   #[must_use]
-  pub fn take_inbound_receiver(&mut self) -> Option<UnboundedReceiver<InboundFrameEvent>> {
+  #[allow(dead_code)]
+  pub(crate) fn take_inbound_receiver(&mut self) -> Option<UnboundedReceiver<InboundFrameEvent>> {
     self.inbound_rx.take()
   }
 
@@ -203,7 +195,8 @@ impl TcpRemoteTransport {
   /// Returns [`TransportError::NotStarted`] if the transport has not yet been
   /// started, or [`TransportError::SendFailed`] if the outbound connection
   /// cannot be established.
-  pub async fn connect_peer_async(&mut self, remote: &Address) -> Result<(), TransportError> {
+  #[allow(dead_code)]
+  pub(crate) async fn connect_peer_async(&mut self, remote: &Address) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
@@ -236,7 +229,7 @@ impl TcpRemoteTransport {
   /// Returns [`TransportError::NotStarted`] if the transport has not yet been
   /// started, or [`TransportError::SendFailed`] if the outbound connection
   /// cannot be established.
-  pub fn connect_peer_blocking(&mut self, remote: &Address) -> Result<(), TransportError> {
+  pub(crate) fn connect_peer_blocking(&mut self, remote: &Address) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
@@ -264,12 +257,6 @@ impl TcpRemoteTransport {
     }
   }
 
-  /// Returns an immutable reference to the client registry.
-  #[must_use]
-  pub fn clients(&self) -> &BTreeMap<String, TcpClient> {
-    &self.clients
-  }
-
   fn apply_bound_port_to_advertised_addresses(&mut self, bound_port: u16) {
     self.local_addresses = self
       .configured_local_addresses
@@ -291,7 +278,7 @@ impl TcpRemoteTransport {
   ///
   /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
   /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
-  pub fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
+  pub(crate) fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
     self.send_wire_frame(remote, WireFrame::Handshake(pdu))
   }
 
@@ -301,7 +288,7 @@ impl TcpRemoteTransport {
   ///
   /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
   /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
-  pub fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+  pub(crate) fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     self.send_wire_frame(remote, WireFrame::Control(pdu))
   }
 

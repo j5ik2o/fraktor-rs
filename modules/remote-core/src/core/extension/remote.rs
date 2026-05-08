@@ -320,6 +320,7 @@ impl Remote {
       return Ok(());
     };
     self.apply_association_effects(association_index, effects, now_ms)?;
+    self.transport.connect_peer(&remote).map_err(|_| RemotingError::TransportUnavailable)?;
     self.transport.send_handshake(&remote, response).map_err(|_| RemotingError::TransportUnavailable)?;
     self.drain_outbound(association_index, now_ms)
   }
@@ -546,6 +547,7 @@ impl Remote {
               HandshakePdu::Req(HandshakeReq::new(association.local().clone(), association.remote().clone())),
             )
           };
+          self.transport.connect_peer(&remote).map_err(|_| RemotingError::TransportUnavailable)?;
           self.transport.send_handshake(&remote, request).map_err(|_| RemotingError::TransportUnavailable)?;
           self
             .transport

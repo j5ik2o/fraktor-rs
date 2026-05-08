@@ -282,6 +282,10 @@ impl RemoteTransport for RecordingTransport {
     }
   }
 
+  fn connect_peer(&mut self, _remote: &Address) -> Result<(), TransportError> {
+    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+  }
+
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     self.control_calls.fetch_add(1, Ordering::Relaxed);
     if !self.running {
