@@ -38,7 +38,6 @@ pub struct RemotingExtensionInstaller {
   remote_shared:   OnceLock<RemoteShared>,
   event_sender:    OnceLock<Sender<RemoteEvent>>,
   monotonic_epoch: OnceLock<Instant>,
-  system:          OnceLock<ActorSystem>,
   run_state:       Arc<Mutex<RemotingRunState>>,
 }
 
@@ -76,7 +75,6 @@ impl RemotingExtensionInstaller {
       remote_shared: OnceLock::new(),
       event_sender: OnceLock::new(),
       monotonic_epoch: OnceLock::new(),
-      system: OnceLock::new(),
       run_state: Arc::new(Mutex::new(RemotingRunState::new())),
     }
   }
@@ -138,10 +136,6 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     self
       .monotonic_epoch
       .set(monotonic_epoch)
-      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-    self
-      .system
-      .set(system.clone())
       .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
     // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
     self.remote_shared.set(remote).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
