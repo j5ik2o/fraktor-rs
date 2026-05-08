@@ -105,11 +105,11 @@ impl TcpClient {
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::SendFailed`] if the bounded writer queue is full,
+  /// Returns [`TransportError::Backpressure`] if the bounded writer queue is full,
   /// or [`TransportError::ConnectionClosed`] if the writer task has exited.
   pub fn send(&self, frame: WireFrame) -> Result<(), TransportError> {
     self.writer_tx.try_send(frame).map_err(|error| match error {
-      | TrySendError::Full(_) => TransportError::SendFailed,
+      | TrySendError::Full(_) => TransportError::Backpressure,
       | TrySendError::Closed(_) => TransportError::ConnectionClosed,
     })
   }

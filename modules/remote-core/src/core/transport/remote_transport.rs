@@ -77,9 +77,10 @@ pub trait RemoteTransport {
   /// # Errors
   ///
   /// Returns [`TransportError::SendFailed`] if the transport could not hand
-  /// the envelope to the peer, [`TransportError::ConnectionClosed`] if the
-  /// underlying channel has been closed, or [`TransportError::NotStarted`]
-  /// if called before `start`.
+  /// the envelope to the peer, [`TransportError::Backpressure`] if the
+  /// transport's synchronous handoff queue is full,
+  /// [`TransportError::ConnectionClosed`] if the underlying channel has been
+  /// closed, or [`TransportError::NotStarted`] if called before `start`.
   fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)>;
 
   /// Sends a wire-level control PDU to `remote`.
@@ -87,8 +88,9 @@ pub trait RemoteTransport {
   /// # Errors
   ///
   /// Returns [`TransportError::NotStarted`] if the transport is not running,
-  /// [`TransportError::ConnectionClosed`] if no connection to `remote` exists,
-  /// or another transport-specific error when delivery fails.
+  /// [`TransportError::Backpressure`] if the transport's synchronous handoff
+  /// queue is full, [`TransportError::ConnectionClosed`] if no connection to
+  /// `remote` exists, or another transport-specific error when delivery fails.
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError>;
 
   /// Sends a wire-level handshake PDU to `remote`.
@@ -99,8 +101,9 @@ pub trait RemoteTransport {
   /// # Errors
   ///
   /// Returns [`TransportError::NotStarted`] if the transport is not running,
-  /// [`TransportError::ConnectionClosed`] if no connection to `remote` exists,
-  /// or another transport-specific error when delivery fails.
+  /// [`TransportError::Backpressure`] if the transport's synchronous handoff
+  /// queue is full, [`TransportError::ConnectionClosed`] if no connection to
+  /// `remote` exists, or another transport-specific error when delivery fails.
   fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError>;
 
   /// Schedules a generation-scoped handshake timeout for `authority`.

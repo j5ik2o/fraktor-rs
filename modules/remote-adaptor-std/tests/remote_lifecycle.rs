@@ -69,4 +69,5 @@ async fn remote_lifecycle_via_extension_installer() {
     .expect("remote listener should be reachable");
 
   system.terminate().expect("terminate actor system");
+  timeout(Duration::from_secs(5), system.when_terminated()).await.expect("system should terminate within timeout");
 }

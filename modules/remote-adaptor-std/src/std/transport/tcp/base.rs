@@ -216,8 +216,9 @@ impl TcpRemoteTransport {
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
-  /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
+  /// Returns [`TransportError::NotStarted`] when the transport has not been started,
+  /// [`TransportError::Backpressure`] when the TCP client writer queue is full,
+  /// or [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
   pub(crate) fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
     self.send_wire_frame(remote, WireFrame::Handshake(pdu))
   }
@@ -226,8 +227,9 @@ impl TcpRemoteTransport {
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
-  /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
+  /// Returns [`TransportError::NotStarted`] when the transport has not been started,
+  /// [`TransportError::Backpressure`] when the TCP client writer queue is full,
+  /// or [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
   pub(crate) fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     self.send_wire_frame(remote, WireFrame::Control(pdu))
   }

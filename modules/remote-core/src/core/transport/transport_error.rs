@@ -16,6 +16,8 @@ pub enum TransportError {
   NotStarted,
   /// The transport failed to hand a message to the peer.
   SendFailed,
+  /// The transport accepted no more frames without waiting.
+  Backpressure,
   /// A previously established connection has been closed.
   ConnectionClosed,
 }
@@ -28,6 +30,7 @@ impl Display for TransportError {
       | TransportError::AlreadyRunning => f.write_str("transport: already running"),
       | TransportError::NotStarted => f.write_str("transport: not started"),
       | TransportError::SendFailed => f.write_str("transport: send failed"),
+      | TransportError::Backpressure => f.write_str("transport: backpressure"),
       | TransportError::ConnectionClosed => f.write_str("transport: connection closed"),
     }
   }
