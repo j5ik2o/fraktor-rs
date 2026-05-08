@@ -23,13 +23,9 @@ const PROVIDER_LOCK_POISONED: &str = "std remote actor-ref provider installer lo
 
 /// Installs [`StdRemoteActorRefProvider`] through `ActorSystemConfig`.
 pub struct StdRemoteActorRefProviderInstaller {
-  local_address:   UniqueAddress,
-  remote_provider: Mutex<Option<Box<dyn RemoteActorRefProvider + Send + Sync>>>,
-  event_source:    RemoteEventSource,
-}
-
-enum RemoteEventSource {
-  RemotingInstaller(ArcShared<RemotingExtensionInstaller>),
+  local_address:      UniqueAddress,
+  remote_provider:    Mutex<Option<Box<dyn RemoteActorRefProvider + Send + Sync>>>,
+  remoting_installer: ArcShared<RemotingExtensionInstaller>,
 }
 
 impl StdRemoteActorRefProviderInstaller {
@@ -39,19 +35,14 @@ impl StdRemoteActorRefProviderInstaller {
     local_address: UniqueAddress,
     remoting_installer: ArcShared<RemotingExtensionInstaller>,
   ) -> Self {
-    Self {
-      local_address,
-      remote_provider: Mutex::new(Some(Box::new(PathRemoteActorRefProvider))),
-      event_source: RemoteEventSource::RemotingInstaller(remoting_installer),
-    }
+    Self { local_address, remote_provider: Mutex::new(Some(Box::new(PathRemoteActorRefProvider))), remoting_installer }
   }
 
   fn event_sender_and_epoch(&self) -> Result<(Sender<RemoteEvent>, Instant), ActorSystemBuildError> {
-    match &self.event_source {
-      | RemoteEventSource::RemotingInstaller(installer) => installer
-        .remote_event_sender_and_epoch()
-        .map_err(|error| ActorSystemBuildError::Configuration(error.to_string())),
-    }
+    self
+      .remoting_installer
+      .remote_event_sender_and_epoch()
+      .map_err(|error| ActorSystemBuildError::Configuration(error.to_string()))
   }
 }
 

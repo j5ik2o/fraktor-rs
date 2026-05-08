@@ -43,12 +43,12 @@ use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 /// connections. Inbound frames are driven by crate-internal workers and fed
 /// into `remote-core` through its event port.
 ///
-/// Note: the trait [`RemoteTransport::send`] is **synchronous**; because
-/// establishing a brand-new outbound TCP connection may involve I/O, the
-/// adapter connects peers through the core transport port when an association
-/// starts. User envelope delivery is intentionally
-/// limited to the adapter-owned byte payload contract; arbitrary `AnyMessage`
-/// payloads fail visibly instead of being silently encoded as empty bytes.
+/// Note: the trait [`RemoteTransport::send`] is **synchronous**. Peer
+/// connection setup registers a writer immediately and drives the actual TCP
+/// connect on a Tokio task, so the core event loop never performs blocking
+/// socket I/O. User envelope delivery is intentionally limited to the
+/// adapter-owned byte payload contract; arbitrary `AnyMessage` payloads fail
+/// visibly instead of being silently encoded as empty bytes.
 pub struct TcpRemoteTransport {
   configured_local_addresses: Vec<Address>,
   local_addresses:            Vec<Address>,
@@ -166,25 +166,7 @@ impl TcpRemoteTransport {
     Ok(())
   }
 
-  /// Establishes an outbound connection without requiring an async caller.
-  ///
-  /// `connect_peer_blocking` performs a synchronous TCP connect via
-  /// [`TcpClient::connect_blocking`], which calls `std::net::TcpStream::connect`
-  /// under the hood. It is intended for synchronous contexts such as
-  /// actor-system integration tests and small applications before they hand
-  /// envelopes to the synchronous `RemoteTransport::send` path.
-  ///
-  /// Do not call this from a Tokio worker thread directly: it can block the
-  /// executor for the duration of DNS / TCP connect. Tokio callers must wrap
-  /// it in `tokio::task::spawn_blocking` or use another dedicated synchronous
-  /// context.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::NotStarted`] if the transport has not yet been
-  /// started, or [`TransportError::SendFailed`] if the outbound connection
-  /// cannot be established.
-  pub(crate) fn connect_peer_blocking(&mut self, remote: &Address) -> Result<(), TransportError> {
+  fn connect_peer_writer(&mut self, remote: &Address) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
@@ -193,8 +175,7 @@ impl TcpRemoteTransport {
       return Ok(());
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client =
-      TcpClient::connect_blocking(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote))?;
+    let client = TcpClient::connect(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote))?;
     self.clients.insert(peer_key, client);
     Ok(())
   }
@@ -326,7 +307,7 @@ impl RemoteTransport for TcpRemoteTransport {
   }
 
   fn connect_peer(&mut self, remote: &Address) -> Result<(), TransportError> {
-    self.connect_peer_blocking(remote)
+    self.connect_peer_writer(remote)
   }
 
   fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {

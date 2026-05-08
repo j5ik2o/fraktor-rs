@@ -52,6 +52,11 @@ pub trait RemoteTransport {
   /// synchronous; callers that use connection-oriented transports must
   /// establish peers before expecting envelope sends to succeed.
   ///
+  /// Implementations must not perform long blocking socket I/O in this method:
+  /// `Remote::run` may call it from a runtime task while applying association
+  /// effects. Connection-oriented adapters should register a writer and drive
+  /// the physical connect in their own runtime task.
+  ///
   /// # Errors
   ///
   /// Returns [`TransportError::NotStarted`] if the transport is not running,

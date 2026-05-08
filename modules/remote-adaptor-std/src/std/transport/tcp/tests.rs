@@ -101,8 +101,8 @@ fn assert_inbound_frame_event(event: RemoteEvent, expected_frame: WireFrame) {
 }
 
 fn connect_test_client(peer_addr: String, inbound_tx: UnboundedSender<InboundFrameEvent>) -> TcpClient {
-  TcpClient::connect_blocking(peer_addr, inbound_tx, TcpClientConnectOptions::new(WireFrameCodec::new()))
-    .expect("client should connect")
+  TcpClient::connect(peer_addr, inbound_tx, TcpClientConnectOptions::new(WireFrameCodec::new()))
+    .expect("client should schedule connection")
 }
 
 fn make_test_server() -> TcpServer {
@@ -753,41 +753,6 @@ async fn remote_transport_send_writes_envelope_frame_to_connected_peer() {
 
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
   transport.connect_peer(&remote).expect("transport should connect to peer before sending envelope");
-  let envelope = test_envelope(
-    bind_addr.port(),
-    AnyMessage::new(Bytes::from_static(b"payload")),
-    CorrelationId::new(0x1234, 0x5678),
-    None,
-  );
-  let expected = outbound_envelope_to_pdu(&envelope).expect("test payload should encode");
-
-  transport.send(envelope).expect("supported envelope should be enqueued");
-
-  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
-    .await
-    .expect("envelope should arrive before timeout")
-    .expect("server inbound frame");
-  assert_eq!(event.frame, WireFrame::Envelope(expected));
-
-  transport.shutdown().expect("transport shutdown should succeed");
-  server.shutdown();
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn remote_transport_send_writes_envelope_frame_to_blocking_connected_peer() {
-  use tokio::sync::mpsc;
-
-  use crate::std::transport::tcp::TcpRemoteTransport;
-
-  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
-  let mut server = make_test_server();
-  let bind_addr = start_test_server(&mut server, server_inbound_tx);
-
-  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
-  transport.start().expect("transport should start before connecting a peer");
-
-  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
-  transport.connect_peer_blocking(&remote).expect("transport should connect to peer before sending envelope");
   let envelope = test_envelope(
     bind_addr.port(),
     AnyMessage::new(Bytes::from_static(b"payload")),
