@@ -1,10 +1,8 @@
 warning: `helper_runtime` (module) は曖昧なサフィックス `Runtime` を含んでいます
-  --> $DIR/forbidden_module_names.rs:5:1
+  --> $DIR/forbidden_module_names.rs:5:5
    |
-LL | / mod helper_runtime {
-LL | |   pub struct CleanRegistry;
-LL | | }
-   | |_^
+LL | mod helper_runtime {
+   |     ^^^^^^^^^^^^^^
    |
    = help: `Runtime` は責務の境界が不明確になりやすいサフィックスです。代替案: Executor, Scheduler, EventLoop, Environment
    = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
@@ -12,12 +10,10 @@ LL | | }
    = note: `#[warn(ambiguous_suffix)]` on by default
 
 warning: `system_util` (module) は曖昧なサフィックス `Util` を含んでいます
-  --> $DIR/forbidden_module_names.rs:9:1
+  --> $DIR/forbidden_module_names.rs:9:9
    |
-LL | / pub mod system_util {
-LL | |   pub struct AnotherRegistry;
-LL | | }
-   | |_^
+LL | pub mod system_util {
+   |         ^^^^^^^^^^^
    |
    = help: `Util` は責務の境界が不明確になりやすいサフィックスです。代替案: 具体的な動詞を含む名前 (例: FormatHelper → DateFormatter)
    = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください

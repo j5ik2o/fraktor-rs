@@ -9,14 +9,17 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use rustc_hir::{Item, ItemKind};
+use rustc_hir::{
+  AmbigArg, FieldDef, GenericParam, GenericParamKind, ImplItem, ImplItemKind, Item, ItemKind, Pat, PatKind, TraitFn,
+  TraitItem, TraitItemKind, Ty, TyKind, Variant,
+};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_span::{source_map::SourceMap, FileName, RealFileName, Span};
 
 dylint_linting::impl_late_lint! {
   pub AMBIGUOUS_SUFFIX,
   Warn,
-  "detect ambiguous type name suffixes that obscure responsibility",
+  "detect ambiguous name suffixes that obscure responsibility",
   AmbiguousSuffix::default()
 }
 
@@ -37,22 +40,98 @@ const FORBIDDEN_SUFFIXES: &[(&str, &str, &str)] = &[
 
 impl<'tcx> LateLintPass<'tcx> for AmbiguousSuffix {
   fn check_item(&mut self, cx: &LateContext<'tcx>, item: &Item<'tcx>) {
-    if item.span.from_expansion() {
+    if !should_check_span(cx, item.span) {
       return;
     }
 
-    let sm = cx.tcx.sess.source_map();
-    let Some(path) = file_path_from_span(sm, item.span) else {
+    let Some(path) = file_path_from_span(cx.tcx.sess.source_map(), item.span) else {
       return;
     };
+    self.check_file_name(cx, item, &path);
+    self.check_item_name(cx, item);
+  }
 
-    if should_ignore(&path) {
+  fn check_trait_item(&mut self, cx: &LateContext<'tcx>, trait_item: &TraitItem<'tcx>) {
+    if !should_check_span(cx, trait_item.span) {
       return;
     }
 
-    self.check_file_name(cx, item, &path);
-    self.check_module_name(cx, item);
-    self.check_public_type_name(cx, item);
+    let (kind_label, name_style) = match trait_item.kind {
+      | TraitItemKind::Const(..) => ("associated const", NameStyle::Delimited),
+      | TraitItemKind::Fn(..) => ("trait method", NameStyle::Delimited),
+      | TraitItemKind::Type(..) => ("associated type", NameStyle::Camel),
+    };
+
+    check_ident(cx, trait_item.ident, kind_label, name_style);
+
+    if let TraitItemKind::Fn(_, TraitFn::Required(param_idents)) = trait_item.kind {
+      for param_ident in param_idents.iter().flatten() {
+        check_ident(cx, *param_ident, "parameter", NameStyle::Delimited);
+      }
+    }
+  }
+
+  fn check_impl_item(&mut self, cx: &LateContext<'tcx>, impl_item: &ImplItem<'tcx>) {
+    if !should_check_span(cx, impl_item.span) {
+      return;
+    }
+
+    let (kind_label, name_style) = match impl_item.kind {
+      | ImplItemKind::Const(..) => ("associated const", NameStyle::Delimited),
+      | ImplItemKind::Fn(..) => ("method", NameStyle::Delimited),
+      | ImplItemKind::Type(..) => ("associated type", NameStyle::Camel),
+    };
+
+    check_ident(cx, impl_item.ident, kind_label, name_style);
+  }
+
+  fn check_field_def(&mut self, cx: &LateContext<'tcx>, field: &FieldDef<'tcx>) {
+    if !field.is_positional() && should_check_span(cx, field.span) {
+      check_ident(cx, field.ident, "field", NameStyle::Delimited);
+    }
+  }
+
+  fn check_variant(&mut self, cx: &LateContext<'tcx>, variant: &Variant<'tcx>) {
+    if should_check_span(cx, variant.span) {
+      check_ident(cx, variant.ident, "variant", NameStyle::Camel);
+    }
+  }
+
+  fn check_pat(&mut self, cx: &LateContext<'tcx>, pat: &Pat<'tcx>) {
+    if !should_check_span(cx, pat.span) {
+      return;
+    }
+
+    if let PatKind::Binding(_, _, ident, _) = pat.kind {
+      check_ident(cx, ident, "variable", NameStyle::Delimited);
+    }
+  }
+
+  fn check_generic_param(&mut self, cx: &LateContext<'tcx>, param: &GenericParam<'tcx>) {
+    if param.is_elided_lifetime() || !should_check_span(cx, param.span) {
+      return;
+    }
+
+    let ident = param.name.ident();
+    let (kind_label, name_style) = match param.kind {
+      | GenericParamKind::Lifetime { .. } => ("lifetime", NameStyle::Delimited),
+      | GenericParamKind::Type { .. } => ("generic parameter", NameStyle::Camel),
+      | GenericParamKind::Const { .. } => ("const parameter", NameStyle::Delimited),
+    };
+
+    check_ident(cx, ident, kind_label, name_style);
+  }
+
+  fn check_ty(&mut self, cx: &LateContext<'tcx>, ty: &Ty<'tcx, AmbigArg>) {
+    if !should_check_span(cx, ty.span) {
+      return;
+    }
+
+    if let TyKind::FnPtr(fn_ptr) = &ty.kind {
+      for param_ident in fn_ptr.param_idents.iter().flatten() {
+        check_ident(cx, *param_ident, "function pointer parameter", NameStyle::Delimited);
+      }
+    }
   }
 }
 
@@ -74,50 +153,60 @@ impl AmbiguousSuffix {
     }
   }
 
-  fn check_module_name(&self, cx: &LateContext<'_>, item: &Item<'_>) {
-    if !matches!(item.kind, ItemKind::Mod(..)) {
-      return;
-    }
-
-    let def_id = item.owner_id.def_id.to_def_id();
-    let name = cx.tcx.item_name(def_id).to_string();
-    for &(suffix, snake_suffix, alternatives) in FORBIDDEN_SUFFIXES {
-      if snake_name_has_forbidden_suffix(&name, snake_suffix) {
-        emit_warning(cx, item.span, &name, "module", suffix, alternatives);
-        break;
-      }
-    }
-  }
-
-  fn check_public_type_name(&self, cx: &LateContext<'_>, item: &Item<'_>) {
-    if !matches!(item.kind, ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Trait(..)) {
-      return;
-    }
-
-    let def_id = item.owner_id.def_id.to_def_id();
-    if !cx.tcx.visibility(def_id).is_public() {
-      return;
-    }
-
-    let name = cx.tcx.item_name(def_id).to_string();
-    for &(suffix, _, alternatives) in FORBIDDEN_SUFFIXES {
-      if name.ends_with(suffix) && name != suffix {
-        let kind_label = describe_kind(&item.kind);
-        emit_warning(cx, item.span, &name, kind_label, suffix, alternatives);
-        break;
-      }
+  fn check_item_name(&self, cx: &LateContext<'_>, item: &Item<'_>) {
+    if let Some((ident, kind_label, name_style)) = item_name_check(&item.kind) {
+      check_ident(cx, ident, kind_label, name_style);
     }
   }
 }
 
-fn emit_warning(
-  cx: &LateContext<'_>,
-  span: Span,
-  name: &str,
-  kind_label: &str,
-  suffix: &str,
-  alternatives: &str,
-) {
+#[derive(Clone, Copy)]
+enum NameStyle {
+  Camel,
+  Delimited,
+}
+
+fn item_name_check(kind: &ItemKind<'_>) -> Option<(rustc_span::symbol::Ident, &'static str, NameStyle)> {
+  match kind {
+    | ItemKind::Static(_, ident, ..) => Some((*ident, "static", NameStyle::Delimited)),
+    | ItemKind::Const(ident, ..) => Some((*ident, "const", NameStyle::Delimited)),
+    | ItemKind::Fn { ident, .. } => Some((*ident, "function", NameStyle::Delimited)),
+    | ItemKind::Macro(ident, ..) => Some((*ident, "macro", NameStyle::Delimited)),
+    | ItemKind::Mod(ident, ..) => Some((*ident, "module", NameStyle::Delimited)),
+    | ItemKind::TyAlias(ident, ..) => Some((*ident, "type alias", NameStyle::Camel)),
+    | ItemKind::Enum(ident, ..) => Some((*ident, "enum", NameStyle::Camel)),
+    | ItemKind::Struct(ident, ..) => Some((*ident, "struct", NameStyle::Camel)),
+    | ItemKind::Union(ident, ..) => Some((*ident, "union", NameStyle::Camel)),
+    | ItemKind::Trait(_, _, _, ident, ..) => Some((*ident, "trait", NameStyle::Camel)),
+    | ItemKind::TraitAlias(_, ident, ..) => Some((*ident, "trait alias", NameStyle::Camel)),
+    | ItemKind::ExternCrate(..)
+    | ItemKind::Use(..)
+    | ItemKind::ForeignMod { .. }
+    | ItemKind::GlobalAsm { .. }
+    | ItemKind::Impl(..) => None,
+  }
+}
+
+fn check_ident(cx: &LateContext<'_>, ident: rustc_span::symbol::Ident, kind_label: &str, name_style: NameStyle) {
+  let name = ident.name.as_str();
+  if name == "_" {
+    return;
+  }
+
+  for &(suffix, snake_suffix, alternatives) in FORBIDDEN_SUFFIXES {
+    let has_forbidden_suffix = match name_style {
+      | NameStyle::Camel => camel_name_has_forbidden_suffix(name, suffix),
+      | NameStyle::Delimited => delimited_name_has_forbidden_suffix(name, snake_suffix),
+    };
+
+    if has_forbidden_suffix {
+      emit_warning(cx, ident.span, name, kind_label, suffix, alternatives);
+      break;
+    }
+  }
+}
+
+fn emit_warning(cx: &LateContext<'_>, span: Span, name: &str, kind_label: &str, suffix: &str, alternatives: &str) {
   cx.span_lint(AMBIGUOUS_SUFFIX, span, |diag| {
     diag.primary_message(format!(
       "`{}` ({}) は曖昧なサフィックス `{}` を含んでいます",
@@ -165,18 +254,29 @@ fn should_ignore(path: &Path) -> bool {
   false
 }
 
-fn snake_name_has_forbidden_suffix(name: &str, suffix: &str) -> bool {
-  name == suffix || name.strip_suffix(suffix).is_some_and(|prefix| prefix.ends_with('_'))
+fn should_check_span(cx: &LateContext<'_>, span: Span) -> bool {
+  if span.from_expansion() {
+    return false;
+  }
+
+  let Some(path) = file_path_from_span(cx.tcx.sess.source_map(), span) else {
+    return false;
+  };
+
+  !should_ignore(&path)
 }
 
-fn describe_kind(kind: &ItemKind<'_>) -> &'static str {
-  match kind {
-    | ItemKind::Struct(..) => "struct",
-    | ItemKind::Enum(..) => "enum",
-    | ItemKind::Trait(..) => "trait",
-    | ItemKind::Mod(..) => "module",
-    | _ => "unknown",
-  }
+fn camel_name_has_forbidden_suffix(name: &str, suffix: &str) -> bool {
+  name == suffix || name.ends_with(suffix)
+}
+
+fn delimited_name_has_forbidden_suffix(name: &str, suffix: &str) -> bool {
+  let normalized = name.trim_start_matches('\'').to_ascii_lowercase();
+  snake_name_has_forbidden_suffix(&normalized, suffix)
+}
+
+fn snake_name_has_forbidden_suffix(name: &str, suffix: &str) -> bool {
+  name == suffix || name.strip_suffix(suffix).is_some_and(|prefix| prefix.ends_with('_'))
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
