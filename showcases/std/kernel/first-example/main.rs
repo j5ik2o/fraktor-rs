@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -43,6 +41,8 @@ fn main() {
 
   system.user_guardian_ref().tell(AnyMessage::new(Greet));
   wait_until(|| greetings.with_lock(|greetings| greetings.as_slice() == ["hello"]));
+  let snapshot = greetings.with_lock(|greetings| greetings.clone());
+  println!("kernel_first_example recorded greetings: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

@@ -231,7 +231,6 @@ fn serialize_and_restore(serialization: &SerializationExtensionShared, payload: 
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   let json_id = SerializerId::try_from(201).expect("valid json serializer id");
   let bincode_id = SerializerId::try_from(202).expect("valid bincode serializer id");

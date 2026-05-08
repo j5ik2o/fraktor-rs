@@ -102,7 +102,6 @@ impl SubSourceOutletHandler<u32> for ExampleSubSourceHandler {
   }
 }
 
-#[allow(clippy::print_stdout)]
 fn main() {
   let props = Props::from_fn(|| GuardianActor);
   let config = ActorSystemConfig::new(StdTickDriver::default());

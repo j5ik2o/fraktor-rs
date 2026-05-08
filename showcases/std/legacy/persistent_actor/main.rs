@@ -16,12 +16,14 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
     setup::ActorSystemConfig,
   },
+  event::logging::LogLevel,
   system::ActorSystem,
 };
 use fraktor_persistence_core_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
+use fraktor_showcases_std::subscribe_kernel_tracing_logger;
 // --- メッセージ定義 ---
 
 struct Start;
@@ -73,10 +75,10 @@ impl Eventsourced for CounterActor {
 
   fn receive_command(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(Command::Add(delta)) = message.downcast_ref::<Command>() {
-      println!("command: Add({delta}), current value: {}", self.value);
+      ctx.log(LogLevel::Info, format!("command: Add({delta}), current value: {}", self.value));
       self.persist(ctx, Event::Incremented(*delta), |actor, event| actor.apply_event(event));
       self.flush_batch(ctx)?;
-      println!("after persist: value = {}", self.value);
+      ctx.log(LogLevel::Info, format!("after persist: value = {}", self.value));
     }
     Ok(())
   }
@@ -115,7 +117,6 @@ impl Actor for GuardianActor {
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   use std::thread;
 
@@ -128,6 +129,7 @@ fn main() {
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
 
   let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let _log_subscription = subscribe_kernel_tracing_logger(&system);
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));

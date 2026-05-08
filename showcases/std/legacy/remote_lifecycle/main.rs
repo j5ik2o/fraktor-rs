@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -32,6 +30,7 @@ async fn main() {
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer);
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
   let system = ActorSystem::create_with_config(&props, config).expect("system");
+  println!("remote_lifecycle initialized remoting extension for 127.0.0.1");
 
   system.terminate().expect("terminate");
 }

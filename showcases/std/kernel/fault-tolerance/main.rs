@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -89,6 +87,7 @@ fn main() {
   let snapshot = events.with_lock(|events| events.clone());
   assert!(snapshot.contains(&"pre-restart"));
   assert!(snapshot.contains(&"post-restart"));
+  println!("kernel_fault_tolerance observed events: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

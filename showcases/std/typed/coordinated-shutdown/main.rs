@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::{
   future::Future,
   pin::pin,
@@ -31,6 +29,7 @@ fn main() {
 
   assert_eq!(events.with_lock(|events| events.clone()), vec!["flushed"]);
   assert_eq!(shutdown.shutdown_reason(), Some(CoordinatedShutdownReason::Custom("typed-coordinated-shutdown".into())));
+  println!("typed_coordinated_shutdown ran tasks: {:?}", events.with_lock(|events| events.clone()));
 }
 
 fn block_on_ready<F: Future>(future: F, timeout: Duration) -> Option<F::Output> {

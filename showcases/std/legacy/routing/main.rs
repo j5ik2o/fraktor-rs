@@ -93,6 +93,7 @@ fn main() {
     let records = future.try_take().expect("ready").expect("ok");
     let observed_count = records.len();
     if observed_count == 4 {
+      println!("routing distributed records: {records:?}");
       break;
     }
     assert!(Instant::now() < deadline, "all work items should be routed within 3 seconds, observed {}", observed_count);

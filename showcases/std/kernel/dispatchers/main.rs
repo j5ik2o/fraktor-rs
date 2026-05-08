@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -45,6 +43,7 @@ fn main() {
 
   system.user_guardian_ref().tell(AnyMessage::new(RunBlockingWork));
   wait_until(|| events.with_lock(|events| events.as_slice() == ["blocking-dispatcher-work"]));
+  println!("kernel_dispatchers recorded blocking dispatcher work");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

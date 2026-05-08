@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -81,6 +79,7 @@ fn main() {
   let snapshot = records.with_lock(|records| records.clone());
   assert_eq!(snapshot.iter().filter(|(index, _)| *index == 0).count(), 2);
   assert_eq!(snapshot.iter().filter(|(index, _)| *index == 1).count(), 2);
+  println!("kernel_routing routed {} work items: {snapshot:?}", snapshot.len());
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

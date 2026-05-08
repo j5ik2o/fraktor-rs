@@ -10,16 +10,12 @@
 use std::time::Duration;
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
-  actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, setup::ActorSystemConfig},
-  system::ActorSystem,
-};
+use fraktor_actor_core_rs::core::kernel::{actor::setup::ActorSystemConfig, system::ActorSystem};
 use fraktor_stream_core_rs::core::{
   dsl::{Sink, Source},
   materialization::{ActorMaterializer, ActorMaterializerConfig, KeepRight},
 };
 
-#[allow(clippy::print_stdout)]
 fn main() {
   let config = ActorSystemConfig::new(StdTickDriver::default());
   let system = ActorSystem::noop_with_config(config).expect("actor system");

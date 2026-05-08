@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -38,6 +36,7 @@ fn main() {
 
   actor.tell(Command::Run);
   wait_until(|| events.with_lock(|events| events.as_slice() == ["typed-blocking-dispatcher-work"]));
+  println!("typed_dispatchers recorded events: {:?}", events.with_lock(|events| events.clone()));
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

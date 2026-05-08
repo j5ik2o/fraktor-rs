@@ -14,9 +14,13 @@ use std::sync::Arc;
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
-  kernel::actor::{error::ActorError, setup::ActorSystemConfig},
+  kernel::{
+    actor::{error::ActorError, setup::ActorSystemConfig},
+    event::logging::LogLevel,
+  },
   typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
 };
+use fraktor_showcases_std::subscribe_typed_tracing_logger;
 
 // --- メッセージ定義 ---
 
@@ -67,12 +71,12 @@ fn requester(done: Arc<AtomicBool>) -> Behavior<RequesterMsg> {
         Ok(Behaviors::same())
       },
       | RequesterMsg::GotResponse(value) => {
-        println!("received response: {value}");
+        ctx.system().emit_log(LogLevel::Info, format!("received response: {value}"), Some(ctx.pid()), None);
         done.store(true, Ordering::Release);
         Ok(Behaviors::same())
       },
       | RequesterMsg::GotFailure => {
-        println!("ask failed (timeout or error)");
+        ctx.system().emit_log(LogLevel::Warn, "ask failed (timeout or error)", Some(ctx.pid()), None);
         done.store(true, Ordering::Release);
         Ok(Behaviors::same())
       },
@@ -82,7 +86,6 @@ fn requester(done: Arc<AtomicBool>) -> Behavior<RequesterMsg> {
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   use std::{thread, time::Instant};
 
@@ -91,6 +94,7 @@ fn main() {
   let props = TypedProps::from_behavior_factory(move || requester(done_clone.clone()));
   let system =
     TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let _log_subscription = subscribe_typed_tracing_logger(&system);
   let termination = system.when_terminated();
 
   // ask リクエストを開始
@@ -105,6 +109,7 @@ fn main() {
     }
     thread::sleep(Duration::from_millis(1));
   }
+  println!("request_reply completed ask-style request");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

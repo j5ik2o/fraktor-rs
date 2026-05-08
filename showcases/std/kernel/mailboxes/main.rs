@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::{num::NonZeroUsize, time::Duration};
 use std::thread;
 
@@ -51,7 +49,9 @@ fn main() {
     system.user_guardian_ref().tell(AnyMessage::new(Record(value)));
   }
   wait_until(|| records.with_lock(|records| records.len() == 3));
-  assert_eq!(records.with_lock(|records| records.clone()), vec![1, 2, 3]);
+  let snapshot = records.with_lock(|records| records.clone());
+  assert_eq!(snapshot, vec![1, 2, 3]);
+  println!("kernel_mailboxes delivered records: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

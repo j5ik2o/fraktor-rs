@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use std::time::Duration;
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
@@ -19,5 +17,6 @@ fn main() {
   let materialized = graph.run(&mut materializer).expect("run");
   let result = materialized.materialized().wait_blocking(&StdBlocker::new()).expect("stream should succeed");
   assert_eq!(result, 42);
+  println!("stream_first_example result: {result}");
   materializer.shutdown().expect("materializer shutdown");
 }

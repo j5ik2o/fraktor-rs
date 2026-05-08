@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -118,6 +116,8 @@ fn main() {
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
   wait_until(|| observed.with_lock(|value| *value == 9));
+  let observed_value = observed.with_lock(|value| *value);
+  println!("kernel_persistence replayed counter value: {observed_value}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

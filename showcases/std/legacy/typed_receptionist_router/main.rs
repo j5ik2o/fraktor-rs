@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use std::{thread, time::Duration, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
@@ -58,6 +56,7 @@ fn main() {
 
   router_ref.tell(42);
   wait_until(|| records.with_lock(|records| records.as_slice() == [42]));
+  println!("typed_receptionist_router delivered records: {:?}", records.with_lock(|records| records.clone()));
 
   system.terminate().expect("terminate");
 }

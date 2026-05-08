@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
@@ -37,7 +35,9 @@ fn main() {
     assert!(Instant::now() < deadline, "ask should complete within 1 second");
     thread::sleep(Duration::from_millis(1));
   }
-  assert_eq!(future.try_take().expect("ready").expect("ok"), 42);
+  let value = future.try_take().expect("ready").expect("ok");
+  assert_eq!(value, 42);
+  println!("typed_interaction_patterns received response: {value}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());
