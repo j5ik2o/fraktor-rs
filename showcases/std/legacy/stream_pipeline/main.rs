@@ -19,19 +19,10 @@ use fraktor_stream_core_rs::core::{
   materialization::{ActorMaterializer, ActorMaterializerConfig, KeepRight},
 };
 
-struct GuardianActor;
-
-impl Actor for GuardianActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
-
 #[allow(clippy::print_stdout)]
 fn main() {
-  let props = Props::from_fn(|| GuardianActor);
   let config = ActorSystemConfig::new(StdTickDriver::default());
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::noop_with_config(config).expect("actor system");
   let mut mat =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   mat.start().expect("materializer start");
