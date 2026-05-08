@@ -33,7 +33,7 @@ use crate::core::{
           tests::TestTickDriver,
         },
       },
-      setup::{ActorSystemConfig, ActorSystemSetup, BootstrapSetup},
+      setup::ActorSystemConfig,
       spawn::SpawnError,
     },
     dispatch::dispatcher::{
@@ -84,7 +84,7 @@ impl ActorSystem {
     use crate::core::kernel::actor::scheduler::tick_driver::tests::TestTickDriver;
 
     let config = configure(ActorSystemConfig::new(TestTickDriver::default()));
-    match Self::new_started_from_config(config) {
+    match Self::create_started_from_config(config) {
       | Ok(system) => system,
       | Err(error) => panic!("test-support config failed to build in new_empty_with: {error:?}"),
     }
@@ -379,10 +379,10 @@ fn actor_system_create_from_props_with_init_fails_without_tick_driver() {
 }
 
 #[test]
-fn actor_system_noop_with_config_bootstraps_user_guardian() {
+fn actor_system_create_with_noop_guardian_bootstraps_user_guardian() {
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("noop-system");
 
-  let system = ActorSystem::noop_with_config(config).expect("system should build");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should build");
 
   assert!(system.state().has_root_started());
   assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
@@ -392,9 +392,9 @@ fn actor_system_noop_with_config_bootstraps_user_guardian() {
 }
 
 #[test]
-fn actor_system_noop_with_config_spawns_user_child() {
+fn actor_system_create_with_noop_guardian_spawns_user_child() {
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("noop-child-system");
-  let system = ActorSystem::noop_with_config(config).expect("system should build");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should build");
 
   let child = system.actor_of(&Props::from_fn(|| TestActor)).expect("spawn child");
   let path = child.actor_ref().path().expect("child path");
@@ -403,25 +403,14 @@ fn actor_system_noop_with_config_spawns_user_child() {
 }
 
 #[test]
-fn actor_system_noop_with_config_fails_without_tick_driver() {
-  let result = ActorSystem::noop_with_config(ActorSystemConfig::default());
+fn actor_system_create_with_noop_guardian_fails_without_tick_driver() {
+  let result = ActorSystem::create_with_noop_guardian(ActorSystemConfig::default());
 
   match result {
     | Err(SpawnError::SystemBuildError(message)) => assert!(message.contains("tick driver is required")),
     | Ok(_) => panic!("system should not build without tick driver"),
     | Err(other) => panic!("unexpected error: {other:?}"),
   }
-}
-
-#[test]
-fn actor_system_noop_with_setup_uses_setup_config() {
-  let setup = ActorSystemSetup::new(BootstrapSetup::default().with_system_name("noop-setup-system"))
-    .with_tick_driver(TestTickDriver::default());
-
-  let system = ActorSystem::noop_with_setup(setup).expect("system should build");
-
-  assert_eq!(system.name(), "noop-setup-system");
-  assert!(system.state().has_root_started());
 }
 
 #[test]

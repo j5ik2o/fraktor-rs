@@ -18,7 +18,7 @@ use fraktor_stream_core_rs::core::{
 
 fn main() {
   let config = ActorSystemConfig::new(StdTickDriver::default());
-  let system = ActorSystem::noop_with_config(config).expect("actor system");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("actor system");
   let mut mat =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   mat.start().expect("materializer start");

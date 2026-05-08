@@ -20,7 +20,7 @@ pub fn new_empty_actor_system() -> ActorSystem {
 /// [`ActorSystemConfig`] before the system state is built.
 ///
 /// The system is backed by [`TestTickDriver`] (std-thread driven, suitable for deterministic
-/// integration tests). Internally calls [`ActorSystem::new_started_from_config`] which marks
+/// integration tests). Internally calls [`ActorSystem::create_started_from_config`] which marks
 /// the root as started.
 ///
 /// # Panics
@@ -34,10 +34,10 @@ where
   // system 配下で `ActorCell::create` が構築するすべての mailbox が
   // throughput deadline 判定時に実経過時間を観測する (Pekko `Mailbox.scala:263-275`)。
   // config 経路に寄せることで、このテスト用 factory に限らず
-  // `ActorSystem::create_*` / `new_started_from_config` 全般で同じ clock が届く。
+  // `ActorSystem::create_*` / `create_started_from_config` 全般で同じ clock が届く。
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_mailbox_clock(std_monotonic_mailbox_clock());
   let config = configure(config);
-  match ActorSystem::new_started_from_config(config) {
+  match ActorSystem::create_started_from_config(config) {
     | Ok(system) => system,
     | Err(error) => panic!("test-support config failed to build in new_empty_actor_system_with: {error:?}"),
   }

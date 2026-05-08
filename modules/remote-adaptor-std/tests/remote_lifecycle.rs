@@ -61,7 +61,7 @@ async fn remote_lifecycle_via_extension_installer() {
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer);
   let config = fraktor_actor_adaptor_std_rs::std::system::std_actor_system_config(TestTickDriver::default())
     .with_extension_installers(installers);
-  let system = ActorSystem::noop_with_config(config).expect("system should install and start remoting");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should install and start remoting");
 
   timeout(Duration::from_secs(5), TcpStream::connect(("127.0.0.1", port)))
     .await

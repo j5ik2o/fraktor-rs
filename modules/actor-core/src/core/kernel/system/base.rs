@@ -36,7 +36,7 @@ use crate::core::{
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::{MailboxRequirement, Props},
       scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverBundle},
-      setup::{ActorSystemConfig, ActorSystemSetup, CircuitBreakerConfig},
+      setup::{ActorSystemConfig, CircuitBreakerConfig},
       spawn::SpawnError,
     },
     event::{
@@ -65,25 +65,35 @@ pub struct ActorSystem {
 }
 
 impl ActorSystem {
-  /// Creates an actor system from an existing system state.
+  /// Wraps an existing [`SystemStateShared`] into an [`ActorSystem`] handle.
+  ///
+  /// Internal seam used by the runtime to convert shared state references back to a typed
+  /// [`ActorSystem`] (e.g. weak upgrades, actor selection, actor cell back-refs) and by
+  /// cross-crate test helpers that build synthetic states. Application code should use
+  /// [`ActorSystem::create_from_props`] or [`ActorSystem::create_with_noop_guardian`] instead.
+  #[doc(hidden)]
   #[must_use]
   pub fn from_state(state: SystemStateShared) -> Self {
     let settings = TypedActorSystemConfig::new(state.system_name(), state.start_time());
     Self { state, settings }
   }
 
-  /// Builds and starts an actor system from a fully constructed configuration.
+  /// Builds and starts an actor system without a user guardian.
   ///
   /// Creates the system state from the provided [`ActorSystemConfig`], wraps it in a
-  /// [`SystemStateShared`], and marks the root as started before returning. Designed as the
-  /// public seam used by adaptor-level test helpers (e.g. `new_empty_actor_system_with` in
-  /// `fraktor-actor-adaptor-std-rs`) that previously relied on private constructors.
+  /// [`SystemStateShared`], and marks the root as started before returning. No user
+  /// guardian, bootstrap callback, or extension installation is performed; the resulting
+  /// system is essentially an empty shell. Intended only as a seam for adaptor-level test
+  /// helpers (e.g. `new_empty_actor_system_with` in `fraktor-actor-adaptor-std-rs`) and
+  /// cross-crate tests. Application code should use [`ActorSystem::create_from_props`] or
+  /// [`ActorSystem::create_with_noop_guardian`].
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError`] when the underlying [`SystemState`] cannot be built from the
   /// supplied configuration.
-  pub fn new_started_from_config(config: ActorSystemConfig) -> Result<Self, SpawnError> {
+  #[doc(hidden)]
+  pub fn create_started_from_config(config: ActorSystemConfig) -> Result<Self, SpawnError> {
     let state = SystemState::build_from_owned_config(config)?;
     let system = Self::from_state(SystemStateShared::new(state));
     system.state.mark_root_started();
@@ -107,27 +117,9 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn noop_with_config(config: ActorSystemConfig) -> Result<Self, SpawnError> {
+  pub fn create_with_noop_guardian(config: ActorSystemConfig) -> Result<Self, SpawnError> {
     let user_guardian_props = Props::from_fn(NoopGuardianActor::new);
     Self::create_from_props(&user_guardian_props, config)
-  }
-
-  /// Creates a new actor system from a Pekko-style setup facade.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when guardian initialization or bootstrap fails.
-  pub fn create_with_setup(user_guardian_props: &Props, setup: ActorSystemSetup) -> Result<Self, SpawnError> {
-    Self::create_from_props(user_guardian_props, setup.into_actor_system_config())
-  }
-
-  /// Creates an actor system with a no-op user guardian from a Pekko-style setup facade.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when guardian initialization or bootstrap fails.
-  pub fn noop_with_setup(setup: ActorSystemSetup) -> Result<Self, SpawnError> {
-    Self::noop_with_config(setup.into_actor_system_config())
   }
 
   /// Creates an actor system with configuration and a bootstrap callback.

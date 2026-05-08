@@ -62,7 +62,7 @@ fn shared_extension_installer_keeps_caller_handle_usable() {
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_extension_installers(installers);
 
-  let system = ActorSystem::noop_with_config(config).expect("system should build");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should build");
 
   assert_eq!(calls.load(Ordering::Relaxed), 1);
   assert_eq!(installer.calls.load(Ordering::Relaxed), 1);
