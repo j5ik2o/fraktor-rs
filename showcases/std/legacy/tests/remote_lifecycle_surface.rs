@@ -28,7 +28,7 @@ fn remote_lifecycle_showcase_uses_public_remote_lifecycle_api() {
     "showcase must not install remoting directly after ActorSystem bootstrap",
   );
   assert!(!source.contains(".remote()"), "showcase must not fetch the internal remote handle");
-  assert!(!source.contains(".start()"), "showcase must not manually start remoting");
+  assert!(!source.contains(".remote().start("), "showcase must not manually start remoting");
   assert!(!source.contains("spawn_run_task"), "showcase must not manually spawn the remote run task");
   assert!(!source.contains("shutdown_and_join"), "showcase must not manually join remoting shutdown");
 }

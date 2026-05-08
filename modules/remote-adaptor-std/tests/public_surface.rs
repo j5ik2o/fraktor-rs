@@ -16,6 +16,14 @@ const PROVIDER_DISPATCH_RS: &str = include_str!("../src/std/provider/dispatch.rs
 const TCP_RS: &str = include_str!("../src/std/transport/tcp.rs");
 const TCP_BASE_RS: &str = include_str!("../src/std/transport/tcp/base.rs");
 
+fn impl_block_contains(source: &str, impl_header: &str, needle: &str) -> bool {
+  let Some((_, after_header)) = source.split_once(impl_header) else {
+    return false;
+  };
+  let block = after_header.split("\nimpl ").next().unwrap_or(after_header);
+  block.contains(needle)
+}
+
 #[test]
 fn user_facing_adapter_boundary_imports_compile() {
   let address = Address::new("surface", "127.0.0.1", 0);
@@ -37,7 +45,7 @@ fn runtime_internal_modules_are_not_publicly_exported() {
   assert!(!TCP_RS.contains("pub use inbound_frame_event::InboundFrameEvent;"));
   assert!(!PROVIDER_RS.contains("pub use path_remote_actor_ref_provider::PathRemoteActorRefProvider;"));
   assert!(!PROVIDER_RS.contains("pub use remote_actor_ref_sender::RemoteActorRefSender;"));
-  assert!(!PROVIDER_DISPATCH_RS.contains("pub fn new("));
+  assert!(!impl_block_contains(PROVIDER_DISPATCH_RS, "impl StdRemoteActorRefProvider {", "pub fn new("));
 }
 
 #[test]

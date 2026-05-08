@@ -43,13 +43,25 @@ pub struct RemotingExtensionInstaller {
 }
 
 struct RemotingRunState {
-  receiver: Option<TokioMpscRemoteEventReceiver>,
-  handle:   Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
+  receiver:           Option<TokioMpscRemoteEventReceiver>,
+  handle:             Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
+  termination_handle: Option<JoinHandle<()>>,
 }
 
 impl RemotingRunState {
   const fn new() -> Self {
-    Self { receiver: None, handle: None }
+    Self { receiver: None, handle: None, termination_handle: None }
+  }
+}
+
+impl Drop for RemotingRunState {
+  fn drop(&mut self) {
+    if let Some(handle) = self.handle.take() {
+      handle.abort();
+    }
+    if let Some(handle) = self.termination_handle.take() {
+      handle.abort();
+    }
   }
 }
 
@@ -111,8 +123,14 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       self.run_state.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
     run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
     spawn_run_task_with_state(&mut run_state, remote.clone(), system.clone()).map_err(remoting_build_error)?;
-    spawn_shutdown_on_system_termination(system, remote.clone(), event_sender.clone(), self.run_state.clone())
-      .map_err(remoting_build_error)?;
+    spawn_shutdown_on_system_termination(
+      system,
+      remote.clone(),
+      event_sender.clone(),
+      &mut run_state,
+      self.run_state.clone(),
+    )
+    .map_err(remoting_build_error)?;
     self
       .event_sender
       .set(event_sender)
@@ -143,7 +161,7 @@ fn spawn_run_task_with_state(
     return Err(RemotingError::AlreadyRunning);
   }
   let Some(mut receiver) = run_state.receiver.take() else {
-    return Err(RemotingError::AlreadyRunning);
+    unreachable!("spawn_run_task_with_state: receiver missing; install must set it before spawning");
   };
   let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
   let handle = handle.spawn(async move {
@@ -158,16 +176,20 @@ fn spawn_shutdown_on_system_termination(
   system: &ActorSystem,
   remote: RemoteShared,
   event_sender: Sender<RemoteEvent>,
-  run_state: Arc<Mutex<RemotingRunState>>,
+  run_state: &mut RemotingRunState,
+  run_state_shared: Arc<Mutex<RemotingRunState>>,
 ) -> Result<(), RemotingError> {
   let termination = system.when_terminated();
   let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
-  handle.spawn(async move {
+  let handle = handle.spawn(async move {
     termination.await;
-    if let Err(error) = shutdown_remote_and_join(remote, Some(event_sender), run_state).await {
+    if let Err(error) = shutdown_remote_and_join(remote, Some(event_sender), run_state_shared).await {
       tracing::debug!(?error, "remote termination shutdown task failed");
     }
   });
+  if let Some(previous) = run_state.termination_handle.replace(handle) {
+    previous.abort();
+  }
   Ok(())
 }
 
@@ -203,14 +225,13 @@ async fn shutdown_remote_and_join(
     | Err(error) => Err(error),
   };
   match (shutdown_result, join_result) {
-    | (shutdown_result, Err(error)) => {
-      if let Err(shutdown_error) = shutdown_result {
-        tracing::warn!(?shutdown_error, ?error, "remote shutdown failed before run task join failed");
-      }
-      Err(error)
-    },
-    | (Err(error), Ok(())) => Err(error),
     | (Ok(()), Ok(())) => Ok(()),
+    | (Ok(()), Err(error)) => Err(error),
+    | (Err(error), Ok(())) => Err(error),
+    | (Err(shutdown_error), Err(join_error)) => {
+      tracing::warn!(?shutdown_error, ?join_error, "remote shutdown failed before run task join failed");
+      Err(join_error)
+    },
   }
 }
 

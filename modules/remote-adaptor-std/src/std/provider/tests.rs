@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
@@ -27,7 +27,10 @@ use fraktor_remote_core_rs::core::{
   transport::TransportEndpoint,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::{
+  sync::mpsc::{self, Receiver, Sender},
+  time::timeout,
+};
 
 use super::{StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller};
 use crate::std::{
@@ -331,10 +334,13 @@ async fn actor_system_config_registered_std_remote_actor_ref_provider_resolves_r
   let system = ActorSystem::noop_with_config(config).expect("system");
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
   let mut actor_ref = system.resolve_actor_ref(remote_path.clone()).expect("remote actor ref should resolve");
+  let canonical_path = actor_ref.canonical_path().expect("remote actor ref canonical path");
+  assert_eq!(canonical_path.to_canonical_uri(), remote_path.to_canonical_uri());
 
   actor_ref.try_tell(AnyMessage::new(String::from("remote-payload"))).expect("remote send should enqueue event");
 
   system.terminate().expect("terminate");
+  timeout(Duration::from_secs(1), system.when_terminated()).await.expect("system should terminate");
 }
 
 #[test]

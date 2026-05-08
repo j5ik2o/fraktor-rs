@@ -49,6 +49,7 @@ struct RecordingTransport {
   handshake_calls: ArcShared<AtomicUsize>,
   timeout_calls: ArcShared<AtomicUsize>,
   timeout_before_handshake_calls: ArcShared<AtomicUsize>,
+  connect_peer_calls: ArcShared<AtomicUsize>,
 }
 
 struct VecRemoteEventReceiver {
@@ -196,6 +197,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 
@@ -213,6 +215,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 
@@ -234,6 +237,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     })
   }
 
@@ -251,6 +255,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 }
@@ -283,6 +288,7 @@ impl RemoteTransport for RecordingTransport {
   }
 
   fn connect_peer(&mut self, _remote: &Address) -> Result<(), TransportError> {
+    self.connect_peer_calls.fetch_add(1, Ordering::Relaxed);
     if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
   }
 
@@ -674,6 +680,7 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   let handshake_send_calls = transport.handshake_calls.clone();
   let timeout_calls = transport.timeout_calls.clone();
   let timeout_before_handshake_calls = transport.timeout_before_handshake_calls.clone();
+  let connect_peer_calls = transport.connect_peer_calls.clone();
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument_handshake_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument = CountingInstrument::new(instrument_send_calls.clone(), instrument_handshake_calls.clone());
@@ -699,6 +706,7 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   block_on_ready(remote.run(&mut receiver)).unwrap();
 
   assert_eq!(transport_send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
   assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
@@ -980,6 +988,7 @@ fn connection_lost_recovers_active_association() {
   let transport = RecordingTransport::new(vec![local_address.clone()]);
   let handshake_send_calls = transport.handshake_calls.clone();
   let timeout_calls = transport.timeout_calls.clone();
+  let connect_peer_calls = transport.connect_peer_calls.clone();
   let mut remote = Remote::new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before connection loss");
   remote.insert_association(active_association(local_address, remote_address.clone(), &config));
@@ -993,6 +1002,7 @@ fn connection_lost_recovers_active_association() {
   block_on_ready(remote.run(&mut receiver)).unwrap();
 
   assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
 }
 

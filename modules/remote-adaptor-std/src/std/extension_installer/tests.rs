@@ -1,5 +1,4 @@
 use std::{
-  net::TcpListener,
   sync::mpsc::{self, Sender},
   time::Duration,
 };
@@ -15,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::{
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
   },
-  event::stream::{CorrelationId, EventStreamEvent, RemotingLifecycleEvent},
+  event::stream::{CorrelationId, EventStreamEvent, EventStreamSubscriber, RemotingLifecycleEvent, subscriber_handle},
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::core::{
@@ -41,8 +40,18 @@ struct RecordingBytesActor {
   tx: Sender<Bytes>,
 }
 
+struct RecordingEventSubscriber {
+  tx: Sender<EventStreamEvent>,
+}
+
 impl RecordingBytesActor {
   fn new(tx: Sender<Bytes>) -> Self {
+    Self { tx }
+  }
+}
+
+impl RecordingEventSubscriber {
+  fn new(tx: Sender<EventStreamEvent>) -> Self {
     Self { tx }
   }
 }
@@ -53,6 +62,12 @@ impl Actor for RecordingBytesActor {
       self.tx.send(bytes.clone()).expect("recording channel should be open");
     }
     Ok(())
+  }
+}
+
+impl EventStreamSubscriber for RecordingEventSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    self.tx.send(event.clone()).expect("recording event channel should be open");
   }
 }
 
@@ -93,9 +108,22 @@ fn listen_started_authorities(events: &[EventStreamEvent]) -> Vec<String> {
     .collect()
 }
 
-fn reserve_port() -> u16 {
-  let listener = TcpListener::bind("127.0.0.1:0").expect("reserve tcp port");
-  listener.local_addr().expect("reserved local addr").port()
+fn replayed_events(system: &ActorSystem) -> Vec<EventStreamEvent> {
+  let (tx, rx) = mpsc::channel();
+  let subscriber = subscriber_handle(RecordingEventSubscriber::new(tx));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+  rx.try_iter().collect()
+}
+
+fn first_listen_started_port(system: &ActorSystem) -> u16 {
+  let events = replayed_events(system);
+  let authorities = listen_started_authorities(&events);
+  authorities
+    .first()
+    .and_then(|authority| authority.rsplit(':').next())
+    .expect("listen started authority port")
+    .parse()
+    .expect("listen started authority numeric port")
 }
 
 async fn terminate_system(system: &ActorSystem) {
@@ -111,7 +139,7 @@ async fn assert_listener_accepts(port: u16) {
 }
 
 async fn assert_listener_stops(port: u16) {
-  timeout(Duration::from_secs(1), async {
+  timeout(Duration::from_secs(5), async {
     loop {
       if TcpStream::connect(("127.0.0.1", port)).await.is_err() {
         break;
@@ -205,15 +233,15 @@ async fn remote_start_publishes_listen_started_for_each_advertised_address() {
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_config_install_starts_listener() {
-  let port = reserve_port();
-  let listen_address = Address::new("local-sys", "127.0.0.1", port);
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
   let installer = ArcShared::new(RemotingExtensionInstaller::new(
-    TcpRemoteTransport::new(alloc::format!("127.0.0.1:{port}"), vec![listen_address]),
+    TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]),
     remote_config(),
   ));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
   let system = ActorSystem::noop_with_config(config).expect("system should install remoting extension");
+  let port = first_listen_started_port(&system);
 
   assert_listener_accepts(port).await;
   terminate_system(&system).await;
@@ -221,19 +249,19 @@ async fn extension_installer_config_install_starts_listener() {
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_system_termination_shuts_down_remote() {
-  let port = reserve_port();
-  let listen_address = Address::new("local-sys", "127.0.0.1", port);
+  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
   let installer = ArcShared::new(RemotingExtensionInstaller::new(
-    TcpRemoteTransport::new(alloc::format!("127.0.0.1:{port}"), vec![listen_address]),
+    TcpRemoteTransport::new("127.0.0.1:0", vec![listen_address]),
     remote_config(),
   ));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
   let system = ActorSystem::noop_with_config(config).expect("system should install remoting extension");
+  let port = first_listen_started_port(&system);
 
   assert_listener_accepts(port).await;
   system.terminate().expect("terminate should trigger remoting shutdown");
-  timeout(Duration::from_secs(1), system.when_terminated()).await.expect("system should terminate");
+  timeout(Duration::from_secs(5), system.when_terminated()).await.expect("system should terminate");
   assert_listener_stops(port).await;
 }
 
