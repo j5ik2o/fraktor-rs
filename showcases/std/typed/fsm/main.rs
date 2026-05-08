@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
@@ -50,7 +48,9 @@ fn main() {
   gate.tell(Command::Pass);
   gate.tell(Command::Coin);
   gate.tell(Command::Pass);
-  assert_eq!(read_pass_count(&mut gate), 1);
+  let pass_count = read_pass_count(&mut gate);
+  assert_eq!(pass_count, 1);
+  println!("typed_fsm recorded pass count: {pass_count}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::vec::Vec;
 
@@ -112,6 +110,7 @@ fn main() {
     .expect("system actor");
   assert_eq!(system_actor.path().expect("system actor path").to_string(), "/system/typed-event-stream-example");
   assert!(system.print_tree().contains("typed-event-stream-example"));
+  println!("typed_event_stream collected {} event(s)", events.with_lock(|events| events.len()));
 
   system.terminate().expect("terminate");
 }

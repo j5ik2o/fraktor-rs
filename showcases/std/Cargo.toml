@@ -16,6 +16,7 @@ fraktor-stream-core-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }
 serde = { workspace = true, features = ["derive"] }
+tracing = { workspace = true, features = ["std"] }
 
 # advanced 依存（cross-module examples 用）
 fraktor-persistence-core-rs = { workspace = true, optional = true }
@@ -156,6 +157,10 @@ name = "kernel_fsm"
 path = "kernel/fsm/main.rs"
 
 [[example]]
+name = "kernel_interaction_patterns"
+path = "kernel/ask_from_non_actor/main.rs"
+
+[[example]]
 name = "kernel_persistence"
 path = "kernel/persistence/main.rs"
 required-features = ["advanced"]
@@ -233,5 +238,11 @@ path = "stream/composition/main.rs"
 name = "stream_rate"
 path = "stream/rate/main.rs"
 
-[lints]
-workspace = true
+[lints.rust]
+unused_must_use = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fraktor_disable_tell)'] }
+
+[lints.clippy]
+let_underscore_must_use = "deny"
+let_underscore_future = "deny"
+print_stdout = "allow"

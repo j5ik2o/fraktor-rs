@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -188,6 +186,8 @@ fn main() {
   wait_until(|| observed.with_lock(|observed| observed.0 == DoorState::Open));
   guardian.tell(AnyMessage::new(GuardianCommand::Pass));
   wait_until(|| observed.with_lock(|observed| *observed == (DoorState::Closed, 1)));
+  let observed_state = observed.with_lock(|observed| *observed);
+  println!("kernel_persistence_fsm observed door state: {observed_state:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

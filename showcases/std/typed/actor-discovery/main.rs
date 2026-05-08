@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
@@ -29,6 +27,7 @@ fn main() {
   let listing = wait_for_listing(&mut receptionist_ref, &key);
   let instances = listing.service_instances(&key).expect("matching key");
   assert!(instances.contains(&service_ref));
+  println!("typed_actor_discovery found {} service instance(s)", instances.len());
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

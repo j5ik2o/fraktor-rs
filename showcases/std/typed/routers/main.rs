@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
@@ -63,6 +61,7 @@ fn main() {
   let snapshot = wait_for_records(&mut router);
   assert_eq!(snapshot.iter().filter(|(index, _)| *index == 0).count(), 2);
   assert_eq!(snapshot.iter().filter(|(index, _)| *index == 1).count(), 2);
+  println!("typed_routers routed {} work items: {snapshot:?}", snapshot.len());
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

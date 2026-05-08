@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
@@ -37,6 +35,7 @@ fn main() {
 
   guardian.tell(Command::Greet);
   wait_until(|| greetings.with_lock(|greetings| greetings.as_slice() == ["hello"]), Duration::from_secs(10));
+  println!("typed_first_example recorded greetings: {:?}", greetings.with_lock(|greetings| greetings.clone()));
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

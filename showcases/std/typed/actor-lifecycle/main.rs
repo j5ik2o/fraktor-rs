@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
@@ -73,6 +71,7 @@ fn main() {
   let snapshot = events.with_lock(|events| events.clone());
   assert!(snapshot.contains(&"parent-setup"));
   assert!(snapshot.contains(&"child-post-stop"));
+  println!("typed_actor_lifecycle observed events: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

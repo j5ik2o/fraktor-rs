@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{string::String, thread, time::Instant, vec::Vec};
 
@@ -78,6 +76,7 @@ fn main() {
     observed.starts_with(POOL_NAME),
     "Greet should be processed on a {POOL_NAME}-* worker thread, observed: {observed}"
   );
+  println!("kernel_affinity_executor processed Greet on {observed}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

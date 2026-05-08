@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -71,7 +69,9 @@ fn main() {
 
   guardian.tell(ParentCommand::Start);
   wait_until(|| events.with_lock(|events| events.contains(&"work-after-restart")));
-  assert!(events.with_lock(|events| events.iter().filter(|event| **event == "child-started").count() >= 2));
+  let snapshot = events.with_lock(|events| events.clone());
+  assert!(snapshot.iter().filter(|event| **event == "child-started").count() >= 2);
+  println!("typed_fault_tolerance observed events: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

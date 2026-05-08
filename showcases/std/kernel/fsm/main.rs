@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
@@ -88,7 +86,9 @@ fn main() {
   guardian.tell(AnyMessage::new(Coin));
   guardian.tell(AnyMessage::new(Pass));
   wait_until(|| pass_count.with_lock(|count| *count == 1));
-  assert_eq!(transitions.with_lock(|transitions| transitions.clone()), vec!["locked-to-open", "open-to-locked"]);
+  let transitions_snapshot = transitions.with_lock(|transitions| transitions.clone());
+  assert_eq!(transitions_snapshot, vec!["locked-to-open", "open-to-locked"]);
+  println!("kernel_fsm completed transitions: {transitions_snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

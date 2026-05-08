@@ -73,7 +73,6 @@ fn open(total: i32) -> Behavior<Command> {
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   use std::{
     thread,

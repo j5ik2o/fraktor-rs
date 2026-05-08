@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, vec::Vec};
 
@@ -58,6 +56,7 @@ fn main() {
 
   wait_until(|| events.with_lock(|events| !events.is_empty()));
   assert_eq!(events.with_lock(|events| events.clone()), vec!["tick"]);
+  println!("classic_timers fired events: {:?}", events.with_lock(|events| events.clone()));
 
   system.terminate().expect("terminate");
 }

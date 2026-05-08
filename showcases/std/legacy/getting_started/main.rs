@@ -7,9 +7,10 @@
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
+  kernel::{actor::setup::ActorSystemConfig, event::logging::LogLevel},
   typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors},
 };
+use fraktor_showcases_std::subscribe_typed_tracing_logger;
 
 // --- メッセージ定義 ---
 
@@ -21,9 +22,9 @@ enum Command {
 // --- Behavior 定義 ---
 
 fn greeter() -> Behavior<Command> {
-  Behaviors::receive_message(|_ctx, message: &Command| match message {
+  Behaviors::receive_message(|ctx, message: &Command| match message {
     | Command::Greet => {
-      println!("Hello from fraktor-rs!");
+      ctx.system().emit_log(LogLevel::Info, "Hello from fraktor-rs!", Some(ctx.pid()), None);
       Ok(Behaviors::same())
     },
   })
@@ -31,16 +32,17 @@ fn greeter() -> Behavior<Command> {
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   // アクターシステムを起動
   let props = TypedProps::from_behavior_factory(greeter);
   let system =
     TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let _log_subscription = subscribe_typed_tracing_logger(&system);
   let termination = system.when_terminated();
 
   // guardian にメッセージを送信
   system.user_guardian_ref().tell(Command::Greet);
+  println!("getting_started sent Greet to the guardian actor");
 
   // システムを終了し、TerminationSignal で安全に待機
   system.terminate().expect("terminate");

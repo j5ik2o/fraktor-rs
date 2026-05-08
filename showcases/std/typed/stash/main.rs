@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
@@ -67,7 +65,9 @@ fn main() {
   actor.tell(Command::Buffer(5));
   actor.tell(Command::Buffer(3));
   actor.tell(Command::Open);
-  assert_eq!(read_total(&mut actor), 208);
+  let total = read_total(&mut actor);
+  assert_eq!(total, 208);
+  println!("typed_stash unstashed total: {total}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());
