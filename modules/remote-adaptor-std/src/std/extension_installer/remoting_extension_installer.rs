@@ -117,33 +117,70 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       Box::new(RemotingFlightRecorder::new(self.config.flight_recorder_capacity())),
     ));
     remote.start().map_err(remoting_build_error)?;
-    let mut run_state =
-      self.run_state.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
-    run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
-    spawn_run_task_with_state(&mut run_state, remote.clone(), system.clone()).map_err(remoting_build_error)?;
-    spawn_shutdown_on_system_termination(
-      system,
-      remote.clone(),
-      event_sender.clone(),
-      &mut run_state,
-      self.run_state.clone(),
-    )
-    .map_err(remoting_build_error)?;
-    self
-      .event_sender
-      .set(event_sender)
-      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-    self
-      .monotonic_epoch
-      .set(monotonic_epoch)
-      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-    // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
-    self.remote_shared.set(remote).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
+    let install_result = (|| -> Result<(), ActorSystemBuildError> {
+      let mut run_state = self
+        .run_state
+        .lock()
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
+      run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
+      spawn_run_task_with_state(&mut run_state, remote.clone(), system.clone()).map_err(remoting_build_error)?;
+      spawn_shutdown_on_system_termination(
+        system,
+        remote.clone(),
+        event_sender.clone(),
+        &mut run_state,
+        self.run_state.clone(),
+      )
+      .map_err(remoting_build_error)?;
+      self
+        .event_sender
+        .set(event_sender.clone())
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+      self
+        .monotonic_epoch
+        .set(monotonic_epoch)
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+      // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
+      self
+        .remote_shared
+        .set(remote.clone())
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+      Ok(())
+    })();
+    if let Err(error) = install_result {
+      rollback_started_remote(&remote, &event_sender, &self.run_state);
+      return Err(error);
+    }
+    Ok(())
   }
 }
 
 fn remoting_build_error(error: RemotingError) -> ActorSystemBuildError {
   ActorSystemBuildError::Configuration(error.to_string())
+}
+
+fn rollback_started_remote(
+  remote: &RemoteShared,
+  event_sender: &Sender<RemoteEvent>,
+  run_state: &Arc<Mutex<RemotingRunState>>,
+) {
+  if let Err(error) = remote.shutdown() {
+    tracing::debug!(?error, "remote install rollback shutdown failed");
+  }
+  if let Err(error) = event_sender.try_send(RemoteEvent::TransportShutdown) {
+    tracing::debug!(?error, "remote install rollback wake failed");
+  }
+  match run_state.lock() {
+    | Ok(mut run_state) => {
+      if let Some(handle) = run_state.handle.take() {
+        handle.abort();
+      }
+      if let Some(handle) = run_state.termination_handle.take() {
+        handle.abort();
+      }
+    },
+    | Err(_) => tracing::debug!("remote install rollback run_state lock failed"),
+  }
 }
 
 fn spawn_run_task_with_state(

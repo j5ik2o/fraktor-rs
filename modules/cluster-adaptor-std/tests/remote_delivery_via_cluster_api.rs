@@ -116,6 +116,9 @@ struct RemoteNode {
 impl RemoteNode {
   async fn shutdown(self) {
     self.system.terminate().expect("system should terminate");
+    timeout(Duration::from_secs(5), self.system.when_terminated())
+      .await
+      .expect("system should terminate within timeout");
   }
 }
 
