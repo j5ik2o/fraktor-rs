@@ -17,8 +17,9 @@ use fraktor_remote_core_rs::core::{
   transport::{RemoteTransport, TransportEndpoint, TransportError},
   wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
 };
+use futures::StreamExt as _;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::codec::{Decoder, Encoder};
+use tokio_util::codec::{Decoder, Encoder, Framed};
 
 use super::base::outbound_envelope_to_pdu;
 use crate::std::transport::tcp::{
@@ -432,6 +433,55 @@ async fn remote_transport_client_connection_close_emits_connection_lost() {
     .expect("connection-lost event should arrive")
     .expect("connection-lost event should be present");
   assert_connection_lost_event(event, TransportEndpoint::new(remote.to_string()), TransportError::ConnectionClosed);
+
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_reconnects_after_client_connection_loss() {
+  use tokio::{net::TcpListener, sync::mpsc};
+
+  use crate::std::transport::tcp::TcpRemoteTransport;
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.expect("peer listener should bind");
+  let bind_addr = listener.local_addr().expect("peer listener local addr");
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
+    .with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before connecting a peer");
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+
+  transport.connect_peer(&remote).expect("transport should connect to peer");
+  let (first_stream, _) = listener.accept().await.expect("peer should accept initial connection");
+  drop(first_stream);
+
+  let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("connection-lost event should arrive")
+    .expect("connection-lost event should be present");
+  assert_connection_lost_event(event, TransportEndpoint::new(remote.to_string()), TransportError::ConnectionClosed);
+
+  let (second_stream, _) = tokio::time::timeout(Duration::from_secs(5), async {
+    loop {
+      transport.connect_peer(&remote).expect("transport should reconnect to peer");
+      if let Ok(accepted) = tokio::time::timeout(Duration::from_millis(50), listener.accept()).await {
+        break accepted.expect("peer should accept replacement connection");
+      }
+    }
+  })
+  .await
+  .expect("replacement connection should be accepted");
+  let mut framed = Framed::new(second_stream, WireFrameCodec::new());
+  let from = UniqueAddress::new(transport.default_address().expect("default local address").clone(), 1);
+  let pdu = HandshakePdu::Req(HandshakeReq::new(from, remote.clone()));
+
+  transport.send_handshake(&remote, pdu.clone()).expect("handshake send should use replacement writer");
+  let frame = tokio::time::timeout(Duration::from_secs(5), framed.next())
+    .await
+    .expect("replacement connection should receive a frame")
+    .expect("replacement connection should stay open")
+    .expect("replacement connection frame should decode");
+  assert_eq!(frame, WireFrame::Handshake(pdu));
 
   transport.shutdown().expect("transport shutdown should succeed");
 }

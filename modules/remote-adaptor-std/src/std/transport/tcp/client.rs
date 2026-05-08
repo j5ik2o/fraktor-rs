@@ -109,6 +109,10 @@ impl TcpClient {
     self.writer_tx.send(frame).map_err(|_| TransportError::ConnectionClosed)
   }
 
+  pub(crate) fn is_alive(&self) -> bool {
+    self.task.as_ref().is_some_and(|handle| !handle.is_finished())
+  }
+
   /// Aborts the reader / writer task.
   pub fn shutdown(&mut self) {
     if let Some(handle) = self.task.take() {

@@ -171,8 +171,12 @@ impl TcpRemoteTransport {
       return Err(TransportError::NotStarted);
     }
     let peer_key = Self::peer_key_for_address(remote);
-    if self.clients.contains_key(&peer_key) {
-      return Ok(());
+    if let Some(client) = self.clients.get_mut(&peer_key) {
+      if client.is_alive() {
+        return Ok(());
+      }
+      client.shutdown();
+      self.clients.remove(&peer_key);
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
     let client = TcpClient::connect(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote))?;
@@ -236,7 +240,13 @@ impl TcpRemoteTransport {
     let Some(client) = self.clients.get(&peer_key) else {
       return Err(TransportError::ConnectionClosed);
     };
-    client.send(frame)
+    let result = client.send(frame);
+    if result.as_ref().err().is_some_and(|error| error == &TransportError::ConnectionClosed)
+      && let Some(mut client) = self.clients.remove(&peer_key)
+    {
+      client.shutdown();
+    }
+    result
   }
 }
 
