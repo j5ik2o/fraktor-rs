@@ -320,7 +320,8 @@ impl Remote {
       return Ok(());
     };
     self.apply_association_effects(association_index, effects, now_ms)?;
-    self.transport.send_handshake(&remote, response).map_err(|_| RemotingError::TransportUnavailable)?;
+    self.transport.connect_peer(&remote).map_err(|_| RemotingError::TransportUnavailable)?;
+    map_wire_delivery_result(&remote, self.transport.send_handshake(&remote, response))?;
     self.drain_outbound(association_index, now_ms)
   }
 
@@ -419,7 +420,7 @@ impl Remote {
     };
     let local = self.associations[index].local().clone();
     let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
-    self.transport.send_control(&remote, response).map_err(|_| RemotingError::TransportUnavailable)
+    map_wire_delivery_result(&remote, self.transport.send_control(&remote, response))
   }
 
   fn handle_inbound_ack_pdu(&mut self, authority: &TransportEndpoint, pdu: &AckPdu, now_ms: u64) {
@@ -445,7 +446,7 @@ impl Remote {
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
     match cause {
-      | TransportError::ConnectionClosed | TransportError::SendFailed => {},
+      | TransportError::ConnectionClosed | TransportError::SendFailed | TransportError::Backpressure => {},
       | TransportError::UnsupportedScheme
       | TransportError::NotAvailable
       | TransportError::AlreadyRunning
@@ -546,7 +547,8 @@ impl Remote {
               HandshakePdu::Req(HandshakeReq::new(association.local().clone(), association.remote().clone())),
             )
           };
-          self.transport.send_handshake(&remote, request).map_err(|_| RemotingError::TransportUnavailable)?;
+          self.transport.connect_peer(&remote).map_err(|_| RemotingError::TransportUnavailable)?;
+          map_wire_delivery_result(&remote, self.transport.send_handshake(&remote, request))?;
           self
             .transport
             .schedule_handshake_timeout(&authority, timeout, generation)
@@ -644,6 +646,28 @@ fn parse_endpoint(endpoint: &str) -> Option<(&str, u16)> {
   let (host, port) = endpoint.rsplit_once(':')?;
   let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
   Some((host, port.parse::<u16>().ok()?))
+}
+
+fn map_wire_delivery_result(remote: &Address, result: Result<(), TransportError>) -> Result<(), RemotingError> {
+  match result {
+    | Ok(()) => Ok(()),
+    | Err(error @ TransportError::Backpressure) => {
+      tracing::warn!(
+        ?error,
+        remote = %remote,
+        "wire frame delivery hit transport backpressure; keeping remote event loop alive"
+      );
+      Ok(())
+    },
+    | Err(
+      TransportError::UnsupportedScheme
+      | TransportError::NotAvailable
+      | TransportError::AlreadyRunning
+      | TransportError::NotStarted
+      | TransportError::SendFailed
+      | TransportError::ConnectionClosed,
+    ) => Err(RemotingError::TransportUnavailable),
+  }
 }
 
 impl Remote {

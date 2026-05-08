@@ -49,6 +49,7 @@ struct RecordingTransport {
   handshake_calls: ArcShared<AtomicUsize>,
   timeout_calls: ArcShared<AtomicUsize>,
   timeout_before_handshake_calls: ArcShared<AtomicUsize>,
+  connect_peer_calls: ArcShared<AtomicUsize>,
 }
 
 struct VecRemoteEventReceiver {
@@ -196,6 +197,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 
@@ -213,6 +215,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 
@@ -234,6 +237,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     })
   }
 
@@ -251,6 +255,7 @@ impl RecordingTransport {
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
     }
   }
 }
@@ -282,10 +287,18 @@ impl RemoteTransport for RecordingTransport {
     }
   }
 
+  fn connect_peer(&mut self, _remote: &Address) -> Result<(), TransportError> {
+    self.connect_peer_calls.fetch_add(1, Ordering::Relaxed);
+    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+  }
+
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     self.control_calls.fetch_add(1, Ordering::Relaxed);
     if !self.running {
       return Err(TransportError::NotStarted);
+    }
+    if let Err(error) = self.send_result.clone() {
+      return Err(error);
     }
     self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
     Ok(())
@@ -293,7 +306,10 @@ impl RemoteTransport for RecordingTransport {
 
   fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
     self.handshake_calls.fetch_add(1, Ordering::Relaxed);
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    self.send_result.clone()
   }
 
   fn schedule_handshake_timeout(
@@ -670,6 +686,7 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   let handshake_send_calls = transport.handshake_calls.clone();
   let timeout_calls = transport.timeout_calls.clone();
   let timeout_before_handshake_calls = transport.timeout_before_handshake_calls.clone();
+  let connect_peer_calls = transport.connect_peer_calls.clone();
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument_handshake_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument = CountingInstrument::new(instrument_send_calls.clone(), instrument_handshake_calls.clone());
@@ -695,11 +712,43 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   block_on_ready(remote.run(&mut receiver)).unwrap();
 
   assert_eq!(transport_send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
   assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_before_handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 0);
   assert_eq!(instrument_handshake_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn start_handshake_backpressure_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::with_send_result(vec![local_address], Err(TransportError::Backpressure));
+  let handshake_calls = transport.handshake_calls.clone();
+  let timeout_calls = transport.timeout_calls.clone();
+  let mut remote = Remote::new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should start before outbound delivery");
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  let event = RemoteEvent::OutboundEnqueued {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    envelope:  Box::new(envelope),
+    now_ms:    42,
+  };
+  let mut receiver = VecRemoteEventReceiver::new([event, RemoteEvent::TransportShutdown]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("handshake backpressure should not fail the event loop");
+
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
 }
 
 #[test]
@@ -890,6 +939,29 @@ fn inbound_heartbeat_control_sends_response_to_remote_peer() {
 }
 
 #[test]
+fn inbound_heartbeat_control_backpressure_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::Backpressure));
+  let control_calls = transport.control_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = ControlPdu::Heartbeat { authority: remote_address.to_string() };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(pdu),
+      now_ms:    76,
+    })
+    .expect("heartbeat response backpressure should not fail the event loop");
+
+  assert_eq!(control_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
 fn inbound_shutdown_control_quarantines_matching_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -976,6 +1048,7 @@ fn connection_lost_recovers_active_association() {
   let transport = RecordingTransport::new(vec![local_address.clone()]);
   let handshake_send_calls = transport.handshake_calls.clone();
   let timeout_calls = transport.timeout_calls.clone();
+  let connect_peer_calls = transport.connect_peer_calls.clone();
   let mut remote = Remote::new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before connection loss");
   remote.insert_association(active_association(local_address, remote_address.clone(), &config));
@@ -989,6 +1062,7 @@ fn connection_lost_recovers_active_association() {
   block_on_ready(remote.run(&mut receiver)).unwrap();
 
   assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
 }
 

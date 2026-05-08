@@ -1,23 +1,24 @@
-use alloc::{format, vec::Vec};
-use std::time::Instant;
+use alloc::vec::Vec;
+use std::time::{Duration, Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Address as ActorAddress, Pid,
-    actor_path::{ActorPath, ActorPathError, ActorPathParser, ActorPathScheme},
+    Pid,
+    actor_path::{ActorPath, ActorPathParser, ActorPathScheme},
     actor_ref::ActorRef,
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
     error::{ActorError, SendError},
+    extension::ExtensionInstallers,
     messaging::AnyMessage,
   },
   event::stream::EventStreamEvent,
-  routing::{ConsistentHashingPool, RandomPool, RemoteRouterConfig, RoundRobinPool, Routee, SmallestMailboxPool},
   serialization::ActorRefResolveCache,
   system::ActorSystem,
 };
 use fraktor_remote_core_rs::core::{
   address::{Address as RemoteCoreAddress, RemoteNodeId, UniqueAddress},
+  config::RemoteConfig,
   extension::{
     REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
     RemoteEvent,
@@ -25,15 +26,16 @@ use fraktor_remote_core_rs::core::{
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::TransportEndpoint,
 };
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
+use tokio::{
+  sync::mpsc::{self, Receiver, Sender},
+  time::timeout,
+};
 
+use super::{StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller};
 use crate::std::{
-  provider::{
-    PathRemoteActorRefProvider, RemoteRouteeExpansion, RemoteRouteeExpansionError, StdRemoteActorRefProvider,
-    StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
-  },
-  tests::test_support::EventHarness,
+  extension_installer::RemotingExtensionInstaller, tests::test_support::EventHarness,
+  transport::tcp::TcpRemoteTransport,
 };
 
 // ---------------------------------------------------------------------------
@@ -97,36 +99,6 @@ impl RemoteActorRefProvider for RejectingRemoteProvider {
 
 fn local_address() -> UniqueAddress {
   UniqueAddress::new(RemoteCoreAddress::new("local-sys", "127.0.0.1", 2551), 7)
-}
-
-fn remote_node_a() -> ActorAddress {
-  ActorAddress::remote("remote-a", "10.0.0.1", 2552)
-}
-
-fn remote_node_b() -> ActorAddress {
-  ActorAddress::remote("remote-b", "10.0.0.2", 2553)
-}
-
-fn indexed_worker_path(index: usize, node: &ActorAddress) -> Result<ActorPath, ActorPathError> {
-  ActorPathParser::parse(&format!("{}/user/worker-{index}", node.to_uri_string()))
-}
-
-fn invalid_worker_path(_index: usize, _node: &ActorAddress) -> Result<ActorPath, ActorPathError> {
-  ActorPath::try_from_segments(["user", "worker/invalid"])
-}
-
-fn local_worker_path(index: usize, _node: &ActorAddress) -> Result<ActorPath, ActorPathError> {
-  Ok(ActorPath::root().child("worker").child(index.to_string()))
-}
-
-fn assert_routee_path(routee: &Routee, expected_path: &str) {
-  match routee {
-    | Routee::ActorRef(actor_ref) => {
-      let canonical_path = actor_ref.canonical_path().expect("remote routee should keep canonical path");
-      assert_eq!(canonical_path.to_canonical_uri(), expected_path);
-    },
-    | Routee::NoRoutee | Routee::Several(_) => panic!("remote routee should be an ActorRef"),
-  }
 }
 
 struct ProviderFixture {
@@ -347,25 +319,28 @@ fn remote_actor_ref_try_tell_pushes_outbound_enqueued_event() {
   assert_outbound_enqueued_event(event, "remote@10.0.0.1:2552", "remote", &remote_path);
 }
 
-#[test]
-fn actor_system_config_registered_std_remote_actor_ref_provider_pushes_outbound_enqueued() {
-  let (event_tx, mut event_rx) = mpsc::channel(4);
-  let installer = StdRemoteActorRefProviderInstaller::new(
-    local_address(),
-    Box::new(PathRemoteActorRefProvider),
-    event_tx,
-    Instant::now(),
-  );
-  let config = std_actor_system_config(TestTickDriver::default()).with_actor_ref_provider_installer(installer);
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn actor_system_config_registered_std_remote_actor_ref_provider_resolves_remote_actor_ref() {
+  let remote_installer = ArcShared::new(RemotingExtensionInstaller::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![local_address().address().clone()]),
+    RemoteConfig::new("127.0.0.1"),
+  ));
+  let extension_installers = ExtensionInstallers::default().with_shared_extension_installer(remote_installer.clone());
+  let installer =
+    StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(local_address(), remote_installer);
+  let config = std_actor_system_config(TestTickDriver::default())
+    .with_extension_installers(extension_installers)
+    .with_actor_ref_provider_installer(installer);
   let system = ActorSystem::noop_with_config(config).expect("system");
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
   let mut actor_ref = system.resolve_actor_ref(remote_path.clone()).expect("remote actor ref should resolve");
+  let canonical_path = actor_ref.canonical_path().expect("remote actor ref canonical path");
+  assert_eq!(canonical_path.to_canonical_uri(), remote_path.to_canonical_uri());
 
   actor_ref.try_tell(AnyMessage::new(String::from("remote-payload"))).expect("remote send should enqueue event");
 
-  let event = event_rx.try_recv().expect("outbound event should be available");
-  assert_outbound_enqueued_event(event, "remote-sys@10.0.0.1:2552", "remote-sys", &remote_path);
   system.terminate().expect("terminate");
+  timeout(Duration::from_secs(1), system.when_terminated()).await.expect("system should terminate");
 }
 
 #[test]
@@ -473,115 +448,4 @@ fn watch_local_authority_path_returns_not_remote() {
   let local_path = ActorPathParser::parse("fraktor.tcp://local-sys@127.0.0.1:2551/user/worker").expect("parse");
   let err = provider.watch(local_path, Pid::new(1, 1)).unwrap_err();
   assert!(matches!(err, StdRemoteActorRefProviderError::NotRemote));
-}
-
-#[test]
-fn remote_routee_expansion_builds_router_with_remote_actor_ref_routees() {
-  // Given
-  let mut fixture = make_provider_fixture();
-  let config = RemoteRouterConfig::new(RoundRobinPool::new(3), vec![remote_node_a(), remote_node_b()]);
-  let expansion = RemoteRouteeExpansion::new(config, indexed_worker_path);
-
-  // When
-  let router = expansion.expand(&mut fixture.provider).expect("remote routees should expand");
-
-  // Then
-  assert_eq!(router.routees().len(), 3);
-  assert_routee_path(&router.routees()[0], "fraktor.tcp://remote-a@10.0.0.1:2552/user/worker-0");
-  assert_routee_path(&router.routees()[1], "fraktor.tcp://remote-b@10.0.0.2:2553/user/worker-1");
-  assert_routee_path(&router.routees()[2], "fraktor.tcp://remote-a@10.0.0.1:2552/user/worker-2");
-  assert_eq!(fixture.actor_ref_call_count(), 3);
-}
-
-#[test]
-fn remote_routee_expansion_supports_smallest_mailbox_pool() {
-  // Given
-  let mut fixture = make_provider_fixture();
-  let config = RemoteRouterConfig::new(SmallestMailboxPool::new(2), vec![remote_node_a(), remote_node_b()]);
-  let expansion = RemoteRouteeExpansion::new(config, indexed_worker_path);
-
-  // When
-  let router = expansion.expand(&mut fixture.provider).expect("smallest-mailbox routees should expand");
-
-  // Then
-  assert_eq!(router.routees().len(), 2);
-  assert_routee_path(&router.routees()[0], "fraktor.tcp://remote-a@10.0.0.1:2552/user/worker-0");
-  assert_routee_path(&router.routees()[1], "fraktor.tcp://remote-b@10.0.0.2:2553/user/worker-1");
-}
-
-#[test]
-fn remote_routee_expansion_supports_random_pool() {
-  // Given
-  let mut fixture = make_provider_fixture();
-  let config = RemoteRouterConfig::new(RandomPool::new(2), vec![remote_node_a(), remote_node_b()]);
-  let expansion = RemoteRouteeExpansion::new(config, indexed_worker_path);
-
-  // When
-  let router = expansion.expand(&mut fixture.provider).expect("random routees should expand");
-
-  // Then
-  assert_eq!(router.routees().len(), 2);
-  assert_routee_path(&router.routees()[0], "fraktor.tcp://remote-a@10.0.0.1:2552/user/worker-0");
-  assert_routee_path(&router.routees()[1], "fraktor.tcp://remote-b@10.0.0.2:2553/user/worker-1");
-}
-
-#[test]
-fn remote_routee_expansion_supports_consistent_hashing_pool() {
-  // Given
-  let mut fixture = make_provider_fixture();
-  let config =
-    RemoteRouterConfig::new(ConsistentHashingPool::new(2, |_message| 7), vec![remote_node_a(), remote_node_b()]);
-  let expansion = RemoteRouteeExpansion::new(config, indexed_worker_path);
-
-  // When
-  let router = expansion.expand(&mut fixture.provider).expect("consistent-hashing routees should expand");
-
-  // Then
-  assert_eq!(router.routees().len(), 2);
-  assert_routee_path(&router.routees()[0], "fraktor.tcp://remote-a@10.0.0.1:2552/user/worker-0");
-  assert_routee_path(&router.routees()[1], "fraktor.tcp://remote-b@10.0.0.2:2553/user/worker-1");
-}
-
-#[test]
-fn remote_routee_expansion_reports_path_factory_error_with_routee_index() {
-  // Given
-  let mut provider = make_provider();
-  let config = RemoteRouterConfig::new(RoundRobinPool::new(2), vec![remote_node_a(), remote_node_b()]);
-  let expansion = RemoteRouteeExpansion::new(config, invalid_worker_path);
-
-  // When
-  let err = match expansion.expand(&mut provider) {
-    | Err(err) => err,
-    | Ok(_) => panic!("routee path error should fail expansion"),
-  };
-
-  // Then
-  match err {
-    | RemoteRouteeExpansionError::RouteePath { index, .. } => assert_eq!(index, 0),
-    | other => panic!("expected routee path error, got {other:?}"),
-  }
-}
-
-#[test]
-fn remote_routee_expansion_reports_provider_error_with_routee_index_and_path() {
-  // Given
-  let mut fixture = make_provider_fixture();
-  let config = RemoteRouterConfig::new(RoundRobinPool::new(2), vec![remote_node_a(), remote_node_b()]);
-  let expansion = RemoteRouteeExpansion::new(config, local_worker_path);
-
-  // When
-  let err = match expansion.expand(&mut fixture.provider) {
-    | Err(err) => err,
-    | Ok(_) => panic!("provider error should fail expansion"),
-  };
-
-  // Then
-  match err {
-    | RemoteRouteeExpansionError::Provider { index, path, .. } => {
-      assert_eq!(index, 0);
-      assert_eq!(path.to_relative_string(), "/user/worker/0");
-    },
-    | other => panic!("expected provider error, got {other:?}"),
-  }
-  assert_eq!(fixture.actor_ref_call_count(), 0);
 }

@@ -27,14 +27,12 @@ use fraktor_cluster_core_rs::core::{
   placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
 };
 use fraktor_remote_adaptor_std_rs::std::{
-  extension_installer::RemotingExtensionInstaller,
-  provider::{PathRemoteActorRefProvider, StdRemoteActorRefProviderInstaller},
+  extension_installer::RemotingExtensionInstaller, provider::StdRemoteActorRefProviderInstaller,
   transport::tcp::TcpRemoteTransport,
 };
 use fraktor_remote_core_rs::core::{
   address::{Address, UniqueAddress},
   config::RemoteConfig,
-  extension::Remoting,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::{
@@ -111,30 +109,16 @@ impl IdentityLookup for StaticIdentityLookup {
 }
 
 struct RemoteNode {
-  system:    ActorSystem,
-  installer: ArcShared<RemotingExtensionInstaller>,
-  address:   Address,
+  system:  ActorSystem,
+  address: Address,
 }
 
 impl RemoteNode {
-  fn start_remote(&self) {
-    let remote = self.installer.remote().expect("remote extension should be installed");
-    remote.start().expect("remote should start");
-    self.installer.spawn_run_task().expect("remote run task should start");
-  }
-
-  fn connect_peer(&self, remote: &Address) {
-    self
-      .installer
-      .remote()
-      .expect("remote extension should be installed")
-      .connect_peer(remote)
-      .expect("peer should connect");
-  }
-
   async fn shutdown(self) {
-    self.installer.shutdown_and_join().await.expect("remote should shut down");
     self.system.terminate().expect("system should terminate");
+    timeout(Duration::from_secs(5), self.system.when_terminated())
+      .await
+      .expect("system should terminate within timeout");
   }
 }
 
@@ -152,7 +136,6 @@ fn remote_extension_parts(
   let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, RemoteConfig::new("127.0.0.1")));
   let provider_installer = StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(
     UniqueAddress::new(address.clone(), uid),
-    Box::new(PathRemoteActorRefProvider),
     installer.clone(),
   );
   (installer, address, provider_installer)
@@ -174,7 +157,7 @@ fn build_cluster_node(port: u16, uid: u64, remote_authority: String) -> (RemoteN
     .with_actor_ref_provider_installer(provider_installer);
   let system = ActorSystem::noop_with_config(config).expect("cluster actor system should build");
   let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
-  (RemoteNode { system, installer, address }, extension)
+  (RemoteNode { system, address }, extension)
 }
 
 fn build_remote_node(port: u16, uid: u64) -> RemoteNode {
@@ -185,7 +168,7 @@ fn build_remote_node(port: u16, uid: u64) -> RemoteNode {
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(provider_installer);
   let system = ActorSystem::noop_with_config(config).expect("remote actor system should build");
-  RemoteNode { system, installer, address }
+  RemoteNode { system, address }
 }
 
 fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<Bytes>, ActorPath) {
@@ -257,11 +240,6 @@ async fn cluster_api_get_delivers_supported_bytes_payload_to_remote_actor() {
 
   cluster_ext.start_member().expect("cluster member should start");
   cluster_ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("cluster kind should register");
-  cluster_node.start_remote();
-  remote_node.start_remote();
-  cluster_node.connect_peer(&remote_node.address);
-  remote_node.connect_peer(&cluster_node.address);
-
   let api = ClusterApi::try_from_system(&cluster_node.system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "receiver-b").expect("cluster identity");
   let mut cluster_resolved_ref = api.get(&identity).expect("cluster api should resolve remote actor ref");
@@ -277,8 +255,6 @@ async fn cluster_api_get_delivers_supported_bytes_payload_to_remote_actor() {
   ref_to_cluster.try_tell(AnyMessage::new(Bytes::from_static(b"warm-remote-to-cluster"))).expect("warm reverse send");
   wait_until_connected(&mut lifecycle_cluster, &remote_node.address.to_string()).await;
   wait_until_connected(&mut lifecycle_remote, &cluster_node.address.to_string()).await;
-  cluster_node.connect_peer(&remote_node.address);
-  remote_node.connect_peer(&cluster_node.address);
 
   cluster_resolved_ref
     .try_tell(AnyMessage::new(Bytes::from_static(b"cluster-to-remote")))

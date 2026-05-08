@@ -68,7 +68,7 @@ pub struct StdRemoteActorRefProvider {
 impl StdRemoteActorRefProvider {
   /// Creates a new dispatcher.
   #[must_use]
-  pub fn new(
+  pub(crate) fn new(
     local_address: UniqueAddress,
     local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,

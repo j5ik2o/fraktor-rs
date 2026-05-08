@@ -1,7 +1,9 @@
 //! Lifecycle integration tests for `remote-core`'s `Remote`.
 
-use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
-use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionInstaller, system::ActorSystem};
+use std::{format, net::TcpListener, time::Duration};
+
+use fraktor_actor_adaptor_std_rs::std::{system::new_empty_actor_system, tick_driver::TestTickDriver};
+use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionInstallers, system::ActorSystem};
 use fraktor_remote_adaptor_std_rs::std::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };
@@ -9,8 +11,10 @@ use fraktor_remote_core_rs::core::{
   address::Address,
   association::QuarantineReason,
   config::RemoteConfig,
-  extension::{EventPublisher, Remote, Remoting},
+  extension::{EventPublisher, Remote},
 };
+use fraktor_utils_core_rs::core::sync::ArcShared;
+use tokio::{net::TcpStream, time::timeout};
 
 fn make_transport() -> TcpRemoteTransport {
   TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
@@ -24,6 +28,11 @@ fn make_event_publisher() -> (ActorSystem, EventPublisher) {
 
 fn remote_config() -> RemoteConfig {
   RemoteConfig::new("127.0.0.1")
+}
+
+fn reserve_port() -> u16 {
+  let listener = TcpListener::bind("127.0.0.1:0").expect("reserve tcp port");
+  listener.local_addr().expect("reserved local addr").port()
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -45,52 +54,20 @@ async fn remote_lifecycle_directly() {
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn remote_lifecycle_via_extension_installer() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
-  let system = new_empty_actor_system();
-  installer.install(&system).expect("install remote extension");
-  let remote = installer.remote().expect("installed remote should be available");
+  let port = reserve_port();
+  let address = Address::new("local-sys", "127.0.0.1", port);
+  let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address]);
+  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config()));
+  let installers = ExtensionInstallers::default().with_shared_extension_installer(installer);
+  let config = fraktor_actor_adaptor_std_rs::std::system::std_actor_system_config(TestTickDriver::default())
+    .with_extension_installers(installers);
+  let system = ActorSystem::noop_with_config(config).expect("system should install and start remoting");
 
-  remote.start().expect("start through installer-shared handle");
-  assert!(!remote.addresses().is_empty());
+  timeout(Duration::from_secs(5), TcpStream::connect(("127.0.0.1", port)))
+    .await
+    .expect("remote listener should accept connections")
+    .expect("remote listener should be reachable");
 
-  let address = Address::new("remote-sys", "10.0.0.1", 2552);
-  remote
-    .quarantine(&address, None, QuarantineReason::new("via installer"), 1)
-    .expect("quarantine via installer-shared handle");
-
-  remote.shutdown().expect("first shutdown");
-  remote.shutdown().expect("shared shutdown is idempotent");
   system.terminate().expect("terminate actor system");
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn remote_lifecycle_installer_spawn_run_task_and_shutdown_join() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
-  let system = new_empty_actor_system();
-  installer.install(&system).expect("install remote extension");
-  let remote = installer.remote().expect("installed remote should be available");
-  remote.start().expect("start through installer-shared handle");
-  installer.spawn_run_task().expect("spawn remote run task");
-
-  let address = Address::new("remote-sys", "10.0.0.1", 2552);
-  remote
-    .quarantine(&address, None, QuarantineReason::new("parallel command while run task is pending"), 1)
-    .expect("quarantine via shared handle while run task owns event loop");
-
-  installer.shutdown_and_join().await.expect("shutdown wake should join run task");
-  system.terminate().expect("terminate actor system");
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn remote_lifecycle_standalone_shutdown_then_wake_joins_run_task() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
-  let system = new_empty_actor_system();
-  installer.install(&system).expect("install remote extension");
-  let remote = installer.remote().expect("installed remote should be available");
-  remote.start().expect("start through installer-shared handle");
-  installer.spawn_run_task().expect("spawn remote run task");
-
-  remote.shutdown().expect("standalone shutdown should update lifecycle");
-  installer.shutdown_and_join().await.expect("shutdown wake should let run task observe termination");
-  system.terminate().expect("terminate actor system");
+  timeout(Duration::from_secs(5), system.when_terminated()).await.expect("system should terminate within timeout");
 }

@@ -1,14 +1,8 @@
 //! TCP-based implementation of `fraktor_remote_core_rs::core::transport::RemoteTransport`.
 //!
-//! The module is structured as a thin I/O layer over the pure `remote-core` types:
-//!
-//! - [`WireFrame`] is the unified on-the-wire enum that multiplexes all five PDU kinds over a
-//!   single `tokio_util::codec::Framed` stream.
-//! - [`frame_codec::WireFrameCodec`] implements `tokio_util::codec::{Encoder, Decoder}` and
-//!   delegates the actual encoding to the core `Codec<T>` implementations.
-//! - [`server::TcpServer`] owns a `tokio::net::TcpListener` + the accept loop task.
-//! - [`client::TcpClient`] owns a single outbound connection with reader/writer tasks.
-//! - [`base::TcpRemoteTransport`] aggregates the above and implements the core port.
+//! The public surface is intentionally limited to [`TcpRemoteTransport`].
+//! Frame codecs, listener tasks, and outbound clients are adapter runtime
+//! internals over the pure `remote-core` types.
 
 #[cfg(test)]
 mod tests;
@@ -23,9 +17,5 @@ mod server;
 mod wire_frame;
 
 pub use base::TcpRemoteTransport;
-pub use client::TcpClient;
-pub use frame_codec::WireFrameCodec;
-pub use frame_codec_error::FrameCodecError;
-pub use inbound_frame_event::InboundFrameEvent;
-pub use server::TcpServer;
-pub use wire_frame::WireFrame;
+pub(crate) use inbound_frame_event::InboundFrameEvent;
+pub(crate) use wire_frame::WireFrame;

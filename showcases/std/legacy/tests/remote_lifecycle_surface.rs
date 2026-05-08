@@ -21,13 +21,14 @@ fn remote_lifecycle_showcase_uses_public_remote_lifecycle_api() {
   assert!(source.contains("with_extension_installers"), "showcase must install remoting through ActorSystemConfig");
   assert!(
     source.contains("with_shared_extension_installer"),
-    "showcase must retain the installer handle passed to ActorSystemConfig",
+    "showcase must pass the installer through ActorSystemConfig",
   );
   assert!(
     !source.contains(".install(&system)"),
     "showcase must not install remoting directly after ActorSystem bootstrap",
   );
-  assert!(source.contains("RemotingLifecycleEvent::ListenStarted"), "showcase must observe listen lifecycle events");
-  // showcase は println! ではなくイベント観測で挙動を示すため、print_stdout 抑制を許可しない。
-  assert!(!source.contains("#[allow(clippy::print_stdout)]"), "showcase must not suppress print stdout lint");
+  assert!(!source.contains(".remote()"), "showcase must not fetch the internal remote handle");
+  assert!(!source.contains(".remote().start("), "showcase must not manually start remoting");
+  assert!(!source.contains("spawn_run_task"), "showcase must not manually spawn the remote run task");
+  assert!(!source.contains("shutdown_and_join"), "showcase must not manually join remoting shutdown");
 }

@@ -39,19 +39,16 @@ use crate::std::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 
 /// TCP-backed implementation of [`RemoteTransport`].
 ///
-/// This struct aggregates a [`TcpServer`] (inbound) and a [`BTreeMap`] of
-/// [`TcpClient`]s (outbound, one per remote authority). Inbound frames land
-/// in an `mpsc::UnboundedReceiver` that callers (typically the
-/// `association` module added in Section 19) poll to feed the pure
-/// `Association` state machines.
+/// This struct aggregates the adapter-owned TCP listener and outbound
+/// connections. Inbound frames are driven by crate-internal workers and fed
+/// into `remote-core` through its event port.
 ///
-/// Note: the trait [`RemoteTransport::send`] is **synchronous**; because
-/// establishing a brand-new outbound TCP connection is asynchronous, callers
-/// must call [`TcpRemoteTransport::connect_peer_async`] from an async context
-/// *before* calling `send` for a given peer. This mirrors Pekko Artery's
-/// explicit association lifecycle. User envelope delivery is intentionally
-/// limited to the adapter-owned byte payload contract; arbitrary `AnyMessage`
-/// payloads fail visibly instead of being silently encoded as empty bytes.
+/// Note: the trait [`RemoteTransport::send`] is **synchronous**. Peer
+/// connection setup registers a writer immediately and drives the actual TCP
+/// connect on a Tokio task, so the core event loop never performs blocking
+/// socket I/O. User envelope delivery is intentionally limited to the
+/// adapter-owned byte payload contract; arbitrary `AnyMessage` payloads fail
+/// visibly instead of being silently encoded as empty bytes.
 pub struct TcpRemoteTransport {
   configured_local_addresses: Vec<Address>,
   local_addresses:            Vec<Address>,
@@ -140,32 +137,16 @@ impl TcpRemoteTransport {
 
   /// Returns a copy that emits scheduled remote events through `sender`.
   #[must_use]
-  pub fn with_remote_event_sender(mut self, sender: Sender<RemoteEvent>) -> Self {
+  pub(crate) fn with_remote_event_sender(mut self, sender: Sender<RemoteEvent>) -> Self {
     self.remote_event_tx = Some(sender);
     self
   }
 
   /// Returns a copy that uses the given monotonic epoch for all emitted remote event timestamps.
   #[must_use]
-  pub fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
+  pub(crate) fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
     self.monotonic_epoch = monotonic_epoch;
     self
-  }
-
-  /// Returns the monotonic epoch used to calculate remote event timestamps.
-  #[must_use]
-  pub fn monotonic_epoch(&self) -> Instant {
-    self.monotonic_epoch
-  }
-
-  /// Takes ownership of the inbound receiver.
-  ///
-  /// Exactly one consumer (typically the `association` task) should
-  /// take the receiver to start processing inbound frames. Subsequent calls
-  /// return `None`.
-  #[must_use]
-  pub fn take_inbound_receiver(&mut self) -> Option<UnboundedReceiver<InboundFrameEvent>> {
-    self.inbound_rx.take()
   }
 
   fn spawn_inbound_worker(&mut self) -> Result<(), TransportError> {
@@ -185,68 +166,20 @@ impl TcpRemoteTransport {
     Ok(())
   }
 
-  /// Establishes an outbound connection to `remote` and stores the client.
-  ///
-  /// This method is async because `TcpStream::connect` is async. It must be
-  /// invoked from an async context (e.g. `tokio::spawn`) prior to calling
-  /// the synchronous [`RemoteTransport::send`].
-  ///
-  /// `remote` is hashed via the same [`Self::peer_key_for_address`] formatter
-  /// used by [`RemoteTransport::send`] / [`Self::send_handshake`], so the
-  /// stored client is guaranteed to match subsequent send/quarantine lookups.
-  /// (Earlier revisions accepted an arbitrary `String` here, which silently
-  /// caused `ConnectionClosed` errors when callers formatted the key
-  /// differently from the internal `host:port` convention.)
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::NotStarted`] if the transport has not yet been
-  /// started, or [`TransportError::SendFailed`] if the outbound connection
-  /// cannot be established.
-  pub async fn connect_peer_async(&mut self, remote: &Address) -> Result<(), TransportError> {
+  fn connect_peer_writer(&mut self, remote: &Address) -> Result<(), TransportError> {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
     let peer_key = Self::peer_key_for_address(remote);
-    if self.clients.contains_key(&peer_key) {
-      return Ok(());
+    if let Some(client) = self.clients.get_mut(&peer_key) {
+      if client.is_alive() {
+        return Ok(());
+      }
+      client.shutdown();
+      self.clients.remove(&peer_key);
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client =
-      TcpClient::connect_async(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote)).await?;
-    self.clients.insert(peer_key, client);
-    Ok(())
-  }
-
-  /// Establishes an outbound connection without requiring an async caller.
-  ///
-  /// `connect_peer_blocking` performs a synchronous TCP connect via
-  /// [`TcpClient::connect_blocking`], which calls `std::net::TcpStream::connect`
-  /// under the hood. It is intended for synchronous contexts such as
-  /// actor-system integration tests and small applications before they hand
-  /// envelopes to the synchronous `RemoteTransport::send` path.
-  ///
-  /// Do not call this from a Tokio worker thread directly: it can block the
-  /// executor for the duration of DNS / TCP connect. Tokio callers must wrap
-  /// it in `tokio::task::spawn_blocking` or use another dedicated synchronous
-  /// context.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::NotStarted`] if the transport has not yet been
-  /// started, or [`TransportError::SendFailed`] if the outbound connection
-  /// cannot be established.
-  pub fn connect_peer_blocking(&mut self, remote: &Address) -> Result<(), TransportError> {
-    if !self.running {
-      return Err(TransportError::NotStarted);
-    }
-    let peer_key = Self::peer_key_for_address(remote);
-    if self.clients.contains_key(&peer_key) {
-      return Ok(());
-    }
-    let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client =
-      TcpClient::connect_blocking(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote))?;
+    let client = TcpClient::connect(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote))?;
     self.clients.insert(peer_key, client);
     Ok(())
   }
@@ -262,12 +195,6 @@ impl TcpRemoteTransport {
     } else {
       options
     }
-  }
-
-  /// Returns an immutable reference to the client registry.
-  #[must_use]
-  pub fn clients(&self) -> &BTreeMap<String, TcpClient> {
-    &self.clients
   }
 
   fn apply_bound_port_to_advertised_addresses(&mut self, bound_port: u16) {
@@ -289,9 +216,10 @@ impl TcpRemoteTransport {
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
-  /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
-  pub fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
+  /// Returns [`TransportError::NotStarted`] when the transport has not been started,
+  /// [`TransportError::Backpressure`] when the TCP client writer queue is full,
+  /// or [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
+  pub(crate) fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {
     self.send_wire_frame(remote, WireFrame::Handshake(pdu))
   }
 
@@ -299,9 +227,10 @@ impl TcpRemoteTransport {
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::NotStarted`] when the transport has not been started, or
-  /// [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
-  pub fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
+  /// Returns [`TransportError::NotStarted`] when the transport has not been started,
+  /// [`TransportError::Backpressure`] when the TCP client writer queue is full,
+  /// or [`TransportError::ConnectionClosed`] when no TCP client is registered for `remote`.
+  pub(crate) fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     self.send_wire_frame(remote, WireFrame::Control(pdu))
   }
 
@@ -313,7 +242,13 @@ impl TcpRemoteTransport {
     let Some(client) = self.clients.get(&peer_key) else {
       return Err(TransportError::ConnectionClosed);
     };
-    client.send(frame)
+    let result = client.send(frame);
+    if result.as_ref().err().is_some_and(|error| error == &TransportError::ConnectionClosed)
+      && let Some(mut client) = self.clients.remove(&peer_key)
+    {
+      client.shutdown();
+    }
+    result
   }
 }
 
@@ -384,7 +319,7 @@ impl RemoteTransport for TcpRemoteTransport {
   }
 
   fn connect_peer(&mut self, remote: &Address) -> Result<(), TransportError> {
-    self.connect_peer_blocking(remote)
+    self.connect_peer_writer(remote)
   }
 
   fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {

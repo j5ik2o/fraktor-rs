@@ -1,7 +1,7 @@
 //! Actor system extension installer for `remote-core`'s `Remote`.
 
 use std::{
-  sync::{Mutex, OnceLock},
+  sync::{Arc, Mutex, OnceLock},
   time::Instant,
 };
 
@@ -20,11 +20,12 @@ use fraktor_remote_core_rs::core::{
 };
 use futures::future::poll_fn;
 use tokio::{
+  runtime::Handle,
   sync::mpsc::{self, Sender},
   task::JoinHandle,
 };
 
-use crate::std::{TokioMpscRemoteEventReceiver, transport::tcp::TcpRemoteTransport};
+use crate::std::{tokio_remote_event_receiver::TokioMpscRemoteEventReceiver, transport::tcp::TcpRemoteTransport};
 
 const ALREADY_INSTALLED: &str = "remote extension is already installed";
 const TRANSPORT_LOCK_POISONED: &str = "remote extension transport lock is poisoned";
@@ -37,18 +38,29 @@ pub struct RemotingExtensionInstaller {
   remote_shared:   OnceLock<RemoteShared>,
   event_sender:    OnceLock<Sender<RemoteEvent>>,
   monotonic_epoch: OnceLock<Instant>,
-  system:          OnceLock<ActorSystem>,
-  run_state:       Mutex<RemotingRunState>,
+  run_state:       Arc<Mutex<RemotingRunState>>,
 }
 
 struct RemotingRunState {
-  receiver: Option<TokioMpscRemoteEventReceiver>,
-  handle:   Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
+  receiver:           Option<TokioMpscRemoteEventReceiver>,
+  handle:             Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
+  termination_handle: Option<JoinHandle<()>>,
 }
 
 impl RemotingRunState {
   const fn new() -> Self {
-    Self { receiver: None, handle: None }
+    Self { receiver: None, handle: None, termination_handle: None }
+  }
+}
+
+impl Drop for RemotingRunState {
+  fn drop(&mut self) {
+    if let Some(handle) = self.handle.take() {
+      handle.abort();
+    }
+    if let Some(handle) = self.termination_handle.take() {
+      handle.abort();
+    }
   }
 }
 
@@ -63,19 +75,8 @@ impl RemotingExtensionInstaller {
       remote_shared: OnceLock::new(),
       event_sender: OnceLock::new(),
       monotonic_epoch: OnceLock::new(),
-      system: OnceLock::new(),
-      run_state: Mutex::new(RemotingRunState::new()),
+      run_state: Arc::new(Mutex::new(RemotingRunState::new())),
     }
-  }
-
-  /// Returns a clone of the shared [`Remote`] handle.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`RemotingError::NotStarted`] when the installer has not been
-  /// installed into an actor system yet.
-  pub fn remote(&self) -> Result<RemoteShared, RemotingError> {
-    self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)
   }
 
   /// Returns the adapter event sender and monotonic epoch created during install.
@@ -88,80 +89,10 @@ impl RemotingExtensionInstaller {
   ///
   /// Returns [`RemotingError::NotStarted`] when the remote extension has not
   /// been installed yet.
-  pub fn remote_event_sender_and_epoch(&self) -> Result<(Sender<RemoteEvent>, Instant), RemotingError> {
+  pub(crate) fn remote_event_sender_and_epoch(&self) -> Result<(Sender<RemoteEvent>, Instant), RemotingError> {
     let sender = self.event_sender.get().cloned().ok_or(RemotingError::NotStarted)?;
     let monotonic_epoch = self.monotonic_epoch.get().copied().ok_or(RemotingError::NotStarted)?;
     Ok((sender, monotonic_epoch))
-  }
-
-  /// Spawns the core remote run loop once.
-  ///
-  /// Must be called from within a Tokio runtime context because it uses
-  /// `tokio::spawn` to drive [`RemoteShared::run`]. Call it from async code, a
-  /// Tokio task, or a `tokio::Runtime::block_on` context.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`RemotingError::NotStarted`] if the installer has not been
-  /// installed yet, or [`RemotingError::AlreadyRunning`] if the run loop was
-  /// already spawned.
-  pub fn spawn_run_task(&self) -> Result<(), RemotingError> {
-    let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
-    let system = self.system.get().cloned().ok_or(RemotingError::NotStarted)?;
-    let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
-    if run_state.handle.is_some() {
-      return Err(RemotingError::AlreadyRunning);
-    }
-    let Some(mut receiver) = run_state.receiver.take() else {
-      return Err(RemotingError::AlreadyRunning);
-    };
-    let handle = tokio::spawn(async move {
-      let result = run_remote_with_delivery(&remote, &mut receiver, &system).await;
-      (receiver, result)
-    });
-    run_state.handle = Some(handle);
-    Ok(())
-  }
-
-  /// Shuts the remote subsystem down, wakes the run loop, and waits for it.
-  pub async fn shutdown_and_join(&self) -> Result<(), RemotingError> {
-    let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
-    let shutdown_result = remote.shutdown();
-    if let Err(error) = &shutdown_result {
-      tracing::debug!(?error, "remote shutdown failed; still attempting to join run task");
-    }
-    if let Some(sender) = self.event_sender.get() {
-      // ベストエフォートの wake。Full は pending event が shutdown を観測できる状態、
-      // Closed は receiver が既に終了しており join 側がそれを観測する状態として扱う。
-      if let Err(send_err) = sender.try_send(RemoteEvent::TransportShutdown) {
-        tracing::debug!(?send_err, "shutdown wake failed");
-      }
-    }
-    let handle = {
-      let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
-      run_state.handle.take()
-    };
-    let Some(handle) = handle else {
-      return shutdown_result;
-    };
-    let join_result = match join_run_handle(handle).await {
-      | Ok((receiver, result)) => {
-        let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
-        run_state.receiver = Some(receiver);
-        result
-      },
-      | Err(error) => Err(error),
-    };
-    match (shutdown_result, join_result) {
-      | (shutdown_result, Err(error)) => {
-        if let Err(shutdown_error) = shutdown_result {
-          tracing::warn!(?shutdown_error, ?error, "remote shutdown failed before run task join failed");
-        }
-        Err(error)
-      },
-      | (Err(error), Ok(())) => Err(error),
-      | (Ok(()), Ok(())) => Ok(()),
-    }
   }
 }
 
@@ -185,23 +116,153 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       event_publisher,
       Box::new(RemotingFlightRecorder::new(self.config.flight_recorder_capacity())),
     ));
-    let mut run_state =
-      self.run_state.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
-    run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
-    self
-      .event_sender
-      .set(event_sender)
-      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-    self
-      .monotonic_epoch
-      .set(monotonic_epoch)
-      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-    self
-      .system
-      .set(system.clone())
-      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-    // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
-    self.remote_shared.set(remote).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
+    remote.start().map_err(remoting_build_error)?;
+    let install_result = (|| -> Result<(), ActorSystemBuildError> {
+      let mut run_state = self
+        .run_state
+        .lock()
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
+      run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
+      spawn_run_task_with_state(&mut run_state, remote.clone(), system.clone()).map_err(remoting_build_error)?;
+      spawn_shutdown_on_system_termination(
+        system,
+        remote.clone(),
+        event_sender.clone(),
+        &mut run_state,
+        self.run_state.clone(),
+      )
+      .map_err(remoting_build_error)?;
+      self
+        .event_sender
+        .set(event_sender.clone())
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+      self
+        .monotonic_epoch
+        .set(monotonic_epoch)
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+      // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
+      self
+        .remote_shared
+        .set(remote.clone())
+        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+      Ok(())
+    })();
+    if let Err(error) = install_result {
+      rollback_started_remote(&remote, &event_sender, &self.run_state);
+      return Err(error);
+    }
+    Ok(())
+  }
+}
+
+fn remoting_build_error(error: RemotingError) -> ActorSystemBuildError {
+  ActorSystemBuildError::Configuration(error.to_string())
+}
+
+fn rollback_started_remote(
+  remote: &RemoteShared,
+  event_sender: &Sender<RemoteEvent>,
+  run_state: &Arc<Mutex<RemotingRunState>>,
+) {
+  if let Err(error) = remote.shutdown() {
+    tracing::debug!(?error, "remote install rollback shutdown failed");
+  }
+  if let Err(error) = event_sender.try_send(RemoteEvent::TransportShutdown) {
+    tracing::debug!(?error, "remote install rollback wake failed");
+  }
+  match run_state.lock() {
+    | Ok(mut run_state) => {
+      if let Some(handle) = run_state.handle.take() {
+        handle.abort();
+      }
+      if let Some(handle) = run_state.termination_handle.take() {
+        handle.abort();
+      }
+    },
+    | Err(_) => tracing::debug!("remote install rollback run_state lock failed"),
+  }
+}
+
+fn spawn_run_task_with_state(
+  run_state: &mut RemotingRunState,
+  remote: RemoteShared,
+  system: ActorSystem,
+) -> Result<(), RemotingError> {
+  if run_state.handle.is_some() {
+    return Err(RemotingError::AlreadyRunning);
+  }
+  let Some(mut receiver) = run_state.receiver.take() else {
+    unreachable!("spawn_run_task_with_state: receiver missing; install must set it before spawning");
+  };
+  let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
+  let handle = handle.spawn(async move {
+    let result = run_remote_with_delivery(&remote, &mut receiver, &system).await;
+    (receiver, result)
+  });
+  run_state.handle = Some(handle);
+  Ok(())
+}
+
+fn spawn_shutdown_on_system_termination(
+  system: &ActorSystem,
+  remote: RemoteShared,
+  event_sender: Sender<RemoteEvent>,
+  run_state: &mut RemotingRunState,
+  run_state_shared: Arc<Mutex<RemotingRunState>>,
+) -> Result<(), RemotingError> {
+  let termination = system.when_terminated();
+  let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
+  let handle = handle.spawn(async move {
+    termination.await;
+    if let Err(error) = shutdown_remote_and_join(remote, Some(event_sender), run_state_shared).await {
+      tracing::debug!(?error, "remote termination shutdown task failed");
+    }
+  });
+  if let Some(previous) = run_state.termination_handle.replace(handle) {
+    previous.abort();
+  }
+  Ok(())
+}
+
+async fn shutdown_remote_and_join(
+  remote: RemoteShared,
+  event_sender: Option<Sender<RemoteEvent>>,
+  run_state: Arc<Mutex<RemotingRunState>>,
+) -> Result<(), RemotingError> {
+  let shutdown_result = remote.shutdown();
+  if let Err(error) = &shutdown_result {
+    tracing::debug!(?error, "remote shutdown failed; still attempting to join run task");
+  }
+  if let Some(sender) = event_sender {
+    // ベストエフォートの wake。Full は pending event が shutdown を観測できる状態、
+    // Closed は receiver が既に終了しており join 側がそれを観測する状態として扱う。
+    if let Err(send_err) = sender.try_send(RemoteEvent::TransportShutdown) {
+      tracing::debug!(?send_err, "shutdown wake failed");
+    }
+  }
+  let handle = {
+    let mut run_state = run_state.lock().expect(RUN_STATE_LOCK_POISONED);
+    run_state.handle.take()
+  };
+  let Some(handle) = handle else {
+    return shutdown_result;
+  };
+  let join_result = match join_run_handle(handle).await {
+    | Ok((receiver, result)) => {
+      let mut run_state = run_state.lock().expect(RUN_STATE_LOCK_POISONED);
+      run_state.receiver = Some(receiver);
+      result
+    },
+    | Err(error) => Err(error),
+  };
+  match (shutdown_result, join_result) {
+    | (Ok(()), Ok(())) => Ok(()),
+    | (Ok(()), Err(error)) => Err(error),
+    | (Err(error), Ok(())) => Err(error),
+    | (Err(shutdown_error), Err(join_error)) => {
+      tracing::warn!(?shutdown_error, ?join_error, "remote shutdown failed before run task join failed");
+      Err(join_error)
+    },
   }
 }
 
@@ -211,6 +272,9 @@ async fn run_remote_with_delivery(
   system: &ActorSystem,
 ) -> Result<(), RemotingError> {
   loop {
+    if remote.should_stop_event_loop() {
+      return Ok(());
+    }
     let event = match poll_fn(|cx| receiver.poll_recv(cx)).await {
       | Some(event) => event,
       | None => return Err(RemotingError::EventReceiverClosed),

@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
-use std::{net::TcpStream as StdTcpStream, time::Instant};
+use std::time::Instant;
 
 use fraktor_remote_core_rs::core::{
   extension::RemoteEvent,
@@ -11,7 +11,8 @@ use fraktor_remote_core_rs::core::{
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::TcpStream,
-  sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
+  runtime::Handle,
+  sync::mpsc::{self, Receiver, Sender, UnboundedSender, error::TrySendError},
   task::JoinHandle,
 };
 use tokio_util::codec::Framed;
@@ -22,6 +23,8 @@ use super::{
 };
 use crate::std::association::authority_for_frame;
 
+const WRITER_QUEUE_CAPACITY: usize = 1024;
+
 /// Single outbound TCP connection towards a remote authority.
 ///
 /// Owns a writer channel used by the synchronous
@@ -31,7 +34,7 @@ use crate::std::association::authority_for_frame;
 /// the shared inbound channel owned by the transport.
 pub struct TcpClient {
   peer_addr: String,
-  writer_tx: UnboundedSender<WireFrame>,
+  writer_tx: Sender<WireFrame>,
   task:      Option<JoinHandle<()>>,
 }
 
@@ -79,87 +82,40 @@ impl Debug for TcpClient {
 }
 
 impl TcpClient {
-  /// Connects to `peer_addr` and spawns the reader / writer task.
-  ///
-  /// Received frames are forwarded to `inbound_tx`.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
-  /// established.
-  pub async fn connect(
-    peer_addr: String,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
-  ) -> Result<Self, TransportError> {
-    Self::connect_async(peer_addr, inbound_tx, TcpClientConnectOptions::new(WireFrameCodec::new())).await
-  }
-
-  /// Connects to `peer_addr` with explicit frame and lifecycle options.
+  /// Creates a client whose background task establishes the TCP connection
+  /// asynchronously before draining queued outbound frames.
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
-  /// established.
-  pub(crate) async fn connect_async(
+  /// Returns [`TransportError::NotAvailable`] when no Tokio runtime is
+  /// available to drive the connection task.
+  pub(crate) fn connect(
     peer_addr: String,
     inbound_tx: UnboundedSender<InboundFrameEvent>,
     options: TcpClientConnectOptions,
   ) -> Result<Self, TransportError> {
-    let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
-    let (frame_codec, connection_loss_reporter) = options.into_parts();
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, connection_loss_reporter))
-  }
-
-  /// Connects to `peer_addr` with explicit frame and lifecycle options from a
-  /// synchronous context.
-  ///
-  /// This function calls [`connected_tokio_stream`], which uses
-  /// `std::net::TcpStream::connect` before converting the socket into a Tokio
-  /// stream. It blocks the current thread and must not run directly on a Tokio
-  /// worker thread; Tokio callers must use `tokio::task::spawn_blocking` or a
-  /// dedicated synchronous context.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
-  /// established.
-  pub(crate) fn connect_blocking(
-    peer_addr: String,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
-    options: TcpClientConnectOptions,
-  ) -> Result<Self, TransportError> {
-    let stream = connected_tokio_stream(&peer_addr)?;
-    let (frame_codec, connection_loss_reporter) = options.into_parts();
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, connection_loss_reporter))
-  }
-
-  fn from_connected_stream(
-    stream: TcpStream,
-    peer_addr: String,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
-    frame_codec: WireFrameCodec,
-    connection_loss_reporter: Option<ConnectionLossReporter>,
-  ) -> Self {
-    let (writer_tx, writer_rx) = mpsc::unbounded_channel::<WireFrame>();
+    let handle = Handle::try_current().map_err(|_| TransportError::NotAvailable)?;
+    let (writer_tx, writer_rx) = mpsc::channel::<WireFrame>(WRITER_QUEUE_CAPACITY);
     let peer_for_task = peer_addr.clone();
-    let task = tokio::spawn(run(stream, peer_for_task, writer_rx, inbound_tx, frame_codec, connection_loss_reporter));
-    Self { peer_addr, writer_tx, task: Some(task) }
-  }
-
-  /// Returns the peer address this client is connected to.
-  #[must_use]
-  pub fn peer_addr(&self) -> &str {
-    &self.peer_addr
+    let task = handle.spawn(connect_and_run(peer_for_task, writer_rx, inbound_tx, options));
+    Ok(Self { peer_addr, writer_tx, task: Some(task) })
   }
 
   /// Enqueues a frame for writing without blocking the caller.
   ///
   /// # Errors
   ///
-  /// Returns [`TransportError::ConnectionClosed`] if the writer task has
-  /// already exited.
+  /// Returns [`TransportError::Backpressure`] if the bounded writer queue is full,
+  /// or [`TransportError::ConnectionClosed`] if the writer task has exited.
   pub fn send(&self, frame: WireFrame) -> Result<(), TransportError> {
-    self.writer_tx.send(frame).map_err(|_| TransportError::ConnectionClosed)
+    self.writer_tx.try_send(frame).map_err(|error| match error {
+      | TrySendError::Full(_) => TransportError::Backpressure,
+      | TrySendError::Closed(_) => TransportError::ConnectionClosed,
+    })
+  }
+
+  pub(crate) fn is_alive(&self) -> bool {
+    self.task.as_ref().is_some_and(|handle| !handle.is_finished())
   }
 
   /// Aborts the reader / writer task.
@@ -170,16 +126,28 @@ impl TcpClient {
   }
 }
 
-fn connected_tokio_stream(peer_addr: &str) -> Result<TcpStream, TransportError> {
-  let stream = StdTcpStream::connect(peer_addr).map_err(|_| TransportError::SendFailed)?;
-  stream.set_nonblocking(true).map_err(|_| TransportError::SendFailed)?;
-  TcpStream::from_std(stream).map_err(|_| TransportError::SendFailed)
+async fn connect_and_run(
+  peer_addr: String,
+  writer_rx: Receiver<WireFrame>,
+  inbound_tx: UnboundedSender<InboundFrameEvent>,
+  options: TcpClientConnectOptions,
+) {
+  let (frame_codec, connection_loss_reporter) = options.into_parts();
+  match TcpStream::connect(&peer_addr).await {
+    | Ok(stream) => run(stream, peer_addr, writer_rx, inbound_tx, frame_codec, connection_loss_reporter).await,
+    | Err(err) => {
+      tracing::warn!(?err, peer = %peer_addr, "tcp client connect error");
+      if let Some(reporter) = connection_loss_reporter {
+        reporter.report(TransportError::SendFailed).await;
+      }
+    },
+  }
 }
 
 async fn run(
   stream: TcpStream,
   peer_addr: String,
-  mut writer_rx: UnboundedReceiver<WireFrame>,
+  mut writer_rx: Receiver<WireFrame>,
   inbound_tx: UnboundedSender<InboundFrameEvent>,
   frame_codec: WireFrameCodec,
   connection_loss_reporter: Option<ConnectionLossReporter>,

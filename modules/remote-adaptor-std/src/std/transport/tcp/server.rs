@@ -48,39 +48,10 @@ impl Debug for TcpServer {
 }
 
 impl TcpServer {
-  /// Creates a new [`TcpServer`] that will bind to `bind_addr` on `start`.
-  #[must_use]
-  pub fn new(bind_addr: String) -> Self {
-    Self {
-      bind_addr,
-      frame_codec: WireFrameCodec::new(),
-      accept_task: None,
-      connection_tasks: Arc::new(Mutex::new(Vec::new())),
-    }
-  }
-
   /// Creates a new [`TcpServer`] with the given frame codec.
   #[must_use]
   pub(crate) fn with_frame_codec(bind_addr: String, frame_codec: WireFrameCodec) -> Self {
     Self { bind_addr, frame_codec, accept_task: None, connection_tasks: Arc::new(Mutex::new(Vec::new())) }
-  }
-
-  /// Returns `true` when the server is currently running.
-  #[must_use]
-  pub const fn is_running(&self) -> bool {
-    self.accept_task.is_some()
-  }
-
-  /// Binds the listener and spawns the accept loop task.
-  ///
-  /// Inbound frames are forwarded to `inbound_tx`.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::NotAvailable`] if no Tokio runtime is available,
-  /// or [`TransportError::SendFailed`] if the listener cannot be bound.
-  pub fn start(&mut self, inbound_tx: UnboundedSender<InboundFrameEvent>) -> Result<SocketAddr, TransportError> {
-    self.start_with_remote_events(inbound_tx, None, Instant::now())
   }
 
   pub(crate) fn start_with_remote_events(

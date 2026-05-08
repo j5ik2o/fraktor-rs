@@ -39,6 +39,12 @@ impl RemoteShared {
     self.inner.with_write(f)
   }
 
+  /// Returns whether the shared remote event loop should stop.
+  #[must_use]
+  pub fn should_stop_event_loop(&self) -> bool {
+    self.with_read(Remote::should_stop_event_loop)
+  }
+
   /// Runs the shared core remote event loop until shutdown is requested.
   ///
   /// If the future is polled after the shared remote is already terminated it
