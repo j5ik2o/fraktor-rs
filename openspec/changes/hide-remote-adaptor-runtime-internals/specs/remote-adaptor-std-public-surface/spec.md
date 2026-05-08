@@ -2,12 +2,13 @@
 
 ### Requirement: remote-adaptor-std の public API は利用者向け adapter 境界に限定される
 
-`fraktor-remote-adaptor-std-rs` は、通常利用者が remote を有効化するために必要な型だけを public API として公開しなければならない（MUST）。runtime driver、TCP frame、watcher actor、association task、remote actor ref sender の内部部品は crate 外から import できてはならない（MUST NOT）。
+`fraktor-remote-adaptor-std-rs` は、通常利用者が remote を有効化するために必要な型だけを public API として公開しなければならない（MUST）。runtime driver、TCP frame、watcher actor、association task、remote event receiver、remote actor ref sender、低レベル provider plumbing の内部部品は crate 外から import できてはならない（MUST NOT）。
 
 利用者向け adapter 境界として少なくとも以下は public に残す（MUST）。
 
 - `TcpRemoteTransport`
 - `RemotingExtensionInstaller`
+- `StdRemoteActorRefProviderInstaller` または同等の高レベル provider installer / config API
 
 #### Scenario: runtime internal 型は crate 外から import できない
 
@@ -19,28 +20,21 @@
   - `WireFrameCodec`
   - `FrameCodecError`
   - `InboundFrameEvent`
-  - `AssociationRegistry`
-  - `AssociationShared`
-  - `HandshakeDriver`
-  - `RestartCounter`
-  - `ReconnectBackoffPolicy`
-  - `SystemMessageDeliveryState`
-  - `InboundQuarantineCheck`
+  - `TokioMpscRemoteEventReceiver`
   - `run_inbound_dispatch`
-  - `run_inbound_task_with_restart_budget`
-  - `run_outbound_loop`
-  - `run_outbound_loop_with_reconnect`
   - `WatcherActor`
   - `WatcherActorHandle`
   - `SubmitError`
   - `run_heartbeat_loop`
   - `RemoteActorRefSender`
+  - `PathRemoteActorRefProvider` または同等の低レベル remote-only provider 実装
 
 #### Scenario: 利用者向け adapter 境界は crate 外から利用できる
 
-- **WHEN** external crate 相当の public surface test から `TcpRemoteTransport` と `RemotingExtensionInstaller` を import する
-- **THEN** 両方の型は public API として利用できる
-- **AND** `TcpRemoteTransport` を `Remote::new(...)` または `RemotingExtensionInstaller::new(...)` に渡せる
+- **WHEN** external crate 相当の public surface test から `TcpRemoteTransport`、`RemotingExtensionInstaller`、高レベル provider installer / config API を import する
+- **THEN** それらの型は public API として利用できる
+- **AND** `TcpRemoteTransport` と `RemoteConfig` を `RemotingExtensionInstaller::new(...)` に渡せる
+- **AND** caller は `RemoteShared` を取り出すために `installer.remote()` を呼ぶ必要がない
 
 ### Requirement: TcpRemoteTransport は内部 TCP 実装型を public method signature に漏らしてはならない
 
@@ -54,13 +48,13 @@
 
 #### Scenario: TcpRemoteTransport は RemoteTransport port 実装として利用できる
 
-- **WHEN** `TcpRemoteTransport` を `remote-core::Remote::new(...)` に渡す
-- **THEN** `Remote` は `RemoteTransport` port 経由で start / shutdown / quarantine を実行できる
+- **WHEN** `TcpRemoteTransport` と `RemoteConfig` を `RemotingExtensionInstaller::new(...)` に渡す
+- **THEN** std adapter は `TcpRemoteTransport` を core `RemoteTransport` port 実装として `RemoteShared` に接続できる
 - **AND** 利用者は TCP client/server/frame 型を直接扱う必要がない
 
 ### Requirement: StdRemoteActorRefProvider の低レベル配線は installer または config 側に隠蔽される
 
-`StdRemoteActorRefProvider` は actor-core の `ActorRefProvider` と remote-core の `RemoteActorRefProvider` を接続する adapter bridge として扱う（MUST）。ただし、通常利用者に `local_provider`、`remote_provider`、`transport`、`resolve_cache`、`event_publisher` を直接渡させる public constructor を公開してはならない（MUST NOT）。
+`StdRemoteActorRefProvider` は actor-core の `ActorRefProvider` と remote-core の `RemoteActorRefProvider` を接続する adapter bridge として扱う（MUST）。ただし、通常利用者に `local_provider`、`remote_provider`、`event_sender`、`resolve_cache`、`event_publisher`、monotonic epoch を直接渡させる public constructor を公開してはならない（MUST NOT）。
 
 remote actor ref provider の組み立ては extension installer、actor system configuration、またはそれに準じる高レベル builder が担当しなければならない（MUST）。
 
@@ -76,19 +70,47 @@ remote actor ref provider の組み立ては extension installer、actor system 
 - **THEN** std adapter は必要な local provider、remote provider、transport、resolve cache、event publisher を内部で組み立てる
 - **AND** remote actor ref resolution は既存と同じ local loopback / remote dispatch 規則に従う
 
+### Requirement: remote lifecycle control は user-facing main に露出しない
+
+通常利用者は、`RemotingExtensionInstaller::new(transport, remote_config)` を shared extension installer として `ActorSystemConfig::with_extension_installers` に渡すだけで remote を有効化できなければならない（MUST）。user-facing code は install 後に `installer.remote()` から `RemoteShared` を取得して `remote.start()` を呼んではならない（MUST NOT）。user-facing code は remote run task 起動や shutdown join のために `spawn_run_task()` / `shutdown_and_join()` を直接呼んではならない（MUST NOT）。
+
+#### Scenario: config install だけで remote lifecycle が開始される
+
+- **GIVEN** caller が `TcpRemoteTransport` と `RemoteConfig` から `RemotingExtensionInstaller` を作成している
+- **AND** caller がその installer を `ActorSystemConfig::with_extension_installers` に渡している
+- **WHEN** `ActorSystem::create_with_config` が成功する
+- **THEN** std adapter は core の `RemoteShared::start()` または同等の lifecycle operation を内部で呼ぶ
+- **AND** std adapter は remote event receiver を使う run task を内部で起動する
+- **AND** caller は `installer.remote()?.start()` または `installer.spawn_run_task()` を呼ばない
+
+#### Scenario: ActorSystem termination が remote shutdown と join を起動する
+
+- **GIVEN** remote extension installer が ActorSystem に install 済みである
+- **WHEN** caller が ActorSystem termination を要求する
+- **THEN** std adapter は core の shutdown semantics を内部で呼ぶ
+- **AND** std adapter は event loop を wake し、tokio run task の完了を観測する
+- **AND** caller は `installer.shutdown_and_join().await` を通常利用 path で呼ばない
+
+#### Scenario: remote handle accessor は startup API として扱わない
+
+- **WHEN** `RemotingExtensionInstaller::remote()` が診断または内部テスト用に残る
+- **THEN** public showcase / docs / public surface test はそれを remote startup sequence として使わない
+- **AND** `remote.addresses()` の確認は application main ではなく adapter / core tests に置かれる
+
 ### Requirement: showcase は runtime internal を直接 import してはならない
 
 `showcases/std` の remote showcase は、runtime internal 型を直接 import してはならない（MUST NOT）。remote lifecycle と remote routee expansion の例は、利用者向け public API だけを示さなければならない（MUST）。
 
-#### Scenario: remote lifecycle showcase は lifecycle API と installer 境界だけを使う
+#### Scenario: remote lifecycle showcase は config install 境界だけを使う
 
-- **WHEN** `showcases/std/remote_lifecycle/main.rs` を検査する
-- **THEN** `Remote`、`TcpRemoteTransport`、`RemotingExtensionInstaller`、設定型以外の remote-adaptor runtime internal を import しない
-- **AND** `TcpClient`、`TcpServer`、`WireFrame`、`AssociationRegistry`、`WatcherActor` を参照しない
+- **WHEN** `showcases/std/legacy/remote_lifecycle/main.rs` または後継 remote lifecycle showcase を検査する
+- **THEN** `TcpRemoteTransport`、`RemotingExtensionInstaller`、設定型以外の remote-adaptor runtime internal を import しない
+- **AND** `TcpClient`、`TcpServer`、`WireFrame`、`WatcherActor` を参照しない
+- **AND** `installer.remote()`、`remote.start()`、`spawn_run_task()`、`shutdown_and_join()` を remote startup / shutdown 手順として呼ばない
 
 #### Scenario: remote routee expansion showcase は provider 低レベル constructor を呼ばない
 
-- **WHEN** `showcases/std/remote_routee_expansion/main.rs` を検査する
+- **WHEN** remote routee expansion showcase または後継 public surface test を検査する
 - **THEN** `StdRemoteActorRefProvider::new(...)` を直接呼ばない
 - **AND** routee expansion は installer / actor system / high-level provider API 経由で示される
 
