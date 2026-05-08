@@ -891,3 +891,27 @@ fn print_tree_contains_spawned_system_actor_name() {
 
   system.terminate().expect("terminate");
 }
+
+#[test]
+fn create_from_behavior_factory_builds_running_system_and_invokes_factory() {
+  // 前提: 呼び出し回数を観測するカウンタ付きの guardian factory を用意する
+  let invocations = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let invocations_factory = invocations.clone();
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(Duration::from_secs(1));
+
+  // 実行: convenience method 経由で typed actor system を生成する
+  let system = TypedActorSystem::<u32>::create_from_behavior_factory(
+    move || {
+      *invocations_factory.lock() += 1;
+      Behaviors::ignore::<u32>()
+    },
+    config,
+  )
+  .expect("system");
+
+  // 検証: system が起動済みで、guardian factory が少なくとも 1 回呼び出されている
+  assert!(system.state().has_root_started());
+  assert!(*invocations.lock() >= 1, "guardian factory should have been invoked at least once");
+
+  system.terminate().expect("terminate");
+}

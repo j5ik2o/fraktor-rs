@@ -4,7 +4,7 @@ use std::{thread, time::Instant};
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
   kernel::actor::setup::ActorSystemConfig,
-  typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors},
+  typed::{Behavior, TypedActorSystem, dsl::Behaviors},
 };
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
@@ -24,12 +24,14 @@ fn greeter(greetings: SharedLock<Vec<&'static str>>) -> Behavior<Command> {
 
 fn main() {
   let greetings = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
-  let props = TypedProps::from_behavior_factory({
-    let greetings = greetings.clone();
-    move || greeter(greetings.clone())
-  });
-  let system =
-    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let system = TypedActorSystem::create_from_behavior_factory(
+    {
+      let greetings = greetings.clone();
+      move || greeter(greetings.clone())
+    },
+    ActorSystemConfig::new(StdTickDriver::default()),
+  )
+  .expect("system");
   let termination = system.when_terminated();
   let mut guardian = system.user_guardian_ref();
 

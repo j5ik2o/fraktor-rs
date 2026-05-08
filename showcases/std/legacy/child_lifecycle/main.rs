@@ -135,9 +135,8 @@ fn parent() -> Behavior<ParentCommand> {
 fn main() {
   use std::thread;
 
-  let props = TypedProps::from_behavior_factory(parent);
-  let system =
-    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let system = TypedActorSystem::create_from_behavior_factory(parent, ActorSystemConfig::new(StdTickDriver::default()))
+    .expect("system");
   let _log_subscription = subscribe_typed_tracing_logger(&system);
   let termination = system.when_terminated();
 

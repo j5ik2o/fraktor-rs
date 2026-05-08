@@ -8,7 +8,7 @@
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
   kernel::{actor::setup::ActorSystemConfig, event::logging::LogLevel},
-  typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors},
+  typed::{Behavior, TypedActorSystem, dsl::Behaviors},
 };
 use fraktor_showcases_std::subscribe_typed_tracing_logger;
 
@@ -34,9 +34,9 @@ fn greeter() -> Behavior<Command> {
 
 fn main() {
   // アクターシステムを起動
-  let props = TypedProps::from_behavior_factory(greeter);
   let system =
-    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(greeter, ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
   let _log_subscription = subscribe_typed_tracing_logger(&system);
   let termination = system.when_terminated();
 

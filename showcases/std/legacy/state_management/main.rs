@@ -14,7 +14,7 @@ use core::time::Duration;
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
   kernel::{actor::setup::ActorSystemConfig, event::logging::LogLevel},
-  typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
+  typed::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors},
 };
 use fraktor_showcases_std::subscribe_typed_tracing_logger;
 
@@ -107,9 +107,9 @@ fn main() {
 fn run_counter() {
   use std::{thread, time::Instant};
 
-  let props = TypedProps::from_behavior_factory(|| counter(0));
   let system =
-    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(|| counter(0), ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
   let mut counter_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
@@ -140,9 +140,9 @@ fn run_counter() {
 fn run_gate() {
   use std::{thread, time::Instant};
 
-  let props = TypedProps::from_behavior_factory(|| locked(0));
   let system =
-    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(|| locked(0), ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
   let _log_subscription = subscribe_typed_tracing_logger(&system);
   let mut gate = system.user_guardian_ref();
   let termination = system.when_terminated();
