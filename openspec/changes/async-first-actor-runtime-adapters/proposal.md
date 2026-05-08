@@ -6,6 +6,20 @@
 
 この change は、`Mailbox::run` と `Actor::receive` の core 契約を full async 化せず、外側の executor / tick driver / timer と、既存 `pipe_to_self` / `pipe_to` による future-to-message adapter を async-first に整える。Pekko 互換の mailbox drain 意味論と `pipeToSelf` 型の利用者体験を保ちつつ、Tokio / Embassy を「ただの実行先」ではなく actor runtime の主実行基盤として使える状態にする。
 
+## Current Code Baseline
+
+2026-05-08 時点の最新コードでは、次は既に存在している。
+
+- `TokioExecutor` / `TokioExecutorFactory` は `actor-adaptor-std` の `tokio-executor` feature 下に存在するが、`TokioExecutor` はまだ `spawn_blocking` を使う。
+- `TokioBlockingExecutor` / `TokioBlockingExecutorFactory` は未実装である。
+- `std_actor_system_config` は std monotonic mailbox clock を入れる helper であり、default / blocking dispatcher の Tokio executor factory 分離はまだ行わない。
+- `Dispatchers` は `DEFAULT_DISPATCHER_ID` と `DEFAULT_BLOCKING_DISPATCHER_ID` を持ち、`with_dispatcher_factory` で個別登録できる。core 側に Tokio 専用 builder を追加する必要はない。
+- `ActorContext::pipe_to_self` / `pipe_to`、`ContextPipeTask`、context pipe waker は untyped kernel 側に実装済みである。
+- `TypedActorContext::pipe_to_self` / `pipe_to` は untyped kernel adapter に委譲する typed wrapper として実装済みで、`ask` / `ask_with_status` もこの経路に乗っている。
+- `TickDriverKind` は `Auto`、`Manual`、`Std`、`Tokio` までを持つ。`AutoProfileKind::Embassy` は存在するが、`TickDriverKind::Embassy` と `actor-adaptor-embassy` crate は未実装である。
+
+したがって本 change の残作業は、既存 future-to-message surface の再実装ではなく、Tokio executor family の分離、std Tokio helper、Embassy adapter crate、`TickDriverKind::Embassy`、および不足している docs / regression test の補強である。
+
 ## What Changes
 
 ### 1. Tokio executor を default task と blocking に分ける
@@ -42,7 +56,7 @@ Pekko typed は actor 記述を同期的に保ちつつ、`ActorContext.pipeToSe
 
 actor API 面では `Actor::receive`、`TypedActor::receive`、`Behaviors::receive_message`、`MessageInvoker::invoke` は同期 contract のまま維持する。async I/O の完了結果は `pipe_to_self` / `pipe_to` 経由で mailbox message に戻し、actor state の更新は completion message handler 内で同期的に行う。
 
-実装順序は untyped kernel first とする。まず `ActorContext::pipe_to_self` / `pipe_to`、`ContextPipeTask`、waker、delivery failure 観測を kernel contract として固定し、その上に `TypedActorContext::pipe_to_self` / `pipe_to` を薄い typed wrapper として整える。
+実装順序は untyped kernel first とする。最新コードでは `ActorContext::pipe_to_self` / `pipe_to`、`ContextPipeTask`、waker は既に存在するため、追加実装は不足している failure / stopped actor 観測の regression test と rustdoc 補強を中心にする。その上にある `TypedActorContext::pipe_to_self` / `pipe_to` は薄い typed wrapper として維持し、追加作業は Err future、adapter failure、`ask` / `ask_with_status` regression の明文化に絞る。
 
 必要な改善は handler が `Future` を返す新 contract の追加ではなく、既存 typed pipe helper のテスト、rustdoc、adapter failure 観測、Pekko `pipeToSelf` との差分整理である。
 

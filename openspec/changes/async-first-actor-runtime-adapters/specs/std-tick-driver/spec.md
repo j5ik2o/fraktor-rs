@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: TickDriverKind は non_exhaustive で Std と Tokio variant を持つ
+### Requirement: TickDriverKind は non_exhaustive で Std、Tokio、Embassy variant を持つ
 
 `TickDriverKind` に `#[non_exhaustive]` を付与し、`Std`、`Tokio`、`Embassy` variant を含めなければならない（MUST）。これにより std / Tokio / Embassy の環境別 driver を event stream metrics と snapshot で区別できなければならない（MUST）。下流 crate は将来の variant 追加に備えて wildcard arm を持たなければならない。
 
