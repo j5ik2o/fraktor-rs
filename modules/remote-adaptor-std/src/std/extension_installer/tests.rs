@@ -240,7 +240,7 @@ async fn extension_installer_config_install_starts_listener() {
   ));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::noop_with_config(config).expect("system should install remoting extension");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should install remoting extension");
   let port = first_listen_started_port(&system);
 
   assert_listener_accepts(port).await;
@@ -256,7 +256,7 @@ async fn extension_installer_system_termination_shuts_down_remote() {
   ));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::noop_with_config(config).expect("system should install remoting extension");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should install remoting extension");
   let port = first_listen_started_port(&system);
 
   assert_listener_accepts(port).await;
@@ -281,7 +281,7 @@ async fn extension_installer_double_install_returns_configuration_error() {
 fn inbound_delivery_bridge_sends_bytes_payload_to_local_actor() {
   let config = std_actor_system_config(TestTickDriver::default())
     .with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default());
-  let system = ActorSystem::noop_with_config(config).expect("noop actor system should build");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("noop actor system should build");
   let (tx, rx) = mpsc::channel();
   let props = Props::from_fn({
     let tx = tx.clone();

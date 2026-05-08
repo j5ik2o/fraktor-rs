@@ -111,7 +111,7 @@ fn main() {
     move || GuardianActor { observed: observed.clone() }
   });
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));

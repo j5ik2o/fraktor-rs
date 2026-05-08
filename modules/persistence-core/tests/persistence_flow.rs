@@ -192,7 +192,7 @@ fn recovery_flow_snapshot_then_replay() {
     let refs = refs.clone();
     move || Guardian::new(setups.clone(), refs.clone())
   });
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
@@ -240,7 +240,7 @@ fn persist_flow_keeps_values_independent() {
     let refs = refs.clone();
     move || Guardian::new(setups.clone(), refs.clone())
   });
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 

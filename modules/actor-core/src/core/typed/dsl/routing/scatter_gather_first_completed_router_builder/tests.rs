@@ -185,7 +185,7 @@ fn scatter_gather_returns_first_reply() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -270,7 +270,7 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -338,7 +338,7 @@ fn scatter_gather_stops_when_all_routees_terminate() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   // routee が即座に停止するため、Terminated シグナルでルーターも停止する
@@ -399,7 +399,7 @@ fn scatter_gather_stops_when_all_routee_spawns_fail() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   // spawn 失敗により routee_vec が空 → build 直後に Behaviors::stopped() → ルーター終了
@@ -474,7 +474,7 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<TestReq>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<TestReq>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 

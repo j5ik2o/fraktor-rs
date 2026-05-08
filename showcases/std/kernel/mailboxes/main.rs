@@ -42,7 +42,7 @@ fn main() {
   })
   .with_mailbox_config(mailbox);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   for value in [1_u32, 2, 3] {

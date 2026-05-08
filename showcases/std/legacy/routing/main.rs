@@ -71,7 +71,7 @@ fn main() {
 
   let props = router_guardian(records, next_routee_index);
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut router = system.user_guardian_ref();
 
   // 4つのワークメッセージを送信（2つのルーティーに分配される）

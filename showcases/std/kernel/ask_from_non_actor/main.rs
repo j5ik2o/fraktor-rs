@@ -37,7 +37,7 @@ impl Actor for Responder {
 fn main() {
   let props = Props::from_fn(|| Responder);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut responder = system.user_guardian_ref();
 

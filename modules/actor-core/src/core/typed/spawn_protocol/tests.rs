@@ -58,7 +58,7 @@ fn spawn_protocol_spawns_named_children() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
   let system =
-    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<SpawnProtocol>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut parent = system.user_guardian_ref();
 
@@ -80,7 +80,7 @@ fn spawn_protocol_spawns_anonymous_children() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
   let system =
-    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<SpawnProtocol>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut parent = system.user_guardian_ref();
 
@@ -103,7 +103,7 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
   let second_start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
   let system =
-    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<SpawnProtocol>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut parent = system.user_guardian_ref();
 
@@ -132,7 +132,7 @@ fn spawn_protocol_survives_duplicate_named_spawn_failure() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
   let system =
-    TypedActorSystem::<SpawnProtocol>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<SpawnProtocol>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut parent = system.user_guardian_ref();
 

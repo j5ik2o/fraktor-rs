@@ -23,7 +23,7 @@ use crate::core::{
 fn build_system() -> ActorSystem {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
-  ActorSystem::new_started_from_config(config).expect("system")
+  ActorSystem::create_started_from_config(config).expect("system")
 }
 
 struct NoopReceive;

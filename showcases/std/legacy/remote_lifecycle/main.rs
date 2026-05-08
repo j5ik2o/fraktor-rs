@@ -29,7 +29,7 @@ async fn main() {
   let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer);
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   println!("remote_lifecycle initialized remoting extension for 127.0.0.1");
 
   system.terminate().expect("terminate");

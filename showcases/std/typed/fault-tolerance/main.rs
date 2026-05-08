@@ -58,12 +58,14 @@ fn parent(events: SharedLock<Vec<&'static str>>) -> Behavior<ParentCommand> {
 
 fn main() {
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
-  let props = TypedProps::from_behavior_factory({
-    let events = events.clone();
-    move || parent(events.clone())
-  });
-  let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let system = TypedActorSystem::create_from_behavior_factory(
+    {
+      let events = events.clone();
+      move || parent(events.clone())
+    },
+    ActorSystemConfig::new(StdTickDriver::default()),
+  )
+  .expect("system");
   let termination = system.when_terminated();
   let mut guardian = system.user_guardian_ref();
 

@@ -103,7 +103,7 @@ fn build_node(port: u16, uid: u64) -> RemoteNode {
     .with_system_name(SYSTEM_NAME)
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(provider_installer);
-  let system = ActorSystem::noop_with_config(config).expect("actor system should build");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("actor system should build");
   RemoteNode { system, address }
 }
 

@@ -175,7 +175,7 @@ where
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
-  let system = ActorSystem::create_with_config(&props, config).expect("build system");
+  let system = ActorSystem::create_from_props(&props, config).expect("build system");
   let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   (system, extension)
 }

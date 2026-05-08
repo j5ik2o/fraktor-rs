@@ -18,7 +18,7 @@ use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
   kernel::{actor::setup::ActorSystemConfig, event::logging::LogLevel},
   typed::{
-    Behavior, TypedActorSystem, TypedProps,
+    Behavior, TypedActorSystem,
     dsl::{Behaviors, TimerKey},
   },
 };
@@ -97,9 +97,9 @@ fn timer_demo() -> Behavior<Command> {
 fn main() {
   use std::thread;
 
-  let props = TypedProps::from_behavior_factory(timer_demo);
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(timer_demo, ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
   let _log_subscription = subscribe_typed_tracing_logger(&system);
   let termination = system.when_terminated();
 

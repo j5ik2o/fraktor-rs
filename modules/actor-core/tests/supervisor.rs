@@ -53,7 +53,7 @@ fn recoverable_failure_restarts_child() {
   });
 
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let mut child = child_slot.lock().clone().expect("child");
@@ -74,7 +74,7 @@ fn fatal_failure_stops_child() {
   });
 
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
@@ -113,7 +113,7 @@ fn escalate_failure_restarts_supervisor() {
   });
 
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
@@ -149,7 +149,7 @@ fn panic_propagates_without_intervention() {
   });
 
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
   let mut child = child_slot.lock().clone().expect("child");
@@ -173,7 +173,7 @@ fn resume_directive_continues_child_without_restart() {
   });
 
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(100));

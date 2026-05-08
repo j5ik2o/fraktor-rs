@@ -4,7 +4,7 @@ use std::{thread, time::Instant};
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_rs::core::{
   kernel::actor::setup::ActorSystemConfig,
-  typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
+  typed::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors},
 };
 
 #[derive(Clone)]
@@ -39,9 +39,9 @@ fn open(pass_count: u32) -> Behavior<Command> {
 }
 
 fn main() {
-  let props = TypedProps::from_behavior_factory(|| locked(0));
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(|| locked(0), ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
   let termination = system.when_terminated();
   let mut gate = system.user_guardian_ref();
 

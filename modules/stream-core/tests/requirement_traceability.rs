@@ -49,7 +49,7 @@ fn build_system() -> ActorSystem {
   let props = Props::from_fn(|| TraceabilityGuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
-  ActorSystem::create_with_config(&props, config).expect("system should build")
+  ActorSystem::create_from_props(&props, config).expect("system should build")
 }
 
 const ALL_REQUIREMENT_IDS: &[&str] = &[

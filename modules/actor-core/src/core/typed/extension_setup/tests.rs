@@ -42,7 +42,7 @@ fn extension_setup_registers_custom_factory_during_bootstrap() {
     .with_extension_installer(ExtensionSetup::new(ProbeExtensionId, |_system| ProbeExtension::new("custom")));
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_extension_installers(installers);
 
-  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
+  let system = TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system");
   let extension = system
     .as_untyped()
     .extended()

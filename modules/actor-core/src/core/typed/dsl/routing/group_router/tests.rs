@@ -59,7 +59,7 @@ fn group_router_should_route_via_system_receptionist() {
     move || Routers::group(key.clone())
   });
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
@@ -98,7 +98,7 @@ fn group_router_public_type_routes_via_system_receptionist() {
     }
   });
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
@@ -148,7 +148,7 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
   let key = ServiceKey::<u32>::new("test-group-consistent-hash");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
@@ -221,7 +221,7 @@ fn group_router_with_round_robin_routes_across_routees_in_order() {
   let key = ServiceKey::<u32>::new("test-group-round-robin-routing");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
@@ -276,7 +276,7 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
   let key = ServiceKey::<u32>::new("test-group-random-routing");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
@@ -333,7 +333,7 @@ fn group_router_uses_random_routing_by_default() {
   let key = ServiceKey::<u32>::new("test-group-default-random-routing");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
@@ -391,7 +391,7 @@ fn group_router_should_route_via_explicit_receptionist() {
   let key = ServiceKey::<u32>::new("test-group-explicit");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let receptionist_props = TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior);
   let receptionist = system.as_untyped().spawn(receptionist_props.to_untyped()).expect("spawn explicit receptionist");
@@ -434,7 +434,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
   let key = ServiceKey::<u32>::new("test-group-mismatch");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -544,7 +544,7 @@ fn group_router_should_unsubscribe_when_stopped() {
   let key = ServiceKey::<u32>::new("test-group-unsubscribe");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));

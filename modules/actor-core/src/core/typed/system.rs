@@ -35,6 +35,7 @@ use crate::core::{
   },
   typed::{
     TypedActorRef, TypedActorSystemConfig, TypedActorSystemLog,
+    behavior::Behavior,
     dispatchers::Dispatchers,
     eventstream::EventStreamCommand,
     internal::TypedSchedulerShared,
@@ -186,11 +187,32 @@ where
   /// # Errors
   ///
   /// Returns [`SpawnError`] if guardian initialization fails.
-  pub fn create_with_config(guardian: &TypedProps<M>, config: ActorSystemConfig) -> Result<Self, SpawnError> {
-    let inner = ActorSystem::create_with_config(guardian.to_untyped(), config)?;
+  pub fn create_from_props(guardian: &TypedProps<M>, config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    let inner = ActorSystem::create_from_props(guardian.to_untyped(), config)?;
     let cached_address = Address::local(inner.name());
     let event_stream_ref = build_event_stream_ref(&inner);
     Ok(Self { inner, cached_address, event_stream_ref, marker: PhantomData })
+  }
+}
+
+impl<M> TypedActorSystem<M>
+where
+  M: Send + Sync + 'static,
+{
+  /// Creates a typed actor system from a guardian behavior factory.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] if guardian initialization fails.
+  pub fn create_from_behavior_factory<F, B>(
+    guardian_factory: F,
+    config: ActorSystemConfig,
+  ) -> Result<Self, SpawnError>
+  where
+    F: Fn() -> B + Send + Sync + 'static,
+    B: Into<Behavior<M>>, {
+    let props = TypedProps::from_behavior_factory(guardian_factory);
+    Self::create_from_props(&props, config)
   }
 }
 

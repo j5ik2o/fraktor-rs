@@ -104,7 +104,7 @@ impl ActorRefSender for CollectorSender {
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(Duration::from_secs(1));
-  TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system")
+  TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system")
 }
 
 // --- T5: Extension facade tests ---
@@ -202,7 +202,7 @@ fn name_returns_configured_system_name() {
   // Given: a typed actor system with a custom name
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("my-actor-system");
-  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
+  let system = TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system");
 
   // When: name() is called
   let name = system.name();
@@ -247,7 +247,7 @@ fn start_time_returns_configured_value() {
   let expected_start = Duration::from_secs(1_700_000_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(expected_start);
-  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
+  let system = TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system");
 
   // When: start_time() is called
   let start_time = system.start_time();
@@ -264,7 +264,7 @@ fn uptime_returns_elapsed_since_start() {
   let start = Duration::from_secs(1_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(start);
-  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
+  let system = TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system");
 
   // When: uptime is calculated with a known "now"
   let now = Duration::from_secs(1_042);
@@ -282,7 +282,7 @@ fn uptime_saturates_when_now_is_before_start() {
   let start = Duration::from_secs(1_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(start);
-  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
+  let system = TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system");
 
   // When: now is before start_time (edge case)
   let now = Duration::from_secs(500);
@@ -415,7 +415,7 @@ fn address_returns_local_address_with_custom_name() {
   // Given: a typed actor system with a custom name
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("custom-system");
-  let system = TypedActorSystem::<u32>::create_with_config(&guardian_props, config).expect("system");
+  let system = TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system");
 
   // When: address() is called
   let address = system.address();
@@ -855,7 +855,7 @@ fn typed_actor_system_new_rejects_empty_guardian_props() {
 
   // 実行: typed actor system を bootstrap する
   let result =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()));
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()));
 
   // 検証: invalid props として明示的に失敗する
   assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
@@ -888,6 +888,30 @@ fn print_tree_contains_spawned_system_actor_name() {
 
   // 検証: spawn 済み system actor 名が tree 出力に含まれる
   assert!(tree.contains("tree-visible-system-actor"));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn create_from_behavior_factory_builds_running_system_and_invokes_factory() {
+  // 前提: 呼び出し回数を観測するカウンタ付きの guardian factory を用意する
+  let invocations = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let invocations_factory = invocations.clone();
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_start_time(Duration::from_secs(1));
+
+  // 実行: convenience method 経由で typed actor system を生成する
+  let system = TypedActorSystem::<u32>::create_from_behavior_factory(
+    move || {
+      *invocations_factory.lock() += 1;
+      Behaviors::ignore::<u32>()
+    },
+    config,
+  )
+  .expect("system");
+
+  // 検証: system が起動済みで、guardian factory が少なくとも 1 回呼び出されている
+  assert!(system.state().has_root_started());
+  assert!(*invocations.lock() >= 1, "guardian factory should have been invoked at least once");
 
   system.terminate().expect("terminate");
 }

@@ -26,7 +26,7 @@ use crate::std::StdBlocker;
 fn build_system_with_driver(driver: StdTickDriver) -> ActorSystem {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(driver).with_scheduler_config(scheduler);
-  ActorSystem::noop_with_config(config).expect("system should build")
+  ActorSystem::create_with_noop_guardian(config).expect("system should build")
 }
 
 fn provision_inputs() -> (TickFeedHandle, SchedulerTickExecutor) {
@@ -141,7 +141,7 @@ mod tokio_tests {
     let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
     let driver = TokioTickDriver::new(Duration::from_millis(10));
     let config = ActorSystemConfig::new(driver).with_scheduler_config(scheduler);
-    let system = ActorSystem::noop_with_config(config).expect("system should build");
+    let system = ActorSystem::create_with_noop_guardian(config).expect("system should build");
     system.terminate().expect("terminate");
   }
 }

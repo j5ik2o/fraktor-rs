@@ -79,7 +79,7 @@ fn main() {
     move || GateActor::new(transitions.clone(), pass_count.clone())
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   let mut guardian = system.user_guardian_ref();

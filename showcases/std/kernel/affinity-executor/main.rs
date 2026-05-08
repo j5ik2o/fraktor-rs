@@ -62,7 +62,7 @@ fn main() {
   let actor_system_config =
     ActorSystemConfig::new(StdTickDriver::default()).with_dispatcher_factory(DEFAULT_DISPATCHER_ID, dispatcher_factory);
 
-  let system = ActorSystem::create_with_config(&props, actor_system_config).expect("system");
+  let system = ActorSystem::create_from_props(&props, actor_system_config).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Greet));

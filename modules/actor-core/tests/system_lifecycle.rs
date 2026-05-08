@@ -27,7 +27,7 @@ struct Start;
 fn terminate_signals_future() {
   let props = Props::from_fn(|| IdleGuardian);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
   system.run_until_terminated(&SpinBlocker);
@@ -43,7 +43,7 @@ fn stop_self_propagates_to_children() {
   });
 
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = Instant::now() + Duration::from_millis(20);

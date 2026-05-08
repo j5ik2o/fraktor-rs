@@ -136,7 +136,7 @@ fn batch_flow_applies_all_events() {
     let child_refs = child_refs.clone();
     move || Guardian::new(value.clone(), child_refs.clone())
   });
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 

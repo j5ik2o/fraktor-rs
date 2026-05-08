@@ -26,7 +26,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn topic_should_publish_to_subscribers_and_report_stats() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   let topic_props = TypedProps::<TopicCommand<u32>>::from_behavior_factory(|| Topic::behavior("numbers"));

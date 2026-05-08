@@ -58,7 +58,7 @@ fn open(total: i32) -> Behavior<Command> {
 fn main() {
   let props = TypedProps::from_behavior_factory(|| buffering(0)).with_stash_mailbox();
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut actor = system.user_guardian_ref();
 

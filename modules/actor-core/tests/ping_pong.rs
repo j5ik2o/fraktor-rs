@@ -118,7 +118,7 @@ fn spawn_and_tell_delivers_message() {
     move || RecordingGuardian::new(log.clone(), child_slot.clone())
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
@@ -166,7 +166,7 @@ fn auto_naming_and_duplicate_detection() {
   });
 
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = Instant::now() + Duration::from_millis(20);

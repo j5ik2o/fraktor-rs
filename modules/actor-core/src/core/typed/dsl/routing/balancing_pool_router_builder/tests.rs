@@ -79,7 +79,7 @@ fn balancing_pool_distributes_to_idle_workers() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<WorkItem>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -158,7 +158,7 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<WorkItem>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -222,7 +222,7 @@ fn balancing_pool_stops_when_all_routees_terminate() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<WorkItem>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -276,7 +276,7 @@ fn balancing_pool_routee_stopped_on_start_does_not_receive_work() {
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
   let system =
-    TypedActorSystem::<WorkItem>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<WorkItem>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut guardian = system.user_guardian_ref();
 

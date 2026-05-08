@@ -123,7 +123,7 @@ impl TypedActor<CounterMessage> for CounterActor {
 fn typed_actor_system_handles_basic_flow() {
   let props = TypedProps::<CounterMessage>::new(CounterActor::new);
   let system =
-    TypedActorSystem::<CounterMessage>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<CounterMessage>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut counter = system.user_guardian_ref();
 
@@ -145,7 +145,7 @@ fn typed_props_with_blocking_dispatcher_selector_should_spawn() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0))
     .with_dispatcher_selector(DispatcherSelector::Blocking);
   let system =
-    TypedActorSystem::<CounterMessage>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<CounterMessage>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
 
   system.terminate().expect("terminate");
@@ -204,7 +204,7 @@ fn typed_props_with_mailbox_unbounded_overrides_bounded_selector() {
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
   let system =
-    TypedActorSystem::<CounterMessage>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<CounterMessage>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut counter = system.user_guardian_ref();
 
@@ -225,7 +225,7 @@ fn typed_behaviors_handle_recursive_state() {
 fn typed_behaviors_ignore_keeps_current_state() {
   let props = TypedProps::<IgnoreCommand>::from_behavior_factory(|| ignore_gate(0));
   let system =
-    TypedActorSystem::<IgnoreCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<IgnoreCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut gate = system.user_guardian_ref();
 
@@ -247,7 +247,7 @@ fn typed_behaviors_ignore_keeps_current_state() {
 fn typed_behaviors_stash_buffered_messages_across_transition() {
   let props = TypedProps::<StashCommand>::from_behavior_factory(|| stash_behavior(0)).with_stash_mailbox();
   let system =
-    TypedActorSystem::<StashCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<StashCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut actor = system.user_guardian_ref();
 
@@ -270,7 +270,7 @@ fn typed_behaviors_with_stash_limits_capacity() {
   })
   .with_stash_mailbox();
   let system =
-    TypedActorSystem::<StashCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<StashCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut actor = system.user_guardian_ref();
 
@@ -294,7 +294,7 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
   })
   .with_stash_mailbox();
   let system =
-    TypedActorSystem::<StashCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<StashCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut actor = system.user_guardian_ref();
 
@@ -315,11 +315,9 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
 fn typed_behaviors_unstash_replays_before_already_queued_messages() {
   let props =
     TypedProps::<StashOrderCommand>::from_behavior_factory(|| stash_order_behavior(Vec::new())).with_stash_mailbox();
-  let system = TypedActorSystem::<StashOrderCommand>::create_with_config(
-    &props,
-    ActorSystemConfig::new(TestTickDriver::default()),
-  )
-  .expect("system");
+  let system =
+    TypedActorSystem::<StashOrderCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+      .expect("system");
   let mut actor = system.user_guardian_ref();
 
   actor.tell(StashOrderCommand::Buffer(String::from("stashed")));
@@ -346,7 +344,7 @@ fn typed_behaviors_receive_signal_notifications() {
     signal_probe_behavior(&start_probe, &post_stop_probe)
   });
   let system =
-    TypedActorSystem::<LifecycleCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<LifecycleCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   system.terminate().expect("terminate");
   system.as_untyped().run_until_terminated(&SpinBlocker);
@@ -415,7 +413,7 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
 fn typed_ask_reports_type_mismatch() {
   let props = TypedProps::<MismatchCommand>::new(|| MismatchActor);
   let system =
-    TypedActorSystem::<MismatchCommand>::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    TypedActorSystem::<MismatchCommand>::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
       .expect("system");
   let mut actor = system.user_guardian_ref();
 
@@ -432,7 +430,7 @@ fn typed_ask_reports_type_mismatch() {
 #[test]
 fn typed_context_exposes_scheduler() {
   let props = TypedProps::<SchedulerProbeCommand>::new(|| SchedulerProbeActor);
-  let system = TypedActorSystem::<SchedulerProbeCommand>::create_with_config(
+  let system = TypedActorSystem::<SchedulerProbeCommand>::create_from_props(
     &props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )
@@ -722,7 +720,7 @@ fn behaviors_supervise_restarts_children() {
     |_| SupervisorDirective::Restart,
   );
   let parent_props = supervised_parent_props(restart_strategy, child);
-  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+  let system = TypedActorSystem::<SupervisorCommand>::create_from_props(
     &parent_props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )
@@ -750,7 +748,7 @@ fn intercepted_behavior_survives_supervised_restart() {
     |_| SupervisorDirective::Restart,
   );
   let parent_props = supervised_parent_props(restart_strategy, child);
-  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+  let system = TypedActorSystem::<SupervisorCommand>::create_from_props(
     &parent_props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )
@@ -782,7 +780,7 @@ fn behaviors_supervise_stops_children() {
     |_| SupervisorDirective::Stop,
   );
   let parent_props = supervised_parent_props(stop_strategy, child);
-  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+  let system = TypedActorSystem::<SupervisorCommand>::create_from_props(
     &parent_props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )
@@ -811,7 +809,7 @@ fn backoff_strategy_via_supervise_on_failure() {
     let behavior = supervised_parent_behavior(child.clone());
     Behaviors::supervise(behavior).on_failure(backoff.clone())
   });
-  let system = TypedActorSystem::<SupervisorCommand>::create_with_config(
+  let system = TypedActorSystem::<SupervisorCommand>::create_from_props(
     &parent_props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )
@@ -872,7 +870,7 @@ fn message_adapter_converts_external_messages() {
     let slot = adapter_slot.clone();
     move || adapter_counter_behavior(&slot)
   });
-  let system = TypedActorSystem::<AdapterCounterCommand>::create_with_config(
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_from_props(
     &props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )
@@ -904,7 +902,7 @@ fn adapter_not_found_routes_to_dead_letter() {
       counter_behavior(0)
     })
   });
-  let system = TypedActorSystem::<AdapterCounterCommand>::create_with_config(
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_from_props(
     &props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )
@@ -939,7 +937,7 @@ fn pipe_to_self_converts_messages_via_adapter() {
       counter_behavior(0)
     })
   });
-  let system = TypedActorSystem::<AdapterCounterCommand>::create_with_config(
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_from_props(
     &props,
     ActorSystemConfig::new(TestTickDriver::default()),
   )

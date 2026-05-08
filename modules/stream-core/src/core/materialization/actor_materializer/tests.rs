@@ -340,7 +340,7 @@ fn build_system() -> ActorSystem {
   let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
-  ActorSystem::create_with_config(&props, config).expect("system should build")
+  ActorSystem::create_from_props(&props, config).expect("system should build")
 }
 
 struct InlineExec;
@@ -375,7 +375,7 @@ fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, Me
   let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
     .with_dispatcher_factory(dispatcher_id, configurator_handle);
-  (ActorSystem::create_with_config(&props, config).expect("system should build"), dispatcher)
+  (ActorSystem::create_from_props(&props, config).expect("system should build"), dispatcher)
 }
 
 fn system_child_names(system: &ActorSystem) -> Vec<String> {
@@ -622,7 +622,7 @@ fn start_with_remoting_config() {
   let remoting = RemotingConfig::default().with_canonical_host("127.0.0.1").with_canonical_port(2552);
   let config =
     ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler).with_remoting_config(remoting);
-  let system = ActorSystem::create_with_config(&props, config).expect("system should build");
+  let system = ActorSystem::create_from_props(&props, config).expect("system should build");
   let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
   materializer.start().expect("start");
 }

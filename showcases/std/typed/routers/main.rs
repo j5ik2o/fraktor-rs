@@ -51,7 +51,7 @@ fn main() {
   let next_index = SharedLock::new_with_driver::<SpinSyncMutex<_>>(0_usize);
   let props = router_props(records.clone(), next_index);
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut router = system.user_guardian_ref();
 

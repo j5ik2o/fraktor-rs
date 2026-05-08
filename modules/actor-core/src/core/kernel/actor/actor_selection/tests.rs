@@ -55,7 +55,7 @@ impl Actor for SelectionProbeActor {
 fn build_selection_system() -> ActorSystem {
   let props = Props::from_fn(|| NoopActor).with_name("selection-root");
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name("selection-spec");
-  ActorSystem::create_with_config(&props, config).expect("system")
+  ActorSystem::create_from_props(&props, config).expect("system")
 }
 
 fn spawn_selection_probe(

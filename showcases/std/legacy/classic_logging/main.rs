@@ -68,7 +68,7 @@ fn main() {
   let subscriber = test_subscriber_handle(RecordingSubscriber::new(events.clone()));
   let props = Props::from_fn(|| LoggingActor);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let _log_subscription = subscribe_kernel_tracing_logger(&system);
   let _subscription = system.event_stream().subscribe(&subscriber);
 

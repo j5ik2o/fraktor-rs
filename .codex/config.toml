@@ -30,7 +30,7 @@ config_file = "agents/worker.toml"
 description = "Implementation-focused agent for small targeted fixes."
 
 [features]
-codex_hooks = true
+hooks = true
 js_repl = false
 multi_agent = true
 prevent_idle_sleep = true

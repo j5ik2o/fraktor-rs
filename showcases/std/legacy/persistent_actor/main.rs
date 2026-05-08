@@ -128,7 +128,7 @@ fn main() {
   let props = Props::from_fn(|| GuardianActor);
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
 
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let _log_subscription = subscribe_kernel_tracing_logger(&system);
   let termination = system.when_terminated();
 

@@ -105,7 +105,7 @@ impl SubSourceOutletHandler<u32> for ExampleSubSourceHandler {
 fn main() {
   let props = Props::from_fn(|| GuardianActor);
   let config = ActorSystemConfig::new(StdTickDriver::default());
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("actor system");
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("materializer start");

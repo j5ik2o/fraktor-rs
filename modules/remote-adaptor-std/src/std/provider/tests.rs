@@ -331,7 +331,7 @@ async fn actor_system_config_registered_std_remote_actor_ref_provider_resolves_r
   let config = std_actor_system_config(TestTickDriver::default())
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(installer);
-  let system = ActorSystem::noop_with_config(config).expect("system");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system");
   let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse");
   let mut actor_ref = system.resolve_actor_ref(remote_path.clone()).expect("remote actor ref should resolve");
   let canonical_path = actor_ref.canonical_path().expect("remote actor ref canonical path");

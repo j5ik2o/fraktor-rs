@@ -32,7 +32,7 @@ fn installer_registers_persistence_extension() {
     .with_scheduler_config(scheduler)
     .with_extension_installers(installers);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   let extension = system.extended().extension_by_type::<PersistenceExtensionShared>();
 

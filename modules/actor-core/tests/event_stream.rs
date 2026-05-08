@@ -82,7 +82,7 @@ fn dead_letter_event_is_published_when_send_fails() {
     move || TestGuardian::new(child_slot.clone(), child_props.clone())
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default())).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));

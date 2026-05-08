@@ -102,7 +102,7 @@ fn panic_guard_escalates_receive_panic_through_supervisor_path() {
   });
 
   let config = install_panic_invoke_guard(ActorSystemConfig::new(TestTickDriver::default()));
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
   let mut child = child_slot.lock().clone().expect("child");

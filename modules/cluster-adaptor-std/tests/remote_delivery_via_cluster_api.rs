@@ -155,7 +155,7 @@ fn build_cluster_node(port: u16, uid: u64, remote_authority: String) -> (RemoteN
     .with_system_name(SYSTEM_NAME)
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(provider_installer);
-  let system = ActorSystem::noop_with_config(config).expect("cluster actor system should build");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("cluster actor system should build");
   let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   (RemoteNode { system, address }, extension)
 }
@@ -167,7 +167,7 @@ fn build_remote_node(port: u16, uid: u64) -> RemoteNode {
     .with_system_name(SYSTEM_NAME)
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(provider_installer);
-  let system = ActorSystem::noop_with_config(config).expect("remote actor system should build");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("remote actor system should build");
   RemoteNode { system, address }
 }
 

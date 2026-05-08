@@ -25,7 +25,7 @@ fn persistence_extension_creates_actor_refs() {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
   let props = Props::from_fn(|| NoopActor);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let journal = InMemoryJournal::new();
   let snapshot = InMemorySnapshotStore::new();
 
