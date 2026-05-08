@@ -1,4 +1,5 @@
 use std::{
+  net::TcpListener,
   sync::mpsc::{self, Sender},
   time::Duration,
 };
@@ -22,10 +23,13 @@ use fraktor_remote_core_rs::core::{
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundPriority},
-  extension::{Remote, Remoting, RemotingError},
+  extension::{Remote, RemotingError},
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
-use tokio::time::{sleep, timeout};
+use tokio::{
+  net::TcpStream,
+  time::{sleep, timeout},
+};
 
 use crate::std::{
   extension_installer::remoting_extension_installer::{RemotingExtensionInstaller, deliver_inbound_envelope},
@@ -87,6 +91,36 @@ fn listen_started_authorities(events: &[EventStreamEvent]) -> Vec<String> {
       | _ => None,
     })
     .collect()
+}
+
+fn reserve_port() -> u16 {
+  let listener = TcpListener::bind("127.0.0.1:0").expect("reserve tcp port");
+  listener.local_addr().expect("reserved local addr").port()
+}
+
+async fn terminate_system(system: &ActorSystem) {
+  system.terminate().expect("terminate");
+  timeout(Duration::from_secs(1), system.when_terminated()).await.expect("system should terminate");
+}
+
+async fn assert_listener_accepts(port: u16) {
+  timeout(Duration::from_secs(1), TcpStream::connect(("127.0.0.1", port)))
+    .await
+    .expect("remote listener should accept connections")
+    .expect("remote listener should be reachable");
+}
+
+async fn assert_listener_stops(port: u16) {
+  timeout(Duration::from_secs(1), async {
+    loop {
+      if TcpStream::connect(("127.0.0.1", port)).await.is_err() {
+        break;
+      }
+      sleep(Duration::from_millis(10)).await;
+    }
+  })
+  .await
+  .expect("remote listener should stop");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -170,69 +204,37 @@ async fn remote_start_publishes_listen_started_for_each_advertised_address() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn extension_installer_holds_a_shared_remote_handle() {
-  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
-  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
-  let harness = EventHarness::new();
-  installer.install(harness.system()).expect("install should create remote");
-  let remote_a = installer.remote().expect("installed remote should be available");
-  let remote_b = installer.remote().expect("installed remote should be available");
-  assert!(!remote_a.addresses().is_empty(), "install should start the remote");
-  assert!(!remote_b.addresses().is_empty(), "second handle should observe the same remote state");
-  installer.shutdown_and_join().await.expect("shutdown should join run task");
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn extension_installer_config_install_retains_lifecycle_handle() {
-  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+async fn extension_installer_config_install_starts_listener() {
+  let port = reserve_port();
+  let listen_address = Address::new("local-sys", "127.0.0.1", port);
   let installer = ArcShared::new(RemotingExtensionInstaller::new(
-    make_transport_with_addresses(vec![listen_address]),
+    TcpRemoteTransport::new(alloc::format!("127.0.0.1:{port}"), vec![listen_address]),
     remote_config(),
   ));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
   let system = ActorSystem::noop_with_config(config).expect("system should install remoting extension");
-  let remote = installer.remote().expect("config-installed remote should be available");
 
-  assert!(!remote.addresses().is_empty(), "config install should start remoting");
-  installer.shutdown_and_join().await.expect("caller-retained installer should shut down");
-  system.terminate().expect("terminate");
+  assert_listener_accepts(port).await;
+  terminate_system(&system).await;
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_system_termination_shuts_down_remote() {
-  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
+  let port = reserve_port();
+  let listen_address = Address::new("local-sys", "127.0.0.1", port);
   let installer = ArcShared::new(RemotingExtensionInstaller::new(
-    make_transport_with_addresses(vec![listen_address]),
+    TcpRemoteTransport::new(alloc::format!("127.0.0.1:{port}"), vec![listen_address]),
     remote_config(),
   ));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
   let system = ActorSystem::noop_with_config(config).expect("system should install remoting extension");
-  let remote = installer.remote().expect("config-installed remote should be available");
-  assert!(!remote.addresses().is_empty(), "config install should start remoting");
 
+  assert_listener_accepts(port).await;
   system.terminate().expect("terminate should trigger remoting shutdown");
   timeout(Duration::from_secs(1), system.when_terminated()).await.expect("system should terminate");
-  timeout(Duration::from_secs(1), async {
-    while !remote.addresses().is_empty() {
-      sleep(Duration::from_millis(10)).await;
-    }
-  })
-  .await
-  .expect("remoting should shut down after system termination");
-}
-
-#[test]
-fn extension_installer_remote_before_install_returns_not_started() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
-
-  let error = match installer.remote() {
-    | Ok(_) => panic!("remote handle should not exist before install"),
-    | Err(error) => error,
-  };
-
-  assert_eq!(error, RemotingError::NotStarted);
+  assert_listener_stops(port).await;
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -244,7 +246,7 @@ async fn extension_installer_double_install_returns_configuration_error() {
   let error = installer.install(harness.system()).expect_err("second install should fail");
 
   assert_configuration_error(error, "remote extension is already installed");
-  installer.shutdown_and_join().await.expect("shutdown should join run task");
+  terminate_system(harness.system()).await;
 }
 
 #[test]
@@ -275,39 +277,6 @@ fn inbound_delivery_bridge_sends_bytes_payload_to_local_actor() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn extension_installer_double_spawn_run_task_returns_already_running() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
-  let harness = EventHarness::new();
-  installer.install(harness.system()).expect("install should create remote");
-
-  let error = installer.spawn_run_task().expect_err("install-spawned run task should already be running");
-
-  assert_eq!(error, RemotingError::AlreadyRunning);
-  installer.shutdown_and_join().await.expect("shutdown should join run task");
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn extension_installer_shutdown_and_join_is_idempotent() {
-  let installer = RemotingExtensionInstaller::new(make_transport(), remote_config());
-  let harness = EventHarness::new();
-  installer.install(harness.system()).expect("install should create remote");
-
-  installer.shutdown_and_join().await.expect("first shutdown should join run task");
-  installer.shutdown_and_join().await.expect("second shutdown should be a no-op");
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn extension_installer_remote_lifecycle_drives_via_remote_shared_handle() {
-  let listen_address = Address::new("local-sys", "127.0.0.1", 0);
-  let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
-  let harness = EventHarness::new();
-  installer.install(harness.system()).expect("install should wire event publisher");
-  let remote = installer.remote().expect("installed remote should be available");
-  assert!(!remote.addresses().is_empty());
-  installer.shutdown_and_join().await.expect("shutdown should join run task");
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn extension_installer_install_wires_listen_event_publisher() {
   let listen_address = Address::new("local-sys", "127.0.0.1", 2551);
   let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
@@ -316,7 +285,7 @@ async fn extension_installer_install_wires_listen_event_publisher() {
 
   let events = harness.events();
   assert_eq!(listen_started_authorities(&events), vec![String::from("local-sys@127.0.0.1:2551")]);
-  installer.shutdown_and_join().await.expect("shutdown should join run task");
+  terminate_system(harness.system()).await;
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -326,16 +295,16 @@ async fn extension_installer_start_binds_listener_and_publishes_actual_bound_por
   let installer = RemotingExtensionInstaller::new(make_transport_with_addresses(vec![listen_address]), remote_config());
   let harness = EventHarness::new();
   installer.install(harness.system()).expect("install should wire event publisher");
-  let remote = installer.remote().expect("installed remote should be available");
 
   // When
-  let advertised_addresses = remote.addresses();
+  let events = harness.events();
+  let authorities = listen_started_authorities(&events);
+  let authority = authorities.first().expect("listen started authority");
+  let actual_port = authority.rsplit(':').next().expect("port").parse::<u16>().expect("numeric port");
 
   // Then
-  let actual_port = advertised_addresses.first().expect("advertised address").port();
   assert_ne!(actual_port, 0);
-  let events = harness.events();
   assert_eq!(listen_started_authorities(&events), vec![alloc::format!("local-sys@127.0.0.1:{actual_port}")]);
 
-  installer.shutdown_and_join().await.expect("shutdown should join run task");
+  terminate_system(harness.system()).await;
 }

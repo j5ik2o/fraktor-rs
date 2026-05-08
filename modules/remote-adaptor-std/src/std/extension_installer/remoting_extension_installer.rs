@@ -69,17 +69,6 @@ impl RemotingExtensionInstaller {
     }
   }
 
-  /// Returns a clone of the shared [`Remote`] handle.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`RemotingError::NotStarted`] when the installer has not been
-  /// installed into an actor system yet.
-  #[allow(dead_code)]
-  pub(crate) fn remote(&self) -> Result<RemoteShared, RemotingError> {
-    self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)
-  }
-
   /// Returns the adapter event sender and monotonic epoch created during install.
   ///
   /// This is used by companion actor-ref provider installers that are also
@@ -94,32 +83,6 @@ impl RemotingExtensionInstaller {
     let sender = self.event_sender.get().cloned().ok_or(RemotingError::NotStarted)?;
     let monotonic_epoch = self.monotonic_epoch.get().copied().ok_or(RemotingError::NotStarted)?;
     Ok((sender, monotonic_epoch))
-  }
-
-  /// Spawns the core remote run loop once.
-  ///
-  /// Must be called from within a Tokio runtime context because it uses
-  /// `tokio::spawn` to drive [`RemoteShared::run`]. Call it from async code, a
-  /// Tokio task, or a `tokio::Runtime::block_on` context.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`RemotingError::NotStarted`] if the installer has not been
-  /// installed yet, or [`RemotingError::AlreadyRunning`] if the run loop was
-  /// already spawned.
-  #[allow(dead_code)]
-  pub(crate) fn spawn_run_task(&self) -> Result<(), RemotingError> {
-    let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
-    let system = self.system.get().cloned().ok_or(RemotingError::NotStarted)?;
-    let mut run_state = self.run_state.lock().expect(RUN_STATE_LOCK_POISONED);
-    spawn_run_task_with_state(&mut run_state, remote, system)
-  }
-
-  /// Shuts the remote subsystem down, wakes the run loop, and waits for it.
-  #[allow(dead_code)]
-  pub(crate) async fn shutdown_and_join(&self) -> Result<(), RemotingError> {
-    let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
-    shutdown_remote_and_join(remote, self.event_sender.get().cloned(), self.run_state.clone()).await
   }
 }
 

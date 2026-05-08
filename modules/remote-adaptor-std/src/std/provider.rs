@@ -15,10 +15,6 @@ mod dispatch;
 mod path_remote_actor_ref_provider;
 mod provider_dispatch_error;
 mod remote_actor_ref_sender;
-#[allow(dead_code)]
-mod remote_routee_expansion;
-#[allow(dead_code)]
-mod remote_routee_expansion_error;
 mod std_remote_actor_ref_provider_installer;
 
 pub use dispatch::StdRemoteActorRefProvider;

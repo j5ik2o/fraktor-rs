@@ -79,39 +79,6 @@ impl Debug for TcpClient {
 }
 
 impl TcpClient {
-  /// Connects to `peer_addr` and spawns the reader / writer task.
-  ///
-  /// Received frames are forwarded to `inbound_tx`.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
-  /// established.
-  #[allow(dead_code)]
-  pub async fn connect(
-    peer_addr: String,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
-  ) -> Result<Self, TransportError> {
-    Self::connect_async(peer_addr, inbound_tx, TcpClientConnectOptions::new(WireFrameCodec::new())).await
-  }
-
-  /// Connects to `peer_addr` with explicit frame and lifecycle options.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::SendFailed`] if the TCP connection cannot be
-  /// established.
-  #[allow(dead_code)]
-  pub(crate) async fn connect_async(
-    peer_addr: String,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
-    options: TcpClientConnectOptions,
-  ) -> Result<Self, TransportError> {
-    let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
-    let (frame_codec, connection_loss_reporter) = options.into_parts();
-    Ok(Self::from_connected_stream(stream, peer_addr, inbound_tx, frame_codec, connection_loss_reporter))
-  }
-
   /// Connects to `peer_addr` with explicit frame and lifecycle options from a
   /// synchronous context.
   ///
@@ -146,13 +113,6 @@ impl TcpClient {
     let peer_for_task = peer_addr.clone();
     let task = tokio::spawn(run(stream, peer_for_task, writer_rx, inbound_tx, frame_codec, connection_loss_reporter));
     Self { peer_addr, writer_tx, task: Some(task) }
-  }
-
-  /// Returns the peer address this client is connected to.
-  #[must_use]
-  #[allow(dead_code)]
-  pub fn peer_addr(&self) -> &str {
-    &self.peer_addr
   }
 
   /// Enqueues a frame for writing without blocking the caller.

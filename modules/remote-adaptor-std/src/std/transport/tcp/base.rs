@@ -149,17 +149,6 @@ impl TcpRemoteTransport {
     self
   }
 
-  /// Takes ownership of the inbound receiver.
-  ///
-  /// Exactly one consumer (typically the `association` task) should
-  /// take the receiver to start processing inbound frames. Subsequent calls
-  /// return `None`.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn take_inbound_receiver(&mut self) -> Option<UnboundedReceiver<InboundFrameEvent>> {
-    self.inbound_rx.take()
-  }
-
   fn spawn_inbound_worker(&mut self) -> Result<(), TransportError> {
     let Some(event_sender) = self.remote_event_tx.clone() else {
       tracing::debug!("with_remote_event_sender was not called; inbound worker not spawned");
@@ -174,40 +163,6 @@ impl TcpRemoteTransport {
       run_inbound_dispatch(inbound_rx, event_sender, move || std_instant_elapsed_millis(monotonic_epoch)).await
     });
     self.inbound_worker = Some(handle);
-    Ok(())
-  }
-
-  /// Establishes an outbound connection to `remote` and stores the client.
-  ///
-  /// This method is async because `TcpStream::connect` is async. It must be
-  /// invoked from an async context (e.g. `tokio::spawn`) prior to calling
-  /// the synchronous [`RemoteTransport::send`].
-  ///
-  /// `remote` is hashed via the same [`Self::peer_key_for_address`] formatter
-  /// used by [`RemoteTransport::send`] / [`Self::send_handshake`], so the
-  /// stored client is guaranteed to match subsequent send/quarantine lookups.
-  /// (Earlier revisions accepted an arbitrary `String` here, which silently
-  /// caused `ConnectionClosed` errors when callers formatted the key
-  /// differently from the internal `host:port` convention.)
-  ///
-  /// # Errors
-  ///
-  /// Returns [`TransportError::NotStarted`] if the transport has not yet been
-  /// started, or [`TransportError::SendFailed`] if the outbound connection
-  /// cannot be established.
-  #[allow(dead_code)]
-  pub(crate) async fn connect_peer_async(&mut self, remote: &Address) -> Result<(), TransportError> {
-    if !self.running {
-      return Err(TransportError::NotStarted);
-    }
-    let peer_key = Self::peer_key_for_address(remote);
-    if self.clients.contains_key(&peer_key) {
-      return Ok(());
-    }
-    let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client =
-      TcpClient::connect_async(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote)).await?;
-    self.clients.insert(peer_key, client);
     Ok(())
   }
 
