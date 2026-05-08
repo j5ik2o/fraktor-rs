@@ -1382,6 +1382,7 @@ check_unit_sleep() {
   fi
   local -a scan_dirs=(
     modules/actor-core/src/
+    modules/actor-core-typed/src/
     modules/actor-adaptor-std/src/
     modules/stream-core/src/
     modules/stream-adaptor-std/src/
@@ -1399,8 +1400,6 @@ check_unit_sleep() {
     --glob '!modules/cluster-adaptor-std/src/std/tokio_gossip_transport/**'
     --glob '!modules/actor-core/src/core/kernel/system/coordinated_shutdown/tests.rs'
     --glob '!modules/actor-core/src/core/kernel/dispatch/dispatcher/tests.rs'
-    --glob '!modules/actor-core/src/core/typed/dsl/routing/scatter_gather_first_completed_router_builder/tests.rs'
-    --glob '!modules/actor-core/src/core/typed/dsl/routing/tail_chopping_router_builder/tests.rs'
     --glob '!modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
   )
 

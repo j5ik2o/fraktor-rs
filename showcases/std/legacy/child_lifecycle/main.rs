@@ -13,16 +13,16 @@ use core::{
 use std::sync::Arc;
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::{
-    actor::{
-      error::ActorError,
-      setup::ActorSystemConfig,
-      supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
-    },
-    event::logging::LogLevel,
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    error::ActorError,
+    setup::ActorSystemConfig,
+    supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
-  typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal},
+  event::logging::LogLevel,
+};
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal,
 };
 use fraktor_showcases_std::subscribe_typed_tracing_logger;
 

@@ -1,11 +1,11 @@
-//! Event payload describing a typed message adapter failure.
+//! Event payload describing a message adapter failure.
 
 use alloc::string::String;
 use core::any::TypeId;
 
 use crate::core::kernel::actor::Pid;
 
-/// Event emitted when a typed message adapter cannot transform an incoming message.
+/// Event emitted when a message adapter cannot transform an incoming message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AdapterFailureEvent {
   /// Adapter registry reached the configured capacity.

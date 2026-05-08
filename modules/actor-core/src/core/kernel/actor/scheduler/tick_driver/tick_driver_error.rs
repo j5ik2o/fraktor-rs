@@ -19,7 +19,7 @@ pub enum TickDriverError {
   /// Driver has stopped unexpectedly.
   DriverStopped,
   /// Runtime flavor is not supported by this driver.
-  UnsupportedRuntime,
+  UnsupportedExecutor,
   /// Resolution is zero or too small for safe operation.
   InvalidResolution,
 }
@@ -32,7 +32,7 @@ impl Display for TickDriverError {
       | Self::UnsupportedEnvironment => write!(f, "unsupported environment for tick driver auto-detection"),
       | Self::DriftExceeded => write!(f, "tick drift exceeded allowed threshold"),
       | Self::DriverStopped => write!(f, "tick driver has stopped unexpectedly"),
-      | Self::UnsupportedRuntime => write!(f, "runtime flavor is not supported by this tick driver"),
+      | Self::UnsupportedExecutor => write!(f, "runtime flavor is not supported by this tick driver"),
       | Self::InvalidResolution => write!(f, "tick driver resolution is zero or too small for safe operation"),
     }
   }

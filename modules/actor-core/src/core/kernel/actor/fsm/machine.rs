@@ -11,7 +11,7 @@ use super::{FsmReason, FsmStateTimeout, FsmTimerFired, FsmTransition, fsm_named_
 use crate::core::kernel::{
   actor::{
     ActorContext,
-    error::ActorError,
+    error::{ActorError, ActorErrorReason},
     messaging::{AnyMessage, AnyMessageView},
     scheduler::SchedulerError,
   },
@@ -532,7 +532,9 @@ where
   }
 
   fn scheduler_error_to_actor_error(error: &SchedulerError) -> ActorError {
-    ActorError::recoverable_typed::<SchedulerError>(format!("fsm timer operation failed: {error:?}"))
+    ActorError::recoverable(ActorErrorReason::with_source_type::<SchedulerError>(format!(
+      "fsm timer operation failed: {error:?}"
+    )))
   }
 }
 

@@ -21,7 +21,7 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel},
     stream::{
       AdapterFailureEvent, BackpressureSignal, CorrelationId, EventStreamEvent, RemoteAuthorityEvent,
-      RemotingBackpressureEvent, RemotingLifecycleEvent, TickDriverSnapshot, TypedUnhandledMessageEvent,
+      RemotingBackpressureEvent, RemotingLifecycleEvent, TickDriverSnapshot, UnhandledMessageEvent,
     },
   },
   serialization::{SerializationErrorEvent, SerializerId},
@@ -77,7 +77,7 @@ fn classifier_key_for_event_maps_all_variants() {
   ));
   assert_eq!(ClassifierKey::for_event(&mailbox_pressure), ClassifierKey::MailboxPressure);
 
-  let unhandled = EventStreamEvent::UnhandledMessage(TypedUnhandledMessageEvent::new(
+  let unhandled = EventStreamEvent::UnhandledMessage(UnhandledMessageEvent::new(
     Pid::new(5, 0),
     String::from("probe::Command"),
     Duration::from_millis(6),

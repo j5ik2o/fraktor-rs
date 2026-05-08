@@ -978,7 +978,7 @@ fn shutdown_executes_task_run_on_close_in_priority_order() {
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   scheduler.register_on_close(RecordingTask::succeed(log.clone(), "user"), TaskRunPriority::User).expect("user");
   scheduler
-    .register_on_close(RecordingTask::succeed(log.clone(), "runtime"), TaskRunPriority::Runtime)
+    .register_on_close(RecordingTask::succeed(log.clone(), "runtime"), TaskRunPriority::System)
     .expect("runtime");
   scheduler
     .register_on_close(RecordingTask::succeed(log.clone(), "system"), TaskRunPriority::SystemCritical)
@@ -1006,7 +1006,7 @@ fn task_run_capacity_limits_registrations() {
 fn shutdown_reports_failed_tasks() {
   let mut scheduler = build_scheduler();
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  scheduler.register_on_close(RecordingTask::fail(log.clone(), "boom"), TaskRunPriority::Runtime).expect("fail");
+  scheduler.register_on_close(RecordingTask::fail(log.clone(), "boom"), TaskRunPriority::System).expect("fail");
   let summary = scheduler.shutdown();
   assert_eq!(summary.executed_tasks, 0);
   assert_eq!(summary.failed_tasks, 1);

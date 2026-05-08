@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{
   boxed::Box,
-  collections::BTreeMap,
+  collections::{BTreeMap, BTreeSet},
   format,
   string::{String, ToString},
   vec::Vec,
@@ -492,8 +492,6 @@ impl ClusterCore {
 }
 
 fn validate_topology_update(update: &TopologyUpdate) -> Result<(), TopologyApplyError> {
-  use alloc::collections::BTreeSet;
-
   let joined_set: BTreeSet<_> = update.joined.iter().cloned().collect();
   if joined_set.len() != update.joined.len() {
     return Err(TopologyApplyError::InvalidTopology { reason: "joined contains duplicates".to_string() });

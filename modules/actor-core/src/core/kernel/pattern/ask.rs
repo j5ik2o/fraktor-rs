@@ -32,11 +32,8 @@ pub fn ask_with_timeout(actor_ref: &mut ActorRef, message: AnyMessage, timeout: 
   ask_response
 }
 
-pub(crate) fn install_ask_timeout(
-  future: &ActorFutureShared<AskResult>,
-  system: &SystemStateShared,
-  timeout: Duration,
-) {
+/// Installs timeout completion for an already-created ask future.
+pub fn install_ask_timeout(future: &ActorFutureShared<AskResult>, system: &SystemStateShared, timeout: Duration) {
   if future.with_read(|inner| inner.is_ready()) {
     return;
   }
@@ -54,7 +51,8 @@ pub(crate) fn install_ask_timeout(
   }
 }
 
-pub(crate) fn complete_with_timeout(future: &ActorFutureShared<AskResult>) {
+/// Completes an ask future with a timeout when it has not already completed.
+pub fn complete_with_timeout(future: &ActorFutureShared<AskResult>) {
   if future.with_read(|inner| inner.is_ready()) {
     return;
   }

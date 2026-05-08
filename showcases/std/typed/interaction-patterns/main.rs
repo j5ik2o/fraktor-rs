@@ -2,10 +2,8 @@ use core::time::Duration;
 use std::{thread, time::Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors},
-};
+use fraktor_actor_core_rs::core::kernel::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors};
 
 #[derive(Clone)]
 enum Command {

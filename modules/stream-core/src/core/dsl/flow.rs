@@ -29,7 +29,7 @@ use super::{
 use crate::core::{
   DynValue, KillSwitchStateHandle, SharedKillSwitch, SourceLogic, SubstreamCancelStrategy,
   attributes::Attributes,
-  r#impl::materialization::Stream,
+  r#impl::{GraphStageFlowAdapter, materialization::Stream},
   materialization::DriveOutcome,
   stage::{GraphStage, StreamStage},
 };
@@ -37,6 +37,8 @@ use crate::core::{
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "compression")]
+use crate::core::dsl::Compression;
 use crate::core::r#impl::fusing::*;
 
 #[cfg(feature = "compression")]
@@ -132,8 +134,6 @@ where
   pub fn from_graph_stage<S>(stage: S) -> Self
   where
     S: GraphStage<In, Out, Mat> + Send + 'static, {
-    use crate::core::r#impl::GraphStageFlowAdapter;
-
     let mut logic = stage.create_logic();
     let mat = logic.materialized();
     let adapter = GraphStageFlowAdapter::new(logic);
@@ -3038,7 +3038,6 @@ where
   pub fn deflate(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::dsl::Compression;
     let definition =
       try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(Compression::deflate_bytes(value.as_ref()))]));
     let inlet_id = definition.inlet;
@@ -3056,7 +3055,6 @@ where
   pub fn gzip(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::dsl::Compression;
     let definition =
       try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(Compression::gzip_bytes(value.as_ref()))]));
     let inlet_id = definition.inlet;
@@ -3074,7 +3072,6 @@ where
   pub fn gzip_decompress(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::dsl::Compression;
     let definition = try_map_concat_definition::<Out, Out, _>(|value| {
       Ok(vec![Out::from(Compression::gunzip_bytes_with_options(value.as_ref(), FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT)?)])
     });
@@ -3094,7 +3091,6 @@ where
   pub fn inflate(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::dsl::Compression;
     let definition = try_map_concat_definition::<Out, Out, _>(|value| {
       Ok(vec![Out::from(Compression::inflate_bytes_with_options(
         value.as_ref(),
@@ -4906,7 +4902,7 @@ where
   let outlet: Outlet<In> = Outlet::new();
   let logic = PrependSourceLogic::<In, Mat> {
     secondary:         Some(source),
-    secondary_runtime: None,
+    secondary_bridge:  None,
     pending_secondary: VecDeque::new(),
     pending_primary:   VecDeque::new(),
   };
@@ -5132,10 +5128,10 @@ where
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
   let logic = ConcatSourceLogic::<In, Mat> {
-    secondary:         Some(source),
-    secondary_runtime: None,
-    pending:           VecDeque::new(),
-    source_done:       false,
+    secondary:        Some(source),
+    secondary_bridge: None,
+    pending:          VecDeque::new(),
+    source_done:      false,
   };
   FlowDefinition {
     kind:        StageKind::Custom,
@@ -5185,7 +5181,7 @@ where
   let outlet: Outlet<In> = Outlet::new();
   let logic = OrElseSourceLogic::<In, Mat> {
     secondary:         Some(secondary),
-    secondary_runtime: None,
+    secondary_bridge:  None,
     pending_secondary: VecDeque::new(),
     emitted_primary:   false,
     source_done:       false,

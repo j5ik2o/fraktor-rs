@@ -2433,10 +2433,10 @@ fn concat_logic_on_restart_clears_pending_state() {
 #[test]
 fn concat_source_logic_on_restart_keeps_secondary_stream() {
   let mut logic = ConcatSourceLogic::<u32, StreamNotUsed> {
-    secondary:         Some(Source::from_array([7_u32, 8_u32])),
-    secondary_runtime: None,
-    pending:           VecDeque::new(),
-    source_done:       false,
+    secondary:        Some(Source::from_array([7_u32, 8_u32])),
+    secondary_bridge: None,
+    pending:          VecDeque::new(),
+    source_done:      false,
   };
 
   logic.on_source_done().expect("source done");
@@ -2473,7 +2473,7 @@ fn secondary_source_bridge_supports_multi_outlet_inner_source() {
 fn prepend_source_logic_on_restart_keeps_secondary_stream() {
   let mut logic = PrependSourceLogic::<u32, StreamNotUsed> {
     secondary:         Some(Source::from_array([1_u32, 2_u32])),
-    secondary_runtime: None,
+    secondary_bridge:  None,
     pending_secondary: VecDeque::new(),
     pending_primary:   VecDeque::new(),
   };
@@ -2496,7 +2496,7 @@ fn prepend_source_logic_on_restart_keeps_secondary_stream() {
 fn or_else_source_logic_on_restart_keeps_secondary_stream() {
   let mut logic = OrElseSourceLogic::<u32, StreamNotUsed> {
     secondary:         Some(Source::from_array([9_u32, 10_u32])),
-    secondary_runtime: None,
+    secondary_bridge:  None,
     pending_secondary: VecDeque::new(),
     emitted_primary:   false,
     source_done:       false,

@@ -16,7 +16,7 @@ use crate::core::kernel::{
   dispatch::mailbox::metrics_event::MailboxMetricsEvent,
   event::{
     logging::{LogEvent, LogLevel},
-    stream::{AdapterFailureEvent, TypedUnhandledMessageEvent},
+    stream::{AdapterFailureEvent, UnhandledMessageEvent},
   },
   serialization::{SerializationErrorEvent, SerializerId},
 };
@@ -96,7 +96,7 @@ fn event_stream_event_mailbox_clone() {
 #[cfg(feature = "alloc")]
 #[test]
 fn event_stream_event_unhandled_message_clone() {
-  let payload = TypedUnhandledMessageEvent::new(Pid::new(1, 0), String::from("probe::Command"), Duration::from_secs(3));
+  let payload = UnhandledMessageEvent::new(Pid::new(1, 0), String::from("probe::Command"), Duration::from_secs(3));
   let event = EventStreamEvent::UnhandledMessage(payload.clone());
   let cloned = event.clone();
   match (event, cloned) {

@@ -197,4 +197,13 @@ impl ExtendedActorSystem {
   pub fn spawn_system_actor(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.inner.system_actor_of(props)
   }
+
+  /// Spawns a system actor and registers it as an extra top-level name during bootstrap.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the actor cannot be created or registration fails.
+  pub fn spawn_system_top_level_actor(&self, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
+    self.inner.system_top_level_actor_of(props, name)
+  }
 }

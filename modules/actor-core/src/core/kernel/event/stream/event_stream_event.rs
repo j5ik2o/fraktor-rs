@@ -8,7 +8,7 @@ use alloc::string::String;
 use super::{
   adapter_failure_event::AdapterFailureEvent, remote_authority_event::RemoteAuthorityEvent,
   remoting_backpressure_event::RemotingBackpressureEvent, remoting_lifecycle_event::RemotingLifecycleEvent,
-  tick_driver_snapshot::TickDriverSnapshot, typed_unhandled_message_event::TypedUnhandledMessageEvent,
+  tick_driver_snapshot::TickDriverSnapshot, unhandled_message_event::UnhandledMessageEvent,
 };
 use crate::core::kernel::{
   actor::{
@@ -33,8 +33,8 @@ pub enum EventStreamEvent {
   Mailbox(MailboxMetricsEvent),
   /// Mailbox capacity pressure notification.
   MailboxPressure(MailboxPressureEvent),
-  /// Unhandled message notification from typed behaviors.
-  UnhandledMessage(TypedUnhandledMessageEvent),
+  /// Unhandled message notification from actor behaviors.
+  UnhandledMessage(UnhandledMessageEvent),
   /// Message adapter failure notification.
   AdapterFailure(AdapterFailureEvent),
   /// Serialization failure notification.

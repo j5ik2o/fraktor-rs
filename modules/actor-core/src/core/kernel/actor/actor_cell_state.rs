@@ -2,12 +2,9 @@
 
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 
-use crate::core::{
-  kernel::actor::{
-    ChildrenContainer, FailedInfo, Pid, WatchKind, context_pipe::ContextPipeTask, error::ActorErrorReason,
-    messaging::AnyMessage, scheduler::SchedulerHandle,
-  },
-  typed::message_adapter::AdapterRefHandle,
+use crate::core::kernel::actor::{
+  ChildrenContainer, FailedInfo, Pid, WatchKind, context_pipe::ContextPipeTask, error::ActorErrorReason,
+  message_adapter::AdapterRefHandle, messaging::AnyMessage, scheduler::SchedulerHandle,
 };
 
 /// Runtime-owned mutable state for a live [`ActorCell`].

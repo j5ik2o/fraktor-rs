@@ -26,6 +26,7 @@ mod failed_info;
 pub mod fsm;
 pub mod invoke_guard;
 pub mod lifecycle;
+pub mod message_adapter;
 pub mod messaging;
 mod pid;
 pub mod props;

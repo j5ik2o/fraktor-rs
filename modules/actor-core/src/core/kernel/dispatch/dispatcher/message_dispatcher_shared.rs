@@ -10,7 +10,11 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{
+  boxed::Box,
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
@@ -51,7 +55,6 @@ impl MessageDispatcherShared {
   /// Returns the dispatcher identifier.
   #[must_use]
   pub fn id(&self) -> String {
-    use alloc::string::ToString;
     self.with_read(|inner| inner.id().to_string())
   }
 

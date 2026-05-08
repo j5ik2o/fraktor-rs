@@ -7,11 +7,14 @@
 use alloc::string::String;
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
+use fraktor_actor_core_rs::core::kernel::{
+  actor::messaging::AnyMessage,
+  event::stream::{EventStreamEvent, EventStreamShared},
+};
 use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use super::ClusterProvider;
-use crate::core::{BlockListProvider, ClusterProviderError, ClusterTopology, TopologyUpdate};
+use crate::core::{BlockListProvider, ClusterEvent, ClusterProviderError, ClusterTopology, TopologyUpdate};
 
 #[cfg(test)]
 mod tests;
@@ -55,10 +58,6 @@ impl StaticClusterProvider {
 
   /// Publishes the static topology to EventStream.
   fn publish_topology(&self) {
-    use fraktor_actor_core_rs::core::kernel::{actor::messaging::AnyMessage, event::stream::EventStreamEvent};
-
-    use crate::core::ClusterEvent;
-
     if let Some(topology) = &self.static_topology {
       let blocked = self.block_list_provider.blocked_members();
       let mut members = topology.joined().clone();

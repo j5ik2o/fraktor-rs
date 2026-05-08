@@ -13,42 +13,39 @@ use fraktor_utils_core_rs::core::{
 };
 
 use super::ActorSystem;
-use crate::core::{
-  kernel::{
-    actor::{
-      Actor, ActorCell, ActorContext, Pid,
-      actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
-      actor_ref::ActorRef,
-      actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, ActorRefResolveError},
-      error::{ActorError, ActorErrorReason},
-      lifecycle::LifecycleStage,
-      messaging::{AnyMessageView, system_message::SystemMessage},
-      props::{MailboxConfig, MailboxRequirement, Props},
-      scheduler::{
-        SchedulerConfig,
-        task_run::{TaskRunError, TaskRunPriority},
-        tick_driver::{
-          AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverId,
-          TickDriverKind, TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
-          tests::TestTickDriver,
-        },
+use crate::core::kernel::{
+  actor::{
+    Actor, ActorCell, ActorContext, Pid,
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
+    actor_ref::ActorRef,
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, ActorRefResolveError},
+    error::{ActorError, ActorErrorReason},
+    lifecycle::LifecycleStage,
+    messaging::{AnyMessageView, system_message::SystemMessage},
+    props::{MailboxConfig, MailboxRequirement, Props},
+    scheduler::{
+      SchedulerConfig,
+      task_run::{TaskRunError, TaskRunPriority},
+      tick_driver::{
+        AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverId,
+        TickDriverKind, TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
+        tests::TestTickDriver,
       },
-      setup::ActorSystemConfig,
-      spawn::SpawnError,
     },
-    dispatch::dispatcher::{
-      DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
-      TrampolineState,
-    },
-    event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
-    system::{
-      TerminationSignal,
-      base::LogLevel,
-      remote::RemotingConfig,
-      state::{SystemStateShared, system_state::SystemState},
-    },
+    setup::ActorSystemConfig,
+    spawn::SpawnError,
   },
-  typed::receptionist::SYSTEM_RECEPTIONIST_TOP_LEVEL,
+  dispatch::dispatcher::{
+    DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
+    TrampolineState,
+  },
+  event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
+  system::{
+    TerminationSignal,
+    base::LogLevel,
+    remote::RemotingConfig,
+    state::{SystemStateShared, system_state::SystemState},
+  },
 };
 
 // TENTATIVE: `new_empty` / `new_empty_with` are scheduled for removal once actor-core's
@@ -333,30 +330,39 @@ fn actor_system_new_with_config_and_allows_extra_top_level_registration_in_confi
 }
 
 #[test]
-fn actor_system_registers_system_receptionist_during_bootstrap() {
+fn actor_system_create_from_props_with_init_can_spawn_system_top_level_actor() {
   let props = Props::from_fn(|| TestActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
 
-  let system = ActorSystem::create_from_props_with_init(&props, config, |_| Ok(())).expect("system should build");
+  let system = ActorSystem::create_from_props_with_init(&props, config, |system| {
+    let top_level_props = Props::from_fn(|| TestActor).with_name("metrics");
+    system.extended().spawn_system_top_level_actor(&top_level_props, "metrics")?;
+    Ok(())
+  })
+  .expect("system should build");
 
-  assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
+  assert!(system.state().extra_top_level("metrics").is_some());
 }
 
 #[test]
-fn bootstrap_rolls_back_receptionist_when_extra_top_level_registration_fails() {
+fn bootstrap_rolls_back_system_top_level_actor_when_registration_fails() {
   let props = Props::from_fn(|| TestActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
   let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
-  state.register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, ActorRef::null()).expect("pre-register receptionist");
+  state.register_extra_top_level("metrics", ActorRef::null()).expect("pre-register metrics");
   let system = ActorSystem::from_state(state);
 
-  let result = system.bootstrap(&props, |_| Ok(()));
+  let result = system.bootstrap(&props, |system| {
+    let top_level_props = Props::from_fn(|| TestActor).with_name("metrics");
+    system.extended().spawn_system_top_level_actor(&top_level_props, "metrics")?;
+    Ok(())
+  });
 
   match result {
     | Err(SpawnError::SystemBuildError(message)) => {
-      assert!(message.contains("system receptionist registration failed"));
+      assert!(message.contains("system top-level registration failed"));
       assert!(message.contains("DuplicateName"));
     },
     | other => panic!("unexpected bootstrap result: {other:?}"),
@@ -364,7 +370,7 @@ fn bootstrap_rolls_back_receptionist_when_extra_top_level_registration_fails() {
 
   let system_guardian_pid = system.state().system_guardian_pid().expect("system guardian pid");
   assert!(system.children(system_guardian_pid).is_empty());
-  assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
+  assert!(system.state().extra_top_level("metrics").is_some());
 }
 
 #[test]
@@ -385,7 +391,6 @@ fn actor_system_create_with_noop_guardian_bootstraps_user_guardian() {
   let system = ActorSystem::create_with_noop_guardian(config).expect("system should build");
 
   assert!(system.state().has_root_started());
-  assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
   let user_guardian = system.user_guardian_ref();
   let path = user_guardian.path().expect("user guardian path");
   assert_eq!(path.to_relative_string(), "/user");

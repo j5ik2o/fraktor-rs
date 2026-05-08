@@ -16,7 +16,7 @@ extern crate std;
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU8, Ordering};
 use std::{
-  sync::mpsc::{SyncSender, sync_channel},
+  sync::mpsc::{SyncSender, TrySendError, sync_channel},
   thread::{self, Builder, JoinHandle},
 };
 
@@ -114,12 +114,9 @@ impl Executor for AffinityExecutor {
     let Some(sender) = self.senders[idx].as_ref() else {
       return Err(ExecuteError::Shutdown);
     };
-    sender.try_send(task).map_err(|err| {
-      use std::sync::mpsc::TrySendError;
-      match err {
-        | TrySendError::Full(_) => ExecuteError::Rejected,
-        | TrySendError::Disconnected(_) => ExecuteError::Shutdown,
-      }
+    sender.try_send(task).map_err(|err| match err {
+      | TrySendError::Full(_) => ExecuteError::Rejected,
+      | TrySendError::Disconnected(_) => ExecuteError::Shutdown,
     })
   }
 

@@ -198,10 +198,10 @@ impl SystemStateShared {
     }
   }
 
-  /// Returns the inner reference for direct access when needed.
+  /// Returns whether both handles point at the same underlying system state.
   #[must_use]
-  pub(crate) const fn inner(&self) -> &SharedRwLock<SystemState> {
-    &self.inner
+  pub fn ptr_eq(&self, other: &Self) -> bool {
+    SharedRwLock::ptr_eq(&self.inner, &other.inner)
   }
 
   /// Creates a weak reference to this system state.

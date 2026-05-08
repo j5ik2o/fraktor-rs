@@ -76,13 +76,13 @@ impl ActorError {
   /// Creates a recoverable error tagged with the source error type.
   #[must_use]
   pub fn recoverable_typed<E: 'static>(reason: impl Into<Cow<'static, str>>) -> Self {
-    Self::Recoverable(ActorErrorReason::typed::<E>(reason))
+    Self::Recoverable(ActorErrorReason::with_source_type::<E>(reason))
   }
 
   /// Creates a fatal error tagged with the source error type.
   #[must_use]
   pub fn fatal_typed<E: 'static>(reason: impl Into<Cow<'static, str>>) -> Self {
-    Self::Fatal(ActorErrorReason::typed::<E>(reason))
+    Self::Fatal(ActorErrorReason::with_source_type::<E>(reason))
   }
 
   /// Returns `true` when the source error matches the provided type.

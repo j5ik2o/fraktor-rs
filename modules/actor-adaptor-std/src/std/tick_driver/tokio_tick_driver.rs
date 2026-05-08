@@ -56,7 +56,7 @@ impl TickDriver for TokioTickDriver {
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
 
     if handle.runtime_flavor() == RuntimeFlavor::CurrentThread {
-      return Err(TickDriverError::UnsupportedRuntime);
+      return Err(TickDriverError::UnsupportedExecutor);
     }
 
     let running = Arc::new(AtomicBool::new(true));

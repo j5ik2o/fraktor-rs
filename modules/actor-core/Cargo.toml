@@ -80,9 +80,5 @@ path = "tests/system_events.rs"
 name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
 
-[[test]]
-name = "typed_scheduler"
-path = "tests/typed_scheduler.rs"
-
 [lints]
 workspace = true

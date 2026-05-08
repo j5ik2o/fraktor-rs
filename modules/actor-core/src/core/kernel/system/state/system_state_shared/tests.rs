@@ -44,7 +44,7 @@ fn assert_operation_does_not_block_on_read_lock(
   operation_name: &'static str,
   operation: impl FnOnce(SystemStateShared) + Send + 'static,
 ) {
-  let inner = shared.inner().clone();
+  let inner = shared.inner.clone();
   let shared_for_operation = shared.clone();
 
   let (locked_tx, locked_rx) = std::sync::mpsc::channel::<()>();
@@ -84,7 +84,7 @@ fn register_extra_top_level_after_root_started_does_not_block_on_read_lock() {
   let shared = SystemStateShared::new(SystemState::new());
   shared.mark_root_started();
 
-  let inner = shared.inner().clone();
+  let inner = shared.inner.clone();
   let shared_for_register = shared.clone();
 
   let (locked_tx, locked_rx) = std::sync::mpsc::channel::<()>();
@@ -270,7 +270,7 @@ fn clear_guardian_does_not_block_on_read_lock() {
   let root_cell = root_guardian_cell(shared.clone(), root_pid);
   shared.set_root_guardian(&root_cell);
 
-  let inner = shared.inner().clone();
+  let inner = shared.inner.clone();
   let shared_for_clear = shared.clone();
 
   let (locked_tx, locked_rx) = std::sync::mpsc::channel::<()>();

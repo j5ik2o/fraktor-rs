@@ -20,7 +20,7 @@ pub enum ClassifierKey {
   Mailbox,
   /// Mailbox capacity pressure notification.
   MailboxPressure,
-  /// Unhandled message notification from typed behaviors.
+  /// Unhandled message notification from actor behaviors.
   UnhandledMessage,
   /// Message adapter failure notification.
   AdapterFailure,

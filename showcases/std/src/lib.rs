@@ -5,16 +5,14 @@ use core::{
 use std::{println, string::String, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::event::logging::TracingLoggerSubscriber;
-use fraktor_actor_core_rs::core::{
-  kernel::{
-    event::{
-      logging::LogLevel,
-      stream::{EventStreamSubscriberShared, EventStreamSubscription},
-    },
-    system::ActorSystem,
+use fraktor_actor_core_rs::core::kernel::{
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamSubscriberShared, EventStreamSubscription},
   },
-  typed::TypedActorSystem,
+  system::ActorSystem,
 };
+use fraktor_actor_core_typed_rs::TypedActorSystem;
 use tracing::{
   Event, Id, Metadata, Subscriber,
   field::{Field, Visit},

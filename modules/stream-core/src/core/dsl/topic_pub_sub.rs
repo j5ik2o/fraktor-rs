@@ -5,19 +5,17 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_actor_core_rs::core::{
-  kernel::{
-    actor::{
-      ChildRef,
-      error::{ActorError, SendError},
-    },
-    system::ActorSystem,
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    ChildRef,
+    error::{ActorError, SendError},
   },
-  typed::{
-    Behavior, TypedActorRef, TypedProps,
-    dsl::Behaviors,
-    pubsub::{Topic, TopicCommand},
-  },
+  system::ActorSystem,
+};
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorRef, TypedProps,
+  dsl::Behaviors,
+  pubsub::{Topic, TopicCommand},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 

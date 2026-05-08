@@ -21,38 +21,32 @@ use super::{
   guardian::{NoopGuardianActor, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
   remote::RemotingConfig,
 };
-use crate::core::{
-  kernel::{
-    actor::{
-      ActorCell, ChildRef, Pid,
-      actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, GuardianKind, PathSegment},
-      actor_ref::{
-        ActorRef,
-        dead_letter::{DeadLetterEntry, DeadLetterReason},
-      },
-      actor_ref_provider::ActorRefResolveError,
-      actor_selection::ActorSelection,
-      error::SendError,
-      messaging::{AnyMessage, AskResult, system_message::SystemMessage},
-      props::{MailboxRequirement, Props},
-      scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverBundle},
-      setup::{ActorSystemConfig, CircuitBreakerConfig},
-      spawn::SpawnError,
+use crate::core::kernel::{
+  actor::{
+    ActorCell, ChildRef, Pid,
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, GuardianKind, PathSegment},
+    actor_ref::{
+      ActorRef,
+      dead_letter::{DeadLetterEntry, DeadLetterReason},
     },
-    event::{
-      logging::LogLevel,
-      stream::{
-        EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription, TickDriverSnapshot,
-      },
+    actor_ref_provider::ActorRefResolveError,
+    actor_selection::ActorSelection,
+    error::SendError,
+    messaging::{AnyMessage, AskResult, system_message::SystemMessage},
+    props::{MailboxRequirement, Props},
+    scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverBundle},
+    setup::{ActorSystemConfig, CircuitBreakerConfig},
+    spawn::SpawnError,
+  },
+  event::{
+    logging::LogLevel,
+    stream::{
+      EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription, TickDriverSnapshot,
     },
-    serialization::default_serialization_extension_id,
-    support::futures::ActorFutureShared,
-    system::state::{SystemStateShared, system_state::SystemState},
   },
-  typed::{
-    ActorRefResolver, TypedActorSystemConfig, TypedProps,
-    receptionist::{Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
-  },
+  serialization::default_serialization_extension_id,
+  support::futures::ActorFutureShared,
+  system::state::{SystemStateShared, system_state::SystemState},
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -60,8 +54,7 @@ const CREATE_SEND_FAILED: &str = "create system message delivery failed";
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystem {
-  state:    SystemStateShared,
-  settings: TypedActorSystemConfig,
+  state: SystemStateShared,
 }
 
 impl ActorSystem {
@@ -73,9 +66,8 @@ impl ActorSystem {
   /// [`ActorSystem::create_from_props`] or [`ActorSystem::create_with_noop_guardian`] instead.
   #[doc(hidden)]
   #[must_use]
-  pub fn from_state(state: SystemStateShared) -> Self {
-    let settings = TypedActorSystemConfig::new(state.system_name(), state.start_time());
-    Self { state, settings }
+  pub const fn from_state(state: SystemStateShared) -> Self {
+    Self { state }
   }
 
   /// Builds and starts an actor system without a user guardian.
@@ -150,7 +142,6 @@ impl ActorSystem {
     }
 
     system.install_default_serialization_extension();
-    system.install_default_actor_ref_resolver_extension();
 
     system.state.mark_root_started();
 
@@ -313,10 +304,6 @@ impl ActorSystem {
     }
   }
 
-  fn install_default_actor_ref_resolver_extension(&self) {
-    ActorRefResolver::install(self);
-  }
-
   /// Allocates a new pid (testing helper).
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
@@ -410,12 +397,6 @@ impl ActorSystem {
     self.state.system_name()
   }
 
-  /// Returns the immutable settings snapshot preserved by this actor system.
-  #[must_use]
-  pub fn settings(&self) -> TypedActorSystemConfig {
-    self.settings.clone()
-  }
-
   /// Returns the start time of the actor system (epoch-relative duration).
   ///
   /// Corresponds to Pekko's `ActorSystem.startTime`.
@@ -450,18 +431,6 @@ impl ActorSystem {
     self.spawn(props)
   }
 
-  /// Spawns a detached actor without requiring bootstrap guardians.
-  ///
-  /// This is intended for internal support actors that still need a real actor
-  /// cell in empty test systems.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when the actor cannot be created.
-  pub(crate) fn spawn_detached(&self, props: &Props) -> Result<ChildRef, SpawnError> {
-    self.spawn_with_parent(None, props)
-  }
-
   /// Spawns a new named top-level actor under the user guardian.
   ///
   /// Corresponds to classic `ActorRefFactory.actorOf(props, name)`.
@@ -477,6 +446,24 @@ impl ActorSystem {
   pub(crate) fn system_actor_of(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let guardian_pid = self.state.system_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
+  }
+
+  /// Spawns a `/system` child and registers it as an extra top-level actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the actor cannot be created or top-level registration fails.
+  pub(crate) fn system_top_level_actor_of(&self, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
+    let guardian_pid = self.state.system_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
+    let child = self.spawn_child(guardian_pid, props)?;
+    let child_pid = child.pid();
+    if let Err(error) = self.extended().register_extra_top_level(name, child.actor_ref().clone()) {
+      if let Some(cell) = self.state.cell(&child_pid) {
+        self.rollback_spawn(Some(guardian_pid), &cell, child_pid);
+      }
+      return Err(SpawnError::SystemBuildError(format!("system top-level registration failed: {error:?}")));
+    }
+    Ok(child)
   }
 
   /// Spawns a new actor as a child of the specified parent.
@@ -651,19 +638,6 @@ impl ActorSystem {
       self.state.set_system_guardian(&cell);
     }
 
-    let receptionist_props =
-      TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior).into_untyped();
-    let receptionist_props = receptionist_props.with_name(SYSTEM_RECEPTIONIST_TOP_LEVEL);
-    let receptionist = self.spawn_child(system_guardian.pid(), &receptionist_props)?;
-    let receptionist_pid = receptionist.pid();
-    let receptionist_ref = receptionist.into_actor_ref();
-    if let Err(error) = self.extended().register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, receptionist_ref) {
-      if let Some(cell) = self.state.cell(&receptionist_pid) {
-        self.rollback_spawn(Some(system_guardian.pid()), &cell, receptionist_pid);
-      }
-      return Err(SpawnError::SystemBuildError(format!("system receptionist registration failed: {error:?}")));
-    }
-
     configure(self)?;
 
     if let Err(error) = self.perform_create_handshake(None, root_pid, &root_cell) {
@@ -774,7 +748,7 @@ impl ActorSystem {
 
 impl Clone for ActorSystem {
   fn clone(&self) -> Self {
-    Self { state: self.state.clone(), settings: self.settings.clone() }
+    Self { state: self.state.clone() }
   }
 }
 

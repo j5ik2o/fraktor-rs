@@ -13,6 +13,7 @@ use crate::core::kernel::{
     ChildRef, ClassicTimerScheduler, Pid, ReceiveTimeoutState, WatchRegistrationKind,
     actor_ref::ActorRef,
     error::{ActorError, PipeSpawnError, SendError, WatchConflict, WatchRegistrationError},
+    message_adapter::{AdapterRefSender, MessageAdapterLease, MessageAdapterRef},
     messaging::{AnyMessage, system_message::SystemMessage},
     props::Props,
     scheduler::SchedulerCommand,
@@ -97,6 +98,15 @@ impl ActorContext<'_> {
     self.current_message = None;
   }
 
+  /// Runs a closure while `message` is the active user message.
+  pub fn with_current_message<R>(&mut self, message: AnyMessage, f: impl FnOnce(&mut Self, &AnyMessage) -> R) -> R {
+    let current_message = message.clone();
+    let previous_message = self.current_message.replace(message);
+    let result = f(self, &current_message);
+    self.current_message = previous_message;
+    result
+  }
+
   /// Returns a clone of the current message being processed.
   pub(crate) fn clone_current_message(&self) -> Option<AnyMessage> {
     self.current_message.clone()
@@ -169,6 +179,72 @@ impl ActorContext<'_> {
       .cell(&self.pid)
       .ok_or_else(|| ActorError::recoverable("actor cell unavailable during unstash"))?;
     cell.unstash_messages()
+  }
+
+  /// Re-enqueues up to `limit` stashed messages after applying `wrap`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
+  pub fn unstash_with_limit<F>(&self, limit: usize, wrap: F) -> Result<usize, ActorError>
+  where
+    F: FnMut(AnyMessage) -> Result<AnyMessage, ActorError>, {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during unstash"))?;
+    cell.unstash_messages_with_limit(limit, wrap)
+  }
+
+  /// Returns a snapshot of the current stashed messages.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn stashed_messages_snapshot(&self) -> Result<Vec<AnyMessage>, ActorError> {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash snapshot"))?;
+    Ok(cell.with_stashed_messages(|messages| messages.iter().cloned().collect::<Vec<AnyMessage>>()))
+  }
+
+  /// Drops all stashed messages and returns the number removed.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn clear_stashed_messages(&self) -> Result<usize, ActorError> {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash clear"))?;
+    Ok(cell.clear_stashed_messages())
+  }
+
+  /// Creates an actor reference for message adapter delivery.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn create_message_adapter_ref<F>(&self, wrap: F) -> Result<MessageAdapterRef, ActorError>
+  where
+    F: Fn(AnyMessage) -> AnyMessage + Send + Sync + 'static, {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during message adapter registration"))?;
+    let (handle_id, lifecycle) = cell.acquire_adapter_handle();
+    let system = self.system.state();
+    let sender =
+      AdapterRefSender::new(self.pid, handle_id, cell.mailbox_sender(), lifecycle, system.clone(), Box::new(wrap));
+    let actor_ref = ActorRef::with_system(self.pid, sender, &system);
+    let lease = MessageAdapterLease::new(self.pid, handle_id, system);
+    Ok(MessageAdapterRef::new(actor_ref, lease))
   }
 
   /// Returns the classic timer facade for the running actor.

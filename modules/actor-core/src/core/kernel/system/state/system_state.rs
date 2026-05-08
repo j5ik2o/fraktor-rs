@@ -43,8 +43,8 @@ use crate::core::kernel::{
       SchedulerBackedDelayProvider, SchedulerContext, SchedulerShared,
       task_run::TaskRunSummary,
       tick_driver::{
-        TickDriverBundle, TickDriverKind, TickDriverProvisioningContext, TickDriverStopper, TickExecutorSignal,
-        TickFeed, next_tick_driver_id,
+        TickDriverBootstrap, TickDriverBundle, TickDriverKind, TickDriverProvisioningContext, TickDriverStopper,
+        TickExecutorSignal, TickFeed, next_tick_driver_id,
       },
     },
     spawn::{NameRegistryError, SpawnError},
@@ -180,8 +180,6 @@ impl SystemState {
   }
 
   pub(crate) fn build_from_owned_config(mut config: ActorSystemConfig) -> Result<Self, SpawnError> {
-    use crate::core::kernel::actor::scheduler::tick_driver::TickDriverBootstrap;
-
     const DEAD_LETTER_CAPACITY: usize = 512;
     const EVENT_STREAM_CAPACITY: usize = 256;
     let event_stream = EventStreamShared::new(EventStream::with_capacity(EVENT_STREAM_CAPACITY));

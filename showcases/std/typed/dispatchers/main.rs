@@ -2,10 +2,10 @@ use core::time::Duration;
 use std::thread;
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::{actor::setup::ActorSystemConfig, dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID},
-  typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors},
+use fraktor_actor_core_rs::core::kernel::{
+  actor::setup::ActorSystemConfig, dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID,
 };
+use fraktor_actor_core_typed_rs::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors};
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone, Copy)]

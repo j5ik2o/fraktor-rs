@@ -21,7 +21,7 @@ mod remoting_backpressure_event;
 mod remoting_lifecycle_event;
 pub(crate) mod tests;
 mod tick_driver_snapshot;
-mod typed_unhandled_message_event;
+mod unhandled_message_event;
 
 pub use actor_ref_subscriber::ActorRefEventStreamSubscriber;
 pub use adapter_failure_event::AdapterFailureEvent;
@@ -41,4 +41,4 @@ pub use remote_authority_event::RemoteAuthorityEvent;
 pub use remoting_backpressure_event::RemotingBackpressureEvent;
 pub use remoting_lifecycle_event::RemotingLifecycleEvent;
 pub use tick_driver_snapshot::TickDriverSnapshot;
-pub use typed_unhandled_message_event::TypedUnhandledMessageEvent;
+pub use unhandled_message_event::UnhandledMessageEvent;

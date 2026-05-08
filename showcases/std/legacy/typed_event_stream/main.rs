@@ -2,22 +2,20 @@ use core::time::Duration;
 use std::vec::Vec;
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::{
-  kernel::{
-    actor::{
-      Pid,
-      actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-      error::SendError,
-      messaging::AnyMessage,
-      setup::ActorSystemConfig,
-    },
-    event::{
-      logging::{LogEvent, LogLevel},
-      stream::EventStreamEvent,
-    },
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    Pid,
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+    error::SendError,
+    messaging::AnyMessage,
+    setup::ActorSystemConfig,
   },
-  typed::{TypedActorSystem, TypedProps, dsl::Behaviors, eventstream::EventStreamCommand},
+  event::{
+    logging::{LogEvent, LogLevel},
+    stream::EventStreamEvent,
+  },
 };
+use fraktor_actor_core_typed_rs::{TypedActorSystem, TypedProps, dsl::Behaviors, eventstream::EventStreamCommand};
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 struct CollectorSender {

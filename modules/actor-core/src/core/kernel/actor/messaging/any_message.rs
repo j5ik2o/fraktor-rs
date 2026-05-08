@@ -147,12 +147,16 @@ impl AnyMessage {
   }
 
   /// Returns a clone of the shared payload pointer (internal use).
-  pub(crate) fn payload_arc(&self) -> ArcShared<dyn Any + Send + Sync + 'static> {
+  #[doc(hidden)]
+  #[must_use]
+  pub fn payload_arc(&self) -> ArcShared<dyn Any + Send + Sync + 'static> {
     self.payload.clone()
   }
 
   /// Reconstructs an envelope from erased components.
-  pub(crate) fn from_parts(
+  #[doc(hidden)]
+  #[must_use]
+  pub fn from_parts(
     payload: ArcShared<dyn Any + Send + Sync + 'static>,
     sender: Option<ActorRef>,
     is_control: bool,
@@ -162,7 +166,8 @@ impl AnyMessage {
   }
 
   /// Consumes the message and returns the payload, sender, and flags.
-  pub(crate) fn into_parts(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>, bool, bool) {
+  #[must_use]
+  pub fn into_parts(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>, bool, bool) {
     (self.payload, self.sender, self.is_control, self.not_influence_receive_timeout)
   }
 }

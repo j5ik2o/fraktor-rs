@@ -2,9 +2,9 @@ use core::time::Duration;
 use std::{thread, time::Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::{error::ActorError, setup::ActorSystemConfig},
-  typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal},
+use fraktor_actor_core_rs::core::kernel::actor::{error::ActorError, setup::ActorSystemConfig};
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal,
 };
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 

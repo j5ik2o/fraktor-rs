@@ -151,7 +151,8 @@ impl ActorRef {
 
   /// Returns the underlying system state if available.
   #[must_use]
-  pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
+  #[doc(hidden)]
+  pub fn system_state(&self) -> Option<SystemStateShared> {
     self.system.as_ref().and_then(|weak| weak.upgrade())
   }
 
@@ -161,7 +162,8 @@ impl ActorRef {
   /// system attached. Reply refs always use a distinct PID from the target actor
   /// so they do not collide in equality, hashing, or path resolution.
   #[must_use]
-  pub(crate) fn ask_with_factory<F>(&mut self, path_aware_reply: bool, build: F) -> AskResponse
+  #[doc(hidden)]
+  pub fn ask_with_factory<F>(&mut self, path_aware_reply: bool, build: F) -> AskResponse
   where
     F: FnOnce(ActorRef) -> AnyMessage, {
     let system = self.system_state();

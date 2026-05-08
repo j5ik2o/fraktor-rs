@@ -44,7 +44,7 @@ impl Props {
   /// These props are only valid as a configuration builder and must not reach
   /// actor spawn without a factory being installed first.
   #[must_use]
-  pub(crate) fn empty() -> Self {
+  pub fn empty() -> Self {
     Self {
       factory: None,
       name: None,
@@ -120,7 +120,8 @@ impl Props {
 
   /// Returns true when the dispatcher should be inherited from the parent actor.
   #[must_use]
-  pub(crate) const fn dispatcher_same_as_parent(&self) -> bool {
+  #[doc(hidden)]
+  pub const fn dispatcher_same_as_parent(&self) -> bool {
     self.dispatcher_same_as_parent
   }
 

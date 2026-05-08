@@ -12,7 +12,8 @@ use crate::core::kernel::actor::messaging::AnyMessage;
 // ConsistentHashingPool::create_router 経由で使用される。
 type HashKeyMapper = dyn Fn(&AnyMessage) -> u64 + Send + Sync;
 
-pub(crate) const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
+/// FNV-1a offset basis used by the routing hash helpers.
+pub const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 pub(crate) const FNV_PRIME: u64 = 1099511628211;
 
 /// Selects a routee via rendezvous hashing derived from each message.
@@ -119,7 +120,9 @@ impl RoutingLogic for ConsistentHashingRoutingLogic {
   }
 }
 
-pub(crate) fn rendezvous_score(key_hash: u64, routee_hash: u64) -> u64 {
+/// Computes the rendezvous score for a key hash and routee hash pair.
+#[must_use]
+pub fn rendezvous_score(key_hash: u64, routee_hash: u64) -> u64 {
   mix_hash(key_hash, &routee_hash.to_le_bytes())
 }
 
@@ -142,7 +145,9 @@ fn routee_identity_hash(routee: &Routee) -> u64 {
   }
 }
 
-pub(crate) fn mix_hash(mut hash: u64, bytes: &[u8]) -> u64 {
+/// FNV-1a mixes a byte slice into an existing 64-bit hash value.
+#[must_use]
+pub fn mix_hash(mut hash: u64, bytes: &[u8]) -> u64 {
   for byte in bytes {
     hash ^= u64::from(*byte);
     hash = hash.wrapping_mul(FNV_PRIME);

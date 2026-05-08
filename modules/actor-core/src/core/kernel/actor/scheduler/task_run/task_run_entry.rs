@@ -41,7 +41,7 @@ pub enum TaskRunPriority {
   /// Executed before all other tasks.
   SystemCritical,
   /// Executed after system-critical tasks.
-  Runtime,
+  System,
   /// Executed last.
   User,
 }
@@ -50,7 +50,7 @@ impl TaskRunPriority {
   pub(crate) const fn rank(self) -> u8 {
     match self {
       | Self::SystemCritical => 2,
-      | Self::Runtime => 1,
+      | Self::System => 1,
       | Self::User => 0,
     }
   }

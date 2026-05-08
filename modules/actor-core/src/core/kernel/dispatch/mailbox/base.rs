@@ -858,7 +858,8 @@ impl Mailbox {
 
   /// Returns the number of user messages awaiting processing.
   #[must_use]
-  pub(crate) fn user_len(&self) -> usize {
+  #[doc(hidden)]
+  pub fn user_len(&self) -> usize {
     self.user.number_of_messages()
   }
 

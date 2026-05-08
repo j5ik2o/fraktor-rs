@@ -11,7 +11,7 @@ use crate::core::kernel::{
   actor::{
     Address,
     deploy::RemoteScope,
-    error::ActorError,
+    error::{ActorError, ActorErrorReason},
     messaging::{ActorIdentity, AnyMessage, Identify, Status},
   },
   routing::{
@@ -335,7 +335,8 @@ fn status_success_round_trips_string_payload_with_manifest() {
 fn status_failure_round_trips_recoverable_reason_with_manifest() {
   let registry = registry();
   let s = serializer(&registry);
-  let original = Status::failure(ActorError::recoverable_typed::<u32>("recoverable failure"));
+  let original =
+    Status::failure(ActorError::recoverable(ActorErrorReason::with_source_type::<u32>("recoverable failure")));
 
   let bytes = s.to_binary(&original).expect("status failure should encode");
   let view = s.as_string_manifest().expect("string manifest view");

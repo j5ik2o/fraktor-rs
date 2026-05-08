@@ -48,11 +48,11 @@ where
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
-    let Some(runtime) = self.recovery_source.as_mut() else {
+    let Some(bridge) = self.recovery_source.as_mut() else {
       return Ok(Vec::new());
     };
-    let Some(value) = runtime.poll_next()? else {
-      if !runtime.has_pending_output() {
+    let Some(value) = bridge.poll_next()? else {
+      if !bridge.has_pending_output() {
         self.recovery_source = None;
       }
       return Ok(Vec::new());

@@ -17,40 +17,35 @@ use core::{any::Any, mem, task::Poll, time::Duration};
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, WeakShared};
 use portable_atomic::{AtomicBool, Ordering};
 
-use crate::core::{
-  kernel::{
-    actor::{
-      Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, FailedInfo, Pid,
-      ReceiveTimeoutStateShared, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON, SuspendReason, WatchKind,
-      WatchRegistrationKind,
-      actor_ref::{ActorRef, ActorRefSenderShared},
-      context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
-      error::{ActorError, ActorErrorReason, PipeSpawnError},
-      lifecycle::{LifecycleEvent, LifecycleStage},
-      messaging::{
-        ActorIdentity, AnyMessage, Identify, Kill, PoisonPill,
-        message_invoker::{MessageInvoker, MessageInvokerPipeline, MessageInvokerShared},
-        system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
-      },
-      props::{ActorFactoryShared, Props},
-      scheduler::{SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerShared},
-      spawn::SpawnError,
-      supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
+use crate::core::kernel::{
+  actor::{
+    Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, FailedInfo, Pid, ReceiveTimeoutStateShared,
+    STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON, SuspendReason, WatchKind, WatchRegistrationKind,
+    actor_ref::{ActorRef, ActorRefSenderShared},
+    context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
+    error::{ActorError, ActorErrorReason, PipeSpawnError},
+    lifecycle::{LifecycleEvent, LifecycleStage},
+    message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
+    messaging::{
+      ActorIdentity, AnyMessage, Identify, Kill, PoisonPill,
+      message_invoker::{MessageInvoker, MessageInvokerPipeline, MessageInvokerShared},
+      system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
     },
-    dispatch::{
-      dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, MessageDispatcherShared},
-      mailbox::{
-        Mailbox, MailboxCapacity, MailboxFactory, MailboxInstrumentation, metrics_event::MailboxPressureEvent,
-      },
-    },
-    event::{logging::LogLevel, stream::EventStreamEvent},
-    system::{
-      ActorSystem,
-      guardian::GuardianKind,
-      state::{SystemStateShared, SystemStateWeak, system_state::FailureOutcome},
-    },
+    props::{ActorFactoryShared, Props},
+    scheduler::{SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerShared},
+    spawn::SpawnError,
+    supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
   },
-  typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
+  dispatch::{
+    dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, MessageDispatcherShared},
+    mailbox::{Mailbox, MailboxCapacity, MailboxFactory, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
+  },
+  event::{logging::LogLevel, stream::EventStreamEvent},
+  system::{
+    ActorSystem,
+    guardian::GuardianKind,
+    state::{SystemStateShared, SystemStateWeak, system_state::FailureOutcome},
+  },
 };
 
 /// Runtime container responsible for executing an actor instance.
