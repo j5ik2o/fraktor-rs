@@ -43,6 +43,7 @@ impl Props {
   ///
   /// These props are only valid as a configuration builder and must not reach
   /// actor spawn without a factory being installed first.
+  #[doc(hidden)]
   #[must_use]
   pub fn empty() -> Self {
     Self {

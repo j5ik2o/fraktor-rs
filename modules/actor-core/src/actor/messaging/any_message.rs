@@ -166,6 +166,7 @@ impl AnyMessage {
   }
 
   /// Consumes the message and returns the payload, sender, and flags.
+  #[doc(hidden)]
   #[must_use]
   pub fn into_parts(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>, bool, bool) {
     (self.payload, self.sender, self.is_control, self.not_influence_receive_timeout)
