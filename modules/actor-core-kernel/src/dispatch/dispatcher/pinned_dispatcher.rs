@@ -9,7 +9,7 @@ mod tests;
 
 use core::num::NonZeroUsize;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
   dispatcher_config::DispatcherConfig, dispatcher_core::DispatcherCore, executor_shared::ExecutorShared,

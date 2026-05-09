@@ -1,6 +1,6 @@
 use alloc::{vec, vec::Vec};
 
-use fraktor_utils_core_rs::core::net::UriError;
+use fraktor_utils_core_rs::net::UriError;
 
 use super::*;
 

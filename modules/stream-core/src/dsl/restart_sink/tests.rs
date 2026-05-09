@@ -1,0 +1,36 @@
+use super::RestartSink;
+use crate::{
+  RestartConfig,
+  dsl::{Sink, Source},
+  r#impl::{
+    fusing::StreamBufferConfig, interpreter::graph_interpreter::GraphInterpreter, materialization::StreamState,
+  },
+  materialization::{Completion, KeepRight, StreamDone},
+};
+
+#[test]
+fn restart_sink_with_backoff_keeps_data_path_behavior() {
+  let sink = RestartSink::with_backoff(Sink::<u32, _>::ignore(), 1, 3);
+  let graph = Source::single(1_u32).into_mat(sink, KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  while interpreter.state() == StreamState::Running {
+    let _ = interpreter.drive();
+  }
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn restart_sink_with_settings_keeps_data_path_behavior() {
+  let settings = RestartConfig::new(1, 2, 3);
+  let sink = RestartSink::with_settings(Sink::<u32, _>::ignore(), settings);
+  let graph = Source::single(2_u32).into_mat(sink, KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  while interpreter.state() == StreamState::Running {
+    let _ = interpreter.drive();
+  }
+  assert_eq!(completion.value(), Completion::Ready(Ok(StreamDone::new())));
+}

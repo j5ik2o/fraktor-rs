@@ -7,7 +7,7 @@ use core::{
 use std::{thread, time::Instant};
 
 use fraktor_actor_core_kernel_rs::system::{CoordinatedShutdown, CoordinatedShutdownReason};
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 fn main() {
   let shutdown = CoordinatedShutdown::with_default_phases().expect("default phases");

@@ -7,13 +7,13 @@
 
 use std::time::{Duration, Instant};
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
 use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
 use fraktor_actor_core_typed_rs::{
   TypedActorRef, TypedActorSystem, TypedProps,
   dsl::{Behaviors, routing::Routers},
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 // --- メッセージ定義 ---
 

@@ -4,7 +4,7 @@ use core::{
 };
 use std::{println, string::String, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::event::logging::TracingLoggerSubscriber;
+use fraktor_actor_adaptor_std_rs::event::logging::TracingLoggerSubscriber;
 use fraktor_actor_core_kernel_rs::{
   event::{
     logging::LogLevel,

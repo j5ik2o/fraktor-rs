@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
   Router, consistent_hashing_routing_logic::ConsistentHashingRoutingLogic, pool::Pool, router_config::RouterConfig,

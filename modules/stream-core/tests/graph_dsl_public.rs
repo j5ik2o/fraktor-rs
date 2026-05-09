@@ -1,11 +1,11 @@
 mod support;
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source},
   materialization::{KeepLeft, KeepRight, StreamNotUsed},
   shape::{Inlet, Outlet},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use support::RunWithCollectSink;
 
 #[test]

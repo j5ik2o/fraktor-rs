@@ -368,7 +368,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: adapter 側の StartHandshake 無視分岐の不在
 
-- **WHEN** `modules/remote-adaptor-std/src/std/effect_application.rs` の dispatch を検査する
+- **WHEN** `modules/remote-adaptor-std/src/effect_application.rs` の dispatch を検査する
 - **THEN** `AssociationEffect::StartHandshake { .. } => /* ignore */` または同等の no-op 分岐が存在しない
 
 ### Requirement: handshake generation の管理（u64 inline）

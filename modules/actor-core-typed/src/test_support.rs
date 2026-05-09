@@ -2,7 +2,7 @@
 
 use alloc::{boxed::Box, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
@@ -10,7 +10,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 #[must_use]
 pub(crate) fn actor_ref_with_sender<T>(pid: Pid, sender: T) -> ActorRef

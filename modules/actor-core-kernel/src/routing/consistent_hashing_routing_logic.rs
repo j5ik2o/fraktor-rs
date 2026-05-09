@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{consistent_hashable_envelope::ConsistentHashableEnvelope, routee::Routee, routing_logic::RoutingLogic};
 use crate::actor::messaging::AnyMessage;

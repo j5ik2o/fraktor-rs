@@ -1,0 +1,159 @@
+use alloc::boxed::Box;
+#[cfg(not(feature = "force-portable-arc"))]
+use alloc::sync::Arc;
+#[cfg(not(feature = "unsize"))]
+use core::ptr;
+use core::{
+  any::Any,
+  fmt::{Debug, Formatter, Result as FmtResult},
+};
+#[cfg(feature = "unsize")]
+use core::{marker::Unsize, ops::CoerceUnsized};
+
+#[cfg(feature = "force-portable-arc")]
+use portable_atomic_util::Arc;
+
+use super::weak_shared::WeakShared;
+use crate::sync::shared::Shared;
+
+#[cfg(test)]
+mod tests;
+
+/// Shared wrapper backed by [`alloc::sync::Arc`] by default.
+///
+/// When the `force-portable-arc` feature is enabled it switches to [`portable_atomic_util::Arc`]
+/// so that targets without native atomic pointer support still benefit from an `Arc`-compatible
+/// shared handle.
+#[repr(transparent)]
+pub struct ArcShared<T: ?Sized>(Arc<T>);
+
+impl<T: ?Sized> ArcShared<T> {
+  /// Creates a new `ArcShared` by wrapping the provided value.
+  pub fn new(value: T) -> Self
+  where
+    T: Sized, {
+    Self(Arc::new(value))
+  }
+
+  /// Creates a new `ArcShared` from a boxed unsized value.
+  ///
+  /// This is the production constructor for shared handles over trait objects
+  /// (`ArcShared<dyn Trait>`) or slices (`ArcShared<[T]>`), where [`Self::new`]
+  /// is unavailable due to the `T: Sized` bound.
+  #[must_use]
+  pub fn from_boxed(boxed: Box<T>) -> Self {
+    Self(Arc::from(boxed))
+  }
+
+  /// For Testing, Don't Use Production
+  ///
+  /// Wraps an existing `Arc` in the shared wrapper.
+  #[must_use]
+  pub const fn ___from_arc(inner: Arc<T>) -> Self {
+    Self(inner)
+  }
+
+  /// For Testing, Don't Use Production
+  ///
+  /// Consumes the wrapper and returns the inner `Arc`.
+  #[must_use]
+  pub fn ___into_arc(self) -> Arc<T> {
+    self.0
+  }
+
+  /// Consumes the shared handle and returns the raw pointer.
+  #[must_use]
+  pub fn into_raw(self) -> *const T {
+    Arc::into_raw(self.0)
+  }
+
+  /// Creates a [`WeakShared`] reference to this allocation.
+  #[must_use]
+  pub fn downgrade(&self) -> WeakShared<T> {
+    WeakShared::___from_weak(Arc::downgrade(&self.0))
+  }
+
+  /// Reconstructs the shared handle from a raw pointer.
+  ///
+  /// # Safety
+  ///
+  /// The pointer must originate from `ArcShared::into_raw`.
+  pub unsafe fn from_raw(ptr: *const T) -> Self {
+    Self(unsafe { Arc::from_raw(ptr) })
+  }
+
+  /// Returns true if the two `ArcShared` pointers point to the same allocation.
+  #[must_use]
+  pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+    Arc::ptr_eq(&this.0, &other.0)
+  }
+
+  /// Converts the shared handle into another dynamically sized representation.
+  #[cfg(not(feature = "unsize"))]
+  pub fn into_dyn<U: ?Sized, F>(self, cast: F) -> ArcShared<U>
+  where
+    F: FnOnce(&T) -> &U, {
+    let raw = self.into_raw();
+    unsafe {
+      let reference = &*raw;
+      let trait_reference = cast(reference);
+      let trait_ptr = ptr::from_ref(trait_reference);
+      ArcShared::from_raw(trait_ptr)
+    }
+  }
+}
+
+impl<T: ?Sized> core::ops::Deref for ArcShared<T> {
+  type Target = T;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl<T: ?Sized + Debug> Debug for ArcShared<T> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    f.debug_struct("ArcShared").finish()
+  }
+}
+
+impl<T: ?Sized> PartialEq for ArcShared<T> {
+  fn eq(&self, other: &Self) -> bool {
+    Arc::ptr_eq(&self.0, &other.0)
+  }
+}
+
+impl<T: ?Sized> Eq for ArcShared<T> {}
+
+impl<T: ?Sized> Shared<T> for ArcShared<T> {
+  fn try_unwrap(self) -> Result<T, Self>
+  where
+    T: Sized, {
+    Arc::try_unwrap(self.0).map_err(ArcShared)
+  }
+}
+
+impl<T: ?Sized> Clone for ArcShared<T> {
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
+  }
+}
+
+impl ArcShared<dyn Any + Send + Sync + 'static> {
+  /// Attempts to downcast the shared handle to the requested type.
+  ///
+  /// # Errors
+  ///
+  /// Returns the original shared handle when the payload cannot be converted to `U`.
+  pub fn downcast<U>(self) -> Result<ArcShared<U>, ArcShared<dyn Any + Send + Sync + 'static>>
+  where
+    U: Any + Send + Sync + 'static, {
+    match Arc::downcast::<U>(self.0) {
+      | Ok(concrete) => Ok(ArcShared(concrete)),
+      | Err(original) => Err(ArcShared(original)),
+    }
+  }
+}
+
+#[cfg(feature = "unsize")]
+impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<ArcShared<U>> for ArcShared<T> {}

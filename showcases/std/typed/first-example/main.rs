@@ -1,10 +1,10 @@
 use core::time::Duration;
 use std::{thread, time::Instant};
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
 use fraktor_actor_core_typed_rs::{Behavior, TypedActorSystem, dsl::Behaviors};
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone, Copy)]
 enum Command {

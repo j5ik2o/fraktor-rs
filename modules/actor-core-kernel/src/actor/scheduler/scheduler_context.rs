@@ -1,5 +1,5 @@
 //! Scheduler runtime container used across the actor system.
-use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
+use fraktor_utils_core_rs::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
 
 use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerShared, task_run::TaskRunSummary};
 use crate::event::stream::EventStreamShared;

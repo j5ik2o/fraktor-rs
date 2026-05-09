@@ -1,6 +1,6 @@
 //! Shared wrapper for receive-timeout runtime state.
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedLock};
 
 use crate::actor::ReceiveTimeoutState;
 

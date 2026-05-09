@@ -4,7 +4,7 @@ use core::{
   sync::atomic::{AtomicUsize, Ordering},
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use super::ActorRef;
 use crate::{

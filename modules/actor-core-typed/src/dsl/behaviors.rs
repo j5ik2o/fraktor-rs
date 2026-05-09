@@ -10,7 +10,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::{Pid, error::ActorError, messaging::AnyMessage},
   event::logging::LogLevel,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use super::{AbstractBehavior, receive::Receive, supervise::Supervise};
 use crate::{

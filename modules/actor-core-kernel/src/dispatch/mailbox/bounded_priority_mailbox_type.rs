@@ -6,7 +6,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::num::NonZeroUsize;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
   bounded_priority_message_queue::BoundedPriorityMessageQueue,

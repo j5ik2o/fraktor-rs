@@ -15,7 +15,7 @@ adapter 側に受信 tokio task が定義され、TCP から受信した core wi
 
 #### Scenario: Association 直接呼び出しの不在
 
-- **WHEN** `modules/remote-adaptor-std/src/std/inbound_dispatch.rs` または同等のソースを検査する
+- **WHEN** `modules/remote-adaptor-std/src/inbound_dispatch.rs` または同等のソースを検査する
 - **THEN** `Association::handshake_accepted` / `accept_handshake_request` / `accept_handshake_response` 等の core state 遷移メソッドを直接呼ぶ箇所が存在しない
 
 #### Scenario: monotonic 時刻入力の event 同梱
@@ -273,14 +273,14 @@ adapter 側に `tokio::sync::mpsc` 受信側ラッパとして `RemoteEventRecei
 
 #### Scenario: Receiver 実装の存在
 
-- **WHEN** `modules/remote-adaptor-std/src/std/tokio_remote_event_receiver.rs` を読む
+- **WHEN** `modules/remote-adaptor-std/src/tokio_remote_event_receiver.rs` を読む
 - **THEN** `pub struct TokioMpscRemoteEventReceiver` または同等の型が定義され、`impl RemoteEventReceiver` を持つ
 - **AND** 内部で `tokio::sync::mpsc::Receiver<RemoteEvent>` を保持する
 - **AND** `RemoteEventReceiver::poll_recv` 実装は `tokio::sync::mpsc::Receiver::poll_recv` へ委譲する（core 側 trait に `async fn recv` は存在しない）
 
 #### Scenario: Sink trait の不在
 
-- **WHEN** `modules/remote-core/src/core/extension/` 配下のソースを検査する
+- **WHEN** `modules/remote-core/src/extension/` 配下のソースを検査する
 - **THEN** `pub trait RemoteEventSink` または同等の trait が定義されていない（adapter 内部の `Sender` は core に公開せず、純増ゼロ方針を維持する）
 
 #### Scenario: bounded / unbounded の選択
@@ -303,7 +303,7 @@ adapter は `RemoteTransport::schedule_handshake_timeout(authority, timeout, gen
 
 #### Scenario: Timer trait の不在
 
-- **WHEN** `modules/remote-core/src/core/` 配下のソースを検査する
+- **WHEN** `modules/remote-core/src/` 配下のソースを検査する
 - **THEN** `pub trait Timer` や `pub struct TimerToken` が定義されていない（純増ゼロ方針）
 
 #### Scenario: 古い timer の発火許容
@@ -362,7 +362,7 @@ adapter 側の `effect_application::apply_effects_in_place`（または相当箇
 
 #### Scenario: StartHandshake 分岐の不在
 
-- **WHEN** `modules/remote-adaptor-std/src/std/effect_application.rs` を検査する
+- **WHEN** `modules/remote-adaptor-std/src/effect_application.rs` を検査する
 - **THEN** `AssociationEffect::StartHandshake { .. } =>` 分岐が存在しない
 - **AND** unreachable! の使用も存在しない（`Remote::handle_remote_event` がすべて処理するため adapter のこの経路を通らない）
 

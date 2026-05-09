@@ -7,7 +7,7 @@
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
+use fraktor_utils_core_rs::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
 
 use crate::{
   actor::{

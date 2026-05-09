@@ -5,7 +5,7 @@ use std::sync::{
   mpsc::{Receiver, Sender},
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::{
   actor::{

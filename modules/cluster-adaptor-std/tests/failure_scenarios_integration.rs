@@ -5,8 +5,8 @@ use std::{
 };
 
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
-use fraktor_cluster_adaptor_std_rs::std::MembershipCoordinatorDriver;
-use fraktor_cluster_core_rs::core::{
+use fraktor_cluster_adaptor_std_rs::MembershipCoordinatorDriver;
+use fraktor_cluster_core_rs::{
   ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
@@ -14,8 +14,8 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },
 };
-use fraktor_remote_core_rs::core::{address::Address, failure_detector::PhiAccrualFailureDetector};
-use fraktor_utils_core_rs::core::{sync::SharedAccess, time::TimerInstant};
+use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
+use fraktor_utils_core_rs::{sync::SharedAccess, time::TimerInstant};
 
 /// Test-only adapter that bridges the remote-core detector to the
 /// cluster-core `FailureDetector` trait.

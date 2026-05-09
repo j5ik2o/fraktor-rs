@@ -6,7 +6,7 @@ use std::{
   vec::Vec,
 };
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, ChildRef,
@@ -19,7 +19,7 @@ use fraktor_actor_core_kernel_rs::{
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 struct Deliver(u32);

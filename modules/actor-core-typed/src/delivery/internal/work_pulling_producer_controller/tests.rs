@@ -11,7 +11,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::*;
 use crate::{
@@ -309,7 +309,7 @@ fn worker_spawn_propagates_nested_producer_controller_settings() {
 
 #[test]
 fn durable_queue_send_failure_stops_work_pulling_controller() {
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let lifecycle = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({

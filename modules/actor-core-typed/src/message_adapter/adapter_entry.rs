@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, string::String};
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::sync::shared::Shared;
+use fraktor_utils_core_rs::sync::shared::Shared;
 
 use crate::message_adapter::{AdapterError, AdapterOutcome, AdapterPayload};
 

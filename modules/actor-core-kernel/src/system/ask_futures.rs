@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::sync::SharedAccess;
 
 use crate::{actor::messaging::AskResult, support::futures::ActorFutureShared};
 

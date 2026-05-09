@@ -115,13 +115,13 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: send_handshake メソッドのシグネチャ
 
-- **WHEN** `modules/remote-core/src/core/transport/remote_transport.rs` の `RemoteTransport` trait 定義を読む
+- **WHEN** `modules/remote-core/src/transport/remote_transport.rs` の `RemoteTransport` trait 定義を読む
 - **THEN** `fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError>` または同等のシグネチャが宣言されている
 - **AND** メソッドは同期 `&mut self` で、`async fn` ではない（既存 trait 契約と整合）
 
 #### Scenario: メソッドのシグネチャ
 
-- **WHEN** `modules/remote-core/src/core/transport/remote_transport.rs` の `RemoteTransport` trait 定義を読む
+- **WHEN** `modules/remote-core/src/transport/remote_transport.rs` の `RemoteTransport` trait 定義を読む
 - **THEN** `fn schedule_handshake_timeout(&mut self, authority: &TransportEndpoint, timeout: core::time::Duration, generation: u64) -> Result<(), TransportError>` または同等のシグネチャが宣言されている
 - **AND** メソッドは同期 `&mut self` で、`async fn` ではない（既存 trait 契約と整合）
 

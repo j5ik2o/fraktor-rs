@@ -5,11 +5,11 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: TcpRemoteTransport 型
 
-`fraktor_remote_adaptor_std_rs::std::transport::tcp::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。TCP ベースの std remote transport として、start / shutdown / handshake / control / envelope delivery / connection-loss notification を adapter runtime に接続する。
+`fraktor_remote_adaptor_std_rs::transport::tcp::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。TCP ベースの std remote transport として、start / shutdown / handshake / control / envelope delivery / connection-loss notification を adapter runtime に接続する。
 
 #### Scenario: 型の存在
 
-- **WHEN** `modules/remote-adaptor-std/src/std/transport/tcp/base.rs` を読む
+- **WHEN** `modules/remote-adaptor-std/src/transport/tcp/base.rs` を読む
 - **THEN** `pub struct TcpRemoteTransport` が定義されている
 
 #### Scenario: RemoteTransport trait の実装

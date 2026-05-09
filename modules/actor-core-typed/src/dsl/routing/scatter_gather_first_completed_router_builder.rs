@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::time::Duration;
 
 use fraktor_actor_core_kernel_rs::event::logging::LogLevel;
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
   TypedActorRef, actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal,

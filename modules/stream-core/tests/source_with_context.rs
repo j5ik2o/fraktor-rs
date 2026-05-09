@@ -6,7 +6,7 @@ use core::{
 };
 use std::sync::{Arc, Mutex};
 
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   StreamError, ThrottleMode,
   dsl::{Flow, FlowWithContext, Sink, Source, SourceWithContext},
   materialization::{KeepBoth, KeepLeft, KeepRight, StreamNotUsed},

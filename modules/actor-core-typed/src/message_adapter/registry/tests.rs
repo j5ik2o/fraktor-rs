@@ -4,7 +4,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::{Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props},
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::message_adapter::{AdapterError, AdapterOutcome, AdapterPayload, MessageAdapterRegistry};
 
@@ -15,7 +15,7 @@ struct Harness {
 
 impl Harness {
   fn new() -> Self {
-    let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+    let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
     let state = system.state();
     let props = Props::from_fn(|| ProbeActor);
     let pid = state.allocate_pid();

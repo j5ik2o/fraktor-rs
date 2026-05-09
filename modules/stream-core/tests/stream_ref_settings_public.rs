@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   StreamDslError, StreamError,
   attributes::{
     Attributes, StreamRefBufferCapacity, StreamRefDemandRedeliveryInterval, StreamRefFinalTerminationSignalDeadline,

@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
   super::{default_serialization_setup, serialization_registry::SerializationRegistry, serializer_id::SerializerId},

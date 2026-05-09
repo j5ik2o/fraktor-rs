@@ -17,7 +17,7 @@ use fraktor_actor_core_kernel_rs::{
     serialization_registry::{SerializationRegistry, SerializerResolutionOrigin},
   },
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 #[derive(Debug, PartialEq, Eq)]
 struct ManifestPayload(String);

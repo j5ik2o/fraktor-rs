@@ -6,7 +6,7 @@
 
 use alloc::{boxed::Box, string::String};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
   dispatcher_config::DispatcherConfig, executor_factory::ExecutorFactory,

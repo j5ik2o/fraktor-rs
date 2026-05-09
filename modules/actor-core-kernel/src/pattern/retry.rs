@@ -2,7 +2,7 @@
 
 use core::{future::Future, time::Duration};
 
-use fraktor_utils_core_rs::core::timing::delay::{DelayFuture, DelayProvider};
+use fraktor_utils_core_rs::timing::delay::{DelayFuture, DelayProvider};
 
 /// Retries an async operation up to `attempts` times with caller-provided delays.
 ///

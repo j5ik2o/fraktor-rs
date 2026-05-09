@@ -11,7 +11,7 @@
 
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, event::logging::LogLevel};
 use fraktor_actor_core_typed_rs::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors};
 use fraktor_showcases_std::subscribe_typed_tracing_logger;

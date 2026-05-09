@@ -1,7 +1,7 @@
 use alloc::{string::ToString, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::SystemStateShared;
 use crate::{

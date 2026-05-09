@@ -12,7 +12,7 @@ use fraktor_actor_core_kernel_rs::{
     stream::{EventStreamEvent, EventStreamSubscriber},
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{
   TypedActorRef, TypedActorSystem, TypedProps,
@@ -505,7 +505,7 @@ fn forward_preserves_sender_through_typed_context() {
 
   let original_sender = crate::test_support::actor_ref_with_sender(Pid::new(800, 0), NullSender);
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
@@ -525,7 +525,7 @@ fn forward_preserves_sender_through_typed_context() {
 
 #[test]
 fn schedule_once_registers_command_in_scheduler() {
-  use fraktor_utils_core_rs::core::sync::SharedAccess;
+  use fraktor_utils_core_rs::sync::SharedAccess;
 
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system = TypedActorSystem::<u32>::create_from_props(
@@ -642,7 +642,7 @@ fn typed_props_with_tags_are_readable_via_typed_context() {
 
   use fraktor_actor_core_kernel_rs::actor::{ActorCell, ActorContext};
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore).with_tags(["observer", "critical"]);
 
@@ -662,7 +662,7 @@ fn typed_props_with_tags_are_readable_via_typed_context() {
 fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
   use fraktor_actor_core_kernel_rs::actor::{ActorCell, ActorContext};
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore).with_tag("alpha").with_tag("beta");
 
@@ -682,7 +682,7 @@ fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
 fn typed_props_without_tags_returns_empty_via_typed_context() {
   use fraktor_actor_core_kernel_rs::actor::{ActorCell, ActorContext};
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
 
@@ -725,7 +725,7 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
   }
 
   // 前提: system() wrapper を基底 actor system から再構築した typed context がある
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let typed_system = TypedActorSystem::<u32>::from_untyped(system.clone());
   let pid = system.allocate_pid();
   let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);

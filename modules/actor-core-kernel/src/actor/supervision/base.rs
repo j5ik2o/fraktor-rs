@@ -5,7 +5,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
   restart_limit::RestartLimit, supervisor_directive::SupervisorDirective,

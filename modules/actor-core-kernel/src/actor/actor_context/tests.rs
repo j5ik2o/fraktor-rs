@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{ActorContext, ReceiveTimeoutState};
 use crate::{

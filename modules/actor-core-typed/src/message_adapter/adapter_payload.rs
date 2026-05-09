@@ -8,7 +8,7 @@ use core::{
   marker::PhantomData,
 };
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 /// Owns a dynamically typed payload destined for message adapters.
 #[derive(Debug)]

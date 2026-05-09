@@ -115,7 +115,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: std adaptor は StdRemoting 相当の public wrapper を持たない
 
-- **WHEN** `modules/remote-adaptor-std/src/std` 配下の public 型と re-export を検査する
+- **WHEN** `modules/remote-adaptor-std/src` 配下の public 型と re-export を検査する
 - **THEN** `StdRemoting` または同等の remote lifecycle wrapper は存在しない
 - **AND** remote lifecycle の状態遷移と意味論は `remote-core::Remote` / `RemoteShared` に残る
 - **AND** user-facing application code は `remote-core::Remote` を startup sequence として直接操作しない
@@ -133,7 +133,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: Remote は TcpRemoteTransport を型パラメータとして露出しない
 
-- **WHEN** `modules/remote-core/src/core/extension/remote.rs` を検査する
+- **WHEN** `modules/remote-core/src/extension/remote.rs` を検査する
 - **THEN** `pub struct Remote<T>` ではなく非ジェネリックな `pub struct Remote` である
 - **AND** `Remote` の public method signature に `TcpRemoteTransport` は現れない
 

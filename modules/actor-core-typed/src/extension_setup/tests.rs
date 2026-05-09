@@ -4,7 +4,7 @@ use fraktor_actor_core_kernel_rs::actor::{
   extension::{Extension, ExtensionInstallers},
   setup::ActorSystemConfig,
 };
-use fraktor_utils_core_rs::core::sync::shared::Shared;
+use fraktor_utils_core_rs::sync::shared::Shared;
 
 use crate::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors, extension_setup::ActorSystem};
 

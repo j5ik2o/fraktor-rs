@@ -14,7 +14,7 @@ use fraktor_actor_core_kernel_rs::{
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   event::logging::LogLevel,
 };
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::sync::SharedAccess;
 
 use crate::{
   actor::{TypedActor, TypedActorContext},

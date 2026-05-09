@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::AdapterRefSender;
 use crate::{

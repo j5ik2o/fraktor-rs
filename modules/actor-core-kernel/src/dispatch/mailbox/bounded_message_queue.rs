@@ -5,7 +5,7 @@ mod tests;
 
 use core::num::NonZeroUsize;
 
-use fraktor_utils_core_rs::core::collections::queue::QueueError;
+use fraktor_utils_core_rs::collections::queue::QueueError;
 
 use super::{
   QueueStateHandle, drop_oldest_outcome::DropOldestOutcome, enqueue_error::EnqueueError,

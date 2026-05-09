@@ -5,7 +5,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig,
@@ -13,13 +13,13 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   RestartConfig, SharedKillSwitch, SubstreamCancelStrategy, UniqueKillSwitch,
   dsl::{BroadcastHub, Flow, MergeHub, PartitionHub, Sink, Source},
   r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, StreamDslError, StreamError},
   materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, StreamNotUsed},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use support::RunWithCollectSink;
 
 type VerifyFn = fn();

@@ -15,7 +15,7 @@ use fraktor_actor_core_kernel_rs::{
   event::logging::LogLevel,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock, shared::Shared};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock, shared::Shared};
 
 use super::{Deregistered, Listing, ReceptionistCommand, Registered, ServiceKey};
 use crate::{

@@ -2,18 +2,18 @@
 
 use std::{format, net::TcpListener, time::Duration};
 
-use fraktor_actor_adaptor_std_rs::std::{system::new_empty_actor_system, tick_driver::TestTickDriver};
+use fraktor_actor_adaptor_std_rs::{system::new_empty_actor_system, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionInstallers, system::ActorSystem};
-use fraktor_remote_adaptor_std_rs::std::{
+use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::{
   address::Address,
   association::QuarantineReason,
   config::RemoteConfig,
   extension::{EventPublisher, Remote},
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{net::TcpStream, time::timeout};
 
 fn make_transport() -> TcpRemoteTransport {
@@ -59,7 +59,7 @@ async fn remote_lifecycle_via_extension_installer() {
   let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address]);
   let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config()));
   let installers = ExtensionInstallers::default().with_shared_extension_installer(installer);
-  let config = fraktor_actor_adaptor_std_rs::std::system::std_actor_system_config(TestTickDriver::default())
+  let config = fraktor_actor_adaptor_std_rs::system::std_actor_system_config(TestTickDriver::default())
     .with_extension_installers(installers);
   let system = ActorSystem::create_with_noop_guardian(config).expect("system should install and start remoting");
 

@@ -4,7 +4,7 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::sync::SharedAccess;
 
 use crate::support::futures::{ActorFuture, ActorFutureListener, ActorFutureShared};
 

@@ -3,7 +3,7 @@ use core::time::Duration;
 use std::time::Instant;
 
 use fraktor_actor_core_kernel_rs::actor::{actor_ref::ActorRef, setup::ActorSystemConfig};
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{
   TypedActorRef,

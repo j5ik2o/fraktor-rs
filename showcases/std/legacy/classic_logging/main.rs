@@ -1,6 +1,6 @@
 use std::{boxed::Box, string::String, thread, time::Duration, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -16,7 +16,7 @@ use fraktor_actor_core_kernel_rs::{
   system::ActorSystem,
 };
 use fraktor_showcases_std::subscribe_kernel_tracing_logger;
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 struct Start;
 

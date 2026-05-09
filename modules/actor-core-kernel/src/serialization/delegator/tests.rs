@@ -2,7 +2,7 @@ use alloc::{borrow::Cow, boxed::Box, string::String, vec, vec::Vec};
 use core::any::{Any, TypeId};
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
 
 use crate::serialization::{

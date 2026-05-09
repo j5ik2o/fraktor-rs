@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::VecDeque, string::String};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SyncOnce, WeakShared};
+use fraktor_utils_core_rs::sync::{SharedAccess, SyncOnce, WeakShared};
 
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxFactory, MailboxScheduleState, RunFinishOutcome, ScheduleHints,

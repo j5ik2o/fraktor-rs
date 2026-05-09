@@ -18,7 +18,7 @@ Define the public API boundary for `fraktor-remote-adaptor-std-rs` so applicatio
 
 #### Scenario: runtime internal 型は crate 外から import できない
 
-- **WHEN** external crate 相当の public surface test から `fraktor_remote_adaptor_std_rs::std` 配下を import する
+- **WHEN** external crate 相当の public surface test から `fraktor_remote_adaptor_std_rs` 配下を import する
 - **THEN** 以下の型または関数は import できない
   - `TcpClient`
   - `TcpServer`
@@ -48,7 +48,7 @@ Define the public API boundary for `fraktor-remote-adaptor-std-rs` so applicatio
 
 #### Scenario: TcpRemoteTransport の public method signature に内部型が現れない
 
-- **WHEN** `modules/remote-adaptor-std/src/std/transport/tcp/base.rs` の `impl TcpRemoteTransport` を検査する
+- **WHEN** `modules/remote-adaptor-std/src/transport/tcp/base.rs` の `impl TcpRemoteTransport` を検査する
 - **THEN** `pub fn` の signature に `TcpClient`、`TcpServer`、`WireFrame`、`WireFrameCodec`、`InboundFrameEvent` が現れない
 - **AND** それらを扱う method は `pub(crate)`、private、または module 内部 helper である
 
@@ -127,7 +127,7 @@ association runtime、watcher actor、TCP frame codec などの詳細挙動は c
 #### Scenario: internal 型の詳細テストは src 配下の module tests に残る
 
 - **WHEN** association runtime、watcher actor、TCP frame codec の詳細挙動を検証する
-- **THEN** test は `modules/remote-adaptor-std/src/std/**/tests.rs` または同等の crate 内部テストに置かれる
+- **THEN** test は `modules/remote-adaptor-std/src/**/tests.rs` または同等の crate 内部テストに置かれる
 - **AND** external integration test は private module に依存しない
 
 #### Scenario: public surface test は公開 API のみを使う

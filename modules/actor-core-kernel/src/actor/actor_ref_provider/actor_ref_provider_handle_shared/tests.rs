@@ -2,7 +2,7 @@ use alloc::string::String;
 use core::any::TypeId;
 use std::sync::{Arc, Mutex};
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::ActorRefProviderHandleShared;
 use crate::{

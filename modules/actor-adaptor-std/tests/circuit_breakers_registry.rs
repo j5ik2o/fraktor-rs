@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{
+use fraktor_actor_adaptor_std_rs::{
   pattern::{CircuitBreakersRegistry, CircuitBreakersRegistryId},
   system::{new_empty_actor_system, new_empty_actor_system_with},
 };
@@ -8,7 +8,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::{extension::ExtensionId, setup::CircuitBreakerConfig},
   pattern::CircuitBreakerState,
 };
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::sync::SharedAccess;
 
 fn assert_extension_id<E: ExtensionId<Ext = CircuitBreakersRegistry>>(_extension_id: &E) {}
 

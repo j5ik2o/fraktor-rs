@@ -1,4 +1,4 @@
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
@@ -6,11 +6,11 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_remote_adaptor_std_rs::std::{
+use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{address::Address, config::RemoteConfig};
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_remote_core_rs::{address::Address, config::RemoteConfig};
+use fraktor_utils_core_rs::sync::ArcShared;
 
 struct NoopActor;
 

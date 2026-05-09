@@ -72,5 +72,5 @@
 - [ ] 9.2 `actor-core` untyped `pipe_to_self` / `pipe_to` の targeted tests を実行する。
 - [ ] 9.3 `actor-core` typed `pipe_to_self` / `pipe_to` / `ask` の targeted tests を実行する。
 - [ ] 9.4 Embassy adapter の compile check / unit contract tests を実行する。
-- [ ] 9.5 `rtk rg -n "spawn_blocking" modules/actor-adaptor-std/src/std/dispatch/dispatcher` で default executor に `spawn_blocking` が残っていないことを確認する。
+- [ ] 9.5 `rtk rg -n "spawn_blocking" modules/actor-adaptor-std/src/dispatch/dispatcher` で default executor に `spawn_blocking` が残っていないことを確認する。
 - [ ] 9.6 ソースコード編集後の最終確認として `./scripts/ci-check.sh ai all` を実行し、完了を待つ。

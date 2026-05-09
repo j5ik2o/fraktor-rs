@@ -7,7 +7,7 @@ use core::{
   str::Utf8Error,
 };
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 /// An immutable, cheaply cloneable byte sequence.
 ///

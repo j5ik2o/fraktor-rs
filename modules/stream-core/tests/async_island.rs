@@ -7,7 +7,7 @@
 //! They define the expected behavioral contract for Gate 0.
 
 mod support;
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   attributes::Attributes,
   dsl::{Flow, Source},
   materialization::StreamNotUsed,

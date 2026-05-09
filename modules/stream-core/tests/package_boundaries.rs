@@ -1,4 +1,4 @@
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   attributes::{
     AsyncBoundaryAttr, Attributes, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
   },

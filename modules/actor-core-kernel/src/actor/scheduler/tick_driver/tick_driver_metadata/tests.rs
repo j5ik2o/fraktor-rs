@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::time::TimerInstant;
+use fraktor_utils_core_rs::time::TimerInstant;
 
 use crate::actor::scheduler::tick_driver::{AutoProfileKind, TickDriverId, TickDriverMetadata};
 

@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::super::{default_logging_filter::DefaultLoggingFilter, log_event::LogEvent, logging_filter::LoggingFilter};
 use crate::{

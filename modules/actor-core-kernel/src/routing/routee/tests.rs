@@ -1,7 +1,7 @@
 use alloc::{format, string::ToString, vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::Routee;
 use crate::{

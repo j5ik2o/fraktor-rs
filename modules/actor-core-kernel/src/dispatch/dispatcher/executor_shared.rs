@@ -27,7 +27,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
   drive_guard_token::DriveGuardToken,

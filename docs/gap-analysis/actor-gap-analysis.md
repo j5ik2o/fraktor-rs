@@ -19,15 +19,15 @@ fraktor-rs の actor parity 対象は、Pekko の実装を参考にしつつ、R
 | classic / untyped actor core | `references/pekko/actor/` の actor core | `modules/actor-core/src/core/kernel/` |
 | typed actor core | `references/pekko/actor-typed/` の typed API | `modules/actor-core/src/core/typed/` |
 | supervision / lifecycle | fault handling, DeathWatch, signals | `modules/actor-core/src/core/kernel/`, `modules/actor-core/src/core/typed/` |
-| dispatch / mailbox | dispatcher, executor abstraction, mailbox contract | `modules/actor-core/src/core/kernel/`, `modules/actor-adaptor-std/src/std/` |
+| dispatch / mailbox | dispatcher, executor abstraction, mailbox contract | `modules/actor-core/src/core/kernel/`, `modules/actor-adaptor-std/src/` |
 | routing | classic / typed routing semantics | `modules/actor-core/src/core/kernel/`, `modules/actor-core/src/core/typed/` |
-| event / logging | event stream, dead letters, logging contract | `modules/actor-core/src/core/kernel/`, `modules/actor-adaptor-std/src/std/` |
+| event / logging | event stream, dead letters, logging contract | `modules/actor-core/src/core/kernel/`, `modules/actor-adaptor-std/src/` |
 | pattern | ask, pipe, retry, graceful stop, circuit breaker | `modules/actor-core/src/core/kernel/`, `modules/actor-core/src/core/typed/` |
 | receptionist / discovery | typed receptionist, service key, listing | `modules/actor-core/src/core/typed/` |
 | delivery / pubsub | typed reliable delivery, local topic | `modules/actor-core/src/core/typed/` |
 | serialization contract | serializer trait, registry, manifest | `modules/actor-core/src/core/kernel/` |
 | coordinated shutdown | phase, task, termination contract | `modules/actor-core/src/core/kernel/` |
-| std adaptor | tokio / tracing / executor / scheduler adapter | `modules/actor-adaptor-std/src/std/` |
+| std adaptor | tokio / tracing / executor / scheduler adapter | `modules/actor-adaptor-std/src/` |
 
 ### 対象外にするもの
 

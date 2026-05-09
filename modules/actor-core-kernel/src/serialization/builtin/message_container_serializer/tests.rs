@@ -1,6 +1,6 @@
 use alloc::{string::String, vec};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::MessageContainerSerializer;
 use crate::{

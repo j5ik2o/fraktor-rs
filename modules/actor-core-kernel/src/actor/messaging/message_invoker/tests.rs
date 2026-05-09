@@ -2,7 +2,7 @@ extern crate alloc;
 
 use alloc::{format, string::String, vec, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::{MessageInvokerMiddleware, MessageInvokerPipeline, middleware_shared::MiddlewareShared};
 use crate::{

@@ -1,5 +1,5 @@
 use fraktor_actor_core_kernel_rs::actor::scheduler::SchedulerShared;
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::sync::SharedAccess;
 
 use super::TypedSchedulerGuard;
 

@@ -8,7 +8,7 @@ use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
 };
 
-use fraktor_utils_core_rs::core::collections::{
+use fraktor_utils_core_rs::collections::{
   PriorityMessage,
   queue::{SyncQueue, backend::BinaryHeapPriorityBackend},
 };

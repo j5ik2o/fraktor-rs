@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::string::String;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::time::TimerInstant;
+use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::ClassifierKey;
 use crate::{

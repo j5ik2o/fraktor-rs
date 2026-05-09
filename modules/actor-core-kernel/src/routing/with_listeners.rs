@@ -2,7 +2,7 @@
 
 use alloc::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::actor::actor_ref::ActorRef;
 

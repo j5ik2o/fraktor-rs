@@ -5,7 +5,7 @@ use core::{
   task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::actor::context_pipe::context_pipe_waker_handle_shared::ContextPipeWakerHandleShared;
 

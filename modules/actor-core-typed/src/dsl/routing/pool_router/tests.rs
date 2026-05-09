@@ -11,7 +11,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::{pseudo_random_index, select_consistent_hash_index, select_smallest_mailbox_index};
 use crate::{
@@ -306,7 +306,7 @@ fn pool_router_with_consistent_hash_routes_to_hash_bucket() {
 
 #[test]
 fn select_consistent_hash_index_routes_same_message_to_same_routee() {
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
 
   let pid0 = system.allocate_pid();
   let pid1 = system.allocate_pid();
@@ -329,7 +329,7 @@ fn select_consistent_hash_index_routes_same_message_to_same_routee() {
 
 #[test]
 fn pool_router_with_smallest_mailbox_selects_lowest_queue() {
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
 
   let pid0 = system.allocate_pid();
   let pid1 = system.allocate_pid();
@@ -576,7 +576,7 @@ mod optimal_size_exploring_resizer_smoke {
   };
 
   use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, pattern::Clock};
-  use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+  use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
   use super::{RouteRecord, recording_routee_behavior, wait_until};
   use crate::{

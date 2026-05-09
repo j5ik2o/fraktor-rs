@@ -5,7 +5,7 @@ mod tests;
 
 use core::num::NonZeroUsize;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use super::{
   bounded_priority_message_queue_state::BoundedPriorityMessageQueueEntry,
