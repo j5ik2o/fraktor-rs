@@ -1,9 +1,7 @@
 use core::time::Duration;
 use std::{string::String, thread, time::Instant, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::{
-  StdBlocker, dispatch::dispatcher::AffinityExecutor, tick_driver::StdTickDriver,
-};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, dispatch::dispatcher::AffinityExecutor, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -18,7 +16,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 const POOL_NAME: &str = "kernel-affinity-executor";
 const WAIT_TIMEOUT: Duration = Duration::from_secs(3);

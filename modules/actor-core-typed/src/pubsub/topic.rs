@@ -9,7 +9,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::{Pid, error::ActorError},
   event::logging::LogLevel,
 };
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedLock};
 
 use super::{
   topic_command::{TopicCommand, TopicCommandKind},

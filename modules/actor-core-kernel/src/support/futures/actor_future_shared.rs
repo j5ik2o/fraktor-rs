@@ -1,6 +1,6 @@
 //! Shared wrapper for actor future.
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::ActorFuture;
 

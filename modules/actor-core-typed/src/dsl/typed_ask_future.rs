@@ -6,7 +6,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::messaging::{AnyMessage, AskResult},
   support::futures::ActorFutureShared,
 };
-use fraktor_utils_core_rs::core::sync::{SharedAccess, shared::Shared};
+use fraktor_utils_core_rs::sync::{SharedAccess, shared::Shared};
 
 use crate::dsl::TypedAskError;
 

@@ -6,7 +6,7 @@ use fraktor_actor_core_kernel_rs::actor::{
   error::ActorError,
   invoke_guard::{InvokeGuard, InvokeGuardFactory, NoopInvokeGuard, NoopInvokeGuardFactory},
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 #[test]
 fn noop_invoke_guard_wrap_passes_through_ok_and_err() {

@@ -10,7 +10,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -24,11 +24,11 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_persistence_core_rs::core::{
+use fraktor_persistence_core_rs::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use test_utils::shared_mutex;
 type SharedValue = ArcShared<SpinSyncMutex<i32>>;
 type SharedRefs = ArcShared<SpinSyncMutex<Vec<ActorRef>>>;

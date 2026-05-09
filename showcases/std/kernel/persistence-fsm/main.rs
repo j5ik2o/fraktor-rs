@@ -1,7 +1,7 @@
 use core::time::Duration;
 use std::thread;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -14,11 +14,11 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_persistence_core_rs::core::{
+use fraktor_persistence_core_rs::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentFsm, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DoorState {

@@ -5,7 +5,7 @@ mod common;
 use std::{time::Duration, vec::Vec};
 
 use common::wait_until;
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{Pid, error::ActorError, setup::ActorSystemConfig},
   system::SpinBlocker,
@@ -15,7 +15,7 @@ use fraktor_actor_core_typed_rs::{
   actor::{TypedActor, TypedActorContext, TypedChildRef},
   message_adapter::AdapterError,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 #[derive(Clone, Debug)]
 enum RootMsg {

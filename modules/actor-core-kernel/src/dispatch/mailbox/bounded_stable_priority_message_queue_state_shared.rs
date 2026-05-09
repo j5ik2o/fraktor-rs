@@ -1,6 +1,6 @@
 //! Shared wrapper for bounded stable-priority message queue state.
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::bounded_stable_priority_message_queue_state::BoundedStablePriorityMessageQueueState;
 

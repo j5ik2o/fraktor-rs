@@ -4,10 +4,10 @@ use std::sync::{Arc, Mutex};
 use fraktor_actor_core_kernel_rs::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
 };
-use fraktor_cluster_adaptor_std_rs::std::{
+use fraktor_cluster_adaptor_std_rs::{
   TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig,
 };
-use fraktor_cluster_core_rs::core::{
+use fraktor_cluster_core_rs::{
   ClusterEvent, ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
@@ -15,8 +15,8 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
 };
-use fraktor_remote_core_rs::core::{address::Address, failure_detector::PhiAccrualFailureDetector};
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 use tokio::runtime::Handle;
 
 /// Test-only adapter that bridges the remote-core detector to the

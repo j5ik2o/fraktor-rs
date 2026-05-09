@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{InvokeGuard, InvokeGuardFactory, NoopInvokeGuard};
 

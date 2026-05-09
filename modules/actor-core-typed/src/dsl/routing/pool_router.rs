@@ -7,7 +7,7 @@ use fraktor_actor_core_kernel_rs::{
   event::logging::LogLevel,
   routing::{FNV_OFFSET_BASIS, Routee, RoutingLogic, SmallestMailboxRoutingLogic, mix_hash, rendezvous_score},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use portable_atomic::{AtomicU64, Ordering};
 
 use super::resizer::Resizer;

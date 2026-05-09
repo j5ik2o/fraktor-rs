@@ -8,7 +8,7 @@ use fraktor_actor_core_kernel_rs::{
     serialization_registry::{SerializationRegistry, SerializerResolutionOrigin},
   },
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 #[test]
 fn should_register_system_message_in_builtin_defaults() {

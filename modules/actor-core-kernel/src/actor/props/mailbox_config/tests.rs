@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_core_rs::{
   collections::queue::capabilities::{QueueCapability, QueueCapabilitySet},
   sync::ArcShared,
 };

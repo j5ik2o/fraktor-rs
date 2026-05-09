@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use super::{
   enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,

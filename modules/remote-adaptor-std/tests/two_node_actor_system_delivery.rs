@@ -3,7 +3,7 @@
 use std::{format, net::TcpListener, time::Duration};
 
 use bytes::Bytes;
-use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
+use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -18,15 +18,15 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_remote_adaptor_std_rs::std::{
+use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, provider::StdRemoteActorRefProviderInstaller,
   transport::tcp::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::{
   address::{Address, UniqueAddress},
   config::RemoteConfig,
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{
   sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
   time::{Instant, sleep, timeout},

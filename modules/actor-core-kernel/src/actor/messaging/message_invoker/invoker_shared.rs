@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
+use fraktor_utils_core_rs::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
 
 use super::invoker_trait::MessageInvoker;
 

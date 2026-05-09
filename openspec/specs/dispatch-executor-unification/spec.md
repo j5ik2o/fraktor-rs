@@ -72,7 +72,7 @@ dispatcher の内部で使われる executor 抽象は、CQS 準拠の単一 tra
 - **AND** 旧 `DispatcherCore` / 旧 `DispatcherShared` / 旧 `DispatchShared` / 旧 `DispatchExecutor` / 旧 `DispatcherSettings` / 旧 `DispatcherProvider` などの型を新側から参照していない
 
 #### Scenario: std/dispatch_new は旧 std/dispatch を import しない
-- **WHEN** `modules/actor-adaptor-std/src/std/dispatch_new/` 配下のすべての `.rs` ファイルを確認する
+- **WHEN** `modules/actor-adaptor-std/src/dispatch_new/` 配下のすべての `.rs` ファイルを確認する
 - **THEN** `use crate::std::dispatch::` で始まる import 文は存在しない
 - **AND** 旧 `TokioExecutor` / 旧 `ThreadedExecutor` / 旧 `PinnedExecutor` / 旧 `StdScheduleAdapter` などの型を新側から参照していない
 

@@ -145,7 +145,7 @@ fn dispatch_drives_user_message_through_actor_invoker() {
 
 #[test]
 fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
-  use fraktor_utils_core_rs::core::sync::ArcShared;
+  use fraktor_utils_core_rs::sync::ArcShared;
 
   use crate::{
     dispatch::dispatcher::{DefaultDispatcherFactory, MessageDispatcherFactory},

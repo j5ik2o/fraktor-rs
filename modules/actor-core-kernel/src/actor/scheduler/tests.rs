@@ -13,7 +13,7 @@ use core::{
 };
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_core_rs::{
   sync::{ArcShared, SharedAccess, SharedRwLock, SpinSyncMutex, SpinSyncRwLock},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
   timing::delay::{DelayFuture, DelayProvider},

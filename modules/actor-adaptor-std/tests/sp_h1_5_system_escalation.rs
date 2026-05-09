@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{actor::install_panic_invoke_guard, tick_driver::TestTickDriver};
+use fraktor_actor_adaptor_std_rs::{actor::install_panic_invoke_guard, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, ChildRef,
@@ -19,7 +19,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 struct Crash;

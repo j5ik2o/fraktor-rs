@@ -5,7 +5,7 @@ mod common;
 use std::vec::Vec;
 
 use common::wait_until;
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, ChildRef, Pid,
@@ -18,7 +18,7 @@ use fraktor_actor_core_kernel_rs::{
   support::futures::ActorFutureShared,
   system::{ActorSystem, SpinBlocker},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 struct Start;
 struct TellValue(u32);

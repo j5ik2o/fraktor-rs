@@ -7,7 +7,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{graceful_stop, graceful_stop_with_message, retry};
 use crate::{

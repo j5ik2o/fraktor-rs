@@ -1,13 +1,13 @@
 ## Phase 1: 準備と境界確認
 
-- [ ] 1.1 `modules/persistence-core/src/core` の existing classic persistence flow (`PersistentActor`, `PersistenceContext`, `PersistentActorAdapter`) を再確認する
+- [ ] 1.1 `modules/persistence-core/src` の existing classic persistence flow (`PersistentActor`, `PersistenceContext`, `PersistentActorAdapter`) を再確認する
 - [ ] 1.2 `modules/actor-core/src/core/typed` の `Behavior`, `TypedActorContext`, `message_adapter`, `stash`, `unstash_all`, `TypedProps` の制約を確認する
 - [ ] 1.3 `pekko-persistence-effector` の `PersistenceEffector`, `PersistenceEffectorConfig`, `PersistenceMode`, `SnapshotCriteria`, `RetentionCriteria` を参照し、Rust に移植する概念と移植しない概念を確定する
 - [ ] 1.4 `docs/gap-analysis/persistence-gap-analysis.md` の typed write-side gap を読み、実装完了後に更新する箇所を特定する
 
 ## Phase 2: public typed module skeleton
 
-- [ ] 2.1 `modules/persistence-core/src/core/typed.rs` を追加し、`core.rs` から公開する
+- [ ] 2.1 `modules/persistence-core/src/typed.rs` を追加し、`core.rs` から公開する
 - [ ] 2.2 `PersistenceId` を追加する (`of_unique_id`, `of_entity_id`, `as_str`)
 - [ ] 2.3 `PersistenceMode` を追加する (`Persisted`, `Ephemeral`, `Deferred`)
 - [ ] 2.4 `BackoffConfig` を追加する

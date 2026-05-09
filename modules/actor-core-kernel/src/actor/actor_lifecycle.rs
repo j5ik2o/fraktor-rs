@@ -110,7 +110,7 @@ pub trait Actor: Send {
   ///     SupervisorStrategyKind,
   ///   },
   /// };
-  /// use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
+  /// use fraktor_utils_core_rs::sync::SpinSyncMutex;
   ///
   /// struct ResilientWorker {
   ///   consecutive_errors: u32,

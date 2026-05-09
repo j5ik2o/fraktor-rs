@@ -15,35 +15,35 @@ use std::{
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use fraktor_actor_adaptor_std_rs::std::{
+use fraktor_actor_adaptor_std_rs::{
   dispatch::dispatcher::{AffinityExecutorFactory, PinnedExecutorFactory},
   system::std_actor_system_config,
   tick_driver::TestTickDriver,
 };
 use fraktor_actor_core_kernel_rs::dispatch::dispatcher::ExecutorFactory;
 
-const AFFINITY_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::AffinityExecutor;
+const AFFINITY_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::AffinityExecutor;
 
 fn main() {
   let _ = core::mem::size_of::<AffinityExecutor>();
 }
 "#;
 
-const AFFINITY_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::AffinityExecutorFactory;
+const AFFINITY_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::AffinityExecutorFactory;
 
 fn main() {
   let _ = core::mem::size_of::<AffinityExecutorFactory>();
 }
 "#;
 
-const PINNED_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::PinnedExecutor;
+const PINNED_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::PinnedExecutor;
 
 fn main() {
   let _ = core::mem::size_of::<PinnedExecutor>();
 }
 "#;
 
-const PINNED_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::PinnedExecutorFactory;
+const PINNED_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::PinnedExecutorFactory;
 
 fn main() {
   let _ = core::mem::size_of::<PinnedExecutorFactory>();

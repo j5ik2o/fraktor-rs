@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{
   actor::{

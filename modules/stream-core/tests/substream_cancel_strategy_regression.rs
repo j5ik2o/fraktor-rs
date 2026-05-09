@@ -1,5 +1,5 @@
 mod support;
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   SubstreamCancelStrategy,
   dsl::{Flow, Source},
   materialization::StreamNotUsed,

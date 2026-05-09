@@ -8,7 +8,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig,
@@ -16,7 +16,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   dsl::{CoupledTerminationFlow, Flow, Sink, Source},
   materialization::{
     ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepLeft, KeepRight, StreamFuture, StreamNotUsed,

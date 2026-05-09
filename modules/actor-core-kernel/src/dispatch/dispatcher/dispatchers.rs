@@ -29,7 +29,7 @@ use alloc::{borrow::ToOwned, boxed::Box, string::String};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{

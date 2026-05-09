@@ -1,20 +1,20 @@
 //! Public surface checks for the std remote adaptor.
 
-use fraktor_remote_adaptor_std_rs::std::{
+use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, provider::StdRemoteActorRefProviderInstaller,
   transport::tcp::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::{
   address::{Address, UniqueAddress},
   config::RemoteConfig,
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
-const STD_RS: &str = include_str!("../src/std.rs");
-const PROVIDER_RS: &str = include_str!("../src/std/provider.rs");
-const PROVIDER_DISPATCH_RS: &str = include_str!("../src/std/provider/dispatch.rs");
-const TCP_RS: &str = include_str!("../src/std/transport/tcp.rs");
-const TCP_BASE_RS: &str = include_str!("../src/std/transport/tcp/base.rs");
+const LIB_RS: &str = include_str!("../src/lib.rs");
+const PROVIDER_RS: &str = include_str!("../src/provider.rs");
+const PROVIDER_DISPATCH_RS: &str = include_str!("../src/provider/dispatch.rs");
+const TCP_RS: &str = include_str!("../src/transport/tcp.rs");
+const TCP_BASE_RS: &str = include_str!("../src/transport/tcp/base.rs");
 
 fn impl_block_contains(source: &str, impl_header: &str, needle: &str) -> bool {
   let Some((_, after_header)) = source.split_once(impl_header) else {
@@ -35,9 +35,9 @@ fn user_facing_adapter_boundary_imports_compile() {
 
 #[test]
 fn runtime_internal_modules_are_not_publicly_exported() {
-  assert!(!STD_RS.contains("pub mod association;"));
-  assert!(!STD_RS.contains("pub mod watcher_actor;"));
-  assert!(!STD_RS.contains("pub use tokio_remote_event_receiver"));
+  assert!(!LIB_RS.contains("pub mod association;"));
+  assert!(!LIB_RS.contains("pub mod watcher_actor;"));
+  assert!(!LIB_RS.contains("pub use tokio_remote_event_receiver"));
   assert!(!TCP_RS.contains("pub use client::TcpClient;"));
   assert!(!TCP_RS.contains("pub use server::TcpServer;"));
   assert!(!TCP_RS.contains("pub use frame_codec::WireFrameCodec;"));

@@ -54,16 +54,124 @@
 //!
 //! This crate provides the core persistence abstractions for event sourcing:
 //!
-//! - [`Journal`](core::Journal) - Event journal trait with GATs pattern
-//! - [`SnapshotStore`](core::SnapshotStore) - Snapshot store trait with GATs pattern
-//! - [`PersistentActor`](core::PersistentActor) - Persistent actor trait (Pekko-compatible)
-//! - [`PersistentRepr`](core::PersistentRepr) - Persistent event representation
-//! - [`InMemoryJournal`](core::InMemoryJournal) - In-memory journal for testing
-//! - [`InMemorySnapshotStore`](core::InMemorySnapshotStore) - In-memory snapshot store for testing
-//! - [`PersistenceExtension`](core::PersistenceExtension) - Extension for ActorSystem integration
+//! - [`Journal`] - Event journal trait with GATs pattern
+//! - [`SnapshotStore`] - Snapshot store trait with GATs pattern
+//! - [`PersistentActor`] - Persistent actor trait (Pekko-compatible)
+//! - [`PersistentRepr`] - Persistent event representation
+//! - [`InMemoryJournal`] - In-memory journal for testing
+//! - [`InMemorySnapshotStore`] - In-memory snapshot store for testing
+//! - [`PersistenceExtension`] - Extension for ActorSystem integration
 //!
-//! Use `fraktor_persistence_core_rs::core` for convenient imports.
+//! Use `fraktor_persistence_core_rs` for convenient imports.
 
 extern crate alloc;
 
-pub mod core;
+mod at_least_once_delivery;
+mod at_least_once_delivery_config;
+mod at_least_once_delivery_snapshot;
+mod durable_state_error;
+mod durable_state_store;
+mod durable_state_store_provider;
+mod durable_state_store_registry;
+mod durable_state_update_store;
+mod eventsourced;
+
+mod event_adapters;
+mod event_seq;
+mod identity_event_adapter;
+mod in_memory_journal;
+mod in_memory_snapshot_store;
+mod journal;
+mod journal_actor;
+mod journal_actor_config;
+mod journal_error;
+mod journal_message;
+mod journal_response;
+mod journal_response_action;
+mod pending_handler_invocation;
+mod persistence_context;
+mod persistence_error;
+mod persistence_extension;
+mod persistence_extension_id;
+mod persistence_extension_installer;
+mod persistence_extension_shared;
+mod persistence_plugin_proxy;
+mod persistent_actor;
+mod persistent_actor_adapter;
+mod persistent_actor_state;
+mod persistent_envelope;
+mod persistent_fsm;
+mod persistent_props;
+mod persistent_repr;
+mod read_event_adapter;
+mod recovery;
+mod recovery_timed_out;
+mod redelivery_tick;
+mod snapshot;
+mod snapshot_actor;
+mod snapshot_actor_config;
+mod snapshot_error;
+mod snapshot_message;
+mod snapshot_metadata;
+mod snapshot_response;
+mod snapshot_response_action;
+mod snapshot_selection_criteria;
+mod snapshot_store;
+mod stash_overflow_strategy;
+mod tagged;
+mod unconfirmed_delivery;
+mod unconfirmed_warning;
+mod write_event_adapter;
+
+pub use at_least_once_delivery::AtLeastOnceDelivery;
+pub use at_least_once_delivery_config::AtLeastOnceDeliveryConfig;
+pub use at_least_once_delivery_snapshot::AtLeastOnceDeliverySnapshot;
+pub use durable_state_error::DurableStateError;
+pub use durable_state_store::DurableStateStore;
+pub use durable_state_store_provider::DurableStateStoreProvider;
+pub use durable_state_store_registry::DurableStateStoreRegistry;
+pub use durable_state_update_store::DurableStateUpdateStore;
+pub use event_adapters::EventAdapters;
+pub use event_seq::EventSeq;
+pub use eventsourced::Eventsourced;
+pub use identity_event_adapter::IdentityEventAdapter;
+pub use in_memory_journal::InMemoryJournal;
+pub use in_memory_snapshot_store::InMemorySnapshotStore;
+pub use journal::Journal;
+pub use journal_actor::JournalActor;
+pub use journal_actor_config::JournalActorConfig;
+pub use journal_error::JournalError;
+pub use journal_message::JournalMessage;
+pub use journal_response::JournalResponse;
+pub use pending_handler_invocation::PendingHandlerInvocation;
+pub use persistence_context::PersistenceContext;
+pub use persistence_error::PersistenceError;
+pub use persistence_extension::PersistenceExtension;
+pub use persistence_extension_id::PersistenceExtensionId;
+pub use persistence_extension_installer::PersistenceExtensionInstaller;
+pub use persistence_extension_shared::PersistenceExtensionShared;
+pub use persistence_plugin_proxy::PersistencePluginProxy;
+pub use persistent_actor::PersistentActor;
+pub use persistent_actor_state::PersistentActorState;
+pub use persistent_envelope::PersistentEnvelope;
+pub use persistent_fsm::PersistentFsm;
+pub use persistent_props::{persistent_props, spawn_persistent};
+pub use persistent_repr::PersistentRepr;
+pub use read_event_adapter::ReadEventAdapter;
+pub use recovery::Recovery;
+pub use recovery_timed_out::RecoveryTimedOut;
+pub use redelivery_tick::RedeliveryTick;
+pub use snapshot::Snapshot;
+pub use snapshot_actor::SnapshotActor;
+pub use snapshot_actor_config::SnapshotActorConfig;
+pub use snapshot_error::SnapshotError;
+pub use snapshot_message::SnapshotMessage;
+pub use snapshot_metadata::SnapshotMetadata;
+pub use snapshot_response::SnapshotResponse;
+pub use snapshot_selection_criteria::SnapshotSelectionCriteria;
+pub use snapshot_store::SnapshotStore;
+pub use stash_overflow_strategy::StashOverflowStrategy;
+pub use tagged::Tagged;
+pub use unconfirmed_delivery::UnconfirmedDelivery;
+pub use unconfirmed_warning::UnconfirmedWarning;
+pub use write_event_adapter::WriteEventAdapter;

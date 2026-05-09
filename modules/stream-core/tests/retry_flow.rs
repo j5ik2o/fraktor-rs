@@ -4,7 +4,7 @@ use std::sync::{
   atomic::{AtomicUsize, Ordering},
 };
 
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   dsl::{Flow, FlowWithContext, RetryFlow, Source},
   materialization::StreamNotUsed,
 };

@@ -6,7 +6,7 @@ mod test_tick_driver;
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_core_rs::{
   sync::{ArcShared, SpinSyncMutex},
   time::TimerInstant,
 };

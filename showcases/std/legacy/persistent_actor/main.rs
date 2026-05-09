@@ -6,7 +6,7 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -19,7 +19,7 @@ use fraktor_actor_core_kernel_rs::{
   event::logging::LogLevel,
   system::ActorSystem,
 };
-use fraktor_persistence_core_rs::core::{
+use fraktor_persistence_core_rs::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };

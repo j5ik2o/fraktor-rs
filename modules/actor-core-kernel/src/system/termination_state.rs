@@ -6,7 +6,7 @@ use core::{
   task::Waker,
 };
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 /// Tracks actor system termination as the single source of truth.
 ///

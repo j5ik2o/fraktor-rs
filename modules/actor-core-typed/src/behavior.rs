@@ -4,7 +4,7 @@
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::{error::ActorError, supervision::SupervisorStrategyConfig};
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{actor::TypedActorContext, message_and_signals::BehaviorSignal};
 

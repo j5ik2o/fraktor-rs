@@ -1,5 +1,5 @@
 use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError};
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{
   ExtensibleBehavior,
@@ -89,7 +89,7 @@ fn from_abstract_creates_behavior_that_handles_messages() {
   let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -114,7 +114,7 @@ fn from_abstract_handles_multiple_messages_with_state() {
   let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -134,7 +134,7 @@ fn from_abstract_handles_multiple_messages_with_state() {
 #[test]
 fn from_abstract_supports_behavior_transition_to_stopped() {
   // on_message が Stopped を返すとビヘイビア遷移が正しく反映されることを確認
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -155,7 +155,7 @@ fn from_abstract_delegates_signals_to_on_signal() {
   let signal_received = ArcShared::new(SpinSyncMutex::new(false));
   let signal_clone = signal_received.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -175,7 +175,7 @@ fn from_abstract_default_on_signal_returns_unhandled() {
   let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -198,7 +198,7 @@ fn from_abstract_factory_receives_context() {
   let captured_pid = ArcShared::new(SpinSyncMutex::new(0u64));
   let captured_pid_clone = captured_pid.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -220,7 +220,7 @@ fn from_abstract_clone_recreates_behavior_on_started() {
   let factory_calls = ArcShared::new(SpinSyncMutex::new(0u32));
   let factory_calls_clone = factory_calls.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -247,7 +247,7 @@ fn from_extensible_creates_behavior_that_handles_messages() {
   let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -271,7 +271,7 @@ fn from_extensible_delegates_signals_to_receive_signal() {
   let signal_received = ArcShared::new(SpinSyncMutex::new(false));
   let signal_clone = signal_received.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -291,7 +291,7 @@ fn from_extensible_default_receive_signal_returns_unhandled() {
   let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -316,7 +316,7 @@ fn from_extensible_coexists_with_from_abstract() {
   let extensible_count_clone = extensible_count.clone();
   let abstract_count_clone = abstract_count.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);

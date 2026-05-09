@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::collections::queue::QueueError;
+use fraktor_utils_core_rs::collections::queue::QueueError;
 
 use super::{
   QueueStateHandle, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope,

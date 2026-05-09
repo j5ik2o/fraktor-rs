@@ -28,7 +28,7 @@ TBD - created by archiving change step03-move-test-tick-driver-to-adaptor-std. U
 #### Scenario: TestTickDriver の公開定義は actor-adaptor-std 側にのみ存在する
 
 - **WHEN** workspace の `modules/actor-*/src/**/*.rs` で `pub struct TestTickDriver` の定義を検査する
-- **THEN** `modules/actor-adaptor-std/src/std/tick_driver/test_tick_driver.rs` にのみ存在する
+- **THEN** `modules/actor-adaptor-std/src/tick_driver/test_tick_driver.rs` にのみ存在する
 - **AND** `modules/actor-core/src/` 配下に `pub struct TestTickDriver`（公開可視性）の定義は存在しない
 - **AND** `modules/actor-core/src/core/kernel/actor/scheduler/tick_driver.rs` は `TestTickDriver` を再エクスポートしない（公開も pub(crate) 含めて）
 
@@ -39,7 +39,7 @@ TBD - created by archiving change step03-move-test-tick-driver-to-adaptor-std. U
 - **WHEN** `modules/actor-core/src/core/kernel/system/base.rs` の `impl ActorSystem` ブロックを検査する
 - **THEN** `pub fn new_empty(...)` および `pub fn new_empty_with<F>(...)` の公開メソッドは存在しない
 - **AND** `#[cfg(any(test, feature = "test-support"))]` ゲート（公開 feature 経由）内で `TestTickDriver::default()` を参照する公開メソッドは存在しない
-- **AND** 同等の公開機能は `fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system` / `new_empty_actor_system_with<F>` 自由関数として提供される
+- **AND** 同等の公開機能は `fraktor_actor_adaptor_std_rs::system::new_empty_actor_system` / `new_empty_actor_system_with<F>` 自由関数として提供される
 
 **dev-cycle workaround 例外**: `modules/actor-core/src/core/kernel/system/base/tests.rs` 内の `impl ActorSystem` ブロックに `pub(crate) fn new_empty()` / `pub(crate) fn new_empty_with<F>()` が存在するが、これは test-only ファイル (`tests.rs` で `#![cfg(test)]` 配下) に置かれた crate 内部限定 API であり、公開 API にも通常ビルドにも現れない。`TypedActorSystem<M>` についても同様に `modules/actor-core/src/core/typed/system/tests.rs` 内に `pub(crate) fn new_empty()` が存在する。本 requirement の許容例外として明示的にスコープ外とする。
 
@@ -54,7 +54,7 @@ TBD - created by archiving change step03-move-test-tick-driver-to-adaptor-std. U
 - **WHEN** `fraktor-actor-*-rs` workspace 内の crate のテストコードが `TestTickDriver` を利用する。スコープは以下:
   - 下流 crate (`cluster-*`、`stream-*`、`persistence-*`、`actor-adaptor-std` 自身) の `tests/*.rs` および `src/**/*tests.rs`
   - `actor-core` の **integration test** (`modules/actor-core/tests/*.rs`)
-- **THEN** `use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;` 形式で import する
+- **THEN** `use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;` 形式で import する
 - **AND** `use fraktor_actor_core_rs::...::TestTickDriver;` 形式の import は存在しない
 
 **dev-cycle workaround 例外**: `actor-core` の inline test (`modules/actor-core/src/**/tests.rs`) は同一クレート二バージョン問題を避けるため `crate::core::kernel::actor::scheduler::tick_driver::tests::TestTickDriver` (`pub(crate)` 内部版) を利用する。これは本 Scenario のスコープ外。

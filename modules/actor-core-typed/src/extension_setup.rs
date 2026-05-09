@@ -9,7 +9,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::extension::{ExtensionId, ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 type ExtensionFactory<I> = dyn Fn(&ActorSystem) -> <I as ExtensionId>::Ext + Send + Sync + 'static;
 

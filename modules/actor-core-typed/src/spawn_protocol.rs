@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, string::String};
 
 use fraktor_actor_core_kernel_rs::{actor::error::ActorError, event::logging::LogLevel};
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{TypedActorRef, actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, props::TypedProps};
 

@@ -33,13 +33,13 @@
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 /// Shared monotonic clock callback used by [`Mailbox`](super::Mailbox) to evaluate
 /// the throughput deadline on each loop iteration.
 ///
 /// See the module-level documentation for the full contract. Production code
 /// constructs instances via
-/// [`ArcShared::from_boxed`](fraktor_utils_core_rs::core::sync::ArcShared::from_boxed)
+/// [`ArcShared::from_boxed`](fraktor_utils_core_rs::sync::ArcShared::from_boxed)
 /// with a boxed closure: `ArcShared::from_boxed(Box::new(|| ...))`.
 pub type MailboxClock = ArcShared<dyn Fn() -> Duration + Send + Sync>;

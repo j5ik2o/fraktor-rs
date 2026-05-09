@@ -7,7 +7,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::num::NonZeroUsize;
 
-use fraktor_utils_core_rs::core::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
+use fraktor_utils_core_rs::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
 use super::{MailboxPolicy, MailboxType, MessageQueue};
 use crate::actor::props::{MailboxConfigError, MailboxRequirement};

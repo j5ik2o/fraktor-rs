@@ -3,7 +3,7 @@
 //! Hides the `SharedRwLock<...>` internals and exposes only
 //! the `with_read` / `with_write` closure API.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock};
+use fraktor_utils_core_rs::sync::{SharedAccess, SharedRwLock};
 
 use super::Scheduler;
 
@@ -15,7 +15,7 @@ use super::Scheduler;
 ///
 /// ```compile_fail
 /// use fraktor_actor_core_kernel_rs::actor::scheduler::{Scheduler, SchedulerConfig, SchedulerShared};
-/// use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedRwLock};
+/// use fraktor_utils_core_rs::sync::{DefaultRwLock, SharedRwLock};
 ///
 /// let scheduler = Scheduler::new(SchedulerConfig::default());
 /// let _ = SchedulerShared::new(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(scheduler));

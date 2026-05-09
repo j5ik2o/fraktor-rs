@@ -1,4 +1,4 @@
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   StreamError,
   dsl::{Sink, Source},
   materialization::{KeepLeft, KeepRight, StreamDone, StreamFuture, StreamNotUsed},

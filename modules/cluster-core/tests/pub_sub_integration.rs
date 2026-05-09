@@ -12,7 +12,7 @@ use fraktor_actor_core_kernel_rs::{
     builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistry,
   },
 };
-use fraktor_cluster_core_rs::core::{
+use fraktor_cluster_core_rs::{
   BlockListProvider, ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
   cluster_provider::NoopClusterProvider,
   downing_provider::NoopDowningProvider,
@@ -26,7 +26,7 @@ use fraktor_cluster_core_rs::core::{
     cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
   },
 };
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_core_rs::{
   sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };

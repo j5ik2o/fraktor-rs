@@ -18,7 +18,7 @@ use core::{
 };
 use std::thread::{self, Builder, JoinHandle};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::super::{
   SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind, TickDriverProvision, TickDriverStopper,

@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -16,7 +16,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source, StreamRefs},
   materialization::{ActorMaterializer, ActorMaterializerConfig, KeepLeft, KeepRight, StreamNotUsed},
@@ -26,7 +26,7 @@ use fraktor_stream_core_rs::core::{
     SubSinkInletHandler, SubSourceOutlet, SubSourceOutletHandler,
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 struct GuardianActor;
 

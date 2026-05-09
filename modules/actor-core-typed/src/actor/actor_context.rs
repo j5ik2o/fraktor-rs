@@ -18,7 +18,7 @@ use fraktor_actor_core_kernel_rs::{
   pattern::install_ask_timeout,
   support::futures::ActorFutureListener,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, shared::Shared};
 
 use crate::{
   TypedActorRef, TypedActorSystem,

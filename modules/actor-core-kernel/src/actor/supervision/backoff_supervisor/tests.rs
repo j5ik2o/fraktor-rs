@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 use std::thread::yield_now;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{BackoffConfig, BackoffSupervisorActor};
 use crate::{

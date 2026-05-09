@@ -2,7 +2,7 @@
 
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::runnable::SchedulerRunnable;
 use crate::actor::{actor_ref::ActorRef, messaging::AnyMessage};

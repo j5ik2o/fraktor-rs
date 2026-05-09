@@ -1,6 +1,6 @@
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::sync::SharedAccess;
 
 use crate::{
   actor::{

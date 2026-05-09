@@ -19,7 +19,7 @@ use core::any::TypeId;
 pub use bool_serializer::BoolSerializer;
 pub use byte_string_serializer::ByteStringSerializer;
 pub use bytes_serializer::BytesSerializer;
-use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
+use fraktor_utils_core_rs::sync::{ArcShared, WeakShared};
 pub use i32_serializer::I32Serializer;
 pub use message_container_serializer::MessageContainerSerializer;
 pub use misc_message_serializer::MiscMessageSerializer;

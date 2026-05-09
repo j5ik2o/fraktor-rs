@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, string::ToString};
 use core::any::Any;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{ActorSystem, ActorSystemBuildError, RegisterExtraTopLevelError, remote::RemoteWatchHook};
 use crate::{

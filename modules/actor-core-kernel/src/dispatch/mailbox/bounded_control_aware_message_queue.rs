@@ -6,7 +6,7 @@ mod tests;
 use alloc::collections::VecDeque;
 use core::{cmp::min, num::NonZeroUsize};
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
   enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,

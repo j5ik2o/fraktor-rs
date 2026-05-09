@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::event::stream::{EventStreamEvent, EventStreamSubscriber};
 

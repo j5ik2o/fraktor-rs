@@ -1,7 +1,7 @@
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::super::{
   broadcast::Broadcast, consistent_hashable_envelope::ConsistentHashableEnvelope, routee::Routee, router::Router,

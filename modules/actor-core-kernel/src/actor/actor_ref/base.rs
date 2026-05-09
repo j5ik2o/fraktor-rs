@@ -10,7 +10,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::sync::SharedAccess;
 use portable_atomic::{AtomicU64, Ordering};
 
 use crate::{

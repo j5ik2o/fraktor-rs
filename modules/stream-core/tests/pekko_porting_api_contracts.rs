@@ -1,5 +1,5 @@
 mod support;
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_rs::{
   dsl::{Flow, Sink, Source},
   materialization::{KeepBoth, KeepLeft, KeepRight, StreamNotUsed},
   shape::{FanInShape3, FanInShape4, FanInShape5, FanInShape8, Inlet, Outlet, UniformFanOutShape},

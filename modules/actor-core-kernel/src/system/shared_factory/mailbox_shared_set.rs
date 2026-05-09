@@ -1,6 +1,6 @@
 //! Mailbox lock bundle for shared mailbox state.
 
-use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedLock};
 
 use crate::dispatch::mailbox::MailboxClock;
 

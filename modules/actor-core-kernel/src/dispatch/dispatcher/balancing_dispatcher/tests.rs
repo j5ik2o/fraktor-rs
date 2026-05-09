@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::BalancingDispatcher;
 use crate::{

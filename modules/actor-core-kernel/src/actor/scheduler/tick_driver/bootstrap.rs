@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::{sync::SharedAccess, time::MonotonicClock};
+use fraktor_utils_core_rs::{sync::SharedAccess, time::MonotonicClock};
 
 use super::{
   SchedulerTickExecutor, TickDriver, TickDriverBundle, TickDriverError, TickDriverMetadata, TickExecutorSignal,

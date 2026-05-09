@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::ExtensionInstaller;
 use crate::system::{ActorSystem, ActorSystemBuildError};

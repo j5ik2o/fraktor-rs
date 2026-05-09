@@ -12,7 +12,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
@@ -26,7 +26,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::SpinBlocker,
 };
-use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
+use fraktor_utils_core_rs::sync::SpinSyncMutex;
 
 use crate::{
   Behavior, DispatcherSelector, ExtensibleBehavior, TypedActorRef,

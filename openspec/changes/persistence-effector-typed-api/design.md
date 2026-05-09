@@ -49,7 +49,7 @@ fraktor-rs でもこの方向を採用する。ただし Rust では Scala の `
 
 ### Decision 1: typed persistence の推奨 API は `PersistenceEffector` にする
 
-**選択:** `modules/persistence-core/src/core/typed/` に `PersistenceEffector<S, E, M>` を追加する。
+**選択:** `modules/persistence-core/src/typed/` に `PersistenceEffector<S, E, M>` を追加する。
 
 想定 public API:
 
@@ -237,18 +237,18 @@ pub struct RetentionCriteria {
 想定配置:
 
 ```text
-modules/persistence-core/src/core/typed.rs
-modules/persistence-core/src/core/typed/persistence_id.rs
-modules/persistence-core/src/core/typed/persistence_mode.rs
-modules/persistence-core/src/core/typed/persistence_effector.rs
-modules/persistence-core/src/core/typed/persistence_effector_config.rs
-modules/persistence-core/src/core/typed/persistence_effector_message_converter.rs
-modules/persistence-core/src/core/typed/snapshot_criteria.rs
-modules/persistence-core/src/core/typed/retention_criteria.rs
-modules/persistence-core/src/core/typed/backoff_config.rs
-modules/persistence-core/src/core/typed/internal/persistence_store_actor.rs
-modules/persistence-core/src/core/typed/internal/persistence_store_command.rs
-modules/persistence-core/src/core/typed/internal/persistence_store_reply.rs
+modules/persistence-core/src/typed.rs
+modules/persistence-core/src/typed/persistence_id.rs
+modules/persistence-core/src/typed/persistence_mode.rs
+modules/persistence-core/src/typed/persistence_effector.rs
+modules/persistence-core/src/typed/persistence_effector_config.rs
+modules/persistence-core/src/typed/persistence_effector_message_converter.rs
+modules/persistence-core/src/typed/snapshot_criteria.rs
+modules/persistence-core/src/typed/retention_criteria.rs
+modules/persistence-core/src/typed/backoff_config.rs
+modules/persistence-core/src/typed/internal/persistence_store_actor.rs
+modules/persistence-core/src/typed/internal/persistence_store_command.rs
+modules/persistence-core/src/typed/internal/persistence_store_reply.rs
 ```
 
 **Rationale:**

@@ -6,7 +6,7 @@ use core::{
 };
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
 
 /// Registry of actor reference providers by type.

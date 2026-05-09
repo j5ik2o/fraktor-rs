@@ -2,7 +2,7 @@
 //!
 //! This module contains message queue implementations and configurations.
 
-use fraktor_utils_core_rs::core::collections::queue::{QueueError, SyncQueueShared, backend::VecDequeBackend};
+use fraktor_utils_core_rs::collections::queue::{QueueError, SyncQueueShared, backend::VecDequeBackend};
 
 use crate::actor::{error::SendError, messaging::AnyMessage};
 

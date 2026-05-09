@@ -9,7 +9,7 @@ use core::{
   convert::TryInto,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
+use fraktor_utils_core_rs::sync::{ArcShared, WeakShared};
 
 use crate::{
   actor::{

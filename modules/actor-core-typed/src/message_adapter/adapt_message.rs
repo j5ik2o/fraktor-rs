@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::message_adapter::{AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload};
 

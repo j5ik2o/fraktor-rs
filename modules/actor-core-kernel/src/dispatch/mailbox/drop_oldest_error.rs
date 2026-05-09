@@ -1,6 +1,6 @@
 //! Error returned by [`QueueStateHandle::drop_oldest_and_offer`] when the offer step fails.
 
-use fraktor_utils_core_rs::core::collections::queue::QueueError;
+use fraktor_utils_core_rs::collections::queue::QueueError;
 
 /// Error raised when `drop_oldest_and_offer` fails during the final `offer` step.
 ///

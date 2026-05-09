@@ -1,6 +1,6 @@
 //! Weak reference wrapper for system state.
 
-use fraktor_utils_core_rs::core::sync::WeakSharedRwLock;
+use fraktor_utils_core_rs::sync::WeakSharedRwLock;
 
 use super::{system_state::SystemState, system_state_shared::SystemStateShared};
 

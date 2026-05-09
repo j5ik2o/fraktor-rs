@@ -7,5 +7,11 @@
 
 extern crate alloc;
 
-/// Standard library and tokio-backed remote adapters.
-pub mod std;
+#[cfg(test)]
+mod tests;
+
+mod association;
+pub mod extension_installer;
+pub mod provider;
+mod tokio_remote_event_receiver;
+pub mod transport;
