@@ -1,9 +1,7 @@
 use core::time::Duration;
 use std::{string::String, thread, time::Instant, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::{
-  StdBlocker, dispatch::dispatcher::AffinityExecutor, tick_driver::StdTickDriver,
-};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, dispatch::dispatcher::AffinityExecutor, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
