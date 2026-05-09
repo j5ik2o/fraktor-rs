@@ -156,113 +156,173 @@ impl MailboxState {
 | 項目 | `SharedLock<T>` バック | `AtomicU*` バック |
 |---|---|---|
 | 命名 | `*Shared` | `*Shared` |
-| 内側の純粋ロジック | `pub struct Xyz`（`&mut self`、CQS 純粋） | `pub struct XyzInner`（`&mut self`、CQS 純粋） |
-| 外側の共有ラッパー | `with_read` / `with_write` クロージャ API | `try_*` クロージャ API |
+| 内側の型 | `pub struct Xyz`（`&mut self` メソッドを持つ可変な状態オブジェクト） | `pub enum Xyz`（不変な値型 + 純粋遷移関数 `self -> Option<Self>`） |
+| 外側が内側を含む形 | `inner: SharedLock<Xyz>`（`Xyz` を構造的に保持） | `raw: AtomicU8`（`Xyz as u8` を保持。遷移関数は `Xyz` から借りる） |
+| 外側のロジック呼び出し | `inner.with_write(\|x\| x.method())` | `raw.fetch_update(\|v\| Xyz::from_u8(v)?.method().map(\|s\| s as u8))` |
 | 内部可変性の根拠 | Shared ラッパーパターン | **同左**（手段が CAS に変わるだけ） |
 
-### 正しい2層構造
+### Shared ラッパーの本質: 「内側を含む」関係
+
+Shared ラッパーパターンの本質は **「外側が内側を構造的に含み、内側のロジックを共有経由で呼び出せるようにする」** ことである。`SharedLock<T>` 版では：
+
+```rust
+pub struct Xyz { /* state */ }
+impl Xyz { pub fn do_something(&mut self) { /* logic */ } }
+
+pub struct XyzShared {
+    inner: SharedLock<Xyz>,                // ← Xyz を「含んでいる」
+}
+impl XyzShared {
+    pub fn do_something(&self) {
+        self.inner.with_write(|x| x.do_something());  // ← 内側のロジックを呼ぶ
+    }
+}
+```
+
+ここで重要なのは：
+- `XyzShared` は `Xyz` を **構造的に含んでいる**（フィールドとして保持）
+- 遷移ロジックは `Xyz` 側の単一の真実
+- `XyzShared` はそれを共有経由で実行可能にする外殻にすぎない
+- **`Xyz` を消したら `XyzShared` は意味を失う**（ロジックがなくなる）
+
+この関係を atomic-backed に持ち込むには、内側を **pure value type + pure transition functions** にして、Shared 側が `fetch_update` でその関数を CAS 経由で適用する設計にする。
+
+### 正しい構造: pure value + atomic Shared wrapper
 
 `MailboxState` を例に：
 
 ```rust
-// === 1. 純粋な状態機械ロジック ===
-// &mut self を取り、CQS 純粋。テスト時はこちらを直接使える。
-pub struct MailboxStateInner {
-    value: u8,
+use core::sync::atomic::Ordering::{AcqRel, Acquire};
+use portable_atomic::AtomicU8;
+
+// === 内側: 純粋な値型 + 純粋な遷移関数 ===
+// 状態セマンティクスの単一の真実。並行性ゼロでテスト可能。
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum MailboxState {
+    Idle      = 0,
+    Scheduled = 1,
+    Running   = 2,
+    Closed    = 3,
 }
 
-impl MailboxStateInner {
-    pub fn try_schedule(&mut self) -> bool {
-        if self.value == IDLE {
-            self.value = SCHEDULED;
-            true
-        } else {
-            false
+impl MailboxState {
+    fn from_u8(v: u8) -> Option<Self> {
+        match v {
+            0 => Some(Self::Idle),
+            1 => Some(Self::Scheduled),
+            2 => Some(Self::Running),
+            3 => Some(Self::Closed),
+            _ => None,
         }
     }
-    pub fn try_acquire(&mut self) -> bool { /* SCHEDULED→RUNNING */ }
-    pub fn release(&mut self, more_messages: bool) { /* RUNNING→IDLE/SCHEDULED */ }
+
+    /// 状態遷移は self -> Option<Self> の純粋関数。
+    /// 不変な値変換なので CQS の対象外（&mut self も &self もない）。
+    pub fn schedule(self) -> Option<Self> {
+        match self { Self::Idle => Some(Self::Scheduled), _ => None }
+    }
+    pub fn acquire(self) -> Option<Self> {
+        match self { Self::Scheduled => Some(Self::Running), _ => None }
+    }
+    pub fn release(self, more_messages: bool) -> Option<Self> {
+        match self {
+            Self::Running => Some(if more_messages { Self::Scheduled } else { Self::Idle }),
+            _ => None,
+        }
+    }
 }
 
-// === 2. Shared ラッパー（atomic-backed）===
-// SharedLock<MailboxStateInner> の最適化版。
-// &self での mutation は Shared ラッパーパターンの規約に準拠している。
+// === 外側: Atomic Shared wrapper ===
+// MailboxState を atomically 保持し、その遷移関数を CAS 経由で適用する。
+// 遷移ロジックは MailboxState 側にしかない。ここでは再実装しない。
 pub struct MailboxStateShared {
-    inner: AtomicU8,
+    raw: AtomicU8,  // 中身は MailboxState as u8
 }
 
 impl MailboxStateShared {
-    /// `SharedLock::with_write` の atomic 版。
-    /// 違いは「ロックを取る → クロージャ実行 → 解放」が
-    ///       「CAS で勝つ → on_won 実行」に変わっただけ。
+    pub fn new(initial: MailboxState) -> Self {
+        Self { raw: AtomicU8::new(initial as u8) }
+    }
+
+    /// MailboxState::schedule を atomic に適用。勝者だけが on_won を実行。
     pub fn try_schedule(&self, on_won: impl FnOnce()) {
-        if self.inner.compare_exchange(IDLE, SCHEDULED, AcqRel, Acquire).is_ok() {
+        let result = self.raw.fetch_update(AcqRel, Acquire, |v| {
+            MailboxState::from_u8(v)?.schedule().map(|s| s as u8)
+        });
+        if result.is_ok() {
             on_won();
         }
     }
 
+    /// MailboxState::acquire → ユーザーロジック → MailboxState::release を CAS で適用。
     pub fn try_run<R>(
         &self,
-        on_acquired: impl FnOnce() -> RunResult<R>,
+        on_acquired: impl FnOnce() -> RunOutcome<R>,
     ) -> Option<R> {
-        if self.inner.compare_exchange(SCHEDULED, RUNNING, AcqRel, Acquire).is_err() {
-            return None;
-        }
-        let RunResult { value, next } = on_acquired();
-        match next {
-            NextState::Idle       => self.inner.store(IDLE,      Release),
-            NextState::Reschedule => self.inner.store(SCHEDULED, Release),
-        }
+        // acquire 相: SCHEDULED→RUNNING を CAS
+        self.raw.fetch_update(AcqRel, Acquire, |v| {
+            MailboxState::from_u8(v)?.acquire().map(|s| s as u8)
+        }).ok()?;
+
+        let RunOutcome { value, more_messages } = on_acquired();
+
+        // release 相: RUNNING→IDLE/SCHEDULED を CAS
+        // RUNNING は排他確保済みなので必ず成功する
+        self.raw.fetch_update(AcqRel, Acquire, |v| {
+            MailboxState::from_u8(v)?.release(more_messages).map(|s| s as u8)
+        }).expect("RUNNING is exclusive; release must succeed");
+
         Some(value)
     }
 }
-```
 
-**この構造の利点**:
-- `MailboxStateInner` は `&mut self` で CQS を完全に満たし、純粋関数として単体テスト可能
-- `MailboxStateShared` は **Shared ラッパー規約** に準拠（命名 / API 形 / 内部可変性の根拠）
-- 「内部可変性は Shared ラッパーパターンが唯一の許容ケース」という規約と整合
-- 実装手段（ロック vs CAS）の選択は性能要件で決められ、API の形は同じ
-
-### bool 返却 vs クロージャ API の選択
-
-`MailboxStateInner::try_schedule(&mut self) -> bool` は **CQS違反**（Command + 値返却）。これは `Vec::pop` 同型の許容例外として認められる。
-
-ただし **共有経由で呼ばれる API（`MailboxStateShared`）はクロージャ版に統一すべき**：
-
-```rust
-// ❌ Shared ラッパー側に bool を漏らすと「ask-then-act」を誘発
-impl MailboxStateShared {
-    pub fn try_schedule(&self) -> bool { ... }  // 呼び側が if 分岐する設計に逆戻り
-}
-
-// ✅ クロージャ版で「Tell, Don't Ask」を強制
-impl MailboxStateShared {
-    pub fn try_schedule(&self, on_won: impl FnOnce()) { ... }
+pub struct RunOutcome<R> {
+    pub value: R,
+    pub more_messages: bool,
 }
 ```
 
-### 設計原則として一般化
+### この構造で何が解決するか
 
-> **CAS を含む並行プリミティブを設計する際は：**
->
-> 1. **2層構造** にする：純粋ロジック（`*Inner`、`&mut self`、CQS 純粋）+ Shared ラッパー（`*Shared`、`&self`、CAS 内部可変性）
-> 2. **内部ロジック** は `&mut self` で CQS を満たし、単体テスト可能にする
-> 3. **Shared ラッパー** は Shared ラッパーパターン規約に準拠（命名 / API 形）
-> 4. **API 表面** はクロージャベースで「Tell, Don't Ask」を強制する
-> 5. **`Option<R>` の戻り値** は `Vec::pop` 同型の許容例外
-> 6. **bool 戻り値の `&self` 状態変更メソッドは設計途中の兆候** — クロージャ API へ置換
+```
+┌─────────────────────────────────────────────┐
+│ MailboxState (pure value type)               │
+│   - 状態セマンティクスの単一の真実           │
+│   - 遷移ルール（schedule/acquire/release）   │
+│   - 単体テスト可能（並行性ゼロ）              │
+└──────────────────┬──────────────────────────┘
+                   │ 借用される
+                   ↓
+┌─────────────────────────────────────────────┐
+│ MailboxStateShared (atomic wrapper)          │
+│   - MailboxState を atomically 保持          │
+│   - fetch_update で遷移を atomic に適用       │
+│   - MailboxState なしでは存在意義がない      │
+└─────────────────────────────────────────────┘
+```
+
+| 項目 | 結果 |
+|---|---|
+| **内側と外側の関係性** | 外側が内側の遷移関数を借りる。**外側は内側なしでは意味を持たない** |
+| **遷移ロジックの単一の真実** | `MailboxState` のみ。重複ゼロ |
+| **CQS** | `MailboxState` の遷移は pure function（`self -> Option<Self>`）で CQS の対象外 |
+| **内部可変性の根拠** | `MailboxStateShared` は Shared ラッパー規約に準拠（内側の値型を atomically 包む） |
+| **テスト容易性** | `MailboxState::schedule()` 等は並行性ゼロで単体テスト可能 |
+| **`SharedLock<T>` との対応** | `with_write(\|x\| x.method())` ↔ `fetch_update(\|v\| logic(v))` の対応関係が明確 |
+
+**重要**: 内側を「`&mut self` で状態を持つ struct」にしないこと。それでは外側との関係が「2つの並行実装」になり、ロジックが重複する。**内側を「不変な値型 + 純粋関数」にする** のが atomic-backed Shared の正しい形。
 
 ### 既存規約との整合
 
 | 既存規約 | 本パターンとの整合 |
 |---|---|
-| **内部可変性は Shared ラッパーパターンが唯一の許容ケース**（`immutability-policy.md`） | `*Shared` + `*Inner` の2層構造で準拠。実装手段がロックから CAS に変わるだけ |
+| **内部可変性は Shared ラッパーパターンが唯一の許容ケース**（`immutability-policy.md`） | 内側の値型を外側の `*Shared` が atomic に保持し、内側の遷移関数を `fetch_update` で借りて適用する。実装手段がロックから CAS に変わるだけ |
 | **`*Shared` 命名**（`naming-conventions.md`） | atomic-backed な共有型は必ず `*Shared` を付ける |
-| **`&mut self` 原則**（`cqs-principle.md`） | `*Inner` 側で完全に満たす。`*Shared` は Shared ラッパー規約の枠内で `&self` を許容 |
+| **`&mut self` 原則**（`cqs-principle.md`） | 内側を不変な値型 + 純粋関数（`self -> Option<Self>`）にすることで、`&mut self` も `&self` も発生せず CQS の対象外となる |
 | `SharedAccess::with_read` / `with_write` クロージャ API | `try_schedule(\|\| ...)` / `try_run(\|\| ...)` は同じ思想の atomic 版 |
 | ガード/ロックを外部に返さない | 排他権がクロージャ内に閉じる。外に漏れない |
-| CQS違反は人間許可で例外許容（`Vec::pop` 相当） | `*Inner::try_*(&mut self) -> bool`、`*Shared::try_run -> Option<R>` ともに同型 |
+| CQS違反は人間許可で例外許容（`Vec::pop` 相当） | `*Shared::try_run -> Option<R>` は `Vec::pop -> Option<T>` と同型 |
 | Tell, Don't Ask | bool 返却して呼び側で分岐する代わりに、勝った場合の動作をクロージャで渡す |
 
 ## 適用するコンポーネントの優先順位
@@ -271,7 +331,7 @@ impl MailboxStateShared {
 
 | コンポーネント | 推奨パターン | 優先度 |
 |---|---|---|
-| Mailbox 状態機械 | ④ Atomic state machine（`*Inner` + `*Shared` の2層構造、`AtomicU8` バック） | **最高** |
+| Mailbox 状態機械 | ④ Atomic state machine（pure value + `*Shared` atomic wrapper） | **最高** |
 | Mailbox メッセージキュー | ② Ownership transfer（lock-free MPSC） | **最高** |
 | ActorCell の排他制御 | ④ の CAS 勝者にのみ `&mut` を与える | **最高** |
 | Run-queue（scheduler） | std: tokio に委譲 / no_std: 自前 bounded ring | 高 |
@@ -290,8 +350,9 @@ impl MailboxStateShared {
 Step 1. 現状の SharedLock 設計のままベンチを取る（基準線）
         → 効果測定の前提
 
-Step 2. Mailbox 状態機械を `*Inner` + `*Shared` の2層構造へ
-        → 純粋ロジック（&mut self）+ atomic-backed Shared ラッパー
+Step 2. Mailbox 状態機械を pure value enum + atomic Shared wrapper へ
+        → 内側は不変な値型（self -> Option<Self> の純粋遷移関数）
+        → 外側は AtomicU8 + fetch_update で内側の遷移関数を atomic に適用
         → unsafe ゼロ・依存ゼロ・最小リスク
         → これだけで SharedLock<Mailbox> が消え、規約とも整合
 
@@ -390,7 +451,7 @@ fn init(&self) -> Result<(), E> {
 ### 5. 単層構造の atomic 型（Shared ラッパー規約を素通り）
 
 ```rust
-// ❌ *Shared 命名でない / 純粋ロジック層が分離されていない
+// ❌ *Shared 命名でない / 内側の値型と関係性がない
 //   → 内部可変性の根拠（Shared ラッパーパターン）に準拠していない
 pub struct MailboxState(AtomicU8);
 
@@ -399,13 +460,51 @@ impl MailboxState {
 }
 ```
 
-**修正**: 2層構造にする。
-- `MailboxStateInner`（`&mut self`、純粋ロジック、CQS純粋）
-- `MailboxStateShared`（`&self`、CAS、クロージャ API）
+**修正**: 内側を pure value type にして、外側がそれを atomically 包む構造にする。
 
-これで内部可変性が Shared ラッパーパターン規約の枠内に収まる。
+```rust
+// 内側: 純粋な値型 + 純粋な遷移関数
+pub enum MailboxState { Idle, Scheduled, Running, Closed }
+impl MailboxState {
+    pub fn schedule(self) -> Option<Self> { ... }
+}
 
-### 6. unsafe を広範囲にばらまく
+// 外側: 内側を atomically 保持し、内側の遷移関数を fetch_update で借りる
+pub struct MailboxStateShared { raw: AtomicU8 }
+impl MailboxStateShared {
+    pub fn try_schedule(&self, on_won: impl FnOnce()) {
+        if self.raw.fetch_update(AcqRel, Acquire, |v| {
+            MailboxState::from_u8(v)?.schedule().map(|s| s as u8)
+        }).is_ok() { on_won(); }
+    }
+}
+```
+
+### 6. 内側と外側が無関係な「並行する2実装」
+
+```rust
+// ❌ 「2層構造」を装っているが、Inner と Shared が遷移ロジックを重複保有
+//   どちらも単独で完結し、お互いに必要としない = Shared ラッパーになっていない
+pub struct MailboxStateInner { value: u8 }
+impl MailboxStateInner {
+    pub fn try_schedule(&mut self) -> bool { /* IDLE→SCHEDULED */ }
+}
+
+pub struct MailboxStateShared { inner: AtomicU8 }
+impl MailboxStateShared {
+    pub fn try_schedule(&self) {
+        // ↓ Inner と同じロジックを CAS 版で再実装している
+        self.inner.compare_exchange(IDLE, SCHEDULED, ...);
+    }
+}
+```
+
+**修正**: Shared ラッパーは内側を **構造的に含み**、内側のロジックを **借りる** 関係にする。
+- `*Shared` の構造体フィールドが内側の値を atomically 保持する
+- 遷移ルールは内側の純粋関数のみが定義する
+- `*Shared` は `fetch_update` で内側の関数を渡して適用する
+
+### 7. unsafe を広範囲にばらまく
 
 ```rust
 // ❌ 公開関数が unsafe で、呼び出し側全てに契約が伝染
