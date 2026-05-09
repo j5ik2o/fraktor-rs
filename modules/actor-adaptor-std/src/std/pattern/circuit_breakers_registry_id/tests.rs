@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, pattern::CircuitBreakerState};
+use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionId, pattern::CircuitBreakerState};
 
 use super::CircuitBreakersRegistryId;
 use crate::std::system::new_empty_actor_system;

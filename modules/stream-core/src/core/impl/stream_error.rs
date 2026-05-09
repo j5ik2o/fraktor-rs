@@ -7,7 +7,7 @@ use core::{
   fmt::{self, Formatter, Result as FmtResult},
 };
 
-use fraktor_actor_core_rs::core::kernel::actor::error::SendError;
+use fraktor_actor_core_kernel_rs::actor::error::SendError;
 
 use super::FramingErrorKind;
 use crate::core::stage::{CancellationCause, CancellationKind};

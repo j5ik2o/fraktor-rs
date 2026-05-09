@@ -1,5 +1,5 @@
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
     scheduler::SchedulerConfig, setup::ActorSystemConfig,

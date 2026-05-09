@@ -2,7 +2,7 @@ extern crate std;
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::{actor::setup::CircuitBreakerConfig, pattern::CircuitBreakerState};
+use fraktor_actor_core_kernel_rs::{actor::setup::CircuitBreakerConfig, pattern::CircuitBreakerState};
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::CircuitBreakersRegistry;

@@ -1,7 +1,7 @@
 use alloc::{vec, vec::Vec};
 use core::future::{Pending, Ready, pending, ready};
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},

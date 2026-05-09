@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use core::any::TypeId;
 use std::path::Path;
 
-use crate::core::kernel::actor::scheduler::tick_driver::{
+use crate::actor::scheduler::tick_driver::{
   SchedulerTickExecutor, TickDriver, TickDriverBundle, TickDriverError, TickDriverId, TickDriverKind,
   TickDriverProvision, TickDriverProvisioningContext, TickDriverStopper, TickExecutorSignal, TickFeed, TickFeedHandle,
 };
@@ -39,14 +39,14 @@ fn tick_driver_public_surface_keeps_primary_boundary_contracts() {
 #[test]
 fn tick_driver_factory_file_stays_deleted() {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let path = manifest_dir.join("src/core/kernel/actor/scheduler/tick_driver/tick_driver_factory.rs");
+  let path = manifest_dir.join("src/actor/scheduler/tick_driver/tick_driver_factory.rs");
 
   assert!(!path.exists(), "tick driver factory の未使用実装が残っています: {}", path.display());
 }
 
 #[test]
 fn tick_driver_module_stays_unexported_from_factory_surface() {
-  let source = include_str!("core/kernel/actor/scheduler/tick_driver.rs");
+  let source = include_str!("actor/scheduler/tick_driver.rs");
 
   assert!(
     !source.contains("pub use tick_driver_factory::{TickDriverFactory, TickDriverFactoryRef};"),
@@ -56,7 +56,7 @@ fn tick_driver_module_stays_unexported_from_factory_surface() {
 
 #[test]
 fn tick_driver_factory_module_wiring_stays_removed() {
-  let source = include_str!("core/kernel/actor/scheduler/tick_driver.rs");
+  let source = include_str!("actor/scheduler/tick_driver.rs");
 
   assert!(
     !source.contains("mod tick_driver_factory;"),

@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::any::Any;
 
-use fraktor_actor_core_rs::core::kernel::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
+use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::core::{

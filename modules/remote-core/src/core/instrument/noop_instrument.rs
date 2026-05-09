@@ -1,6 +1,6 @@
 //! No-op [`crate::core::instrument::RemoteInstrument`] implementation.
 
-use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
+use fraktor_actor_core_kernel_rs::event::stream::CorrelationId;
 
 use crate::core::{
   association::QuarantineReason,

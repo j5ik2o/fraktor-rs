@@ -1,6 +1,6 @@
 use alloc::{format, vec::Vec};
 
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Actor, ActorContext, ChildRef,
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},

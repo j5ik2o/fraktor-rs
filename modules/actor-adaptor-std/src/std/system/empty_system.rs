@@ -1,6 +1,6 @@
 //! Test-only constructors for empty actor systems backed by [`TestTickDriver`].
 
-use fraktor_actor_core_rs::core::kernel::{actor::setup::ActorSystemConfig, system::ActorSystem};
+use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, system::ActorSystem};
 
 use crate::std::{tick_driver::TestTickDriver, time::std_monotonic_mailbox_clock};
 

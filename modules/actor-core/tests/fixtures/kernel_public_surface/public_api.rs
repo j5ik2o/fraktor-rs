@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     ActorCell, ActorContext, Address, ChildRef, ClassicTimerScheduler, Pid,
     actor_path::{ActorPath, ChildActorPath, RootActorPath},
@@ -8,6 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
   },
   dispatch::mailbox::Mailbox,
+  event::stream::{EventStreamEvent, UnhandledMessageEvent},
   routing::{Broadcast, CustomRouterConfig, Group, Pool, RandomRoutingLogic, RoundRobinRoutingLogic, Routee, Router, RouterCommand, RouterConfig, RouterResponse, RoutingLogic},
   system::{ActorSystem, CoordinatedShutdown, CoordinatedShutdownPhase, shared_factory::MailboxSharedSet},
 };
@@ -45,5 +46,7 @@ fn main() {
   let _ = core::any::type_name::<CoordinatedShutdown>();
   let _ = core::any::type_name::<CoordinatedShutdownPhase>();
   let _ = core::any::type_name::<Mailbox>();
+  let _ = core::any::type_name::<EventStreamEvent>();
+  let _ = core::any::type_name::<UnhandledMessageEvent>();
   let _ = core::any::type_name::<MailboxSharedSet>();
 }

@@ -1,0 +1,946 @@
+use alloc::{
+  borrow::Cow,
+  boxed::Box,
+  string::{String, ToString},
+  vec,
+  vec::Vec,
+};
+use core::any::{Any, TypeId, type_name};
+
+use ahash::RandomState;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use hashbrown::HashMap;
+use portable_atomic::{AtomicUsize, Ordering};
+
+use super::*;
+use crate::{
+  actor::{
+    Actor, ActorCell, ActorContext, Pid,
+    actor_path::{ActorPath, ActorPathParser, ActorPathScheme},
+    actor_ref::{ActorRef, NullSender, dead_letter::DeadLetterReason},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
+    error::ActorError,
+    messaging::{ActorIdentity, AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::tick_driver::tests::TestTickDriver,
+    setup::ActorSystemConfig,
+  },
+  event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
+  serialization::{
+    SerializationSetupBuilder,
+    builtin::{MISC_MESSAGE_ID, NullSerializer},
+    call_scope::SerializationCallScope,
+    default_serialization_setup,
+    error::SerializationError,
+    error_event::SerializationErrorEvent,
+    not_serializable_error::NotSerializableError,
+    serialization_setup::SerializationSetup,
+    serialized_message::SerializedMessage,
+    serializer::Serializer,
+    serializer_id::SerializerId,
+    string_manifest_serializer::SerializerWithStringManifest,
+    transport_information::TransportInformation,
+  },
+  support::ByteString,
+  system::{
+    ActorSystem, TerminationSignal,
+    remote::RemotingConfig,
+    state::{SystemStateShared, system_state::SystemState},
+  },
+};
+
+#[derive(Debug, PartialEq)]
+struct TestPayload(u8);
+
+struct TestSerializer {
+  id: SerializerId,
+}
+
+impl TestSerializer {
+  fn new(id: SerializerId) -> Self {
+    Self { id }
+  }
+}
+
+impl Serializer for TestSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn include_manifest(&self) -> bool {
+    false
+  }
+
+  fn to_binary(&self, value: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let payload = value.downcast_ref::<TestPayload>().expect("TestPayload expected");
+    Ok(vec![payload.0])
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(TestPayload(bytes.first().copied().unwrap_or_default())))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+}
+
+fn build_extension(manifest: Option<&str>) -> (SerializationExtension, SerializerId, ActorSystem) {
+  let serializer_id = SerializerId::try_from(300).expect("id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
+  let mut builder = SerializationSetupBuilder::new()
+    .register_serializer("test", serializer_id, serializer)
+    .expect("register")
+    .set_fallback("test")
+    .expect("fallback")
+    .bind::<TestPayload>("test")
+    .expect("bind");
+  if let Some(manifest) = manifest {
+    builder = builder.bind_remote_manifest::<TestPayload>(manifest).expect("manifest");
+    builder = builder.require_manifest_for_scope(SerializationCallScope::Remote);
+  }
+  let setup: SerializationSetup = builder.build().expect("build");
+  let system = ActorSystem::new_empty();
+  (SerializationExtension::new(&system, setup), serializer_id, system)
+}
+
+fn serialize_and_deserialize(extension: &SerializationExtension) -> TestPayload {
+  let payload = TestPayload(42);
+  let serialized = extension.serialize(&payload, SerializationCallScope::Local).expect("serialize");
+  let any = extension.deserialize(&serialized, Some(TypeId::of::<TestPayload>())).expect("deserialize");
+  *any.downcast::<TestPayload>().expect("downcast")
+}
+
+#[test]
+fn serialize_local_round_trip() {
+  let (extension, _, _system) = build_extension(None);
+  let result = serialize_and_deserialize(&extension);
+  assert_eq!(result, TestPayload(42));
+}
+
+#[test]
+fn serialize_remote_attaches_manifest() {
+  let (extension, _, _system) = build_extension(Some("example.Manifest"));
+  let payload = TestPayload(7);
+  let serialized = extension.serialize(&payload, SerializationCallScope::Remote).expect("serialize");
+  assert_eq!(serialized.manifest(), Some("example.Manifest"));
+}
+
+#[test]
+fn push_pop_transport_information_sets_scope_temporarily() {
+  let (mut extension, _, _system) = build_extension(None);
+  assert!(extension.current_transport_information().is_none());
+  let info = TransportInformation::new(Some("fraktor://sys@host".into()));
+  extension.push_transport_information(info.clone());
+  let value = extension.current_transport_information();
+  assert_eq!(value.as_ref(), Some(&info));
+  extension.pop_transport_information();
+  assert!(extension.current_transport_information().is_none());
+}
+
+#[test]
+fn serialized_actor_path_prefers_transport_address() {
+  let (mut extension, _, _system) = build_extension(None);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(1, 0), NullSender);
+  let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
+  extension.push_transport_information(info);
+  let path = extension.serialized_actor_path(&actor_ref).expect("path");
+  extension.pop_transport_information();
+  assert!(path.starts_with("fraktor://sys@host:2552"));
+}
+
+struct NoopActor;
+
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+struct RemotePathActorRefProvider {
+  system_state:   SystemStateShared,
+  resolved_paths: ArcShared<SpinSyncMutex<Vec<ActorPath>>>,
+}
+
+impl RemotePathActorRefProvider {
+  fn new(system_state: SystemStateShared, resolved_paths: ArcShared<SpinSyncMutex<Vec<ActorPath>>>) -> Self {
+    Self { system_state, resolved_paths }
+  }
+}
+
+impl ActorRefProvider for RemotePathActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::FraktorTcp]
+  }
+
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    self.resolved_paths.lock().push(path.clone());
+    let pid = self.system_state.allocate_pid();
+    Ok(ActorRef::with_canonical_path(pid, NullSender, path))
+  }
+
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
+  }
+}
+
+fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &str) -> ActorSystem {
+  let mut config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name(system_name.to_string());
+  if let Some(remoting) = remoting {
+    config = config.with_remoting_config(remoting);
+  }
+  let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
+  ActorSystem::from_state(state)
+}
+
+fn build_extension_with_system(system: &ActorSystem) -> SerializationExtension {
+  let serializer_id = SerializerId::try_from(700).expect("id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("test", serializer_id, serializer)
+    .expect("register")
+    .set_fallback("test")
+    .expect("fallback")
+    .bind::<TestPayload>("test")
+    .expect("bind");
+  let setup = builder.build().expect("build");
+  SerializationExtension::new(system, setup)
+}
+
+fn build_default_extension_with_system(system: &ActorSystem) -> SerializationExtension {
+  SerializationExtension::new(system, default_serialization_setup())
+}
+
+fn build_actor_ref_with_path(system: &ActorSystem) -> ActorRef {
+  let props = Props::from_fn(|| NoopActor);
+  let state = system.state();
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
+  state.register_cell(child.clone());
+  child.actor_ref()
+}
+
+fn build_actor_ref_with_registered_path(system: &ActorSystem, canonical_path: &str) -> ActorRef {
+  let path = ActorPathParser::parse(canonical_path).expect("remote path");
+  let state = system.state();
+  let pid = state.allocate_pid();
+  state.register_actor_path(pid, &path);
+  ActorRef::with_system(pid, NullSender, &state)
+}
+
+#[test]
+fn serialized_actor_path_uses_canonical_when_transport_absent() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let system = build_system_with_remoting(Some(remoting), "serialization-test");
+  let actor_ref = build_actor_ref_with_path(&system);
+  let extension = build_extension_with_system(&system);
+
+  let path = extension.serialized_actor_path(&actor_ref).expect("path");
+  assert!(path.starts_with("fraktor.tcp://serialization-test@example.com:2552"));
+  assert!(path.ends_with("/user/worker"));
+}
+
+#[test]
+fn serialized_actor_path_falls_back_to_local_without_complete_canonical() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com");
+  let system = build_system_with_remoting(Some(remoting), "serialization-test");
+  let actor_ref = build_actor_ref_with_path(&system);
+  let extension = build_extension_with_system(&system);
+
+  let error = extension.serialized_actor_path(&actor_ref).expect_err("should fail");
+  assert!(matches!(error, SerializationError::NotSerializable(_)));
+
+  let dead_letters = system.state().dead_letters();
+  assert_eq!(dead_letters.len(), 1);
+}
+
+#[test]
+fn builtin_actor_identity_without_ref_round_trips_through_extension() {
+  let system = ActorSystem::new_empty();
+  let extension = build_default_extension_with_system(&system);
+  let original = ActorIdentity::new(AnyMessage::new(String::from("correlation-none")), None);
+
+  let serialized = extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+  assert_eq!(serialized.serializer_id(), MISC_MESSAGE_ID);
+  assert_eq!(serialized.manifest(), Some("B"));
+
+  let decoded = extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>())).expect("deserialize");
+  let identity = decoded.downcast::<ActorIdentity>().expect("decoded payload should be ActorIdentity");
+  let restored = identity.correlation_id().downcast_ref::<String>().expect("correlation id should be String");
+  assert_eq!(restored, "correlation-none");
+  assert!(identity.actor_ref().is_none());
+}
+
+#[test]
+fn builtin_actor_identity_with_ref_round_trips_actor_ref_path_through_extension() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let system = build_system_with_remoting(Some(remoting), "identity-test");
+  system.state().mark_root_started();
+  let actor_ref = build_actor_ref_with_path(&system);
+  let expected_path = actor_ref.canonical_path().expect("canonical path").to_canonical_uri();
+  let extension = build_default_extension_with_system(&system);
+  let original = ActorIdentity::found(AnyMessage::new(String::from("correlation-found")), actor_ref);
+
+  let serialized = extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+  let decoded = extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>())).expect("deserialize");
+  let identity = decoded.downcast::<ActorIdentity>().expect("decoded payload should be ActorIdentity");
+
+  let restored_ref = identity.actor_ref().expect("actor ref should be restored");
+  let restored_path = restored_ref.canonical_path().expect("restored canonical path").to_canonical_uri();
+  assert_eq!(restored_path, expected_path);
+}
+
+#[test]
+fn builtin_actor_identity_with_ref_decode_fails_without_resolve_context() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let source_system = build_system_with_remoting(Some(remoting), "identity-test");
+  source_system.state().mark_root_started();
+  let actor_ref = build_actor_ref_with_path(&source_system);
+  let source_extension = build_default_extension_with_system(&source_system);
+  let original = ActorIdentity::found(AnyMessage::new(String::from("correlation-missing-context")), actor_ref);
+  let serialized = source_extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+
+  let target_system = ActorSystem::new_empty();
+  let target_extension = build_default_extension_with_system(&target_system);
+  let result = target_extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>()));
+
+  assert!(matches!(result, Err(SerializationError::NotSerializable(_))), "expected NotSerializable, got {result:?}");
+}
+
+#[test]
+fn builtin_actor_identity_with_remote_ref_restores_via_registered_scheme_provider() {
+  let remote_path = "fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker";
+  let remote_remoting = RemotingConfig::default().with_canonical_host("10.0.0.1").with_canonical_port(2552);
+  let source_system = build_system_with_remoting(Some(remote_remoting), "remote-sys");
+  let actor_ref = build_actor_ref_with_registered_path(&source_system, remote_path);
+  let source_extension = build_default_extension_with_system(&source_system);
+  let original = ActorIdentity::found(AnyMessage::new(String::from("correlation-remote")), actor_ref);
+  let serialized = source_extension.serialize(&original, SerializationCallScope::Remote).expect("serialize");
+
+  let target_config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name(String::from("target-sys"));
+  let target_state = SystemStateShared::new(SystemState::build_from_owned_config(target_config).expect("target state"));
+  let target_system = ActorSystem::from_state(target_state);
+  let resolved_paths = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let provider =
+    ActorRefProviderHandleShared::new(RemotePathActorRefProvider::new(target_system.state(), resolved_paths.clone()));
+  target_system.extended().register_actor_ref_provider(&provider).expect("register provider");
+  target_system.state().mark_root_started();
+  let target_extension = build_default_extension_with_system(&target_system);
+
+  let decoded = target_extension.deserialize(&serialized, Some(TypeId::of::<ActorIdentity>())).expect("deserialize");
+  let identity = decoded.downcast::<ActorIdentity>().expect("decoded payload should be ActorIdentity");
+  let restored_ref = identity.actor_ref().expect("remote actor ref should be restored");
+  let restored_path = restored_ref.canonical_path().expect("restored canonical path").to_canonical_uri();
+
+  assert_eq!(restored_path, remote_path);
+  let expected_path = ActorPathParser::parse(remote_path).expect("expected path");
+  assert_eq!(resolved_paths.lock().as_slice(), &[expected_path]);
+}
+
+#[test]
+fn shutdown_rejects_future_serialization() {
+  let (mut extension, _, _system) = build_extension(None);
+  extension.shutdown();
+  let error = extension.serialize(&TestPayload(1), SerializationCallScope::Local).expect_err("should fail");
+  assert!(matches!(error, SerializationError::Uninitialized));
+}
+
+struct ManifestSerializer {
+  id:                  SerializerId,
+  from_manifest_calls: AtomicUsize,
+}
+
+impl ManifestSerializer {
+  fn new(id: SerializerId) -> Self {
+    Self { id, from_manifest_calls: AtomicUsize::new(0) }
+  }
+}
+
+impl Serializer for ManifestSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn include_manifest(&self) -> bool {
+    false
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let payload = message.downcast_ref::<TestPayload>().expect("payload");
+    Ok(vec![payload.0])
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(TestPayload(bytes[0])))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    Some(self)
+  }
+}
+
+impl SerializerWithStringManifest for ManifestSerializer {
+  fn manifest(&self, _message: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
+    Cow::Borrowed("manifest::TestPayload")
+  }
+
+  fn from_binary_with_manifest(
+    &self,
+    bytes: &[u8],
+    _manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    self.from_manifest_calls.fetch_add(1, Ordering::Relaxed);
+    Ok(Box::new(TestPayload(bytes[0])))
+  }
+}
+
+fn build_manifest_extension() -> (SerializationExtension, ActorSystem) {
+  let serializer_id = SerializerId::try_from(333).expect("id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestSerializer::new(serializer_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("manifest", serializer_id, serializer)
+    .expect("register")
+    .set_fallback("manifest")
+    .expect("fallback")
+    .bind::<TestPayload>("manifest")
+    .expect("bind");
+  let setup = builder.build().expect("build");
+  let system = ActorSystem::new_empty();
+  (SerializationExtension::new(&system, setup), system)
+}
+
+#[test]
+fn string_manifest_serializer_supplies_manifest() {
+  let (extension, _system) = build_manifest_extension();
+  let payload = TestPayload(5);
+  let serialized = extension.serialize(&payload, SerializationCallScope::Remote).expect("serialize");
+  assert_eq!(serialized.manifest(), Some("manifest::TestPayload"));
+}
+
+#[test]
+fn deserialize_prefers_from_binary_with_manifest() {
+  let (extension, _system) = build_manifest_extension();
+  let payload =
+    SerializedMessage::new(SerializerId::try_from(333).unwrap(), Some("manifest::TestPayload".into()), vec![9]);
+  let any = extension.deserialize(&payload, None).expect("deserialize");
+  assert_eq!(*any.downcast::<TestPayload>().unwrap(), TestPayload(9));
+}
+
+#[test]
+fn not_serializable_publishes_event_and_deadletter() {
+  let system = ActorSystem::new_empty();
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber =
+    subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let serializer_id = SerializerId::try_from(401).expect("id");
+  let fallback: ArcShared<dyn Serializer> = ArcShared::new(FailingSerializer::new(serializer_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("failing", serializer_id, fallback)
+    .expect("register")
+    .set_fallback("failing")
+    .expect("fallback");
+  let setup = builder.build().expect("build");
+  let extension = SerializationExtension::new(&system, setup);
+
+  let error = extension.serialize(&TestPayload(1), SerializationCallScope::Local).expect_err("should fail");
+  assert!(matches!(error, SerializationError::NotSerializable(_)));
+
+  let events = serialization_events.lock();
+  assert_eq!(events.len(), 1);
+  assert_eq!(events[0].type_name(), type_name::<TestPayload>());
+
+  let dead_letters = system.dead_letters();
+  assert!(dead_letters.iter().any(|entry| entry.reason() == DeadLetterReason::SerializationError));
+
+  assert!(!log_messages.lock().is_empty());
+}
+
+#[test]
+fn not_serializable_event_records_pid_and_transport() {
+  let system = ActorSystem::new_empty();
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber =
+    subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let serializer_id = SerializerId::try_from(402).expect("id");
+  let failing: ArcShared<dyn Serializer> = ArcShared::new(FailingSerializer::new(serializer_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("failing", serializer_id, failing)
+    .expect("register")
+    .set_fallback("failing")
+    .expect("fallback");
+  let setup = builder.build().expect("build");
+  let mut extension = SerializationExtension::new(&system, setup);
+
+  let pid = Pid::new(77, 1);
+  let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
+  extension.push_transport_information(info);
+  let error =
+    extension.serialize_for(&TestPayload(1), SerializationCallScope::Remote, Some(pid)).expect_err("should fail");
+  extension.pop_transport_information();
+  assert!(matches!(error, SerializationError::NotSerializable(_)));
+
+  let events = serialization_events.lock();
+  assert_eq!(events.len(), 1);
+  assert_eq!(events[0].pid(), Some(pid));
+  assert_eq!(events[0].transport_hint(), Some("fraktor://sys@host:2552"));
+
+  let dead_letters = system.dead_letters();
+  assert!(
+    dead_letters
+      .iter()
+      .any(|entry| { entry.reason() == DeadLetterReason::SerializationError && entry.recipient() == Some(pid) })
+  );
+
+  let log_entries = log_messages.lock();
+  assert!(!log_entries.is_empty());
+}
+
+#[test]
+fn manifest_route_falls_back_to_legacy_serializer() {
+  let (current_id, legacy_id) =
+    (SerializerId::try_from(420).expect("current"), SerializerId::try_from(421).expect("legacy"));
+  let current: ArcShared<dyn Serializer> = ArcShared::new(VersionedSerializer::new(current_id));
+  let legacy: ArcShared<dyn Serializer> = ArcShared::new(LegacySerializer::new(legacy_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("current", current_id, current)
+    .expect("register current")
+    .register_serializer("legacy", legacy_id, legacy)
+    .expect("register legacy")
+    .set_fallback("current")
+    .expect("fallback")
+    .bind::<TestPayload>("current")
+    .expect("bind")
+    .register_manifest_route("legacy.Manifest", 1, "legacy")
+    .expect("route");
+  let setup = builder.build().expect("build");
+  let system = ActorSystem::new_empty();
+  let extension = SerializationExtension::new(&system, setup);
+
+  let message = SerializedMessage::new(current_id, Some("legacy.Manifest".into()), vec![11]);
+  let any = extension.deserialize(&message, Some(TypeId::of::<TestPayload>())).expect("deserialize");
+  assert_eq!(*any.downcast::<TestPayload>().unwrap(), TestPayload(11));
+}
+
+#[test]
+fn manifest_route_failure_surfaces_not_serializable_with_manifest() {
+  let system = ActorSystem::new_empty();
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber =
+    subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let serializer_id = SerializerId::try_from(422).expect("serializer");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(VersionedSerializer::new(serializer_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("current", serializer_id, serializer)
+    .expect("register")
+    .set_fallback("current")
+    .expect("fallback")
+    .bind::<TestPayload>("current")
+    .expect("bind");
+  let setup = builder.build().expect("build");
+  let extension = SerializationExtension::new(&system, setup);
+
+  let serialized = SerializedMessage::new(serializer_id, Some("missing.Manifest".into()), vec![99]);
+  let error = extension.deserialize(&serialized, Some(TypeId::of::<TestPayload>())).expect_err("should fail");
+  match error {
+    | SerializationError::NotSerializable(payload) => {
+      assert_eq!(payload.manifest(), Some("missing.Manifest"));
+      assert_eq!(payload.serializer_id(), Some(serializer_id));
+    },
+    | other => panic!("unexpected error: {other:?}"),
+  }
+
+  let events = serialization_events.lock();
+  assert_eq!(events.len(), 1);
+  assert_eq!(events[0].manifest(), Some("missing.Manifest"));
+  assert!(log_messages.lock().iter().any(|entry| entry.contains("manifest 'missing.Manifest' not resolved")));
+}
+
+#[derive(Debug, PartialEq)]
+struct SecondaryPayload(u8);
+
+#[test]
+fn runtime_binding_without_manifest_in_remote_scope_fails() {
+  let serializer_id = SerializerId::try_from(430).expect("serializer");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
+  let secondary_id = SerializerId::try_from(431).expect("secondary");
+  let secondary: ArcShared<dyn Serializer> = ArcShared::new(SecondarySerializer::new(secondary_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("main", serializer_id, serializer)
+    .expect("register")
+    .register_serializer("secondary", secondary_id, secondary)
+    .expect("register secondary")
+    .set_fallback("main")
+    .expect("fallback")
+    .bind::<TestPayload>("main")
+    .expect("bind")
+    .bind_remote_manifest::<TestPayload>("test.Manifest")
+    .expect("manifest")
+    .require_manifest_for_scope(SerializationCallScope::Remote);
+  let setup = builder.build().expect("build");
+  let system = ActorSystem::new_empty();
+  let extension = SerializationExtension::new(&system, setup);
+
+  extension
+    .register_binding(TypeId::of::<SecondaryPayload>(), type_name::<SecondaryPayload>(), secondary_id)
+    .expect("dynamic binding");
+  let error =
+    extension.serialize_for(&SecondaryPayload(1), SerializationCallScope::Remote, None).expect_err("manifest missing");
+  assert!(matches!(error, SerializationError::ManifestMissing { scope: SerializationCallScope::Remote }));
+}
+
+#[test]
+fn shutdown_blocks_deserialize_and_actor_path_calls() {
+  let (mut extension, _, _system) = build_extension(None);
+  let payload = TestPayload(5);
+  let serialized = extension.serialize(&payload, SerializationCallScope::Local).expect("serialize");
+  extension.shutdown();
+  let error = extension.deserialize(&serialized, Some(TypeId::of::<TestPayload>())).expect_err("should fail");
+  assert!(matches!(error, SerializationError::Uninitialized));
+
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(2, 0), NullSender);
+  let path_error = extension.serialized_actor_path(&actor_ref).expect_err("should fail");
+  assert!(matches!(path_error, SerializationError::Uninitialized));
+}
+
+#[test]
+fn cache_resolution_emits_hit_and_binding_logs() {
+  let system = ActorSystem::new_empty();
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let serializer_id = SerializerId::try_from(512).expect("serializer");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
+  let builder = SerializationSetupBuilder::new()
+    .register_serializer("test", serializer_id, serializer)
+    .expect("register")
+    .set_fallback("test")
+    .expect("fallback")
+    .bind::<TestPayload>("test")
+    .expect("bind");
+  let setup = builder.build().expect("build");
+  let extension = SerializationExtension::new(&system, setup);
+
+  log_messages.lock().clear();
+  extension.serialize(&TestPayload(21), SerializationCallScope::Local).expect("serialize miss");
+  extension.serialize(&TestPayload(22), SerializationCallScope::Local).expect("serialize hit");
+
+  let logs = log_messages.lock();
+  assert!(logs.iter().any(|entry| entry.contains("binding resolved")));
+  assert!(logs.iter().any(|entry| entry.contains("cache hit")));
+}
+
+#[test]
+fn builtin_serializer_collision_emits_warning() {
+  let system = ActorSystem::new_empty();
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let serializer_id = SerializerId::from_raw(1);
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(NullSerializer::new(serializer_id));
+  let mut serializers = HashMap::with_hasher(RandomState::new());
+  serializers.insert(serializer_id, serializer);
+  let setup = SerializationSetup::testing_from_raw(
+    serializers,
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    Vec::new(),
+    serializer_id,
+    Vec::new(),
+  );
+  let _extension = SerializationExtension::new(&system, setup);
+
+  let logs = log_messages.lock();
+  assert!(logs.iter().any(|entry| entry.contains("collision")));
+}
+
+struct SerializationEventWatcher {
+  serialization_events: ArcShared<SpinSyncMutex<Vec<SerializationErrorEvent>>>,
+  log_messages:         ArcShared<SpinSyncMutex<Vec<String>>>,
+}
+
+impl SerializationEventWatcher {
+  fn new(
+    serialization_events: ArcShared<SpinSyncMutex<Vec<SerializationErrorEvent>>>,
+    log_messages: ArcShared<SpinSyncMutex<Vec<String>>>,
+  ) -> Self {
+    Self { serialization_events, log_messages }
+  }
+}
+
+impl EventStreamSubscriber for SerializationEventWatcher {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    match event {
+      | EventStreamEvent::Serialization(payload) => {
+        self.serialization_events.lock().push(payload.clone());
+      },
+      | EventStreamEvent::Log(entry) => {
+        self.log_messages.lock().push(entry.message().to_string());
+      },
+      | _ => {},
+    }
+  }
+}
+
+struct FailingSerializer {
+  id: SerializerId,
+}
+
+impl FailingSerializer {
+  fn new(id: SerializerId) -> Self {
+    Self { id }
+  }
+}
+
+impl Serializer for FailingSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn to_binary(&self, _message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    Err(SerializationError::NotSerializable(NotSerializableError::new(
+      type_name::<TestPayload>(),
+      Some(self.id),
+      None,
+      None,
+      None,
+    )))
+  }
+
+  fn from_binary(
+    &self,
+    _bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Err(SerializationError::InvalidFormat)
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+}
+
+struct VersionedSerializer {
+  id: SerializerId,
+}
+
+impl VersionedSerializer {
+  fn new(id: SerializerId) -> Self {
+    Self { id }
+  }
+}
+
+impl Serializer for VersionedSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn include_manifest(&self) -> bool {
+    true
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let payload = message.downcast_ref::<TestPayload>().expect("payload");
+    Ok(vec![payload.0])
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(TestPayload(bytes[0])))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    Some(self)
+  }
+}
+
+impl SerializerWithStringManifest for VersionedSerializer {
+  fn manifest(&self, _message: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
+    Cow::Borrowed("current.Manifest")
+  }
+
+  fn from_binary_with_manifest(
+    &self,
+    bytes: &[u8],
+    manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    if manifest == "current.Manifest" {
+      return Ok(Box::new(TestPayload(bytes[0])));
+    }
+    Err(SerializationError::UnknownManifest(manifest.to_string()))
+  }
+}
+
+struct LegacySerializer {
+  id: SerializerId,
+}
+
+impl LegacySerializer {
+  fn new(id: SerializerId) -> Self {
+    Self { id }
+  }
+}
+
+impl Serializer for LegacySerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn include_manifest(&self) -> bool {
+    true
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let payload = message.downcast_ref::<TestPayload>().expect("payload");
+    Ok(vec![payload.0])
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(TestPayload(bytes[0])))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    Some(self)
+  }
+}
+
+impl SerializerWithStringManifest for LegacySerializer {
+  fn manifest(&self, _message: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
+    Cow::Borrowed("legacy.Manifest")
+  }
+
+  fn from_binary_with_manifest(
+    &self,
+    bytes: &[u8],
+    _manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(TestPayload(bytes[0])))
+  }
+}
+
+struct SecondarySerializer {
+  id: SerializerId,
+}
+
+impl SecondarySerializer {
+  fn new(id: SerializerId) -> Self {
+    Self { id }
+  }
+}
+
+impl Serializer for SecondarySerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn include_manifest(&self) -> bool {
+    false
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let payload = message.downcast_ref::<SecondaryPayload>().expect("secondary payload");
+    Ok(vec![payload.0])
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(SecondaryPayload(bytes[0])))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+}
+
+#[test]
+fn builtin_serializers_support_primitives() {
+  let (extension, _, _system) = build_extension(None);
+
+  let bool_msg = extension.serialize(&true, SerializationCallScope::Local).expect("bool encode");
+  let bool_value = extension.deserialize(&bool_msg, Some(TypeId::of::<bool>())).expect("bool decode");
+  assert!(*bool_value.downcast::<bool>().unwrap());
+
+  let number: i32 = 12345;
+  let int_msg = extension.serialize(&number, SerializationCallScope::Local).expect("i32 encode");
+  let int_value = extension.deserialize(&int_msg, Some(TypeId::of::<i32>())).expect("i32 decode");
+  assert_eq!(*int_value.downcast::<i32>().unwrap(), number);
+
+  let text = String::from("hello");
+  let text_msg = extension.serialize(&text, SerializationCallScope::Local).expect("string encode");
+  let text_value = extension.deserialize(&text_msg, Some(TypeId::of::<String>())).expect("string decode");
+  assert_eq!(*text_value.downcast::<String>().unwrap(), text);
+
+  let bytes = vec![1_u8, 2, 3];
+  let bytes_msg = extension.serialize(&bytes, SerializationCallScope::Local).expect("bytes encode");
+  let bytes_value = extension.deserialize(&bytes_msg, Some(TypeId::of::<Vec<u8>>())).expect("bytes decode");
+  assert_eq!(*bytes_value.downcast::<Vec<u8>>().unwrap(), bytes);
+
+  // ByteString 往復検証（F-011 回帰）
+  let byte_string = ByteString::from_slice(&[10, 20, 30]);
+  let bs_msg = extension.serialize(&byte_string, SerializationCallScope::Local).expect("ByteString encode");
+  let bs_value = extension.deserialize(&bs_msg, Some(TypeId::of::<ByteString>())).expect("ByteString decode");
+  let decoded = bs_value.downcast::<ByteString>().expect("ByteString downcast");
+  assert_eq!(decoded.as_slice(), &[10, 20, 30]);
+}
+
+#[test]
+fn actor_ref_serialization_uses_helper() {
+  let (mut extension, _, _system) = build_extension(None);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(99, 0), NullSender);
+  let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
+  extension.push_transport_information(info);
+  let message = extension.serialize(&actor_ref, SerializationCallScope::Remote).expect("serialize");
+  extension.pop_transport_information();
+  let decoded = extension.deserialize(&message, Some(TypeId::of::<String>())).expect("decode");
+  let path = decoded.downcast::<String>().unwrap();
+  assert!(path.starts_with("fraktor://sys@host:2552"));
+}

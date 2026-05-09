@@ -6,7 +6,7 @@ use std::{
   thread,
 };
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     scheduler::{
       SchedulerConfig, SchedulerContext,
@@ -129,7 +129,7 @@ fn std_tick_driver_stopper_absorbs_panicked_worker_threads() {
 mod tokio_tests {
   use core::time::Duration;
 
-  use fraktor_actor_core_rs::core::kernel::{
+  use fraktor_actor_core_kernel_rs::{
     actor::{scheduler::SchedulerConfig, setup::ActorSystemConfig},
     system::ActorSystem,
   };

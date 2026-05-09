@@ -1,6 +1,6 @@
 //! Commands driving [`crate::core::watcher::WatcherState`].
 
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath;
+use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPath;
 
 use crate::core::address::Address;
 

@@ -3,7 +3,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use fraktor_actor_adaptor_std_rs::std::actor::PanicInvokeGuard;
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   error::ActorError,
   invoke_guard::{InvokeGuard, NoopInvokeGuard},
 };

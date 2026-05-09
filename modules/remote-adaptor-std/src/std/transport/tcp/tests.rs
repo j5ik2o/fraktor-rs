@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::{net::SocketAddr, time::Instant};
 
 use bytes::{Bytes, BytesMut};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_path::{ActorPath, ActorPathParser},
     messaging::AnyMessage,

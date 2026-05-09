@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::mem;
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::{CorrelationId, RemotingLifecycleEvent},
 };

@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::Any;
 
-use fraktor_actor_core_rs::core::kernel::actor::ActorContext;
+use fraktor_actor_core_kernel_rs::actor::ActorContext;
 
 use crate::core::persistent_actor::PersistentActor;
 

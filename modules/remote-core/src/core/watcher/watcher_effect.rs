@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath;
+use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPath;
 
 use crate::core::address::Address;
 

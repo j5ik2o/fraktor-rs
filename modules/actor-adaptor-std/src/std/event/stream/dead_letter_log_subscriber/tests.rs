@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
     messaging::AnyMessage,

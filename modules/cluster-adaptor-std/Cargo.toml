@@ -18,7 +18,7 @@ aws-ecs = ["dep:aws-sdk-ecs", "dep:aws-config"]
 
 [dependencies]
 fraktor-cluster-core-rs = { workspace = true }
-fraktor-actor-core-rs = { workspace = true }
+fraktor-actor-core-kernel-rs = { workspace = true }
 fraktor-actor-adaptor-std-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize", "std-locks"] }
 serde = { workspace = true }

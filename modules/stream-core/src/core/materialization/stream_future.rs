@@ -5,7 +5,7 @@ use core::{
   task::{Context, Poll, Waker},
 };
 
-use fraktor_actor_core_rs::core::kernel::system::Blocker;
+use fraktor_actor_core_kernel_rs::system::Blocker;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{Completion, StreamError};
@@ -101,7 +101,7 @@ impl<T> StreamFuture<T> {
   /// forever).
   ///
   /// [`TerminationSignal::wait_blocking`]:
-  /// fraktor_actor_core_rs::core::kernel::system::TerminationSignal::wait_blocking
+  /// fraktor_actor_core_kernel_rs::system::TerminationSignal::wait_blocking
   pub fn wait_blocking(&self, blocker: &dyn Blocker) -> Result<T, StreamError>
   where
     T: Clone, {

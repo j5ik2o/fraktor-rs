@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   ActorContext, ChildRef, actor_ref::ActorRef, props::Props, spawn::SpawnError,
 };
 

@@ -1,6 +1,6 @@
 //! Remote-only actor ref provider trait.
 
-use fraktor_actor_core_rs::core::kernel::actor::{Pid, actor_path::ActorPath};
+use fraktor_actor_core_kernel_rs::actor::{Pid, actor_path::ActorPath};
 
 use crate::core::provider::{provider_error::ProviderError, remote_actor_ref::RemoteActorRef};
 

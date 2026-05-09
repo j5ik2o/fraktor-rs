@@ -4,7 +4,7 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::mem;
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},

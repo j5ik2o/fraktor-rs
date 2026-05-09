@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme, PathSegment},
@@ -80,7 +80,7 @@ fn request_retries_on_timeout_until_policy_exhausted() {
   let result = response.future().with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
   let ask_error = result.unwrap_err();
-  assert_eq!(ask_error, fraktor_actor_core_rs::core::kernel::actor::messaging::AskError::Timeout);
+  assert_eq!(ask_error, fraktor_actor_core_kernel_rs::actor::messaging::AskError::Timeout);
 
   let sends = *send_counter.lock();
   assert_eq!(sends, 3);
@@ -371,7 +371,7 @@ fn request_with_sender_forward_failure_completes_error_and_emits_event() {
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
   let ask_error = result.expect_err("expect send failed");
-  assert!(matches!(ask_error, fraktor_actor_core_rs::core::kernel::actor::messaging::AskError::SendFailed(_)));
+  assert!(matches!(ask_error, fraktor_actor_core_kernel_rs::actor::messaging::AskError::SendFailed(_)));
 
   let events = recorder.events();
   assert!(events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));

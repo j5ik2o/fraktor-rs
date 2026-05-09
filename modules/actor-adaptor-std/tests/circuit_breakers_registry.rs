@@ -4,7 +4,7 @@ use fraktor_actor_adaptor_std_rs::std::{
   pattern::{CircuitBreakersRegistry, CircuitBreakersRegistryId},
   system::{new_empty_actor_system, new_empty_actor_system_with},
 };
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{extension::ExtensionId, setup::CircuitBreakerConfig},
   pattern::CircuitBreakerState,
 };

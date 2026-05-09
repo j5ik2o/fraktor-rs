@@ -11,7 +11,7 @@ use core::{
   task::{Context, Poll, Waker},
 };
 
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Actor, ActorContext,
   actor_ref::ActorRef,
   error::ActorError,

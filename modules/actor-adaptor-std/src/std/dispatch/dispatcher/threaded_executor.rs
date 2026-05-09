@@ -8,7 +8,7 @@ extern crate std;
 use alloc::boxed::Box;
 use std::{string::String, thread::Builder};
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
+use fraktor_actor_core_kernel_rs::dispatch::dispatcher::{ExecuteError, Executor};
 
 /// Spawns each submitted task on a brand-new OS thread.
 ///

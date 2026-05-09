@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_adaptor_std_rs::std::{system::new_empty_actor_system, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},
@@ -195,7 +195,7 @@ fn request_future_completes_with_timeout_payload() {
   let result = future.with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
   let ask_error = result.unwrap_err();
-  assert_eq!(ask_error, fraktor_actor_core_rs::core::kernel::actor::messaging::AskError::Timeout);
+  assert_eq!(ask_error, fraktor_actor_core_kernel_rs::actor::messaging::AskError::Timeout);
 }
 
 #[test]

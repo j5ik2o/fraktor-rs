@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
+use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
 use fraktor_cluster_core_rs::core::membership::{Gossiper, MembershipCoordinatorShared};
 use fraktor_utils_core_rs::core::time::TimerInstant;
 use tokio::{
@@ -25,7 +25,7 @@ pub struct TokioGossiper {
   coordinator:  MembershipCoordinatorShared,
   transport:    Option<TokioGossipTransport>,
   event_stream: EventStreamShared,
-  runtime:      Handle,
+  tokio_handle: Handle,
   shutdown:     Option<Sender<()>>,
   task:         Option<JoinHandle<()>>,
 }
@@ -38,9 +38,9 @@ impl TokioGossiper {
     coordinator: MembershipCoordinatorShared,
     transport: TokioGossipTransport,
     event_stream: EventStreamShared,
-    runtime: Handle,
+    tokio_handle: Handle,
   ) -> Self {
-    Self { config, coordinator, transport: Some(transport), event_stream, runtime, shutdown: None, task: None }
+    Self { config, coordinator, transport: Some(transport), event_stream, tokio_handle, shutdown: None, task: None }
   }
 
   /// Returns the shared coordinator handle.
@@ -66,7 +66,7 @@ impl Gossiper for TokioGossiper {
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
     let mut driver = MembershipCoordinatorDriver::new(coordinator, transport, event_stream);
 
-    let task = self.runtime.spawn(async move {
+    let task = self.tokio_handle.spawn(async move {
       let mut interval = tokio::time::interval(tick_interval);
       let mut ticks: u64 = 0;
       loop {
@@ -98,7 +98,7 @@ impl Gossiper for TokioGossiper {
     let _ = shutdown.send(());
     if let Some(task) = self.task.take() {
       // spawn は JoinHandle を返すが、join 不要の fire-and-forget shutdown 経路のため破棄する。
-      drop(self.runtime.spawn(async move {
+      drop(self.tokio_handle.spawn(async move {
         // must-ignore: task 終了理由 (Ok/Err/Cancelled) は後片付けパスでは参照しない。
         let _ = task.await;
       }));

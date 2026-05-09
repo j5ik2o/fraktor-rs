@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_actor_core_rs::core::kernel::actor::invoke_guard::{InvokeGuard, InvokeGuardFactory};
+use fraktor_actor_core_kernel_rs::actor::invoke_guard::{InvokeGuard, InvokeGuardFactory};
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::panic_invoke_guard::PanicInvokeGuard;

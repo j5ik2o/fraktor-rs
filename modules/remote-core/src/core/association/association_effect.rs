@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::RemotingLifecycleEvent;
+use fraktor_actor_core_kernel_rs::event::stream::RemotingLifecycleEvent;
 
 use crate::core::{
   association::quarantine_reason::QuarantineReason, envelope::OutboundEnvelope, transport::TransportEndpoint,
@@ -17,7 +17,7 @@ use crate::core::{
 /// (e.g. `PublishLifecycle` + `SendEnvelopes`).
 ///
 /// `PublishLifecycle` uses the pre-existing
-/// `fraktor_actor_core_rs::core::kernel::event::stream::RemotingLifecycleEvent`
+/// `fraktor_actor_core_kernel_rs::event::stream::RemotingLifecycleEvent`
 /// (see design Decision 16) rather than a duplicate in this crate.
 #[derive(Debug)]
 pub enum AssociationEffect {

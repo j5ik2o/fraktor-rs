@@ -12,7 +12,7 @@ use bytes::Bytes;
 ///
 /// The 96-bit correlation identifier is split into a 64-bit `hi` and a 32-bit
 /// `lo` so that the wire frame round-trips the full precision of
-/// `fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId` without
+/// `fraktor_actor_core_kernel_rs::event::stream::CorrelationId` without
 /// silent truncation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnvelopePdu {

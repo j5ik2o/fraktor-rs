@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{format, string::String, vec::Vec};
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
@@ -464,4 +464,4 @@ impl ClusterExtension {
   }
 }
 
-impl fraktor_actor_core_rs::core::kernel::actor::extension::Extension for ClusterExtension {}
+impl fraktor_actor_core_kernel_rs::actor::extension::Extension for ClusterExtension {}

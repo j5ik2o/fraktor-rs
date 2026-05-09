@@ -65,7 +65,7 @@ pub use bounded_source_queue::BoundedSourceQueue;
 pub use completion_strategy::CompletionStrategy;
 #[cfg(feature = "compression")]
 pub use dsl::Compression;
-use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
+use fraktor_actor_core_kernel_rs::system::ActorSystem;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 use r#impl::{
   RestartBackoff, StreamDslError as ImplStreamDslError, StreamError as ImplStreamError,

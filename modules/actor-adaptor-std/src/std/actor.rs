@@ -3,7 +3,7 @@
 mod panic_invoke_guard;
 mod panic_invoke_guard_factory;
 
-use fraktor_actor_core_rs::core::kernel::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
 pub use panic_invoke_guard::PanicInvokeGuard;
 pub use panic_invoke_guard_factory::PanicInvokeGuardFactory;
 

@@ -37,7 +37,7 @@ pub struct TokioGossipTransport {
 
 impl TokioGossipTransport {
   /// Binds a new transport.
-  pub fn bind(config: TokioGossipTransportConfig, runtime: Handle) -> Result<Self, GossipTransportError> {
+  pub fn bind(config: TokioGossipTransportConfig, tokio_handle: Handle) -> Result<Self, GossipTransportError> {
     if config.max_datagram_bytes == 0 {
       return Err(GossipTransportError::SendFailed { reason: String::from("max_datagram_bytes must be > 0") });
     }
@@ -61,7 +61,7 @@ impl TokioGossipTransport {
     let (inbound_tx, inbound_rx) = mpsc::channel::<(String, MembershipDelta)>(config.outbound_capacity);
 
     let recv_socket = Arc::clone(&socket);
-    let recv_task = runtime.spawn(async move {
+    let recv_task = tokio_handle.spawn(async move {
       let mut buffer = vec![0u8; config.max_datagram_bytes];
       loop {
         let result = recv_socket.recv_from(&mut buffer).await;
@@ -78,7 +78,7 @@ impl TokioGossipTransport {
     });
 
     let send_socket = Arc::clone(&socket);
-    let send_task = runtime.spawn(async move {
+    let send_task = tokio_handle.spawn(async move {
       while let Some(packet) = outbound_rx.recv().await {
         if let Err(err) = send_socket.send_to(&packet.payload, packet.target).await {
           tracing::warn!(target = %packet.target, "failed to send outbound gossip packet: {err}");

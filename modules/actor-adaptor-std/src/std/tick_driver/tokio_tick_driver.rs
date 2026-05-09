@@ -9,7 +9,7 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
+use fraktor_actor_core_kernel_rs::actor::scheduler::tick_driver::{
   AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind,
   TickDriverProvision, TickDriverStopper, TickFeedHandle, next_tick_driver_id,
 };
@@ -56,7 +56,7 @@ impl TickDriver for TokioTickDriver {
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
 
     if handle.runtime_flavor() == RuntimeFlavor::CurrentThread {
-      return Err(TickDriverError::UnsupportedRuntime);
+      return Err(TickDriverError::UnsupportedExecutor);
     }
 
     let running = Arc::new(AtomicBool::new(true));

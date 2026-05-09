@@ -1,5 +1,5 @@
 [package]
-name = "fraktor-actor-core-rs"
+name = "fraktor-actor-core-kernel-rs"
 version = "0.2.11"
 edition = "2024"
 description = "fraktor no_std actor runtime"
@@ -8,7 +8,7 @@ keywords = ["fraktor", "actor", "runtime", "no_std"]
 categories = ["concurrency", "embedded", "no-std"]
 repository = "https://github.com/j5ik2o/fraktor-rs"
 homepage = "https://github.com/j5ik2o/fraktor-rs"
-documentation = "https://docs.rs/fraktor-actor-core-rs"
+documentation = "https://docs.rs/fraktor-actor-core-kernel-rs"
 readme = "../../README.md"
 autoexamples = false
 
@@ -79,10 +79,6 @@ path = "tests/system_events.rs"
 [[test]]
 name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
-
-[[test]]
-name = "typed_scheduler"
-path = "tests/typed_scheduler.rs"
 
 [lints]
 workspace = true

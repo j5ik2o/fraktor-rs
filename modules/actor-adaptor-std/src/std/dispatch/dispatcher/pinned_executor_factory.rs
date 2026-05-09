@@ -5,7 +5,7 @@ extern crate std;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::string::String;
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecutorFactory, ExecutorShared, TrampolineState};
+use fraktor_actor_core_kernel_rs::dispatch::dispatcher::{ExecutorFactory, ExecutorShared, TrampolineState};
 
 use super::pinned_executor::PinnedExecutor;
 

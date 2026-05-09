@@ -7,7 +7,7 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
-const LOGGING_FILTER_SOURCE: &str = r#"use fraktor_actor_core_rs::core::kernel::{
+const LOGGING_FILTER_SOURCE: &str = r#"use fraktor_actor_core_kernel_rs::{
   event::logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
   system::state::{SystemStateShared, system_state::SystemState},
 };
@@ -82,7 +82,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fraktor-actor-core-rs = {{ path = "{manifest_dir}" }}
+fraktor-actor-core-kernel-rs = {{ path = "{manifest_dir}" }}
 "#
   )
 }
@@ -92,7 +92,7 @@ fn unique_crate_dir(name: &str) -> PathBuf {
     | Ok(duration) => duration.as_nanos(),
     | Err(error) => panic!("system clock should be after unix epoch: {error}"),
   };
-  let dir = env::temp_dir().join(format!("fraktor-actor-core-rs-{name}-{}-{timestamp}", std::process::id()));
+  let dir = env::temp_dir().join(format!("fraktor-actor-core-kernel-rs-{name}-{}-{timestamp}", std::process::id()));
   if let Err(error) = fs::create_dir_all(&dir) {
     panic!("unique crate directory should be created: {error}");
   }

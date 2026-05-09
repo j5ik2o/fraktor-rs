@@ -57,5 +57,20 @@ extern crate alloc;
 #[cfg(test)]
 mod tests;
 
-/// Core actor runtime module containing all actor system components.
-pub mod core;
+/// Actor primitives, contexts, references, scheduling, and supervision.
+pub mod actor;
+/// Message dispatchers, executors, and mailbox implementations.
+pub mod dispatch;
+/// Event stream and logging infrastructure.
+pub mod event;
+mod io;
+/// Actor interaction patterns such as ask, retry, and circuit breakers.
+pub mod pattern;
+/// Router configuration, routing logic, and routee selection.
+pub mod routing;
+/// Message serialization registry and built-in serializers.
+pub mod serialization;
+/// Shared support utilities.
+pub mod support;
+/// Actor system lifecycle, registries, remoting hooks, and shutdown support.
+pub mod system;

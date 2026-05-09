@@ -1,7 +1,7 @@
 //! [`RemoteInstrument`] trait: observability hooks for outbound and inbound
 //! traffic.
 
-use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
+use fraktor_actor_core_kernel_rs::event::stream::CorrelationId;
 
 use crate::core::{
   association::QuarantineReason,

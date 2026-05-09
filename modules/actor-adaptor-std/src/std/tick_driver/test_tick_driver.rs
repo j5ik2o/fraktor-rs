@@ -12,7 +12,7 @@ use core::{
 };
 use std::thread::{self, Builder, JoinHandle};
 
-use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
+use fraktor_actor_core_kernel_rs::actor::scheduler::tick_driver::{
   SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind, TickDriverProvision, TickDriverStopper,
   TickFeedHandle, next_tick_driver_id,
 };

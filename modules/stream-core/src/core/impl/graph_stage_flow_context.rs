@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
+use fraktor_actor_core_kernel_rs::system::ActorSystem;
 
 use crate::core::{
   DynValue, StreamError,

@@ -20,7 +20,7 @@ use fraktor_actor_adaptor_std_rs::std::{
   system::std_actor_system_config,
   tick_driver::TestTickDriver,
 };
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::ExecutorFactory;
+use fraktor_actor_core_kernel_rs::dispatch::dispatcher::ExecutorFactory;
 
 const AFFINITY_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::AffinityExecutor;
 

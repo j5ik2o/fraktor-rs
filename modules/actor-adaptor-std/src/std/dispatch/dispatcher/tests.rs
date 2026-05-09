@@ -26,7 +26,7 @@ use std::{
   vec::Vec,
 };
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,

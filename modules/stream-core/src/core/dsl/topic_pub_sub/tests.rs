@@ -5,19 +5,14 @@ use std::{
 };
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::core::{
-  kernel::{
-    actor::{
-      Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig,
-      setup::ActorSystemConfig,
-    },
-    system::ActorSystem,
-  },
-  typed::{
-    TypedActorRef, TypedProps,
-    dsl::Behaviors,
-    pubsub::{Topic, TopicCommand, TopicStats},
-  },
+use fraktor_actor_core_kernel_rs::{
+  actor::{scheduler::SchedulerConfig, setup::ActorSystemConfig},
+  system::ActorSystem,
+};
+use fraktor_actor_core_typed_rs::{
+  TypedActorRef, TypedActorSystem, TypedProps,
+  dsl::Behaviors,
+  pubsub::{Topic, TopicCommand, TopicStats},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
@@ -31,19 +26,11 @@ use crate::core::{
 
 // --- test helpers ---
 
-struct GuardianActor;
-
-impl Actor for GuardianActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
-
 fn build_system() -> ActorSystem {
-  let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
-  ActorSystem::create_from_props(&props, config).expect("system should build")
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  TypedActorSystem::<u32>::create_from_props(&guardian_props, config).expect("system should build").into_untyped()
 }
 
 fn spawn_topic<T>(system: &ActorSystem, name: &str) -> TypedActorRef<TopicCommand<T>>

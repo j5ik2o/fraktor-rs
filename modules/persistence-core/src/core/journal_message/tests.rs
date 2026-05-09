@@ -1,7 +1,7 @@
 use alloc::vec;
 use core::any::Any;
 
-use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
+use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{journal_message::JournalMessage, persistent_repr::PersistentRepr};

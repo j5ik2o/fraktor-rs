@@ -1,7 +1,7 @@
 extern crate std;
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, ChildRef, Pid, error::ActorError, messaging::AnyMessageView, props::Props,
     setup::ActorSystemConfig,

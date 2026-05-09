@@ -1,7 +1,7 @@
 //! Standard-library [`ActorSystemConfig`] factory with a monotonic mailbox clock
 //! pre-installed.
 
-use fraktor_actor_core_rs::core::kernel::actor::{scheduler::tick_driver::TickDriver, setup::ActorSystemConfig};
+use fraktor_actor_core_kernel_rs::actor::{scheduler::tick_driver::TickDriver, setup::ActorSystemConfig};
 
 use crate::std::time::std_monotonic_mailbox_clock;
 

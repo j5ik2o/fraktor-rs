@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPathParser;
+use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPathParser;
 
 use crate::core::extension::{RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome};
 

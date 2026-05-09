@@ -1,6 +1,6 @@
 //! Stateless remote-only actor-ref provider for canonical remote paths.
 
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Pid,
   actor_path::{ActorPath, ActorPathScheme},
 };

@@ -3,7 +3,7 @@
 //! This module provides Transport event auto-detection functionality
 //! that is only available in std environments.
 
-use fraktor_actor_core_rs::core::kernel::event::stream::{
+use fraktor_actor_core_kernel_rs::event::stream::{
   ClassifierKey, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
   RemotingLifecycleEvent, subscriber_handle,
 };

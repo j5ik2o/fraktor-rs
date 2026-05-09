@@ -1,13 +1,12 @@
 #![cfg(not(target_os = "none"))]
 
-#[path = "../support/common.rs"]
 mod common;
 
 use std::vec::Vec;
 
 use common::wait_until;
 use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, ChildRef, Pid,
     actor_ref::dead_letter::DeadLetterReason,

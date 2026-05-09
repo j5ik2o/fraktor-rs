@@ -17,6 +17,21 @@ const CONTEXT_PIPE_WAKER_HANDLE_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/context_pipe_waker_handle.rs");
 const CONTEXT_PIPE_WAKER_HANDLE_SHARED_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/context_pipe_waker_handle_shared.rs");
+const SYSTEM_STATE_SHARED_INNER_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/system_state_shared_inner.rs");
+const ACTOR_SYSTEM_STOP_ACTOR_SOURCE: &str = include_str!("fixtures/kernel_public_surface/actor_system_stop_actor.rs");
+const ACTOR_SYSTEM_SPAWN_DETACHED_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/actor_system_spawn_detached.rs");
+const ACTOR_CONTEXT_CURRENT_MESSAGE_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/actor_context_current_message.rs");
+const ACTOR_CELL_STASH_PRIMITIVE_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/actor_cell_stash_primitive.rs");
+const ACTOR_CELL_ADAPTER_PRIMITIVE_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/actor_cell_adapter_primitive.rs");
+const MESSAGE_ADAPTER_INTERNAL_TYPES_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/message_adapter_internal_types.rs");
+const TYPED_UNHANDLED_MESSAGE_EVENT_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/typed_unhandled_message_event.rs");
 const ROUTING_CONSISTENT_HASHING_LOGIC_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/routing_consistent_hashing_logic.rs");
 const ROUTING_SMALLEST_MAILBOX_LOGIC_SOURCE: &str =
@@ -43,6 +58,14 @@ fn internal_actor_helpers_are_not_reachable_from_external_crate() {
       CONTEXT_PIPE_WAKER_HANDLE_SHARED_SOURCE,
       "ContextPipeWakerHandleShared",
     ),
+    ("kernel-system-state-shared-inner", SYSTEM_STATE_SHARED_INNER_SOURCE, "inner"),
+    ("kernel-actor-system-stop-actor", ACTOR_SYSTEM_STOP_ACTOR_SOURCE, "stop_actor"),
+    ("kernel-actor-system-spawn-detached", ACTOR_SYSTEM_SPAWN_DETACHED_SOURCE, "spawn_detached"),
+    ("kernel-actor-context-current-message", ACTOR_CONTEXT_CURRENT_MESSAGE_SOURCE, "set_current_message"),
+    ("kernel-actor-cell-stash-primitive", ACTOR_CELL_STASH_PRIMITIVE_SOURCE, "unstash_messages_with_limit"),
+    ("kernel-actor-cell-adapter-primitive", ACTOR_CELL_ADAPTER_PRIMITIVE_SOURCE, "acquire_adapter_handle"),
+    ("kernel-message-adapter-internal-types", MESSAGE_ADAPTER_INTERNAL_TYPES_SOURCE, "MessageAdapterRegistration"),
+    ("kernel-typed-unhandled-message-event", TYPED_UNHANDLED_MESSAGE_EVENT_SOURCE, "TypedUnhandledMessageEvent"),
   ];
 
   for (name, source, expected_symbol) in fixtures {
@@ -159,7 +182,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fraktor-actor-core-rs = {{ path = "{manifest_dir}" }}
+fraktor-actor-core-kernel-rs = {{ path = "{manifest_dir}" }}
 "#
   )
 }
@@ -169,7 +192,7 @@ fn unique_crate_dir(name: &str) -> PathBuf {
     | Ok(duration) => duration.as_nanos(),
     | Err(error) => panic!("system clock should be after unix epoch: {error}"),
   };
-  let dir = env::temp_dir().join(format!("fraktor-actor-core-rs-{name}-{}-{timestamp}", std::process::id()));
+  let dir = env::temp_dir().join(format!("fraktor-actor-core-kernel-rs-{name}-{}-{timestamp}", std::process::id()));
   if let Err(error) = fs::create_dir_all(&dir) {
     panic!("unique crate directory should be created: {error}");
   }

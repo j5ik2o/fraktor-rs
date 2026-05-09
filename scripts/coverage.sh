@@ -56,7 +56,7 @@ log_step() {
 
 coverage_packages() {
   printf '%s\n' \
-    "fraktor-actor-core-rs" \
+    "fraktor-actor-core-kernel-rs" \
     "fraktor-actor-adaptor-std-rs" \
     "fraktor-stream-core-rs" \
     "fraktor-stream-adaptor-std-rs"
@@ -64,7 +64,7 @@ coverage_packages() {
 
 coverage_features() {
   printf '%s\n' \
-    "fraktor-actor-core-rs/alloc" \
+    "fraktor-actor-core-kernel-rs/alloc" \
     "fraktor-actor-adaptor-std-rs/test-support"
 }
 

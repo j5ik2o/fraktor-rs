@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
+use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
 
 use crate::core::{
   journal_error::JournalError, persistence_error::PersistenceError, persistent_repr::PersistentRepr,

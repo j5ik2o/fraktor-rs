@@ -2,7 +2,7 @@
 
 use std::{boxed::Box, string::String, sync::Mutex, time::Instant};
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderInstaller, LocalActorRefProvider},
   serialization::ActorRefResolveCache,
   system::{ActorSystem, ActorSystemBuildError},

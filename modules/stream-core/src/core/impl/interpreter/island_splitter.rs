@@ -7,7 +7,10 @@
 use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
 use core::any::TypeId;
 
-use super::island_boundary::IslandBoundaryShared;
+use super::{
+  boundary_sink_logic::BoundarySinkLogic, boundary_source_logic::BoundarySourceLogic,
+  island_boundary::IslandBoundaryShared,
+};
 use crate::core::{
   KillSwitchStateHandle, SinkDefinition, SourceDefinition, StageDefinition, StreamPlan, StreamPlanEdge,
   SupervisionStrategy,
@@ -96,8 +99,6 @@ impl SingleIslandPlan {
     upstream_outlet: PortId,
     element_type: TypeId,
   ) {
-    use super::boundary_sink_logic::BoundarySinkLogic;
-
     let inlet = PortId::next();
     let idx = self.stages.len();
     self.stages.push(StageDefinition::Sink(SinkDefinition {
@@ -122,8 +123,6 @@ impl SingleIslandPlan {
     downstream_inlet: PortId,
     element_type: TypeId,
   ) {
-    use super::boundary_source_logic::BoundarySourceLogic;
-
     let outlet = PortId::next();
     let idx = self.stages.len();
     self.stages.push(StageDefinition::Source(SourceDefinition {
