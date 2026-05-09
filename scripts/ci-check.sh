@@ -1400,7 +1400,7 @@ check_unit_sleep() {
     --glob '!modules/cluster-adaptor-std/src/tokio_gossip_transport/**'
     --glob '!modules/actor-core-kernel/src/core/kernel/system/coordinated_shutdown/tests.rs'
     --glob '!modules/actor-core-kernel/src/core/kernel/dispatch/dispatcher/tests.rs'
-    --glob '!modules/actor-core-kernel/src/core/kernel/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
+    --glob '!modules/actor-core-kernel/src/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
   )
 
   local violations=""
