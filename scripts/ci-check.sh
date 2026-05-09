@@ -1381,8 +1381,8 @@ check_unit_sleep() {
     return 1
   fi
   local -a scan_dirs=(
-    modules/actor-core/src/
-    modules/actor-typed/src/
+    modules/actor-core-kernel/src/
+    modules/actor-core-typed/src/
     modules/actor-adaptor-std/src/
     modules/stream-core/src/
     modules/stream-adaptor-std/src/
@@ -1398,9 +1398,9 @@ check_unit_sleep() {
     --glob '!modules/remote/src/std/transport/**'
     --glob '!modules/remote/tests/**'
     --glob '!modules/cluster-adaptor-std/src/std/tokio_gossip_transport/**'
-    --glob '!modules/actor-core/src/core/kernel/system/coordinated_shutdown/tests.rs'
-    --glob '!modules/actor-core/src/core/kernel/dispatch/dispatcher/tests.rs'
-    --glob '!modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
+    --glob '!modules/actor-core-kernel/src/core/kernel/system/coordinated_shutdown/tests.rs'
+    --glob '!modules/actor-core-kernel/src/core/kernel/dispatch/dispatcher/tests.rs'
+    --glob '!modules/actor-core-kernel/src/core/kernel/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
   )
 
   local violations=""
