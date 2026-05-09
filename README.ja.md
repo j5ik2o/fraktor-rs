@@ -48,7 +48,7 @@ cargo run -p fraktor-showcases-std --example getting_started
 ### 検証
 
 ```bash
-cargo test -p fraktor-actor-core-rs --features "std test-support tokio-executor"
+cargo test -p fraktor-actor-core-kernel-rs --features "std test-support tokio-executor"
 ./scripts/ci-check.sh all
 ```
 

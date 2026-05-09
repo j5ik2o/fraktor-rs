@@ -220,7 +220,7 @@ usage() {
   test                   : unit-test + integration-test を順に実行します
   check-unit-sleep       : unit テストパスに実時間 sleep が残っていないことを検査します
   perf                   : Scheduler ストレスと actor ベンチマークを実行します
-  actor-path-e2e         : fraktor-actor-core-rs の actor_path_e2e テストを単体実行します
+  actor-path-e2e         : fraktor-actor-core-kernel-rs の actor_path_e2e テストを単体実行します
   all                    : AI 向けの標準フルチェックを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 
@@ -867,7 +867,7 @@ run_dylint() {
         break
         ;;
       -h|--help)
-        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-core-rs" >&2
+        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-core-kernel-rs" >&2
         return 0
         ;;
       *)
@@ -1258,9 +1258,9 @@ run_no_std() {
     "no-std-host-utils" \
     check -p fraktor-utils-core-rs --no-default-features --features alloc
   start_parallel_cargo \
-    "$(render_cargo_command check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features)" \
+    "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features)" \
     "no-std-host-core" \
-    check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features
+    check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features
   wait_parallel_cargo || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
@@ -1272,9 +1272,9 @@ run_no_std() {
       "no-std-thumb-utils" \
       check -p fraktor-utils-core-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-core-rs/alloc
     start_parallel_cargo \
-      "$(render_cargo_command check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}")" \
+      "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}")" \
       "no-std-thumb-core" \
-      check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}"
+      check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}"
     wait_parallel_cargo || return 1
   fi
 }
@@ -1287,15 +1287,15 @@ run_std() {
     "std-utils" \
     test -p fraktor-utils-core-rs
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib" \
     "std-core" \
-    test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib
+    test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib
   wait_parallel_cargo || return 1
 }
 
 run_doc_tests() {
-  log_step "$(render_cargo_command check -p fraktor-actor-core-rs --no-default-features)"
-  run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
+  log_step "$(render_cargo_command check -p fraktor-actor-core-kernel-rs --no-default-features)"
+  run_cargo check -p fraktor-actor-core-kernel-rs --no-default-features || return 1
 }
 
 # run_embedded() {
@@ -1326,11 +1326,11 @@ run_doc_tests() {
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --target ${target} --no-default-features --features alloc"
 #    run_cargo check -p fraktor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-kernel-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-kernel-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-kernel-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-kernel-rs --target "${target}" --no-default-features --features alloc || return 1
 #
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
 #    run_cargo check -p fraktor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
@@ -1439,8 +1439,8 @@ check_unit_sleep() {
 }
 
 run_actor_path_e2e() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture"
-  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-kernel-rs --test actor_path_e2e -- --nocapture"
+  run_cargo test -p fraktor-actor-core-kernel-rs --test actor_path_e2e -- --nocapture || return 1
 }
 
 run_examples() {
@@ -1545,8 +1545,8 @@ PY
 }
 
 run_perf() {
-  log_step "cargo test -p fraktor-actor-core-rs stress_scheduler_handles_"
-  run_cargo test -p fraktor-actor-core-rs stress_scheduler_handles_ || return 1
+  log_step "cargo test -p fraktor-actor-core-kernel-rs stress_scheduler_handles_"
+  run_cargo test -p fraktor-actor-core-kernel-rs stress_scheduler_handles_ || return 1
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-adaptor-std-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
   run_cargo bench -p fraktor-actor-adaptor-std-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1

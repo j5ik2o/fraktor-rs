@@ -129,9 +129,9 @@ workspace = false
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-cargo test -p fraktor-actor-core-rs --features std --test ping_pong
-cargo run -q -p fraktor-actor-core-rs --example ping_pong_no_std --features std
-cargo run -q -p fraktor-actor-core-rs --example ping_pong_tokio --features std
+cargo test -p fraktor-actor-core-kernel-rs --features std --test ping_pong
+cargo run -q -p fraktor-actor-core-kernel-rs --example ping_pong_no_std --features std
+cargo run -q -p fraktor-actor-core-kernel-rs --example ping_pong_tokio --features std
 '''
 
 [tasks.actor-core-us2]
@@ -140,8 +140,8 @@ workspace = false
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-cargo test -p fraktor-actor-core-rs --features std --test supervisor
-cargo run -q -p fraktor-actor-core-rs --example supervision_std --features std
+cargo test -p fraktor-actor-core-kernel-rs --features std --test supervisor
+cargo run -q -p fraktor-actor-core-kernel-rs --example supervision_std --features std
 '''
 
 [tasks.actor-core-us3]
@@ -150,9 +150,9 @@ workspace = false
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-cargo test -p fraktor-actor-core-rs --features std --test event_stream
-cargo run -q -p fraktor-actor-core-rs --example deadletter_std --features std
-cargo run -q -p fraktor-actor-core-rs --example logger_subscriber_std --features std
+cargo test -p fraktor-actor-core-kernel-rs --features std --test event_stream
+cargo run -q -p fraktor-actor-core-kernel-rs --example deadletter_std --features std
+cargo run -q -p fraktor-actor-core-kernel-rs --example logger_subscriber_std --features std
 '''
 
 [tasks.actor-core-perf]
@@ -161,7 +161,7 @@ workspace = false
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-cargo test -p fraktor-actor-core-rs --features std --test perf_mailbox
+cargo test -p fraktor-actor-core-kernel-rs --features std --test perf_mailbox
 '''
 
 [tasks.actor-core-story]
@@ -184,7 +184,7 @@ set -euo pipefail
 '''
 
 [tasks.actor-tell-disabled-check]
-description = "Build fraktor-actor-core-rs core targets with tell API disabled via --cfg fraktor_disable_tell"
+description = "Build fraktor-actor-core-kernel-rs core targets with tell API disabled via --cfg fraktor_disable_tell"
 workspace = false
 script = '''
 #!/usr/bin/env bash
@@ -199,5 +199,5 @@ if [ -n "${RUSTFLAGS:-}" ]; then
 else
   export RUSTFLAGS="${EXTRA_RUSTFLAGS}"
 fi
-cargo +"${CHANNEL}" check -p fraktor-actor-core-rs --features test-support,std,tokio-executor
+cargo +"${CHANNEL}" check -p fraktor-actor-core-kernel-rs --features test-support,std,tokio-executor
 '''
