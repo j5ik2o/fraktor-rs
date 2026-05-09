@@ -325,6 +325,224 @@ pub struct RunOutcome<R> {
 | CQS違反は人間許可で例外許容（`Vec::pop` 相当） | `*Shared::try_run -> Option<R>` は `Vec::pop -> Option<T>` と同型 |
 | Tell, Don't Ask | bool 返却して呼び側で分岐する代わりに、勝った場合の動作をクロージャで渡す |
 
+## enum 化できないケースの戦略
+
+`pure value + atomic Shared wrapper` は **小さな離散状態（≤8 byte 程度の Copy 型）** にしか適用できない。状態が大きい・コレクションを含む・部分的に可変、といったケースでは別パターンに切り替える必要がある。
+
+### 適用境界の判定フロー
+
+```
+1. 状態は Copy 可能で 1〜8 byte に収まるか？
+   ├─ Yes → enum + AtomicU* + fetch_update（前述のパターン）
+   └─ No  → 次へ
+
+2. 状態は immutable に保てるか（更新時は全置換でよいか）？
+   ├─ Yes → A. RCU 風 snapshot（後述）
+   └─ No  → 次へ
+
+3. 状態の主成分はコレクション（Vec / HashMap）か？
+   ├─ Yes → B. Sharding（既述）or persistent collection + snapshot
+   └─ No  → 次へ
+
+4. 状態のフィールドごとに更新頻度が大きく違うか？
+   ├─ Yes → C. フィールド単位に分解して各々最適な同期手段を選ぶ
+   └─ No  → 次へ
+
+5. 単純な数値カウンタ・統計値か？
+   ├─ Yes → D. AtomicU* を直接使う（ラッパー不要）
+   └─ No  → SharedLock<T> のまま据え置き（ホットでなければ問題ない）
+```
+
+### A. RCU 風 snapshot（大きい immutable struct）
+
+**適用条件**: 状態が複数フィールドを持つが、更新時に全体を置換できる。読み込みが圧倒的に多く、書き込みが稀（読み : 書き ≧ 100 : 1）。
+
+```rust
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultRwLock, SharedAccess, SharedRwLock};
+
+// 内側: immutable な値オブジェクト（DDD で言う value object）
+#[derive(Debug)]
+pub struct RoutingTable {
+    routes: Vec<Route>,
+    default: Option<Endpoint>,
+}
+
+impl RoutingTable {
+    pub fn lookup(&self, key: &Key) -> Option<&Endpoint> { /* pure */ }
+    /// 新しい Route を加えた **新しいテーブル** を返す（self は変更しない）
+    pub fn with_added(&self, r: Route) -> Self { /* clone + push */ }
+}
+
+// 外側: ArcShared<RoutingTable> を atomic に差し替える Shared ラッパー
+//   - 読み込み: ArcShared を clone するだけ（refcount + 1）。lock 区間は短い
+//   - 書き込み: 新規 ArcShared を作成して swap。古い snapshot は refcount 0 で解放
+pub struct RoutingTableShared {
+    inner: SharedRwLock<ArcShared<RoutingTable>>,
+}
+
+impl RoutingTableShared {
+    pub fn read(&self) -> ArcShared<RoutingTable> {
+        self.inner.with_read(|t| t.clone())  // refcount inc のみ。lock は瞬間
+    }
+
+    /// 内側の純粋関数を借りて新規 snapshot を作成し、atomic に差し替える
+    pub fn update(&self, mutate: impl FnOnce(&RoutingTable) -> RoutingTable) {
+        self.inner.with_write(|t| *t = ArcShared::new(mutate(&**t)));
+    }
+}
+```
+
+**コスト**:
+- 読み込み: `ArcShared::clone`（refcount inc 1回）+ 短い RwLock read。実用上 wait-free に近い
+- 書き込み: 新規 snapshot 1個分の割り当て + RwLock write。**ここでアロケーションが発生する**が、書き込みは稀なので許容
+- メモリ: 古い snapshot を参照しているリーダーがいる間、新旧両方が残る（refcount 0 で解放）
+
+**完全 wait-free にしたいなら** `arc-swap` 相当を自前で（`AtomicPtr<T>` + hazard pointer 風）実装する選択肢もあるが、複雑度が跳ね上がるので **まず brief-lock 版で実測してから判断する**。
+
+### B. コレクションを含む状態
+
+**適用条件**: 状態の主成分が `Vec<T>` / `HashMap<K, V>` で、要素単位の更新が頻繁。
+
+```rust
+// 選択肢 1: Sharding（書き込みも一定量ある場合・実装が単純）
+//   既出の ShardedRegistry パターンを使う
+pub struct ConnectionTable {
+    shards: [SharedRwLock<HashMap<ConnId, Connection>>; 64],
+}
+
+// 選択肢 2: persistent collection + snapshot（読み : 書き比率が極端な場合）
+//   im::HashMap などの persistent data structure は構造共有で clone が cheap
+//   A の RoutingTable パターンと組み合わせる
+pub struct ConfigTableShared {
+    inner: SharedRwLock<ArcShared<im::HashMap<ConfigKey, ConfigValue>>>,
+}
+```
+
+**選び方**:
+- 書き込み頻度が高い → Sharding（A の snapshot は書き込みが重い）
+- 読み込みが極端に多く全体スナップショットが欲しい → persistent + snapshot
+- 単純な lookup だけで構造共有が要らない → Sharding
+
+### C. フィールド単位への分解
+
+**適用条件**: 1つの struct に「ホットなカウンタ」「コールドな設定」「immutable な構成情報」が混在している。これを丸ごと `SharedLock` で守ると、ホット更新がコールド読み込みと競合する。
+
+```rust
+// ❌ 一つの SharedLock で全部を守る → 更新頻度が違うフィールド同士が競合
+pub struct ConnectionStateShared {
+    inner: SharedLock<ConnectionState>,  // bytes_sent の更新が config 読み込みをブロック
+}
+
+struct ConnectionState {
+    bytes_sent: u64,           // ホット: 受信ごとに更新
+    bytes_recv: u64,           // ホット: 送信ごとに更新
+    last_error: Option<Error>, // コールド: エラー時のみ
+    config: ArcShared<Config>, // immutable: 接続後変わらない
+}
+
+// ✅ フィールドごとに最適な同期手段を選ぶ
+pub struct ConnectionStateShared {
+    bytes_sent: AtomicU64,                       // D のパターン
+    bytes_recv: AtomicU64,                       // D のパターン
+    last_error: SharedRwLock<Option<Error>>,     // SharedLock（コールド）
+    config: ArcShared<Config>,                    // immutable（同期不要）
+}
+```
+
+**判断基準**:
+- 更新頻度が桁違いに違うフィールドは絶対に分ける
+- ただし「同時に変わるべき」フィールドは一緒に保持する（不変条件）
+- 不変条件と性能のトレードオフは設計判断（迷ったら不変条件優先）
+
+### D. 数値カウンタ・統計値
+
+**適用条件**: 単純なカウンタ・累計・最大最小など、原子操作プリミティブで完結する処理。
+
+```rust
+// ラッパーすら作らず、フィールドとして直接 AtomicU64 を持つ
+pub struct MailboxMetrics {
+    enqueued:  AtomicU64,
+    dispatched: AtomicU64,
+    dropped:   AtomicU64,
+}
+
+impl MailboxMetrics {
+    pub fn record_enqueue(&self)    { self.enqueued.fetch_add(1, Ordering::Relaxed); }
+    pub fn record_dispatch(&self)   { self.dispatched.fetch_add(1, Ordering::Relaxed); }
+    pub fn record_drop(&self)       { self.dropped.fetch_add(1, Ordering::Relaxed); }
+    pub fn snapshot(&self) -> MetricsSnapshot {
+        MetricsSnapshot {
+            enqueued:  self.enqueued.load(Ordering::Relaxed),
+            dispatched: self.dispatched.load(Ordering::Relaxed),
+            dropped:   self.dropped.load(Ordering::Relaxed),
+        }
+    }
+}
+```
+
+**注意点**:
+- フィールド間の整合性は **保証されない**（snapshot 中に他フィールドが変わる）。総和が一致する必要がない統計値ならこれで十分
+- 整合スナップショットが必要なら A の RCU パターンへ
+- `Ordering::Relaxed` は計測用途には十分。同期効果が必要なら `Acquire`/`Release`/`AcqRel` を選ぶ
+
+### E. 大きい状態機械（variant にデータが付随）
+
+**適用条件**: enum の各 variant が固有のデータを持ち、AtomicU8 に収まらない。
+
+```rust
+pub enum Connection {
+    Connecting { started_at: Instant, attempts: u32 },
+    Established { since: Instant, bytes_sent: u64 },
+    Closing    { reason: CloseReason },
+    Closed,
+}
+```
+
+選択肢：
+
+| アプローチ | 仕組み | 向き不向き |
+|---|---|---|
+| **discriminant 分離** | `AtomicU8` で variant タグだけ持ち、各 variant のデータは別フィールド | データの読み出しに整合性が必要なら不可 |
+| **A. RCU snapshot** | `Connection` 全体を `ArcShared` で保持し snapshot 差し替え | 書き込みが稀ならこれが第一選択 |
+| **C. 分解** | hot な数値（`bytes_sent`）は AtomicU64、状態は別管理 | 設計が分かりにくくなりがち |
+| **SharedLock** | hot でなければ素直にロック | コールドパスならこれで十分 |
+
+**判断順序**: ホットでないなら `SharedLock` → 読み込みが圧倒的に多いなら RCU → 数値だけ hot で他は安定なら分解。
+
+### 適用パターン早見表
+
+| 状態の特徴 | 推奨パターン | アロケーション |
+|---|---|---|
+| 1〜8 byte の離散状態 | **enum + AtomicU* + fetch_update** | ゼロ |
+| 大きい immutable struct（全置換） | **A. RCU snapshot**（`SharedRwLock<ArcShared<T>>`） | 書き込み時のみ |
+| Vec / HashMap で要素更新が頻繁 | **B. Sharding** | 通常通り |
+| Vec / HashMap で全体 snapshot 必要 | **B. persistent + snapshot** | 構造共有で削減 |
+| ホット/コールドが混在 | **C. フィールド分解** | 各々最適化 |
+| 単純な数値カウンタ | **D. AtomicU* 直接** | ゼロ |
+| variant データ付き状態機械 | **E. ホットさで判断** | パターン依存 |
+| ホットでない複雑な状態 | **SharedLock のまま** | 通常通り |
+
+### アンチパターン: enum 化の無理強い
+
+「enum で書ければゼロアロケーション」という結論を逆手に取って、**本来 enum 化すべきでない状態を無理に enum 化しない**。
+
+```rust
+// ❌ 大きいデータを 1 byte に押し込めず、
+//    別フィールドの「附属データ」と組み合わせる設計にしない
+pub enum ConnState { Idle, Active, Closed }
+
+pub struct ConnectionShared {
+    state: AtomicU8,
+    // ↓ state と整合する必要がある「附属データ」を別管理してしまう
+    last_active: SharedLock<Option<Instant>>,
+    error_log:   SharedLock<Vec<Error>>,
+}
+// → state と附属データの整合性が壊れる読み出しが起きる（partial snapshot）
+```
+
+**修正**: 整合性が必要な状態は A の RCU パターンで丸ごと snapshot にする、もしくは整合性を諦めて C の分解で性能を取る。**「enum + 附属データ」は最悪の中間**。
+
+
 ## 適用するコンポーネントの優先順位
 
 ホットさが高い順。ロックフリー化の ROI が高いものから着手する。
@@ -334,10 +552,13 @@ pub struct RunOutcome<R> {
 | Mailbox 状態機械 | ④ Atomic state machine（pure value + `*Shared` atomic wrapper） | **最高** |
 | Mailbox メッセージキュー | ② Ownership transfer（lock-free MPSC） | **最高** |
 | ActorCell の排他制御 | ④ の CAS 勝者にのみ `&mut` を与える | **最高** |
+| Mailbox メトリクス | D. AtomicU* 直接（カウンタのみ） | 高 |
 | Run-queue（scheduler） | std: tokio に委譲 / no_std: 自前 bounded ring | 高 |
-| Registry（PID→ActorRef） | ③ Sharding（既存 `SharedRwLock` 活用） | 中 |
+| Registry（PID→ActorRef） | ③ Sharding（既存 `SharedRwLock` 活用）or A. RCU snapshot | 中 |
+| RoutingTable / Cluster membership | A. RCU snapshot（`SharedRwLock<ArcShared<T>>`） | 中 |
 | Children / Watchers | 親アクターが排他所有 → ロック不要 | （該当なし） |
-| Supervision strategy | 構築後 immutable → `Arc<dyn>` で十分 | （該当なし） |
+| Supervision strategy | 構築後 immutable → `ArcShared<dyn>` で十分 | （該当なし） |
+| Connection / Session 状態 | E. variant データ付き状態機械（ホットさで判断） | 中〜低 |
 | Config / membership 変更 | `SharedLock` のまま | 低（コールド） |
 
 「ホットパスにロックがあること」が問題であり、ロックそのものが悪ではない。コールドパスは `SharedLock` のままが正解。
