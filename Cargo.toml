@@ -61,7 +61,7 @@ libraries = [
 
 [workspace.lints.rust]
 unused_must_use = "deny"
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fraktor_disable_tell)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fraktor_disable_tell)', 'cfg(loom)'] }
 
 [workspace.lints.clippy]
 let_underscore_must_use = "deny"
@@ -108,6 +108,7 @@ erased-serde = { version = "0.4", default-features = false, features = ["alloc"]
 bincode = { version = "2.0.1", default-features = false, features = ["alloc", "serde"] }
 bytes = { version = "1.7", default-features = false }
 libm = { version = "0.2", default-features = false }
+loom = "0.7"
 spin = { version = "0.10", default-features = false }
 static_assertions = "1.1.0"
 static_cell = "2"

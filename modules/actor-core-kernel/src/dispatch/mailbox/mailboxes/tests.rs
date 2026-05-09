@@ -1,5 +1,7 @@
 use core::num::NonZeroUsize;
 
+use fraktor_utils_core_rs::sync::ArcShared;
+
 use super::*;
 use crate::{
   actor::{
@@ -8,6 +10,14 @@ use crate::{
   },
   dispatch::mailbox::{EnqueueOutcome, Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
 };
+
+struct ConstantPriority;
+
+impl MessagePriorityGenerator for ConstantPriority {
+  fn priority(&self, _message: &AnyMessage) -> i32 {
+    0
+  }
+}
 
 #[test]
 fn register_and_resolve_mailbox() {
@@ -48,6 +58,53 @@ fn create_message_queue_uses_registered_mailbox_policy() {
     matches!(overflow_result, Ok(EnqueueOutcome::Rejected(_))),
     "DropNewest overflow must surface Ok(Rejected), got {overflow_result:?}",
   );
+}
+
+#[test]
+fn unbounded_policy_selects_lock_free_user_queue() {
+  let queue = create_message_queue_from_policy(MailboxPolicy::unbounded(None));
+
+  assert!(!queue.requires_put_lock_for_enqueue(), "default unbounded mailbox must use the queue-local close protocol");
+  assert!(queue.as_deque().is_none(), "default unbounded queue must not acquire deque semantics");
+}
+
+#[test]
+fn bounded_queue_selection_keeps_lock_backed_enqueue_path() {
+  let capacity = NonZeroUsize::new(2).expect("capacity");
+
+  let bounded =
+    create_message_queue_from_policy(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None));
+  assert!(bounded.requires_put_lock_for_enqueue());
+}
+
+#[test]
+fn deque_queue_selection_keeps_lock_backed_enqueue_path() {
+  let deque_config = MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque());
+  let deque = create_message_queue_from_config(&deque_config).expect("deque queue");
+  assert!(deque.requires_put_lock_for_enqueue());
+  assert!(deque.as_deque().is_some());
+}
+
+#[test]
+fn control_aware_queue_selection_keeps_lock_backed_enqueue_path() {
+  let control_config = MailboxConfig::default().with_requirement(MailboxRequirement::requires_control_aware());
+  let control_aware = create_message_queue_from_config(&control_config).expect("control-aware queue");
+  assert!(control_aware.requires_put_lock_for_enqueue());
+}
+
+#[test]
+fn priority_queue_selection_keeps_lock_backed_enqueue_path() {
+  let priority_config = MailboxConfig::default().with_priority_generator(ArcShared::new(ConstantPriority));
+  let priority = create_message_queue_from_config(&priority_config).expect("priority queue");
+  assert!(priority.requires_put_lock_for_enqueue());
+}
+
+#[test]
+fn stable_priority_queue_selection_keeps_lock_backed_enqueue_path() {
+  let stable_priority_config =
+    MailboxConfig::default().with_priority_generator(ArcShared::new(ConstantPriority)).with_stable_priority(true);
+  let stable_priority = create_message_queue_from_config(&stable_priority_config).expect("stable priority queue");
+  assert!(stable_priority.requires_put_lock_for_enqueue());
 }
 
 #[test]

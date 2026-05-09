@@ -57,6 +57,14 @@ pub trait MessageQueue: Send + Sync {
   /// Clears remaining envelopes from the queue during shutdown.
   fn clean_up(&self);
 
+  /// Publishes any queue-local close state before terminal mailbox cleanup drains the queue.
+  fn close_for_cleanup(&self) {}
+
+  /// Returns whether [`Mailbox`](super::Mailbox) must serialize enqueue with its put lock.
+  fn requires_put_lock_for_enqueue(&self) -> bool {
+    true
+  }
+
   /// Returns the deque capability when this queue supports front-of-queue insertion.
   ///
   /// The default returns `None`. Override this in deque-capable queue implementations

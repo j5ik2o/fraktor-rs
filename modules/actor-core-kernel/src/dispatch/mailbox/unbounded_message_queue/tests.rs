@@ -1,5 +1,5 @@
 use crate::{
-  actor::messaging::AnyMessage,
+  actor::{error::SendError, messaging::AnyMessage},
   dispatch::mailbox::{
     envelope::Envelope, message_queue::MessageQueue, unbounded_message_queue::UnboundedMessageQueue,
   },
@@ -36,5 +36,24 @@ fn should_clean_up_all_messages() {
   assert_eq!(queue.number_of_messages(), 5);
 
   queue.clean_up();
+  assert_eq!(queue.number_of_messages(), 0);
+}
+
+#[test]
+fn should_not_require_mailbox_put_lock_for_enqueue() {
+  let queue = UnboundedMessageQueue::new();
+
+  assert!(!queue.requires_put_lock_for_enqueue());
+}
+
+#[test]
+fn should_reject_enqueue_after_cleanup_closes_queue() {
+  let queue = UnboundedMessageQueue::new();
+  queue.clean_up();
+
+  let result = queue.enqueue(Envelope::new(AnyMessage::new("closed")));
+  let error = result.expect_err("closed unbounded queue must reject enqueue");
+
+  assert!(matches!(error.error(), SendError::Closed(_)));
   assert_eq!(queue.number_of_messages(), 0);
 }

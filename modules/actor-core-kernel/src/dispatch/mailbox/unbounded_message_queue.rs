@@ -1,27 +1,32 @@
-//! Unbounded message queue backed by a growable deque.
+//! Unbounded message queue backed by a mailbox-local lock-free MPSC queue.
 
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::collections::queue::QueueError;
-
 use super::{
-  QueueStateHandle, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
-  message_queue::MessageQueue, policy::MailboxPolicy,
+  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope,
+  lock_free_mpsc_queue::LockFreeMpscQueue, message_queue::MessageQueue,
 };
+use crate::actor::error::SendError;
 
 /// Unbounded message queue that grows as needed.
 pub struct UnboundedMessageQueue {
-  handle: QueueStateHandle<Envelope>,
+  queue: LockFreeMpscQueue<Envelope>,
 }
 
 impl UnboundedMessageQueue {
   /// Creates a new unbounded message queue.
   #[must_use]
+  #[cfg(not(loom))]
+  pub const fn new() -> Self {
+    Self { queue: LockFreeMpscQueue::new() }
+  }
+
+  /// Creates a new unbounded message queue.
+  #[must_use]
+  #[cfg(loom)]
   pub fn new() -> Self {
-    let policy = MailboxPolicy::unbounded(None);
-    let handle = QueueStateHandle::new_user(&policy);
-    Self { handle }
+    Self { queue: LockFreeMpscQueue::new() }
   }
 }
 
@@ -33,25 +38,29 @@ impl Default for UnboundedMessageQueue {
 
 impl MessageQueue for UnboundedMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
-    match self.handle.offer(envelope) {
-      | Ok(_) => Ok(EnqueueOutcome::Accepted),
-      | Err(error) => Err(EnqueueError::new(super::map_user_envelope_queue_error(error))),
+    match self.queue.push(envelope) {
+      | Ok(()) => Ok(EnqueueOutcome::Accepted),
+      | Err(envelope) => Err(EnqueueError::new(SendError::closed(envelope.into_payload()))),
     }
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    match self.handle.poll() {
-      | Ok(envelope) => Some(envelope),
-      | Err(QueueError::Empty | QueueError::Disconnected | QueueError::WouldBlock) => None,
-      | Err(_) => None,
-    }
+    self.queue.pop()
   }
 
   fn number_of_messages(&self) -> usize {
-    self.handle.len()
+    self.queue.len()
   }
 
   fn clean_up(&self) {
-    while self.dequeue().is_some() {}
+    self.queue.close_and_drain();
+  }
+
+  fn close_for_cleanup(&self) {
+    self.queue.close();
+  }
+
+  fn requires_put_lock_for_enqueue(&self) -> bool {
+    false
   }
 }

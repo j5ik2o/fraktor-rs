@@ -37,6 +37,9 @@ bincode = { workspace = true }
 futures = { workspace = true, features = ["alloc"] }
 tracing = { workspace = true, default-features = false }
 
+[target.'cfg(loom)'.dependencies]
+loom = { workspace = true }
+
 [dev-dependencies]
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
@@ -47,6 +50,7 @@ tracing = { workspace = true, features = ["std"] }
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-adaptor-std-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+loom = { workspace = true }
 
 [[test]]
 name = "actor_path_e2e"
