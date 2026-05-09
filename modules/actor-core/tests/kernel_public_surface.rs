@@ -182,7 +182,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fraktor-actor-core-kernel-rs = {{ package = "fraktor-actor-core-kernel-rs", path = "{manifest_dir}" }}
+fraktor-actor-core-kernel-rs = {{ path = "{manifest_dir}" }}
 "#
   )
 }
