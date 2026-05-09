@@ -35,6 +35,14 @@ impl ActorRefSender for ProbeSender {
   }
 }
 
+struct FailingSender;
+
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::no_recipient(message))
+  }
+}
+
 fn empty_system_state() -> SystemStateShared {
   SystemStateShared::new(SystemState::new())
 }
@@ -76,4 +84,16 @@ fn adapter_sender_rejects_when_lifecycle_stopped() {
 
   assert!(matches!(result, Err(SendError::Closed(_))));
   assert!(messages_clone.lock().is_empty());
+}
+
+#[test]
+fn adapter_sender_returns_target_send_error() {
+  let system = empty_system_state();
+  let lifecycle = ArcShared::new(AdapterLifecycleState::new());
+  let target = ActorRefSenderShared::new(Box::new(FailingSender));
+  let mut sender = AdapterRefSender::new(Pid::new(1, 0), 3, target, lifecycle, system, Box::new(|message| message));
+
+  let result = sender.send(AnyMessage::new(9_u32));
+
+  assert!(matches!(result, Err(SendError::NoRecipient(_))));
 }

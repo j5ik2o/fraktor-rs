@@ -1,5 +1,5 @@
-use alloc::{string::String, vec, vec::Vec};
-use core::{hint::spin_loop, time::Duration};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
@@ -9,9 +9,17 @@ use crate::{
     Actor, ActorCell, Pid, StashOverflowError,
     actor_ref::NullSender,
     error::{ActorError, PipeSpawnError, SendError, WatchConflict, WatchRegistrationError},
-    messaging::{AnyMessage, AnyMessageView},
+    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
     props::Props,
     scheduler::SchedulerHandle,
+    spawn::SpawnError,
+  },
+  dispatch::{
+    dispatcher::{
+      DispatcherConfig, DispatcherCore, ExecutorShared, InlineExecutor, MessageDispatcher, MessageDispatcherFactory,
+      MessageDispatcherShared, TrampolineState,
+    },
+    mailbox::{Envelope, Mailbox},
   },
   event::logging::LogLevel,
   support::futures::{ActorFuture, ActorFutureListener},
@@ -73,6 +81,87 @@ impl Actor for ProbeActor {
 }
 
 struct ReceiveTimeoutTick;
+
+#[derive(Clone, Copy)]
+enum DispatchFailure {
+  Closed,
+  Full,
+  WatchAndStopFull,
+}
+
+struct FailingDispatcherFactory {
+  id:      &'static str,
+  failure: DispatchFailure,
+}
+
+impl MessageDispatcherFactory for FailingDispatcherFactory {
+  fn dispatcher(&self) -> MessageDispatcherShared {
+    let throughput = NonZeroUsize::new(1).expect("throughput");
+    let settings = DispatcherConfig::new(self.id, throughput, None, Duration::from_secs(1));
+    let executor = ExecutorShared::new(Box::new(InlineExecutor::new()), TrampolineState::new());
+    MessageDispatcherShared::new(Box::new(FailingDispatcher {
+      core:    DispatcherCore::new(&settings, executor),
+      failure: self.failure,
+    }))
+  }
+}
+
+struct FailingDispatcher {
+  core:    DispatcherCore,
+  failure: DispatchFailure,
+}
+
+impl MessageDispatcher for FailingDispatcher {
+  fn core(&self) -> &DispatcherCore {
+    &self.core
+  }
+
+  fn core_mut(&mut self) -> &mut DispatcherCore {
+    &mut self.core
+  }
+
+  fn dispatch(
+    &mut self,
+    _receiver: &ArcShared<ActorCell>,
+    envelope: Envelope,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    Err(self.send_error(envelope.into_payload()))
+  }
+
+  fn system_dispatch(
+    &mut self,
+    receiver: &ArcShared<ActorCell>,
+    message: SystemMessage,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    if matches!(self.failure, DispatchFailure::WatchAndStopFull)
+      && matches!(message, SystemMessage::Watch(_) | SystemMessage::Stop)
+    {
+      return Err(SendError::full(AnyMessage::new(message)));
+    }
+    if matches!(self.failure, DispatchFailure::WatchAndStopFull) {
+      let mailbox = receiver.mailbox();
+      mailbox.enqueue_system(message)?;
+      return Ok(vec![mailbox]);
+    }
+    Err(self.send_error(AnyMessage::new(message)))
+  }
+}
+
+impl FailingDispatcher {
+  fn send_error(&self, message: AnyMessage) -> SendError {
+    match self.failure {
+      | DispatchFailure::Closed => SendError::closed(message),
+      | DispatchFailure::Full | DispatchFailure::WatchAndStopFull => SendError::full(message),
+    }
+  }
+}
+
+fn failing_dispatcher_factory(
+  id: &'static str,
+  failure: DispatchFailure,
+) -> ArcShared<Box<dyn MessageDispatcherFactory>> {
+  ArcShared::new(Box::new(FailingDispatcherFactory { id, failure }) as Box<dyn MessageDispatcherFactory>)
+}
 
 struct ReceiveTimeoutOnlyActor {
   events: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
@@ -159,6 +248,25 @@ fn actor_context_set_and_clear_sender() {
 
   context.clear_sender();
   assert!(context.sender().is_none());
+}
+
+#[test]
+fn actor_context_with_current_message_restores_previous_message() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  context.set_current_message(Some(AnyMessage::new(1_i32)));
+
+  let result = context.with_current_message(AnyMessage::new(2_i32), |ctx, message| {
+    assert_eq!(message.payload().downcast_ref::<i32>(), Some(&2));
+    let current = ctx.clone_current_message().expect("current message");
+    assert_eq!(current.payload().downcast_ref::<i32>(), Some(&2));
+    7
+  });
+
+  assert_eq!(result, 7);
+  let restored = context.clone_current_message().expect("restored message");
+  assert_eq!(restored.payload().downcast_ref::<i32>(), Some(&1));
 }
 
 #[test]
@@ -377,6 +485,87 @@ fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remainin
 }
 
 #[test]
+fn actor_context_stash_snapshot_clear_and_limited_unstash() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = received.clone();
+    move || ProbeActor::new(log.clone())
+  })
+  .with_stash_mailbox();
+  let cell = register_cell(&system, pid, "stash-tools", &props);
+
+  let mut context = ActorContext::new(&system, pid);
+  context.set_current_message(Some(AnyMessage::new(1_i32)));
+  context.stash().expect("stash first");
+  context.set_current_message(Some(AnyMessage::new(2_i32)));
+  context.stash().expect("stash second");
+  context.clear_current_message();
+
+  let snapshot = context.stashed_messages_snapshot().expect("snapshot");
+  assert_eq!(snapshot.len(), 2);
+  assert_eq!(snapshot[0].payload().downcast_ref::<i32>(), Some(&1));
+  assert_eq!(snapshot[1].payload().downcast_ref::<i32>(), Some(&2));
+
+  let replayed = context
+    .unstash_with_limit(1, |message| {
+      let value = *message.payload().downcast_ref::<i32>().expect("i32 message");
+      Ok(AnyMessage::new(value + 10))
+    })
+    .expect("limited unstash");
+  assert_eq!(replayed, 1);
+  assert_eq!(cell.stashed_message_len(), 1);
+  wait_until(|| received.lock().len() == 1);
+  assert_eq!(received.lock().clone(), vec![11]);
+
+  assert_eq!(context.clear_stashed_messages().expect("clear stash"), 1);
+  assert!(context.stashed_messages_snapshot().expect("empty snapshot").is_empty());
+}
+
+#[test]
+fn actor_context_create_message_adapter_ref_wraps_and_releases() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = received.clone();
+    move || ProbeActor::new(log.clone())
+  });
+  let _cell = register_cell(&system, pid, "message-adapter", &props);
+  let context = ActorContext::new(&system, pid);
+
+  let adapter = context
+    .create_message_adapter_ref(|message| {
+      let value = *message.payload().downcast_ref::<u32>().expect("u32 message");
+      AnyMessage::new(value as i32 + 1)
+    })
+    .expect("adapter ref");
+  let (mut adapter_ref, lease) = adapter.into_parts();
+
+  adapter_ref.try_tell(AnyMessage::new(40_u32)).expect("adapter send");
+  wait_until(|| received.lock().len() == 1);
+  assert_eq!(received.lock().clone(), vec![41]);
+
+  lease.release();
+  let result = adapter_ref.try_tell(AnyMessage::new(1_u32));
+  assert!(matches!(result, Err(SendError::Closed(_))));
+}
+
+#[test]
+fn actor_context_create_message_adapter_ref_reports_missing_cell() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let context = ActorContext::new(&system, pid);
+
+  let result = context.create_message_adapter_ref(|message| message);
+
+  assert!(
+    matches!(result, Err(ActorError::Recoverable(reason)) if reason.as_str().contains("message adapter registration"))
+  );
+}
+
+#[test]
 fn actor_context_timers_start_single_timer_and_cancel_tracks_active_state() {
   // 前提: self actor が登録済みの classic actor context がある
   let system = ActorSystem::new_empty();
@@ -555,6 +744,20 @@ fn actor_context_watch_enqueues_system_message() {
   let mut context = ActorContext::new(&system, watcher_pid);
   let target_ref = target.actor_ref();
   assert!(context.watch(&target_ref).is_ok());
+  assert!(target.watchers_snapshot().contains(&watcher_pid));
+}
+
+#[test]
+fn actor_context_watch_without_watcher_cell_still_sends_watch_message() {
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let target = register_cell(&system, target_pid, "target-without-watcher", &props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+
+  assert!(context.watch(&target.actor_ref()).is_ok());
   assert!(target.watchers_snapshot().contains(&watcher_pid));
 }
 
@@ -809,6 +1012,123 @@ fn watch_self_returns_ok_without_side_effect() {
   assert!(context.watch_with(&self_ref, AnyMessage::new(1u32)).is_ok());
   // self-watch は watching / watch_with_messages に何も登録しない。
   assert!(!cell.is_watching(self_pid));
+}
+
+#[test]
+fn actor_context_stop_all_children_returns_first_send_error() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let missing_child = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let parent = register_cell(&system, parent_pid, "stop-all-send-error", &props);
+  parent.register_child(missing_child);
+  let mut context = ActorContext::new(&system, parent_pid);
+
+  let result = context.stop_all_children();
+
+  assert!(matches!(result, Err(SendError::Closed(_))));
+}
+
+#[test]
+fn watch_closed_target_best_effort_notification_records_failure() {
+  let system = ActorSystem::new_empty_with(|config| {
+    config.with_dispatcher_factory("closed-watch", failing_dispatcher_factory("closed-watch", DispatchFailure::Closed))
+  });
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor).with_dispatcher_id("closed-watch");
+  let watcher = register_cell(&system, watcher_pid, "closed-watcher", &props);
+  let target = register_cell(&system, target_pid, "closed-target", &props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let result = context.watch(&target.actor_ref());
+
+  assert!(result.is_ok());
+  assert!(watcher.is_watching(target_pid));
+  assert!(!system.dead_letters().is_empty());
+}
+
+#[test]
+fn watch_rolls_back_watching_entry_when_dispatch_fails() {
+  let system = ActorSystem::new_empty_with(|config| {
+    config.with_dispatcher_factory("full-watch", failing_dispatcher_factory("full-watch", DispatchFailure::Full))
+  });
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let watcher_props = Props::from_fn(|| TestActor);
+  let target_props = Props::from_fn(|| TestActor).with_dispatcher_id("full-watch");
+  let watcher = register_cell(&system, watcher_pid, "full-watcher", &watcher_props);
+  let target = register_cell(&system, target_pid, "full-target", &target_props);
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let result = context.watch(&target.actor_ref());
+
+  assert!(matches!(result, Err(WatchRegistrationError::Send(_))));
+  assert!(!watcher.is_watching(target_pid));
+}
+
+#[test]
+fn unwatch_ignores_closed_target_and_propagates_other_send_errors() {
+  let system = ActorSystem::new_empty_with(|config| {
+    config
+      .with_dispatcher_factory("closed-unwatch", failing_dispatcher_factory("closed-unwatch", DispatchFailure::Closed))
+      .with_dispatcher_factory("full-unwatch", failing_dispatcher_factory("full-unwatch", DispatchFailure::Full))
+  });
+  let watcher_pid = system.allocate_pid();
+  let closed_target_pid = system.allocate_pid();
+  let full_target_pid = system.allocate_pid();
+  let watcher_props = Props::from_fn(|| TestActor);
+  let closed_target_props = Props::from_fn(|| TestActor).with_dispatcher_id("closed-unwatch");
+  let full_target_props = Props::from_fn(|| TestActor).with_dispatcher_id("full-unwatch");
+  let watcher = register_cell(&system, watcher_pid, "unwatch-watcher", &watcher_props);
+  let closed_target = register_cell(&system, closed_target_pid, "closed-unwatch-target", &closed_target_props);
+  let full_target = register_cell(&system, full_target_pid, "full-unwatch-target", &full_target_props);
+  watcher.register_watching(closed_target_pid);
+  watcher.register_watching(full_target_pid);
+  let mut context = ActorContext::new(&system, watcher_pid);
+
+  assert!(context.unwatch(&closed_target.actor_ref()).is_ok());
+  assert!(matches!(context.unwatch(&full_target.actor_ref()), Err(SendError::Full(_))));
+}
+
+#[test]
+fn spawn_child_watched_stops_child_when_watch_install_fails() {
+  let system = ActorSystem::new_empty_with(|config| {
+    config.with_dispatcher_factory(
+      "full-child-watch",
+      failing_dispatcher_factory("full-child-watch", DispatchFailure::WatchAndStopFull),
+    )
+  });
+  let parent_pid = system.allocate_pid();
+  let parent_props = Props::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "watch-failing-parent", &parent_props);
+  let child_props = Props::from_fn(|| TestActor).with_dispatcher_id("full-child-watch");
+  let mut context = ActorContext::new(&system, parent_pid);
+
+  let result = context.spawn_child_watched(&child_props);
+
+  assert!(matches!(result, Err(SpawnError::InvalidProps(_))));
+  assert!(!system.dead_letters().is_empty());
+}
+
+#[test]
+fn watch_with_rolls_back_custom_message_when_watch_send_fails() {
+  let system = ActorSystem::new_empty_with(|config| {
+    config
+      .with_dispatcher_factory("full-watch-with", failing_dispatcher_factory("full-watch-with", DispatchFailure::Full))
+  });
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let watcher_props = Props::from_fn(|| TestActor);
+  let target_props = Props::from_fn(|| TestActor).with_dispatcher_id("full-watch-with");
+  let watcher = register_cell(&system, watcher_pid, "watch-with-watcher", &watcher_props);
+  let target = register_cell(&system, target_pid, "watch-with-target", &target_props);
+  let mut context = ActorContext::new(&system, watcher_pid);
+
+  let result = context.watch_with(&target.actor_ref(), AnyMessage::new(7_u32));
+
+  assert!(matches!(result, Err(WatchRegistrationError::Send(_))));
+  assert!(!watcher.is_watching(target_pid));
 }
 
 #[test]
@@ -1107,6 +1427,48 @@ fn receive_timeout_schedule_generation_reads_cell_backed_state() {
 
   context.set_receive_timeout(Duration::from_millis(500), AnyMessage::new(1_u32));
 
+  assert_eq!(context.receive_timeout_schedule_generation(), Some(1));
+}
+
+#[test]
+fn receive_timeout_shared_state_reflects_configured_timeout() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "timeout-shared-read", &props);
+  let timeout_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
+  let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
+
+  context.set_receive_timeout(Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
+
+  assert!(context.has_receive_timeout());
+  assert_eq!(context.receive_timeout_schedule_generation(), Some(1));
+}
+
+#[test]
+fn set_receive_timeout_without_registered_actor_keeps_unscheduled_state() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+
+  context.set_receive_timeout(Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
+
+  assert!(context.has_receive_timeout());
+  assert_eq!(context.receive_timeout_schedule_generation(), Some(0));
+}
+
+#[test]
+fn set_receive_timeout_records_generation_when_scheduler_is_closed() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "timeout-closed-scheduler", &props);
+  let _summary = system.scheduler().with_write(|scheduler| scheduler.shutdown());
+  let mut context = ActorContext::new(&system, pid);
+
+  context.set_receive_timeout(Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
+
+  assert!(context.has_receive_timeout());
   assert_eq!(context.receive_timeout_schedule_generation(), Some(1));
 }
 

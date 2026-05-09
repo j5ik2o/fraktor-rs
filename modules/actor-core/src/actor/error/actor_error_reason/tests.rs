@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{borrow::Cow, string::String};
 
 use crate::actor::error::actor_error_reason::ActorErrorReason;
 
@@ -9,4 +9,7 @@ fn reason_conversions_work() {
 
   let borrowed = ActorErrorReason::from("borrowed");
   assert_eq!(borrowed.as_str(), "borrowed");
+
+  let cow = ActorErrorReason::from(Cow::Borrowed("cow"));
+  assert_eq!(cow.as_str(), "cow");
 }

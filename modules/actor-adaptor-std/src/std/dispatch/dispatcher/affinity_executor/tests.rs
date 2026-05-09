@@ -1,7 +1,7 @@
 extern crate std;
 
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::{
   collections::HashSet,
   sync::{Mutex, mpsc},
@@ -10,7 +10,7 @@ use std::{
 
 use fraktor_actor_core_rs::dispatch::dispatcher::{ExecuteError, Executor};
 
-use super::AffinityExecutor;
+use super::{AffinityExecutor, RUNNING};
 
 #[test]
 fn tasks_execute_on_worker_threads() {
@@ -45,6 +45,20 @@ fn execute_after_shutdown_returns_error() {
   executor.shutdown();
   let result = executor.execute(Box::new(|| {}), 0);
   assert!(matches!(result, Err(ExecuteError::Shutdown)));
+}
+
+#[test]
+fn execute_returns_shutdown_when_worker_channel_is_disconnected() {
+  let (sender, receiver) = mpsc::sync_channel(1);
+  drop(receiver);
+  let mut executor =
+    AffinityExecutor { senders: vec![Some(sender)], joins: Vec::new(), state: Arc::new(AtomicU8::new(RUNNING)) };
+
+  match executor.execute(Box::new(|| {}), 0) {
+    | Err(ExecuteError::Shutdown) => {},
+    | other => panic!("expected disconnected worker to report shutdown, got {other:?}"),
+  }
+  executor.shutdown();
 }
 
 #[test]

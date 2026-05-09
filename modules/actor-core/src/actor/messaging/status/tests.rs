@@ -17,7 +17,7 @@ fn status_success_keeps_payload() {
 
 #[test]
 fn status_failure_keeps_error() {
-  let status = Status::failure(ActorError::recoverable(ActorErrorReason::with_source_type::<u32>("boom")));
+  let status = Status::failure(ActorError::recoverable(ActorErrorReason::typed::<u32>("boom")));
   match status {
     | Status::Failure(error) => {
       assert_eq!(error.reason().as_str(), "boom");

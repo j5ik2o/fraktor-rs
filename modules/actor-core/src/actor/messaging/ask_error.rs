@@ -32,7 +32,7 @@ impl AskError {
 
 impl From<&SendError> for AskError {
   fn from(error: &SendError) -> Self {
-    Self::send_failed(ActorErrorReason::with_source_type::<SendError>(format!("{error:?}")))
+    Self::send_failed(ActorErrorReason::typed::<SendError>(format!("{error:?}")))
   }
 }
 

@@ -29,11 +29,6 @@ impl ActorErrorReason {
     Self { message: reason.into(), source_type_id: Some(TypeId::of::<E>()) }
   }
 
-  #[must_use]
-  pub(crate) fn with_source_type<E: 'static>(reason: impl Into<Cow<'static, str>>) -> Self {
-    Self { message: reason.into(), source_type_id: Some(TypeId::of::<E>()) }
-  }
-
   /// Returns the underlying message as a string slice.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)] // Cow<str> の Deref が const でないため const fn にできない

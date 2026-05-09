@@ -532,9 +532,7 @@ where
   }
 
   fn scheduler_error_to_actor_error(error: &SchedulerError) -> ActorError {
-    ActorError::recoverable(ActorErrorReason::with_source_type::<SchedulerError>(format!(
-      "fsm timer operation failed: {error:?}"
-    )))
+    ActorError::recoverable(ActorErrorReason::typed::<SchedulerError>(format!("fsm timer operation failed: {error:?}")))
   }
 }
 
