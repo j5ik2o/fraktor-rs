@@ -4,9 +4,9 @@ const CI_CHECK: &str = include_str!("../scripts/ci-check.sh");
 fn check_unit_sleep_scans_actor_typed_tests() {
   let body = check_unit_sleep_body();
 
-  assert!(body.contains("modules/actor-typed/src/"), "check_unit_sleep must scan actor-typed unit tests");
+  assert!(body.contains("modules/actor-core-typed/src/"), "check_unit_sleep must scan actor-typed unit tests");
   assert!(
-    !body.contains("modules/actor-core/src/core/typed/"),
+    !body.contains("modules/actor-core-kernel/src/core/typed/"),
     "check_unit_sleep must not keep deleted actor-core typed allowlist paths"
   );
 }

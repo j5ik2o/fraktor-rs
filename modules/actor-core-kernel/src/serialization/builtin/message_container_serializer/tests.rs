@@ -38,7 +38,7 @@ fn round_trip(message: ActorSelectionMessage) -> ActorSelectionMessage {
 
 // `identifier_returns_configured_id` / `include_manifest_is_false` /
 // `non_selection_message_type_is_rejected` の各ケースは
-// `modules/actor-core/tests/message_container_serializer.rs` の
+// `modules/actor-core-kernel/tests/message_container_serializer.rs` の
 // `should_return_configured_serializer_id` / `should_not_require_manifest` /
 // `should_reject_non_actor_selection_message_type` と重複していたため、ここでは
 // エンコーダ/デコーダの単体検証 (round-trip と element-tag 解析) のみを残す。
