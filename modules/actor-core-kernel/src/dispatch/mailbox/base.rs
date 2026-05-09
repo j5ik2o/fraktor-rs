@@ -557,6 +557,11 @@ impl Mailbox {
   /// accepts the envelope so that suspended actors still buffer inbound
   /// messages and observe them once resumed.
   ///
+  /// Lock-backed user queues still use `put_lock` for the authoritative close
+  /// re-check. The standard unbounded user queue uses its queue-local atomic
+  /// close protocol instead, so its enqueue hot path does not acquire
+  /// `put_lock`.
+  ///
   /// # Errors
   ///
   /// Returns an error only for true enqueue failures (the mailbox is closed,
@@ -573,7 +578,11 @@ impl Mailbox {
     if self.is_closed() {
       return Err(SendError::closed(envelope.into_payload()));
     }
-    self.enqueue_envelope_locked(envelope)
+    if self.user.requires_put_lock_for_enqueue() {
+      self.enqueue_envelope_locked(envelope)
+    } else {
+      self.enqueue_envelope_unlocked(envelope)
+    }
   }
 
   /// Locked critical section of [`Self::enqueue_envelope`].
@@ -594,6 +603,15 @@ impl Mailbox {
       self.user.enqueue(envelope)
     });
 
+    self.complete_enqueue(enqueue_result)
+  }
+
+  fn enqueue_envelope_unlocked(&self, envelope: Envelope) -> Result<(), SendError> {
+    let enqueue_result = self.user.enqueue(envelope);
+    self.complete_enqueue(enqueue_result)
+  }
+
+  fn complete_enqueue(&self, enqueue_result: Result<EnqueueOutcome, EnqueueError>) -> Result<(), SendError> {
     match enqueue_result {
       | Ok(EnqueueOutcome::Accepted) => {
         self.publish_metrics();
@@ -809,6 +827,7 @@ impl Mailbox {
     let pid = self.pid();
     let system_state = self.system_state();
     let user_len_after_cleanup = self.put_lock.with_lock(|_| {
+      self.user.close_for_cleanup();
       // MB-H2 (Pekko parity): `Mailbox.cleanUp()` は user queue のクリーンアップ方針とは無関係に
       // system queue を必ず DeadLetters へ drain する。各 mailbox は自身専用の `SystemQueue` を
       // 所有しており共有されないため、`LeaveSharedQueue` であっても pending な

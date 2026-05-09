@@ -41,6 +41,7 @@ mod drop_oldest_outcome;
 mod enqueue_error;
 mod enqueue_outcome;
 mod envelope;
+mod lock_free_mpsc_queue;
 mod mailbox_cleanup_policy;
 /// Monotonic clock callback type for throughput deadline enforcement.
 mod mailbox_clock;

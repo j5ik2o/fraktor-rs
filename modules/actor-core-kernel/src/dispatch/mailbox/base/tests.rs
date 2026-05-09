@@ -984,6 +984,43 @@ fn mailbox_prepend_user_messages_deque_returns_closed_after_mailbox_close() {
   assert!(matches!(result, Err(SendError::Closed(_))), "expected Closed, got {result:?}");
 }
 
+#[test]
+fn unbounded_enqueue_does_not_wait_for_put_lock() {
+  use std::{
+    sync::{Arc, mpsc},
+    thread,
+    time::Duration,
+  };
+
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let (lock_held_tx, lock_held_rx) = mpsc::channel();
+  let (release_lock_tx, release_lock_rx) = mpsc::channel();
+  let mailbox_for_lock = Arc::clone(&mailbox);
+  let lock_handle = thread::spawn(move || {
+    mailbox_for_lock.put_lock.with_lock(|_| {
+      lock_held_tx.send(()).expect("lock signal should be sent");
+      release_lock_rx.recv().expect("release signal should be received");
+    });
+  });
+  lock_held_rx.recv().expect("lock holder should start");
+
+  let mailbox_for_enqueue = Arc::clone(&mailbox);
+  let (result_tx, result_rx) = mpsc::channel();
+  let enqueue_handle = thread::spawn(move || {
+    let result = mailbox_for_enqueue.enqueue_user(AnyMessage::new("lock-free"));
+    result_tx.send(result).expect("enqueue result should be sent");
+  });
+
+  let result =
+    result_rx.recv_timeout(Duration::from_millis(200)).expect("unbounded enqueue must not wait for put_lock");
+  assert!(result.is_ok(), "unbounded enqueue must succeed while put_lock is held: {result:?}");
+
+  release_lock_tx.send(()).expect("release signal should be sent");
+  enqueue_handle.join().expect("enqueue thread should finish");
+  lock_handle.join().expect("lock holder should finish");
+  assert_eq!(mailbox.user_len(), 1);
+}
+
 /// Regression for the "cleanup wins the lock race" scenario: a producer
 /// that has already passed the fast path and is executing the locked
 /// critical section must observe the authoritative `is_closed()` re-check
@@ -994,14 +1031,16 @@ fn mailbox_prepend_user_messages_deque_returns_closed_after_mailbox_close() {
 /// while still holding the lock. Once the lock is released, the producer must
 /// observe the under-lock `is_closed()` re-check and fail with `Closed`.
 #[test]
-fn cleanup_close_wins_against_inflight_enqueue() {
+fn lock_backed_cleanup_close_wins_against_inflight_enqueue() {
+  use core::num::NonZeroUsize;
   use std::{
     sync::{Arc, mpsc},
     thread,
     time::Duration,
   };
 
-  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let capacity = NonZeroUsize::new(8).expect("capacity");
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None)));
   let (lock_held_tx, lock_held_rx) = mpsc::channel();
   let (release_lock_tx, release_lock_rx) = mpsc::channel();
   let mailbox_for_lock = Arc::clone(&mailbox);
@@ -1039,7 +1078,55 @@ fn cleanup_close_wins_against_inflight_enqueue() {
   assert_eq!(mailbox.user_len(), 0, "no phantom message should be in the queue");
 }
 
-/// Same invariant as [`cleanup_close_wins_against_inflight_enqueue`] but
+#[test]
+fn unbounded_cleanup_close_race_leaves_no_user_messages() {
+  use std::{
+    sync::{
+      Arc, Barrier,
+      atomic::{AtomicUsize, Ordering},
+    },
+    thread,
+  };
+
+  const PRODUCERS: usize = 4;
+  const ITEMS_PER_PRODUCER: usize = 500;
+
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let barrier = Arc::new(Barrier::new(PRODUCERS + 1));
+  let producers_started = Arc::new(AtomicUsize::new(0));
+  let mut handles = Vec::new();
+  for producer in 0..PRODUCERS {
+    let mailbox_for_enqueue = Arc::clone(&mailbox);
+    let barrier_for_enqueue = Arc::clone(&barrier);
+    let producers_started_for_enqueue = Arc::clone(&producers_started);
+    handles.push(thread::spawn(move || {
+      barrier_for_enqueue.wait();
+      producers_started_for_enqueue.fetch_add(1, Ordering::SeqCst);
+      let base = producer * ITEMS_PER_PRODUCER;
+      for seq in 0..ITEMS_PER_PRODUCER {
+        if mailbox_for_enqueue.enqueue_user(AnyMessage::new(base + seq)).is_err() {
+          break;
+        }
+      }
+    }));
+  }
+
+  barrier.wait();
+  while producers_started.load(Ordering::SeqCst) == 0 {
+    thread::yield_now();
+  }
+  mailbox.become_closed();
+
+  for handle in handles {
+    handle.join().expect("producer should finish");
+  }
+
+  assert_eq!(mailbox.user_len(), 0, "cleanup must not leave lock-free user messages behind");
+  let result = mailbox.enqueue_user(AnyMessage::new("after-close"));
+  assert!(matches!(result, Err(SendError::Closed(_))), "post-close enqueue must be rejected: {result:?}");
+}
+
+/// Same invariant as [`lock_backed_cleanup_close_wins_against_inflight_enqueue`] but
 /// exercising the deque-only prepend path used by
 /// `ActorCell::unstash_*`.
 #[test]
