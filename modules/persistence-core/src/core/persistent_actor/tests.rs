@@ -1,6 +1,6 @@
 use core::any::Any;
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},

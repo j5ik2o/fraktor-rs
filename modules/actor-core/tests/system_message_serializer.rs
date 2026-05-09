@@ -1,6 +1,6 @@
 use core::any::{TypeId, type_name};
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::messaging::system_message::SystemMessage,
   serialization::{
     builtin::{SYSTEM_MESSAGE_ID, register_defaults},

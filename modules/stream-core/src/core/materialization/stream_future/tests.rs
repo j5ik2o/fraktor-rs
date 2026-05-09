@@ -10,7 +10,7 @@ use std::{
   task::{Wake, Waker},
 };
 
-use fraktor_actor_core_rs::core::kernel::system::SpinBlocker;
+use fraktor_actor_core_rs::system::SpinBlocker;
 
 use super::StreamFuture;
 use crate::core::{r#impl::StreamError, materialization::Completion};

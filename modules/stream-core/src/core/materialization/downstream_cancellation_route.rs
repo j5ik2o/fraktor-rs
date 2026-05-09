@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::core::kernel::actor::{ChildRef, Pid};
+use fraktor_actor_core_rs::actor::{ChildRef, Pid};
 
 use crate::core::r#impl::{interpreter::IslandBoundaryShared, materialization::StreamShared};
 

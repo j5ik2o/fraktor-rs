@@ -7,7 +7,7 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
-const LOGGING_FILTER_SOURCE: &str = r#"use fraktor_actor_core_rs::core::kernel::{
+const LOGGING_FILTER_SOURCE: &str = r#"use fraktor_actor_core_rs::{
   event::logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
   system::state::{SystemStateShared, system_state::SystemState},
 };

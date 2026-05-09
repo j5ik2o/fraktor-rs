@@ -1,6 +1,6 @@
 //! Extension identifier for persistence subsystem.
 
-use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
+use fraktor_actor_core_rs::{actor::extension::ExtensionId, system::ActorSystem};
 
 use crate::core::{
   journal::Journal, persistence_extension::PersistenceExtension,

@@ -20,7 +20,7 @@ use std::{
   thread::{self, Builder, JoinHandle},
 };
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
+use fraktor_actor_core_rs::dispatch::dispatcher::{ExecuteError, Executor};
 
 type Task = Box<dyn FnOnce() + Send + 'static>;
 

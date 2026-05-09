@@ -7,7 +7,7 @@
 //! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,

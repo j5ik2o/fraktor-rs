@@ -1,6 +1,6 @@
 use core::{any::Any, time::Duration};
 
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_rs::actor::{
   Pid,
   actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
   error::SendError,

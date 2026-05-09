@@ -11,7 +11,7 @@ use alloc::{
 };
 use core::{mem, time::Duration};
 
-use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
+use fraktor_actor_core_rs::event::stream::{CorrelationId, RemotingLifecycleEvent};
 
 use crate::core::{
   address::{Address, RemoteNodeId, UniqueAddress},

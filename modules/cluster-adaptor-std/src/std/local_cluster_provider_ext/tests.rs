@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_core_rs::core::kernel::event::stream::{
+use fraktor_actor_core_rs::event::stream::{
   CorrelationId, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
   EventStreamSubscription, RemotingLifecycleEvent, subscriber_handle,
 };

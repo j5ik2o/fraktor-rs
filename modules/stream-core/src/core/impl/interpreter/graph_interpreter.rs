@@ -4,7 +4,7 @@ mod failure_restart;
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_core_rs::core::kernel::system::ActorSystem;
+use fraktor_actor_core_rs::system::ActorSystem;
 
 use super::{
   compiled_graph_plan::CompiledGraphPlan, failure_disposition::FailureDisposition, graph_connections::GraphConnections,

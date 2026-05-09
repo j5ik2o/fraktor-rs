@@ -1,6 +1,6 @@
 //! Publish request payload.
 
-use fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage;
+use fraktor_actor_core_rs::actor::messaging::AnyMessage;
 
 use super::{PubSubTopic, PublishOptions};
 

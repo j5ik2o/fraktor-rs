@@ -1,6 +1,6 @@
 //! Internal materialization implementation namespace.
 
-use fraktor_actor_core_rs::core::kernel::actor::scheduler::SchedulerHandle;
+use fraktor_actor_core_rs::actor::scheduler::SchedulerHandle;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 mod stream;

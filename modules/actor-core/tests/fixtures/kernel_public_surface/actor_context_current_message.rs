@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{ActorContext, Pid, messaging::AnyMessage, setup::ActorSystemConfig},
   system::ActorSystem,
 };

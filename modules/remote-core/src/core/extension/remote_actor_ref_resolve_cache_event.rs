@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath;
+use fraktor_actor_core_rs::actor::actor_path::ActorPath;
 
 use crate::core::extension::RemoteActorRefResolveCacheOutcome;
 

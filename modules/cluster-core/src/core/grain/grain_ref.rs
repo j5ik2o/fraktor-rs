@@ -3,7 +3,7 @@
 use alloc::{format, string::String};
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},

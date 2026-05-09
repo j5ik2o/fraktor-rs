@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use std::sync::Mutex;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::{
+use fraktor_actor_core_rs::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
 };
 use fraktor_cluster_core_rs::core::{BlockListProvider, ClusterEvent, StartupMode, cluster_provider::ClusterProvider};

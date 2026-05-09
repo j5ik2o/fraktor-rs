@@ -2,7 +2,7 @@ use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,

@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
   system::ActorSystem,
 };

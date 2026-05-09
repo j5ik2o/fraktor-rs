@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::messaging::AnyMessage,
   serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
 };

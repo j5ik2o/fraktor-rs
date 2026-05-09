@@ -6,7 +6,7 @@ use core::{
 };
 use std::{thread, time::Instant};
 
-use fraktor_actor_core_rs::core::kernel::system::{CoordinatedShutdown, CoordinatedShutdownReason};
+use fraktor_actor_core_rs::system::{CoordinatedShutdown, CoordinatedShutdownReason};
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 fn main() {

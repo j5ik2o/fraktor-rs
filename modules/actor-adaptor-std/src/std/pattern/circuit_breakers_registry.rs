@@ -6,7 +6,7 @@ extern crate std;
 use alloc::collections::BTreeMap;
 use std::{collections::HashMap, string::ToString};
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{extension::Extension, setup::CircuitBreakerConfig},
   pattern::{CircuitBreaker, CircuitBreakerShared},
   system::ActorSystem,

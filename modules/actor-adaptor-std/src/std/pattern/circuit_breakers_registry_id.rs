@@ -1,6 +1,6 @@
 //! Extension identifier for the standard circuit-breaker registry.
 
-use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
+use fraktor_actor_core_rs::{actor::extension::ExtensionId, system::ActorSystem};
 
 use super::circuit_breakers_registry::CircuitBreakersRegistry;
 

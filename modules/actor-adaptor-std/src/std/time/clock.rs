@@ -8,7 +8,7 @@ extern crate std;
 use core::time::Duration;
 use std::time::Instant;
 
-use fraktor_actor_core_rs::core::kernel::pattern::Clock;
+use fraktor_actor_core_rs::pattern::Clock;
 
 /// A [`Clock`] implementation backed by the standard library's monotonic clock.
 #[derive(Debug, Clone, Copy)]

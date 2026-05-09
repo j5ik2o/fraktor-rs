@@ -7,7 +7,7 @@ use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
 };
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, RemotingLifecycleEvent},
   system::ActorSystemWeak,

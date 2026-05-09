@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
+use fraktor_actor_core_rs::event::stream::EventStreamShared;
 use fraktor_cluster_core_rs::core::{
   ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},

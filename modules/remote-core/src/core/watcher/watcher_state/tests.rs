@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::{ActorPath, ActorPathParser};
+use fraktor_actor_core_rs::actor::actor_path::{ActorPath, ActorPathParser};
 
 use super::WatcherState;
 use crate::core::{

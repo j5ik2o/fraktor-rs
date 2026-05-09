@@ -1,6 +1,6 @@
 //! Data-only remote actor reference returned by the provider.
 
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath;
+use fraktor_actor_core_rs::actor::actor_path::ActorPath;
 
 use crate::core::address::RemoteNodeId;
 

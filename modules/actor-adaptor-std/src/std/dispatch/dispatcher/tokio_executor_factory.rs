@@ -1,6 +1,6 @@
 //! Factory that produces [`TokioExecutor`] handles wrapped in [`ExecutorShared`].
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecutorFactory, ExecutorShared, TrampolineState};
+use fraktor_actor_core_rs::dispatch::dispatcher::{ExecutorFactory, ExecutorShared, TrampolineState};
 use tokio::runtime::Handle;
 
 use super::tokio_executor::TokioExecutor;

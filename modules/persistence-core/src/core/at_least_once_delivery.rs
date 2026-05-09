@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, vec::Vec};
 use core::{any::Any, time::Duration};
 
-use fraktor_actor_core_rs::core::kernel::actor::{actor_ref::ActorRef, messaging::AnyMessage};
+use fraktor_actor_core_rs::actor::{actor_ref::ActorRef, messaging::AnyMessage};
 use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use crate::core::{

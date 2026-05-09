@@ -1,7 +1,7 @@
 use core::hash::{Hash, Hasher};
 use std::{collections::hash_map::DefaultHasher, string::String};
 
-use fraktor_actor_core_rs::core::kernel::support::ByteString;
+use fraktor_actor_core_rs::support::ByteString;
 
 #[test]
 fn empty_creates_zero_length() {

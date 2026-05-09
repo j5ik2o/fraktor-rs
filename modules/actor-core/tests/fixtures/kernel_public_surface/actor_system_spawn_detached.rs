@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,

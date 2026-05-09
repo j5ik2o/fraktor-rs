@@ -3,7 +3,7 @@
 use std::{format, net::TcpListener, time::Duration};
 
 use fraktor_actor_adaptor_std_rs::std::{system::new_empty_actor_system, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionInstallers, system::ActorSystem};
+use fraktor_actor_core_rs::{actor::extension::ExtensionInstallers, system::ActorSystem};
 use fraktor_remote_adaptor_std_rs::std::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };

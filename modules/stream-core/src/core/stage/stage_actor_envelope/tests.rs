@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_rs::actor::{
   Pid,
   actor_ref::{ActorRef, ActorRefSenderShared, NullSender},
   messaging::AnyMessage,

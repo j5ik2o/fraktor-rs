@@ -4,7 +4,7 @@ use std::{format, net::TcpListener, string::String, time::Duration, vec::Vec};
 
 use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParser},

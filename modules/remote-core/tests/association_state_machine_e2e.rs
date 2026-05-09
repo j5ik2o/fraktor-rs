@@ -9,7 +9,7 @@ use alloc::{string::String, vec::Vec};
 
 extern crate alloc;
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
 };

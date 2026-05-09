@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::actor::{
+use fraktor_actor_core_rs::actor::{
   ActorContext, error::ActorError, messaging::AnyMessageView, props::MailboxRequirement,
 };
 

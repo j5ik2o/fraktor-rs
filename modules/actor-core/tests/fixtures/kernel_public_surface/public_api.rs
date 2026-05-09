@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     ActorCell, ActorContext, Address, ChildRef, ClassicTimerScheduler, Pid,
     actor_path::{ActorPath, ChildActorPath, RootActorPath},

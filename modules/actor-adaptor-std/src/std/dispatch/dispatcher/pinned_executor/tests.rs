@@ -4,7 +4,7 @@ use alloc::{boxed::Box, sync::Arc};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Barrier;
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
+use fraktor_actor_core_rs::dispatch::dispatcher::{ExecuteError, Executor};
 
 use super::PinnedExecutor;
 

@@ -7,7 +7,7 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_actor_core_rs::core::kernel::actor::actor_path::{ActorPathError, ActorPathParser};
+use fraktor_actor_core_rs::actor::actor_path::{ActorPathError, ActorPathParser};
 
 use super::{identity_event::IdentityEvent, resolve_error::ResolveError, resolve_result::ResolveResult};
 use crate::core::membership::{MembershipDelta, MembershipTable, NodeStatus};

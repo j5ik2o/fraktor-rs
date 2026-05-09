@@ -2,8 +2,8 @@ use core::time::Duration;
 use std::{thread, time::Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::actor::setup::ActorSystemConfig;
-use fraktor_actor_core_typed_rs::{
+use fraktor_actor_core_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_typed_rs::{
   TypedActorSystem, TypedProps,
   dsl::Behaviors,
   receptionist::{Listing, Receptionist, ServiceKey},
@@ -32,8 +32,8 @@ fn main() {
 }
 
 fn wait_for_listing(
-  receptionist_ref: &mut fraktor_actor_core_typed_rs::TypedActorRef<
-    fraktor_actor_core_typed_rs::receptionist::ReceptionistCommand,
+  receptionist_ref: &mut fraktor_actor_typed_rs::TypedActorRef<
+    fraktor_actor_typed_rs::receptionist::ReceptionistCommand,
   >,
   key: &ServiceKey<u32>,
 ) -> Listing {

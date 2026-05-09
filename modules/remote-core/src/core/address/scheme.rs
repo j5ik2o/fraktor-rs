@@ -5,7 +5,7 @@
 /// Defined locally in `remote-core` so that the crate does not rely on a `pub use`
 /// from `fraktor-actor-core-rs` (which would violate the workspace `no-parent-reexport`
 /// lint that only permits re-exports from the direct parent module). The variants
-/// intentionally mirror `fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPathScheme`.
+/// intentionally mirror `fraktor_actor_core_rs::actor::actor_path::ActorPathScheme`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ActorPathScheme {
   /// Local Fraktor transport.

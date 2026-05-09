@@ -1,6 +1,6 @@
 use alloc::{borrow::Cow, string::String};
 
-use fraktor_actor_core_rs::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use fraktor_actor_core_rs::actor::{error::SendError, messaging::AnyMessage};
 
 use crate::core::{
   r#impl::{FramingErrorKind, StreamError},

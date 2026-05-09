@@ -5,7 +5,7 @@ use std::{
   time::Instant,
 };
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     actor_path::ActorPath, actor_ref::dead_letter::DeadLetterReason, extension::ExtensionInstaller,
     messaging::AnyMessage,

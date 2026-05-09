@@ -5,7 +5,7 @@ use std::{
 
 use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_rs::{
   actor::{
     Actor, ActorContext,
     actor_ref_provider::LocalActorRefProviderInstaller,

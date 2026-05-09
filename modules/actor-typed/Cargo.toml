@@ -1,0 +1,41 @@
+[package]
+name = "fraktor-actor-typed-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor typed actor facade for no_std environments"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "actor", "typed", "runtime", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-actor-typed-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+
+[dependencies]
+fraktor-actor-core-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+hashbrown = { workspace = true, default-features = false }
+ahash = { workspace = true, default-features = false }
+tracing = { workspace = true, default-features = false }
+
+[dev-dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+critical-section = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["std"] }
+
+[[test]]
+name = "typed_scheduler"
+path = "tests/typed_scheduler.rs"
+
+[[test]]
+name = "typed_user_flow_e2e"
+path = "tests/typed_user_flow_e2e.rs"
+
+[lints]
+workspace = true

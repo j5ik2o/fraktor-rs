@@ -1382,7 +1382,7 @@ check_unit_sleep() {
   fi
   local -a scan_dirs=(
     modules/actor-core/src/
-    modules/actor-core-typed/src/
+    modules/actor-typed/src/
     modules/actor-adaptor-std/src/
     modules/stream-core/src/
     modules/stream-adaptor-std/src/
