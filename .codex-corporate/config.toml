@@ -56,6 +56,12 @@ enabled = true
 [plugins."github@openai-curated"]
 enabled = true
 
+[plugins."google-calendar@openai-curated"]
+enabled = true
+
+[plugins."slack@openai-curated"]
+enabled = true
+
 [hooks.state]
 
 [hooks.state."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/.codex/config.toml:post_tool_use:0:0"]

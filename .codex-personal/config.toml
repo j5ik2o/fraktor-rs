@@ -4,6 +4,7 @@ hide_agent_reasoning = true
 network_access = true
 web_search = "live"
 personality = "pragmatic"
+approvals_reviewer = "user"
 
 [features]
 hooks = true
@@ -14,6 +15,10 @@ apps = false
 shell_snapshot = true
 steer = true
 multi_agent = true
+js_repl = true
+prevent_idle_sleep = true
+terminal_resize_reflow = true
+memories = true
 goals = true
 browser_use = true
 
@@ -45,7 +50,16 @@ trust_level = "trusted"
 [notice]
 hide_rate_limit_model_nudge = true
 
+[plugins."gmail@openai-curated"]
+enabled = true
+
 [plugins."github@openai-curated"]
+enabled = true
+
+[plugins."google-calendar@openai-curated"]
+enabled = true
+
+[plugins."slack@openai-curated"]
 enabled = true
 
 [hooks.state]
