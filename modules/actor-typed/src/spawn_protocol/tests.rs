@@ -5,7 +5,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use fraktor_actor_core_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
 
 use crate::{SpawnProtocol, TypedActorRef, dsl::Behaviors, props::TypedProps, system::TypedActorSystem};
 

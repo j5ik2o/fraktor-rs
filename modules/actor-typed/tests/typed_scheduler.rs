@@ -5,8 +5,8 @@ use core::{
 use std::{thread::yield_now, time::Instant};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::actor::{actor_ref::ActorRef, scheduler::ExecutionBatch, setup::ActorSystemConfig};
-use fraktor_actor_typed_rs::{TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors};
+use fraktor_actor_core_kernel_rs::actor::{actor_ref::ActorRef, scheduler::ExecutionBatch, setup::ActorSystemConfig};
+use fraktor_actor_core_typed_rs::{TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors};
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 fn new_test_system() -> TypedActorSystem<u32> {

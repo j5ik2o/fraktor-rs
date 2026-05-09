@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     error::ActorError,

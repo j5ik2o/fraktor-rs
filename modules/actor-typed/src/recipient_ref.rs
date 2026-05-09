@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Pid,
   actor_ref::ActorRef,
   messaging::{AnyMessage, AskResponse},

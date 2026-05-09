@@ -8,7 +8,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_core_rs::actor::error::ActorError;
+use fraktor_actor_core_kernel_rs::actor::error::ActorError;
 
 use crate::{actor::TypedActorContext, behavior::Behavior, message_and_signals::BehaviorSignal};
 

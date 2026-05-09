@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::message_adapter::{
+use fraktor_actor_core_kernel_rs::actor::message_adapter::{
   AdapterLifecycleState, AdapterRefHandleId, MessageAdapterRegistration,
 };
 

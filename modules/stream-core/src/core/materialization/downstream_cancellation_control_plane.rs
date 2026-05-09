@@ -1,7 +1,7 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_actor_core_rs::actor::Pid;
+use fraktor_actor_core_kernel_rs::actor::Pid;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::downstream_cancellation_route::{DownstreamCancellationRoute, ReservedDownstreamCancellationTarget};

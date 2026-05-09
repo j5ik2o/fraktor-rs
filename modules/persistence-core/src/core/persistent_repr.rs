@@ -9,7 +9,7 @@ use core::{
   ops::Deref,
 };
 
-use fraktor_actor_core_rs::actor::Pid;
+use fraktor_actor_core_kernel_rs::actor::Pid;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::event_adapters::EventAdapters;

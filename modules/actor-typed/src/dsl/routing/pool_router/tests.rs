@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeSet, string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     error::ActorError,
@@ -575,7 +575,7 @@ mod optimal_size_exploring_resizer_smoke {
     time::Duration,
   };
 
-  use fraktor_actor_core_rs::{actor::setup::ActorSystemConfig, pattern::Clock};
+  use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, pattern::Clock};
   use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
   use super::{RouteRecord, recording_routee_behavior, wait_until};

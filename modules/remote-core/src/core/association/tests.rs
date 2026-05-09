@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_path::{ActorPath, ActorPathParser},
     messaging::AnyMessage,

@@ -3,7 +3,7 @@
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   event::logging::LogLevel,
   routing::{FNV_OFFSET_BASIS, Routee, RoutingLogic, SmallestMailboxRoutingLogic, mix_hash, rendezvous_score},
 };

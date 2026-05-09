@@ -1,6 +1,6 @@
 use core::{hint::spin_loop, time::Duration};
 
-use fraktor_actor_core_rs::actor::{messaging::AskError, setup::ActorSystemConfig};
+use fraktor_actor_core_kernel_rs::actor::{messaging::AskError, setup::ActorSystemConfig};
 
 use crate::{
   Behavior, TypedActorRef, TypedActorSystem, TypedProps,

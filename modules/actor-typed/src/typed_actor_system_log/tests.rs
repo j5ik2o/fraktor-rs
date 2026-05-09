@@ -4,7 +4,7 @@ use core::{
   sync::atomic::{AtomicUsize, Ordering},
 };
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   event::{
     logging::{DefaultLoggingFilter, LogLevel},
     stream::{EventStreamEvent, EventStreamSubscription},

@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::{marker::PhantomData, num::NonZeroUsize};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::props::{MailboxConfig, Props},
   dispatch::{
     dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID,

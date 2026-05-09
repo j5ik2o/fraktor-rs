@@ -14,7 +14,7 @@ use super::Scheduler;
 /// constructing it from the raw lock.
 ///
 /// ```compile_fail
-/// use fraktor_actor_core_rs::actor::scheduler::{Scheduler, SchedulerConfig, SchedulerShared};
+/// use fraktor_actor_core_kernel_rs::actor::scheduler::{Scheduler, SchedulerConfig, SchedulerShared};
 /// use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedRwLock};
 ///
 /// let scheduler = Scheduler::new(SchedulerConfig::default());

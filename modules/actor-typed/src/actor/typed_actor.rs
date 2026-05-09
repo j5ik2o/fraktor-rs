@@ -1,6 +1,6 @@
 //! Typed actor lifecycle contract.
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     error::{ActorError, ActorErrorReason},

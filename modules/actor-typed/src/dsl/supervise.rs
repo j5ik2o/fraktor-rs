@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::actor::supervision::{SupervisorStrategy, SupervisorStrategyConfig};
+use fraktor_actor_core_kernel_rs::actor::supervision::{SupervisorStrategy, SupervisorStrategyConfig};
 
 use super::failure_handler::FailureHandler;
 use crate::behavior::Behavior;

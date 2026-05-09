@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   actor_ref::ActorRef,
   scheduler::{SchedulerConfig, SchedulerContext},
 };

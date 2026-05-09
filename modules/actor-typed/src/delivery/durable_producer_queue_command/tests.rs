@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_actor_core_rs::actor::{Pid, actor_ref::NullSender};
+use fraktor_actor_core_kernel_rs::actor::{Pid, actor_ref::NullSender};
 
 use crate::{
   TypedActorRef,

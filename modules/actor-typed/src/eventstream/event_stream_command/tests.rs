@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Pid,
   actor_ref::{ActorRefSender, SendOutcome},
   error::SendError,
@@ -55,7 +55,7 @@ fn all_variants_are_distinguishable() {
   use alloc::string::ToString;
   use core::time::Duration;
 
-  use fraktor_actor_core_rs::{
+  use fraktor_actor_core_kernel_rs::{
     actor::lifecycle::{LifecycleEvent, LifecycleStage},
     event::stream::EventStreamEvent,
   };

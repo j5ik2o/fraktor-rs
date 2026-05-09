@@ -72,7 +72,7 @@ impl AnyMessage {
   /// rejected at compile time (`E0277`):
   ///
   /// ```compile_fail,E0277
-  /// use fraktor_actor_core_rs::actor::messaging::AnyMessage;
+  /// use fraktor_actor_core_kernel_rs::actor::messaging::AnyMessage;
   /// struct RegularMsg;
   /// // RegularMsg does not implement NotInfluenceReceiveTimeout,
   /// // so the trait bound on `not_influence` rejects this call.

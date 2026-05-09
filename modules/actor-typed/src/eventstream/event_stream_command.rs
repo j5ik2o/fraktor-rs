@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_core_rs::{actor::actor_ref::ActorRef, event::stream::EventStreamEvent};
+use fraktor_actor_core_kernel_rs::{actor::actor_ref::ActorRef, event::stream::EventStreamEvent};
 
 /// Commands accepted by the typed event stream, mirroring Pekko's `EventStream.Command`.
 pub enum EventStreamCommand {

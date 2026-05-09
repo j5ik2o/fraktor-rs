@@ -4,7 +4,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Actor, ActorCell, ActorContext, Pid,
   actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   error::{ActorError, SendError},

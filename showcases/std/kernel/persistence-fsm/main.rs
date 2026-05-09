@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::thread;
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,

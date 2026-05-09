@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::{marker::PhantomData, time::Duration};
 
-use fraktor_actor_core_rs::actor::scheduler::SchedulerHandle;
+use fraktor_actor_core_kernel_rs::actor::scheduler::SchedulerHandle;
 
 /// Stores the receive timeout configuration for a single actor.
 ///

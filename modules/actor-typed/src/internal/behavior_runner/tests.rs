@@ -4,7 +4,7 @@ use core::{
   sync::atomic::{AtomicBool, Ordering},
 };
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props},
   event::stream::{EventStreamEvent, EventStreamSubscriber},
   system::ActorSystem,

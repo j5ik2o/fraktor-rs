@@ -5,7 +5,7 @@
 use alloc::boxed::Box;
 use std::time::Instant;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_path::{ActorPath, ActorPathScheme},

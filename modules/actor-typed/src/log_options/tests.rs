@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::event::logging::LogLevel;
+use fraktor_actor_core_kernel_rs::event::logging::LogLevel;
 
 use super::LogOptions;
 

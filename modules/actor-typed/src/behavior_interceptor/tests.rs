@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::ActorContext;
+use fraktor_actor_core_kernel_rs::actor::ActorContext;
 
 use crate::{
   actor::TypedActorContext, behavior_interceptor::BehaviorInterceptor, dsl::Behaviors,

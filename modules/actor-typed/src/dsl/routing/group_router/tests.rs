@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::{any::TypeId, hint::spin_loop};
 
-use fraktor_actor_core_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::rendezvous_hash_index;
@@ -199,16 +199,16 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
 fn consistent_hash_routing_is_stable_across_routee_order_changes() {
   let routees = vec![
     TypedActorRef::<u32>::from_untyped(crate::test_support::actor_ref_with_sender(
-      fraktor_actor_core_rs::actor::Pid::new(11, 0),
-      fraktor_actor_core_rs::actor::actor_ref::NullSender,
+      fraktor_actor_core_kernel_rs::actor::Pid::new(11, 0),
+      fraktor_actor_core_kernel_rs::actor::actor_ref::NullSender,
     )),
     TypedActorRef::<u32>::from_untyped(crate::test_support::actor_ref_with_sender(
-      fraktor_actor_core_rs::actor::Pid::new(22, 0),
-      fraktor_actor_core_rs::actor::actor_ref::NullSender,
+      fraktor_actor_core_kernel_rs::actor::Pid::new(22, 0),
+      fraktor_actor_core_kernel_rs::actor::actor_ref::NullSender,
     )),
     TypedActorRef::<u32>::from_untyped(crate::test_support::actor_ref_with_sender(
-      fraktor_actor_core_rs::actor::Pid::new(33, 0),
-      fraktor_actor_core_rs::actor::actor_ref::NullSender,
+      fraktor_actor_core_kernel_rs::actor::Pid::new(33, 0),
+      fraktor_actor_core_kernel_rs::actor::actor_ref::NullSender,
     )),
   ];
   let mut reordered = routees.clone();

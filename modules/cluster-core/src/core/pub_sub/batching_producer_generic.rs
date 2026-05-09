@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{format, vec::Vec};
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   messaging::AnyMessage,
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerShared},
 };

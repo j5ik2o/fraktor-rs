@@ -10,7 +10,7 @@ use core::{
 };
 
 use ahash::{AHasher, RandomState};
-use fraktor_actor_core_rs::actor::scheduler::{SchedulerError, SchedulerHandle};
+use fraktor_actor_core_kernel_rs::actor::scheduler::{SchedulerError, SchedulerHandle};
 use fraktor_utils_core_rs::core::sync::SharedLock;
 use hashbrown::HashMap;
 

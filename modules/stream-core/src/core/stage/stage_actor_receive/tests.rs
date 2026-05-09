@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
-use fraktor_actor_core_rs::actor::{actor_ref::ActorRef, messaging::AnyMessage};
+use fraktor_actor_core_kernel_rs::actor::{actor_ref::ActorRef, messaging::AnyMessage};
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{

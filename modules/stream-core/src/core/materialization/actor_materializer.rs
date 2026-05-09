@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 use core::{hint, time::Duration};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     ChildRef,
     messaging::AnyMessage,

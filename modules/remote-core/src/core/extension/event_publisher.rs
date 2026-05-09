@@ -7,7 +7,7 @@ use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
 };
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, RemotingLifecycleEvent},
   system::ActorSystemWeak,
@@ -17,7 +17,7 @@ use fraktor_actor_core_rs::{
 ///
 /// Holds an [`ActorSystemWeak`] directly per design Decision 14 — no extra
 /// abstraction layer (such as a `LifecycleEventSink` trait) is introduced
-/// because the crate already depends on `fraktor-actor-core-rs`.
+/// because the crate already depends on `fraktor-actor-core-kernel-rs`.
 #[derive(Clone)]
 pub struct EventPublisher {
   system: ActorSystemWeak,

@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_core_rs::actor::scheduler::{
+use fraktor_actor_core_kernel_rs::actor::scheduler::{
   SchedulerConfig, SchedulerContext,
   tick_driver::{
     SchedulerTickExecutor, TickDriver, TickDriverError, TickDriverKind, TickExecutorSignal, TickFeed, TickFeedHandle,

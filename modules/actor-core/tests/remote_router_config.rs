@@ -2,7 +2,7 @@
 
 use core::borrow::Borrow;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Address,
     deploy::{RemoteScope, Scope},

@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use fraktor_actor_core_rs::actor::{error::ActorError, messaging::AnyMessage};
+use fraktor_actor_core_kernel_rs::actor::{error::ActorError, messaging::AnyMessage};
 
 use crate::actor::TypedActorContext;
 

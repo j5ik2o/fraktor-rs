@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_core_rs::event::logging::LogLevel;
+use fraktor_actor_core_kernel_rs::event::logging::LogLevel;
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{

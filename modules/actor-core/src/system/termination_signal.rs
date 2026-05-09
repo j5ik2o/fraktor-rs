@@ -15,7 +15,7 @@ use super::{blocker::Blocker, termination_future::TerminationFuture, termination
 /// # Async usage
 ///
 /// ```no_run
-/// # fn example(system: fraktor_actor_core_rs::system::ActorSystem) {
+/// # fn example(system: fraktor_actor_core_kernel_rs::system::ActorSystem) {
 /// let signal = system.when_terminated();
 /// // signal.await; // resolves when the system terminates
 /// # }
@@ -24,7 +24,7 @@ use super::{blocker::Blocker, termination_future::TerminationFuture, termination
 /// # Sync usage (requires std adapter `Blocker`)
 ///
 /// ```no_run
-/// # fn example(signal: fraktor_actor_core_rs::system::TerminationSignal, blocker: &dyn fraktor_actor_core_rs::system::Blocker) {
+/// # fn example(signal: fraktor_actor_core_kernel_rs::system::TerminationSignal, blocker: &dyn fraktor_actor_core_kernel_rs::system::Blocker) {
 /// signal.wait_blocking(blocker);
 /// # }
 /// ```

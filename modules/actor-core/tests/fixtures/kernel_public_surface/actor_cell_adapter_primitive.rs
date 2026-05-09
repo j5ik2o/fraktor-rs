@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::ActorCell;
+use fraktor_actor_core_kernel_rs::actor::ActorCell;
 
 fn probe(cell: &ActorCell) {
   let _ = cell.acquire_adapter_handle();

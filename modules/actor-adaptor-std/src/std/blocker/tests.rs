@@ -3,7 +3,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_actor_core_rs::system::Blocker;
+use fraktor_actor_core_kernel_rs::system::Blocker;
 
 use super::StdBlocker;
 

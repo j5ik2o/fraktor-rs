@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_actor_core_rs::actor::ActorContext;
+use fraktor_actor_core_kernel_rs::actor::ActorContext;
 
 use super::FsmBuilder;
 use crate::{

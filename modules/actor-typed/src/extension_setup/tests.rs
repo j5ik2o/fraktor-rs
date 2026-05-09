@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   extension::{Extension, ExtensionInstallers},
   setup::ActorSystemConfig,
 };
@@ -24,7 +24,7 @@ impl ProbeExtension {
 
 impl Extension for ProbeExtension {}
 
-impl fraktor_actor_core_rs::actor::extension::ExtensionId for ProbeExtensionId {
+impl fraktor_actor_core_kernel_rs::actor::extension::ExtensionId for ProbeExtensionId {
   type Ext = ProbeExtension;
 
   fn create_extension(&self, _system: &ActorSystem) -> Self::Ext {

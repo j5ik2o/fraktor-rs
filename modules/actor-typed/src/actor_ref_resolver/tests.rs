@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Actor, ActorCell, ActorContext, Pid, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView,
   props::Props, setup::ActorSystemConfig,
 };

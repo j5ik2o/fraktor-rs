@@ -2,7 +2,7 @@
 
 use core::fmt::{self, Formatter, Result as FmtResult};
 
-use fraktor_actor_core_rs::actor::error::{PipeSpawnError, SendError};
+use fraktor_actor_core_kernel_rs::actor::error::{PipeSpawnError, SendError};
 
 /// Describes failures that can occur when invoking ask from a typed actor context.
 #[derive(Debug)]

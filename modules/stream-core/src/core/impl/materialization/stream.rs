@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::system::ActorSystem;
+use fraktor_actor_core_kernel_rs::system::ActorSystem;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use portable_atomic::{AtomicU64, Ordering};
 

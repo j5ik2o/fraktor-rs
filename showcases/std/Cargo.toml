@@ -6,8 +6,8 @@ publish = false
 
 [dependencies]
 # 基本依存（全 example 共通）
-fraktor-actor-core-rs = { workspace = true }
-fraktor-actor-typed-rs = { workspace = true }
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-actor-core-typed-rs = { workspace = true }
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-remote-core-rs = { workspace = true }
 fraktor-remote-adaptor-std-rs = { workspace = true }

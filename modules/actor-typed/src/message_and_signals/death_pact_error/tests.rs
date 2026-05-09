@@ -1,6 +1,6 @@
 use alloc::{format, string::ToString};
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Pid,
   error::{ActorError, ActorErrorReason},
 };

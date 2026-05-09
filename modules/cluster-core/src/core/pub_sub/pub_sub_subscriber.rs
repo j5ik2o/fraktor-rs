@@ -6,7 +6,7 @@ use core::{
   hash::{Hash, Hasher},
 };
 
-use fraktor_actor_core_rs::actor::actor_ref::ActorRef;
+use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 
 use crate::core::identity::ClusterIdentity;
 

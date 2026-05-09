@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},

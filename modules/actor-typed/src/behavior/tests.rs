@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     ActorContext, Pid,
     supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},

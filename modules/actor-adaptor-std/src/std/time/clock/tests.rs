@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::pattern::Clock;
+use fraktor_actor_core_kernel_rs::pattern::Clock;
 
 use super::StdClock;
 

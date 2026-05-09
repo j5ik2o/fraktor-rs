@@ -5,7 +5,7 @@ use core::{
   marker::PhantomData,
 };
 
-use fraktor_actor_core_rs::actor::{ChildRef, Pid, error::SendError, messaging::AnyMessage};
+use fraktor_actor_core_kernel_rs::actor::{ChildRef, Pid, error::SendError, messaging::AnyMessage};
 
 use crate::{TypedActorRef, dsl::TypedAskResponse};
 

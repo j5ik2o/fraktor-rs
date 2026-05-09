@@ -5,14 +5,14 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     ChildRef,
     error::{ActorError, SendError},
   },
   system::ActorSystem,
 };
-use fraktor_actor_typed_rs::{
+use fraktor_actor_core_typed_rs::{
   Behavior, TypedActorRef, TypedProps,
   dsl::Behaviors,
   pubsub::{Topic, TopicCommand},

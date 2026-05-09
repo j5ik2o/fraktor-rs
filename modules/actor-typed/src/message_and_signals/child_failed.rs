@@ -2,7 +2,7 @@
 
 use core::convert::Infallible;
 
-use fraktor_actor_core_rs::actor::{Pid, error::ActorError};
+use fraktor_actor_core_kernel_rs::actor::{Pid, error::ActorError};
 
 use crate::{
   TypedActorRef,

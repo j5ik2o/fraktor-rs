@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   ActorCell,
   error::ActorError,
   messaging::AnyMessage,

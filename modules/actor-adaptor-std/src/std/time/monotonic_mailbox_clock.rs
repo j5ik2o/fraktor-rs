@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use core::time::Duration;
 use std::time::Instant;
 
-use fraktor_actor_core_rs::dispatch::mailbox::MailboxClock;
+use fraktor_actor_core_kernel_rs::dispatch::mailbox::MailboxClock;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 /// Builds a [`MailboxClock`] backed by [`Instant::now`] for throughput

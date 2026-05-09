@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use fraktor_actor_core_rs::actor::ActorContext;
+use fraktor_actor_core_kernel_rs::actor::ActorContext;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::BehaviorSignalInterceptor;

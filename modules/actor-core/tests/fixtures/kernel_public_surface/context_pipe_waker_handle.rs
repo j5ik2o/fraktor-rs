@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::context_pipe::ContextPipeWakerHandle;
+use fraktor_actor_core_kernel_rs::actor::context_pipe::ContextPipeWakerHandle;
 
 fn main() {
   let _ = core::any::type_name::<ContextPipeWakerHandle>();

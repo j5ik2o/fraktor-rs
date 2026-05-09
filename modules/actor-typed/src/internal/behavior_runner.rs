@@ -3,7 +3,7 @@
 use alloc::string::ToString;
 use core::convert::Infallible;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_ref::{ActorRef, NullSender},

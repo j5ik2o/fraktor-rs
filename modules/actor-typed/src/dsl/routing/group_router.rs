@@ -3,7 +3,7 @@
 use alloc::{format, string::String, vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_actor_core_rs::event::logging::LogLevel;
+use fraktor_actor_core_kernel_rs::event::logging::LogLevel;
 use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 use portable_atomic::AtomicU64;
 

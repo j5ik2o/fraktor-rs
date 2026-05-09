@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::any::Any;
 
-use fraktor_actor_core_rs::system::ActorSystem;
+use fraktor_actor_core_kernel_rs::system::ActorSystem;
 
 use super::graph_stage_flow_context::GraphStageFlowContext;
 use crate::core::{

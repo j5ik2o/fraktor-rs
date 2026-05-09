@@ -4,7 +4,7 @@ use alloc::string::{String, ToString};
 use core::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   error::{ActorError, ActorErrorReason},
   invoke_guard::InvokeGuard,
 };

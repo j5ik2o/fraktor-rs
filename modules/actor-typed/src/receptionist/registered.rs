@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use fraktor_actor_core_rs::actor::{actor_ref::ActorRef, error::ActorError};
+use fraktor_actor_core_kernel_rs::actor::{actor_ref::ActorRef, error::ActorError};
 
 use super::service_key::ServiceKey;
 use crate::TypedActorRef;

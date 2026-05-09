@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_core_rs::actor::Pid;
+use fraktor_actor_core_kernel_rs::actor::Pid;
 
 use super::topic_stats::TopicStats;
 use crate::{TypedActorRef, receptionist::Listing};
@@ -14,7 +14,7 @@ use crate::{TypedActorRef, receptionist::Listing};
 /// factory methods only. Internal coordination messages stay crate-private.
 ///
 /// ```compile_fail
-/// use fraktor_actor_typed_rs::pubsub::TopicCommand;
+/// use fraktor_actor_core_typed_rs::pubsub::TopicCommand;
 ///
 /// let _ = TopicCommand::MessagePublished(1_u32);
 /// ```

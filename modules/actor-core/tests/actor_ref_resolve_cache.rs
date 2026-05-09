@@ -1,6 +1,6 @@
 use core::cell::Cell;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::actor_path::{ActorPath, ActorPathParser, GuardianKind},
   serialization::{ActorRefResolveCache, ActorRefResolveCacheOutcome},
 };

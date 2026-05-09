@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::ReceiveTimeoutState;
+use fraktor_actor_core_kernel_rs::actor::ReceiveTimeoutState;
 
 fn main() {
   let _ = core::any::type_name::<ReceiveTimeoutState>();

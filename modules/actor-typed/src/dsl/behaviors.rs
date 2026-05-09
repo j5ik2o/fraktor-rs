@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::BTreeMap, string::String};
 use core::{fmt::Debug, marker::PhantomData};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{Pid, error::ActorError, messaging::AnyMessage},
   event::logging::LogLevel,
 };

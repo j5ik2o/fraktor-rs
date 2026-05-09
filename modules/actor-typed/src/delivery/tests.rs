@@ -3,7 +3,7 @@ extern crate std;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_core_rs::actor::{Pid, setup::ActorSystemConfig};
+use fraktor_actor_core_kernel_rs::actor::{Pid, setup::ActorSystemConfig};
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SpinSyncMutex},
   time::TimerInstant,

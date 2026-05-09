@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     error::ActorError,
     supervision::{

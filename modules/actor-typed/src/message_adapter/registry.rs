@@ -6,7 +6,7 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::{Any, TypeId};
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   ActorContext, actor_ref::ActorRef, message_adapter::MessageAdapterLease, messaging::AnyMessage,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;

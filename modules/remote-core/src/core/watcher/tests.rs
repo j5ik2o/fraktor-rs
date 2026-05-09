@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::actor::actor_path::{ActorPath, ActorPathParser};
+use fraktor_actor_core_kernel_rs::actor::actor_path::{ActorPath, ActorPathParser};
 
 use crate::core::{
   address::Address,

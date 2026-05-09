@@ -9,7 +9,7 @@
 //!
 //! Per design Decision 16, this module deliberately does **not** define a
 //! new `RemotingLifecycleEvent`; the already-shipped
-//! `fraktor_actor_core_rs::event::stream::RemotingLifecycleEvent`
+//! `fraktor_actor_core_kernel_rs::event::stream::RemotingLifecycleEvent`
 //! is re-used everywhere.
 //!
 //! [`RemoteShared::run`] uses a [`RemoteEventReceiver`]-driven wake-on-event

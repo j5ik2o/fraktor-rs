@@ -12,7 +12,7 @@ use core::{
 use std::{collections::BTreeMap, time::Instant};
 
 use bytes::Bytes;
-use fraktor_actor_core_rs::actor::messaging::AnyMessage;
+use fraktor_actor_core_kernel_rs::actor::messaging::AnyMessage;
 use fraktor_remote_core_rs::core::{
   address::Address,
   association::QuarantineReason,

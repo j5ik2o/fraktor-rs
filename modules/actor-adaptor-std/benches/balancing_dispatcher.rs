@@ -22,7 +22,7 @@ use std::{
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use fraktor_actor_adaptor_std_rs::std::{dispatch::dispatcher::TokioExecutor, tick_driver::TokioTickDriver};
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,

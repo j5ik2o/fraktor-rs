@@ -3,7 +3,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_actor_core_rs::actor::scheduler::{Scheduler, SchedulerError, SchedulerHandle};
+use fraktor_actor_core_kernel_rs::actor::scheduler::{Scheduler, SchedulerError, SchedulerHandle};
 
 use crate::{TypedActorRef, internal::TypedScheduler};
 

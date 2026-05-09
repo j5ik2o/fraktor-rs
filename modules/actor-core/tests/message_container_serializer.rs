@@ -4,7 +4,7 @@ use core::{
 };
 use std::{borrow::Cow, boxed::Box, string::String, vec, vec::Vec};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_selection::{ActorSelectionMessage, SelectionPathElement},
     messaging::AnyMessage,

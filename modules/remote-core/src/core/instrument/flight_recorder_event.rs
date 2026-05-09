@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_core_rs::event::stream::CorrelationId;
+use fraktor_actor_core_kernel_rs::event::stream::CorrelationId;
 
 use crate::core::{instrument::handshake_phase::HandshakePhase, transport::BackpressureSignal};
 

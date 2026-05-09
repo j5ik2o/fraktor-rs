@@ -5,7 +5,7 @@ mod tests;
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
-use fraktor_actor_core_rs::actor::Pid;
+use fraktor_actor_core_kernel_rs::actor::Pid;
 
 /// Exception thrown when a watched actor terminates and the watcher
 /// does not handle the [`BehaviorSignal::Terminated`] signal.

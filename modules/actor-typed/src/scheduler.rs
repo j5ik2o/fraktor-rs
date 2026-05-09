@@ -6,7 +6,7 @@
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::actor::scheduler::{
+use fraktor_actor_core_kernel_rs::actor::scheduler::{
   Scheduler as KernelScheduler, SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerRunnable,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;

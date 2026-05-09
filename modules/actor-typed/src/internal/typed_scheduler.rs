@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   messaging::AnyMessage,
   scheduler::{Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
 };

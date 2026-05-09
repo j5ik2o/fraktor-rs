@@ -1,6 +1,6 @@
 //! Identifier used to register the typed actor-ref resolver extension.
 
-use fraktor_actor_core_rs::{actor::extension::ExtensionId, system::ActorSystem};
+use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionId, system::ActorSystem};
 
 use crate::ActorRefResolver;
 

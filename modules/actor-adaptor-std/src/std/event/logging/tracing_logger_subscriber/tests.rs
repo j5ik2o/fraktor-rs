@@ -7,7 +7,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use fraktor_actor_core_rs::event::{
+use fraktor_actor_core_kernel_rs::event::{
   logging::{LogEvent, LogLevel},
   stream::{EventStreamEvent, EventStreamSubscriber},
 };

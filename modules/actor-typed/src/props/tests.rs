@@ -33,7 +33,7 @@ fn with_stash_mailbox_sets_stash_requirement() {
 
   assert_eq!(
     props.to_untyped().mailbox_requirement(),
-    fraktor_actor_core_rs::actor::props::MailboxRequirement::for_stash()
+    fraktor_actor_core_kernel_rs::actor::props::MailboxRequirement::for_stash()
   );
 }
 

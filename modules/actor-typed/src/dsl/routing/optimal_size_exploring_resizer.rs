@@ -4,7 +4,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_core_rs::pattern::Clock;
+use fraktor_actor_core_kernel_rs::pattern::Clock;
 use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
 
 use super::resizer::Resizer;

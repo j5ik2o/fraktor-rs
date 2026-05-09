@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, Pid,
     actor_ref::{ActorRef, dead_letter::DeadLetterReason},

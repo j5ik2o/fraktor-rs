@@ -7,7 +7,7 @@ use core::{
   marker::PhantomData,
 };
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Pid, actor_path::ActorPath, actor_ref::ActorRef, error::SendError, messaging::AnyMessage,
 };
 

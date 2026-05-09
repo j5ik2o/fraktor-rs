@@ -1,8 +1,8 @@
 use std::{thread, time::Duration, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::actor::setup::ActorSystemConfig;
-use fraktor_actor_typed_rs::{
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{
   ActorTags, SupervisorStrategy, TypedActorSystem, TypedProps,
   dsl::{Behaviors, routing::Routers},
   receptionist::{Receptionist, ServiceKey},

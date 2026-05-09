@@ -1,7 +1,7 @@
 use alloc::string::String;
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},

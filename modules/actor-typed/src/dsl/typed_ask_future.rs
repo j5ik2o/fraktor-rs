@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::messaging::{AnyMessage, AskResult},
   support::futures::ActorFutureShared,
 };

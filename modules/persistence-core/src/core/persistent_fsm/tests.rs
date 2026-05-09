@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},

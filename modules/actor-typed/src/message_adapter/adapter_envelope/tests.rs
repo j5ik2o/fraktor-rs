@@ -1,6 +1,6 @@
 use core::any::TypeId;
 
-use fraktor_actor_core_rs::actor::actor_ref::ActorRef;
+use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 
 use crate::message_adapter::{AdapterEnvelope, AdapterPayload};
 

@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
@@ -146,7 +146,7 @@ fn untyped_recipient_ref_ask_preserves_send_failure_semantics() {
   let response = RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest { value: 9, reply_to });
   let result = response.future().with_write(|inner| inner.try_take()).expect("future should be ready");
 
-  assert!(matches!(result, Err(fraktor_actor_core_rs::actor::messaging::AskError::SendFailed(_))));
+  assert!(matches!(result, Err(fraktor_actor_core_kernel_rs::actor::messaging::AskError::SendFailed(_))));
 }
 
 /// `TypedActorRef::tell` returns `()` (fire-and-forget, Pekko-compatible).

@@ -16,7 +16,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_actor_core_rs::pattern::Clock;
+use fraktor_actor_core_kernel_rs::pattern::Clock;
 
 use super::OptimalSizeExploringResizer;
 use crate::dsl::routing::Resizer;

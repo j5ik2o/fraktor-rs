@@ -2,7 +2,7 @@
 
 use core::any::TypeId;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::extension::{ExtensionId, ExtensionInstaller},
   system::{ActorSystem, ActorSystemBuildError},
 };

@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::dispatch::dispatcher::DispatchersError;
+use fraktor_actor_core_kernel_rs::dispatch::dispatcher::DispatchersError;
 
 use crate::{DispatcherSelector, dispatchers::Dispatchers};
 
@@ -57,7 +57,7 @@ fn lookup_from_config_preserves_user_override_of_pekko_alias() {
   use alloc::boxed::Box;
   use core::time::Duration;
 
-  use fraktor_actor_core_rs::dispatch::dispatcher::{
+  use fraktor_actor_core_kernel_rs::dispatch::dispatcher::{
     DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
     TrampolineState,
   };

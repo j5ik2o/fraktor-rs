@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::TypeId;
 
-use fraktor_actor_core_rs::actor::supervision::SupervisorStrategyConfig;
+use fraktor_actor_core_kernel_rs::actor::supervision::SupervisorStrategyConfig;
 
 /// Associates a specific error type with a supervisor strategy.
 ///

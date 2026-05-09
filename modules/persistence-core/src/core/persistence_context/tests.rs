@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::any::{Any, TypeId};
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   ActorContext, Pid,
   actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
   error::{ActorError, SendError},

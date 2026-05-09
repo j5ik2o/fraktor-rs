@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::hint::spin_loop;
 
-use fraktor_actor_core_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{

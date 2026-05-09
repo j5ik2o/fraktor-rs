@@ -1,6 +1,6 @@
 //! Typed ask response handle returned by `TypedActorRef::ask`.
 
-use fraktor_actor_core_rs::actor::messaging::AskResponse;
+use fraktor_actor_core_kernel_rs::actor::messaging::AskResponse;
 
 use crate::{TypedActorRef, dsl::TypedAskFuture};
 

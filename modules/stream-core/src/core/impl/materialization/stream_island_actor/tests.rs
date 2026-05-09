@@ -1,7 +1,7 @@
 extern crate std;
 
 use fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system;
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   Actor, ActorContext, Pid, error::ActorError, messaging::AnyMessage, scheduler::SchedulerHandle,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};

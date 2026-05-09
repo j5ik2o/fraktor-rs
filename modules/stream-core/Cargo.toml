@@ -19,8 +19,8 @@ test-support = []
 
 [dependencies]
 fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc"] }
-fraktor-actor-core-rs = { workspace = true }
-fraktor-actor-typed-rs = { workspace = true }
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-actor-core-typed-rs = { workspace = true }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 miniz_oxide = { version = "0.9", optional = true, default-features = false, features = ["with-alloc"] }
 

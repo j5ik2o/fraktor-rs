@@ -51,7 +51,7 @@ use crate::{
 /// Runtime container responsible for executing an actor instance.
 ///
 /// ```compile_fail
-/// use fraktor_actor_core_rs::actor::ActorCell;
+/// use fraktor_actor_core_kernel_rs::actor::ActorCell;
 ///
 /// fn read_dispatcher_id(cell: &ActorCell) {
 ///   let _ = cell.dispatcher_id();

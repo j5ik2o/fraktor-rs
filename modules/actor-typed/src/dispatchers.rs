@@ -10,7 +10,7 @@ mod tests;
 
 use alloc::string::ToString;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   dispatch::dispatcher::{
     DEFAULT_BLOCKING_DISPATCHER_ID as KERNEL_DEFAULT_BLOCKING_DISPATCHER_ID,
     DEFAULT_DISPATCHER_ID as KERNEL_DEFAULT_DISPATCHER_ID, DispatchersError, MessageDispatcherShared,
@@ -22,7 +22,7 @@ use crate::DispatcherSelector;
 
 /// Fraktor public identifier for the default dispatcher.
 ///
-/// Matches [`fraktor_actor_core_rs::dispatch::dispatcher::DEFAULT_DISPATCHER_ID`]
+/// Matches [`fraktor_actor_core_kernel_rs::dispatch::dispatcher::DEFAULT_DISPATCHER_ID`]
 /// (the kernel primary entry id).
 const FRAKTOR_DEFAULT_DISPATCHER_ID: &str = KERNEL_DEFAULT_DISPATCHER_ID;
 /// Fraktor public identifier for the internal dispatcher.
@@ -44,7 +44,7 @@ impl Dispatchers {
   /// Well-known identifier for the system default dispatcher.
   ///
   /// Corresponds to the kernel
-  /// [`DEFAULT_DISPATCHER_ID`](fraktor_actor_core_rs::dispatch::dispatcher::DEFAULT_DISPATCHER_ID).
+  /// [`DEFAULT_DISPATCHER_ID`](fraktor_actor_core_kernel_rs::dispatch::dispatcher::DEFAULT_DISPATCHER_ID).
   pub const DEFAULT_DISPATCHER_ID: &str = FRAKTOR_DEFAULT_DISPATCHER_ID;
   /// Well-known identifier for the internal dispatcher.
   ///
@@ -68,7 +68,7 @@ impl Dispatchers {
   /// | `Blocking` | kernel `DEFAULT_BLOCKING_DISPATCHER_ID` (`"fraktor.actor.default-blocking-io-dispatcher"`) |
   ///
   /// The `FromConfig` arm passes the identifier through unchanged so that
-  /// kernel [`Dispatchers`](fraktor_actor_core_rs::dispatch::dispatcher::Dispatchers)
+  /// kernel [`Dispatchers`](fraktor_actor_core_kernel_rs::dispatch::dispatcher::Dispatchers)
   /// alias chain resolution is authoritative. This preserves any
   /// user-provided entry override such as
   /// `register_or_update("fraktor.actor.default-dispatcher", custom)`, which

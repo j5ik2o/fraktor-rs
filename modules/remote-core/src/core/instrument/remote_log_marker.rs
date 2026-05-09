@@ -2,7 +2,7 @@
 
 use alloc::string::{String, ToString};
 
-use fraktor_actor_core_rs::event::logging::ActorLogMarker;
+use fraktor_actor_core_kernel_rs::event::logging::ActorLogMarker;
 
 use crate::core::address::Address;
 

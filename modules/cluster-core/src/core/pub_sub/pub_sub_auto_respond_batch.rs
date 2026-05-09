@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_actor_core_rs::actor::messaging::AnyMessage;
+use fraktor_actor_core_kernel_rs::actor::messaging::AnyMessage;
 
 /// Batch wrapper that carries decoded messages.
 pub struct PubSubAutoRespondBatch {

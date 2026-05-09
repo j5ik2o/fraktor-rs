@@ -6,7 +6,7 @@ mod tests;
 use alloc::{fmt::format, string::String};
 use core::fmt::Arguments;
 
-use fraktor_actor_core_rs::{event::logging::LogLevel, system::ActorSystem};
+use fraktor_actor_core_kernel_rs::{event::logging::LogLevel, system::ActorSystem};
 
 /// Thin log handle returned by [`TypedActorSystem::log`].
 #[derive(Clone)]

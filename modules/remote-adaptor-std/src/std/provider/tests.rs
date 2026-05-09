@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use std::time::{Duration, Instant};
 
 use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathScheme},

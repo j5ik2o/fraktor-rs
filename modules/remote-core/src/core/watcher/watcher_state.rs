@@ -10,7 +10,7 @@ use alloc::{
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use ahash::RandomState;
-use fraktor_actor_core_rs::actor::actor_path::ActorPath;
+use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPath;
 use hashbrown::HashMap;
 
 use crate::core::{

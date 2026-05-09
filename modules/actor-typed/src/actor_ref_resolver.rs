@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_path::ActorPathParser, actor_ref::ActorRef, actor_ref_provider::ActorRefResolveError, extension::Extension,
   },

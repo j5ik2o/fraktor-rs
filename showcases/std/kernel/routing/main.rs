@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::thread;
 
 use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -59,7 +59,7 @@ fn spawn_routee(
   ctx: &mut ActorContext<'_>,
   records: SharedLock<Vec<(usize, u32)>>,
   index: usize,
-) -> Result<fraktor_actor_core_rs::actor::ChildRef, ActorError> {
+) -> Result<fraktor_actor_core_kernel_rs::actor::ChildRef, ActorError> {
   let props = Props::from_fn(move || RouteeActor { index, records: records.clone() });
   ctx.spawn_child(&props).map_err(|error| ActorError::recoverable(format!("spawn routee failed: {error:?}")))
 }

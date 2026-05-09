@@ -118,7 +118,7 @@ fn service_instances_returns_error_for_mismatched_service_id() {
 /// `service_instances` with actual actor refs returns correctly typed refs.
 #[test]
 fn service_instances_with_refs_returns_typed_refs() {
-  use fraktor_actor_core_rs::actor::{
+  use fraktor_actor_core_kernel_rs::actor::{
     Pid,
     actor_ref::{ActorRefSender, SendOutcome},
     error::SendError,
@@ -148,7 +148,7 @@ fn service_instances_with_refs_returns_typed_refs() {
 /// `service_instances` deduplicates repeated actor refs into a set contract.
 #[test]
 fn service_instances_deduplicate_duplicate_refs() {
-  use fraktor_actor_core_rs::actor::{
+  use fraktor_actor_core_kernel_rs::actor::{
     Pid,
     actor_ref::{ActorRefSender, SendOutcome},
     error::SendError,

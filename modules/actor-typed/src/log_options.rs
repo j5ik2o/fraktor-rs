@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_actor_core_rs::event::logging::LogLevel;
+use fraktor_actor_core_kernel_rs::event::logging::LogLevel;
 
 /// Logging options used by `Behaviors::log_messages_with_opts`.
 #[derive(Clone, Debug, PartialEq, Eq)]

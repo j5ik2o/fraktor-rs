@@ -13,7 +13,7 @@ use core::{
 };
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
     error::ActorError,
@@ -175,13 +175,13 @@ fn typed_props_empty_supports_immutable_builder_chain() {
   assert!(props.to_untyped().tags().is_empty());
   assert_eq!(
     props.to_untyped().mailbox_policy().capacity(),
-    fraktor_actor_core_rs::dispatch::mailbox::MailboxCapacity::Unbounded
+    fraktor_actor_core_kernel_rs::dispatch::mailbox::MailboxCapacity::Unbounded
   );
 
   assert!(configured.to_untyped().dispatcher_same_as_parent());
   assert_eq!(
     configured.to_untyped().mailbox_policy().capacity(),
-    fraktor_actor_core_rs::dispatch::mailbox::MailboxCapacity::Bounded { capacity }
+    fraktor_actor_core_kernel_rs::dispatch::mailbox::MailboxCapacity::Bounded { capacity }
   );
   assert!(configured.to_untyped().tags().contains("phase2-empty"));
   assert!(configured.to_untyped().tags().contains("typed-props"));
@@ -194,7 +194,7 @@ fn typed_props_with_mailbox_unbounded_overrides_bounded_selector() {
 
   assert_eq!(
     props.to_untyped().mailbox_policy().capacity(),
-    fraktor_actor_core_rs::dispatch::mailbox::MailboxCapacity::Unbounded
+    fraktor_actor_core_kernel_rs::dispatch::mailbox::MailboxCapacity::Unbounded
   );
 }
 

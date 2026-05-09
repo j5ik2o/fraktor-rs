@@ -3,7 +3,7 @@
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_ref::ActorRef,

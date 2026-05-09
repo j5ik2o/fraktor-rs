@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::{hint::spin_loop, time::Duration};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     error::ActorError,
     setup::ActorSystemConfig,
@@ -481,7 +481,7 @@ fn ask_concurrent_same_response_type_delivers_both() {
 fn forward_preserves_sender_through_typed_context() {
   use alloc::vec::Vec;
 
-  use fraktor_actor_core_rs::actor::{
+  use fraktor_actor_core_kernel_rs::actor::{
     ActorContext, Pid,
     actor_ref::{ActorRefSender, NullSender, SendOutcome},
     messaging::AnyMessage,
@@ -640,7 +640,7 @@ fn ask_with_status_error_preserves_failure_reason() {
 fn typed_props_with_tags_are_readable_via_typed_context() {
   use alloc::string::String;
 
-  use fraktor_actor_core_rs::actor::{ActorCell, ActorContext};
+  use fraktor_actor_core_kernel_rs::actor::{ActorCell, ActorContext};
 
   let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
   let pid = system.allocate_pid();
@@ -660,7 +660,7 @@ fn typed_props_with_tags_are_readable_via_typed_context() {
 
 #[test]
 fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
-  use fraktor_actor_core_rs::actor::{ActorCell, ActorContext};
+  use fraktor_actor_core_kernel_rs::actor::{ActorCell, ActorContext};
 
   let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
   let pid = system.allocate_pid();
@@ -680,7 +680,7 @@ fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
 
 #[test]
 fn typed_props_without_tags_returns_empty_via_typed_context() {
-  use fraktor_actor_core_rs::actor::{ActorCell, ActorContext};
+  use fraktor_actor_core_kernel_rs::actor::{ActorCell, ActorContext};
 
   let system = fraktor_actor_adaptor_std_rs::std::system::new_empty_actor_system();
   let pid = system.allocate_pid();
@@ -697,7 +697,7 @@ fn typed_props_without_tags_returns_empty_via_typed_context() {
 
 #[test]
 fn typed_context_system_reuses_shared_event_stream_endpoint() {
-  use fraktor_actor_core_rs::actor::{
+  use fraktor_actor_core_kernel_rs::actor::{
     ActorCell, ActorContext, Pid,
     actor_ref::{ActorRefSender, SendOutcome},
     error::SendError,

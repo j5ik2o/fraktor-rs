@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::actor::{ActorContext, error::ActorError};
+use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError};
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{

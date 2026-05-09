@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome, dead_letter::DeadLetterReason},
@@ -863,7 +863,7 @@ fn typed_actor_system_new_rejects_empty_guardian_props() {
   );
 
   // 検証: invalid props として明示的に失敗する
-  assert!(matches!(result, Err(fraktor_actor_core_rs::actor::spawn::SpawnError::InvalidProps(_))));
+  assert!(matches!(result, Err(fraktor_actor_core_kernel_rs::actor::spawn::SpawnError::InvalidProps(_))));
 }
 
 #[test]
@@ -876,7 +876,7 @@ fn system_actor_of_rejects_empty_typed_props() {
   let result = system.system_actor_of(&props, "empty-system-actor");
 
   // 検証: factory 未設定のままでは invalid props として拒否される
-  assert!(matches!(result, Err(fraktor_actor_core_rs::actor::spawn::SpawnError::InvalidProps(_))));
+  assert!(matches!(result, Err(fraktor_actor_core_kernel_rs::actor::spawn::SpawnError::InvalidProps(_))));
 
   system.terminate().expect("terminate");
 }

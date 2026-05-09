@@ -2,7 +2,7 @@
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
-use fraktor_actor_core_rs::actor::messaging::AskError;
+use fraktor_actor_core_kernel_rs::actor::messaging::AskError;
 
 use crate::dsl::StatusReplyError;
 

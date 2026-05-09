@@ -1,6 +1,6 @@
 //! Public extension point for custom typed behaviors.
 
-use fraktor_actor_core_rs::actor::error::ActorError;
+use fraktor_actor_core_kernel_rs::actor::error::ActorError;
 
 use crate::{actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal};
 

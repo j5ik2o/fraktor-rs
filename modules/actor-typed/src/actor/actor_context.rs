@@ -6,7 +6,7 @@ mod tests;
 use alloc::{collections::BTreeSet, format, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     ActorContext, ChildRef, Pid,
     error::{ActorError, PipeSpawnError, SendError, WatchRegistrationError},

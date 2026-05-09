@@ -5,11 +5,11 @@ use std::{
 };
 
 use fraktor_actor_adaptor_std_rs::std::tick_driver::TestTickDriver;
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_kernel_rs::{
   actor::{scheduler::SchedulerConfig, setup::ActorSystemConfig},
   system::ActorSystem,
 };
-use fraktor_actor_typed_rs::{
+use fraktor_actor_core_typed_rs::{
   TypedActorRef, TypedActorSystem, TypedProps,
   dsl::Behaviors,
   pubsub::{Topic, TopicCommand, TopicStats},

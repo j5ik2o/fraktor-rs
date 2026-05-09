@@ -24,7 +24,7 @@ use core::any::Any;
 /// Implementors only need an empty `impl` block:
 ///
 /// ```rust
-/// use fraktor_actor_core_rs::actor::messaging::NotInfluenceReceiveTimeout;
+/// use fraktor_actor_core_kernel_rs::actor::messaging::NotInfluenceReceiveTimeout;
 /// struct Tick;
 /// impl NotInfluenceReceiveTimeout for Tick {}
 /// ```

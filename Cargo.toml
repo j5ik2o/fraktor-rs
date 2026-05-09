@@ -68,8 +68,8 @@ let_underscore_must_use = "deny"
 let_underscore_future = "deny"
 
 [workspace.dependencies]
-fraktor-actor-core-rs = { package = "fraktor-actor-core-kernel-rs", path = "modules/actor-core", version = "0.2.11" }
-fraktor-actor-typed-rs = { package = "fraktor-actor-core-typed-rs", path = "modules/actor-typed", version = "0.2.11" }
+fraktor-actor-core-kernel-rs = { path = "modules/actor-core", version = "0.2.11" }
+fraktor-actor-core-typed-rs = { path = "modules/actor-typed", version = "0.2.11" }
 fraktor-actor-adaptor-std-rs = { path = "modules/actor-adaptor-std", version = "0.2.11" }
 fraktor-cluster-core-rs = { path = "modules/cluster-core", version = "0.2.11", default-features = false }
 fraktor-cluster-adaptor-std-rs = { path = "modules/cluster-adaptor-std", version = "0.2.11" }

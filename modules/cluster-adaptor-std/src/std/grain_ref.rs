@@ -1,6 +1,6 @@
 //! Std wrapper for grain references.
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   actor_ref::ActorRef,
   messaging::{AnyMessage, AskResponse},
 };

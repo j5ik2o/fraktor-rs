@@ -101,7 +101,7 @@ pub trait Actor: Send {
   /// ```
   /// use core::time::Duration;
   ///
-  /// use fraktor_actor_core_rs::actor::{
+  /// use fraktor_actor_core_kernel_rs::actor::{
   ///   Actor, ActorContext,
   ///   error::ActorError,
   ///   messaging::AnyMessageView,

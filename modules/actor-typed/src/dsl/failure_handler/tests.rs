@@ -1,6 +1,6 @@
 use core::{any::TypeId, time::Duration};
 
-use fraktor_actor_core_rs::actor::{
+use fraktor_actor_core_kernel_rs::actor::{
   error::ActorError,
   supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
 };
