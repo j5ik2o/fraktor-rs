@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_adaptor_std_rs::system::new_noop_actor_system;
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::actor::{
   Actor, ActorCell, ActorContext, Pid,
   actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
@@ -56,7 +56,7 @@ impl Actor for NoopActor {
 }
 
 fn build_context() -> ActorContext<'static> {
-  let system = new_noop_actor_system();
+  let system = create_noop_actor_system();
   let state = system.state();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| NoopActor);

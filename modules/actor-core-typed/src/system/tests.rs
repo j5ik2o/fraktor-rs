@@ -28,8 +28,8 @@ use crate::{
 };
 
 // TENTATIVE: scheduled for removal in the same wave that drops
-// `fraktor_actor_adaptor_std_rs::system::new_noop_actor_system` (see base/tests.rs). External
-// callers wrap `new_noop_actor_system()` from actor-adaptor-std with
+// `fraktor_actor_adaptor_std_rs::system::create_noop_actor_system` (see base/tests.rs). External
+// callers wrap `create_noop_actor_system()` from actor-adaptor-std with
 // `TypedActorSystem::from_untyped` instead.
 impl<M> TypedActorSystem<M>
 where
@@ -38,11 +38,11 @@ where
   /// Creates an empty typed actor system without any guardian.
   ///
   /// Inline-test only helper. External callers should wrap
-  /// `fraktor_actor_adaptor_std_rs::system::new_noop_actor_system()` with
+  /// `fraktor_actor_adaptor_std_rs::system::create_noop_actor_system()` with
   /// `TypedActorSystem::from_untyped`.
   #[must_use]
   pub(crate) fn new_empty() -> Self {
-    Self::from_untyped(fraktor_actor_adaptor_std_rs::system::new_noop_actor_system())
+    Self::from_untyped(fraktor_actor_adaptor_std_rs::system::create_noop_actor_system())
   }
 }
 
@@ -444,7 +444,7 @@ fn address_uses_fraktor_protocol() {
 fn settings_returns_snapshot_preserved_through_from_untyped() {
   // Given: an untyped actor system with configured metadata
   let expected_start_time = Duration::from_secs(1_234);
-  let untyped = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system_with(|config| {
+  let untyped = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with(|config| {
     config.with_system_name("wrapped-system").with_start_time(expected_start_time)
   });
   let system = TypedActorSystem::<u32>::from_untyped(untyped);
@@ -475,7 +475,7 @@ fn receptionist_returns_registered_system_receptionist_ref() {
 
 #[test]
 fn receptionist_ref_returns_none_when_missing() {
-  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::new_noop_actor_system());
+  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::create_noop_actor_system());
 
   assert!(system.receptionist_ref().is_none());
 }
@@ -483,7 +483,7 @@ fn receptionist_ref_returns_none_when_missing() {
 #[test]
 #[should_panic(expected = "system receptionist must be installed during actor system bootstrap")]
 fn receptionist_panics_when_missing() {
-  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::new_noop_actor_system());
+  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::create_noop_actor_system());
   let _ = system.receptionist();
 }
 

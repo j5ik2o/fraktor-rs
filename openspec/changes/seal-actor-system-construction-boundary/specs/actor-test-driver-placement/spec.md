@@ -20,7 +20,7 @@ actor-adaptor-std が公開 test helper を所有する方針を弱めない。
 `fraktor-actor-adaptor-std-rs` 側は以下を提供する(MUST):
 
 - std 環境固有の TickDriver 実装（`StdTickDriver`、`TokioTickDriver`、`TestTickDriver` など）
-- std 環境を前提とした test helper（`new_noop_actor_system` / `new_noop_actor_system_with<F>`）
+- std 環境を前提とした test helper（`create_noop_actor_system` / `create_noop_actor_system_with<F>`）
 
 actor-adaptor-std の test helper は actor-core-kernel の private construction seam に依存してはならず(MUST NOT)、
 `ActorSystem::create_with_noop_guardian` 経由で bootstrapped system を作らなければならない(MUST)。
@@ -36,8 +36,8 @@ actor-adaptor-std の test helper は actor-core-kernel の private construction
 
 - **WHEN** actor-core-kernel の `impl ActorSystem` を検査する
 - **THEN** `pub fn new_empty` / `pub fn new_empty_with` / `pub fn new_noop` / `pub fn new_noop_with` は存在しない
-- **AND** std 依存 test helper は `fraktor_actor_adaptor_std_rs::system::new_noop_actor_system` /
-  `new_noop_actor_system_with<F>` として提供される
+- **AND** std 依存 test helper は `fraktor_actor_adaptor_std_rs::system::create_noop_actor_system` /
+  `create_noop_actor_system_with<F>` として提供される
 
 #### Scenario: std test helper は actor-core construction bypass を使わない
 
@@ -50,7 +50,7 @@ actor-adaptor-std の test helper は actor-core-kernel の private construction
 #### Scenario: downstream crate は actor-adaptor-std の new noop helper を使う
 
 - **WHEN** `fraktor-actor-*` workspace 内の downstream crate tests が test actor system を必要とする
-- **THEN** `fraktor_actor_adaptor_std_rs::system::new_noop_actor_system` または
-  `new_noop_actor_system_with` を import する
+- **THEN** `fraktor_actor_adaptor_std_rs::system::create_noop_actor_system` または
+  `create_noop_actor_system_with` を import する
 - **AND** `new_empty_actor_system` を import しない
 - **AND** actor-core-kernel の internal constructor を呼ばない

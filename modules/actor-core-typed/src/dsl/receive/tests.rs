@@ -15,7 +15,7 @@ use crate::{
 // --- ヘルパー ---------------------------------------------------------------
 
 fn make_typed_ctx() -> (ActorSystem, Pid) {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   (system, pid)
 }
@@ -123,7 +123,7 @@ fn receive_can_be_used_directly_in_typed_props_factory() {
   let props = TypedProps::<u32>::from_behavior_factory(|| Behaviors::receive(|_ctx, _msg| Ok(Behaviors::same())));
 
   // 操作: untyped props 経由で保持された factory を実行する
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut actor = props.to_untyped().factory().expect("typed props factory").with_write(|factory| factory.create());
   let mut context = ActorContext::new(&system, pid);

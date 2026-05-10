@@ -51,7 +51,7 @@ use crate::{
 impl ActorSystem {
   /// Creates a bootstrapped actor system with a no-op user guardian.
   ///
-  /// Inline-test only helper. External callers should use `new_noop_actor_system` from
+  /// Inline-test only helper. External callers should use `create_noop_actor_system` from
   /// `fraktor-actor-adaptor-std-rs`.
   ///
   /// # Panics

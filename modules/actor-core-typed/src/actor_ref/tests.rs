@@ -98,7 +98,7 @@ fn scaled_duration(base: Duration) -> Duration {
 /// `path` returns `Some` when the actor is registered in the system.
 #[test]
 fn path_returns_some_with_system() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let state = system.state();
   let pid = state.allocate_pid();
   let props = Props::from_fn(|| NoOpActor);
@@ -176,7 +176,7 @@ fn typed_actor_ref_equality_and_order_are_consistent_by_pid() {
 
 #[test]
 fn typed_actor_ref_ask_returns_typed_reply_and_registers_future() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let state = system.state();
   let pid = state.allocate_pid();
   let props = Props::from_fn(|| EchoActor);

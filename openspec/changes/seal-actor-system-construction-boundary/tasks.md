@@ -32,21 +32,21 @@
 
 ## Phase 5: actor-adaptor-std helper の再設計
 
-- [x] 5.1 `modules/actor-adaptor-std/src/system/empty_system.rs` を no-op system helper として整理し、`new_noop_actor_system` を追加する。
-- [x] 5.2 `new_noop_actor_system_with<F>` を追加し、`TestTickDriver`、std mailbox clock、caller config、`ActorSystem::create_with_noop_guardian` の順で構築する。
+- [x] 5.1 `modules/actor-adaptor-std/src/system/empty_system.rs` を no-op system helper として整理し、`create_noop_actor_system` を追加する。
+- [x] 5.2 `create_noop_actor_system_with<F>` を追加し、`TestTickDriver`、std mailbox clock、caller config、`ActorSystem::create_with_noop_guardian` の順で構築する。
 - [x] 5.3 `new_empty_actor_system` / `new_empty_actor_system_with` を削除し、互換 alias を残さない。
-- [x] 5.4 `modules/actor-adaptor-std/src/system.rs` の re-export を `new_noop_actor_system*` に更新する。
-- [x] 5.5 actor-adaptor-std 自身の tests を `new_noop_actor_system*` へ移行する。
+- [x] 5.4 `modules/actor-adaptor-std/src/system.rs` の re-export を `create_noop_actor_system*` に更新する。
+- [x] 5.5 actor-adaptor-std 自身の tests を `create_noop_actor_system*` へ移行する。
 
 ## Phase 6: downstream tests の移行
 
 - [x] 6.1 大量の test rewrite を許容し、削除 API の代替として compatibility helper / deprecated alias / test-only public API を追加しないことを確認する。
-- [x] 6.2 `persistence-core` tests の `ActorSystem::from_state(SystemStateShared::new(SystemState::new()))` を `new_noop_actor_system` または purpose-specific lower-level state setup へ移行する。
+- [x] 6.2 `persistence-core` tests の `ActorSystem::from_state(SystemStateShared::new(SystemState::new()))` を `create_noop_actor_system` または purpose-specific lower-level state setup へ移行する。
 - [x] 6.3 `persistent_actor` / `persistent_fsm` / `persistent_actor_adapter` の `ActorContext` helper は bootstrapped no-op system から pid を確保する形に変える。
 - [x] 6.4 `journal_actor` / `snapshot_actor` tests の synthetic cell setup は no-op guardian と衝突しない pid allocation に変える。
 - [x] 6.5 `remote-core` tests の `ActorSystem::from_state` caller を no-op system へ移行する。
-- [x] 6.6 `stream-core-kernel` tests の `create_started_from_config` caller を `new_noop_actor_system_with` または `create_with_noop_guardian` へ移行する。
-- [x] 6.7 `actor-core-typed` / `cluster-core` / その他 workspace tests の `new_empty_actor_system*` import を `new_noop_actor_system*` へ移行する。
+- [x] 6.6 `stream-core-kernel` tests の `create_started_from_config` caller を `create_noop_actor_system_with` または `create_with_noop_guardian` へ移行する。
+- [x] 6.7 `actor-core-typed` / `cluster-core` / その他 workspace tests の `new_empty_actor_system*` import を `create_noop_actor_system*` へ移行する。
 - [x] 6.8 typed no-op system が必要な tests を `TypedActorSystem::create_with_noop_guardian` に移行し、`TypedActorSystem::from_untyped(ActorSystem::create_with_noop_guardian(...))` は typed bootstrap 欠落を検証する目的に限定する。
 
 ## Phase 7: setup conversion coverage

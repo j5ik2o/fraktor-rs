@@ -15,7 +15,7 @@ struct Harness {
 
 impl Harness {
   fn new() -> Self {
-    let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+    let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
     let state = system.state();
     let props = Props::from_fn(|| ProbeActor);
     let pid = state.allocate_pid();

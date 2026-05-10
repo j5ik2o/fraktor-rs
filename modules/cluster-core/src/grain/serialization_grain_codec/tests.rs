@@ -1,7 +1,7 @@
 use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::any::{Any, TypeId};
 
-use fraktor_actor_adaptor_std_rs::system::{new_noop_actor_system, new_noop_actor_system_with};
+use fraktor_actor_adaptor_std_rs::system::{create_noop_actor_system, create_noop_actor_system_with};
 use fraktor_actor_core_kernel_rs::{
   actor::{extension::ExtensionInstallers, messaging::AnyMessage},
   serialization::{
@@ -102,7 +102,7 @@ impl SerializerWithStringManifest for TelemetrySerializer {
 
 #[test]
 fn try_from_system_uses_default_serialization_extension() {
-  let system = new_noop_actor_system();
+  let system = create_noop_actor_system();
   assert!(SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).is_ok());
 }
 
@@ -159,5 +159,5 @@ fn build_system_with_serialization() -> ActorSystem {
     .expect("setup");
   let installer = SerializationExtensionInstaller::new(setup);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
-  new_noop_actor_system_with(|config| config.with_extension_installers(installers))
+  create_noop_actor_system_with(|config| config.with_extension_installers(installers))
 }

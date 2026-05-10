@@ -3,7 +3,7 @@ use core::{
   future::{Pending, Ready, pending, ready},
 };
 
-use fraktor_actor_adaptor_std_rs::system::new_noop_actor_system;
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -55,7 +55,7 @@ fn test_actor_pid() -> Pid {
 }
 
 fn new_test_system() -> ActorSystem {
-  let system = new_noop_actor_system();
+  let system = create_noop_actor_system();
   register_actor_cell(&system.state(), test_actor_pid());
   system
 }

@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::system::new_noop_actor_system_with;
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
@@ -21,7 +21,7 @@ use crate::{
 
 fn build_system() -> ActorSystem {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  new_noop_actor_system_with(|config| config.with_scheduler_config(scheduler))
+  create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler))
 }
 
 struct NoopReceive;

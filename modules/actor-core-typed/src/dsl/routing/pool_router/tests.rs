@@ -306,7 +306,7 @@ fn pool_router_with_consistent_hash_routes_to_hash_bucket() {
 
 #[test]
 fn select_consistent_hash_index_routes_same_message_to_same_routee() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
 
   let pid0 = system.allocate_pid();
   let pid1 = system.allocate_pid();
@@ -329,7 +329,7 @@ fn select_consistent_hash_index_routes_same_message_to_same_routee() {
 
 #[test]
 fn pool_router_with_smallest_mailbox_selects_lowest_queue() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
 
   let pid0 = system.allocate_pid();
   let pid1 = system.allocate_pid();

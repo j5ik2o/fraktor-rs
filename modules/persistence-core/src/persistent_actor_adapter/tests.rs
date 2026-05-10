@@ -1,6 +1,6 @@
 use alloc::{string::ToString, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::{system::new_noop_actor_system, tick_driver::TestTickDriver};
+use fraktor_actor_adaptor_std_rs::{system::create_noop_actor_system, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext,
@@ -158,7 +158,7 @@ fn build_context(system: &ActorSystem) -> ActorContext<'static> {
 }
 
 fn new_test_system() -> ActorSystem {
-  new_noop_actor_system()
+  create_noop_actor_system()
 }
 
 fn register_noop_actor_ref(system: &ActorSystem, name: &str) -> ActorRef {

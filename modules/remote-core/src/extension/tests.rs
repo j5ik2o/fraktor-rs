@@ -11,7 +11,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use fraktor_actor_adaptor_std_rs::system::new_noop_actor_system;
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
@@ -345,7 +345,7 @@ impl RemoteTransport for RecordingTransport {
 }
 
 fn event_publisher() -> EventPublisher {
-  let system = new_noop_actor_system();
+  let system = create_noop_actor_system();
   EventPublisher::new(system.downgrade())
 }
 

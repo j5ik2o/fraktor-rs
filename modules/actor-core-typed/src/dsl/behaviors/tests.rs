@@ -68,7 +68,7 @@ fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> A
 
 #[test]
 fn receive_and_reply_sends_response_to_sender() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = crate::test_support::actor_ref_with_sender(Pid::new(900, 0), RecordingSender::new(inbox.clone()));
@@ -91,7 +91,7 @@ fn receive_message_handles_message() {
   let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let received_clone = received.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -107,7 +107,7 @@ fn receive_message_handles_message() {
 
 #[test]
 fn receive_and_reply_returns_recoverable_error_without_sender() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -120,7 +120,7 @@ fn receive_and_reply_returns_recoverable_error_without_sender() {
 
 #[test]
 fn with_timers_produces_active_behavior_with_signal_handler() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _cell = register_cell(&system, pid, "with-timers-signal", &props);
@@ -135,7 +135,7 @@ fn with_timers_produces_active_behavior_with_signal_handler() {
 
 #[test]
 fn with_timers_shared_handle_usable_in_closures() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _cell = register_cell(&system, pid, "with-timers-closure", &props);
@@ -158,7 +158,7 @@ fn with_timers_shared_handle_usable_in_closures() {
 
 #[test]
 fn receive_message_partial_returns_behavior_on_some() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -175,7 +175,7 @@ fn receive_message_partial_returns_behavior_on_some() {
 
 #[test]
 fn receive_message_partial_returns_unhandled_on_none() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -192,7 +192,7 @@ fn receive_message_partial_returns_unhandled_on_none() {
 
 #[test]
 fn receive_partial_handles_message() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -209,7 +209,7 @@ fn receive_partial_handles_message() {
 
 #[test]
 fn receive_partial_chains_with_receive_signal() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -278,7 +278,7 @@ fn intercept_delegates_started_to_interceptor() {
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
   );
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -305,7 +305,7 @@ fn intercept_delegates_message_to_interceptor() {
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
   );
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -333,7 +333,7 @@ fn intercept_delegates_signal_to_interceptor() {
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
   );
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -368,7 +368,7 @@ fn intercept_behavior_clone_restarts_with_fresh_inner_behavior() {
     inner,
   );
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -392,7 +392,7 @@ fn receive_timeout_config_stores_duration_and_produces_message() {
 
 #[test]
 fn set_receive_timeout_configures_state() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut timeout_state: Option<ReceiveTimeoutConfig<u32>> = None;
@@ -409,7 +409,7 @@ fn set_receive_timeout_configures_state() {
 
 #[test]
 fn cancel_receive_timeout_clears_state() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut timeout_state: Option<ReceiveTimeoutConfig<u32>> = None;
@@ -433,7 +433,7 @@ fn monitor_sends_clone_to_monitor_ref() {
   let mut behavior =
     Behaviors::monitor(monitor_typed_ref, || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())));
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -466,7 +466,7 @@ fn monitor_passes_message_to_inner_behavior() {
     })
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -487,7 +487,7 @@ fn receive_message_with_same_invokes_handler_and_returns_same() {
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -507,7 +507,7 @@ fn receive_message_with_same_handles_multiple_messages() {
   let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -529,7 +529,7 @@ fn receive_message_with_same_provides_context() {
   let captured_pid = ArcShared::new(SpinSyncMutex::new(0u64));
   let captured_pid_clone = captured_pid.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -560,7 +560,7 @@ fn stopped_with_post_stop_executes_callback_on_post_stop_signal() {
   let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -577,7 +577,7 @@ fn stopped_with_post_stop_executes_callback_on_post_stop_signal() {
 /// `stopped_with_post_stop` returns `Stopped` directive after callback execution.
 #[test]
 fn stopped_with_post_stop_returns_stopped_directive() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -594,7 +594,7 @@ fn stopped_with_post_stop_ignores_non_post_stop_signals() {
   let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -616,7 +616,7 @@ fn stopped_with_post_stop_accepts_public_post_stop_conversion() {
   let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -635,7 +635,7 @@ fn stopped_with_post_stop_ignores_public_pre_restart_conversion() {
   let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -801,7 +801,7 @@ fn log_messages_delegates_to_inner_behavior() {
   let inner_received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -827,7 +827,7 @@ fn log_messages_with_opts_records_level_and_logger_name() {
     let mut behavior =
       Behaviors::log_messages_with_opts(options, Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())));
 
-    let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+    let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
     let pid = system.allocate_pid();
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -855,7 +855,7 @@ fn with_static_mdc_creates_span_on_message() {
     let mut behavior =
       Behaviors::with_static_mdc(mdc, Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())));
 
-    let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+    let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
     let pid = system.allocate_pid();
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -882,7 +882,7 @@ fn with_static_mdc_creates_span_on_signal() {
     let mut behavior =
       Behaviors::with_static_mdc(mdc, Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())));
 
-    let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+    let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
     let pid = system.allocate_pid();
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -905,7 +905,7 @@ fn with_mdc_delegates_to_inner_behavior() {
   let mut static_mdc = BTreeMap::new();
   static_mdc.insert("service".into(), "test-actor".into());
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -945,7 +945,7 @@ fn with_message_mdc_creates_actor_mdc_span() {
       Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
     );
 
-    let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+    let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
     let pid = system.allocate_pid();
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);

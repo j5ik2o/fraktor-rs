@@ -17,7 +17,7 @@ impl Actor for NoopActor {
 
 #[test]
 fn actor_ref_resolver_serializes_and_resolves_spawned_actor_refs() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let props = Props::from_fn(|| NoopActor);
   let child = system.actor_of_named(&props, "worker").expect("spawn worker");
   let resolver = ActorRefResolver::new(&system);
@@ -30,8 +30,8 @@ fn actor_ref_resolver_serializes_and_resolves_spawned_actor_refs() {
 
 #[test]
 fn actor_ref_resolver_rejects_actor_refs_from_another_actor_system() {
-  let resolver_system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
-  let foreign_system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let resolver_system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
+  let foreign_system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let props = Props::from_fn(|| NoopActor);
   let child = foreign_system.actor_of_named(&props, "foreign").expect("spawn foreign");
 

@@ -309,7 +309,7 @@ fn worker_spawn_propagates_nested_producer_controller_settings() {
 
 #[test]
 fn durable_queue_send_failure_stops_work_pulling_controller() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let lifecycle = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({

@@ -9,14 +9,14 @@ use crate::{tick_driver::TestTickDriver, time::std_monotonic_mailbox_clock};
 
 /// Creates an actor system with a no-op user guardian using the default test tick driver.
 ///
-/// Equivalent to calling [`new_noop_actor_system_with`] with an identity configurator.
+/// Equivalent to calling [`create_noop_actor_system_with`] with an identity configurator.
 ///
 /// # Panics
 ///
 /// Panics if the default test-support configuration fails to build.
 #[must_use]
-pub fn new_noop_actor_system() -> ActorSystem {
-  new_noop_actor_system_with(|config| config)
+pub fn create_noop_actor_system() -> ActorSystem {
+  create_noop_actor_system_with(|config| config)
 }
 
 /// Creates an actor system with a no-op user guardian, allowing the caller to customize the
@@ -29,7 +29,7 @@ pub fn new_noop_actor_system() -> ActorSystem {
 ///
 /// Panics if the resulting configuration fails to build the underlying system state.
 #[must_use]
-pub fn new_noop_actor_system_with<F>(configure: F) -> ActorSystem
+pub fn create_noop_actor_system_with<F>(configure: F) -> ActorSystem
 where
   F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
   // std monotonic mailbox clock を config レベルで install することで、この
@@ -41,6 +41,6 @@ where
   let config = configure(config);
   match ActorSystem::create_with_noop_guardian(config) {
     | Ok(system) => system,
-    | Err(error) => panic!("test-support config failed to build in new_noop_actor_system_with: {error:?}"),
+    | Err(error) => panic!("test-support config failed to build in create_noop_actor_system_with: {error:?}"),
   }
 }
