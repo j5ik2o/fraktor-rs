@@ -6,7 +6,6 @@ hide_agent_reasoning = false
 model = "gpt-5.5"
 model_auto_compact_token_limit = 950000
 model_context_window = 1000000
-model_reasoning_effort = "xhigh"
 model_reasoning_summary = "detailed"
 network_access = true
 personality = "pragmatic"
@@ -29,18 +28,6 @@ description = "PR reviewer focused on correctness, security, and missing tests."
 config_file = "agents/worker.toml"
 description = "Implementation-focused agent for small targeted fixes."
 
-[features]
-hooks = true
-js_repl = false
-multi_agent = true
-prevent_idle_sleep = true
-rmcp_client = true
-shell_snapshot = true
-steer = true
-unified_exec = true
-goals = true
-browser_use = true
-
 [[hooks.PostToolUse]]
 matcher = "^(apply_patch|Edit|Write)$"
 
@@ -52,9 +39,3 @@ statusMessage = "Rust 変更後の fmt / dylint / clippy を確認中"
 
 [projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
 trust_level = "trusted"
-
-[tui]
-status_line = [
-    "current-dir",
-    "git-branch",
-]
