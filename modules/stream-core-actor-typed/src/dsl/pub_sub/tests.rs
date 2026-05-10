@@ -15,14 +15,16 @@ use fraktor_actor_core_typed_rs::{
   pubsub::{Topic, TopicCommand, TopicStats},
 };
 use fraktor_stream_core_kernel_rs::{
-  OverflowStrategy,
+  BoundedSourceQueue, OverflowStrategy,
   dsl::{Sink, Source},
+  r#impl::queue::ActorSourceRef,
   materialization::{
     ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamDone, StreamFuture, StreamNotUsed,
   },
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
+use super::bridge_behavior;
 use crate::dsl::PubSub;
 
 // --- test helpers ---
@@ -196,6 +198,24 @@ fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
 
   // Pending のままであることを確認（無限 source なので完了しない）
   assert!(matches!(materialized.materialized().value(), Completion::Pending));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn topic_pub_sub_bridge_should_report_queue_offer_failure() {
+  let system = build_system();
+  let actor_source_ref = ActorSourceRef::new(BoundedSourceQueue::new(1, OverflowStrategy::Fail));
+  let observed_source_ref = actor_source_ref.clone();
+  let bridge_props = TypedProps::<u32>::from_behavior_factory(move || bridge_behavior(actor_source_ref.clone()));
+  let bridge = system.extended().spawn_system_actor(&bridge_props.to_untyped()).expect("spawn bridge");
+  let mut bridge_ref = TypedActorRef::<u32>::from_untyped(bridge.into_actor_ref());
+
+  bridge_ref.tell(1_u32);
+  bridge_ref.tell(2_u32);
+
+  wait_until(|| observed_source_ref.is_closed());
+  assert!(observed_source_ref.is_closed());
 
   system.terminate().expect("terminate");
 }
