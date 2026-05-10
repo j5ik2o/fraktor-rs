@@ -159,9 +159,7 @@ impl PubSub {
       #[allow(clippy::expect_used)]
       let child = extended.spawn_system_actor(bridge_props.to_untyped()).expect("PubSub: bridge actor の spawn に失敗");
       let bridge_ref = TypedActorRef::<T>::from_untyped(child.clone().into_actor_ref());
-      if let Err(error) = send_topic_command(&topic_actor, Topic::subscribe(bridge_ref.clone())) {
-        panic!("PubSub: topic actor への subscribe に失敗: {error:?}");
-      }
+      subscribe_bridge(&topic_actor, bridge_ref.clone());
       cleanup.install(topic_actor.clone(), bridge_ref, child);
 
       StreamNotUsed
@@ -193,16 +191,32 @@ where
   topic_actor.try_tell(command)
 }
 
+fn subscribe_bridge<T>(topic_actor: &TypedActorRef<TopicCommand<T>>, bridge_ref: TypedActorRef<T>)
+where
+  T: Clone + Send + Sync + 'static, {
+  if let Err(error) = send_topic_command(topic_actor, Topic::subscribe(bridge_ref)) {
+    panic!("PubSub: topic actor への subscribe に失敗: {error:?}");
+  }
+}
+
 /// Creates the bridge actor behavior that forwards messages to the stream queue.
 fn bridge_behavior<T>(actor_source_ref: ActorSourceRef<T>) -> Behavior<T>
 where
   T: Clone + Send + Sync + 'static, {
   let actor_source_ref = ArcShared::new(SpinSyncMutex::new(actor_source_ref));
-  Behaviors::receive_message(move |_ctx, msg: &T| match actor_source_ref.lock().tell(msg.clone()) {
+  Behaviors::receive_message(move |_ctx, msg: &T| {
+    queue_offer_result_to_behavior(actor_source_ref.lock().tell(msg.clone()))
+  })
+}
+
+fn queue_offer_result_to_behavior<T>(result: QueueOfferResult) -> Result<Behavior<T>, ActorError>
+where
+  T: Clone + Send + Sync + 'static, {
+  match result {
     | QueueOfferResult::Enqueued | QueueOfferResult::Dropped => Ok(Behaviors::same()),
     | QueueOfferResult::QueueClosed => Err(ActorError::recoverable("PubSub: stream queue is closed")),
     | QueueOfferResult::Failure(err) => {
       Err(ActorError::recoverable(alloc::format!("PubSub: queue offer failed: {:?}", err)))
     },
-  })
+  }
 }

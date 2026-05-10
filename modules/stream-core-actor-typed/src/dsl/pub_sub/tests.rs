@@ -1,12 +1,19 @@
 use alloc::{string::String, vec::Vec};
 use std::{
+  panic::{AssertUnwindSafe, catch_unwind},
   thread,
   time::{Duration, Instant},
 };
 
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
-  actor::{scheduler::SchedulerConfig, setup::ActorSystemConfig},
+  actor::{
+    Pid,
+    actor_path::ActorPath,
+    actor_ref::{ActorRef, NullSender},
+    scheduler::SchedulerConfig,
+    setup::ActorSystemConfig,
+  },
   system::ActorSystem,
 };
 use fraktor_actor_core_typed_rs::{
@@ -15,7 +22,7 @@ use fraktor_actor_core_typed_rs::{
   pubsub::{Topic, TopicCommand, TopicStats},
 };
 use fraktor_stream_core_kernel_rs::{
-  BoundedSourceQueue, OverflowStrategy,
+  BoundedSourceQueue, OverflowStrategy, QueueOfferResult,
   dsl::{Sink, Source},
   r#impl::queue::ActorSourceRef,
   materialization::{
@@ -24,7 +31,7 @@ use fraktor_stream_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
-use super::bridge_behavior;
+use super::{bridge_behavior, queue_offer_result_to_behavior, subscribe_bridge};
 use crate::dsl::PubSub;
 
 // --- test helpers ---
@@ -43,6 +50,13 @@ where
   let topic_props = TypedProps::<TopicCommand<T>>::from_behavior_factory(move || Topic::behavior(name.clone()));
   let child = system.extended().spawn_system_actor(&topic_props.to_untyped()).expect("spawn topic");
   TypedActorRef::<TopicCommand<T>>::from_untyped(child.into_actor_ref())
+}
+
+fn null_typed_ref<M>(pid: u64, name: &str) -> TypedActorRef<M>
+where
+  M: Send + Sync + 'static, {
+  let actor_ref = ActorRef::with_canonical_path(Pid::new(pid, 0), NullSender, ActorPath::root().child(name));
+  TypedActorRef::<M>::from_untyped(actor_ref)
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
@@ -218,6 +232,25 @@ fn topic_pub_sub_bridge_should_report_queue_offer_failure() {
   assert!(observed_source_ref.is_closed());
 
   system.terminate().expect("terminate");
+}
+
+#[test]
+fn topic_pub_sub_bridge_should_report_queue_closed() {
+  let result = queue_offer_result_to_behavior::<u32>(QueueOfferResult::QueueClosed);
+
+  assert!(result.is_err());
+}
+
+#[test]
+fn topic_pub_sub_source_should_panic_when_topic_ref_rejects_subscribe() {
+  let topic = null_typed_ref::<TopicCommand<u32>>(9_999, "closed-topic");
+  let bridge = null_typed_ref::<u32>(10_000, "bridge");
+
+  let result = catch_unwind(AssertUnwindSafe(|| {
+    subscribe_bridge(&topic, bridge);
+  }));
+
+  assert!(result.is_err());
 }
 
 // --- PubSub::sink ---
