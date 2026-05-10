@@ -1,5 +1,8 @@
 //! Weak reference wrapper for actor system.
 
+#[cfg(test)]
+mod tests;
+
 use super::{ActorSystem, state::SystemStateWeak};
 
 /// Weak reference wrapper for [`ActorSystem`].

@@ -1,5 +1,8 @@
 //! Test-only constructors for no-op guardian actor systems backed by [`TestTickDriver`].
 
+#[cfg(test)]
+mod tests;
+
 use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, system::ActorSystem};
 
 use crate::{tick_driver::TestTickDriver, time::std_monotonic_mailbox_clock};
