@@ -80,3 +80,6 @@ Cargo.lock
 /.codex*/archived_sessions/
 /.codex*/memories/
 /.codex*/AGENTS.md
+/.codex-corporate/config.toml
+/.codex-personal/config.toml
+
