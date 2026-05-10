@@ -16,7 +16,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_stream_core_rs::{
+use fraktor_stream_core_kernel_rs::{
   StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source, StreamRefs},
   materialization::{ActorMaterializer, ActorMaterializerConfig, KeepLeft, KeepRight, StreamNotUsed},

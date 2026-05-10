@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
 use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, system::ActorSystem};
-use fraktor_stream_core_rs::{
+use fraktor_stream_core_kernel_rs::{
   dsl::{Sink, Source},
   materialization::{ActorMaterializer, ActorMaterializerConfig, KeepRight},
 };

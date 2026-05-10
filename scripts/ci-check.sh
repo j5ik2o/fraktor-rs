@@ -1258,9 +1258,9 @@ run_no_std() {
     "no-std-host-utils" \
     check -p fraktor-utils-core-rs --no-default-features --features alloc
   start_parallel_cargo \
-    "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features)" \
+    "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-rs --no-default-features)" \
     "no-std-host-core" \
-    check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features
+    check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-rs --no-default-features
   wait_parallel_cargo || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
@@ -1272,9 +1272,9 @@ run_no_std() {
       "no-std-thumb-utils" \
       check -p fraktor-utils-core-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-core-rs/alloc
     start_parallel_cargo \
-      "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}")" \
+      "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs --no-default-features --target "${thumb_target}")" \
       "no-std-thumb-core" \
-      check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}"
+      check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs --no-default-features --target "${thumb_target}"
     wait_parallel_cargo || return 1
   fi
 }
@@ -1287,9 +1287,9 @@ run_std() {
     "std-utils" \
     test -p fraktor-utils-core-rs
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib" \
     "std-core" \
-    test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib
+    test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib
   wait_parallel_cargo || return 1
 }
 

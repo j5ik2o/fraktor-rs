@@ -1,14 +1,14 @@
 [package]
-name = "fraktor-stream-adaptor-std-rs"
+name = "fraktor-stream-core-actor-typed-rs"
 version = "0.2.11"
 edition = "2024"
-description = "fraktor standard adaptor bindings for stream runtime"
+description = "fraktor typed actor stream integrations for no_std environments"
 license = "MIT OR Apache-2.0"
-keywords = ["fraktor", "stream", "adaptor", "std"]
-categories = ["concurrency"]
+keywords = ["fraktor", "stream", "actor", "typed", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
 repository = "https://github.com/j5ik2o/fraktor-rs"
 homepage = "https://github.com/j5ik2o/fraktor-rs"
-documentation = "https://docs.rs/fraktor-stream-adaptor-std-rs"
+documentation = "https://docs.rs/fraktor-stream-core-actor-typed-rs"
 readme = "../../README.md"
 autoexamples = false
 
@@ -17,11 +17,14 @@ default = []
 
 [dependencies]
 fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-actor-core-typed-rs = { workspace = true }
 fraktor-stream-core-kernel-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc"] }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 critical-section = { workspace = true, features = ["std"] }

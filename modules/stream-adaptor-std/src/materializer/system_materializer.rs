@@ -5,7 +5,7 @@ extern crate std;
 use std::vec::Vec;
 
 use fraktor_actor_core_kernel_rs::actor::extension::Extension;
-use fraktor_stream_core_rs::{
+use fraktor_stream_core_kernel_rs::{
   materialization::ActorMaterializer,
   snapshot::{MaterializerState, StreamSnapshot},
 };

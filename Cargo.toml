@@ -36,7 +36,8 @@ members = [
     "modules/remote-adaptor-std",
     "modules/cluster-core",
     "modules/cluster-adaptor-std",
-    "modules/stream-core",
+    "modules/stream-core-kernel",
+    "modules/stream-core-actor-typed",
     "modules/stream-adaptor-std",
     "showcases/std",
     "tests/e2e",
@@ -80,7 +81,8 @@ alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-core-rs = { path = "modules/utils-core", version = "0.2.11", default-features = false }
 fraktor-utils-adaptor-std-rs = { path = "modules/utils-adaptor-std", version = "0.2.11" }
-fraktor-stream-core-rs = { path = "modules/stream-core", version = "0.2.11", default-features = false }
+fraktor-stream-core-kernel-rs = { path = "modules/stream-core-kernel", version = "0.2.11", default-features = false }
+fraktor-stream-core-actor-typed-rs = { path = "modules/stream-core-actor-typed", version = "0.2.11", default-features = false }
 fraktor-stream-adaptor-std-rs = { path = "modules/stream-adaptor-std", version = "0.2.11" }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
