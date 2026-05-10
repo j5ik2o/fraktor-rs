@@ -2,36 +2,25 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
+use fraktor_utils_core_rs::sync::{ArcShared, ExclusiveCell, SharedAccess};
 
 use super::invoker_trait::MessageInvoker;
 
 /// Shared wrapper for [`MessageInvoker`] implementations.
 ///
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
-/// that internally lock the underlying invoker, allowing safe
-/// concurrent access from multiple owners.
+/// that serialize access to the underlying invoker, allowing safe concurrent
+/// access from multiple owners.
+#[derive(Clone)]
 pub struct MessageInvokerShared {
-  inner: SharedRwLock<Box<dyn MessageInvoker>>,
+  inner: ArcShared<ExclusiveCell<Box<dyn MessageInvoker>>>,
 }
 
 impl MessageInvokerShared {
-  /// Creates a shared wrapper from an already materialized shared lock.
-  #[must_use]
-  pub const fn from_shared_lock(inner: SharedRwLock<Box<dyn MessageInvoker>>) -> Self {
-    Self { inner }
-  }
-
-  /// Creates a new shared wrapper around the provided invoker.
+  /// Creates a new CAS-backed shared wrapper around the provided invoker.
   #[must_use]
   pub fn new(invoker: Box<dyn MessageInvoker>) -> Self {
-    Self::from_shared_lock(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(invoker))
-  }
-}
-
-impl Clone for MessageInvokerShared {
-  fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: ArcShared::new(ExclusiveCell::new(invoker)) }
   }
 }
 
