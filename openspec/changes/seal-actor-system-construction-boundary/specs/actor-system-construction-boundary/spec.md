@@ -80,12 +80,23 @@ workspace の tests は、`SystemStateShared::new(SystemState::new())` を `Acto
 として使ってはならない(MUST NOT)。`ActorSystem` が必要なテストは bootstrapped no-op system を使い、bare
 state の契約を検証するテストは `SystemState` / `SystemStateShared` 単位に留めなければならない(MUST)。
 
+削除対象 API の test caller が大量に存在しても、それを理由に compatibility constructor、deprecated alias、
+test-only public helper を追加してはならない(MUST NOT)。大量の test rewrite は、設計境界を正すための
+必要な移行として扱わなければならない(MUST)。
+
 #### Scenario: downstream tests は `ActorSystem::from_state` に依存しない
 
 - **WHEN** `modules/**/src/**/*tests.rs` と `modules/**/tests/**/*.rs` を検査する
 - **THEN** `ActorSystem::from_state` の呼び出しは存在しない
 - **AND** `create_started_from_config` の呼び出しは存在しない
 - **AND** system handle が必要な tests は `new_noop_actor_system` または `create_with_noop_guardian` を使う
+
+#### Scenario: 大量の test caller があっても compatibility constructor は復活しない
+
+- **WHEN** 削除対象 API に多数の test caller が存在する
+- **THEN** tests は bootstrapped no-op system または lower-level state test へ移行される
+- **AND** `ActorSystem::from_state`、`ActorSystem::create_started_from_config`、または同等の test-only public
+  constructor は追加されない
 
 #### Scenario: synthetic cell tests は bootstrapped system 上で pid を確保する
 

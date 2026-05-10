@@ -4,6 +4,7 @@
 - [ ] 1.2 `modules/actor-core-kernel/src/system/base.rs` の public constructor surface を確認し、残す public constructor を `create_from_props` / `create_with_noop_guardian` / `create_from_props_with_init` に限定する。
 - [ ] 1.3 `modules/actor-core-kernel/tests/kernel_public_surface.rs` に `ActorSystem::from_state` compile-fail fixture を追加する。
 - [ ] 1.4 `modules/actor-core-kernel/tests/kernel_public_surface.rs` に `ActorSystem::create_started_from_config` compile-fail fixture を追加する。
+- [ ] 1.5 caller 数を互換 API 維持の根拠にせず、すべての test-only construction seam を削除対象として記録する。
 
 ## Phase 2: actor-core-kernel construction seam 撤廃
 
@@ -30,12 +31,13 @@
 
 ## Phase 5: downstream tests の移行
 
-- [ ] 5.1 `persistence-core` tests の `ActorSystem::from_state(SystemStateShared::new(SystemState::new()))` を `new_noop_actor_system` または purpose-specific lower-level state setup へ移行する。
-- [ ] 5.2 `persistent_actor` / `persistent_fsm` / `persistent_actor_adapter` の `ActorContext` helper は bootstrapped no-op system から pid を確保する形に変える。
-- [ ] 5.3 `journal_actor` / `snapshot_actor` tests の synthetic cell setup は no-op guardian と衝突しない pid allocation に変える。
-- [ ] 5.4 `remote-core` tests の `ActorSystem::from_state` caller を no-op system へ移行する。
-- [ ] 5.5 `stream-core-kernel` tests の `create_started_from_config` caller を `new_noop_actor_system_with` または `create_with_noop_guardian` へ移行する。
-- [ ] 5.6 `actor-core-typed` / `cluster-core` / その他 workspace tests の `new_empty_actor_system*` import を `new_noop_actor_system*` へ移行する。
+- [ ] 5.1 大量の test rewrite を許容し、削除 API の代替として compatibility helper / deprecated alias / test-only public API を追加しないことを確認する。
+- [ ] 5.2 `persistence-core` tests の `ActorSystem::from_state(SystemStateShared::new(SystemState::new()))` を `new_noop_actor_system` または purpose-specific lower-level state setup へ移行する。
+- [ ] 5.3 `persistent_actor` / `persistent_fsm` / `persistent_actor_adapter` の `ActorContext` helper は bootstrapped no-op system から pid を確保する形に変える。
+- [ ] 5.4 `journal_actor` / `snapshot_actor` tests の synthetic cell setup は no-op guardian と衝突しない pid allocation に変える。
+- [ ] 5.5 `remote-core` tests の `ActorSystem::from_state` caller を no-op system へ移行する。
+- [ ] 5.6 `stream-core-kernel` tests の `create_started_from_config` caller を `new_noop_actor_system_with` または `create_with_noop_guardian` へ移行する。
+- [ ] 5.7 `actor-core-typed` / `cluster-core` / その他 workspace tests の `new_empty_actor_system*` import を `new_noop_actor_system*` へ移行する。
 
 ## Phase 6: setup conversion coverage
 
