@@ -101,6 +101,127 @@ struct ShardedRegistry<K, V> {
 
 これがホットパスのロックフリー化の中核。次節で詳述する。
 
+## 共有プリミティブの使い分け
+
+`SharedLock` を剥がすかどうかは、「ロックが悪いか」ではなく **その同期がホットパスにあるか** で判断する。`ExclusiveCell` は `SharedLock` の汎用置換ではない。CAS で排他 claim を取り、勝者だけに `&T` / `&mut T` を渡すための primitive である。
+
+| primitive | 採用するケース | 採用しないケース |
+|---|---|---|
+| `SharedLock<T>` | 複雑な可変状態、書き込み主体、コールドパス、初期化/終了処理 | per-message のホットパス、競合が常態化するキュー操作 |
+| `SharedRwLock<T>` | 読み込み主体、書き込みが稀、registry / snapshot cache | 書き込み主体、read 中に write が詰まりやすい状態 |
+| `ExclusiveCell<T>` | 共有所有された `T` に対して、CAS 勝者だけが既存の `&mut T` API を実行するホットパス | 読み込み並列性が必要、再入があり得る、長時間競合する状態 |
+| `AtomicU*` + `*Shared` wrapper | 1〜8 byte の離散状態、純粋遷移関数で表せる状態機械 | 大きな構造、collection、variant に付随データがある状態 |
+| `ArcShared<T>` | 構築後 immutable な値、設定、strategy | 状態変更が必要な値 |
+
+選択順は次の通り。
+
+```
+1. 共有しなくてよいか？
+   ├─ Yes → 所有権を一箇所に集約し、&mut self で書く
+   └─ No  → 次へ
+
+2. 構築後 immutable か？
+   ├─ Yes → ArcShared<T>
+   └─ No  → 次へ
+
+3. 1〜8 byte の Copy 状態機械か？
+   ├─ Yes → AtomicU* + pure value + *Shared wrapper
+   └─ No  → 次へ
+
+4. 既存の &mut T API を CAS 勝者だけに渡せばよいか？
+   ├─ Yes → ExclusiveCell<T>
+   └─ No  → 次へ
+
+5. 読み込みが圧倒的に多いか？
+   ├─ Yes → SharedRwLock<T> または RCU 風 snapshot
+   └─ No  → SharedLock<T>
+```
+
+### SharedLock / SharedRwLock の標準形
+
+`SharedLock` / `SharedRwLock` を使う場合は、driver を直接固定せず `DefaultMutex` / `DefaultRwLock` を経由する。これにより `debug-locks` や `std-locks` の選択を feature flag に委ねられる。
+
+```rust
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
+
+pub struct Xyz {
+    // state
+}
+
+#[derive(Clone)]
+pub struct XyzShared {
+    inner: SharedLock<Xyz>,
+}
+
+impl XyzShared {
+    pub fn new(value: Xyz) -> Self {
+        Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(value) }
+    }
+}
+
+impl SharedAccess<Xyz> for XyzShared {
+    fn with_read<R>(&self, f: impl FnOnce(&Xyz) -> R) -> R {
+        self.inner.with_read(f)
+    }
+
+    fn with_write<R>(&self, f: impl FnOnce(&mut Xyz) -> R) -> R {
+        self.inner.with_write(f)
+    }
+}
+```
+
+読み込み主体なら `SharedRwLock::new_with_driver::<DefaultRwLock<_>>(value)` を使う。書き込み主体なら `SharedRwLock` にしない。read/write の両方が結局直列化されるなら `SharedLock` の方が意図が明確である。
+
+### ExclusiveCell の標準形
+
+`ExclusiveCell<T>` は `fraktor_utils_core_rs::sync` の primitive で、内部に `UnsafeCell<T>` と CAS claim を持つ。`with_read` と `with_write` はどちらも同じ排他 claim を取るため、read 同士も並列化しない。これは欠点ではなく、「この値は同時に一人しか触ってはいけない」という契約を型で閉じ込めるための設計である。
+
+```rust
+use fraktor_utils_core_rs::sync::{ArcShared, ExclusiveCell, SharedAccess};
+
+pub struct Xyz {
+    // state
+}
+
+#[derive(Clone)]
+pub struct XyzShared {
+    inner: ArcShared<ExclusiveCell<Xyz>>,
+}
+
+impl XyzShared {
+    pub fn new(value: Xyz) -> Self {
+        Self { inner: ArcShared::new(ExclusiveCell::new(value)) }
+    }
+}
+
+impl SharedAccess<Xyz> for XyzShared {
+    fn with_read<R>(&self, f: impl FnOnce(&Xyz) -> R) -> R {
+        self.inner.with_read(f)
+    }
+
+    fn with_write<R>(&self, f: impl FnOnce(&mut Xyz) -> R) -> R {
+        self.inner.with_write(f)
+    }
+}
+```
+
+採用条件:
+
+- 既存のロジック本体が `&mut self` / `&mut T` を要求し、その API を変えずに共有所有したい
+- 同時実行は禁止で、CAS 勝者だけがクロージャ内で処理を完結できる
+- `T: Send` で十分であり、`T: Sync` を要求したくない
+- read 並列性より「read/write を含めて完全直列化する」ことが正しい
+- 再入しない。同じ `ExclusiveCell` の `with_read` / `with_write` をクロージャ内から呼ぶと claim 待ちで spin し続ける
+
+避けるケース:
+
+- 読み込みを並列化したい registry / cache
+- 競合が長時間続く共有 collection
+- ガードを外に返したい API
+- コールドパスで、`SharedLock` の方が単純な初期化/終了処理
+
+現在の代表例は `ActorShared` と `MessageInvokerShared` である。どちらも `ArcShared::new(ExclusiveCell::new(...))` を `new` で組み立て、`SharedAccess` 経由で `with_read` / `with_write` だけを公開する。`ActorCell` の排他制御では、CAS claim の勝者だけが actor / invoker に `&mut` で入れる。
+
 ## CQS と内部可変性の両立（最重要）
 
 ロックフリー化は CQS 原則と **2つの次元** で衝突する：
@@ -358,7 +479,7 @@ pub struct RunOutcome<R> {
 **適用条件**: 状態が複数フィールドを持つが、更新時に全体を置換できる。読み込みが圧倒的に多く、書き込みが稀（読み : 書き ≧ 100 : 1）。
 
 ```rust
-use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultRwLock, SharedAccess, SharedRwLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultRwLock, SharedAccess, SharedRwLock};
 
 // 内側: immutable な値オブジェクト（DDD で言う value object）
 #[derive(Debug)]
@@ -551,7 +672,7 @@ pub struct ConnectionShared {
 |---|---|---|
 | Mailbox 状態機械 | ④ Atomic state machine（pure value + `*Shared` atomic wrapper） | **最高** |
 | Mailbox メッセージキュー | ② Ownership transfer（lock-free MPSC） | **最高** |
-| ActorCell の排他制御 | ④ の CAS 勝者にのみ `&mut` を与える | **最高** |
+| ActorCell の排他制御 | ④ + `ExclusiveCell`（CAS 勝者にのみ `&mut` を与える） | **最高** |
 | Mailbox メトリクス | D. AtomicU* 直接（カウンタのみ） | 高 |
 | Run-queue（scheduler） | std: tokio に委譲 / no_std: 自前 bounded ring | 高 |
 | Registry（PID→ActorRef） | ③ Sharding（既存 `SharedRwLock` 活用）or A. RCU snapshot | 中 |
@@ -619,7 +740,7 @@ Step 5. それ以外は SharedLock のまま据え置き（コールドパス）
 | `AtomicPtr` の単純なポインタ swap | **不要**（store/load のみ） |
 | Lock-free MPSC キュー | **必要**（Box::from_raw, 生ポインタ deref） |
 | RCU 風 atomic snapshot | **必要**（参照カウント操作の race） |
-| CAS 勝者にのみ `&mut` を与える | **必要**（UnsafeCell 経由） |
+| CAS 勝者にのみ `&mut` を与える（`ExclusiveCell`） | **必要**（UnsafeCell 経由） |
 
 ホットパス最適化の8割は unsafe ゼロで実現できる。unsafe は本当に必要な箇所だけに留める。
 
@@ -764,6 +885,8 @@ pub unsafe fn dispatch(&self) { ... }
 - [ ] コールドパスは `SharedLock` のままか（無理に剥がしていないか）
 - [ ] API 表面に CQS 違反が漏れていないか（`bool` 戻り値の状態変更メソッドはないか）
 - [ ] クロージャパターンで排他権がスコープ内に閉じているか（ガードを外に返していないか）
+- [ ] `ExclusiveCell` を read 並列化や再入が必要な場所に使っていないか
+- [ ] `SharedLock` / `SharedRwLock` は `DefaultMutex` / `DefaultRwLock` 経由で初期化しているか
 - [ ] `unsafe` が primitive モジュール内に局所化されているか
 - [ ] 各 `unsafe` ブロックに SAFETY コメントがあるか
 - [ ] `unsafe fn` の安全性契約が doc コメントに明記されているか
