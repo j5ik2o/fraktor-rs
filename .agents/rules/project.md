@@ -17,6 +17,7 @@
 - **clippy.toml（disallowed-types）**: `Arc` / `Rc` / `std::sync::Mutex` / `spin::Mutex` / `spin::RwLock` / `spin::Once` の直接使用を禁止し `ArcShared` / `SpinSyncMutex` / `SpinSyncRwLock` / `SyncOnce` への置換を強制
 - **workspace lints**: `unused_must_use = "deny"`、`clippy::let_underscore_must_use = "deny"`、`clippy::let_underscore_future = "deny"`
 - **Custom dylint**: `lints/` 配下に 11 本実装、`workspace.metadata.dylint.libraries` で 10 本を有効化（`mod-file` / `module-examples` / `module-wiring` / `type-per-file` / `tests-location` / `use-placement` / `redundant-fqcn` / `rustdoc` / `cfg-std-forbid` / `ambiguous-suffix`）。`let-underscore-forbid-lint` は実装済みだが workspace 未登録
+- **OpenSpec commands**: OpenSpec は必ず `mise exec -- openspec ...` で実行する。裸の `openspec` shim や `scripts/opsx-cli.sh` に依存しない。AI エージェントの非対話 shell では mise hook / shim / PATH が人間の terminal と同じとは限らないため、`mise.toml` の設定を明示的に通す
 
 ## CI / Verification
 
