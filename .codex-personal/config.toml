@@ -61,3 +61,6 @@ trusted_hash = "sha256:50c9cb42ba05dfde72d7213af8d0d026faab8dc52faebe2afdced32c7
 last_updated = "2026-05-10T12:24:18Z"
 source_type = "local"
 source = "/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/.codex-corporate/.tmp/bundled-marketplaces/openai-bundled"
+
+[projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
+trust_level = "trusted"
