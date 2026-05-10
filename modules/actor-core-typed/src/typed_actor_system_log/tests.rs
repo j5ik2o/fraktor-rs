@@ -45,7 +45,7 @@ fn recorded_log_messages(events: &[EventStreamEvent], level: LogLevel) -> Vec<St
 // 戻り値の `EventStreamSubscription` は drop 時に購読解除されるため、
 // 呼び出し側でテスト関数の終端まで保持する必要がある。
 fn new_subscribed_system() -> (ActorSystem, ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>, EventStreamSubscription) {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = crate::test_support::subscriber_handle(RecordingSubscriber::new(events.clone()));
   let subscription = system.event_stream().subscribe(&subscriber);
@@ -141,7 +141,7 @@ fn fmt_methods_support_multiple_format_arguments() {
 fn is_level_enabled_returns_true_for_all_levels_by_default() {
   // Given
   // フィルタ未設定（default 経路）では全 level が有効であること。
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let log = TypedActorSystemLog::new(system);
 
   // When / Then
@@ -155,7 +155,7 @@ fn is_level_enabled_returns_true_for_all_levels_by_default() {
 #[test]
 fn is_level_enabled_respects_configured_minimum_level() {
   // Given
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   system.state().set_logging_filter(DefaultLoggingFilter::new(LogLevel::Warn));
   let log = TypedActorSystemLog::new(system);
 
@@ -196,7 +196,7 @@ fn fmt_does_not_evaluate_arguments_when_level_is_disabled() {
   // Given
   // SLF4J / Pekko LoggerOps の lazy formatting 契約:
   // 対象 level が disabled のときは引数の `Display::fmt` を一切呼ばないこと。
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   system.state().set_logging_filter(DefaultLoggingFilter::new(LogLevel::Error));
   let log = TypedActorSystemLog::new(system);
 

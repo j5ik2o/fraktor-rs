@@ -103,7 +103,7 @@ impl ActorSelection {
   }
 
   fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRef, ActorSelectionError> {
-    let system = ActorSystem::from_state(self.system.clone());
+    let system = ActorSystem::from_system_state(self.system.clone());
     if let Some(pid) = system.pid_by_path(&path)
       && let Some(actor_ref) = system.actor_ref_by_pid(pid)
     {

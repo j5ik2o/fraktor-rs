@@ -1,6 +1,6 @@
 extern crate std;
 
-use fraktor_actor_adaptor_std_rs::system::new_empty_actor_system;
+use fraktor_actor_adaptor_std_rs::system::new_noop_actor_system;
 use fraktor_actor_core_kernel_rs::actor::{
   Actor, ActorContext, Pid, error::ActorError, messaging::AnyMessage, scheduler::SchedulerHandle,
 };
@@ -107,7 +107,7 @@ fn cancel_failing_stream() -> StreamShared {
 }
 
 fn receive_command_result(actor: &mut StreamIslandActor, command: StreamIslandCommand) -> Result<(), ActorError> {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let pid = Pid::new(1, 1);
   let mut context = ActorContext::new(&system, pid);
   let message = AnyMessage::new(command);
@@ -120,7 +120,7 @@ fn receive_command(actor: &mut StreamIslandActor, command: StreamIslandCommand) 
 }
 
 fn receive_message_result(actor: &mut StreamIslandActor, message: AnyMessage) -> Result<(), ActorError> {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let pid = Pid::new(1, 1);
   let mut context = ActorContext::new(&system, pid);
 

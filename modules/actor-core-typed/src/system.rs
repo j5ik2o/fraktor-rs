@@ -36,6 +36,7 @@ use crate::{
   ActorRefResolver, TypedActorRef, TypedActorSystemConfig, TypedActorSystemLog,
   behavior::Behavior,
   dispatchers::Dispatchers,
+  dsl::Behaviors,
   eventstream::EventStreamCommand,
   internal::TypedSchedulerShared,
   props::TypedProps,
@@ -176,27 +177,64 @@ fn build_event_stream_ref(system: &ActorSystem) -> TypedActorRef<EventStreamComm
   TypedActorRef::from_untyped(endpoint.actor_ref())
 }
 
+fn install_system_receptionist(system: &ActorSystem) -> Result<(), SpawnError> {
+  let receptionist_props =
+    TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior).into_untyped();
+  let receptionist_props = receptionist_props.with_name(SYSTEM_RECEPTIONIST_TOP_LEVEL);
+  system.extended().spawn_system_top_level_actor(&receptionist_props, SYSTEM_RECEPTIONIST_TOP_LEVEL)?;
+  Ok(())
+}
+
 impl<M> TypedActorSystem<M>
 where
   M: Send + Sync + 'static,
 {
+  fn from_bootstrapped_inner(inner: ActorSystem) -> Self {
+    ActorRefResolver::install(&inner);
+    let cached_address = Address::local(inner.name());
+    let event_stream_ref = build_event_stream_ref(&inner);
+    Self { inner, cached_address, event_stream_ref, marker: PhantomData }
+  }
+
   /// Creates a typed actor system using the supplied configuration.
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError`] if guardian initialization fails.
   pub fn create_from_props(guardian: &TypedProps<M>, config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    Self::create_from_props_with_init(guardian, config, |_| Ok(()))
+  }
+
+  /// Creates a typed actor system with a no-op user guardian and the provided configuration.
+  ///
+  /// This is intended for callers that need a fully bootstrapped typed actor system
+  /// but do not need custom user guardian behavior.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] if guardian initialization fails.
+  pub fn create_with_noop_guardian(config: ActorSystemConfig) -> Result<Self, SpawnError> {
+    let guardian = TypedProps::<M>::from_behavior_factory(Behaviors::ignore::<M>);
+    Self::create_from_props(&guardian, config)
+  }
+
+  /// Creates a typed actor system with configuration and a bootstrap callback.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] if guardian initialization or configuration fails.
+  pub fn create_from_props_with_init<F>(
+    guardian: &TypedProps<M>,
+    config: ActorSystemConfig,
+    configure: F,
+  ) -> Result<Self, SpawnError>
+  where
+    F: FnOnce(&ActorSystem) -> Result<(), SpawnError>, {
     let inner = ActorSystem::create_from_props_with_init(guardian.to_untyped(), config, |system| {
-      let receptionist_props =
-        TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior).into_untyped();
-      let receptionist_props = receptionist_props.with_name(SYSTEM_RECEPTIONIST_TOP_LEVEL);
-      system.extended().spawn_system_top_level_actor(&receptionist_props, SYSTEM_RECEPTIONIST_TOP_LEVEL)?;
-      Ok(())
+      install_system_receptionist(system)?;
+      configure(system)
     })?;
-    ActorRefResolver::install(&inner);
-    let cached_address = Address::local(inner.name());
-    let event_stream_ref = build_event_stream_ref(&inner);
-    Ok(Self { inner, cached_address, event_stream_ref, marker: PhantomData })
+    Ok(Self::from_bootstrapped_inner(inner))
   }
 }
 
@@ -461,10 +499,7 @@ where
   /// Wraps an existing untyped actor system so typed APIs can mirror its services.
   #[must_use]
   pub fn from_untyped(system: ActorSystem) -> Self {
-    ActorRefResolver::install(&system);
-    let cached_address = Address::local(system.name());
-    let event_stream_ref = build_event_stream_ref(&system);
-    Self { inner: system, cached_address, event_stream_ref, marker: PhantomData }
+    Self::from_bootstrapped_inner(system)
   }
 
   /// Returns the typed scheduler facade.

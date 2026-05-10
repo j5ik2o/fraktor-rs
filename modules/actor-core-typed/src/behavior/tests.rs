@@ -59,7 +59,7 @@ fn transform_messages_forwards_matched_message_to_inner() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -83,7 +83,7 @@ fn transform_messages_returns_unhandled_for_non_matching_message() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -113,7 +113,7 @@ fn transform_messages_forwards_signals_to_inner() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -135,7 +135,7 @@ fn transform_messages_propagates_stopped_from_inner() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -159,7 +159,7 @@ fn narrow_converts_via_into() {
 
   let mut outer: Behavior<Wrapper> = inner.narrow();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -188,7 +188,7 @@ fn behaviors_transform_messages_delegates_to_behavior_method() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -220,7 +220,7 @@ fn transform_messages_inner_behavior_evolves_on_active() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -253,7 +253,7 @@ fn narrow_clone_restarts_with_fresh_inner_behavior() {
 
   let behavior: Behavior<Wrapper> = inner.narrow();
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -285,7 +285,7 @@ fn transform_messages_propagates_supervisor_override_from_started_inner() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
@@ -314,7 +314,7 @@ fn transform_messages_preserves_post_stop_handler_from_started_stopped_inner() {
     | Outer::Text(_) => None,
   });
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let (_pid, mut context) = make_ctx(&system);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 

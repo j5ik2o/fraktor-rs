@@ -11,7 +11,7 @@ fn interceptor_trait_has_default_around_start() {
   impl BehaviorInterceptor<u32> for NoopInterceptor {}
 
   let mut interceptor = NoopInterceptor;
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -26,7 +26,7 @@ fn interceptor_trait_has_default_around_receive() {
   impl BehaviorInterceptor<u32> for NoopInterceptor {}
 
   let mut interceptor = NoopInterceptor;
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -41,7 +41,7 @@ fn interceptor_trait_has_default_around_signal() {
   impl BehaviorInterceptor<u32> for NoopInterceptor {}
 
   let mut interceptor = NoopInterceptor;
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);

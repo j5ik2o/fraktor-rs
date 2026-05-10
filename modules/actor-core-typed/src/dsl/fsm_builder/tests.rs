@@ -22,7 +22,7 @@ enum ProbeMessage {
 }
 
 fn build_context() -> (ActorContext<'static>, MessageAdapterRegistry<ProbeMessage>) {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::new_noop_actor_system();
   let pid = system.allocate_pid();
   let ctx = ActorContext::new(&system, pid);
   (ctx, MessageAdapterRegistry::new())

@@ -1,6 +1,7 @@
 use alloc::{vec, vec::Vec};
 use core::future::{Pending, Ready, pending, ready};
 
+use fraktor_actor_adaptor_std_rs::system::new_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -9,10 +10,7 @@ use fraktor_actor_core_kernel_rs::{
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
   },
-  system::{
-    ActorSystem,
-    state::{SystemStateShared, system_state::SystemState},
-  },
+  system::{ActorSystem, state::SystemStateShared},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
@@ -49,12 +47,14 @@ fn create_sender() -> (ActorRef, MessageStore) {
   (sender, messages)
 }
 
+fn test_actor_pid() -> Pid {
+  Pid::new(10_000, 1)
+}
+
 fn new_test_system() -> ActorSystem {
-  let state = SystemState::new();
-  let state = SystemStateShared::new(state);
-  state.mark_root_started();
-  register_actor_cell(&state, Pid::new(1, 1));
-  ActorSystem::from_state(state)
+  let system = new_noop_actor_system();
+  register_actor_cell(&system.state(), test_actor_pid());
+  system
 }
 
 struct DummyActor;
@@ -173,7 +173,7 @@ impl crate::journal::Journal for RetryJournal {
 #[test]
 fn journal_actor_write_messages_sends_responses() {
   let system = new_test_system();
-  let pid = Pid::new(1, 1);
+  let pid = test_actor_pid();
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = JournalActor::<InMemoryJournal>::new(InMemoryJournal::new());
   let (sender, store) = create_sender();
@@ -217,7 +217,7 @@ fn journal_actor_write_messages_sends_responses() {
 #[test]
 fn journal_actor_pending_does_not_emit_failure() {
   let system = new_test_system();
-  let pid = Pid::new(1, 1);
+  let pid = test_actor_pid();
   let mut ctx = ActorContext::new(&system, pid);
   let config = JournalActorConfig::new(0);
   let mut actor = JournalActor::<PendingJournal>::new_with_config(PendingJournal, config);
@@ -243,7 +243,7 @@ fn journal_actor_pending_does_not_emit_failure() {
 #[test]
 fn journal_actor_retry_max_exceeded_on_errors() {
   let system = new_test_system();
-  let pid = Pid::new(1, 1);
+  let pid = test_actor_pid();
   let mut ctx = ActorContext::new(&system, pid);
   let config = JournalActorConfig::new(1);
   let mut actor = JournalActor::<RetryJournal>::new_with_config(RetryJournal::new(2), config);
@@ -293,7 +293,7 @@ fn journal_actor_retry_max_exceeded_on_errors() {
 #[test]
 fn journal_actor_replay_filters_deleted_messages() {
   let system = new_test_system();
-  let pid = Pid::new(1, 1);
+  let pid = test_actor_pid();
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = JournalActor::<InMemoryJournal>::new(InMemoryJournal::new());
   let (sender, store) = create_sender();

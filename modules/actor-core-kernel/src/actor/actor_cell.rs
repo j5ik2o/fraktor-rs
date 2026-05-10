@@ -105,7 +105,7 @@ impl ActorCell {
   }
 
   fn make_context(&self) -> ActorContext<'_> {
-    let system = ActorSystem::from_state(self.system());
+    let system = ActorSystem::from_system_state(self.system());
     ActorContext::new(&system, self.pid).with_receive_timeout_state(self.receive_timeout.as_shared_lock())
   }
 

@@ -2,7 +2,7 @@
 
 use std::{format, net::TcpListener, time::Duration};
 
-use fraktor_actor_adaptor_std_rs::{system::new_empty_actor_system, tick_driver::TestTickDriver};
+use fraktor_actor_adaptor_std_rs::{system::new_noop_actor_system, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionInstallers, system::ActorSystem};
 use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
@@ -21,7 +21,7 @@ fn make_transport() -> TcpRemoteTransport {
 }
 
 fn make_event_publisher() -> (ActorSystem, EventPublisher) {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let publisher = EventPublisher::new(system.downgrade());
   (system, publisher)
 }

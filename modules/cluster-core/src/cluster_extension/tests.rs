@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::system::new_empty_actor_system;
+use fraktor_actor_adaptor_std_rs::system::new_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   event::stream::{
@@ -208,7 +208,7 @@ fn stub_extension_id(config: ClusterExtensionConfig) -> ClusterExtensionId {
 
 #[test]
 fn registers_extension_and_starts_member() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
 
@@ -219,7 +219,7 @@ fn registers_extension_and_starts_member() {
 
 #[test]
 fn register_on_member_up_invokes_callback_for_up_transition() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -241,7 +241,7 @@ fn register_on_member_up_invokes_callback_for_up_transition() {
 
 #[test]
 fn register_on_member_removed_invokes_callback_for_removed_transition() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -263,7 +263,7 @@ fn register_on_member_removed_invokes_callback_for_removed_transition() {
 
 #[test]
 fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -284,7 +284,7 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
 }
 
 fn run_member_up_during_start_test(start_fn: impl FnOnce(&ClusterExtension) -> Result<(), ClusterError>) {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
   let authority = String::from("fraktor://demo");
 
@@ -323,7 +323,7 @@ fn register_on_member_up_invokes_callback_when_status_arrives_during_start_clien
 
 #[test]
 fn register_on_member_removed_invokes_callback_immediately_when_self_already_removed() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -345,7 +345,7 @@ fn register_on_member_removed_invokes_callback_immediately_when_self_already_rem
 
 #[test]
 fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -366,7 +366,7 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
 
 #[test]
 fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_id_is_unknown() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -385,7 +385,7 @@ fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_i
 
 #[test]
 fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -410,7 +410,7 @@ fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
 
 #[test]
 fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -435,7 +435,7 @@ fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
 
 #[test]
 fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_install() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
@@ -459,7 +459,7 @@ fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_inst
 
 #[test]
 fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension_install() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
@@ -484,7 +484,7 @@ fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension
 #[test]
 fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
   // 1. システムとエクステンションをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(
@@ -519,7 +519,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
 
 #[test]
 fn ignores_topology_with_same_hash_via_event_stream() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(
@@ -614,7 +614,7 @@ fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEven
 #[test]
 fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_core() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録してイベントを記録
@@ -666,7 +666,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
 #[test]
 fn phase1_integration_topology_updated_includes_blocked_members() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -722,7 +722,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
 #[test]
 fn phase1_integration_duplicate_hash_topology_is_suppressed() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -755,7 +755,7 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
 #[test]
 fn phase1_integration_metrics_include_members_and_virtual_actors() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   // 2. ClusterExtension をセットアップ
@@ -802,7 +802,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
 #[test]
 fn phase2_integration_join_leave_events_produce_topology_updated() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -865,7 +865,7 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
 #[test]
 fn phase2_integration_blocklist_reflected_in_topology_events() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -925,7 +925,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
 #[test]
 fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
 
   // 2. ClusterExtension をセットアップ
   let ext_id =
@@ -977,7 +977,7 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
 #[test]
 fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
   // 1. システムをセットアップ
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録

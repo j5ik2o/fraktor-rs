@@ -1,6 +1,6 @@
 use alloc::{string::ToString, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::{system::new_noop_actor_system, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext,
@@ -13,10 +13,7 @@ use fraktor_actor_core_kernel_rs::{
     scheduler::SchedulerConfig,
     setup::ActorSystemConfig,
   },
-  system::{
-    ActorSystem,
-    state::{SystemStateShared, system_state::SystemState},
-  },
+  system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -160,6 +157,10 @@ fn build_context(system: &ActorSystem) -> ActorContext<'static> {
   ActorContext::new(system, pid)
 }
 
+fn new_test_system() -> ActorSystem {
+  new_noop_actor_system()
+}
+
 fn register_noop_actor_ref(system: &ActorSystem, name: &str) -> ActorRef {
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| NoopActor);
@@ -204,7 +205,7 @@ fn prepare_stashing_commands(adapter: &mut PersistentActorAdapter<DummyPersisten
 
 #[test]
 fn adapter_pre_start_fails_without_extension() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -315,7 +316,7 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
 
 #[test]
 fn adapter_forwards_recovery_timed_out_signal() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -329,7 +330,7 @@ fn adapter_forwards_recovery_timed_out_signal() {
 
 #[test]
 fn adapter_recovery_tick_triggers_timeout_while_waiting_snapshot() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -349,7 +350,7 @@ fn adapter_recovery_tick_triggers_timeout_while_waiting_snapshot() {
 
 #[test]
 fn adapter_recovery_tick_triggers_timeout_while_waiting_event() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -404,7 +405,7 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
 
 #[test]
 fn adapter_propagates_unstash_all_error() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -423,7 +424,7 @@ fn adapter_propagates_unstash_all_error() {
 
 #[test]
 fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -454,7 +455,7 @@ fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
 
 #[test]
 fn adapter_stashes_command_between_write_message_success_and_write_messages_successful() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -492,7 +493,7 @@ fn adapter_stashes_command_between_write_message_success_and_write_messages_succ
 
 #[test]
 fn adapter_does_not_stash_command_during_persist_all_async() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -512,7 +513,7 @@ fn adapter_does_not_stash_command_during_persist_all_async() {
 
 #[test]
 fn adapter_stashes_command_during_recovery_started() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -527,7 +528,7 @@ fn adapter_stashes_command_during_recovery_started() {
 
 #[test]
 fn adapter_stashes_command_during_recovering() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -542,7 +543,7 @@ fn adapter_stashes_command_during_recovering() {
 
 #[test]
 fn adapter_unstash_all_on_recovery_success() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -562,7 +563,7 @@ fn adapter_unstash_all_on_recovery_success() {
 
 #[test]
 fn adapter_unstash_all_on_highest_sequence_nr() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -583,7 +584,7 @@ fn adapter_unstash_all_on_highest_sequence_nr() {
 
 #[test]
 fn adapter_stops_on_replay_messages_failure_during_recovery() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -603,7 +604,7 @@ fn adapter_stops_on_replay_messages_failure_during_recovery() {
 
 #[test]
 fn adapter_stops_on_highest_sequence_nr_failure_during_recovery() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -625,7 +626,7 @@ fn adapter_stops_on_highest_sequence_nr_failure_during_recovery() {
 
 #[test]
 fn adapter_stops_on_write_message_failure() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -650,7 +651,7 @@ fn adapter_stops_on_write_message_failure() {
 
 #[test]
 fn adapter_ignores_write_message_failure_when_instance_id_mismatches() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -670,7 +671,7 @@ fn adapter_ignores_write_message_failure_when_instance_id_mismatches() {
 
 #[test]
 fn adapter_unstash_all_on_write_message_rejected() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -695,7 +696,7 @@ fn adapter_unstash_all_on_write_message_rejected() {
 
 #[test]
 fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -718,7 +719,7 @@ fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
 
 #[test]
 fn adapter_unstash_all_on_write_messages_failed_with_zero_write_count() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -742,7 +743,7 @@ fn adapter_unstash_all_on_write_messages_failed_with_zero_write_count() {
 
 #[test]
 fn adapter_ignores_write_messages_successful_when_instance_id_mismatches() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -763,7 +764,7 @@ fn adapter_ignores_write_messages_successful_when_instance_id_mismatches() {
 
 #[test]
 fn adapter_ignores_stale_write_messages_successful_after_processing_resumes() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -781,7 +782,7 @@ fn adapter_ignores_stale_write_messages_successful_after_processing_resumes() {
 
 #[test]
 fn adapter_ignores_write_messages_failed_with_zero_write_count_when_instance_id_mismatches() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -804,7 +805,7 @@ fn adapter_ignores_write_messages_failed_with_zero_write_count_when_instance_id_
 
 #[test]
 fn adapter_applies_drop_strategy_only_on_stash_overflow() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Drop, 0);
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -819,7 +820,7 @@ fn adapter_applies_drop_strategy_only_on_stash_overflow() {
 
 #[test]
 fn adapter_applies_fail_strategy_on_stash_overflow() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Fail, 0);
   let mut adapter = PersistentActorAdapter::new(actor);
@@ -835,7 +836,7 @@ fn adapter_applies_fail_strategy_on_stash_overflow() {
 
 #[test]
 fn adapter_does_not_apply_drop_strategy_to_non_overflow_stash_error() {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Drop, 0);
   let mut adapter = PersistentActorAdapter::new(actor);

@@ -60,36 +60,11 @@ pub struct ActorSystem {
 impl ActorSystem {
   /// Wraps an existing [`SystemStateShared`] into an [`ActorSystem`] handle.
   ///
-  /// Internal seam used by the runtime to convert shared state references back to a typed
-  /// [`ActorSystem`] (e.g. weak upgrades, actor selection, actor cell back-refs) and by
-  /// cross-crate test helpers that build synthetic states. Application code should use
-  /// [`ActorSystem::create_from_props`] or [`ActorSystem::create_with_noop_guardian`] instead.
-  #[doc(hidden)]
+  /// Internal seam used by the runtime to convert shared state references back
+  /// to a typed [`ActorSystem`] handle.
   #[must_use]
-  pub const fn from_state(state: SystemStateShared) -> Self {
+  pub(crate) const fn from_system_state(state: SystemStateShared) -> Self {
     Self { state }
-  }
-
-  /// Builds and starts an actor system without a user guardian.
-  ///
-  /// Creates the system state from the provided [`ActorSystemConfig`], wraps it in a
-  /// [`SystemStateShared`], and marks the root as started before returning. No user
-  /// guardian, bootstrap callback, or extension installation is performed; the resulting
-  /// system is essentially an empty shell. Intended only as a seam for adaptor-level test
-  /// helpers (e.g. `new_empty_actor_system_with` in `fraktor-actor-adaptor-std-rs`) and
-  /// cross-crate tests. Application code should use [`ActorSystem::create_from_props`] or
-  /// [`ActorSystem::create_with_noop_guardian`].
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when the underlying [`SystemState`] cannot be built from the
-  /// supplied configuration.
-  #[doc(hidden)]
-  pub fn create_started_from_config(config: ActorSystemConfig) -> Result<Self, SpawnError> {
-    let state = SystemState::build_from_owned_config(config)?;
-    let system = Self::from_state(SystemStateShared::new(state));
-    system.state.mark_root_started();
-    Ok(system)
   }
 
   /// Creates an actor system with the provided configuration.
@@ -129,7 +104,7 @@ impl ActorSystem {
     let extension_installers = config.take_extension_installers();
     let provider_installer = config.take_provider_installer();
     let state = SystemState::build_from_owned_config(config)?;
-    let system = Self::from_state(SystemStateShared::new(state));
+    let system = Self::from_system_state(SystemStateShared::new(state));
     system.bootstrap(user_guardian_props, configure)?;
 
     // bootstrap 完了後に拡張とプロバイダを登録する。初期化順序上、依存リソースがこの時点で揃うため。

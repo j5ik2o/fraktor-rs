@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::{system::new_empty_actor_system, tick_driver::TestTickDriver};
+use fraktor_actor_adaptor_std_rs::{system::new_noop_actor_system, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, Pid,
@@ -43,7 +43,7 @@ fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStream
 
 #[test]
 fn try_from_system_fails_when_extension_missing() {
-  let system = new_empty_actor_system();
+  let system = new_noop_actor_system();
   match ClusterApi::try_from_system(&system) {
     | Ok(_) => panic!("extension should be missing"),
     | Err(err) => assert_eq!(err, ClusterApiError::ExtensionNotInstalled),
