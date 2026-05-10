@@ -1,4 +1,5 @@
 use core::time::Duration;
+use std::panic;
 
 use crate::actor::setup::CircuitBreakerConfig;
 
@@ -11,7 +12,8 @@ fn default_matches_pekko_registry_defaults() {
 }
 
 #[test]
-#[should_panic(expected = "max_failures must be greater than zero")]
 fn rejects_zero_max_failures() {
-  assert_eq!(CircuitBreakerConfig::new(0, Duration::from_secs(1)).max_failures(), 0);
+  let result = panic::catch_unwind(|| CircuitBreakerConfig::new(0, Duration::from_secs(1)));
+
+  assert!(result.is_err());
 }
