@@ -2,10 +2,9 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::sync::{ArcShared, ExclusiveCell, SharedAccess};
 
 use super::invoker_trait::MessageInvoker;
-use crate::actor::exclusive_cell::ExclusiveCell;
 
 /// Shared wrapper for [`MessageInvoker`] implementations.
 ///

@@ -20,6 +20,7 @@ mod checked_spin_sync_mutex_guard;
 #[cfg(feature = "debug-locks")]
 #[allow(clippy::disallowed_types, cfg_std_forbid)]
 mod checked_spin_sync_rwlock;
+mod exclusive_cell;
 mod lock_driver;
 mod lock_driver_factory;
 mod once_driver;
@@ -68,6 +69,7 @@ pub use checked_spin_sync_mutex::CheckedSpinSyncMutex;
 pub use checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard;
 #[cfg(feature = "debug-locks")]
 pub use checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
+pub use exclusive_cell::ExclusiveCell;
 pub use lock_driver::LockDriver;
 pub use lock_driver_factory::LockDriverFactory;
 pub use once_driver::OnceDriver;

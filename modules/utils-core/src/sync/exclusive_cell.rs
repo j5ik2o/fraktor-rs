@@ -1,4 +1,4 @@
-//! CAS-backed exclusive cell for actor hot-path shared wrappers.
+//! CAS-backed exclusive shared cell.
 
 #[cfg(test)]
 mod tests;
@@ -7,8 +7,10 @@ use core::{cell::UnsafeCell, hint::spin_loop};
 
 use portable_atomic::{AtomicBool, Ordering};
 
+use super::SharedAccess;
+
 /// Shared interior-mutability primitive that grants access to one CAS winner at a time.
-pub(crate) struct ExclusiveCell<T> {
+pub struct ExclusiveCell<T> {
   claimed: AtomicBool,
   value:   UnsafeCell<T>,
 }
@@ -23,12 +25,12 @@ unsafe impl<T: Send> Sync for ExclusiveCell<T> {}
 impl<T> ExclusiveCell<T> {
   /// Creates a new exclusive cell.
   #[must_use]
-  pub(crate) const fn new(value: T) -> Self {
+  pub const fn new(value: T) -> Self {
     Self { claimed: AtomicBool::new(false), value: UnsafeCell::new(value) }
   }
 
   /// Executes `f` with read access while holding the exclusive claim.
-  pub(crate) fn with_read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+  pub fn with_read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
     let _claim = self.claim();
     // SAFETY: `_claim` が drop されるまで排他的な CAS claim を保持するため、
     // 並行する mutable access は存在しない。read も同じ claim で直列化される。
@@ -36,7 +38,7 @@ impl<T> ExclusiveCell<T> {
   }
 
   /// Executes `f` with mutable access while holding the exclusive claim.
-  pub(crate) fn with_write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+  pub fn with_write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
     let _claim = self.claim();
     // SAFETY: `_claim` が drop されるまで排他的な CAS claim を保持するため、
     // `f` の実行中に cell が渡す read/write 参照はこれだけ。
@@ -48,6 +50,16 @@ impl<T> ExclusiveCell<T> {
       spin_loop();
     }
     ExclusiveClaim { cell: self }
+  }
+}
+
+impl<T> SharedAccess<T> for ExclusiveCell<T> {
+  fn with_read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+    Self::with_read(self, f)
+  }
+
+  fn with_write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+    Self::with_write(self, f)
   }
 }
 

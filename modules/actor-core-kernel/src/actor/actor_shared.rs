@@ -2,9 +2,9 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::sync::{ArcShared, ExclusiveCell, SharedAccess};
 
-use super::{actor_lifecycle::Actor, exclusive_cell::ExclusiveCell};
+use super::actor_lifecycle::Actor;
 
 /// Shared wrapper for an actor instance.
 ///
