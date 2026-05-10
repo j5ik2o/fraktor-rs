@@ -36,8 +36,12 @@ struct SelectionProbeActor {
   senders:  ArcShared<SpinSyncMutex<Vec<Option<Pid>>>>,
 }
 
+type SelectionProbeMessages = ArcShared<SpinSyncMutex<Vec<String>>>;
+type SelectionProbeSenders = ArcShared<SpinSyncMutex<Vec<Option<Pid>>>>;
+type SelectionProbeSpawn = (ChildRef, SelectionProbeMessages, SelectionProbeSenders);
+
 impl SelectionProbeActor {
-  fn new(messages: ArcShared<SpinSyncMutex<Vec<String>>>, senders: ArcShared<SpinSyncMutex<Vec<Option<Pid>>>>) -> Self {
+  fn new(messages: SelectionProbeMessages, senders: SelectionProbeSenders) -> Self {
     Self { messages, senders }
   }
 }
@@ -58,9 +62,7 @@ fn build_selection_system() -> ActorSystem {
   ActorSystem::create_from_props(&props, config).expect("system")
 }
 
-fn spawn_selection_probe(
-  system: &ActorSystem,
-) -> (ChildRef, ArcShared<SpinSyncMutex<Vec<String>>>, ArcShared<SpinSyncMutex<Vec<Option<Pid>>>>) {
+fn spawn_selection_probe(system: &ActorSystem) -> SelectionProbeSpawn {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let senders = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({

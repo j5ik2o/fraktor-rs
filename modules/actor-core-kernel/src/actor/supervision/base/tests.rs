@@ -150,8 +150,10 @@ fn within_window_n_resets_counter_on_window_expiry() {
     restart_only,
   );
   // Prime: 2 failures inside the window starting at 0s.
-  let _ = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(0));
-  let _ = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(5));
+  let first = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(0));
+  let second = strategy.handle_failure(&mut stats, &ActorError::recoverable("fail"), Duration::from_secs(5));
+  assert_eq!(first, SupervisorDirective::Restart);
+  assert_eq!(second, SupervisorDirective::Restart);
   assert_eq!(stats.restart_count(), 2);
   assert_eq!(stats.window_start(), Some(Duration::from_secs(0)));
   // 15s is outside the 10s window ⇒ counter resets to 1, window_start to now, restart.

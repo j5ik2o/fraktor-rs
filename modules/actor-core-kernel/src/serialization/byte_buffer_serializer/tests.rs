@@ -37,9 +37,8 @@ fn round_trip_via_buffer() {
     | Ok(v) => v,
     | Err(e) => panic!("from_binary_buf failed: {e:?}"),
   };
-  let restored_str = match restored.downcast_ref::<String>() {
-    | Some(v) => v,
-    | None => panic!("downcast to String failed"),
+  let Some(restored_str) = restored.downcast_ref::<String>() else {
+    panic!("downcast to String failed");
   };
   assert_eq!(restored_str, "hello");
 }

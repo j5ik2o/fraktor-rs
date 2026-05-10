@@ -54,9 +54,7 @@ fn evict_picks_oldest_stale_entry_when_multiple_candidates_exist() {
   // Vec 挿入順だけで stale entry を選ぶと、 age threshold を辛うじて越えた直近アクセスの
   // entry が、 もっと古い未アクセス entry より先に evict され LRU 意図を崩す。 stale 候補の中で
   // accessed_at が最小の entry が選ばれるかを検証する。
-  fn echo_resolver(candidate: &ActorPath) -> Result<ActorPath, &'static str> {
-    Ok(candidate.clone())
-  }
+  let echo_resolver = |candidate: &ActorPath| -> Result<ActorPath, &'static str> { Ok(candidate.clone()) };
 
   let mut cache = ActorRefResolveCache::with_limits(3, 2);
   let path_a = remote_path("a");

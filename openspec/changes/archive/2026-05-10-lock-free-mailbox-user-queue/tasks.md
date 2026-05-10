@@ -27,5 +27,5 @@
 - [x] 4.3 `loom` model test の配置と dev-dependency/cfg 方針を決め、producer/consumer interleaving を検証する
 - [x] 4.4 `miri` で primitive の raw pointer ownership safety を検証できるテストを追加する
 - [x] 4.5 `cargo test -p fraktor-actor-core-kernel-rs dispatch::mailbox` を通す
-- [ ] 4.6 `cargo clippy -p fraktor-actor-core-kernel-rs --all-targets --all-features -- -D warnings` を通す
+- [x] 4.6 `cargo clippy -p fraktor-actor-core-kernel-rs --all-targets --all-features -- -D warnings` を通す
 - [x] 4.7 OpenSpec validation を通す

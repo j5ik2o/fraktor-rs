@@ -47,7 +47,7 @@ impl Clock for FakeClock {
 #[test]
 #[should_panic(expected = "max_failures must be greater than zero")]
 fn rejects_zero_max_failures() {
-  let _ = CircuitBreaker::new_with_clock(0, Duration::from_millis(100), FakeClock::new());
+  drop(CircuitBreaker::new_with_clock(0, Duration::from_millis(100), FakeClock::new()));
 }
 
 #[test]
@@ -107,9 +107,8 @@ fn open_rejects_calls() {
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
-  let err = match cb.is_call_permitted() {
-    | Err(e) => e,
-    | Ok(()) => panic!("expected Err but got Ok(())"),
+  let Err(err) = cb.is_call_permitted() else {
+    panic!("expected Err but got Ok(())");
   };
   assert!(err.remaining() > Duration::ZERO);
 }

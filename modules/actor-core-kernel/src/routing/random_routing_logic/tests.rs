@@ -41,13 +41,11 @@ fn select_with_same_seed_produces_same_sequence() {
   for _ in 0..10 {
     let a = logic_a.select(&message, &routees);
     let b = logic_b.select(&message, &routees);
-    let idx_a = match routees.iter().position(|r| ptr::eq(r, a)) {
-      | Some(index) => index,
-      | None => panic!("selected routee for logic_a not found in routees"),
+    let Some(idx_a) = routees.iter().position(|r| ptr::eq(r, a)) else {
+      panic!("selected routee for logic_a not found in routees");
     };
-    let idx_b = match routees.iter().position(|r| ptr::eq(r, b)) {
-      | Some(index) => index,
-      | None => panic!("selected routee for logic_b not found in routees"),
+    let Some(idx_b) = routees.iter().position(|r| ptr::eq(r, b)) else {
+      panic!("selected routee for logic_b not found in routees");
     };
     seq_a.push(idx_a);
     seq_b.push(idx_b);

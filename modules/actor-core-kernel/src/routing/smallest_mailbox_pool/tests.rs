@@ -21,7 +21,7 @@ fn new_creates_pool() {
 #[test]
 #[should_panic(expected = "nr_of_instances must be positive")]
 fn new_panics_on_zero_instances() {
-  let _ = SmallestMailboxPool::new(0);
+  drop(SmallestMailboxPool::new(0));
 }
 
 #[test]
