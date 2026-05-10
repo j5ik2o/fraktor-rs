@@ -28,4 +28,4 @@ ensure_local_codex_config() {
 
 ensure_local_codex_config
 
-exec "/Applications/Codex.app/Contents/MacOS/Codex" "${args[@]}"
+exec "/Applications/Codex.app/Contents/MacOS/Codex" "$@"
