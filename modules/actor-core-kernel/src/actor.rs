@@ -21,6 +21,7 @@ mod classic_timer_scheduler;
 pub mod context_pipe;
 pub mod deploy;
 pub mod error;
+mod exclusive_cell;
 pub mod extension;
 mod failed_info;
 pub mod fsm;

@@ -2,31 +2,25 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
-use super::actor_lifecycle::Actor;
+use super::{actor_lifecycle::Actor, exclusive_cell::ExclusiveCell};
 
 /// Shared wrapper for an actor instance.
 ///
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
-/// that internally lock the underlying actor, allowing safe
-/// concurrent access from multiple owners.
+/// that serialize access to the underlying actor, allowing safe concurrent
+/// access from multiple owners.
 #[derive(Clone)]
 pub struct ActorShared {
-  inner: SharedLock<Box<dyn Actor + Send>>,
+  inner: ArcShared<ExclusiveCell<Box<dyn Actor + Send>>>,
 }
 
 impl ActorShared {
-  /// Creates a new shared wrapper using the builtin spin lock backend.
+  /// Creates a new shared wrapper using a CAS-backed exclusive cell.
   #[must_use]
   pub fn new(actor: Box<dyn Actor + Send>) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<DefaultMutex<_>>(actor))
-  }
-
-  /// Creates an `ActorShared` wrapper from an existing shared lock.
-  #[must_use]
-  pub const fn from_shared_lock(inner: SharedLock<Box<dyn Actor + Send>>) -> Self {
-    Self { inner }
+    Self { inner: ArcShared::new(ExclusiveCell::new(actor)) }
   }
 }
 
