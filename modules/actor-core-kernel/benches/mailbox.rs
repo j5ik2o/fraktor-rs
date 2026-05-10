@@ -221,13 +221,9 @@ fn bench_mailbox_enqueue(c: &mut Criterion) {
 fn bench_mailbox_overflow(c: &mut Criterion) {
   let mut group = c.benchmark_group("mailbox_overflow");
 
-  for overflow in [MailboxOverflowStrategy::DropNewest, MailboxOverflowStrategy::DropOldest] {
-    let overflow_name = match overflow {
-      | MailboxOverflowStrategy::DropNewest => "drop_newest",
-      | MailboxOverflowStrategy::DropOldest => "drop_oldest",
-      | MailboxOverflowStrategy::Grow => "grow",
-    };
-
+  for (overflow, overflow_name) in
+    [(MailboxOverflowStrategy::DropNewest, "drop_newest"), (MailboxOverflowStrategy::DropOldest, "drop_oldest")]
+  {
     group.bench_function(overflow_name, |b| {
       b.iter_batched(
         || Mailbox::new(MailboxPolicy::bounded(capacity(64), overflow, None)),
