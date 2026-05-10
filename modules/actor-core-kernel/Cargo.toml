@@ -84,5 +84,10 @@ path = "tests/system_events.rs"
 name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
 
+[[bench]]
+name = "mailbox"
+path = "benches/mailbox.rs"
+harness = false
+
 [lints]
 workspace = true
