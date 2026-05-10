@@ -13,7 +13,7 @@ fraktor-remote-core-rs = { workspace = true }
 fraktor-remote-adaptor-std-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["std-locks"] }
 critical-section = { workspace = true, features = ["std"] }
-fraktor-stream-core-rs = { workspace = true }
+fraktor-stream-core-kernel-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }
 serde = { workspace = true, features = ["derive"] }

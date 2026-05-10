@@ -9,7 +9,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use fraktor_stream_core_rs::{
+use fraktor_stream_core_kernel_rs::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, StreamError,
   dsl::{Sink, Source},
   materialization::StreamFuture,

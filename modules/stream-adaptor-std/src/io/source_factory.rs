@@ -7,7 +7,7 @@ use std::{
   thread::Builder,
 };
 
-use fraktor_stream_core_rs::{
+use fraktor_stream_core_kernel_rs::{
   BoundedSourceQueue, DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, dsl::Source,
   stage::StageKind, validate_positive_argument,
 };

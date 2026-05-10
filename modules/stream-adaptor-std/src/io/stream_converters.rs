@@ -11,7 +11,7 @@ use std::{
   vec::Vec,
 };
 
-use fraktor_stream_core_rs::{
+use fraktor_stream_core_kernel_rs::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
   dsl::{Sink, Source},
   materialization::StreamFuture,

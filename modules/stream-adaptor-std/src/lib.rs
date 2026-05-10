@@ -14,7 +14,7 @@ pub mod materializer;
 
 use std::io::Error;
 
-use fraktor_stream_core_rs::r#impl::StreamError;
+use fraktor_stream_core_kernel_rs::r#impl::StreamError;
 
 // `std::io::Error` を `StreamError::IoError` に変換する。
 fn io_error_to_stream_error(e: &Error) -> StreamError {
