@@ -1545,6 +1545,9 @@ PY
 }
 
 run_perf() {
+  log_step "cargo check -p fraktor-actor-core-kernel-rs --benches"
+  run_cargo check -p fraktor-actor-core-kernel-rs --benches || return 1
+
   log_step "cargo test -p fraktor-actor-core-kernel-rs stress_scheduler_handles_"
   run_cargo test -p fraktor-actor-core-kernel-rs stress_scheduler_handles_ || return 1
 

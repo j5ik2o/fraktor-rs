@@ -156,12 +156,21 @@ cargo run -q -p fraktor-actor-core-kernel-rs --example logger_subscriber_std --f
 '''
 
 [tasks.actor-core-perf]
-description = "Actor core throughput harness (perf_mailbox)"
+description = "Actor core benchmark build check"
 workspace = false
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-cargo test -p fraktor-actor-core-kernel-rs --features std --test perf_mailbox
+cargo check -p fraktor-actor-core-kernel-rs --benches
+'''
+
+[tasks.actor-core-bench]
+description = "Run actor core mailbox Criterion benchmarks"
+workspace = false
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cargo bench -p fraktor-actor-core-kernel-rs --bench mailbox
 '''
 
 [tasks.actor-core-story]
