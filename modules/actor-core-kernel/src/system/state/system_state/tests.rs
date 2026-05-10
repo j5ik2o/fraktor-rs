@@ -50,7 +50,7 @@ impl SystemState {
       && let Ok(actor_path) = ActorPathParser::parse(&canonical)
     {
       let now_secs = self.monotonic_now().as_secs();
-      let _ = self.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None);
+      drop(self.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None));
     }
 
     self.actor_path_registry.unregister(pid);

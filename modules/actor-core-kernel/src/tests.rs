@@ -22,16 +22,19 @@ fn deleted_std_tree_stays_deleted() {
 fn tick_driver_public_surface_keeps_primary_boundary_contracts() {
   let _driver: Option<Box<dyn TickDriver>> = None;
 
-  let _ = TypeId::of::<SchedulerTickExecutor>();
-  let _ = TypeId::of::<TickDriverBundle>();
-  let _ = TypeId::of::<TickDriverError>();
-  let _ = TypeId::of::<TickDriverId>();
-  let _ = TypeId::of::<TickDriverKind>();
-  let _ = TypeId::of::<TickDriverProvisioningContext>();
-  let _ = TypeId::of::<TickExecutorSignal>();
-  let _ = TypeId::of::<TickFeed>();
-  let _ = TypeId::of::<TickDriverProvision>();
-  let _ = TypeId::of::<TickFeedHandle>();
+  let public_type_ids = [
+    TypeId::of::<SchedulerTickExecutor>(),
+    TypeId::of::<TickDriverBundle>(),
+    TypeId::of::<TickDriverError>(),
+    TypeId::of::<TickDriverId>(),
+    TypeId::of::<TickDriverKind>(),
+    TypeId::of::<TickDriverProvisioningContext>(),
+    TypeId::of::<TickExecutorSignal>(),
+    TypeId::of::<TickFeed>(),
+    TypeId::of::<TickDriverProvision>(),
+    TypeId::of::<TickFeedHandle>(),
+  ];
+  assert_eq!(public_type_ids.len(), 10);
   // TickDriverStopper はオブジェクトセーフなトレイトなので dyn 参照で存在確認する
   let _: Option<Box<dyn TickDriverStopper>> = None;
 }

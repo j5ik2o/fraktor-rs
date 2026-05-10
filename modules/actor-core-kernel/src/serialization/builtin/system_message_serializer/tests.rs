@@ -8,9 +8,9 @@ fn serializer() -> SystemMessageSerializer {
   SystemMessageSerializer::new(SYSTEM_MESSAGE_ID)
 }
 
-fn round_trip(message: SystemMessage) -> SystemMessage {
+fn round_trip(message: &SystemMessage) -> SystemMessage {
   let serializer = serializer();
-  let bytes = serializer.to_binary(&message).expect("system message should encode");
+  let bytes = serializer.to_binary(message).expect("system message should encode");
   let decoded = serializer.from_binary(&bytes, None).expect("system message should decode");
   *decoded.downcast::<SystemMessage>().expect("decoded payload should be SystemMessage")
 }
@@ -27,25 +27,25 @@ fn include_manifest_is_false() {
 
 #[test]
 fn stop_round_trips_as_parameterless_message() {
-  assert_eq!(round_trip(SystemMessage::Stop), SystemMessage::Stop);
+  assert_eq!(round_trip(&SystemMessage::Stop), SystemMessage::Stop);
 }
 
 #[test]
 fn watch_round_trips_with_pid_generation() {
   let pid = Pid::new(42, 7);
-  assert_eq!(round_trip(SystemMessage::Watch(pid)), SystemMessage::Watch(pid));
+  assert_eq!(round_trip(&SystemMessage::Watch(pid)), SystemMessage::Watch(pid));
 }
 
 #[test]
 fn unwatch_round_trips_with_pid_generation() {
   let pid = Pid::new(43, 8);
-  assert_eq!(round_trip(SystemMessage::Unwatch(pid)), SystemMessage::Unwatch(pid));
+  assert_eq!(round_trip(&SystemMessage::Unwatch(pid)), SystemMessage::Unwatch(pid));
 }
 
 #[test]
 fn death_watch_notification_round_trips_with_pid_generation() {
   let pid = Pid::new(44, 9);
-  assert_eq!(round_trip(SystemMessage::DeathWatchNotification(pid)), SystemMessage::DeathWatchNotification(pid));
+  assert_eq!(round_trip(&SystemMessage::DeathWatchNotification(pid)), SystemMessage::DeathWatchNotification(pid));
 }
 
 #[test]

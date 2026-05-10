@@ -95,9 +95,7 @@ impl Serializer for PrimaryManifestSerializer {
     _bytes: &[u8],
     _type_hint: Option<TypeId>,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    // 本テスト群は as_string_manifest 経路 (=from_binary_with_manifest) のみを使用するため、
-    // ここは到達しない想定。万一呼ばれた場合はテスト前提が崩れたシグナルとして panic する。
-    unreachable!("PrimaryManifestSerializer::from_binary should not be invoked in tests")
+    panic!("PrimaryManifestSerializer::from_binary should not be invoked in tests")
   }
 
   fn as_any(&self) -> &(dyn Any + Send + Sync) {

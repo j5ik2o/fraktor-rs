@@ -95,8 +95,8 @@ async fn call_records_failure() {
 async fn call_trips_after_max_failures() {
   let cb = shared_with_clock(2, Duration::from_millis(100), FakeClock::new());
 
-  let _ = cb.call(|| async { Err::<(), _>("a") }).await;
-  let _ = cb.call(|| async { Err::<(), _>("b") }).await;
+  assert!(cb.call(|| async { Err::<(), _>("a") }).await.is_err());
+  assert!(cb.call(|| async { Err::<(), _>("b") }).await.is_err());
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
   let result = cb.call(|| async { Ok::<_, &str>(1) }).await;
@@ -108,7 +108,7 @@ async fn call_recovers_after_reset_timeout() {
   let clock = FakeClock::new();
   let cb = shared_with_clock(1, Duration::from_millis(10), clock.clone());
 
-  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert!(cb.call(|| async { Err::<(), _>("fail") }).await.is_err());
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
   clock.advance(Duration::from_millis(20));
@@ -126,7 +126,7 @@ async fn half_open_failure_reopens() {
   let clock = FakeClock::new();
   let cb = shared_with_clock(1, Duration::from_millis(10), clock.clone());
 
-  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert!(cb.call(|| async { Err::<(), _>("fail") }).await.is_err());
 
   clock.advance(Duration::from_millis(20));
 
@@ -140,7 +140,7 @@ async fn open_error_contains_remaining_duration() {
   let clock = FakeClock::new();
   let cb = shared_with_clock(1, Duration::from_secs(10), clock.clone());
 
-  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert!(cb.call(|| async { Err::<(), _>("fail") }).await.is_err());
 
   let result = cb.call(|| async { Ok::<_, &str>(1) }).await;
   match result {
@@ -157,7 +157,7 @@ async fn cancel_during_half_open_records_failure() {
   let clock = FakeClock::new();
   let cb = shared_with_clock(1, Duration::from_millis(10), clock.clone());
 
-  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert!(cb.call(|| async { Err::<(), _>("fail") }).await.is_err());
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
   clock.advance(Duration::from_millis(20));
@@ -185,7 +185,7 @@ async fn successful_calls_do_not_leak_guard_resources() {
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
 
-  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert!(cb.call(|| async { Err::<(), _>("fail") }).await.is_err());
   assert_eq!(cb.failure_count(), 1);
 
   let result = cb.call(|| async { Ok::<_, &str>(42) }).await;

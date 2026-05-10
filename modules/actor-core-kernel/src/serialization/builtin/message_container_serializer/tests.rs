@@ -28,10 +28,10 @@ fn serializer(registry: &ArcShared<SerializationRegistry>) -> MessageContainerSe
   MessageContainerSerializer::new(MESSAGE_CONTAINER_ID, registry.downgrade())
 }
 
-fn round_trip(message: ActorSelectionMessage) -> ActorSelectionMessage {
+fn round_trip(message: &ActorSelectionMessage) -> ActorSelectionMessage {
   let registry = registry();
   let serializer = serializer(&registry);
-  let bytes = serializer.to_binary(&message).expect("selection message should encode");
+  let bytes = serializer.to_binary(message).expect("selection message should encode");
   let decoded = serializer.from_binary(&bytes, None).expect("selection message should decode");
   *decoded.downcast::<ActorSelectionMessage>().expect("selection message")
 }
@@ -51,7 +51,7 @@ fn actor_selection_message_round_trips_with_nested_string_payload() {
     true,
   );
 
-  let decoded = round_trip(message);
+  let decoded = round_trip(&message);
 
   assert_eq!(decoded.elements(), &[
     SelectionPathElement::ChildName(String::from("worker")),

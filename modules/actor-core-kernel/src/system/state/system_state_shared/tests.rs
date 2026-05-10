@@ -40,7 +40,7 @@ impl EventStreamSubscriber for LogRecorder {
 }
 
 fn assert_operation_does_not_block_on_read_lock(
-  shared: SystemStateShared,
+  shared: &SystemStateShared,
   operation_name: &'static str,
   operation: impl FnOnce(SystemStateShared) + Send + 'static,
 ) {
@@ -315,39 +315,30 @@ impl Actor for GuardianProbeActor {
 
 #[test]
 fn atomic_state_transitions_do_not_block_on_read_lock() {
-  assert_operation_does_not_block_on_read_lock(
-    SystemStateShared::new(SystemState::new()),
-    "mark_root_started",
-    |shared| shared.mark_root_started(),
-  );
+  let shared = SystemStateShared::new(SystemState::new());
+  assert_operation_does_not_block_on_read_lock(&shared, "mark_root_started", |shared| shared.mark_root_started());
 
-  assert_operation_does_not_block_on_read_lock(
-    SystemStateShared::new(SystemState::new()),
-    "begin_termination",
-    |shared| {
-      assert!(shared.begin_termination());
-    },
-  );
+  let shared = SystemStateShared::new(SystemState::new());
+  assert_operation_does_not_block_on_read_lock(&shared, "begin_termination", |shared| {
+    assert!(shared.begin_termination());
+  });
 
-  assert_operation_does_not_block_on_read_lock(
-    SystemStateShared::new(SystemState::new()),
-    "mark_terminated",
-    |shared| shared.mark_terminated(),
-  );
+  let shared = SystemStateShared::new(SystemState::new());
+  assert_operation_does_not_block_on_read_lock(&shared, "mark_terminated", |shared| shared.mark_terminated());
 }
 
 #[test]
 fn failure_accounting_does_not_block_on_read_lock() {
   let shared = SystemStateShared::new(SystemState::new());
   let child = shared.allocate_pid();
-  assert_operation_does_not_block_on_read_lock(shared, "record_failure_outcome", move |shared| {
+  assert_operation_does_not_block_on_read_lock(&shared, "record_failure_outcome", move |shared| {
     let payload = FailurePayload::from_error(child, &ActorError::recoverable("boom"), None, Duration::ZERO);
     shared.record_failure_outcome(child, FailureOutcome::Stop, &payload);
   });
 
   let shared = SystemStateShared::new(SystemState::new());
   let child = shared.allocate_pid();
-  assert_operation_does_not_block_on_read_lock(shared, "report_failure", move |shared| {
+  assert_operation_does_not_block_on_read_lock(&shared, "report_failure", move |shared| {
     let payload = FailurePayload::from_error(child, &ActorError::recoverable("boom"), None, Duration::ZERO);
     shared.report_failure(payload);
   });

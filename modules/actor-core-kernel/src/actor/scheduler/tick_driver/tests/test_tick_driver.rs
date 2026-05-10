@@ -73,7 +73,7 @@ impl TickDriver for TestTickDriver {
     let exec_flag = running.clone();
     let exec_interval = (resolution / 10).max(Duration::from_millis(1));
     let mut executor = executor;
-    let exec_thread = match Builder::new().name("test-tick-driver-exec".into()).spawn(move || {
+    let Ok(exec_thread) = Builder::new().name("test-tick-driver-exec".into()).spawn(move || {
       loop {
         if !exec_flag.load(Ordering::Acquire) {
           break;
@@ -81,15 +81,12 @@ impl TickDriver for TestTickDriver {
         executor.drive_pending();
         thread::sleep(exec_interval);
       }
-    }) {
-      | Ok(handle) => handle,
-      | Err(_) => {
-        running.store(false, Ordering::Release);
-        if tick_thread.join().is_err() {
-          std::eprintln!("warn: test tick driver tick thread panicked during spawn-failure cleanup");
-        }
-        return Err(TickDriverError::SpawnFailed);
-      },
+    }) else {
+      running.store(false, Ordering::Release);
+      if tick_thread.join().is_err() {
+        std::eprintln!("warn: test tick driver tick thread panicked during spawn-failure cleanup");
+      }
+      return Err(TickDriverError::SpawnFailed);
     };
 
     Ok(TickDriverProvision {

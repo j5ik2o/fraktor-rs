@@ -191,8 +191,8 @@ fn resolve_call_count_starts_at_zero_and_increments_per_call() {
 fn resolve_call_count_increments_even_on_unknown_id() {
   let dispatchers = Dispatchers::new();
   assert_eq!(dispatchers.resolve_call_count(), 0);
-  let _ = dispatchers.resolve("missing");
-  let _ = dispatchers.resolve("missing");
+  assert!(dispatchers.resolve("missing").is_err());
+  assert!(dispatchers.resolve("missing").is_err());
   // 失敗 lookup も counter をインクリメントする (成功分だけでなく registry への
   // 全 call traffic を diagnostic に捕捉するため)。
   assert_eq!(dispatchers.resolve_call_count(), 2);

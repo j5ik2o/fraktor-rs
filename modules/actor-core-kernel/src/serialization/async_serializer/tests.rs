@@ -75,9 +75,8 @@ fn round_trip_async() {
     | Ok(v) => v,
     | Err(e) => panic!("from_binary_async failed: {e:?}"),
   };
-  let restored_str = match restored.downcast_ref::<String>() {
-    | Some(v) => v,
-    | None => panic!("downcast to String failed"),
+  let Some(restored_str) = restored.downcast_ref::<String>() else {
+    panic!("downcast to String failed");
   };
   assert_eq!(restored_str, "async_hello");
 }
@@ -103,9 +102,8 @@ fn empty_bytes_produces_empty_string() {
     | Ok(v) => v,
     | Err(e) => panic!("from_binary_async failed: {e:?}"),
   };
-  let restored_str = match restored.downcast_ref::<String>() {
-    | Some(v) => v,
-    | None => panic!("downcast to String failed"),
+  let Some(restored_str) = restored.downcast_ref::<String>() else {
+    panic!("downcast to String failed");
   };
   assert_eq!(restored_str, "");
 }

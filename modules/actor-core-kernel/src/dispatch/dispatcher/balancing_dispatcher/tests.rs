@@ -68,8 +68,8 @@ fn shared_queue_is_thread_safe_via_sequential_enqueue() {
   let dispatcher = make_dispatcher();
   let queue = dispatcher.shared_queue();
   use crate::dispatch::mailbox::{Envelope, MessageQueue};
-  let _ = queue.enqueue(Envelope::new(AnyMessage::new(1_u32)));
-  let _ = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
+  assert!(queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).is_ok());
+  assert!(queue.enqueue(Envelope::new(AnyMessage::new(2_u32))).is_ok());
   assert_eq!(queue.number_of_messages(), 2);
   assert!(queue.dequeue().is_some());
   assert!(queue.dequeue().is_some());

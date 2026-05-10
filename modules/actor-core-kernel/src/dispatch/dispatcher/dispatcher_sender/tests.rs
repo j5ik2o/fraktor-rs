@@ -357,10 +357,7 @@ fn end_to_end_send_via_actor_system_with_dispatcher_factory() {
 
   use crate::{
     actor::{Actor, ActorContext, actor_ref::ActorRef, error::ActorError, messaging::AnyMessageView, props::Props},
-    dispatch::{
-      dispatcher::{DefaultDispatcherFactory, MessageDispatcherFactory},
-      mailbox::MailboxPolicy,
-    },
+    dispatch::dispatcher::{DefaultDispatcherFactory, MessageDispatcherFactory},
     system::ActorSystem,
   };
 
@@ -387,7 +384,6 @@ fn end_to_end_send_via_actor_system_with_dispatcher_factory() {
   let seen_clone = Arc::clone(&seen);
   // Use the default mailbox config - the actor system already registers the default.
   let props = Props::from_fn(move || CountingActor { seen: seen_clone.clone() });
-  let _ = MailboxPolicy::unbounded(None);
   let pid = state.allocate_pid();
   let cell = ActorCell::create(state.clone(), pid, None, "e2e-test".to_string(), &props).expect("create cell");
   state.register_cell(cell.clone());
