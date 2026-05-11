@@ -1,6 +1,7 @@
 //! Snapshot of at-least-once delivery state.
 
 #[cfg(test)]
+#[path = "at_least_once_delivery_snapshot_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

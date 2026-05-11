@@ -14,6 +14,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 /// Trait for all ActorRef providers to implement.

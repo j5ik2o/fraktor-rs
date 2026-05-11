@@ -31,4 +31,5 @@ pub use segment::PathSegment;
 pub use uid::ActorUid;
 
 #[cfg(test)]
+#[path = "actor_path_test.rs"]
 mod tests;

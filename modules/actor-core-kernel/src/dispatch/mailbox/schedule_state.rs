@@ -3,6 +3,7 @@ use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use super::schedule_hints::ScheduleHints;
 
 #[cfg(test)]
+#[path = "schedule_state_test.rs"]
 mod tests;
 
 const FLAG_SCHEDULED: u32 = 1 << 0;

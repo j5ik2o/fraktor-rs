@@ -1,6 +1,7 @@
 //! Adapter payload wrapper for erased message values.
 
 #[cfg(test)]
+#[path = "adapter_payload_test.rs"]
 mod tests;
 
 use core::{

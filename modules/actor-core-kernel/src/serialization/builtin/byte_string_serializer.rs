@@ -1,6 +1,7 @@
 //! Built-in serializer for [`ByteString`].
 
 #[cfg(test)]
+#[path = "byte_string_serializer_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};

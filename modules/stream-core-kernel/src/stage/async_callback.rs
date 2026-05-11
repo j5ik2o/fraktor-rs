@@ -3,6 +3,7 @@ use alloc::{collections::VecDeque, vec::Vec};
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 #[cfg(test)]
+#[path = "async_callback_test.rs"]
 mod tests;
 
 /// Thread-safe callback queue used to hand over asynchronous signals to stage logic.

@@ -1,6 +1,7 @@
 //! [`Executor`] that spawns a fresh OS thread per submitted task.
 
 #[cfg(test)]
+#[path = "threaded_executor_test.rs"]
 mod tests;
 
 extern crate std;

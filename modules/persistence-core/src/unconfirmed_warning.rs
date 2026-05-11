@@ -1,6 +1,7 @@
 //! Warning payload for unconfirmed at-least-once deliveries.
 
 #[cfg(test)]
+#[path = "unconfirmed_warning_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

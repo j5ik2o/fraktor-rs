@@ -1,6 +1,7 @@
 //! Errors produced by the name registry.
 
 #[cfg(test)]
+#[path = "name_registry_error_test.rs"]
 mod tests;
 
 use alloc::string::String;

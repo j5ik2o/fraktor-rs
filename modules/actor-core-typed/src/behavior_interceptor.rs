@@ -1,6 +1,7 @@
 //! Cross-cutting concern interceptor for typed behaviors.
 
 #[cfg(test)]
+#[path = "behavior_interceptor_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::error::ActorError;

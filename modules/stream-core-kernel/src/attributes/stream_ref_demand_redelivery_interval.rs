@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_ref_demand_redelivery_interval_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

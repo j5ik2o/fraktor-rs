@@ -7,6 +7,7 @@
 //! compatible codec implementation.
 
 #[cfg(test)]
+#[path = "wire_test.rs"]
 mod tests;
 
 mod ack_codec;

@@ -1,6 +1,7 @@
 //! Runtime event stream supporting buffered fanout.
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

@@ -1,6 +1,7 @@
 //! Sequence number type for reliable delivery.
 
 #[cfg(test)]
+#[path = "seq_nr_test.rs"]
 mod tests;
 
 /// Monotonically increasing sequence number for reliable delivery.

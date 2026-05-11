@@ -9,6 +9,7 @@
 //! thread, improving CPU cache locality.
 
 #[cfg(test)]
+#[path = "affinity_executor_test.rs"]
 mod tests;
 
 extern crate std;

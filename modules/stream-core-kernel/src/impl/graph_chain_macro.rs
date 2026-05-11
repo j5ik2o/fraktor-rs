@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "graph_chain_macro_test.rs"]
 mod tests;
 
 /// Linear chain macro for `GraphDslBuilder`.

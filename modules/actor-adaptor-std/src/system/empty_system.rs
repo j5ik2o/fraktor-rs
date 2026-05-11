@@ -1,6 +1,7 @@
 //! Test-only constructors for no-op guardian actor systems backed by [`TestTickDriver`].
 
 #[cfg(test)]
+#[path = "empty_system_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, system::ActorSystem};

@@ -1,6 +1,7 @@
 //! Restart DSL facade for sink stages.
 
 #[cfg(test)]
+#[path = "restart_sink_test.rs"]
 mod tests;
 
 use super::{RestartConfig, sink::Sink};

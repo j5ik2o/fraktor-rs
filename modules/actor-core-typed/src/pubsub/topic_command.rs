@@ -1,6 +1,7 @@
 //! Commands accepted by the typed topic actor.
 
 #[cfg(test)]
+#[path = "topic_command_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::Pid;

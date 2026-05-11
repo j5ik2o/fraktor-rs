@@ -1,6 +1,7 @@
 //! Typed supervisor strategy factories.
 
 #[cfg(test)]
+#[path = "supervisor_strategy_test.rs"]
 mod tests;
 
 use core::time::Duration;

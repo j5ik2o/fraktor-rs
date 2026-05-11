@@ -5,6 +5,7 @@ use alloc::string::String;
 use super::outbound_envelope::OutboundEnvelope;
 
 #[cfg(test)]
+#[path = "outbound_event_test.rs"]
 mod tests;
 
 /// Event kinds that feed EventStream/metrics.

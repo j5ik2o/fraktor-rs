@@ -16,4 +16,5 @@ pub use null_sender::NullSender;
 pub use send_outcome::SendOutcome;
 
 #[cfg(test)]
+#[path = "actor_ref_test.rs"]
 mod tests;

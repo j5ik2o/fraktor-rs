@@ -7,6 +7,7 @@ mod receptionist_command;
 mod registered;
 mod service_key;
 #[cfg(test)]
+#[path = "receptionist_test.rs"]
 mod tests;
 
 pub use deregistered::Deregistered;

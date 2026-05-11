@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "connection_snapshot_test.rs"]
 mod tests;
 
 use crate::snapshot::{ConnectionState, LogicSnapshot};

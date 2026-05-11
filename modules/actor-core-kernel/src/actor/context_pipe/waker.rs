@@ -10,6 +10,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 use crate::actor::context_pipe::context_pipe_waker_handle_shared::ContextPipeWakerHandleShared;
 
 #[cfg(test)]
+#[path = "waker_test.rs"]
 mod tests;
 
 /// Helper that transforms system references into [`Waker`] instances.

@@ -1,6 +1,7 @@
 //! Public facade for durable producer queue protocol types.
 
 #[cfg(test)]
+#[path = "durable_producer_queue_test.rs"]
 mod tests;
 
 use crate::{

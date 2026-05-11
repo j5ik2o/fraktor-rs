@@ -1,6 +1,7 @@
 //! Tracks actor names within a parent scope.
 
 #[cfg(test)]
+#[path = "name_registry_test.rs"]
 mod tests;
 
 use alloc::{borrow::ToOwned, format, string::String};

@@ -8,6 +8,7 @@ mod test_tick_driver;
 mod tokio_tick_driver;
 
 #[cfg(test)]
+#[path = "tick_driver_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

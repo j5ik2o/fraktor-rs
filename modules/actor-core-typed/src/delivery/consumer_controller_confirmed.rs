@@ -1,6 +1,7 @@
 //! Confirmation message from the consumer to the consumer controller.
 
 #[cfg(test)]
+#[path = "consumer_controller_confirmed_test.rs"]
 mod tests;
 
 /// Confirmation that the consumer has processed the delivered message.

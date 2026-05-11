@@ -1,6 +1,7 @@
 //! Predefined capacity profiles for the scheduler.
 
 #[cfg(test)]
+#[path = "scheduler_capacity_profile_test.rs"]
 mod tests;
 
 /// Capacity settings shared between timer wheel, overflow pool, and on-close tasks.

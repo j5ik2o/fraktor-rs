@@ -7,6 +7,7 @@ use super::{BackoffSupervisorStrategy, SupervisorStrategy, backoff_options_data:
 use crate::actor::props::Props;
 
 #[cfg(test)]
+#[path = "backoff_on_failure_options_test.rs"]
 mod tests;
 
 /// Options for creating a backoff supervisor that restarts its child on failure.

@@ -1,0 +1,12 @@
+warning: モジュール宣言で `#[path = "..."]` 属性は禁止されています
+  --> $DIR/path_attribute_directory.rs:4:1
+   |
+LL | #[path = "path_attribute_directory/path_attribute_directory_test.rs"]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: ルール: 原則ルール: モジュールはファイル配置と `mod` 宣言だけで結線してください
+   = note: 詳細: 属性 `#[path = "path_attribute_directory/path_attribute_directory_test.rs"]` が設定されています
+   = help: モジュールファイルを規約どおりの場所に配置し、`mod foo;` として宣言してください
+   = note: `#[warn(no_parent_reexport)]` on by default
+
+warning: 1 warning emitted

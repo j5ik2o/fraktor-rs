@@ -1,6 +1,7 @@
 //! Snapshot metadata representation.
 
 #[cfg(test)]
+#[path = "snapshot_metadata_test.rs"]
 mod tests;
 
 use alloc::string::String;

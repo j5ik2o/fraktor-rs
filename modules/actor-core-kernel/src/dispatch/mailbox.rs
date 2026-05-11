@@ -143,6 +143,7 @@ pub use unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxTy
 pub use unbounded_stable_priority_message_queue::UnboundedStablePriorityMessageQueue;
 
 #[cfg(test)]
+#[path = "mailbox_test.rs"]
 mod tests;
 
 pub(crate) type UserQueueShared<T> = SyncQueueShared<T, VecDequeBackend<T>>;

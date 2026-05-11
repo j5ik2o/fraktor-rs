@@ -1,6 +1,7 @@
 use super::{StreamNotUsed, flow::Flow};
 
 #[cfg(test)]
+#[path = "bidi_flow_test.rs"]
 mod tests;
 
 /// Minimal bidirectional flow representation.

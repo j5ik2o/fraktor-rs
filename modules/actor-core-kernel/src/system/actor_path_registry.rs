@@ -1,6 +1,7 @@
 //! Registry for mapping PIDs to canonical actor paths.
 
 #[cfg(test)]
+#[path = "actor_path_registry_test.rs"]
 mod tests;
 
 use alloc::string::String;

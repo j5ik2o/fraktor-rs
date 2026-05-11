@@ -8,6 +8,7 @@ use crate::r#impl::{
 };
 
 #[cfg(test)]
+#[path = "default_operator_catalog_test.rs"]
 mod tests;
 
 const OPERATOR_COUNT: usize = 57;

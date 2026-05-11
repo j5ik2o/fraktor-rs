@@ -6,6 +6,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "flow_fragment_test.rs"]
 mod tests;
 
 /// Reusable linear flow fragment facade.

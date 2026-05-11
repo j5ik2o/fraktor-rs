@@ -18,6 +18,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "tick_feed_test.rs"]
 mod tests;
 
 /// Shared tick feed handle type.

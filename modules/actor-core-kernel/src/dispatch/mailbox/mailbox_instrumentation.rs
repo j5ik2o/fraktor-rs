@@ -1,6 +1,7 @@
 //! Mailbox metrics instrumentation and warning emission.
 
 #[cfg(test)]
+#[path = "mailbox_instrumentation_test.rs"]
 mod tests;
 
 use alloc::{format, string::String};

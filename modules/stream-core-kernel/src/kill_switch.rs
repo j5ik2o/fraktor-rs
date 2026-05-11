@@ -1,6 +1,7 @@
 use super::StreamError;
 
 #[cfg(test)]
+#[path = "kill_switch_test.rs"]
 mod tests;
 
 /// Shared contract for externally controlled stream termination handles.

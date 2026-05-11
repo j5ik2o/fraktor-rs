@@ -11,6 +11,7 @@ use fraktor_stream_core_kernel_rs::{
 };
 
 #[cfg(test)]
+#[path = "system_materializer_test.rs"]
 mod tests;
 
 /// Per-ActorSystem shared materializer (Pekko `SystemMaterializer` equivalent).

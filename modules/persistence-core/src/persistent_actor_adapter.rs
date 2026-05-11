@@ -1,6 +1,7 @@
 //! Adapter that turns a persistent actor into a runtime actor.
 
 #[cfg(test)]
+#[path = "persistent_actor_adapter_test.rs"]
 mod tests;
 
 use alloc::{format, string::ToString};

@@ -1,6 +1,7 @@
 //! Registry managing activated cluster kinds.
 
 #[cfg(test)]
+#[path = "kind_registry_test.rs"]
 mod tests;
 
 use alloc::{

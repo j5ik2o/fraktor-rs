@@ -5,6 +5,7 @@ use alloc::string::String;
 use super::GrainKey;
 
 #[cfg(test)]
+#[path = "virtual_actor_event_test.rs"]
 mod tests;
 
 /// Observable events for activation lifecycle.

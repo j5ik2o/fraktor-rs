@@ -1,6 +1,7 @@
 //! Cluster public API built on top of the cluster extension.
 
 #[cfg(test)]
+#[path = "cluster_api_test.rs"]
 mod tests;
 
 use alloc::{

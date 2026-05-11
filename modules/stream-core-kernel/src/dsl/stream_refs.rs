@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_refs_test.rs"]
 mod tests;
 
 use super::{Sink, Source, StageKind, StreamNotUsed};

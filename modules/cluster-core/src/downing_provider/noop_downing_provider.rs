@@ -1,6 +1,7 @@
 //! No-op downing strategy implementation.
 
 #[cfg(test)]
+#[path = "noop_downing_provider_test.rs"]
 mod tests;
 
 use super::DowningProvider;

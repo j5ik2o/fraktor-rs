@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_ref_protocol_test.rs"]
 mod tests;
 
 use alloc::borrow::Cow;

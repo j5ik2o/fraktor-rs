@@ -1,6 +1,7 @@
 //! Coordinates actors and infrastructure.
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 use alloc::{

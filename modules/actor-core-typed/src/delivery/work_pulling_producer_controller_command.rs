@@ -1,6 +1,7 @@
 //! Commands accepted by the work-pulling producer controller actor.
 
 #[cfg(test)]
+#[path = "work_pulling_producer_controller_command_test.rs"]
 mod tests;
 
 use crate::{

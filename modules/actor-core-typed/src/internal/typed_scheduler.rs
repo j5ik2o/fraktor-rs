@@ -1,6 +1,7 @@
 //! Typed scheduler facade bridging typed APIs to the untyped scheduler.
 
 #[cfg(test)]
+#[path = "typed_scheduler_test.rs"]
 mod tests;
 
 use core::time::Duration;

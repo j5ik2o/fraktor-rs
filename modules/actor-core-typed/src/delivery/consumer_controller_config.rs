@@ -3,6 +3,7 @@
 use core::time::Duration;
 
 #[cfg(test)]
+#[path = "consumer_controller_config_test.rs"]
 mod tests;
 
 /// Default flow-control window size.

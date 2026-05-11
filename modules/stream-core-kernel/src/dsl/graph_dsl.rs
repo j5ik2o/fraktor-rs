@@ -1,6 +1,7 @@
 use super::{Flow, Sink, Source, StreamGraph, StreamNotUsed, graph_dsl_builder::GraphDslBuilder};
 
 #[cfg(test)]
+#[path = "graph_dsl_test.rs"]
 mod tests;
 
 /// Namespace for building explicit stream graphs.

@@ -5,6 +5,7 @@ use super::{
 use crate::r#impl::GraphDslBuilder as InternalGraphDslBuilder;
 
 #[cfg(test)]
+#[path = "graph_dsl_builder_test.rs"]
 mod tests;
 
 /// Builder for composing stream graphs.

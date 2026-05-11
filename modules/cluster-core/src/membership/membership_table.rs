@@ -12,6 +12,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "membership_table_test.rs"]
 mod tests;
 
 /// Holds membership records and emits versioned deltas.

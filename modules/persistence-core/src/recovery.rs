@@ -1,6 +1,7 @@
 //! Recovery configuration.
 
 #[cfg(test)]
+#[path = "recovery_test.rs"]
 mod tests;
 
 use crate::snapshot_selection_criteria::SnapshotSelectionCriteria;

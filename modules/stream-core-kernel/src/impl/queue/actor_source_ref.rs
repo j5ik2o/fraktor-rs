@@ -1,6 +1,7 @@
 use crate::{BoundedSourceQueue, QueueOfferResult, StreamError};
 
 #[cfg(test)]
+#[path = "actor_source_ref_test.rs"]
 mod tests;
 
 /// Handle for sending elements into an actor-sourced stream.

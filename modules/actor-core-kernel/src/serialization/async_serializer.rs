@@ -1,6 +1,7 @@
 //! Asynchronous serializer trait.
 
 #[cfg(test)]
+#[path = "async_serializer_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};

@@ -35,6 +35,7 @@
 //! ```
 
 #[cfg(test)]
+#[path = "aws_ecs_cluster_provider_test.rs"]
 mod tests;
 
 use std::{

@@ -11,6 +11,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "broadcast_hub_test.rs"]
 mod tests;
 
 /// Minimal broadcast hub that fans out each element to every subscriber.

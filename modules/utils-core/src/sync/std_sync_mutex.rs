@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "std_sync_mutex_test.rs"]
 mod tests;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};

@@ -15,6 +15,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "pub_sub_broker_test.rs"]
 mod tests;
 
 #[derive(Debug, Clone)]

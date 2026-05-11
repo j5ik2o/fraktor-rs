@@ -55,6 +55,7 @@
 extern crate alloc;
 
 #[cfg(test)]
+#[path = "lib_test.rs"]
 mod tests;
 
 /// Actor primitives, contexts, references, scheduling, and supervision.

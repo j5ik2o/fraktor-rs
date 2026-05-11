@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "scope_test.rs"]
 mod tests;
 
 use super::RemoteScope;

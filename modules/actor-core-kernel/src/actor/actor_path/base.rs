@@ -9,6 +9,7 @@ use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use super::{ActorPathError, ActorPathParts, ActorUid, GuardianKind, PathSegment, formatter::ActorPathFormatter};
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 /// Canonical actor path with scheme/system/authority metadata.

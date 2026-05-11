@@ -7,6 +7,7 @@
 //! `SpinSyncMutex` so callers can run command methods through `&mut self`.
 
 #[cfg(test)]
+#[path = "dispatcher_core_test.rs"]
 mod tests;
 
 use alloc::string::{String, ToString};

@@ -1,6 +1,7 @@
 //! Signal-only interceptor specialization for typed behaviors.
 
 #[cfg(test)]
+#[path = "behavior_signal_interceptor_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::error::ActorError;

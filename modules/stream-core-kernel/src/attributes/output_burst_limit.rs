@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "output_burst_limit_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

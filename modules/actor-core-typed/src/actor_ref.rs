@@ -14,6 +14,7 @@ use fraktor_actor_core_kernel_rs::actor::{
 use crate::dsl::{StatusReply, TypedAskResponse};
 
 #[cfg(test)]
+#[path = "actor_ref_test.rs"]
 mod tests;
 
 /// Provides a typed facade over [`ActorRef`].

@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "framing_test.rs"]
 mod tests;
 
 const SIMPLE_FRAMING_LENGTH_FIELD_SIZE: usize = 4;

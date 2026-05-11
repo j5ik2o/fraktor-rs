@@ -1,6 +1,7 @@
 //! Snapshot selection criteria.
 
 #[cfg(test)]
+#[path = "snapshot_selection_criteria_test.rs"]
 mod tests;
 
 use core::cmp;

@@ -5,6 +5,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use crate::{QueueOfferResult, StreamError};
 
 #[cfg(test)]
+#[path = "source_queue_test.rs"]
 mod tests;
 
 struct SourceQueueState<T> {

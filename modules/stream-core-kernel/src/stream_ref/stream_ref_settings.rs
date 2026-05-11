@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_ref_settings_test.rs"]
 mod tests;
 
 const DEFAULT_BUFFER_CAPACITY: usize = 32;

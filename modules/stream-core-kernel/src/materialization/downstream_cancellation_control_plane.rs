@@ -7,6 +7,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use super::downstream_cancellation_route::{DownstreamCancellationRoute, ReservedDownstreamCancellationTarget};
 
 #[cfg(test)]
+#[path = "downstream_cancellation_control_plane_test.rs"]
 mod tests;
 
 pub(crate) struct DownstreamCancellationControlPlane {

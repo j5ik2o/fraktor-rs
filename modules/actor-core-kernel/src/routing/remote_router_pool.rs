@@ -1,6 +1,7 @@
 //! Type-erased pool configuration accepted by `RemoteRouterConfig`.
 
 #[cfg(test)]
+#[path = "remote_router_pool_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

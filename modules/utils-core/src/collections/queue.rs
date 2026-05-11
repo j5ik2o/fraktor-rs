@@ -11,6 +11,7 @@ mod overflow_policy;
 mod queue_error;
 mod sync_queue;
 #[cfg(test)]
+#[path = "queue_test.rs"]
 mod tests;
 pub use offer_outcome::OfferOutcome;
 pub use overflow_policy::OverflowPolicy;

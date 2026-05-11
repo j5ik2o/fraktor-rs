@@ -1,6 +1,7 @@
 //! Read-side adapter abstraction for replay payload conversion.
 
 #[cfg(test)]
+#[path = "read_event_adapter_test.rs"]
 mod tests;
 
 use core::any::Any;

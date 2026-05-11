@@ -17,6 +17,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "group_router_test.rs"]
 mod tests;
 
 /// Configures a group router behavior.

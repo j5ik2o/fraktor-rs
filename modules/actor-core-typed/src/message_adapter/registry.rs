@@ -1,6 +1,7 @@
 //! Adapter registry maintained per typed actor.
 
 #[cfg(test)]
+#[path = "registry_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

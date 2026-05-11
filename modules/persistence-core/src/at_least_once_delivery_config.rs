@@ -1,6 +1,7 @@
 //! Configuration for at-least-once delivery.
 
 #[cfg(test)]
+#[path = "at_least_once_delivery_config_test.rs"]
 mod tests;
 
 use core::time::Duration;

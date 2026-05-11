@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "max_fixed_buffer_size_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

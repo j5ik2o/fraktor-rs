@@ -1,6 +1,7 @@
 //! Trait implemented by actor reference senders.
 
 #[cfg(test)]
+#[path = "actor_ref_sender_test.rs"]
 mod tests;
 
 use super::send_outcome::SendOutcome;

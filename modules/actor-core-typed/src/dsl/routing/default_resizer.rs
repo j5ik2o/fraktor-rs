@@ -3,6 +3,7 @@
 use super::resizer::Resizer;
 
 #[cfg(test)]
+#[path = "default_resizer_test.rs"]
 mod tests;
 
 /// A simple threshold-based resizer that keeps the pool within bounds.

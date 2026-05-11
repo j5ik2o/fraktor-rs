@@ -1,6 +1,7 @@
 //! Actor selection path element carried by remote selection messages.
 
 #[cfg(test)]
+#[path = "selection_path_element_test.rs"]
 mod tests;
 
 use alloc::string::String;

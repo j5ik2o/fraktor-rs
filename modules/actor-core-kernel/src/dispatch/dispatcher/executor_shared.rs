@@ -22,6 +22,7 @@
 //! lock.
 
 #[cfg(test)]
+#[path = "executor_shared_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

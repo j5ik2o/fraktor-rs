@@ -13,6 +13,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use crate::{DynValue, StreamError};
 
 #[cfg(test)]
+#[path = "island_boundary_test.rs"]
 mod tests;
 
 /// Default capacity for inter-island boundary buffers.

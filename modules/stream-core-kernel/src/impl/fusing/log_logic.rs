@@ -5,6 +5,7 @@ use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
 use crate::FailureAction;
 
 #[cfg(test)]
+#[path = "log_logic_test.rs"]
 mod tests;
 
 pub(crate) struct LogLogic<In> {

@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "eager_terminate_input_test.rs"]
 mod tests;
 
 use super::{InHandler, StageContext};

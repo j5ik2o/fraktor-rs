@@ -2,6 +2,7 @@
 //! [`RemoteTransport`] port.
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 use alloc::{

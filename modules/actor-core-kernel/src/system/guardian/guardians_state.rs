@@ -1,6 +1,7 @@
 //! Guardian slots tracking PIDs.
 
 #[cfg(test)]
+#[path = "guardians_state_test.rs"]
 mod tests;
 
 use super::guardian_kind::GuardianKind;

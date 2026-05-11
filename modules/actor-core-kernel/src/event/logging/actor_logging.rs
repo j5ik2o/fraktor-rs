@@ -1,6 +1,7 @@
 //! Classic actor logging facade.
 
 #[cfg(test)]
+#[path = "actor_logging_test.rs"]
 mod tests;
 
 use crate::{actor::ActorContext, event::logging::LoggingAdapter};

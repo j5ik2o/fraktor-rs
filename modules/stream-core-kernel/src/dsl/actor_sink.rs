@@ -6,6 +6,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "actor_sink_test.rs"]
 mod tests;
 
 /// Actor-oriented sink factory utilities.

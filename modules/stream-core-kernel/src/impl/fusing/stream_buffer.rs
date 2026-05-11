@@ -6,6 +6,7 @@ use fraktor_utils_core_rs::{
 use super::{StreamError, stream_buffer_config::StreamBufferConfig};
 
 #[cfg(test)]
+#[path = "stream_buffer_test.rs"]
 mod tests;
 
 /// Queue-backed buffer used for backpressure.

@@ -3,6 +3,7 @@
 extern crate std;
 
 #[cfg(test)]
+#[path = "tracing_logger_subscriber_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::ToString};

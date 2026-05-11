@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "totally_ignorant_input_test.rs"]
 mod tests;
 
 use super::{InHandler, StageContext};

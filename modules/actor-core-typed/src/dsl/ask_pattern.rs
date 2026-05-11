@@ -1,6 +1,7 @@
 //! Standalone ask helpers mirroring Pekko's `AskPattern`.
 
 #[cfg(test)]
+#[path = "ask_pattern_test.rs"]
 mod tests;
 
 use core::time::Duration;

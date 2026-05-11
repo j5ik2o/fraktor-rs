@@ -1,6 +1,7 @@
 //! Journal actor implementation.
 
 #[cfg(test)]
+#[path = "journal_actor_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};

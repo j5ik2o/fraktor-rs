@@ -4,6 +4,7 @@ use super::{SharedKillSwitch, UniqueKillSwitch};
 use crate::r#impl::materialization::StreamShared;
 
 #[cfg(test)]
+#[path = "materialized_test.rs"]
 mod tests;
 
 /// Result of materializing a stream graph.

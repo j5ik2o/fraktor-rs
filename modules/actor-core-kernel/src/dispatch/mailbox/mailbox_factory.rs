@@ -2,6 +2,7 @@
 //! metadata consulted by the actor-cell spawn path.
 
 #[cfg(test)]
+#[path = "mailbox_factory_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

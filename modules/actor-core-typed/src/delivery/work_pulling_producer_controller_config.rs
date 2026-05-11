@@ -5,6 +5,7 @@ use core::time::Duration;
 use crate::delivery::ProducerControllerConfig;
 
 #[cfg(test)]
+#[path = "work_pulling_producer_controller_config_test.rs"]
 mod tests;
 
 /// Default buffer size for buffered messages awaiting worker demand.

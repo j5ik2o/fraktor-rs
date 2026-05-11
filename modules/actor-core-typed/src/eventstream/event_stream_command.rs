@@ -1,6 +1,7 @@
 //! Command type for the typed system event stream.
 
 #[cfg(test)]
+#[path = "event_stream_command_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::{actor::actor_ref::ActorRef, event::stream::EventStreamEvent};

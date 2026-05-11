@@ -1,6 +1,7 @@
 //! Metrics probe for scheduler tick feed.
 
 #[cfg(test)]
+#[path = "tick_metrics_probe_test.rs"]
 mod tests;
 
 use core::time::Duration;

@@ -1,6 +1,7 @@
 //! Bounded deque-based message queue with capacity enforcement and front insertion.
 
 #[cfg(test)]
+#[path = "bounded_deque_message_queue_test.rs"]
 mod tests;
 
 use alloc::collections::VecDeque;

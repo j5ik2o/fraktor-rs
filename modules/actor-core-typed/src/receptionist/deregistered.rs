@@ -1,6 +1,7 @@
 //! Acknowledgement type sent when an actor is deregistered from the receptionist.
 
 #[cfg(test)]
+#[path = "deregistered_test.rs"]
 mod tests;
 
 use alloc::string::String;

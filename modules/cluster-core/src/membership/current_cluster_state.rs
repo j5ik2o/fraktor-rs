@@ -1,6 +1,7 @@
 //! Current cluster state snapshot used by cluster events.
 
 #[cfg(test)]
+#[path = "current_cluster_state_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};

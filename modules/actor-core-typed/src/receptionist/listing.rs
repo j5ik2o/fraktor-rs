@@ -1,6 +1,7 @@
 //! Snapshot of actor references registered under a service key.
 
 #[cfg(test)]
+#[path = "listing_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeSet, string::String, vec::Vec};

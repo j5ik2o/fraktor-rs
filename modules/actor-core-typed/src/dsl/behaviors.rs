@@ -1,6 +1,7 @@
 //! Functional builders for typed behaviors.
 
 #[cfg(test)]
+#[path = "behaviors_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::BTreeMap, string::String};

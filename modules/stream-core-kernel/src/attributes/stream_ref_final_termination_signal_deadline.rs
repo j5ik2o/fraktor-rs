@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_ref_final_termination_signal_deadline_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

@@ -1,6 +1,7 @@
 //! Inbound I/O worker that forwards decoded TCP frames to `Remote`.
 
 #[cfg(test)]
+#[path = "inbound_dispatch_test.rs"]
 mod tests;
 
 use fraktor_remote_core_rs::{

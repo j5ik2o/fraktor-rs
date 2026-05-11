@@ -1,6 +1,7 @@
 //! Generic setup wrapper for installing typed extensions during bootstrap.
 
 #[cfg(test)]
+#[path = "extension_setup_test.rs"]
 mod tests;
 
 use core::any::TypeId;

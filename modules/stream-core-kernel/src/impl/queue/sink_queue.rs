@@ -3,6 +3,7 @@ use alloc::collections::VecDeque;
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 #[cfg(test)]
+#[path = "sink_queue_test.rs"]
 mod tests;
 
 struct SinkQueueInner<T> {

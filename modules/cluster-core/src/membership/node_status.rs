@@ -1,6 +1,7 @@
 //! Node status representation.
 
 #[cfg(test)]
+#[path = "node_status_test.rs"]
 mod tests;
 
 /// Represents the membership state of a cluster node.

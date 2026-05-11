@@ -1,6 +1,7 @@
 //! Bounded stash helper for typed behaviors.
 
 #[cfg(test)]
+#[path = "stash_buffer_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

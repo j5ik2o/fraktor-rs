@@ -1,6 +1,7 @@
 //! Remoting lifecycle notifications pushed through the event stream.
 
 #[cfg(test)]
+#[path = "remoting_lifecycle_event_test.rs"]
 mod tests;
 
 use alloc::string::String;

@@ -1,6 +1,7 @@
 //! Serialization extension wiring for actor systems.
 
 #[cfg(test)]
+#[path = "extension_test.rs"]
 mod tests;
 
 use alloc::{

@@ -1,6 +1,7 @@
 //! Type-erased routing logic used by remote router configurations.
 
 #[cfg(test)]
+#[path = "remote_routing_logic_test.rs"]
 mod tests;
 
 use crate::{

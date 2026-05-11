@@ -1,6 +1,7 @@
 //! Command messages for the Receptionist service discovery actor.
 
 #[cfg(test)]
+#[path = "receptionist_command_test.rs"]
 mod tests;
 
 use alloc::string::String;

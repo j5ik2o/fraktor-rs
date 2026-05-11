@@ -3,6 +3,7 @@
 use alloc::{string::String, vec::Vec};
 
 #[cfg(test)]
+#[path = "activation_record_test.rs"]
 mod tests;
 
 /// Captures activation state for transfer.

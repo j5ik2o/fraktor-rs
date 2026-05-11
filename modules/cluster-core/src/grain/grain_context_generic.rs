@@ -1,6 +1,7 @@
 //! Default grain execution context.
 
 #[cfg(test)]
+#[path = "grain_context_generic_test.rs"]
 mod tests;
 
 use super::GrainContext;

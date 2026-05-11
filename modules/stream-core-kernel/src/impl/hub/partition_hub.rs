@@ -11,6 +11,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "partition_hub_test.rs"]
 mod tests;
 
 /// Combined state to avoid TOCTOU races between active_consumers/partitions checks.

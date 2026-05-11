@@ -7,6 +7,7 @@
 //! dispatcher-pekko-1n-redesign change.
 
 #[cfg(test)]
+#[path = "shared_message_queue_test.rs"]
 mod tests;
 
 use alloc::collections::VecDeque;

@@ -1,6 +1,7 @@
 //! Event variants delivered through the event stream.
 
 #[cfg(test)]
+#[path = "event_stream_event_test.rs"]
 mod tests;
 
 use alloc::string::String;

@@ -14,6 +14,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "virtual_actor_registry_test.rs"]
 mod tests;
 
 struct ActivationEntry {

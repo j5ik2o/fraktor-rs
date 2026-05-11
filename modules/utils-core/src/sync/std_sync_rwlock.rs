@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "std_sync_rwlock_test.rs"]
 mod tests;
 
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};

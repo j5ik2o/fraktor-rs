@@ -1,6 +1,7 @@
 //! Adapter reference handle managed by the owning actor cell.
 
 #[cfg(test)]
+#[path = "adapter_ref_handle_test.rs"]
 mod tests;
 
 use fraktor_utils_core_rs::sync::ArcShared;

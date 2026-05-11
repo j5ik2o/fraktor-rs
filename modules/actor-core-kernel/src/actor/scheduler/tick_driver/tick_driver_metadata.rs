@@ -1,6 +1,7 @@
 //! Metadata for active tick driver configuration.
 
 #[cfg(test)]
+#[path = "tick_driver_metadata_test.rs"]
 mod tests;
 
 use fraktor_utils_core_rs::time::TimerInstant;

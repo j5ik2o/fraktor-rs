@@ -4,6 +4,7 @@ use super::{SharedKillSwitch, unique_kill_switch::UniqueKillSwitch};
 use crate::dsl::{BidiFlow, Flow};
 
 #[cfg(test)]
+#[path = "kill_switches_test.rs"]
 mod tests;
 
 /// Factory functions for creating kill switches.

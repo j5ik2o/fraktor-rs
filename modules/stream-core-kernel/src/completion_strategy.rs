@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "completion_strategy_test.rs"]
 mod tests;
 
 /// Completion strategy for actor-sourced streams.

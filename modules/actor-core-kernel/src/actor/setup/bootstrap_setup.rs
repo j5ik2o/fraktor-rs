@@ -1,6 +1,7 @@
 //! Bootstrap-time actor-system setup facade.
 
 #[cfg(test)]
+#[path = "bootstrap_setup_test.rs"]
 mod tests;
 
 use alloc::string::String;

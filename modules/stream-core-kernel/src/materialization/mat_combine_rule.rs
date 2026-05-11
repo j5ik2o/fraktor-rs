@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "mat_combine_rule_test.rs"]
 mod tests;
 
 use super::MatCombine;

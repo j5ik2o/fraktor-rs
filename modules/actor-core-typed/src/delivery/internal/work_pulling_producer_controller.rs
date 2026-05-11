@@ -1,6 +1,7 @@
 //! Internal implementation of the work-pulling producer controller.
 
 #[cfg(test)]
+#[path = "work_pulling_producer_controller_test.rs"]
 mod tests;
 
 use alloc::{

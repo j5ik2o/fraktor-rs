@@ -20,9 +20,9 @@ paths:
   `pub use` 集約は書かない。
 - 親モジュールの `pub use` は `module-wiring-lint` の wiring 用途に限る。
   子が公開型を定義し、親は必要な子型・シンボルだけを最小限露出する。
-- テストは `tests.rs` 分離（`tests-location-lint`、インライン
-  `#[cfg(test)] mod tests {}` 禁止、対象ファイル隣に `tests.rs` を置き
-  `mod tests;` で取り込む）
+- テストは sibling `*_test.rs` 分離（`tests-location-lint`、インライン
+  `#[cfg(test)] mod tests {}` 禁止、対象ファイル隣に `<module>_test.rs` を置き
+  `#[cfg(test)] #[path = "<module>_test.rs"] mod tests;` で取り込む）
 - `use` 宣言はファイル先頭に集約（`use-placement-lint`、関数内 `use` /
   宣言の合間挿入禁止）
 - コード本体での FQCN 禁止（`redundant-fqcn-lint`、`use` で取り込んでから

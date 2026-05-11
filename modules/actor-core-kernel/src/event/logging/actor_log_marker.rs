@@ -1,6 +1,7 @@
 //! Marker helpers for classic actor logging.
 
 #[cfg(test)]
+#[path = "actor_log_marker_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeMap, string::String};

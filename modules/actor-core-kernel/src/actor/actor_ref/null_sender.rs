@@ -1,6 +1,7 @@
 //! Sender that rejects all messages.
 
 #[cfg(test)]
+#[path = "null_sender_test.rs"]
 mod tests;
 
 use crate::actor::{

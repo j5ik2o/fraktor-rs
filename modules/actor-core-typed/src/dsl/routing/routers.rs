@@ -1,6 +1,7 @@
 //! Pekko-inspired router factories.
 
 #[cfg(test)]
+#[path = "routers_test.rs"]
 mod tests;
 
 use core::time::Duration;

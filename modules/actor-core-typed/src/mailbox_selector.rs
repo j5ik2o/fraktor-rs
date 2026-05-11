@@ -1,6 +1,7 @@
 //! Mailbox selection strategy for typed props.
 
 #[cfg(test)]
+#[path = "mailbox_selector_test.rs"]
 mod tests;
 
 use alloc::string::String;

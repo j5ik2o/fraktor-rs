@@ -1,6 +1,7 @@
 //! Built-in serializer for miscellaneous remote messages (subset of Pekko `MiscMessageSerializer`).
 
 #[cfg(test)]
+#[path = "misc_message_serializer_test.rs"]
 mod tests;
 
 use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};

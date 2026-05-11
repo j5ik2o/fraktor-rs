@@ -1,6 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 #[cfg(test)]
+#[path = "timer_graph_stage_logic_test.rs"]
 mod tests;
 
 /// Timer helper that tracks one-shot timers in graph stage logic.

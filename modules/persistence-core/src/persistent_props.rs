@@ -1,6 +1,7 @@
 //! Public entry points for persistent actor construction.
 
 #[cfg(test)]
+#[path = "persistent_props_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::{

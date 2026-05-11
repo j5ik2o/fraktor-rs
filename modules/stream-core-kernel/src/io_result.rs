@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "io_result_test.rs"]
 mod tests;
 
 use super::StreamError;

@@ -1,6 +1,7 @@
 //! Membership coordinator orchestrating gossip, failure detection, and topology updates.
 
 #[cfg(test)]
+#[path = "membership_coordinator_test.rs"]
 mod tests;
 
 use alloc::{

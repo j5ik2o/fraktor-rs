@@ -21,6 +21,7 @@
 //! when it is polled after shutdown.
 
 #[cfg(test)]
+#[path = "extension_test.rs"]
 mod tests;
 
 mod event_publisher;

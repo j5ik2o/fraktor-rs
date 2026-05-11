@@ -19,6 +19,8 @@ mod tick_feed;
 mod tick_metrics;
 mod tick_metrics_probe;
 
+#[cfg(test)]
+#[path = "tick_driver_test.rs"]
 pub(crate) mod tests;
 
 pub use auto_driver_metadata::{AutoDriverMetadata, AutoProfileKind};

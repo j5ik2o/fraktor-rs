@@ -6,6 +6,7 @@ use super::RestartLogConfig;
 use crate::r#impl::StreamError;
 
 #[cfg(test)]
+#[path = "restart_config_test.rs"]
 mod tests;
 
 type RestartPredicate = dyn Fn(&StreamError) -> bool + Send + Sync;

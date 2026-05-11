@@ -1,6 +1,7 @@
 //! Transport message used to deliver payloads through actor selection paths.
 
 #[cfg(test)]
+#[path = "actor_selection_message_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

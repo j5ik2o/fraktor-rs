@@ -5,6 +5,7 @@
 //! `DispatcherCore`. The Pekko equivalent is `org.apache.pekko.dispatch.Dispatcher`.
 
 #[cfg(test)]
+#[path = "default_dispatcher_test.rs"]
 mod tests;
 
 use super::{

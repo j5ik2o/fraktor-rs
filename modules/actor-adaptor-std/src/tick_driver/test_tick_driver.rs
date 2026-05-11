@@ -3,6 +3,7 @@
 extern crate std;
 
 #[cfg(test)]
+#[path = "test_tick_driver_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

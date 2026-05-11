@@ -10,6 +10,7 @@ use fraktor_utils_core_rs::sync::SpinSyncMutex;
 use super::resizer::Resizer;
 
 #[cfg(test)]
+#[path = "optimal_size_exploring_resizer_test.rs"]
 mod tests;
 
 // ---------------------------------------------------------------------------

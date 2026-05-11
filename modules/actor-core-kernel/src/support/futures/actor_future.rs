@@ -1,6 +1,7 @@
 //! Minimal future primitive used by the ask pattern.
 
 #[cfg(test)]
+#[path = "actor_future_test.rs"]
 mod tests;
 
 use core::{marker::PhantomData, task::Waker};

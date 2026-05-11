@@ -1,6 +1,7 @@
 //! Responses from a router actor.
 
 #[cfg(test)]
+#[path = "router_response_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

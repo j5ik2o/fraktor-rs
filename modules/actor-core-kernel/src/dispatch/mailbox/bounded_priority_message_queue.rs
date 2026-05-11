@@ -1,6 +1,7 @@
 //! Bounded priority message queue backed by a binary heap with capacity control.
 
 #[cfg(test)]
+#[path = "bounded_priority_message_queue_test.rs"]
 mod tests;
 
 use core::num::NonZeroUsize;

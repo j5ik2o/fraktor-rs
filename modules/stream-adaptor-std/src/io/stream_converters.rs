@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_converters_test.rs"]
 mod tests;
 
 extern crate std;

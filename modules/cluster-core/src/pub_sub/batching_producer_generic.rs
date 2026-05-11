@@ -1,6 +1,7 @@
 //! Batching producer for pub/sub publishes.
 
 #[cfg(test)]
+#[path = "batching_producer_generic_test.rs"]
 mod tests;
 
 use alloc::{format, vec::Vec};

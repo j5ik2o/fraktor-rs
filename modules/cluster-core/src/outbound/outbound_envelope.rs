@@ -3,6 +3,7 @@
 use alloc::{string::String, vec::Vec};
 
 #[cfg(test)]
+#[path = "outbound_envelope_test.rs"]
 mod tests;
 
 /// Payload headed to a remote PID.

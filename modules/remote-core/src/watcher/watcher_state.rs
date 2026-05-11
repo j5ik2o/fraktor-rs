@@ -1,6 +1,7 @@
 //! Pure state type backing the remote watcher.
 
 #[cfg(test)]
+#[path = "watcher_state_test.rs"]
 mod tests;
 
 use alloc::{

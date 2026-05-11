@@ -1,6 +1,7 @@
 //! Confirmation qualifier for durable producer queue.
 
 #[cfg(test)]
+#[path = "confirmation_qualifier_test.rs"]
 mod tests;
 
 use alloc::string::String;

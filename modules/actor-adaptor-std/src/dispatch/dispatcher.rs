@@ -1,6 +1,7 @@
 //! Std-layer dispatch executors targeting the `Executor` trait.
 
 #[cfg(all(test, feature = "tokio-executor"))]
+#[path = "dispatcher_test.rs"]
 mod tests;
 
 mod affinity_executor;

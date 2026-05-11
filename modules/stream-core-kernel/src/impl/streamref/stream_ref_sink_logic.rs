@@ -8,6 +8,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "stream_ref_sink_logic_test.rs"]
 mod tests;
 
 enum StreamRefSinkSubscription {

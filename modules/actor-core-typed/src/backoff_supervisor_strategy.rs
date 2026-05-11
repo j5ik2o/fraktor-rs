@@ -1,6 +1,7 @@
 //! Typed backoff supervision facade.
 
 #[cfg(test)]
+#[path = "backoff_supervisor_strategy_test.rs"]
 mod tests;
 
 use core::time::Duration;

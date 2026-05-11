@@ -1,6 +1,7 @@
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 #[cfg(test)]
+#[path = "stream_island_drive_gate_test.rs"]
 mod tests;
 
 /// Coalescing gate for `Drive` commands targeting one stream island actor.

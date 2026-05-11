@@ -9,6 +9,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "unique_kill_switch_test.rs"]
 mod tests;
 
 /// Kill switch that controls a single stream instance.

@@ -1,6 +1,7 @@
 //! ActorRefSender implementation for runtime-owned message adapters.
 
 #[cfg(test)]
+#[path = "adapter_ref_sender_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, format};

@@ -13,6 +13,7 @@ use super::{identity_event::IdentityEvent, resolve_error::ResolveError, resolve_
 use crate::membership::{MembershipDelta, MembershipTable, NodeStatus};
 
 #[cfg(test)]
+#[path = "identity_table_test.rs"]
 mod tests;
 
 /// Resolves PIDs based on membership state.

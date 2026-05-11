@@ -7,6 +7,7 @@
 //! version under YAGNI.
 
 #[cfg(test)]
+#[path = "dispatcher_config_test.rs"]
 mod tests;
 
 use alloc::string::String;

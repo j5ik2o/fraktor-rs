@@ -1,6 +1,7 @@
 //! Errors that can occur while spawning a new actor.
 
 #[cfg(test)]
+#[path = "spawn_error_test.rs"]
 mod tests;
 
 extern crate alloc;

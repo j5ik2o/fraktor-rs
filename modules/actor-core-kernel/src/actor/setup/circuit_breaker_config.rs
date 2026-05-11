@@ -1,6 +1,7 @@
 //! Circuit-breaker configuration carried by actor-system bootstrap.
 
 #[cfg(test)]
+#[path = "circuit_breaker_config_test.rs"]
 mod tests;
 
 use core::time::Duration;

@@ -1,6 +1,7 @@
 //! Minimal pool router for cluster routee authorities.
 
 #[cfg(test)]
+#[path = "cluster_router_pool_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

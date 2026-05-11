@@ -1,6 +1,7 @@
 //! Unbounded control-aware message queue with dual-queue prioritisation.
 
 #[cfg(test)]
+#[path = "unbounded_control_aware_message_queue_test.rs"]
 mod tests;
 
 use alloc::collections::VecDeque;

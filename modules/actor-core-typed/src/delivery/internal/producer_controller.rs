@@ -1,6 +1,7 @@
 //! Internal implementation of the point-to-point reliable delivery producer controller.
 
 #[cfg(test)]
+#[path = "producer_controller_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

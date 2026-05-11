@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::BTreeSet, string::String, vec::Vec};

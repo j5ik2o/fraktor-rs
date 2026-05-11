@@ -1,6 +1,7 @@
 //! Durable state operation errors.
 
 #[cfg(test)]
+#[path = "durable_state_error_test.rs"]
 mod tests;
 
 use alloc::string::String;

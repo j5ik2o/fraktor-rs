@@ -8,6 +8,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "scheduler_tick_executor_test.rs"]
 mod tests;
 
 /// Executes scheduler work by draining ticks from the feed.

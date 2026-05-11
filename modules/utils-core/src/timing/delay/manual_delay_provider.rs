@@ -4,6 +4,7 @@ use core::time::Duration;
 use super::{DelayProvider, delay_future::DelayFuture, delay_trigger::DelayTrigger};
 
 #[cfg(test)]
+#[path = "manual_delay_provider_test.rs"]
 mod tests;
 
 /// Manual provider used in tests to deterministically complete delay futures.

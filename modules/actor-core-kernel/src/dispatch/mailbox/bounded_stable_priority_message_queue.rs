@@ -4,6 +4,7 @@
 //! priority are dequeued in FIFO (insertion) order.
 
 #[cfg(test)]
+#[path = "bounded_stable_priority_message_queue_test.rs"]
 mod tests;
 
 use core::num::NonZeroUsize;

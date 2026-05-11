@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use super::StreamError;
 
 #[cfg(test)]
+#[path = "test_sink_probe_test.rs"]
 mod tests;
 
 /// Test probe that acts as a demand-aware sink.

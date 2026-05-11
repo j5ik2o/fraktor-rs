@@ -1,6 +1,7 @@
 use super::{TestSinkProbe, TestSourceProbe};
 
 #[cfg(test)]
+#[path = "stream_fuzz_runner_test.rs"]
 mod tests;
 
 /// Deterministic fuzz runner for probe-based stream interaction tests.

@@ -5,6 +5,7 @@
 //! `org.apache.pekko.dispatch.BalancingDispatcher`.
 
 #[cfg(test)]
+#[path = "balancing_dispatcher_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};

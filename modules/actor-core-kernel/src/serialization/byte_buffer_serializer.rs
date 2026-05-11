@@ -1,6 +1,7 @@
 //! Buffer-reuse serializer trait.
 
 #[cfg(test)]
+#[path = "byte_buffer_serializer_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};

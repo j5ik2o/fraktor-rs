@@ -1,6 +1,7 @@
 //! Owned representation of a dynamically typed message.
 
 #[cfg(test)]
+#[path = "any_message_test.rs"]
 mod tests;
 
 use alloc::fmt::{Debug, Formatter, Result as FmtResult};

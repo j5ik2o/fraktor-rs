@@ -1,6 +1,7 @@
 //! Pekko-compatible death pact exception for typed actors.
 
 #[cfg(test)]
+#[path = "death_pact_error_test.rs"]
 mod tests;
 
 use core::fmt::{Display, Formatter, Result as FmtResult};

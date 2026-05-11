@@ -35,6 +35,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "flow_test.rs"]
 mod tests;
 
 #[cfg(feature = "compression")]

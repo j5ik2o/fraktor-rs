@@ -1,6 +1,7 @@
 //! Unified address representation for actor systems.
 
 #[cfg(test)]
+#[path = "address_test.rs"]
 mod tests;
 
 use alloc::string::String;

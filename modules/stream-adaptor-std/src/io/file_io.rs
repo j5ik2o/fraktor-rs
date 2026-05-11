@@ -1,6 +1,7 @@
 extern crate std;
 
 #[cfg(test)]
+#[path = "file_io_test.rs"]
 mod tests;
 
 use std::{

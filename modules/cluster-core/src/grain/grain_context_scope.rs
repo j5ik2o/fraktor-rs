@@ -3,6 +3,7 @@
 use super::GrainContextImpl;
 
 #[cfg(test)]
+#[path = "grain_context_scope_test.rs"]
 mod tests;
 
 /// Scope guard that controls the lifetime of a grain context.

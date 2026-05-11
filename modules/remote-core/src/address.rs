@@ -4,6 +4,7 @@
 //! path URI scheme, expressed without any `std` or transport dependency.
 
 #[cfg(test)]
+#[path = "address_test.rs"]
 mod tests;
 
 mod base;

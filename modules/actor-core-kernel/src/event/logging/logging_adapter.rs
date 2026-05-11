@@ -1,6 +1,7 @@
 //! Classic logging adapter backed by the runtime event stream.
 
 #[cfg(test)]
+#[path = "logging_adapter_test.rs"]
 mod tests;
 
 use alloc::{borrow::ToOwned, collections::BTreeMap, string::String};

@@ -24,6 +24,7 @@ use super::{
 use crate::{ClusterApi, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity};
 
 #[cfg(test)]
+#[path = "grain_ref_test.rs"]
 mod tests;
 
 /// Grain reference entry point.

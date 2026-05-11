@@ -13,6 +13,7 @@
 //! the time source.
 
 #[cfg(test)]
+#[path = "failure_detector_test.rs"]
 mod tests;
 
 mod deadline_failure_detector;

@@ -1,6 +1,7 @@
 use super::{flow::Flow, sink::Sink};
 
 #[cfg(test)]
+#[path = "flow_group_by_sub_flow_test.rs"]
 mod tests;
 
 /// Substream surface returned by `group_by`.

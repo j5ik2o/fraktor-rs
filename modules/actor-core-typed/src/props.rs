@@ -1,6 +1,7 @@
 //! Typed props.
 
 #[cfg(test)]
+#[path = "props_test.rs"]
 mod tests;
 
 use alloc::string::String;

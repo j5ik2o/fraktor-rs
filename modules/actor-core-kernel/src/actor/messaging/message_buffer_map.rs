@@ -1,6 +1,7 @@
 //! Key-indexed collection of message buffers for use inside actors.
 
 #[cfg(test)]
+#[path = "message_buffer_map_test.rs"]
 mod tests;
 
 use core::hash::Hash;

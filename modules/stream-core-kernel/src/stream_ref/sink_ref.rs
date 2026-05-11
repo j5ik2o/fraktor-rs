@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "sink_ref_test.rs"]
 mod tests;
 
 use core::marker::PhantomData;

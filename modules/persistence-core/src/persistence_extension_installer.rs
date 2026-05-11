@@ -1,6 +1,7 @@
 //! Installer for the persistence extension.
 
 #[cfg(test)]
+#[path = "persistence_extension_installer_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::{

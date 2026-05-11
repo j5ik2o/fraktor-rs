@@ -1,6 +1,7 @@
 //! Bounded actor reference resolution cache.
 
 #[cfg(test)]
+#[path = "actor_ref_resolve_cache_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

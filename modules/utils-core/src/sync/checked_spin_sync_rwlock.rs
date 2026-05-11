@@ -4,6 +4,7 @@
 //! `std::thread::current().id()` can distinguish same-thread re-entry
 //! from legitimate cross-thread contention.
 #[cfg(test)]
+#[path = "checked_spin_sync_rwlock_test.rs"]
 mod tests;
 
 use core::mem::ManuallyDrop;

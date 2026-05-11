@@ -5,6 +5,7 @@
 //! `org.apache.pekko.dispatch.PinnedDispatcher`.
 
 #[cfg(test)]
+#[path = "pinned_dispatcher_test.rs"]
 mod tests;
 
 use core::num::NonZeroUsize;

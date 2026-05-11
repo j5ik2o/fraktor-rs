@@ -1,6 +1,7 @@
 //! Compression facade providing gzip and deflate utilities.
 
 #[cfg(test)]
+#[path = "compression_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

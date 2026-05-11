@@ -27,4 +27,5 @@ pub use graceful_stop::{graceful_stop, graceful_stop_with_message};
 pub use retry::retry;
 
 #[cfg(test)]
+#[path = "pattern_test.rs"]
 mod tests;

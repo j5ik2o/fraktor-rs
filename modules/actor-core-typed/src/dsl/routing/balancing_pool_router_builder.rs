@@ -5,6 +5,7 @@
 //! the core/dispatch layer.
 
 #[cfg(test)]
+#[path = "balancing_pool_router_builder_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};

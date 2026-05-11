@@ -14,7 +14,7 @@
 - `mod foo;` / `pub mod foo;` / `mod foo { ... }` の `foo` が禁止サフィックスで終わる場合は違反とみなす。
 - `.rs` ファイルの stem（例: `association_runtime.rs` の `association_runtime`）が禁止サフィックスで終わる場合は違反とみなす。
 - `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に無効化されている場合のみ例外とする。
-- ビルド生成物や `tests/` ディレクトリ配下、`*_tests.rs`・`tests.rs` は対象外とする。
+- ビルド生成物や `tests/` ディレクトリ配下、`*_test.rs`・`*_tests.rs`・`tests.rs` は対象外とする。
 - マクロ展開で生成された識別子は対象外とする。
 - 非公開の型・関数・変数も対象とする。
 - サフィックスと完全一致する名前（例: `Service` 単体）も違反とする。

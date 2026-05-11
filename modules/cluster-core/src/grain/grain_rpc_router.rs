@@ -10,6 +10,7 @@ use super::{GrainKey, RpcDispatch, RpcError, RpcEvent, SchemaNegotiator, Seriali
 use crate::pub_sub::DispatchDropPolicy;
 
 #[cfg(test)]
+#[path = "grain_rpc_router_test.rs"]
 mod tests;
 
 struct KeyState {

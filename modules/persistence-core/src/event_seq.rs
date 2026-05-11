@@ -1,6 +1,7 @@
 //! Replay adapter output representation.
 
 #[cfg(test)]
+#[path = "event_seq_test.rs"]
 mod tests;
 
 use alloc::{vec, vec::Vec};

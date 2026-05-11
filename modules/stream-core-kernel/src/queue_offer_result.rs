@@ -1,6 +1,7 @@
 use super::StreamError;
 
 #[cfg(test)]
+#[path = "queue_offer_result_test.rs"]
 mod tests;
 
 /// Result of offering an element into a source queue.

@@ -1,6 +1,7 @@
 //! Write-side adapter abstraction for journal payload conversion.
 
 #[cfg(test)]
+#[path = "write_event_adapter_test.rs"]
 mod tests;
 
 use alloc::string::String;

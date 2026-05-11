@@ -1,6 +1,7 @@
 //! Composable listener registry for actors that publish events.
 
 #[cfg(test)]
+#[path = "listeners_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

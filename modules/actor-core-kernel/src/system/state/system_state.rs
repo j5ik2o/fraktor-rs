@@ -1,6 +1,7 @@
 //! Shared, mutable state owned by the actor system.
 
 #[cfg(test)]
+#[path = "system_state_test.rs"]
 mod tests;
 
 mod path_identity;

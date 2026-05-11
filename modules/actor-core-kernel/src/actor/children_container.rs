@@ -22,6 +22,7 @@
 //! [`SystemStateShared::reserve_name`]: crate::system::state::SystemStateShared
 
 #[cfg(test)]
+#[path = "children_container_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

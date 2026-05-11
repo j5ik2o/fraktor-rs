@@ -1,6 +1,7 @@
 //! Remote actor ref resolve cache event payload.
 
 #[cfg(test)]
+#[path = "remote_actor_ref_resolve_cache_event_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPath;

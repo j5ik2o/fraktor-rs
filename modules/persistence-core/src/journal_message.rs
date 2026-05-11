@@ -1,6 +1,7 @@
 //! Messages sent to journal actors.
 
 #[cfg(test)]
+#[path = "journal_message_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

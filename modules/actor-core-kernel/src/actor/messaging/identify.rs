@@ -1,6 +1,7 @@
 //! Classic identify message for actor discovery.
 
 #[cfg(test)]
+#[path = "identify_test.rs"]
 mod tests;
 
 use crate::actor::messaging::{AnyMessage, NotInfluenceReceiveTimeout};

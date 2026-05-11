@@ -3,6 +3,7 @@ use alloc::string::String;
 use super::Scope;
 
 #[cfg(test)]
+#[path = "descriptor_test.rs"]
 mod tests;
 
 /// Immutable deployment description for classic actor configuration.

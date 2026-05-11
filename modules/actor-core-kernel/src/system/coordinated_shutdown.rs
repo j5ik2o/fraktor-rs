@@ -28,6 +28,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "coordinated_shutdown_test.rs"]
 mod tests;
 
 /// Async task closure type for shutdown phases.

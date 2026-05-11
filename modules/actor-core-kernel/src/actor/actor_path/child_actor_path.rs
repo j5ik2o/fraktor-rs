@@ -1,6 +1,7 @@
 //! Type-safe wrapper guaranteeing a child actor path.
 
 #[cfg(test)]
+#[path = "child_actor_path_test.rs"]
 mod tests;
 
 use alloc::string::String;

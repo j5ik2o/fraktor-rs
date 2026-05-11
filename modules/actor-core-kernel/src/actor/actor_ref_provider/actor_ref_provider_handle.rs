@@ -1,6 +1,7 @@
 //! Handle wrapper for ActorRefProvider implementations.
 
 #[cfg(test)]
+#[path = "actor_ref_provider_handle_test.rs"]
 mod tests;
 
 use alloc::string::String;

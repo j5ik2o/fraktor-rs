@@ -1,6 +1,7 @@
 //! Executor wakeup signal shared between drivers and scheduler tasks.
 
 #[cfg(test)]
+#[path = "tick_executor_signal_test.rs"]
 mod tests;
 
 use core::{

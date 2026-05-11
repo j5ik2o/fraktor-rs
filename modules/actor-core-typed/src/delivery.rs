@@ -72,4 +72,5 @@ pub use work_pulling_producer_controller_request_next::WorkPullingProducerContro
 pub use worker_stats::WorkerStats;
 
 #[cfg(test)]
+#[path = "delivery_test.rs"]
 mod tests;

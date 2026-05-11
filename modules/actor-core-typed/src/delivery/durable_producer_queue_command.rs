@@ -1,6 +1,7 @@
 //! Commands for the durable producer queue actor.
 
 #[cfg(test)]
+#[path = "durable_producer_queue_command_test.rs"]
 mod tests;
 
 use crate::{

@@ -1,6 +1,7 @@
 //! Stream attributes used to annotate stages and graphs.
 
 #[cfg(test)]
+#[path = "attributes_test.rs"]
 mod tests;
 
 mod async_boundary_attr;

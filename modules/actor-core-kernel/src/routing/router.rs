@@ -1,6 +1,7 @@
 //! Immutable router that dispatches messages via a pluggable routing logic.
 
 #[cfg(test)]
+#[path = "router_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

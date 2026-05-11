@@ -1,6 +1,7 @@
 //! Factory for bounded priority message queues.
 
 #[cfg(test)]
+#[path = "bounded_priority_mailbox_type_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

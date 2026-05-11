@@ -17,6 +17,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 type SupervisorDecider = fn(&ActorError) -> SupervisorDirective;

@@ -3,6 +3,7 @@
 use alloc::string::String;
 
 #[cfg(test)]
+#[path = "rpc_error_test.rs"]
 mod tests;
 
 /// RPC failure reasons.

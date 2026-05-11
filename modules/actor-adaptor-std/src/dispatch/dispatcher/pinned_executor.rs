@@ -1,6 +1,7 @@
 //! Single-thread dedicated [`Executor`] used by `PinnedDispatcher`.
 
 #[cfg(test)]
+#[path = "pinned_executor_test.rs"]
 mod tests;
 
 extern crate std;

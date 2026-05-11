@@ -8,6 +8,7 @@ use super::{
 use crate::{attributes::Attributes, r#impl::queue::ActorSourceRef};
 
 #[cfg(test)]
+#[path = "actor_source_test.rs"]
 mod tests;
 
 /// Actor-oriented source factory utilities.

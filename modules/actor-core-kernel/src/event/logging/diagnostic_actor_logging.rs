@@ -1,6 +1,7 @@
 //! Classic actor logging facade with lightweight MDC and marker support.
 
 #[cfg(test)]
+#[path = "diagnostic_actor_logging_test.rs"]
 mod tests;
 
 use alloc::string::String;

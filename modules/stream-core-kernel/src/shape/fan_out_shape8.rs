@@ -1,6 +1,7 @@
 use super::{Inlet, Outlet, Shape};
 
 #[cfg(test)]
+#[path = "fan_out_shape8_test.rs"]
 mod tests;
 
 /// Shape with one input port and eight output ports.

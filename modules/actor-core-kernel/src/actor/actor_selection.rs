@@ -7,6 +7,7 @@ mod selection;
 mod selection_path_element;
 
 #[cfg(test)]
+#[path = "actor_selection_test.rs"]
 mod tests;
 
 pub use actor_selection_error::ActorSelectionError;

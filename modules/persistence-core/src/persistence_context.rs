@@ -1,6 +1,7 @@
 //! Persistent actor context and state.
 
 #[cfg(test)]
+#[path = "persistence_context_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};

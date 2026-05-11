@@ -1,6 +1,7 @@
 //! Error type for status-aware ask responses.
 
 #[cfg(test)]
+#[path = "status_reply_error_test.rs"]
 mod tests;
 
 use alloc::string::String;

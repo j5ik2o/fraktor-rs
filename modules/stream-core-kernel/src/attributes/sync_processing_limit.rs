@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "sync_processing_limit_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

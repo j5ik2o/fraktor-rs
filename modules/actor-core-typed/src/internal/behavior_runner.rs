@@ -22,6 +22,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "behavior_runner_test.rs"]
 mod tests;
 
 /// Bridges [`Behavior`] objects with the [`TypedActor`] lifecycle.

@@ -1,6 +1,7 @@
 use crate::r#impl::queue::SinkQueue as CoreSinkQueue;
 
 #[cfg(test)]
+#[path = "sink_queue_test.rs"]
 mod tests;
 
 /// Materialized queue handle for reading from a Sink.

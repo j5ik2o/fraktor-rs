@@ -1,6 +1,7 @@
 //! Persistent event representation.
 
 #[cfg(test)]
+#[path = "persistent_repr_test.rs"]
 mod tests;
 
 use alloc::string::String;

@@ -1,6 +1,7 @@
 //! Snapshot store operation errors.
 
 #[cfg(test)]
+#[path = "snapshot_error_test.rs"]
 mod tests;
 
 use alloc::string::String;

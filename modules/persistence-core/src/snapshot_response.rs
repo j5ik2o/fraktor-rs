@@ -1,6 +1,7 @@
 //! Responses emitted by snapshot actors.
 
 #[cfg(test)]
+#[path = "snapshot_response_test.rs"]
 mod tests;
 
 use crate::{

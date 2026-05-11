@@ -1,6 +1,7 @@
 //! EventStream-based ClusterPubSub implementation backed by PubSubBroker.
 
 #[cfg(test)]
+#[path = "cluster_pub_sub_impl_test.rs"]
 mod tests;
 
 use alloc::{format, string::String, vec, vec::Vec};

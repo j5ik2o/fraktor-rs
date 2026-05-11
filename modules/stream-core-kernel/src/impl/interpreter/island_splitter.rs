@@ -21,6 +21,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "island_splitter_test.rs"]
 mod tests;
 
 /// Unique identifier for an island within an `IslandPlan`.

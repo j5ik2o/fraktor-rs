@@ -5,6 +5,7 @@
 //! bound to `Drop`; there is no public `exit_drive_guard` method.
 
 #[cfg(test)]
+#[path = "drive_guard_token_test.rs"]
 mod tests;
 
 use core::sync::atomic::{AtomicBool, Ordering};

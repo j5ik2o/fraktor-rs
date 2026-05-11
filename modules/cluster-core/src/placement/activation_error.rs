@@ -3,6 +3,7 @@
 use alloc::string::String;
 
 #[cfg(test)]
+#[path = "activation_error_test.rs"]
 mod tests;
 
 /// Activation failure reasons.

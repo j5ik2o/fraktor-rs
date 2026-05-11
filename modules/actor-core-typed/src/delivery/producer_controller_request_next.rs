@@ -1,6 +1,7 @@
 //! Demand signal from the producer controller to the producer.
 
 #[cfg(test)]
+#[path = "producer_controller_request_next_test.rs"]
 mod tests;
 
 use alloc::string::String;

@@ -5,6 +5,7 @@
 //! PDU types so that the core can evolve the two layers separately.
 
 #[cfg(test)]
+#[path = "envelope_test.rs"]
 mod tests;
 
 mod inbound_envelope;

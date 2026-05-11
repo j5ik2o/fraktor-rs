@@ -1,6 +1,7 @@
 //! Signal emitted when recovery exceeds the configured timeout.
 
 #[cfg(test)]
+#[path = "recovery_timed_out_test.rs"]
 mod tests;
 
 use alloc::string::String;

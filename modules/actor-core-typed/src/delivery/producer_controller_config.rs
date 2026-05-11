@@ -3,6 +3,7 @@
 use core::time::Duration;
 
 #[cfg(test)]
+#[path = "producer_controller_config_test.rs"]
 mod tests;
 
 /// Default timeout for requests to the durable queue.

@@ -3,6 +3,7 @@ use alloc::{collections::BTreeMap, string::String};
 use super::Deploy;
 
 #[cfg(test)]
+#[path = "deployer_test.rs"]
 mod tests;
 
 /// Registry of classic deployment descriptors keyed by logical path.

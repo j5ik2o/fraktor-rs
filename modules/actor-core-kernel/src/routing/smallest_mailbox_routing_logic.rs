@@ -1,6 +1,7 @@
 //! Smallest-mailbox routing logic.
 
 #[cfg(test)]
+#[path = "smallest_mailbox_routing_logic_test.rs"]
 mod tests;
 
 use super::{routee::Routee, routing_logic::RoutingLogic};

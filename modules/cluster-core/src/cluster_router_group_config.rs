@@ -1,6 +1,7 @@
 //! Minimal config for cluster router group behavior.
 
 #[cfg(test)]
+#[path = "cluster_router_group_config_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

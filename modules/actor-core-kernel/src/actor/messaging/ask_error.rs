@@ -1,6 +1,7 @@
 //! Errors returned by ask operations.
 
 #[cfg(test)]
+#[path = "ask_error_test.rs"]
 mod tests;
 
 use alloc::format;

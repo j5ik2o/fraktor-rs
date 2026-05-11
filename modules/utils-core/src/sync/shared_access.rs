@@ -1,6 +1,7 @@
 //! Access helpers for shared backends guarded by mutex-like primitives.
 
 #[cfg(test)]
+#[path = "shared_access_test.rs"]
 mod tests;
 
 /// Abstraction offering mutable access to shared backends.

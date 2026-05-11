@@ -1,6 +1,7 @@
 //! Delegator helper that allows serializers to perform nested serialization.
 
 #[cfg(test)]
+#[path = "delegator_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String};

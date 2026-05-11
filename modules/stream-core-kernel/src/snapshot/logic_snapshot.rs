@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "logic_snapshot_test.rs"]
 mod tests;
 
 use alloc::string::String;

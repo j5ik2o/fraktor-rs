@@ -2,6 +2,7 @@ use super::{sink::Sink, source::Source};
 use crate::materialization::RunnableGraph;
 
 #[cfg(test)]
+#[path = "source_group_by_sub_flow_test.rs"]
 mod tests;
 
 /// Substream surface returned by `group_by`.

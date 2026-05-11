@@ -1,6 +1,7 @@
 //! Proxy layer for forwarding persistence operations to target plugins.
 
 #[cfg(test)]
+#[path = "persistence_plugin_proxy_test.rs"]
 mod tests;
 
 use core::any::Any;

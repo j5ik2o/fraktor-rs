@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stage_logging_test.rs"]
 mod tests;
 
 /// Stage-level logging facade.

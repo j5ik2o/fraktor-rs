@@ -5,6 +5,7 @@ use super::StreamRefHandoff;
 use crate::{DynValue, SourceLogic, StreamError, stream_ref::StreamRefSettings};
 
 #[cfg(test)]
+#[path = "stream_ref_source_logic_test.rs"]
 mod tests;
 
 enum StreamRefSourceSubscription {

@@ -1,6 +1,7 @@
 //! Point-to-point reliable delivery consumer controller.
 
 #[cfg(test)]
+#[path = "consumer_controller_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

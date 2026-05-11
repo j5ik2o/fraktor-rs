@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "offer_outcome_test.rs"]
 mod tests;
 
 /// Outcome produced by a queue offer operation.

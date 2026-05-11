@@ -15,6 +15,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "circuit_breaker_test.rs"]
 mod tests;
 
 /// Three-state circuit breaker (Closed / Open / HalfOpen).

@@ -1,6 +1,7 @@
 //! Pool router configuration using consistent-hashing routing logic.
 
 #[cfg(test)]
+#[path = "consistent_hashing_pool_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

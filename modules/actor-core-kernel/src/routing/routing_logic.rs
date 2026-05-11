@@ -1,6 +1,7 @@
 //! Routing logic abstraction.
 
 #[cfg(test)]
+#[path = "routing_logic_test.rs"]
 mod tests;
 
 use super::routee::Routee;

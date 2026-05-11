@@ -1,6 +1,7 @@
 //! Unconfirmed delivery entry.
 
 #[cfg(test)]
+#[path = "unconfirmed_delivery_test.rs"]
 mod tests;
 
 use core::any::Any;

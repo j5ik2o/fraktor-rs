@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "overflow_strategy_test.rs"]
 mod tests;
 
 /// Overflow strategy names aligned with Pekko stream APIs.

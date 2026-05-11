@@ -1,6 +1,7 @@
 //! No-op classic logging facade.
 
 #[cfg(test)]
+#[path = "no_logging_test.rs"]
 mod tests;
 
 use alloc::string::String;

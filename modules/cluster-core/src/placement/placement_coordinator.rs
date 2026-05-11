@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "placement_coordinator_test.rs"]
 mod tests;
 
 #[derive(Debug, Clone)]

@@ -90,19 +90,20 @@ modules/actor-core/src/core/kernel/actor/
 └── mod.rs   # mod-file-lint でエラー
 ```
 
-### テストは tests.rs 分離
+### テストは sibling `_test.rs` 分離
 
 **Good:**
 
 ```rust
 // modules/actor-core/src/core/kernel/actor/actor_cell.rs
 #[cfg(test)]
+#[path = "actor_cell_test.rs"]
 mod tests;
 
 use ...
 ```
 
-ファイル隣の `actor_cell/tests.rs` に `use super::ActorCell;` で参照する。
+ファイル隣の `actor_cell_test.rs` に `use super::ActorCell;` で参照する。
 **Bad:**
 
 ```rust

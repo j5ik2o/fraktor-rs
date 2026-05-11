@@ -1,6 +1,7 @@
 //! Remote authority state management and quarantining.
 
 #[cfg(test)]
+#[path = "remote_authority_registry_test.rs"]
 mod tests;
 
 use alloc::{

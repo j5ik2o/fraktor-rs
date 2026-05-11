@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 
 #[cfg(test)]
+#[path = "stateful_map_concat_accumulator_test.rs"]
 mod tests;
 
 /// Accumulator for `stateful_map_concat` that supports emitting

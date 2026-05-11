@@ -19,6 +19,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "local_actor_ref_provider_test.rs"]
 mod tests;
 
 // 他の typed/system facade 用セントネル (`u64::MAX`, `u64::MAX - 1`,

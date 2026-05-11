@@ -1,6 +1,7 @@
 //! Actor-system setup facade composed from bootstrap and runtime config.
 
 #[cfg(test)]
+#[path = "actor_system_setup_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String};

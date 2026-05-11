@@ -1,6 +1,7 @@
 //! Demand signal from the work-pulling producer controller to the producer.
 
 #[cfg(test)]
+#[path = "work_pulling_producer_controller_request_next_test.rs"]
 mod tests;
 
 use alloc::string::String;

@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "shared_kill_switch_test.rs"]
 mod tests;
 
 /// Kill switch that can be shared across multiple stream instances.

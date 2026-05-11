@@ -1,6 +1,7 @@
 //! Persistent envelope used during batching.
 
 #[cfg(test)]
+#[path = "persistent_envelope_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String};

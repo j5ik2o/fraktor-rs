@@ -1,6 +1,7 @@
 //! Mailbox-local lock-free MPSC queue primitive.
 
 #[cfg(test)]
+#[path = "lock_free_mpsc_queue_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

@@ -3,6 +3,7 @@
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
+#[path = "tick_driver_error_test.rs"]
 mod tests;
 
 /// Errors that can occur during tick driver operations.

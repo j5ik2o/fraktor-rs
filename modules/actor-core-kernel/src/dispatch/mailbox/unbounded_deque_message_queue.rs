@@ -1,6 +1,7 @@
 //! Unbounded deque-based message queue with O(1) front insertion.
 
 #[cfg(test)]
+#[path = "unbounded_deque_message_queue_test.rs"]
 mod tests;
 
 use alloc::collections::VecDeque;

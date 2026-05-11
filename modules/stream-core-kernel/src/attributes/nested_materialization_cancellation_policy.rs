@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "nested_materialization_cancellation_policy_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

@@ -5,6 +5,7 @@ use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
 use crate::{DownstreamCancelAction, SubstreamCancelStrategy};
 
 #[cfg(test)]
+#[path = "group_by_logic_test.rs"]
 mod tests;
 
 pub(crate) struct GroupByLogic<In, Key, F> {

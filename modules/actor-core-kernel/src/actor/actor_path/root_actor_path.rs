@@ -1,6 +1,7 @@
 //! Type-safe wrapper guaranteeing a root actor path.
 
 #[cfg(test)]
+#[path = "root_actor_path_test.rs"]
 mod tests;
 
 use core::fmt::{Debug, Display, Formatter, Result as FmtResult};

@@ -1,6 +1,7 @@
 //! Sender used to deliver ask responses back to the awaiting future.
 
 #[cfg(test)]
+#[path = "ask_reply_sender_test.rs"]
 mod tests;
 
 use fraktor_utils_core_rs::sync::SharedAccess;

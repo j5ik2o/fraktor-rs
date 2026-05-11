@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "vec_deque_backend_test.rs"]
 mod tests;
 
 use alloc::collections::{TryReserveError, VecDeque};

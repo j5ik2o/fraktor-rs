@@ -1,6 +1,7 @@
 //! Minimal config for cluster router pool behavior.
 
 #[cfg(test)]
+#[path = "cluster_router_pool_config_test.rs"]
 mod tests;
 
 /// Config for pool-style cluster routing.

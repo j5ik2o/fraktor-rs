@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stage_actor_receive_test.rs"]
 mod tests;
 
 use super::StageActorEnvelope;

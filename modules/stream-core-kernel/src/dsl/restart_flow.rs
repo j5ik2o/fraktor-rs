@@ -1,6 +1,7 @@
 //! Restart DSL facade for flow stages.
 
 #[cfg(test)]
+#[path = "restart_flow_test.rs"]
 mod tests;
 
 use super::{RestartConfig, flow::Flow};

@@ -1,6 +1,7 @@
 //! Flow monitor trait definition.
 
 #[cfg(test)]
+#[path = "flow_monitor_test.rs"]
 mod tests;
 
 use super::FlowMonitorState;

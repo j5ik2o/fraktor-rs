@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "out_handler_test.rs"]
 mod tests;
 
 use super::StageContext;

@@ -1,6 +1,7 @@
 //! Status-aware reply type for typed ask patterns.
 
 #[cfg(test)]
+#[path = "status_reply_test.rs"]
 mod tests;
 
 use alloc::string::String;

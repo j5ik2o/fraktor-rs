@@ -1,6 +1,7 @@
 //! Weak reference wrapper for actor system.
 
 #[cfg(test)]
+#[path = "actor_system_weak_test.rs"]
 mod tests;
 
 use super::{ActorSystem, state::SystemStateWeak};

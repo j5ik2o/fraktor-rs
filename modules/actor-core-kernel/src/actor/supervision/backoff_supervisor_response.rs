@@ -1,6 +1,7 @@
 //! Protocol responses from the backoff supervisor actor.
 
 #[cfg(test)]
+#[path = "backoff_supervisor_response_test.rs"]
 mod tests;
 
 use crate::actor::Pid;

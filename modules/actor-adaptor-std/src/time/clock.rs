@@ -1,6 +1,7 @@
 //! Standard-library clock backed by [`std::time::Instant`].
 
 #[cfg(test)]
+#[path = "clock_test.rs"]
 mod tests;
 
 extern crate std;

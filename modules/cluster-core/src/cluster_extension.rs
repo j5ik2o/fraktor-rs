@@ -1,6 +1,7 @@
 //! Cluster extension wiring for actor systems.
 
 #[cfg(test)]
+#[path = "cluster_extension_test.rs"]
 mod tests;
 
 use alloc::{format, string::String, vec::Vec};

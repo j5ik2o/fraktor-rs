@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "shared_lock_test.rs"]
 mod tests;
 
 use core::marker::PhantomData;

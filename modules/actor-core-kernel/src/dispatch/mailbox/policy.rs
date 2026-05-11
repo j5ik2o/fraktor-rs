@@ -1,6 +1,7 @@
 //! Mailbox policy describing capacity and overflow behaviour.
 
 #[cfg(test)]
+#[path = "policy_test.rs"]
 mod tests;
 
 use core::num::NonZeroUsize;

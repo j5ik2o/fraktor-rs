@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "connection_state_test.rs"]
 mod tests;
 
 /// Runtime state of a connection between two logic nodes.

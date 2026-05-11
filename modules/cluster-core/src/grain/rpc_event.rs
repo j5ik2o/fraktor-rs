@@ -5,6 +5,7 @@ use alloc::string::String;
 use super::GrainKey;
 
 #[cfg(test)]
+#[path = "rpc_event_test.rs"]
 mod tests;
 
 /// Observable RPC events for metrics and debugging.

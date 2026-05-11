@@ -12,6 +12,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "merge_hub_test.rs"]
 mod tests;
 
 /// Internal state protected by a single mutex to avoid TOCTOU races.

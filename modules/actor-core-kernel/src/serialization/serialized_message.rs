@@ -1,6 +1,7 @@
 //! Serialized message container compatible with Pekko layout.
 
 #[cfg(test)]
+#[path = "serialized_message_test.rs"]
 mod tests;
 
 use alloc::{borrow::ToOwned, string::String, vec::Vec};

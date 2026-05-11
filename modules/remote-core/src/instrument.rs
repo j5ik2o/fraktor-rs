@@ -6,6 +6,7 @@
 //! references (see `remote-core-instrument` spec).
 
 #[cfg(test)]
+#[path = "instrument_test.rs"]
 mod tests;
 
 mod flight_recorder;

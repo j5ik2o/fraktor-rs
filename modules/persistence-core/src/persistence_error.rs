@@ -1,6 +1,7 @@
 //! Persistence domain errors.
 
 #[cfg(test)]
+#[path = "persistence_error_test.rs"]
 mod tests;
 
 use alloc::string::String;

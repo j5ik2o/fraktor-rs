@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 
 #[cfg(test)]
+#[path = "factory_test.rs"]
 mod tests;
 
 use crate::actor::Actor;

@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_snapshot_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

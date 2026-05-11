@@ -11,6 +11,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use super::{Completion, StreamError};
 
 #[cfg(test)]
+#[path = "stream_future_test.rs"]
 mod tests;
 
 struct CompletionState<T> {
