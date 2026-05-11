@@ -86,14 +86,21 @@ fn with_dispatcher_overrides_default() {
 }
 
 #[test]
-fn envelope_hash_key_router_creation_preserves_routing_logic_precedence() {
+fn envelope_hash_key_router_uses_envelope_key_for_selection() {
   let pool = ConsistentHashingPool::new_envelope_hash_key(3);
   let logic = pool.create_routing_logic();
-  let expected_logic = ConsistentHashingRoutingLogic::new(|_| 9_999);
   let routees = [make_routee(10), make_routee(20), make_routee(30)];
-  let message = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), 0xABCD_u64));
+  let first_message = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), 0_u64));
+  let first_routee = logic.select(&first_message, &routees);
+  let different_key = (1_u64..10_000)
+    .find(|key| {
+      let message = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), *key));
+      logic.select(&message, &routees) != first_routee
+    })
+    .expect("test routees should produce at least two selections");
+  let second_message = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), different_key));
 
-  assert_eq!(logic.select(&message, &routees), expected_logic.select(&message, &routees));
+  assert_ne!(logic.select(&first_message, &routees), logic.select(&second_message, &routees));
 }
 
 #[test]

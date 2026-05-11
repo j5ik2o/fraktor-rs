@@ -8,7 +8,8 @@ use alloc::{string::String, vec::Vec};
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  Router, consistent_hashing_routing_logic::ConsistentHashingRoutingLogic, pool::Pool, router_config::RouterConfig,
+  Router, consistent_hashable_envelope::ConsistentHashableEnvelope,
+  consistent_hashing_routing_logic::ConsistentHashingRoutingLogic, pool::Pool, router_config::RouterConfig,
 };
 use crate::actor::messaging::AnyMessage;
 
@@ -76,6 +77,10 @@ impl ConsistentHashingPool {
 
   /// Creates a wire-safe consistent-hashing pool that uses explicit envelope keys.
   ///
+  /// Local routing derives keys from [`ConsistentHashableEnvelope::hash_key`].
+  /// Messages that are not wrapped in a consistent-hashable envelope share the
+  /// fixed fallback key `0`.
+  ///
   /// # Panics
   ///
   /// Panics if `nr_of_instances` is zero.
@@ -84,7 +89,9 @@ impl ConsistentHashingPool {
     assert!(nr_of_instances > 0, "nr_of_instances must be positive");
     Self {
       nr_of_instances,
-      hash_key_mapper: ArcShared::new(|_: &AnyMessage| 0),
+      hash_key_mapper: ArcShared::new(|message: &AnyMessage| {
+        message.downcast_ref::<ConsistentHashableEnvelope>().map_or(0, ConsistentHashableEnvelope::hash_key)
+      }),
       hash_key_mapper_kind: ConsistentHashingHashKeyMapperKind::EnvelopeHashKey,
       router_dispatcher: String::from("default-dispatcher"),
     }

@@ -278,20 +278,7 @@ impl TcpRemoteTransport {
   }
 
   fn send_wire_frame(&mut self, remote: &Address, frame: WireFrame) -> Result<(), TransportError> {
-    if !self.running {
-      return Err(TransportError::NotStarted);
-    }
-    let peer_key = Self::peer_key_for_address(remote);
-    let Some(client) = self.clients.get(&peer_key) else {
-      return Err(TransportError::ConnectionClosed);
-    };
-    let result = client.send(frame);
-    if result.as_ref().err().is_some_and(|error| error == &TransportError::ConnectionClosed)
-      && let Some(mut client) = self.clients.remove(&peer_key)
-    {
-      client.shutdown();
-    }
-    result
+    self.send_wire_frame_to_client(remote, |client| client.send(frame))
   }
 
   fn send_wire_frame_with_lane_key(
@@ -300,6 +287,12 @@ impl TcpRemoteTransport {
     lane_key: &[u8],
     frame: WireFrame,
   ) -> Result<(), TransportError> {
+    self.send_wire_frame_to_client(remote, |client| client.send_with_lane_key(lane_key, frame))
+  }
+
+  fn send_wire_frame_to_client<F>(&mut self, remote: &Address, send: F) -> Result<(), TransportError>
+  where
+    F: FnOnce(&TcpClient) -> Result<(), TransportError>, {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
@@ -307,7 +300,7 @@ impl TcpRemoteTransport {
     let Some(client) = self.clients.get(&peer_key) else {
       return Err(TransportError::ConnectionClosed);
     };
-    let result = client.send_with_lane_key(lane_key, frame);
+    let result = send(client);
     if result.as_ref().err().is_some_and(|error| error == &TransportError::ConnectionClosed)
       && let Some(mut client) = self.clients.remove(&peer_key)
     {
@@ -352,7 +345,6 @@ fn outbound_lane_key_for_envelope(envelope: &OutboundEnvelope) -> Vec<u8> {
     key.extend_from_slice(sender.to_canonical_uri().as_bytes());
   }
   key.push(0);
-  key.extend_from_slice(&envelope.correlation_id().to_be_bytes());
   key
 }
 

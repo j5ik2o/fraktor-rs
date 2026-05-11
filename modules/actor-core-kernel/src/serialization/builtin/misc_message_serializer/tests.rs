@@ -52,6 +52,11 @@ fn remote_router_config_pool_payload_offset(bytes: &[u8]) -> usize {
   1 + 4 + 4 + dispatcher_len + 4
 }
 
+fn remote_router_config_node_count_offset(bytes: &[u8]) -> usize {
+  let dispatcher_len = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]) as usize;
+  1 + 4 + 4 + dispatcher_len
+}
+
 #[test]
 fn identifier_returns_configured_id() {
   let registry = registry();
@@ -293,6 +298,20 @@ fn remote_router_config_round_trips_random_pool_with_manifest() {
   assert_serializable_pool_flags(config.local());
   assert!(matches!(config.local(), RemoteRouterPool::Random(_)));
   assert_eq!(config.nodes(), &[first, second]);
+}
+
+#[test]
+fn remote_router_config_omits_pool_payload_for_legacy_pools() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = RoundRobinPool::new(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+
+  let bytes = s.to_binary(&original).expect("encode");
+  let node_count_offset = remote_router_config_node_count_offset(&bytes);
+  let node_count = u32::from_le_bytes(bytes[node_count_offset..node_count_offset + 4].try_into().expect("node count"));
+
+  assert_eq!(node_count, 1);
 }
 
 #[test]
@@ -718,7 +737,6 @@ fn remote_router_config_decode_rejects_node_count_exceeding_remaining_bytes() {
   bytes.extend_from_slice(&3_u32.to_le_bytes());
   bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
   bytes.extend_from_slice(dispatcher.as_bytes());
-  bytes.extend_from_slice(&0_u32.to_le_bytes());
   // node_count を u32::MAX にして残りバイト数を遥かに超えさせる。 OOM 防御で InvalidFormat を返す。
   bytes.extend_from_slice(&u32::MAX.to_le_bytes());
 
@@ -738,7 +756,6 @@ fn remote_router_config_decode_rejects_node_count_exceeding_minimum_encoded_addr
   bytes.extend_from_slice(&3_u32.to_le_bytes());
   bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
   bytes.extend_from_slice(dispatcher.as_bytes());
-  bytes.extend_from_slice(&0_u32.to_le_bytes());
   bytes.extend_from_slice(&65_u32.to_le_bytes());
   bytes.extend(core::iter::repeat_n(0_u8, 1024));
 
@@ -758,7 +775,6 @@ fn remote_router_config_decode_rejects_zero_nodes() {
   bytes.extend_from_slice(&3_u32.to_le_bytes());
   bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
   bytes.extend_from_slice(dispatcher.as_bytes());
-  bytes.extend_from_slice(&0_u32.to_le_bytes());
   bytes.extend_from_slice(&0_u32.to_le_bytes());
 
   let view = s.as_string_manifest().expect("string manifest view");

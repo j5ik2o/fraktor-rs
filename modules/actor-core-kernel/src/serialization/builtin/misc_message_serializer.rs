@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{borrow::Cow, boxed::Box, string::String, vec, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 use core::{
   any::{Any, TypeId, type_name_of_val},
   convert::TryInto,
@@ -188,12 +188,12 @@ impl MiscMessageSerializer {
     let local = config.local();
     self.ensure_serializable_remote_router_pool(local)?;
     let (wire_tag, pool_payload) = match local {
-      | RemoteRouterPool::SmallestMailbox(_) => (SmallestMailboxPool::WIRE_TAG, Vec::new()),
-      | RemoteRouterPool::RoundRobin(_) => (RoundRobinPool::WIRE_TAG, Vec::new()),
-      | RemoteRouterPool::Random(_) => (RandomPool::WIRE_TAG, Vec::new()),
+      | RemoteRouterPool::SmallestMailbox(_) => (SmallestMailboxPool::WIRE_TAG, None),
+      | RemoteRouterPool::RoundRobin(_) => (RoundRobinPool::WIRE_TAG, None),
+      | RemoteRouterPool::Random(_) => (RandomPool::WIRE_TAG, None),
       | RemoteRouterPool::ConsistentHashing(pool) => match pool.hash_key_mapper_kind() {
         | ConsistentHashingHashKeyMapperKind::EnvelopeHashKey => {
-          (ConsistentHashingPool::WIRE_TAG, vec![ENVELOPE_HASH_KEY_MAPPER_TAG])
+          (ConsistentHashingPool::WIRE_TAG, Some([ENVELOPE_HASH_KEY_MAPPER_TAG]))
         },
         | ConsistentHashingHashKeyMapperKind::CustomClosure => {
           return Err(Self::remote_router_config_not_serializable("ConsistentHashingPool", self.id));
@@ -203,7 +203,9 @@ impl MiscMessageSerializer {
     buffer.push(wire_tag);
     write_u32(&mut buffer, local.nr_of_instances())?;
     write_len_prefixed_bytes(&mut buffer, local.router_dispatcher().as_bytes())?;
-    write_len_prefixed_bytes(&mut buffer, &pool_payload)?;
+    if let Some(pool_payload) = pool_payload {
+      write_len_prefixed_bytes(&mut buffer, &pool_payload)?;
+    }
     write_u32(&mut buffer, config.nodes().len())?;
     for node in config.nodes() {
       Self::write_address(&mut buffer, node)?;
@@ -231,27 +233,24 @@ impl MiscMessageSerializer {
       return Err(SerializationError::InvalidFormat);
     }
     let dispatcher = cursor.read_string()?;
-    let pool_payload = cursor.read_len_prefixed_bytes()?;
     match pool_tag {
       | SmallestMailboxPool::WIRE_TAG => {
-        Self::ensure_empty_remote_router_pool_payload(pool_payload)?;
         let local = SmallestMailboxPool::from_remote_router_wire(nr_of_instances, dispatcher);
         let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
         Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
       },
       | RoundRobinPool::WIRE_TAG => {
-        Self::ensure_empty_remote_router_pool_payload(pool_payload)?;
         let local = RoundRobinPool::from_remote_router_wire(nr_of_instances, dispatcher);
         let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
         Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
       },
       | RandomPool::WIRE_TAG => {
-        Self::ensure_empty_remote_router_pool_payload(pool_payload)?;
         let local = RandomPool::from_remote_router_wire(nr_of_instances, dispatcher);
         let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
         Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
       },
       | ConsistentHashingPool::WIRE_TAG => {
+        let pool_payload = cursor.read_len_prefixed_bytes()?;
         let local = Self::decode_consistent_hashing_pool(nr_of_instances, dispatcher, pool_payload)?;
         let nodes = Self::decode_remote_router_nodes(&mut cursor)?;
         Ok(Box::new(RemoteRouterConfig::new(local, nodes)))
@@ -271,10 +270,6 @@ impl MiscMessageSerializer {
       },
       | _ => Err(SerializationError::InvalidFormat),
     }
-  }
-
-  const fn ensure_empty_remote_router_pool_payload(pool_payload: &[u8]) -> Result<(), SerializationError> {
-    if pool_payload.is_empty() { Ok(()) } else { Err(SerializationError::InvalidFormat) }
   }
 
   fn decode_remote_router_nodes(cursor: &mut Cursor<'_>) -> Result<Vec<Address>, SerializationError> {

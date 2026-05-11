@@ -133,9 +133,8 @@ async fn read_loop(
           authority = Some(frame_authority);
         }
         let lane_index = inbound_lane_index(&peer, authority.as_ref(), &decoded, inbound_txs.len());
-        let Some(inbound_tx) = inbound_txs.get(lane_index) else {
-          break Some(TransportError::NotAvailable);
-        };
+        let inbound_tx =
+          inbound_txs.get(lane_index).expect("inbound_lane_index returns an index within the inbound_txs lane count");
         if inbound_tx
           .send(InboundFrameEvent { peer: peer.clone(), authority: authority.clone(), frame: decoded })
           .is_err()
