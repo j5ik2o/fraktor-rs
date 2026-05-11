@@ -1,3 +1,4 @@
+// normalize-stderr-test: "(\n)\n\z" -> "$1"
 // compile-flags: --test
 #![cfg(test)]
 

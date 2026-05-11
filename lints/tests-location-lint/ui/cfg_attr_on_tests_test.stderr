@@ -1,5 +1,5 @@
 warning: test file 内で `#![cfg(test)]` は使用できません
-  --> $DIR/cfg_attr_on_tests_test.rs:2:1
+  --> $DIR/cfg_attr_on_tests_test.rs:3:1
    |
 LL | #![cfg(test)]
    | ^^^^^^^^^^^^^
