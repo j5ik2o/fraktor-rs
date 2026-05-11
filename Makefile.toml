@@ -72,48 +72,16 @@ fi
 ./scripts/ci-check.sh dylint "${ARGS[@]}"
 '''
 
-[tasks.actor-core-us1]
-description = "Actor core US1: ping/pong pipeline (tests + examples)"
-workspace = false
-script = '''
-#!/usr/bin/env bash
-set -euo pipefail
-cargo test -p fraktor-actor-core-kernel-rs --features std --test ping_pong
-cargo run -q -p fraktor-actor-core-kernel-rs --example ping_pong_no_std --features std
-cargo run -q -p fraktor-actor-core-kernel-rs --example ping_pong_tokio --features std
-'''
-
-[tasks.actor-core-us2]
-description = "Actor core US2: supervision pipeline (tests + examples)"
-workspace = false
-script = '''
-#!/usr/bin/env bash
-set -euo pipefail
-cargo test -p fraktor-actor-core-kernel-rs --features std --test supervisor
-cargo run -q -p fraktor-actor-core-kernel-rs --example supervision_std --features std
-'''
-
-[tasks.actor-core-us3]
-description = "Actor core US3: observability pipeline (tests + examples)"
-workspace = false
-script = '''
-#!/usr/bin/env bash
-set -euo pipefail
-cargo test -p fraktor-actor-core-kernel-rs --features std --test event_stream
-cargo run -q -p fraktor-actor-core-kernel-rs --example deadletter_std --features std
-cargo run -q -p fraktor-actor-core-kernel-rs --example logger_subscriber_std --features std
-'''
-
-[tasks.actor-core-perf]
+[tasks.bench-actor-core-kernel-all]
 description = "Actor core benchmark build check"
 workspace = false
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-cargo check -p fraktor-actor-core-kernel-rs --benches
+cargo bench -p fraktor-actor-core-kernel-rs --benches
 '''
 
-[tasks.actor-core-bench]
+[tasks.bench-actor-core-kernel-mailbox]
 description = "Run actor core mailbox Criterion benchmarks"
 workspace = false
 script = '''
@@ -122,31 +90,17 @@ set -euo pipefail
 cargo bench -p fraktor-actor-core-kernel-rs --bench mailbox
 '''
 
-[tasks.actor-core-story]
-description = "Actor core story pipeline (US1→US3 + perf)"
-workspace = false
-dependencies = [
-  "actor-core-us1",
-  "actor-core-us2",
-  "actor-core-us3",
-  "actor-core-perf",
-]
-
 [tasks.actor-tell-disabled-check]
-description = "Build fraktor-actor-core-kernel-rs core targets with tell API disabled via --cfg fraktor_disable_tell"
+description = "Build actor core crates with tell API disabled via --cfg fraktor_disable_tell"
 workspace = false
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-CHANNEL=$(awk -F'"' '/^\s*channel\s*=/ {print $2; exit}' rust-toolchain.toml)
-if [ -z "${CHANNEL}" ]; then
-  CHANNEL=nightly
-fi
 EXTRA_RUSTFLAGS="--cfg fraktor_disable_tell"
 if [ -n "${RUSTFLAGS:-}" ]; then
   export RUSTFLAGS="${RUSTFLAGS} ${EXTRA_RUSTFLAGS}"
 else
   export RUSTFLAGS="${EXTRA_RUSTFLAGS}"
 fi
-cargo +"${CHANNEL}" check -p fraktor-actor-core-kernel-rs --features test-support,std,tokio-executor
+cargo check -p fraktor-actor-core-kernel-rs -p fraktor-actor-core-typed-rs
 '''
