@@ -19,7 +19,8 @@ use tokio::{
 use tokio_util::codec::Framed;
 
 use super::{
-  connection_loss_reporter::ConnectionLossReporter, frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent,
+  client::inbound_lane_index, connection_loss_reporter::ConnectionLossReporter, frame_codec::WireFrameCodec,
+  inbound_frame_event::InboundFrameEvent,
 };
 use crate::association::authority_for_frame;
 
@@ -56,7 +57,7 @@ impl TcpServer {
 
   pub(crate) fn start_with_remote_events(
     &mut self,
-    inbound_tx: UnboundedSender<InboundFrameEvent>,
+    inbound_txs: Vec<UnboundedSender<InboundFrameEvent>>,
     remote_event_tx: Option<Sender<RemoteEvent>>,
     monotonic_epoch: Instant,
   ) -> Result<SocketAddr, TransportError> {
@@ -74,11 +75,11 @@ impl TcpServer {
       loop {
         match listener.accept().await {
           | Ok((stream, peer)) => {
-            let inbound_tx = inbound_tx.clone();
+            let inbound_txs = inbound_txs.clone();
             let remote_event_tx = remote_event_tx.clone();
             let peer_addr = peer.to_string();
             let connection =
-              tokio::spawn(read_loop(stream, peer_addr, inbound_tx, frame_codec, remote_event_tx, monotonic_epoch));
+              tokio::spawn(read_loop(stream, peer_addr, inbound_txs, frame_codec, remote_event_tx, monotonic_epoch));
             // 接続ごとの read_loop ハンドルを共有 Vec に蓄積し、 shutdown() から abort できるようにする。
             // 終了済みハンドルはここでまとめて掃除し、長時間 accept を続けても無制限には膨れないようにする。
             match connection_tasks.lock() {
@@ -118,7 +119,7 @@ impl TcpServer {
 async fn read_loop(
   stream: TcpStream,
   peer: String,
-  inbound_tx: UnboundedSender<InboundFrameEvent>,
+  inbound_txs: Vec<UnboundedSender<InboundFrameEvent>>,
   frame_codec: WireFrameCodec,
   remote_event_tx: Option<Sender<RemoteEvent>>,
   monotonic_epoch: Instant,
@@ -131,6 +132,10 @@ async fn read_loop(
         if let Some(frame_authority) = authority_for_frame(&decoded) {
           authority = Some(frame_authority);
         }
+        let lane_index = inbound_lane_index(&peer, authority.as_ref(), &decoded, inbound_txs.len());
+        let Some(inbound_tx) = inbound_txs.get(lane_index) else {
+          break Some(TransportError::NotAvailable);
+        };
         if inbound_tx
           .send(InboundFrameEvent { peer: peer.clone(), authority: authority.clone(), frame: decoded })
           .is_err()

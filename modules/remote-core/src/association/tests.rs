@@ -15,7 +15,7 @@ use crate::{
     Association, AssociationEffect, AssociationState, HandshakeRejectedState, HandshakeValidationError, OfferOutcome,
     QuarantineReason, SendQueue,
   },
-  config::RemoteConfig,
+  config::{LargeMessageDestinationPattern, LargeMessageDestinations, RemoteConfig},
   envelope::{OutboundEnvelope, OutboundPriority},
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, TransportEndpoint},
@@ -65,6 +65,27 @@ fn make_envelope(priority: OutboundPriority, payload: &str) -> OutboundEnvelope 
   )
 }
 
+fn make_envelope_to(path: &str, priority: OutboundPriority, payload: &str) -> OutboundEnvelope {
+  let recipient =
+    ActorPathParser::parse(&alloc::format!("fraktor.tcp://remote-sys@10.0.0.1:2552{path}")).expect("parse");
+  OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from(payload)),
+    priority,
+    sample_remote_node(),
+    CorrelationId::nil(),
+  )
+}
+
+fn payload_string(envelope: &OutboundEnvelope) -> &str {
+  envelope.message().downcast_ref::<String>().expect("test payload should be String")
+}
+
+fn large_message_destinations(pattern: &str) -> LargeMessageDestinations {
+  LargeMessageDestinations::new().with_pattern(LargeMessageDestinationPattern::new(pattern))
+}
+
 fn assert_offer_accepted(outcome: &OfferOutcome) {
   assert!(matches!(outcome, OfferOutcome::Accepted), "expected Accepted, got {outcome:?}");
 }
@@ -85,6 +106,18 @@ fn associate_idle(association: &mut Association, now_ms: u64) {
 fn time_out_handshake(association: &mut Association, now_ms: u64, resume_at_ms: Option<u64>) {
   let effects = association.handshake_timed_out(now_ms, resume_at_ms, &mut NoopInstrument);
   assert!(!effects.is_empty(), "handshake timeout should emit lifecycle effects");
+}
+
+fn active_association_from_config(config: &RemoteConfig) -> Association {
+  let mut association = Association::from_config(sample_local(), sample_remote_addr(), config);
+  associate_idle(&mut association, 0);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let effects = association
+    .accept_handshake_response(&response, 10, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
+  assert!(!effects.is_empty(), "handshake response should emit lifecycle effects");
+  assert!(association.state().is_active());
+  association
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +216,51 @@ fn send_queue_with_limits_enforces_bounds_without_requiring_preallocation() {
 }
 
 #[test]
+fn send_queue_drains_system_then_user_then_large_message() {
+  let mut queue = SendQueue::with_lane_limits(10, 10, 10);
+  assert_offer_accepted(&queue.offer_large_message(make_envelope(OutboundPriority::User, "large")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::User, "user")));
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::System, "system")));
+
+  let first = queue.next_outbound().expect("system first");
+  let second = queue.next_outbound().expect("user second");
+  let third = queue.next_outbound().expect("large third");
+
+  assert_eq!(payload_string(&first), "system");
+  assert_eq!(payload_string(&second), "user");
+  assert_eq!(payload_string(&third), "large");
+  assert!(queue.next_outbound().is_none());
+}
+
+#[test]
+fn send_queue_backpressure_pauses_large_message_lane_with_user_lane() {
+  let mut queue = SendQueue::with_lane_limits(10, 10, 10);
+  assert_offer_accepted(&queue.offer_large_message(make_envelope(OutboundPriority::User, "large")));
+  queue.apply_backpressure(BackpressureSignal::Apply);
+
+  assert!(queue.next_outbound().is_none());
+
+  queue.apply_backpressure(BackpressureSignal::Release);
+  let envelope = queue.next_outbound().expect("large message after release");
+  assert_eq!(payload_string(&envelope), "large");
+}
+
+#[test]
+fn send_queue_rejects_large_message_envelope_when_large_message_lane_is_full() {
+  let mut queue = SendQueue::with_lane_limits(10, 10, 1);
+  assert_offer_accepted(&queue.offer_large_message(make_envelope(OutboundPriority::User, "large-1")));
+
+  let outcome = queue.offer_large_message(make_envelope(OutboundPriority::User, "large-2"));
+
+  match outcome {
+    | OfferOutcome::QueueFull { envelope } => {
+      assert_eq!(payload_string(&envelope), "large-2");
+    },
+    | other => panic!("expected QueueFull for full large-message lane, got {other:?}"),
+  }
+}
+
+#[test]
 fn send_queue_with_capacity_rejects_zero_system_capacity() {
   let result = std::panic::catch_unwind(|| SendQueue::with_capacity(0, 1));
 
@@ -208,6 +286,13 @@ fn send_queue_with_limits_rejects_zero_user_limit() {
   let result = std::panic::catch_unwind(|| SendQueue::with_limits(1, 0));
 
   assert!(result.is_err(), "user lane limit must reject zero");
+}
+
+#[test]
+fn send_queue_with_lane_limits_rejects_zero_large_message_limit() {
+  let result = std::panic::catch_unwind(|| SendQueue::with_lane_limits(1, 1, 0));
+
+  assert!(result.is_err(), "large-message lane limit must reject zero");
 }
 
 // ---------------------------------------------------------------------------
@@ -752,6 +837,74 @@ fn enqueue_in_active_discards_when_user_queue_is_full() {
 
   assert!(first.is_empty());
   assert_eq!(a.send_queue().len(), 1);
+  assert_single_discard_with_priority(&second, OutboundPriority::User);
+}
+
+#[test]
+fn enqueue_in_active_routes_matching_user_recipient_to_large_message_queue() {
+  let config = RemoteConfig::new("localhost")
+    .with_outbound_message_queue_size(1)
+    .with_outbound_large_message_queue_size(1)
+    .with_large_message_destinations(large_message_destinations("/user/large-*"));
+  let mut a = active_association_from_config(&config);
+
+  let large = enqueue(&mut a, make_envelope_to("/user/large-worker", OutboundPriority::User, "large"), 20);
+  let normal = enqueue(&mut a, make_envelope_to("/user/small-worker", OutboundPriority::User, "normal"), 21);
+
+  assert!(large.is_empty());
+  assert!(normal.is_empty());
+  assert_eq!(a.send_queue().len(), 2);
+  let first = a.next_outbound(22, &mut NoopInstrument).expect("normal user should drain first");
+  let second = a.next_outbound(23, &mut NoopInstrument).expect("large message should drain second");
+  assert_eq!(payload_string(&first), "normal");
+  assert_eq!(payload_string(&second), "large");
+}
+
+#[test]
+fn enqueue_in_active_routes_non_matching_user_recipient_to_normal_user_queue() {
+  let config = RemoteConfig::new("localhost")
+    .with_outbound_message_queue_size(1)
+    .with_outbound_large_message_queue_size(1)
+    .with_large_message_destinations(large_message_destinations("/user/large-*"));
+  let mut a = active_association_from_config(&config);
+
+  let first = enqueue(&mut a, make_envelope_to("/user/small-a", OutboundPriority::User, "small-a"), 20);
+  let second = enqueue(&mut a, make_envelope_to("/user/small-b", OutboundPriority::User, "small-b"), 21);
+
+  assert!(first.is_empty());
+  assert_single_discard_with_priority(&second, OutboundPriority::User);
+}
+
+#[test]
+fn enqueue_in_active_keeps_matching_system_envelope_in_system_queue() {
+  let config = RemoteConfig::new("localhost")
+    .with_outbound_control_queue_size(1)
+    .with_outbound_large_message_queue_size(1)
+    .with_large_message_destinations(large_message_destinations("/user/large-*"));
+  let mut a = active_association_from_config(&config);
+
+  let system = enqueue(&mut a, make_envelope_to("/user/large-worker", OutboundPriority::System, "system"), 20);
+  let large = enqueue(&mut a, make_envelope_to("/user/large-worker", OutboundPriority::User, "large"), 21);
+
+  assert!(system.is_empty());
+  assert!(large.is_empty());
+  let first = a.next_outbound(22, &mut NoopInstrument).expect("system should drain first");
+  let second = a.next_outbound(23, &mut NoopInstrument).expect("large user should drain second");
+  assert_eq!(payload_string(&first), "system");
+  assert_eq!(payload_string(&second), "large");
+}
+
+#[test]
+fn enqueue_in_active_discards_when_large_message_queue_is_full() {
+  let config = RemoteConfig::new("localhost")
+    .with_outbound_large_message_queue_size(1)
+    .with_large_message_destinations(large_message_destinations("/user/large-*"));
+  let mut a = active_association_from_config(&config);
+
+  let first = enqueue(&mut a, make_envelope_to("/user/large-a", OutboundPriority::User, "large-a"), 20);
+  let second = enqueue(&mut a, make_envelope_to("/user/large-b", OutboundPriority::User, "large-b"), 21);
+
+  assert!(first.is_empty());
   assert_single_discard_with_priority(&second, OutboundPriority::User);
 }
 

@@ -137,6 +137,8 @@ Rationale:
 
 `RemoteCompressionConfig` は Phase 3 の serializer registry / payload codec 設計の入力として保持する。現在の Phase 2 では compression config を transport / wire codec に接続しない。gap analysis はこの判断に合わせて、compression advertisement / table application を Phase 2 の完了条件から外す。
 
+Future item: Phase 3 の serializer registry 設計で、payload manifest と actor ref の圧縮 table をどこで advertise / apply するかを決める。その時点で初めて `RemoteCompressionConfig` を fraktor-native wire behavior に接続する。
+
 Rationale:
 
 - 既存 `remote-core-settings` spec が wire-level compression を明示的に非対象としている。

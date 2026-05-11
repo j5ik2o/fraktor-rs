@@ -14,6 +14,15 @@ use crate::actor::messaging::AnyMessage;
 
 type HashKeyMapper = dyn Fn(&AnyMessage) -> u64 + Send + Sync;
 
+/// Built-in mapper category carried by a consistent-hashing pool.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ConsistentHashingHashKeyMapperKind {
+  /// Uses `ConsistentHashableEnvelope::hash_key()` and a fixed fallback key.
+  EnvelopeHashKey,
+  /// Uses an arbitrary process-local closure.
+  CustomClosure,
+}
+
 /// Pool router that selects routees via consistent hashing.
 ///
 /// Corresponds to Pekko's `org.apache.pekko.routing.ConsistentHashingPool`.
@@ -35,9 +44,10 @@ type HashKeyMapper = dyn Fn(&AnyMessage) -> u64 + Send + Sync;
 /// See the `# Design notes` section on [`ConsistentHashingRoutingLogic`] for
 /// the full rationale.
 pub struct ConsistentHashingPool {
-  nr_of_instances:   usize,
-  hash_key_mapper:   ArcShared<HashKeyMapper>,
-  router_dispatcher: String,
+  nr_of_instances:      usize,
+  hash_key_mapper:      ArcShared<HashKeyMapper>,
+  hash_key_mapper_kind: ConsistentHashingHashKeyMapperKind,
+  router_dispatcher:    String,
 }
 
 impl ConsistentHashingPool {
@@ -59,6 +69,23 @@ impl ConsistentHashingPool {
     Self {
       nr_of_instances,
       hash_key_mapper: ArcShared::new(hash_key_mapper),
+      hash_key_mapper_kind: ConsistentHashingHashKeyMapperKind::CustomClosure,
+      router_dispatcher: String::from("default-dispatcher"),
+    }
+  }
+
+  /// Creates a wire-safe consistent-hashing pool that uses explicit envelope keys.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `nr_of_instances` is zero.
+  #[must_use]
+  pub fn new_envelope_hash_key(nr_of_instances: usize) -> Self {
+    assert!(nr_of_instances > 0, "nr_of_instances must be positive");
+    Self {
+      nr_of_instances,
+      hash_key_mapper: ArcShared::new(|_: &AnyMessage| 0),
+      hash_key_mapper_kind: ConsistentHashingHashKeyMapperKind::EnvelopeHashKey,
       router_dispatcher: String::from("default-dispatcher"),
     }
   }
@@ -75,6 +102,12 @@ impl ConsistentHashingPool {
   pub(crate) fn create_routing_logic(&self) -> ConsistentHashingRoutingLogic {
     let mapper = self.hash_key_mapper.clone();
     ConsistentHashingRoutingLogic::new(move |msg: &AnyMessage| mapper(msg))
+  }
+
+  /// Returns the mapper category used by this pool.
+  #[must_use]
+  pub(crate) const fn hash_key_mapper_kind(&self) -> ConsistentHashingHashKeyMapperKind {
+    self.hash_key_mapper_kind
   }
 }
 

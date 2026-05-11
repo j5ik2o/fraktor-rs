@@ -47,6 +47,11 @@ fn assert_serializable_pool_flags(pool: &RemoteRouterPool) {
   assert!(pool.stop_router_when_all_routees_removed());
 }
 
+fn remote_router_config_pool_payload_offset(bytes: &[u8]) -> usize {
+  let dispatcher_len = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]) as usize;
+  1 + 4 + 4 + dispatcher_len + 4
+}
+
 #[test]
 fn identifier_returns_configured_id() {
   let registry = registry();
@@ -287,6 +292,29 @@ fn remote_router_config_round_trips_random_pool_with_manifest() {
   assert_eq!(config.local().router_dispatcher(), "random-router-dispatcher");
   assert_serializable_pool_flags(config.local());
   assert!(matches!(config.local(), RemoteRouterPool::Random(_)));
+  assert_eq!(config.nodes(), &[first, second]);
+}
+
+#[test]
+fn remote_router_config_round_trips_consistent_hashing_pool_with_envelope_mapper() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let first = remote_node();
+  let second = Address::remote("remote-b", "10.0.0.2", 2553);
+  let local =
+    ConsistentHashingPool::new_envelope_hash_key(4).with_dispatcher(String::from("consistent-router-dispatcher"));
+  let original = RemoteRouterConfig::new(local, vec![first.clone(), second.clone()]);
+
+  let bytes = s.to_binary(&original).expect("remote router config should encode");
+  let view = s.as_string_manifest().expect("string manifest view");
+  let decoded =
+    view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST).expect("remote router config should decode");
+  let config = decoded.downcast::<RemoteRouterConfig>().expect("decoded payload should be RemoteRouterConfig");
+
+  assert_eq!(config.local().nr_of_instances(), 4);
+  assert_eq!(config.local().router_dispatcher(), "consistent-router-dispatcher");
+  assert_serializable_pool_flags(config.local());
+  assert!(matches!(config.local(), RemoteRouterPool::ConsistentHashing(_)));
   assert_eq!(config.nodes(), &[first, second]);
 }
 
@@ -690,6 +718,7 @@ fn remote_router_config_decode_rejects_node_count_exceeding_remaining_bytes() {
   bytes.extend_from_slice(&3_u32.to_le_bytes());
   bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
   bytes.extend_from_slice(dispatcher.as_bytes());
+  bytes.extend_from_slice(&0_u32.to_le_bytes());
   // node_count を u32::MAX にして残りバイト数を遥かに超えさせる。 OOM 防御で InvalidFormat を返す。
   bytes.extend_from_slice(&u32::MAX.to_le_bytes());
 
@@ -709,6 +738,7 @@ fn remote_router_config_decode_rejects_node_count_exceeding_minimum_encoded_addr
   bytes.extend_from_slice(&3_u32.to_le_bytes());
   bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
   bytes.extend_from_slice(dispatcher.as_bytes());
+  bytes.extend_from_slice(&0_u32.to_le_bytes());
   bytes.extend_from_slice(&65_u32.to_le_bytes());
   bytes.extend(core::iter::repeat_n(0_u8, 1024));
 
@@ -728,6 +758,7 @@ fn remote_router_config_decode_rejects_zero_nodes() {
   bytes.extend_from_slice(&3_u32.to_le_bytes());
   bytes.extend_from_slice(&u32::try_from(dispatcher.len()).expect("dispatcher fits in u32").to_le_bytes());
   bytes.extend_from_slice(dispatcher.as_bytes());
+  bytes.extend_from_slice(&0_u32.to_le_bytes());
   bytes.extend_from_slice(&0_u32.to_le_bytes());
 
   let view = s.as_string_manifest().expect("string manifest view");
@@ -759,6 +790,38 @@ fn remote_router_config_decode_rejects_unknown_pool_tag() {
   let original = RemoteRouterConfig::new(local, vec![remote_node()]);
   let mut bytes = s.to_binary(&original).expect("encode");
   bytes[0] = 0xff;
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_unknown_consistent_hashing_mapper_tag() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = ConsistentHashingPool::new_envelope_hash_key(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let mut bytes = s.to_binary(&original).expect("encode");
+  let mapper_tag_offset = remote_router_config_pool_payload_offset(&bytes);
+  bytes[mapper_tag_offset] = 0xff;
+
+  let view = s.as_string_manifest().expect("string manifest view");
+  let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);
+
+  assert!(matches!(result, Err(SerializationError::InvalidFormat)), "expected InvalidFormat, got {result:?}");
+}
+
+#[test]
+fn remote_router_config_decode_rejects_malformed_consistent_hashing_mapper_payload() {
+  let registry = registry();
+  let s = serializer(&registry);
+  let local = ConsistentHashingPool::new_envelope_hash_key(2).with_dispatcher(String::from("d"));
+  let original = RemoteRouterConfig::new(local, vec![remote_node()]);
+  let mut bytes = s.to_binary(&original).expect("encode");
+  let payload_len_offset = remote_router_config_pool_payload_offset(&bytes) - 4;
+  bytes[payload_len_offset..payload_len_offset + 4].copy_from_slice(&0_u32.to_le_bytes());
 
   let view = s.as_string_manifest().expect("string manifest view");
   let result = view.from_binary_with_manifest(&bytes, REMOTE_ROUTER_CONFIG_MANIFEST);

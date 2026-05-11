@@ -35,6 +35,7 @@ mod with_listeners;
 pub use broadcast::Broadcast;
 pub use consistent_hashable::ConsistentHashable;
 pub use consistent_hashable_envelope::ConsistentHashableEnvelope;
+pub(crate) use consistent_hashing_pool::ConsistentHashingHashKeyMapperKind;
 pub use consistent_hashing_pool::ConsistentHashingPool;
 pub use consistent_hashing_routing_logic::{
   ConsistentHashingRoutingLogic, FNV_OFFSET_BASIS, mix_hash, rendezvous_score,

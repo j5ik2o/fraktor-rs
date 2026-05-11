@@ -1,6 +1,9 @@
 //! `TcpRemoteTransport` — `std::net`-backed implementation of the core
 //! [`RemoteTransport`] port.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{
   string::{String, ToString},
   vec::Vec,
@@ -57,11 +60,13 @@ pub struct TcpRemoteTransport {
   frame_codec:                WireFrameCodec,
   server:                     TcpServer,
   clients:                    BTreeMap<String, TcpClient>,
-  inbound_tx:                 UnboundedSender<InboundFrameEvent>,
-  inbound_rx:                 Option<UnboundedReceiver<InboundFrameEvent>>,
+  inbound_txs:                Vec<UnboundedSender<InboundFrameEvent>>,
+  inbound_rxs:                Option<Vec<UnboundedReceiver<InboundFrameEvent>>>,
   remote_event_tx:            Option<Sender<RemoteEvent>>,
   monotonic_epoch:            Instant,
-  inbound_worker:             Option<JoinHandle<Result<(), TransportError>>>,
+  inbound_workers:            Vec<JoinHandle<Result<(), TransportError>>>,
+  inbound_lanes:              usize,
+  outbound_lanes:             usize,
   running:                    bool,
 }
 
@@ -106,11 +111,29 @@ impl TcpRemoteTransport {
     let bind_addr = alloc::format!("{bind_host}:{bind_port}");
     let local_addresses = vec![Address::new(system_name, config.canonical_host(), advertised_port)];
     let frame_codec = WireFrameCodec::with_maximum_frame_size(config.maximum_frame_size());
-    Self::with_frame_codec(bind_addr, local_addresses, frame_codec)
+    Self::with_frame_codec_and_lanes(
+      bind_addr,
+      local_addresses,
+      frame_codec,
+      config.inbound_lanes(),
+      config.outbound_lanes(),
+    )
   }
 
   fn with_frame_codec(bind_addr: String, local_addresses: Vec<Address>, frame_codec: WireFrameCodec) -> Self {
-    let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
+    Self::with_frame_codec_and_lanes(bind_addr, local_addresses, frame_codec, 1, 1)
+  }
+
+  fn with_frame_codec_and_lanes(
+    bind_addr: String,
+    local_addresses: Vec<Address>,
+    frame_codec: WireFrameCodec,
+    inbound_lanes: usize,
+    outbound_lanes: usize,
+  ) -> Self {
+    assert!(inbound_lanes > 0, "inbound lanes must be greater than zero");
+    assert!(outbound_lanes > 0, "outbound lanes must be greater than zero");
+    let (inbound_txs, inbound_rxs) = Self::inbound_channels(inbound_lanes);
     let default_address = local_addresses.first().cloned();
     Self {
       configured_local_addresses: local_addresses.clone(),
@@ -120,19 +143,34 @@ impl TcpRemoteTransport {
       bind_addr,
       frame_codec,
       clients: BTreeMap::new(),
-      inbound_tx,
-      inbound_rx: Some(inbound_rx),
+      inbound_txs,
+      inbound_rxs: Some(inbound_rxs),
       remote_event_tx: None,
       monotonic_epoch: Instant::now(),
-      inbound_worker: None,
+      inbound_workers: Vec::new(),
+      inbound_lanes,
+      outbound_lanes,
       running: false,
     }
   }
 
+  fn inbound_channels(
+    inbound_lanes: usize,
+  ) -> (Vec<UnboundedSender<InboundFrameEvent>>, Vec<UnboundedReceiver<InboundFrameEvent>>) {
+    let mut inbound_txs = Vec::with_capacity(inbound_lanes);
+    let mut inbound_rxs = Vec::with_capacity(inbound_lanes);
+    for _ in 0..inbound_lanes {
+      let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
+      inbound_txs.push(inbound_tx);
+      inbound_rxs.push(inbound_rx);
+    }
+    (inbound_txs, inbound_rxs)
+  }
+
   fn reset_inbound_channel(&mut self) {
-    let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<InboundFrameEvent>();
-    self.inbound_tx = inbound_tx;
-    self.inbound_rx = Some(inbound_rx);
+    let (inbound_txs, inbound_rxs) = Self::inbound_channels(self.inbound_lanes);
+    self.inbound_txs = inbound_txs;
+    self.inbound_rxs = Some(inbound_rxs);
   }
 
   /// Returns a copy that emits scheduled remote events through `sender`.
@@ -149,20 +187,25 @@ impl TcpRemoteTransport {
     self
   }
 
-  fn spawn_inbound_worker(&mut self) -> Result<(), TransportError> {
+  fn spawn_inbound_workers(&mut self) -> Result<(), TransportError> {
     let Some(event_sender) = self.remote_event_tx.clone() else {
-      tracing::debug!("with_remote_event_sender was not called; inbound worker not spawned");
+      tracing::debug!("with_remote_event_sender was not called; inbound workers not spawned");
       return Ok(());
     };
-    let Some(inbound_rx) = self.inbound_rx.take() else {
-      tracing::debug!("inbound receiver was already consumed; inbound worker not spawned");
+    let Some(inbound_rxs) = self.inbound_rxs.take() else {
+      tracing::debug!("inbound receivers were already consumed; inbound workers not spawned");
       return Err(TransportError::NotAvailable);
     };
     let monotonic_epoch = self.monotonic_epoch;
-    let handle = tokio::spawn(async move {
-      run_inbound_dispatch(inbound_rx, event_sender, move || std_instant_elapsed_millis(monotonic_epoch)).await
-    });
-    self.inbound_worker = Some(handle);
+    self.inbound_workers = inbound_rxs
+      .into_iter()
+      .map(|inbound_rx| {
+        let event_sender = event_sender.clone();
+        tokio::spawn(async move {
+          run_inbound_dispatch(inbound_rx, event_sender, move || std_instant_elapsed_millis(monotonic_epoch)).await
+        })
+      })
+      .collect();
     Ok(())
   }
 
@@ -179,13 +222,13 @@ impl TcpRemoteTransport {
       self.clients.remove(&peer_key);
     }
     let connect_addr = alloc::format!("{}:{}", remote.host(), remote.port());
-    let client = TcpClient::connect(connect_addr, self.inbound_tx.clone(), self.client_connect_options(remote))?;
+    let client = TcpClient::connect(connect_addr, self.inbound_txs.clone(), self.client_connect_options(remote))?;
     self.clients.insert(peer_key, client);
     Ok(())
   }
 
   fn client_connect_options(&self, remote: &Address) -> TcpClientConnectOptions {
-    let options = TcpClientConnectOptions::new(self.frame_codec);
+    let options = TcpClientConnectOptions::new(self.frame_codec).with_outbound_lanes(self.outbound_lanes);
     if let Some(event_sender) = self.remote_event_tx.clone() {
       options.with_connection_loss_reporter(
         event_sender,
@@ -250,6 +293,28 @@ impl TcpRemoteTransport {
     }
     result
   }
+
+  fn send_wire_frame_with_lane_key(
+    &mut self,
+    remote: &Address,
+    lane_key: &[u8],
+    frame: WireFrame,
+  ) -> Result<(), TransportError> {
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    let peer_key = Self::peer_key_for_address(remote);
+    let Some(client) = self.clients.get(&peer_key) else {
+      return Err(TransportError::ConnectionClosed);
+    };
+    let result = client.send_with_lane_key(lane_key, frame);
+    if result.as_ref().err().is_some_and(|error| error == &TransportError::ConnectionClosed)
+      && let Some(mut client) = self.clients.remove(&peer_key)
+    {
+      client.shutdown();
+    }
+    result
+  }
 }
 
 pub(super) fn outbound_envelope_to_pdu(envelope: &OutboundEnvelope) -> Result<EnvelopePdu, TransportError> {
@@ -279,19 +344,31 @@ fn remote_address_from_envelope(envelope: &OutboundEnvelope) -> Result<Address, 
   Ok(Address::new(remote_node.system(), remote_node.host(), port))
 }
 
+fn outbound_lane_key_for_envelope(envelope: &OutboundEnvelope) -> Vec<u8> {
+  let mut key = Vec::new();
+  key.extend_from_slice(envelope.recipient().to_canonical_uri().as_bytes());
+  key.push(0);
+  if let Some(sender) = envelope.sender() {
+    key.extend_from_slice(sender.to_canonical_uri().as_bytes());
+  }
+  key.push(0);
+  key.extend_from_slice(&envelope.correlation_id().to_be_bytes());
+  key
+}
+
 impl RemoteTransport for TcpRemoteTransport {
   fn start(&mut self) -> Result<(), TransportError> {
     if self.running {
       return Err(TransportError::AlreadyRunning);
     }
     let bound_addr = self.server.start_with_remote_events(
-      self.inbound_tx.clone(),
+      self.inbound_txs.clone(),
       self.remote_event_tx.clone(),
       self.monotonic_epoch,
     )?;
     self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;
-    if let Err(error) = self.spawn_inbound_worker() {
+    if let Err(error) = self.spawn_inbound_workers() {
       self.server.shutdown();
       self.running = false;
       return Err(error);
@@ -307,10 +384,10 @@ impl RemoteTransport for TcpRemoteTransport {
     for (_peer, client) in self.clients.iter_mut() {
       client.shutdown();
     }
-    if let Some(handle) = self.inbound_worker.take() {
+    for handle in self.inbound_workers.drain(..) {
       handle.abort();
     }
-    if self.remote_event_tx.is_some() && self.inbound_rx.is_none() {
+    if self.remote_event_tx.is_some() && self.inbound_rxs.is_none() {
       self.reset_inbound_channel();
     }
     self.clients.clear();
@@ -338,7 +415,8 @@ impl RemoteTransport for TcpRemoteTransport {
       | Ok(pdu) => WireFrame::Envelope(pdu),
       | Err(error) => return Err((error, Box::new(envelope))),
     };
-    match self.send_wire_frame(&remote, frame) {
+    let lane_key = outbound_lane_key_for_envelope(&envelope);
+    match self.send_wire_frame_with_lane_key(&remote, &lane_key, frame) {
       | Ok(()) => Ok(()),
       | Err(error) => Err((error, Box::new(envelope))),
     }

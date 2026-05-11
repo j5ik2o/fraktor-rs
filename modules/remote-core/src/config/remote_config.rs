@@ -30,7 +30,7 @@ pub(crate) const DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE: usize = 3072;
 pub(crate) const DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE: usize = 20_000;
 
 /// Default outbound large-message queue size.
-const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
+pub(crate) const DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE: usize = 256;
 
 /// Default remote event queue size.
 ///
