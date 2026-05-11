@@ -53,7 +53,7 @@ path = "legacy/tests/routing_surface.rs"
 name = "shared_lock_showcase_surface"
 path = "legacy/tests/shared_lock_showcase_surface.rs"
 
-# --- Basic examples ---
+# --- Basic examples: legacy ---
 
 [[example]]
 name = "getting_started"
@@ -123,7 +123,7 @@ name = "persistent_actor"
 path = "legacy/persistent_actor/main.rs"
 required-features = ["advanced"]
 
-# --- Strangler fig examples: Pekko classic/kernel ---
+# --- Strangler fig examples: kernel ---
 
 [[example]]
 name = "kernel_first_example"
@@ -217,7 +217,7 @@ path = "typed/dispatchers/main.rs"
 name = "typed_mailboxes"
 path = "typed/mailboxes/main.rs"
 
-# --- Strangler fig examples: Pekko streams ---
+# --- Strangler fig examples: streams ---
 
 [[example]]
 name = "stream_first_example"
