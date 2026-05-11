@@ -76,7 +76,7 @@ where
 
 #[test]
 fn recipient_ref_is_implemented_for_typed_actor_ref() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
@@ -92,7 +92,7 @@ fn recipient_ref_is_implemented_for_typed_actor_ref() {
 
 #[test]
 fn recipient_ref_is_implemented_for_untyped_actor_ref() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
@@ -108,7 +108,7 @@ fn recipient_ref_is_implemented_for_untyped_actor_ref() {
 
 #[test]
 fn typed_recipient_ref_supports_ask() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let cell = register_cell(&system, pid, "typed-ask", &props);
@@ -125,7 +125,7 @@ fn typed_recipient_ref_supports_ask() {
 
 #[test]
 fn untyped_recipient_ref_supports_ask() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let cell = register_cell(&system, pid, "untyped-ask", &props);
@@ -153,7 +153,7 @@ fn untyped_recipient_ref_ask_preserves_send_failure_semantics() {
 /// `try_tell` no longer exists on TypedActorRef.
 #[test]
 fn typed_actor_ref_tell_returns_unit() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({

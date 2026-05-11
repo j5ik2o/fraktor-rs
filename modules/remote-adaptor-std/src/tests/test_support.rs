@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_adaptor_std_rs::system::new_empty_actor_system;
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
   system::ActorSystem,
@@ -17,7 +17,7 @@ pub(crate) struct EventHarness {
 
 impl EventHarness {
   pub(crate) fn new() -> Self {
-    let system = new_empty_actor_system();
+    let system = create_noop_actor_system();
     let events = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
     let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
     let subscription = system.subscribe_event_stream(&subscriber);

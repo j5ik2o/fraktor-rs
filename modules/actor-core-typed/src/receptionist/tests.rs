@@ -332,7 +332,7 @@ fn register_without_ack_still_works() {
 
 #[test]
 fn register_returns_error_and_does_not_store_registration_when_watch_fails() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let state = empty_state();
   let key = ServiceKey::<u32>::new("watch-fail-register");
   let routee = crate::test_support::actor_ref_with_sender(Pid::new(701, 0), NullSender);
@@ -349,7 +349,7 @@ fn register_returns_error_and_does_not_store_registration_when_watch_fails() {
 
 #[test]
 fn subscribe_returns_error_and_does_not_store_subscriber_when_watch_fails() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let state = empty_state();
   let key = ServiceKey::<u32>::new("watch-fail-subscriber");
   let listings = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -372,7 +372,7 @@ fn subscribe_returns_error_and_does_not_store_subscriber_when_watch_fails() {
 
 #[test]
 fn subscribe_logs_warn_and_preserves_subscriber_when_initial_listing_delivery_fails() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let (events, _subscription) = subscribe_log_recorder(&system);
   let state = empty_state();
   let key = ServiceKey::<u32>::new("closed-subscriber");
@@ -392,7 +392,7 @@ fn subscribe_logs_warn_and_preserves_subscriber_when_initial_listing_delivery_fa
 
 #[test]
 fn register_logs_warn_and_preserves_registration_when_notifying_closed_subscriber_fails() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let (events, _subscription) = subscribe_log_recorder(&system);
   let state = empty_state();
   let key = ServiceKey::<u32>::new("notify-fail");
@@ -415,7 +415,7 @@ fn register_logs_warn_and_preserves_registration_when_notifying_closed_subscribe
 
 #[test]
 fn register_with_ack_logs_warn_and_preserves_registration_when_reply_target_is_closed() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let (events, _subscription) = subscribe_log_recorder(&system);
   let state = empty_state();
   let key = ServiceKey::<u32>::new("ack-fail-register");
@@ -435,7 +435,7 @@ fn register_with_ack_logs_warn_and_preserves_registration_when_reply_target_is_c
 
 #[test]
 fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_closed() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let (events, _subscription) = subscribe_log_recorder(&system);
   let state = empty_state();
   let key = ServiceKey::<u32>::new("ack-fail-deregister");
@@ -460,7 +460,7 @@ fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_c
 
 #[test]
 fn find_logs_warn_and_returns_ok_when_reply_target_is_closed() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let (events, _subscription) = subscribe_log_recorder(&system);
   let state = empty_state();
   let key = ServiceKey::<u32>::new("find-closed-reply");

@@ -1,17 +1,12 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_core_kernel_rs::{
-  actor::{
-    Actor, ActorCell, ActorContext, Pid,
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-    error::{ActorError, SendError},
-    messaging::{AnyMessage, AnyMessageView},
-    props::Props,
-  },
-  system::{
-    ActorSystem,
-    state::{SystemStateShared, system_state::SystemState},
-  },
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
+use fraktor_actor_core_kernel_rs::actor::{
+  Actor, ActorCell, ActorContext, Pid,
+  actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+  error::{ActorError, SendError},
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
@@ -61,8 +56,8 @@ impl Actor for NoopActor {
 }
 
 fn build_context() -> ActorContext<'static> {
-  let state = SystemStateShared::new(SystemState::new());
-  let system = ActorSystem::from_state(state.clone());
+  let system = create_noop_actor_system();
+  let state = system.state();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| NoopActor);
   let cell = ActorCell::create(state.clone(), pid, None, "test".into(), &props).expect("actor cell should be created");

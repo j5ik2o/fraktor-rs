@@ -11,13 +11,10 @@ use std::{
 };
 
 use bytes::Bytes;
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
-  system::{
-    ActorSystem,
-    state::{SystemStateShared, system_state::SystemState},
-  },
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
@@ -348,7 +345,7 @@ impl RemoteTransport for RecordingTransport {
 }
 
 fn event_publisher() -> EventPublisher {
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = create_noop_actor_system();
   EventPublisher::new(system.downgrade())
 }
 

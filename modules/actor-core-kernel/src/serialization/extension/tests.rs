@@ -194,7 +194,7 @@ fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &st
     config = config.with_remoting_config(remoting);
   }
   let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
-  ActorSystem::from_state(state)
+  ActorSystem::from_system_state(state)
 }
 
 fn build_extension_with_system(system: &ActorSystem) -> SerializationExtension {
@@ -328,7 +328,7 @@ fn builtin_actor_identity_with_remote_ref_restores_via_registered_scheme_provide
 
   let target_config = ActorSystemConfig::new(TestTickDriver::default()).with_system_name(String::from("target-sys"));
   let target_state = SystemStateShared::new(SystemState::build_from_owned_config(target_config).expect("target state"));
-  let target_system = ActorSystem::from_state(target_state);
+  let target_system = ActorSystem::from_system_state(target_state);
   let resolved_paths = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let provider =
     ActorRefProviderHandleShared::new(RemotePathActorRefProvider::new(target_system.state(), resolved_paths.clone()));

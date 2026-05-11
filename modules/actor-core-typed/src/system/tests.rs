@@ -28,8 +28,8 @@ use crate::{
 };
 
 // TENTATIVE: scheduled for removal in the same wave that drops
-// `fraktor_actor_adaptor_std_rs::system::new_empty_actor_system` (see base/tests.rs). External
-// callers wrap `new_empty_actor_system()` from actor-adaptor-std with
+// `fraktor_actor_adaptor_std_rs::system::create_noop_actor_system` (see base/tests.rs). External
+// callers wrap `create_noop_actor_system()` from actor-adaptor-std with
 // `TypedActorSystem::from_untyped` instead.
 impl<M> TypedActorSystem<M>
 where
@@ -38,11 +38,11 @@ where
   /// Creates an empty typed actor system without any guardian.
   ///
   /// Inline-test only helper. External callers should wrap
-  /// `fraktor_actor_adaptor_std_rs::system::new_empty_actor_system()` with
+  /// `fraktor_actor_adaptor_std_rs::system::create_noop_actor_system()` with
   /// `TypedActorSystem::from_untyped`.
   #[must_use]
   pub(crate) fn new_empty() -> Self {
-    Self::from_untyped(fraktor_actor_adaptor_std_rs::system::new_empty_actor_system())
+    Self::from_untyped(fraktor_actor_adaptor_std_rs::system::create_noop_actor_system())
   }
 }
 
@@ -444,7 +444,7 @@ fn address_uses_fraktor_protocol() {
 fn settings_returns_snapshot_preserved_through_from_untyped() {
   // Given: an untyped actor system with configured metadata
   let expected_start_time = Duration::from_secs(1_234);
-  let untyped = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system_with(|config| {
+  let untyped = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with(|config| {
     config.with_system_name("wrapped-system").with_start_time(expected_start_time)
   });
   let system = TypedActorSystem::<u32>::from_untyped(untyped);
@@ -475,7 +475,7 @@ fn receptionist_returns_registered_system_receptionist_ref() {
 
 #[test]
 fn receptionist_ref_returns_none_when_missing() {
-  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::new_empty_actor_system());
+  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::create_noop_actor_system());
 
   assert!(system.receptionist_ref().is_none());
 }
@@ -483,7 +483,7 @@ fn receptionist_ref_returns_none_when_missing() {
 #[test]
 #[should_panic(expected = "system receptionist must be installed during actor system bootstrap")]
 fn receptionist_panics_when_missing() {
-  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::new_empty_actor_system());
+  let system = TypedActorSystem::<u32>::from_untyped(fraktor_actor_adaptor_std_rs::system::create_noop_actor_system());
   let _ = system.receptionist();
 }
 
@@ -915,6 +915,43 @@ fn create_from_behavior_factory_builds_running_system_and_invokes_factory() {
   // 検証: system が起動済みで、guardian factory が少なくとも 1 回呼び出されている
   assert!(system.state().has_root_started());
   assert!(*invocations.lock() >= 1, "guardian factory should have been invoked at least once");
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn create_with_noop_guardian_builds_running_system_and_installs_receptionist() {
+  let config = ActorSystemConfig::new(crate::test_support::test_tick_driver());
+
+  let system = TypedActorSystem::<u32>::create_with_noop_guardian(config).expect("system");
+
+  assert!(system.state().has_root_started());
+  assert!(system.receptionist_ref().is_some());
+  let user_guardian = system.user_guardian_ref();
+  assert_eq!(user_guardian.path().expect("user guardian path").to_relative_string(), "/user");
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn create_from_props_with_init_runs_configure_and_installs_receptionist() {
+  let configured = ArcShared::new(SpinSyncMutex::new(false));
+  let configured_in_callback = configured.clone();
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let config = ActorSystemConfig::new(crate::test_support::test_tick_driver());
+
+  let system = TypedActorSystem::<u32>::create_from_props_with_init(&guardian_props, config, |system| {
+    assert!(!system.state().has_root_started());
+    *configured_in_callback.lock() = true;
+    system.extended().register_extra_top_level("typed-extra", ActorRef::null()).expect("register extra top level");
+    Ok(())
+  })
+  .expect("system");
+
+  assert!(*configured.lock());
+  assert!(system.receptionist_ref().is_some());
+  assert!(system.state().extra_top_level("typed-extra").is_some());
+  assert!(system.state().has_root_started());
 
   system.terminate().expect("terminate");
 }

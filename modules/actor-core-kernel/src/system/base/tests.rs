@@ -48,15 +48,10 @@ use crate::{
   },
 };
 
-// TENTATIVE: `new_empty` / `new_empty_with` are scheduled for removal once actor-core's
-// inline tests are migrated to integration tests, which can call the public free functions
-// `new_empty_actor_system` / `new_empty_actor_system_with` from `actor-adaptor-std` without
-// hitting the Cargo dev-cycle dual-version conflict. See
-// `openspec/changes/step03-move-test-tick-driver-to-adaptor-std/design.md` 「実装後の補足」.
 impl ActorSystem {
-  /// Creates an empty actor system without any guardian.
+  /// Creates a bootstrapped actor system with a no-op user guardian.
   ///
-  /// Inline-test only helper. External callers should use `new_empty_actor_system` from
+  /// Inline-test only helper. External callers should use `create_noop_actor_system` from
   /// `fraktor-actor-adaptor-std-rs`.
   ///
   /// # Panics
@@ -67,7 +62,7 @@ impl ActorSystem {
     Self::new_empty_with(|config| config)
   }
 
-  /// Creates an empty actor system with a customizable config.
+  /// Creates a bootstrapped actor system with a customizable config.
   ///
   /// See [`Self::new_empty`] for the rationale on the cfg gating.
   ///
@@ -81,10 +76,30 @@ impl ActorSystem {
     use crate::actor::scheduler::tick_driver::tests::TestTickDriver;
 
     let config = configure(ActorSystemConfig::new(TestTickDriver::default()));
-    match Self::create_started_from_config(config) {
-      | Ok(system) => system,
-      | Err(error) => panic!("test-support config failed to build in new_empty_with: {error:?}"),
-    }
+    Self::create_with_noop_guardian(config).expect("test-support config should build in new_empty_with")
+  }
+
+  /// Creates an unbootstrapped actor system without any guardian.
+  ///
+  /// Use only for tests that explicitly exercise pre-bootstrap behavior.
+  #[must_use]
+  pub(crate) fn new_unbootstrapped() -> Self {
+    Self::new_unbootstrapped_with(|config| config)
+  }
+
+  /// Creates an unbootstrapped actor system with a customizable config.
+  ///
+  /// Use only for tests that explicitly exercise pre-bootstrap behavior.
+  #[must_use]
+  pub(crate) fn new_unbootstrapped_with<F>(configure: F) -> Self
+  where
+    F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
+    use crate::actor::scheduler::tick_driver::tests::TestTickDriver;
+
+    let config = configure(ActorSystemConfig::new(TestTickDriver::default()));
+    let state = SystemState::build_from_owned_config(config)
+      .expect("test-support config should build in new_unbootstrapped_with");
+    Self::from_system_state(SystemStateShared::new(state))
   }
 }
 
@@ -150,18 +165,18 @@ impl EventStreamSubscriber for LifecycleEventWatcher {
 
 #[test]
 fn spawn_child_fails_before_root_started() {
-  let system = ActorSystem::new_empty();
+  let system = ActorSystem::new_unbootstrapped();
   let props = Props::from_fn(|| TestActor);
   let err = system.spawn_child(Pid::new(999, 0), &props).unwrap_err();
-  assert!(matches!(err, SpawnError::InvalidProps(_)));
+  assert!(matches!(err, SpawnError::SystemNotBootstrapped));
 }
 
 #[test]
 fn resolve_actor_ref_fails_before_root_started() {
-  let system = ActorSystem::new_empty();
+  let system = ActorSystem::new_unbootstrapped();
   let path = ActorPath::root();
   let err = system.resolve_actor_ref(path).unwrap_err();
-  assert!(matches!(err, ActorRefResolveError::ProviderMissing | ActorRefResolveError::InvalidAuthority));
+  assert!(matches!(err, ActorRefResolveError::SystemNotBootstrapped));
 }
 
 /// Noop executor used to verify that spawn paths never block on dispatcher
@@ -299,7 +314,7 @@ fn actor_system_drop_shuts_down_executor_once() {
   let config = ActorSystemConfig::new(tick_driver);
 
   let state = SystemState::build_from_owned_config(config).expect("state");
-  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  let system = ActorSystem::from_system_state(SystemStateShared::new(state));
   drop(system);
 
   assert_eq!(executor_calls.load(Ordering::SeqCst), 1);
@@ -352,7 +367,7 @@ fn bootstrap_rolls_back_system_top_level_actor_when_registration_fails() {
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
   let state = SystemStateShared::new(SystemState::build_from_owned_config(config).expect("state"));
   state.register_extra_top_level("metrics", ActorRef::null()).expect("pre-register metrics");
-  let system = ActorSystem::from_state(state);
+  let system = ActorSystem::from_system_state(state);
 
   let result = system.bootstrap(&props, |system| {
     let top_level_props = Props::from_fn(|| TestActor).with_name("metrics");
@@ -419,11 +434,11 @@ fn actor_system_create_with_noop_guardian_fails_without_tick_driver() {
 }
 
 #[test]
-fn actor_system_from_state() {
+fn actor_system_from_system_state() {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
   let state = SystemState::build_from_owned_config(config).expect("state");
-  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  let system = ActorSystem::from_system_state(SystemStateShared::new(state));
   assert!(!system.state().is_terminated());
 }
 
@@ -486,7 +501,7 @@ fn actor_system_reports_tick_driver_snapshot() {
     .with_auto_metadata(AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution });
   let config = ActorSystemConfig::new(tick_driver);
   let state = SystemState::build_from_owned_config(config).expect("state");
-  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  let system = ActorSystem::from_system_state(SystemStateShared::new(state));
 
   let snapshot = system.tick_driver_snapshot().expect("tick driver snapshot");
   assert_eq!(snapshot.metadata.driver_id, driver_id);
@@ -592,7 +607,7 @@ fn spawn_child_resolves_mailbox_id_with_requirements() {
 
 #[test]
 fn actor_system_spawn_without_guardian() {
-  let system = ActorSystem::new_empty();
+  let system = ActorSystem::new_unbootstrapped();
   let props = Props::from_fn(|| TestActor);
 
   let result = system.spawn(&props);
@@ -877,7 +892,7 @@ fn actor_system_installs_scheduler() {
 
 #[test]
 fn lifecycle_events_cover_restart_transitions() {
-  let system = ActorSystem::new_empty();
+  let system = ActorSystem::new_unbootstrapped();
   let stages: ArcShared<SpinSyncMutex<Vec<LifecycleStage>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LifecycleEventWatcher::new(stages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
@@ -933,7 +948,7 @@ fn resolve_actor_ref_injects_canonical_authority() {
   let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_remoting_config(remoting);
   let state = SystemState::build_from_owned_config(config).expect("state");
-  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  let system = ActorSystem::from_system_state(SystemStateShared::new(state));
 
   let recorded = ArcShared::new(SpinSyncMutex::new(None));
   let actor_ref_provider_handle_shared =
@@ -966,7 +981,7 @@ fn resolve_actor_ref_fails_when_provider_missing() {
   let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_remoting_config(remoting);
   let state = SystemState::build_from_owned_config(config).expect("state");
-  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  let system = ActorSystem::from_system_state(SystemStateShared::new(state));
   system.state().mark_root_started();
 
   let path = ActorPath::root().child("svc");

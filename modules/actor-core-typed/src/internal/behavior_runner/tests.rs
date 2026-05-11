@@ -69,20 +69,20 @@ impl Actor for SilentActor {
 }
 
 fn build_context() -> (ActorContext<'static>, MessageAdapterRegistry<ProbeMessage>) {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let ctx = ActorContext::new(&system, pid);
   (ctx, MessageAdapterRegistry::new())
 }
 
 fn build_context_with_pids(count: usize) -> (ActorSystem, Vec<Pid>) {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pids: Vec<_> = (0..count).map(|_| system.allocate_pid()).collect();
   (system, pids)
 }
 
 fn build_context_with_watched_actor() -> (ActorSystem, Pid, TypedActorRef<Infallible>) {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let watcher_pid = system.allocate_pid();
   let watched_pid = system.allocate_pid();
   let props = Props::from_fn(|| SilentActor);
@@ -141,7 +141,7 @@ fn behavior_runner_allows_handled_adapter_failure() {
 
 #[test]
 fn behavior_runner_publishes_adapter_failure_event() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = crate::test_support::subscriber_handle(RecordingAdapterFailureSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
@@ -172,7 +172,7 @@ fn behavior_runner_publishes_adapter_failure_event() {
 
 #[test]
 fn behavior_runner_publishes_unhandled_message_event_for_unhandled_behavior() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = crate::test_support::subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
@@ -201,7 +201,7 @@ fn behavior_runner_publishes_unhandled_message_event_for_unhandled_behavior() {
 
 #[test]
 fn behavior_runner_publishes_unhandled_message_event_for_empty_behavior() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = crate::test_support::subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
@@ -460,7 +460,7 @@ fn behavior_runner_post_stop_callback_runs_when_stopped_returned_from_message_ha
 
 #[test]
 fn behavior_runner_post_stop_from_empty_does_not_publish_unhandled_message() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = crate::test_support::subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);

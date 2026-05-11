@@ -25,6 +25,7 @@ libm = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 
 [lints]

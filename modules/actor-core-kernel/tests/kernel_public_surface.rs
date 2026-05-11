@@ -22,6 +22,9 @@ const SYSTEM_STATE_SHARED_INNER_SOURCE: &str =
 const ACTOR_SYSTEM_STOP_ACTOR_SOURCE: &str = include_str!("fixtures/kernel_public_surface/actor_system_stop_actor.rs");
 const ACTOR_SYSTEM_SPAWN_DETACHED_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/actor_system_spawn_detached.rs");
+const ACTOR_SYSTEM_FROM_STATE_SOURCE: &str = include_str!("fixtures/kernel_public_surface/actor_system_from_state.rs");
+const ACTOR_SYSTEM_CREATE_STARTED_FROM_CONFIG_SOURCE: &str =
+  include_str!("fixtures/kernel_public_surface/actor_system_create_started_from_config.rs");
 const ACTOR_CONTEXT_CURRENT_MESSAGE_SOURCE: &str =
   include_str!("fixtures/kernel_public_surface/actor_context_current_message.rs");
 const ACTOR_CELL_STASH_PRIMITIVE_SOURCE: &str =
@@ -61,6 +64,12 @@ fn internal_actor_helpers_are_not_reachable_from_external_crate() {
     ("kernel-system-state-shared-inner", SYSTEM_STATE_SHARED_INNER_SOURCE, "inner"),
     ("kernel-actor-system-stop-actor", ACTOR_SYSTEM_STOP_ACTOR_SOURCE, "stop_actor"),
     ("kernel-actor-system-spawn-detached", ACTOR_SYSTEM_SPAWN_DETACHED_SOURCE, "spawn_detached"),
+    ("kernel-actor-system-from-state", ACTOR_SYSTEM_FROM_STATE_SOURCE, "from_state"),
+    (
+      "kernel-actor-system-create-started-from-config",
+      ACTOR_SYSTEM_CREATE_STARTED_FROM_CONFIG_SOURCE,
+      "create_started_from_config",
+    ),
     ("kernel-actor-context-current-message", ACTOR_CONTEXT_CURRENT_MESSAGE_SOURCE, "set_current_message"),
     ("kernel-actor-cell-stash-primitive", ACTOR_CELL_STASH_PRIMITIVE_SOURCE, "unstash_messages_with_limit"),
     ("kernel-actor-cell-adapter-primitive", ACTOR_CELL_ADAPTER_PRIMITIVE_SOURCE, "acquire_adapter_handle"),

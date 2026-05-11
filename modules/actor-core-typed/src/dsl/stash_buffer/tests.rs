@@ -58,7 +58,7 @@ fn stash_buffer_capacity_matches_constructor() {
 
 #[test]
 fn stash_buffer_inspects_and_clears_stashed_messages() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))).with_stash_mailbox();
   let _cell = register_cell(&system, pid, "self", &props);
@@ -86,7 +86,7 @@ fn stash_buffer_inspects_and_clears_stashed_messages() {
 
 #[test]
 fn stash_buffer_unstash_requeues_limited_messages_with_wrap() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({

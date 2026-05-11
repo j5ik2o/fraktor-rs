@@ -1,8 +1,6 @@
-use alloc::string::String;
-
 use fraktor_actor_core_kernel_rs::actor::{
-  Actor, ActorCell, ActorContext, Pid, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView,
-  props::Props, setup::ActorSystemConfig,
+  Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
+  setup::ActorSystemConfig,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
@@ -19,32 +17,27 @@ impl Actor for NoopActor {
 
 #[test]
 fn actor_ref_resolver_serializes_and_resolves_spawned_actor_refs() {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
-  let pid = Pid::new(200, 0);
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let props = Props::from_fn(|| NoopActor);
-  let cell = ActorCell::create(system.state(), pid, None, String::from("worker"), &props).expect("create worker cell");
-  system.state().register_cell(cell.clone());
+  let child = system.actor_of_named(&props, "worker").expect("spawn worker");
   let resolver = ActorRefResolver::new(&system);
-  let serialized = resolver.to_serialization_format(&cell.actor_ref()).expect("serialize");
+  let serialized = resolver.to_serialization_format(child.actor_ref()).expect("serialize");
   let resolved = resolver.resolve_actor_ref(&serialized).expect("resolve");
 
-  assert_eq!(resolved.pid(), pid);
-  system.state().remove_cell(&pid);
+  assert_eq!(resolved.pid(), child.pid());
+  system.state().remove_cell(&child.pid());
 }
 
 #[test]
 fn actor_ref_resolver_rejects_actor_refs_from_another_actor_system() {
-  let resolver_system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
-  let foreign_system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
-  let pid = Pid::new(201, 0);
+  let resolver_system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
+  let foreign_system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let props = Props::from_fn(|| NoopActor);
-  let cell =
-    ActorCell::create(foreign_system.state(), pid, None, String::from("foreign"), &props).expect("create foreign cell");
-  foreign_system.state().register_cell(cell.clone());
+  let child = foreign_system.actor_of_named(&props, "foreign").expect("spawn foreign");
 
   let resolver = ActorRefResolver::new(&resolver_system);
-  assert!(resolver.to_serialization_format(&cell.actor_ref()).is_err());
-  foreign_system.state().remove_cell(&pid);
+  assert!(resolver.to_serialization_format(child.actor_ref()).is_err());
+  foreign_system.state().remove_cell(&child.pid());
 }
 
 #[test]

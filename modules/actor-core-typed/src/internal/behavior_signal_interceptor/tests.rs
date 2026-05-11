@@ -42,7 +42,7 @@ fn behavior_signal_interceptor_default_handlers_delegate() {
   let start_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let signal_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let mut interceptor = SignalProbe { start_count: start_count.clone(), signal_count: signal_count.clone() };
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
@@ -70,7 +70,7 @@ fn intercept_signal_delegates_to_signal_interceptor() {
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
   );
 
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);

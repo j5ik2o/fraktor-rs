@@ -67,7 +67,7 @@ fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
     }
   }
 
-  let system = ActorSystem::new_empty_with(|config| {
+  let system = ActorSystem::new_unbootstrapped_with(|config| {
     let executor = inline_executor_shared();
     let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));
@@ -323,7 +323,7 @@ fn removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants()
     }
   }
 
-  let system = ActorSystem::new_empty_with(|config| {
+  let system = ActorSystem::new_unbootstrapped_with(|config| {
     let executor = inline_executor_shared();
     let settings = DispatcherConfig::new(DEFAULT_DISPATCHER_ID, nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&settings, executor));

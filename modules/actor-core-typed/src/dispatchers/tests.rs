@@ -5,7 +5,7 @@ use crate::{DispatcherSelector, dispatchers::Dispatchers};
 // --- helpers ---------------------------------------------------------------
 
 fn new_dispatchers_with_defaults() -> Dispatchers {
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system();
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system();
   Dispatchers::new(system.state())
 }
 
@@ -74,7 +74,7 @@ fn lookup_from_config_preserves_user_override_of_pekko_alias() {
 
   // custom configurator を Pekko id の entry として register_or_update 経由で登録する。
   // 既存の `ensure_default_inline` が登録した alias は register_or_update の wipe により除去される。
-  let system = fraktor_actor_adaptor_std_rs::system::new_empty_actor_system_with(|config| {
+  let system = fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with(|config| {
     let custom_config =
       DispatcherConfig::with_defaults("custom-typed-dispatcher").with_shutdown_timeout(Duration::from_secs(2));
     let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());

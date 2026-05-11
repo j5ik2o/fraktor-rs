@@ -1,5 +1,8 @@
 //! Weak reference wrapper for actor system.
 
+#[cfg(test)]
+mod tests;
+
 use super::{ActorSystem, state::SystemStateWeak};
 
 /// Weak reference wrapper for [`ActorSystem`].
@@ -22,6 +25,6 @@ impl ActorSystemWeak {
   /// Returns `None` if the actor system has been dropped.
   #[must_use]
   pub fn upgrade(&self) -> Option<ActorSystem> {
-    self.state.upgrade().map(ActorSystem::from_state)
+    self.state.upgrade().map(ActorSystem::from_system_state)
   }
 }

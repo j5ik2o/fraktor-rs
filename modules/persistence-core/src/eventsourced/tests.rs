@@ -1,15 +1,10 @@
 use core::time::Duration;
 
-use fraktor_actor_core_kernel_rs::{
-  actor::{
-    ActorContext, Pid,
-    error::ActorError,
-    messaging::{AnyMessage, AnyMessageView},
-  },
-  system::{
-    ActorSystem,
-    state::{SystemStateShared, system_state::SystemState},
-  },
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
+use fraktor_actor_core_kernel_rs::actor::{
+  ActorContext, Pid,
+  error::ActorError,
+  messaging::{AnyMessage, AnyMessageView},
 };
 
 use crate::{
@@ -52,7 +47,7 @@ fn eventsourced_default_recovery_is_latest() {
 #[test]
 fn eventsourced_default_hooks_do_not_panic() {
   let mut dummy = DummyEventsourced { persistence_id: "pid-1".into(), last: 0 };
-  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
+  let system = create_noop_actor_system();
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
   let message = AnyMessage::new(1_i32);

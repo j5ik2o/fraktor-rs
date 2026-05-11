@@ -1,11 +1,11 @@
 use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::any::{Any, TypeId};
 
-use fraktor_actor_adaptor_std_rs::system::new_empty_actor_system;
+use fraktor_actor_adaptor_std_rs::system::{create_noop_actor_system, create_noop_actor_system_with};
 use fraktor_actor_core_kernel_rs::{
-  actor::messaging::AnyMessage,
+  actor::{extension::ExtensionInstallers, messaging::AnyMessage},
   serialization::{
-    NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
+    NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionInstaller,
     SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, SerializerWithStringManifest,
   },
   system::ActorSystem,
@@ -101,12 +101,9 @@ impl SerializerWithStringManifest for TelemetrySerializer {
 }
 
 #[test]
-fn try_from_system_fails_when_extension_missing() {
-  let system = new_empty_actor_system();
-  match SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote) {
-    | Ok(_) => panic!("extension should be missing"),
-    | Err(err) => assert!(matches!(err, GrainCodecError::ExtensionUnavailable { .. })),
-  }
+fn try_from_system_uses_default_serialization_extension() {
+  let system = create_noop_actor_system();
+  assert!(SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).is_ok());
 }
 
 #[test]
@@ -160,9 +157,7 @@ fn build_system_with_serialization() -> ActorSystem {
     .require_manifest_for_scope(SerializationCallScope::Remote)
     .build()
     .expect("setup");
-  let extension_id = SerializationExtensionId::new(setup);
-
-  let system = new_empty_actor_system();
-  system.extended().register_extension(&extension_id);
-  system
+  let installer = SerializationExtensionInstaller::new(setup);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
+  create_noop_actor_system_with(|config| config.with_extension_installers(installers))
 }
