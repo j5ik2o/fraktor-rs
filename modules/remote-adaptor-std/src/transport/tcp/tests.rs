@@ -102,7 +102,7 @@ fn assert_inbound_frame_event(event: RemoteEvent, expected_frame: WireFrame) {
 }
 
 fn connect_test_client(peer_addr: String, inbound_tx: UnboundedSender<InboundFrameEvent>) -> TcpClient {
-  TcpClient::connect(peer_addr, inbound_tx, TcpClientConnectOptions::new(WireFrameCodec::new()))
+  TcpClient::connect(peer_addr, vec![inbound_tx], TcpClientConnectOptions::new(WireFrameCodec::new()))
     .expect("client should schedule connection")
 }
 
@@ -112,7 +112,7 @@ fn make_test_server() -> TcpServer {
 
 fn start_test_server(server: &mut TcpServer, inbound_tx: UnboundedSender<InboundFrameEvent>) -> SocketAddr {
   server
-    .start_with_remote_events(inbound_tx, None, Instant::now())
+    .start_with_remote_events(vec![inbound_tx], None, Instant::now())
     .expect("server should bind to a system-assigned port")
 }
 

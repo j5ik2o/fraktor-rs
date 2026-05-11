@@ -68,7 +68,7 @@ optional_pool_payload
 nodes
 ```
 
-`optional_pool_payload` は consistent-hashing pool の mapper tag を保持する。既存 `SmallestMailboxPool` / `RoundRobinPool` / `RandomPool` では空の payload として扱う。
+`optional_pool_payload` は consistent-hashing pool の mapper tag を保持する。既存 `SmallestMailboxPool` / `RoundRobinPool` / `RandomPool` ではこのフィールド自体を省略し、既存 pool の wire layout を変えない。
 
 Rationale:
 
@@ -102,13 +102,13 @@ Rationale:
 
 ### Decision 4: outbound lanes は peer connection 内の writer queue として扱う
 
-`TcpClient` は `outbound_lanes` 個の bounded writer queue を持ち、1 つの writer task が lane を公平に drain する。`TcpRemoteTransport::send` は envelope の recipient path、sender path、correlation id から lane index を安定選択する。
+`TcpClient` は `outbound_lanes` 個の bounded writer queue を持ち、1 つの writer task が lane を公平に drain する。`TcpRemoteTransport::send` は envelope の recipient path と sender path から lane index を安定選択する。correlation id は request ごとに変化するため lane key には含めず、同じ actor pair の送信順序を維持する。
 
 ```
 TcpRemoteTransport::send
       │
       ▼
-lane = hash(recipient, sender, correlation) % outbound_lanes
+lane = hash(recipient, sender) % outbound_lanes
       │
       ▼
 TcpClient lane queue[N]
@@ -136,6 +136,8 @@ Rationale:
 ### Decision 6: compression はこの change では wire behavior にしない
 
 `RemoteCompressionConfig` は Phase 3 の serializer registry / payload codec 設計の入力として保持する。現在の Phase 2 では compression config を transport / wire codec に接続しない。gap analysis はこの判断に合わせて、compression advertisement / table application を Phase 2 の完了条件から外す。
+
+Future item: Phase 3 の serializer registry 設計で、payload manifest と actor ref の圧縮 table をどこで advertise / apply するかを決める。その時点で初めて `RemoteCompressionConfig` を fraktor-native wire behavior に接続する。
 
 Rationale:
 

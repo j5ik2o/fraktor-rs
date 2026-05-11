@@ -21,10 +21,11 @@ use crate::{
     offer_outcome::OfferOutcome, quarantine_reason::QuarantineReason, send_queue::SendQueue,
   },
   config::{
-    DEFAULT_HANDSHAKE_TIMEOUT, DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE, DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
-    DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER, RemoteConfig,
+    DEFAULT_HANDSHAKE_TIMEOUT, DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE, DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+    DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE, DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER, LargeMessageDestinations,
+    RemoteConfig,
   },
-  envelope::{InboundEnvelope, OutboundEnvelope},
+  envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   instrument::{HandshakePhase, RemoteInstrument},
   transport::{BackpressureSignal, TransportEndpoint},
   wire::{HandshakeReq, HandshakeRsp},
@@ -45,11 +46,20 @@ pub struct Association {
   deferred_user_count: usize,
   outbound_control_queue_size: usize,
   outbound_message_queue_size: usize,
+  large_message_destinations: LargeMessageDestinations,
   remove_quarantined_association_after: Duration,
   handshake_timeout: Duration,
   handshake_generation: u64,
   local: UniqueAddress,
   remote: Address,
+}
+
+#[derive(Debug)]
+struct AssociationQueueLimits {
+  control:                    usize,
+  message:                    usize,
+  large_message:              usize,
+  large_message_destinations: LargeMessageDestinations,
 }
 
 impl Association {
@@ -59,8 +69,12 @@ impl Association {
     Self::with_limits(
       local,
       remote,
-      DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
-      DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
+      AssociationQueueLimits {
+        control:                    DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
+        message:                    DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
+        large_message:              DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+        large_message_destinations: LargeMessageDestinations::new(),
+      },
       DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER,
       DEFAULT_HANDSHAKE_TIMEOUT,
     )
@@ -72,8 +86,12 @@ impl Association {
     Self::with_limits(
       local,
       remote,
-      config.outbound_control_queue_size(),
-      config.outbound_message_queue_size(),
+      AssociationQueueLimits {
+        control:                    config.outbound_control_queue_size(),
+        message:                    config.outbound_message_queue_size(),
+        large_message:              config.outbound_large_message_queue_size(),
+        large_message_destinations: config.large_message_destinations().clone(),
+      },
       config.remove_quarantined_association_after(),
       config.handshake_timeout(),
     )
@@ -468,19 +486,19 @@ impl Association {
   fn with_limits(
     local: UniqueAddress,
     remote: Address,
-    outbound_control_queue_size: usize,
-    outbound_message_queue_size: usize,
+    queue_limits: AssociationQueueLimits,
     remove_quarantined_association_after: Duration,
     handshake_timeout: Duration,
   ) -> Self {
     Self {
       state: AssociationState::Idle,
-      send_queue: SendQueue::with_limits(outbound_control_queue_size, outbound_message_queue_size),
+      send_queue: SendQueue::with_lane_limits(queue_limits.control, queue_limits.message, queue_limits.large_message),
       deferred: Vec::new(),
       deferred_system_count: 0,
       deferred_user_count: 0,
-      outbound_control_queue_size,
-      outbound_message_queue_size,
+      outbound_control_queue_size: queue_limits.control,
+      outbound_message_queue_size: queue_limits.message,
+      large_message_destinations: queue_limits.large_message_destinations,
       remove_quarantined_association_after,
       handshake_timeout,
       handshake_generation: 0,
@@ -500,13 +518,23 @@ impl Association {
     now_ms: u64,
     instrument: &mut dyn RemoteInstrument,
   ) -> Vec<AssociationEffect> {
-    match self.send_queue.offer(envelope) {
+    let offer = if self.should_use_large_message_queue(&envelope) {
+      self.send_queue.offer_large_message(envelope)
+    } else {
+      self.send_queue.offer(envelope)
+    };
+    match offer {
       | OfferOutcome::Accepted => Vec::new(),
       | OfferOutcome::QueueFull { envelope } if envelope.priority().is_system() => {
         self.control_queue_overflow_effects(*envelope, now_ms, instrument)
       },
       | OfferOutcome::QueueFull { envelope } => Self::queue_full_discard_effect(*envelope),
     }
+  }
+
+  fn should_use_large_message_queue(&self, envelope: &OutboundEnvelope) -> bool {
+    matches!(envelope.priority(), OutboundPriority::User)
+      && self.large_message_destinations.matches_absolute_path(&envelope.recipient().to_relative_string())
   }
 
   fn enqueue_deferred(&mut self, envelope: OutboundEnvelope) -> Vec<AssociationEffect> {

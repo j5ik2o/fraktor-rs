@@ -1,8 +1,13 @@
 use alloc::string::String;
 
 use super::super::{
-  consistent_hashing_pool::ConsistentHashingPool, consistent_hashing_routing_logic::ConsistentHashingRoutingLogic,
-  pool::Pool, routee::Routee, router_config::RouterConfig, routing_logic::RoutingLogic,
+  consistent_hashable_envelope::ConsistentHashableEnvelope,
+  consistent_hashing_pool::{ConsistentHashingHashKeyMapperKind, ConsistentHashingPool},
+  consistent_hashing_routing_logic::ConsistentHashingRoutingLogic,
+  pool::Pool,
+  routee::Routee,
+  router_config::RouterConfig,
+  routing_logic::RoutingLogic,
 };
 use crate::actor::{
   Pid,
@@ -28,6 +33,31 @@ fn new_creates_pool() {
 #[should_panic(expected = "nr_of_instances must be positive")]
 fn new_panics_on_zero_instances() {
   drop(ConsistentHashingPool::new(0, hash_key_from_u32));
+}
+
+#[test]
+fn new_envelope_hash_key_marks_pool_as_wire_safe() {
+  let pool = ConsistentHashingPool::new_envelope_hash_key(4);
+
+  assert_eq!(pool.nr_of_instances(), 4);
+  assert_eq!(pool.hash_key_mapper_kind(), ConsistentHashingHashKeyMapperKind::EnvelopeHashKey);
+}
+
+#[test]
+fn new_envelope_hash_key_mapper_extracts_envelope_key_and_falls_back_to_zero() {
+  let pool = ConsistentHashingPool::new_envelope_hash_key(4);
+  let mapper = pool.hash_key_mapper.clone();
+  let envelope = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), 0xABCD_u64));
+  let plain = AnyMessage::new(7_u32);
+
+  assert_eq!(mapper(&envelope), 0xABCD_u64);
+  assert_eq!(mapper(&plain), 0);
+}
+
+#[test]
+#[should_panic(expected = "nr_of_instances must be positive")]
+fn new_envelope_hash_key_panics_on_zero_instances() {
+  drop(ConsistentHashingPool::new_envelope_hash_key(0));
 }
 
 #[test]
@@ -64,6 +94,24 @@ fn router_dispatcher_defaults_to_default() {
 fn with_dispatcher_overrides_default() {
   let pool = ConsistentHashingPool::new(2, hash_key_from_u32).with_dispatcher(String::from("custom-dispatcher"));
   assert_eq!(pool.router_dispatcher(), "custom-dispatcher");
+}
+
+#[test]
+fn envelope_hash_key_router_uses_envelope_key_for_selection() {
+  let pool = ConsistentHashingPool::new_envelope_hash_key(3);
+  let logic = pool.create_routing_logic();
+  let routees = [make_routee(10), make_routee(20), make_routee(30)];
+  let first_message = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), 0_u64));
+  let first_routee = logic.select(&first_message, &routees);
+  let different_key = (1_u64..10_000)
+    .find(|key| {
+      let message = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), *key));
+      logic.select(&message, &routees) != first_routee
+    })
+    .expect("test routees should produce at least two selections");
+  let second_message = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), different_key));
+
+  assert_ne!(logic.select(&first_message, &routees), logic.select(&second_message, &routees));
 }
 
 #[test]
