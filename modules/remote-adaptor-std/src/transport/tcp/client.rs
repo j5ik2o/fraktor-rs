@@ -4,23 +4,22 @@
 mod tests;
 
 use alloc::{string::String, vec::Vec};
-use core::fmt::{Debug, Formatter, Result as FmtResult};
-use std::time::{Duration, Instant};
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  task::Poll,
+};
+use std::time::Instant;
 
 use fraktor_remote_core_rs::{
   extension::RemoteEvent,
   transport::{TransportEndpoint, TransportError},
 };
-use futures::{SinkExt as _, StreamExt as _};
+use futures::{SinkExt as _, StreamExt as _, future::poll_fn};
 use tokio::{
   net::TcpStream,
   runtime::Handle,
-  sync::mpsc::{
-    self, Receiver, Sender, UnboundedSender,
-    error::{TryRecvError, TrySendError},
-  },
+  sync::mpsc::{self, Receiver, Sender, UnboundedSender, error::TrySendError},
   task::JoinHandle,
-  time::sleep,
 };
 use tokio_util::codec::Framed;
 
@@ -239,26 +238,25 @@ async fn run(
 }
 
 async fn next_writer_frame(writer_rxs: &mut [Receiver<WireFrame>], next_writer_lane: &mut usize) -> Option<WireFrame> {
-  loop {
+  poll_fn(|cx| {
     if writer_rxs.is_empty() {
-      return None;
+      return Poll::Ready(None);
     }
+    let mut has_open_idle_lane = false;
     for offset in 0..writer_rxs.len() {
       let lane_index = (*next_writer_lane + offset) % writer_rxs.len();
-      match writer_rxs[lane_index].try_recv() {
-        | Ok(frame) => {
+      match writer_rxs[lane_index].poll_recv(cx) {
+        | Poll::Ready(Some(frame)) => {
           *next_writer_lane = (lane_index + 1) % writer_rxs.len();
-          return Some(frame);
+          return Poll::Ready(Some(frame));
         },
-        | Err(TryRecvError::Empty) => {},
-        | Err(TryRecvError::Disconnected) => {},
+        | Poll::Ready(None) => {},
+        | Poll::Pending => has_open_idle_lane = true,
       }
     }
-    if writer_rxs.iter().all(|rx| rx.is_closed() && rx.is_empty()) {
-      return None;
-    }
-    sleep(Duration::from_millis(1)).await;
-  }
+    if has_open_idle_lane { Poll::Pending } else { Poll::Ready(None) }
+  })
+  .await
 }
 
 pub(crate) fn writer_lane_index(lane_key: &[u8], lane_count: usize) -> usize {
