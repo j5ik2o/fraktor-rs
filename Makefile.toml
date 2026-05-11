@@ -22,45 +22,6 @@ fi
 cargo +"${CHANNEL}" fmt
 '''
 
-[tasks.sort-dependencies]
-workspace = false
-command = "rust-script"
-args = ["scripts/sort_dependencies.rs"]
-
-
-[tasks.check-source-policy]
-description = "Enforce source policy: ban mod.rs and one top-level type/trait per file (workspace-aware, ignores tests.rs/lib.rs/main.rs)"
-workspace = false
-command = "rust-script"
-args = ["scripts/check_source_policy.rs"]
-
-
-[tasks.check-impl-co-location]
-description = "Ensure struct definitions and inherent impl blocks live in the same file"
-workspace = false
-command = "rust-script"
-args = ["scripts/check_impl_co_location.rs"]
-
-
-[tasks.check-package-exposure]
-description = "Enforce Java-style package re-exports (no deep crate:: paths or wildcard exports)"
-workspace = false
-command = "rust-script"
-args = ["scripts/check_package_exposure.rs"]
-
-
-[tasks.check-reexport-hierarchy]
-description = "Verify that modules only re-export their descendants"
-workspace = false
-command = "rust-script"
-args = ["scripts/check_reexport_hierarchy.rs"]
-
-[tasks.check-module-wiring]
-description = "Verify parent modules re-export leaf types without leaking pub mod"
-workspace = false
-command = "rust-script"
-args = ["scripts/check_module_wiring.rs"]
-
 [tasks.coverage-grcov]
 description = "Generate code coverage report using grcov"
 workspace = false
@@ -81,13 +42,6 @@ description = "Run lifetime regression suite (tests + coverage)"
 workspace = false
 category = "Test"
 dependencies = ["coverage"]
-
-[tasks.cyclomatic]
-description = "Report heuristic cyclomatic complexity for key crates"
-workspace = false
-category = "Lint"
-command = "rust-script"
-args = ["scripts/cyclomatic.rs"]
 
 [tasks.ci-check]
 description = "Run full CI validation pipeline"
@@ -117,11 +71,6 @@ if [ ${#ARGS[@]} -gt 0 ] && [ "${ARGS[0]}" = "--" ]; then
 fi
 ./scripts/ci-check.sh dylint "${ARGS[@]}"
 '''
-
-[tasks.codex]
-description = "Report heuristic cyclomatic complexity for key crates"
-workspace = false
-command = "./scripts/run-codex.sh"
 
 [tasks.actor-core-us1]
 description = "Actor core US1: ping/pong pipeline (tests + examples)"
