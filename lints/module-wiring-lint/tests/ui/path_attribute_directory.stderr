@@ -10,3 +10,4 @@ LL | #[path = "path_attribute_directory/path_attribute_directory_test.rs"]
    = note: `#[warn(no_parent_reexport)]` on by default
 
 warning: 1 warning emitted
+
