@@ -12,4 +12,4 @@ crate-type = ["cdylib"]
 dylint_linting = "5"
 
 [dev-dependencies]
-dylint_testing = "5"
+dylint_testing = "6"
