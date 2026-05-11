@@ -33,7 +33,8 @@ writer task は lanes を starvation なく drain し、最終的な TCP stream 
 #### Scenario: stable lane selection
 
 - **GIVEN** `outbound_lanes > 1`
-- **AND** 同じ recipient path / sender path / correlation id を持つ envelope が複数ある
+- **AND** 同じ recipient path / sender path を持つ envelope が複数ある
+- **AND** それぞれの correlation id が異なる
 - **WHEN** `TcpRemoteTransport::send` を呼ぶ
 - **THEN** それらの envelope は同じ outbound lane に enqueue される
 
