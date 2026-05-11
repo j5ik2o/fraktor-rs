@@ -120,7 +120,10 @@ fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
 
 fn is_tests_path(path: &Path) -> bool {
   if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-    if file_name == "tests.rs" || file_name.ends_with("_test.rs") {
+    if file_name == "tests.rs"
+      || file_name.ends_with("_test.rs")
+      || file_name.ends_with("_tests.rs")
+    {
       return true;
     }
   }
