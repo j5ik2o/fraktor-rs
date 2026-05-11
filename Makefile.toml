@@ -132,15 +132,6 @@ dependencies = [
   "actor-core-perf",
 ]
 
-[tasks.actor-core-ci]
-description = "Run full CI for actor-core (scripts/ci-check.sh all)"
-workspace = false
-script = '''
-#!/usr/bin/env bash
-set -euo pipefail
-./scripts/ci-check.sh all
-'''
-
 [tasks.actor-tell-disabled-check]
 description = "Build fraktor-actor-core-kernel-rs core targets with tell API disabled via --cfg fraktor_disable_tell"
 workspace = false
