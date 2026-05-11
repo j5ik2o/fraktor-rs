@@ -44,6 +44,17 @@ fn new_envelope_hash_key_marks_pool_as_wire_safe() {
 }
 
 #[test]
+fn new_envelope_hash_key_mapper_extracts_envelope_key_and_falls_back_to_zero() {
+  let pool = ConsistentHashingPool::new_envelope_hash_key(4);
+  let mapper = pool.hash_key_mapper.clone();
+  let envelope = AnyMessage::new(ConsistentHashableEnvelope::new(AnyMessage::new(7_u32), 0xABCD_u64));
+  let plain = AnyMessage::new(7_u32);
+
+  assert_eq!(mapper(&envelope), 0xABCD_u64);
+  assert_eq!(mapper(&plain), 0);
+}
+
+#[test]
 #[should_panic(expected = "nr_of_instances must be positive")]
 fn new_envelope_hash_key_panics_on_zero_instances() {
   drop(ConsistentHashingPool::new_envelope_hash_key(0));
