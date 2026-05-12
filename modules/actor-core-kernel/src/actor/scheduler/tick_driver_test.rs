@@ -1,4 +1,5 @@
 //! Tick driver bootstrap integration tests.
+#[path = "test_tick_driver_test.rs"]
 mod test_tick_driver_test;
 
 use alloc::{boxed::Box, vec, vec::Vec};
