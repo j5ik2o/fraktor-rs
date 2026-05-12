@@ -35,7 +35,7 @@ fn executor_returns_error_when_ready_queue_is_full() {
   executor.execute(Box::new(|| {}), 0).expect("first enqueue");
   let result = executor.execute(Box::new(|| {}), 0);
 
-  assert!(result.is_err());
+  assert!(matches!(result, Err(ExecuteError::Rejected)));
 }
 
 #[test]

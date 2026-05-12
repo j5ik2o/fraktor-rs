@@ -19,6 +19,8 @@
 //! [`EmbassyTickDriver`] must be constructed with an [`embassy_executor::SendSpawner`]
 //! before provisioning can start scheduler ticks. The default value is useful for
 //! inspecting configuration shape, but provisioning it returns handle-unavailable.
+//! [`embassy_actor_system_config`] accepts the spawner and wires the tick driver
+//! with the default scheduler resolution.
 //!
 //! Remote, stream, persistence, networking, and storage adaptors remain outside
 //! this crate. Applications should combine this crate with domain-specific
