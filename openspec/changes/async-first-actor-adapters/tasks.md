@@ -1,7 +1,7 @@
 ## Phase 1: 事前確認と設計固定
 
 - [ ] 1.1 `docs/plan/2026-04-26-mailbox-dispatcher-async-judgement.md` の固定前提を再確認する。
-- [ ] 1.2 `TokioExecutor` を task executor に再定義するか、`TokioTaskExecutor` を新設するかを決める。
+- [ ] 1.2 既存 `TokioExecutor` / `TokioExecutorFactory` を互換維持し、default task executor として `TokioTaskExecutor` / `TokioTaskExecutorFactory` を追加する方針を固定する。
 - [ ] 1.3 Embassy adapter crate 名を `actor-adaptor-embassy` で確定するか確認する。
 - [ ] 1.4 `Actor::receive` / `MessageInvoker::invoke` / `Mailbox::run` は本 change で async 化しないことを実装方針として固定する。
 - [ ] 1.5 `ActorContext::pipe_to_self` / `pipe_to` と `ContextPipeTask` を future-to-message kernel contract として先に固定し、その後 `TypedActorContext::pipe_to_self` / `pipe_to` を薄い wrapper として整える方針を固定する。
@@ -9,18 +9,19 @@
 ## Phase 2: Tokio executor family の分離
 
 - [ ] 2.1 既存 `TokioExecutor` の tests を読み、`spawn_blocking` 前提になっている箇所を洗い出す。
-- [ ] 2.2 default dispatcher 用 executor を Tokio task 実行へ変更または新設する。
-- [ ] 2.3 `TokioBlockingExecutor` を追加し、`spawn_blocking` をここへ移す。
-- [ ] 2.4 `TokioBlockingExecutorFactory` を追加する。
+- [ ] 2.2 default dispatcher 用の `TokioTaskExecutor` を追加する。
+- [ ] 2.3 `TokioTaskExecutorFactory` を追加する。
+- [ ] 2.4 既存 `TokioExecutor` / `TokioExecutorFactory` が `spawn_blocking` 互換 executor として残ることを public surface test で固定する。
 - [ ] 2.5 `std::dispatch::dispatcher` の public re-export を更新する。
-- [ ] 2.6 public surface tests に `TokioBlockingExecutorFactory` を追加する。
+- [ ] 2.6 public surface tests に `TokioTaskExecutorFactory` を追加する。
+- [ ] 2.7 明示的な blocking 命名が必要な場合のみ、additive な `TokioBlockingExecutor` / `TokioBlockingExecutorFactory` alias または wrapper を追加する。
 
 ## Phase 3: default / blocking dispatcher 登録の分離
 
 - [ ] 3.1 `Dispatchers::ensure_default` / `ensure_default_inline` / `replace_default_inline` の現状挙動を確認する。
 - [ ] 3.2 既存 `with_dispatcher_factory` だけで std Tokio helper が default / blocking を別登録できるか確認する。
 - [ ] 3.3 既存 API で十分でなければ `with_default_dispatcher_factory` / `with_blocking_dispatcher_factory` 相当を追加する。
-- [ ] 3.4 std Tokio 用 config helper を追加し、default に Tokio task executor、blocking に Tokio blocking executor、tick driver に `TokioTickDriver` を設定する。
+- [ ] 3.4 std Tokio 用 opt-in config helper を追加し、default に `TokioTaskExecutorFactory`、blocking に既存 `TokioExecutorFactory` または additive な blocking factory、tick driver に `TokioTickDriver` を設定する。
 - [ ] 3.5 `DispatcherSelector::Blocking` が std Tokio helper 構成で blocking executor 側に到達する integration test を追加する。
 
 ## Phase 4: untyped kernel future-to-message contract
@@ -50,7 +51,7 @@
 ## Phase 7: Embassy adapter crate
 
 - [ ] 7.1 `modules/actor-adaptor-embassy` の Cargo package を追加する。
-- [ ] 7.2 `actor-core` へ Embassy 依存が入らないことを確認する。
+- [ ] 7.2 `actor-core-kernel` へ Embassy 依存が入らないことを確認する。
 - [ ] 7.3 `EmbassyExecutor` を追加し、`Executor::execute` では bounded ready queue への enqueue と signal notify のみを行う。
 - [ ] 7.4 Embassy task 側で ready queue を drain する driver を追加する。
 - [ ] 7.5 ready queue 満杯時は block せず `ExecuteError` を返す。
@@ -65,12 +66,15 @@
 - [ ] 8.2 mailbox gap analysis に `pushTimeOut` 系 blocking mailbox は意図的低優先度であることを追記する。
 - [ ] 8.3 std Tokio helper と blocking dispatcher の使い分けを docs または rustdoc に記載する。
 - [ ] 8.4 Embassy adapter の制約を docs または crate-level rustdoc に記載する。
+- [ ] 8.5 `showcases/std/typed/async-first-actor-adapters/main.rs` を追加し、std Tokio helper、blocking dispatcher、typed `pipe_to_self` の利用例を示す。
+- [ ] 8.6 `showcases/std/Cargo.toml` に `typed_async_first_actor_adapters` example を登録し、必要なら `showcases/std/README.md` のサンプル一覧を更新する。
 
 ## Phase 9: 検証
 
 - [ ] 9.1 `actor-adaptor-std` の targeted tests を実行する。
-- [ ] 9.2 `actor-core` untyped `pipe_to_self` / `pipe_to` の targeted tests を実行する。
-- [ ] 9.3 `actor-core` typed `pipe_to_self` / `pipe_to` / `ask` の targeted tests を実行する。
+- [ ] 9.2 `actor-core-kernel` untyped `pipe_to_self` / `pipe_to` の targeted tests を実行する。
+- [ ] 9.3 `actor-core-typed` typed `pipe_to_self` / `pipe_to` / `ask` の targeted tests を実行する。
 - [ ] 9.4 Embassy adapter の compile check / unit contract tests を実行する。
-- [ ] 9.5 `rtk rg -n "spawn_blocking" modules/actor-adaptor-std/src/dispatch/dispatcher` で default executor に `spawn_blocking` が残っていないことを確認する。
-- [ ] 9.6 ソースコード編集後の最終確認として `./scripts/ci-check.sh ai all` を実行し、完了を待つ。
+- [ ] 9.5 `rg -n "spawn_blocking" modules/actor-adaptor-std/src/dispatch/dispatcher` で `TokioTaskExecutor` に `spawn_blocking` が入っておらず、既存 `TokioExecutor` 側にだけ残っていることを確認する。
+- [ ] 9.6 `cargo run -p fraktor-showcases-std --features advanced --example typed_async_first_actor_adapters` を実行する。
+- [ ] 9.7 ソースコード編集後の最終確認として `./scripts/ci-check.sh ai all` を実行し、完了を待つ。

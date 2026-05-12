@@ -2,7 +2,9 @@
 
 ### Requirement: `pipe_to_self` / `pipe_to` は canonical future-to-message adapter として維持される
 
-actor runtime は、`Future` の完了結果を actor message に変換する canonical adapter として、既存 `ActorContext::pipe_to_self`、`ActorContext::pipe_to`、`TypedActorContext::pipe_to_self`、`TypedActorContext::pipe_to` を維持しなければならない (MUST)。この change はそれらを handler が `Future` を返す別 contract で置き換えてはならない (MUST NOT)。
+actor system は、`Future` の完了結果を actor message に変換する canonical adapter として、既存 `ActorContext::pipe_to_self`、`ActorContext::pipe_to`、`TypedActorContext::pipe_to_self`、`TypedActorContext::pipe_to` を維持しなければならない (MUST)。この change はそれらを handler が `Future` を返す別 contract で置き換えてはならない (MUST NOT)。
+
+これらの adapter は既存の同期メソッドとしての呼び出し方、戻り値、mapper closure contract を source-compatible に維持しなければならない (MUST)。`pipe_to_self` / `pipe_to` を `async fn` 化してはならず (MUST NOT)、caller に `.await` を要求してはならない (MUST NOT)。
 
 これらの adapter は Pekko typed の `ActorContext.pipeToSelf` と同じ設計意図を持つ。actor handler は同期的に future を起動し、future completion は mailbox message として actor に戻らなければならない (MUST)。
 
@@ -14,6 +16,13 @@ untyped `ActorContext::pipe_to_self` / `pipe_to` と `ContextPipeTask` が futur
 - **WHEN** `future` が `Ok(value)` で完了する
 - **THEN** `map_ok(value)` で生成された typed message が同じ actor の mailbox に enqueue される
 - **AND** actor は通常の typed message handler でその message を受け取る
+
+#### Scenario: pipe adapter は await 不要の既存呼び出し方を維持する
+
+- **GIVEN** actor が既存の `ctx.pipe_to_self(future, map)` または `ctx.pipe_to(future, target, map)` を呼ぶ
+- **WHEN** 本 change が適用された後に同じ code を compile する
+- **THEN** caller は `.await` を追加する必要がない
+- **AND** 戻り値は spawn / registration 結果を表す `Result` のままである
 
 #### Scenario: typed actor が future failure を self message として受け取る
 
@@ -67,7 +76,7 @@ future が actor-owned state や `TypedActorContext` の mutable borrow を `.aw
 
 `pipe_to_self` / `pipe_to` から起動された in-flight future の completion message は、通常の user message delivery と同じ観測経路に従わなければならない (MUST)。対象 actor が停止済み、mailbox closed、または delivery 不可能な場合、失敗は既存の send error / dead letter / log などの観測経路に記録されなければならない (MUST)。
 
-restart 時の in-flight future は初期スコープでは runtime が暗黙 cancel してはならない (MUST NOT)。cancel や stale discard が必要な caller は generation token を message payload に含められなければならない (MUST)。
+restart 時の in-flight future は初期スコープでは actor system が暗黙 cancel してはならない (MUST NOT)。cancel や stale discard が必要な caller は generation token を message payload に含められなければならない (MUST)。
 
 #### Scenario: actor 停止後の completion は観測可能に失敗する
 
