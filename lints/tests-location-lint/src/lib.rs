@@ -190,7 +190,7 @@ fn find_cfg_test_items(src: &str) -> Vec<Range<usize>> {
 }
 
 fn is_tests_module_declaration(after_cfg_test: &str) -> bool {
-  let after = after_cfg_test.trim_start();
+  let after = strip_visibility_prefix(after_cfg_test);
   let Some(rest) = after.strip_prefix("mod tests") else {
     return false;
   };
@@ -199,6 +199,24 @@ fn is_tests_module_declaration(after_cfg_test: &str) -> bool {
     | Some(';') | Some('{') => true,
     | Some(c) => c.is_whitespace(),
     | None => false,
+  }
+}
+
+fn strip_visibility_prefix(text: &str) -> &str {
+  let text = text.trim_start();
+  let Some(rest) = text.strip_prefix("pub") else {
+    return text;
+  };
+
+  match rest.chars().next() {
+    | Some(c) if c.is_whitespace() => rest.trim_start(),
+    | Some('(') => {
+      let Some(closing) = rest.find(')') else {
+        return text;
+      };
+      rest[closing + 1..].trim_start()
+    }
+    | _ => text,
   }
 }
 
@@ -220,7 +238,8 @@ fn is_sibling_test_module_hook(after_cfg_test: &str) -> bool {
 
   let attr_end = 2 + closing + 1;
   let after_path = after[attr_end..].trim_start();
-  after_path.starts_with("mod tests;") || after_path.starts_with("pub(crate) mod tests;")
+  let after_module = strip_visibility_prefix(after_path);
+  after_module.starts_with("mod tests;")
 }
 
 fn find_direct_test_attributes(src: &str) -> Vec<Range<usize>> {
