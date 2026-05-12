@@ -1,9 +1,13 @@
 //! Shared queue state for Embassy executors.
 
 use alloc::{boxed::Box, sync::Arc};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::cell::Cell;
 
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal};
+use embassy_sync::{
+  blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
+  channel::Channel,
+  signal::Signal,
+};
 use fraktor_actor_core_kernel_rs::dispatch::dispatcher::ExecuteError;
 
 pub(crate) type EmbassyTask = Box<dyn FnOnce() + Send + 'static>;
@@ -11,7 +15,7 @@ pub(crate) type EmbassyTask = Box<dyn FnOnce() + Send + 'static>;
 pub(crate) struct EmbassyExecutorShared<const N: usize> {
   queue:     Arc<Channel<CriticalSectionRawMutex, EmbassyTask, N>>,
   signal:    Arc<Signal<CriticalSectionRawMutex, ()>>,
-  accepting: Arc<AtomicBool>,
+  accepting: Arc<Mutex<CriticalSectionRawMutex, Cell<bool>>>,
 }
 
 impl<const N: usize> EmbassyExecutorShared<N> {
@@ -19,15 +23,17 @@ impl<const N: usize> EmbassyExecutorShared<N> {
     Self {
       queue:     Arc::new(Channel::new()),
       signal:    Arc::new(Signal::new()),
-      accepting: Arc::new(AtomicBool::new(true)),
+      accepting: Arc::new(Mutex::new(Cell::new(true))),
     }
   }
 
   pub(crate) fn enqueue(&self, task: EmbassyTask) -> Result<(), ExecuteError> {
-    if !self.accepting.load(Ordering::Acquire) {
-      return Err(ExecuteError::Shutdown);
-    }
-    self.queue.try_send(task).map_err(|_| ExecuteError::Rejected)?;
+    self.accepting.lock(|accepting| {
+      if !accepting.get() {
+        return Err(ExecuteError::Shutdown);
+      }
+      self.queue.try_send(task).map_err(|_| ExecuteError::Rejected)
+    })?;
     self.signal.signal(());
     Ok(())
   }
@@ -46,7 +52,9 @@ impl<const N: usize> EmbassyExecutorShared<N> {
   }
 
   pub(crate) fn shutdown(&self) {
-    self.accepting.store(false, Ordering::Release);
+    self.accepting.lock(|accepting| {
+      accepting.set(false);
+    });
     self.signal.signal(());
   }
 }
