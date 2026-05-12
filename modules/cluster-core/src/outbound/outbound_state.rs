@@ -3,6 +3,7 @@
 use alloc::string::String;
 
 #[cfg(test)]
+#[path = "outbound_state_test.rs"]
 mod tests;
 
 /// Connection state for a single authority.

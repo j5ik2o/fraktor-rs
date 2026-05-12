@@ -1,6 +1,7 @@
 //! Typed actor system wrapper.
 
 #[cfg(test)]
+#[path = "system_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, format, string::String, vec::Vec};

@@ -3,6 +3,7 @@
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
+#[path = "error_test.rs"]
 mod tests;
 
 /// Errors raised when scheduling requests fail.

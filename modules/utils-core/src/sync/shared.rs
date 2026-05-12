@@ -7,4 +7,5 @@ pub use shared_bound::SharedBound;
 pub use shared_trait::Shared;
 
 #[cfg(test)]
+#[path = "shared_test.rs"]
 mod tests;

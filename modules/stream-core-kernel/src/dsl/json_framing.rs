@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "json_framing_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};

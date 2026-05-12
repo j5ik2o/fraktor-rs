@@ -5,6 +5,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use crate::{OverflowStrategy, QueueOfferResult, r#impl::StreamError};
 
 #[cfg(test)]
+#[path = "bounded_source_queue_test.rs"]
 mod tests;
 
 struct BoundedSourceQueueState<T> {

@@ -1,6 +1,7 @@
 //! Default delivery options per topic.
 
 #[cfg(test)]
+#[path = "pub_sub_topic_options_test.rs"]
 mod tests;
 
 use super::{DeliveryPolicy, PartitionBehavior, PublishOptions};

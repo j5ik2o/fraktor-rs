@@ -23,6 +23,7 @@
 //! would leak threads.
 
 #[cfg(test)]
+#[path = "dispatchers_test.rs"]
 mod tests;
 
 use alloc::{borrow::ToOwned, boxed::Box, string::String};

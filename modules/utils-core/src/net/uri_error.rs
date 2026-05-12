@@ -1,6 +1,7 @@
 //! URI parsing errors.
 
 #[cfg(test)]
+#[path = "uri_error_test.rs"]
 mod tests;
 
 use core::fmt::{Display, Formatter, Result as FmtResult};

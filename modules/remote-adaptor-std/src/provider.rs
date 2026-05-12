@@ -9,6 +9,7 @@
 //! provider.
 
 #[cfg(test)]
+#[path = "provider_test.rs"]
 mod tests;
 
 mod dispatch;

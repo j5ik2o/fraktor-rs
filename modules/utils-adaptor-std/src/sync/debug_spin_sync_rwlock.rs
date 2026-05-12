@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "debug_spin_sync_rwlock_test.rs"]
 mod tests;
 
 use fraktor_utils_core_rs::sync::RwLockDriver;

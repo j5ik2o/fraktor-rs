@@ -1,6 +1,7 @@
 //! [`Executor`] backed by a Tokio runtime handle.
 
 #[cfg(test)]
+#[path = "tokio_executor_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

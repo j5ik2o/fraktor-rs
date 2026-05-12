@@ -1,6 +1,7 @@
 //! Parser that converts canonical Fraktor URIs into actor paths.
 
 #[cfg(test)]
+#[path = "parser_test.rs"]
 mod tests;
 
 use alloc::{

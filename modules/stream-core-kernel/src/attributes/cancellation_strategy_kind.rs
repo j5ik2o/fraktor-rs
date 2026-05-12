@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "cancellation_strategy_kind_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

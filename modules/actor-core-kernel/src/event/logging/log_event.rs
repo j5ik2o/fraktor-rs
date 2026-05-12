@@ -1,6 +1,7 @@
 //! Event payload describing a log entry emitted by the runtime.
 
 #[cfg(test)]
+#[path = "log_event_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeMap, string::String};

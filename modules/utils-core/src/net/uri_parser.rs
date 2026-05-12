@@ -1,6 +1,7 @@
 //! RFC2396-compliant URI parser.
 
 #[cfg(test)]
+#[path = "uri_parser_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

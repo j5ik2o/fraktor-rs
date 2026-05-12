@@ -1,6 +1,7 @@
 //! Publisher that serializes messages for pub/sub delivery.
 
 #[cfg(test)]
+#[path = "pub_sub_publisher_generic_test.rs"]
 mod tests;
 
 use alloc::{format, string::String, vec, vec::Vec};

@@ -22,6 +22,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "mailboxes_test.rs"]
 mod tests;
 
 /// Primary registry identifier for the default mailbox entry.

@@ -1,6 +1,7 @@
 //! Registry for resolving event adapters by event type.
 
 #[cfg(test)]
+#[path = "event_adapters_test.rs"]
 mod tests;
 
 use core::{

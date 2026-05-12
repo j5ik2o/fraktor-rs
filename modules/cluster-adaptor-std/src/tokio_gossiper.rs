@@ -17,6 +17,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "tokio_gossiper_test.rs"]
 mod tests;
 
 /// Tokio-based gossiper.

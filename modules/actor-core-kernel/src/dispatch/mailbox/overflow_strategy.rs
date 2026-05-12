@@ -1,6 +1,7 @@
 //! Overflow strategies for bounded mailboxes.
 
 #[cfg(test)]
+#[path = "overflow_strategy_test.rs"]
 mod tests;
 
 /// Strategy invoked when a bounded mailbox reaches capacity.

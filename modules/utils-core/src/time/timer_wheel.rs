@@ -9,6 +9,7 @@ use core::cmp::{Ordering, Reverse};
 use super::{TimerEntry, TimerHandleId, TimerInstant, TimerWheelConfig, TimerWheelError};
 
 #[cfg(test)]
+#[path = "timer_wheel_test.rs"]
 mod tests;
 
 /// Timer wheel providing deterministic, FIFO-ordered expiration.

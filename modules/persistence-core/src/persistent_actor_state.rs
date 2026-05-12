@@ -1,6 +1,7 @@
 //! Persistent actor state machine.
 
 #[cfg(test)]
+#[path = "persistent_actor_state_test.rs"]
 mod tests;
 
 use crate::persistence_error::PersistenceError;

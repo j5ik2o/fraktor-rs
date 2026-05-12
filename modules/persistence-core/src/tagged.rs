@@ -1,6 +1,7 @@
 //! Tagged event payload for query-oriented indexing.
 
 #[cfg(test)]
+#[path = "tagged_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeSet, string::String};

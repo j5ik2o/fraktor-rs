@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "attribute_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

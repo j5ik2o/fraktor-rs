@@ -26,6 +26,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "actor_system_config_test.rs"]
 mod tests;
 
 /// Configuration for the actor system.

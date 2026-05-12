@@ -1,6 +1,7 @@
 //! No-op user guardian actor used by convenience actor-system factories.
 
 #[cfg(test)]
+#[path = "noop_guardian_actor_test.rs"]
 mod tests;
 
 use crate::actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView};

@@ -1,6 +1,7 @@
 //! Builder for configuring and constructing tail-chopping pool routers.
 
 #[cfg(test)]
+#[path = "tail_chopping_router_builder_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

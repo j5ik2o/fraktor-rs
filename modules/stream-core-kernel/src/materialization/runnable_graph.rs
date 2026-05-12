@@ -1,6 +1,7 @@
 use super::{Materialized, Materializer, SharedKillSwitch, StreamError, StreamPlan};
 
 #[cfg(test)]
+#[path = "runnable_graph_test.rs"]
 mod tests;
 
 /// Immutable graph blueprint ready for materialization.

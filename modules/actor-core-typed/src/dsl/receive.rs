@@ -6,6 +6,7 @@
 //! before the result is used as a full [`Behavior`].
 
 #[cfg(test)]
+#[path = "receive_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::error::ActorError;

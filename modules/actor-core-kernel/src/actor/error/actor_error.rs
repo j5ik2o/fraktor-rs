@@ -1,6 +1,7 @@
 //! Error classification returned by actor lifecycle callbacks.
 
 #[cfg(test)]
+#[path = "actor_error_test.rs"]
 mod tests;
 
 use alloc::{borrow::Cow, format};

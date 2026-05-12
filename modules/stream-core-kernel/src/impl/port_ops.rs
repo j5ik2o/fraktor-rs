@@ -10,6 +10,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "port_ops_test.rs"]
 mod tests;
 
 /// Forward port combinator wrapping an [`Outlet`] for ergonomic chaining.

@@ -1,6 +1,7 @@
 //! In-memory journal implementation for testing.
 
 #[cfg(test)]
+#[path = "in_memory_journal_test.rs"]
 mod tests;
 
 use alloc::{

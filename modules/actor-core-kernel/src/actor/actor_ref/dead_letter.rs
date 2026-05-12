@@ -13,4 +13,5 @@ pub use dead_letter_reason::DeadLetterReason;
 pub use dead_letter_shared::DeadLetterShared;
 
 #[cfg(test)]
+#[path = "dead_letter_test.rs"]
 mod tests;

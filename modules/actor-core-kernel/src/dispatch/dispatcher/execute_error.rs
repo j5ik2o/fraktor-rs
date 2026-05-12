@@ -4,6 +4,7 @@ use alloc::string::String;
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
+#[path = "execute_error_test.rs"]
 mod tests;
 
 /// Errors returned when an executor cannot accept a submitted task.

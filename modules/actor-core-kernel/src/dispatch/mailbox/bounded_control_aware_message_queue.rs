@@ -1,6 +1,7 @@
 //! Bounded control-aware message queue with dual-queue prioritisation and capacity enforcement.
 
 #[cfg(test)]
+#[path = "bounded_control_aware_message_queue_test.rs"]
 mod tests;
 
 use alloc::collections::VecDeque;

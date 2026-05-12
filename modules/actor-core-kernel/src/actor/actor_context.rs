@@ -1,6 +1,7 @@
 //! Actor execution context utilities.
 
 #[cfg(test)]
+#[path = "actor_context_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::BTreeSet, format, string::String, vec::Vec};

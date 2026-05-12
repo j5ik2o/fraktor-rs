@@ -9,6 +9,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "graph_dsl_builder_test.rs"]
 mod tests;
 
 /// Builder facade for composing stream graphs.

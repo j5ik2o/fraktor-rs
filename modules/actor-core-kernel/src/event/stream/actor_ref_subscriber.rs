@@ -1,6 +1,7 @@
 //! ActorRef-based event stream subscriber for non-blocking event delivery.
 
 #[cfg(test)]
+#[path = "actor_ref_subscriber_test.rs"]
 mod tests;
 
 use portable_atomic::{AtomicU64, Ordering};

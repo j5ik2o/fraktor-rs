@@ -1,6 +1,7 @@
 //! Tracks the lifecycle of adapter references.
 
 #[cfg(test)]
+#[path = "adapter_lifecycle_state_test.rs"]
 mod tests;
 
 use core::{

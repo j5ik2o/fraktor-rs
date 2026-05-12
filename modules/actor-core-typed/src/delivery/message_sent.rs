@@ -1,6 +1,7 @@
 //! Persisted fact representing a message that was sent.
 
 #[cfg(test)]
+#[path = "message_sent_test.rs"]
 mod tests;
 
 use crate::delivery::{ConfirmationQualifier, SeqNr};

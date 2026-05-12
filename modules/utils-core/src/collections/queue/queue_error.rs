@@ -1,6 +1,7 @@
 use crate::sync::SharedError;
 
 #[cfg(test)]
+#[path = "queue_error_test.rs"]
 mod tests;
 
 /// Errors that occur during queue operations.

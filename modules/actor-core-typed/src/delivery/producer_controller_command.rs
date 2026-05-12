@@ -1,6 +1,7 @@
 //! Commands accepted by the producer controller actor.
 
 #[cfg(test)]
+#[path = "producer_controller_command_test.rs"]
 mod tests;
 
 use crate::{

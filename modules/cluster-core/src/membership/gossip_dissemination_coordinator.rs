@@ -11,6 +11,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "gossip_dissemination_coordinator_test.rs"]
 mod tests;
 
 /// Drives gossip diffusion, reconciliation and confirmation.

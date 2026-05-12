@@ -1,6 +1,7 @@
 //! Persistence extension for actor systems.
 
 #[cfg(test)]
+#[path = "persistence_extension_test.rs"]
 mod tests;
 
 use alloc::format;

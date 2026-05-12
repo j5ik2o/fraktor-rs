@@ -1,6 +1,7 @@
 //! Immutable serialization setup produced by the builder.
 
 #[cfg(test)]
+#[path = "serialization_setup_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

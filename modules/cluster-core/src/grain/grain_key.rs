@@ -3,6 +3,7 @@
 use alloc::string::String;
 
 #[cfg(test)]
+#[path = "grain_key_test.rs"]
 mod tests;
 
 /// Immutable grain key.

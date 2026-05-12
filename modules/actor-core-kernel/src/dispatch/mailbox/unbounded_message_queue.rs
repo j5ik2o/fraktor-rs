@@ -1,6 +1,7 @@
 //! Unbounded message queue backed by a mailbox-local lock-free MPSC queue.
 
 #[cfg(test)]
+#[path = "unbounded_message_queue_test.rs"]
 mod tests;
 
 use super::{

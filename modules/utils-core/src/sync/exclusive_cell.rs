@@ -1,6 +1,7 @@
 //! CAS-backed exclusive shared cell.
 
 #[cfg(test)]
+#[path = "exclusive_cell_test.rs"]
 mod tests;
 
 use core::{cell::UnsafeCell, hint::spin_loop};

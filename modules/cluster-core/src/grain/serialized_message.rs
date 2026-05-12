@@ -3,6 +3,7 @@
 use alloc::vec::Vec;
 
 #[cfg(test)]
+#[path = "serialized_message_test.rs"]
 mod tests;
 
 /// RPC payload with schema version.

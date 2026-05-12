@@ -3,6 +3,7 @@
 use alloc::vec::Vec;
 
 #[cfg(test)]
+#[path = "schema_negotiator_test.rs"]
 mod tests;
 
 /// Negotiates a common schema version with peers.

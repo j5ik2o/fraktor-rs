@@ -1,6 +1,7 @@
 //! At-least-once delivery helper.
 
 #[cfg(test)]
+#[path = "at_least_once_delivery_test.rs"]
 mod tests;
 
 use alloc::{format, vec::Vec};

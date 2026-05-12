@@ -1,6 +1,7 @@
 //! Default log-level based logging filter.
 
 #[cfg(test)]
+#[path = "default_logging_filter_test.rs"]
 mod tests;
 
 use super::{LogEvent, LogLevel, LoggingFilter};

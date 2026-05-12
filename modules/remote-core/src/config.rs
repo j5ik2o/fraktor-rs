@@ -1,6 +1,7 @@
 //! Typed configuration for the remote subsystem.
 
 #[cfg(test)]
+#[path = "config_test.rs"]
 mod tests;
 
 mod large_message_destination_pattern;

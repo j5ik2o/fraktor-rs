@@ -1,6 +1,7 @@
 //! Durable producer queue state for crash recovery.
 
 #[cfg(test)]
+#[path = "durable_producer_queue_state_test.rs"]
 mod tests;
 
 use alloc::{

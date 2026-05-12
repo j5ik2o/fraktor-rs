@@ -5,6 +5,7 @@
 //! `fraktor-remote-adaptor-std-rs` crate.
 
 #[cfg(test)]
+#[path = "association_test.rs"]
 mod tests;
 
 mod association_effect;

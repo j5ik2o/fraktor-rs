@@ -1,6 +1,7 @@
 //! Internal subscriber entry used by the event stream.
 
 #[cfg(test)]
+#[path = "event_stream_subscriber_entry_test.rs"]
 mod tests;
 
 use crate::event::stream::{ClassifierKey, EventStreamSubscriberShared};

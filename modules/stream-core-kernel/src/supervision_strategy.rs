@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "supervision_strategy_test.rs"]
 mod tests;
 
 /// Supervision strategy deciding how a stage handles processing failures.

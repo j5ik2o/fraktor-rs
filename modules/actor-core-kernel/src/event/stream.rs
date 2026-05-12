@@ -19,6 +19,8 @@ mod event_stream_subscription;
 mod remote_authority_event;
 mod remoting_backpressure_event;
 mod remoting_lifecycle_event;
+#[cfg(test)]
+#[path = "stream_test.rs"]
 pub(crate) mod tests;
 mod tick_driver_snapshot;
 mod unhandled_message_event;

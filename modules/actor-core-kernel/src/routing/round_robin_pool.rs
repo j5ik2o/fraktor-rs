@@ -1,6 +1,7 @@
 //! Pool router configuration using round-robin routing logic.
 
 #[cfg(test)]
+#[path = "round_robin_pool_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

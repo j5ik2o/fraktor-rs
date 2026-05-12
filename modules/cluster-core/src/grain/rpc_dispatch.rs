@@ -5,6 +5,7 @@ use alloc::string::String;
 use super::{GrainKey, SerializedMessage};
 
 #[cfg(test)]
+#[path = "rpc_dispatch_test.rs"]
 mod tests;
 
 /// Outcome of a dispatch attempt.

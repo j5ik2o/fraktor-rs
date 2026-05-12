@@ -32,6 +32,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "actor_materializer_test.rs"]
 mod tests;
 
 /// Materializer backed by an actor system.

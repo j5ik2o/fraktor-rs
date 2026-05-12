@@ -10,6 +10,7 @@ use super::{MailboxConfigError, MailboxRequirement};
 use crate::dispatch::mailbox::{MailboxFactory, MailboxPolicy, MailboxType, MessagePriorityGenerator, MessageQueue};
 
 #[cfg(test)]
+#[path = "mailbox_config_test.rs"]
 mod tests;
 
 /// Mailbox configuration derived from the props builder.

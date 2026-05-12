@@ -1,6 +1,7 @@
 use alloc::collections::VecDeque;
 
 #[cfg(test)]
+#[path = "test_source_probe_test.rs"]
 mod tests;
 
 /// Test probe that acts as a controllable source.

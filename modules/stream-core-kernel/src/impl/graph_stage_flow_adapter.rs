@@ -10,6 +10,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "graph_stage_flow_adapter_test.rs"]
 mod tests;
 
 /// Adapter that bridges a `GraphStageLogic` into the interpreter's `FlowLogic` protocol.

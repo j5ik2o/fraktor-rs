@@ -1,6 +1,7 @@
 //! Bundle of assets produced after provisioning a tick driver.
 
 #[cfg(test)]
+#[path = "tick_driver_bundle_test.rs"]
 mod tests;
 
 use core::time::Duration;

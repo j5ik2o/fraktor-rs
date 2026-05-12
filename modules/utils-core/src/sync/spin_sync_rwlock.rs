@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "spin_sync_rwlock_test.rs"]
 mod tests;
 
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};

@@ -35,8 +35,7 @@ fraktor-rs の lint ルールに準拠した新規モジュール・型の雛形
 ```
 modules/<crate>/src/core/<parent>/
 ├── <module_name>.rs        # 型定義
-└── <module_name>/
-    └── tests.rs            # 単体テスト
+└── <module_name>_test.rs   # 単体テスト
 ```
 
 #### 型定義ファイル（`<module_name>.rs`）
@@ -57,26 +56,30 @@ impl<TB: RuntimeToolbox> <TypeName>Generic<TB> {
 }
 ```
 
-#### テストファイル（`<module_name>/tests.rs`）
+#### テストファイル（`<module_name>_test.rs`）
 
 ```rust
-#[cfg(test)]
-mod tests {
-    use crate::path::to::<TypeName>Generic;
+use super::<TypeName>Generic;
 
-    // NoStdToolbox or StdToolbox for testing
-    type <TypeName> = <TypeName>Generic<crate::core::toolbox::NoStdToolbox>;
+// NoStdToolbox or StdToolbox for testing
+type <TypeName> = <TypeName>Generic<crate::core::toolbox::NoStdToolbox>;
 
-    #[test]
-    fn test_new() {
-        let _instance = <TypeName>::new(/* args */);
-    }
+#[test]
+fn test_new() {
+    let _instance = <TypeName>::new(/* args */);
 }
 ```
 
 ### 4. 親モジュールの更新
 
 親の `<parent>.rs` に `pub mod <module_name>;` を追加する。
+テストを追加する場合は、対象の `<module_name>.rs` に以下を追加する。
+
+```rust
+#[cfg(test)]
+#[path = "<module_name>_test.rs"]
+mod tests;
+```
 
 配置ルール（module-wiring-lint 準拠）：
 - `pub mod` 宣言はファイル冒頭に配置
@@ -97,7 +100,7 @@ RuntimeToolbox が必要か？
 
 - [ ] 1ファイル1公開型（type-per-file-lint） → 違反時: 公開型を別ファイルに分離
 - [ ] mod.rs 不使用（mod-file-lint） → 違反時: mod.rs を `<parent_name>.rs` にリネーム
-- [ ] テストは `<name>/tests.rs`（tests-location-lint） → 違反時: テストを専用ファイルに移動
+- [ ] テストは sibling `<name>_test.rs`（tests-location-lint） → 違反時: テストを専用ファイルに移動
 - [ ] import は `crate::` 始まり（module-wiring-lint） → 違反時: 相対パスを FQCN に変更
 - [ ] `use` 宣言はファイル冒頭（use-placement-lint） → 違反時: `use` をファイル先頭に移動
 - [ ] rustdoc は英語（rustdoc-lint） → 違反時: `///` コメントを英語に書き換え
@@ -111,7 +114,7 @@ RuntimeToolbox が必要か？
 
 **生成ファイル**:
 - `modules/actor/src/core/serialization/message_serializer.rs`
-- `modules/actor/src/core/serialization/message_serializer/tests.rs`
+- `modules/actor/src/core/serialization/message_serializer_test.rs`
 
 **親モジュール更新**: `serialization.rs` に `pub mod message_serializer;` 追加
 
@@ -121,7 +124,7 @@ RuntimeToolbox が必要か？
 
 **生成ファイル**:
 - `modules/remote/src/std/transport/tokio_transport.rs`
-- `modules/remote/src/std/transport/tokio_transport/tests.rs`
+- `modules/remote/src/std/transport/tokio_transport_test.rs`
 
 **注意**: std 層なので TB ジェネリクス不要、`StdToolbox` 固定。
 

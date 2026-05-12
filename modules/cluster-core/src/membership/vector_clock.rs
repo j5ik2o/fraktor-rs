@@ -1,6 +1,7 @@
 //! Vector clock used for gossip seen tracking and convergence checks.
 
 #[cfg(test)]
+#[path = "vector_clock_test.rs"]
 mod tests;
 
 use alloc::{

@@ -5,6 +5,7 @@ use crate::{
 };
 
 #[cfg(all(test, feature = "alloc"))]
+#[path = "queue_test.rs"]
 mod tests;
 
 /// FIFO queue managing waiter nodes.

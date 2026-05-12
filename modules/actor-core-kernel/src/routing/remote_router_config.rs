@@ -1,6 +1,7 @@
 //! Pool router configuration for remote routee deployment.
 
 #[cfg(test)]
+#[path = "remote_router_config_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

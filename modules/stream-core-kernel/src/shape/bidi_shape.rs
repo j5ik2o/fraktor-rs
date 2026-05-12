@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "bidi_shape_test.rs"]
 mod tests;
 
 use super::{FlowShape, Inlet, Outlet, Shape};

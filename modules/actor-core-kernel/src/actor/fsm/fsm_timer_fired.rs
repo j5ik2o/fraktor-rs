@@ -1,6 +1,7 @@
 //! Envelope used by classic FSM named timers.
 
 #[cfg(test)]
+#[path = "fsm_timer_fired_test.rs"]
 mod tests;
 
 use alloc::string::String;

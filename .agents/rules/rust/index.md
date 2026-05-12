@@ -22,7 +22,7 @@ paths:
 
 - `mod-file-lint`: `mod.rs` 禁止。`foo.rs` + `foo/bar.rs` の階層配置にする
 - `module-wiring-lint`: 親モジュールは `mod` と `pub use` に絞り、子の公開型を親へ集約しない
-- `tests-location-lint`: テストは対象ファイル隣の `tests.rs` に分離する
+- `tests-location-lint`: テストは対象ファイルの sibling `*_test.rs` に分離する
 - `use-placement-lint`: `use` 宣言はファイル先頭に集約する
 - `redundant-fqcn-lint`: コード本体では FQCN を直接書かず `use` で取り込む
 - `module-examples-lint`: `modules/**/examples` を作らず、実行可能サンプルは `showcases/std/examples/` に置く

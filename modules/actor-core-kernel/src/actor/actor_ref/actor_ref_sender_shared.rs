@@ -1,6 +1,7 @@
 //! Shared wrapper for actor reference senders.
 
 #[cfg(test)]
+#[path = "actor_ref_sender_shared_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

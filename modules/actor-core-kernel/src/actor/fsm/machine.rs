@@ -19,6 +19,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "machine_test.rs"]
 mod tests;
 
 type StateHandler<State, Data> = dyn for<'a, 'b> FnMut(

@@ -4,6 +4,7 @@ use super::SubscriptionTimeoutConfig;
 use crate::{SupervisionStrategy, r#impl::fusing::StreamBufferConfig, stream_ref::StreamRefSettings};
 
 #[cfg(test)]
+#[path = "actor_materializer_config_test.rs"]
 mod tests;
 
 /// Configuration for [`ActorMaterializer`](super::ActorMaterializer).

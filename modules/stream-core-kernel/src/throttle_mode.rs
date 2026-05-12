@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "throttle_mode_test.rs"]
 mod tests;
 
 /// Throttle behavior mode controlling how excess upstream demand is handled.

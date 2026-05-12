@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "spin_sync_mutex_test.rs"]
 mod tests;
 
 use spin::{Mutex, MutexGuard};

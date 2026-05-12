@@ -31,6 +31,7 @@
 //! `ActorCell -> sender -> ActorCell` ownership cycle.
 
 #[cfg(test)]
+#[path = "dispatcher_sender_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

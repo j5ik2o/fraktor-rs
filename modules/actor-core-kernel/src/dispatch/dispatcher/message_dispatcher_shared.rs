@@ -8,6 +8,7 @@
 //! registration, etc.).
 
 #[cfg(test)]
+#[path = "message_dispatcher_shared_test.rs"]
 mod tests;
 
 use alloc::{

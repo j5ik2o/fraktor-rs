@@ -1,6 +1,7 @@
 //! Non-thread-safe mutable message buffer for use inside actors.
 
 #[cfg(test)]
+#[path = "message_buffer_test.rs"]
 mod tests;
 
 use alloc::collections::VecDeque;

@@ -8,6 +8,7 @@
 extern crate alloc;
 
 #[cfg(test)]
+#[path = "lib_test.rs"]
 mod tests;
 
 mod association;

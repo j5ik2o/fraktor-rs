@@ -1,6 +1,7 @@
 //! Inline message adaptation for ask/pipe_to_self flows.
 
 #[cfg(test)]
+#[path = "adapt_message_test.rs"]
 mod tests;
 
 use alloc::string::String;

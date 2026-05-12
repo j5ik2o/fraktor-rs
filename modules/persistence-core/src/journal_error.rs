@@ -1,6 +1,7 @@
 //! Journal operation errors.
 
 #[cfg(test)]
+#[path = "journal_error_test.rs"]
 mod tests;
 
 use alloc::string::String;

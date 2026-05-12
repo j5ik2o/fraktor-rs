@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "debug_spin_sync_mutex_test.rs"]
 mod tests;
 
 use core::{

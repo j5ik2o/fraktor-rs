@@ -2,6 +2,7 @@ use alloc::{vec, vec::Vec};
 
 mod failure_restart;
 #[cfg(test)]
+#[path = "graph_interpreter_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::system::ActorSystem;

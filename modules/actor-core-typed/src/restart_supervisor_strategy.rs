@@ -1,6 +1,7 @@
 //! Typed restart supervision facade.
 
 #[cfg(test)]
+#[path = "restart_supervisor_strategy_test.rs"]
 mod tests;
 
 use core::time::Duration;

@@ -1,6 +1,7 @@
 use core::ops::Deref;
 
 #[cfg(test)]
+#[path = "shared_trait_test.rs"]
 mod tests;
 
 /// Shared ownership abstraction used across runtimes.

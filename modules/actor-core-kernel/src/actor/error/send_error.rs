@@ -1,6 +1,7 @@
 //! Errors returned when enqueueing messages fails.
 
 #[cfg(test)]
+#[path = "send_error_test.rs"]
 mod tests;
 
 use alloc::fmt::{Debug, Formatter, Result as FmtResult};

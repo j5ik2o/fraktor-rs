@@ -1,6 +1,7 @@
 //! Test-only [`Executor`] that runs tasks on the calling thread.
 
 #[cfg(test)]
+#[path = "inline_executor_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque};

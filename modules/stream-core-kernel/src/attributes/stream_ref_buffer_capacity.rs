@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_ref_buffer_capacity_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

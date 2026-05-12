@@ -6,6 +6,7 @@
 //! `fraktor-remote-adaptor-std-rs` crate.
 
 #[cfg(test)]
+#[path = "watcher_test.rs"]
 mod tests;
 
 mod watcher_command;

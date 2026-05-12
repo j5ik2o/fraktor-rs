@@ -1,6 +1,7 @@
 //! Builder for configuring and constructing scatter-gather-first-completed pool routers.
 
 #[cfg(test)]
+#[path = "scatter_gather_first_completed_router_builder_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

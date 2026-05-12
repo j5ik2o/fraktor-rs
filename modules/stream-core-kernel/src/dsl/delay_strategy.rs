@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "delay_strategy_test.rs"]
 mod tests;
 
 /// Strategy for computing per-element delay in tick units.

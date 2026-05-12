@@ -1,6 +1,7 @@
 //! Minimal FSM DSL builder for typed behaviors.
 
 #[cfg(test)]
+#[path = "fsm_builder_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};

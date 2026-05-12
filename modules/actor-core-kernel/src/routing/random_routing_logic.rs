@@ -1,6 +1,7 @@
 //! Random routing logic.
 
 #[cfg(test)]
+#[path = "random_routing_logic_test.rs"]
 mod tests;
 
 use portable_atomic::{AtomicU64, Ordering};

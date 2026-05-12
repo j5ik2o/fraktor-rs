@@ -12,4 +12,5 @@ pub use middleware::MessageInvokerMiddleware;
 pub use pipeline::MessageInvokerPipeline;
 
 #[cfg(test)]
+#[path = "message_invoker_test.rs"]
 mod tests;

@@ -1,6 +1,7 @@
 //! Wire-protocol message between producer and consumer controllers.
 
 #[cfg(test)]
+#[path = "sequenced_message_test.rs"]
 mod tests;
 
 use alloc::string::String;

@@ -1,6 +1,7 @@
 //! Shared wrapper for system state.
 
 #[cfg(test)]
+#[path = "system_state_shared_test.rs"]
 mod tests;
 
 use alloc::{

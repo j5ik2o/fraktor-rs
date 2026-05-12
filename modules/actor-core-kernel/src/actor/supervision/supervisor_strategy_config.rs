@@ -1,6 +1,7 @@
 //! Unified supervisor strategy selection.
 
 #[cfg(test)]
+#[path = "supervisor_strategy_config_test.rs"]
 mod tests;
 
 use core::time::Duration;

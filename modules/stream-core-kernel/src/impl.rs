@@ -55,4 +55,5 @@ pub use timeout_kind::TimeoutKind;
 pub(crate) use validate_positive_argument::validate_positive_argument;
 
 #[cfg(test)]
+#[path = "impl_test.rs"]
 mod tests;

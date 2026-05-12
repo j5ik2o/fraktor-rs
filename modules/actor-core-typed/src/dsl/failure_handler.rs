@@ -1,6 +1,7 @@
 //! Type-specific failure handler for supervision DSL.
 
 #[cfg(test)]
+#[path = "failure_handler_test.rs"]
 mod tests;
 
 use core::any::TypeId;

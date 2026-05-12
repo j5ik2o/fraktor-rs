@@ -26,6 +26,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "sink_test.rs"]
 mod tests;
 
 /// Sink stage definition.

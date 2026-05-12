@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "running_interpreter_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

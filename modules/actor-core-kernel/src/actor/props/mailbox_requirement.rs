@@ -3,6 +3,7 @@ use fraktor_utils_core_rs::collections::queue::capabilities::{
 };
 
 #[cfg(test)]
+#[path = "mailbox_requirement_test.rs"]
 mod tests;
 
 /// Declares mailbox-level requirements such as deque or blocking futures.

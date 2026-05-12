@@ -3,6 +3,7 @@
 use alloc::string::String;
 
 #[cfg(test)]
+#[path = "lookup_error_test.rs"]
 mod tests;
 
 /// Errors that can occur during identity lookup operations.

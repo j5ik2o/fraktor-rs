@@ -9,6 +9,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 use crate::actor::messaging::system_message::SystemMessage;
 
 #[cfg(test)]
+#[path = "system_queue_test.rs"]
 mod tests;
 
 struct Node {

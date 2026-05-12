@@ -1,6 +1,7 @@
 //! Eventsourced actor trait.
 
 #[cfg(test)]
+#[path = "eventsourced_test.rs"]
 mod tests;
 
 use core::time::Duration;

@@ -1,6 +1,7 @@
 //! Logging options for typed behavior helpers.
 
 #[cfg(test)]
+#[path = "log_options_test.rs"]
 mod tests;
 
 use alloc::string::String;

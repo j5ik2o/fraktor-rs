@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
 #[cfg(test)]
+#[path = "concat_source_logic_test.rs"]
 mod tests;
 
 use super::map_definition;

@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_ref_subscription_timeout_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

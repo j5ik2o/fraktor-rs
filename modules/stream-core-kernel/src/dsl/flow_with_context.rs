@@ -8,6 +8,7 @@ use super::{
 use crate::r#impl::StreamError;
 
 #[cfg(test)]
+#[path = "flow_with_context_test.rs"]
 mod tests;
 
 /// Context-preserving flow wrapper.

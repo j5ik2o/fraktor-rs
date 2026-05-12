@@ -12,6 +12,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "outbound_pipeline_test.rs"]
 mod tests;
 
 /// Manages send ordering, buffering, and quarantine for a single authority.

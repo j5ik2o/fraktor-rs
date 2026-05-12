@@ -1,6 +1,7 @@
 //! Built-in serializer implementations registered by the extension.
 
 #[cfg(test)]
+#[path = "builtin_test.rs"]
 mod tests;
 
 mod bool_serializer;

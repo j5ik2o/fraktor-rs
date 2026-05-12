@@ -1,6 +1,7 @@
 //! Commands accepted by the consumer controller actor.
 
 #[cfg(test)]
+#[path = "consumer_controller_command_test.rs"]
 mod tests;
 
 use crate::{

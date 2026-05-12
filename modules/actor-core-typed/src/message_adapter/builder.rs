@@ -1,6 +1,7 @@
 //! Builder helpers for typed message adapter registration.
 
 #[cfg(test)]
+#[path = "builder_test.rs"]
 mod tests;
 
 use core::marker::PhantomData;

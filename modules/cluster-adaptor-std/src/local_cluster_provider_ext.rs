@@ -13,6 +13,7 @@ use fraktor_cluster_core_rs::cluster_provider::{
 use fraktor_utils_core_rs::sync::SharedAccess;
 
 #[cfg(test)]
+#[path = "local_cluster_provider_ext_test.rs"]
 mod tests;
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.

@@ -1,6 +1,7 @@
 //! Actor lifecycle contract.
 
 #[cfg(test)]
+#[path = "actor_lifecycle_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

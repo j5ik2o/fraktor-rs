@@ -1,6 +1,7 @@
 //! Standard-library based [`Blocker`] implementation.
 
 #[cfg(test)]
+#[path = "blocker_test.rs"]
 mod tests;
 
 extern crate std;

@@ -1,6 +1,7 @@
 //! Holds sender handle and future associated with an ask request.
 
 #[cfg(test)]
+#[path = "ask_response_test.rs"]
 mod tests;
 
 use crate::{

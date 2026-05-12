@@ -1,6 +1,7 @@
 //! Minimal group router for configured cluster routee paths.
 
 #[cfg(test)]
+#[path = "cluster_router_group_test.rs"]
 mod tests;
 
 use alloc::string::String;

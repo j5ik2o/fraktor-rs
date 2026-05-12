@@ -1,6 +1,7 @@
 //! Call options for grain requests.
 
 #[cfg(test)]
+#[path = "grain_call_options_test.rs"]
 mod tests;
 
 use core::time::Duration;

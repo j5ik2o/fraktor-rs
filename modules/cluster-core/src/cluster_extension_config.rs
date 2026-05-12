@@ -1,6 +1,7 @@
 //! Declarative configuration for the cluster extension.
 
 #[cfg(test)]
+#[path = "cluster_extension_config_test.rs"]
 mod tests;
 
 use alloc::{

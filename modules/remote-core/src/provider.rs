@@ -8,6 +8,7 @@
 //! trait. See design Decision 3-C for the full rationale.
 
 #[cfg(test)]
+#[path = "provider_test.rs"]
 mod tests;
 
 mod path_resolver;

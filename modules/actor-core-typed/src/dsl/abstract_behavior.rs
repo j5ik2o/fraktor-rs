@@ -1,6 +1,7 @@
 //! OOP-style actor definition for behavior transitions.
 
 #[cfg(test)]
+#[path = "abstract_behavior_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::error::ActorError;

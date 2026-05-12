@@ -1,6 +1,7 @@
 //! Built-in serializer for actor selection message containers.
 
 #[cfg(test)]
+#[path = "message_container_serializer_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};

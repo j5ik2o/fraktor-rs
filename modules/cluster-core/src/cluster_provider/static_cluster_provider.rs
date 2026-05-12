@@ -17,6 +17,7 @@ use super::ClusterProvider;
 use crate::{BlockListProvider, ClusterEvent, ClusterProviderError, ClusterTopology, TopologyUpdate};
 
 #[cfg(test)]
+#[path = "static_cluster_provider_test.rs"]
 mod tests;
 
 /// Static cluster provider that publishes static topology to EventStream.

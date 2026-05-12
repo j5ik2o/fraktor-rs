@@ -22,6 +22,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "backoff_supervisor_test.rs"]
 mod tests;
 
 /// Backoff mode distinguishing on-stop from on-failure supervision.

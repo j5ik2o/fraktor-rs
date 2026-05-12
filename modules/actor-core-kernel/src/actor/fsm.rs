@@ -9,6 +9,7 @@ mod logging_fsm;
 mod machine;
 
 #[cfg(test)]
+#[path = "fsm_test.rs"]
 mod tests;
 
 pub use fsm_reason::FsmReason;

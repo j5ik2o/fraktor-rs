@@ -139,4 +139,5 @@ pub use typed_actor_system_config::TypedActorSystemConfig;
 pub use typed_actor_system_log::TypedActorSystemLog;
 mod test_support;
 #[cfg(test)]
+#[path = "lib_test.rs"]
 mod tests;

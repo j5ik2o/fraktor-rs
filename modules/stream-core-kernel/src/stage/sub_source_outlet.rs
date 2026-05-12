@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "sub_source_outlet_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, format, string::String};

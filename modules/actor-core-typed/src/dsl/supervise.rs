@@ -1,6 +1,7 @@
 //! Builder that mirrors Fraktor's `Behaviors.supervise` DSL.
 
 #[cfg(test)]
+#[path = "supervise_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

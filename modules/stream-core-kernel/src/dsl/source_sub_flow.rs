@@ -4,6 +4,7 @@ use super::{StreamDslError, sink::Sink, source::Source};
 use crate::materialization::RunnableGraph;
 
 #[cfg(test)]
+#[path = "source_sub_flow_test.rs"]
 mod tests;
 
 /// Substream DSL surface returned by source substream operators.

@@ -1,6 +1,7 @@
 //! Classic status reply messages.
 
 #[cfg(test)]
+#[path = "status_test.rs"]
 mod tests;
 
 use crate::actor::{error::ActorError, messaging::AnyMessage};

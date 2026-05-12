@@ -1,6 +1,7 @@
 //! Pool router configuration using random routing logic.
 
 #[cfg(test)]
+#[path = "random_pool_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

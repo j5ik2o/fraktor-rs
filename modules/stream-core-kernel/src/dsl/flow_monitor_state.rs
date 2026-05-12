@@ -1,6 +1,7 @@
 //! Stream state tracked by a flow monitor.
 
 #[cfg(test)]
+#[path = "flow_monitor_state_test.rs"]
 mod tests;
 
 use crate::r#impl::StreamError;

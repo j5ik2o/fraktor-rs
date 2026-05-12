@@ -55,6 +55,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "source_test.rs"]
 mod tests;
 
 /// Source stage definition.

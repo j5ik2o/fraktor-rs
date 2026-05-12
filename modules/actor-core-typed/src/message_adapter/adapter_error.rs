@@ -1,6 +1,7 @@
 //! Errors surfaced by message adapter infrastructure and adapter execution.
 
 #[cfg(test)]
+#[path = "adapter_error_test.rs"]
 mod tests;
 
 use alloc::string::String;

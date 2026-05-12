@@ -5,6 +5,7 @@ use fraktor_actor_core_kernel_rs::actor::{ChildRef, Pid};
 use crate::r#impl::{interpreter::IslandBoundaryShared, materialization::StreamShared};
 
 #[cfg(test)]
+#[path = "downstream_cancellation_route_test.rs"]
 mod tests;
 
 struct DownstreamCancellationWatch {

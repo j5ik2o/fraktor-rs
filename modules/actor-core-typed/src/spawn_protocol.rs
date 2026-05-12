@@ -1,6 +1,7 @@
 //! Pekko-inspired spawn protocol for typed actors.
 
 #[cfg(test)]
+#[path = "spawn_protocol_test.rs"]
 mod tests;
 
 use alloc::{format, string::String};

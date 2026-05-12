@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "sub_sink_inlet_handler_test.rs"]
 mod tests;
 
 use crate::StreamError;

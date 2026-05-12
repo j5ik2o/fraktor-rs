@@ -1,6 +1,7 @@
 //! Event classifier keys used by subchannel subscriptions.
 
 #[cfg(test)]
+#[path = "classifier_key_test.rs"]
 mod tests;
 
 use crate::event::stream::EventStreamEvent;

@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "materializer_snapshot_test.rs"]
 mod tests;
 
 use crate::materialization::MaterializerLifecycleState;

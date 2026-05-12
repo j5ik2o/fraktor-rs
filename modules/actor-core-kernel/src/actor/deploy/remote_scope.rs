@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "remote_scope_test.rs"]
 mod tests;
 
 use crate::actor::Address;

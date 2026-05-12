@@ -58,7 +58,7 @@
 
 ### Rust
 - mod.rs禁止（Rust 2018スタイル）
-- `{name}/tests.rs`でテスト分離
+- `{name}_test.rs`でテスト分離
 - 1ファイル1公開型
 
 ### TypeScript/JavaScript

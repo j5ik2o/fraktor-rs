@@ -16,6 +16,7 @@ use super::{mailbox_queue_state::QueueState, map_user_queue_error};
 use crate::actor::{error::SendError, messaging::AnyMessage};
 
 #[cfg(test)]
+#[path = "mailbox_poll_future_test.rs"]
 mod tests;
 
 /// Future resolving when a message becomes available in the queue.

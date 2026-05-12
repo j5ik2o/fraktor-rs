@@ -1,6 +1,7 @@
 //! Round-robin routing logic.
 
 #[cfg(test)]
+#[path = "round_robin_routing_logic_test.rs"]
 mod tests;
 
 use core::sync::atomic::{AtomicUsize, Ordering};

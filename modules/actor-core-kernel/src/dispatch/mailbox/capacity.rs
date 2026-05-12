@@ -1,6 +1,7 @@
 //! Capacity strategy applied to actor mailboxes.
 
 #[cfg(test)]
+#[path = "capacity_test.rs"]
 mod tests;
 
 use core::num::NonZeroUsize;

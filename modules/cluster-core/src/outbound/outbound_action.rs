@@ -5,6 +5,7 @@ use alloc::string::String;
 use super::outbound_envelope::OutboundEnvelope;
 
 #[cfg(test)]
+#[path = "outbound_action_test.rs"]
 mod tests;
 
 /// Result of attempting to send an outbound envelope.

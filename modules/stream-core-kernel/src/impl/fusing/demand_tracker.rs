@@ -1,6 +1,7 @@
 use super::{StreamError, demand::Demand};
 
 #[cfg(test)]
+#[path = "demand_tracker_test.rs"]
 mod tests;
 
 /// Tracks aggregated demand and handles saturation.

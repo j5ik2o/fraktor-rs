@@ -3,6 +3,7 @@ use fraktor_utils_core_rs::sync::SpinSyncMutex;
 use super::{StreamNotUsed, source::Source};
 
 #[cfg(test)]
+#[path = "tail_source_test.rs"]
 mod tests;
 
 /// Lazy tail source wrapper returned by `Flow::prefix_and_tail`.

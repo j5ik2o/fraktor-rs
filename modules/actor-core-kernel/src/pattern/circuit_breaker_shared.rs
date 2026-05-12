@@ -10,6 +10,7 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "circuit_breaker_shared_test.rs"]
 mod tests;
 
 /// Thread-safe, clonable circuit breaker.

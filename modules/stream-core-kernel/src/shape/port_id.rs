@@ -1,6 +1,7 @@
 use portable_atomic::{AtomicU64, Ordering};
 
 #[cfg(test)]
+#[path = "port_id_test.rs"]
 mod tests;
 
 /// Identifier for stream ports.

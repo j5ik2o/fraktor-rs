@@ -1,6 +1,7 @@
 //! Topic-based pub/sub stream integration.
 
 #[cfg(test)]
+#[path = "pub_sub_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

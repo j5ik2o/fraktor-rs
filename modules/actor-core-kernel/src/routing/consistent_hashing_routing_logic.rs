@@ -1,6 +1,7 @@
 //! Consistent-hashing routing logic.
 
 #[cfg(test)]
+#[path = "consistent_hashing_routing_logic_test.rs"]
 mod tests;
 
 use fraktor_utils_core_rs::sync::ArcShared;

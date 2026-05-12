@@ -1,6 +1,7 @@
 //! Classic identity reply for actor discovery.
 
 #[cfg(test)]
+#[path = "actor_identity_test.rs"]
 mod tests;
 
 use crate::actor::{actor_ref::ActorRef, messaging::AnyMessage};

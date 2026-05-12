@@ -1,6 +1,7 @@
 //! Pool router configuration using smallest-mailbox routing logic.
 
 #[cfg(test)]
+#[path = "smallest_mailbox_pool_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

@@ -15,6 +15,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "partition_identity_lookup_test.rs"]
 mod tests;
 
 /// Distributed hash-based identity lookup implementation.

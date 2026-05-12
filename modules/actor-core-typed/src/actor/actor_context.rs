@@ -1,6 +1,7 @@
 //! Typed actor context wrapper.
 
 #[cfg(test)]
+#[path = "actor_context_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeSet, format, string::String, vec::Vec};

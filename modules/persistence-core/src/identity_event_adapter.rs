@@ -1,6 +1,7 @@
 //! No-op event adapter implementation.
 
 #[cfg(test)]
+#[path = "identity_event_adapter_test.rs"]
 mod tests;
 
 use alloc::string::String;

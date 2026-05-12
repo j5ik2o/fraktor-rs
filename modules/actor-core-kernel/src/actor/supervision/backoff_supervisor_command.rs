@@ -1,6 +1,7 @@
 //! Protocol commands for the backoff supervisor actor.
 
 #[cfg(test)]
+#[path = "backoff_supervisor_command_test.rs"]
 mod tests;
 
 /// Protocol commands for the backoff supervisor actor.

@@ -1,6 +1,7 @@
 //! Acknowledgment for a stored message sent event.
 
 #[cfg(test)]
+#[path = "store_message_sent_ack_test.rs"]
 mod tests;
 
 use crate::delivery::SeqNr;

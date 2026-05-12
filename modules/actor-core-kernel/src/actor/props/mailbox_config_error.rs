@@ -1,6 +1,7 @@
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
+#[path = "mailbox_config_error_test.rs"]
 mod tests;
 
 /// Error raised when a [`MailboxConfig`](super::MailboxConfig) violates its

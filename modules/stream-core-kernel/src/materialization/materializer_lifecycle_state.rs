@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "materializer_lifecycle_state_test.rs"]
 mod tests;
 
 /// Lifecycle state of a materializer.

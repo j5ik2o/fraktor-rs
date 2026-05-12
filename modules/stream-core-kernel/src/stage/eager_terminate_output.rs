@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "eager_terminate_output_test.rs"]
 mod tests;
 
 use super::{OutHandler, StageContext};

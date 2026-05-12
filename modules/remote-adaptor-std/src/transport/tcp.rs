@@ -5,6 +5,7 @@
 //! internals over the pure `remote-core` types.
 
 #[cfg(test)]
+#[path = "tcp_test.rs"]
 mod tests;
 
 mod base;

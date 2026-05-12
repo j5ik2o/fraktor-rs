@@ -1,6 +1,7 @@
 //! Strategy applied when stashing fails while fencing commands.
 
 #[cfg(test)]
+#[path = "stash_overflow_strategy_test.rs"]
 mod tests;
 
 /// Strategy applied when command stashing cannot proceed.

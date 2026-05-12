@@ -4,6 +4,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::{num::NonZeroU64, time::Duration};
 
 #[cfg(test)]
+#[path = "scheduler_core_test.rs"]
 mod tests;
 
 use ahash::RandomState;

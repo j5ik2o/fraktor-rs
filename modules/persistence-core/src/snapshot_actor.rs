@@ -1,6 +1,7 @@
 //! Snapshot actor implementation.
 
 #[cfg(test)]
+#[path = "snapshot_actor_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};

@@ -5,6 +5,7 @@ use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionId, system::ActorS
 use super::circuit_breakers_registry::CircuitBreakersRegistry;
 
 #[cfg(all(test, feature = "test-support"))]
+#[path = "circuit_breakers_registry_id_test.rs"]
 mod tests;
 
 /// Identifier used to register [`CircuitBreakersRegistry`] on an actor system.

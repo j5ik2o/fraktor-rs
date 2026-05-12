@@ -1,6 +1,7 @@
 //! Actor system extension traits.
 
 #[cfg(test)]
+#[path = "extension_test.rs"]
 mod tests;
 
 mod ext;

@@ -11,6 +11,7 @@ use super::pid_cache_event::PidCacheEvent;
 use crate::grain::GrainKey;
 
 #[cfg(test)]
+#[path = "pid_cache_test.rs"]
 mod tests;
 
 #[derive(Debug, Clone)]

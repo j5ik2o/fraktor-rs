@@ -4,6 +4,7 @@
 //! priority are dequeued in FIFO (insertion) order.
 
 #[cfg(test)]
+#[path = "unbounded_stable_priority_message_queue_test.rs"]
 mod tests;
 
 use alloc::collections::BinaryHeap;

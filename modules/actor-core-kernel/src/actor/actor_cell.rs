@@ -1,6 +1,7 @@
 //! Runtime container responsible for executing an actor instance.
 
 #[cfg(test)]
+#[path = "actor_cell_test.rs"]
 mod tests;
 
 use alloc::{

@@ -1,6 +1,7 @@
 //! Priority mailbox maintaining separate queues for system and user messages.
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, string::String};

@@ -1,6 +1,7 @@
 //! Actor-scoped timer management inspired by Pekko's `TimerScheduler`.
 
 #[cfg(test)]
+#[path = "timer_scheduler_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

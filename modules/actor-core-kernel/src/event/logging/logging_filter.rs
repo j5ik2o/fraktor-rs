@@ -1,6 +1,7 @@
 //! Pre-publish logging filter contract.
 
 #[cfg(test)]
+#[path = "logging_filter_test.rs"]
 mod tests;
 
 use super::{LogEvent, LogLevel};

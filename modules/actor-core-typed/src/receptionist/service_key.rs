@@ -1,6 +1,7 @@
 //! Type-safe service key for actor discovery.
 
 #[cfg(test)]
+#[path = "service_key_test.rs"]
 mod tests;
 
 use alloc::string::String;

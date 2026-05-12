@@ -23,6 +23,7 @@
 //! until the corresponding code path is ported (YAGNI).
 
 #[cfg(test)]
+#[path = "suspend_reason_test.rs"]
 mod tests;
 
 use crate::actor::error::ActorErrorReason;

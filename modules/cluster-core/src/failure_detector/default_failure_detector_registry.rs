@@ -1,6 +1,7 @@
 //! Default factory-based failure detector registry.
 
 #[cfg(test)]
+#[path = "default_failure_detector_registry_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, collections::BTreeMap};

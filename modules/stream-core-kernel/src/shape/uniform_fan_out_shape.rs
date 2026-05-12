@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use super::{Inlet, Outlet, Shape};
 
 #[cfg(test)]
+#[path = "uniform_fan_out_shape_test.rs"]
 mod tests;
 
 /// Shape with one input port and multiple uniform output ports.

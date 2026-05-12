@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_island_command_test.rs"]
 mod tests;
 
 use crate::StreamError;

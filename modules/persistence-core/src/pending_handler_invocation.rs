@@ -1,6 +1,7 @@
 //! Pending handler invocation queue entries.
 
 #[cfg(test)]
+#[path = "pending_handler_invocation_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

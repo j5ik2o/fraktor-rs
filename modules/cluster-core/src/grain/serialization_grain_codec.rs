@@ -1,6 +1,7 @@
 //! Serialization-backed grain codec.
 
 #[cfg(test)]
+#[path = "serialization_grain_codec_test.rs"]
 mod tests;
 
 use alloc::{format, string::String};

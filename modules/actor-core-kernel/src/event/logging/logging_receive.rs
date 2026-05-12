@@ -1,6 +1,7 @@
 //! Receive decorator that logs handled and unhandled messages.
 
 #[cfg(test)]
+#[path = "logging_receive_test.rs"]
 mod tests;
 
 use alloc::{format, string::String};

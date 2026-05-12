@@ -11,6 +11,7 @@ use super::{StreamIslandCommand, StreamIslandDriveGate, StreamIslandTickHandleSl
 use crate::{StreamError, materialization::DownstreamCancellationControlPlaneShared};
 
 #[cfg(test)]
+#[path = "stream_island_actor_test.rs"]
 mod tests;
 
 /// Actor that owns and drives one stream island.

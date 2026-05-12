@@ -1,6 +1,7 @@
 //! Acknowledgement type sent when an actor is registered with the receptionist.
 
 #[cfg(test)]
+#[path = "registered_test.rs"]
 mod tests;
 
 use alloc::string::String;

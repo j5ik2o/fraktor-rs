@@ -3,6 +3,7 @@
 extern crate std;
 
 #[cfg(test)]
+#[path = "dead_letter_log_subscriber_test.rs"]
 mod tests;
 
 use alloc::string::String;

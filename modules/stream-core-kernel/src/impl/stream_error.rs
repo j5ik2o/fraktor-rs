@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_error_test.rs"]
 mod tests;
 
 use alloc::{borrow::Cow, boxed::Box, format, string::String};

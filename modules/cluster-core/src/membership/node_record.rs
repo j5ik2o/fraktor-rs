@@ -1,6 +1,7 @@
 //! Node record stored in the membership table.
 
 #[cfg(test)]
+#[path = "node_record_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

@@ -1,6 +1,7 @@
 //! Registry for durable state store providers.
 
 #[cfg(test)]
+#[path = "durable_state_store_registry_test.rs"]
 mod tests;
 
 use alloc::{

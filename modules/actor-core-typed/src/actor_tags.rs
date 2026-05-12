@@ -1,6 +1,7 @@
 //! Typed actor tag facade.
 
 #[cfg(test)]
+#[path = "actor_tags_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeSet, string::String};

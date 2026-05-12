@@ -1,6 +1,7 @@
 //! Statistics about registered workers in the work-pulling producer controller.
 
 #[cfg(test)]
+#[path = "worker_stats_test.rs"]
 mod tests;
 
 /// Statistics about registered workers.

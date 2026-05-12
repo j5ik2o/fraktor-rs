@@ -17,7 +17,7 @@ use rustc_hir::{
 use rustc_hir::attrs::AttributeKind;
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_middle::ty::Visibility;
-use rustc_span::{symbol::Symbol, BytePos, Span};
+use rustc_span::{symbol::Symbol, BytePos, FileName, RealFileName, Span};
 
 dylint_linting::impl_late_lint! {
   pub NO_PARENT_REEXPORT,
@@ -53,11 +53,19 @@ impl NoParentReexport {
     }
 
     let attrs = cx.tcx.hir_attrs(item.hir_id());
+    let mut allowed_test_path_attr = false;
     for attr in attrs {
       if let Attribute::Parsed(AttributeKind::Path(_, span)) = attr {
+        if is_allowed_sibling_test_path_attr(cx, item, module_name, *span) {
+          allowed_test_path_attr = true;
+          continue;
+        }
         self.emit_path_attribute_violation(cx, *span);
         return;
       }
+    }
+    if allowed_test_path_attr {
+      return;
     }
 
     if let Some(include_span) = find_include_invocation_span(cx, item.span) {
@@ -286,6 +294,117 @@ fn is_special_segment(symbol: Symbol) -> bool {
 fn is_prelude_module(cx: &LateContext<'_>, def_id: DefId) -> bool {
   let path = cx.tcx.def_path_str(def_id);
   path.split("::").last() == Some("prelude")
+}
+
+fn is_allowed_sibling_test_path_attr(cx: &LateContext<'_>, item: &Item<'_>, module_name: Symbol, attr_span: Span) -> bool {
+  if module_name.as_str() != "tests" || !has_cfg_test_attr_before_path(cx, attr_span) {
+    return false;
+  }
+
+  let sm = cx.tcx.sess.source_map();
+  let Ok(snippet) = sm.span_to_snippet(attr_span) else {
+    return false;
+  };
+  let Some(path) = extract_path_literal(&snippet) else {
+    return false;
+  };
+  if path.contains('/') || path.contains('\\') {
+    return false;
+  }
+
+  let Some(stem) = declaring_file_stem(cx, item.span) else {
+    return false;
+  };
+
+  path == format!("{stem}_test.rs")
+}
+
+fn has_cfg_test_attr_before_path(cx: &LateContext<'_>, path_attr_span: Span) -> bool {
+  cx.tcx
+    .sess
+    .source_map()
+    .span_to_prev_source(path_attr_span)
+    .map(|snippet| {
+      snippet
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| {
+          let normalized: String = line.chars().filter(|ch| !ch.is_whitespace()).collect();
+          is_cfg_test_gate(&normalized)
+        })
+        .unwrap_or(false)
+    })
+    .unwrap_or(false)
+}
+
+fn is_cfg_test_gate(normalized_attr: &str) -> bool {
+  let Some(body) = normalized_attr.strip_prefix("#[cfg(").and_then(|rest| rest.strip_suffix(")]")) else {
+    return false;
+  };
+
+  cfg_expr_requires_test(body)
+}
+
+fn cfg_expr_requires_test(expr: &str) -> bool {
+  if expr == "test" {
+    return true;
+  }
+
+  let Some(inner) = expr.strip_prefix("all(").and_then(|rest| rest.strip_suffix(')')) else {
+    return false;
+  };
+
+  split_top_level_cfg_args(inner).into_iter().any(cfg_expr_requires_test)
+}
+
+fn split_top_level_cfg_args(expr: &str) -> Vec<&str> {
+  let mut args = Vec::new();
+  let mut start = 0;
+  let mut depth = 0usize;
+  let mut in_string = false;
+  let mut escaped = false;
+
+  for (index, ch) in expr.char_indices() {
+    if in_string {
+      if escaped {
+        escaped = false;
+      } else if ch == '\\' {
+        escaped = true;
+      } else if ch == '"' {
+        in_string = false;
+      }
+      continue;
+    }
+
+    match ch {
+      | '"' => in_string = true,
+      | '(' => depth += 1,
+      | ')' => depth = depth.saturating_sub(1),
+      | ',' if depth == 0 => {
+        args.push(expr[start..index].trim());
+        start = index + ch.len_utf8();
+      }
+      | _ => {}
+    }
+  }
+
+  args.push(expr[start..].trim());
+  args
+}
+
+fn extract_path_literal(snippet: &str) -> Option<&str> {
+  let start = snippet.find('"')?;
+  let rest = &snippet[start + 1..];
+  let end = rest.find('"')?;
+  Some(&rest[..end])
+}
+
+fn declaring_file_stem(cx: &LateContext<'_>, span: Span) -> Option<String> {
+  match cx.tcx.sess.source_map().span_to_filename(span) {
+    | FileName::Real(RealFileName::LocalPath(path)) => path.file_stem().and_then(|stem| stem.to_str()).map(str::to_owned),
+    | _ => None,
+  }
 }
 
 fn has_allow_comment(cx: &LateContext<'_>, span: Span) -> bool {

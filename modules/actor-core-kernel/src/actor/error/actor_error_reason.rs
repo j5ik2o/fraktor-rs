@@ -1,6 +1,7 @@
 //! Human readable explanation associated with an actor error.
 
 #[cfg(test)]
+#[path = "actor_error_reason_test.rs"]
 mod tests;
 
 use alloc::{borrow::Cow, string::String};

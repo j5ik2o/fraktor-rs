@@ -1,6 +1,7 @@
 //! Envelope that carries an explicit consistent-hash key alongside its payload.
 
 #[cfg(test)]
+#[path = "consistent_hashable_envelope_test.rs"]
 mod tests;
 
 use super::consistent_hashable::ConsistentHashable;

@@ -1,6 +1,7 @@
 //! Core cluster state holder wiring dependencies and configuration.
 
 #[cfg(test)]
+#[path = "cluster_core_test.rs"]
 mod tests;
 
 use alloc::{

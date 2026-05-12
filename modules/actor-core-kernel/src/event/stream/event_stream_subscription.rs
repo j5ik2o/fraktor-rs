@@ -1,6 +1,7 @@
 //! Subscription handle managing event stream registrations.
 
 #[cfg(test)]
+#[path = "event_stream_subscription_test.rs"]
 mod tests;
 
 use crate::event::stream::EventStreamShared;

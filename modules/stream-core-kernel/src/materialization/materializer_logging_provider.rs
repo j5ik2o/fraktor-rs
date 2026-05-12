@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "materializer_logging_provider_test.rs"]
 mod tests;
 
 use crate::attributes::{LogLevel, SourceLocation};

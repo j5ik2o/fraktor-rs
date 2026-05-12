@@ -1,6 +1,7 @@
 //! Actor reference handle implementation.
 
 #[cfg(test)]
+#[path = "base_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

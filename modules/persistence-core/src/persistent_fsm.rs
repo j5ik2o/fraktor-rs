@@ -1,6 +1,7 @@
 //! Minimal PersistentFSM-compatible layer on top of `PersistentActor`.
 
 #[cfg(test)]
+#[path = "persistent_fsm_test.rs"]
 mod tests;
 
 use core::any::Any;

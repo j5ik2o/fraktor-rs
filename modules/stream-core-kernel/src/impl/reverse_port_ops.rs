@@ -10,6 +10,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "reverse_port_ops_test.rs"]
 mod tests;
 
 /// Reverse port combinator wrapping an [`Inlet`] for ergonomic chaining.

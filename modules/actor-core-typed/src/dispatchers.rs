@@ -6,6 +6,7 @@
 //! via [`SystemStateShared`].
 
 #[cfg(test)]
+#[path = "dispatchers_test.rs"]
 mod tests;
 
 use alloc::string::ToString;

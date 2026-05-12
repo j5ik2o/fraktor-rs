@@ -1,6 +1,7 @@
 //! Responses emitted by journal actors.
 
 #[cfg(test)]
+#[path = "journal_response_test.rs"]
 mod tests;
 
 use alloc::string::String;

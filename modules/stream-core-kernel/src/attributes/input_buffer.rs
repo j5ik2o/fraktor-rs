@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "input_buffer_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

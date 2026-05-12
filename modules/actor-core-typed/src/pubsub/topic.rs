@@ -1,6 +1,7 @@
 //! Typed pub/sub topic actor built on top of the receptionist.
 
 #[cfg(test)]
+#[path = "topic_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

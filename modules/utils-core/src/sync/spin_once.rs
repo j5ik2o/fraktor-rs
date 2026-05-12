@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "spin_once_test.rs"]
 mod tests;
 
 use spin::Once;

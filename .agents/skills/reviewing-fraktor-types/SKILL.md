@@ -22,11 +22,11 @@ description: fraktor-rsのモジュール・型設計を「Less is more」「YAG
 
 ```bash
 # ファイル数・行数（テストファイル除外）
-find <target> -name "*.rs" ! -name "tests.rs" | wc -l
-find <target> -name "*.rs" ! -name "tests.rs" -exec wc -l {} + | sort -n
+find <target> -name "*.rs" ! -name "tests.rs" ! -name "*_test.rs" ! -name "*_tests.rs" | wc -l
+find <target> -name "*.rs" ! -name "tests.rs" ! -name "*_test.rs" ! -name "*_tests.rs" -exec wc -l {} + | sort -n
 
 # 30行以下のファイル数（基準値テーブルの「30行以下ファイル率」に対応）
-find <target> -name "*.rs" ! -name "tests.rs" -exec wc -l {} + | awk '$1 <= 30 {count++} END {print count}'
+find <target> -name "*.rs" ! -name "tests.rs" ! -name "*_test.rs" ! -name "*_tests.rs" -exec wc -l {} + | awk '$1 <= 30 {count++} END {print count}'
 
 # 公開型の数
 grep -r "^pub struct\|^pub trait\|^pub enum" <target> --include="*.rs" | wc -l

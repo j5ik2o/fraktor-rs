@@ -16,6 +16,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "pool_router_test.rs"]
 mod tests;
 
 type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>> + Send + Sync;

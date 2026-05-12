@@ -8,6 +8,7 @@ use super::island_boundary::{BoundaryState, IslandBoundaryShared};
 use crate::{DynValue, SourceLogic, StreamError};
 
 #[cfg(test)]
+#[path = "boundary_source_logic_test.rs"]
 mod tests;
 
 /// Source stage logic that pulls elements from an inter-island boundary buffer.

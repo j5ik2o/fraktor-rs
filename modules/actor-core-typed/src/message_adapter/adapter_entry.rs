@@ -1,6 +1,7 @@
 //! Internal registry entry describing an adapter function.
 
 #[cfg(test)]
+#[path = "adapter_entry_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String};

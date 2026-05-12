@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "framing_error_kind_test.rs"]
 mod tests;
 
 use alloc::string::String;

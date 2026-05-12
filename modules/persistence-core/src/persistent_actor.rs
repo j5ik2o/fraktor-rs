@@ -1,6 +1,7 @@
 //! Persistent actor trait.
 
 #[cfg(test)]
+#[path = "persistent_actor_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, format, string::ToString, vec::Vec};

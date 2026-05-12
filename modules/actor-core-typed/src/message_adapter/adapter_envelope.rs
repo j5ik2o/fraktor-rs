@@ -1,6 +1,7 @@
 //! Envelope carrying adapter payloads through the mailbox.
 
 #[cfg(test)]
+#[path = "adapter_envelope_test.rs"]
 mod tests;
 
 use core::any::TypeId;

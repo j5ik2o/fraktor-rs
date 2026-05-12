@@ -1,6 +1,7 @@
 //! Delivery wrapper sent from the consumer controller to the consumer.
 
 #[cfg(test)]
+#[path = "consumer_controller_delivery_test.rs"]
 mod tests;
 
 use alloc::string::String;

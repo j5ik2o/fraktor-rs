@@ -1,6 +1,7 @@
 //! Single outbound TCP connection with its reader / writer tasks.
 
 #[cfg(test)]
+#[path = "client_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};

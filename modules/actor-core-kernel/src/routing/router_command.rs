@@ -1,6 +1,7 @@
 //! Management commands for a router actor.
 
 #[cfg(test)]
+#[path = "router_command_test.rs"]
 mod tests;
 
 use super::routee::Routee;

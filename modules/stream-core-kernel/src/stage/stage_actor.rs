@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stage_actor_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};

@@ -10,6 +10,7 @@ use super::island_boundary::{BoundaryState, IslandBoundaryShared};
 use crate::{DynValue, SinkDecision, SinkLogic, StreamError, r#impl::fusing::DemandTracker};
 
 #[cfg(test)]
+#[path = "boundary_sink_logic_test.rs"]
 mod tests;
 
 /// Deferred terminal signal recorded while a pending element is waiting to be flushed.

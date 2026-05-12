@@ -17,6 +17,7 @@ use super::weak_shared::WeakShared;
 use crate::sync::shared::Shared;
 
 #[cfg(test)]
+#[path = "arc_shared_test.rs"]
 mod tests;
 
 /// Shared wrapper backed by [`alloc::sync::Arc`] by default.

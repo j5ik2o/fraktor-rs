@@ -16,6 +16,7 @@ use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 use crate::time::StdClock;
 
 #[cfg(test)]
+#[path = "circuit_breakers_registry_test.rs"]
 mod tests;
 
 /// Registry that returns a shared circuit breaker per logical name.

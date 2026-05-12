@@ -1,6 +1,7 @@
 //! System-level log handle for [`TypedActorSystem`].
 
 #[cfg(test)]
+#[path = "typed_actor_system_log_test.rs"]
 mod tests;
 
 use alloc::{fmt::format, string::String};

@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "killable_graph_stage_logic_test.rs"]
 mod tests;
 
 use core::marker::PhantomData;

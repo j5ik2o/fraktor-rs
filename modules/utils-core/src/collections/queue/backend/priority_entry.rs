@@ -1,6 +1,7 @@
 use core::cmp::Ordering;
 
 #[cfg(test)]
+#[path = "priority_entry_test.rs"]
 mod tests;
 
 /// Entry stored inside the binary heap.

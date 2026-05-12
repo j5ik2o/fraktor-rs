@@ -1,6 +1,7 @@
 //! Broadcast message wrapper.
 
 #[cfg(test)]
+#[path = "broadcast_test.rs"]
 mod tests;
 
 use crate::actor::messaging::AnyMessage;

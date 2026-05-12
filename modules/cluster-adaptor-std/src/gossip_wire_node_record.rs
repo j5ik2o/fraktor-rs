@@ -6,6 +6,7 @@ use fraktor_cluster_core_rs::membership::{MembershipVersion, NodeRecord, NodeSta
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
+#[path = "gossip_wire_node_record_test.rs"]
 mod tests;
 
 /// Wire representation of a node record.

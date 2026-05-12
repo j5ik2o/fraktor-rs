@@ -1,6 +1,7 @@
 //! Bounded message queue with configurable overflow strategy.
 
 #[cfg(test)]
+#[path = "bounded_message_queue_test.rs"]
 mod tests;
 
 use core::num::NonZeroUsize;

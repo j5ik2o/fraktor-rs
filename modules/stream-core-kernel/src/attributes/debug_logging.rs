@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "debug_logging_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

@@ -1,6 +1,7 @@
 //! Builder DSL for serialization setup.
 
 #[cfg(test)]
+#[path = "builder_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};

@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "sub_source_outlet_handler_test.rs"]
 mod tests;
 
 use super::CancellationCause;

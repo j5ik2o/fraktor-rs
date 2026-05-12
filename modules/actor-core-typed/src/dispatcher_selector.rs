@@ -1,6 +1,7 @@
 //! Dispatcher selection strategy for typed props.
 
 #[cfg(test)]
+#[path = "dispatcher_selector_test.rs"]
 mod tests;
 
 use alloc::string::String;

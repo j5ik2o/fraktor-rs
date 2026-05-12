@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "fuzzing_mode_test.rs"]
 mod tests;
 
 use alloc::boxed::Box;

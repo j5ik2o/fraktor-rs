@@ -1,6 +1,7 @@
 //! Serialization runtime errors.
 
 #[cfg(test)]
+#[path = "error_test.rs"]
 mod tests;
 
 use alloc::string::String;

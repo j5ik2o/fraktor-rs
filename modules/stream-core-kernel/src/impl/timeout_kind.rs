@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "timeout_kind_test.rs"]
 mod tests;
 
 use core::fmt::{Display, Formatter, Result as FmtResult};

@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "source_queue_with_complete_test.rs"]
 mod tests;
 
 struct PendingOffer<T> {

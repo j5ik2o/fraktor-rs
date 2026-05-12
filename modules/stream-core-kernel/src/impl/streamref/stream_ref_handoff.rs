@@ -7,6 +7,7 @@ use super::stream_ref_protocol::StreamRefProtocol;
 use crate::{DynValue, StreamError, downcast_value, stream_ref::StreamRefSettings};
 
 #[cfg(test)]
+#[path = "stream_ref_handoff_test.rs"]
 mod tests;
 
 pub(crate) const STREAM_REF_SUBSCRIPTION_TIMEOUT_MESSAGE: &str =

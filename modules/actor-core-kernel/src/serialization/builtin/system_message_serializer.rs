@@ -1,6 +1,7 @@
 //! Built-in serializer for actor system messages.
 
 #[cfg(test)]
+#[path = "system_message_serializer_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, vec, vec::Vec};

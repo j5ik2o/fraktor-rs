@@ -29,6 +29,7 @@ pub mod tick_driver;
 mod warning;
 
 #[cfg(test)]
+#[path = "scheduler_test.rs"]
 mod tests;
 
 pub use command::SchedulerCommand;

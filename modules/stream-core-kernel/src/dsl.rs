@@ -74,6 +74,7 @@ mod stateful_map_concat_accumulator;
 mod stream_refs;
 mod tail_source;
 #[cfg(test)]
+#[path = "dsl_test.rs"]
 mod tests;
 
 pub use actor_sink::ActorSink;

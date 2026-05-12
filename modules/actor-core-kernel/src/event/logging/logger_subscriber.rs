@@ -9,6 +9,7 @@ use crate::event::{
 };
 
 #[cfg(test)]
+#[path = "logger_subscriber_test.rs"]
 mod tests;
 
 /// Subscribes to log events and filters by severity.

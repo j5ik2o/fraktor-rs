@@ -1,6 +1,7 @@
 //! Heap entry that preserves insertion order among equal-priority messages.
 
 #[cfg(test)]
+#[path = "stable_priority_entry_test.rs"]
 mod tests;
 
 use core::cmp::Ordering;

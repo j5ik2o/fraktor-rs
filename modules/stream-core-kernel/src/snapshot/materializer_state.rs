@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "materializer_state_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

@@ -1,6 +1,7 @@
 //! Serializer identifier newtype.
 
 #[cfg(test)]
+#[path = "serializer_id_test.rs"]
 mod tests;
 
 use core::fmt::{self, Formatter, Result as FmtResult};

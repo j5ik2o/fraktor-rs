@@ -1,6 +1,7 @@
 //! Core typed behavior abstraction.
 
 #[cfg(test)]
+#[path = "behavior_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::{error::ActorError, supervision::SupervisorStrategyConfig};

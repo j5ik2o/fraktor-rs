@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use super::{StreamDslError, flow::Flow, sink::Sink};
 
 #[cfg(test)]
+#[path = "flow_sub_flow_test.rs"]
 mod tests;
 
 /// Substream DSL surface returned by flow substream operators.

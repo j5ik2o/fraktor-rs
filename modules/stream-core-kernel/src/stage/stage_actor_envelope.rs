@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stage_actor_envelope_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::{actor_ref::ActorRef, messaging::AnyMessage};

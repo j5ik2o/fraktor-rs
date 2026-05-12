@@ -21,6 +21,7 @@ use super::ClusterProvider;
 use crate::{BlockListProvider, ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate};
 
 #[cfg(test)]
+#[path = "local_cluster_provider_generic_test.rs"]
 mod tests;
 
 /// Local cluster provider that publishes topology events to EventStream.

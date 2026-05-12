@@ -1,6 +1,7 @@
 //! Snapshot payload container.
 
 #[cfg(test)]
+#[path = "snapshot_test.rs"]
 mod tests;
 
 use core::any::Any;

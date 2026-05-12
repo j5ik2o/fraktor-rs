@@ -1,6 +1,7 @@
 use crate::actor::supervision::{SupervisorStrategy, SupervisorStrategyConfig};
 
 #[cfg(test)]
+#[path = "supervisor_options_test.rs"]
 mod tests;
 
 /// Supervisor configuration attached to props.

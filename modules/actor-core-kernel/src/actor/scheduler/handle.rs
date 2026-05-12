@@ -1,6 +1,7 @@
 //! Handle returned when scheduling jobs.
 
 #[cfg(test)]
+#[path = "handle_test.rs"]
 mod tests;
 
 use fraktor_utils_core_rs::sync::ArcShared;

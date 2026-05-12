@@ -1,6 +1,7 @@
 //! Bus-oriented classic logging facade.
 
 #[cfg(test)]
+#[path = "bus_logging_test.rs"]
 mod tests;
 
 use alloc::string::String;

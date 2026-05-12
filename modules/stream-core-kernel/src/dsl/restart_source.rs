@@ -1,6 +1,7 @@
 //! Restart DSL facade for source stages.
 
 #[cfg(test)]
+#[path = "restart_source_test.rs"]
 mod tests;
 
 use super::{RestartConfig, source::Source};

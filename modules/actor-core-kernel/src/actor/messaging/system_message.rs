@@ -1,6 +1,7 @@
 //! Internal system messages exchanged within the actor runtime.
 
 #[cfg(test)]
+#[path = "system_message_test.rs"]
 mod tests;
 
 use crate::actor::{Pid, context_pipe::ContextPipeTaskId, error::ActorErrorReason, messaging::AnyMessage};

@@ -1,6 +1,7 @@
 //! Common recipient abstraction for typed and untyped actor references.
 
 #[cfg(test)]
+#[path = "recipient_ref_test.rs"]
 mod tests;
 
 use fraktor_actor_core_kernel_rs::actor::{

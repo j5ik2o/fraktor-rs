@@ -1,6 +1,7 @@
 //! Messages sent to snapshot actors.
 
 #[cfg(test)]
+#[path = "snapshot_message_test.rs"]
 mod tests;
 
 use alloc::string::String;

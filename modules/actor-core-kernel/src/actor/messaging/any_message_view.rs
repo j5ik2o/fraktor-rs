@@ -1,6 +1,7 @@
 //! Borrowed representation of a dynamically typed message.
 
 #[cfg(test)]
+#[path = "any_message_view_test.rs"]
 mod tests;
 
 use core::any::{Any, TypeId};

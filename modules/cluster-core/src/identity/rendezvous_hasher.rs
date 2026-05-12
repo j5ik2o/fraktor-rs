@@ -5,6 +5,7 @@ use alloc::string::String;
 use crate::grain::GrainKey;
 
 #[cfg(test)]
+#[path = "rendezvous_hasher_test.rs"]
 mod tests;
 
 /// Selects an authority deterministically for a grain key.

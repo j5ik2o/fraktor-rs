@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[path = "stream_subscription_timeout_termination_mode_test.rs"]
 mod tests;
 
 /// Termination action when a stream subscription timeout fires.

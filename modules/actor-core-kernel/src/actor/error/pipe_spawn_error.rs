@@ -3,6 +3,7 @@
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
+#[path = "pipe_spawn_error_test.rs"]
 mod tests;
 
 /// Describes failures encountered when spawning a pipe task.

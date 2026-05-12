@@ -8,6 +8,7 @@ use crate::{
 };
 
 #[cfg(test)]
+#[path = "graph_stage_flow_context_test.rs"]
 mod tests;
 
 /// Concrete `StageContext` implementation that bridges `GraphStageLogic` callbacks

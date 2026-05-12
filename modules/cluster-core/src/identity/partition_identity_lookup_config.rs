@@ -1,6 +1,7 @@
 //! Configuration for partition identity lookup.
 
 #[cfg(test)]
+#[path = "partition_identity_lookup_config_test.rs"]
 mod tests;
 
 /// Configuration for the partition identity lookup component.

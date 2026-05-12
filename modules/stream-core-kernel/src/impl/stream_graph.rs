@@ -3,6 +3,7 @@ use alloc::{string::String, vec::Vec};
 use fraktor_utils_core_rs::sync::ArcShared;
 
 #[cfg(test)]
+#[path = "stream_graph_test.rs"]
 mod tests;
 
 use crate::{

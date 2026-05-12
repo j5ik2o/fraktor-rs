@@ -1,6 +1,7 @@
 //! Unbounded priority message queue backed by shared mailbox state.
 
 #[cfg(test)]
+#[path = "unbounded_priority_message_queue_test.rs"]
 mod tests;
 
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};

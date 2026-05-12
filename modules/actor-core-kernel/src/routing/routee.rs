@@ -1,6 +1,7 @@
 //! Routee abstraction for message delivery.
 
 #[cfg(test)]
+#[path = "routee_test.rs"]
 mod tests;
 
 use alloc::vec::Vec;

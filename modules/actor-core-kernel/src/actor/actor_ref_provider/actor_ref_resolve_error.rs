@@ -4,6 +4,7 @@ use alloc::string::String;
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
+#[path = "actor_ref_resolve_error_test.rs"]
 mod tests;
 
 /// Resolution failures for actor references.

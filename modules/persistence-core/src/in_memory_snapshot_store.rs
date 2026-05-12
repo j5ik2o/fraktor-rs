@@ -1,6 +1,7 @@
 //! In-memory snapshot store implementation for testing.
 
 #[cfg(test)]
+#[path = "in_memory_snapshot_store_test.rs"]
 mod tests;
 
 use alloc::{

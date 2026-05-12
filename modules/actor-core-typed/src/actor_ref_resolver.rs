@@ -1,6 +1,7 @@
 //! Serialization and deserialization helpers for typed actor references.
 
 #[cfg(test)]
+#[path = "actor_ref_resolver_test.rs"]
 mod tests;
 
 use alloc::string::String;
