@@ -1,0 +1,16 @@
+warning: `#[cfg(test)]` items are not allowed in production modules
+  --> $DIR/cfg_test_prefixed_module.rs:3:1
+   |
+LL | #[cfg(test)]
+   | ^^^^^^^^^^^^
+   |
+   = help: extract the item into `<module>_test.rs` and gate it via `#[cfg(test)] #[path = "<module>_test.rs"] mod tests;`
+   = note: AI向けアドバイス: テスト専用コードは `<module>_test.rs` に移動し、親には `#[cfg(test)] #[path = "<module>_test.rs"] mod tests;` を追加。構造体メソッドなら tests 側で `impl 型名 { #[cfg(test)] fn ... }` を定義し、`use super::*;` で型やフィールドへアクセスしてください。
+note: the lint level is defined here
+  --> $DIR/cfg_test_prefixed_module.rs:1:9
+   |
+LL | #![warn(separate_tests)]
+   |         ^^^^^^^^^^^^^^
+
+warning: 1 warning emitted
+

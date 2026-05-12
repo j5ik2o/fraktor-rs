@@ -177,7 +177,7 @@ fn find_cfg_test_items(src: &str) -> Vec<Range<usize>> {
       cursor = absolute + ATTR.len();
       continue;
     }
-    if after.starts_with("mod tests") {
+    if is_tests_module_declaration(after) {
       // `mod tests {` will be handled separately to avoid duplicate diagnostics.
       cursor = absolute + ATTR.len();
       continue;
@@ -187,6 +187,19 @@ fn find_cfg_test_items(src: &str) -> Vec<Range<usize>> {
   }
 
   matches
+}
+
+fn is_tests_module_declaration(after_cfg_test: &str) -> bool {
+  let after = after_cfg_test.trim_start();
+  let Some(rest) = after.strip_prefix("mod tests") else {
+    return false;
+  };
+
+  match rest.chars().next() {
+    | Some(';') | Some('{') => true,
+    | Some(c) => c.is_whitespace(),
+    | None => false,
+  }
 }
 
 fn is_sibling_test_module_hook(after_cfg_test: &str) -> bool {
