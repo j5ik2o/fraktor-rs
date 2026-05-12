@@ -331,11 +331,66 @@ fn has_cfg_test_attr_before_path(cx: &LateContext<'_>, path_attr_span: Span) -> 
         .find(|line| !line.trim().is_empty())
         .map(|line| {
           let normalized: String = line.chars().filter(|ch| !ch.is_whitespace()).collect();
-          normalized == "#[cfg(test)]"
+          is_cfg_test_gate(&normalized)
         })
         .unwrap_or(false)
     })
     .unwrap_or(false)
+}
+
+fn is_cfg_test_gate(normalized_attr: &str) -> bool {
+  let Some(body) = normalized_attr.strip_prefix("#[cfg(").and_then(|rest| rest.strip_suffix(")]")) else {
+    return false;
+  };
+
+  cfg_expr_requires_test(body)
+}
+
+fn cfg_expr_requires_test(expr: &str) -> bool {
+  if expr == "test" {
+    return true;
+  }
+
+  let Some(inner) = expr.strip_prefix("all(").and_then(|rest| rest.strip_suffix(')')) else {
+    return false;
+  };
+
+  split_top_level_cfg_args(inner).into_iter().any(cfg_expr_requires_test)
+}
+
+fn split_top_level_cfg_args(expr: &str) -> Vec<&str> {
+  let mut args = Vec::new();
+  let mut start = 0;
+  let mut depth = 0usize;
+  let mut in_string = false;
+  let mut escaped = false;
+
+  for (index, ch) in expr.char_indices() {
+    if in_string {
+      if escaped {
+        escaped = false;
+      } else if ch == '\\' {
+        escaped = true;
+      } else if ch == '"' {
+        in_string = false;
+      }
+      continue;
+    }
+
+    match ch {
+      | '"' => in_string = true,
+      | '(' => depth += 1,
+      | ')' => depth = depth.saturating_sub(1),
+      | ',' if depth == 0 => {
+        args.push(expr[start..index].trim());
+        start = index + ch.len_utf8();
+      }
+      | _ => {}
+    }
+  }
+
+  args.push(expr[start..].trim());
+  args
 }
 
 fn extract_path_literal(snippet: &str) -> Option<&str> {
