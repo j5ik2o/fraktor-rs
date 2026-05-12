@@ -20,8 +20,9 @@ use std::{
   sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
-    mpsc::{Receiver, SyncSender, sync_channel},
+    mpsc::{Receiver, SyncSender, TryRecvError, channel, sync_channel},
   },
+  thread::{self, ThreadId},
   time::{Duration, Instant},
   vec::Vec,
 };
@@ -36,9 +37,9 @@ use fraktor_actor_core_kernel_rs::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    BalancingDispatcherFactory, DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecuteError,
-    Executor, ExecutorFactory, ExecutorShared, MessageDispatcherFactory, PinnedDispatcherFactory, SharedMessageQueue,
-    TrampolineState,
+    BalancingDispatcherFactory, DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory,
+    DispatcherConfig, ExecuteError, Executor, ExecutorFactory, ExecutorShared, MessageDispatcherFactory,
+    PinnedDispatcherFactory, SharedMessageQueue, TrampolineState,
   },
   system::ActorSystem,
 };
@@ -46,7 +47,8 @@ use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::runtime::Handle;
 
 use crate::{
-  dispatch::dispatcher::{PinnedExecutorFactory, TokioExecutor, TokioExecutorFactory},
+  actor::tokio_actor_system_config,
+  dispatch::dispatcher::{PinnedExecutorFactory, TokioExecutor, TokioExecutorFactory, TokioTaskExecutorFactory},
   tick_driver::TokioTickDriver,
 };
 
@@ -193,6 +195,40 @@ async fn tokio_executor_factory_creates_executor_shared() {
   let _executor = factory.create(DEFAULT_DISPATCHER_ID);
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn tokio_task_executor_factory_creates_executor_shared() {
+  let factory = TokioTaskExecutorFactory::new(Handle::current());
+  let _executor = factory.create(DEFAULT_DISPATCHER_ID);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn tokio_actor_system_config_splits_default_and_blocking_executors() {
+  let caller_thread = thread::current().id();
+  let config = tokio_actor_system_config(Handle::current());
+  assert!(config.mailbox_clock().is_some());
+
+  let default = config.dispatchers().resolve(DEFAULT_DISPATCHER_ID).expect("resolve default dispatcher");
+  let blocking = config.dispatchers().resolve(DEFAULT_BLOCKING_DISPATCHER_ID).expect("resolve blocking dispatcher");
+  assert_eq!(default.id(), DEFAULT_DISPATCHER_ID);
+  assert_eq!(blocking.id(), DEFAULT_BLOCKING_DISPATCHER_ID);
+
+  let (default_tx, default_rx) = channel();
+  default
+    .executor()
+    .execute(Box::new(move || default_tx.send(thread::current().id()).expect("send default thread id")), 0)
+    .expect("execute default task");
+  let default_thread = recv_thread_id_by_async_yielding(&default_rx, "default task").await;
+  assert_eq!(default_thread, caller_thread);
+
+  let (blocking_tx, blocking_rx) = channel();
+  blocking
+    .executor()
+    .execute(Box::new(move || blocking_tx.send(thread::current().id()).expect("send blocking thread id")), 0)
+    .expect("execute blocking task");
+  let blocking_thread = recv_thread_id_by_async_yielding(&blocking_rx, "blocking task").await;
+  assert_ne!(blocking_thread, caller_thread);
+}
+
 #[test]
 fn pinned_dispatcher_factory_creates_fresh_dispatcher_per_call() {
   let config = DispatcherConfig::with_defaults("pinned-test");
@@ -290,4 +326,16 @@ async fn balancing_dispatcher_contention_distribution_observation() {
   })
   .await
   .expect("terminate");
+}
+
+async fn recv_thread_id_by_async_yielding(rx: &Receiver<ThreadId>, label: &str) -> ThreadId {
+  let deadline = Instant::now() + Duration::from_secs(1);
+  while Instant::now() < deadline {
+    match rx.try_recv() {
+      | Ok(value) => return value,
+      | Err(TryRecvError::Empty) => tokio::task::yield_now().await,
+      | Err(TryRecvError::Disconnected) => panic!("{label} sender disconnected"),
+    }
+  }
+  panic!("{label} did not complete");
 }

@@ -24,9 +24,10 @@ use fraktor_actor_core_kernel_rs::{
       SupervisorStrategyKind,
     },
   },
+  event::stream::EventStreamEvent,
   system::SpinBlocker,
 };
-use fraktor_utils_core_rs::sync::SpinSyncMutex;
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{
   Behavior, DispatcherSelector, ExtensibleBehavior, TypedActorRef,
@@ -39,6 +40,7 @@ use crate::{
   },
   props::TypedProps,
   system::TypedActorSystem,
+  test_support::{RecordingSubscriber, subscriber_handle},
 };
 
 #[derive(Clone)]
@@ -942,6 +944,72 @@ fn pipe_to_self_converts_messages_via_adapter() {
   .expect("system");
   let mut actor = system.user_guardian_ref();
   wait_until(|| read_counter_value(&mut actor) == 6);
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn pipe_to_self_converts_err_result_via_adapter() {
+  let props = TypedProps::<AdapterCounterCommand>::from_behavior_factory(|| {
+    Behaviors::setup(|ctx| {
+      ctx
+        .pipe_to_self(
+          async { Err::<String, _>(4_i32) },
+          |_value| Err(AdapterError::Custom("unexpected ok".into())),
+          |value| Ok(AdapterCounterCommand::Set(value)),
+        )
+        .expect("pipe");
+      counter_behavior(0)
+    })
+  });
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_from_props(
+    &props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
+  let mut actor = system.user_guardian_ref();
+  wait_until(|| read_counter_value(&mut actor) == 4);
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn pipe_to_self_adapter_failure_is_observed() {
+  let props = TypedProps::<AdapterCounterCommand>::from_behavior_factory(|| {
+    Behaviors::receive_message(|ctx, message| match message {
+      | AdapterCounterCommand::Set(_) => {
+        ctx
+          .pipe_to_self(
+            async { Ok::<_, ()>("not-an-int".to_string()) },
+            |value: String| {
+              value
+                .parse::<i32>()
+                .map(AdapterCounterCommand::Set)
+                .map_err(|_| AdapterError::Custom("pipe parse".into()))
+            },
+            |_| Ok(AdapterCounterCommand::Set(0)),
+          )
+          .expect("pipe");
+        Ok(Behaviors::same())
+      },
+      | AdapterCounterCommand::Read { reply_to } => {
+        let mut reply_to = reply_to.clone();
+        reply_to.tell(0);
+        Ok(Behaviors::same())
+      },
+    })
+  });
+  let system = TypedActorSystem::<AdapterCounterCommand>::create_from_props(
+    &props,
+    ActorSystemConfig::new(TestTickDriver::default()),
+  )
+  .expect("system");
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::<EventStreamEvent>::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+  let mut actor = system.user_guardian_ref();
+
+  actor.tell(AdapterCounterCommand::Set(0));
+
+  wait_until(|| events.lock().iter().any(|event| matches!(event, EventStreamEvent::AdapterFailure(_))));
   system.terminate().expect("terminate");
 }
 

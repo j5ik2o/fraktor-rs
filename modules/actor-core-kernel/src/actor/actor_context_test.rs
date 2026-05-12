@@ -7,7 +7,7 @@ use super::{ActorContext, ReceiveTimeoutState};
 use crate::{
   actor::{
     Actor, ActorCell, Pid, StashOverflowError,
-    actor_ref::NullSender,
+    actor_ref::{NullSender, dead_letter::DeadLetterReason},
     error::{ActorError, PipeSpawnError, SendError, WatchConflict, WatchRegistrationError},
     messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
     props::Props,
@@ -1612,6 +1612,50 @@ fn actor_context_pipe_to_delivers_to_external_target() {
   // 確認: source ではなく target がメッセージを受け取る
   wait_until(|| !target_received.lock().is_empty());
   assert_eq!(target_received.lock()[0], 99);
+}
+
+#[test]
+fn actor_context_pipe_to_suppresses_delivery_when_map_returns_none() {
+  let system = ActorSystem::new_empty();
+  let source_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let target_received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+
+  let source_props = Props::from_fn(|| TestActor);
+  register_cell(&system, source_pid, "source-none", &source_props);
+
+  let target_props = Props::from_fn({
+    let log = target_received.clone();
+    move || ProbeActor::new(log.clone())
+  });
+  let target_cell = register_cell(&system, target_pid, "target-none", &target_props);
+  let target_ref = target_cell.actor_ref();
+
+  let mut context = ActorContext::new(&system, source_pid);
+
+  context.pipe_to(async { 99_i32 }, &target_ref, |_value| None).expect("pipe_to");
+
+  assert!(target_received.lock().is_empty());
+}
+
+#[test]
+fn actor_context_pipe_to_records_dead_letter_when_target_delivery_fails() {
+  use crate::actor::actor_ref::ActorRef;
+
+  let system = ActorSystem::new_empty();
+  let source_pid = system.allocate_pid();
+  let target_pid = Pid::new(902, 0);
+  let source_props = Props::from_fn(|| TestActor);
+  register_cell(&system, source_pid, "source-failed-target", &source_props);
+  let target = ActorRef::new_with_builtin_lock(target_pid, NullSender);
+  let mut context = ActorContext::new(&system, source_pid);
+
+  context.pipe_to(async { 1_i32 }, &target, |value| Some(AnyMessage::new(value))).expect("pipe_to");
+
+  let entries = system.dead_letters();
+  assert!(entries.iter().any(|entry| {
+    entry.recipient() == Some(target_pid) && entry.reason() == DeadLetterReason::RecipientUnavailable
+  }));
 }
 
 #[test]

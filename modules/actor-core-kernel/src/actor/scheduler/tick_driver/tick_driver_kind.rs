@@ -12,4 +12,6 @@ pub enum TickDriverKind {
   Std,
   /// Tokio-based driver.
   Tokio,
+  /// Embassy-based driver.
+  Embassy,
 }

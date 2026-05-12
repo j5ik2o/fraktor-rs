@@ -13,6 +13,10 @@ mod threaded_executor;
 mod tokio_executor;
 #[cfg(feature = "tokio-executor")]
 mod tokio_executor_factory;
+#[cfg(feature = "tokio-executor")]
+mod tokio_task_executor;
+#[cfg(feature = "tokio-executor")]
+mod tokio_task_executor_factory;
 
 pub use affinity_executor::AffinityExecutor;
 pub use affinity_executor_factory::AffinityExecutorFactory;
@@ -23,3 +27,7 @@ pub use threaded_executor::ThreadedExecutor;
 pub use tokio_executor::TokioExecutor;
 #[cfg(feature = "tokio-executor")]
 pub use tokio_executor_factory::TokioExecutorFactory;
+#[cfg(feature = "tokio-executor")]
+pub use tokio_task_executor::TokioTaskExecutor;
+#[cfg(feature = "tokio-executor")]
+pub use tokio_task_executor_factory::TokioTaskExecutorFactory;

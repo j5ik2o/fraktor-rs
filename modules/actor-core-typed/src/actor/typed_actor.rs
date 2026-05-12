@@ -27,6 +27,10 @@ where
 
   /// Handles a typed message dispatched to this actor.
   ///
+  /// This hook is intentionally synchronous. Start asynchronous work by using
+  /// [`TypedActorContext::pipe_to_self`] or [`TypedActorContext::pipe_to`] and
+  /// update actor state from the later completion message.
+  ///
   /// # Errors
   ///
   /// Returns an error to signal recoverable or fatal processing failures.

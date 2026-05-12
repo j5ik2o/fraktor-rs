@@ -2,6 +2,8 @@
 
 更新日: 2026-04-27
 
+実装反映: 2026-05-12
+
 ## 目的
 
 `actor` モジュール全体ではなく、`mailbox` と `dispatcher` を責務単位で深掘りし、
@@ -39,10 +41,13 @@
 この方針だと、mailbox の「部分対応」は単なる不足ではなく、**blocking mailbox 互換へ寄せすぎないための意図的な余白** と解釈できる。  
 ただし前回版より判断が変わる点がある。`std=tokio` / `embedded=embassy` を固定するなら、`async` は edge helper に留めるだけではもったいない。一方で、Pekko 互換性を考えると actor handler 自体を async 化するのではなく、`pipe_to_self` / `pipe_to` を async adapter 境界として維持するのが筋である。
 
-未解決論点は次の 2 点へ絞られる。
+2026-05-12 時点で、未解決だった論点は `async-first-actor-adapters` change として次の API に反映した。
 
-1. default dispatcher を Tokio の `spawn_blocking` 前提から task 実行前提へ変えるか
-2. untyped kernel の `pipe_to_self` / `pipe_to` を先に固定し、その上で typed surface、docs、failure observability をどこまで強化するか
+- std Tokio helper は `fraktor_actor_adaptor_std_rs::actor::tokio_actor_system_config` とし、default dispatcher に `TokioTaskExecutorFactory`、blocking dispatcher に既存 `TokioExecutorFactory` を登録する。
+- 既存 `TokioExecutor` / `TokioExecutorFactory` は `spawn_blocking` 互換 executor として維持し、default task executor は追加 API の `TokioTaskExecutor` / `TokioTaskExecutorFactory` として分離する。
+- embedded / no_std + async 環境向け adapter は `fraktor-actor-adaptor-embassy-rs` crate に置き、`EmbassyExecutorFactory`、`EmbassyExecutorDriver`、`EmbassyTickDriver`、`embassy_monotonic_mailbox_clock` を提供する。
+- `TickDriverKind::Embassy` を追加し、Embassy 固有依存は `actor-core-kernel` へ入れない。
+- `ActorContext::pipe_to_self` / `pipe_to` と `TypedActorContext::pipe_to_self` / `pipe_to` は、呼び出し側に `.await` を要求しない同期 API のまま、future completion を message に戻す canonical surface として rustdoc と tests で固定する。
 
 現時点の推奨は、**full async core ではなく async-first adapter strategy** である。  
 つまり `Actor::receive` / `TypedActor::receive` / `MessageInvoker::invoke` / `Mailbox::run` を `async fn` 化するのではなく、runtime adapter と untyped-first の future-to-message adapter surface を厚くする。
