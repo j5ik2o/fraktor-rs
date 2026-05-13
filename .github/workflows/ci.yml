@@ -203,13 +203,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: coverage
-      - name: Generate actor, stream, and remote coverage reports
+      - name: Generate fraktor coverage reports
         run: ./scripts/coverage.sh --tool llvm-cov --format html-lcov --output target/coverage
-      - name: Upload actor, stream, and remote coverage HTML report
+      - name: Upload fraktor coverage HTML report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: actor-stream-remote-coverage-html
+          name: fraktor-coverage-html
           path: target/coverage/html
           if-no-files-found: warn
           retention-days: 14
@@ -220,8 +220,8 @@ jobs:
           use_oidc: true
           files: target/coverage/lcov.info
           disable_search: true
-          flags: actor-stream-remote
-          name: actor-stream-remote-coverage
+          flags: fraktor
+          name: fraktor-coverage
           fail_ci_if_error: true
 
   # Documentation build
