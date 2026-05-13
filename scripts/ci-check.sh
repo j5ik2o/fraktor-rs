@@ -346,6 +346,31 @@ prepare_ci_target_dir() {
   PREPARED_CI_TARGET_DIR="${target_dir}"
 }
 
+DYLINT_CARGO_WRAPPER_DIR=""
+
+prepare_dylint_cargo_wrapper() {
+  if [[ -n "${DYLINT_CARGO_WRAPPER_DIR}" ]]; then
+    return 0
+  fi
+
+  # dylint_testing sanitizes RUSTUP_TOOLCHAIN before spawning `cargo`.
+  # Keep child cargo builds on the pinned rustup toolchain even though this
+  # script also prepends the toolchain bin directory to PATH.
+  local wrapper_dir="${REPO_ROOT}/target/ci-check/dylint-cargo-wrapper"
+  mkdir -p "${wrapper_dir}"
+
+  local wrapper="${wrapper_dir}/cargo"
+  cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
+exec rustup run "${PINNED_TOOLCHAIN}" cargo "\$@"
+EOF
+  chmod +x "${wrapper}"
+
+  DYLINT_CARGO_WRAPPER_DIR="${wrapper_dir}"
+}
+
 should_guard_cargo_command() {
   local subcommand="${1:-}"
   case "${subcommand}" in
@@ -832,6 +857,9 @@ run_lint() {
 run_dylint() {
   ensure_rustc_components_installed || return 1
   ensure_dylint_installed || return 1
+  prepare_dylint_cargo_wrapper || return 1
+
+  local dylint_cargo_path="${DYLINT_CARGO_WRAPPER_DIR}:${PATH}"
 
   local -a lint_filters
   lint_filters=()
@@ -1003,11 +1031,11 @@ run_dylint() {
 
     local -a build_cmd=("${DEFAULT_CARGO_CMD[@]}" -v build --manifest-path "${lint_path}/Cargo.toml" --release)
     log_step "$(render_command "${build_cmd[@]}")"
-    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${build_cmd[@]}" || return 1
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" PATH="${dylint_cargo_path}" "${build_cmd[@]}" || return 1
 
     local -a test_cmd=("${DEFAULT_CARGO_CMD[@]}" -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet)
     log_step "$(render_command "${test_cmd[@]}")"
-    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${test_cmd[@]}" || return 1
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" PATH="${dylint_cargo_path}" "${test_cmd[@]}" || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"
@@ -1158,9 +1186,9 @@ PY
     fi
     log_step "$(render_cargo_command "${log_main_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
-      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
+      PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
     else
-      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
+      PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
     fi
   fi
 
@@ -1185,7 +1213,7 @@ PY
       fqcn_tests_cargo_args+=("${trailing_args[@]}")
     fi
     log_step "$(render_cargo_command dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}") (redundant-fqcn-lint --tests pass, RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
-    RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}" || return 1
+    PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}" || return 1
   fi
 
   if [[ ${#hardware_targets[@]} -gt 0 ]]; then
@@ -1198,9 +1226,9 @@ PY
       fi
       log_step "$(render_cargo_command "${log_pkg_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
-        RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
+        PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
       else
-        RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
+        PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
       fi
     done
   fi
@@ -1237,7 +1265,7 @@ PY
         feature_trailing+=("${trailing_args[@]}")
       fi
       log_step "$(render_cargo_command "${log_feature_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
-      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
+      PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
     done
   fi
 }
