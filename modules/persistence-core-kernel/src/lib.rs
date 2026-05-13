@@ -62,7 +62,7 @@
 //! - [`InMemorySnapshotStore`] - In-memory snapshot store for testing
 //! - [`PersistenceExtension`] - Extension for ActorSystem integration
 //!
-//! Use `fraktor_persistence_core_rs` for convenient imports.
+//! Use `fraktor_persistence_core_kernel_rs` for convenient imports.
 
 extern crate alloc;
 

@@ -228,6 +228,18 @@ impl Behaviors {
     Behavior::from_start_handler(move |ctx| Ok(factory(ctx)))
   }
 
+  /// Defers fallible behavior creation until the actor is started.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorError`] when the factory fails during actor startup.
+  pub fn setup_result<M, F>(factory: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+    Behavior::from_start_handler(factory)
+  }
+
   /// Creates a behavior using a bounded stash helper.
   ///
   /// This mirrors Pekko's `Behaviors.withStash`.

@@ -158,6 +158,7 @@ typed persistence effector は snapshot を保存するための `persist_snapsh
 - **GIVEN** `RetentionCriteria::snapshot_every(2, keep_snapshots = 2)` が設定されている
 - **WHEN** 新しい snapshot 保存が成功する
 - **THEN** effector は保持対象外の古い snapshot deletion を store actor に依頼する
+- **AND** deletion failure は `PersistenceEffectorSignal::Failed` に変換され、default では fatal persistence failure として扱われる
 
 ### Requirement: persistence failure と domain error を分離する
 

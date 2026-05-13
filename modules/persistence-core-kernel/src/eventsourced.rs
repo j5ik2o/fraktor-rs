@@ -11,6 +11,7 @@ use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError, messa
 use crate::{
   journal_error::JournalError, persistence_error::PersistenceError, persistent_repr::PersistentRepr,
   recovery::Recovery, recovery_timed_out::RecoveryTimedOut, snapshot::Snapshot, snapshot_error::SnapshotError,
+  snapshot_metadata::SnapshotMetadata, snapshot_selection_criteria::SnapshotSelectionCriteria,
 };
 
 /// Event-sourced actor interface.
@@ -59,6 +60,15 @@ pub trait Eventsourced: Send {
 
   /// Called when snapshot operations fail.
   fn on_snapshot_failure(&mut self, _cause: &SnapshotError) {}
+
+  /// Called when snapshot saving succeeds.
+  fn on_snapshot_saved(&mut self, _metadata: &SnapshotMetadata) {}
+
+  /// Called when a single snapshot deletion succeeds.
+  fn on_snapshot_deleted(&mut self, _metadata: &SnapshotMetadata) {}
+
+  /// Called when criteria-based snapshot deletion succeeds.
+  fn on_snapshots_deleted(&mut self, _criteria: &SnapshotSelectionCriteria) {}
 
   /// Returns the current sequence number.
   fn last_sequence_nr(&self) -> u64;

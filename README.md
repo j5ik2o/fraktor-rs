@@ -77,7 +77,7 @@ Until the root facade exposes consolidated runtime modules, use the crate that o
 | --- | --- |
 | Utilities | [`fraktor-utils-core-rs`](modules/utils-core), [`fraktor-utils-adaptor-std-rs`](modules/utils-adaptor-std) |
 | Actor runtime | [`fraktor-actor-core-kernel-rs`](modules/actor-core-kernel), [`fraktor-actor-core-typed-rs`](modules/actor-core-typed), [`fraktor-actor-adaptor-std-rs`](modules/actor-adaptor-std) |
-| Persistence | [`fraktor-persistence-core-rs`](modules/persistence-core) |
+| Persistence | [`fraktor-persistence-core-kernel-rs`](modules/persistence-core-kernel), [`fraktor-persistence-core-typed-rs`](modules/persistence-core-typed) |
 | Remote | [`fraktor-remote-core-rs`](modules/remote-core), [`fraktor-remote-adaptor-std-rs`](modules/remote-adaptor-std) |
 | Cluster | [`fraktor-cluster-core-rs`](modules/cluster-core), [`fraktor-cluster-adaptor-std-rs`](modules/cluster-adaptor-std) |
 | Streams | [`fraktor-stream-core-kernel-rs`](modules/stream-core-kernel), [`fraktor-stream-core-actor-typed-rs`](modules/stream-core-actor-typed), [`fraktor-stream-adaptor-std-rs`](modules/stream-adaptor-std) |
@@ -89,6 +89,7 @@ cargo run -p fraktor-showcases-std --example request_reply
 cargo run -p fraktor-showcases-std --example kernel_supervision
 cargo run -p fraktor-showcases-std --example typed_actor_lifecycle
 cargo run -p fraktor-showcases-std --example stream_graphs
+cargo run -p fraktor-showcases-std --features advanced --example typed_persistence_effector
 ```
 
 See [`showcases/std/README.md`](showcases/std/README.md) for the full example list and feature requirements.
@@ -103,7 +104,8 @@ See [`showcases/std/README.md`](showcases/std/README.md) for the full example li
 | [`modules/actor-core-kernel`](modules/actor-core-kernel) | `no_std` untyped actor kernel: actor refs, systems, dispatch, routing, serialization, patterns, and lifecycle |
 | [`modules/actor-core-typed`](modules/actor-core-typed) | `no_std` typed actor facade, DSL, receptionist, pub-sub, delivery, typed event stream, and typed system APIs |
 | [`modules/actor-adaptor-std`](modules/actor-adaptor-std) | Std/Tokio actor bindings, executors, tick drivers, time, event, pattern, and test-support helpers |
-| [`modules/persistence-core`](modules/persistence-core) | Event sourcing, journals, snapshots, persistent actors, persistent FSM, durable state, and persistence extensions |
+| [`modules/persistence-core-kernel`](modules/persistence-core-kernel) | Event sourcing, journals, snapshots, persistent actors, persistent FSM, durable state, and persistence extensions |
+| [`modules/persistence-core-typed`](modules/persistence-core-typed) | Persistence effector API, snapshot criteria, and retention criteria for typed actors |
 | [`modules/remote-core`](modules/remote-core) | `no_std` remote address, association, envelope, provider, transport port, watcher, wire, and failure-detector state machines |
 | [`modules/remote-adaptor-std`](modules/remote-adaptor-std) | Std remote extension installers, providers, Tokio TCP transport, and I/O workers |
 | [`modules/cluster-core`](modules/cluster-core) | Cluster membership, identity, placement, pub-sub, grains, failure detection, topology, metrics, and routing |

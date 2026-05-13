@@ -24,7 +24,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_persistence_core_rs::{
+use fraktor_persistence_core_kernel_rs::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
