@@ -286,8 +286,20 @@ where
       return Ok(());
     }
     if let Some(response) = message.downcast_ref::<SnapshotResponse>() {
+      let should_unstash = matches!(
+        response,
+        SnapshotResponse::SaveSnapshotSuccess { .. }
+          | SnapshotResponse::SaveSnapshotFailure { .. }
+          | SnapshotResponse::DeleteSnapshotSuccess { .. }
+          | SnapshotResponse::DeleteSnapshotFailure { .. }
+          | SnapshotResponse::DeleteSnapshotsSuccess { .. }
+          | SnapshotResponse::DeleteSnapshotsFailure { .. }
+      );
       self.actor.handle_snapshot_response(response, ctx);
       self.update_recovery_timeout_after_snapshot_response(ctx, response)?;
+      if should_unstash && !self.is_recovery_running() && !self.actor.persistence_context().should_stash_commands() {
+        ctx.unstash_all()?;
+      }
       return Ok(());
     }
     if let Some(tick) = message.downcast_ref::<RecoveryTick>() {

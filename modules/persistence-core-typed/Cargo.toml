@@ -1,0 +1,28 @@
+[package]
+name = "fraktor-persistence-core-typed-rs"
+version = "0.2.11"
+edition = "2024"
+description = "Typed persistence effector API for fraktor actors"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "persistence", "actor", "typed", "no-std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-persistence-core-typed-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+
+[dependencies]
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-actor-core-typed-rs = { workspace = true }
+fraktor-persistence-core-kernel-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
+
+[dev-dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

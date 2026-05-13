@@ -347,11 +347,24 @@ impl<A: 'static> PersistenceContext<A> {
     response: &SnapshotResponse,
     sender: ActorRef,
   ) -> SnapshotResponseAction {
-    if !self.is_ready() || self.state != PersistentActorState::RecoveryStarted {
+    if !self.is_ready() {
       return SnapshotResponseAction::None;
     }
 
     match response {
+      | SnapshotResponse::SaveSnapshotSuccess { metadata } => SnapshotResponseAction::SnapshotSaved(metadata.clone()),
+      | SnapshotResponse::SaveSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
+      | SnapshotResponse::DeleteSnapshotSuccess { metadata } => {
+        SnapshotResponseAction::SnapshotDeleted(metadata.clone())
+      },
+      | SnapshotResponse::DeleteSnapshotsSuccess { criteria } => {
+        SnapshotResponseAction::SnapshotsDeleted(criteria.clone())
+      },
+      | SnapshotResponse::DeleteSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
+      | SnapshotResponse::DeleteSnapshotsFailure { error, .. } => {
+        SnapshotResponseAction::SnapshotFailure(error.clone())
+      },
+      | _ if self.state != PersistentActorState::RecoveryStarted => SnapshotResponseAction::None,
       | SnapshotResponse::LoadSnapshotResult { snapshot, .. } => {
         if let Some(snapshot) = snapshot {
           let sequence_nr = snapshot.metadata().sequence_nr();
@@ -400,12 +413,6 @@ impl<A: 'static> PersistenceContext<A> {
         }
         SnapshotResponseAction::SnapshotFailure(error.clone())
       },
-      | SnapshotResponse::SaveSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
-      | SnapshotResponse::DeleteSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
-      | SnapshotResponse::DeleteSnapshotsFailure { error, .. } => {
-        SnapshotResponseAction::SnapshotFailure(error.clone())
-      },
-      | _ => SnapshotResponseAction::None,
     }
   }
 

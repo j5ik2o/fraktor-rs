@@ -20,7 +20,8 @@ serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true, features = ["std"] }
 
 # advanced 依存（cross-module examples 用）
-fraktor-persistence-core-rs = { workspace = true, optional = true }
+fraktor-persistence-core-kernel-rs = { workspace = true, optional = true }
+fraktor-persistence-core-typed-rs = { workspace = true, optional = true }
 fraktor-cluster-core-rs = { workspace = true, optional = true }
 fraktor-cluster-adaptor-std-rs = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
@@ -29,7 +30,8 @@ anyhow = { workspace = true, optional = true }
 [features]
 default = []
 advanced = [
-    "dep:fraktor-persistence-core-rs",
+    "dep:fraktor-persistence-core-kernel-rs",
+    "dep:fraktor-persistence-core-typed-rs",
     "dep:fraktor-cluster-core-rs",
     "dep:fraktor-cluster-adaptor-std-rs",
     "dep:tokio",
@@ -221,6 +223,11 @@ required-features = ["advanced"]
 [[example]]
 name = "typed_mailboxes"
 path = "typed/mailboxes/main.rs"
+
+[[example]]
+name = "typed_persistence_effector"
+path = "typed/persistence_effector/main.rs"
+required-features = ["advanced"]
 
 # --- Strangler fig examples: streams ---
 

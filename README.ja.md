@@ -61,6 +61,7 @@ cargo run -p fraktor-showcases-std --example getting_started
 cargo run -p fraktor-showcases-std --example typed_first_example
 cargo run -p fraktor-showcases-std --example stream_first_example
 cargo run -p fraktor-showcases-std --features advanced --example remote_lifecycle
+cargo run -p fraktor-showcases-std --features advanced --example typed_persistence_effector
 ```
 
 ### 検証
@@ -78,7 +79,7 @@ cargo test -p fraktor-rs
 | --- | --- |
 | Utilities | [`fraktor-utils-core-rs`](modules/utils-core), [`fraktor-utils-adaptor-std-rs`](modules/utils-adaptor-std) |
 | Actor runtime | [`fraktor-actor-core-kernel-rs`](modules/actor-core-kernel), [`fraktor-actor-core-typed-rs`](modules/actor-core-typed), [`fraktor-actor-adaptor-std-rs`](modules/actor-adaptor-std) |
-| Persistence | [`fraktor-persistence-core-rs`](modules/persistence-core) |
+| Persistence | [`fraktor-persistence-core-kernel-rs`](modules/persistence-core-kernel), [`fraktor-persistence-core-typed-rs`](modules/persistence-core-typed) |
 | Remote | [`fraktor-remote-core-rs`](modules/remote-core), [`fraktor-remote-adaptor-std-rs`](modules/remote-adaptor-std) |
 | Cluster | [`fraktor-cluster-core-rs`](modules/cluster-core), [`fraktor-cluster-adaptor-std-rs`](modules/cluster-adaptor-std) |
 | Streams | [`fraktor-stream-core-kernel-rs`](modules/stream-core-kernel), [`fraktor-stream-core-actor-typed-rs`](modules/stream-core-actor-typed), [`fraktor-stream-adaptor-std-rs`](modules/stream-adaptor-std) |
@@ -90,6 +91,14 @@ cargo run -p fraktor-showcases-std --example request_reply
 cargo run -p fraktor-showcases-std --example kernel_supervision
 cargo run -p fraktor-showcases-std --example typed_actor_lifecycle
 cargo run -p fraktor-showcases-std --example stream_graphs
+```
+
+typed persistence effector は、通常の typed `Behavior` を維持したまま hidden child store actor に永続化を委譲します。最小形は次のように `PersistenceEffector::props` で aggregate actor を作ります。
+
+```rust
+let props = PersistenceEffector::props(config, |state, effector| {
+  Ok(account_behavior(state, effector))
+});
 ```
 
 example の一覧と必要な feature は [`showcases/std/README.md`](showcases/std/README.md) を参照してください。
@@ -104,7 +113,8 @@ example の一覧と必要な feature は [`showcases/std/README.md`](showcases/
 | [`modules/actor-core-kernel`](modules/actor-core-kernel) | `no_std` の untyped actor kernel: actor ref、system、dispatch、routing、serialization、pattern、lifecycle |
 | [`modules/actor-core-typed`](modules/actor-core-typed) | `no_std` の typed actor facade、DSL、receptionist、pub-sub、delivery、typed event stream、typed system API |
 | [`modules/actor-adaptor-std`](modules/actor-adaptor-std) | Std/Tokio actor binding、executor、tick driver、time、event、pattern、test-support helper |
-| [`modules/persistence-core`](modules/persistence-core) | Event sourcing、journal、snapshot、persistent actor、persistent FSM、durable state、persistence extension |
+| [`modules/persistence-core-kernel`](modules/persistence-core-kernel) | Event sourcing、journal、snapshot、persistent actor、persistent FSM、durable state、persistence extension |
+| [`modules/persistence-core-typed`](modules/persistence-core-typed) | typed actor 向け persistence effector API、snapshot criteria、retention criteria |
 | [`modules/remote-core`](modules/remote-core) | `no_std` の remote address、association、envelope、provider、transport port、watcher、wire、failure-detector state machine |
 | [`modules/remote-adaptor-std`](modules/remote-adaptor-std) | Std remote extension installer、provider、Tokio TCP transport、I/O worker |
 | [`modules/cluster-core`](modules/cluster-core) | Cluster membership、identity、placement、pub-sub、grain、failure detection、topology、metrics、routing |

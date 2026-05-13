@@ -68,6 +68,14 @@ impl Props {
     Self::new(Box::new(factory))
   }
 
+  /// Replaces the actor factory while preserving every other props setting.
+  #[doc(hidden)]
+  #[must_use]
+  pub fn with_factory(mut self, factory: Box<dyn ActorFactory>) -> Self {
+    self.factory = Some(ActorFactoryShared::new(factory));
+    self
+  }
+
   /// Returns the actor factory, if configured.
   #[must_use]
   pub const fn factory(&self) -> Option<&ActorFactoryShared> {
