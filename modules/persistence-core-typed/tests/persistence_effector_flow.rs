@@ -49,6 +49,7 @@ enum CounterEvent {
 #[derive(Clone, Debug)]
 enum CounterCommand {
   Add(i32),
+  AddThenRecovery(i32),
   AddBatch(Vec<i32>),
   AddWithSnapshot(i32),
   Reject { reply_to: TypedActorRef<String> },
@@ -149,6 +150,23 @@ fn counter_behavior(
       command_log.lock().push(*delta);
       let event = CounterEvent::Added(*delta);
       let next_state = apply_counter_event(&state, &event);
+      let next_effector = effector.clone();
+      let next_command_log = command_log.clone();
+      effector
+        .persist_event(ctx, event, move |_event| Ok(counter_behavior(next_state, next_effector, next_command_log)))
+    },
+    | CounterCommand::AddThenRecovery(delta) => {
+      command_log.lock().push(*delta);
+      let event = CounterEvent::Added(*delta);
+      let next_state = apply_counter_event(&state, &event);
+      let next_sequence_nr = effector.sequence_nr().saturating_add(1);
+      let mut self_ref = ctx.self_ref();
+      self_ref
+        .try_tell(CounterCommand::Persistence(PersistenceEffectorSignal::RecoveryCompleted {
+          state:       next_state.clone(),
+          sequence_nr: next_sequence_nr,
+        }))
+        .map_err(|error| ActorError::fatal(format!("recovery completion self-send failed: {error:?}")))?;
       let next_effector = effector.clone();
       let next_command_log = command_log.clone();
       effector
@@ -301,6 +319,37 @@ fn persisted_mode_recovers_snapshot_replays_events_and_persists_new_events() {
   assert_eq!(ask_sequence(&mut actor), 7);
   assert_eq!(*ready_values.lock(), vec![12]);
   assert_eq!(*command_log.lock(), vec![5, 1, 2, 3]);
+
+  terminate_system(system);
+}
+
+#[test]
+fn persisted_mode_resynchronizes_when_recovery_completes_during_persist_wait() {
+  const PERSISTENCE_ID: &str = "typed-persisted-restart-resync-counter";
+
+  let journal = InMemoryJournal::new();
+  let snapshot_store = InMemorySnapshotStore::new();
+  let command_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let ready_values = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = counter_props(
+    counter_config(PersistenceMode::Persisted, PERSISTENCE_ID),
+    command_log.clone(),
+    ready_values.clone(),
+  );
+  let system = TypedActorSystem::<CounterCommand>::create_from_props(
+    &props,
+    actor_system_config_with_persistence(journal, snapshot_store),
+  )
+  .expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  assert_eq!(ask_value(&mut actor), 0);
+  actor.tell(CounterCommand::AddThenRecovery(1));
+
+  assert!(wait_until(5000, || *ready_values.lock() == vec![0, 1]));
+  assert_eq!(ask_value(&mut actor), 1);
+  assert_eq!(ask_sequence(&mut actor), 1);
+  assert_eq!(*command_log.lock(), vec![1]);
 
   terminate_system(system);
 }
