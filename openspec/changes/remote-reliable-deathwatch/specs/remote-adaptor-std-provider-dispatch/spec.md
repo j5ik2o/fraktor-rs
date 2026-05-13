@@ -46,3 +46,28 @@ remote watch hook は actor-core から渡された target pid と watcher pid �
 - **WHEN** remote watch hook が target pid または watcher pid を actor path へ解決できない
 - **THEN** hook は `false` を返す
 - **AND** actor-core は既存 fallback を実行できる
+
+### Requirement: remote watch hook forwards DeathWatchNotification
+
+remote watch hook は actor-core から渡された remote watcher pid と terminated target pid を actor path へ解決し、remote-bound `DeathWatchNotification` を system priority envelope として enqueue する SHALL。remote watcher pid を解決できない場合、hook は notification を消費してはならない（MUST NOT）。
+
+#### Scenario: remote notification is forwarded
+
+- **GIVEN** watcher pid が provider の remote pid/path registry に存在する
+- **AND** terminated target pid が local actor path として解決できる
+- **WHEN** actor-core が `SystemMessage::DeathWatchNotification(target)` を watcher pid へ送る
+- **THEN** remote watch hook は recipient を watcher path、sender metadata を target path とする remote-bound notification を enqueue する
+- **AND** hook は `true` を返す
+
+#### Scenario: unresolved remote watcher does not consume notification
+
+- **WHEN** remote watch hook が watcher pid を remote actor path へ解決できない
+- **THEN** hook は `false` を返す
+- **AND** notification を remote outbound lane へ enqueue しない
+
+#### Scenario: unresolved local target does not send invalid notification
+
+- **GIVEN** watcher pid が provider の remote pid/path registry に存在する
+- **WHEN** remote watch hook が terminated target pid を local actor path へ解決できない
+- **THEN** hook は invalid actor path metadata を持つ notification を enqueue しない
+- **AND** failure は log または test-observable error path で観測できる

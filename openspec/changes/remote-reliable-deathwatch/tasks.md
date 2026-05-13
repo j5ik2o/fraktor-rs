@@ -23,6 +23,7 @@
 - [ ] 4.2 provider installer が actor-core に remote watch hook を登録する
 - [ ] 4.3 hook が target / watcher pid を actor path へ解決し、watcher task command へ変換する
 - [ ] 4.4 mapping 解決不能時に hook が `false` を返し、既存 fallback を維持する test を追加する
+- [ ] 4.5 hook が remote-bound `DeathWatchNotification` を system priority envelope に変換する
 
 ## 5. Std Watcher Task And Retry Driver
 

@@ -75,3 +75,17 @@ std retry driver は core association が返す ACK/NACK / resend effects を実
 - **WHEN** retry driver が pending system envelope の resend timeout を判定する
 - **THEN** driver は monotonic millis を core に渡す
 - **AND** wall clock に依存しない
+
+## REMOVED Requirements
+
+### Requirement: system message delivery (ack-based redelivery)
+
+**Reason**: 既存 requirement は sequence number 管理と retry 対象管理を std 側の責務として読める。今回の change では ACK/NACK redelivery state を `remote-core` association に集約し、std 側は timer と transport send だけを担うため、責務が矛盾する。
+
+**Migration**: `remote-core-association-state-machine` の `system message redelivery state` / `inbound system sequence tracking` と、本 spec の `retry driver uses core ACK/NACK effects` を使う。
+
+### Requirement: WatcherActor (WatcherState の actor 化層)
+
+**Reason**: 既存 requirement は `WatcherActor` という concrete type と actor 化を必須にしている。今回の change では `WatcherState` を no_std の純粋状態機械に保ち、std 側は watcher task として effect 適用を行うため、actor 型を必須にすると実装形態が矛盾する。
+
+**Migration**: 本 spec の `std watcher task applies WatcherEffect` を使う。型名や task 構成は実装側が選べるが、timer、command queue、effect 適用、actor-core delivery の責務はこの requirement に従う。
