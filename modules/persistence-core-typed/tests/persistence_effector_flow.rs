@@ -324,6 +324,36 @@ fn persisted_mode_recovers_snapshot_replays_events_and_persists_new_events() {
 }
 
 #[test]
+fn persisted_mode_runs_recovery_and_on_ready_during_startup() {
+  const PERSISTENCE_ID: &str = "typed-persisted-eager-start-counter";
+
+  let mut journal = InMemoryJournal::new();
+  let repr = PersistentRepr::new(PERSISTENCE_ID, 1, ArcShared::new(CounterEvent::Added(3)));
+  drive_ready(journal.write_messages(&[repr])).expect("seed journal");
+
+  let snapshot_store = InMemorySnapshotStore::new();
+  let command_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let ready_values = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = counter_props(
+    counter_config(PersistenceMode::Persisted, PERSISTENCE_ID),
+    command_log.clone(),
+    ready_values.clone(),
+  );
+  let system = TypedActorSystem::<CounterCommand>::create_from_props(
+    &props,
+    actor_system_config_with_persistence(journal, snapshot_store),
+  )
+  .expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  assert!(wait_until(5000, || *ready_values.lock() == vec![3]));
+  assert_eq!(ask_value(&mut actor), 3);
+  assert_eq!(*command_log.lock(), Vec::<i32>::new());
+
+  terminate_system(system);
+}
+
+#[test]
 fn persisted_mode_resynchronizes_when_recovery_completes_during_persist_wait() {
   const PERSISTENCE_ID: &str = "typed-persisted-restart-resync-counter";
 

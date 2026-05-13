@@ -39,7 +39,7 @@ use crate::{
   dispatchers::Dispatchers,
   dsl::Behaviors,
   eventstream::EventStreamCommand,
-  internal::TypedSchedulerShared,
+  internal::{GuardianStartupActor, GuardianStartupStart, TypedSchedulerShared},
   props::TypedProps,
   receptionist::{Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
   scheduler::Scheduler,
@@ -197,6 +197,13 @@ where
     Self { inner, cached_address, event_stream_ref, marker: PhantomData }
   }
 
+  fn start_user_guardian(&self) -> Result<(), SpawnError> {
+    let mut guardian_ref = self.inner.user_guardian_ref();
+    guardian_ref
+      .try_tell(AnyMessage::new(GuardianStartupStart))
+      .map_err(|error| SpawnError::invalid_props(format!("typed guardian startup start delivery failed: {error:?}")))
+  }
+
   /// Creates a typed actor system using the supplied configuration.
   ///
   /// # Errors
@@ -231,11 +238,14 @@ where
   ) -> Result<Self, SpawnError>
   where
     F: FnOnce(&ActorSystem) -> Result<(), SpawnError>, {
-    let inner = ActorSystem::create_from_props_with_init(guardian.to_untyped(), config, |system| {
+    let guardian_props = GuardianStartupActor::props(guardian.to_untyped())?;
+    let inner = ActorSystem::create_from_props_with_init(&guardian_props, config, |system| {
       install_system_receptionist(system)?;
       configure(system)
     })?;
-    Ok(Self::from_bootstrapped_inner(inner))
+    let system = Self::from_bootstrapped_inner(inner);
+    system.start_user_guardian()?;
+    Ok(system)
   }
 }
 

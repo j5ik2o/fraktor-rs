@@ -13,7 +13,7 @@ use fraktor_actor_core_typed_rs::{
   actor::TypedActorContext,
   dsl::{Behaviors, StashBuffer},
 };
-use fraktor_persistence_core_kernel_rs::{PersistenceError, PersistenceExtensionShared};
+use fraktor_persistence_core_kernel_rs::PersistenceError;
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
@@ -99,7 +99,11 @@ where
           Ok(message_adapter.wrap_signal(PersistenceEffectorSignal::from(reply)))
         })
         .map_err(|error| ActorError::fatal(format!("persistence reply adapter registration failed: {error:?}")))?;
-      Ok(Self::await_persisted_start(config.clone(), reply_to, on_ready.clone()))
+      let store_props = PersistenceStoreActor::<S, E, M>::props(config.clone(), reply_to.clone());
+      let store_child = ctx
+        .spawn_child(&store_props)
+        .map_err(|error| ActorError::fatal(format!("persistence store spawn failed: {error:?}")))?;
+      Ok(Self::await_recovery(config.clone(), store_child.actor_ref(), reply_to, on_ready.clone()))
     })
   }
 
@@ -181,29 +185,6 @@ where
         }
         stash.stash(ctx)?;
         Ok(Behaviors::same())
-      })
-    })
-  }
-
-  fn await_persisted_start(
-    config: PersistenceEffectorConfig<S, E, M>,
-    reply_to: TypedActorRef<PersistenceStoreReply<S, E>>,
-    on_ready: ArcShared<OnReady<S, E, M>>,
-  ) -> Behavior<M> {
-    Behaviors::with_stash(config.stash_capacity(), move |stash| {
-      let config = config.clone();
-      let reply_to = reply_to.clone();
-      let on_ready = on_ready.clone();
-      Behaviors::receive_message(move |ctx, _message| {
-        if ctx.system().as_untyped().extended().extension_by_type::<PersistenceExtensionShared>().is_none() {
-          return Err(ActorError::fatal("persistence extension is not registered"));
-        }
-        stash.stash(ctx)?;
-        let store_props = PersistenceStoreActor::<S, E, M>::props(config.clone(), reply_to.clone());
-        let store_child = ctx
-          .spawn_child(&store_props)
-          .map_err(|error| ActorError::fatal(format!("persistence store spawn failed: {error:?}")))?;
-        Ok(Self::await_recovery(config.clone(), store_child.actor_ref(), reply_to.clone(), on_ready.clone()))
       })
     })
   }

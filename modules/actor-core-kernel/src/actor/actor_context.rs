@@ -109,7 +109,9 @@ impl ActorContext<'_> {
   }
 
   /// Returns a clone of the current message being processed.
-  pub(crate) fn clone_current_message(&self) -> Option<AnyMessage> {
+  #[doc(hidden)]
+  #[must_use]
+  pub fn clone_current_message(&self) -> Option<AnyMessage> {
     self.current_message.clone()
   }
 
@@ -726,7 +728,9 @@ impl ActorContext<'_> {
     state.schedule_generation = state.schedule_generation.saturating_add(1);
   }
 
-  pub(crate) fn reschedule_receive_timeout(&mut self) {
+  /// Reschedules the active receive-timeout timer, if one is configured.
+  #[doc(hidden)]
+  pub fn reschedule_receive_timeout(&mut self) {
     let system = self.system.clone();
     let pid = self.pid;
     self.with_receive_timeout_slot(|slot| {
