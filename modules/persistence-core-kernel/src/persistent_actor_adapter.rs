@@ -297,7 +297,7 @@ where
       );
       self.actor.handle_snapshot_response(response, ctx);
       self.update_recovery_timeout_after_snapshot_response(ctx, response)?;
-      if should_unstash {
+      if should_unstash && !self.is_recovery_running() && !self.actor.persistence_context().should_stash_commands() {
         ctx.unstash_all()?;
       }
       return Ok(());

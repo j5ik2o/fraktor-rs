@@ -144,8 +144,8 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
     if self.stash_capacity == 0 {
       return Err(validation_error("stash_capacity must be greater than 0"));
     }
-    if let Some(number_of_events) = self.snapshot_criteria.interval()
-      && number_of_events == 0
+    if let SnapshotCriteria::Every { number_of_events } = &self.snapshot_criteria
+      && *number_of_events == 0
     {
       return Err(validation_error("snapshot interval must be greater than 0"));
     }

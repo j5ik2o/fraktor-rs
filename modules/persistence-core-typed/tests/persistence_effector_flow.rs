@@ -306,6 +306,35 @@ fn persisted_mode_recovers_snapshot_replays_events_and_persists_new_events() {
 }
 
 #[test]
+fn persisted_mode_unstashes_commands_when_event_persist_triggers_snapshot() {
+  const PERSISTENCE_ID: &str = "typed-persisted-snapshot-stash-counter";
+
+  let journal = InMemoryJournal::new();
+  let snapshot_store = InMemorySnapshotStore::new();
+  let command_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let ready_values = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let config =
+    counter_config(PersistenceMode::Persisted, PERSISTENCE_ID).with_snapshot_criteria(SnapshotCriteria::always());
+  let props = counter_props(config, command_log.clone(), ready_values.clone());
+  let system = TypedActorSystem::<CounterCommand>::create_from_props(
+    &props,
+    actor_system_config_with_persistence(journal, snapshot_store),
+  )
+  .expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  actor.tell(CounterCommand::AddWithSnapshot(1));
+  actor.tell(CounterCommand::Add(2));
+
+  assert_eq!(ask_value(&mut actor), 3);
+  assert_eq!(ask_sequence(&mut actor), 2);
+  assert_eq!(*ready_values.lock(), vec![0]);
+  assert_eq!(*command_log.lock(), vec![1, 2]);
+
+  terminate_system(system);
+}
+
+#[test]
 fn ephemeral_mode_replays_from_actor_system_scoped_store() {
   const PERSISTENCE_ID: &str = "typed-ephemeral-counter";
 

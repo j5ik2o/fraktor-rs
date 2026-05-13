@@ -6,6 +6,7 @@ use fraktor_persistence_core_kernel_rs::PersistenceError;
 
 use crate::PersistenceEffectorSignal;
 
+#[derive(Clone, Debug)]
 pub(crate) enum PersistenceStoreReply<S, E> {
   RecoveryCompleted { state: S, sequence_nr: u64 },
   PersistedEvents { events: Vec<E>, sequence_nr: u64 },

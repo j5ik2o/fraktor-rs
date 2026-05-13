@@ -24,8 +24,8 @@ use crate::{
   persistence_error::PersistenceError, persistence_extension_installer::PersistenceExtensionInstaller,
   persistent_actor::PersistentActor, persistent_actor_adapter::PersistentActorAdapter,
   persistent_actor_state::PersistentActorState, persistent_repr::PersistentRepr, recovery::Recovery,
-  recovery_timed_out::RecoveryTimedOut, snapshot::Snapshot, snapshot_response::SnapshotResponse,
-  stash_overflow_strategy::StashOverflowStrategy,
+  recovery_timed_out::RecoveryTimedOut, snapshot::Snapshot, snapshot_metadata::SnapshotMetadata,
+  snapshot_response::SnapshotResponse, stash_overflow_strategy::StashOverflowStrategy,
 };
 
 fn noop_pipeline() -> MessageInvokerPipeline {
@@ -489,6 +489,28 @@ fn adapter_stashes_command_between_write_message_success_and_write_messages_succ
   pipeline.invoke_user(&mut adapter, &mut ctx, follow_up_command).expect("follow-up command should be processed");
   assert_eq!(adapter.actor.command_count, 1);
   assert_eq!(adapter.actor.command_log, vec![126_i32]);
+}
+
+#[test]
+fn adapter_keeps_stash_when_snapshot_response_arrives_during_stashing_write() {
+  let system = new_test_system();
+  let mut ctx = build_context(&system);
+  let actor = DummyPersistentActor::new();
+  let mut adapter = PersistentActorAdapter::new(actor);
+  prepare_stashing_commands(&mut adapter, &mut ctx);
+  let pipeline = noop_pipeline();
+  let command = AnyMessage::new(127_i32);
+  pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
+  let cell = ctx.system().state().cell(&ctx.pid()).expect("cell");
+  assert_eq!(cell.mailbox().user_len(), 0);
+  let message =
+    AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: SnapshotMetadata::new("pid-1", 1, 0) });
+
+  let result = adapter.receive(&mut ctx, message.as_view());
+
+  assert!(result.is_ok());
+  assert!(adapter.actor.persistence_context().should_stash_commands());
+  assert_eq!(cell.mailbox().user_len(), 0);
 }
 
 #[test]

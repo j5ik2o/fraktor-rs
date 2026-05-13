@@ -483,6 +483,7 @@ where
                   .map_err(|error| ActorError::fatal(format!("persist snapshot send failed: {error:?}")))?;
                 let persisted_events = events.clone();
                 let callback = callback.with_lock(Option::take);
+                stash.unstash_all(ctx)?;
                 return Ok(match callback {
                   | Some(callback) => {
                     effector.wait_for_snapshot(Box::new(move |_snapshot| callback(persisted_events.as_slice())))

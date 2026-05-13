@@ -60,13 +60,6 @@ impl<S, E> SnapshotCriteria<S, E> {
       | Self::Predicate(predicate) => predicate(event, state, sequence_nr),
     }
   }
-
-  pub(crate) const fn interval(&self) -> Option<u64> {
-    match self {
-      | Self::Every { number_of_events } => Some(*number_of_events),
-      | _ => None,
-    }
-  }
 }
 
 impl<S, E> Clone for SnapshotCriteria<S, E> {

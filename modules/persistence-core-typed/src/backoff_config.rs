@@ -12,8 +12,14 @@ pub struct BackoffConfig {
 
 impl BackoffConfig {
   /// Creates a backoff configuration.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `min_backoff > max_backoff` or `random_factor` is outside `[0.0, 1.0]`.
   #[must_use]
-  pub const fn new(min_backoff: Duration, max_backoff: Duration, random_factor: f64) -> Self {
+  pub fn new(min_backoff: Duration, max_backoff: Duration, random_factor: f64) -> Self {
+    assert!(min_backoff <= max_backoff, "min_backoff must not exceed max_backoff");
+    assert!((0.0..=1.0).contains(&random_factor) && !random_factor.is_nan(), "random_factor must be in [0.0, 1.0]");
     Self { min_backoff, max_backoff, random_factor }
   }
 
