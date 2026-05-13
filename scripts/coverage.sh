@@ -45,7 +45,7 @@ usage() {
   scripts/coverage.sh --open
 
 計測対象:
-  actor / stream / remote 系 package の lib / bins と tests / examples を分割実行し、
+  各 package の lib / bins と tests / examples を分割実行し、
   Unit / Contract / Integration / E2E のプロファイルを1つのレポートに統合します。
 EOF
 }

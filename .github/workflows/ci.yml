@@ -175,7 +175,7 @@ jobs:
 
   # カバレッジレポート
   #
-  # `scripts/coverage.sh` は actor / stream 系 package の Unit / Contract /
+  # `scripts/coverage.sh` は各 package の Unit / Contract /
   # Integration / E2E をまとめて計測し、HTML レポートを生成する。
   # PR / main push / schedule で成果物として確認できるよう、
   # 通常テストとは別ジョブで実行して artifact に保存する。
