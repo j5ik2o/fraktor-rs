@@ -14,8 +14,10 @@ use fraktor_actor_core_kernel_rs::{
   system::ActorSystem,
 };
 use fraktor_persistence_core_kernel_rs::{
-  Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
-  PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
+  extension::PersistenceExtensionInstaller,
+  journal::InMemoryJournal,
+  persistent::{Eventsourced, PersistenceContext, PersistentActor, PersistentRepr, persistent_props, spawn_persistent},
+  snapshot::{InMemorySnapshotStore, Snapshot},
 };
 use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 

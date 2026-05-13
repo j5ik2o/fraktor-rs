@@ -1,47 +1,33 @@
-//! Journal storage abstraction.
+//! Event journal package.
 
-use alloc::vec::Vec;
-use core::future::Future;
+mod base;
+mod event_adapters;
+mod event_seq;
+mod identity_event_adapter;
+mod in_memory_journal;
+mod journal_actor;
+mod journal_actor_config;
+mod journal_error;
+mod journal_message;
+mod journal_response;
+mod journal_response_action;
+mod persistence_plugin_proxy;
+mod read_event_adapter;
+mod tagged;
+mod write_event_adapter;
 
-use crate::{journal_error::JournalError, persistent_repr::PersistentRepr};
-
-/// Event journal abstraction using GATs for no_std async.
-pub trait Journal: Send + Sync + 'static {
-  /// Future returned by write operations.
-  type WriteFuture<'a>: Future<Output = Result<(), JournalError>> + Send + 'a
-  where
-    Self: 'a;
-
-  /// Future returned by replay operations.
-  type ReplayFuture<'a>: Future<Output = Result<Vec<PersistentRepr>, JournalError>> + Send + 'a
-  where
-    Self: 'a;
-
-  /// Future returned by delete operations.
-  type DeleteFuture<'a>: Future<Output = Result<(), JournalError>> + Send + 'a
-  where
-    Self: 'a;
-
-  /// Future returned by highest sequence number lookup.
-  type HighestSeqNrFuture<'a>: Future<Output = Result<u64, JournalError>> + Send + 'a
-  where
-    Self: 'a;
-
-  /// Writes a batch of messages.
-  fn write_messages<'a>(&'a mut self, messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a>;
-
-  /// Replays messages in the requested range.
-  fn replay_messages<'a>(
-    &'a self,
-    persistence_id: &'a str,
-    from_sequence_nr: u64,
-    to_sequence_nr: u64,
-    max: u64,
-  ) -> Self::ReplayFuture<'a>;
-
-  /// Deletes messages up to the given sequence number.
-  fn delete_messages_to<'a>(&'a mut self, persistence_id: &'a str, to_sequence_nr: u64) -> Self::DeleteFuture<'a>;
-
-  /// Returns the highest sequence number for the persistence id.
-  fn highest_sequence_nr<'a>(&'a self, persistence_id: &'a str) -> Self::HighestSeqNrFuture<'a>;
-}
+pub use base::Journal;
+pub use event_adapters::EventAdapters;
+pub use event_seq::EventSeq;
+pub use identity_event_adapter::IdentityEventAdapter;
+pub use in_memory_journal::InMemoryJournal;
+pub use journal_actor::JournalActor;
+pub use journal_actor_config::JournalActorConfig;
+pub use journal_error::JournalError;
+pub use journal_message::JournalMessage;
+pub use journal_response::JournalResponse;
+pub(crate) use journal_response_action::JournalResponseAction;
+pub use persistence_plugin_proxy::PersistencePluginProxy;
+pub use read_event_adapter::ReadEventAdapter;
+pub use tagged::Tagged;
+pub use write_event_adapter::WriteEventAdapter;

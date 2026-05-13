@@ -30,8 +30,10 @@ use fraktor_actor_core_kernel_rs::{
   system::ActorSystem,
 };
 use fraktor_persistence_core_kernel_rs::{
-  Eventsourced, InMemoryJournal, InMemorySnapshotStore, Journal, PersistenceContext, PersistenceExtensionInstaller,
-  PersistentActor, PersistentRepr, Snapshot, SnapshotMetadata, SnapshotStore, persistent_props, spawn_persistent,
+  extension::PersistenceExtensionInstaller,
+  journal::{InMemoryJournal, Journal},
+  persistent::{Eventsourced, PersistenceContext, PersistentActor, PersistentRepr, persistent_props, spawn_persistent},
+  snapshot::{InMemorySnapshotStore, Snapshot, SnapshotMetadata, SnapshotStore},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use test_utils::shared_mutex;

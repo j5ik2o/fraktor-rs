@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_persistence_core_kernel_rs::PersistenceError;
+use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 
 use crate::PersistenceEffectorSignal;
 

@@ -10,8 +10,10 @@ use fraktor_actor_core_kernel_rs::actor::{
 };
 use fraktor_actor_core_typed_rs::{TypedActorRef, TypedProps};
 use fraktor_persistence_core_kernel_rs::{
-  Eventsourced, JournalError, PersistenceContext, PersistenceError, PersistentActor, PersistentRepr, Snapshot,
-  SnapshotError, SnapshotMetadata, SnapshotSelectionCriteria, persistent_props,
+  error::PersistenceError,
+  journal::JournalError,
+  persistent::{Eventsourced, PersistenceContext, PersistentActor, PersistentRepr, persistent_props},
+  snapshot::{Snapshot, SnapshotError, SnapshotMetadata, SnapshotSelectionCriteria},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
