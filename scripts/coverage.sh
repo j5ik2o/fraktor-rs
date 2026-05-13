@@ -45,7 +45,7 @@ usage() {
   scripts/coverage.sh --open
 
 計測対象:
-  actor / stream 系 package の lib / bins と tests / examples を分割実行し、
+  actor / stream / remote 系 package の lib / bins と tests / examples を分割実行し、
   Unit / Contract / Integration / E2E のプロファイルを1つのレポートに統合します。
 EOF
 }
@@ -60,7 +60,9 @@ coverage_packages() {
     "fraktor-actor-adaptor-std-rs" \
     "fraktor-stream-core-kernel-rs" \
     "fraktor-stream-core-actor-typed-rs" \
-    "fraktor-stream-adaptor-std-rs"
+    "fraktor-stream-adaptor-std-rs" \
+    "fraktor-remote-core-rs" \
+    "fraktor-remote-adaptor-std-rs"
 }
 
 coverage_features() {
