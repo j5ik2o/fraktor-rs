@@ -37,7 +37,7 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
       persistence_mode: PersistenceMode::Persisted,
       stash_capacity: usize::MAX,
       snapshot_criteria: SnapshotCriteria::never(),
-      retention_criteria: RetentionCriteria::none(),
+      retention_criteria: RetentionCriteria::default(),
       backoff_config: BackoffConfig::default(),
       message_adapter: None,
     }

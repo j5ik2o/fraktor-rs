@@ -8,12 +8,6 @@ pub struct RetentionCriteria {
 }
 
 impl RetentionCriteria {
-  /// Creates criteria with no retention cleanup.
-  #[must_use]
-  pub const fn none() -> Self {
-    Self { snapshot_every: None, keep_snapshots: None }
-  }
-
   /// Creates snapshot-count based retention criteria.
   #[must_use]
   pub const fn snapshot_every(number_of_events: u64, keep_snapshots: u64) -> Self {
