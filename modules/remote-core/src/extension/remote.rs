@@ -381,11 +381,13 @@ impl Remote {
       pdu.manifest().map(ToString::to_string),
       pdu.payload().to_vec(),
     );
-    let payload =
-      self.serialization.with_read(|serialization| serialization.deserialize(&serialized, None)).map_err(|error| {
+    let payload = match self.serialization.with_read(|serialization| serialization.deserialize(&serialized, None)) {
+      | Ok(payload) => payload,
+      | Err(error) => {
         tracing::debug!(?error, "inbound payload deserialization failed");
-        RemotingError::CodecFailed
-      })?;
+        return Ok(());
+      },
+    };
     let envelope = InboundEnvelope::new(
       recipient,
       remote_node,

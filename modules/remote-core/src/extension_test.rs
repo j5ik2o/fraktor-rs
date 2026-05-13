@@ -905,7 +905,7 @@ fn inbound_senderless_envelope_matches_existing_association_by_peer_endpoint() {
 }
 
 #[test]
-fn inbound_envelope_deserialization_failure_is_not_buffered() {
+fn inbound_envelope_deserialization_failure_is_dropped_without_failing_event_loop() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");
@@ -921,15 +921,42 @@ fn inbound_envelope_deserialization_failure_is_not_buffered() {
     EnvelopePayload::new(4, None, Bytes::from_static(b"bad")),
   );
 
-  let error = remote
+  remote
     .handle_remote_event(RemoteEvent::InboundFrameReceived {
       authority: TransportEndpoint::new(remote_address.to_string()),
       frame:     WireFrame::Envelope(pdu),
       now_ms:    57,
     })
-    .expect_err("invalid serialized payload should fail at the remote boundary");
+    .expect("invalid serialized payload should be dropped at the remote boundary");
 
-  assert_eq!(error, RemotingError::CodecFailed);
+  assert!(remote.drain_inbound_envelopes().is_empty());
+}
+
+#[test]
+fn run_continues_event_loop_after_inbound_deserialization_failure() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut remote = remote_new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = EnvelopePdu::new(
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+    Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/sender")),
+    7,
+    8,
+    1,
+    EnvelopePayload::new(4, None, Bytes::from_static(b"bad")),
+  );
+  let inbound_event = RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Envelope(pdu),
+    now_ms:    58,
+  };
+  let mut receiver = VecRemoteEventReceiver::new([inbound_event, RemoteEvent::TransportShutdown]);
+
+  block_on_ready(remote.run(&mut receiver)).unwrap();
+
   assert!(remote.drain_inbound_envelopes().is_empty());
 }
 
