@@ -4,6 +4,8 @@ use alloc::string::String;
 
 use bytes::Bytes;
 
+use super::EnvelopePayload;
+
 /// Wire-level representation of a message envelope.
 ///
 /// This is the on-the-wire dual of the higher-level
@@ -22,6 +24,8 @@ pub struct EnvelopePdu {
   correlation_lo: u32,
   /// Raw priority byte (0 = System, 1 = User).
   priority:       u8,
+  serializer_id:  u32,
+  manifest:       Option<String>,
   payload:        Bytes,
 }
 
@@ -31,15 +35,24 @@ impl EnvelopePdu {
   /// `correlation_hi` and `correlation_lo` together encode the 96-bit
   /// correlation identifier carried by the envelope.
   #[must_use]
-  pub const fn new(
+  pub fn new(
     recipient_path: String,
     sender_path: Option<String>,
     correlation_hi: u64,
     correlation_lo: u32,
     priority: u8,
-    payload: Bytes,
+    payload: EnvelopePayload,
   ) -> Self {
-    Self { recipient_path, sender_path, correlation_hi, correlation_lo, priority, payload }
+    Self {
+      recipient_path,
+      sender_path,
+      correlation_hi,
+      correlation_lo,
+      priority,
+      serializer_id: payload.serializer_id,
+      manifest: payload.manifest,
+      payload: payload.bytes,
+    }
   }
 
   /// Returns the recipient actor path.
@@ -72,7 +85,19 @@ impl EnvelopePdu {
     self.priority
   }
 
-  /// Returns the payload bytes.
+  /// Returns the serializer identifier.
+  #[must_use]
+  pub const fn serializer_id(&self) -> u32 {
+    self.serializer_id
+  }
+
+  /// Returns the optional serializer manifest.
+  #[must_use]
+  pub fn manifest(&self) -> Option<&str> {
+    self.manifest.as_deref()
+  }
+
+  /// Returns the serialized payload bytes.
   #[must_use]
   pub const fn payload(&self) -> &Bytes {
     &self.payload

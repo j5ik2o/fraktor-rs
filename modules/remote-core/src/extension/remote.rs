@@ -10,7 +10,9 @@ use core::mem;
 use fraktor_actor_core_kernel_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::{CorrelationId, RemotingLifecycleEvent},
+  serialization::{SerializationExtensionShared, SerializedMessage, SerializerId},
 };
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use crate::{
   address::{Address, UniqueAddress},
@@ -36,6 +38,7 @@ pub struct Remote {
   transport:            Box<dyn RemoteTransport + Send>,
   config:               RemoteConfig,
   event_publisher:      EventPublisher,
+  serialization:        ArcShared<SerializationExtensionShared>,
   instrument:           Box<dyn RemoteInstrument + Send>,
   advertised_addresses: Vec<Address>,
   associations:         Vec<Association>,
@@ -45,10 +48,15 @@ pub struct Remote {
 impl Remote {
   /// Creates a new remote lifecycle instance.
   #[must_use]
-  pub fn new<T>(transport: T, config: RemoteConfig, event_publisher: EventPublisher) -> Self
+  pub fn new<T>(
+    transport: T,
+    config: RemoteConfig,
+    event_publisher: EventPublisher,
+    serialization: ArcShared<SerializationExtensionShared>,
+  ) -> Self
   where
     T: RemoteTransport + Send + 'static, {
-    Self::with_instrument(transport, config, event_publisher, Box::new(NoopInstrument))
+    Self::with_instrument(transport, config, event_publisher, serialization, Box::new(NoopInstrument))
   }
 
   /// Creates a new remote lifecycle instance with a custom instrument.
@@ -57,6 +65,7 @@ impl Remote {
     transport: T,
     config: RemoteConfig,
     event_publisher: EventPublisher,
+    serialization: ArcShared<SerializationExtensionShared>,
     instrument: Box<dyn RemoteInstrument + Send>,
   ) -> Self
   where
@@ -66,6 +75,7 @@ impl Remote {
       transport: Box::new(transport),
       config,
       event_publisher,
+      serialization,
       instrument,
       advertised_addresses: Vec::new(),
       associations: Vec::new(),
@@ -366,10 +376,22 @@ impl Remote {
       | None => None,
     };
     let priority = OutboundPriority::from_wire(pdu.priority()).ok_or(RemotingError::CodecFailed)?;
+    let serialized = SerializedMessage::new(
+      SerializerId::from_raw(pdu.serializer_id()),
+      pdu.manifest().map(ToString::to_string),
+      pdu.payload().to_vec(),
+    );
+    let payload = match self.serialization.with_read(|serialization| serialization.deserialize(&serialized, None)) {
+      | Ok(payload) => payload,
+      | Err(error) => {
+        tracing::debug!(?error, "inbound payload deserialization failed");
+        return Ok(());
+      },
+    };
     let envelope = InboundEnvelope::new(
       recipient,
       remote_node,
-      AnyMessage::new(pdu.payload().clone()),
+      AnyMessage::from_erased(ArcShared::from_boxed(payload), None, false, false),
       sender,
       CorrelationId::new(pdu.correlation_hi(), pdu.correlation_lo()),
       priority,

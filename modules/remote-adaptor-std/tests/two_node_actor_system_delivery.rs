@@ -2,7 +2,6 @@
 
 use std::{format, net::TcpListener, time::Duration};
 
-use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
@@ -34,8 +33,8 @@ use tokio::{
 
 const SYSTEM_NAME: &str = "remote-e2e";
 
-struct RecordingBytesActor {
-  tx: UnboundedSender<Bytes>,
+struct RecordingStringActor {
+  tx: UnboundedSender<String>,
 }
 
 struct LifecycleRecorder {
@@ -56,16 +55,16 @@ impl EventStreamSubscriber for LifecycleRecorder {
   }
 }
 
-impl RecordingBytesActor {
-  fn new(tx: UnboundedSender<Bytes>) -> Self {
+impl RecordingStringActor {
+  fn new(tx: UnboundedSender<String>) -> Self {
     Self { tx }
   }
 }
 
-impl Actor for RecordingBytesActor {
+impl Actor for RecordingStringActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(bytes) = message.downcast_ref::<Bytes>() {
-      self.tx.send(bytes.clone()).expect("recording channel should be open");
+    if let Some(text) = message.downcast_ref::<String>() {
+      self.tx.send(text.clone()).expect("recording channel should be open");
     }
     Ok(())
   }
@@ -107,9 +106,9 @@ fn build_node(port: u16, uid: u64) -> RemoteNode {
   RemoteNode { system, address }
 }
 
-fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<Bytes>, ActorPath) {
+fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<String>, ActorPath) {
   let (tx, rx) = mpsc::unbounded_channel();
-  let props = Props::from_fn(move || RecordingBytesActor::new(tx.clone()));
+  let props = Props::from_fn(move || RecordingStringActor::new(tx.clone()));
   let child = system.actor_of_named(&props, name).expect("recording actor should spawn");
   let path = child.actor_ref().path().expect("recording actor should have a path");
   (rx, path)
@@ -133,7 +132,7 @@ fn remote_path(address: &Address, local_path: &ActorPath) -> ActorPath {
   .expect("remote actor path should parse")
 }
 
-async fn recv_until(rx: &mut UnboundedReceiver<Bytes>, expected: Bytes) -> Bytes {
+async fn recv_until(rx: &mut UnboundedReceiver<String>, expected: String) -> String {
   let deadline = Instant::now() + Duration::from_secs(5);
   let mut seen = Vec::new();
   loop {
@@ -142,8 +141,8 @@ async fn recv_until(rx: &mut UnboundedReceiver<Bytes>, expected: Bytes) -> Bytes
       panic!("expected payload receive timeout; expected={expected:?}; seen={seen:?}");
     }
     match timeout(deadline - now, rx.recv()).await {
-      | Ok(Some(bytes)) if bytes == expected => return bytes,
-      | Ok(Some(bytes)) => seen.push(bytes),
+      | Ok(Some(text)) if text == expected => return text,
+      | Ok(Some(text)) => seen.push(text),
       | Ok(None) => panic!("recording channel closed before expected payload; expected={expected:?}; seen={seen:?}"),
       | Err(_) => panic!("expected payload receive timeout; expected={expected:?}; seen={seen:?}"),
     }
@@ -165,7 +164,7 @@ async fn wait_until_connected(rx: &mut UnboundedReceiver<RemotingLifecycleEvent>
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn two_node_actor_system_delivery_sends_supported_bytes_payloads() {
+async fn two_node_actor_system_delivery_sends_registered_string_payloads() {
   let node_a = build_node(reserve_port(), 1);
   let node_b = build_node(reserve_port(), 2);
   let (mut lifecycle_a, _subscription_a) = subscribe_lifecycle(&node_a.system);
@@ -180,10 +179,10 @@ async fn two_node_actor_system_delivery_sends_supported_bytes_payloads() {
     .system
     .resolve_actor_ref(remote_path(&node_a.address, &path_a))
     .expect("node A should resolve its remote-authority path as local");
-  local_ref_b.try_tell(AnyMessage::new(Bytes::from_static(b"local-b"))).expect("local send to node B");
-  local_ref_a.try_tell(AnyMessage::new(Bytes::from_static(b"local-a"))).expect("local send to node A");
-  let _ = recv_until(&mut rx_b, Bytes::from_static(b"local-b")).await;
-  let _ = recv_until(&mut rx_a, Bytes::from_static(b"local-a")).await;
+  local_ref_b.try_tell(AnyMessage::new(String::from("local-b"))).expect("local send to node B");
+  local_ref_a.try_tell(AnyMessage::new(String::from("local-a"))).expect("local send to node A");
+  let _ = recv_until(&mut rx_b, String::from("local-b")).await;
+  let _ = recv_until(&mut rx_a, String::from("local-a")).await;
 
   let mut ref_to_b = node_a
     .system
@@ -194,18 +193,18 @@ async fn two_node_actor_system_delivery_sends_supported_bytes_payloads() {
     .resolve_actor_ref(remote_path(&node_a.address, &path_a))
     .expect("node B should resolve node A actor through configured provider");
 
-  ref_to_b.try_tell(AnyMessage::new(Bytes::from_static(b"warm-b"))).expect("warm send to node B");
+  ref_to_b.try_tell(AnyMessage::new(String::from("warm-b"))).expect("warm send to node B");
   sleep(Duration::from_millis(100)).await;
-  ref_to_a.try_tell(AnyMessage::new(Bytes::from_static(b"warm-a"))).expect("warm send to node A");
+  ref_to_a.try_tell(AnyMessage::new(String::from("warm-a"))).expect("warm send to node A");
   wait_until_connected(&mut lifecycle_a, &node_b.address.to_string()).await;
   wait_until_connected(&mut lifecycle_b, &node_a.address.to_string()).await;
-  ref_to_b.try_tell(AnyMessage::new(Bytes::from_static(b"to-b"))).expect("send to node B");
-  ref_to_a.try_tell(AnyMessage::new(Bytes::from_static(b"to-a"))).expect("send to node A");
+  ref_to_b.try_tell(AnyMessage::new(String::from("to-b"))).expect("send to node B");
+  ref_to_a.try_tell(AnyMessage::new(String::from("to-a"))).expect("send to node A");
 
-  let received_b = recv_until(&mut rx_b, Bytes::from_static(b"to-b")).await;
-  let received_a = recv_until(&mut rx_a, Bytes::from_static(b"to-a")).await;
-  assert_eq!(received_b, Bytes::from_static(b"to-b"));
-  assert_eq!(received_a, Bytes::from_static(b"to-a"));
+  let received_b = recv_until(&mut rx_b, String::from("to-b")).await;
+  let received_a = recv_until(&mut rx_a, String::from("to-a")).await;
+  assert_eq!(received_b, String::from("to-b"));
+  assert_eq!(received_a, String::from("to-a"));
 
   node_a.shutdown().await;
   node_b.shutdown().await;

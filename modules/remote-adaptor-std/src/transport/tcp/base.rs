@@ -16,7 +16,7 @@ use core::{
 use std::{collections::BTreeMap, time::Instant};
 
 use bytes::Bytes;
-use fraktor_actor_core_kernel_rs::actor::messaging::AnyMessage;
+use fraktor_actor_core_kernel_rs::serialization::{SerializationCallScope, SerializationExtensionShared};
 use fraktor_remote_core_rs::{
   address::Address,
   association::QuarantineReason,
@@ -24,8 +24,9 @@ use fraktor_remote_core_rs::{
   envelope::OutboundEnvelope,
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::{ControlPdu, EnvelopePdu, HandshakePdu},
+  wire::{ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu},
 };
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use tokio::{
   sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender},
   task::JoinHandle,
@@ -50,9 +51,8 @@ use crate::association::{run_inbound_dispatch, std_instant_elapsed_millis};
 /// Note: the trait [`RemoteTransport::send`] is **synchronous**. Peer
 /// connection setup registers a writer immediately and drives the actual TCP
 /// connect on a Tokio task, so the core event loop never performs blocking
-/// socket I/O. User envelope delivery is intentionally limited to the
-/// adapter-owned byte payload contract; arbitrary `AnyMessage` payloads fail
-/// visibly instead of being silently encoded as empty bytes.
+/// socket I/O. User envelope delivery uses actor-core serialization and fails
+/// visibly instead of silently encoding unsupported payloads as empty bytes.
 pub struct TcpRemoteTransport {
   configured_local_addresses: Vec<Address>,
   local_addresses:            Vec<Address>,
@@ -68,6 +68,7 @@ pub struct TcpRemoteTransport {
   inbound_workers:            Vec<JoinHandle<Result<(), TransportError>>>,
   inbound_lanes:              usize,
   outbound_lanes:             usize,
+  serialization_extension:    Option<ArcShared<SerializationExtensionShared>>,
   running:                    bool,
 }
 
@@ -151,6 +152,7 @@ impl TcpRemoteTransport {
       inbound_workers: Vec::new(),
       inbound_lanes,
       outbound_lanes,
+      serialization_extension: None,
       running: false,
     }
   }
@@ -185,6 +187,16 @@ impl TcpRemoteTransport {
   #[must_use]
   pub(crate) fn with_monotonic_epoch(mut self, monotonic_epoch: Instant) -> Self {
     self.monotonic_epoch = monotonic_epoch;
+    self
+  }
+
+  /// Returns a copy that serializes outbound payloads through `serialization_extension`.
+  #[must_use]
+  pub(crate) fn with_serialization_extension(
+    mut self,
+    serialization_extension: ArcShared<SerializationExtensionShared>,
+  ) -> Self {
+    self.serialization_extension = Some(serialization_extension);
     self
   }
 
@@ -311,23 +323,28 @@ impl TcpRemoteTransport {
   }
 }
 
-pub(super) fn outbound_envelope_to_pdu(envelope: &OutboundEnvelope) -> Result<EnvelopePdu, TransportError> {
-  let payload = outbound_payload_bytes(envelope.message()).ok_or(TransportError::SendFailed)?;
+pub(super) fn outbound_envelope_to_pdu(
+  envelope: &OutboundEnvelope,
+  serialization_extension: &SerializationExtensionShared,
+) -> Result<EnvelopePdu, TransportError> {
+  let serialized = serialization_extension
+    .with_read(|extension| extension.serialize(envelope.message().payload(), SerializationCallScope::Remote))
+    .map_err(|error| {
+      tracing::debug!(?error, "outbound payload serialization failed");
+      TransportError::SendFailed
+    })?;
   Ok(EnvelopePdu::new(
     envelope.recipient().to_canonical_uri(),
     envelope.sender().map(|sender| sender.to_canonical_uri()),
     envelope.correlation_id().hi(),
     envelope.correlation_id().lo(),
     envelope.priority().to_wire(),
-    payload,
+    EnvelopePayload::new(
+      serialized.serializer_id().value(),
+      serialized.manifest().map(ToString::to_string),
+      Bytes::from(serialized.bytes().to_vec()),
+    ),
   ))
-}
-
-fn outbound_payload_bytes(message: &AnyMessage) -> Option<Bytes> {
-  if let Some(bytes) = message.downcast_ref::<Bytes>() {
-    return Some(bytes.clone());
-  }
-  message.downcast_ref::<Vec<u8>>().map(|bytes| Bytes::from(bytes.clone()))
 }
 
 fn remote_address_from_envelope(envelope: &OutboundEnvelope) -> Result<Address, TransportError> {
@@ -404,7 +421,11 @@ impl RemoteTransport for TcpRemoteTransport {
     if !self.clients.contains_key(&peer_key) {
       return Err((TransportError::ConnectionClosed, Box::new(envelope)));
     }
-    let frame = match outbound_envelope_to_pdu(&envelope) {
+    let Some(serialization_extension) = self.serialization_extension.as_ref() else {
+      tracing::debug!("serialization extension is not connected to TcpRemoteTransport");
+      return Err((TransportError::NotAvailable, Box::new(envelope)));
+    };
+    let frame = match outbound_envelope_to_pdu(&envelope, serialization_extension) {
       | Ok(pdu) => WireFrame::Envelope(pdu),
       | Err(error) => return Err((error, Box::new(envelope))),
     };

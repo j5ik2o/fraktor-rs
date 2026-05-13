@@ -4,7 +4,7 @@ use bytes::Bytes;
 use fraktor_remote_core_rs::{
   address::{Address, UniqueAddress},
   transport::{TransportEndpoint, TransportError},
-  wire::{AckPdu, EnvelopePdu, HandshakePdu, HandshakeReq},
+  wire::{AckPdu, EnvelopePayload, EnvelopePdu, HandshakePdu, HandshakeReq},
 };
 use tokio::sync::mpsc;
 
@@ -12,6 +12,24 @@ use super::*;
 
 fn ack_frame(sequence_number: u64) -> WireFrame {
   WireFrame::Ack(AckPdu::new(sequence_number, sequence_number.saturating_sub(1), 0))
+}
+
+fn test_envelope_pdu(
+  recipient_path: String,
+  sender_path: Option<String>,
+  correlation_hi: u64,
+  correlation_lo: u32,
+  priority: u8,
+  payload: Bytes,
+) -> EnvelopePdu {
+  EnvelopePdu::new(
+    recipient_path,
+    sender_path,
+    correlation_hi,
+    correlation_lo,
+    priority,
+    EnvelopePayload::new(5, None, payload),
+  )
 }
 
 #[test]
@@ -68,7 +86,7 @@ fn send_with_lane_key_reports_backpressure_for_selected_lane() {
 #[test]
 fn inbound_lane_index_keeps_same_authority_on_same_lane() {
   let authority = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
-  let first = WireFrame::Envelope(EnvelopePdu::new(
+  let first = WireFrame::Envelope(test_envelope_pdu(
     String::from("fraktor.tcp://local-sys@127.0.0.1:2551/user/a"),
     Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/source")),
     1,
@@ -76,7 +94,7 @@ fn inbound_lane_index_keeps_same_authority_on_same_lane() {
     1,
     Bytes::from_static(b"first"),
   ));
-  let second = WireFrame::Envelope(EnvelopePdu::new(
+  let second = WireFrame::Envelope(test_envelope_pdu(
     String::from("fraktor.tcp://local-sys@127.0.0.1:2551/user/b"),
     None,
     2,

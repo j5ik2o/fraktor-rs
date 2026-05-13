@@ -10,6 +10,7 @@ use fraktor_actor_core_kernel_rs::{
     actor_path::ActorPath, actor_ref::dead_letter::DeadLetterReason, extension::ExtensionInstaller,
     messaging::AnyMessage,
   },
+  serialization::default_serialization_extension_id,
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::{
@@ -106,14 +107,19 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     let Some(transport) = transport_slot.take() else {
       return Err(ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)));
     };
+    let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
     let (event_sender, event_receiver) = mpsc::channel(self.config.remote_event_queue_size());
     let monotonic_epoch = Instant::now();
-    let transport = transport.with_monotonic_epoch(monotonic_epoch).with_remote_event_sender(event_sender.clone());
+    let transport = transport
+      .with_monotonic_epoch(monotonic_epoch)
+      .with_remote_event_sender(event_sender.clone())
+      .with_serialization_extension(serialization_extension.clone());
     let event_publisher = EventPublisher::new(system.downgrade());
     let remote = RemoteShared::new(Remote::with_instrument(
       transport,
       self.config.clone(),
       event_publisher,
+      serialization_extension,
       Box::new(RemotingFlightRecorder::new(self.config.flight_recorder_capacity())),
     ));
     remote.start().map_err(remoting_build_error)?;

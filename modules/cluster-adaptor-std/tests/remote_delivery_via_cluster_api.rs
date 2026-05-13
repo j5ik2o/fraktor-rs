@@ -2,7 +2,6 @@
 
 use std::{format, net::TcpListener, string::String, time::Duration, vec::Vec};
 
-use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
@@ -43,18 +42,18 @@ use tokio::{
 const SYSTEM_NAME: &str = "cluster-e2e";
 
 struct RecordingBytesActor {
-  tx: UnboundedSender<Bytes>,
+  tx: UnboundedSender<Vec<u8>>,
 }
 
 impl RecordingBytesActor {
-  fn new(tx: UnboundedSender<Bytes>) -> Self {
+  fn new(tx: UnboundedSender<Vec<u8>>) -> Self {
     Self { tx }
   }
 }
 
 impl Actor for RecordingBytesActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(bytes) = message.downcast_ref::<Bytes>() {
+    if let Some(bytes) = message.downcast_ref::<Vec<u8>>() {
       self.tx.send(bytes.clone()).expect("recording channel should be open");
     }
     Ok(())
@@ -171,7 +170,7 @@ fn build_remote_node(port: u16, uid: u64) -> RemoteNode {
   RemoteNode { system, address }
 }
 
-fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<Bytes>, ActorPath) {
+fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<Vec<u8>>, ActorPath) {
   let (tx, rx) = mpsc::unbounded_channel();
   let props = Props::from_fn(move || RecordingBytesActor::new(tx.clone()));
   let child = system.actor_of_named(&props, name).expect("recording actor should spawn");
@@ -197,7 +196,7 @@ fn subscribe_lifecycle(system: &ActorSystem) -> (UnboundedReceiver<RemotingLifec
   (rx, subscription)
 }
 
-async fn recv_until(rx: &mut UnboundedReceiver<Bytes>, expected: Bytes) -> Bytes {
+async fn recv_until(rx: &mut UnboundedReceiver<Vec<u8>>, expected: Vec<u8>) -> Vec<u8> {
   let deadline = Instant::now() + Duration::from_secs(5);
   let mut seen = Vec::new();
   loop {
@@ -229,7 +228,7 @@ async fn wait_until_connected(rx: &mut UnboundedReceiver<RemotingLifecycleEvent>
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn cluster_api_get_delivers_supported_bytes_payload_to_remote_actor() {
+async fn cluster_api_get_delivers_supported_vec_u8_payload_to_remote_actor() {
   let remote_port = reserve_port();
   let (cluster_node, cluster_ext) = build_cluster_node(reserve_port(), 1, format!("127.0.0.1:{remote_port}"));
   let remote_node = build_remote_node(remote_port, 2);
@@ -248,20 +247,18 @@ async fn cluster_api_get_delivers_supported_bytes_payload_to_remote_actor() {
     .resolve_actor_ref(remote_path(&cluster_node.address, &path_cluster))
     .expect("remote node should resolve cluster node actor through configured provider");
 
-  cluster_resolved_ref
-    .try_tell(AnyMessage::new(Bytes::from_static(b"warm-cluster-to-remote")))
-    .expect("warm cluster send");
+  cluster_resolved_ref.try_tell(AnyMessage::new(Vec::from(&b"warm-cluster-to-remote"[..]))).expect("warm cluster send");
   sleep(Duration::from_millis(100)).await;
-  ref_to_cluster.try_tell(AnyMessage::new(Bytes::from_static(b"warm-remote-to-cluster"))).expect("warm reverse send");
+  ref_to_cluster.try_tell(AnyMessage::new(Vec::from(&b"warm-remote-to-cluster"[..]))).expect("warm reverse send");
   wait_until_connected(&mut lifecycle_cluster, &remote_node.address.to_string()).await;
   wait_until_connected(&mut lifecycle_remote, &cluster_node.address.to_string()).await;
 
   cluster_resolved_ref
-    .try_tell(AnyMessage::new(Bytes::from_static(b"cluster-to-remote")))
+    .try_tell(AnyMessage::new(Vec::from(&b"cluster-to-remote"[..])))
     .expect("cluster api resolved ref should send through std remote delivery");
 
-  let received = recv_until(&mut rx_remote, Bytes::from_static(b"cluster-to-remote")).await;
-  assert_eq!(received, Bytes::from_static(b"cluster-to-remote"));
+  let received = recv_until(&mut rx_remote, Vec::from(&b"cluster-to-remote"[..])).await;
+  assert_eq!(received, Vec::from(&b"cluster-to-remote"[..]));
 
   cluster_node.shutdown().await;
   remote_node.shutdown().await;

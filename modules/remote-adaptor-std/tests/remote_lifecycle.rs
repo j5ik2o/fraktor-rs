@@ -3,7 +3,9 @@
 use std::{format, net::TcpListener, time::Duration};
 
 use fraktor_actor_adaptor_std_rs::{system::create_noop_actor_system, tick_driver::TestTickDriver};
-use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionInstallers, system::ActorSystem};
+use fraktor_actor_core_kernel_rs::{
+  actor::extension::ExtensionInstallers, serialization::default_serialization_extension_id, system::ActorSystem,
+};
 use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };
@@ -38,7 +40,8 @@ fn reserve_port() -> u16 {
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn remote_lifecycle_directly() {
   let (system, publisher) = make_event_publisher();
-  let mut remote = Remote::new(make_transport(), remote_config(), publisher);
+  let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
+  let mut remote = Remote::new(make_transport(), remote_config(), publisher, serialization_extension);
   assert!(!remote.lifecycle().is_running());
 
   remote.start().expect("start");
