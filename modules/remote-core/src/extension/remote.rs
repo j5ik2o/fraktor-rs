@@ -383,12 +383,7 @@ impl Remote {
     );
     let payload =
       self.serialization.with_read(|serialization| serialization.deserialize(&serialized, None)).map_err(|error| {
-        tracing::debug!(
-          ?error,
-          serializer_id = pdu.serializer_id(),
-          manifest = ?pdu.manifest(),
-          "inbound payload deserialization failed"
-        );
+        tracing::debug!(?error, "inbound payload deserialization failed");
         RemotingError::CodecFailed
       })?;
     let envelope = InboundEnvelope::new(

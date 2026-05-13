@@ -924,6 +924,35 @@ async fn remote_transport_send_without_peer_writer_returns_original_envelope() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_send_without_serialization_extension_returns_original_envelope() {
+  use tokio::sync::mpsc;
+
+  use crate::transport::tcp::TcpRemoteTransport;
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = make_test_server();
+  let bind_addr = start_test_server(&mut server, server_inbound_tx);
+
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  transport.start().expect("transport should start before connecting a peer");
+
+  let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
+  transport.connect_peer(&remote).expect("transport should connect to peer before sending envelope");
+  let envelope =
+    test_envelope(bind_addr.port(), AnyMessage::new(Vec::from(&b"payload"[..])), CorrelationId::nil(), None);
+
+  let result = transport.send(envelope);
+
+  let (err, returned) = result.expect_err("send should reject envelopes until serialization is connected");
+  assert_eq!(err, TransportError::NotAvailable);
+  assert_eq!(returned.message().downcast_ref::<Vec<u8>>(), Some(&Vec::from(&b"payload"[..])));
+  let inbound = tokio::time::timeout(Duration::from_millis(200), server_inbound_rx.recv()).await;
+  assert!(inbound.is_err(), "missing serialization extension must not emit an envelope frame");
+  transport.shutdown().expect("transport shutdown should succeed");
+  server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn remote_transport_send_rejects_unsupported_payload_without_emitting_frame() {
   use tokio::sync::mpsc;
 

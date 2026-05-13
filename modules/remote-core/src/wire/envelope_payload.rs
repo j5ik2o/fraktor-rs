@@ -1,5 +1,9 @@
 //! Serialized payload metadata carried by an envelope frame.
 
+#[cfg(test)]
+#[path = "envelope_payload_test.rs"]
+mod tests;
+
 use alloc::string::String;
 
 use bytes::Bytes;

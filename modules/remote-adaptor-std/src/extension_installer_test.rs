@@ -111,6 +111,20 @@ impl Serializer for CustomPayloadSerializer {
   }
 }
 
+#[test]
+fn custom_payload_serializer_round_trips_custom_payload() {
+  let serializer_id = SerializerId::try_from(700).expect("valid custom serializer id");
+  let serializer = CustomPayloadSerializer::new(serializer_id);
+
+  let bytes = serializer.to_binary(&CustomPayload).expect("custom payload should serialize");
+  let payload = serializer.from_binary(&bytes, None).expect("custom payload should deserialize");
+
+  assert_eq!(serializer.identifier(), serializer_id);
+  assert_eq!(bytes, vec![0xCA, 0xFE]);
+  assert!(payload.downcast::<CustomPayload>().is_ok());
+  assert!(serializer.as_any().downcast_ref::<CustomPayloadSerializer>().is_some());
+}
+
 fn make_transport() -> TcpRemoteTransport {
   TcpRemoteTransport::new("127.0.0.1:0", Vec::new())
 }
