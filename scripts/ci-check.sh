@@ -779,7 +779,7 @@ ensure_rustc_components_installed() {
 }
 
 ensure_dylint_installed() {
-  local desired_version="${DYLINT_VERSION:-5.0.0}"
+  local desired_version="${DYLINT_VERSION:-6.0.0}"
   local current_version=""
 
   if command -v cargo-dylint >/dev/null 2>&1; then

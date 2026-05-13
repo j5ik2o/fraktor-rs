@@ -23,7 +23,7 @@ env:
   CARGO_BUILD_JOBS: "4"
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
-  DYLINT_VERSION: "4.1.0"
+  DYLINT_VERSION: "6.0.0"
   RUST_TOOLCHAIN: nightly-2025-12-01
   # NOTE: On self-hosted runners, CARGO_HOME, RUSTUP_HOME, and TMPDIR are set
   # per-job via the `./.github/actions/setup-isolated-rust` composite action.
