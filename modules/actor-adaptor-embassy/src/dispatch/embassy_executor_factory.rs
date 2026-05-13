@@ -3,6 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_core_kernel_rs::dispatch::dispatcher::{ExecutorFactory, ExecutorShared, TrampolineState};
+use fraktor_utils_core_rs::sync::SharedAccess;
 
 use super::{
   embassy_executor::EmbassyExecutor, embassy_executor_driver::EmbassyExecutorDriver,
@@ -18,7 +19,7 @@ impl<const N: usize> EmbassyExecutorFactory<N> {
   /// Creates a new factory with an empty bounded ready queue.
   #[must_use]
   pub fn new() -> Self {
-    Self { shared: EmbassyExecutorShared::new() }
+    Self { shared: EmbassyExecutorShared::new(EmbassyExecutor::new()) }
   }
 
   /// Creates a driver handle for the factory's ready queue.
@@ -42,6 +43,7 @@ impl<const N: usize> Clone for EmbassyExecutorFactory<N> {
 
 impl<const N: usize> ExecutorFactory for EmbassyExecutorFactory<N> {
   fn create(&self, _id: &str) -> ExecutorShared {
-    ExecutorShared::new(Box::new(EmbassyExecutor::new(self.shared.clone())), TrampolineState::new())
+    let executor = self.shared.with_read(EmbassyExecutor::clone_for_submission);
+    ExecutorShared::new(Box::new(executor), TrampolineState::new())
   }
 }

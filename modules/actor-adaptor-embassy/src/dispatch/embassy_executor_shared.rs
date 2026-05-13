@@ -1,46 +1,37 @@
-//! Shared queue state for Embassy executors.
+//! Shared wrapper for Embassy executor.
 
-use alloc::{boxed::Box, sync::Arc};
+use fraktor_utils_core_rs::sync::{ArcShared, ExclusiveCell, SharedAccess};
 
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal};
-use fraktor_actor_core_kernel_rs::dispatch::dispatcher::ExecuteError;
+use super::embassy_executor::EmbassyExecutor;
 
-pub(crate) type EmbassyTask = Box<dyn FnOnce() + Send + 'static>;
-
+/// Shared wrapper for [`EmbassyExecutor`].
+///
+/// Interior mutability is confined to this type; executor logic remains in
+/// [`EmbassyExecutor`].
 pub(crate) struct EmbassyExecutorShared<const N: usize> {
-  queue:  Arc<Channel<CriticalSectionRawMutex, EmbassyTask, N>>,
-  signal: Arc<Signal<CriticalSectionRawMutex, ()>>,
+  inner: ArcShared<ExclusiveCell<EmbassyExecutor<N>>>,
 }
 
 impl<const N: usize> EmbassyExecutorShared<N> {
-  pub(crate) fn new() -> Self {
-    Self { queue: Arc::new(Channel::new()), signal: Arc::new(Signal::new()) }
-  }
-
-  pub(crate) fn try_enqueue(&self, task: EmbassyTask) -> Result<(), ExecuteError> {
-    self.queue.try_send(task).map_err(|_| ExecuteError::Rejected)
-  }
-
-  pub(crate) fn signal_ready(&self) {
-    self.signal.signal(());
-  }
-
-  pub(crate) async fn wait_ready(&self) {
-    self.signal.wait().await;
-  }
-
-  pub(crate) fn drain_ready(&self) -> usize {
-    let mut drained = 0;
-    while let Ok(task) = self.queue.try_receive() {
-      task();
-      drained += 1;
-    }
-    drained
+  /// Creates a new CAS-backed shared wrapper around the provided Embassy executor.
+  #[must_use]
+  pub(crate) fn new(executor: EmbassyExecutor<N>) -> Self {
+    Self { inner: ArcShared::new(ExclusiveCell::new(executor)) }
   }
 }
 
 impl<const N: usize> Clone for EmbassyExecutorShared<N> {
   fn clone(&self) -> Self {
-    Self { queue: self.queue.clone(), signal: self.signal.clone() }
+    Self { inner: self.inner.clone() }
+  }
+}
+
+impl<const N: usize> SharedAccess<EmbassyExecutor<N>> for EmbassyExecutorShared<N> {
+  fn with_read<R>(&self, f: impl FnOnce(&EmbassyExecutor<N>) -> R) -> R {
+    self.inner.with_read(f)
+  }
+
+  fn with_write<R>(&self, f: impl FnOnce(&mut EmbassyExecutor<N>) -> R) -> R {
+    self.inner.with_write(f)
   }
 }
