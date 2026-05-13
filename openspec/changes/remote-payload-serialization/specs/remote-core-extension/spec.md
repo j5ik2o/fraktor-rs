@@ -2,7 +2,7 @@
 
 ### Requirement: Remote は inbound deserialization のため serialization extension を保持する
 
-`Remote` は inbound envelope frame を local delivery 用 `InboundEnvelope` に変換するため、actor-core-kernel の `SerializationExtensionShared` または同等の concrete shared serialization handle を保持しなければならない（MUST）。この依存は actor-core-kernel の no_std 互換型に限定し、std runtime 型を `remote-core` に持ち込んではならない（MUST NOT）。`RemoteShared` はこの handle を別途保持せず、serialization handle を受け取った `Remote` を `RemoteShared::new(remote)` で包む薄い wrapper のままでなければならない（MUST）。
+`Remote` は inbound envelope frame を local delivery 用 `InboundEnvelope` に変換するため、actor-core-kernel の `SerializationExtensionShared` または同等の concrete shared serialization handle を保持しなければならない（MUST）。この依存は actor-core-kernel の no_std 互換型に限定し、std 実行基盤型を `remote-core` に持ち込んではならない（MUST NOT）。`RemoteShared` はこの handle を別途保持せず、serialization handle を受け取った `Remote` を `RemoteShared::new(remote)` で包む薄い wrapper のままでなければならない（MUST）。
 
 #### Scenario: Remote construction は serialization extension を受け取る
 
@@ -22,7 +22,7 @@
 
 ### Requirement: Remote は CQS core logic 層であり Remote::run を持つ
 
-`Remote` 構造体は CQS 原則を厳格に守る core logic 層 SHALL。状態を変更する method はすべて `&mut self`（Command）、状態を読む method は `&self`（Query）。`Remote::run(&mut self, receiver)` は排他所有時の core event loop として存在する SHALL。`Remote` 自体に共有・並行性責務を持たせてはならない（MUST NOT）。ただし inbound deserialization のため、actor-core-kernel の no_std 互換 `SerializationExtensionShared` または同等の concrete shared serialization handle を外部 extension dependency として保持してよい（MAY）。この例外は serialization registry 共有のためだけに限定し、`Remote` 自身の lifecycle / association / inbound buffer 状態を共有ロックや std runtime 型へ移してはならない（MUST NOT）。
+`Remote` 構造体は CQS 原則を厳格に守る core logic 層 SHALL。状態を変更する method はすべて `&mut self`（Command）、状態を読む method は `&self`（Query）。`Remote::run(&mut self, receiver)` は排他所有時の core event loop として存在する SHALL。`Remote` 自体に共有・並行性責務を持たせてはならない（MUST NOT）。ただし inbound deserialization のため、actor-core-kernel の no_std 互換 `SerializationExtensionShared` または同等の concrete shared serialization handle を外部 extension dependency として保持してよい（MAY）。この例外は serialization registry 共有のためだけに限定し、`Remote` 自身の lifecycle / association / inbound buffer 状態を共有ロックや std 実行基盤型へ移してはならない（MUST NOT）。
 
 #### Scenario: Remote の CQS 遵守
 
@@ -34,7 +34,7 @@
 
 - **WHEN** `Remote` の field を検査する
 - **THEN** `SerializationExtensionShared` または同等の no_std serialization shared handle を保持してよい
-- **AND** lifecycle / association / inbound envelope buffer など `Remote` 所有状態を `Arc<Mutex<..>>` / `RwLock<..>` / `Cell<..>` / `RefCell<..>` / std runtime 型へ移してはならない
+- **AND** lifecycle / association / inbound envelope buffer など `Remote` 所有状態を `Arc<Mutex<..>>` / `RwLock<..>` / `Cell<..>` / `RefCell<..>` / std 実行基盤型へ移してはならない
 - **AND** transport port 用の `Box<dyn RemoteTransport + Send>` と instrument 用の `Box<dyn RemoteInstrument + Send>` 以外に動的ディスパッチ用の field を持たない
 - **AND** `RemoteShared` は `Remote` の sharing wrapper に留まり、serialization handle を重複保持しない
 
@@ -49,7 +49,7 @@
 
 ### Requirement: Codec 経路の明文化
 
-`Remote::handle_remote_event` は inbound 側で adapter から渡された core wire frame bytes を既存 core wire codec（`EnvelopeCodec` / `HandshakeCodec` / `ControlCodec` / `AckCodec`）で復号してから `Association` に渡す SHALL。`EnvelopePdu` の場合は、PDU に含まれる serializer id / manifest / payload bytes から actor-core `SerializedMessage` 相当を構築し、outbound 側で `SerializationCallScope::Remote` により生成された serialized payload として deserialize してから `InboundEnvelope` に buffer しなければならない（MUST）。outbound 側は現行 port 境界を維持し、`Association::next_outbound` の戻り値である `OutboundEnvelope` をそのまま `RemoteTransport::send` に渡す SHALL。core 側で `Codec<OutboundEnvelope>` / `Codec<InboundEnvelope>` を新設して raw bytes を `RemoteTransport::send` に渡してはならない（MUST NOT）。
+`Remote::handle_remote_event` は inbound 側で adaptor から渡された core wire frame bytes を既存 core wire codec（`EnvelopeCodec` / `HandshakeCodec` / `ControlCodec` / `AckCodec`）で復号してから `Association` に渡す SHALL。`EnvelopePdu` の場合は、PDU に含まれる serializer id / manifest / payload bytes から actor-core `SerializedMessage` 相当を構築し、outbound 側で `SerializationCallScope::Remote` により生成された serialized payload として deserialize してから `InboundEnvelope` に buffer しなければならない（MUST）。outbound 側は現行 port 境界を維持し、`Association::next_outbound` の戻り値である `OutboundEnvelope` をそのまま `RemoteTransport::send` に渡す SHALL。core 側で `Codec<OutboundEnvelope>` / `Codec<InboundEnvelope>` を新設して raw bytes を `RemoteTransport::send` に渡してはならない（MUST NOT）。
 
 #### Scenario: inbound decode の経路
 
@@ -75,4 +75,4 @@
 
 - **WHEN** `Remote::handle_remote_event` が `Association::next_outbound()` で `OutboundEnvelope` を取得する
 - **THEN** `RemoteTransport::send(envelope)` を呼ぶ
-- **AND** core 側で raw bytes 化しない（wire encode は transport adapter の責務）
+- **AND** core 側で raw bytes 化しない（wire encode は transport adaptor の責務）

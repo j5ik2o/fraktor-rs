@@ -53,29 +53,29 @@
 
 ### Requirement: outbound payload codec contract
 
-std TCP adapter は `OutboundEnvelope` の `AnyMessage` payload を actor-core serialization により wire payload bytes と serializer metadata に変換する契約を明示しなければならない（MUST）。`Vec<u8>` と `ByteString` は例外的な raw bytes fast path ではなく、登録済み serializer を通して扱わなければならない（MUST）。`bytes::Bytes` は actor-core builtin serializer 対象ではないため、caller が serializer を登録していない限り拒否しなければならない（MUST）。任意の typed payload を debug text や型名文字列へ暗黙変換してはならない（MUST NOT）。
+std TCP adaptor は `OutboundEnvelope` の `AnyMessage` payload を actor-core serialization により wire payload bytes と serializer metadata に変換する契約を明示しなければならない（MUST）。`Vec<u8>` と `ByteString` は例外的な raw bytes fast path ではなく、登録済み serializer を通して扱わなければならない（MUST）。`bytes::Bytes` は actor-core builtin serializer 対象ではないため、caller が serializer を登録していない限り拒否しなければならない（MUST）。任意の typed payload を debug text や型名文字列へ暗黙変換してはならない（MUST NOT）。
 
 #### Scenario: サポート対象 byte payload
 
 - **WHEN** outbound payload が `Vec<u8>` または `ByteString` として封筒化されている
-- **THEN** adapter は actor-core serialization registry の対応 serializer で payload を serialize する
+- **THEN** adaptor は actor-core serialization registry の対応 serializer で payload を serialize する
 - **AND** `EnvelopePdu` には serializer id / manifest / payload bytes が設定される
 - **AND** 受信側は同じ serializer metadata から元の bytes payload を `AnyMessage` として復元できる
 
 #### Scenario: bytes::Bytes は builtin serializer なしでは拒否される
 
 - **WHEN** outbound payload が `bytes::Bytes` として封筒化されており、caller が対応 serializer を登録していない
-- **THEN** adapter は bytes 変換を拒否する
+- **THEN** adaptor は bytes 変換を拒否する
 - **AND** 旧 raw bytes fast path に fallback してはならない
 
 #### Scenario: 登録済み typed payload は serialize される
 
 - **WHEN** outbound payload が serializer registry に登録済みの typed `AnyMessage` である
-- **THEN** adapter は payload を `SerializationCallScope::Remote` で serialize する
+- **THEN** adaptor は payload を `SerializationCallScope::Remote` で serialize する
 - **AND** `EnvelopePdu` の payload bytes は serializer の出力であり、`Debug` 文字列や型名文字列ではない
 
 #### Scenario: 未登録 AnyMessage は拒否される
 
 - **WHEN** outbound payload が serializer registry に登録されていない任意の `AnyMessage` である
-- **THEN** adapter は bytes 変換を拒否する
+- **THEN** adaptor は bytes 変換を拒否する
 - **AND** `Debug` 文字列や型名を payload として代用してはならない

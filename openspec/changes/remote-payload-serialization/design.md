@@ -33,7 +33,7 @@ actor-core-kernel には既に `SerializationExtension`、`SerializationRegistry
 
 - outbound serialization は `TcpRemoteTransport` が `OutboundEnvelope` を `EnvelopePdu` へ変換する箇所で必要になる。
 - inbound deserialization は `Remote::handle_inbound_envelope_pdu` が `InboundEnvelope` を buffer する前に行うと、local delivery bridge に serialized payload の特別扱いを持ち込まずに済む。
-- `SerializationExtensionShared` は actor-core-kernel の型なので、`remote-core` の no_std 境界に std runtime を持ち込まない。
+- `SerializationExtensionShared` は actor-core-kernel の型なので、`remote-core` の no_std 境界に std 実行基盤を持ち込まない。
 
 代替案:
 
