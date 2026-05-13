@@ -1,10 +1,7 @@
 use alloc::string::String;
 
 use bytes::Bytes;
-use fraktor_remote_core_rs::{
-  transport::{TransportEndpoint, TransportError},
-  wire::EnvelopePdu,
-};
+use fraktor_remote_core_rs::{transport::TransportError, wire::EnvelopePdu};
 use tokio::sync::mpsc;
 
 use super::{InboundFrameEvent, WireFrame, authority_for_frame, run_inbound_dispatch};
@@ -24,7 +21,7 @@ fn senderless_envelope_does_not_use_recipient_authority() {
 }
 
 #[test]
-fn envelope_authority_comes_from_sender_path_when_present() {
+fn envelope_sender_path_does_not_define_authority() {
   let frame = WireFrame::Envelope(EnvelopePdu::new(
     String::from("fraktor.tcp://local-sys@127.0.0.1:2551/user/worker"),
     Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/sender")),
@@ -34,7 +31,7 @@ fn envelope_authority_comes_from_sender_path_when_present() {
     Bytes::new(),
   ));
 
-  assert_eq!(authority_for_frame(&frame), Some(TransportEndpoint::new("remote-sys@10.0.0.1:2552")));
+  assert_eq!(authority_for_frame(&frame), None);
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
