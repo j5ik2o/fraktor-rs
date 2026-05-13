@@ -6,7 +6,7 @@ mod tests;
 use fraktor_remote_core_rs::core::{
   extension::RemoteEvent,
   transport::{TransportEndpoint, TransportError},
-  wire::{ControlPdu, HandshakePdu},
+  wire::HandshakePdu,
 };
 use tokio::sync::mpsc::{Sender, UnboundedReceiver};
 
@@ -45,17 +45,7 @@ pub(crate) fn authority_for_frame(frame: &WireFrame) -> Option<TransportEndpoint
     | WireFrame::Handshake(HandshakePdu::Rsp(response)) => {
       Some(TransportEndpoint::new(response.from().address().to_string()))
     },
-    | WireFrame::Control(ControlPdu::Heartbeat { authority })
-    | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, .. })
-    | WireFrame::Control(ControlPdu::Quarantine { authority, .. })
-    | WireFrame::Control(ControlPdu::Shutdown { authority }) => Some(TransportEndpoint::new(authority.clone())),
-    | WireFrame::Envelope(pdu) => pdu.sender_path().and_then(authority_from_actor_path).map(TransportEndpoint::new),
-    | WireFrame::Ack(_) => None,
+    | WireFrame::Control(_) | WireFrame::Envelope(_) | WireFrame::Ack(_) => None,
   }
 }
 
-fn authority_from_actor_path(path: &str) -> Option<String> {
-  let (_scheme, rest) = path.split_once("://")?;
-  let (authority, _path) = rest.split_once('/')?;
-  Some(authority.to_owned())
-}
