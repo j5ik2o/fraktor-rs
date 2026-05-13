@@ -14,4 +14,4 @@ syn = { version = "2", features = ["full", "parsing", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 
 [dev-dependencies]
-dylint_testing = "5"
+dylint_testing = "6"
