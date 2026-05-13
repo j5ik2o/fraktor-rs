@@ -617,6 +617,16 @@ impl ActorContext<'_> {
 
   /// Pipes the completion of an asynchronous computation back to the running actor.
   ///
+  /// This is the canonical future-to-message adapter for untyped actors. The
+  /// method starts tracking the future synchronously and returns the spawn
+  /// result immediately; callers do not `.await` this method. When the future
+  /// completes, `map` builds a normal user message that is delivered through
+  /// the actor's mailbox, so actor state updates stay inside the later message
+  /// handler.
+  /// In-flight completions are not implicitly cancelled by actor restart; use a
+  /// generation token in the completion message when stale results must be
+  /// discarded.
+  ///
   /// # Errors
   ///
   /// Returns an error if the actor is unavailable or already stopped.
@@ -642,6 +652,8 @@ impl ActorContext<'_> {
   /// Corresponds to Pekko's `PipeToSupport.pipeTo(recipient)`.
   /// Returning `None` from `map` suppresses delivery after the caller has
   /// already observed and handled the asynchronous result.
+  /// The method itself is synchronous: it registers the future and returns the
+  /// registration result without requiring `.await`.
   ///
   /// # Errors
   ///

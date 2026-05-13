@@ -259,6 +259,10 @@ impl Behaviors {
   }
 
   /// Creates a behavior that handles typed messages and can return the next behavior.
+  ///
+  /// The handler is synchronous and returns the next [`Behavior`] directly.
+  /// Use `pipe_to_self` from the provided context to turn asynchronous work
+  /// into a later message instead of returning a future from the handler.
   pub fn receive_message<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,

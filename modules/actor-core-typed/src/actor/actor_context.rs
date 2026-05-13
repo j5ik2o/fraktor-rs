@@ -402,6 +402,12 @@ where
 
   /// Pipes a future back into the actor, adapting the response on the actor thread.
   ///
+  /// This method is a typed wrapper around the untyped future-to-message
+  /// kernel. It registers the future synchronously and returns a
+  /// [`PipeSpawnError`] only for registration failures. The completion is
+  /// adapted through [`AdaptMessage`] on the actor thread and then handled as a
+  /// normal typed message.
+  ///
   /// # Errors
   ///
   /// Returns an error if the actor is unavailable or stops before the task runs.
@@ -433,6 +439,8 @@ where
   /// Corresponds to Pekko's `PipeToSupport.pipeTo(recipient)`.
   /// Unlike [`pipe_to_self`](Self::pipe_to_self), this delivers the result directly
   /// to the recipient without going through the message adapter mechanism.
+  /// The future registration remains synchronous and delegates polling and
+  /// delivery observation to the untyped actor context.
   ///
   /// # Errors
   ///

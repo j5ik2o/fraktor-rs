@@ -1,7 +1,9 @@
 use core::time::Duration;
 use std::{string::String, thread, time::Instant, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::{StdBlocker, dispatch::dispatcher::AffinityExecutor, tick_driver::StdTickDriver};
+use fraktor_actor_adaptor_std_rs::{
+  StdBlocker, dispatch::dispatcher::AffinityExecutorFactory, tick_driver::StdTickDriver,
+};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
@@ -11,8 +13,8 @@ use fraktor_actor_core_kernel_rs::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecutorShared, MessageDispatcherFactory,
-    TrampolineState,
+    DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecutorFactory, ExecutorShared,
+    MessageDispatcherFactory,
   },
   system::ActorSystem,
 };
@@ -53,8 +55,9 @@ fn main() {
   // 64 スロットの bounded queue を持つ。mailbox は `key % parallelism` で
   // 同じワーカーに固定されるため、同一アクターのメッセージは常に同じ OS
   // スレッドで処理される。
-  let executor = ExecutorShared::new(Box::new(AffinityExecutor::new(POOL_NAME, 4, 64)), TrampolineState::new());
-  let dispatcher_config = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
+  let executor_factory: AffinityExecutorFactory = AffinityExecutorFactory::new(POOL_NAME, 4, 64);
+  let executor: ExecutorShared = executor_factory.create(DEFAULT_DISPATCHER_ID);
+  let dispatcher_config: DispatcherConfig = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
   let dispatcher_factory: ArcShared<Box<dyn MessageDispatcherFactory>> =
     ArcShared::new(Box::new(DefaultDispatcherFactory::new(&dispatcher_config, executor)));
   let actor_system_config =

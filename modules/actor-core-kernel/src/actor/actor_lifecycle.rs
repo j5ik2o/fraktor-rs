@@ -34,6 +34,11 @@ pub trait Actor: Send {
 
   /// Handles a single incoming message dispatched to this actor instance.
   ///
+  /// This hook is intentionally synchronous. Start asynchronous work from this
+  /// hook by registering a future-to-message adapter such as
+  /// [`ActorContext::pipe_to_self`] and update actor state when the completion
+  /// message is delivered.
+  ///
   /// # Errors
   ///
   /// Returns an error to signal recoverable or fatal processing failures.

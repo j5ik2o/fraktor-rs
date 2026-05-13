@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
-### Requirement: actor-adaptor-embassy は actor-core を Embassy task / signal / timer に接続する
+### Requirement: actor-adaptor-embassy は actor-core-kernel を Embassy task / signal / timer に接続する
 
-`actor-adaptor-embassy` は `actor-core` の port を Embassy 環境に接続する adapter crate として提供されなければならない (MUST)。Embassy 依存は `actor-adaptor-embassy` に閉じ込め、`actor-core` は `embassy-*` crate に依存してはならない (MUST NOT)。
+`actor-adaptor-embassy` は `actor-core-kernel` の port を Embassy 環境に接続する adapter crate として提供されなければならない (MUST)。Embassy 依存は `actor-adaptor-embassy` に閉じ込め、`actor-core-kernel` は `embassy-*` crate に依存してはならない (MUST NOT)。
 
-初期 scope は actor runtime の executor、tick driver、mailbox clock injection に限定しなければならない (MUST)。remote transport、stream materialization、persistence adapter は含めてはならない (MUST NOT)。
+初期 scope は actor system の executor、tick driver、mailbox clock injection に限定しなければならない (MUST)。remote transport、stream materialization、persistence adapter は含めてはならない (MUST NOT)。
 
-#### Scenario: actor-core に Embassy 依存が入らない
+#### Scenario: actor-core-kernel に Embassy 依存が入らない
 
-- **WHEN** `modules/actor-core/Cargo.toml` と `modules/actor-core/src/` を確認する
+- **WHEN** `modules/actor-core-kernel/Cargo.toml` と `modules/actor-core-kernel/src/` を確認する
 - **THEN** `embassy-*` crate への dependency は存在しない
 - **AND** `use embassy_` で始まる import は存在しない
 
@@ -16,7 +16,7 @@
 
 - **WHEN** workspace modules を確認する
 - **THEN** `modules/actor-adaptor-embassy` が存在する
-- **AND** その crate は `fraktor-actor-core-rs` に依存する
+- **AND** その crate は `fraktor-actor-core-kernel-rs` に依存する
 - **AND** Embassy 依存はその crate 側にのみ置かれる
 
 ### Requirement: EmbassyExecutor は bounded ready queue と signal で mailbox drain を駆動する
@@ -77,8 +77,8 @@ ready queue が満杯の場合、`EmbassyExecutor::execute` は block せず `Ex
 - **THEN** config には Embassy monotonic clock 由来の `MailboxClock` が設定される
 - **AND** `Mailbox::run(..., Some(deadline))` は Embassy clock で deadline 判定を行う
 
-#### Scenario: clock injection は actor-core の no_std 境界を保つ
+#### Scenario: clock injection は actor-core-kernel の no_std 境界を保つ
 
 - **WHEN** mailbox clock injection の実装を確認する
 - **THEN** Embassy 固有型は `actor-adaptor-embassy` 内に閉じている
-- **AND** `actor-core` から Embassy 固有型は参照されない
+- **AND** `actor-core-kernel` から Embassy 固有型は参照されない

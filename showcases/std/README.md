@@ -37,6 +37,7 @@ cargo run -p fraktor-showcases-std --features advanced --example remote_lifecycl
 | 完了 | `classic_timers` | kernel actor | kernel actor の timer API による single timer の起動と受信 | `cargo run -p fraktor-showcases-std --example classic_timers` |
 | 完了 | `typed_event_stream` | typed actor | typed API から event stream へ subscribe / publish する流れ | `cargo run -p fraktor-showcases-std --example typed_event_stream` |
 | 完了 | `typed_receptionist_router` | typed actor | `Receptionist` 登録と group router による service discovery routing | `cargo run -p fraktor-showcases-std --example typed_receptionist_router` |
+| 完了 | `typed_async_first_actor_adapters` | typed actor | std Tokio helper、blocking dispatcher、typed `pipe_to_self` を組み合わせる async-first adapter サンプル | `cargo run -p fraktor-showcases-std --features advanced --example typed_async_first_actor_adapters` |
 | 完了 | `remote_lifecycle` | remote | remote transport の起動、address 確認、shutdown、lifecycle event の観測 | `cargo run -p fraktor-showcases-std --features advanced --example remote_lifecycle` |
 | 完了 | `persistent_actor` | persistence | `PersistentActor`、journal、snapshot store による event sourced actor | `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor` |
 

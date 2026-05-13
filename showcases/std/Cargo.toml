@@ -214,6 +214,11 @@ name = "typed_dispatchers"
 path = "typed/dispatchers/main.rs"
 
 [[example]]
+name = "typed_async_first_actor_adapters"
+path = "typed/async-first-actor-adapters/main.rs"
+required-features = ["advanced"]
+
+[[example]]
 name = "typed_mailboxes"
 path = "typed/mailboxes/main.rs"
 
