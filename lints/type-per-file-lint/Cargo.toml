@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-dylint_linting = "5"
+dylint_linting = "6"
 heck = "0.5"
 
 [dev-dependencies]
