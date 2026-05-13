@@ -1,9 +1,7 @@
-#![cfg(not(target_os = "none"))]
-
 use std::{boxed::Box, string::String, thread, time::Duration, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -17,7 +15,8 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_showcases_std::subscribe_kernel_tracing_logger;
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 struct Start;
 
@@ -69,7 +68,8 @@ fn main() {
   let subscriber = test_subscriber_handle(RecordingSubscriber::new(events.clone()));
   let props = Props::from_fn(|| LoggingActor);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let _log_subscription = subscribe_kernel_tracing_logger(&system);
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
@@ -98,6 +98,7 @@ fn main() {
       has_info && has_warning && has_debug && has_receive
     })
   });
+  println!("classic_logging captured {} log event(s)", events.with_lock(|events| events.len()));
 
   system.terminate().expect("terminate");
 }

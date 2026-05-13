@@ -18,7 +18,7 @@ use rustc_span::{source_map::SourceMap, BytePos, FileName, RealFileName, SourceF
 dylint_linting::impl_late_lint! {
   pub SEPARATE_TESTS,
   Warn,
-  "enforce moving tests into dedicated tests.rs files",
+  "enforce moving tests into dedicated sibling _test.rs files",
   SeparateTests::default()
 }
 
@@ -60,9 +60,9 @@ fn analyze_source_file(cx: &LateContext<'_>, path: &Path) {
   for range in find_inline_test_modules(&source) {
     if let Some(span) = span_for_range(&source_file, range) {
       cx.span_lint(SEPARATE_TESTS, span, |diag| {
-        diag.primary_message("`mod tests { ... }` must reside in a sibling tests.rs file");
-        diag.help("move the test module into `<module>/tests.rs` and keep only `#[cfg(test)] mod tests;`");
-        diag.note("AI向けアドバイス: `<module>/tests.rs` を作成し、このインラインモジュールを丸ごと移動。親ファイルには `#[cfg(test)] mod tests;` だけを残し、モジュール階層が正しいか確認してください。");
+        diag.primary_message("`mod tests { ... }` must reside in a sibling `_test.rs` file");
+        diag.help("move the test module into `<module>_test.rs` and keep only `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;`");
+        diag.note("AI向けアドバイス: `<module>_test.rs` を作成し、このインラインモジュールを丸ごと移動。親ファイルには `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` だけを残し、モジュール階層が正しいか確認してください。");
       });
     }
   }
@@ -71,9 +71,9 @@ fn analyze_source_file(cx: &LateContext<'_>, path: &Path) {
     if let Some(span) = span_for_range(&source_file, range) {
       cx.span_lint(SEPARATE_TESTS, span, |diag| {
         diag.primary_message("`#[cfg(test)]` items are not allowed in production modules");
-        diag.help("extract the item into `<module>/tests.rs` and gate it via `#[cfg(test)] mod tests;`");
+        diag.help("extract the item into `<module>_test.rs` and gate it via `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;`");
         diag.note(
-          "AI向けアドバイス: テスト専用コードは `<module>/tests.rs` に移動し、親には `#[cfg(test)] mod tests;` を追加。構造体メソッドなら tests 側で `impl 型名 { #[cfg(test)] fn ... }` を定義し、`use super::*;` で型やフィールドへアクセスしてください。"
+          "AI向けアドバイス: テスト専用コードは `<module>_test.rs` に移動し、親には `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` を追加。構造体メソッドなら tests 側で `impl 型名 { #[cfg(test)] fn ... }` を定義し、`use super::*;` で型やフィールドへアクセスしてください。"
         );
       });
     }
@@ -82,9 +82,9 @@ fn analyze_source_file(cx: &LateContext<'_>, path: &Path) {
   for range in find_direct_test_attributes(&source) {
     if let Some(span) = span_for_range(&source_file, range) {
       cx.span_lint(SEPARATE_TESTS, span, |diag| {
-        diag.primary_message("test functions must be moved into a dedicated tests.rs file");
-        diag.help("place this test under `<module>/tests.rs` ensuring the parent declares `#[cfg(test)] mod tests;`");
-        diag.note("AI向けアドバイス: このテスト関数と依存するヘルパーを `<module>/tests.rs` に移動し、必要なら `use super::*;` などを追加してビルドが通るようにしてください。");
+        diag.primary_message("test functions must be moved into a dedicated `_test.rs` file");
+        diag.help("place this test under `<module>_test.rs` ensuring the parent declares `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;`");
+        diag.note("AI向けアドバイス: このテスト関数と依存するヘルパーを `<module>_test.rs` に移動し、必要なら `use super::*;` などを追加してビルドが通るようにしてください。");
       });
     }
   }
@@ -103,9 +103,9 @@ fn analyze_tests_file(cx: &LateContext<'_>, path: &Path) {
   for range in find_inner_cfg_test_attributes(&source) {
     if let Some(span) = span_for_range(&source_file, range) {
       cx.span_lint(SEPARATE_TESTS, span, |diag| {
-        diag.primary_message("`tests.rs` 内で `#![cfg(test)]` は使用できません");
-        diag.help("親ファイルに `#[cfg(test)] mod tests;` を記述してテスト用モジュールを有効化してください");
-        diag.note("AI向けアドバイス: `tests.rs` から `#![cfg(test)]` を削除し、親モジュール側で `#[cfg(test)] mod tests;` を宣言してテスト専用モジュールを有効化してください。");
+        diag.primary_message("test file 内で `#![cfg(test)]` は使用できません");
+        diag.help("親ファイルに `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` を記述してテスト用モジュールを有効化してください");
+        diag.note("AI向けアドバイス: test file から `#![cfg(test)]` を削除し、親モジュール側で `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` を宣言してテスト専用モジュールを有効化してください。");
       });
     }
   }
@@ -119,8 +119,13 @@ fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
 }
 
 fn is_tests_path(path: &Path) -> bool {
-  if path.file_name().and_then(|s| s.to_str()) == Some("tests.rs") {
-    return true;
+  if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+    if file_name == "tests.rs"
+      || file_name.ends_with("_test.rs")
+      || file_name.ends_with("_tests.rs")
+    {
+      return true;
+    }
   }
   path.components().any(|component| component.as_os_str() == "tests")
 }
@@ -168,11 +173,11 @@ fn find_cfg_test_items(src: &str) -> Vec<Range<usize>> {
     let rest = &src[absolute + ATTR.len()..];
     let skipped = rest.chars().take_while(|c| c.is_whitespace()).map(char::len_utf8).sum::<usize>();
     let after = &rest[skipped..];
-    if after.starts_with("mod tests;") {
+    if is_sibling_test_module_hook(after) {
       cursor = absolute + ATTR.len();
       continue;
     }
-    if after.starts_with("mod tests") {
+    if is_tests_module_declaration(after) {
       // `mod tests {` will be handled separately to avoid duplicate diagnostics.
       cursor = absolute + ATTR.len();
       continue;
@@ -182,6 +187,59 @@ fn find_cfg_test_items(src: &str) -> Vec<Range<usize>> {
   }
 
   matches
+}
+
+fn is_tests_module_declaration(after_cfg_test: &str) -> bool {
+  let after = strip_visibility_prefix(after_cfg_test);
+  let Some(rest) = after.strip_prefix("mod tests") else {
+    return false;
+  };
+
+  match rest.chars().next() {
+    | Some(';') | Some('{') => true,
+    | Some(c) => c.is_whitespace(),
+    | None => false,
+  }
+}
+
+fn strip_visibility_prefix(text: &str) -> &str {
+  let text = text.trim_start();
+  let Some(rest) = text.strip_prefix("pub") else {
+    return text;
+  };
+
+  match rest.chars().next() {
+    | Some(c) if c.is_whitespace() => rest.trim_start(),
+    | Some('(') => {
+      let Some(closing) = rest.find(')') else {
+        return text;
+      };
+      rest[closing + 1..].trim_start()
+    }
+    | _ => text,
+  }
+}
+
+fn is_sibling_test_module_hook(after_cfg_test: &str) -> bool {
+  let after = after_cfg_test.trim_start();
+  if !after.starts_with("#[") {
+    return false;
+  }
+
+  let Some(closing) = find_attribute_end(&after[2..]) else {
+    return false;
+  };
+
+  let attr_body = &after[2..2 + closing];
+  let normalized: String = attr_body.chars().filter(|c| !c.is_whitespace()).collect();
+  if !normalized.starts_with("path=\"") || !normalized.ends_with("_test.rs\"") {
+    return false;
+  }
+
+  let attr_end = 2 + closing + 1;
+  let after_path = after[attr_end..].trim_start();
+  let after_module = strip_visibility_prefix(after_path);
+  after_module.starts_with("mod tests;")
 }
 
 fn find_direct_test_attributes(src: &str) -> Vec<Range<usize>> {

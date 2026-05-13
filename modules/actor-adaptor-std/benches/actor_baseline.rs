@@ -6,8 +6,8 @@ use std::{
 };
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use fraktor_actor_adaptor_std_rs::std::{dispatch::dispatcher::TokioExecutor, tick_driver::TokioTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{dispatch::dispatcher::TokioExecutor, tick_driver::TokioTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,
@@ -25,7 +25,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::runtime::{Builder, Runtime};
 
 const WAIT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -142,7 +142,7 @@ impl TokioBenchSystem {
       let configurator: Box<dyn MessageDispatcherFactory> =
         Box::new(DefaultDispatcherFactory::new(&settings, executor));
       let config = config.with_dispatcher_factory(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
-      ActorSystem::create_with_config(props, config).expect("actor system")
+      ActorSystem::create_from_props(props, config).expect("actor system")
     });
     Self { runtime, system }
   }

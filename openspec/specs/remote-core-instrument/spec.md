@@ -99,11 +99,11 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 ### Requirement: Remote は RemoteInstrument を Box<dyn> で保持する
 
-`fraktor_remote_core_rs::core::extension::Remote` は `Box<dyn RemoteInstrument + Send>` フィールドで instrument を保持しなければならない（MUST）。`Remote` 構造体に型パラメータ `<I>` を導入してはならない（MUST NOT）。
+`fraktor_remote_core_rs::extension::Remote` は `Box<dyn RemoteInstrument + Send>` フィールドで instrument を保持しなければならない（MUST）。`Remote` 構造体に型パラメータ `<I>` を導入してはならない（MUST NOT）。
 
 #### Scenario: Remote のシグネチャ
 
-- **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote.rs` を読む
 - **THEN** `pub struct Remote { /* ... */ }` が宣言され、ジェネリクス `<I: RemoteInstrument>` を持たない
 - **AND** `instrument: alloc::boxed::Box<dyn RemoteInstrument + Send>` フィールドを保持している
 
@@ -125,13 +125,13 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: NoopInstrument の宣言
 
-- **WHEN** `modules/remote-core/src/core/instrument/noop_instrument.rs` または `modules/remote-core/src/core/instrument/` 配下を読む
+- **WHEN** `modules/remote-core/src/instrument/noop_instrument.rs` または `modules/remote-core/src/instrument/` 配下を読む
 - **THEN** `pub(crate) struct NoopInstrument;` または同等の ZST が定義されている
 - **AND** `impl RemoteInstrument for NoopInstrument` がすべての method を空実装で提供する
 
 #### Scenario: 公開 API への露出禁止
 
-- **WHEN** `modules/remote-core/src/core/instrument.rs` および `modules/remote-core/src/lib.rs` の `pub use` 経路を検査する
+- **WHEN** `modules/remote-core/src/instrument.rs` および `modules/remote-core/src/lib.rs` の `pub use` 経路を検査する
 - **THEN** `NoopInstrument` を `pub use` または `pub` で公開していない
 - **AND** ユーザーは `Remote::new(...)` で構築するだけで no-op 既定が得られ、`NoopInstrument` を import する必要がない
 
@@ -162,12 +162,12 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: tuple impl の不在
 
-- **WHEN** `modules/remote-core/src/core/instrument/` 配下のソースを検査する
+- **WHEN** `modules/remote-core/src/instrument/` 配下のソースを検査する
 - **THEN** `impl<A, B> RemoteInstrument for (A, B)` および `impl<A, B, C> RemoteInstrument for (A, B, C)` が定義されていない
 
 #### Scenario: () impl の不在
 
-- **WHEN** `modules/remote-core/src/core/instrument/` 配下のソースを検査する
+- **WHEN** `modules/remote-core/src/instrument/` 配下のソースを検査する
 - **THEN** `impl RemoteInstrument for ()` が定義されていない（`Box<dyn>` ベース設計のため不要）
 
 #### Scenario: ユーザー自作 composite の使用例
@@ -182,7 +182,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: RemoteInstrument 実装の存在
 
-- **WHEN** `modules/remote-core/src/core/instrument/flight_recorder.rs` を読む
+- **WHEN** `modules/remote-core/src/instrument/flight_recorder.rs` を読む
 - **THEN** `impl RemoteInstrument for RemotingFlightRecorder` が定義されている
 - **AND** `on_send` / `on_receive` / handshake / quarantine / backpressure 系の通知が内部 ring buffer に追加される
 
@@ -203,7 +203,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 #### Scenario: 別 Driver 型を作らない
 
-- **WHEN** `modules/remote-core/src/core/` 配下のソースを検査する
+- **WHEN** `modules/remote-core/src/` 配下のソースを検査する
 - **THEN** `pub struct RemoteDriver` または同等の Driver 型が定義されていない（純増ゼロ方針、`Remote::handle_remote_event` がその責務を負う）
 
 ### Requirement: instrument hook 呼出は association state machine からトリガされる

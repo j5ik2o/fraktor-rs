@@ -1,5 +1,5 @@
 //! End-to-end integration test for the
-//! [`fraktor_remote_core_rs::core::association::Association`] state machine.
+//! [`fraktor_remote_core_rs::association::Association`] state machine.
 //!
 //! Exercises the full happy-path lifecycle of an `Association` from `Idle`
 //! through `Handshaking` → `Active` → `Quarantined` while verifying the
@@ -9,11 +9,11 @@ use alloc::{string::String, vec::Vec};
 
 extern crate alloc;
 
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId, UniqueAddress},
   association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},

@@ -1,0 +1,5 @@
+use fraktor_actor_core_kernel_rs::routing::SmallestMailboxRoutingLogic;
+
+fn main() {
+  let _ = core::any::type_name::<SmallestMailboxRoutingLogic>();
+}

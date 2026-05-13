@@ -220,7 +220,7 @@ usage() {
   test                   : unit-test + integration-test を順に実行します
   check-unit-sleep       : unit テストパスに実時間 sleep が残っていないことを検査します
   perf                   : Scheduler ストレスと actor ベンチマークを実行します
-  actor-path-e2e         : fraktor-actor-core-rs の actor_path_e2e テストを単体実行します
+  actor-path-e2e         : fraktor-actor-core-kernel-rs の actor_path_e2e テストを単体実行します
   all                    : AI 向けの標準フルチェックを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 
@@ -344,6 +344,31 @@ prepare_ci_target_dir() {
   stamp_file="${target_dir}/${CI_CHECK_TOOLCHAIN_STAMP}"
   printf '%s\n' "${CI_CHECK_TOOLCHAIN_FINGERPRINT}" > "${stamp_file}"
   PREPARED_CI_TARGET_DIR="${target_dir}"
+}
+
+DYLINT_CARGO_WRAPPER_DIR=""
+
+prepare_dylint_cargo_wrapper() {
+  if [[ -n "${DYLINT_CARGO_WRAPPER_DIR}" ]]; then
+    return 0
+  fi
+
+  # dylint_testing sanitizes RUSTUP_TOOLCHAIN before spawning `cargo`.
+  # Keep child cargo builds on the pinned rustup toolchain even though this
+  # script also prepends the toolchain bin directory to PATH.
+  local wrapper_dir="${REPO_ROOT}/target/ci-check/dylint-cargo-wrapper"
+  mkdir -p "${wrapper_dir}"
+
+  local wrapper="${wrapper_dir}/cargo"
+  cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
+exec rustup run "${PINNED_TOOLCHAIN}" cargo "\$@"
+EOF
+  chmod +x "${wrapper}"
+
+  DYLINT_CARGO_WRAPPER_DIR="${wrapper_dir}"
 }
 
 should_guard_cargo_command() {
@@ -779,7 +804,7 @@ ensure_rustc_components_installed() {
 }
 
 ensure_dylint_installed() {
-  local desired_version="${DYLINT_VERSION:-5.0.0}"
+  local desired_version="${DYLINT_VERSION:-6.0.0}"
   local current_version=""
 
   if command -v cargo-dylint >/dev/null 2>&1; then
@@ -832,6 +857,9 @@ run_lint() {
 run_dylint() {
   ensure_rustc_components_installed || return 1
   ensure_dylint_installed || return 1
+  prepare_dylint_cargo_wrapper || return 1
+
+  local dylint_cargo_path="${DYLINT_CARGO_WRAPPER_DIR}:${PATH}"
 
   local -a lint_filters
   lint_filters=()
@@ -867,7 +895,7 @@ run_dylint() {
         break
         ;;
       -h|--help)
-        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-core-rs" >&2
+        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-core-kernel-rs" >&2
         return 0
         ;;
       *)
@@ -1003,11 +1031,11 @@ run_dylint() {
 
     local -a build_cmd=("${DEFAULT_CARGO_CMD[@]}" -v build --manifest-path "${lint_path}/Cargo.toml" --release)
     log_step "$(render_command "${build_cmd[@]}")"
-    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${build_cmd[@]}" || return 1
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" PATH="${dylint_cargo_path}" "${build_cmd[@]}" || return 1
 
     local -a test_cmd=("${DEFAULT_CARGO_CMD[@]}" -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet)
     log_step "$(render_command "${test_cmd[@]}")"
-    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" "${test_cmd[@]}" || return 1
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" PATH="${dylint_cargo_path}" "${test_cmd[@]}" || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"
@@ -1158,9 +1186,9 @@ PY
     fi
     log_step "$(render_cargo_command "${log_main_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
-      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
+      PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
     else
-      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
+      PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
     fi
   fi
 
@@ -1185,7 +1213,7 @@ PY
       fqcn_tests_cargo_args+=("${trailing_args[@]}")
     fi
     log_step "$(render_cargo_command dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}") (redundant-fqcn-lint --tests pass, RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
-    RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}" || return 1
+    PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}" || return 1
   fi
 
   if [[ ${#hardware_targets[@]} -gt 0 ]]; then
@@ -1198,9 +1226,9 @@ PY
       fi
       log_step "$(render_cargo_command "${log_pkg_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
-        RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
+        PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
       else
-        RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
+        PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
       fi
     done
   fi
@@ -1237,7 +1265,7 @@ PY
         feature_trailing+=("${trailing_args[@]}")
       fi
       log_step "$(render_cargo_command "${log_feature_cmd[@]}") (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
-      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
+      PATH="${dylint_cargo_path}" RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
     done
   fi
 }
@@ -1258,9 +1286,9 @@ run_no_std() {
     "no-std-host-utils" \
     check -p fraktor-utils-core-rs --no-default-features --features alloc
   start_parallel_cargo \
-    "$(render_cargo_command check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features)" \
+    "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-rs --no-default-features)" \
     "no-std-host-core" \
-    check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features
+    check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-rs --no-default-features
   wait_parallel_cargo || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
@@ -1272,9 +1300,9 @@ run_no_std() {
       "no-std-thumb-utils" \
       check -p fraktor-utils-core-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-core-rs/alloc
     start_parallel_cargo \
-      "$(render_cargo_command check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}")" \
+      "$(render_cargo_command check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs --no-default-features --target "${thumb_target}")" \
       "no-std-thumb-core" \
-      check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}"
+      check -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs --no-default-features --target "${thumb_target}"
     wait_parallel_cargo || return 1
   fi
 }
@@ -1287,15 +1315,15 @@ run_std() {
     "std-utils" \
     test -p fraktor-utils-core-rs
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib" \
     "std-core" \
-    test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib
+    test -p fraktor-actor-core-kernel-rs -p fraktor-stream-core-kernel-rs -p fraktor-stream-core-actor-typed-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib
   wait_parallel_cargo || return 1
 }
 
 run_doc_tests() {
-  log_step "$(render_cargo_command check -p fraktor-actor-core-rs --no-default-features)"
-  run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
+  log_step "$(render_cargo_command check -p fraktor-actor-core-kernel-rs --no-default-features)"
+  run_cargo check -p fraktor-actor-core-kernel-rs --no-default-features || return 1
 }
 
 # run_embedded() {
@@ -1326,11 +1354,11 @@ run_doc_tests() {
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --target ${target} --no-default-features --features alloc"
 #    run_cargo check -p fraktor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-kernel-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-kernel-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-kernel-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-kernel-rs --target "${target}" --no-default-features --features alloc || return 1
 #
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
 #    run_cargo check -p fraktor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
@@ -1381,7 +1409,8 @@ check_unit_sleep() {
     return 1
   fi
   local -a scan_dirs=(
-    modules/actor-core/src/
+    modules/actor-core-kernel/src/
+    modules/actor-core-typed/src/
     modules/actor-adaptor-std/src/
     modules/stream-core/src/
     modules/stream-adaptor-std/src/
@@ -1396,12 +1425,10 @@ check_unit_sleep() {
   local -a rg_excludes=(
     --glob '!modules/remote/src/std/transport/**'
     --glob '!modules/remote/tests/**'
-    --glob '!modules/cluster-adaptor-std/src/std/tokio_gossip_transport/**'
-    --glob '!modules/actor-core/src/core/kernel/system/coordinated_shutdown/tests.rs'
-    --glob '!modules/actor-core/src/core/kernel/dispatch/dispatcher/tests.rs'
-    --glob '!modules/actor-core/src/core/typed/dsl/routing/scatter_gather_first_completed_router_builder/tests.rs'
-    --glob '!modules/actor-core/src/core/typed/dsl/routing/tail_chopping_router_builder/tests.rs'
-    --glob '!modules/actor-core/src/core/kernel/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
+    --glob '!modules/cluster-adaptor-std/src/tokio_gossip_transport/**'
+    --glob '!modules/actor-core-kernel/src/core/kernel/system/coordinated_shutdown/tests.rs'
+    --glob '!modules/actor-core-kernel/src/core/kernel/dispatch/dispatcher/tests.rs'
+    --glob '!modules/actor-core-kernel/src/actor/scheduler/tick_driver/tests/test_tick_driver.rs'
   )
 
   local violations=""
@@ -1440,8 +1467,8 @@ check_unit_sleep() {
 }
 
 run_actor_path_e2e() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture"
-  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-kernel-rs --test actor_path_e2e -- --nocapture"
+  run_cargo test -p fraktor-actor-core-kernel-rs --test actor_path_e2e -- --nocapture || return 1
 }
 
 run_examples() {
@@ -1546,8 +1573,11 @@ PY
 }
 
 run_perf() {
-  log_step "cargo test -p fraktor-actor-core-rs stress_scheduler_handles_"
-  run_cargo test -p fraktor-actor-core-rs stress_scheduler_handles_ || return 1
+  log_step "cargo check -p fraktor-actor-core-kernel-rs --benches"
+  run_cargo check -p fraktor-actor-core-kernel-rs --benches || return 1
+
+  log_step "cargo test -p fraktor-actor-core-kernel-rs stress_scheduler_handles_"
+  run_cargo test -p fraktor-actor-core-kernel-rs stress_scheduler_handles_ || return 1
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-adaptor-std-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
   run_cargo bench -p fraktor-actor-adaptor-std-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1

@@ -1,12 +1,10 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{string::String, thread, time::Instant, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::{
-  StdBlocker, dispatch::dispatcher::AffinityExecutor, tick_driver::StdTickDriver,
+use fraktor_actor_adaptor_std_rs::{
+  StdBlocker, dispatch::dispatcher::AffinityExecutorFactory, tick_driver::StdTickDriver,
 };
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -15,12 +13,12 @@ use fraktor_actor_core_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecutorShared, MessageDispatcherFactory,
-    TrampolineState,
+    DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecutorFactory, ExecutorShared,
+    MessageDispatcherFactory,
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 const POOL_NAME: &str = "kernel-affinity-executor";
 const WAIT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -57,14 +55,15 @@ fn main() {
   // 64 スロットの bounded queue を持つ。mailbox は `key % parallelism` で
   // 同じワーカーに固定されるため、同一アクターのメッセージは常に同じ OS
   // スレッドで処理される。
-  let executor = ExecutorShared::new(Box::new(AffinityExecutor::new(POOL_NAME, 4, 64)), TrampolineState::new());
-  let dispatcher_config = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
+  let executor_factory: AffinityExecutorFactory = AffinityExecutorFactory::new(POOL_NAME, 4, 64);
+  let executor: ExecutorShared = executor_factory.create(DEFAULT_DISPATCHER_ID);
+  let dispatcher_config: DispatcherConfig = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
   let dispatcher_factory: ArcShared<Box<dyn MessageDispatcherFactory>> =
     ArcShared::new(Box::new(DefaultDispatcherFactory::new(&dispatcher_config, executor)));
   let actor_system_config =
     ActorSystemConfig::new(StdTickDriver::default()).with_dispatcher_factory(DEFAULT_DISPATCHER_ID, dispatcher_factory);
 
-  let system = ActorSystem::create_with_config(&props, actor_system_config).expect("system");
+  let system = ActorSystem::create_from_props(&props, actor_system_config).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Greet));
@@ -78,6 +77,7 @@ fn main() {
     observed.starts_with(POOL_NAME),
     "Greet should be processed on a {POOL_NAME}-* worker thread, observed: {observed}"
   );
+  println!("kernel_affinity_executor processed Greet on {observed}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

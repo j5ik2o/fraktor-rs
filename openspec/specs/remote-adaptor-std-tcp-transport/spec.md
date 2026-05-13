@@ -5,17 +5,25 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: TcpRemoteTransport 型
 
-`fraktor_remote_adaptor_std_rs::std::transport::tcp::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。Pekko `ArteryTcpTransport` に対応する TCP ベースの remote transport を提供する。
+`fraktor_remote_adaptor_std_rs::transport::tcp::TcpRemoteTransport` 型が定義され、core の `RemoteTransport` trait を実装する SHALL。TCP ベースの std remote transport として、start / shutdown / handshake / control / envelope delivery / connection-loss notification を adapter 側の送受信処理に接続する。
+
+`TcpRemoteTransport::from_config` は `RemoteConfig` の canonical / bind / maximum frame size に加えて、inbound lane count と outbound lane count も transport 構成に反映しなければならない (MUST)。
 
 #### Scenario: 型の存在
 
-- **WHEN** `modules/remote-adaptor-std/src/std/transport/tcp/base.rs` を読む
+- **WHEN** `modules/remote-adaptor-std/src/transport/tcp/base.rs` を読む
 - **THEN** `pub struct TcpRemoteTransport` が定義されている
 
 #### Scenario: RemoteTransport trait の実装
 
 - **WHEN** `TcpRemoteTransport` の trait 実装を検査する
-- **THEN** `impl RemoteTransport for TcpRemoteTransport` が存在し、core の全メソッド (`start`, `shutdown`, `send`, `addresses`, `default_address`, `local_address_for_remote`, `quarantine`) を実装している
+- **THEN** `impl RemoteTransport for TcpRemoteTransport` が存在し、core の全メソッド (`start`, `shutdown`, `send`, `send_control`, `send_handshake`, `schedule_handshake_timeout`, `addresses`, `default_address`, `local_address_for_remote`, `quarantine`) を実装している
+
+#### Scenario: from_config applies lane counts
+
+- **GIVEN** `RemoteConfig::new("127.0.0.1").with_inbound_lanes(3).with_outbound_lanes(4)`
+- **WHEN** `TcpRemoteTransport::from_config(system_name, config)` を呼ぶ
+- **THEN** transport は inbound dispatch lane count と outbound writer lane count をそれぞれ設定値から構成する
 
 ### Requirement: bind と accept loop
 
@@ -31,19 +39,117 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 - **WHEN** 既に使用中のポートに対して `start()` を呼ぶ
 - **THEN** `Err(TransportError::SendFailed)` または同等のエラーが返る
 
-### Requirement: connect とハンドシェイク
+### Requirement: outbound envelope 配送
 
-リモートエンドポイントへの送信時、接続がまだ確立されていなければ `TcpStream::connect` で接続を開始し、handshake を開始する SHALL。
+`TcpRemoteTransport::send` は running 状態かつ対象 peer の writer が存在する場合、`OutboundEnvelope` を `EnvelopePdu` に変換し、`WireFrame::Envelope` として TCP writer に enqueue しなければならない（MUST）。running 状態で unconditional に `TransportError::SendFailed` を返してはならない（MUST NOT）。
 
-#### Scenario: 初回送信時の connect
+#### Scenario: connected peer へ envelope frame を送る
 
-- **WHEN** まだ接続していないリモートアドレスに対して `send(envelope)` を呼ぶ
-- **THEN** `TcpStream::connect` が内部で実行され、handshake が開始される
+- **GIVEN** `TcpRemoteTransport` が started である
+- **AND** 対象 remote address の peer writer が登録済みである
+- **AND** `OutboundEnvelope` の payload が std adapter の outbound payload codec でサポートされている
+- **WHEN** `RemoteTransport::send(envelope)` を呼ぶ
+- **THEN** transport は `WireFrame::Envelope(EnvelopePdu)` を peer writer に enqueue する
+- **AND** `Ok(())` を返す
+- **AND** peer 側の TCP reader は同じ recipient path / sender path / priority / correlation id / payload bytes を持つ envelope frame を受信できる
 
-#### Scenario: handshake 完了前の envelope 蓄積
+#### Scenario: peer writer が無い場合は元 envelope を返す
 
-- **WHEN** handshake 完了前に複数の `send(envelope)` を呼ぶ
-- **THEN** envelope は core の `Association` の deferred queue に蓄積され、handshake 完了後にまとめて送信される
+- **GIVEN** `TcpRemoteTransport` が started である
+- **AND** 対象 remote address の peer writer が未登録である
+- **WHEN** `RemoteTransport::send(envelope)` を呼ぶ
+- **THEN** `Err((TransportError::ConnectionClosed, envelope))` または同等の retry-preserving error が返る
+- **AND** caller は元の `OutboundEnvelope` を再 enqueue できる
+- **AND** envelope は clone ではなく元値として戻る
+
+#### Scenario: 未サポート payload は観測可能な失敗になる
+
+- **GIVEN** `OutboundEnvelope` の `AnyMessage` payload が std adapter の outbound payload codec でサポートされていない
+- **WHEN** `RemoteTransport::send(envelope)` を呼ぶ
+- **THEN** `Err((TransportError::SendFailed, envelope))` または明示的に mapping された transport error が返る
+- **AND** 未サポート payload は log または test-observable error path で識別できる
+- **AND** payload を empty bytes として送る silent fallback は行わない
+
+### Requirement: outbound writer lanes
+
+std TCP adapter は peer ごとに `RemoteConfig::outbound_lanes()` で指定された数の outbound writer lane を構成しなければならない (MUST)。`TcpRemoteTransport::send` は envelope から stable lane key を導出し、対象 lane の bounded writer queue へ frame を enqueue しなければならない (MUST)。
+
+writer task は lanes を starvation なく drain し、最終的な TCP stream への write は同一 connection 内で行わなければならない (MUST)。lane queue が full の場合は `TransportError::Backpressure` または同等の retry-preserving error を返さなければならない (MUST)。
+
+#### Scenario: outbound_lanes one keeps existing behavior
+
+- **GIVEN** `outbound_lanes = 1`
+- **WHEN** connected peer へ複数 envelope を送る
+- **THEN** all frames は単一 writer lane に enqueue される
+- **AND** existing single-lane ordering と同等に送信される
+
+#### Scenario: stable lane selection
+
+- **GIVEN** `outbound_lanes > 1`
+- **AND** 同じ recipient path / sender path を持つ envelope が複数ある
+- **AND** それぞれの correlation id が異なる
+- **WHEN** `TcpRemoteTransport::send` を呼ぶ
+- **THEN** それらの envelope は同じ outbound lane に enqueue される
+
+#### Scenario: lane backpressure is observable
+
+- **GIVEN** selected outbound lane の bounded queue が full である
+- **WHEN** `TcpRemoteTransport::send(envelope)` を呼ぶ
+- **THEN** retry-preserving error が返る
+- **AND** caller は元 envelope を再 enqueue できる
+
+### Requirement: inbound dispatch lanes
+
+std TCP adapter は accepted connection または outbound client reader から得た decoded frame を、`RemoteConfig::inbound_lanes()` で指定された数の inbound dispatch lane へ振り分けなければならない (MUST)。同一 association に属する frame は同じ lane key を使わなければならない (MUST)。
+
+各 inbound dispatch lane は `RemoteEvent::InboundFrameReceived` を remote event sender へ送る。remote event sender が closed の場合、dispatch lane は `TransportError::NotAvailable` または log で観測可能な failure を返さなければならない (MUST)。
+
+#### Scenario: same association uses same inbound lane
+
+- **GIVEN** inbound_lanes が 2 以上である
+- **AND** 2 つの inbound frame が同じ remote authority に属する
+- **WHEN** TCP reader が decoded frame を dispatch する
+- **THEN** 2 つの frame は同じ inbound lane へ送られる
+
+#### Scenario: inbound lane sender failure is observable
+
+- **GIVEN** remote event sender が closed している
+- **WHEN** inbound dispatch lane が frame を remote event sender へ送ろうとする
+- **THEN** failure は log または returned error path で観測できる
+
+### Requirement: outbound payload codec contract
+
+std TCP adapter は `OutboundEnvelope` の `AnyMessage` payload を wire payload bytes に変換する契約を明示しなければならない（MUST）。少なくとも `bytes::Bytes` と `Vec<u8>` の両方をサポートしなければならない（MUST）。任意の typed payload を暗黙に serialize してはならない（MUST NOT）。
+
+#### Scenario: サポート対象 bytes payload
+
+- **WHEN** outbound payload が `bytes::Bytes` または `Vec<u8>` として封筒化されている
+- **THEN** adapter はその bytes を `EnvelopePdu::payload` に設定する
+- **AND** 受信側は同じ bytes を合意済み payload 型の `AnyMessage` として復元できる
+
+#### Scenario: 任意 AnyMessage は暗黙 serialize されない
+
+- **WHEN** outbound payload が serializer contract に登録されていない任意の `AnyMessage` である
+- **THEN** adapter は bytes 変換を拒否する
+- **AND** `Debug` 文字列や型名を payload として代用してはならない
+
+### Requirement: connection-loss event emission
+
+TCP client / server runtime は、remote authority が識別できる接続の read / write / decode failure または unexpected close を `RemoteEvent::ConnectionLost` として adapter 内部 sender へ通知しなければならない（MUST）。
+
+#### Scenario: writer task failure は ConnectionLost を emit する
+
+- **GIVEN** peer authority が `remote-sys@host:port` として識別済みである
+- **WHEN** TCP writer task が write failure または channel close 以外の unexpected connection failure を観測する
+- **THEN** adapter は `RemoteEvent::ConnectionLost { authority, cause, now_ms }` を remote event sender に push する
+- **AND** `now_ms` は adapter-owned monotonic clock から取得する
+- **AND** push 失敗は log に記録される
+
+#### Scenario: normal shutdown は recovery を起動しない
+
+- **WHEN** `TcpRemoteTransport::shutdown` が task を停止する
+- **THEN** adapter は normal shutdown を association recovery 用 `ConnectionLost` として扱わない
+- **AND** core event loop wake は `RemoteEvent::TransportShutdown` の責務に留める
 
 ### Requirement: Framed codec 統合
 

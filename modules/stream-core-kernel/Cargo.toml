@@ -1,0 +1,32 @@
+[package]
+name = "fraktor-stream-core-kernel-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor stream core for no_std environments"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "stream", "runtime", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-stream-core-kernel-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+compression = ["dep:miniz_oxide"]
+test-support = []
+
+[dependencies]
+fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc"] }
+fraktor-actor-core-kernel-rs = { workspace = true }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+miniz_oxide = { version = "0.9", optional = true, default-features = false, features = ["with-alloc"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+critical-section = { workspace = true, features = ["std"] }

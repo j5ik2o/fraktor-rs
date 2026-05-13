@@ -2,5 +2,5 @@
 
 extern crate alloc;
 
-/// Standard-library-backed lock drivers.
-pub mod std;
+/// Lock driver implementations and factories.
+pub mod sync;

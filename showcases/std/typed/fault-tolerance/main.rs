@@ -1,14 +1,10 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::{error::ActorError, setup::ActorSystemConfig},
-  typed::{Behavior, SupervisorStrategy, TypedActorSystem, TypedProps, dsl::Behaviors},
-};
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::actor::{error::ActorError, setup::ActorSystemConfig};
+use fraktor_actor_core_typed_rs::{Behavior, SupervisorStrategy, TypedActorSystem, TypedProps, dsl::Behaviors};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone, Copy)]
 enum ParentCommand {
@@ -60,18 +56,22 @@ fn parent(events: SharedLock<Vec<&'static str>>) -> Behavior<ParentCommand> {
 
 fn main() {
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
-  let props = TypedProps::from_behavior_factory({
-    let events = events.clone();
-    move || parent(events.clone())
-  });
-  let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let system = TypedActorSystem::create_from_behavior_factory(
+    {
+      let events = events.clone();
+      move || parent(events.clone())
+    },
+    ActorSystemConfig::new(StdTickDriver::default()),
+  )
+  .expect("system");
   let termination = system.when_terminated();
   let mut guardian = system.user_guardian_ref();
 
   guardian.tell(ParentCommand::Start);
   wait_until(|| events.with_lock(|events| events.contains(&"work-after-restart")));
-  assert!(events.with_lock(|events| events.iter().filter(|event| **event == "child-started").count() >= 2));
+  let snapshot = events.with_lock(|events| events.clone());
+  assert!(snapshot.iter().filter(|event| **event == "child-started").count() >= 2);
+  println!("typed_fault_tolerance observed events: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

@@ -1,10 +1,8 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -14,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 struct Start;
 struct Tick;
@@ -52,12 +50,13 @@ fn main() {
     move || TimerActor::new(events.clone())
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   wait_until(|| events.with_lock(|events| !events.is_empty()));
   assert_eq!(events.with_lock(|events| events.clone()), vec!["tick"]);
+  println!("classic_timers fired events: {:?}", events.with_lock(|events| events.clone()));
 
   system.terminate().expect("terminate");
 }

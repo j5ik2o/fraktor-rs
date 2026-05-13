@@ -1,0 +1,44 @@
+//! Metrics probe for scheduler tick feed.
+
+#[cfg(test)]
+#[path = "tick_metrics_probe_test.rs"]
+mod tests;
+
+use core::time::Duration;
+
+use fraktor_utils_core_rs::time::TimerInstant;
+
+use super::{SchedulerTickMetrics, TickDriverKind, TickFeedHandle};
+
+/// Captures scheduler tick metrics at configurable intervals.
+pub struct SchedulerTickMetricsProbe {
+  feed:       TickFeedHandle,
+  resolution: Duration,
+  driver:     TickDriverKind,
+}
+
+impl SchedulerTickMetricsProbe {
+  /// Creates a new probe for the provided feed.
+  #[must_use]
+  pub const fn new(feed: TickFeedHandle, resolution: Duration, driver: TickDriverKind) -> Self {
+    Self { feed, resolution, driver }
+  }
+
+  /// Collects a metrics snapshot at the specified instant.
+  #[must_use]
+  pub fn snapshot(&self, now: TimerInstant) -> SchedulerTickMetrics {
+    self.feed.snapshot(now, self.driver)
+  }
+
+  /// Returns the associated driver classification.
+  #[must_use]
+  pub const fn driver(&self) -> TickDriverKind {
+    self.driver
+  }
+
+  /// Returns the resolution used for expected tick calculations.
+  #[must_use]
+  pub const fn resolution(&self) -> Duration {
+    self.resolution
+  }
+}

@@ -7,13 +7,11 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example stash`
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{
-    Behavior, TypedActorRef, TypedActorSystem, TypedProps,
-    dsl::{Behaviors, StashBuffer},
-  },
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorRef, TypedActorSystem, TypedProps,
+  dsl::{Behaviors, StashBuffer},
 };
 
 // --- メッセージ定義 ---
@@ -73,7 +71,6 @@ fn open(total: i32) -> Behavior<Command> {
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   use std::{
     thread,
@@ -82,7 +79,7 @@ fn main() {
 
   let props = TypedProps::from_behavior_factory(|| buffering(0)).with_stash_mailbox();
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut actor = system.user_guardian_ref();
 
   // closed 状態で Buffer メッセージを送信（stash される）

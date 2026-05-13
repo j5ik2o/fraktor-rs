@@ -1,10 +1,8 @@
-#![cfg(not(target_os = "none"))]
-
 use core::{num::NonZeroUsize, time::Duration};
 use std::thread;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -15,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 struct Record(u32);
 
@@ -44,14 +42,16 @@ fn main() {
   })
   .with_mailbox_config(mailbox);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   for value in [1_u32, 2, 3] {
     system.user_guardian_ref().tell(AnyMessage::new(Record(value)));
   }
   wait_until(|| records.with_lock(|records| records.len() == 3));
-  assert_eq!(records.with_lock(|records| records.clone()), vec![1, 2, 3]);
+  let snapshot = records.with_lock(|records| records.clone());
+  assert_eq!(snapshot, vec![1, 2, 3]);
+  println!("kernel_mailboxes delivered records: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

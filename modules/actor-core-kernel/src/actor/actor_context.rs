@@ -1,0 +1,792 @@
+//! Actor execution context utilities.
+
+#[cfg(test)]
+#[path = "actor_context_test.rs"]
+mod tests;
+
+use alloc::{boxed::Box, collections::BTreeSet, format, string::String, vec::Vec};
+use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
+
+use fraktor_utils_core_rs::sync::{SharedAccess, SharedLock};
+
+use crate::{
+  actor::{
+    ChildRef, ClassicTimerScheduler, Pid, ReceiveTimeoutState, WatchRegistrationKind,
+    actor_ref::ActorRef,
+    error::{ActorError, PipeSpawnError, SendError, WatchConflict, WatchRegistrationError},
+    message_adapter::{AdapterRefSender, MessageAdapterLease, MessageAdapterRef},
+    messaging::{AnyMessage, system_message::SystemMessage},
+    props::Props,
+    scheduler::SchedulerCommand,
+    spawn::SpawnError,
+  },
+  event::logging::LogLevel,
+  system::ActorSystem,
+};
+
+pub(crate) const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
+pub(crate) const STASH_REQUIRES_DEQUE_REASON: &str = "stash requires deque-capable mailbox";
+
+/// Provides contextual APIs while handling a message.
+pub struct ActorContext<'a> {
+  system:                ActorSystem,
+  pid:                   Pid,
+  sender:                Option<ActorRef>,
+  current_message:       Option<AnyMessage>,
+  receive_timeout_state: Option<NonNull<SharedLock<Option<ReceiveTimeoutState>>>>,
+  receive_timeout_local: Option<ReceiveTimeoutState>,
+  logger_name:           Option<String>,
+  _marker:               PhantomData<&'a ()>,
+}
+
+/// Alias for a context with the default runtime toolbox.
+impl ActorContext<'_> {
+  /// Creates a new context placeholder.
+  #[must_use]
+  pub fn new(system: &ActorSystem, pid: Pid) -> Self {
+    Self {
+      system: system.clone(),
+      pid,
+      sender: None,
+      current_message: None,
+      receive_timeout_state: None,
+      receive_timeout_local: None,
+      logger_name: None,
+      _marker: PhantomData,
+    }
+  }
+
+  pub(crate) fn with_receive_timeout_state(mut self, state: &SharedLock<Option<ReceiveTimeoutState>>) -> Self {
+    self.receive_timeout_state = Some(NonNull::from(state));
+    self
+  }
+
+  /// Returns a reference to the actor system.
+  #[must_use]
+  pub const fn system(&self) -> &ActorSystem {
+    &self.system
+  }
+
+  /// Returns the pid of the running actor.
+  #[must_use]
+  pub const fn pid(&self) -> Pid {
+    self.pid
+  }
+
+  /// Returns the sender if supplied by the message envelope.
+  #[must_use]
+  pub const fn sender(&self) -> Option<&ActorRef> {
+    self.sender.as_ref()
+  }
+
+  /// Sets the sender (used internally by the runtime).
+  pub fn set_sender(&mut self, sender: Option<ActorRef>) {
+    self.sender = sender;
+  }
+
+  /// Clears the sender after message processing completes.
+  pub fn clear_sender(&mut self) {
+    self.sender = None;
+  }
+
+  /// Sets the current user message being processed (runtime use only).
+  pub(crate) fn set_current_message(&mut self, message: Option<AnyMessage>) {
+    self.current_message = message;
+  }
+
+  /// Clears the current message marker after processing completes.
+  pub(crate) fn clear_current_message(&mut self) {
+    self.current_message = None;
+  }
+
+  /// Runs a closure while `message` is the active user message.
+  pub fn with_current_message<R>(&mut self, message: AnyMessage, f: impl FnOnce(&mut Self, &AnyMessage) -> R) -> R {
+    let current_message = message.clone();
+    let previous_message = self.current_message.replace(message);
+    let result = f(self, &current_message);
+    self.current_message = previous_message;
+    result
+  }
+
+  /// Returns a clone of the current message being processed.
+  pub(crate) fn clone_current_message(&self) -> Option<AnyMessage> {
+    self.current_message.clone()
+  }
+
+  /// Stashes the currently processed user message for deferred handling.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when no current message is active or when the actor cell is unavailable.
+  pub fn stash(&mut self) -> Result<(), ActorError> {
+    self.stash_with_limit(usize::MAX)
+  }
+
+  /// Stashes the currently processed user message with an explicit stash limit.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when no current message is active, when the stash reached `max_messages`,
+  /// or when the actor cell is unavailable.
+  pub fn stash_with_limit(&mut self, max_messages: usize) -> Result<(), ActorError> {
+    let message = self
+      .current_message
+      .as_ref()
+      .cloned()
+      .ok_or_else(|| ActorError::recoverable("stash requires an active user message"))?;
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash"))?;
+    cell.stash_message_with_limit(message, max_messages)
+  }
+
+  /// Returns true when the provided error is caused by stash capacity overflow.
+  #[must_use]
+  pub fn is_stash_overflow_error(error: &ActorError) -> bool {
+    matches!(error, ActorError::Recoverable(reason) if reason.as_str() == STASH_OVERFLOW_REASON)
+  }
+
+  /// Returns true when the provided error is caused by missing deque mailbox support for stash.
+  #[must_use]
+  pub fn is_stash_requires_deque_error(error: &ActorError) -> bool {
+    matches!(error, ActorError::Recoverable(reason) if reason.as_str() == STASH_REQUIRES_DEQUE_REASON)
+  }
+
+  /// Re-enqueues the oldest previously stashed message back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
+  pub fn unstash(&self) -> Result<usize, ActorError> {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during unstash"))?;
+    cell.unstash_message()
+  }
+
+  /// Re-enqueues all previously stashed messages back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
+  pub fn unstash_all(&self) -> Result<usize, ActorError> {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during unstash"))?;
+    cell.unstash_messages()
+  }
+
+  /// Re-enqueues up to `limit` stashed messages after applying `wrap`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
+  pub fn unstash_with_limit<F>(&self, limit: usize, wrap: F) -> Result<usize, ActorError>
+  where
+    F: FnMut(AnyMessage) -> Result<AnyMessage, ActorError>, {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during unstash"))?;
+    cell.unstash_messages_with_limit(limit, wrap)
+  }
+
+  /// Returns a snapshot of the current stashed messages.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn stashed_messages_snapshot(&self) -> Result<Vec<AnyMessage>, ActorError> {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash snapshot"))?;
+    Ok(cell.with_stashed_messages(|messages| messages.iter().cloned().collect::<Vec<AnyMessage>>()))
+  }
+
+  /// Drops all stashed messages and returns the number removed.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn clear_stashed_messages(&self) -> Result<usize, ActorError> {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash clear"))?;
+    Ok(cell.clear_stashed_messages())
+  }
+
+  /// Creates an actor reference for message adapter delivery.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn create_message_adapter_ref<F>(&self, wrap: F) -> Result<MessageAdapterRef, ActorError>
+  where
+    F: Fn(AnyMessage) -> AnyMessage + Send + Sync + 'static, {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during message adapter registration"))?;
+    let (handle_id, lifecycle) = cell.acquire_adapter_handle();
+    let system = self.system.state();
+    let sender =
+      AdapterRefSender::new(self.pid, handle_id, cell.mailbox_sender(), lifecycle, system.clone(), Box::new(wrap));
+    let actor_ref = ActorRef::with_system(self.pid, sender, &system);
+    let lease = MessageAdapterLease::new(self.pid, handle_id, system);
+    Ok(MessageAdapterRef::new(actor_ref, lease))
+  }
+
+  /// Returns the classic timer facade for the running actor.
+  #[must_use]
+  pub fn timers(&self) -> ClassicTimerScheduler {
+    ClassicTimerScheduler::new(&self.system, self.pid)
+  }
+
+  /// Returns an [`ActorRef`] pointing to the running actor.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the actor reference cannot be resolved.
+  #[must_use]
+  pub fn self_ref(&self) -> ActorRef {
+    match self.system.actor_ref(self.pid) {
+      | Some(reference) => reference,
+      | None => panic!("actor reference must exist for running context"),
+    }
+  }
+
+  /// Sends a reply to the caller if a reply target is present.
+  ///
+  /// This forwards the result of `try_tell` on the current sender.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if no reply target is set or if the reply message cannot
+  /// be enqueued.
+  pub fn reply(&mut self, message: AnyMessage) -> Result<(), SendError> {
+    match self.sender.as_mut() {
+      | Some(target) => target.try_tell(message),
+      | None => Err(SendError::no_recipient(message)),
+    }
+  }
+
+  /// Requests the actor system to spawn a child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when spawning the child fails.
+  pub fn spawn_child(&mut self, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.system.spawn_child(self.pid, props)
+  }
+
+  /// Returns the list of supervised children.
+  #[must_use]
+  pub fn children(&self) -> Vec<ChildRef> {
+    self.system.children(self.pid)
+  }
+
+  /// Returns the child with the specified name, if present.
+  #[must_use]
+  pub fn child(&self, name: &str) -> Option<ChildRef> {
+    let state = self.system.state();
+    state.child_pids(self.pid).into_iter().find_map(|pid| {
+      let cell = state.cell(&pid)?;
+      if cell.name() == name { Some(ChildRef::new(cell.actor_ref(), state.clone())) } else { None }
+    })
+  }
+
+  /// Sends a stop signal to the specified child.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the stop message cannot be delivered.
+  pub fn stop_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
+    child.stop()
+  }
+
+  /// Sends a stop signal to every supervised child (Pekko
+  /// `context.children foreach { child => context.unwatch(child); context.stop(child) }`).
+  ///
+  /// AL-H1: called from the default [`Actor::pre_restart`] implementation to
+  /// mirror Pekko's behaviour. Every per-child `SendError` is still recorded
+  /// through [`SystemStateShared::record_send_error`] so best-effort cleanup
+  /// continues across all children, but the first failure is also returned to
+  /// the caller so the default `pre_restart`'s `Err` propagation can drive
+  /// restart-completion tracking for children that were already transitioned to
+  /// `shall_die`.
+  ///
+  /// # Errors
+  ///
+  /// Returns the first `SendError` encountered when sending `SystemMessage::Stop`
+  /// to any supervised child.
+  pub fn stop_all_children(&mut self) -> Result<(), SendError> {
+    let state = self.system.state();
+    let Some(cell) = state.cell(&self.pid) else {
+      return Ok(());
+    };
+    let mut first_error: Option<SendError> = None;
+    for child_pid in cell.children() {
+      // Pekko `ActorCell.stop(actor)`: transition `childrenRefs` via
+      // `shallDie(actor)` before sending the stop system message, so a
+      // subsequent `setChildrenTerminationReason(Recreation)` can upgrade the
+      // reason and defer `finish_recreate`.
+      cell.mark_child_dying(child_pid);
+      // Pekko `preRestart` unwatches each child before stopping it; mirror
+      // that here so a pending DeathWatchNotification does not deliver a
+      // user-level `Terminated` after the restart has already been handled.
+      cell.unregister_watching(child_pid);
+      cell.remove_watch_with(child_pid);
+      if let Err(error) = state.send_system_message(child_pid, SystemMessage::Stop) {
+        state.record_send_error(Some(child_pid), &error);
+        if first_error.is_none() {
+          first_error = Some(error);
+        }
+      }
+    }
+    first_error.map_or(Ok(()), Err)
+  }
+
+  /// Sends a stop signal to the running actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the stop message cannot be delivered.
+  pub fn stop_self(&mut self) -> Result<(), SendError> {
+    self.system.stop_actor(self.pid)
+  }
+
+  /// Suspends the specified child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the suspend signal cannot be delivered.
+  pub fn suspend_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
+    child.suspend()
+  }
+
+  /// Resumes the specified child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the resume signal cannot be delivered.
+  pub fn resume_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
+    child.resume()
+  }
+
+  /// Subscribes the running actor to termination events for the specified target.
+  ///
+  /// # Pekko parity
+  ///
+  /// Equivalent to Pekko `DeathWatch.scala:36-50` `watch(subject)`. If the
+  /// target is already being watched with a custom message
+  /// (`watch_with(_, _)`), this call returns
+  /// [`WatchRegistrationError::Duplicate`] with
+  /// [`WatchConflict::WatchWithThenPlain`], matching Pekko's
+  /// `checkWatchingSame` (`DeathWatch.scala:126-132`).
+  ///
+  /// # Note
+  ///
+  /// Watching state is **not** cleared across restart (see the change notes
+  /// for `pekko-death-watch-duplicate-check` Risk 6). When re-registering a
+  /// watch inside `post_restart`, call `unwatch` first if the previous
+  /// registration may still be present.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`WatchRegistrationError::Duplicate`] when the target already has
+  /// a conflicting watch registration, or [`WatchRegistrationError::Send`]
+  /// when the runtime cannot enqueue the watch signal.
+  pub fn watch(&mut self, target: &ActorRef) -> Result<(), WatchRegistrationError> {
+    if target.pid() == self.pid {
+      return Ok(());
+    }
+
+    let state = self.system.state();
+    if let Some(cell) = state.cell(&self.pid) {
+      match cell.watch_registration_kind(target.pid()) {
+        | WatchRegistrationKind::None => {},
+        // Pekko `DeathWatch.scala:39,44-45` — same-state plain watch is idempotent.
+        | WatchRegistrationKind::Plain => return Ok(()),
+        | WatchRegistrationKind::WithMessage => {
+          return Err(WatchRegistrationError::duplicate(target.pid(), WatchConflict::WatchWithThenPlain));
+        },
+      }
+      // Register the user-level `watching` entry before sending `Watch`, so that
+      // the compensating `DeathWatchNotification` below (when the target is
+      // already closed) passes the watcher's `watching_contains_pid` check.
+      cell.register_watching(target.pid());
+    }
+
+    match state.send_system_message(target.pid(), SystemMessage::Watch(self.pid)) {
+      | Ok(()) => Ok(()),
+      | Err(SendError::Closed(_)) => {
+        // Best-effort: target is already closed, so notify self about termination.
+        if let Err(error) = state.send_system_message(self.pid, SystemMessage::DeathWatchNotification(target.pid())) {
+          state.record_send_error(Some(self.pid), &error);
+        }
+        Ok(())
+      },
+      | Err(error) => {
+        // Bugbot r3127781491: send が非 Closed で失敗した場合、直前の
+        // `register_watching` で追加した (target, User) entry が watching に
+        // 残ると、次回 `watch(target)` が `WatchRegistrationKind::Plain` を
+        // 観測して `Ok(())` を返してしまい、Watch system message が再送され
+        // ずに target は watched を認識しない。retry 可能性を保つため送信
+        // 失敗時は watching 側も巻き戻す。
+        if let Some(cell) = state.cell(&self.pid) {
+          cell.unregister_watching(target.pid());
+        }
+        Err(WatchRegistrationError::send(error))
+      },
+    }
+  }
+
+  /// Stops watching the specified actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the runtime cannot enqueue the unwatch signal.
+  pub fn unwatch(&mut self, target: &ActorRef) -> Result<(), SendError> {
+    if target.pid() == self.pid {
+      return Ok(());
+    }
+
+    let state = self.system.state();
+    if let Some(cell) = state.cell(&self.pid) {
+      cell.unregister_watching(target.pid());
+      cell.remove_watch_with(target.pid());
+    }
+    match state.send_system_message(target.pid(), SystemMessage::Unwatch(self.pid)) {
+      | Ok(()) => Ok(()),
+      | Err(SendError::Closed(_)) => Ok(()),
+      | Err(error) => Err(error),
+    }
+  }
+
+  /// Spawns a child actor and immediately starts monitoring it for termination.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when spawning fails or when installing the watch registration cannot be
+  /// performed.
+  pub fn spawn_child_watched(&mut self, props: &Props) -> Result<ChildRef, SpawnError> {
+    let child = self.spawn_child(props)?;
+    if self.watch(child.actor_ref()).is_err() {
+      // Best-effort stop: watch failed so the child must be cleaned up.
+      if let Err(error) = child.stop() {
+        self.system.state().record_send_error(Some(child.actor_ref().pid()), &error);
+      }
+      return Err(SpawnError::invalid_props("failed to install death watch"));
+    }
+    Ok(child)
+  }
+
+  /// Watches the specified target and delivers a custom message on termination.
+  ///
+  /// When the target terminates, the provided `message` is delivered as a user message
+  /// instead of a `Terminated` signal.
+  ///
+  /// # Pekko parity
+  ///
+  /// Equivalent to Pekko `DeathWatch.scala:52-66` `watchWith(subject, msg)`.
+  /// Duplicate registration with a conflicting state is rejected via
+  /// [`WatchRegistrationError::Duplicate`]:
+  ///
+  /// - Previous `watch(target)` (no message) → [`WatchConflict::PlainThenWatchWith`]
+  /// - Previous `watch_with(target, _)` → [`WatchConflict::WatchWithThenWatchWith`]
+  ///
+  /// The second case is a **conservative divergence** from Pekko: Pekko
+  /// allows re-registering when the new and old messages are equal
+  /// (`Some(m1) == Some(m2)`). fraktor-rs `AnyMessage` does not implement
+  /// `PartialEq`, so we reject unconditionally and require callers to
+  /// `unwatch` first before reconfiguring the message (design Decision 5).
+  ///
+  /// The rejected `message` is dropped and is **not** recoverable from the
+  /// returned error.
+  ///
+  /// # Note
+  ///
+  /// Watching state is **not** cleared across restart (see the change notes
+  /// for `pekko-death-watch-duplicate-check` Risk 6). When re-registering a
+  /// watch inside `post_restart`, call `unwatch` first if the previous
+  /// registration may still be present.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`WatchRegistrationError::Duplicate`] when the target already
+  /// has a conflicting watch registration, or [`WatchRegistrationError::Send`]
+  /// when the runtime cannot enqueue the watch signal.
+  pub fn watch_with(&mut self, target: &ActorRef, message: AnyMessage) -> Result<(), WatchRegistrationError> {
+    if target.pid() == self.pid {
+      return Ok(());
+    }
+    let state = self.system.state();
+    let cell =
+      state.cell(&self.pid).ok_or_else(|| WatchRegistrationError::send(SendError::no_recipient(message.clone())))?;
+    match cell.watch_registration_kind(target.pid()) {
+      | WatchRegistrationKind::None => {},
+      | WatchRegistrationKind::Plain => {
+        return Err(WatchRegistrationError::duplicate(target.pid(), WatchConflict::PlainThenWatchWith));
+      },
+      | WatchRegistrationKind::WithMessage => {
+        return Err(WatchRegistrationError::duplicate(target.pid(), WatchConflict::WatchWithThenWatchWith));
+      },
+    }
+    cell.register_watch_with(target.pid(), message);
+    if let Err(error) = self.watch(target) {
+      // watch 失敗時はカスタムメッセージ登録と watching への User entry 追加を
+      // ロールバックする。self.watch の内部では watch_registration_kind が None
+      // を返した後に register_watching で (target, User) を追加しているため、
+      // send 失敗 (非 Closed) 時は双方を巻き戻さないと WatchRegistrationKind が
+      // `Plain` に残留し、次回 watch_with で `PlainThenWatchWith` エラーが
+      // 永続化する。
+      cell.remove_watch_with(target.pid());
+      cell.unregister_watching(target.pid());
+      return Err(error);
+    }
+    Ok(())
+  }
+
+  /// Forwards a message to the target, preserving the current sender.
+  ///
+  /// This is the user-facing fire-and-forget variant. Synchronous forwarding
+  /// failures are observed internally and recorded via the system's send-error
+  /// observation path.
+  pub fn forward(&mut self, target: &mut ActorRef, message: AnyMessage) {
+    let _forward_result = self.try_forward(target, message);
+  }
+
+  /// Forwards the given message to the target, preserving the current sender.
+  ///
+  /// This mirrors Pekko's `ActorRef.forward`. The message is sent with the
+  /// original sender of the currently processed message so the final recipient
+  /// can reply to the original requester.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SendError`] when forwarding fails synchronously while
+  /// enqueueing the message into the target mailbox.
+  pub fn try_forward(&mut self, target: &mut ActorRef, message: AnyMessage) -> Result<(), SendError> {
+    let envelope = match &self.sender {
+      | Some(sender) => message.with_sender(sender.clone()),
+      | None => message,
+    };
+    target.try_tell(envelope)
+  }
+
+  /// Returns the metadata tags associated with the running actor.
+  ///
+  /// Returns an empty set if the actor cell is unavailable.
+  #[must_use]
+  pub fn tags(&self) -> BTreeSet<String> {
+    self.system.state().cell(&self.pid).map(|cell| cell.tags().clone()).unwrap_or_default()
+  }
+
+  /// Sets a custom logger name for this actor context.
+  ///
+  /// Corresponds to Pekko's `ActorContext.setLoggerName(String)`.
+  /// The name is propagated to all [`LogEvent`]s emitted via [`Self::log`].
+  pub fn set_logger_name(&mut self, name: impl Into<String>) {
+    self.logger_name = Some(name.into());
+  }
+
+  /// Returns the custom logger name, if one has been configured.
+  ///
+  /// Corresponds to Pekko's `ActorContext.setLoggerName`.
+  #[must_use]
+  pub fn logger_name(&self) -> Option<&str> {
+    self.logger_name.as_deref()
+  }
+
+  /// Emits a log event associated with the running actor.
+  pub fn log(&self, level: LogLevel, message: impl Into<String>) {
+    self.system.emit_log(level, message.into(), Some(self.pid), self.logger_name.clone());
+  }
+
+  /// Pipes the completion of an asynchronous computation back to the running actor.
+  ///
+  /// This is the canonical future-to-message adapter for untyped actors. The
+  /// method starts tracking the future synchronously and returns the spawn
+  /// result immediately; callers do not `.await` this method. When the future
+  /// completes, `map` builds a normal user message that is delivered through
+  /// the actor's mailbox, so actor state updates stay inside the later message
+  /// handler.
+  /// In-flight completions are not implicitly cancelled by actor restart; use a
+  /// generation token in the completion message when stale results must be
+  /// discarded.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor is unavailable or already stopped.
+  pub fn pipe_to_self<Fut, Map, Output>(&mut self, future: Fut, map: Map) -> Result<(), PipeSpawnError>
+  where
+    Fut: Future<Output = Output> + Send + 'static,
+    Map: FnOnce(Output) -> AnyMessage + Send + 'static, {
+    let state = self.system.state();
+    let Some(cell) = state.cell(&self.pid) else {
+      return Err(PipeSpawnError::ActorUnavailable);
+    };
+
+    let mapped = async move {
+      let value = future.await;
+      Some(map(value))
+    };
+
+    cell.spawn_pipe_task(Box::pin(mapped))
+  }
+
+  /// Pipes the completion of an asynchronous computation to an external actor.
+  ///
+  /// Corresponds to Pekko's `PipeToSupport.pipeTo(recipient)`.
+  /// Returning `None` from `map` suppresses delivery after the caller has
+  /// already observed and handled the asynchronous result.
+  /// The method itself is synchronous: it registers the future and returns the
+  /// registration result without requiring `.await`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor is unavailable or already stopped.
+  pub fn pipe_to<Fut, Map, Output>(&mut self, future: Fut, target: &ActorRef, map: Map) -> Result<(), PipeSpawnError>
+  where
+    Fut: Future<Output = Output> + Send + 'static,
+    Map: FnOnce(Output) -> Option<AnyMessage> + Send + 'static, {
+    let state = self.system.state();
+    let Some(cell) = state.cell(&self.pid) else {
+      return Err(PipeSpawnError::ActorUnavailable);
+    };
+
+    let mapped = async move {
+      let value = future.await;
+      map(value)
+    };
+
+    cell.spawn_pipe_to_task(Box::pin(mapped), target.clone())
+  }
+
+  fn with_receive_timeout_slot<R>(&mut self, f: impl FnOnce(&mut Option<ReceiveTimeoutState>) -> R) -> R {
+    if let Some(ptr) = self.receive_timeout_state {
+      // SAFETY: The actor cell owns this mutex and keeps it alive for the
+      // duration of message processing.
+      unsafe { ptr.as_ref() }.with_write(f)
+    } else {
+      f(&mut self.receive_timeout_local)
+    }
+  }
+
+  fn with_receive_timeout_slot_ref<R>(&self, f: impl FnOnce(&Option<ReceiveTimeoutState>) -> R) -> R {
+    if let Some(ptr) = self.receive_timeout_state {
+      // SAFETY: The actor cell owns this mutex and keeps it alive for the
+      // duration of message processing.
+      unsafe { ptr.as_ref() }.with_read(f)
+    } else {
+      f(&self.receive_timeout_local)
+    }
+  }
+
+  fn cancel_receive_timeout_handle(state: &mut ReceiveTimeoutState) {
+    if let Some(handle) = state.handle.take() {
+      // Cancel is best-effort: the timer may have already fired,
+      // so the return value (already-cancelled) is not actionable.
+      let _already_cancelled = handle.cancel();
+    }
+  }
+
+  fn schedule_receive_timeout(system: &ActorSystem, pid: Pid, state: &mut ReceiveTimeoutState) {
+    let Some(self_ref) = system.actor_ref(pid) else {
+      return;
+    };
+    let command = SchedulerCommand::SendMessage { receiver: self_ref, message: state.message.clone(), sender: None };
+    match system.scheduler().with_write(|scheduler| scheduler.schedule_once(state.duration, command)) {
+      | Ok(handle) => {
+        state.handle = Some(handle);
+      },
+      | Err(error) => {
+        state.handle = None;
+        // Receive-timeout scheduling is best-effort: the actor continues
+        // to function normally even if the scheduler rejects the registration.
+        system.emit_log(LogLevel::Warn, format!("failed to schedule receive timeout: {:?}", error), Some(pid), None);
+      },
+    }
+    // Advance the monotonic counter regardless of scheduler result so kernel
+    // tests can observe reschedule skips for NotInfluenceReceiveTimeout
+    // payloads (Pekko `Actor.scala:165`) and future production diagnostics
+    // can measure receive-timeout churn.
+    state.schedule_generation = state.schedule_generation.saturating_add(1);
+  }
+
+  pub(crate) fn reschedule_receive_timeout(&mut self) {
+    let system = self.system.clone();
+    let pid = self.pid;
+    self.with_receive_timeout_slot(|slot| {
+      let Some(state) = slot.as_mut() else {
+        return;
+      };
+      Self::cancel_receive_timeout_handle(state);
+      Self::schedule_receive_timeout(&system, pid, state);
+    });
+  }
+
+  /// Configures an idle timeout that sends `message` when no messages
+  /// are received within `timeout`.
+  ///
+  /// The timer resets on every message delivery. Calling this again
+  /// replaces the previous configuration.
+  /// Corresponds to Pekko's classic `ActorContext.setReceiveTimeout`.
+  pub fn set_receive_timeout(&mut self, timeout: Duration, message: AnyMessage) {
+    let system = self.system.clone();
+    let pid = self.pid;
+    self.with_receive_timeout_slot(|slot| {
+      if let Some(existing) = slot.as_mut() {
+        Self::cancel_receive_timeout_handle(existing);
+      }
+      let mut state = ReceiveTimeoutState::new(timeout, message);
+      Self::schedule_receive_timeout(&system, pid, &mut state);
+      *slot = Some(state);
+    });
+  }
+
+  /// Disables the receive timeout.
+  ///
+  /// Corresponds to Pekko's classic `ActorContext.cancelReceiveTimeout`.
+  pub fn cancel_receive_timeout(&mut self) {
+    self.with_receive_timeout_slot(|slot| {
+      if let Some(state) = slot.as_mut() {
+        Self::cancel_receive_timeout_handle(state);
+      }
+      *slot = None;
+    });
+  }
+
+  /// Returns `true` when a receive timeout is currently configured.
+  #[must_use]
+  pub fn has_receive_timeout(&self) -> bool {
+    self.with_receive_timeout_slot_ref(Option::is_some)
+  }
+
+  /// Returns the receive-timeout schedule-generation counter, or `None`
+  /// when no receive timeout is configured.
+  ///
+  /// The counter advances once per `schedule_receive_timeout` invocation
+  /// (both the initial `set_receive_timeout` arm and every
+  /// `reschedule_receive_timeout` cancel+schedule). Callers comparing
+  /// values around a user-message `invoke` can tell whether the reschedule
+  /// was skipped for a `NotInfluenceReceiveTimeout` payload
+  /// (Pekko `Actor.scala:165`), and diagnostics callers can measure
+  /// receive-timeout churn per actor.
+  #[must_use]
+  pub fn receive_timeout_schedule_generation(&self) -> Option<u64> {
+    self.with_receive_timeout_slot_ref(|slot| slot.as_ref().map(ReceiveTimeoutState::schedule_generation))
+  }
+}

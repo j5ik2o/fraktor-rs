@@ -1,13 +1,9 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
-};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors};
 
 #[derive(Clone)]
 enum Command {
@@ -41,16 +37,18 @@ fn open(pass_count: u32) -> Behavior<Command> {
 }
 
 fn main() {
-  let props = TypedProps::from_behavior_factory(|| locked(0));
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(|| locked(0), ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
   let termination = system.when_terminated();
   let mut gate = system.user_guardian_ref();
 
   gate.tell(Command::Pass);
   gate.tell(Command::Coin);
   gate.tell(Command::Pass);
-  assert_eq!(read_pass_count(&mut gate), 1);
+  let pass_count = read_pass_count(&mut gate);
+  assert_eq!(pass_count, 1);
+  println!("typed_fsm recorded pass count: {pass_count}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

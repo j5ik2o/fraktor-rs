@@ -1,0 +1,29 @@
+[package]
+name = "fraktor-actor-adaptor-embassy-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor Embassy adaptor bindings for actor runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "actor", "adaptor", "embassy"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-actor-adaptor-embassy-rs"
+readme = "../../README.md"
+
+[features]
+default = []
+
+[dependencies]
+critical-section = { workspace = true }
+embassy-executor = { workspace = true }
+embassy-sync = { workspace = true }
+embassy-time = { workspace = true, features = ["tick-hz-1_000_000"] }
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true }
+
+[dev-dependencies]
+critical-section = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

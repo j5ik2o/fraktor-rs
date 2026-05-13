@@ -19,7 +19,6 @@ pub struct EventDispatcher;
 
 pub struct QueryExecutor;
 
-// private types are allowed to use any suffix
-struct InternalManager;
+struct InternalRegistry;
 
 fn main() {}

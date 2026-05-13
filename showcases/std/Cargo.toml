@@ -6,16 +6,18 @@ publish = false
 
 [dependencies]
 # 基本依存（全 example 共通）
-fraktor-actor-core-rs = { workspace = true }
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-actor-core-typed-rs = { workspace = true }
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-remote-core-rs = { workspace = true }
 fraktor-remote-adaptor-std-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["std-locks"] }
 critical-section = { workspace = true, features = ["std"] }
-fraktor-stream-core-rs = { workspace = true }
+fraktor-stream-core-kernel-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }
 serde = { workspace = true, features = ["derive"] }
+tracing = { workspace = true, features = ["std"] }
 
 # advanced 依存（cross-module examples 用）
 fraktor-persistence-core-rs = { workspace = true, optional = true }
@@ -51,7 +53,7 @@ path = "legacy/tests/routing_surface.rs"
 name = "shared_lock_showcase_surface"
 path = "legacy/tests/shared_lock_showcase_surface.rs"
 
-# --- Basic examples ---
+# --- Basic examples: legacy ---
 
 [[example]]
 name = "getting_started"
@@ -121,7 +123,7 @@ name = "persistent_actor"
 path = "legacy/persistent_actor/main.rs"
 required-features = ["advanced"]
 
-# --- Strangler fig examples: Pekko classic/kernel ---
+# --- Strangler fig examples: kernel ---
 
 [[example]]
 name = "kernel_first_example"
@@ -154,6 +156,10 @@ path = "kernel/routing/main.rs"
 [[example]]
 name = "kernel_fsm"
 path = "kernel/fsm/main.rs"
+
+[[example]]
+name = "kernel_interaction_patterns"
+path = "kernel/ask_from_non_actor/main.rs"
 
 [[example]]
 name = "kernel_persistence"
@@ -208,10 +214,15 @@ name = "typed_dispatchers"
 path = "typed/dispatchers/main.rs"
 
 [[example]]
+name = "typed_async_first_actor_adapters"
+path = "typed/async-first-actor-adapters/main.rs"
+required-features = ["advanced"]
+
+[[example]]
 name = "typed_mailboxes"
 path = "typed/mailboxes/main.rs"
 
-# --- Strangler fig examples: Pekko streams ---
+# --- Strangler fig examples: streams ---
 
 [[example]]
 name = "stream_first_example"
@@ -233,5 +244,11 @@ path = "stream/composition/main.rs"
 name = "stream_rate"
 path = "stream/rate/main.rs"
 
-[lints]
-workspace = true
+[lints.rust]
+unused_must_use = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fraktor_disable_tell)'] }
+
+[lints.clippy]
+let_underscore_must_use = "deny"
+let_underscore_future = "deny"
+print_stdout = "allow"

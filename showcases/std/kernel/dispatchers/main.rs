@@ -1,10 +1,8 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -15,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
   dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 struct RunBlockingWork;
 
@@ -40,11 +38,12 @@ fn main() {
   })
   .with_dispatcher_id(DEFAULT_BLOCKING_DISPATCHER_ID);
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(RunBlockingWork));
   wait_until(|| events.with_lock(|events| events.as_slice() == ["blocking-dispatcher-work"]));
+  println!("kernel_dispatchers recorded blocking dispatcher work");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

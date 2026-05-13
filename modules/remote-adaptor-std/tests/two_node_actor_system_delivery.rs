@@ -3,8 +3,8 @@
 use std::{format, net::TcpListener, time::Duration};
 
 use bytes::Bytes;
-use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParser},
@@ -18,17 +18,15 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_remote_adaptor_std_rs::std::{
-  extension_installer::RemotingExtensionInstaller,
-  provider::{PathRemoteActorRefProvider, StdRemoteActorRefProviderInstaller},
+use fraktor_remote_adaptor_std_rs::{
+  extension_installer::RemotingExtensionInstaller, provider::StdRemoteActorRefProviderInstaller,
   transport::tcp::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{
+use fraktor_remote_core_rs::{
   address::{Address, UniqueAddress},
   config::RemoteConfig,
-  extension::Remoting,
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{
   sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
   time::{Instant, sleep, timeout},
@@ -74,30 +72,16 @@ impl Actor for RecordingBytesActor {
 }
 
 struct RemoteNode {
-  system:    ActorSystem,
-  installer: ArcShared<RemotingExtensionInstaller>,
-  address:   Address,
+  system:  ActorSystem,
+  address: Address,
 }
 
 impl RemoteNode {
-  fn start(&self) {
-    let remote = self.installer.remote().expect("remote extension should be installed");
-    remote.start().expect("remote should start");
-    self.installer.spawn_run_task().expect("remote run task should start");
-  }
-
-  fn connect_peer(&self, remote: &Address) {
-    self
-      .installer
-      .remote()
-      .expect("remote extension should be installed")
-      .connect_peer(remote)
-      .expect("peer should connect");
-  }
-
   async fn shutdown(self) {
-    self.installer.shutdown_and_join().await.expect("remote should shut down");
     self.system.terminate().expect("system should terminate");
+    timeout(Duration::from_secs(5), self.system.when_terminated())
+      .await
+      .expect("system should terminate within timeout");
   }
 }
 
@@ -113,15 +97,14 @@ fn build_node(port: u16, uid: u64) -> RemoteNode {
   let extension_installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let provider_installer = StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(
     UniqueAddress::new(address.clone(), uid),
-    Box::new(PathRemoteActorRefProvider),
     installer.clone(),
   );
   let config = std_actor_system_config(TestTickDriver::default())
     .with_system_name(SYSTEM_NAME)
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(provider_installer);
-  let system = ActorSystem::noop_with_config(config).expect("actor system should build");
-  RemoteNode { system, installer, address }
+  let system = ActorSystem::create_with_noop_guardian(config).expect("actor system should build");
+  RemoteNode { system, address }
 }
 
 fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<Bytes>, ActorPath) {
@@ -189,10 +172,6 @@ async fn two_node_actor_system_delivery_sends_supported_bytes_payloads() {
   let (mut lifecycle_b, _subscription_b) = subscribe_lifecycle(&node_b.system);
   let (mut rx_a, path_a) = spawn_recording_actor(&node_a.system, "receiver-a");
   let (mut rx_b, path_b) = spawn_recording_actor(&node_b.system, "receiver-b");
-  node_a.start();
-  node_b.start();
-  node_a.connect_peer(&node_b.address);
-  node_b.connect_peer(&node_a.address);
   let mut local_ref_b = node_b
     .system
     .resolve_actor_ref(remote_path(&node_b.address, &path_b))
@@ -220,8 +199,6 @@ async fn two_node_actor_system_delivery_sends_supported_bytes_payloads() {
   ref_to_a.try_tell(AnyMessage::new(Bytes::from_static(b"warm-a"))).expect("warm send to node A");
   wait_until_connected(&mut lifecycle_a, &node_b.address.to_string()).await;
   wait_until_connected(&mut lifecycle_b, &node_a.address.to_string()).await;
-  node_a.connect_peer(&node_b.address);
-  node_b.connect_peer(&node_a.address);
   ref_to_b.try_tell(AnyMessage::new(Bytes::from_static(b"to-b"))).expect("send to node B");
   ref_to_a.try_tell(AnyMessage::new(Bytes::from_static(b"to-a"))).expect("send to node A");
 

@@ -11,31 +11,41 @@
 
 [日本語版](README.ja.md)
 
-fraktor-rs is a specification-driven actor runtime that brings Pekko- and Proto.Actor-inspired semantics to both `no_std` targets and host runtimes.
+fraktor-rs is a specification-driven Rust actor runtime inspired by Apache Pekko and Proto.Actor.
+The runtime is developed as `no_std` core crates plus `std` adaptor crates, keeping portable state machines and contracts separate from Tokio, networking, and host-runtime bindings.
 
-It is designed to let you work with a consistent actor model across embedded-friendly environments and standard host environments, while sharing the same overall architecture and workspace structure.
+The root `fraktor-rs` crate currently publishes project metadata and reserves the package name.
+Runtime APIs live in the workspace crates under [`modules/`](modules), and the fastest way to inspect behavior is through the runnable [`fraktor-showcases-std`](showcases/std) examples.
 
 ## Highlights
 
-- Shared `core`/`std` module structure across the workspace, so the same actor model can be used on embedded targets and on Tokio-based hosts.
-- Six focused crates for `utils`, `actor`, `persistence`, `remote`, `cluster`, and `stream`, plus runnable showcases for common scenarios.
-- Pekko / Proto.Actor-inspired semantics for lifecycle, supervision, death watch, actor paths, remoting, and typed/untyped bridging.
-- A specification-driven workflow supported by steering, custom dylint rules, and CI scripts for consistent change management.
+- Portable `no_std` core crates for actor kernel, typed actors, persistence, remote, cluster, streams, and shared utilities.
+- `std` adaptor crates isolate host-specific concerns such as Tokio executors, TCP transport, std locks, materializers, and cluster delivery helpers.
+- Pekko / Proto.Actor-inspired semantics for actor systems, supervision, death watch, routing, dispatchers, mailboxes, event streams, serialization, remoting, clustering, persistence, and stream processing.
+- Runnable std showcases cover legacy typed flows, Pekko classic/kernel examples, typed examples, stream examples, and advanced remote/persistence scenarios.
+- OpenSpec artifacts, repository rules, custom dylint checks, and CI scripts keep design intent, module boundaries, and implementation checks aligned.
 
 ## Quickstart
 
 ### Requirements
 
 - `rustup`
-- Rust toolchain `nightly-2025-12-01`
-- `cargo-dylint`, `rustc-dev`, and `llvm-tools-preview` if you want to run the full local checks
+- Rust toolchain `nightly-2025-12-01` (pinned by [`rust-toolchain.toml`](rust-toolchain.toml))
+- `cargo-dylint`, `rustc-dev`, and `llvm-tools-preview` for the full local check suite
 
 ### Install
 
 ```bash
-rustup toolchain install nightly-2025-12-01 --component rustfmt --component clippy
 git clone git@github.com:j5ik2o/fraktor-rs.git
 cd fraktor-rs
+rustup toolchain install nightly-2025-12-01 --component rustfmt --component clippy
+```
+
+For full dylint-backed verification:
+
+```bash
+rustup component add rustc-dev llvm-tools-preview --toolchain nightly-2025-12-01
+cargo install cargo-dylint dylint-link
 ```
 
 ### Run
@@ -44,60 +54,99 @@ cd fraktor-rs
 cargo run -p fraktor-showcases-std --example getting_started
 ```
 
+More examples:
+
+```bash
+cargo run -p fraktor-showcases-std --example typed_first_example
+cargo run -p fraktor-showcases-std --example stream_first_example
+cargo run -p fraktor-showcases-std --features advanced --example remote_lifecycle
+```
+
 ### Verify
 
 ```bash
-cargo test -p fraktor-actor-core-rs --features "std test-support tokio-executor"
-./scripts/ci-check.sh all
+cargo test -p fraktor-rs
+./scripts/ci-check.sh ai all
 ```
 
-## Workspace layout
+## Usage
 
-The workspace is organized around the following crates:
+Until the root facade exposes consolidated runtime modules, use the crate that owns the API area you need:
 
-| Crate | Purpose |
+| Area | Crates |
 | --- | --- |
-| [`modules/utils`](modules/utils) | Portable primitives, runtime helper utilities, atomics, synchronization, and timers |
-| [`modules/actor`](modules/actor) | ActorSystem, mailboxes, supervision, typed APIs, scheduler, and EventStream |
-| [`modules/persistence`](modules/persistence) | Event sourcing, journals, snapshot stores, and persistent actor support |
-| [`modules/remote`](modules/remote) | Remoting extensions, endpoint management, transport adapters, and failure detection |
-| [`modules/cluster`](modules/cluster) | Membership, identity lookup, placement, topology, pub-sub, and ECS integration |
-| [`modules/stream`](modules/stream) | Reactive stream primitives built on top of the actor system |
-| [`modules/actor/examples`](modules/actor/examples) | Focused actor examples such as typed event streams, classic timers, and classic logging |
-| [`showcases/std`](showcases/std) | Runnable integrated examples including getting started, request/reply, timers, routing, persistence, remoting, and clustering |
+| Utilities | [`fraktor-utils-core-rs`](modules/utils-core), [`fraktor-utils-adaptor-std-rs`](modules/utils-adaptor-std) |
+| Actor runtime | [`fraktor-actor-core-kernel-rs`](modules/actor-core-kernel), [`fraktor-actor-core-typed-rs`](modules/actor-core-typed), [`fraktor-actor-adaptor-std-rs`](modules/actor-adaptor-std) |
+| Persistence | [`fraktor-persistence-core-rs`](modules/persistence-core) |
+| Remote | [`fraktor-remote-core-rs`](modules/remote-core), [`fraktor-remote-adaptor-std-rs`](modules/remote-adaptor-std) |
+| Cluster | [`fraktor-cluster-core-rs`](modules/cluster-core), [`fraktor-cluster-adaptor-std-rs`](modules/cluster-adaptor-std) |
+| Streams | [`fraktor-stream-core-kernel-rs`](modules/stream-core-kernel), [`fraktor-stream-core-actor-typed-rs`](modules/stream-core-actor-typed), [`fraktor-stream-adaptor-std-rs`](modules/stream-adaptor-std) |
 
-Common entrypoints:
+The showcase crate is the current usage index for executable flows:
 
 ```bash
-# Standard showcase
 cargo run -p fraktor-showcases-std --example request_reply
-
-# Advanced showcase
-cargo run -p fraktor-showcases-std --example remote_messaging --features advanced
+cargo run -p fraktor-showcases-std --example kernel_supervision
+cargo run -p fraktor-showcases-std --example typed_actor_lifecycle
+cargo run -p fraktor-showcases-std --example stream_graphs
 ```
+
+See [`showcases/std/README.md`](showcases/std/README.md) for the full example list and feature requirements.
+
+## Workspace Layout
+
+| Path | Purpose |
+| --- | --- |
+| [`src/`](src) | Root `fraktor-rs` crate placeholder and package metadata |
+| [`modules/utils-core`](modules/utils-core) | Portable collections, sync primitives, time helpers, atomics, and network parsing |
+| [`modules/utils-adaptor-std`](modules/utils-adaptor-std) | Standard-library utility adapters |
+| [`modules/actor-core-kernel`](modules/actor-core-kernel) | `no_std` untyped actor kernel: actor refs, systems, dispatch, routing, serialization, patterns, and lifecycle |
+| [`modules/actor-core-typed`](modules/actor-core-typed) | `no_std` typed actor facade, DSL, receptionist, pub-sub, delivery, typed event stream, and typed system APIs |
+| [`modules/actor-adaptor-std`](modules/actor-adaptor-std) | Std/Tokio actor bindings, executors, tick drivers, time, event, pattern, and test-support helpers |
+| [`modules/persistence-core`](modules/persistence-core) | Event sourcing, journals, snapshots, persistent actors, persistent FSM, durable state, and persistence extensions |
+| [`modules/remote-core`](modules/remote-core) | `no_std` remote address, association, envelope, provider, transport port, watcher, wire, and failure-detector state machines |
+| [`modules/remote-adaptor-std`](modules/remote-adaptor-std) | Std remote extension installers, providers, Tokio TCP transport, and I/O workers |
+| [`modules/cluster-core`](modules/cluster-core) | Cluster membership, identity, placement, pub-sub, grains, failure detection, topology, metrics, and routing |
+| [`modules/cluster-adaptor-std`](modules/cluster-adaptor-std) | Std cluster API, local provider wrapping, Tokio gossip transport, pub-sub delivery, and optional AWS ECS provider |
+| [`modules/stream-core-kernel`](modules/stream-core-kernel) | `no_std` stream DSL, stages, materialization contracts, graph shapes, stream refs, queues, kill switches, and supervision |
+| [`modules/stream-core-actor-typed`](modules/stream-core-actor-typed) | Typed actor integrations for stream DSLs |
+| [`modules/stream-adaptor-std`](modules/stream-adaptor-std) | Std stream I/O and materializer adapters |
+| [`showcases/std`](showcases/std) | Runnable examples for host environments |
+| [`tests/e2e`](tests/e2e) | Cross-crate end-to-end tests |
+| [`lints/`](lints) | Custom dylint rules for project structure and Rust conventions |
+| [`openspec/`](openspec) | Specification-driven design artifacts, active changes, and accepted specs |
 
 ## Documentation
 
 - API docs: [docs.rs/fraktor-rs](https://docs.rs/fraktor-rs)
-- Repository knowledge base: [DeepWiki](https://deepwiki.com/j5ik2o/fraktor-rs)
-- Current parity reports:
+- Showcase index: [`showcases/std/README.md`](showcases/std/README.md)
+- Repository rules: [AGENTS.md](AGENTS.md), [`.agents/rules/project.md`](.agents/rules/project.md)
+- OpenSpec configuration: [`openspec/config.yaml`](openspec/config.yaml)
+- Lock-free design notes: [`docs/guides/lock_free_design.md`](docs/guides/lock_free_design.md)
+- Current gap reports:
   - [Actor](docs/gap-analysis/actor-gap-analysis.md)
+  - [Actor mailbox](docs/gap-analysis/actor-mailbox-gap-analysis.md)
   - [Remote](docs/gap-analysis/remote-gap-analysis.md)
   - [Cluster](docs/gap-analysis/cluster-gap-analysis.md)
   - [Persistence](docs/gap-analysis/persistence-gap-analysis.md)
   - [Stream](docs/gap-analysis/stream-gap-analysis.md)
+- Reference implementations:
+  - [`references/pekko`](references/pekko)
+  - [`references/protoactor-go`](references/protoactor-go)
 
-## Getting help
+## Getting Help
 
 - Issues: [GitHub Issues](https://github.com/j5ik2o/fraktor-rs/issues)
-- Source of truth for implementation rules: [AGENTS.md](AGENTS.md)
+- Repository knowledge base: [DeepWiki](https://deepwiki.com/j5ik2o/fraktor-rs)
 
 ## Contributing
 
-- Follow the repository's specification-driven workflow before implementation.
-- Refer to [`.kiro/steering`](.kiro/steering) and [AGENTS.md](AGENTS.md) for project-wide rules.
-- Run `./scripts/ci-check.sh all` before opening a PR.
-- Clearly describe any impact on runtime, remoting, cluster, or stream behavior in the PR.
+- Read [AGENTS.md](AGENTS.md) and the scoped rules under [`.agents/rules/`](.agents/rules) before changing code.
+- Use OpenSpec for behavior-affecting changes; run OpenSpec commands through `mise exec -- openspec ...`.
+- Keep `*-core` crates `no_std`; place host-specific runtime, network, time, and Tokio work in `*-adaptor-std` crates.
+- Put executable examples in [`showcases/std`](showcases/std), not under `modules/**/examples`.
+- Run targeted checks while developing and `./scripts/ci-check.sh ai all` before opening a PR.
+- Do not edit [`CHANGELOG.md`](CHANGELOG.md) manually; it is generated by GitHub Actions.
 
 ## License
 

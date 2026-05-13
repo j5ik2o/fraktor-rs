@@ -1,10 +1,8 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -15,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum GateState {
@@ -81,14 +79,16 @@ fn main() {
     move || GateActor::new(transitions.clone(), pass_count.clone())
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   let mut guardian = system.user_guardian_ref();
   guardian.tell(AnyMessage::new(Coin));
   guardian.tell(AnyMessage::new(Pass));
   wait_until(|| pass_count.with_lock(|count| *count == 1));
-  assert_eq!(transitions.with_lock(|transitions| transitions.clone()), vec!["locked-to-open", "open-to-locked"]);
+  let transitions_snapshot = transitions.with_lock(|transitions| transitions.clone());
+  assert_eq!(transitions_snapshot, vec!["locked-to-open", "open-to-locked"]);
+  println!("kernel_fsm completed transitions: {transitions_snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

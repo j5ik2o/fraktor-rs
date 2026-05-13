@@ -100,7 +100,7 @@ TBD - created by archiving change 2026-04-20-pekko-panic-guard. Update Purpose a
 
 ### Requirement: `PanicInvokeGuard` は panic を `ActorError::Escalate` に変換しなければならない
 
-`modules/actor-adaptor-std/src/std/actor/panic_invoke_guard.rs` に定義される `PanicInvokeGuard` は、渡されたクロージャを `std::panic::catch_unwind(AssertUnwindSafe(..))` で包み、panic を `ActorError::Escalate(ActorErrorReason::new(panic_msg))` に変換しなければならない（MUST）。
+`modules/actor-adaptor-std/src/actor/panic_invoke_guard.rs` に定義される `PanicInvokeGuard` は、渡されたクロージャを `std::panic::catch_unwind(AssertUnwindSafe(..))` で包み、panic を `ActorError::Escalate(ActorErrorReason::new(panic_msg))` に変換しなければならない（MUST）。
 
 #### Scenario: panic は Escalate に変換される
 
@@ -148,7 +148,7 @@ TBD - created by archiving change 2026-04-20-pekko-panic-guard. Update Purpose a
 
 ### Requirement: std adaptor は `PanicInvokeGuardFactory` と install helper を提供しなければならない
 
-`modules/actor-adaptor-std/src/std/actor/` には `PanicInvokeGuardFactory` と `install_panic_invoke_guard(config: ActorSystemConfig) -> ActorSystemConfig` helper が存在しなければならない（MUST）。helper は `config.with_invoke_guard_factory(ArcShared::new(Box::new(PanicInvokeGuardFactory)))` を返す。
+`modules/actor-adaptor-std/src/actor/` には `PanicInvokeGuardFactory` と `install_panic_invoke_guard(config: ActorSystemConfig) -> ActorSystemConfig` helper が存在しなければならない（MUST）。helper は `config.with_invoke_guard_factory(ArcShared::new(Box::new(PanicInvokeGuardFactory)))` を返す。
 
 #### Scenario: `install_panic_invoke_guard` が factory を config にセットする
 
@@ -171,16 +171,16 @@ TBD - created by archiving change 2026-04-20-pekko-panic-guard. Update Purpose a
 
 ### Requirement: std adaptor 公開モジュールには `actor` サブモジュールを含めなければならない
 
-`modules/actor-adaptor-std/src/std.rs` は `dispatch` / `event` / `pattern` / `tick_driver` / `time` に加えて `pub mod actor;` を公開しなければならない（MUST）。`actor` サブモジュールは std 固有 helper である `PanicInvokeGuard` を re-export し、既存 capability `actor-std-adapter-surface` の「std 公開面は adapter と std 固有 helper のみ」の制約を破らない。
+`modules/actor-adaptor-std/src/lib.rs` は `dispatch` / `event` / `pattern` / `tick_driver` / `time` に加えて `pub mod actor;` を公開しなければならない（MUST）。`actor` サブモジュールは std 固有 helper である `PanicInvokeGuard` を re-export し、既存 capability `actor-std-adapter-surface` の「std 公開面は adapter と std 固有 helper のみ」の制約を破らない。
 
-#### Scenario: `fraktor_actor_adaptor_std_rs::std::actor::PanicInvokeGuard` が解決できる
+#### Scenario: `fraktor_actor_adaptor_std_rs::actor::PanicInvokeGuard` が解決できる
 
-- **WHEN** integration test や外部 crate が `use fraktor_actor_adaptor_std_rs::std::actor::PanicInvokeGuard;` する
+- **WHEN** integration test や外部 crate が `use fraktor_actor_adaptor_std_rs::actor::PanicInvokeGuard;` する
 - **THEN** import が成功する
 
 #### Scenario: 既存の公開サブモジュールは維持される
 
-- **WHEN** `modules/actor-adaptor-std/src/std.rs` を確認する
+- **WHEN** `modules/actor-adaptor-std/src/lib.rs` を確認する
 - **THEN** `dispatch` / `event` / `pattern` / `tick_driver` / `time` は引き続き `pub mod` として公開されている
 - **AND** 新規 `pub mod actor;` が追加されている
 

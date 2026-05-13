@@ -7,15 +7,13 @@
 
 use std::time::{Duration, Instant};
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{
-    TypedActorRef, TypedActorSystem, TypedProps,
-    dsl::{Behaviors, routing::Routers},
-  },
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{
+  TypedActorRef, TypedActorSystem, TypedProps,
+  dsl::{Behaviors, routing::Routers},
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 // --- メッセージ定義 ---
 
@@ -71,7 +69,7 @@ fn main() {
 
   let props = router_guardian(records, next_routee_index);
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let mut router = system.user_guardian_ref();
 
   // 4つのワークメッセージを送信（2つのルーティーに分配される）
@@ -93,6 +91,7 @@ fn main() {
     let records = future.try_take().expect("ready").expect("ok");
     let observed_count = records.len();
     if observed_count == 4 {
+      println!("routing distributed records: {records:?}");
       break;
     }
     assert!(Instant::now() < deadline, "all work items should be routed within 3 seconds, observed {}", observed_count);

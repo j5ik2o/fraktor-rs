@@ -1,0 +1,13 @@
+#[cfg(test)]
+#[path = "substream_cancel_strategy_test.rs"]
+mod tests;
+
+/// Cancellation handling for `split_when` and `split_after` substreams.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SubstreamCancelStrategy {
+  /// Consume the remaining upstream elements instead of cancelling upstream immediately.
+  Drain,
+  /// Propagate cancellation to the upstream side.
+  #[default]
+  Propagate,
+}

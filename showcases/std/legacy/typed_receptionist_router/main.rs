@@ -1,17 +1,13 @@
-#![cfg(not(target_os = "none"))]
-
 use std::{thread, time::Duration, vec::Vec};
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{
-    ActorTags, SupervisorStrategy, TypedActorSystem, TypedProps,
-    dsl::{Behaviors, routing::Routers},
-    receptionist::{Receptionist, ServiceKey},
-  },
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{
+  ActorTags, SupervisorStrategy, TypedActorSystem, TypedProps,
+  dsl::{Behaviors, routing::Routers},
+  receptionist::{Receptionist, ServiceKey},
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
   for _ in 0..1_000 {
@@ -26,7 +22,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
       .expect("system");
 
   let key = ServiceKey::<u32>::new("typed-receptionist-router-example");
@@ -58,6 +54,7 @@ fn main() {
 
   router_ref.tell(42);
   wait_until(|| records.with_lock(|records| records.as_slice() == [42]));
+  println!("typed_receptionist_router delivered records: {:?}", records.with_lock(|records| records.clone()));
 
   system.terminate().expect("terminate");
 }

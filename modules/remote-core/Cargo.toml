@@ -16,7 +16,7 @@ autoexamples = false
 default = []
 
 [dependencies]
-fraktor-actor-core-rs = { workspace = true }
+fraktor-actor-core-kernel-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true }
 ahash = { workspace = true, default-features = false }
 bytes = { workspace = true }
@@ -25,6 +25,7 @@ libm = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 
 [lints]

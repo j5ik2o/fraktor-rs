@@ -5,7 +5,7 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 ## Requirements
 ### Requirement: Remoting trait
 
-`fraktor_remote_core_rs::core::extension::Remoting` trait が定義され、リモートサブシステムの lifecycle API を提供する SHALL。god object `RemotingControlHandle` (旧 `fraktor-remote-rs`, 479行) の純粋 lifecycle 責務のみを受け持つ。transport 参照、bridge factory、watcher daemon、heartbeat channels 等の runtime 配線は **一切保持しない**。`Remoting` trait のすべてのメソッドは `&self` を取る同期 method SHALL。`async fn` および `Future` 戻り値を追加してはならない（MUST NOT）。`addresses` の戻り値は owned `Vec<Address>`。`impl Remoting for Remote` は存在してはならず、共有 surface である `RemoteShared` が `Remoting` を実装する SHALL。
+`fraktor_remote_core_rs::extension::Remoting` trait が定義され、リモートサブシステムの lifecycle API を提供する SHALL。god object `RemotingControlHandle` (旧 `fraktor-remote-rs`, 479行) の純粋 lifecycle 責務のみを受け持つ。transport 参照、bridge factory、watcher daemon、heartbeat channels 等の runtime 配線は **一切保持しない**。`Remoting` trait のすべてのメソッドは `&self` を取る同期 method SHALL。`async fn` および `Future` 戻り値を追加してはならない（MUST NOT）。`addresses` の戻り値は owned `Vec<Address>`。`impl Remoting for Remote` は存在してはならず、共有 surface である `RemoteShared` が `Remoting` を実装する SHALL。
 
 #### Scenario: trait の存在
 
@@ -173,11 +173,11 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 ### Requirement: RemoteEvent enum の存在
 
-`fraktor_remote_core_rs::core::extension::RemoteEvent` enum が定義され、adapter から core への通知種別を closed enum として表現する SHALL。
+`fraktor_remote_core_rs::extension::RemoteEvent` enum が定義され、adapter から core への通知種別を closed enum として表現する SHALL。
 
 #### Scenario: RemoteEvent の存在
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_event.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote_event.rs` を読む
 - **THEN** `pub enum RemoteEvent` が定義されている
 
 #### Scenario: 必要なバリアントの宣言
@@ -208,11 +208,11 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 ### Requirement: RemoteEventReceiver trait
 
-`fraktor_remote_core_rs::core::extension::RemoteEventReceiver` trait が定義され、`Remote::run` / `RemoteShared::run` が消費する Port を表現する SHALL。
+`fraktor_remote_core_rs::extension::RemoteEventReceiver` trait が定義され、`Remote::run` / `RemoteShared::run` が消費する Port を表現する SHALL。
 
 #### Scenario: trait の存在
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_event_receiver.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote_event_receiver.rs` を読む
 - **THEN** `pub trait RemoteEventReceiver` が定義されている
 - **AND** trait 自体に `Send` supertrait は要求されていない（single-thread executor / no_std 利用を妨げない）
 
@@ -224,12 +224,12 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 #### Scenario: tokio 非依存
 
-- **WHEN** `modules/remote-core/src/core/extension/` 配下の RemoteEvent / RemoteEventReceiver 関連 import を検査する
+- **WHEN** `modules/remote-core/src/extension/` 配下の RemoteEvent / RemoteEventReceiver 関連 import を検査する
 - **THEN** `tokio` クレートへの参照が存在しない
 
 #### Scenario: RemoteEventSink trait の不在
 
-- **WHEN** `modules/remote-core/src/core/extension/` 配下のソースを検査する
+- **WHEN** `modules/remote-core/src/extension/` 配下のソースを検査する
 - **THEN** `pub trait RemoteEventSink` または同等の adapter→core push 用 trait が定義されていない（adapter 内部 sender で完結し、純増ゼロ方針を維持する）
 
 ### Requirement: Remote は CQS core logic 層であり Remote::run を持つ
@@ -263,7 +263,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 #### Scenario: RemoteRunFuture の存在
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_run_future.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote_run_future.rs` を読む
 - **THEN** `pub struct RemoteRunFuture<'a, S: RemoteEventReceiver + ?Sized>` または同等の公開 concrete Future 型が定義されている
 - **AND** `impl Future for RemoteRunFuture<'_, S>` が定義されている
 - **AND** `Remote::run` の戻り値型としてこの concrete type 名が現れる
@@ -283,7 +283,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 #### Scenario: handle_remote_event のシグネチャ
 
-- **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote.rs` を読む
 - **THEN** `impl Remote` ブロックに `pub fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` または同等のシグネチャが宣言されている
 - **AND** 成功値は `()` であり、`bool` その他の停止判定値を返していない（CQS Command 準拠）
 - **AND** `Remote` 自体には型パラメータ `<I>` が宣言されていない
@@ -315,7 +315,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 #### Scenario: is_terminated のシグネチャ
 
-- **WHEN** `modules/remote-core/src/core/extension/remote.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote.rs` を読む
 - **THEN** `impl Remote` ブロックに `pub fn is_terminated(&self) -> bool` または同等のシグネチャが宣言されている
 - **AND** `&self` を取り、状態を変更しない（CQS Query 準拠）
 - **AND** `#[must_use]` 属性が付与されている
@@ -328,13 +328,13 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 ### Requirement: RemoteShared は Sharing 層として並行性を吸収する（薄いラッパー原則）
 
-`fraktor_remote_core_rs::core::extension::RemoteShared` 型が定義され、`SharedLock<Remote>` を内包する Sharing 層として並行性責務を吸収する SHALL。`#[derive(Clone)]` で複数 clone 可能、すべての公開 method は `&self` を取る。raw `SharedLock<Remote>` を呼び出し側に露出してはならない（MUST NOT）。
+`fraktor_remote_core_rs::extension::RemoteShared` 型が定義され、`SharedLock<Remote>` を内包する Sharing 層として並行性責務を吸収する SHALL。`#[derive(Clone)]` で複数 clone 可能、すべての公開 method は `&self` を取る。raw `SharedLock<Remote>` を呼び出し側に露出してはならない（MUST NOT）。
 
 **薄いラッパー原則:** `RemoteShared` は `Remote` が知らない責務（tokio sender、event channel、wake 機構、runtime-specific 概念等）や、`Remote` が持つべき core semantics（event variant 解釈、lifecycle 遷移、effect 実行、transport 呼び出し）を **追加してはならない**（MUST NOT）。すべての公開 method は `with_write` / `with_read` で `Remote` の inherent method にデリゲートするだけに留まる。`run` は例外的な固有責務ではなく、`Remote::run` の共有 wrapper である。
 
 #### Scenario: RemoteShared の存在と Clone
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote_shared.rs` を読む
 - **THEN** `pub struct RemoteShared` が定義され、`#[derive(Clone)]` または同等の手書き `impl Clone for RemoteShared` を持つ
 - **AND** 内部 field は `SharedLock<Remote>` 1 個のみ（`utils-core::sync::SharedLock<T>`）
 
@@ -370,7 +370,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 #### Scenario: RemoteShared::run のシグネチャ
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote_shared.rs` を読む
 - **THEN** `impl RemoteShared` ブロックに `pub fn run<'a, S>(&'a self, receiver: &'a mut S) -> RemoteSharedRunFuture<'a, S>` または同等の concrete Future 型を返すシグネチャが宣言されている
 - **AND** `S: RemoteEventReceiver` が trait bound として要求される
 - **AND** `async fn run` や `-> impl Future<...>` を public run API に使わない
@@ -392,7 +392,7 @@ adapter が inbound delivery hook を必要とする場合、`RemoteShared` は 
 
 #### Scenario: RemoteSharedRunFuture の存在
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_shared_run_future.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remote_shared_run_future.rs` を読む
 - **THEN** `pub struct RemoteSharedRunFuture<'a, S: RemoteEventReceiver + ?Sized>` または同等の公開 concrete Future 型が定義されている
 - **AND** `impl Future for RemoteSharedRunFuture<'_, S>` が定義されている
 - **AND** `RemoteShared::run` の戻り値型としてこの concrete type 名が現れる
@@ -439,7 +439,7 @@ adapter が inbound delivery hook を必要とする場合、`RemoteShared` は 
 
 #### Scenario: Remoting trait のシグネチャ
 
-- **WHEN** `modules/remote-core/src/core/extension/remoting.rs` を読む
+- **WHEN** `modules/remote-core/src/extension/remoting.rs` を読む
 - **THEN** trait `Remoting` の各メソッドは次のシグネチャを持つ
   - `fn start(&self) -> Result<(), RemotingError>`
   - `fn shutdown(&self) -> Result<(), RemotingError>`
@@ -449,12 +449,12 @@ adapter が inbound delivery hook を必要とする場合、`RemoteShared` は 
 
 #### Scenario: impl Remoting for Remote の不在
 
-- **WHEN** `modules/remote-core/src/core/extension/remote.rs` を検査する
+- **WHEN** `modules/remote-core/src/extension/remote.rs` を検査する
 - **THEN** `impl Remoting for Remote` が存在しない（`Remote` は CQS 純粋ロジック層であり `Remoting` port を実装しない）
 
 #### Scenario: impl Remoting for RemoteShared
 
-- **WHEN** `modules/remote-core/src/core/extension/remote_shared.rs` を検査する
+- **WHEN** `modules/remote-core/src/extension/remote_shared.rs` を検査する
 - **THEN** `impl Remoting for RemoteShared` が定義され、各メソッドは `with_write` または `with_read` で内部 `Remote` のメソッドにデリゲートする
 - **AND** `start` / `shutdown` / `quarantine` は `with_write` 経由
 - **AND** `addresses` は `with_read(|remote| remote.addresses().to_vec())` で owned `Vec<Address>` を返す
@@ -481,17 +481,17 @@ adapter が inbound delivery hook を必要とする場合、`RemoteShared` は 
 
 #### Scenario: RemoteDriver 型の不在
 
-- **WHEN** `modules/remote-core/src/core/` 配下を検査する
+- **WHEN** `modules/remote-core/src/` 配下を検査する
 - **THEN** `pub struct RemoteDriver` または `pub mod driver` が定義されていない
 
 #### Scenario: RemoteDriverHandle 型の不在
 
-- **WHEN** `modules/remote-core/src/core/` 配下を検査する
+- **WHEN** `modules/remote-core/src/` 配下を検査する
 - **THEN** `pub struct RemoteDriverHandle` が定義されていない
 
 #### Scenario: RemoteDriverOutcome enum の不在
 
-- **WHEN** `modules/remote-core/src/core/` 配下を検査する
+- **WHEN** `modules/remote-core/src/` 配下を検査する
 - **THEN** `pub enum RemoteDriverOutcome` が定義されていない（`Result<(), RemotingError>` で「正常終了 / 異常終了」を表現する）
 
 ### Requirement: AssociationEffect::StartHandshake は Remote::handle_remote_event で 2 ステップ処理される
@@ -675,7 +675,7 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 
 #### Scenario: live spec と実装が同じ signal を要求する
 
-- **WHEN** `openspec/specs/remote-core-extension/spec.md`, `openspec/specs/remote-core-association-state-machine/spec.md`, `modules/remote-core/src/core/extension/remote.rs` を比較する
+- **WHEN** `openspec/specs/remote-core-extension/spec.md`, `openspec/specs/remote-core-association-state-machine/spec.md`, `modules/remote-core/src/extension/remote.rs` を比較する
 - **THEN** high watermark で使う signal が一致している
 - **AND** `Notify` が public enum に残る場合、spec は `Apply` / `Release` のみと主張しない
 

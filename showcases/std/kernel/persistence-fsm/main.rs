@@ -1,10 +1,8 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,
@@ -16,11 +14,11 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_persistence_core_rs::core::{
+use fraktor_persistence_core_rs::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentFsm, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DoorState {
@@ -180,7 +178,7 @@ fn main() {
     move || GuardianActor { child: None, observed: observed.clone() }
   });
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
   let termination = system.when_terminated();
   let mut guardian = system.user_guardian_ref();
 
@@ -188,6 +186,8 @@ fn main() {
   wait_until(|| observed.with_lock(|observed| observed.0 == DoorState::Open));
   guardian.tell(AnyMessage::new(GuardianCommand::Pass));
   wait_until(|| observed.with_lock(|observed| *observed == (DoorState::Closed, 1)));
+  let observed_state = observed.with_lock(|observed| *observed);
+  println!("kernel_persistence_fsm observed door state: {observed_state:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

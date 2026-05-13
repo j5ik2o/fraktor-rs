@@ -13,8 +13,8 @@ use std::{
   borrow::Cow,
 };
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
     setup::ActorSystemConfig,
@@ -26,7 +26,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use serde::{Deserialize, Serialize};
 
 // --- メッセージ定義 ---
@@ -231,7 +231,6 @@ fn serialize_and_restore(serialization: &SerializationExtensionShared, payload: 
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   let json_id = SerializerId::try_from(201).expect("valid json serializer id");
   let bincode_id = SerializerId::try_from(202).expect("valid bincode serializer id");
@@ -240,15 +239,15 @@ fn main() {
 
   let installers = ExtensionInstallers::default().with_extension_installer({
     let ext_id = serialization_id.clone();
-    move |system: &fraktor_actor_core_rs::core::kernel::system::ActorSystem| {
+    move |system: &fraktor_actor_core_kernel_rs::system::ActorSystem| {
       let registered = system.extended().register_extension(&ext_id);
       let existing = system.extended().extension(&ext_id).ok_or_else(|| {
-        fraktor_actor_core_rs::core::kernel::system::ActorSystemBuildError::Configuration(
+        fraktor_actor_core_kernel_rs::system::ActorSystemBuildError::Configuration(
           "serialization extension was not retained".into(),
         )
       })?;
-      if !fraktor_utils_core_rs::core::sync::ArcShared::ptr_eq(&registered, &existing) {
-        return Err(fraktor_actor_core_rs::core::kernel::system::ActorSystemBuildError::Configuration(
+      if !fraktor_utils_core_rs::sync::ArcShared::ptr_eq(&registered, &existing) {
+        return Err(fraktor_actor_core_kernel_rs::system::ActorSystemBuildError::Configuration(
           "serialization extension identity mismatch".into(),
         ));
       }
@@ -258,7 +257,7 @@ fn main() {
 
   let props = Props::from_fn(|| NullActor).with_name("serialization-demo");
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("actor system");
 
   let serialization: SerializationExtensionShared =
     (*system.extended().extension(&serialization_id).expect("extension registered")).clone();

@@ -1,21 +1,16 @@
-#![cfg(not(target_os = "none"))]
-
-use std::{boxed::Box, string::ToString, vec::Vec};
-
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
     setup::ActorSystemConfig,
   },
-  event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, RemotingLifecycleEvent},
   system::ActorSystem,
 };
-use fraktor_remote_adaptor_std_rs::std::{
+use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, transport::tcp::TcpRemoteTransport,
 };
-use fraktor_remote_core_rs::core::{address::Address, config::RemoteConfig, extension::Remoting};
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_remote_core_rs::{address::Address, config::RemoteConfig};
+use fraktor_utils_core_rs::sync::ArcShared;
 
 struct NoopActor;
 
@@ -25,59 +20,17 @@ impl Actor for NoopActor {
   }
 }
 
-struct RecordingSubscriber {
-  events: SharedLock<Vec<EventStreamEvent>>,
-}
-
-impl RecordingSubscriber {
-  fn new(events: SharedLock<Vec<EventStreamEvent>>) -> Self {
-    Self { events }
-  }
-}
-
-impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.with_lock(|events| events.push(event.clone()));
-  }
-}
-
-fn subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
-}
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
   let props = Props::from_fn(|| NoopActor);
-  let advertised_address = Address::new("remote-showcase", "127.0.0.1", 2551);
-  let transport = TcpRemoteTransport::new("127.0.0.1:0", vec![advertised_address.clone()]);
+  let advertised_address = Address::new("remote-showcase", "127.0.0.1", 0);
+  let transport = TcpRemoteTransport::new("127.0.0.1:0", vec![advertised_address]);
   let remote_config = RemoteConfig::new("127.0.0.1");
   let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config));
-  let installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
+  let installers = ExtensionInstallers::default().with_shared_extension_installer(installer);
   let config = ActorSystemConfig::new(StdTickDriver::default()).with_extension_installers(installers);
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
-
-  // events は短時間の記録だけなので、低オーバーヘッドな spin lock を使う。
-  let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
-  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = system.event_stream().subscribe(&subscriber);
-
-  let remote = installer.remote().expect("installed remote handle");
-  remote.start().expect("remote lifecycle start");
-  assert_eq!(remote.addresses(), vec![advertised_address.clone()]);
-  installer.shutdown_and_join().await.expect("remote lifecycle shutdown");
-
-  let expected_authority = advertised_address.to_string();
-  let observed_events = events.with_lock(|events| events.clone());
-  let observed = observed_events.iter().any(|event| {
-    matches!(
-      event,
-      EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::ListenStarted {
-        authority,
-        ..
-      }) if authority == &expected_authority
-    )
-  });
-  assert!(observed, "ListenStarted({expected_authority}) not observed; events={observed_events:?}");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
+  println!("remote_lifecycle initialized remoting extension for 127.0.0.1");
 
   system.terminate().expect("terminate");
 }

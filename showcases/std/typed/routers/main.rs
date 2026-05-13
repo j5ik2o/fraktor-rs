@@ -1,17 +1,13 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{
-    Behavior, TypedActorRef, TypedActorSystem, TypedProps,
-    dsl::{Behaviors, routing::Routers},
-  },
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorRef, TypedActorSystem, TypedProps,
+  dsl::{Behaviors, routing::Routers},
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone)]
 enum Command {
@@ -53,7 +49,7 @@ fn main() {
   let next_index = SharedLock::new_with_driver::<SpinSyncMutex<_>>(0_usize);
   let props = router_props(records.clone(), next_index);
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut router = system.user_guardian_ref();
 
@@ -63,6 +59,7 @@ fn main() {
   let snapshot = wait_for_records(&mut router);
   assert_eq!(snapshot.iter().filter(|(index, _)| *index == 0).count(), 2);
   assert_eq!(snapshot.iter().filter(|(index, _)| *index == 1).count(), 2);
+  println!("typed_routers routed {} work items: {snapshot:?}", snapshot.len());
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

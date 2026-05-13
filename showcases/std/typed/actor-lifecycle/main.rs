@@ -1,14 +1,12 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::{error::ActorError, setup::ActorSystemConfig},
-  typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal},
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::actor::{error::ActorError, setup::ActorSystemConfig};
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 #[derive(Clone, Copy)]
 enum ParentCommand {
@@ -59,12 +57,14 @@ fn parent(events: SharedLock<Vec<&'static str>>) -> Behavior<ParentCommand> {
 
 fn main() {
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
-  let props = TypedProps::from_behavior_factory({
-    let events = events.clone();
-    move || parent(events.clone())
-  });
-  let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let system = TypedActorSystem::create_from_behavior_factory(
+    {
+      let events = events.clone();
+      move || parent(events.clone())
+    },
+    ActorSystemConfig::new(StdTickDriver::default()),
+  )
+  .expect("system");
   let termination = system.when_terminated();
   let mut guardian = system.user_guardian_ref();
 
@@ -73,6 +73,7 @@ fn main() {
   let snapshot = events.with_lock(|events| events.clone());
   assert!(snapshot.contains(&"parent-setup"));
   assert!(snapshot.contains(&"child-post-stop"));
+  println!("typed_actor_lifecycle observed events: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

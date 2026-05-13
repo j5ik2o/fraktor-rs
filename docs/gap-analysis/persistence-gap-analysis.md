@@ -10,7 +10,7 @@
 
 | 領域 | fraktor-rs | Pekko 参照 |
 |------|------------|------------|
-| classic persistent actor | `modules/persistence-core/src/core/eventsourced.rs`, `persistent_actor.rs`, `persistence_context.rs` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/` |
+| classic persistent actor | `modules/persistence-core/src/eventsourced.rs`, `persistent_actor.rs`, `persistence_context.rs` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/` |
 | recovery / journal / snapshot | `journal*.rs`, `snapshot*.rs`, `recovery.rs` | `journal/`, `snapshot/`, `SnapshotProtocol.scala`, `JournalProtocol.scala` |
 | persistent representation / adapter | `persistent_repr.rs`, `persistent_envelope.rs`, `event_adapters.rs`, `read_event_adapter.rs`, `write_event_adapter.rs`, `tagged.rs` | `Persistent.scala`, `journal/EventAdapter.scala`, `journal/Tagged.scala` |
 | durable state store contract | `durable_state_store*.rs`, `durable_state_exception.rs` | `state/scaladsl/*`, `state/DurableStateStoreRegistry.scala`, `state/exception/*` |
@@ -35,7 +35,7 @@
 
 固定スコープ候補ディレクトリを raw 抽出すると、Pekko 側は型宣言 352 件、主要 `def` 1405 件が見つかる。これには private / internal / Java DSL / JVM 固有 / scope 外の replication 系 API が含まれるため、parity カバレッジ分母には使わない。
 
-fraktor-rs 側は `modules/persistence-core/src/core/` の `pub` 系抽出で、公開型 55 件、公開メソッド 179 件。現在は `persistence-adaptor-std` や `core/typed` サブ層は存在しない。
+fraktor-rs 側は `modules/persistence-core/src/` の `pub` 系抽出で、公開型 55 件、公開メソッド 179 件。現在は `persistence-adaptor-std` や `core/typed` サブ層は存在しない。
 
 ## サマリー
 

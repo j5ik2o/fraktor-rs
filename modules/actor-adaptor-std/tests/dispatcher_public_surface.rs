@@ -15,38 +15,54 @@ use std::{
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use fraktor_actor_adaptor_std_rs::std::{
+use fraktor_actor_adaptor_std_rs::{
   dispatch::dispatcher::{AffinityExecutorFactory, PinnedExecutorFactory},
   system::std_actor_system_config,
   tick_driver::TestTickDriver,
 };
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::ExecutorFactory;
+use fraktor_actor_core_kernel_rs::dispatch::dispatcher::ExecutorFactory;
 
-const AFFINITY_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::AffinityExecutor;
+const AFFINITY_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::AffinityExecutor;
 
 fn main() {
   let _ = core::mem::size_of::<AffinityExecutor>();
 }
 "#;
 
-const AFFINITY_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::AffinityExecutorFactory;
+const AFFINITY_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::AffinityExecutorFactory;
 
 fn main() {
   let _ = core::mem::size_of::<AffinityExecutorFactory>();
 }
 "#;
 
-const PINNED_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::PinnedExecutor;
+const PINNED_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::PinnedExecutor;
 
 fn main() {
   let _ = core::mem::size_of::<PinnedExecutor>();
 }
 "#;
 
-const PINNED_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::std::dispatch::dispatcher::PinnedExecutorFactory;
+const PINNED_EXECUTOR_FACTORY_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::PinnedExecutorFactory;
 
 fn main() {
   let _ = core::mem::size_of::<PinnedExecutorFactory>();
+}
+"#;
+
+const TOKIO_BLOCKING_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::{TokioExecutor, TokioExecutorFactory};
+
+fn main() {
+  let _ = core::mem::size_of::<TokioExecutor>();
+  let _ = core::mem::size_of::<TokioExecutorFactory>();
+}
+"#;
+
+const TOKIO_TASK_EXECUTOR_SOURCE: &str = r#"use fraktor_actor_adaptor_std_rs::dispatch::dispatcher::{TokioTaskExecutor, TokioTaskExecutorFactory};
+
+fn main() {
+  let _ = core::mem::size_of::<TokioTaskExecutor>();
+  let _ = core::mem::size_of::<TokioTaskExecutorFactory>();
 }
 "#;
 
@@ -68,6 +84,22 @@ fn pinned_executor_public_surface_is_reachable_from_external_crate() {
 #[test]
 fn pinned_executor_factory_public_surface_is_reachable_from_external_crate() {
   assert_fixture_build_success("dispatcher-public-surface-pinned-factory", PINNED_EXECUTOR_FACTORY_SOURCE);
+}
+
+#[test]
+fn tokio_blocking_executor_public_surface_is_reachable_from_external_crate() {
+  assert_fixture_build_success_with_features(
+    "dispatcher-public-surface-tokio-blocking",
+    TOKIO_BLOCKING_EXECUTOR_SOURCE,
+    &["tokio-executor"],
+  );
+}
+
+#[test]
+fn tokio_task_executor_public_surface_is_reachable_from_external_crate() {
+  assert_fixture_build_success_with_features("dispatcher-public-surface-tokio-task", TOKIO_TASK_EXECUTOR_SOURCE, &[
+    "tokio-executor",
+  ]);
 }
 
 #[test]
@@ -100,8 +132,12 @@ fn std_actor_system_config_installs_mailbox_clock() {
 }
 
 fn assert_fixture_build_success(name: &str, source: &str) {
+  assert_fixture_build_success_with_features(name, source, &[]);
+}
+
+fn assert_fixture_build_success_with_features(name: &str, source: &str, features: &[&str]) {
   let crate_dir = unique_crate_dir(name);
-  write_fixture_crate(&crate_dir, name, source);
+  write_fixture_crate(&crate_dir, name, source, features);
 
   let output = match Command::new("cargo")
     .arg("check")
@@ -124,12 +160,12 @@ fn assert_fixture_build_success(name: &str, source: &str) {
   }
 }
 
-fn write_fixture_crate(crate_dir: &Path, name: &str, source: &str) {
+fn write_fixture_crate(crate_dir: &Path, name: &str, source: &str, features: &[&str]) {
   let src_dir = crate_dir.join("src");
   if let Err(error) = fs::create_dir_all(&src_dir) {
     panic!("fixture src directory should be created: {error}");
   }
-  if let Err(error) = fs::write(crate_dir.join("Cargo.toml"), fixture_manifest(name)) {
+  if let Err(error) = fs::write(crate_dir.join("Cargo.toml"), fixture_manifest(name, features)) {
     panic!("fixture manifest should be written: {error}");
   }
   if let Err(error) = fs::write(src_dir.join("main.rs"), source) {
@@ -137,8 +173,10 @@ fn write_fixture_crate(crate_dir: &Path, name: &str, source: &str) {
   }
 }
 
-fn fixture_manifest(name: &str) -> String {
+fn fixture_manifest(name: &str, features: &[&str]) -> String {
   let manifest_dir = env!("CARGO_MANIFEST_DIR").replace('\\', "\\\\");
+  let feature_list = features.iter().map(|feature| format!(r#""{feature}""#)).collect::<Vec<_>>().join(", ");
+  let feature_fragment = if feature_list.is_empty() { String::new() } else { format!(", features = [{feature_list}]") };
   format!(
     r#"[package]
 name = "{name}"
@@ -146,7 +184,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fraktor-actor-adaptor-std-rs = {{ path = "{manifest_dir}" }}
+fraktor-actor-adaptor-std-rs = {{ path = "{manifest_dir}"{feature_fragment} }}
 "#
   )
 }
