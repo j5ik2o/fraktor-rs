@@ -2,12 +2,15 @@ use core::time::Duration;
 use std::{net::SocketAddr, time::Instant};
 
 use bytes::{Bytes, BytesMut};
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_path::{ActorPath, ActorPathParser},
     messaging::AnyMessage,
   },
   event::stream::CorrelationId,
+  serialization::{SerializationExtensionShared, default_serialization_extension_id},
+  support::ByteString,
 };
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId, UniqueAddress},
@@ -15,8 +18,9 @@ use fraktor_remote_core_rs::{
   envelope::{OutboundEnvelope, OutboundPriority},
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
+  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
 };
+use fraktor_utils_core_rs::sync::ArcShared;
 use futures::StreamExt as _;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::codec::{Decoder, Encoder, Framed};
@@ -45,8 +49,46 @@ fn declared_frame_length(buf: &BytesMut) -> usize {
   u32::from_be_bytes(bytes) as usize
 }
 
+fn test_envelope_pdu(
+  recipient_path: String,
+  sender_path: Option<String>,
+  correlation_hi: u64,
+  correlation_lo: u32,
+  priority: u8,
+  payload: Bytes,
+) -> EnvelopePdu {
+  EnvelopePdu::new(
+    recipient_path,
+    sender_path,
+    correlation_hi,
+    correlation_lo,
+    priority,
+    EnvelopePayload::new(5, None, payload),
+  )
+}
+
+fn serialization_extension() -> ArcShared<SerializationExtensionShared> {
+  let system = create_noop_actor_system();
+  system.extended().register_extension(&default_serialization_extension_id())
+}
+
+fn outbound_pdu(envelope: &OutboundEnvelope) -> Result<EnvelopePdu, TransportError> {
+  let serialization_extension = serialization_extension();
+  outbound_envelope_to_pdu(envelope, &serialization_extension)
+}
+
+fn serialized_string_payload(value: &str) -> Bytes {
+  let bytes = value.as_bytes();
+  let mut payload = Vec::with_capacity(4 + bytes.len());
+  payload.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+  payload.extend_from_slice(bytes);
+  Bytes::from(payload)
+}
+
+struct UnsupportedPayload;
+
 fn large_envelope_frame() -> WireFrame {
-  WireFrame::Envelope(EnvelopePdu::new(
+  WireFrame::Envelope(test_envelope_pdu(
     "/user/large".into(),
     None,
     0x14,
@@ -117,43 +159,68 @@ fn start_test_server(server: &mut TcpServer, inbound_tx: UnboundedSender<Inbound
 }
 
 #[test]
-fn outbound_envelope_to_pdu_preserves_metadata_for_bytes_payload() {
+fn outbound_envelope_to_pdu_preserves_metadata_for_vec_u8_payload() {
   let sender = ActorPathParser::parse("fraktor.tcp://local-sys@127.0.0.1:2551/user/source").expect("parse sender");
   let correlation_id = CorrelationId::new(0x1111_2222_3333_4444, 0x5566_7788);
-  let envelope =
-    test_envelope(2552, AnyMessage::new(Bytes::from_static(b"bytes payload")), correlation_id, Some(sender.clone()));
+  let payload = Vec::from(&b"vec payload"[..]);
+  let envelope = test_envelope(2552, AnyMessage::new(payload), correlation_id, Some(sender.clone()));
 
-  let pdu = outbound_envelope_to_pdu(&envelope).expect("bytes payload should be supported");
+  let pdu = outbound_pdu(&envelope).expect("Vec<u8> payload should be supported");
 
   assert_eq!(pdu.recipient_path(), envelope.recipient().to_canonical_uri());
   assert_eq!(pdu.sender_path(), Some(sender.to_canonical_uri().as_str()));
   assert_eq!(pdu.priority(), OutboundPriority::User.to_wire());
   assert_eq!(pdu.correlation_hi(), correlation_id.hi());
   assert_eq!(pdu.correlation_lo(), correlation_id.lo());
-  assert_eq!(pdu.payload(), &Bytes::from_static(b"bytes payload"));
-}
-
-#[test]
-fn outbound_envelope_to_pdu_supports_vec_u8_payload() {
-  let envelope = test_envelope(2552, AnyMessage::new(Vec::from(&b"vec payload"[..])), CorrelationId::nil(), None);
-
-  let pdu = outbound_envelope_to_pdu(&envelope).expect("Vec<u8> payload should be supported");
-
+  assert_eq!(pdu.serializer_id(), 5);
+  assert_eq!(pdu.manifest(), None);
   assert_eq!(pdu.payload(), &Bytes::from_static(b"vec payload"));
 }
 
 #[test]
-fn outbound_envelope_to_pdu_rejects_unsupported_payload() {
+fn outbound_envelope_to_pdu_supports_byte_string_payload() {
+  let envelope =
+    test_envelope(2552, AnyMessage::new(ByteString::from_slice(b"byte string payload")), CorrelationId::nil(), None);
+
+  let pdu = outbound_pdu(&envelope).expect("ByteString payload should be supported");
+
+  assert_eq!(pdu.serializer_id(), 6);
+  assert_eq!(pdu.manifest(), None);
+  assert_eq!(pdu.payload(), &Bytes::from_static(b"byte string payload"));
+}
+
+#[test]
+fn outbound_envelope_to_pdu_supports_string_payload() {
   let envelope = test_envelope(2552, AnyMessage::new(String::from("payload")), CorrelationId::nil(), None);
 
-  let err = outbound_envelope_to_pdu(&envelope).expect_err("String payload is not part of the std remote codec");
+  let pdu = outbound_pdu(&envelope).expect("String payload should be supported");
+
+  assert_eq!(pdu.serializer_id(), 4);
+  assert_eq!(pdu.manifest(), None);
+  assert_eq!(pdu.payload(), &serialized_string_payload("payload"));
+}
+
+#[test]
+fn outbound_envelope_to_pdu_rejects_bytes_payload_without_custom_serializer() {
+  let envelope = test_envelope(2552, AnyMessage::new(Bytes::from_static(b"bytes payload")), CorrelationId::nil(), None);
+
+  let err = outbound_pdu(&envelope).expect_err("bytes::Bytes should require a custom serializer");
+
+  assert_eq!(err, TransportError::SendFailed);
+}
+
+#[test]
+fn outbound_envelope_to_pdu_rejects_unsupported_payload() {
+  let envelope = test_envelope(2552, AnyMessage::new(UnsupportedPayload), CorrelationId::nil(), None);
+
+  let err = outbound_pdu(&envelope).expect_err("unregistered payload should fail serialization");
 
   assert_eq!(err, TransportError::SendFailed);
 }
 
 #[test]
 fn wire_frame_codec_roundtrips_envelope() {
-  let pdu = EnvelopePdu::new("/user/a".into(), None, 42, 0, 1, Bytes::from_static(b"hello"));
+  let pdu = test_envelope_pdu("/user/a".into(), None, 42, 0, 1, Bytes::from_static(b"hello"));
   let frame = WireFrame::Envelope(pdu.clone());
 
   let mut codec = WireFrameCodec::new();
@@ -208,7 +275,7 @@ fn wire_frame_codec_roundtrips_ack() {
 
 #[test]
 fn wire_frame_codec_returns_none_on_incomplete_frame() {
-  let pdu = EnvelopePdu::new("/user/a".into(), None, 1, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/user/a".into(), None, 1, 0, 0, Bytes::new());
   let frame = WireFrame::Envelope(pdu);
 
   let mut codec = WireFrameCodec::new();
@@ -224,8 +291,8 @@ fn wire_frame_codec_returns_none_on_incomplete_frame() {
 
 #[test]
 fn wire_frame_codec_handles_multiple_frames_in_one_buffer() {
-  let a = WireFrame::Envelope(EnvelopePdu::new("/a".into(), None, 1, 0, 0, Bytes::new()));
-  let b = WireFrame::Envelope(EnvelopePdu::new("/b".into(), None, 2, 0, 1, Bytes::new()));
+  let a = WireFrame::Envelope(test_envelope_pdu("/a".into(), None, 1, 0, 0, Bytes::new()));
+  let b = WireFrame::Envelope(test_envelope_pdu("/b".into(), None, 2, 0, 1, Bytes::new()));
 
   let mut codec = WireFrameCodec::new();
   let mut buf = BytesMut::new();
@@ -325,7 +392,7 @@ async fn remote_transport_start_binds_listener_and_receives_frame() {
   let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
   let mut client =
     connect_test_client(alloc::format!("{}:{}", bound_address.host(), bound_address.port()), client_inbound_tx);
-  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
+  let pdu = test_envelope_pdu("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).expect("client send should succeed");
 
   // Then: remote event 経路で frame を受け取れる
@@ -651,7 +718,7 @@ async fn remote_transport_from_config_uses_bind_override_and_advertises_canonica
 
   let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
   let mut client = connect_test_client(alloc::format!("127.0.0.1:{}", advertised.port()), client_inbound_tx);
-  let pdu = EnvelopePdu::new("/user/bind".into(), None, 0x12, 0, 1, Bytes::from_static(b"hi"));
+  let pdu = test_envelope_pdu("/user/bind".into(), None, 0x12, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).expect("client send should succeed");
 
   let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
@@ -687,7 +754,7 @@ async fn remote_transport_from_config_falls_back_to_canonical_bind_address() {
   let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
   let mut client =
     connect_test_client(alloc::format!("{}:{}", advertised.host(), advertised.port()), client_inbound_tx);
-  let pdu = EnvelopePdu::new("/user/canonical".into(), None, 0x13, 0, 1, Bytes::from_static(b"hi"));
+  let pdu = test_envelope_pdu("/user/canonical".into(), None, 0x13, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).expect("client send should succeed");
 
   let event = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
@@ -720,7 +787,7 @@ async fn remote_transport_from_config_applies_maximum_frame_size_to_inbound_deco
   let mut client =
     connect_test_client(alloc::format!("{}:{}", advertised.host(), advertised.port()), client_inbound_tx);
   let pdu =
-    EnvelopePdu::new("/user/large".into(), None, 0x14, 0, 1, Bytes::from(vec![0_u8; MINIMUM_MAXIMUM_FRAME_SIZE]));
+    test_envelope_pdu("/user/large".into(), None, 0x14, 0, 1, Bytes::from(vec![0_u8; MINIMUM_MAXIMUM_FRAME_SIZE]));
   client.send(WireFrame::Envelope(pdu)).expect("client send should succeed");
 
   // Then: inbound delivery 前に拒否される
@@ -746,7 +813,7 @@ async fn tcp_server_and_client_exchange_a_frame() {
   let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
   let client = connect_test_client(bind_addr.to_string(), client_inbound_tx);
 
-  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
+  let pdu = test_envelope_pdu("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).unwrap();
 
   let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
@@ -798,18 +865,23 @@ async fn remote_transport_send_writes_envelope_frame_to_connected_peer() {
   let mut server = make_test_server();
   let bind_addr = start_test_server(&mut server, server_inbound_tx);
 
-  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  let serialization_extension = serialization_extension();
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
+    .with_serialization_extension(serialization_extension.clone());
   transport.start().expect("transport should start before connecting a peer");
 
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
   transport.connect_peer(&remote).expect("transport should connect to peer before sending envelope");
   let envelope = test_envelope(
     bind_addr.port(),
-    AnyMessage::new(Bytes::from_static(b"payload")),
+    AnyMessage::new(Vec::from(&b"payload"[..])),
     CorrelationId::new(0x1234, 0x5678),
     None,
   );
-  let expected = outbound_envelope_to_pdu(&envelope).expect("test payload should encode");
+  let expected = outbound_envelope_to_pdu(&envelope, &serialization_extension).expect("test payload should encode");
+  assert_eq!(expected.serializer_id(), 5);
+  assert_eq!(expected.manifest(), None);
+  assert_eq!(expected.payload(), &Bytes::from_static(b"payload"));
 
   transport.send(envelope).expect("supported envelope should be enqueued");
 
@@ -861,7 +933,8 @@ async fn remote_transport_send_rejects_unsupported_payload_without_emitting_fram
   let mut server = make_test_server();
   let bind_addr = start_test_server(&mut server, server_inbound_tx);
 
-  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
+    .with_serialization_extension(serialization_extension());
   transport.start().expect("transport should start before connecting a peer");
 
   let remote = Address::new("remote-sys", bind_addr.ip().to_string(), bind_addr.port());
@@ -870,7 +943,7 @@ async fn remote_transport_send_rejects_unsupported_payload_without_emitting_fram
   let envelope = OutboundEnvelope::new(
     recipient,
     None,
-    AnyMessage::new(String::from("payload")),
+    AnyMessage::new(UnsupportedPayload),
     OutboundPriority::User,
     RemoteNodeId::new("remote-sys", bind_addr.ip().to_string(), Some(bind_addr.port()), 1),
     CorrelationId::nil(),
@@ -878,8 +951,9 @@ async fn remote_transport_send_rejects_unsupported_payload_without_emitting_fram
 
   let result = transport.send(envelope);
 
-  let (err, _envelope) = result.expect_err("send should reject unsupported payload before emitting any frame");
+  let (err, returned) = result.expect_err("send should reject unsupported payload before emitting any frame");
   assert_eq!(err, TransportError::SendFailed);
+  assert!(returned.message().downcast_ref::<UnsupportedPayload>().is_some());
   let inbound = tokio::time::timeout(Duration::from_millis(200), server_inbound_rx.recv()).await;
   assert!(inbound.is_err(), "unsupported payload send must not emit an empty payload frame");
   transport.shutdown().expect("transport shutdown should succeed");
@@ -896,7 +970,7 @@ async fn server_shutdown_aborts_existing_connection_read_loops() {
 
   let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
   let client = connect_test_client(bind_addr.to_string(), client_inbound_tx);
-  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
+  let pdu = test_envelope_pdu("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).unwrap();
   let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
     .await

@@ -4,6 +4,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::wire::{
   codec::Codec,
+  envelope_payload::EnvelopePayload,
   envelope_pdu::EnvelopePdu,
   frame_header::KIND_ENVELOPE,
   primitives::{
@@ -33,6 +34,8 @@ impl Codec<EnvelopePdu> for EnvelopeCodec {
     buf.put_u64(value.correlation_hi());
     buf.put_u32(value.correlation_lo());
     buf.put_u8(value.priority());
+    buf.put_u32(value.serializer_id());
+    encode_option_string(value.manifest(), buf)?;
     encode_bytes(value.payload(), buf)?;
     patch_frame_length(buf, len_pos)
   }
@@ -41,13 +44,22 @@ impl Codec<EnvelopePdu> for EnvelopeCodec {
     let _ = read_frame_header(buf, KIND_ENVELOPE)?;
     let recipient_path = decode_string(buf)?;
     let sender_path = decode_option_string(buf)?;
-    if buf.remaining() < 8 + 4 + 1 {
+    if buf.remaining() < 8 + 4 + 1 + 4 {
       return Err(WireError::Truncated);
     }
     let correlation_hi = buf.get_u64();
     let correlation_lo = buf.get_u32();
     let priority = buf.get_u8();
+    let serializer_id = buf.get_u32();
+    let manifest = decode_option_string(buf)?;
     let payload = decode_bytes(buf)?;
-    Ok(EnvelopePdu::new(recipient_path, sender_path, correlation_hi, correlation_lo, priority, payload))
+    Ok(EnvelopePdu::new(
+      recipient_path,
+      sender_path,
+      correlation_hi,
+      correlation_lo,
+      priority,
+      EnvelopePayload::new(serializer_id, manifest, payload),
+    ))
   }
 }

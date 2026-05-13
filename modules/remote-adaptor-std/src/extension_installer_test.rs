@@ -1,4 +1,5 @@
 use std::{
+  any::{Any, TypeId},
   sync::mpsc::{self, Sender},
   time::Duration,
 };
@@ -15,6 +16,10 @@ use fraktor_actor_core_kernel_rs::{
     props::Props,
   },
   event::stream::{CorrelationId, EventStreamEvent, EventStreamSubscriber, RemotingLifecycleEvent, subscriber_handle},
+  serialization::{
+    SerializationCallScope, SerializationError, SerializationExtensionInstaller, SerializationSetupBuilder, Serializer,
+    SerializerId, default_serialization_extension_id,
+  },
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::{
@@ -24,7 +29,7 @@ use fraktor_remote_core_rs::{
   envelope::{InboundEnvelope, OutboundPriority},
   extension::{Remote, RemotingError},
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use tokio::{
   net::TcpStream,
   time::{sleep, timeout},
@@ -44,6 +49,12 @@ struct RecordingEventSubscriber {
   tx: Sender<EventStreamEvent>,
 }
 
+struct CustomPayload;
+
+struct CustomPayloadSerializer {
+  id: SerializerId,
+}
+
 impl RecordingBytesActor {
   fn new(tx: Sender<Bytes>) -> Self {
     Self { tx }
@@ -53,6 +64,12 @@ impl RecordingBytesActor {
 impl RecordingEventSubscriber {
   fn new(tx: Sender<EventStreamEvent>) -> Self {
     Self { tx }
+  }
+}
+
+impl CustomPayloadSerializer {
+  const fn new(id: SerializerId) -> Self {
+    Self { id }
   }
 }
 
@@ -71,6 +88,29 @@ impl EventStreamSubscriber for RecordingEventSubscriber {
   }
 }
 
+impl Serializer for CustomPayloadSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    message.downcast_ref::<CustomPayload>().ok_or(SerializationError::InvalidFormat)?;
+    Ok(vec![0xCA, 0xFE])
+  }
+
+  fn from_binary(
+    &self,
+    _bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    Ok(Box::new(CustomPayload))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+}
+
 fn make_transport() -> TcpRemoteTransport {
   TcpRemoteTransport::new("127.0.0.1:0", Vec::new())
 }
@@ -83,9 +123,25 @@ fn remote_config() -> RemoteConfig {
   RemoteConfig::new("127.0.0.1")
 }
 
+fn custom_serialization_installer() -> (SerializerId, SerializationExtensionInstaller) {
+  let serializer_id = SerializerId::try_from(700).expect("valid custom serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(CustomPayloadSerializer::new(serializer_id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("custom", serializer_id, serializer)
+    .expect("register custom serializer")
+    .set_fallback("custom")
+    .expect("set custom fallback")
+    .bind::<CustomPayload>("custom")
+    .expect("bind custom payload")
+    .build()
+    .expect("build custom serialization setup");
+  (serializer_id, SerializationExtensionInstaller::new(setup))
+}
+
 fn make_remote(transport: TcpRemoteTransport) -> (Remote, EventHarness) {
   let harness = EventHarness::new();
-  let remote = Remote::new(transport, remote_config(), harness.publisher().clone());
+  let serialization_extension = harness.system().extended().register_extension(&default_serialization_extension_id());
+  let remote = Remote::new(transport, remote_config(), harness.publisher().clone(), serialization_extension);
   (remote, harness)
 }
 
@@ -275,6 +331,50 @@ async fn extension_installer_double_install_returns_configuration_error() {
 
   assert_configuration_error(error, "remote extension is already installed");
   terminate_system(harness.system()).await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn extension_installer_reuses_preinstalled_custom_serialization_extension() {
+  let (serializer_id, serialization_installer) = custom_serialization_installer();
+  let remoting_installer = ArcShared::new(RemotingExtensionInstaller::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]),
+    remote_config(),
+  ));
+  let installers = ExtensionInstallers::default()
+    .with_extension_installer(serialization_installer)
+    .with_shared_extension_installer(remoting_installer);
+  let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should install extensions");
+  let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
+
+  let serialized = serialization_extension
+    .with_read(|extension| extension.serialize(&CustomPayload, SerializationCallScope::Remote))
+    .expect("preinstalled custom serializer should be reused by remoting");
+
+  assert_eq!(serialized.serializer_id(), serializer_id);
+  terminate_system(&system).await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn custom_serialization_installer_must_precede_remoting_installer() {
+  let (_serializer_id, serialization_installer) = custom_serialization_installer();
+  let remoting_installer = ArcShared::new(RemotingExtensionInstaller::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]),
+    remote_config(),
+  ));
+  let installers = ExtensionInstallers::default()
+    .with_shared_extension_installer(remoting_installer)
+    .with_extension_installer(serialization_installer);
+  let config = std_actor_system_config(TestTickDriver::default()).with_extension_installers(installers);
+  let system = ActorSystem::create_with_noop_guardian(config).expect("system should install extensions");
+  let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
+
+  let error = serialization_extension
+    .with_read(|extension| extension.serialize(&CustomPayload, SerializationCallScope::Remote))
+    .expect_err("late custom serialization installer should not replace the remoting registry");
+
+  assert!(matches!(error, SerializationError::InvalidFormat | SerializationError::NotSerializable(_)));
+  terminate_system(&system).await;
 }
 
 #[test]

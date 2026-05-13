@@ -5,9 +5,9 @@ use bytes::{Bytes, BytesMut};
 use crate::{
   address::{Address, UniqueAddress},
   wire::{
-    AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePdu, HandshakeCodec, HandshakePdu,
-    HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
-    WIRE_VERSION_1, WireError,
+    AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePayload, EnvelopePdu, HandshakeCodec,
+    HandshakePdu, HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ,
+    KIND_HANDSHAKE_RSP, WIRE_VERSION_1, WireError,
   },
 };
 
@@ -23,6 +23,24 @@ fn sample_handshake_to() -> Address {
   Address::new("local-sys", "127.0.0.1", 2551)
 }
 
+fn test_envelope_pdu(
+  recipient_path: String,
+  sender_path: Option<String>,
+  correlation_hi: u64,
+  correlation_lo: u32,
+  priority: u8,
+  payload: Bytes,
+) -> EnvelopePdu {
+  EnvelopePdu::new(
+    recipient_path,
+    sender_path,
+    correlation_hi,
+    correlation_lo,
+    priority,
+    EnvelopePayload::new(5, None, payload),
+  )
+}
+
 #[test]
 fn envelope_roundtrip_with_sender_path() {
   let pdu = EnvelopePdu::new(
@@ -31,7 +49,7 @@ fn envelope_roundtrip_with_sender_path() {
     0x0123_4567_89ab_cdef,
     0xfedc_ba98,
     1,
-    Bytes::from_static(b"hello"),
+    EnvelopePayload::new(7, Some("example.Manifest".to_string()), Bytes::from_static(b"hello")),
   );
   let codec = EnvelopeCodec::new();
   let mut buf = BytesMut::new();
@@ -39,12 +57,14 @@ fn envelope_roundtrip_with_sender_path() {
   let mut bytes = to_bytes(buf);
   let decoded = codec.decode(&mut bytes).unwrap();
   assert_eq!(decoded, pdu);
+  assert_eq!(decoded.serializer_id(), 7);
+  assert_eq!(decoded.manifest(), Some("example.Manifest"));
   assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
 }
 
 #[test]
 fn envelope_roundtrip_without_sender_path() {
-  let pdu = EnvelopePdu::new("/user/actor-b".to_string(), None, 42, 0, 0, Bytes::from_static(b""));
+  let pdu = test_envelope_pdu("/user/actor-b".to_string(), None, 42, 0, 0, Bytes::from_static(b""));
   let codec = EnvelopeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
@@ -55,7 +75,7 @@ fn envelope_roundtrip_without_sender_path() {
 
 #[test]
 fn envelope_frame_kind_is_0x01() {
-  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
   // layout: [len(4)][version(1)][kind(1)]...
@@ -64,7 +84,7 @@ fn envelope_frame_kind_is_0x01() {
 
 #[test]
 fn envelope_priority_system_is_0x00() {
-  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
   // layout: [len(4)][version(1)][kind(1)][recipient_len(4)][recipient...
@@ -75,15 +95,24 @@ fn envelope_priority_system_is_0x00() {
 
 #[test]
 fn envelope_priority_user_is_0x01() {
-  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 1, Bytes::new());
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 1, Bytes::new());
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
   assert_eq!(buf[25], 0x01);
 }
 
 #[test]
+fn envelope_manifest_none_encodes_as_zero_tag_after_serializer_id() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  assert_eq!(&buf[26..30], &5_u32.to_be_bytes());
+  assert_eq!(buf[30], 0x00);
+}
+
+#[test]
 fn envelope_sender_path_none_encodes_as_zero_tag() {
-  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
   // After recipient:
@@ -188,7 +217,7 @@ fn ack_roundtrip() {
 
 #[test]
 fn unknown_version_byte_is_rejected() {
-  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let codec = EnvelopeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
@@ -201,7 +230,7 @@ fn unknown_version_byte_is_rejected() {
 
 #[test]
 fn unknown_kind_byte_is_rejected() {
-  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let codec = EnvelopeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
@@ -214,7 +243,7 @@ fn unknown_kind_byte_is_rejected() {
 
 #[test]
 fn truncated_buffer_is_rejected() {
-  let pdu = EnvelopePdu::new("/user/r".to_string(), Some("/user/s".to_string()), 77, 0, 1, Bytes::from_static(b"xyz"));
+  let pdu = test_envelope_pdu("/user/r".to_string(), Some("/user/s".to_string()), 77, 0, 1, Bytes::from_static(b"xyz"));
   let codec = EnvelopeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
@@ -227,7 +256,7 @@ fn truncated_buffer_is_rejected() {
 
 #[test]
 fn oversized_length_field_is_rejected() {
-  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let codec = EnvelopeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
@@ -258,7 +287,7 @@ fn wire_version_byte_is_1() {
 fn string_hello_has_expected_bytes() {
   // Encode an envelope with a known-size recipient path so we can inspect the
   // length-prefixed string bytes for the spec's canonical example (`"hello"`).
-  let pdu = EnvelopePdu::new("hello".to_string(), None, 0, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("hello".to_string(), None, 0, 0, 0, Bytes::new());
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
   // layout: [len(4)][version(1)][kind(1)][recipient_len(4)][recipient_bytes...]
@@ -281,6 +310,10 @@ fn invalid_utf8_in_string_is_rejected() {
   body.extend_from_slice(&0u64.to_be_bytes());
   body.extend_from_slice(&0u32.to_be_bytes());
   // priority: u8
+  body.extend_from_slice(&[0x00]);
+  // serializer_id: Vec<u8> built-in id
+  body.extend_from_slice(&5_u32.to_be_bytes());
+  // manifest: None
   body.extend_from_slice(&[0x00]);
   // payload: empty (length 0)
   body.extend_from_slice(&0u32.to_be_bytes());

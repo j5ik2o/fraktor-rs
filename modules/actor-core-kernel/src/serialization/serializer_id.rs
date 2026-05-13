@@ -21,7 +21,7 @@ impl SerializerId {
 
   /// Creates a serializer id without performing validation.
   #[must_use]
-  pub(crate) const fn from_raw(value: u32) -> Self {
+  pub const fn from_raw(value: u32) -> Self {
     Self(value)
   }
 }
