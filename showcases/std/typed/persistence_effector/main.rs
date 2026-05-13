@@ -6,7 +6,9 @@ use fraktor_actor_core_kernel_rs::actor::{
   extension::ExtensionInstallers, scheduler::SchedulerConfig, setup::ActorSystemConfig,
 };
 use fraktor_actor_core_typed_rs::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors};
-use fraktor_persistence_core_kernel_rs::{InMemoryJournal, InMemorySnapshotStore, PersistenceExtensionInstaller};
+use fraktor_persistence_core_kernel_rs::{
+  extension::PersistenceExtensionInstaller, journal::InMemoryJournal, snapshot::InMemorySnapshotStore,
+};
 use fraktor_persistence_core_typed_rs::{
   PersistenceEffector, PersistenceEffectorConfig, PersistenceEffectorMessageAdapter, PersistenceEffectorSignal,
   PersistenceId, PersistenceMode, RetentionCriteria, SnapshotCriteria,

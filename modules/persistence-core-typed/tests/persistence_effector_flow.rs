@@ -25,8 +25,10 @@ use fraktor_actor_core_typed_rs::{
   dsl::Behaviors,
 };
 use fraktor_persistence_core_kernel_rs::{
-  InMemoryJournal, InMemorySnapshotStore, Journal, PersistenceExtensionInstaller, PersistentRepr, SnapshotMetadata,
-  SnapshotStore,
+  extension::PersistenceExtensionInstaller,
+  journal::{InMemoryJournal, Journal},
+  persistent::PersistentRepr,
+  snapshot::{InMemorySnapshotStore, SnapshotMetadata, SnapshotStore},
 };
 use fraktor_persistence_core_typed_rs::{
   PersistenceEffector, PersistenceEffectorConfig, PersistenceEffectorMessageAdapter, PersistenceEffectorSignal,

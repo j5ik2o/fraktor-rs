@@ -1,44 +1,25 @@
-//! Snapshot payload container.
+//! Snapshot package.
 
-#[cfg(test)]
-#[path = "snapshot_test.rs"]
-mod tests;
+mod base;
+mod in_memory_snapshot_store;
+mod snapshot_actor;
+mod snapshot_actor_config;
+mod snapshot_error;
+mod snapshot_message;
+mod snapshot_metadata;
+mod snapshot_response;
+mod snapshot_response_action;
+mod snapshot_selection_criteria;
+mod snapshot_store;
 
-use core::any::Any;
-
-use fraktor_utils_core_rs::sync::ArcShared;
-
-use crate::snapshot_metadata::SnapshotMetadata;
-
-/// Snapshot data with metadata.
-#[derive(Clone, Debug)]
-pub struct Snapshot {
-  metadata: SnapshotMetadata,
-  data:     ArcShared<dyn Any + Send + Sync>,
-}
-
-impl Snapshot {
-  /// Creates a new snapshot.
-  #[must_use]
-  pub fn new(metadata: SnapshotMetadata, data: ArcShared<dyn Any + Send + Sync>) -> Self {
-    Self { metadata, data }
-  }
-
-  /// Returns the snapshot metadata.
-  #[must_use]
-  pub const fn metadata(&self) -> &SnapshotMetadata {
-    &self.metadata
-  }
-
-  /// Returns the raw snapshot data.
-  #[must_use]
-  pub fn data(&self) -> &ArcShared<dyn Any + Send + Sync> {
-    &self.data
-  }
-
-  /// Attempts to downcast the snapshot payload.
-  #[must_use]
-  pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
-    self.data.downcast_ref::<T>()
-  }
-}
+pub use base::Snapshot;
+pub use in_memory_snapshot_store::InMemorySnapshotStore;
+pub use snapshot_actor::SnapshotActor;
+pub use snapshot_actor_config::SnapshotActorConfig;
+pub use snapshot_error::SnapshotError;
+pub use snapshot_message::SnapshotMessage;
+pub use snapshot_metadata::SnapshotMetadata;
+pub use snapshot_response::SnapshotResponse;
+pub(crate) use snapshot_response_action::SnapshotResponseAction;
+pub use snapshot_selection_criteria::SnapshotSelectionCriteria;
+pub use snapshot_store::SnapshotStore;

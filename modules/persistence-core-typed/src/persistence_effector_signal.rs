@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_persistence_core_kernel_rs::PersistenceError;
+use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 
 /// Stable signal delivered to the aggregate actor through its private message type.
 #[derive(Clone, Debug, PartialEq, Eq)]

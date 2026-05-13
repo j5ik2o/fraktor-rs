@@ -13,7 +13,7 @@ use fraktor_actor_core_kernel_rs::{
   system::ActorSystem,
 };
 use fraktor_actor_core_typed_rs::TypedActorSystem;
-use fraktor_persistence_core_kernel_rs::PersistenceError;
+use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::PersistenceEffectorConfig;
