@@ -1,5 +1,9 @@
 //! Persistence effector handle.
 
+#[cfg(test)]
+#[path = "persistence_effector_test.rs"]
+mod tests;
+
 use alloc::{boxed::Box, format, string::ToString, vec, vec::Vec};
 use core::marker::PhantomData;
 
@@ -68,35 +72,33 @@ where
     config: PersistenceEffectorConfig<S, E, M>,
     on_ready: ArcShared<OnReady<S, E, M>>,
   ) -> Behavior<M> {
-    Behaviors::with_stash(config.stash_capacity(), move |_stash| {
+    Behaviors::setup_result(move |ctx| {
       let config = config.clone();
       let on_ready = on_ready.clone();
-      Behaviors::setup_result(move |ctx| {
-        config.validate().map_err(|error| ActorError::fatal(error.to_string()))?;
-        match config.persistence_mode() {
-          | PersistenceMode::Deferred => {
-            let effector = Self::deferred(config.clone());
-            return on_ready(config.initial_state().clone(), effector);
-          },
-          | PersistenceMode::Ephemeral => {
-            let store = EphemeralPersistenceStore::for_system(&ctx.system());
-            let (state, sequence_nr) = store.recover(&config).map_err(map_persistence_error)?;
-            let effector = Self::ephemeral(config.clone(), store, sequence_nr);
-            return on_ready(state, effector);
-          },
-          | PersistenceMode::Persisted => {},
-        }
-        let message_adapter = config
-          .message_adapter()
-          .cloned()
-          .ok_or_else(|| ActorError::fatal("persistence message adapter is not configured"))?;
-        let reply_to = ctx
-          .message_adapter(move |reply: PersistenceStoreReply<S, E>| {
-            Ok(message_adapter.wrap_signal(PersistenceEffectorSignal::from(reply)))
-          })
-          .map_err(|error| ActorError::fatal(format!("persistence reply adapter registration failed: {error:?}")))?;
-        Ok(Self::await_persisted_start(config.clone(), reply_to, on_ready.clone()))
-      })
+      config.validate().map_err(|error| ActorError::fatal(error.to_string()))?;
+      match config.persistence_mode() {
+        | PersistenceMode::Deferred => {
+          let effector = Self::deferred(config.clone());
+          return on_ready(config.initial_state().clone(), effector);
+        },
+        | PersistenceMode::Ephemeral => {
+          let store = EphemeralPersistenceStore::for_system(&ctx.system());
+          let (state, sequence_nr) = store.recover(&config).map_err(map_persistence_error)?;
+          let effector = Self::ephemeral(config.clone(), store, sequence_nr);
+          return on_ready(state, effector);
+        },
+        | PersistenceMode::Persisted => {},
+      }
+      let message_adapter = config
+        .message_adapter()
+        .cloned()
+        .ok_or_else(|| ActorError::fatal("persistence message adapter is not configured"))?;
+      let reply_to = ctx
+        .message_adapter(move |reply: PersistenceStoreReply<S, E>| {
+          Ok(message_adapter.wrap_signal(PersistenceEffectorSignal::from(reply)))
+        })
+        .map_err(|error| ActorError::fatal(format!("persistence reply adapter registration failed: {error:?}")))?;
+      Ok(Self::await_persisted_start(config.clone(), reply_to, on_ready.clone()))
     })
   }
 
@@ -600,6 +602,9 @@ where
   fn retention_delete_to(retention_criteria: RetentionCriteria, sequence_nr: u64) -> Option<u64> {
     let snapshot_every = retention_criteria.snapshot_every_interval()?;
     let keep_snapshots = retention_criteria.keep_snapshots()?;
+    if snapshot_every == 0 || keep_snapshots == 0 {
+      return None;
+    }
     let latest_snapshot_sequence_nr = sequence_nr - (sequence_nr % snapshot_every);
     if latest_snapshot_sequence_nr < snapshot_every {
       return None;
