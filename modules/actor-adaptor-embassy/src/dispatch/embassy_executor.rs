@@ -4,42 +4,50 @@
 #[path = "embassy_executor_test.rs"]
 mod tests;
 
-use alloc::boxed::Box;
-use core::cell::Cell;
+use alloc::{boxed::Box, sync::Arc};
 
-use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal};
 use fraktor_actor_core_kernel_rs::dispatch::dispatcher::{ExecuteError, Executor};
 
-use super::embassy_executor_shared::EmbassyExecutorShared;
+pub(crate) type EmbassyTask = Box<dyn FnOnce() + Send + 'static>;
 
 /// Executor that enqueues actor mailbox work for an Embassy worker task.
 pub struct EmbassyExecutor<const N: usize> {
-  shared:    EmbassyExecutorShared<N>,
-  accepting: Mutex<CriticalSectionRawMutex, Cell<bool>>,
+  queue:     Arc<Channel<CriticalSectionRawMutex, EmbassyTask, N>>,
+  signal:    Arc<Signal<CriticalSectionRawMutex, ()>>,
+  accepting: bool,
 }
 
 impl<const N: usize> EmbassyExecutor<N> {
-  pub(crate) const fn new(shared: EmbassyExecutorShared<N>) -> Self {
-    Self { shared, accepting: Mutex::new(Cell::new(true)) }
+  pub(crate) fn new() -> Self {
+    Self { queue: Arc::new(Channel::new()), signal: Arc::new(Signal::new()), accepting: true }
+  }
+
+  pub(crate) fn clone_for_submission(&self) -> Self {
+    Self { queue: self.queue.clone(), signal: self.signal.clone(), accepting: true }
+  }
+
+  pub(crate) fn ready_signal(&self) -> Arc<Signal<CriticalSectionRawMutex, ()>> {
+    self.signal.clone()
+  }
+
+  pub(crate) fn pop_ready(&mut self) -> Option<EmbassyTask> {
+    self.queue.try_receive().ok()
   }
 }
 
 impl<const N: usize> Executor for EmbassyExecutor<N> {
   fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>, _affinity_key: u64) -> Result<(), ExecuteError> {
-    self.accepting.lock(|accepting| {
-      if !accepting.get() {
-        return Err(ExecuteError::Shutdown);
-      }
-      self.shared.try_enqueue(task)
-    })?;
-    self.shared.signal_ready();
+    if !self.accepting {
+      return Err(ExecuteError::Shutdown);
+    }
+    self.queue.try_send(task).map_err(|_| ExecuteError::Rejected)?;
+    self.signal.signal(());
     Ok(())
   }
 
   fn shutdown(&mut self) {
-    self.accepting.lock(|accepting| {
-      accepting.set(false);
-    });
-    self.shared.signal_ready();
+    self.accepting = false;
+    self.signal.signal(());
   }
 }
