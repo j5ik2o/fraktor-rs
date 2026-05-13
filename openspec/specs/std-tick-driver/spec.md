@@ -1,5 +1,8 @@
-## ADDED Requirements
+# std-tick-driver Specification
 
+## Purpose
+TBD - created by archiving change std-tick-driver. Update Purpose after archive.
+## Requirements
 ### Requirement: TickDriver trait は kind() と provision(self: Box<Self>) の 2 メソッドで object-safe に消費する
 
 `TickDriver` trait は `kind(&self)` と `provision(self: Box<Self>, feed, executor)` の 2 メソッドで構成しなければならない（MUST）。`kind()` は provision 前に呼べる query で、driver の分類を返す。`provision` は `self: Box<Self>` により object safety を維持しつつ所有権を消費し、tick 生成と executor 駆動の両方を開始する。`provision` が返す `TickDriverProvision::kind` は `kind()` と同じ値でなければならない（MUST）。
@@ -243,11 +246,19 @@ tick driver は `ActorSystemConfig::with_tick_driver(impl TickDriver + 'static)`
 
 ### Requirement: TickDriverKind は non_exhaustive で Std と Tokio variant を持つ
 
-`TickDriverKind` に `#[non_exhaustive]` を付与し、`Std` と `Tokio` variant を追加しなければならない（MUST）。これにより下流 crate が新 variant 追加時に壊れない。
+`TickDriverKind` に `#[non_exhaustive]` を付与し、`Std`、`Tokio`、`Embassy` variant を含めなければならない（MUST）。これにより std / Tokio / Embassy の環境別 driver を event stream metrics と snapshot で区別できなければならない（MUST）。下流 crate は将来の variant 追加に備えて wildcard arm を持たなければならない。
 
-#### Scenario: TickDriverKind に Std と Tokio が含まれる
+#### Scenario: TickDriverKind に Std、Tokio、Embassy が含まれる
 
 - **GIVEN** 本 change が適用された状態
 - **WHEN** `TickDriverKind` の variant を列挙する
-- **THEN** `Auto`, `Manual`, `Std`, `Tokio` の 4 variant が存在する
-- **AND** `#[non_exhaustive]` により `match` 文にワイルドカードアームが必須となる
+- **THEN** `Auto`, `Manual`, `Std`, `Tokio`, `Embassy` の variant が存在する
+- **AND** `#[non_exhaustive]` により下流 crate の `match` 文には wildcard arm が必須となる
+
+#### Scenario: EmbassyTickDriver は Embassy kind を返す
+
+- **GIVEN** `EmbassyTickDriver` が生成されている
+- **WHEN** `kind()` が呼ばれる
+- **THEN** `TickDriverKind::Embassy` が返る
+- **AND** provision 後の `TickDriverProvision::kind` も `TickDriverKind::Embassy` である
+
