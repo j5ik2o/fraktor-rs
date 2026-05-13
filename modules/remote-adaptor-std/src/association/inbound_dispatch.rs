@@ -49,4 +49,3 @@ pub(crate) fn authority_for_frame(frame: &WireFrame) -> Option<TransportEndpoint
     | WireFrame::Control(_) | WireFrame::Envelope(_) | WireFrame::Ack(_) => None,
   }
 }
-

@@ -1,10 +1,7 @@
 use alloc::string::String;
 
 use bytes::Bytes;
-use fraktor_remote_core_rs::{
-  transport::TransportError,
-  wire::EnvelopePdu,
-};
+use fraktor_remote_core_rs::{transport::TransportError, wire::EnvelopePdu};
 use tokio::sync::mpsc;
 
 use super::{InboundFrameEvent, WireFrame, authority_for_frame, run_inbound_dispatch};
