@@ -1,41 +1,28 @@
 //! Shared queue state for Embassy executors.
 
 use alloc::{boxed::Box, sync::Arc};
-use core::cell::Cell;
 
-use embassy_sync::{
-  blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
-  channel::Channel,
-  signal::Signal,
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal};
 use fraktor_actor_core_kernel_rs::dispatch::dispatcher::ExecuteError;
 
 pub(crate) type EmbassyTask = Box<dyn FnOnce() + Send + 'static>;
 
 pub(crate) struct EmbassyExecutorShared<const N: usize> {
-  queue:     Arc<Channel<CriticalSectionRawMutex, EmbassyTask, N>>,
-  signal:    Arc<Signal<CriticalSectionRawMutex, ()>>,
-  accepting: Arc<Mutex<CriticalSectionRawMutex, Cell<bool>>>,
+  queue:  Arc<Channel<CriticalSectionRawMutex, EmbassyTask, N>>,
+  signal: Arc<Signal<CriticalSectionRawMutex, ()>>,
 }
 
 impl<const N: usize> EmbassyExecutorShared<N> {
   pub(crate) fn new() -> Self {
-    Self {
-      queue:     Arc::new(Channel::new()),
-      signal:    Arc::new(Signal::new()),
-      accepting: Arc::new(Mutex::new(Cell::new(true))),
-    }
+    Self { queue: Arc::new(Channel::new()), signal: Arc::new(Signal::new()) }
   }
 
-  pub(crate) fn enqueue(&self, task: EmbassyTask) -> Result<(), ExecuteError> {
-    self.accepting.lock(|accepting| {
-      if !accepting.get() {
-        return Err(ExecuteError::Shutdown);
-      }
-      self.queue.try_send(task).map_err(|_| ExecuteError::Rejected)
-    })?;
+  pub(crate) fn try_enqueue(&self, task: EmbassyTask) -> Result<(), ExecuteError> {
+    self.queue.try_send(task).map_err(|_| ExecuteError::Rejected)
+  }
+
+  pub(crate) fn signal_ready(&self) {
     self.signal.signal(());
-    Ok(())
   }
 
   pub(crate) async fn wait_ready(&self) {
@@ -50,17 +37,10 @@ impl<const N: usize> EmbassyExecutorShared<N> {
     }
     drained
   }
-
-  pub(crate) fn shutdown(&self) {
-    self.accepting.lock(|accepting| {
-      accepting.set(false);
-    });
-    self.signal.signal(());
-  }
 }
 
 impl<const N: usize> Clone for EmbassyExecutorShared<N> {
   fn clone(&self) -> Self {
-    Self { queue: self.queue.clone(), signal: self.signal.clone(), accepting: self.accepting.clone() }
+    Self { queue: self.queue.clone(), signal: self.signal.clone() }
   }
 }
