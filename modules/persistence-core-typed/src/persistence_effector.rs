@@ -626,7 +626,7 @@ where
     if snapshot_every == 0 || keep_snapshots == 0 {
       return None;
     }
-    let latest_snapshot_sequence_nr = sequence_nr - (sequence_nr % snapshot_every);
+    let latest_snapshot_sequence_nr = sequence_nr.checked_sub(sequence_nr % snapshot_every)?;
     if latest_snapshot_sequence_nr < snapshot_every {
       return None;
     }
