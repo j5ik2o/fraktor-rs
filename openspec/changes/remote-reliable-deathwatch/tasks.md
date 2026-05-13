@@ -1,9 +1,10 @@
 ## 1. Core Redelivery State
 
-- [ ] 1.1 `remote-core` association の system priority envelope に sequence number / pending window を追加する
-- [ ] 1.2 `AckPdu` の cumulative ack / nack bitmap を association state に適用する
-- [ ] 1.3 inbound system sequence tracking と duplicate suppression を追加する
-- [ ] 1.4 redelivery window、ACK、NACK、duplicate の unit test を `fraktor-remote-core-rs` に追加する
+- [ ] 1.1 `EnvelopePdu` に system priority envelope 用の redelivery sequence metadata を追加する
+- [ ] 1.2 `remote-core` association の system priority envelope に sequence number / pending window を追加する
+- [ ] 1.3 `AckPdu` の cumulative ack / nack bitmap を association state に適用する
+- [ ] 1.4 inbound system sequence tracking と duplicate suppression を追加する
+- [ ] 1.5 redelivery window、ACK、NACK、duplicate の unit test を `fraktor-remote-core-rs` に追加する
 
 ## 2. Watcher State
 

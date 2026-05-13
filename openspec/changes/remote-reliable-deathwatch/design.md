@@ -53,9 +53,24 @@ system priority envelope の sequence assignment、送信 window、受信 cumula
 
 - std retry driver だけに window を持たせる案は、future adaptor ごとに再実装が必要になり、core の `AckPdu` が実質的に利用されないため採用しない。
 
-### Decision 3: std provider は remote pid/path registry と hook wiring を持つ
+### Decision 3: system envelope sequence は EnvelopePdu metadata として運ぶ
 
-`StdRemoteActorRefProvider` は remote actor ref materialization 時に synthetic remote pid と canonical actor path の対応を保持する。installer は actor-core に remote watch hook を登録し、hook は target pid / watcher pid を path へ解決して watcher task へ渡す。path が解決できない場合は hook は消費せず、actor-core の既存 fallback に任せる。
+system priority envelope の redelivery sequence は `EnvelopePdu` の metadata として encode する。user priority envelope は redelivery sequence を持たない。ACK/NACK はこの sequence を参照し、correlation id は request/response correlation のために残す。
+
+理由:
+
+- 受信側が sequence を知らなければ cumulative ACK / NACK bitmap を生成できない。
+- correlation id を redelivery sequence と兼用すると、user-level correlation と transport reliability が結合する。
+- sequence metadata を envelope に置くことで、DeathWatch 系 system message 以外の system priority envelope へも同じ redelivery contract を適用できる。
+
+代替案:
+
+- TCP 到着順から sequence を推定する案は、欠落位置を frame 単位で特定できず NACK bitmap を生成できないため採用しない。
+- `AckPdu::sequence_number` だけで送信済み sequence を共有する案は、ACK より前に受信側が個々の envelope sequence を識別できないため採用しない。
+
+### Decision 4: std provider は remote pid/path registry と hook wiring を持つ
+
+`StdRemoteActorRefProvider` は remote actor ref materialization 時に synthetic remote pid と canonical actor path の対応を保持する。installer は actor-core に remote watch hook を登録し、hook は `Watch` / `Unwatch` では target pid / watcher pid を path へ解決して watcher task へ渡す。`DeathWatchNotification` では remote watcher pid と terminated target pid を path へ解決し、remote-bound system priority envelope として outbound lane へ渡す。path が解決できない場合は hook は消費せず、actor-core の既存 fallback または no-op 規則に任せる。
 
 理由:
 
@@ -67,7 +82,7 @@ system priority envelope の sequence assignment、送信 window、受信 cumula
 
 - actor-core に remote provider 参照を直接持たせる案は no_std core と std adaptor の境界を広げるため採用しない。
 
-### Decision 4: watcher task は effect 適用だけを担当する
+### Decision 5: watcher task は effect 適用だけを担当する
 
 std watcher task は `WatcherState::handle` に command を渡し、返った effect を次の外部操作へ変換する。
 
