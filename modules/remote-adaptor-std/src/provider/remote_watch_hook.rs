@@ -53,7 +53,7 @@ impl StdRemoteWatchHook {
       | Ok(()) => true,
       | Err(TrySendError::Full(command)) => {
         tracing::warn!(?command, "remote watch command queue is full");
-        false
+        true
       },
       | Err(TrySendError::Closed(command)) => {
         tracing::warn!(?command, "remote watch command queue is closed");
