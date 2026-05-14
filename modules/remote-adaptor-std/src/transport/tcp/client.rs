@@ -267,14 +267,18 @@ async fn run(
         | Some(Ok(decoded)) => {
           let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
             | Ok(InboundCompressionAction::Forward(frame)) => frame,
-            | Ok(InboundCompressionAction::Reply(pdu)) => {
+            | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
+              authority = Some(frame_authority);
               if let Err(err) = framed.send(WireFrame::Control(pdu)).await {
                 tracing::warn!(?err, peer = %peer_addr, "tcp client compression ack write error");
                 break Some(TransportError::SendFailed);
               }
               continue;
             },
-            | Ok(InboundCompressionAction::Consumed) => continue,
+            | Ok(InboundCompressionAction::Consumed { authority: frame_authority }) => {
+              authority = Some(frame_authority);
+              continue;
+            },
             | Err(err) => {
               tracing::warn!(?err, peer = %peer_addr, "tcp client compression frame error");
               break Some(TransportError::SendFailed);

@@ -608,6 +608,62 @@ async fn remote_transport_server_connection_close_emits_connection_lost_after_au
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_transport_server_compression_control_sets_authority_for_connection_loss() {
+  use tokio::{net::TcpStream, sync::mpsc};
+
+  use crate::transport::tcp::TcpRemoteTransport;
+
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let mut transport = TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)])
+    .with_remote_event_sender(event_tx);
+  transport.start().expect("transport should start before accepting a peer");
+  let bound_address = transport.default_address().expect("default address should be available").clone();
+  let remote = Address::new("remote-sys", "127.0.0.1", 2552);
+  let mut framed = Framed::new(
+    TcpStream::connect(alloc::format!("{}:{}", bound_address.host(), bound_address.port()))
+      .await
+      .expect("client stream should connect"),
+    WireFrameCodec::new(),
+  );
+
+  framed
+    .send(WireFrame::Control(ControlPdu::CompressionAdvertisement {
+      authority:  remote.to_string(),
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+      entries:    vec![CompressionTableEntry::new(3, "/user/a".to_string())],
+    }))
+    .await
+    .expect("compression advertisement should be written");
+  let ack = tokio::time::timeout(Duration::from_secs(5), framed.next())
+    .await
+    .expect("compression ack should arrive")
+    .expect("compression ack should be present")
+    .expect("compression ack should decode");
+  assert!(matches!(
+    ack,
+    WireFrame::Control(ControlPdu::CompressionAck {
+      authority,
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+    }) if authority == bound_address.to_string()
+  ));
+
+  framed.close().await.expect("client close should be written");
+  let connection_lost = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("connection-lost event should arrive")
+    .expect("connection-lost event should be present");
+  assert_connection_lost_event(
+    connection_lost,
+    TransportEndpoint::new(remote.to_string()),
+    TransportError::ConnectionClosed,
+  );
+
+  transport.shutdown().expect("transport shutdown should succeed");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn remote_transport_shutdown_does_not_emit_connection_lost() {
   use tokio::{net::TcpListener, sync::mpsc};
 

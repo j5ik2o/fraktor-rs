@@ -139,8 +139,11 @@ impl Codec<ControlPdu> for ControlCodec {
         Ok(ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks })
       },
       | SUBKIND_COMPRESSION_ADVERTISEMENT => {
-        if reason.is_some() || buf.remaining() < 13 {
+        if reason.is_some() {
           return Err(WireError::InvalidFormat);
+        }
+        if buf.remaining() < 13 {
+          return Err(WireError::Truncated);
         }
         let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
         let generation = buf.get_u64();
@@ -148,8 +151,11 @@ impl Codec<ControlPdu> for ControlCodec {
         Ok(ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries })
       },
       | SUBKIND_COMPRESSION_ACK => {
-        if reason.is_some() || buf.remaining() < 9 {
+        if reason.is_some() {
           return Err(WireError::InvalidFormat);
+        }
+        if buf.remaining() < 9 {
+          return Err(WireError::Truncated);
         }
         let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
         let generation = buf.get_u64();

@@ -86,11 +86,14 @@ fn inbound_advertisement_updates_table_and_replies_with_ack() {
 
   assert!(matches!(
     action,
-    InboundCompressionAction::Reply(ControlPdu::CompressionAck {
+    InboundCompressionAction::Reply {
+      pdu: ControlPdu::CompressionAck {
       authority,
       table_kind: CompressionTableKind::ActorRef,
       generation: 7,
-    }) if authority == "local@host:2"
+    },
+      authority: peer_authority,
+    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
   ));
 
   let action =
@@ -111,11 +114,14 @@ fn inbound_manifest_advertisement_resolves_manifest_metadata() {
     .unwrap();
   assert!(matches!(
     action,
-    InboundCompressionAction::Reply(ControlPdu::CompressionAck {
+    InboundCompressionAction::Reply {
+      pdu: ControlPdu::CompressionAck {
       authority,
       table_kind: CompressionTableKind::Manifest,
       generation: 8,
-    }) if authority == "local@host:2"
+    },
+      authority: peer_authority,
+    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
   ));
 
   let action = tables
@@ -155,11 +161,11 @@ fn outbound_acknowledged_metadata_uses_table_refs() {
   );
   assert!(matches!(
     tables.handle_inbound_frame(ack_frame(CompressionTableKind::ActorRef, actor_generation), "local@host:2"),
-    Ok(InboundCompressionAction::Consumed)
+    Ok(InboundCompressionAction::Consumed { authority }) if authority.authority() == "remote@host:1"
   ));
   assert!(matches!(
     tables.handle_inbound_frame(ack_frame(CompressionTableKind::Manifest, manifest_generation), "local@host:2"),
-    Ok(InboundCompressionAction::Consumed)
+    Ok(InboundCompressionAction::Consumed { authority }) if authority.authority() == "remote@host:1"
   ));
 
   let second = tables.apply_outbound_frame(literal_envelope_frame("/user/a", Some("example.Manifest")));
@@ -198,7 +204,10 @@ fn disabled_config_keeps_literals_and_does_not_ack_advertisements() {
   let action = tables
     .handle_inbound_frame(advertisement_frame(CompressionTableKind::ActorRef, 7, 3, "/user/a"), "local@host:2")
     .unwrap();
-  assert!(matches!(action, InboundCompressionAction::Consumed));
+  assert!(matches!(
+    action,
+    InboundCompressionAction::Consumed { authority } if authority.authority() == "remote@host:1"
+  ));
 }
 
 #[test]

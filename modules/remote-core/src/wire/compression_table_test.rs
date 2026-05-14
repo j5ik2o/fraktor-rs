@@ -114,6 +114,18 @@ fn inbound_advertisement_resolves_entry_ids() {
 }
 
 #[test]
+fn inbound_advertisement_rejects_entries_over_configured_max() {
+  let mut table = CompressionTable::new(max(1));
+  let entries =
+    [CompressionTableEntry::new(9, "/user/a".to_string()), CompressionTableEntry::new(10, "/user/b".to_string())];
+
+  let err = table.apply_advertisement(7, &entries).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
+  assert!(table.is_empty());
+}
+
+#[test]
 fn duplicate_inbound_entry_ids_are_rejected() {
   let mut table = CompressionTable::new(max(4));
   let entries =

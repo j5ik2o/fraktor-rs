@@ -189,6 +189,11 @@ impl CompressionTable {
     if !self.is_enabled() {
       return Ok(false);
     }
+    if let Some(max) = self.max
+      && entries.len() > max.get()
+    {
+      return Err(WireError::InvalidFormat);
+    }
     if has_duplicate_entry_id(entries) {
       return Err(WireError::InvalidFormat);
     }

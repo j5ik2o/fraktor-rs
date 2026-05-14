@@ -581,6 +581,23 @@ fn control_compression_ack_rejects_reason_field() {
 }
 
 #[test]
+fn control_compression_ack_rejects_truncated_body() {
+  let pdu = ControlPdu::CompressionAck {
+    authority:  "sys@host:7".to_string(),
+    table_kind: CompressionTableKind::Manifest,
+    generation: 8,
+  };
+  let mut buf = BytesMut::new();
+  ControlCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf.truncate(buf.len() - 1);
+  patch_frame_len(&mut buf);
+
+  let err = ControlCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::Truncated);
+}
+
+#[test]
 fn control_compression_advertisement_rejects_unknown_table_kind() {
   let authority = "sys@host:6".to_string();
   let pdu = ControlPdu::CompressionAdvertisement {
@@ -652,7 +669,7 @@ fn control_compression_advertisement_rejects_missing_entry_count() {
 
   let err = ControlCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
 
-  assert_eq!(err, WireError::InvalidFormat);
+  assert_eq!(err, WireError::Truncated);
 }
 
 #[test]
