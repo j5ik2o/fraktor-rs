@@ -955,14 +955,35 @@ fn flush_timer_releases_pending_session() {
   let started = association.start_flush(FlushScope::Shutdown, &[0, 1], Duration::from_millis(50), 100);
   assert_eq!(started.len(), 3);
 
-  assert!(association.flush_timed_out(1, 149).is_empty());
-  let effects = association.flush_timed_out(1, 150);
+  assert!(association.flush_timed_out(1, 148).is_empty());
+  let effects = association.flush_timed_out(1, 149);
 
   assert!(matches!(
     effects.as_slice(),
     [AssociationEffect::FlushTimedOut {
       flush_id: 1,
       scope: FlushScope::Shutdown,
+      pending_lanes,
+      ..
+    }] if pending_lanes == &vec![0, 1]
+  ));
+}
+
+#[test]
+fn flush_timer_near_miss_releases_deathwatch_session() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started =
+    association.start_flush(FlushScope::BeforeDeathWatchNotification, &[0, 1], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 3);
+
+  let effects = association.flush_timed_out(1, 149);
+
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::FlushTimedOut {
+      flush_id: 1,
+      scope: FlushScope::BeforeDeathWatchNotification,
       pending_lanes,
       ..
     }] if pending_lanes == &vec![0, 1]

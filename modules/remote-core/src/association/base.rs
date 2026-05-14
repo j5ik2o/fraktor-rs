@@ -112,6 +112,8 @@ impl FlushSession {
   }
 }
 
+const FLUSH_TIMER_NEAR_MISS_TOLERANCE_MS: u64 = 1;
+
 #[derive(Debug)]
 struct InboundSystemSequenceTracker {
   cumulative_ack: u64,
@@ -667,7 +669,7 @@ impl Association {
     let Some(index) = self.flush_sessions.iter().position(|session| session.flush_id == flush_id) else {
       return Vec::new();
     };
-    if now_ms < self.flush_sessions[index].deadline_ms {
+    if now_ms.saturating_add(FLUSH_TIMER_NEAR_MISS_TOLERANCE_MS) < self.flush_sessions[index].deadline_ms {
       return Vec::new();
     }
     let session = self.flush_sessions.remove(index);
