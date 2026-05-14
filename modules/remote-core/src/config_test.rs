@@ -74,6 +74,11 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
 }
 
 #[test]
+fn remote_compression_config_default_matches_new() {
+  assert_eq!(RemoteCompressionConfig::default(), RemoteCompressionConfig::new());
+}
+
+#[test]
 fn with_canonical_port_sets_some() {
   let s = RemoteConfig::new("localhost").with_canonical_port(8080);
   assert_eq!(s.canonical_port(), Some(8080));

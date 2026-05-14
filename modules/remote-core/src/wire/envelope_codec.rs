@@ -6,13 +6,12 @@ use crate::{
   envelope::OutboundPriority,
   wire::{
     codec::Codec,
-    envelope_payload::EnvelopePayload,
+    compressed_text::{
+      decode_compressed_text, decode_option_compressed_text, encode_compressed_text, encode_option_compressed_text,
+    },
     envelope_pdu::EnvelopePdu,
     frame_header::KIND_ENVELOPE,
-    primitives::{
-      begin_frame, decode_bytes, decode_option_string, decode_string, encode_bytes, encode_option_string,
-      encode_string, patch_frame_length, read_frame_header,
-    },
+    primitives::{begin_frame, decode_bytes, encode_bytes, patch_frame_length, read_frame_header},
     wire_error::WireError,
   },
 };
@@ -32,22 +31,22 @@ impl EnvelopeCodec {
 impl Codec<EnvelopePdu> for EnvelopeCodec {
   fn encode(&self, value: &EnvelopePdu, buf: &mut BytesMut) -> Result<(), WireError> {
     let len_pos = begin_frame(buf, KIND_ENVELOPE);
-    encode_string(value.recipient_path(), buf)?;
-    encode_option_string(value.sender_path(), buf)?;
+    encode_compressed_text(value.recipient_path_metadata(), buf)?;
+    encode_option_compressed_text(value.sender_path_metadata(), buf)?;
     buf.put_u64(value.correlation_hi());
     buf.put_u32(value.correlation_lo());
     buf.put_u8(value.priority());
     encode_redelivery_sequence(value.priority(), value.redelivery_sequence(), buf)?;
     buf.put_u32(value.serializer_id());
-    encode_option_string(value.manifest(), buf)?;
+    encode_option_compressed_text(value.manifest_metadata(), buf)?;
     encode_bytes(value.payload(), buf)?;
     patch_frame_length(buf, len_pos)
   }
 
   fn decode(&self, buf: &mut Bytes) -> Result<EnvelopePdu, WireError> {
-    let _ = read_frame_header(buf, KIND_ENVELOPE)?;
-    let recipient_path = decode_string(buf)?;
-    let sender_path = decode_option_string(buf)?;
+    read_frame_header(buf, KIND_ENVELOPE)?;
+    let recipient_path = decode_compressed_text(buf)?;
+    let sender_path = decode_option_compressed_text(buf)?;
     if buf.remaining() < 8 + 4 + 1 + 1 + 4 {
       return Err(WireError::Truncated);
     }
@@ -59,15 +58,16 @@ impl Codec<EnvelopePdu> for EnvelopeCodec {
       return Err(WireError::Truncated);
     }
     let serializer_id = buf.get_u32();
-    let manifest = decode_option_string(buf)?;
+    let manifest = decode_option_compressed_text(buf)?;
     let payload = decode_bytes(buf)?;
-    Ok(EnvelopePdu::new(
+    Ok(EnvelopePdu::new_with_metadata(
       recipient_path,
       sender_path,
-      correlation_hi,
-      correlation_lo,
+      (correlation_hi, correlation_lo),
       priority,
-      EnvelopePayload::new(serializer_id, manifest, payload),
+      serializer_id,
+      manifest,
+      payload,
     ))
     .map(|pdu| pdu.with_redelivery_sequence(redelivery_sequence))
   }

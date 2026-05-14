@@ -12,8 +12,10 @@ use core::{
 use std::time::Instant;
 
 use fraktor_remote_core_rs::{
+  config::RemoteCompressionConfig,
   extension::RemoteEvent,
   transport::{TransportEndpoint, TransportError},
+  wire::CompressionTableKind,
 };
 use futures::{SinkExt as _, StreamExt as _, future::poll_fn};
 use tokio::{
@@ -25,7 +27,13 @@ use tokio::{
 use tokio_util::codec::Framed;
 
 use super::{
-  WireFrame, connection_loss_reporter::ConnectionLossReporter, frame_codec::WireFrameCodec,
+  WireFrame,
+  compression::{
+    InboundCompressionAction, TcpCompressionTables, compression_advertisement_interval,
+    next_compression_advertisement_tick,
+  },
+  connection_loss_reporter::ConnectionLossReporter,
+  frame_codec::WireFrameCodec,
   inbound_frame_event::InboundFrameEvent,
 };
 use crate::association::authority_for_frame;
@@ -46,9 +54,11 @@ pub struct TcpClient {
 }
 
 pub(crate) struct TcpClientConnectOptions {
-  frame_codec:    WireFrameCodec,
-  outbound_lanes: usize,
-  reporter:       Option<TcpClientConnectionLossReporterOptions>,
+  frame_codec:        WireFrameCodec,
+  outbound_lanes:     usize,
+  compression_config: RemoteCompressionConfig,
+  local_authority:    String,
+  reporter:           Option<TcpClientConnectionLossReporterOptions>,
 }
 
 struct TcpClientConnectionLossReporterOptions {
@@ -57,9 +67,22 @@ struct TcpClientConnectionLossReporterOptions {
   monotonic_epoch: Instant,
 }
 
+struct TcpClientRunOptions {
+  frame_codec:              WireFrameCodec,
+  compression_config:       RemoteCompressionConfig,
+  local_authority:          String,
+  connection_loss_reporter: Option<ConnectionLossReporter>,
+}
+
 impl TcpClientConnectOptions {
   pub(crate) const fn new(frame_codec: WireFrameCodec) -> Self {
-    Self { frame_codec, outbound_lanes: 1, reporter: None }
+    Self {
+      frame_codec,
+      outbound_lanes: 1,
+      compression_config: RemoteCompressionConfig::new(),
+      local_authority: String::new(),
+      reporter: None,
+    }
   }
 
   pub(crate) const fn with_outbound_lanes(mut self, outbound_lanes: usize) -> Self {
@@ -78,11 +101,26 @@ impl TcpClientConnectOptions {
     self
   }
 
-  fn into_parts(self) -> (WireFrameCodec, Option<ConnectionLossReporter>) {
-    let reporter = self
+  pub(crate) fn with_compression_config(
+    mut self,
+    compression_config: RemoteCompressionConfig,
+    local_authority: String,
+  ) -> Self {
+    self.compression_config = compression_config;
+    self.local_authority = local_authority;
+    self
+  }
+
+  fn into_run_options(self) -> TcpClientRunOptions {
+    let connection_loss_reporter = self
       .reporter
       .map(|options| ConnectionLossReporter::new(options.event_sender, options.authority, options.monotonic_epoch));
-    (self.frame_codec, reporter)
+    TcpClientRunOptions {
+      frame_codec: self.frame_codec,
+      compression_config: self.compression_config,
+      local_authority: self.local_authority,
+      connection_loss_reporter,
+    }
   }
 }
 
@@ -186,12 +224,14 @@ async fn connect_and_run(
   inbound_txs: Vec<UnboundedSender<InboundFrameEvent>>,
   options: TcpClientConnectOptions,
 ) {
-  let (frame_codec, connection_loss_reporter) = options.into_parts();
+  let run_options = options.into_run_options();
   match TcpStream::connect(&peer_addr).await {
-    | Ok(stream) => run(stream, peer_addr, writer_rxs, inbound_txs, frame_codec, connection_loss_reporter).await,
+    | Ok(stream) => {
+      run(stream, peer_addr, writer_rxs, inbound_txs, run_options).await;
+    },
     | Err(err) => {
       tracing::warn!(?err, peer = %peer_addr, "tcp client connect error");
-      if let Some(reporter) = connection_loss_reporter {
+      if let Some(reporter) = run_options.connection_loss_reporter {
         reporter.report(TransportError::SendFailed).await;
       }
     },
@@ -203,16 +243,43 @@ async fn run(
   peer_addr: String,
   mut writer_rxs: Vec<Receiver<WireFrame>>,
   inbound_txs: Vec<UnboundedSender<InboundFrameEvent>>,
-  frame_codec: WireFrameCodec,
-  connection_loss_reporter: Option<ConnectionLossReporter>,
+  options: TcpClientRunOptions,
 ) {
+  let frame_codec = options.frame_codec;
+  let compression_config = options.compression_config;
+  let local_authority = options.local_authority;
+  let connection_loss_reporter = options.connection_loss_reporter;
   let mut framed = Framed::new(stream, frame_codec);
   let mut authority = None;
   let mut next_writer_lane = 0;
+  let mut compression_tables = TcpCompressionTables::new(compression_config);
+  let mut actor_ref_advertisement_interval = compression_advertisement_interval(
+    compression_config.actor_ref_max(),
+    compression_config.actor_ref_advertisement_interval(),
+  );
+  let mut manifest_advertisement_interval = compression_advertisement_interval(
+    compression_config.manifest_max(),
+    compression_config.manifest_advertisement_interval(),
+  );
   let exit_cause = loop {
     tokio::select! {
       next = framed.next() => match next {
         | Some(Ok(decoded)) => {
+          let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
+            | Ok(InboundCompressionAction::Forward(frame)) => frame,
+            | Ok(InboundCompressionAction::Reply(pdu)) => {
+              if let Err(err) = framed.send(WireFrame::Control(pdu)).await {
+                tracing::warn!(?err, peer = %peer_addr, "tcp client compression ack write error");
+                break Some(TransportError::SendFailed);
+              }
+              continue;
+            },
+            | Ok(InboundCompressionAction::Consumed) => continue,
+            | Err(err) => {
+              tracing::warn!(?err, peer = %peer_addr, "tcp client compression frame error");
+              break Some(TransportError::SendFailed);
+            },
+          };
           if let Some(frame_authority) = authority_for_frame(&decoded) {
             authority = Some(frame_authority);
           }
@@ -236,12 +303,29 @@ async fn run(
       },
       next = next_writer_frame(&mut writer_rxs, &mut next_writer_lane) => match next {
         | Some(frame) => {
+          let frame = compression_tables.apply_outbound_frame(frame);
           if let Err(err) = framed.send(frame).await {
             tracing::warn!(?err, peer = %peer_addr, "tcp client write error");
             break Some(TransportError::SendFailed);
           }
         }
         | None => break None,
+      },
+      _ = next_compression_advertisement_tick(&mut actor_ref_advertisement_interval) => {
+        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::ActorRef, &local_authority)
+          && let Err(err) = framed.send(frame).await
+        {
+          tracing::warn!(?err, peer = %peer_addr, "tcp client actor-ref compression advertisement write error");
+          break Some(TransportError::SendFailed);
+        }
+      },
+      _ = next_compression_advertisement_tick(&mut manifest_advertisement_interval) => {
+        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::Manifest, &local_authority)
+          && let Err(err) = framed.send(frame).await
+        {
+          tracing::warn!(?err, peer = %peer_addr, "tcp client manifest compression advertisement write error");
+          break Some(TransportError::SendFailed);
+        }
       },
     }
   };

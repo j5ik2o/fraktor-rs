@@ -14,14 +14,17 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  config::RemoteConfig,
+  config::{RemoteCompressionConfig, RemoteConfig},
   envelope::{OutboundEnvelope, OutboundPriority},
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu, HandshakeReq, WireError},
+  wire::{
+    AckPdu, CompressionTableEntry, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu,
+    HandshakeReq, WireError,
+  },
 };
 use fraktor_utils_core_rs::sync::ArcShared;
-use futures::StreamExt as _;
+use futures::{SinkExt as _, StreamExt as _};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
@@ -149,12 +152,16 @@ fn connect_test_client(peer_addr: String, inbound_tx: UnboundedSender<InboundFra
 }
 
 fn make_test_server() -> TcpServer {
-  TcpServer::with_frame_codec(String::from("127.0.0.1:0"), WireFrameCodec::new())
+  TcpServer::with_frame_codec_and_compression_config(
+    String::from("127.0.0.1:0"),
+    WireFrameCodec::new(),
+    RemoteCompressionConfig::new(),
+  )
 }
 
 fn start_test_server(server: &mut TcpServer, inbound_tx: UnboundedSender<InboundFrameEvent>) -> SocketAddr {
   server
-    .start_with_remote_events(vec![inbound_tx], None, Instant::now())
+    .start_with_remote_events(vec![inbound_tx], None, Instant::now(), String::from("local@127.0.0.1:0"))
     .expect("server should bind to a system-assigned port")
 }
 
@@ -822,6 +829,38 @@ async fn tcp_server_and_client_exchange_a_frame() {
     .expect("server inbound frame");
   assert_eq!(event.frame, WireFrame::Envelope(pdu));
 
+  server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn tcp_server_consumes_compression_advertisement_and_replies_with_ack() {
+  use tokio::{net::TcpStream, sync::mpsc};
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = make_test_server();
+  let bind_addr = start_test_server(&mut server, server_inbound_tx);
+  let mut framed =
+    Framed::new(TcpStream::connect(bind_addr).await.expect("client stream should connect"), WireFrameCodec::new());
+  let advertisement = WireFrame::Control(ControlPdu::CompressionAdvertisement {
+    authority:  "remote@host:1".to_string(),
+    table_kind: CompressionTableKind::ActorRef,
+    generation: 7,
+    entries:    vec![CompressionTableEntry::new(3, "/user/a".to_string())],
+  });
+
+  framed.send(advertisement).await.expect("advertisement should be written");
+  let ack = tokio::time::timeout(Duration::from_secs(5), framed.next())
+    .await
+    .expect("ack should arrive before timeout")
+    .expect("ack frame")
+    .expect("ack frame should decode");
+
+  assert!(matches!(
+    ack,
+    WireFrame::Control(ControlPdu::CompressionAck { table_kind: CompressionTableKind::ActorRef, generation: 7, .. })
+  ));
+  let inbound = tokio::time::timeout(Duration::from_millis(100), server_inbound_rx.recv()).await;
+  assert!(inbound.is_err(), "compression advertisement must not reach the inbound event loop");
   server.shutdown();
 }
 

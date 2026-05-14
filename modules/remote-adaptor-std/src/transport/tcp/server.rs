@@ -8,7 +8,9 @@ use std::{
   time::Instant,
 };
 
-use fraktor_remote_core_rs::{extension::RemoteEvent, transport::TransportError};
+use fraktor_remote_core_rs::{
+  config::RemoteCompressionConfig, extension::RemoteEvent, transport::TransportError, wire::CompressionTableKind,
+};
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::{TcpListener, TcpStream},
@@ -19,12 +21,26 @@ use tokio::{
 use tokio_util::codec::Framed;
 
 use super::{
-  client::inbound_lane_index, connection_loss_reporter::ConnectionLossReporter, frame_codec::WireFrameCodec,
+  client::inbound_lane_index,
+  compression::{
+    InboundCompressionAction, TcpCompressionTables, compression_advertisement_interval,
+    next_compression_advertisement_tick,
+  },
+  connection_loss_reporter::ConnectionLossReporter,
+  frame_codec::WireFrameCodec,
   inbound_frame_event::InboundFrameEvent,
 };
 use crate::association::authority_for_frame;
 
 type ConnectionTasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
+
+struct TcpServerConnectionOptions {
+  frame_codec:        WireFrameCodec,
+  compression_config: RemoteCompressionConfig,
+  local_authority:    String,
+  remote_event_tx:    Option<Sender<RemoteEvent>>,
+  monotonic_epoch:    Instant,
+}
 
 /// Owns a `tokio::net::TcpListener` and drives an accept loop that spawns a
 /// reader task for every accepted connection.
@@ -33,10 +49,11 @@ type ConnectionTasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
 /// `Framed` stream and forwards them to the shared inbound channel owned
 /// by the transport.
 pub struct TcpServer {
-  bind_addr:        String,
-  frame_codec:      WireFrameCodec,
-  accept_task:      Option<JoinHandle<()>>,
-  connection_tasks: ConnectionTasks,
+  bind_addr:          String,
+  frame_codec:        WireFrameCodec,
+  compression_config: RemoteCompressionConfig,
+  accept_task:        Option<JoinHandle<()>>,
+  connection_tasks:   ConnectionTasks,
 }
 
 impl Debug for TcpServer {
@@ -49,10 +66,18 @@ impl Debug for TcpServer {
 }
 
 impl TcpServer {
-  /// Creates a new [`TcpServer`] with the given frame codec.
-  #[must_use]
-  pub(crate) fn with_frame_codec(bind_addr: String, frame_codec: WireFrameCodec) -> Self {
-    Self { bind_addr, frame_codec, accept_task: None, connection_tasks: Arc::new(Mutex::new(Vec::new())) }
+  pub(crate) fn with_frame_codec_and_compression_config(
+    bind_addr: String,
+    frame_codec: WireFrameCodec,
+    compression_config: RemoteCompressionConfig,
+  ) -> Self {
+    Self {
+      bind_addr,
+      frame_codec,
+      compression_config,
+      accept_task: None,
+      connection_tasks: Arc::new(Mutex::new(Vec::new())),
+    }
   }
 
   pub(crate) fn start_with_remote_events(
@@ -60,6 +85,7 @@ impl TcpServer {
     inbound_txs: Vec<UnboundedSender<InboundFrameEvent>>,
     remote_event_tx: Option<Sender<RemoteEvent>>,
     monotonic_epoch: Instant,
+    local_authority: String,
   ) -> Result<SocketAddr, TransportError> {
     if self.accept_task.is_some() {
       return Err(TransportError::AlreadyRunning);
@@ -70,6 +96,7 @@ impl TcpServer {
     listener.set_nonblocking(true).map_err(|_| TransportError::SendFailed)?;
     let listener = TcpListener::from_std(listener).map_err(|_| TransportError::SendFailed)?;
     let frame_codec = self.frame_codec;
+    let compression_config = self.compression_config;
     let connection_tasks = self.connection_tasks.clone();
     let task = handle.spawn(async move {
       loop {
@@ -78,8 +105,15 @@ impl TcpServer {
             let inbound_txs = inbound_txs.clone();
             let remote_event_tx = remote_event_tx.clone();
             let peer_addr = peer.to_string();
-            let connection =
-              tokio::spawn(read_loop(stream, peer_addr, inbound_txs, frame_codec, remote_event_tx, monotonic_epoch));
+            let local_authority = local_authority.clone();
+            let connection_options = TcpServerConnectionOptions {
+              frame_codec,
+              compression_config,
+              remote_event_tx,
+              monotonic_epoch,
+              local_authority,
+            };
+            let connection = tokio::spawn(read_loop(stream, peer_addr, inbound_txs, connection_options));
             // 接続ごとの read_loop ハンドルを共有 Vec に蓄積し、 shutdown() から abort できるようにする。
             // 終了済みハンドルはここでまとめて掃除し、長時間 accept を続けても無制限には膨れないようにする。
             match connection_tasks.lock() {
@@ -120,34 +154,79 @@ async fn read_loop(
   stream: TcpStream,
   peer: String,
   inbound_txs: Vec<UnboundedSender<InboundFrameEvent>>,
-  frame_codec: WireFrameCodec,
-  remote_event_tx: Option<Sender<RemoteEvent>>,
-  monotonic_epoch: Instant,
+  options: TcpServerConnectionOptions,
 ) {
+  let frame_codec = options.frame_codec;
+  let compression_config = options.compression_config;
+  let local_authority = options.local_authority;
+  let remote_event_tx = options.remote_event_tx;
+  let monotonic_epoch = options.monotonic_epoch;
   let mut framed = Framed::new(stream, frame_codec);
   let mut authority = None;
+  let mut compression_tables = TcpCompressionTables::new(compression_config);
+  let mut actor_ref_advertisement_interval = compression_advertisement_interval(
+    compression_config.actor_ref_max(),
+    compression_config.actor_ref_advertisement_interval(),
+  );
+  let mut manifest_advertisement_interval = compression_advertisement_interval(
+    compression_config.manifest_max(),
+    compression_config.manifest_advertisement_interval(),
+  );
   let exit_cause = loop {
-    match framed.next().await {
-      | Some(Ok(decoded)) => {
-        if let Some(frame_authority) = authority_for_frame(&decoded) {
-          authority = Some(frame_authority);
-        }
-        let lane_index = inbound_lane_index(&peer, authority.as_ref(), &decoded, inbound_txs.len());
-        let inbound_tx =
-          inbound_txs.get(lane_index).expect("inbound_lane_index returns an index within the inbound_txs lane count");
-        if inbound_tx
-          .send(InboundFrameEvent { peer: peer.clone(), authority: authority.clone(), frame: decoded })
-          .is_err()
+    tokio::select! {
+      next = framed.next() => match next {
+        | Some(Ok(decoded)) => {
+          let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
+            | Ok(InboundCompressionAction::Forward(frame)) => frame,
+            | Ok(InboundCompressionAction::Reply(pdu)) => {
+              if let Err(err) = framed.send(crate::transport::tcp::WireFrame::Control(pdu)).await {
+                tracing::warn!(?err, peer = %peer, "tcp server compression ack write error");
+                break Some(TransportError::SendFailed);
+              }
+              continue;
+            },
+            | Ok(InboundCompressionAction::Consumed) => continue,
+            | Err(err) => {
+              tracing::warn!(?err, peer = %peer, "tcp server compression frame error");
+              break Some(TransportError::SendFailed);
+            },
+          };
+          if let Some(frame_authority) = authority_for_frame(&decoded) {
+            authority = Some(frame_authority);
+          }
+          let lane_index = inbound_lane_index(&peer, authority.as_ref(), &decoded, inbound_txs.len());
+          let inbound_tx =
+            inbound_txs.get(lane_index).expect("inbound_lane_index returns an index within the inbound_txs lane count");
+          if inbound_tx
+            .send(InboundFrameEvent { peer: peer.clone(), authority: authority.clone(), frame: decoded })
+            .is_err()
+          {
+            // Receiver dropped — the transport is shutting down.
+            break None;
+          }
+        },
+        | Some(Err(err)) => {
+          tracing::warn!(?err, peer = %peer, "tcp frame decode error");
+          break Some(TransportError::SendFailed);
+        },
+        | None => break Some(TransportError::ConnectionClosed),
+      },
+      _ = next_compression_advertisement_tick(&mut actor_ref_advertisement_interval) => {
+        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::ActorRef, &local_authority)
+          && let Err(err) = framed.send(frame).await
         {
-          // Receiver dropped — the transport is shutting down.
-          break None;
+          tracing::warn!(?err, peer = %peer, "tcp server actor-ref compression advertisement write error");
+          break Some(TransportError::SendFailed);
         }
       },
-      | Some(Err(err)) => {
-        tracing::warn!(?err, peer = %peer, "tcp frame decode error");
-        break Some(TransportError::SendFailed);
+      _ = next_compression_advertisement_tick(&mut manifest_advertisement_interval) => {
+        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::Manifest, &local_authority)
+          && let Err(err) = framed.send(frame).await
+        {
+          tracing::warn!(?err, peer = %peer, "tcp server manifest compression advertisement write error");
+          break Some(TransportError::SendFailed);
+        }
       },
-      | None => break Some(TransportError::ConnectionClosed),
     }
   };
   if let (Some(cause), Some(authority), Some(sender)) = (exit_cause, authority, remote_event_tx) {
