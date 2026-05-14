@@ -89,7 +89,7 @@ impl StdRemoteWatchHook {
       | Ok(()) => true,
       | Err(TrySendError::Full(_) | TrySendError::Closed(_)) => {
         tracing::warn!("remote watch notification event queue rejected envelope");
-        true
+        false
       },
     }
   }
