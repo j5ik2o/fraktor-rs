@@ -179,10 +179,7 @@ impl StdFlushGate {
       while index < state.pending_notifications.len() {
         if state.pending_notifications[index].flush_ids.is_empty() {
           let pending = state.pending_notifications.remove(index);
-          if let Some(pending) = enqueue_pending_outbound(event_sender, pending) {
-            state.pending_notifications.insert(index, pending);
-            index += 1;
-          }
+          enqueue_pending_outbound(event_sender, pending);
         } else {
           index += 1;
         }
@@ -263,13 +260,7 @@ fn enqueue_outbound(
   match event_sender.try_send(event) {
     | Ok(()) => true,
     | Err(TrySendError::Full(event)) => {
-      tracing::warn!("remote watch notification event queue is full");
-      let sender = event_sender.clone();
-      let _send_thread = thread::spawn(move || {
-        // The receiver can close before capacity returns; then there is no consumer left to preserve
-        // delivery for.
-        drop(sender.blocking_send(event));
-      });
+      defer_outbound_event(event_sender, event);
       true
     },
     | Err(TrySendError::Closed(_)) => {
@@ -279,23 +270,32 @@ fn enqueue_outbound(
   }
 }
 
-fn enqueue_pending_outbound(
-  event_sender: &Sender<RemoteEvent>,
-  pending: PendingNotification,
-) -> Option<PendingNotification> {
+fn enqueue_pending_outbound(event_sender: &Sender<RemoteEvent>, pending: PendingNotification) {
   match event_sender.try_reserve() {
     | Ok(permit) => {
       let PendingNotification { authority, envelope, now_ms, .. } = pending;
       permit.send(RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms });
-      None
     },
     | Err(TrySendError::Full(())) => {
-      tracing::warn!("remote watch notification event queue is full");
-      Some(pending)
+      let PendingNotification { authority, envelope, now_ms, .. } = pending;
+      defer_outbound_event(event_sender, RemoteEvent::OutboundEnqueued {
+        authority,
+        envelope: Box::new(envelope),
+        now_ms,
+      });
     },
     | Err(TrySendError::Closed(_)) => {
       tracing::warn!("remote watch notification event queue is closed");
-      None
     },
   }
+}
+
+fn defer_outbound_event(event_sender: &Sender<RemoteEvent>, event: RemoteEvent) {
+  tracing::warn!("remote watch notification event queue is full");
+  let sender = event_sender.clone();
+  let _send_thread = thread::spawn(move || {
+    // The receiver can close before capacity returns; then there is no consumer left to preserve
+    // delivery for.
+    drop(sender.blocking_send(event));
+  });
 }

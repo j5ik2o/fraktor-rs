@@ -163,8 +163,8 @@ fn pending_notification_ignores_outcome_for_other_authority() {
   assert_eq!(pending[0].flush_ids, vec![1]);
 }
 
-#[test]
-fn pending_notification_release_observes_full_event_queue() {
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn pending_notification_release_defers_delivery_when_event_queue_is_full() {
   let gate = StdFlushGate::new();
   let authority = test_authority();
   let (event_tx, mut event_rx) = mpsc::channel(1);
@@ -181,13 +181,20 @@ fn pending_notification_release_observes_full_event_queue() {
   );
 
   assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
-  assert_eq!(gate.inner.lock().expect(FLUSH_GATE_LOCK_POISONED).pending_notifications.len(), 1);
-
-  gate.observe_outcomes(
-    vec![RemoteFlushOutcome::Completed { authority, flush_id: 1, scope: FlushScope::BeforeDeathWatchNotification }],
-    &event_tx,
-  );
-  assert_one_notification_enqueued(&mut event_rx);
+  assert!(gate.inner.lock().expect(FLUSH_GATE_LOCK_POISONED).pending_notifications.is_empty());
+  let event = tokio::time::timeout(Duration::from_millis(50), event_rx.recv())
+    .await
+    .expect("deferred notification should be delivered")
+    .expect("event queue should remain open");
+  assert!(matches!(
+    event,
+    RemoteEvent::OutboundEnqueued { authority: received_authority, envelope, now_ms: 42 }
+      if received_authority == authority
+        && envelope.priority() == OutboundPriority::System
+        && envelope.message().downcast_ref::<SystemMessage>()
+          == Some(&SystemMessage::DeathWatchNotification(Pid::new(10, 0)))
+  ));
+  assert!(event_rx.try_recv().is_err());
 }
 
 #[test]
