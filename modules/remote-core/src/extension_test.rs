@@ -18,7 +18,7 @@ use fraktor_actor_core_kernel_rs::{
     actor_path::ActorPathParser,
     messaging::{AnyMessage, system_message::SystemMessage},
   },
-  event::stream::CorrelationId,
+  event::stream::{CorrelationId, RemotingLifecycleEvent},
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
@@ -1216,6 +1216,82 @@ fn inbound_heartbeat_control_sends_response_to_remote_peer() {
 }
 
 #[test]
+fn inbound_heartbeat_control_with_mismatched_peer_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let control_frames = transport.control_frames.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address, second_remote.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(ControlPdu::Heartbeat { authority: second_remote.to_string() }),
+      now_ms:    75,
+    })
+    .expect("mismatched heartbeat authority should be ignored");
+
+  assert!(control_frames.with_lock(|frames| frames.is_empty()));
+}
+
+#[test]
+fn inbound_heartbeat_response_from_matching_peer_is_accepted() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::HeartbeatResponse {
+        authority: remote_address.to_string(),
+        uid:       2,
+      }),
+      now_ms:    80,
+    })
+    .expect("matching heartbeat response should be accepted");
+
+  assert_eq!(control_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_heartbeat_response_with_mismatched_peer_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address, second_remote.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(ControlPdu::HeartbeatResponse {
+        authority: second_remote.to_string(),
+        uid:       2,
+      }),
+      now_ms:    80,
+    })
+    .expect("mismatched heartbeat response authority should be ignored");
+
+  assert_eq!(control_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
 fn start_flush_sends_flush_requests_and_returns_timer() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1252,6 +1328,80 @@ fn start_flush_sends_flush_requests_and_returns_timer() {
       })
     ] if first_remote == &remote_address && second_remote == &remote_address
   ));
+}
+
+#[test]
+fn start_flush_with_empty_lanes_exposes_completed_outcome_without_timer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before starting flush");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+
+  let timers = remote.start_flush(None, FlushScope::Shutdown, &[], 100).expect("empty-lane flush should complete");
+  let outcomes = remote.drain_flush_outcomes();
+
+  assert!(timers.is_empty());
+  assert!(matches!(outcomes.as_slice(), [RemoteFlushOutcome::Completed {
+    flush_id: 1,
+    scope: FlushScope::Shutdown,
+    ..
+  }]));
+}
+
+#[test]
+fn collect_flush_start_effects_records_timed_out_effect() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address]);
+  let mut remote = remote_new(transport, config, event_publisher());
+  let authority = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let mut timers = Vec::new();
+  let mut outcomes = Vec::new();
+
+  remote.collect_flush_start_effects(
+    0,
+    vec![AssociationEffect::FlushTimedOut {
+      authority:     authority.clone(),
+      flush_id:      1,
+      scope:         FlushScope::Shutdown,
+      pending_lanes: vec![0, 1],
+    }],
+    &mut timers,
+    &mut outcomes,
+  );
+
+  assert!(timers.is_empty());
+  assert!(matches!(
+    outcomes.as_slice(),
+    [RemoteFlushOutcome::TimedOut {
+      authority: outcome_authority,
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+    }] if outcome_authority == &authority && pending_lanes == &vec![0, 1]
+  ));
+}
+
+#[test]
+fn collect_flush_start_effects_ignores_non_flush_effects() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address]);
+  let mut remote = remote_new(transport, config, event_publisher());
+  let mut timers = Vec::new();
+  let mut outcomes = Vec::new();
+  let event = RemotingLifecycleEvent::ListenStarted {
+    authority:      String::from("fraktor.tcp://sys@127.0.0.1:2552"),
+    correlation_id: CorrelationId::nil(),
+  };
+
+  remote.collect_flush_start_effects(0, vec![AssociationEffect::PublishLifecycle(event)], &mut timers, &mut outcomes);
+
+  assert!(timers.is_empty());
+  assert!(outcomes.is_empty());
 }
 
 #[test]
@@ -1557,16 +1707,18 @@ fn flush_request_send_backpressure_exposes_failed_outcome() {
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
   let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::Backpressure));
+  let control_calls = transport.control_calls.clone();
   let mut remote = remote_new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before starting flush");
   remote.insert_association(active_association(local_address, remote_address, &config));
 
   let timers = remote
-    .start_flush(None, FlushScope::Shutdown, &[0], 100)
+    .start_flush(None, FlushScope::Shutdown, &[0, 1], 100)
     .expect("flush send backpressure should be exposed as an outcome");
   let outcomes = remote.drain_flush_outcomes();
 
-  assert_eq!(timers.len(), 1);
+  assert!(timers.is_empty());
+  assert_eq!(control_calls.load(Ordering::Relaxed), 1);
   assert!(matches!(
     outcomes.as_slice(),
     [RemoteFlushOutcome::Failed {
@@ -1574,7 +1726,7 @@ fn flush_request_send_backpressure_exposes_failed_outcome() {
       scope: FlushScope::Shutdown,
       pending_lanes,
       ..
-    }] if pending_lanes == &vec![0]
+    }] if pending_lanes == &vec![0, 1]
   ));
 }
 
@@ -1593,7 +1745,7 @@ fn remote_shared_start_flush_and_drain_outcomes_returns_immediate_failures() {
     .start_flush_and_drain_outcomes(None, FlushScope::BeforeDeathWatchNotification, &[0], 100)
     .expect("flush send backpressure should be returned with its outcome");
 
-  assert_eq!(timers.len(), 1);
+  assert!(timers.is_empty());
   assert!(matches!(
     outcomes.as_slice(),
     [RemoteFlushOutcome::Failed {
@@ -1913,6 +2065,39 @@ fn connection_lost_recovers_active_association() {
   assert_eq!(handshake_send_calls.load(Ordering::Relaxed), 1);
   assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn connection_lost_after_started_flush_exposes_failed_outcome() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before connection loss");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let authority = TransportEndpoint::new(remote_address.to_string());
+
+  remote.start_flush(None, FlushScope::Shutdown, &[0], 100).expect("flush should start before connection loss");
+  remote
+    .handle_remote_event(RemoteEvent::ConnectionLost {
+      authority: authority.clone(),
+      cause:     TransportError::ConnectionClosed,
+      now_ms:    110,
+    })
+    .expect("connection loss should fail pending flush");
+  let outcomes = remote.drain_flush_outcomes();
+
+  assert!(matches!(
+    outcomes.as_slice(),
+    [RemoteFlushOutcome::Failed {
+      authority: outcome_authority,
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      reason,
+    }] if outcome_authority == &authority && pending_lanes == &vec![0] && reason == "association gated"
+  ));
 }
 
 #[test]

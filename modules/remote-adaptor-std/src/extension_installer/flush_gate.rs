@@ -6,7 +6,6 @@ mod tests;
 
 use std::{
   sync::{Arc, Mutex},
-  thread,
   time::{Duration, Instant},
 };
 
@@ -19,7 +18,7 @@ use fraktor_remote_core_rs::{
 use tokio::{
   sync::{
     Notify,
-    mpsc::{Sender, error::TrySendError},
+    mpsc::{self, Sender, UnboundedSender, error::TrySendError},
   },
   time::sleep,
 };
@@ -53,6 +52,7 @@ pub(crate) struct StdFlushNotification<'a> {
 struct StdFlushGateState {
   pending_notifications: Vec<PendingNotification>,
   shutdown_waiters:      Vec<StdFlushWaitHandle>,
+  retry_sender:          Option<UnboundedSender<RemoteEvent>>,
 }
 
 struct PendingNotification {
@@ -86,6 +86,7 @@ impl StdFlushGate {
       inner: Arc::new(Mutex::new(StdFlushGateState {
         pending_notifications: Vec::new(),
         shutdown_waiters:      Vec::new(),
+        retry_sender:          None,
       })),
     }
   }
@@ -106,7 +107,7 @@ impl StdFlushGate {
       | Ok(timers) => timers,
       | Err(error) => {
         tracing::warn!(?error, remote = %authority.authority(), "death-watch flush start failed");
-        return enqueue_outbound(notification.event_sender, authority, notification.envelope, notification.now_ms);
+        return self.enqueue_outbound(notification.event_sender, authority, notification.envelope, notification.now_ms);
       },
     };
     let mut flush_ids: Vec<u64> = timers.iter().map(RemoteFlushTimer::flush_id).collect();
@@ -117,7 +118,7 @@ impl StdFlushGate {
       }));
     }
     if flush_ids.is_empty() {
-      return enqueue_outbound(notification.event_sender, authority, notification.envelope, notification.now_ms);
+      return self.enqueue_outbound(notification.event_sender, authority, notification.envelope, notification.now_ms);
     }
     {
       let mut state = self.inner.lock().expect(FLUSH_GATE_LOCK_POISONED);
@@ -161,7 +162,7 @@ impl StdFlushGate {
     if matches!(outcome, RemoteFlushOutcome::TimedOut { .. } | RemoteFlushOutcome::Failed { .. }) {
       tracing::warn!(?outcome, "remote flush completed without ordering guarantee");
     }
-    {
+    let ready = {
       let mut state = self.inner.lock().expect(FLUSH_GATE_LOCK_POISONED);
       for pending in &mut state.pending_notifications {
         if pending.authority == key.authority {
@@ -175,11 +176,11 @@ impl StdFlushGate {
           }
         }
       }
+      let mut ready = Vec::new();
       let mut index = 0;
       while index < state.pending_notifications.len() {
         if state.pending_notifications[index].flush_ids.is_empty() {
-          let pending = state.pending_notifications.remove(index);
-          enqueue_pending_outbound(event_sender, pending);
+          ready.push(state.pending_notifications.remove(index));
         } else {
           index += 1;
         }
@@ -188,7 +189,79 @@ impl StdFlushGate {
         waiter.observe(&key);
       }
       state.shutdown_waiters.retain(|waiter| !waiter.is_complete());
+      ready
+    };
+    for pending in ready {
+      self.enqueue_pending_outbound(event_sender, pending);
     }
+  }
+
+  fn enqueue_outbound(
+    &self,
+    event_sender: &Sender<RemoteEvent>,
+    authority: TransportEndpoint,
+    envelope: OutboundEnvelope,
+    now_ms: u64,
+  ) -> bool {
+    let event = RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms };
+    match event_sender.try_send(event) {
+      | Ok(()) => true,
+      | Err(TrySendError::Full(event)) => {
+        self.defer_outbound_event(event_sender, event);
+        true
+      },
+      | Err(TrySendError::Closed(_)) => {
+        tracing::warn!("remote watch notification event queue is closed");
+        true
+      },
+    }
+  }
+
+  fn enqueue_pending_outbound(&self, event_sender: &Sender<RemoteEvent>, pending: PendingNotification) {
+    match event_sender.try_reserve() {
+      | Ok(permit) => {
+        let PendingNotification { authority, envelope, now_ms, .. } = pending;
+        permit.send(RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms });
+      },
+      | Err(TrySendError::Full(())) => {
+        let PendingNotification { authority, envelope, now_ms, .. } = pending;
+        self.defer_outbound_event(event_sender, RemoteEvent::OutboundEnqueued {
+          authority,
+          envelope: Box::new(envelope),
+          now_ms,
+        });
+      },
+      | Err(TrySendError::Closed(_)) => {
+        tracing::warn!("remote watch notification event queue is closed");
+      },
+    }
+  }
+
+  fn defer_outbound_event(&self, event_sender: &Sender<RemoteEvent>, event: RemoteEvent) {
+    tracing::warn!("remote watch notification event queue is full");
+    let retry_sender = self.retry_sender_for(event_sender);
+    if retry_sender.send(event).is_err() {
+      tracing::warn!("remote watch notification retry queue is closed");
+    }
+  }
+
+  fn retry_sender_for(&self, event_sender: &Sender<RemoteEvent>) -> UnboundedSender<RemoteEvent> {
+    let mut state = self.inner.lock().expect(FLUSH_GATE_LOCK_POISONED);
+    if let Some(retry_sender) = &state.retry_sender {
+      return retry_sender.clone();
+    }
+    let (retry_sender, mut retry_receiver) = mpsc::unbounded_channel();
+    let sender = event_sender.clone();
+    let _retry_task = tokio::spawn(async move {
+      while let Some(event) = retry_receiver.recv().await {
+        if sender.send(event).await.is_err() {
+          tracing::warn!("remote watch notification event queue is closed");
+          break;
+        }
+      }
+    });
+    state.retry_sender = Some(retry_sender.clone());
+    retry_sender
   }
 }
 
@@ -248,54 +321,4 @@ pub(super) fn schedule_flush_timers(
       }
     });
   }
-}
-
-fn enqueue_outbound(
-  event_sender: &Sender<RemoteEvent>,
-  authority: TransportEndpoint,
-  envelope: OutboundEnvelope,
-  now_ms: u64,
-) -> bool {
-  let event = RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms };
-  match event_sender.try_send(event) {
-    | Ok(()) => true,
-    | Err(TrySendError::Full(event)) => {
-      defer_outbound_event(event_sender, event);
-      true
-    },
-    | Err(TrySendError::Closed(_)) => {
-      tracing::warn!("remote watch notification event queue is closed");
-      true
-    },
-  }
-}
-
-fn enqueue_pending_outbound(event_sender: &Sender<RemoteEvent>, pending: PendingNotification) {
-  match event_sender.try_reserve() {
-    | Ok(permit) => {
-      let PendingNotification { authority, envelope, now_ms, .. } = pending;
-      permit.send(RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms });
-    },
-    | Err(TrySendError::Full(())) => {
-      let PendingNotification { authority, envelope, now_ms, .. } = pending;
-      defer_outbound_event(event_sender, RemoteEvent::OutboundEnqueued {
-        authority,
-        envelope: Box::new(envelope),
-        now_ms,
-      });
-    },
-    | Err(TrySendError::Closed(_)) => {
-      tracing::warn!("remote watch notification event queue is closed");
-    },
-  }
-}
-
-fn defer_outbound_event(event_sender: &Sender<RemoteEvent>, event: RemoteEvent) {
-  tracing::warn!("remote watch notification event queue is full");
-  let sender = event_sender.clone();
-  let _send_thread = thread::spawn(move || {
-    // The receiver can close before capacity returns; then there is no consumer left to preserve
-    // delivery for.
-    drop(sender.blocking_send(event));
-  });
 }

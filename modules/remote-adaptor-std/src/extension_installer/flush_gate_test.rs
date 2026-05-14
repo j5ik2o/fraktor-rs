@@ -37,6 +37,10 @@ fn test_envelope() -> OutboundEnvelope {
   )
 }
 
+fn test_outbound_event(authority: TransportEndpoint, now_ms: u64) -> RemoteEvent {
+  RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(test_envelope()), now_ms }
+}
+
 fn push_pending_notification(gate: &StdFlushGate, authority: TransportEndpoint, flush_ids: Vec<u64>) {
   gate.inner.lock().expect(FLUSH_GATE_LOCK_POISONED).pending_notifications.push(PendingNotification {
     authority,
@@ -213,11 +217,12 @@ fn pending_notification_release_observes_closed_event_queue() {
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn immediate_notification_full_event_queue_defers_delivery() {
+  let gate = StdFlushGate::new();
   let authority = test_authority();
   let (event_tx, mut event_rx) = mpsc::channel(1);
   event_tx.try_send(RemoteEvent::TransportShutdown).expect("event queue should accept first event");
 
-  assert!(enqueue_outbound(&event_tx, authority.clone(), test_envelope(), 42));
+  assert!(gate.enqueue_outbound(&event_tx, authority.clone(), test_envelope(), 42));
   assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
   let event = tokio::time::timeout(Duration::from_millis(50), event_rx.recv())
     .await
@@ -232,6 +237,64 @@ async fn immediate_notification_full_event_queue_defers_delivery() {
           == Some(&SystemMessage::DeathWatchNotification(Pid::new(10, 0)))
   ));
   assert!(event_rx.try_recv().is_err());
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deferred_notifications_reuse_single_retry_worker() {
+  let gate = StdFlushGate::new();
+  let authority = test_authority();
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  event_tx.try_send(RemoteEvent::TransportShutdown).expect("event queue should accept first event");
+
+  assert!(gate.enqueue_outbound(&event_tx, authority.clone(), test_envelope(), 42));
+  assert!(gate.enqueue_outbound(&event_tx, authority.clone(), test_envelope(), 43));
+
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
+  let first = tokio::time::timeout(Duration::from_millis(50), event_rx.recv())
+    .await
+    .expect("first deferred notification should be delivered")
+    .expect("event queue should remain open");
+  let second = tokio::time::timeout(Duration::from_millis(50), event_rx.recv())
+    .await
+    .expect("second deferred notification should be delivered")
+    .expect("event queue should remain open");
+  assert!(matches!(first, RemoteEvent::OutboundEnqueued { now_ms: 42, .. }));
+  assert!(matches!(second, RemoteEvent::OutboundEnqueued { now_ms: 43, .. }));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deferred_notification_retry_worker_observes_closed_event_queue() {
+  let gate = StdFlushGate::new();
+  let authority = test_authority();
+  let (event_tx, event_rx) = mpsc::channel(1);
+  event_tx.try_send(RemoteEvent::TransportShutdown).expect("event queue should accept first event");
+
+  gate.defer_outbound_event(&event_tx, test_outbound_event(authority.clone(), 42));
+  drop(event_rx);
+  for _ in 0..10 {
+    let retry_closed = gate
+      .inner
+      .lock()
+      .expect(FLUSH_GATE_LOCK_POISONED)
+      .retry_sender
+      .as_ref()
+      .is_some_and(|retry_sender| retry_sender.is_closed());
+    if retry_closed {
+      break;
+    }
+    tokio::task::yield_now().await;
+  }
+
+  assert!(
+    gate
+      .inner
+      .lock()
+      .expect(FLUSH_GATE_LOCK_POISONED)
+      .retry_sender
+      .as_ref()
+      .is_some_and(|retry_sender| retry_sender.is_closed())
+  );
+  gate.defer_outbound_event(&event_tx, test_outbound_event(authority, 43));
 }
 
 #[test]
