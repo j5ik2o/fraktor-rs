@@ -127,15 +127,19 @@ fn assert_flush_request(
   expected_lane_id: u32,
   expected_ack_count: u32,
 ) {
-  match effect {
-    | AssociationEffect::SendFlushRequest { flush_id, scope, lane_id, expected_acks, .. } => {
-      assert_eq!(*flush_id, expected_flush_id);
-      assert_eq!(*scope, expected_scope);
-      assert_eq!(*lane_id, expected_lane_id);
-      assert_eq!(*expected_acks, expected_ack_count);
-    },
-    | other => panic!("expected SendFlushRequest, got {other:?}"),
-  }
+  assert!(matches!(
+    effect,
+    AssociationEffect::SendFlushRequest {
+      flush_id,
+      scope,
+      lane_id,
+      expected_acks,
+      ..
+    } if *flush_id == expected_flush_id
+      && *scope == expected_scope
+      && *lane_id == expected_lane_id
+      && *expected_acks == expected_ack_count
+  ));
 }
 
 // ---------------------------------------------------------------------------
@@ -863,6 +867,40 @@ fn start_deathwatch_flush_keeps_lane_zero_when_supplied() {
 }
 
 #[test]
+fn start_flush_deduplicates_lane_ids() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+
+  let effects = association.start_flush(FlushScope::Shutdown, &[2, 2, 1], Duration::from_millis(50), 100);
+
+  assert!(matches!(&effects[0], AssociationEffect::ScheduleFlushTimeout {
+    flush_id: 1,
+    scope: FlushScope::Shutdown,
+    ..
+  }));
+  assert_flush_request(&effects[1], 1, FlushScope::Shutdown, 2, 2);
+  assert_flush_request(&effects[2], 1, FlushScope::Shutdown, 1, 2);
+}
+
+#[test]
+fn start_flush_fails_when_association_is_not_active() {
+  let mut association = new_association();
+
+  let effects = association.start_flush(FlushScope::Shutdown, &[0, 0, 1], Duration::from_millis(50), 100);
+
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::FlushFailed {
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      reason,
+      ..
+    }] if pending_lanes == &vec![0, 1] && reason == "association is not active"
+  ));
+}
+
+#[test]
 fn flush_with_empty_lane_set_completes_immediately() {
   let config = RemoteConfig::new("127.0.0.1");
   let mut association = active_association_from_config(&config);
@@ -905,14 +943,27 @@ fn flush_timer_releases_pending_session() {
   assert!(association.flush_timed_out(1, 149).is_empty());
   let effects = association.flush_timed_out(1, 150);
 
-  match effects.as_slice() {
-    | [AssociationEffect::FlushTimedOut { flush_id, scope, pending_lanes, .. }] => {
-      assert_eq!(*flush_id, 1);
-      assert_eq!(*scope, FlushScope::Shutdown);
-      assert_eq!(pending_lanes, &vec![0, 1]);
-    },
-    | other => panic!("expected FlushTimedOut, got {other:?}"),
-  }
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::FlushTimedOut {
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      ..
+    }] if pending_lanes == &vec![0, 1]
+  ));
+}
+
+#[test]
+fn unknown_flush_inputs_are_ignored() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started = association.start_flush(FlushScope::Shutdown, &[0], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 2);
+
+  assert!(association.apply_flush_ack(99, 0, 1).is_empty());
+  assert!(association.flush_timed_out(99, 200).is_empty());
+  assert!(association.fail_flush(99, String::from("missing")).is_empty());
 }
 
 #[test]

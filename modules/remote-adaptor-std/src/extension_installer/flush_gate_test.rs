@@ -116,6 +116,78 @@ fn failed_flush_releases_pending_notification() {
   assert_one_notification_enqueued(&mut event_rx);
 }
 
+#[test]
+fn pending_notification_waits_for_all_flush_ids() {
+  let gate = StdFlushGate::new();
+  let authority = test_authority();
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  push_pending_notification(&gate, authority.clone(), vec![1, 2]);
+
+  gate.observe_outcomes(
+    vec![RemoteFlushOutcome::Completed {
+      authority: authority.clone(),
+      flush_id:  1,
+      scope:     FlushScope::BeforeDeathWatchNotification,
+    }],
+    &event_tx,
+  );
+  assert!(event_rx.try_recv().is_err());
+  gate.observe_outcomes(
+    vec![RemoteFlushOutcome::Completed { authority, flush_id: 2, scope: FlushScope::BeforeDeathWatchNotification }],
+    &event_tx,
+  );
+
+  assert_one_notification_enqueued(&mut event_rx);
+}
+
+#[test]
+fn pending_notification_release_observes_full_event_queue() {
+  let gate = StdFlushGate::new();
+  let authority = test_authority();
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  event_tx.try_send(RemoteEvent::TransportShutdown).expect("event queue should accept first event");
+  push_pending_notification(&gate, authority.clone(), vec![1]);
+
+  gate.observe_outcomes(
+    vec![RemoteFlushOutcome::Completed {
+      authority: authority.clone(),
+      flush_id:  1,
+      scope:     FlushScope::BeforeDeathWatchNotification,
+    }],
+    &event_tx,
+  );
+
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
+  assert_eq!(gate.inner.lock().expect(FLUSH_GATE_LOCK_POISONED).pending_notifications.len(), 1);
+
+  gate.observe_outcomes(
+    vec![RemoteFlushOutcome::Completed { authority, flush_id: 1, scope: FlushScope::BeforeDeathWatchNotification }],
+    &event_tx,
+  );
+  assert_one_notification_enqueued(&mut event_rx);
+}
+
+#[test]
+fn pending_notification_release_observes_closed_event_queue() {
+  let gate = StdFlushGate::new();
+  let authority = test_authority();
+  let (event_tx, event_rx) = mpsc::channel(1);
+  drop(event_rx);
+  push_pending_notification(&gate, authority.clone(), vec![1]);
+
+  gate.observe_outcomes(
+    vec![RemoteFlushOutcome::Completed { authority, flush_id: 1, scope: FlushScope::BeforeDeathWatchNotification }],
+    &event_tx,
+  );
+}
+
+#[test]
+fn empty_shutdown_waiter_is_not_registered() {
+  let gate = StdFlushGate::new();
+
+  assert!(gate.register_shutdown_waiter(&[]).is_none());
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn shutdown_waiter_completes_after_matching_flush_outcome() {
   let gate = StdFlushGate::new();

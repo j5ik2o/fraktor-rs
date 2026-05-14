@@ -161,18 +161,28 @@ impl StdFlushGate {
     if matches!(outcome, RemoteFlushOutcome::TimedOut { .. } | RemoteFlushOutcome::Failed { .. }) {
       tracing::warn!(?outcome, "remote flush completed without ordering guarantee");
     }
-    let mut ready = Vec::new();
     {
       let mut state = self.inner.lock().expect(FLUSH_GATE_LOCK_POISONED);
       for pending in &mut state.pending_notifications {
         if pending.authority == key.authority {
-          pending.flush_ids.retain(|flush_id| *flush_id != key.flush_id);
+          let mut flush_index = 0;
+          while flush_index < pending.flush_ids.len() {
+            if pending.flush_ids[flush_index] == key.flush_id {
+              pending.flush_ids.remove(flush_index);
+            } else {
+              flush_index += 1;
+            }
+          }
         }
       }
       let mut index = 0;
       while index < state.pending_notifications.len() {
         if state.pending_notifications[index].flush_ids.is_empty() {
-          ready.push(state.pending_notifications.remove(index));
+          let pending = state.pending_notifications.remove(index);
+          if let Some(pending) = enqueue_pending_outbound(event_sender, pending) {
+            state.pending_notifications.insert(index, *pending);
+            index += 1;
+          }
         } else {
           index += 1;
         }
@@ -181,9 +191,6 @@ impl StdFlushGate {
         waiter.observe(&key);
       }
       state.shutdown_waiters.retain(|waiter| !waiter.is_complete());
-    }
-    for pending in ready {
-      let _sent = enqueue_outbound(event_sender, pending.authority, pending.envelope, pending.now_ms);
     }
   }
 }
@@ -212,11 +219,13 @@ impl StdFlushWaitHandle {
   }
 
   pub(super) async fn wait(self, timeout: Duration) -> bool {
+    let notified = self.notify.notified();
+    tokio::pin!(notified);
     if self.is_complete() {
       return true;
     }
     tokio::select! {
-      () = self.notify.notified() => true,
+      () = &mut notified => self.is_complete(),
       () = sleep(timeout) => self.is_complete(),
     }
   }
@@ -259,5 +268,24 @@ fn enqueue_outbound(
       tracing::warn!("remote watch notification event queue is closed");
       true
     },
+  }
+}
+
+fn enqueue_pending_outbound(
+  event_sender: &Sender<RemoteEvent>,
+  pending: PendingNotification,
+) -> Option<Box<PendingNotification>> {
+  let PendingNotification { authority, flush_ids, envelope, now_ms } = pending;
+  match event_sender.try_send(RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms }) {
+    | Ok(()) => None,
+    | Err(TrySendError::Full(RemoteEvent::OutboundEnqueued { authority, envelope, now_ms })) => {
+      tracing::warn!("remote watch notification event queue is full");
+      Some(Box::new(PendingNotification { authority, flush_ids, envelope: *envelope, now_ms }))
+    },
+    | Err(TrySendError::Closed(_)) => {
+      tracing::warn!("remote watch notification event queue is closed");
+      None
+    },
+    | Err(TrySendError::Full(_)) => unreachable!("flush gate only enqueues outbound events"),
   }
 }

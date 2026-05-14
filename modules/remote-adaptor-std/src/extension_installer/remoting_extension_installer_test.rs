@@ -24,7 +24,7 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{
   sync::mpsc::{self, Receiver, Sender},
-  time::timeout,
+  time::{sleep, timeout},
 };
 
 use super::*;
@@ -149,6 +149,11 @@ fn remote_shared(config: RemoteConfig, transport: TestRemoteTransport) -> Remote
   shared
 }
 
+fn remote_shared_not_started(config: RemoteConfig, transport: TestRemoteTransport) -> RemoteShared {
+  let system = create_noop_actor_system();
+  RemoteShared::new(Remote::new(transport, config, EventPublisher::new(system.downgrade()), serialization_extension()))
+}
+
 fn activate_association(remote: &RemoteShared, target: &Address) {
   remote
     .handle_event(RemoteEvent::OutboundEnqueued {
@@ -230,6 +235,81 @@ async fn shutdown_with_timeout(remote: RemoteShared, config: RemoteConfig) -> Re
   .expect("shutdown should not hang")
 }
 
+#[test]
+fn test_remote_transport_reports_lifecycle_edges() {
+  let local = local_address();
+  let target = remote_address();
+  let mut transport = TestRemoteTransport::new(vec![local.clone()]);
+
+  assert_eq!(transport.shutdown().expect_err("shutdown before start should fail"), TransportError::NotStarted);
+  assert_eq!(
+    transport.connect_peer(&target).expect_err("connect before start should fail"),
+    TransportError::NotStarted
+  );
+  let (error, _envelope) =
+    transport.send(test_user_envelope(&target)).expect_err("send before start should return envelope");
+  assert_eq!(error, TransportError::NotStarted);
+  assert_eq!(
+    transport
+      .send_control(&target, ControlPdu::Shutdown { authority: local.to_string() })
+      .expect_err("control before start should fail"),
+    TransportError::NotStarted
+  );
+  assert_eq!(
+    transport
+      .send_flush_request(&target, ControlPdu::Shutdown { authority: local.to_string() }, 0)
+      .expect_err("flush before start should fail"),
+    TransportError::NotStarted
+  );
+  assert_eq!(
+    transport.send_ack(&target, AckPdu::new(1, 1, 0)).expect_err("ack before start should fail"),
+    TransportError::NotStarted
+  );
+  assert_eq!(
+    transport
+      .send_handshake(&target, HandshakePdu::Rsp(HandshakeRsp::new(UniqueAddress::new(local.clone(), 1))))
+      .expect_err("handshake before start should fail"),
+    TransportError::NotStarted
+  );
+  assert_eq!(
+    transport
+      .schedule_handshake_timeout(&TransportEndpoint::new(target.to_string()), Duration::from_millis(1), 1)
+      .expect_err("timer before start should fail"),
+    TransportError::NotStarted
+  );
+  assert_eq!(
+    transport
+      .quarantine(&target, Some(1), QuarantineReason::new("test"))
+      .expect_err("quarantine before start should fail"),
+    TransportError::NotStarted
+  );
+
+  transport.start().expect("first start should succeed");
+  assert_eq!(transport.start().expect_err("second start should fail"), TransportError::AlreadyRunning);
+  transport.connect_peer(&target).expect("running transport should connect");
+  transport
+    .send_control(&target, ControlPdu::Shutdown { authority: local.to_string() })
+    .expect("running transport should send control");
+  transport
+    .send_flush_request(&target, ControlPdu::Shutdown { authority: local.to_string() }, 0)
+    .expect("running transport should send flush request");
+  transport.send_ack(&target, AckPdu::new(1, 1, 0)).expect("running transport should send ack");
+  transport
+    .send_handshake(&target, HandshakePdu::Rsp(HandshakeRsp::new(UniqueAddress::new(local, 1))))
+    .expect("running transport should send handshake");
+  transport
+    .schedule_handshake_timeout(&TransportEndpoint::new(target.to_string()), Duration::from_millis(1), 1)
+    .expect("running transport should schedule timer");
+  transport.quarantine(&target, Some(1), QuarantineReason::new("test")).expect("running transport should quarantine");
+  transport.send(test_user_envelope(&target)).expect("running transport should send envelope");
+
+  transport.send_result = Err(TransportError::Backpressure);
+  let (error, _envelope) =
+    transport.send(test_user_envelope(&target)).expect_err("configured send error should return envelope");
+  assert_eq!(error, TransportError::Backpressure);
+  transport.shutdown().expect("shutdown after start should succeed");
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn shutdown_remote_and_join_completes_without_active_association() {
   let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(5));
@@ -264,6 +344,29 @@ async fn shutdown_remote_and_join_completes_after_flush_start_failure() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn shutdown_remote_and_join_continues_when_shutdown_flush_is_not_started() {
+  let local = local_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let remote = remote_shared_not_started(config.clone(), TestRemoteTransport::new(vec![local]));
+  let (event_sender, _event_receiver) = mpsc::channel(8);
+
+  timeout(
+    Duration::from_secs(1),
+    shutdown_remote_and_join(
+      remote,
+      Some(event_sender),
+      Arc::new(Mutex::new(RemotingRunState::new())),
+      config,
+      Instant::now(),
+      StdFlushGate::default(),
+    ),
+  )
+  .await
+  .expect("shutdown should not hang")
+  .expect("shutdown should continue after flush setup failure");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn deathwatch_flush_completion_releases_notification() {
   let local = local_address();
   let target = remote_address();
@@ -289,6 +392,36 @@ async fn deathwatch_flush_completion_releases_notification() {
   gate.observe_outcomes(remote.drain_flush_outcomes(), &event_sender);
 
   assert_deathwatch_notification_enqueued(&mut event_receiver);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deathwatch_flush_empty_lane_completion_releases_notification() {
+  let local = local_address();
+  let target = remote_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let remote = remote_shared(config, TestRemoteTransport::new(vec![local]));
+  let gate = StdFlushGate::default();
+  let (event_sender, mut event_receiver) = mpsc::channel(8);
+  activate_association(&remote, &target);
+
+  assert!(gate.submit_notification(&remote, notification_with_lane_ids(&event_sender, &target, 3, &[])));
+
+  assert_deathwatch_notification_enqueued(&mut event_receiver);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deathwatch_flush_timer_delivery_observes_closed_event_queue() {
+  let local = local_address();
+  let target = remote_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::ZERO);
+  let remote = remote_shared(config, TestRemoteTransport::new(vec![local]));
+  let gate = StdFlushGate::default();
+  let (event_sender, event_receiver) = mpsc::channel(8);
+  activate_association(&remote, &target);
+  drop(event_receiver);
+
+  assert!(gate.submit_notification(&remote, notification(&event_sender, &target, 3)));
+  sleep(Duration::from_millis(1)).await;
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -330,11 +463,48 @@ async fn deathwatch_flush_start_failure_releases_notification() {
   assert_deathwatch_notification_enqueued(&mut event_receiver);
 }
 
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deathwatch_flush_without_active_association_releases_notification() {
+  let local = local_address();
+  let target = remote_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let remote = remote_shared(config, TestRemoteTransport::new(vec![local]));
+  let gate = StdFlushGate::default();
+  let (event_sender, mut event_receiver) = mpsc::channel(8);
+
+  assert!(gate.submit_notification(&remote, notification(&event_sender, &target, 3)));
+
+  assert_deathwatch_notification_enqueued(&mut event_receiver);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deathwatch_flush_not_started_releases_notification() {
+  let local = local_address();
+  let target = remote_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let remote = remote_shared_not_started(config, TestRemoteTransport::new(vec![local]));
+  let gate = StdFlushGate::default();
+  let (event_sender, mut event_receiver) = mpsc::channel(8);
+
+  assert!(gate.submit_notification(&remote, notification(&event_sender, &target, 3)));
+
+  assert_deathwatch_notification_enqueued(&mut event_receiver);
+}
+
 fn notification<'a>(event_sender: &'a Sender<RemoteEvent>, target: &Address, now_ms: u64) -> StdFlushNotification<'a> {
+  notification_with_lane_ids(event_sender, target, now_ms, &[0])
+}
+
+fn notification_with_lane_ids<'a>(
+  event_sender: &'a Sender<RemoteEvent>,
+  target: &Address,
+  now_ms: u64,
+  lane_ids: &'a [u32],
+) -> StdFlushNotification<'a> {
   StdFlushNotification {
     event_sender,
     monotonic_epoch: Instant::now(),
-    lane_ids: &[0],
+    lane_ids,
     authority: TransportEndpoint::new(target.to_string()),
     envelope: test_deathwatch_envelope(target),
     now_ms,

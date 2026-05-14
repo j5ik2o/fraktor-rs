@@ -54,10 +54,14 @@ impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
     let Some(remote_provider) = remote_provider.take() else {
       return Err(ActorSystemBuildError::Configuration(String::from(PROVIDER_ALREADY_INSTALLED)));
     };
-    let flush_handles = self.event_sender_epoch_watcher_and_flush()?;
-    let event_sender = flush_handles.event_sender.clone();
-    let monotonic_epoch = flush_handles.monotonic_epoch;
-    let watcher_sender = flush_handles.watcher_sender.clone();
+    let RemoteProviderFlushHandles {
+      event_sender,
+      monotonic_epoch,
+      watcher_sender,
+      remote_shared,
+      flush_gate,
+      flush_lane_ids,
+    } = self.event_sender_epoch_watcher_and_flush()?;
     let local_provider = ActorRefProviderHandleShared::new(LocalActorRefProvider::new_with_state(&system.state()));
     let registry = RemoteActorPathRegistry::new_shared();
     let provider = StdRemoteActorRefProvider::new_with_registry(
@@ -77,11 +81,7 @@ impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
       event_sender,
       watcher_sender,
       monotonic_epoch,
-      StdRemoteWatchFlushConfig::new(
-        flush_handles.remote_shared,
-        flush_handles.flush_gate,
-        flush_handles.flush_lane_ids,
-      ),
+      StdRemoteWatchFlushConfig::new(remote_shared, flush_gate, flush_lane_ids),
     ));
     Ok(())
   }

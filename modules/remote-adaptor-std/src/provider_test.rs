@@ -13,6 +13,7 @@ use fraktor_actor_core_kernel_rs::{
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   event::stream::EventStreamEvent,
+  serialization::default_serialization_extension_id,
   system::{ActorSystem, remote::RemoteWatchHook},
 };
 use fraktor_remote_core_rs::{
@@ -20,8 +21,8 @@ use fraktor_remote_core_rs::{
   config::RemoteConfig,
   envelope::OutboundPriority,
   extension::{
-    REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
-    RemoteEvent,
+    EventPublisher, REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, Remote, RemoteActorRefResolveCacheEvent,
+    RemoteActorRefResolveCacheOutcome, RemoteEvent, RemoteShared,
   },
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::TransportEndpoint,
@@ -35,10 +36,12 @@ use tokio::{
 
 use super::{
   StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
-  remote_actor_path_registry::RemoteActorPathRegistry, remote_watch_hook::StdRemoteWatchHook,
+  remote_actor_path_registry::RemoteActorPathRegistry,
+  remote_watch_hook::{StdRemoteWatchFlushConfig, StdRemoteWatchHook},
 };
 use crate::{
-  extension_installer::RemotingExtensionInstaller, tests::test_support_test::EventHarness,
+  extension_installer::{RemotingExtensionInstaller, StdFlushGate},
+  tests::test_support_test::EventHarness,
   transport::tcp::TcpRemoteTransport,
 };
 
@@ -227,8 +230,27 @@ fn make_remote_watch_hook_fixture_with_capacities(
   let harness = EventHarness::new();
   let (event_tx, event_rx) = mpsc::channel(event_capacity);
   let (watcher_tx, watcher_rx) = mpsc::channel(watcher_capacity);
-  let hook = StdRemoteWatchHook::new(registry, harness.system().state(), event_tx, watcher_tx, Instant::now());
+  let flush_config = remote_watch_flush_config(&harness);
+  let hook = StdRemoteWatchHook::new_with_flush_gate(
+    registry,
+    harness.system().state(),
+    event_tx,
+    watcher_tx,
+    Instant::now(),
+    flush_config,
+  );
   (hook, event_rx, watcher_rx, harness)
+}
+
+fn remote_watch_flush_config(harness: &EventHarness) -> StdRemoteWatchFlushConfig {
+  let serialization_extension = harness.system().extended().register_extension(&default_serialization_extension_id());
+  let remote = Remote::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![RemoteCoreAddress::new("local-sys", "127.0.0.1", 0)]),
+    RemoteConfig::new("127.0.0.1"),
+    EventPublisher::new(harness.system().downgrade()),
+    serialization_extension,
+  );
+  StdRemoteWatchFlushConfig::new(RemoteShared::new(remote), StdFlushGate::default(), vec![0])
 }
 
 // ---------------------------------------------------------------------------

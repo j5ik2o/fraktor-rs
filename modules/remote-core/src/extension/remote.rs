@@ -382,7 +382,7 @@ impl Remote {
     match frame {
       | WireFrame::Envelope(pdu) => self.handle_inbound_envelope_pdu(authority, &pdu, now_ms),
       | WireFrame::Handshake(pdu) => self.handle_inbound_handshake_pdu(pdu, now_ms),
-      | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(&pdu, now_ms),
+      | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(authority, &pdu, now_ms),
       | WireFrame::Ack(pdu) => self.handle_inbound_ack_pdu(authority, &pdu, now_ms),
     }
   }
@@ -520,7 +520,12 @@ impl Remote {
     self.inbound_envelopes.push(envelope);
   }
 
-  fn handle_inbound_control_pdu(&mut self, pdu: &ControlPdu, now_ms: u64) -> Result<(), RemotingError> {
+  fn handle_inbound_control_pdu(
+    &mut self,
+    peer_authority: &TransportEndpoint,
+    pdu: &ControlPdu,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
     match pdu {
       | ControlPdu::Heartbeat { authority } => self.handle_inbound_heartbeat_control(authority, now_ms),
       | ControlPdu::HeartbeatResponse { authority, .. } => {
@@ -531,11 +536,10 @@ impl Remote {
         self.handle_inbound_quarantine_control(authority, reason, now_ms)
       },
       | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(authority, now_ms),
-      | ControlPdu::FlushRequest { authority, flush_id, lane_id, expected_acks, .. } => {
-        self.handle_inbound_flush_request_control(authority, *flush_id, *lane_id, *expected_acks, now_ms)
-      },
+      | ControlPdu::FlushRequest { authority, flush_id, lane_id, expected_acks, .. } => self
+        .handle_inbound_flush_request_control(peer_authority, authority, *flush_id, *lane_id, *expected_acks, now_ms),
       | ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks } => {
-        self.handle_inbound_flush_ack_control(authority, *flush_id, *lane_id, *expected_acks, now_ms)
+        self.handle_inbound_flush_ack_control(peer_authority, authority, *flush_id, *lane_id, *expected_acks, now_ms)
       },
     }
   }
@@ -555,19 +559,18 @@ impl Remote {
 
   fn handle_inbound_flush_request_control(
     &mut self,
+    peer_authority: &TransportEndpoint,
     authority: &str,
     flush_id: u64,
     lane_id: u32,
     expected_acks: u32,
     now_ms: u64,
   ) -> Result<(), RemotingError> {
-    self.record_control_activity(authority, now_ms);
-    let Some(remote) = parse_authority(authority) else {
+    let Some(index) = self.verified_flush_association_index(peer_authority, authority) else {
       return Ok(());
     };
-    let Some(index) = self.association_index_for_remote(&remote) else {
-      return Ok(());
-    };
+    self.associations[index].record_handshake_activity(now_ms);
+    let remote = self.associations[index].remote().clone();
     let local = self.associations[index].local().clone();
     let response = ControlPdu::FlushAck { authority: local.address().to_string(), flush_id, lane_id, expected_acks };
     map_wire_delivery_result(&remote, self.transport.send_control(&remote, response))
@@ -575,21 +578,39 @@ impl Remote {
 
   fn handle_inbound_flush_ack_control(
     &mut self,
+    peer_authority: &TransportEndpoint,
     authority: &str,
     flush_id: u64,
     lane_id: u32,
     expected_acks: u32,
     now_ms: u64,
   ) -> Result<(), RemotingError> {
-    self.record_control_activity(authority, now_ms);
-    let Some(remote) = parse_authority(authority) else {
+    let Some(index) = self.verified_flush_association_index(peer_authority, authority) else {
       return Ok(());
     };
-    let Some(index) = self.association_index_for_remote(&remote) else {
-      return Ok(());
-    };
+    self.associations[index].record_handshake_activity(now_ms);
     let effects = self.associations[index].apply_flush_ack(flush_id, lane_id, expected_acks);
     self.apply_association_effects(index, effects, now_ms)
+  }
+
+  fn verified_flush_association_index(
+    &self,
+    peer_authority: &TransportEndpoint,
+    claimed_authority: &str,
+  ) -> Option<usize> {
+    let claimed_remote = parse_authority(claimed_authority)?;
+    let index = self.association_index_for_authority(peer_authority)?;
+    let peer_remote = self.associations[index].remote();
+    if peer_remote != &claimed_remote {
+      tracing::warn!(
+        peer = %peer_authority.authority(),
+        claimed = claimed_authority,
+        associated = %peer_remote,
+        "ignoring flush control pdu with mismatched authority"
+      );
+      return None;
+    }
+    Some(index)
   }
 
   fn handle_inbound_ack_pdu(

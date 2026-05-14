@@ -124,7 +124,7 @@ fn send_to_lane_id_rejects_unknown_lane() {
 
   let error = client.send_to_lane_id(1, flush_request_frame(7, 1)).expect_err("unknown lane id should be rejected");
 
-  assert_eq!(error, TransportError::ConnectionClosed);
+  assert_eq!(error, TransportError::NotAvailable);
 }
 
 #[test]

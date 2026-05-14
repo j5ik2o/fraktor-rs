@@ -53,25 +53,6 @@ pub(crate) struct StdRemoteWatchHook {
 }
 
 impl StdRemoteWatchHook {
-  pub(crate) fn new(
-    registry: SharedLock<RemoteActorPathRegistry>,
-    state: SystemStateShared,
-    event_sender: Sender<RemoteEvent>,
-    watcher_sender: Sender<WatcherCommand>,
-    monotonic_epoch: Instant,
-  ) -> Self {
-    Self {
-      registry,
-      state,
-      event_sender,
-      watcher_sender,
-      monotonic_epoch,
-      remote_shared: None,
-      flush_gate: None,
-      flush_lane_ids: Vec::new(),
-    }
-  }
-
   pub(crate) fn new_with_flush_gate(
     registry: SharedLock<RemoteActorPathRegistry>,
     state: SystemStateShared,
@@ -80,11 +61,16 @@ impl StdRemoteWatchHook {
     monotonic_epoch: Instant,
     flush_config: StdRemoteWatchFlushConfig,
   ) -> Self {
-    let mut hook = Self::new(registry, state, event_sender, watcher_sender, monotonic_epoch);
-    hook.remote_shared = Some(flush_config.remote_shared);
-    hook.flush_gate = Some(flush_config.flush_gate);
-    hook.flush_lane_ids = flush_config.flush_lane_ids;
-    hook
+    Self {
+      registry,
+      state,
+      event_sender,
+      watcher_sender,
+      monotonic_epoch,
+      remote_shared: Some(flush_config.remote_shared),
+      flush_gate: Some(flush_config.flush_gate),
+      flush_lane_ids: flush_config.flush_lane_ids,
+    }
   }
 
   fn remote_path_for(&self, pid: &Pid) -> Option<ActorPath> {

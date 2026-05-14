@@ -368,6 +368,43 @@ fn control_flush_ack_roundtrip() {
 }
 
 #[test]
+fn control_flush_request_rejects_truncated_body() {
+  let pdu = ControlPdu::FlushRequest {
+    authority:     "sys@host:4".to_string(),
+    flush_id:      42,
+    scope:         FlushScope::Shutdown,
+    lane_id:       3,
+    expected_acks: 2,
+  };
+  let mut buf = BytesMut::new();
+  ControlCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf.truncate(buf.len() - 1);
+  patch_frame_len(&mut buf);
+
+  let err = ControlCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::Truncated);
+}
+
+#[test]
+fn control_flush_ack_rejects_truncated_body() {
+  let pdu = ControlPdu::FlushAck {
+    authority:     "sys@host:5".to_string(),
+    flush_id:      43,
+    lane_id:       3,
+    expected_acks: 2,
+  };
+  let mut buf = BytesMut::new();
+  ControlCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf.truncate(buf.len() - 1);
+  patch_frame_len(&mut buf);
+
+  let err = ControlCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::Truncated);
+}
+
+#[test]
 fn control_flush_request_rejects_unknown_scope() {
   let authority = "sys@host:4".to_string();
   let pdu = ControlPdu::FlushRequest {

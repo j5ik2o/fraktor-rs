@@ -1260,6 +1260,91 @@ fn inbound_flush_request_sends_matching_flush_ack() {
 }
 
 #[test]
+fn inbound_flush_request_with_invalid_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let control_frames = transport.control_frames.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound flush request");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::FlushRequest {
+        authority:     String::from("not-an-authority"),
+        flush_id:      99,
+        scope:         FlushScope::BeforeDeathWatchNotification,
+        lane_id:       3,
+        expected_acks: 4,
+      }),
+      now_ms:    70,
+    })
+    .expect("invalid flush authority should be ignored");
+
+  assert!(control_frames.with_lock(|frames| frames.is_empty()));
+}
+
+#[test]
+fn inbound_flush_request_for_unknown_peer_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address]);
+  let control_frames = transport.control_frames.clone();
+  let mut remote = remote_new(transport, config, event_publisher());
+  remote.start().expect("remote should be running before inbound flush request");
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::FlushRequest {
+        authority:     remote_address.to_string(),
+        flush_id:      99,
+        scope:         FlushScope::BeforeDeathWatchNotification,
+        lane_id:       3,
+        expected_acks: 4,
+      }),
+      now_ms:    70,
+    })
+    .expect("unknown flush peer should be ignored");
+
+  assert!(control_frames.with_lock(|frames| frames.is_empty()));
+}
+
+#[test]
+fn inbound_flush_request_with_mismatched_peer_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let control_frames = transport.control_frames.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound flush request");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address, second_remote.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(ControlPdu::FlushRequest {
+        authority:     second_remote.to_string(),
+        flush_id:      99,
+        scope:         FlushScope::BeforeDeathWatchNotification,
+        lane_id:       3,
+        expected_acks: 4,
+      }),
+      now_ms:    70,
+    })
+    .expect("mismatched flush authority should be ignored");
+
+  assert!(control_frames.with_lock(|frames| frames.is_empty()));
+}
+
+#[test]
 fn inbound_flush_ack_exposes_completed_outcome() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1292,6 +1377,92 @@ fn inbound_flush_ack_exposes_completed_outcome() {
     scope: FlushScope::Shutdown,
     ..
   }]));
+}
+
+#[test]
+fn inbound_flush_ack_with_invalid_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before starting flush");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let timers =
+    remote.start_flush(None, FlushScope::Shutdown, &[0], 100).expect("active association should start flush");
+  assert_eq!(timers.len(), 1);
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::FlushAck {
+        authority:     String::from("not-an-authority"),
+        flush_id:      1,
+        lane_id:       0,
+        expected_acks: 1,
+      }),
+      now_ms:    120,
+    })
+    .expect("invalid flush ack authority should be ignored");
+
+  assert!(remote.drain_flush_outcomes().is_empty());
+}
+
+#[test]
+fn inbound_flush_ack_for_unknown_peer_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address]);
+  let mut remote = remote_new(transport, config, event_publisher());
+  remote.start().expect("remote should be running before inbound flush ack");
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::FlushAck {
+        authority:     remote_address.to_string(),
+        flush_id:      1,
+        lane_id:       0,
+        expected_acks: 1,
+      }),
+      now_ms:    120,
+    })
+    .expect("unknown flush ack peer should be ignored");
+
+  assert!(remote.drain_flush_outcomes().is_empty());
+}
+
+#[test]
+fn inbound_flush_ack_with_mismatched_peer_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before starting flush");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address, second_remote.clone(), &config));
+  let timers = remote
+    .start_flush(Some(&TransportEndpoint::new(second_remote.to_string())), FlushScope::Shutdown, &[0], 100)
+    .expect("active association should start flush");
+  assert_eq!(timers.len(), 1);
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(ControlPdu::FlushAck {
+        authority:     second_remote.to_string(),
+        flush_id:      1,
+        lane_id:       0,
+        expected_acks: 1,
+      }),
+      now_ms:    120,
+    })
+    .expect("mismatched flush ack authority should be ignored");
+
+  assert!(remote.drain_flush_outcomes().is_empty());
 }
 
 #[test]
@@ -1328,6 +1499,26 @@ fn flush_timer_exposes_timed_out_outcome() {
 }
 
 #[test]
+fn flush_timer_for_unknown_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let unknown_remote = Address::new("unknown-sys", "10.0.0.9", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address]);
+  let mut remote = remote_new(transport, config, event_publisher());
+  remote.start().expect("remote should be running before flush timer");
+
+  remote
+    .handle_remote_event(RemoteEvent::FlushTimerFired {
+      authority: TransportEndpoint::new(unknown_remote.to_string()),
+      flush_id:  1,
+      now_ms:    120,
+    })
+    .expect("unknown flush timer authority should be ignored");
+
+  assert!(remote.drain_flush_outcomes().is_empty());
+}
+
+#[test]
 fn flush_request_send_backpressure_exposes_failed_outcome() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1352,6 +1543,36 @@ fn flush_request_send_backpressure_exposes_failed_outcome() {
       ..
     }] if pending_lanes == &vec![0]
   ));
+}
+
+#[test]
+fn remote_flush_outcome_accessors_return_variant_fields() {
+  let authority = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let completed =
+    RemoteFlushOutcome::Completed { authority: authority.clone(), flush_id: 1, scope: FlushScope::Shutdown };
+  let timed_out = RemoteFlushOutcome::TimedOut {
+    authority:     authority.clone(),
+    flush_id:      2,
+    scope:         FlushScope::BeforeDeathWatchNotification,
+    pending_lanes: vec![0],
+  };
+  let failed = RemoteFlushOutcome::Failed {
+    authority:     authority.clone(),
+    flush_id:      3,
+    scope:         FlushScope::Shutdown,
+    pending_lanes: vec![1],
+    reason:        String::from("failed"),
+  };
+
+  assert_eq!(completed.authority(), &authority);
+  assert_eq!(completed.flush_id(), 1);
+  assert_eq!(completed.scope(), FlushScope::Shutdown);
+  assert_eq!(timed_out.authority(), &authority);
+  assert_eq!(timed_out.flush_id(), 2);
+  assert_eq!(timed_out.scope(), FlushScope::BeforeDeathWatchNotification);
+  assert_eq!(failed.authority(), &authority);
+  assert_eq!(failed.flush_id(), 3);
+  assert_eq!(failed.scope(), FlushScope::Shutdown);
 }
 
 #[test]
