@@ -7,12 +7,17 @@ use crate::{
   wire::{
     AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePayload, EnvelopePdu, HandshakeCodec,
     HandshakePdu, HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ,
-    KIND_HANDSHAKE_RSP, WIRE_VERSION_1, WireError,
+    KIND_HANDSHAKE_RSP, WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2, WireError,
   },
 };
 
 fn to_bytes(buf: BytesMut) -> Bytes {
   buf.freeze()
+}
+
+fn patch_frame_len(buf: &mut BytesMut) {
+  let length = (buf.len() - 4) as u32;
+  buf[0..4].copy_from_slice(&length.to_be_bytes());
 }
 
 fn sample_handshake_from() -> UniqueAddress {
@@ -156,6 +161,88 @@ fn system_envelope_without_redelivery_sequence_is_rejected() {
 fn user_envelope_with_redelivery_sequence_is_rejected() {
   let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 1, Bytes::new()).with_redelivery_sequence(Some(10));
   let err = EnvelopeCodec::new().encode(&pdu, &mut BytesMut::new()).unwrap_err();
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn envelope_decode_rejects_unknown_priority_before_redelivery_metadata() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 1, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf[25] = 0x09;
+
+  let err = EnvelopeCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn envelope_decode_rejects_unknown_redelivery_flag() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 1, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf[26] = 0x02;
+
+  let err = EnvelopeCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn envelope_decode_rejects_system_redelivery_flag_without_sequence_bytes() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf.truncate(31);
+  patch_frame_len(&mut buf);
+
+  let err = EnvelopeCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::Truncated);
+}
+
+#[test]
+fn envelope_decode_rejects_missing_serializer_id_after_redelivery_sequence() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf.truncate(35);
+  patch_frame_len(&mut buf);
+
+  let err = EnvelopeCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::Truncated);
+}
+
+#[test]
+fn envelope_decode_rejects_system_envelope_without_redelivery_sequence() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf[26] = 0x00;
+  let tail = buf.split_off(35);
+  buf.truncate(27);
+  buf.unsplit(tail);
+  patch_frame_len(&mut buf);
+
+  let err = EnvelopeCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn envelope_decode_rejects_user_envelope_with_redelivery_sequence() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 1, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf[26] = 0x01;
+  let tail = buf.split_off(27);
+  buf.extend_from_slice(&10_u64.to_be_bytes());
+  buf.unsplit(tail);
+  patch_frame_len(&mut buf);
+
+  let err = EnvelopeCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
   assert_eq!(err, WireError::InvalidFormat);
 }
 
@@ -317,8 +404,10 @@ fn all_kinds_are_distinct() {
 }
 
 #[test]
-fn wire_version_byte_is_1() {
+fn wire_version_byte_is_current() {
   assert_eq!(WIRE_VERSION_1, 0x01);
+  assert_eq!(WIRE_VERSION_2, 0x02);
+  assert_eq!(WIRE_VERSION, WIRE_VERSION_2);
 }
 
 #[test]
@@ -359,7 +448,7 @@ fn invalid_utf8_in_string_is_rejected() {
   let mut frame = BytesMut::new();
   let length = (2 + body.len()) as u32;
   frame.extend_from_slice(&length.to_be_bytes());
-  frame.extend_from_slice(&[WIRE_VERSION_1, KIND_ENVELOPE]);
+  frame.extend_from_slice(&[WIRE_VERSION, KIND_ENVELOPE]);
   frame.extend_from_slice(&body);
 
   let mut bytes = frame.freeze();

@@ -92,9 +92,6 @@ fn decode_redelivery_sequence(priority: u8, buf: &mut Bytes) -> Result<Option<u6
   let Some(priority) = OutboundPriority::from_wire(priority) else {
     return Err(WireError::InvalidFormat);
   };
-  if buf.remaining() < 1 {
-    return Err(WireError::Truncated);
-  }
   let flag = buf.get_u8();
   let sequence = match flag {
     | 0 => None,

@@ -100,6 +100,14 @@ fn unwatch_removes_the_pair_and_cleans_up_node_when_empty() {
 }
 
 #[test]
+fn unwatch_unknown_pair_emits_no_effect() {
+  let mut state = new_state();
+  let effects = state.handle(WatcherCommand::Unwatch { target: remote_target(1), watcher: local_watcher() });
+
+  assert!(effects.is_empty());
+}
+
+#[test]
 fn multiple_targets_on_same_node_share_detector() {
   let mut state = new_state();
   let t1 = remote_target_custom("sys", "10.0.0.1", 2552, "a");
@@ -148,6 +156,27 @@ fn heartbeat_response_received_records_initial_uid_and_rewatches_targets() {
       node: effect_node,
       watches
     } if effect_node == &node && watches == &alloc::vec![(target.clone(), local_watcher())]
+  )));
+}
+
+#[test]
+fn heartbeat_response_rewatches_all_watchers_for_target() {
+  let mut state = new_state();
+  let target = remote_target(1);
+  let watcher_a = ActorPath::root().child("user").child("watcher-a");
+  let watcher_b = ActorPath::root().child("user").child("watcher-b");
+  let _effects = state.handle(WatcherCommand::Watch { target: target.clone(), watcher: watcher_a.clone() });
+  let _effects = state.handle(WatcherCommand::Watch { target: target.clone(), watcher: watcher_b.clone() });
+  let node = address_of("remote-sys", "10.0.0.1", 2552);
+
+  let effects = state.handle(WatcherCommand::HeartbeatResponseReceived { from: node, uid: 42, now: 100 });
+
+  assert!(effects.iter().any(|effect| matches!(
+    effect,
+    WatcherEffect::RewatchRemoteTargets {
+      watches,
+      ..
+    } if watches.contains(&(target.clone(), watcher_a.clone())) && watches.contains(&(target.clone(), watcher_b.clone()))
   )));
 }
 

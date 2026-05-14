@@ -29,7 +29,7 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{
   sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
-  time::{Instant, sleep, timeout},
+  time::{Instant, timeout},
 };
 
 const SYSTEM_NAME: &str = "remote-e2e";
@@ -246,6 +246,18 @@ async fn wait_for_ack(rx: &mut UnboundedReceiver<&'static str>, expected: &'stat
   .expect("watch ack timeout");
 }
 
+async fn warm_bidirectional_remote_delivery(
+  ref_to_b: &mut ActorRef,
+  rx_b: &mut UnboundedReceiver<String>,
+  ref_to_a: &mut ActorRef,
+  rx_a: &mut UnboundedReceiver<String>,
+) {
+  ref_to_b.try_tell(AnyMessage::new(String::from("warm-b"))).expect("warm send to node B");
+  ref_to_a.try_tell(AnyMessage::new(String::from("warm-a"))).expect("warm send to node A");
+  let _warm_b = recv_until(rx_b, String::from("warm-b")).await;
+  let _warm_a = recv_until(rx_a, String::from("warm-a")).await;
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn two_node_actor_system_delivery_sends_registered_string_payloads() {
   let node_a = build_node(reserve_port(), 1);
@@ -276,9 +288,7 @@ async fn two_node_actor_system_delivery_sends_registered_string_payloads() {
     .resolve_actor_ref(remote_path(&node_a.address, &path_a))
     .expect("node B should resolve node A actor through configured provider");
 
-  ref_to_b.try_tell(AnyMessage::new(String::from("warm-b"))).expect("warm send to node B");
-  sleep(Duration::from_millis(100)).await;
-  ref_to_a.try_tell(AnyMessage::new(String::from("warm-a"))).expect("warm send to node A");
+  warm_bidirectional_remote_delivery(&mut ref_to_b, &mut rx_b, &mut ref_to_a, &mut rx_a).await;
   wait_until_connected(&mut lifecycle_a, &node_b.address.to_string()).await;
   wait_until_connected(&mut lifecycle_b, &node_a.address.to_string()).await;
   ref_to_b.try_tell(AnyMessage::new(String::from("to-b"))).expect("send to node B");
@@ -313,11 +323,7 @@ async fn two_node_remote_actor_termination_notifies_watcher() {
   let mut ref_to_a =
     node_b.system.resolve_actor_ref(remote_path(&node_a.address, &path_a)).expect("node B should resolve node A actor");
 
-  ref_to_b.try_tell(AnyMessage::new(String::from("warm-b"))).expect("warm send to node B");
-  sleep(Duration::from_millis(100)).await;
-  ref_to_a.try_tell(AnyMessage::new(String::from("warm-a"))).expect("warm send to node A");
-  let _ = recv_until(&mut rx_b, String::from("warm-b")).await;
-  let _ = recv_until(&mut rx_a, String::from("warm-a")).await;
+  warm_bidirectional_remote_delivery(&mut ref_to_b, &mut rx_b, &mut ref_to_a, &mut rx_a).await;
   watcher_ref.try_tell(AnyMessage::new(StartRemoteWatch::new(ref_to_b.clone()))).expect("watch command should enqueue");
   wait_for_ack(&mut ack_rx, "watch").await;
   ref_to_b.try_tell(AnyMessage::new(String::from("after-watch"))).expect("barrier send to node B");
@@ -355,11 +361,7 @@ async fn two_node_remote_unwatch_suppresses_stale_notification() {
   let mut ref_to_a =
     node_b.system.resolve_actor_ref(remote_path(&node_a.address, &path_a)).expect("node B should resolve node A actor");
 
-  ref_to_b.try_tell(AnyMessage::new(String::from("warm-b"))).expect("warm send to node B");
-  sleep(Duration::from_millis(100)).await;
-  ref_to_a.try_tell(AnyMessage::new(String::from("warm-a"))).expect("warm send to node A");
-  let _ = recv_until(&mut rx_b, String::from("warm-b")).await;
-  let _ = recv_until(&mut rx_a, String::from("warm-a")).await;
+  warm_bidirectional_remote_delivery(&mut ref_to_b, &mut rx_b, &mut ref_to_a, &mut rx_a).await;
   watcher_ref.try_tell(AnyMessage::new(StartRemoteWatch::new(ref_to_b.clone()))).expect("watch command should enqueue");
   wait_for_ack(&mut ack_rx, "watch").await;
   ref_to_b.try_tell(AnyMessage::new(String::from("after-watch"))).expect("barrier send to node B");
@@ -373,7 +375,7 @@ async fn two_node_remote_unwatch_suppresses_stale_notification() {
 
   target_b.stop().expect("remote target should stop");
 
-  assert!(timeout(Duration::from_millis(500), terminated_rx.recv()).await.is_err());
+  assert!(timeout(Duration::from_secs(2), terminated_rx.recv()).await.is_err());
 
   node_a.shutdown().await;
   node_b.shutdown().await;

@@ -54,7 +54,7 @@ pub struct RemotingExtensionInstaller {
   run_state:       Arc<Mutex<RemotingRunState>>,
 }
 
-struct RemotingRunState {
+pub(super) struct RemotingRunState {
   receiver:           Option<TokioMpscRemoteEventReceiver>,
   handle:             Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
   watcher_handle:     Option<JoinHandle<()>>,
@@ -62,7 +62,7 @@ struct RemotingRunState {
 }
 
 impl RemotingRunState {
-  const fn new() -> Self {
+  pub(super) const fn new() -> Self {
     Self { receiver: None, handle: None, watcher_handle: None, termination_handle: None }
   }
 }
@@ -214,7 +214,7 @@ fn remoting_build_error(error: RemotingError) -> ActorSystemBuildError {
   ActorSystemBuildError::Configuration(error.to_string())
 }
 
-fn rollback_started_remote(
+pub(super) fn rollback_started_remote(
   remote: &RemoteShared,
   event_sender: &Sender<RemoteEvent>,
   run_state: &Arc<Mutex<RemotingRunState>>,
@@ -262,7 +262,7 @@ fn spawn_run_task_with_state(
   Ok(())
 }
 
-fn spawn_watcher_task_with_state(
+pub(super) fn spawn_watcher_task_with_state(
   run_state: &mut RemotingRunState,
   watcher_receiver: Receiver<WatcherCommand>,
   event_sender: Sender<RemoteEvent>,
@@ -376,7 +376,7 @@ async fn run_remote_with_delivery(
   }
 }
 
-fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sender: &Sender<WatcherCommand>) {
+pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sender: &Sender<WatcherCommand>) {
   let RemoteEvent::InboundFrameReceived { frame, now_ms, .. } = event else {
     return;
   };

@@ -1,5 +1,9 @@
 //! Tokio task that applies remote watcher effects.
 
+#[cfg(test)]
+#[path = "watcher_test.rs"]
+mod tests;
+
 use std::time::{Duration, Instant};
 
 use fraktor_actor_core_kernel_rs::{

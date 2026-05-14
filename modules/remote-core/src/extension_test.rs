@@ -387,6 +387,16 @@ where
   Remote::new(transport, config, event_publisher, serialization_extension())
 }
 
+#[test]
+fn recording_transport_send_ack_reports_not_started() {
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut transport = RecordingTransport::new(Vec::new());
+
+  let error = transport.send_ack(&remote_address, AckPdu::new(1, 1, 0)).expect_err("not-started ack should fail");
+
+  assert_eq!(error, TransportError::NotStarted);
+}
+
 fn remote_with_instrument<T>(
   transport: T,
   config: RemoteConfig,
@@ -414,6 +424,36 @@ fn test_envelope_pdu(
     priority,
     EnvelopePayload::new(5, None, payload),
   )
+}
+
+fn test_system_envelope_pdu(sequence: u64) -> EnvelopePdu {
+  EnvelopePdu::new(
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user/local"),
+    Some(String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/sender")),
+    sequence,
+    0,
+    OutboundPriority::System.to_wire(),
+    EnvelopePayload::new(4, None, Bytes::from_static(b"bad-system-payload")),
+  )
+  .with_redelivery_sequence(Some(sequence))
+}
+
+fn association_with_sent_system_envelope(local: Address, remote: Address, config: &RemoteConfig) -> Association {
+  let mut association = active_association(local, remote, config);
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/target").expect("recipient path");
+  let sender = ActorPathParser::parse("fraktor.tcp://sys@127.0.0.1:2552/user/watcher").expect("sender path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    Some(sender),
+    AnyMessage::from(SystemMessage::Watch(Pid::new(0, 0))),
+    OutboundPriority::System,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  assert!(association.enqueue(envelope, 10, &mut NoopInstrument).is_empty());
+  let sent = association.next_outbound(11, &mut NoopInstrument).expect("system envelope should be sent once");
+  assert_eq!(sent.redelivery_sequence(), Some(1));
+  association
 }
 
 fn active_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
@@ -959,6 +999,88 @@ fn inbound_envelope_deserialization_failure_is_dropped_without_failing_event_loo
 }
 
 #[test]
+fn inbound_system_envelope_sends_ack_before_deserialization_failure() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let ack_frames = transport.ack_frames.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound system envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Envelope(test_system_envelope_pdu(1)),
+      now_ms:    58,
+    })
+    .expect("system envelope should ack before payload deserialization drops it");
+
+  let frames = ack_frames.with_lock(|frames| frames.clone());
+  assert!(matches!(
+    frames.as_slice(),
+    [(remote, ack)] if remote == &remote_address
+      && ack.sequence_number() == 1
+      && ack.cumulative_ack() == 1
+      && ack.nack_bitmap() == 0
+  ));
+  assert!(remote.drain_inbound_envelopes().is_empty());
+}
+
+#[test]
+fn inbound_out_of_order_system_envelope_sends_nack_without_delivery() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let ack_frames = transport.ack_frames.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound system envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Envelope(test_system_envelope_pdu(2)),
+      now_ms:    59,
+    })
+    .expect("out-of-order system envelope should be acked and withheld");
+
+  let frames = ack_frames.with_lock(|frames| frames.clone());
+  assert!(matches!(
+    frames.as_slice(),
+    [(remote, ack)] if remote == &remote_address
+      && ack.sequence_number() == 2
+      && ack.cumulative_ack() == 0
+      && ack.nack_bitmap() == 3
+  ));
+  assert!(remote.drain_inbound_envelopes().is_empty());
+}
+
+#[test]
+fn inbound_system_ack_backpressure_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::Backpressure));
+  let ack_calls = transport.ack_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound system envelope");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Envelope(test_system_envelope_pdu(1)),
+      now_ms:    60,
+    })
+    .expect("ack backpressure should not fail the event loop");
+
+  assert_eq!(ack_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
 fn run_continues_event_loop_after_inbound_deserialization_failure() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1202,6 +1324,53 @@ fn redelivery_timer_resends_unacked_watch_system_message() {
 }
 
 #[test]
+fn redelivery_timer_records_dropped_system_message_when_resend_fails() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_system_message_resend_interval(Duration::from_millis(50));
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::SendFailed));
+  let dropped_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument = CountingInstrument {
+    send_calls:      ArcShared::new(AtomicUsize::new(0)),
+    dropped_calls:   dropped_calls.clone(),
+    handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+  };
+  let mut remote = remote_with_instrument(transport, config.clone(), event_publisher(), Box::new(instrument));
+  remote.start().expect("remote should be running before redelivery");
+  remote.insert_association(association_with_sent_system_envelope(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::RedeliveryTimerFired {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      now_ms:    61,
+    })
+    .expect("failed resend should be recorded without failing the event loop");
+
+  assert_eq!(dropped_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn redelivery_timer_requeues_system_message_when_transport_is_unavailable() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_system_message_resend_interval(Duration::from_millis(50));
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::NotAvailable));
+  let send_calls = transport.send_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before redelivery");
+  remote.insert_association(association_with_sent_system_envelope(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::RedeliveryTimerFired {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      now_ms:    61,
+    })
+    .expect("unavailable resend should be requeued without failing the event loop");
+
+  assert_eq!(send_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
 fn connection_lost_recovers_active_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1239,6 +1408,17 @@ fn handle_remote_event_ignores_handshake_timer_for_unknown_association() {
   };
 
   remote.handle_remote_event(event).expect("unknown timer should be ignored");
+}
+
+#[test]
+fn handle_remote_event_ignores_redelivery_timer_for_unknown_association() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let event =
+    RemoteEvent::RedeliveryTimerFired { authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"), now_ms: 1 };
+
+  remote.handle_remote_event(event).expect("unknown redelivery timer should be ignored");
 }
 
 #[test]

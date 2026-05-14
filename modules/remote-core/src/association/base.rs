@@ -79,14 +79,14 @@ struct PendingSystemEnvelope {
 
 #[derive(Debug)]
 struct InboundSystemSequenceTracker {
-  cumulative_ack:     u64,
-  received_after_gap: Vec<u64>,
-  receive_window:     u32,
+  cumulative_ack: u64,
+  highest_seen:   u64,
+  receive_window: u32,
 }
 
 impl InboundSystemSequenceTracker {
   const fn new(receive_window: u32) -> Self {
-    Self { cumulative_ack: 0, received_after_gap: Vec::new(), receive_window }
+    Self { cumulative_ack: 0, highest_seen: 0, receive_window }
   }
 
   fn observe(&mut self, sequence: u64) -> (bool, AckPdu) {
@@ -96,51 +96,36 @@ impl InboundSystemSequenceTracker {
   }
 
   fn mark_received(&mut self, sequence: u64) -> bool {
-    if sequence <= self.cumulative_ack || self.received_after_gap.contains(&sequence) {
+    if sequence <= self.cumulative_ack {
       return false;
     }
     if sequence == self.cumulative_ack.saturating_add(1) {
       self.cumulative_ack = sequence;
-      self.advance_cumulative_ack();
+      self.highest_seen = self.highest_seen.max(sequence);
       return true;
     }
-    self.received_after_gap.push(sequence);
-    self.trim_receive_window();
-    true
-  }
-
-  fn advance_cumulative_ack(&mut self) {
-    loop {
-      let next = self.cumulative_ack.saturating_add(1);
-      let Some(index) = self.received_after_gap.iter().position(|sequence| *sequence == next) else {
-        return;
-      };
-      self.received_after_gap.swap_remove(index);
-      self.cumulative_ack = next;
-    }
+    self.highest_seen = self.highest_seen.max(sequence);
+    false
   }
 
   fn nack_bitmap(&self) -> u64 {
-    let max_received = self.received_after_gap.iter().copied().max().unwrap_or(self.cumulative_ack);
     let window = u64::from(self.receive_window.min(64));
     let mut bitmap = 0_u64;
     let mut offset = 1_u64;
     while offset <= window {
       let sequence = self.cumulative_ack.saturating_add(offset);
-      if sequence > max_received {
+      if sequence > self.highest_seen {
         break;
       }
-      if !self.received_after_gap.contains(&sequence) {
-        bitmap |= 1_u64 << (offset - 1);
-      }
+      bitmap |= 1_u64 << (offset - 1);
       offset += 1;
     }
     bitmap
   }
 
-  fn trim_receive_window(&mut self) {
-    let limit = self.cumulative_ack.saturating_add(u64::from(self.receive_window));
-    self.received_after_gap.retain(|sequence| *sequence <= limit);
+  const fn reset(&mut self) {
+    self.cumulative_ack = 0;
+    self.highest_seen = 0;
   }
 }
 
@@ -414,6 +399,7 @@ impl Association {
         let mut effects = Vec::new();
         let deferred = mem::take(&mut self.deferred);
         self.clear_deferred_counts();
+        self.reset_redelivery_state();
         instrument.record_handshake(&self.authority_endpoint(), HandshakePhase::Rejected, now_ms);
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Gated {
           authority:      self.authority_string(),
@@ -449,6 +435,7 @@ impl Association {
         let mut discarded = mem::take(&mut self.deferred);
         self.clear_deferred_counts();
         discarded.append(&mut self.send_queue.drain_all());
+        self.reset_redelivery_state();
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined {
           authority:      self.authority_string(),
           reason:         reason.message().into(),
@@ -559,7 +546,7 @@ impl Association {
   pub fn apply_ack(&mut self, pdu: &AckPdu, now_ms: u64) -> Vec<AssociationEffect> {
     self.record_handshake_activity(now_ms);
     self.pending_system.retain(|pending| pending.sequence > pdu.cumulative_ack());
-    let resend = self.nacked_pending_envelopes(pdu);
+    let resend = self.nacked_pending_envelopes(pdu, now_ms);
     if resend.is_empty() { Vec::new() } else { vec![AssociationEffect::ResendEnvelopes { envelopes: resend }] }
   }
 
@@ -641,10 +628,13 @@ impl Association {
     now_ms: u64,
     instrument: &mut dyn RemoteInstrument,
   ) -> Vec<AssociationEffect> {
+    if envelope.priority().is_system() && !self.send_queue.has_system_capacity() {
+      return self.control_queue_overflow_effects(envelope, now_ms, instrument);
+    }
     if !self.redelivery_window_has_capacity_for(&envelope) {
       return Self::queue_full_discard_effect(envelope);
     }
-    let envelope = self.assign_redelivery_sequence(envelope);
+    let (envelope, redelivery_sequence) = self.assign_redelivery_sequence(envelope);
     let pending = envelope.clone();
     let offer = if self.should_use_large_message_queue(&envelope) {
       self.send_queue.offer_large_message(envelope)
@@ -653,7 +643,7 @@ impl Association {
     };
     match offer {
       | OfferOutcome::Accepted => {
-        self.track_pending_system_envelope_for(&pending);
+        self.track_pending_system_envelope_for(redelivery_sequence, &pending);
         Vec::new()
       },
       | OfferOutcome::QueueFull { envelope } if envelope.priority().is_system() => {
@@ -669,13 +659,8 @@ impl Association {
   }
 
   fn enqueue_deferred(&mut self, envelope: OutboundEnvelope) -> Vec<AssociationEffect> {
-    if !self.redelivery_window_has_capacity_for(&envelope) {
-      return Self::queue_full_discard_effect(envelope);
-    }
-    let envelope = self.assign_redelivery_sequence(envelope);
     if self.deferred_has_capacity_for(&envelope) {
       self.increment_deferred_count(&envelope);
-      self.track_pending_system_envelope_for(&envelope);
       self.deferred.push(envelope);
       Vec::new()
     } else {
@@ -744,23 +729,20 @@ impl Association {
       || self.pending_system.len() < self.ack_send_window as usize
   }
 
-  const fn assign_redelivery_sequence(&mut self, envelope: OutboundEnvelope) -> OutboundEnvelope {
+  const fn assign_redelivery_sequence(&mut self, envelope: OutboundEnvelope) -> (OutboundEnvelope, Option<u64>) {
     if !envelope.priority().is_system() {
-      return envelope.with_redelivery_sequence(None);
+      return (envelope.with_redelivery_sequence(None), None);
     }
-    if envelope.redelivery_sequence().is_some() {
-      return envelope;
+    if let Some(sequence) = envelope.redelivery_sequence() {
+      return (envelope, Some(sequence));
     }
     let sequence = self.next_system_sequence;
     self.next_system_sequence = self.next_system_sequence.saturating_add(1);
-    envelope.with_redelivery_sequence(Some(sequence))
+    (envelope.with_redelivery_sequence(Some(sequence)), Some(sequence))
   }
 
-  fn track_pending_system_envelope_for(&mut self, envelope: &OutboundEnvelope) {
-    if !envelope.priority().is_system() {
-      return;
-    }
-    let Some(sequence) = envelope.redelivery_sequence() else {
+  fn track_pending_system_envelope_for(&mut self, sequence: Option<u64>, envelope: &OutboundEnvelope) {
+    let Some(sequence) = sequence else {
       return;
     };
     if self.pending_system.iter().any(|pending| pending.sequence == sequence) {
@@ -778,18 +760,25 @@ impl Association {
     }
   }
 
-  fn nacked_pending_envelopes(&self, pdu: &AckPdu) -> Vec<OutboundEnvelope> {
+  fn nacked_pending_envelopes(&mut self, pdu: &AckPdu, now_ms: u64) -> Vec<OutboundEnvelope> {
     let mut envelopes = Vec::new();
     for bit in 0..64 {
       if pdu.nack_bitmap() & (1_u64 << bit) == 0 {
         continue;
       }
       let sequence = pdu.cumulative_ack().saturating_add(bit + 1);
-      if let Some(pending) = self.pending_system.iter().find(|pending| pending.sequence == sequence) {
+      if let Some(pending) = self.pending_system.iter_mut().find(|pending| pending.sequence == sequence) {
+        pending.last_sent_at_ms = Some(now_ms);
         envelopes.push(pending.envelope.clone());
       }
     }
     envelopes
+  }
+
+  fn reset_redelivery_state(&mut self) {
+    self.next_system_sequence = 1;
+    self.pending_system.clear();
+    self.inbound_system_sequences.reset();
   }
 
   fn quarantine_removal_deadline(&self, now_ms: u64) -> u64 {

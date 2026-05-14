@@ -209,9 +209,24 @@ fn register_local_path(system: &ActorSystem, pid: Pid, name: &str) -> ActorPath 
 fn make_remote_watch_hook_fixture(
   registry: SharedLock<RemoteActorPathRegistry>,
 ) -> (StdRemoteWatchHook, Receiver<RemoteEvent>, Receiver<WatcherCommand>, EventHarness) {
+  make_remote_watch_hook_fixture_with_capacities(registry, 8, 8)
+}
+
+fn make_remote_watch_hook_fixture_with_watcher_capacity(
+  registry: SharedLock<RemoteActorPathRegistry>,
+  watcher_capacity: usize,
+) -> (StdRemoteWatchHook, Receiver<RemoteEvent>, Receiver<WatcherCommand>, EventHarness) {
+  make_remote_watch_hook_fixture_with_capacities(registry, 8, watcher_capacity)
+}
+
+fn make_remote_watch_hook_fixture_with_capacities(
+  registry: SharedLock<RemoteActorPathRegistry>,
+  event_capacity: usize,
+  watcher_capacity: usize,
+) -> (StdRemoteWatchHook, Receiver<RemoteEvent>, Receiver<WatcherCommand>, EventHarness) {
   let harness = EventHarness::new();
-  let (event_tx, event_rx) = mpsc::channel(8);
-  let (watcher_tx, watcher_rx) = mpsc::channel(8);
+  let (event_tx, event_rx) = mpsc::channel(event_capacity);
+  let (watcher_tx, watcher_rx) = mpsc::channel(watcher_capacity);
   let hook = StdRemoteWatchHook::new(registry, harness.system().state(), event_tx, watcher_tx, Instant::now());
   (hook, event_rx, watcher_rx, harness)
 }
@@ -499,13 +514,56 @@ fn remote_watch_hook_forwards_watch_command() {
 
   assert!(hook.handle_watch(remote_pid, local_pid));
 
-  match watcher_rx.try_recv().expect("watch command should be enqueued") {
-    | WatcherCommand::Watch { target, watcher } => {
-      assert_eq!(target.to_canonical_uri(), remote_path.to_canonical_uri());
-      assert_eq!(watcher.to_canonical_uri(), local_path.to_canonical_uri());
-    },
-    | other => panic!("expected Watch command, got {other:?}"),
-  }
+  let command = watcher_rx.try_recv().expect("watch command should be enqueued");
+  assert!(matches!(
+    command,
+    WatcherCommand::Watch { target, watcher }
+      if target.to_canonical_uri() == remote_path.to_canonical_uri()
+        && watcher.to_canonical_uri() == local_path.to_canonical_uri()
+  ));
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_watcher_queue_is_full() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(905, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, mut watcher_rx, harness) =
+    make_remote_watch_hook_fixture_with_watcher_capacity(registry, 1);
+  let local_pid = Pid::new(906, 0);
+  let _local_path = register_local_path(harness.system(), local_pid, "watcher-full");
+
+  assert!(hook.handle_watch(remote_pid, local_pid));
+  assert!(!hook.handle_watch(remote_pid, local_pid));
+  assert!(matches!(watcher_rx.try_recv(), Ok(WatcherCommand::Watch { .. })));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_true_when_watcher_queue_is_closed() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(907, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let local_pid = Pid::new(908, 0);
+  let _local_path = register_local_path(harness.system(), local_pid, "watcher-closed");
+  drop(watcher_rx);
+
+  assert!(hook.handle_watch(remote_pid, local_pid));
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_watcher_path_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(909, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_watch(remote_pid, Pid::new(909, 1)));
+  assert!(watcher_rx.try_recv().is_err());
 }
 
 #[test]
@@ -520,13 +578,13 @@ fn remote_watch_hook_forwards_unwatch_command() {
 
   assert!(hook.handle_unwatch(remote_pid, local_pid));
 
-  match watcher_rx.try_recv().expect("unwatch command should be enqueued") {
-    | WatcherCommand::Unwatch { target, watcher } => {
-      assert_eq!(target.to_canonical_uri(), remote_path.to_canonical_uri());
-      assert_eq!(watcher.to_canonical_uri(), local_path.to_canonical_uri());
-    },
-    | other => panic!("expected Unwatch command, got {other:?}"),
-  }
+  let command = watcher_rx.try_recv().expect("unwatch command should be enqueued");
+  assert!(matches!(
+    command,
+    WatcherCommand::Unwatch { target, watcher }
+      if target.to_canonical_uri() == remote_path.to_canonical_uri()
+        && watcher.to_canonical_uri() == local_path.to_canonical_uri()
+  ));
 }
 
 #[test]
@@ -536,6 +594,49 @@ fn remote_watch_hook_returns_false_when_mapping_is_unresolved() {
 
   assert!(!hook.handle_watch(Pid::new(920, 0), Pid::new(921, 0)));
   assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_unwatch_mapping_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_unwatch(Pid::new(920, 0), Pid::new(921, 0)));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_unwatch_watcher_path_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(922, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_unwatch(remote_pid, Pid::new(922, 1)));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_deathwatch_watcher_mapping_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let (mut hook, mut event_rx, _watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_deathwatch_notification(Pid::new(923, 0), Pid::new(923, 1)));
+  assert!(event_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_notification_recipient_is_not_remote() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let watcher_pid = Pid::new(924, 0);
+  registry.with_lock(|registry| registry.record(watcher_pid, ActorPath::root().child("user").child("local")));
+  let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let terminated_pid = Pid::new(924, 1);
+  let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-local");
+
+  assert!(!hook.handle_deathwatch_notification(watcher_pid, terminated_pid));
+  assert!(event_rx.try_recv().is_err());
 }
 
 #[test]
@@ -550,17 +651,55 @@ fn remote_watch_hook_forwards_deathwatch_notification_envelope() {
 
   assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
 
-  match event_rx.try_recv().expect("notification envelope should be enqueued") {
-    | RemoteEvent::OutboundEnqueued { authority, envelope, .. } => {
-      assert_eq!(authority, TransportEndpoint::new("remote-sys@10.0.0.1:2552"));
-      assert_eq!(envelope.priority(), OutboundPriority::System);
-      assert_eq!(envelope.recipient().to_canonical_uri(), remote_watcher_path.to_canonical_uri());
-      assert_eq!(envelope.sender().map(ActorPath::to_canonical_uri), Some(terminated_path.to_canonical_uri()));
-      assert_eq!(
-        envelope.message().downcast_ref::<SystemMessage>(),
-        Some(&SystemMessage::DeathWatchNotification(terminated_pid))
-      );
-    },
-    | other => panic!("expected OutboundEnqueued, got {other:?}"),
-  }
+  let event = event_rx.try_recv().expect("notification envelope should be enqueued");
+  assert!(matches!(
+    event,
+    RemoteEvent::OutboundEnqueued { authority, envelope, .. }
+      if authority == TransportEndpoint::new("remote-sys@10.0.0.1:2552")
+        && envelope.priority() == OutboundPriority::System
+        && envelope.recipient().to_canonical_uri() == remote_watcher_path.to_canonical_uri()
+        && envelope.sender().map(ActorPath::to_canonical_uri) == Some(terminated_path.to_canonical_uri())
+        && envelope.message().downcast_ref::<SystemMessage>()
+          == Some(&SystemMessage::DeathWatchNotification(terminated_pid))
+  ));
+}
+
+#[test]
+fn remote_watch_hook_forwards_deathwatch_notification_without_sender_when_terminated_path_is_unknown() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_watcher_pid = Pid::new(932, 0);
+  let remote_watcher_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path.clone()));
+  let (mut hook, mut event_rx, _watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+  let terminated_pid = Pid::new(933, 0);
+
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+
+  let event = event_rx.try_recv().expect("notification envelope should be enqueued");
+  assert!(matches!(
+    event,
+    RemoteEvent::OutboundEnqueued { authority, envelope, .. }
+      if authority == TransportEndpoint::new("remote-sys@10.0.0.1:2552")
+        && envelope.priority() == OutboundPriority::System
+        && envelope.recipient().to_canonical_uri() == remote_watcher_path.to_canonical_uri()
+        && envelope.sender().is_none()
+        && envelope.message().downcast_ref::<SystemMessage>()
+          == Some(&SystemMessage::DeathWatchNotification(terminated_pid))
+  ));
+}
+
+#[test]
+fn remote_watch_hook_keeps_notification_handled_when_event_queue_is_full() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_watcher_pid = Pid::new(934, 0);
+  let remote_watcher_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path));
+  let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture_with_capacities(registry, 1, 8);
+  let terminated_pid = Pid::new(935, 0);
+  let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-full");
+
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundEnqueued { .. })));
+  assert!(event_rx.try_recv().is_err());
 }

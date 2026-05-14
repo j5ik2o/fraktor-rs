@@ -51,8 +51,12 @@ impl StdRemoteWatchHook {
   fn send_watcher_command(&self, command: WatcherCommand) -> bool {
     match self.watcher_sender.try_send(command) {
       | Ok(()) => true,
-      | Err(TrySendError::Full(command) | TrySendError::Closed(command)) => {
-        tracing::warn!(?command, "remote watch command queue rejected command");
+      | Err(TrySendError::Full(command)) => {
+        tracing::warn!(?command, "remote watch command queue is full");
+        false
+      },
+      | Err(TrySendError::Closed(command)) => {
+        tracing::warn!(?command, "remote watch command queue is closed");
         true
       },
     }
@@ -116,10 +120,10 @@ impl RemoteWatchHook for StdRemoteWatchHook {
     let Some(recipient) = self.remote_path_for(&watcher) else {
       return false;
     };
-    let Some(sender) = self.state.canonical_actor_path(&terminated) else {
+    let sender = self.state.canonical_actor_path(&terminated);
+    if sender.is_none() {
       tracing::warn!(%watcher, %terminated, "remote death-watch notification target path is unavailable");
-      return true;
-    };
-    self.enqueue_system_message(recipient, Some(sender), SystemMessage::DeathWatchNotification(terminated))
+    }
+    self.enqueue_system_message(recipient, sender, SystemMessage::DeathWatchNotification(terminated))
   }
 }

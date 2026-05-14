@@ -6,7 +6,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::wire::{
   WireError,
-  frame_header::{FRAME_KIND_OFFSET, FrameHeader, WIRE_VERSION_1},
+  frame_header::{FRAME_KIND_OFFSET, FrameHeader, WIRE_VERSION},
 };
 
 /// Writes a frame header placeholder (zero length) and returns the buffer offset
@@ -15,7 +15,7 @@ use crate::wire::{
 pub(crate) fn begin_frame(buf: &mut BytesMut, kind: u8) -> usize {
   let len_pos = buf.len();
   buf.put_u32(0); // placeholder
-  buf.put_u8(WIRE_VERSION_1);
+  buf.put_u8(WIRE_VERSION);
   buf.put_u8(kind);
   len_pos
 }
@@ -53,7 +53,7 @@ pub(crate) fn read_frame_header(buf: &mut Bytes, expected_kind: u8) -> Result<(F
     return Err(WireError::Truncated);
   }
   let version = buf.get_u8();
-  if version != WIRE_VERSION_1 {
+  if version != WIRE_VERSION {
     return Err(WireError::UnknownVersion);
   }
   let kind = buf.get_u8();

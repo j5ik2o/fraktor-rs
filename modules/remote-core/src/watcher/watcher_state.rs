@@ -187,10 +187,8 @@ impl WatcherState {
     if needs_rewatch {
       let mut watches = Vec::new();
       for target in targets {
-        if let Some(watchers) = self.watching.get(&target) {
-          for watcher in watchers {
-            watches.push((target.clone(), watcher.clone()));
-          }
+        for watcher in self.watching.get(&target).into_iter().flatten() {
+          watches.push((target.clone(), watcher.clone()));
         }
       }
       alloc::vec![WatcherEffect::RewatchRemoteTargets { node: from.clone(), watches }]

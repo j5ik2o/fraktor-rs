@@ -1,7 +1,10 @@
 use std::{
   any::{Any, TypeId},
-  sync::mpsc::{self, Sender},
-  time::Duration,
+  sync::{
+    Arc, Mutex,
+    mpsc::{self, Sender},
+  },
+  time::{Duration, Instant},
 };
 
 use bytes::Bytes;
@@ -9,8 +12,8 @@ use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver:
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, Pid,
-    actor_path::ActorPathParser,
-    actor_ref::ActorRef,
+    actor_path::{ActorPath, ActorPathParser},
+    actor_ref::{ActorRef, NullSender},
     actor_ref_provider::LocalActorRefProviderInstaller,
     error::ActorError,
     extension::{ExtensionInstaller, ExtensionInstallers},
@@ -29,7 +32,10 @@ use fraktor_remote_core_rs::{
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundPriority},
-  extension::{Remote, RemotingError},
+  extension::{Remote, RemoteEvent, RemoteShared, RemotingError},
+  transport::TransportEndpoint,
+  watcher::WatcherCommand,
+  wire::{ControlPdu, WireFrame},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use tokio::{
@@ -39,7 +45,10 @@ use tokio::{
 };
 
 use crate::{
-  extension_installer::remoting_extension_installer::{RemotingExtensionInstaller, deliver_inbound_envelope},
+  extension_installer::remoting_extension_installer::{
+    RemotingExtensionInstaller, RemotingRunState, deliver_inbound_envelope, forward_watcher_command_for_event,
+    rollback_started_remote, spawn_watcher_task_with_state,
+  },
   provider::StdRemoteActorRefProviderInstaller,
   tests::test_support_test::EventHarness,
   transport::tcp::TcpRemoteTransport,
@@ -197,6 +206,12 @@ fn make_remote(transport: TcpRemoteTransport) -> (Remote, EventHarness) {
   let serialization_extension = harness.system().extended().register_extension(&default_serialization_extension_id());
   let remote = Remote::new(transport, remote_config(), harness.publisher().clone(), serialization_extension);
   (remote, harness)
+}
+
+fn register_rejecting_temp_actor(system: &ActorSystem, pid: Pid) -> ActorPath {
+  let actor_ref = ActorRef::with_canonical_path(pid, NullSender, ActorPath::root());
+  let _name = system.state().register_temp_actor(actor_ref);
+  system.state().canonical_actor_path(&pid).expect("temp actor path should be registered")
 }
 
 fn assert_configuration_error(error: ActorSystemBuildError, expected_message: &str) {
@@ -410,6 +425,90 @@ async fn extension_installer_reuses_preinstalled_custom_serialization_extension(
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn forward_watcher_command_logs_when_queue_is_full() {
+  let (watcher_tx, mut watcher_rx) = tokio_mpsc::channel(1);
+  watcher_tx
+    .try_send(WatcherCommand::HeartbeatReceived { from: Address::new("queued", "127.0.0.1", 2551), now: 1 })
+    .expect("watcher queue should accept first command");
+  let event = RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
+    frame:     WireFrame::Control(ControlPdu::Heartbeat { authority: String::from("remote-sys@10.0.0.1:2552") }),
+    now_ms:    2,
+  };
+
+  forward_watcher_command_for_event(&event, &watcher_tx);
+
+  assert!(matches!(watcher_rx.try_recv(), Ok(WatcherCommand::HeartbeatReceived { now: 1, .. })));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn spawn_watcher_task_rejects_duplicate_handle() {
+  let mut run_state = RemotingRunState::new();
+  let (_command_tx, command_rx) = tokio_mpsc::channel(1);
+  let (event_tx, _event_rx) = tokio_mpsc::channel(1);
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  spawn_watcher_task_with_state(
+    &mut run_state,
+    command_rx,
+    event_tx.clone(),
+    system.clone(),
+    Address::new("local-sys", "127.0.0.1", 2551),
+    Instant::now(),
+    Duration::from_millis(50),
+  )
+  .expect("first watcher task should spawn");
+  let (_second_command_tx, second_command_rx) = tokio_mpsc::channel(1);
+
+  let error = spawn_watcher_task_with_state(
+    &mut run_state,
+    second_command_rx,
+    event_tx,
+    system,
+    Address::new("local-sys", "127.0.0.1", 2551),
+    Instant::now(),
+    Duration::from_millis(50),
+  )
+  .expect_err("second watcher task should be rejected");
+
+  assert_eq!(error, RemotingError::AlreadyRunning);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn rollback_started_remote_aborts_watcher_task() {
+  let mut run_state = RemotingRunState::new();
+  let (_command_tx, command_rx) = tokio_mpsc::channel(1);
+  let (event_tx, _event_rx) = tokio_mpsc::channel(1);
+  let (remote, harness) = make_remote(make_transport());
+  spawn_watcher_task_with_state(
+    &mut run_state,
+    command_rx,
+    event_tx.clone(),
+    harness.system().clone(),
+    Address::new("local-sys", "127.0.0.1", 2551),
+    Instant::now(),
+    Duration::from_millis(50),
+  )
+  .expect("watcher task should spawn before rollback");
+  let run_state = Arc::new(Mutex::new(run_state));
+  let remote = RemoteShared::new(remote);
+
+  rollback_started_remote(&remote, &event_tx, &run_state);
+
+  let (_second_command_tx, second_command_rx) = tokio_mpsc::channel(1);
+  spawn_watcher_task_with_state(
+    &mut run_state.lock().expect("run state should lock after rollback"),
+    second_command_rx,
+    event_tx,
+    harness.system().clone(),
+    Address::new("local-sys", "127.0.0.1", 2551),
+    Instant::now(),
+    Duration::from_millis(50),
+  )
+  .expect("rollback should clear the watcher handle");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn custom_serialization_installer_must_precede_remoting_installer() {
   let (_serializer_id, serialization_installer) = custom_serialization_installer();
   let remoting_installer = ArcShared::new(RemotingExtensionInstaller::new(
@@ -456,6 +555,247 @@ fn inbound_delivery_bridge_sends_bytes_payload_to_local_actor() {
 
   let received = rx.recv_timeout(Duration::from_secs(1)).expect("local actor should receive inbound remote payload");
   assert_eq!(received, Bytes::from_static(b"inbound payload"));
+}
+
+#[test]
+fn inbound_delivery_bridge_applies_remote_watch_and_unwatch_messages() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let target = system.actor_of_named(&props, "watch-target").expect("target actor");
+  let watcher = system.actor_of_named(&props, "watcher").expect("watcher actor");
+  let target_path = target.actor_ref().path().expect("target path");
+  let watcher_path = watcher.actor_ref().path().expect("watcher path");
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      target_path.clone(),
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Watch(Pid::new(0, 0))),
+      Some(watcher_path.clone()),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  assert!(system.state().cell(&target.actor_ref().pid()).is_some());
+  assert!(system.state().cell(&watcher.actor_ref().pid()).is_some());
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      target_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Unwatch(Pid::new(0, 0))),
+      Some(watcher_path),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  assert!(system.state().cell(&target.actor_ref().pid()).is_some());
+  assert!(system.state().cell(&watcher.actor_ref().pid()).is_some());
+}
+
+#[test]
+fn inbound_delivery_bridge_drops_remote_watch_when_sender_is_missing() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let target = system.actor_of_named(&props, "watch-missing-sender").expect("target actor");
+  let target_path = target.actor_ref().path().expect("target path");
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      target_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Watch(Pid::new(0, 0))),
+      None,
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+}
+
+#[test]
+fn inbound_delivery_bridge_drops_remote_watch_when_recipient_or_sender_is_unresolved() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let target = system.actor_of_named(&props, "watch-present-target").expect("target actor");
+  let target_path = target.actor_ref().path().expect("target path");
+  let missing_target = ActorPath::root().child("user").child("missing-target");
+  let missing_watcher = ActorPath::root().child("user").child("missing-watcher");
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      missing_target,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Watch(Pid::new(0, 0))),
+      Some(target_path.clone()),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      target_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Watch(Pid::new(0, 0))),
+      Some(missing_watcher),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+}
+
+#[test]
+fn inbound_delivery_bridge_records_failed_remote_watch_delivery() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let target_path = register_rejecting_temp_actor(&system, Pid::new(7100, 0));
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let watcher = system.actor_of_named(&props, "watcher-send-error").expect("watcher actor");
+  let watcher_path = watcher.actor_ref().path().expect("watcher path");
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      target_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Watch(Pid::new(0, 0))),
+      Some(watcher_path),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+
+  assert!(!system.dead_letters().is_empty());
+}
+
+#[test]
+fn inbound_delivery_bridge_drops_remote_deathwatch_when_sender_or_watcher_is_unresolved() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let watcher = system.actor_of_named(&props, "deathwatch-present-watcher").expect("watcher actor");
+  let watcher_path = watcher.actor_ref().path().expect("watcher path");
+  let missing_watcher = ActorPath::root().child("user").child("deathwatch-missing-watcher");
+  let missing_target = ActorPath::root().child("user").child("deathwatch-missing-target");
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      watcher_path.clone(),
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(0, 0))),
+      None,
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      missing_watcher,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(0, 0))),
+      Some(watcher_path.clone()),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      watcher_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(0, 0))),
+      Some(missing_target),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+}
+
+#[test]
+fn inbound_delivery_bridge_records_failed_remote_deathwatch_delivery() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let watcher_path = register_rejecting_temp_actor(&system, Pid::new(7200, 0));
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let target = system.actor_of_named(&props, "deathwatch-send-error-target").expect("target actor");
+  let target_path = target.actor_ref().path().expect("target path");
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      watcher_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(0, 0))),
+      Some(target_path),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+
+  assert!(!system.dead_letters().is_empty());
+}
+
+#[test]
+fn inbound_delivery_bridge_routes_other_system_messages_to_recipient_or_dead_letters() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let recipient = system.actor_of_named(&props, "system-recipient").expect("recipient actor");
+  let recipient_path = recipient.actor_ref().path().expect("recipient path");
+  let missing_recipient = ActorPath::root().child("user").child("system-missing");
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      recipient_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Suspend),
+      None,
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      missing_recipient,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Resume),
+      None,
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+}
+
+#[test]
+fn inbound_delivery_bridge_records_failed_generic_system_delivery() {
+  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
+    .expect("actor system should build");
+  let recipient_path = register_rejecting_temp_actor(&system, Pid::new(7300, 0));
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      recipient_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::Suspend),
+      None,
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+
+  assert!(!system.dead_letters().is_empty());
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

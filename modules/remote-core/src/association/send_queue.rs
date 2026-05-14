@@ -117,6 +117,12 @@ impl SendQueue {
     OfferOutcome::Accepted
   }
 
+  /// Returns `true` when the system-priority lane can accept one more envelope.
+  #[must_use]
+  pub fn has_system_capacity(&self) -> bool {
+    self.system.len() < self.system_limit
+  }
+
   /// Enqueues a user-priority envelope into the large-message lane.
   pub fn offer_large_message(&mut self, envelope: OutboundEnvelope) -> OfferOutcome {
     if self.large_message.len() < self.large_message_limit {
