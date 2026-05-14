@@ -214,6 +214,10 @@ fn register_rejecting_temp_actor(system: &ActorSystem, pid: Pid) -> ActorPath {
   system.state().canonical_actor_path(&pid).expect("temp actor path should be registered")
 }
 
+fn assert_dead_letters_len(system: &ActorSystem, expected: usize) {
+  assert_eq!(system.dead_letters().len(), expected, "dead letter count should match the delivery outcome");
+}
+
 fn assert_configuration_error(error: ActorSystemBuildError, expected_message: &str) {
   match error {
     | ActorSystemBuildError::Configuration(message) => assert_eq!(message, expected_message),
@@ -566,6 +570,7 @@ fn inbound_delivery_bridge_applies_remote_watch_and_unwatch_messages() {
   let watcher = system.actor_of_named(&props, "watcher").expect("watcher actor");
   let target_path = target.actor_ref().path().expect("target path");
   let watcher_path = watcher.actor_ref().path().expect("watcher path");
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -578,9 +583,7 @@ fn inbound_delivery_bridge_applies_remote_watch_and_unwatch_messages() {
     ),
     &system,
   );
-  assert!(system.state().cell(&target.actor_ref().pid()).is_some());
-  assert!(system.state().cell(&watcher.actor_ref().pid()).is_some());
-
+  assert_dead_letters_len(&system, before);
   deliver_inbound_envelope(
     InboundEnvelope::new(
       target_path,
@@ -592,8 +595,7 @@ fn inbound_delivery_bridge_applies_remote_watch_and_unwatch_messages() {
     ),
     &system,
   );
-  assert!(system.state().cell(&target.actor_ref().pid()).is_some());
-  assert!(system.state().cell(&watcher.actor_ref().pid()).is_some());
+  assert_dead_letters_len(&system, before);
 }
 
 #[test]
@@ -603,6 +605,7 @@ fn inbound_delivery_bridge_drops_remote_watch_when_sender_is_missing() {
   let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
   let target = system.actor_of_named(&props, "watch-missing-sender").expect("target actor");
   let target_path = target.actor_ref().path().expect("target path");
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -615,6 +618,7 @@ fn inbound_delivery_bridge_drops_remote_watch_when_sender_is_missing() {
     ),
     &system,
   );
+  assert_dead_letters_len(&system, before + 1);
 }
 
 #[test]
@@ -626,6 +630,7 @@ fn inbound_delivery_bridge_drops_remote_watch_when_recipient_or_sender_is_unreso
   let target_path = target.actor_ref().path().expect("target path");
   let missing_target = ActorPath::root().child("user").child("missing-target");
   let missing_watcher = ActorPath::root().child("user").child("missing-watcher");
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -649,6 +654,7 @@ fn inbound_delivery_bridge_drops_remote_watch_when_recipient_or_sender_is_unreso
     ),
     &system,
   );
+  assert_dead_letters_len(&system, before + 2);
 }
 
 #[test]
@@ -659,6 +665,7 @@ fn inbound_delivery_bridge_records_failed_remote_watch_delivery() {
   let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
   let watcher = system.actor_of_named(&props, "watcher-send-error").expect("watcher actor");
   let watcher_path = watcher.actor_ref().path().expect("watcher path");
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -672,7 +679,7 @@ fn inbound_delivery_bridge_records_failed_remote_watch_delivery() {
     &system,
   );
 
-  assert!(!system.dead_letters().is_empty());
+  assert_dead_letters_len(&system, before + 1);
 }
 
 #[test]
@@ -684,6 +691,7 @@ fn inbound_delivery_bridge_drops_remote_deathwatch_when_sender_or_watcher_is_unr
   let watcher_path = watcher.actor_ref().path().expect("watcher path");
   let missing_watcher = ActorPath::root().child("user").child("deathwatch-missing-watcher");
   let missing_target = ActorPath::root().child("user").child("deathwatch-missing-target");
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -718,6 +726,7 @@ fn inbound_delivery_bridge_drops_remote_deathwatch_when_sender_or_watcher_is_unr
     ),
     &system,
   );
+  assert_dead_letters_len(&system, before + 3);
 }
 
 #[test]
@@ -728,6 +737,7 @@ fn inbound_delivery_bridge_records_failed_remote_deathwatch_delivery() {
   let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
   let target = system.actor_of_named(&props, "deathwatch-send-error-target").expect("target actor");
   let target_path = target.actor_ref().path().expect("target path");
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -741,7 +751,7 @@ fn inbound_delivery_bridge_records_failed_remote_deathwatch_delivery() {
     &system,
   );
 
-  assert!(!system.dead_letters().is_empty());
+  assert_dead_letters_len(&system, before + 1);
 }
 
 #[test]
@@ -752,6 +762,7 @@ fn inbound_delivery_bridge_routes_other_system_messages_to_recipient_or_dead_let
   let recipient = system.actor_of_named(&props, "system-recipient").expect("recipient actor");
   let recipient_path = recipient.actor_ref().path().expect("recipient path");
   let missing_recipient = ActorPath::root().child("user").child("system-missing");
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -764,6 +775,8 @@ fn inbound_delivery_bridge_routes_other_system_messages_to_recipient_or_dead_let
     ),
     &system,
   );
+  let after_recipient_delivery = system.dead_letters().len();
+  assert_eq!(after_recipient_delivery, before, "existing recipient delivery should not add a dead letter");
   deliver_inbound_envelope(
     InboundEnvelope::new(
       missing_recipient,
@@ -775,6 +788,7 @@ fn inbound_delivery_bridge_routes_other_system_messages_to_recipient_or_dead_let
     ),
     &system,
   );
+  assert!(system.dead_letters().len() > after_recipient_delivery, "missing recipient should append a dead letter");
 }
 
 #[test]
@@ -782,6 +796,7 @@ fn inbound_delivery_bridge_records_failed_generic_system_delivery() {
   let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
     .expect("actor system should build");
   let recipient_path = register_rejecting_temp_actor(&system, Pid::new(7300, 0));
+  let before = system.dead_letters().len();
 
   deliver_inbound_envelope(
     InboundEnvelope::new(
@@ -795,7 +810,7 @@ fn inbound_delivery_bridge_records_failed_generic_system_delivery() {
     &system,
   );
 
-  assert!(!system.dead_letters().is_empty());
+  assert_dead_letters_len(&system, before + 1);
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
