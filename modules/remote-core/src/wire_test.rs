@@ -279,11 +279,11 @@ fn envelope_actor_path_reference_metadata_roundtrips() {
   let pdu = EnvelopePdu::new_with_metadata(
     CompressedText::table_ref(3),
     Some(CompressedText::literal("/user/sender".to_string())),
-    (1, 2),
     1,
-    7,
+    2,
+    1,
+    EnvelopePayload::new(7, None, Bytes::from_static(b"hello")),
     None,
-    Bytes::from_static(b"hello"),
   );
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
@@ -295,16 +295,33 @@ fn envelope_actor_path_reference_metadata_roundtrips() {
   assert_eq!(decoded.payload(), &Bytes::from_static(b"hello"));
 }
 
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "recipient_path() called on unresolved compressed table reference")]
+fn envelope_recipient_path_panics_for_unresolved_table_ref_in_debug() {
+  let pdu = EnvelopePdu::new_with_metadata(
+    CompressedText::table_ref(3),
+    None,
+    1,
+    2,
+    1,
+    EnvelopePayload::new(7, None, Bytes::from_static(b"hello")),
+    None,
+  );
+
+  let _ = pdu.recipient_path();
+}
+
 #[test]
 fn envelope_manifest_reference_metadata_roundtrips_without_payload_compression() {
   let pdu = EnvelopePdu::new_with_metadata(
     CompressedText::literal("/user/recipient".to_string()),
     None,
-    (1, 2),
     1,
-    7,
+    2,
+    1,
+    EnvelopePayload::new(7, None, Bytes::from_static(b"hello")),
     Some(CompressedText::table_ref(5)),
-    Bytes::from_static(b"hello"),
   );
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
@@ -595,6 +612,25 @@ fn control_compression_advertisement_rejects_missing_entry_id() {
   ControlCodec::new().encode(&pdu, &mut buf).unwrap();
   let entry_count_index = control_reason_index(&authority) + 1 + 1 + 8;
   buf[entry_count_index..entry_count_index + 4].copy_from_slice(&1_u32.to_be_bytes());
+
+  let err = ControlCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::Truncated);
+}
+
+#[test]
+fn control_compression_advertisement_rejects_entry_count_exceeding_remaining_bytes() {
+  let authority = "sys@host:6".to_string();
+  let pdu = ControlPdu::CompressionAdvertisement {
+    authority:  authority.clone(),
+    table_kind: CompressionTableKind::ActorRef,
+    generation: 7,
+    entries:    Vec::new(),
+  };
+  let mut buf = BytesMut::new();
+  ControlCodec::new().encode(&pdu, &mut buf).unwrap();
+  let entry_count_index = control_reason_index(&authority) + 1 + 1 + 8;
+  buf[entry_count_index..entry_count_index + 4].copy_from_slice(&u32::MAX.to_be_bytes());
 
   let err = ControlCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
 

@@ -26,8 +26,16 @@ fn envelope_frame(
   manifest: Option<CompressedText>,
 ) -> WireFrame {
   WireFrame::Envelope(
-    EnvelopePdu::new_with_metadata(recipient_path, sender_path, (1, 2), 1, 7, manifest, Bytes::from_static(b"hello"))
-      .with_redelivery_sequence(None),
+    EnvelopePdu::new_with_metadata(
+      recipient_path,
+      sender_path,
+      1,
+      2,
+      1,
+      EnvelopePayload::new(7, None, Bytes::from_static(b"hello")),
+      manifest,
+    )
+    .with_redelivery_sequence(None),
   )
 }
 

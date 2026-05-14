@@ -106,6 +106,12 @@ impl CompressionTable {
       entry.hit_count = entry.hit_count.saturating_add(1);
       return;
     }
+    let Some(max) = self.max else {
+      return;
+    };
+    if self.entries.len() >= max.get() {
+      return;
+    }
     let entry_id = self.next_entry_id;
     self.next_entry_id = self.next_entry_id.saturating_add(1);
     let mut entry = CompressionTableEntryState::new(entry_id, literal.to_string());

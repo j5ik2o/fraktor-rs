@@ -9,6 +9,7 @@ use crate::{
     compressed_text::{
       decode_compressed_text, decode_option_compressed_text, encode_compressed_text, encode_option_compressed_text,
     },
+    envelope_payload::EnvelopePayload,
     envelope_pdu::EnvelopePdu,
     frame_header::KIND_ENVELOPE,
     primitives::{begin_frame, decode_bytes, encode_bytes, patch_frame_length, read_frame_header},
@@ -60,16 +61,18 @@ impl Codec<EnvelopePdu> for EnvelopeCodec {
     let serializer_id = buf.get_u32();
     let manifest = decode_option_compressed_text(buf)?;
     let payload = decode_bytes(buf)?;
-    Ok(EnvelopePdu::new_with_metadata(
-      recipient_path,
-      sender_path,
-      (correlation_hi, correlation_lo),
-      priority,
-      serializer_id,
-      manifest,
-      payload,
-    ))
-    .map(|pdu| pdu.with_redelivery_sequence(redelivery_sequence))
+    Ok(
+      EnvelopePdu::new_with_metadata(
+        recipient_path,
+        sender_path,
+        correlation_hi,
+        correlation_lo,
+        priority,
+        EnvelopePayload::new(serializer_id, None, payload),
+        manifest,
+      )
+      .with_redelivery_sequence(redelivery_sequence),
+    )
   }
 }
 

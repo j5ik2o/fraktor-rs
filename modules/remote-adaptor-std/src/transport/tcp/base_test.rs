@@ -47,3 +47,21 @@ fn outbound_lane_key_ignores_correlation_id_for_same_actor_pair() {
 
   assert_eq!(outbound_lane_key_for_envelope(&first), outbound_lane_key_for_envelope(&second));
 }
+
+#[test]
+fn local_authority_from_addresses_rewrites_ephemeral_port() {
+  let addresses = vec![Address::new("local-sys", "127.0.0.1", 0)];
+
+  let authority = TcpRemoteTransport::local_authority_from_addresses(&addresses, 2551);
+
+  assert_eq!(authority, "local-sys@127.0.0.1:2551");
+}
+
+#[test]
+fn local_authority_from_addresses_preserves_fixed_port() {
+  let addresses = vec![Address::new("local-sys", "127.0.0.1", 2552)];
+
+  let authority = TcpRemoteTransport::local_authority_from_addresses(&addresses, 2551);
+
+  assert_eq!(authority, "local-sys@127.0.0.1:2552");
+}

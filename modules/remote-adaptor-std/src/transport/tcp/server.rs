@@ -8,9 +8,7 @@ use std::{
   time::Instant,
 };
 
-use fraktor_remote_core_rs::{
-  config::RemoteCompressionConfig, extension::RemoteEvent, transport::TransportError, wire::CompressionTableKind,
-};
+use fraktor_remote_core_rs::{config::RemoteCompressionConfig, extension::RemoteEvent, transport::TransportError};
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::{TcpListener, TcpStream},
@@ -21,11 +19,9 @@ use tokio::{
 use tokio_util::codec::Framed;
 
 use super::{
+  WireFrame,
   client::inbound_lane_index,
-  compression::{
-    InboundCompressionAction, TcpCompressionTables, compression_advertisement_interval,
-    next_compression_advertisement_tick,
-  },
+  compression::{InboundCompressionAction, TcpCompressionTables},
   connection_loss_reporter::ConnectionLossReporter,
   frame_codec::WireFrameCodec,
   inbound_frame_event::InboundFrameEvent,
@@ -80,19 +76,22 @@ impl TcpServer {
     }
   }
 
-  pub(crate) fn start_with_remote_events(
+  pub(crate) fn start_with_remote_events<F>(
     &mut self,
     inbound_txs: Vec<UnboundedSender<InboundFrameEvent>>,
     remote_event_tx: Option<Sender<RemoteEvent>>,
     monotonic_epoch: Instant,
-    local_authority: String,
-  ) -> Result<SocketAddr, TransportError> {
+    local_authority_for_bound_port: F,
+  ) -> Result<SocketAddr, TransportError>
+  where
+    F: FnOnce(u16) -> String, {
     if self.accept_task.is_some() {
       return Err(TransportError::AlreadyRunning);
     }
     let handle = Handle::try_current().map_err(|_| TransportError::NotAvailable)?;
     let listener = StdTcpListener::bind(&self.bind_addr).map_err(|_| TransportError::SendFailed)?;
     let bound_addr = listener.local_addr().map_err(|_| TransportError::SendFailed)?;
+    let local_authority = local_authority_for_bound_port(bound_addr.port());
     listener.set_nonblocking(true).map_err(|_| TransportError::SendFailed)?;
     let listener = TcpListener::from_std(listener).map_err(|_| TransportError::SendFailed)?;
     let frame_codec = self.frame_codec;
@@ -164,69 +163,43 @@ async fn read_loop(
   let mut framed = Framed::new(stream, frame_codec);
   let mut authority = None;
   let mut compression_tables = TcpCompressionTables::new(compression_config);
-  let mut actor_ref_advertisement_interval = compression_advertisement_interval(
-    compression_config.actor_ref_max(),
-    compression_config.actor_ref_advertisement_interval(),
-  );
-  let mut manifest_advertisement_interval = compression_advertisement_interval(
-    compression_config.manifest_max(),
-    compression_config.manifest_advertisement_interval(),
-  );
   let exit_cause = loop {
-    tokio::select! {
-      next = framed.next() => match next {
-        | Some(Ok(decoded)) => {
-          let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
-            | Ok(InboundCompressionAction::Forward(frame)) => frame,
-            | Ok(InboundCompressionAction::Reply(pdu)) => {
-              if let Err(err) = framed.send(crate::transport::tcp::WireFrame::Control(pdu)).await {
-                tracing::warn!(?err, peer = %peer, "tcp server compression ack write error");
-                break Some(TransportError::SendFailed);
-              }
-              continue;
-            },
-            | Ok(InboundCompressionAction::Consumed) => continue,
-            | Err(err) => {
-              tracing::warn!(?err, peer = %peer, "tcp server compression frame error");
+    match framed.next().await {
+      | Some(Ok(decoded)) => {
+        let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
+          | Ok(InboundCompressionAction::Forward(frame)) => frame,
+          | Ok(InboundCompressionAction::Reply(pdu)) => {
+            if let Err(err) = framed.send(WireFrame::Control(pdu)).await {
+              tracing::warn!(?err, peer = %peer, "tcp server compression ack write error");
               break Some(TransportError::SendFailed);
-            },
-          };
-          if let Some(frame_authority) = authority_for_frame(&decoded) {
-            authority = Some(frame_authority);
-          }
-          let lane_index = inbound_lane_index(&peer, authority.as_ref(), &decoded, inbound_txs.len());
-          let inbound_tx =
-            inbound_txs.get(lane_index).expect("inbound_lane_index returns an index within the inbound_txs lane count");
-          if inbound_tx
-            .send(InboundFrameEvent { peer: peer.clone(), authority: authority.clone(), frame: decoded })
-            .is_err()
-          {
-            // Receiver dropped — the transport is shutting down.
-            break None;
-          }
-        },
-        | Some(Err(err)) => {
-          tracing::warn!(?err, peer = %peer, "tcp frame decode error");
-          break Some(TransportError::SendFailed);
-        },
-        | None => break Some(TransportError::ConnectionClosed),
-      },
-      _ = next_compression_advertisement_tick(&mut actor_ref_advertisement_interval) => {
-        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::ActorRef, &local_authority)
-          && let Err(err) = framed.send(frame).await
+            }
+            continue;
+          },
+          | Ok(InboundCompressionAction::Consumed) => continue,
+          | Err(err) => {
+            tracing::warn!(?err, peer = %peer, "tcp server compression frame error");
+            break Some(TransportError::SendFailed);
+          },
+        };
+        if let Some(frame_authority) = authority_for_frame(&decoded) {
+          authority = Some(frame_authority);
+        }
+        let lane_index = inbound_lane_index(&peer, authority.as_ref(), &decoded, inbound_txs.len());
+        let inbound_tx =
+          inbound_txs.get(lane_index).expect("inbound_lane_index returns an index within the inbound_txs lane count");
+        if inbound_tx
+          .send(InboundFrameEvent { peer: peer.clone(), authority: authority.clone(), frame: decoded })
+          .is_err()
         {
-          tracing::warn!(?err, peer = %peer, "tcp server actor-ref compression advertisement write error");
-          break Some(TransportError::SendFailed);
+          // Receiver dropped — the transport is shutting down.
+          break None;
         }
       },
-      _ = next_compression_advertisement_tick(&mut manifest_advertisement_interval) => {
-        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::Manifest, &local_authority)
-          && let Err(err) = framed.send(frame).await
-        {
-          tracing::warn!(?err, peer = %peer, "tcp server manifest compression advertisement write error");
-          break Some(TransportError::SendFailed);
-        }
+      | Some(Err(err)) => {
+        tracing::warn!(?err, peer = %peer, "tcp frame decode error");
+        break Some(TransportError::SendFailed);
       },
+      | None => break Some(TransportError::ConnectionClosed),
     }
   };
   if let (Some(cause), Some(authority), Some(sender)) = (exit_cause, authority, remote_event_tx) {

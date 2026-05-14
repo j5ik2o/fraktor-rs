@@ -98,29 +98,31 @@ impl TcpCompressionTables {
     EnvelopePdu::new_with_metadata(
       recipient_path,
       sender_path,
-      (pdu.correlation_hi(), pdu.correlation_lo()),
+      pdu.correlation_hi(),
+      pdu.correlation_lo(),
       pdu.priority(),
-      pdu.serializer_id(),
+      EnvelopePayload::new(pdu.serializer_id(), None, pdu.payload().clone()),
       manifest,
-      pdu.payload().clone(),
     )
     .with_redelivery_sequence(pdu.redelivery_sequence())
   }
 
   fn resolve_inbound_envelope(&self, pdu: EnvelopePdu) -> Result<EnvelopePdu, WireError> {
-    let recipient_path = resolve_text(&self.inbound_actor_refs, pdu.recipient_path_metadata())?;
+    let recipient_path =
+      CompressedText::literal(resolve_text(&self.inbound_actor_refs, pdu.recipient_path_metadata())?);
     let sender_path =
       pdu.sender_path_metadata().map(|metadata| resolve_text(&self.inbound_actor_refs, metadata)).transpose()?;
     let manifest =
       pdu.manifest_metadata().map(|metadata| resolve_text(&self.inbound_manifests, metadata)).transpose()?;
     Ok(
-      EnvelopePdu::new(
+      EnvelopePdu::new_with_metadata(
         recipient_path,
-        sender_path,
+        sender_path.map(CompressedText::literal),
         pdu.correlation_hi(),
         pdu.correlation_lo(),
         pdu.priority(),
-        EnvelopePayload::new(pdu.serializer_id(), manifest, pdu.payload().clone()),
+        EnvelopePayload::new(pdu.serializer_id(), None, pdu.payload().clone()),
+        manifest.map(CompressedText::literal),
       )
       .with_redelivery_sequence(pdu.redelivery_sequence()),
     )

@@ -26,6 +26,7 @@ const SUBKIND_FLUSH_REQUEST: u8 = 0x04;
 const SUBKIND_FLUSH_ACK: u8 = 0x05;
 const SUBKIND_COMPRESSION_ADVERTISEMENT: u8 = 0x06;
 const SUBKIND_COMPRESSION_ACK: u8 = 0x07;
+const MIN_COMPRESSION_ENTRY_BYTES: usize = 4 + 4;
 
 /// Zero-sized codec for [`ControlPdu`].
 #[derive(Clone, Copy, Debug, Default)]
@@ -176,6 +177,9 @@ fn decode_compression_entries(buf: &mut Bytes) -> Result<Vec<CompressionTableEnt
     return Err(WireError::Truncated);
   }
   let entry_count = buf.get_u32() as usize;
+  if entry_count > buf.remaining() / MIN_COMPRESSION_ENTRY_BYTES {
+    return Err(WireError::Truncated);
+  }
   let mut entries = Vec::with_capacity(entry_count);
   for _ in 0..entry_count {
     if buf.remaining() < 4 {

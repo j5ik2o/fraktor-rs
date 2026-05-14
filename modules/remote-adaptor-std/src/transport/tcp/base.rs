@@ -275,6 +275,19 @@ impl TcpRemoteTransport {
     self.default_address.as_ref().map(ToString::to_string).unwrap_or_default()
   }
 
+  fn local_authority_from_addresses(addresses: &[Address], bound_port: u16) -> String {
+    addresses
+      .first()
+      .map(|address| {
+        if address.port() == 0 {
+          Address::new(address.system(), address.host(), bound_port).to_string()
+        } else {
+          address.to_string()
+        }
+      })
+      .unwrap_or_default()
+  }
+
   fn peer_key_for_address(address: &Address) -> String {
     alloc::format!("{}:{}", address.host(), address.port())
   }
@@ -405,11 +418,12 @@ impl RemoteTransport for TcpRemoteTransport {
     if self.running {
       return Err(TransportError::AlreadyRunning);
     }
+    let configured_local_addresses = self.configured_local_addresses.clone();
     let bound_addr = self.server.start_with_remote_events(
       self.inbound_txs.clone(),
       self.remote_event_tx.clone(),
       self.monotonic_epoch,
-      self.local_authority(),
+      move |bound_port| Self::local_authority_from_addresses(&configured_local_addresses, bound_port),
     )?;
     self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;

@@ -161,7 +161,9 @@ fn make_test_server() -> TcpServer {
 
 fn start_test_server(server: &mut TcpServer, inbound_tx: UnboundedSender<InboundFrameEvent>) -> SocketAddr {
   server
-    .start_with_remote_events(vec![inbound_tx], None, Instant::now(), String::from("local@127.0.0.1:0"))
+    .start_with_remote_events(vec![inbound_tx], None, Instant::now(), |bound_port| {
+      format!("local@127.0.0.1:{bound_port}")
+    })
     .expect("server should bind to a system-assigned port")
 }
 
@@ -859,8 +861,11 @@ async fn tcp_server_consumes_compression_advertisement_and_replies_with_ack() {
     ack,
     WireFrame::Control(ControlPdu::CompressionAck { table_kind: CompressionTableKind::ActorRef, generation: 7, .. })
   ));
-  let inbound = tokio::time::timeout(Duration::from_millis(100), server_inbound_rx.recv()).await;
-  assert!(inbound.is_err(), "compression advertisement must not reach the inbound event loop");
+  tokio::task::yield_now().await;
+  assert!(
+    matches!(server_inbound_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+    "compression advertisement must not reach the inbound event loop"
+  );
   server.shutdown();
 }
 

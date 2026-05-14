@@ -21,6 +21,19 @@ fn observe_updates_hit_count_without_duplicate_entry_ids() {
 }
 
 #[test]
+fn observe_stops_adding_entries_at_configured_max() {
+  let mut table = CompressionTable::new(max(1));
+
+  table.observe("/user/a");
+  table.observe("/user/b");
+  table.observe("/user/a");
+
+  assert_eq!(table.len(), 1);
+  assert_eq!(table.entry_id("/user/b"), None);
+  assert_eq!(table.hit_count("/user/a"), Some(2));
+}
+
+#[test]
 fn max_accessor_returns_configured_bound() {
   let table = CompressionTable::new(max(2));
 
@@ -48,7 +61,7 @@ fn disabled_table_does_not_track_hits_or_advertise() {
 
 #[test]
 fn advertisement_is_bounded_and_deterministic() {
-  let mut table = CompressionTable::new(max(2));
+  let mut table = CompressionTable::new(max(3));
   table.observe("/user/a");
   table.observe("/user/b");
   table.observe("/user/b");
@@ -58,9 +71,10 @@ fn advertisement_is_bounded_and_deterministic() {
   let advertisement = table.create_advertisement(CompressionTableKind::ActorRef).unwrap();
 
   assert_eq!(advertisement.generation(), 1);
-  assert_eq!(advertisement.entries().len(), 2);
+  assert_eq!(advertisement.entries().len(), 3);
   assert_eq!(advertisement.entries()[0].literal(), "/user/b");
   assert_eq!(advertisement.entries()[1].literal(), "/user/c");
+  assert_eq!(advertisement.entries()[2].literal(), "/user/a");
 }
 
 #[test]

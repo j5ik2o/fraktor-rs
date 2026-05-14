@@ -58,26 +58,33 @@ impl EnvelopePdu {
   }
 
   /// Creates a new [`EnvelopePdu`] with pre-encoded compression metadata.
+  ///
+  /// When `manifest_metadata` is `None`, the manifest carried by `payload` is
+  /// used as literal metadata.
   #[must_use]
-  pub const fn new_with_metadata(
+  pub fn new_with_metadata(
     recipient_path: CompressedText,
     sender_path: Option<CompressedText>,
-    correlation: (u64, u32),
+    correlation_hi: u64,
+    correlation_lo: u32,
     priority: u8,
-    serializer_id: u32,
-    manifest: Option<CompressedText>,
-    payload: Bytes,
+    payload: EnvelopePayload,
+    manifest_metadata: Option<CompressedText>,
   ) -> Self {
+    let manifest = match manifest_metadata {
+      | Some(manifest) => Some(manifest),
+      | None => payload.manifest.map(CompressedText::literal),
+    };
     Self {
       recipient_path,
       sender_path,
-      correlation_hi: correlation.0,
-      correlation_lo: correlation.1,
+      correlation_hi,
+      correlation_lo,
       priority,
       redelivery_sequence: None,
-      serializer_id,
+      serializer_id: payload.serializer_id,
       manifest,
-      payload,
+      payload: payload.bytes,
     }
   }
 
@@ -91,7 +98,9 @@ impl EnvelopePdu {
   /// Returns the recipient actor path.
   #[must_use]
   pub fn recipient_path(&self) -> &str {
-    self.recipient_path.as_literal().unwrap_or("")
+    let literal = self.recipient_path.as_literal();
+    debug_assert!(literal.is_some(), "recipient_path() called on unresolved compressed table reference");
+    literal.unwrap_or("")
   }
 
   /// Returns the recipient actor path metadata.
