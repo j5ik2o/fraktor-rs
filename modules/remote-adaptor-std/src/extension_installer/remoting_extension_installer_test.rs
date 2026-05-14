@@ -4,6 +4,7 @@ use std::{
   time::{Duration, Instant},
 };
 
+use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
   actor::{
@@ -19,7 +20,7 @@ use fraktor_remote_core_rs::{
   association::QuarantineReason,
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{TransportEndpoint, TransportError},
-  wire::{AckPdu, HandshakePdu, HandshakeRsp},
+  wire::{AckPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeRsp},
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{
@@ -32,69 +33,50 @@ use crate::extension_installer::flush_gate::StdFlushNotification;
 
 struct TestRemoteTransport {
   addresses:    Vec<Address>,
-  running:      bool,
-  send_result:  Result<(), TransportError>,
   flush_result: Result<(), TransportError>,
 }
 
 impl TestRemoteTransport {
   fn new(addresses: Vec<Address>) -> Self {
-    Self { addresses, running: false, send_result: Ok(()), flush_result: Ok(()) }
+    Self { addresses, flush_result: Ok(()) }
   }
 
   fn with_flush_result(addresses: Vec<Address>, flush_result: Result<(), TransportError>) -> Self {
-    Self { addresses, running: false, send_result: Ok(()), flush_result }
+    Self { addresses, flush_result }
   }
 }
 
 impl RemoteTransport for TestRemoteTransport {
   fn start(&mut self) -> Result<(), TransportError> {
-    if self.running {
-      return Err(TransportError::AlreadyRunning);
-    }
-    self.running = true;
     Ok(())
   }
 
   fn shutdown(&mut self) -> Result<(), TransportError> {
-    if !self.running {
-      return Err(TransportError::NotStarted);
-    }
-    self.running = false;
     Ok(())
   }
 
   fn connect_peer(&mut self, _remote: &Address) -> Result<(), TransportError> {
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    Ok(())
   }
 
-  fn send(&mut self, envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
-    if !self.running {
-      return Err((TransportError::NotStarted, Box::new(envelope)));
-    }
-    match self.send_result.clone() {
-      | Ok(()) => Ok(()),
-      | Err(error) => Err((error, Box::new(envelope))),
-    }
+  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
+    Ok(())
   }
 
   fn send_control(&mut self, _remote: &Address, _pdu: ControlPdu) -> Result<(), TransportError> {
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    Ok(())
   }
 
   fn send_flush_request(&mut self, _remote: &Address, _pdu: ControlPdu, _lane_id: u32) -> Result<(), TransportError> {
-    if !self.running {
-      return Err(TransportError::NotStarted);
-    }
     self.flush_result.clone()
   }
 
   fn send_ack(&mut self, _remote: &Address, _pdu: AckPdu) -> Result<(), TransportError> {
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    Ok(())
   }
 
   fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    Ok(())
   }
 
   fn schedule_handshake_timeout(
@@ -103,7 +85,7 @@ impl RemoteTransport for TestRemoteTransport {
     _timeout: Duration,
     _generation: u64,
   ) -> Result<(), TransportError> {
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    Ok(())
   }
 
   fn addresses(&self) -> &[Address] {
@@ -124,7 +106,7 @@ impl RemoteTransport for TestRemoteTransport {
     _uid: Option<u64>,
     _reason: QuarantineReason,
   ) -> Result<(), TransportError> {
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    Ok(())
   }
 }
 
@@ -208,6 +190,18 @@ fn test_deathwatch_envelope(target: &Address) -> OutboundEnvelope {
   )
 }
 
+fn test_system_envelope_pdu(target: &Address, sequence: u64) -> EnvelopePdu {
+  EnvelopePdu::new(
+    String::from("fraktor.tcp://local-sys@127.0.0.1:2551/user/local"),
+    Some(format!("fraktor.tcp://{}@{}:{}/user/sender", target.system(), target.host(), target.port())),
+    sequence,
+    0,
+    OutboundPriority::System.to_wire(),
+    EnvelopePayload::new(4, None, Bytes::from_static(b"bad-system-payload")),
+  )
+  .with_redelivery_sequence(Some(sequence))
+}
+
 fn assert_deathwatch_notification_enqueued(receiver: &mut Receiver<RemoteEvent>) {
   assert!(matches!(
     receiver.try_recv(),
@@ -233,81 +227,6 @@ async fn shutdown_with_timeout(remote: RemoteShared, config: RemoteConfig) -> Re
   )
   .await
   .expect("shutdown should not hang")
-}
-
-#[test]
-fn test_remote_transport_reports_lifecycle_edges() {
-  let local = local_address();
-  let target = remote_address();
-  let mut transport = TestRemoteTransport::new(vec![local.clone()]);
-
-  assert_eq!(transport.shutdown().expect_err("shutdown before start should fail"), TransportError::NotStarted);
-  assert_eq!(
-    transport.connect_peer(&target).expect_err("connect before start should fail"),
-    TransportError::NotStarted
-  );
-  let (error, _envelope) =
-    transport.send(test_user_envelope(&target)).expect_err("send before start should return envelope");
-  assert_eq!(error, TransportError::NotStarted);
-  assert_eq!(
-    transport
-      .send_control(&target, ControlPdu::Shutdown { authority: local.to_string() })
-      .expect_err("control before start should fail"),
-    TransportError::NotStarted
-  );
-  assert_eq!(
-    transport
-      .send_flush_request(&target, ControlPdu::Shutdown { authority: local.to_string() }, 0)
-      .expect_err("flush before start should fail"),
-    TransportError::NotStarted
-  );
-  assert_eq!(
-    transport.send_ack(&target, AckPdu::new(1, 1, 0)).expect_err("ack before start should fail"),
-    TransportError::NotStarted
-  );
-  assert_eq!(
-    transport
-      .send_handshake(&target, HandshakePdu::Rsp(HandshakeRsp::new(UniqueAddress::new(local.clone(), 1))))
-      .expect_err("handshake before start should fail"),
-    TransportError::NotStarted
-  );
-  assert_eq!(
-    transport
-      .schedule_handshake_timeout(&TransportEndpoint::new(target.to_string()), Duration::from_millis(1), 1)
-      .expect_err("timer before start should fail"),
-    TransportError::NotStarted
-  );
-  assert_eq!(
-    transport
-      .quarantine(&target, Some(1), QuarantineReason::new("test"))
-      .expect_err("quarantine before start should fail"),
-    TransportError::NotStarted
-  );
-
-  transport.start().expect("first start should succeed");
-  assert_eq!(transport.start().expect_err("second start should fail"), TransportError::AlreadyRunning);
-  transport.connect_peer(&target).expect("running transport should connect");
-  transport
-    .send_control(&target, ControlPdu::Shutdown { authority: local.to_string() })
-    .expect("running transport should send control");
-  transport
-    .send_flush_request(&target, ControlPdu::Shutdown { authority: local.to_string() }, 0)
-    .expect("running transport should send flush request");
-  transport.send_ack(&target, AckPdu::new(1, 1, 0)).expect("running transport should send ack");
-  transport
-    .send_handshake(&target, HandshakePdu::Rsp(HandshakeRsp::new(UniqueAddress::new(local, 1))))
-    .expect("running transport should send handshake");
-  transport
-    .schedule_handshake_timeout(&TransportEndpoint::new(target.to_string()), Duration::from_millis(1), 1)
-    .expect("running transport should schedule timer");
-  transport.quarantine(&target, Some(1), QuarantineReason::new("test")).expect("running transport should quarantine");
-  transport.send(test_user_envelope(&target)).expect("running transport should send envelope");
-
-  transport.send_result = Err(TransportError::Backpressure);
-  let (error, _envelope) =
-    transport.send(test_user_envelope(&target)).expect_err("configured send error should return envelope");
-  assert_eq!(error, TransportError::Backpressure);
-  transport.shutdown().expect("shutdown after start should succeed");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -364,6 +283,55 @@ async fn shutdown_remote_and_join_continues_when_shutdown_flush_is_not_started()
   .await
   .expect("shutdown should not hang")
   .expect("shutdown should continue after flush setup failure");
+}
+
+#[test]
+fn remote_events_use_test_transport_callbacks() {
+  let local = local_address();
+  let target = remote_address();
+  let remote = remote_shared(RemoteConfig::new("127.0.0.1"), TestRemoteTransport::new(vec![local]));
+  activate_association(&remote, &target);
+
+  remote
+    .handle_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(target.to_string()),
+      frame:     WireFrame::Control(ControlPdu::Heartbeat { authority: target.to_string() }),
+      now_ms:    3,
+    })
+    .expect("heartbeat should send a control response");
+  remote
+    .handle_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(target.to_string()),
+      frame:     WireFrame::Envelope(test_system_envelope_pdu(&target, 1)),
+      now_ms:    4,
+    })
+    .expect("system envelope should send an ack");
+  remote
+    .handle_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(target.to_string()),
+      frame:     WireFrame::Control(ControlPdu::FlushRequest {
+        authority:     target.to_string(),
+        flush_id:      10,
+        scope:         FlushScope::Shutdown,
+        lane_id:       0,
+        expected_acks: 1,
+      }),
+      now_ms:    5,
+    })
+    .expect("flush request should send an ack");
+  remote
+    .handle_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(target.to_string()),
+      frame:     WireFrame::Control(ControlPdu::Quarantine {
+        authority: target.to_string(),
+        reason:    Some(String::from("test")),
+      }),
+      now_ms:    6,
+    })
+    .expect("quarantine should reach the transport");
+  remote
+    .quarantine(&target, Some(2), QuarantineReason::new("test"), 7)
+    .expect("local quarantine should reach the transport");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
