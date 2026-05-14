@@ -290,6 +290,15 @@ impl TcpRemoteTransport {
     self.send_wire_frame(remote, WireFrame::Control(pdu))
   }
 
+  pub(crate) fn send_flush_request(
+    &mut self,
+    remote: &Address,
+    pdu: ControlPdu,
+    lane_id: u32,
+  ) -> Result<(), TransportError> {
+    self.send_wire_frame_to_lane(remote, lane_id, WireFrame::Control(pdu))
+  }
+
   pub(crate) fn send_ack(&mut self, remote: &Address, pdu: AckPdu) -> Result<(), TransportError> {
     self.send_wire_frame(remote, WireFrame::Ack(pdu))
   }
@@ -305,6 +314,15 @@ impl TcpRemoteTransport {
     frame: WireFrame,
   ) -> Result<(), TransportError> {
     self.send_wire_frame_to_client(remote, |client| client.send_with_lane_key(lane_key, frame))
+  }
+
+  fn send_wire_frame_to_lane(
+    &mut self,
+    remote: &Address,
+    lane_id: u32,
+    frame: WireFrame,
+  ) -> Result<(), TransportError> {
+    self.send_wire_frame_to_client(remote, |client| client.send_to_lane_id(lane_id, frame))
   }
 
   fn send_wire_frame_to_client<F>(&mut self, remote: &Address, send: F) -> Result<(), TransportError>
@@ -443,6 +461,10 @@ impl RemoteTransport for TcpRemoteTransport {
 
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     TcpRemoteTransport::send_control(self, remote, pdu)
+  }
+
+  fn send_flush_request(&mut self, remote: &Address, pdu: ControlPdu, lane_id: u32) -> Result<(), TransportError> {
+    TcpRemoteTransport::send_flush_request(self, remote, pdu, lane_id)
   }
 
   fn send_ack(&mut self, remote: &Address, pdu: AckPdu) -> Result<(), TransportError> {

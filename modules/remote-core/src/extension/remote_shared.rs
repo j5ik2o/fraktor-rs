@@ -15,7 +15,12 @@ use crate::{
   address::Address,
   association::QuarantineReason,
   envelope::InboundEnvelope,
-  extension::{Remote, RemoteEvent, RemoteEventReceiver, RemoteSharedRunFuture, Remoting, RemotingError},
+  extension::{
+    Remote, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteFlushTimer, RemoteSharedRunFuture, Remoting,
+    RemotingError,
+  },
+  transport::TransportEndpoint,
+  wire::FlushScope,
 };
 
 /// Shared wrapper for driving remoting through interior locking.
@@ -87,6 +92,30 @@ impl RemoteShared {
   #[must_use]
   pub fn drain_inbound_envelopes(&self) -> Vec<InboundEnvelope> {
     self.with_write(Remote::drain_inbound_envelopes)
+  }
+
+  /// Starts a flush session for active associations.
+  ///
+  /// When `authority` is `Some`, only the matching active association is
+  /// targeted. When it is `None`, every active association is targeted.
+  ///
+  /// # Errors
+  ///
+  /// Returns the same error as [`Remote::start_flush`].
+  pub fn start_flush(
+    &self,
+    authority: Option<&TransportEndpoint>,
+    scope: FlushScope,
+    lane_ids: &[u32],
+    now_ms: u64,
+  ) -> Result<Vec<RemoteFlushTimer>, RemotingError> {
+    self.with_write(|remote| remote.start_flush(authority, scope, lane_ids, now_ms))
+  }
+
+  /// Drains flush outcomes observed by the shared core event loop.
+  #[must_use]
+  pub fn drain_flush_outcomes(&self) -> Vec<RemoteFlushOutcome> {
+    self.with_write(Remote::drain_flush_outcomes)
   }
 
   /// Establishes a transport peer writer for `remote`.

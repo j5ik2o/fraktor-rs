@@ -30,6 +30,15 @@ pub enum RemoteEvent {
     /// Monotonic millis at which the timer fired.
     now_ms:     u64,
   },
+  /// A flush session deadline was reached.
+  FlushTimerFired {
+    /// Remote authority whose flush timer fired.
+    authority: TransportEndpoint,
+    /// Flush session identifier carried by the scheduled timer.
+    flush_id:  u64,
+    /// Monotonic millis at which the timer fired.
+    now_ms:    u64,
+  },
   /// An outbound envelope has been submitted by adapter code.
   OutboundEnqueued {
     /// Remote authority that should receive the envelope.

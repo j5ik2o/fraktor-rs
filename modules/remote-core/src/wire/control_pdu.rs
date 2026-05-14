@@ -1,12 +1,15 @@
-//! Control PDU: heartbeat / quarantine / shutdown signalling.
+//! Control PDU: heartbeat / quarantine / shutdown / flush signalling.
 
 use alloc::string::String;
+
+use super::FlushScope;
 
 /// Wire-level control PDU carrying non-envelope signalling between nodes.
 ///
 /// Each variant shares the same frame `kind = 0x04` and is differentiated by an
 /// inner `subkind` byte at the start of the body (`0x00 = Heartbeat`,
-/// `0x01 = Quarantine`, `0x02 = Shutdown`, `0x03 = HeartbeatResponse`).
+/// `0x01 = Quarantine`, `0x02 = Shutdown`, `0x03 = HeartbeatResponse`,
+/// `0x04 = FlushRequest`, `0x05 = FlushAck`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ControlPdu {
   /// Periodic liveness signal from the sending node.
@@ -32,5 +35,29 @@ pub enum ControlPdu {
   Shutdown {
     /// Authority string (typically the sender's canonical address).
     authority: String,
+  },
+  /// Request that a peer flush pending outbound work for a lane.
+  FlushRequest {
+    /// Authority string (typically the sender's canonical address).
+    authority:     String,
+    /// Monotonic flush identifier chosen by the requester.
+    flush_id:      u64,
+    /// Reason and ordering scope for this flush.
+    scope:         FlushScope,
+    /// TCP lane id whose prior frames must be observed.
+    lane_id:       u32,
+    /// Number of acknowledgements expected by the requester.
+    expected_acks: u32,
+  },
+  /// Acknowledgement for a completed lane flush.
+  FlushAck {
+    /// Authority string (typically the sender's canonical address).
+    authority:     String,
+    /// Flush identifier echoed from the request.
+    flush_id:      u64,
+    /// TCP lane id acknowledged by this response.
+    lane_id:       u32,
+    /// Number of acknowledgements expected by the requester.
+    expected_acks: u32,
   },
 }

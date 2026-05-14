@@ -43,6 +43,17 @@ struct RecordingDeathwatchActor {
   ack_tx:        UnboundedSender<&'static str>,
 }
 
+struct OrderedDeathwatchActor {
+  tx: UnboundedSender<OrderedDeathwatchEvent>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum OrderedDeathwatchEvent {
+  WatchInstalled,
+  UserMessage(String),
+  Terminated(Pid),
+}
+
 struct StartRemoteWatch {
   target: ActorRef,
 }
@@ -78,6 +89,12 @@ impl RecordingStringActor {
 impl RecordingDeathwatchActor {
   fn new(terminated_tx: UnboundedSender<Pid>, ack_tx: UnboundedSender<&'static str>) -> Self {
     Self { terminated_tx, ack_tx }
+  }
+}
+
+impl OrderedDeathwatchActor {
+  fn new(tx: UnboundedSender<OrderedDeathwatchEvent>) -> Self {
+    Self { tx }
   }
 }
 
@@ -120,9 +137,27 @@ impl Actor for RecordingDeathwatchActor {
   }
 }
 
+impl Actor for OrderedDeathwatchActor {
+  fn receive(&mut self, context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(command) = message.downcast_ref::<StartRemoteWatch>() {
+      context.watch(&command.target).expect("remote watch should install");
+      self.tx.send(OrderedDeathwatchEvent::WatchInstalled).expect("ordered channel should be open");
+    } else if let Some(text) = message.downcast_ref::<String>() {
+      self.tx.send(OrderedDeathwatchEvent::UserMessage(text.clone())).expect("ordered channel should be open");
+    }
+    Ok(())
+  }
+
+  fn on_terminated(&mut self, _context: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
+    self.tx.send(OrderedDeathwatchEvent::Terminated(terminated)).expect("ordered channel should be open");
+    Ok(())
+  }
+}
+
 struct RemoteNode {
-  system:  ActorSystem,
-  address: Address,
+  system:    ActorSystem,
+  address:   Address,
+  installer: ArcShared<RemotingExtensionInstaller>,
 }
 
 impl RemoteNode {
@@ -140,9 +175,13 @@ fn reserve_port() -> u16 {
 }
 
 fn build_node(port: u16, uid: u64) -> RemoteNode {
+  build_node_with_remote_config(port, uid, RemoteConfig::new("127.0.0.1"))
+}
+
+fn build_node_with_remote_config(port: u16, uid: u64, remote_config: RemoteConfig) -> RemoteNode {
   let address = Address::new(SYSTEM_NAME, "127.0.0.1", port);
   let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address.clone()]);
-  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, RemoteConfig::new("127.0.0.1")));
+  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config));
   let extension_installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let provider_installer = StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(
     UniqueAddress::new(address.clone(), uid),
@@ -156,7 +195,7 @@ fn build_node(port: u16, uid: u64) -> RemoteNode {
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(provider_installer);
   let system = ActorSystem::create_with_noop_guardian(config).expect("actor system should build");
-  RemoteNode { system, address }
+  RemoteNode { system, address, installer }
 }
 
 fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<String>, ActorPath) {
@@ -181,6 +220,17 @@ fn spawn_deathwatch_actor(
   let props = Props::from_fn(move || RecordingDeathwatchActor::new(terminated_tx.clone(), ack_tx.clone()));
   let child = system.actor_of_named(&props, name).expect("death-watch actor should spawn");
   (terminated_rx, ack_rx, child.actor_ref().clone())
+}
+
+fn spawn_ordered_deathwatch_actor(
+  system: &ActorSystem,
+  name: &'static str,
+) -> (UnboundedReceiver<OrderedDeathwatchEvent>, ActorRef, ActorPath) {
+  let (tx, rx) = mpsc::unbounded_channel();
+  let props = Props::from_fn(move || OrderedDeathwatchActor::new(tx.clone()));
+  let child = system.actor_of_named(&props, name).expect("ordered death-watch actor should spawn");
+  let path = child.actor_ref().path().expect("ordered actor should have a path");
+  (rx, child.actor_ref().clone(), path)
 }
 
 fn subscribe_lifecycle(system: &ActorSystem) -> (UnboundedReceiver<RemotingLifecycleEvent>, EventStreamSubscription) {
@@ -244,6 +294,26 @@ async fn wait_for_ack(rx: &mut UnboundedReceiver<&'static str>, expected: &'stat
   })
   .await
   .expect("watch ack timeout");
+}
+
+async fn wait_for_ordered_event(
+  rx: &mut UnboundedReceiver<OrderedDeathwatchEvent>,
+  expected: OrderedDeathwatchEvent,
+) -> OrderedDeathwatchEvent {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  let mut seen = Vec::new();
+  loop {
+    let now = Instant::now();
+    if now >= deadline {
+      panic!("ordered event receive timeout; expected={expected:?}; seen={seen:?}");
+    }
+    match timeout(deadline - now, rx.recv()).await {
+      | Ok(Some(event)) if event == expected => return event,
+      | Ok(Some(event)) => seen.push(event),
+      | Ok(None) => panic!("ordered channel closed before expected event; expected={expected:?}; seen={seen:?}"),
+      | Err(_) => panic!("ordered event receive timeout; expected={expected:?}; seen={seen:?}"),
+    }
+  }
 }
 
 async fn warm_bidirectional_remote_delivery(
@@ -336,6 +406,139 @@ async fn two_node_remote_actor_termination_notifies_watcher() {
     .expect("remote termination notification timeout")
     .expect("termination channel should stay open");
   assert_eq!(terminated, ref_to_b.pid());
+
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn two_node_shutdown_waits_for_flush_ack_before_run_task_finishes() {
+  let node_a = build_node_with_remote_config(
+    reserve_port(),
+    31,
+    RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_secs(2)),
+  );
+  let node_b = build_node(reserve_port(), 32);
+  let (mut rx_a, path_a) = spawn_recording_actor(&node_a.system, "receiver-a-shutdown-flush");
+  let (mut rx_b, path_b) = spawn_recording_actor(&node_b.system, "receiver-b-shutdown-flush");
+  let mut local_ref_b = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &path_b))
+    .expect("node B should resolve its remote-authority path as local");
+  local_ref_b.try_tell(AnyMessage::new(String::from("local-b"))).expect("local send to node B");
+  let _local_b = recv_until(&mut rx_b, String::from("local-b")).await;
+  let mut ref_to_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &path_b))
+    .expect("node A should resolve node B target");
+  let mut ref_to_a =
+    node_b.system.resolve_actor_ref(remote_path(&node_a.address, &path_a)).expect("node B should resolve node A actor");
+
+  warm_bidirectional_remote_delivery(&mut ref_to_b, &mut rx_b, &mut ref_to_a, &mut rx_a).await;
+  ref_to_b.try_tell(AnyMessage::new(String::from("before-shutdown"))).expect("send to node B before shutdown");
+  tokio::task::yield_now().await;
+
+  timeout(Duration::from_secs(5), node_a.installer.shutdown_and_join())
+    .await
+    .expect("shutdown flush should complete within timeout")
+    .expect("remote shutdown should succeed");
+
+  let received = recv_until(&mut rx_b, String::from("before-shutdown")).await;
+  assert_eq!(received, String::from("before-shutdown"));
+
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn two_node_deathwatch_notification_arrives_after_preceding_remote_message() {
+  let node_a = build_node(reserve_port(), 41);
+  let node_b = build_node(reserve_port(), 42);
+  let (mut ordered_rx, mut ordered_ref, ordered_path) =
+    spawn_ordered_deathwatch_actor(&node_a.system, "ordered-watcher-a");
+  let (mut rx_b, target_b, path_b) = spawn_recording_child(&node_b.system, "ordered-watched-b");
+  let mut local_ref_b = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &path_b))
+    .expect("node B should resolve its remote-authority path as local");
+  local_ref_b.try_tell(AnyMessage::new(String::from("local-b"))).expect("local send to node B");
+  let _local_b = recv_until(&mut rx_b, String::from("local-b")).await;
+  let mut ref_to_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &path_b))
+    .expect("node A should resolve node B target");
+  let mut ref_to_ordered_a = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &ordered_path))
+    .expect("node B should resolve ordered watcher on node A");
+
+  ref_to_b.try_tell(AnyMessage::new(String::from("warm-b"))).expect("warm send to node B");
+  ref_to_ordered_a.try_tell(AnyMessage::new(String::from("warm-a"))).expect("warm send to ordered watcher on node A");
+  let _warm_b = recv_until(&mut rx_b, String::from("warm-b")).await;
+  let _warm_a =
+    wait_for_ordered_event(&mut ordered_rx, OrderedDeathwatchEvent::UserMessage(String::from("warm-a"))).await;
+  ordered_ref.try_tell(AnyMessage::new(StartRemoteWatch::new(ref_to_b.clone()))).expect("watch command should enqueue");
+  let _watch = wait_for_ordered_event(&mut ordered_rx, OrderedDeathwatchEvent::WatchInstalled).await;
+  ref_to_b.try_tell(AnyMessage::new(String::from("after-watch"))).expect("barrier send to node B");
+  let _after_watch = recv_until(&mut rx_b, String::from("after-watch")).await;
+
+  ref_to_ordered_a
+    .try_tell(AnyMessage::new(String::from("before-deathwatch")))
+    .expect("send before death-watch notification");
+  target_b.stop().expect("remote target should stop");
+
+  let received_message =
+    wait_for_ordered_event(&mut ordered_rx, OrderedDeathwatchEvent::UserMessage(String::from("before-deathwatch")))
+      .await;
+  let terminated = wait_for_ordered_event(&mut ordered_rx, OrderedDeathwatchEvent::Terminated(ref_to_b.pid())).await;
+  assert_eq!(received_message, OrderedDeathwatchEvent::UserMessage(String::from("before-deathwatch")));
+  assert_eq!(terminated, OrderedDeathwatchEvent::Terminated(ref_to_b.pid()));
+
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn two_node_zero_flush_timeout_does_not_stall_deathwatch_or_shutdown() {
+  let node_a = build_node(reserve_port(), 51);
+  let node_b = build_node_with_remote_config(
+    reserve_port(),
+    52,
+    RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::ZERO),
+  );
+  let (mut rx_a, path_a) = spawn_recording_actor(&node_a.system, "receiver-a-timeout");
+  let (mut rx_b, target_b, path_b) = spawn_recording_child(&node_b.system, "timeout-watched-b");
+  let (mut terminated_rx, mut ack_rx, mut watcher_ref) = spawn_deathwatch_actor(&node_a.system, "timeout-watcher-a");
+  let mut local_ref_b = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &path_b))
+    .expect("node B should resolve its remote-authority path as local");
+  local_ref_b.try_tell(AnyMessage::new(String::from("local-b"))).expect("local send to node B");
+  let _local_b = recv_until(&mut rx_b, String::from("local-b")).await;
+  let mut ref_to_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &path_b))
+    .expect("node A should resolve node B target");
+  let mut ref_to_a =
+    node_b.system.resolve_actor_ref(remote_path(&node_a.address, &path_a)).expect("node B should resolve node A actor");
+
+  warm_bidirectional_remote_delivery(&mut ref_to_b, &mut rx_b, &mut ref_to_a, &mut rx_a).await;
+  watcher_ref.try_tell(AnyMessage::new(StartRemoteWatch::new(ref_to_b.clone()))).expect("watch command should enqueue");
+  wait_for_ack(&mut ack_rx, "watch").await;
+  ref_to_b.try_tell(AnyMessage::new(String::from("after-watch"))).expect("barrier send to node B");
+  let _after_watch = recv_until(&mut rx_b, String::from("after-watch")).await;
+
+  target_b.stop().expect("remote target should stop");
+
+  let terminated = timeout(Duration::from_secs(5), terminated_rx.recv())
+    .await
+    .expect("remote termination notification timeout")
+    .expect("termination channel should stay open");
+  assert_eq!(terminated, ref_to_b.pid());
+  timeout(Duration::from_secs(5), node_b.installer.shutdown_and_join())
+    .await
+    .expect("zero-timeout shutdown flush should not stall")
+    .expect("remote shutdown should succeed");
 
   node_a.shutdown().await;
   node_b.shutdown().await;

@@ -30,7 +30,7 @@ use crate::{
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   instrument::{HandshakePhase, RemoteInstrument},
   transport::{BackpressureSignal, TransportEndpoint},
-  wire::{AckPdu, HandshakeReq, HandshakeRsp},
+  wire::{AckPdu, FlushScope, HandshakeReq, HandshakeRsp},
 };
 
 /// Per-remote association aggregating the state machine, the send queue, and
@@ -58,6 +58,8 @@ pub struct Association {
   next_system_sequence: u64,
   pending_system: Vec<PendingSystemEnvelope>,
   inbound_system_sequences: InboundSystemSequenceTracker,
+  next_flush_id: u64,
+  flush_sessions: Vec<FlushSession>,
 }
 
 #[derive(Debug)]
@@ -75,6 +77,39 @@ struct PendingSystemEnvelope {
   sequence:        u64,
   envelope:        OutboundEnvelope,
   last_sent_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+struct FlushSession {
+  flush_id:      u64,
+  scope:         FlushScope,
+  expected_acks: u32,
+  deadline_ms:   u64,
+  lanes:         Vec<u32>,
+  acked_lanes:   Vec<u32>,
+}
+
+impl FlushSession {
+  const fn new(flush_id: u64, scope: FlushScope, lanes: Vec<u32>, deadline_ms: u64) -> Self {
+    let expected_acks = lanes.len() as u32;
+    Self { flush_id, scope, expected_acks, deadline_ms, lanes, acked_lanes: Vec::new() }
+  }
+
+  fn observe_ack(&mut self, lane_id: u32) -> bool {
+    if !self.lanes.contains(&lane_id) || self.acked_lanes.contains(&lane_id) {
+      return false;
+    }
+    self.acked_lanes.push(lane_id);
+    true
+  }
+
+  const fn is_complete(&self) -> bool {
+    self.acked_lanes.len() >= self.expected_acks as usize
+  }
+
+  fn pending_lanes(&self) -> Vec<u32> {
+    self.lanes.iter().copied().filter(|lane_id| !self.acked_lanes.contains(lane_id)).collect()
+  }
 }
 
 #[derive(Debug)]
@@ -445,6 +480,7 @@ impl Association {
         if !discarded.is_empty() {
           effects.push(AssociationEffect::DiscardEnvelopes { reason: reason.clone(), envelopes: discarded });
         }
+        effects.extend(self.fail_pending_flushes("association quarantined"));
         self.state =
           AssociationState::Quarantined { reason, resume_at: Some(self.quarantine_removal_deadline(now_ms)) };
         effects
@@ -463,7 +499,9 @@ impl Association {
           correlation_id: CorrelationId::nil(),
         });
         self.state = AssociationState::Gated { resume_at: resume_at_ms };
-        vec![effect]
+        let mut effects = vec![effect];
+        effects.extend(self.fail_pending_flushes("association gated"));
+        effects
       },
       | _ => Vec::new(),
     }
@@ -550,6 +588,128 @@ impl Association {
     if resend.is_empty() { Vec::new() } else { vec![AssociationEffect::ResendEnvelopes { envelopes: resend }] }
   }
 
+  /// Starts a flush session for the supplied writer lanes.
+  pub fn start_flush(
+    &mut self,
+    scope: FlushScope,
+    lane_ids: &[u32],
+    timeout: Duration,
+    now_ms: u64,
+  ) -> Vec<AssociationEffect> {
+    let flush_id = self.next_flush_id();
+    let authority = self.authority_endpoint();
+    if !self.state.is_active() {
+      return vec![AssociationEffect::FlushFailed {
+        authority,
+        flush_id,
+        scope,
+        pending_lanes: dedup_lane_ids(lane_ids),
+        reason: String::from("association is not active"),
+      }];
+    }
+    if !self.send_queue.is_empty() {
+      return vec![AssociationEffect::FlushFailed {
+        authority,
+        flush_id,
+        scope,
+        pending_lanes: dedup_lane_ids(lane_ids),
+        reason: String::from("prior outbound queue is still pending"),
+      }];
+    }
+    let lanes = dedup_lane_ids(lane_ids);
+    if lanes.is_empty() {
+      return vec![AssociationEffect::FlushCompleted { authority, flush_id, scope }];
+    }
+    let deadline_ms = now_ms.saturating_add(duration_to_millis_saturating(timeout));
+    let session = FlushSession::new(flush_id, scope, lanes.clone(), deadline_ms);
+    let expected_acks = session.expected_acks;
+    self.flush_sessions.push(session);
+    let mut effects = Vec::with_capacity(lanes.len() + 1);
+    effects.push(AssociationEffect::ScheduleFlushTimeout {
+      authority: authority.clone(),
+      flush_id,
+      scope,
+      deadline_ms,
+    });
+    for lane_id in lanes {
+      effects.push(AssociationEffect::SendFlushRequest {
+        authority: authority.clone(),
+        flush_id,
+        scope,
+        lane_id,
+        expected_acks,
+      });
+    }
+    effects
+  }
+
+  /// Applies a flush acknowledgement to a pending session.
+  pub fn apply_flush_ack(&mut self, flush_id: u64, lane_id: u32, _expected_acks: u32) -> Vec<AssociationEffect> {
+    let Some(index) = self.flush_sessions.iter().position(|session| session.flush_id == flush_id) else {
+      return Vec::new();
+    };
+    if !self.flush_sessions[index].observe_ack(lane_id) {
+      return Vec::new();
+    }
+    if !self.flush_sessions[index].is_complete() {
+      return Vec::new();
+    }
+    let session = self.flush_sessions.remove(index);
+    vec![AssociationEffect::FlushCompleted {
+      authority: self.authority_endpoint(),
+      flush_id:  session.flush_id,
+      scope:     session.scope,
+    }]
+  }
+
+  /// Applies a flush timer event to a pending session.
+  pub fn flush_timed_out(&mut self, flush_id: u64, now_ms: u64) -> Vec<AssociationEffect> {
+    let Some(index) = self.flush_sessions.iter().position(|session| session.flush_id == flush_id) else {
+      return Vec::new();
+    };
+    if now_ms < self.flush_sessions[index].deadline_ms {
+      return Vec::new();
+    }
+    let session = self.flush_sessions.remove(index);
+    vec![AssociationEffect::FlushTimedOut {
+      authority:     self.authority_endpoint(),
+      flush_id:      session.flush_id,
+      scope:         session.scope,
+      pending_lanes: session.pending_lanes(),
+    }]
+  }
+
+  /// Fails one pending flush session.
+  pub fn fail_flush(&mut self, flush_id: u64, reason: String) -> Vec<AssociationEffect> {
+    let Some(index) = self.flush_sessions.iter().position(|session| session.flush_id == flush_id) else {
+      return Vec::new();
+    };
+    let session = self.flush_sessions.remove(index);
+    vec![AssociationEffect::FlushFailed {
+      authority: self.authority_endpoint(),
+      flush_id: session.flush_id,
+      scope: session.scope,
+      pending_lanes: session.pending_lanes(),
+      reason,
+    }]
+  }
+
+  /// Fails all pending flush sessions.
+  pub fn fail_pending_flushes(&mut self, reason: &str) -> Vec<AssociationEffect> {
+    let authority = self.authority_endpoint();
+    self
+      .flush_sessions
+      .drain(..)
+      .map(|session| AssociationEffect::FlushFailed {
+        authority:     authority.clone(),
+        flush_id:      session.flush_id,
+        scope:         session.scope,
+        pending_lanes: session.pending_lanes(),
+        reason:        String::from(reason),
+      })
+      .collect()
+  }
+
   /// Observes an inbound system-priority sequence and returns whether it should
   /// be delivered to actor-core plus the ACK/NACK effects to send back.
   pub fn observe_inbound_system_envelope(&mut self, sequence: u64, now_ms: u64) -> (bool, Vec<AssociationEffect>) {
@@ -614,12 +774,20 @@ impl Association {
       next_system_sequence: 1,
       pending_system: Vec::new(),
       inbound_system_sequences: InboundSystemSequenceTracker::new(queue_limits.ack_receive_window),
+      next_flush_id: 1,
+      flush_sessions: Vec::new(),
     }
   }
 
   const fn advance_handshake_generation(&mut self) -> u64 {
     self.handshake_generation = self.handshake_generation.wrapping_add(1);
     self.handshake_generation
+  }
+
+  const fn next_flush_id(&mut self) -> u64 {
+    let flush_id = self.next_flush_id;
+    self.next_flush_id = self.next_flush_id.saturating_add(1);
+    flush_id
   }
 
   fn enqueue_active(
@@ -826,4 +994,19 @@ fn duration_to_non_zero_millis(duration: Duration) -> u64 {
   } else {
     millis as u64
   }
+}
+
+fn duration_to_millis_saturating(duration: Duration) -> u64 {
+  let millis = duration.as_millis();
+  if millis > u128::from(u64::MAX) { u64::MAX } else { millis as u64 }
+}
+
+fn dedup_lane_ids(lane_ids: &[u32]) -> Vec<u32> {
+  let mut lanes = Vec::new();
+  for lane_id in lane_ids {
+    if !lanes.contains(lane_id) {
+      lanes.push(*lane_id);
+    }
+  }
+  lanes
 }

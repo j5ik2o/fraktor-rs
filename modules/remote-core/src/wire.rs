@@ -18,6 +18,7 @@ mod control_pdu;
 mod envelope_codec;
 mod envelope_payload;
 mod envelope_pdu;
+mod flush_scope;
 mod frame_header;
 mod handshake_codec;
 mod handshake_pdu;
@@ -35,6 +36,7 @@ pub use control_pdu::ControlPdu;
 pub use envelope_codec::EnvelopeCodec;
 pub use envelope_payload::EnvelopePayload;
 pub use envelope_pdu::EnvelopePdu;
+pub use flush_scope::FlushScope;
 pub use frame_header::{
   FRAME_KIND_OFFSET, FrameHeader, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
   WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2,

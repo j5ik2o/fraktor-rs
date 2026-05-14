@@ -5,9 +5,9 @@ use bytes::{Bytes, BytesMut};
 use crate::{
   address::{Address, UniqueAddress},
   wire::{
-    AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePayload, EnvelopePdu, HandshakeCodec,
-    HandshakePdu, HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ,
-    KIND_HANDSHAKE_RSP, WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2, WireError,
+    AckCodec, AckPdu, Codec, ControlCodec, ControlPdu, EnvelopeCodec, EnvelopePayload, EnvelopePdu, FlushScope,
+    HandshakeCodec, HandshakePdu, HandshakeReq, HandshakeRsp, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE,
+    KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2, WireError,
   },
 };
 
@@ -326,6 +326,65 @@ fn control_shutdown_roundtrip() {
   let mut bytes = to_bytes(buf);
   let decoded = codec.decode(&mut bytes).unwrap();
   assert_eq!(decoded, pdu);
+}
+
+#[test]
+fn control_flush_request_roundtrip() {
+  let pdu = ControlPdu::FlushRequest {
+    authority:     "sys@host:4".to_string(),
+    flush_id:      42,
+    scope:         FlushScope::Shutdown,
+    lane_id:       3,
+    expected_acks: 2,
+  };
+  let codec = ControlCodec::new();
+  let mut buf = BytesMut::new();
+  codec.encode(&pdu, &mut buf).unwrap();
+  assert_eq!(buf[5], KIND_CONTROL);
+  assert_eq!(buf[6], 0x04, "subkind for flush request should be 0x04");
+  let mut bytes = to_bytes(buf);
+  let decoded = codec.decode(&mut bytes).unwrap();
+  assert_eq!(decoded, pdu);
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
+}
+
+#[test]
+fn control_flush_ack_roundtrip() {
+  let pdu = ControlPdu::FlushAck {
+    authority:     "sys@host:5".to_string(),
+    flush_id:      43,
+    lane_id:       3,
+    expected_acks: 2,
+  };
+  let codec = ControlCodec::new();
+  let mut buf = BytesMut::new();
+  codec.encode(&pdu, &mut buf).unwrap();
+  assert_eq!(buf[5], KIND_CONTROL);
+  assert_eq!(buf[6], 0x05, "subkind for flush ack should be 0x05");
+  let mut bytes = to_bytes(buf);
+  let decoded = codec.decode(&mut bytes).unwrap();
+  assert_eq!(decoded, pdu);
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
+}
+
+#[test]
+fn control_flush_request_rejects_unknown_scope() {
+  let authority = "sys@host:4".to_string();
+  let pdu = ControlPdu::FlushRequest {
+    authority:     authority.clone(),
+    flush_id:      42,
+    scope:         FlushScope::BeforeDeathWatchNotification,
+    lane_id:       3,
+    expected_acks: 2,
+  };
+  let mut buf = BytesMut::new();
+  ControlCodec::new().encode(&pdu, &mut buf).unwrap();
+  let scope_index = 7 + 4 + authority.len() + 1 + 8;
+  buf[scope_index] = 0x09;
+
+  let err = ControlCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
 }
 
 #[test]

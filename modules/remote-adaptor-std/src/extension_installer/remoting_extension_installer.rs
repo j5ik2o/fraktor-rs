@@ -1,5 +1,9 @@
 //! Actor system extension installer for `remote-core`'s `Remote`.
 
+#[cfg(test)]
+#[path = "remoting_extension_installer_test.rs"]
+mod tests;
+
 use std::{
   sync::{Arc, Mutex, OnceLock},
   time::{Duration, Instant},
@@ -25,7 +29,7 @@ use fraktor_remote_core_rs::{
   instrument::RemotingFlightRecorder,
   transport::RemoteTransport,
   watcher::WatcherCommand,
-  wire::{ControlPdu, WireFrame},
+  wire::{ControlPdu, FlushScope, WireFrame},
 };
 use futures::future::poll_fn;
 use tokio::{
@@ -35,7 +39,10 @@ use tokio::{
 };
 
 use crate::{
-  tokio_remote_event_receiver::TokioMpscRemoteEventReceiver, transport::tcp::TcpRemoteTransport,
+  association::std_instant_elapsed_millis,
+  extension_installer::flush_gate::{StdFlushGate, schedule_flush_timers},
+  tokio_remote_event_receiver::TokioMpscRemoteEventReceiver,
+  transport::tcp::TcpRemoteTransport,
   watcher::run_watcher_task,
 };
 
@@ -52,6 +59,7 @@ pub struct RemotingExtensionInstaller {
   watcher_sender:  OnceLock<Sender<WatcherCommand>>,
   monotonic_epoch: OnceLock<Instant>,
   run_state:       Arc<Mutex<RemotingRunState>>,
+  flush_gate:      StdFlushGate,
 }
 
 pub(super) struct RemotingRunState {
@@ -59,6 +67,29 @@ pub(super) struct RemotingRunState {
   handle:             Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
   watcher_handle:     Option<JoinHandle<()>>,
   termination_handle: Option<JoinHandle<()>>,
+}
+
+/// Handles needed by the std remote actor-ref provider.
+pub(crate) struct RemoteProviderFlushHandles {
+  /// Remote event sender.
+  pub(crate) event_sender:    Sender<RemoteEvent>,
+  /// Monotonic epoch shared with remoting tasks.
+  pub(crate) monotonic_epoch: Instant,
+  /// Watcher command sender.
+  pub(crate) watcher_sender:  Sender<WatcherCommand>,
+  /// Shared remote core handle.
+  pub(crate) remote_shared:   RemoteShared,
+  /// Shared std flush gate.
+  pub(crate) flush_gate:      StdFlushGate,
+  /// Message-capable writer lane ids.
+  pub(crate) flush_lane_ids:  Vec<u32>,
+}
+
+#[derive(Clone)]
+struct ShutdownFlushContext {
+  config:          RemoteConfig,
+  monotonic_epoch: Instant,
+  flush_gate:      StdFlushGate,
 }
 
 impl RemotingRunState {
@@ -94,6 +125,7 @@ impl RemotingExtensionInstaller {
       watcher_sender: OnceLock::new(),
       monotonic_epoch: OnceLock::new(),
       run_state: Arc::new(Mutex::new(RemotingRunState::new())),
+      flush_gate: StdFlushGate::new(),
     }
   }
 
@@ -119,6 +151,42 @@ impl RemotingExtensionInstaller {
     let (sender, monotonic_epoch) = self.remote_event_sender_and_epoch()?;
     let watcher_sender = self.watcher_sender.get().cloned().ok_or(RemotingError::NotStarted)?;
     Ok((sender, monotonic_epoch, watcher_sender))
+  }
+
+  pub(crate) fn remote_event_sender_epoch_watcher_and_flush(
+    &self,
+  ) -> Result<RemoteProviderFlushHandles, RemotingError> {
+    let (sender, monotonic_epoch, watcher_sender) = self.remote_event_sender_epoch_and_watcher()?;
+    let remote_shared = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
+    Ok(RemoteProviderFlushHandles {
+      event_sender: sender,
+      monotonic_epoch,
+      watcher_sender,
+      remote_shared,
+      flush_gate: self.flush_gate.clone(),
+      flush_lane_ids: writer_lane_ids_for_config(&self.config),
+    })
+  }
+
+  /// Runs graceful remote shutdown and joins the run task.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError`] when the remote was not installed, shutdown
+  /// fails, or the run task returns an error.
+  pub async fn shutdown_and_join(&self) -> Result<(), RemotingError> {
+    let remote = self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)?;
+    let event_sender = self.event_sender.get().cloned();
+    let monotonic_epoch = self.monotonic_epoch.get().copied().ok_or(RemotingError::NotStarted)?;
+    shutdown_remote_and_join(
+      remote,
+      event_sender,
+      self.run_state.clone(),
+      self.config.clone(),
+      monotonic_epoch,
+      self.flush_gate.clone(),
+    )
+    .await
   }
 }
 
@@ -163,8 +231,15 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
         .lock()
         .map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
       run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
-      spawn_run_task_with_state(&mut run_state, remote.clone(), system.clone(), watcher_sender.clone())
-        .map_err(remoting_build_error)?;
+      spawn_run_task_with_state(
+        &mut run_state,
+        remote.clone(),
+        system.clone(),
+        watcher_sender.clone(),
+        event_sender.clone(),
+        self.flush_gate.clone(),
+      )
+      .map_err(remoting_build_error)?;
       spawn_watcher_task_with_state(
         &mut run_state,
         watcher_receiver,
@@ -175,12 +250,15 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
         self.config.system_message_resend_interval(),
       )
       .map_err(remoting_build_error)?;
+      let shutdown_flush_context =
+        ShutdownFlushContext { config: self.config.clone(), monotonic_epoch, flush_gate: self.flush_gate.clone() };
       spawn_shutdown_on_system_termination(
         system,
         remote.clone(),
         event_sender.clone(),
         &mut run_state,
         self.run_state.clone(),
+        shutdown_flush_context,
       )
       .map_err(remoting_build_error)?;
       self
@@ -246,6 +324,8 @@ fn spawn_run_task_with_state(
   remote: RemoteShared,
   system: ActorSystem,
   watcher_sender: Sender<WatcherCommand>,
+  event_sender: Sender<RemoteEvent>,
+  flush_gate: StdFlushGate,
 ) -> Result<(), RemotingError> {
   if run_state.handle.is_some() {
     return Err(RemotingError::AlreadyRunning);
@@ -255,7 +335,8 @@ fn spawn_run_task_with_state(
   };
   let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
   let handle = handle.spawn(async move {
-    let result = run_remote_with_delivery(&remote, &mut receiver, &system, &watcher_sender).await;
+    let result =
+      run_remote_with_delivery(&remote, &mut receiver, &system, &watcher_sender, &event_sender, &flush_gate).await;
     (receiver, result)
   });
   run_state.handle = Some(handle);
@@ -293,12 +374,22 @@ fn spawn_shutdown_on_system_termination(
   event_sender: Sender<RemoteEvent>,
   run_state: &mut RemotingRunState,
   run_state_shared: Arc<Mutex<RemotingRunState>>,
+  flush_context: ShutdownFlushContext,
 ) -> Result<(), RemotingError> {
   let termination = system.when_terminated();
   let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
   let handle = handle.spawn(async move {
     termination.await;
-    if let Err(error) = shutdown_remote_and_join(remote, Some(event_sender), run_state_shared).await {
+    if let Err(error) = shutdown_remote_and_join(
+      remote,
+      Some(event_sender),
+      run_state_shared,
+      flush_context.config,
+      flush_context.monotonic_epoch,
+      flush_context.flush_gate,
+    )
+    .await
+    {
       tracing::debug!(?error, "remote termination shutdown task failed");
     }
   });
@@ -312,7 +403,15 @@ async fn shutdown_remote_and_join(
   remote: RemoteShared,
   event_sender: Option<Sender<RemoteEvent>>,
   run_state: Arc<Mutex<RemotingRunState>>,
+  config: RemoteConfig,
+  monotonic_epoch: Instant,
+  flush_gate: StdFlushGate,
 ) -> Result<(), RemotingError> {
+  if let Some(sender) = event_sender.as_ref()
+    && let Err(error) = wait_for_shutdown_flush(&remote, sender, &config, monotonic_epoch, &flush_gate).await
+  {
+    tracing::debug!(?error, "remote shutdown flush failed; continuing shutdown");
+  }
   let shutdown_result = remote.shutdown();
   if let Err(error) = &shutdown_result {
     tracing::debug!(?error, "remote shutdown failed; still attempting to join run task");
@@ -353,11 +452,38 @@ async fn shutdown_remote_and_join(
   }
 }
 
+async fn wait_for_shutdown_flush(
+  remote: &RemoteShared,
+  event_sender: &Sender<RemoteEvent>,
+  config: &RemoteConfig,
+  monotonic_epoch: Instant,
+  flush_gate: &StdFlushGate,
+) -> Result<(), RemotingError> {
+  let lane_ids = writer_lane_ids_for_config(config);
+  let now_ms = std_instant_elapsed_millis(monotonic_epoch);
+  let timers = remote.start_flush(None, FlushScope::Shutdown, &lane_ids, now_ms)?;
+  let waiter = flush_gate.register_shutdown_waiter(&timers);
+  schedule_flush_timers(event_sender, monotonic_epoch, &timers);
+  flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);
+  if let Some(waiter) = waiter
+    && !waiter.wait(config.shutdown_flush_timeout()).await
+  {
+    tracing::warn!("remote shutdown flush timed out");
+  }
+  Ok(())
+}
+
+fn writer_lane_ids_for_config(config: &RemoteConfig) -> Vec<u32> {
+  (0..config.outbound_lanes()).filter_map(|lane_id| u32::try_from(lane_id).ok()).collect()
+}
+
 async fn run_remote_with_delivery(
   remote: &RemoteShared,
   receiver: &mut TokioMpscRemoteEventReceiver,
   system: &ActorSystem,
   watcher_sender: &Sender<WatcherCommand>,
+  event_sender: &Sender<RemoteEvent>,
+  flush_gate: &StdFlushGate,
 ) -> Result<(), RemotingError> {
   loop {
     if remote.should_stop_event_loop() {
@@ -369,6 +495,7 @@ async fn run_remote_with_delivery(
     };
     forward_watcher_command_for_event(&event, watcher_sender);
     let should_stop = remote.handle_event(event)?;
+    flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);
     deliver_inbound_envelopes(remote, system);
     if should_stop {
       return Ok(());
@@ -387,7 +514,12 @@ pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sen
     | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => {
       parse_address(authority).map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms })
     },
-    | WireFrame::Control(ControlPdu::Quarantine { .. } | ControlPdu::Shutdown { .. })
+    | WireFrame::Control(
+      ControlPdu::Quarantine { .. }
+      | ControlPdu::Shutdown { .. }
+      | ControlPdu::FlushRequest { .. }
+      | ControlPdu::FlushAck { .. },
+    )
     | WireFrame::Envelope(_)
     | WireFrame::Handshake(_)
     | WireFrame::Ack(_) => None,

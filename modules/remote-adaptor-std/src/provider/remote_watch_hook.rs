@@ -14,7 +14,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_remote_core_rs::{
   address::RemoteNodeId,
   envelope::{OutboundEnvelope, OutboundPriority},
-  extension::RemoteEvent,
+  extension::{RemoteEvent, RemoteShared},
   provider::resolve_remote_address,
   transport::TransportEndpoint,
   watcher::WatcherCommand,
@@ -23,7 +23,23 @@ use fraktor_utils_core_rs::sync::{SharedAccess, SharedLock};
 use tokio::sync::mpsc::{Sender, error::TrySendError};
 
 use super::remote_actor_path_registry::RemoteActorPathRegistry;
-use crate::association::std_instant_elapsed_millis;
+use crate::{
+  association::std_instant_elapsed_millis,
+  extension_installer::{StdFlushGate, StdFlushNotification},
+};
+
+/// Flush dependencies used by remote-bound DeathWatch notification delivery.
+pub(crate) struct StdRemoteWatchFlushConfig {
+  remote_shared:  RemoteShared,
+  flush_gate:     StdFlushGate,
+  flush_lane_ids: Vec<u32>,
+}
+
+impl StdRemoteWatchFlushConfig {
+  pub(crate) const fn new(remote_shared: RemoteShared, flush_gate: StdFlushGate, flush_lane_ids: Vec<u32>) -> Self {
+    Self { remote_shared, flush_gate, flush_lane_ids }
+  }
+}
 
 pub(crate) struct StdRemoteWatchHook {
   registry:        SharedLock<RemoteActorPathRegistry>,
@@ -31,17 +47,44 @@ pub(crate) struct StdRemoteWatchHook {
   event_sender:    Sender<RemoteEvent>,
   watcher_sender:  Sender<WatcherCommand>,
   monotonic_epoch: Instant,
+  remote_shared:   Option<RemoteShared>,
+  flush_gate:      Option<StdFlushGate>,
+  flush_lane_ids:  Vec<u32>,
 }
 
 impl StdRemoteWatchHook {
-  pub(crate) const fn new(
+  pub(crate) fn new(
     registry: SharedLock<RemoteActorPathRegistry>,
     state: SystemStateShared,
     event_sender: Sender<RemoteEvent>,
     watcher_sender: Sender<WatcherCommand>,
     monotonic_epoch: Instant,
   ) -> Self {
-    Self { registry, state, event_sender, watcher_sender, monotonic_epoch }
+    Self {
+      registry,
+      state,
+      event_sender,
+      watcher_sender,
+      monotonic_epoch,
+      remote_shared: None,
+      flush_gate: None,
+      flush_lane_ids: Vec::new(),
+    }
+  }
+
+  pub(crate) fn new_with_flush_gate(
+    registry: SharedLock<RemoteActorPathRegistry>,
+    state: SystemStateShared,
+    event_sender: Sender<RemoteEvent>,
+    watcher_sender: Sender<WatcherCommand>,
+    monotonic_epoch: Instant,
+    flush_config: StdRemoteWatchFlushConfig,
+  ) -> Self {
+    let mut hook = Self::new(registry, state, event_sender, watcher_sender, monotonic_epoch);
+    hook.remote_shared = Some(flush_config.remote_shared);
+    hook.flush_gate = Some(flush_config.flush_gate);
+    hook.flush_lane_ids = flush_config.flush_lane_ids;
+    hook
   }
 
   fn remote_path_for(&self, pid: &Pid) -> Option<ActorPath> {
@@ -62,10 +105,13 @@ impl StdRemoteWatchHook {
     }
   }
 
-  fn enqueue_system_message(&self, recipient: ActorPath, sender: Option<ActorPath>, message: SystemMessage) -> bool {
-    let Some(unique_address) = resolve_remote_address(&recipient) else {
-      return false;
-    };
+  fn system_message_envelope(
+    &self,
+    recipient: ActorPath,
+    sender: Option<ActorPath>,
+    message: SystemMessage,
+  ) -> Option<(TransportEndpoint, OutboundEnvelope, u64)> {
+    let unique_address = resolve_remote_address(&recipient)?;
     let address = unique_address.address().clone();
     let remote_node = RemoteNodeId::new(
       address.system().to_string(),
@@ -73,18 +119,26 @@ impl StdRemoteWatchHook {
       Some(address.port()),
       unique_address.uid(),
     );
-    let event = RemoteEvent::OutboundEnqueued {
-      authority: TransportEndpoint::new(address.to_string()),
-      envelope:  Box::new(OutboundEnvelope::new(
+    let now_ms = std_instant_elapsed_millis(self.monotonic_epoch);
+    Some((
+      TransportEndpoint::new(address.to_string()),
+      OutboundEnvelope::new(
         recipient,
         sender,
         AnyMessage::new(message),
         OutboundPriority::System,
         remote_node,
         CorrelationId::nil(),
-      )),
-      now_ms:    std_instant_elapsed_millis(self.monotonic_epoch),
+      ),
+      now_ms,
+    ))
+  }
+
+  fn enqueue_system_message(&self, recipient: ActorPath, sender: Option<ActorPath>, message: SystemMessage) -> bool {
+    let Some((authority, envelope, now_ms)) = self.system_message_envelope(recipient, sender, message) else {
+      return false;
     };
+    let event = RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms };
     match self.event_sender.try_send(event) {
       | Ok(()) => true,
       | Err(TrySendError::Full(_)) => {
@@ -96,6 +150,28 @@ impl StdRemoteWatchHook {
         true
       },
     }
+  }
+
+  fn enqueue_system_message_after_flush(
+    &self,
+    recipient: ActorPath,
+    sender: Option<ActorPath>,
+    message: SystemMessage,
+  ) -> bool {
+    let (Some(remote_shared), Some(flush_gate)) = (&self.remote_shared, &self.flush_gate) else {
+      return self.enqueue_system_message(recipient, sender, message);
+    };
+    let Some((authority, envelope, now_ms)) = self.system_message_envelope(recipient, sender, message) else {
+      return false;
+    };
+    flush_gate.submit_notification(remote_shared, StdFlushNotification {
+      event_sender: &self.event_sender,
+      monotonic_epoch: self.monotonic_epoch,
+      lane_ids: &self.flush_lane_ids,
+      authority,
+      envelope,
+      now_ms,
+    })
   }
 }
 
@@ -128,6 +204,6 @@ impl RemoteWatchHook for StdRemoteWatchHook {
     if sender.is_none() {
       tracing::warn!(%watcher, %terminated, "remote death-watch notification target path is unavailable");
     }
-    self.enqueue_system_message(recipient, sender, SystemMessage::DeathWatchNotification(terminated))
+    self.enqueue_system_message_after_flush(recipient, sender, SystemMessage::DeathWatchNotification(terminated))
   }
 }

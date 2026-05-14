@@ -2,6 +2,7 @@
 
 use alloc::{
   boxed::Box,
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -20,11 +21,12 @@ use crate::{
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
-    EventPublisher, RemoteEvent, RemoteEventReceiver, RemoteRunFuture, RemotingError, RemotingLifecycleState,
+    EventPublisher, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteFlushTimer, RemoteRunFuture,
+    RemotingError, RemotingLifecycleState,
   },
   instrument::{NoopInstrument, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
+  wire::{AckPdu, ControlPdu, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
 };
 
 /// Core remoting lifecycle implementation backed by a transport port.
@@ -43,6 +45,8 @@ pub struct Remote {
   advertised_addresses: Vec<Address>,
   associations:         Vec<Association>,
   inbound_envelopes:    Vec<InboundEnvelope>,
+  flush_outcomes:       Vec<RemoteFlushOutcome>,
+  flush_timers:         Vec<RemoteFlushTimer>,
 }
 
 impl Remote {
@@ -80,6 +84,8 @@ impl Remote {
       advertised_addresses: Vec::new(),
       associations: Vec::new(),
       inbound_envelopes: Vec::new(),
+      flush_outcomes: Vec::new(),
+      flush_timers: Vec::new(),
     }
   }
 
@@ -120,6 +126,40 @@ impl Remote {
   #[must_use]
   pub fn drain_inbound_envelopes(&mut self) -> Vec<InboundEnvelope> {
     mem::take(&mut self.inbound_envelopes)
+  }
+
+  /// Consumes flush outcomes observed by the core event loop.
+  #[must_use]
+  pub fn drain_flush_outcomes(&mut self) -> Vec<RemoteFlushOutcome> {
+    mem::take(&mut self.flush_outcomes)
+  }
+
+  /// Starts a flush session for active associations.
+  ///
+  /// When `authority` is `Some`, only the matching active association is
+  /// targeted. When it is `None`, every active association is targeted.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::NotStarted`] when remoting is not running, or
+  /// [`RemotingError::TransportUnavailable`] when draining prior outbound work
+  /// requires an unavailable transport.
+  pub fn start_flush(
+    &mut self,
+    authority: Option<&TransportEndpoint>,
+    scope: FlushScope,
+    lane_ids: &[u32],
+    now_ms: u64,
+  ) -> Result<Vec<RemoteFlushTimer>, RemotingError> {
+    self.lifecycle.ensure_running()?;
+    let association_indices = self.flush_association_indices(authority);
+    let timeout = self.config.shutdown_flush_timeout();
+    for association_index in association_indices {
+      self.drain_outbound(association_index, now_ms)?;
+      let effects = self.associations[association_index].start_flush(scope, lane_ids, timeout, now_ms);
+      self.apply_association_effects(association_index, effects, now_ms)?;
+    }
+    Ok(mem::take(&mut self.flush_timers))
   }
 
   /// Returns the remote configuration used by this instance.
@@ -173,6 +213,9 @@ impl Remote {
       },
       | RemoteEvent::HandshakeTimerFired { authority, generation, now_ms } => {
         self.handle_handshake_timer_fired(&authority, generation, now_ms)
+      },
+      | RemoteEvent::FlushTimerFired { authority, flush_id, now_ms } => {
+        self.handle_flush_timer_fired(&authority, flush_id, now_ms)
       },
       | RemoteEvent::InboundFrameReceived { authority, frame, now_ms } => {
         self.handle_inbound_frame_received(&authority, frame, now_ms)
@@ -269,6 +312,22 @@ impl Remote {
       .position(|association| association.remote().host() == host && association.remote().port() == port)
   }
 
+  fn flush_association_indices(&self, authority: Option<&TransportEndpoint>) -> Vec<usize> {
+    match authority {
+      | Some(authority) => self
+        .association_index_for_authority(authority)
+        .filter(|index| self.associations[*index].state().is_active())
+        .into_iter()
+        .collect(),
+      | None => self
+        .associations
+        .iter()
+        .enumerate()
+        .filter_map(|(index, association)| association.state().is_active().then_some(index))
+        .collect(),
+    }
+  }
+
   fn handle_handshake_timer_fired(
     &mut self,
     authority: &TransportEndpoint,
@@ -297,6 +356,19 @@ impl Remote {
     }
     let resend_after_ms = duration_to_saturated_millis(self.config.system_message_resend_interval());
     let effects = self.associations[association_index].resend_due(now_ms, resend_after_ms);
+    self.apply_association_effects(association_index, effects, now_ms)
+  }
+
+  fn handle_flush_timer_fired(
+    &mut self,
+    authority: &TransportEndpoint,
+    flush_id: u64,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let Some(association_index) = self.association_index_for_authority(authority) else {
+      return Ok(());
+    };
+    let effects = self.associations[association_index].flush_timed_out(flush_id, now_ms);
     self.apply_association_effects(association_index, effects, now_ms)
   }
 
@@ -459,6 +531,12 @@ impl Remote {
         self.handle_inbound_quarantine_control(authority, reason, now_ms)
       },
       | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(authority, now_ms),
+      | ControlPdu::FlushRequest { authority, flush_id, lane_id, expected_acks, .. } => {
+        self.handle_inbound_flush_request_control(authority, *flush_id, *lane_id, *expected_acks, now_ms)
+      },
+      | ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks } => {
+        self.handle_inbound_flush_ack_control(authority, *flush_id, *lane_id, *expected_acks, now_ms)
+      },
     }
   }
 
@@ -473,6 +551,45 @@ impl Remote {
     let local = self.associations[index].local().clone();
     let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
     map_wire_delivery_result(&remote, self.transport.send_control(&remote, response))
+  }
+
+  fn handle_inbound_flush_request_control(
+    &mut self,
+    authority: &str,
+    flush_id: u64,
+    lane_id: u32,
+    expected_acks: u32,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.record_control_activity(authority, now_ms);
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    let local = self.associations[index].local().clone();
+    let response = ControlPdu::FlushAck { authority: local.address().to_string(), flush_id, lane_id, expected_acks };
+    map_wire_delivery_result(&remote, self.transport.send_control(&remote, response))
+  }
+
+  fn handle_inbound_flush_ack_control(
+    &mut self,
+    authority: &str,
+    flush_id: u64,
+    lane_id: u32,
+    expected_acks: u32,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.record_control_activity(authority, now_ms);
+    let Some(remote) = parse_authority(authority) else {
+      return Ok(());
+    };
+    let Some(index) = self.association_index_for_remote(&remote) else {
+      return Ok(());
+    };
+    let effects = self.associations[index].apply_flush_ack(flush_id, lane_id, expected_acks);
+    self.apply_association_effects(index, effects, now_ms)
   }
 
   fn handle_inbound_ack_pdu(
@@ -599,6 +716,39 @@ impl Remote {
         | AssociationEffect::SendAck { pdu } => {
           let remote = self.associations[association_index].remote().clone();
           map_wire_delivery_result(&remote, self.transport.send_ack(&remote, pdu))?;
+        },
+        | AssociationEffect::ScheduleFlushTimeout { authority, flush_id, deadline_ms, .. } => {
+          if !self.flush_timers.iter().any(|timer| timer.authority() == &authority && timer.flush_id() == flush_id) {
+            self.flush_timers.push(RemoteFlushTimer::new(authority, flush_id, deadline_ms));
+          }
+        },
+        | AssociationEffect::SendFlushRequest { flush_id, scope, lane_id, expected_acks, .. } => {
+          let (remote, local_authority) = {
+            let association = &self.associations[association_index];
+            (association.remote().clone(), association.local().address().to_string())
+          };
+          let pdu = ControlPdu::FlushRequest { authority: local_authority, flush_id, scope, lane_id, expected_acks };
+          if let Err(error) = self.transport.send_flush_request(&remote, pdu, lane_id) {
+            tracing::warn!(
+              ?error,
+              remote = %remote,
+              flush_id,
+              lane_id,
+              "flush request delivery failed"
+            );
+            let effects = self.associations[association_index]
+              .fail_flush(flush_id, format!("flush request send failed: {error:?}"));
+            pending.extend(effects.into_iter().rev());
+          }
+        },
+        | AssociationEffect::FlushCompleted { authority, flush_id, scope } => {
+          self.flush_outcomes.push(RemoteFlushOutcome::Completed { authority, flush_id, scope });
+        },
+        | AssociationEffect::FlushTimedOut { authority, flush_id, scope, pending_lanes } => {
+          self.flush_outcomes.push(RemoteFlushOutcome::TimedOut { authority, flush_id, scope, pending_lanes });
+        },
+        | AssociationEffect::FlushFailed { authority, flush_id, scope, pending_lanes, reason } => {
+          self.flush_outcomes.push(RemoteFlushOutcome::Failed { authority, flush_id, scope, pending_lanes, reason });
         },
         | AssociationEffect::ResendEnvelopes { envelopes } => {
           for envelope in envelopes {

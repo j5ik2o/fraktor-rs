@@ -4,7 +4,7 @@ use bytes::Bytes;
 use fraktor_remote_core_rs::{
   address::{Address, UniqueAddress},
   transport::{TransportEndpoint, TransportError},
-  wire::{AckPdu, EnvelopePayload, EnvelopePdu, HandshakePdu, HandshakeReq},
+  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq},
 };
 use tokio::sync::mpsc;
 
@@ -12,6 +12,16 @@ use super::*;
 
 fn ack_frame(sequence_number: u64) -> WireFrame {
   WireFrame::Ack(AckPdu::new(sequence_number, sequence_number.saturating_sub(1), 0))
+}
+
+fn flush_request_frame(flush_id: u64, lane_id: u32) -> WireFrame {
+  WireFrame::Control(ControlPdu::FlushRequest {
+    authority: String::from("local-sys@127.0.0.1:2551"),
+    flush_id,
+    scope: FlushScope::Shutdown,
+    lane_id,
+    expected_acks: 2,
+  })
 }
 
 fn test_envelope_pdu(
@@ -81,6 +91,40 @@ fn send_with_lane_key_reports_backpressure_for_selected_lane() {
     client.send_with_lane_key(b"recipient-a", ack_frame(2)).expect_err("full selected lane should report backpressure");
 
   assert_eq!(error, TransportError::Backpressure);
+}
+
+#[test]
+fn send_to_lane_id_uses_requested_writer_lane() {
+  let (first_tx, mut first_rx) = mpsc::channel(1);
+  let (second_tx, mut second_rx) = mpsc::channel(1);
+  let client = TcpClient { peer_addr: String::from("peer"), writer_txs: vec![first_tx, second_tx], task: None };
+
+  client.send_to_lane_id(1, flush_request_frame(7, 1)).expect("selected lane should accept flush request");
+
+  assert!(first_rx.try_recv().is_err());
+  assert_eq!(second_rx.try_recv().expect("second lane should receive flush request"), flush_request_frame(7, 1));
+}
+
+#[test]
+fn send_to_lane_id_reports_backpressure_for_selected_lane() {
+  let (writer_tx, _writer_rx) = mpsc::channel(1);
+  let client = TcpClient { peer_addr: String::from("peer"), writer_txs: vec![writer_tx], task: None };
+
+  client.send_to_lane_id(0, flush_request_frame(7, 0)).expect("first frame should fit");
+  let error =
+    client.send_to_lane_id(0, flush_request_frame(8, 0)).expect_err("full selected lane should report backpressure");
+
+  assert_eq!(error, TransportError::Backpressure);
+}
+
+#[test]
+fn send_to_lane_id_rejects_unknown_lane() {
+  let (writer_tx, _writer_rx) = mpsc::channel(1);
+  let client = TcpClient { peer_addr: String::from("peer"), writer_txs: vec![writer_tx], task: None };
+
+  let error = client.send_to_lane_id(1, flush_request_frame(7, 1)).expect_err("unknown lane id should be rejected");
+
+  assert_eq!(error, TransportError::ConnectionClosed);
 }
 
 #[test]

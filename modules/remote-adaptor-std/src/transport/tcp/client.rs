@@ -143,6 +143,20 @@ impl TcpClient {
     self.send_to_lane(writer_lane_index(lane_key, self.writer_txs.len()), frame)
   }
 
+  /// Enqueues a frame into the given writer lane.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::ConnectionClosed`] when the lane id does not
+  /// exist, [`TransportError::Backpressure`] when the selected queue is full,
+  /// or [`TransportError::ConnectionClosed`] if the writer task has exited.
+  pub(crate) fn send_to_lane_id(&self, lane_id: u32, frame: WireFrame) -> Result<(), TransportError> {
+    let Ok(lane_index) = usize::try_from(lane_id) else {
+      return Err(TransportError::ConnectionClosed);
+    };
+    self.send_to_lane(lane_index, frame)
+  }
+
   fn send_to_lane(&self, lane_index: usize, frame: WireFrame) -> Result<(), TransportError> {
     let Some(writer_tx) = self.writer_txs.get(lane_index) else {
       return Err(TransportError::ConnectionClosed);

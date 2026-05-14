@@ -1,13 +1,15 @@
 //! Side-effects emitted by [`crate::association::Association`] state transitions.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_core_kernel_rs::event::stream::RemotingLifecycleEvent;
 
 use crate::{
-  association::quarantine_reason::QuarantineReason, envelope::OutboundEnvelope, transport::TransportEndpoint,
-  wire::AckPdu,
+  association::quarantine_reason::QuarantineReason,
+  envelope::OutboundEnvelope,
+  transport::TransportEndpoint,
+  wire::{AckPdu, FlushScope},
 };
 
 /// Side-effect requested by an association state transition.
@@ -47,6 +49,63 @@ pub enum AssociationEffect {
   SendAck {
     /// ACK/NACK PDU to send to the association peer.
     pdu: AckPdu,
+  },
+  /// Schedule a flush timeout outside the association state machine.
+  ScheduleFlushTimeout {
+    /// Endpoint whose flush timer should be scheduled.
+    authority:   TransportEndpoint,
+    /// Flush session identifier.
+    flush_id:    u64,
+    /// Flush scope.
+    scope:       FlushScope,
+    /// Monotonic deadline in milliseconds.
+    deadline_ms: u64,
+  },
+  /// Send a lane-targeted flush request to the association peer.
+  SendFlushRequest {
+    /// Endpoint that should receive the flush request.
+    authority:     TransportEndpoint,
+    /// Flush session identifier.
+    flush_id:      u64,
+    /// Flush scope.
+    scope:         FlushScope,
+    /// Target writer lane id.
+    lane_id:       u32,
+    /// Number of acknowledgements expected for this session.
+    expected_acks: u32,
+  },
+  /// A flush session completed successfully.
+  FlushCompleted {
+    /// Endpoint associated with the completed session.
+    authority: TransportEndpoint,
+    /// Flush session identifier.
+    flush_id:  u64,
+    /// Flush scope.
+    scope:     FlushScope,
+  },
+  /// A flush session timed out.
+  FlushTimedOut {
+    /// Endpoint associated with the timed-out session.
+    authority:     TransportEndpoint,
+    /// Flush session identifier.
+    flush_id:      u64,
+    /// Flush scope.
+    scope:         FlushScope,
+    /// Lanes that did not acknowledge the flush.
+    pending_lanes: Vec<u32>,
+  },
+  /// A flush session failed before it could complete.
+  FlushFailed {
+    /// Endpoint associated with the failed session.
+    authority:     TransportEndpoint,
+    /// Flush session identifier.
+    flush_id:      u64,
+    /// Flush scope.
+    scope:         FlushScope,
+    /// Lanes that did not acknowledge the flush.
+    pending_lanes: Vec<u32>,
+    /// Human-readable failure reason.
+    reason:        String,
   },
   /// Re-send retained system-priority envelopes without assigning new sequence
   /// numbers.
