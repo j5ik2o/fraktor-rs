@@ -1289,7 +1289,10 @@ fn redelivery_timer_resends_unacked_watch_system_message() {
   let config = RemoteConfig::new("127.0.0.1").with_system_message_resend_interval(Duration::from_millis(50));
   let transport = RecordingTransport::new(vec![local_address.clone()]);
   let send_calls = transport.send_calls.clone();
-  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument_handshake_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument = CountingInstrument::new(instrument_send_calls.clone(), instrument_handshake_calls);
+  let mut remote = remote_with_instrument(transport, config.clone(), event_publisher(), Box::new(instrument));
   remote.start().expect("remote should be running before outbound delivery");
   remote.insert_association(active_association(local_address, remote_address.clone(), &config));
   let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/target").expect("recipient path");
@@ -1315,12 +1318,14 @@ fn redelivery_timer_resends_unacked_watch_system_message() {
     .handle_remote_event(RemoteEvent::RedeliveryTimerFired { authority: authority.clone(), now_ms: 59 })
     .expect("early redelivery timer should be ignored");
   assert_eq!(send_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 1);
 
   remote
     .handle_remote_event(RemoteEvent::RedeliveryTimerFired { authority, now_ms: 60 })
     .expect("redelivery timer should resend unacked watch system message");
 
   assert_eq!(send_calls.load(Ordering::Relaxed), 2);
+  assert_eq!(instrument_send_calls.load(Ordering::Relaxed), 2);
 }
 
 #[test]

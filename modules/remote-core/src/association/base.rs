@@ -751,7 +751,7 @@ impl Association {
     self.pending_system.push(PendingSystemEnvelope { sequence, envelope: envelope.clone(), last_sent_at_ms: None });
   }
 
-  fn mark_system_envelope_sent(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
+  pub(crate) fn mark_system_envelope_sent(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
     let Some(sequence) = envelope.redelivery_sequence() else {
       return;
     };

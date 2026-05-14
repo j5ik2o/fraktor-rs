@@ -599,6 +599,8 @@ impl Remote {
         },
         | AssociationEffect::ResendEnvelopes { envelopes } => {
           for envelope in envelopes {
+            self.associations[association_index].mark_system_envelope_sent(&envelope, now_ms);
+            self.instrument.on_send(&envelope, now_ms);
             match self.transport.send(envelope) {
               | Ok(()) => {},
               | Err((TransportError::SendFailed, envelope)) => {

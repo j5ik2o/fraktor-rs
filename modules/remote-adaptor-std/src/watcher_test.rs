@@ -6,13 +6,11 @@ use fraktor_actor_adaptor_std_rs::{
 };
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Actor, ActorContext, Pid,
+    Pid,
     actor_path::{ActorPath, ActorPathParser},
     actor_ref::ActorRef,
     actor_ref_provider::LocalActorRefProviderInstaller,
-    error::ActorError,
-    messaging::{AnyMessageView, system_message::SystemMessage},
-    props::Props,
+    messaging::system_message::SystemMessage,
   },
   system::ActorSystem,
 };
@@ -23,14 +21,6 @@ use super::{
   apply_effects, default_detector_factory, notify_local_watchers, run_watcher_task, send_heartbeat,
   send_redelivery_tick, send_system_envelope,
 };
-
-struct NoopActor;
-
-impl Actor for NoopActor {
-  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
 
 fn local_address() -> Address {
   Address::new("local-sys", "127.0.0.1", 2551)
@@ -52,6 +42,10 @@ fn local_actor_system() -> ActorSystem {
   let config = std_actor_system_config(TestTickDriver::default())
     .with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default());
   ActorSystem::create_with_noop_guardian(config).expect("actor system should build")
+}
+
+fn user_guardian_path(system: &ActorSystem) -> ActorPath {
+  system.user_guardian_ref().path().expect("user guardian path")
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
@@ -82,11 +76,8 @@ async fn apply_effects_emits_remote_events_for_watch_heartbeat_and_rewatch() {
   let target = remote_path("target");
   let watcher = local_path("watcher");
   let remote = remote_address();
-  let props = Props::from_fn(|| NoopActor);
-  let local_target = system.actor_of_named(&props, "local-target").expect("local target actor");
-  let local_watcher = system.actor_of_named(&props, "local-watcher").expect("local watcher actor");
-  let local_target_path = local_target.actor_ref().path().expect("local target path");
-  let local_watcher_path = local_watcher.actor_ref().path().expect("local watcher path");
+  let local_target_path = user_guardian_path(&system);
+  let local_watcher_path = local_target_path.clone();
 
   apply_effects(
     alloc::vec![
@@ -138,9 +129,7 @@ fn notify_local_watchers_returns_when_target_cannot_be_resolved() {
 #[test]
 fn notify_local_watchers_skips_unresolved_watcher() {
   let system = local_actor_system();
-  let props = Props::from_fn(|| NoopActor);
-  let target = system.actor_of_named(&props, "target").expect("target actor");
-  let target_path = target.actor_ref().path().expect("target path");
+  let target_path = user_guardian_path(&system);
   assert!(system.resolve_actor_ref(target_path.clone()).is_ok());
 
   notify_local_watchers(&system, target_path, alloc::vec![local_path("missing-watcher")]);
@@ -149,9 +138,7 @@ fn notify_local_watchers_skips_unresolved_watcher() {
 #[test]
 fn notify_local_watchers_logs_when_send_fails() {
   let system = local_actor_system();
-  let props = Props::from_fn(|| NoopActor);
-  let target = system.actor_of_named(&props, "target-with-failing-watcher").expect("target actor");
-  let target_path = target.actor_ref().path().expect("target path");
+  let target_path = user_guardian_path(&system);
   let failing_watcher = ActorRef::null();
   let failing_watcher_pid = failing_watcher.pid();
   let _name = system.state().register_temp_actor(failing_watcher);
