@@ -19,7 +19,7 @@ use crate::{
   envelope::{OutboundEnvelope, OutboundPriority},
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, TransportEndpoint},
-  wire::{HandshakeReq, HandshakeRsp},
+  wire::{AckPdu, HandshakeReq, HandshakeRsp},
 };
 
 // ---------------------------------------------------------------------------
@@ -203,6 +203,16 @@ fn send_queue_rejects_system_envelope_when_system_lane_is_full() {
     | other => panic!("expected QueueFull for full system lane, got {other:?}"),
   }
   assert_eq!(queue.len(), 1);
+}
+
+#[test]
+fn send_queue_reports_system_capacity() {
+  let mut queue = SendQueue::with_capacity(1, 10);
+
+  assert!(queue.has_system_capacity());
+  assert_offer_accepted(&queue.offer(make_envelope(OutboundPriority::System, "s1")));
+
+  assert!(!queue.has_system_capacity());
 }
 
 #[test]
@@ -952,6 +962,42 @@ fn enqueue_in_active_quarantines_when_control_queue_is_full() {
 }
 
 #[test]
+fn active_control_queue_overflow_clears_redelivery_state() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
+  let mut a = active_association_from_config(&config);
+
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 20);
+  assert!(first.is_empty());
+  let sent = a.next_outbound(21, &mut NoopInstrument).expect("queued system envelope");
+  assert_eq!(sent.redelivery_sequence(), Some(1));
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 22);
+  assert!(second.is_empty());
+  let overflow = enqueue(&mut a, make_envelope(OutboundPriority::System, "s3"), 23);
+
+  assert!(a.state().is_quarantined(), "control queue overflow must quarantine the association");
+  assert_discard_contains_priority(&overflow, OutboundPriority::System);
+  let resend = a.apply_ack(&AckPdu::new(2, 0, 0b1), 24);
+  assert!(resend.is_empty(), "quarantine must drop the old redelivery window");
+}
+
+#[test]
+fn active_enqueue_preserves_existing_redelivery_sequence_without_duplicate_pending() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(2);
+  let mut a = active_association_from_config(&config);
+
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 20);
+  assert!(first.is_empty());
+  let sent = a.next_outbound(21, &mut NoopInstrument).expect("queued system envelope");
+  assert_eq!(sent.redelivery_sequence(), Some(1));
+  let requeued = enqueue(&mut a, sent.clone(), 22);
+  assert!(requeued.is_empty());
+  let resent = a.next_outbound(23, &mut NoopInstrument).expect("requeued system envelope");
+
+  assert_eq!(resent.redelivery_sequence(), Some(1));
+  assert_resend_payloads(&a.apply_ack(&AckPdu::new(2, 0, 0b1), 24), &["s1"]);
+}
+
+#[test]
 fn enqueue_in_idle_discards_when_user_deferred_capacity_is_full() {
   let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(1).with_outbound_control_queue_size(1);
   let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
@@ -975,6 +1021,39 @@ fn enqueue_in_idle_uses_configured_control_deferred_capacity_independently_from_
   assert!(first.is_empty());
   assert_eq!(a.deferred_len(), 1);
   assert_single_discard_with_priority(&second, OutboundPriority::System);
+}
+
+#[test]
+fn deferred_system_queue_overflow_does_not_advance_redelivery_sequence() {
+  let config = RemoteConfig::new("localhost").with_outbound_message_queue_size(10).with_outbound_control_queue_size(1);
+  let mut a = Association::from_config(sample_local(), sample_remote_addr(), &config);
+
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 0);
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 0);
+
+  assert!(first.is_empty());
+  assert_single_discard_with_priority(&second, OutboundPriority::System);
+  associate_idle(&mut a, 10);
+  let response = HandshakeRsp::new(sample_remote_unique());
+  let effects = a
+    .accept_handshake_response(&response, 20, &mut NoopInstrument)
+    .expect("matching handshake response should be accepted");
+  let flushed = effects
+    .iter()
+    .flat_map(|effect| match effect {
+      | AssociationEffect::SendEnvelopes { envelopes } => envelopes.as_slice(),
+      | _ => &[],
+    })
+    .cloned()
+    .collect::<Vec<_>>();
+  assert_eq!(flushed.len(), 1);
+  assert_eq!(flushed[0].redelivery_sequence(), None);
+  for envelope in flushed {
+    let recursive = enqueue(&mut a, envelope, 21);
+    assert!(recursive.is_empty());
+  }
+  let outbound = a.next_outbound(22, &mut NoopInstrument).expect("flushed system should enqueue");
+  assert_eq!(outbound.redelivery_sequence(), Some(1));
 }
 
 #[test]
@@ -1108,6 +1187,124 @@ fn next_outbound_returns_system_then_user_through_association() {
 }
 
 #[test]
+fn system_envelope_receives_redelivery_sequence_but_user_envelope_does_not() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+
+  let system = a.next_outbound(11, &mut NoopInstrument).expect("system envelope");
+  assert_eq!(system.redelivery_sequence(), Some(1));
+  let user = a.next_outbound(12, &mut NoopInstrument).expect("user envelope");
+  assert_eq!(user.redelivery_sequence(), None);
+}
+
+#[test]
+fn resend_due_skips_system_envelope_that_has_not_been_sent() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let effects = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+  assert!(effects.is_empty());
+
+  let resend = a.resend_due(30, 10);
+  assert!(resend.is_empty());
+}
+
+#[test]
+fn enqueue_in_active_quarantines_when_redelivery_window_is_full() {
+  let config = RemoteConfig::new("localhost").with_ack_send_window(1);
+  let mut a = active_association_from_config(&config);
+
+  let first = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+  let second = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 11);
+
+  assert!(first.is_empty());
+  assert!(a.state().is_quarantined(), "redelivery window overflow must quarantine the association");
+  assert!(
+    second
+      .iter()
+      .any(|effect| matches!(effect, AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined { .. }))),
+    "redelivery window overflow must publish a quarantine lifecycle event"
+  );
+  assert_discard_contains_priority(&second, OutboundPriority::System);
+}
+
+#[test]
+fn cumulative_ack_removes_pending_system_envelopes() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s3"), 10);
+
+  let effects = a.apply_ack(&AckPdu::new(2, 2, 0), 20);
+  assert!(effects.is_empty());
+  let resend = a.apply_ack(&AckPdu::new(3, 2, 0b1), 21);
+  assert_resend_payloads(&resend, &["s3"]);
+}
+
+#[test]
+fn nack_bitmap_selects_missing_pending_envelope_for_resend() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s3"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s4"), 10);
+
+  let effects = a.apply_ack(&AckPdu::new(4, 1, 0b10), 20);
+  assert_resend_payloads(&effects, &["s3"]);
+}
+
+#[test]
+fn nack_resend_updates_resend_deadline() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let _effects = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+  let sent = a.next_outbound(11, &mut NoopInstrument).expect("system envelope");
+  assert_eq!(sent.redelivery_sequence(), Some(1));
+
+  let resend = a.apply_ack(&AckPdu::new(2, 0, 0b1), 20);
+  assert_resend_payloads(&resend, &["s1"]);
+  let not_due = a.resend_due(25, 10);
+  assert!(not_due.is_empty(), "NACK resend should refresh the resend deadline");
+  let due = a.resend_due(30, 10);
+  assert_resend_payloads(&due, &["s1"]);
+}
+
+#[test]
+fn inbound_system_sequence_tracking_generates_ack_and_suppresses_duplicate() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let (deliver_first, first_effects) = a.observe_inbound_system_envelope(1, 10);
+  assert!(deliver_first);
+  assert_ack(&first_effects, 1, 1, 0);
+
+  let (deliver_duplicate, duplicate_effects) = a.observe_inbound_system_envelope(1, 11);
+  assert!(!deliver_duplicate);
+  assert_ack(&duplicate_effects, 1, 1, 0);
+}
+
+#[test]
+fn inbound_system_gap_generates_nack_bitmap_then_advances_when_gap_arrives() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let (deliver_first, _) = a.observe_inbound_system_envelope(1, 10);
+  assert!(deliver_first);
+  let (deliver_gap, gap_effects) = a.observe_inbound_system_envelope(3, 11);
+  assert!(!deliver_gap);
+  assert_ack(&gap_effects, 3, 1, 0b11);
+
+  let (deliver_missing, filled_effects) = a.observe_inbound_system_envelope(2, 12);
+  assert!(deliver_missing);
+  assert_ack(&filled_effects, 2, 2, 0b1);
+
+  let (deliver_redelivered_gap, redelivered_gap_effects) = a.observe_inbound_system_envelope(3, 13);
+  assert!(deliver_redelivered_gap);
+  assert_ack(&redelivered_gap_effects, 3, 3, 0);
+}
+
+#[test]
 fn apply_backpressure_propagates_to_send_queue() {
   let mut a = new_association();
   associate_idle(&mut a, 0);
@@ -1229,4 +1426,28 @@ fn assert_discard_contains_priority(effects: &[AssociationEffect], priority: Out
       "discarded envelopes should contain the rejected priority"
     );
   }
+}
+
+fn assert_resend_payloads(effects: &[AssociationEffect], expected: &[&str]) {
+  assert!(
+    effects.iter().any(|effect| matches!(
+      effect,
+      AssociationEffect::ResendEnvelopes { envelopes }
+        if envelopes.iter().map(payload_string).collect::<Vec<_>>() == expected
+    )),
+    "resend effect should contain expected payloads"
+  );
+}
+
+fn assert_ack(effects: &[AssociationEffect], sequence_number: u64, cumulative_ack: u64, nack_bitmap: u64) {
+  assert!(
+    effects.iter().any(|effect| matches!(
+      effect,
+      AssociationEffect::SendAck { pdu }
+        if pdu.sequence_number() == sequence_number
+          && pdu.cumulative_ack() == cumulative_ack
+          && pdu.nack_bitmap() == nack_bitmap
+    )),
+    "ack effect should contain expected sequence metadata"
+  );
 }

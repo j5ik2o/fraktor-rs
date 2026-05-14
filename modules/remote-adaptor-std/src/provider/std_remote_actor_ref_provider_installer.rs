@@ -4,18 +4,21 @@ use std::{boxed::Box, string::String, sync::Mutex, time::Instant};
 
 use fraktor_actor_core_kernel_rs::{
   actor::actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderInstaller, LocalActorRefProvider},
-  serialization::ActorRefResolveCache,
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::{
   address::UniqueAddress,
   extension::{EventPublisher, RemoteEvent},
   provider::RemoteActorRefProvider,
+  watcher::WatcherCommand,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::sync::mpsc::Sender;
 
-use super::{StdRemoteActorRefProvider, path_remote_actor_ref_provider::PathRemoteActorRefProvider};
+use super::{
+  StdRemoteActorRefProvider, path_remote_actor_ref_provider::PathRemoteActorRefProvider,
+  remote_actor_path_registry::RemoteActorPathRegistry, remote_watch_hook::StdRemoteWatchHook,
+};
 use crate::extension_installer::RemotingExtensionInstaller;
 
 const PROVIDER_ALREADY_INSTALLED: &str = "std remote actor-ref provider installer was already consumed";
@@ -38,10 +41,12 @@ impl StdRemoteActorRefProviderInstaller {
     Self { local_address, remote_provider: Mutex::new(Some(Box::new(PathRemoteActorRefProvider))), remoting_installer }
   }
 
-  fn event_sender_and_epoch(&self) -> Result<(Sender<RemoteEvent>, Instant), ActorSystemBuildError> {
+  fn event_sender_epoch_and_watcher(
+    &self,
+  ) -> Result<(Sender<RemoteEvent>, Instant, Sender<WatcherCommand>), ActorSystemBuildError> {
     self
       .remoting_installer
-      .remote_event_sender_and_epoch()
+      .remote_event_sender_epoch_and_watcher()
       .map_err(|error| ActorSystemBuildError::Configuration(error.to_string()))
   }
 }
@@ -55,18 +60,27 @@ impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
     let Some(remote_provider) = remote_provider.take() else {
       return Err(ActorSystemBuildError::Configuration(String::from(PROVIDER_ALREADY_INSTALLED)));
     };
-    let (event_sender, monotonic_epoch) = self.event_sender_and_epoch()?;
+    let (event_sender, monotonic_epoch, watcher_sender) = self.event_sender_epoch_and_watcher()?;
     let local_provider = ActorRefProviderHandleShared::new(LocalActorRefProvider::new_with_state(&system.state()));
-    let provider = StdRemoteActorRefProvider::new(
+    let registry = RemoteActorPathRegistry::new_shared();
+    let provider = StdRemoteActorRefProvider::new_with_registry(
       self.local_address.clone(),
       local_provider,
       remote_provider,
-      event_sender,
-      ActorRefResolveCache::default(),
+      event_sender.clone(),
       EventPublisher::new(system.downgrade()),
+      registry.clone(),
       monotonic_epoch,
     );
     let provider = ActorRefProviderHandleShared::new(provider);
-    system.extended().register_actor_ref_provider(&provider)
+    system.extended().register_actor_ref_provider(&provider)?;
+    system.extended().register_remote_watch_hook(StdRemoteWatchHook::new(
+      registry,
+      system.state(),
+      event_sender,
+      watcher_sender,
+      monotonic_epoch,
+    ));
+    Ok(())
   }
 }

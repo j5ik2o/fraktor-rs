@@ -24,10 +24,12 @@ use fraktor_remote_core_rs::{
   },
   provider::{RemoteActorRef, RemoteActorRefProvider, resolve_remote_address},
 };
+use fraktor_utils_core_rs::sync::SharedLock;
 use tokio::sync::mpsc::Sender;
 
 use crate::provider::{
-  provider_dispatch_error::StdRemoteActorRefProviderError, remote_actor_ref_sender::RemoteActorRefSender,
+  provider_dispatch_error::StdRemoteActorRefProviderError, remote_actor_path_registry::RemoteActorPathRegistry,
+  remote_actor_ref_sender::RemoteActorRefSender,
 };
 
 // remote actor ref は PID 空間の上位 1/4 を利用し、runtime allocator が
@@ -61,20 +63,19 @@ pub struct StdRemoteActorRefProvider {
   event_sender:    Sender<RemoteEvent>,
   resolve_cache:   ActorRefResolveCache<ActorRef>,
   event_publisher: EventPublisher,
+  registry:        SharedLock<RemoteActorPathRegistry>,
   monotonic_epoch: Instant,
   next_remote_pid: u64,
 }
 
 impl StdRemoteActorRefProvider {
-  /// Creates a new dispatcher.
-  #[must_use]
-  pub(crate) fn new(
+  pub(crate) fn new_with_registry(
     local_address: UniqueAddress,
     local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
     event_sender: Sender<RemoteEvent>,
-    resolve_cache: ActorRefResolveCache<ActorRef>,
     event_publisher: EventPublisher,
+    registry: SharedLock<RemoteActorPathRegistry>,
     monotonic_epoch: Instant,
   ) -> Self {
     Self {
@@ -82,8 +83,9 @@ impl StdRemoteActorRefProvider {
       local_provider,
       remote_provider,
       event_sender,
-      resolve_cache,
+      resolve_cache: ActorRefResolveCache::default(),
       event_publisher,
+      registry,
       monotonic_epoch,
       next_remote_pid: REMOTE_ACTOR_REF_PID_START,
     }
@@ -176,10 +178,11 @@ impl StdRemoteActorRefProvider {
     let remote_provider = &mut self.remote_provider;
     let next_remote_pid = &mut self.next_remote_pid;
     let event_sender = self.event_sender.clone();
+    let registry = self.registry.clone();
     let monotonic_epoch = self.monotonic_epoch;
     self.resolve_cache.resolve(&path, |candidate| {
       let remote_ref = remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)?;
-      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender.clone(), monotonic_epoch)
+      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender.clone(), &registry, monotonic_epoch)
     })
   }
 
@@ -187,11 +190,13 @@ impl StdRemoteActorRefProvider {
     next_remote_pid: &mut u64,
     remote_ref: RemoteActorRef,
     event_sender: Sender<RemoteEvent>,
+    registry: &SharedLock<RemoteActorPathRegistry>,
     monotonic_epoch: Instant,
   ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
     let pid = Self::allocate_remote_pid(next_remote_pid)?;
     let path = remote_ref.path().clone();
-    let sender = RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch);
+    registry.with_lock(|registry| registry.record(pid, path.clone()));
+    let sender = RemoteActorRefSender::new(pid, remote_ref, event_sender, registry.clone(), monotonic_epoch);
     Ok(ActorRef::with_canonical_path(pid, sender, path))
   }
 

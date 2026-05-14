@@ -55,6 +55,11 @@ impl RemoteWatchHookDynShared {
   pub(crate) fn handle_unwatch(&self, target: Pid, watcher: Pid) -> bool {
     self.with_write(|inner| inner.handle_unwatch(target, watcher))
   }
+
+  /// Handles a remote-bound termination notification by delegating to the inner hook.
+  pub(crate) fn handle_deathwatch_notification(&self, watcher: Pid, terminated: Pid) -> bool {
+    self.with_write(|inner| inner.handle_deathwatch_notification(watcher, terminated))
+  }
 }
 
 impl SharedAccess<Box<dyn RemoteWatchHook>> for RemoteWatchHookDynShared {

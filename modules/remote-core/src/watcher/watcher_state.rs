@@ -107,11 +107,13 @@ impl WatcherState {
     let Some(node) = address_from_path(&target) else {
       return Vec::new();
     };
+    let mut effects = Vec::new();
 
     // Register (target -> watcher) pair.
     let entry = self.watching.entry(target.clone()).or_default();
     if !entry.contains(&watcher) {
-      entry.push(watcher);
+      entry.push(watcher.clone());
+      effects.push(WatcherEffect::SendWatch { target: target.clone(), watcher });
     }
 
     // Register target under its hosting node.
@@ -122,12 +124,16 @@ impl WatcherState {
 
     // Emit an initial heartbeat towards the new peer so that it can respond
     // and make itself observable.
-    alloc::vec![WatcherEffect::SendHeartbeat { to: node }]
+    effects.push(WatcherEffect::SendHeartbeat { to: node });
+    effects
   }
 
   fn on_unwatch(&mut self, target: &ActorPath, watcher: &ActorPath) -> Vec<WatcherEffect> {
+    let mut removed = false;
     if let Some(watchers) = self.watching.get_mut(target) {
+      let old_len = watchers.len();
       watchers.retain(|w| w != watcher);
+      removed = watchers.len() != old_len;
       if watchers.is_empty() {
         self.watching.remove(target);
         // Also remove target from its hosting node map.
@@ -136,7 +142,11 @@ impl WatcherState {
         }
       }
     }
-    Vec::new()
+    if removed {
+      alloc::vec![WatcherEffect::SendUnwatch { target: target.clone(), watcher: watcher.clone() }]
+    } else {
+      Vec::new()
+    }
   }
 
   fn remove_target_from_node(&mut self, node: &Address, target: &ActorPath) {
@@ -175,7 +185,13 @@ impl WatcherState {
     };
     self.address_uids.insert(from.clone(), uid);
     if needs_rewatch {
-      alloc::vec![WatcherEffect::RewatchRemoteTargets { node: from.clone(), targets }]
+      let mut watches = Vec::new();
+      for target in targets {
+        for watcher in self.watching.get(&target).into_iter().flatten() {
+          watches.push((target.clone(), watcher.clone()));
+        }
+      }
+      alloc::vec![WatcherEffect::RewatchRemoteTargets { node: from.clone(), watches }]
     } else {
       Vec::new()
     }

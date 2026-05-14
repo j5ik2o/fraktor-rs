@@ -37,7 +37,7 @@ pub use envelope_payload::EnvelopePayload;
 pub use envelope_pdu::EnvelopePdu;
 pub use frame_header::{
   FRAME_KIND_OFFSET, FrameHeader, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
-  WIRE_VERSION_1,
+  WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2,
 };
 pub use handshake_codec::HandshakeCodec;
 pub use handshake_pdu::HandshakePdu;

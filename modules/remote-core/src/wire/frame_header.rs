@@ -1,7 +1,13 @@
 //! Frame header: `length(u32 BE) + version(u8) + kind(u8)`.
 
-/// Current wire format version (initial release).
+/// Initial wire format version.
 pub const WIRE_VERSION_1: u8 = 0x01;
+
+/// Wire format version that adds system-envelope redelivery metadata.
+pub const WIRE_VERSION_2: u8 = 0x02;
+
+/// Current wire format version.
+pub const WIRE_VERSION: u8 = WIRE_VERSION_2;
 
 /// Offset of the PDU kind byte in an encoded frame.
 pub const FRAME_KIND_OFFSET: usize = 5;

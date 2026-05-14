@@ -16,4 +16,8 @@ impl RemoteWatchHook for NoopRemoteWatchHook {
   fn handle_unwatch(&mut self, _target: Pid, _watcher: Pid) -> bool {
     false
   }
+
+  fn handle_deathwatch_notification(&mut self, _watcher: Pid, _terminated: Pid) -> bool {
+    false
+  }
 }

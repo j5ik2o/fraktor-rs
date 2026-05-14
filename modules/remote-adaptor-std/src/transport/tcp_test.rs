@@ -275,7 +275,7 @@ fn wire_frame_codec_roundtrips_ack() {
 
 #[test]
 fn wire_frame_codec_returns_none_on_incomplete_frame() {
-  let pdu = test_envelope_pdu("/user/a".into(), None, 1, 0, 0, Bytes::new());
+  let pdu = test_envelope_pdu("/user/a".into(), None, 1, 0, 1, Bytes::new());
   let frame = WireFrame::Envelope(pdu);
 
   let mut codec = WireFrameCodec::new();
@@ -291,7 +291,7 @@ fn wire_frame_codec_returns_none_on_incomplete_frame() {
 
 #[test]
 fn wire_frame_codec_handles_multiple_frames_in_one_buffer() {
-  let a = WireFrame::Envelope(test_envelope_pdu("/a".into(), None, 1, 0, 0, Bytes::new()));
+  let a = WireFrame::Envelope(test_envelope_pdu("/a".into(), None, 1, 0, 1, Bytes::new()));
   let b = WireFrame::Envelope(test_envelope_pdu("/b".into(), None, 2, 0, 1, Bytes::new()));
 
   let mut codec = WireFrameCodec::new();

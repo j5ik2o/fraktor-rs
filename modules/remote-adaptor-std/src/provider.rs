@@ -15,7 +15,9 @@ mod tests;
 mod dispatch;
 mod path_remote_actor_ref_provider;
 mod provider_dispatch_error;
+mod remote_actor_path_registry;
 mod remote_actor_ref_sender;
+mod remote_watch_hook;
 mod std_remote_actor_ref_provider_installer;
 
 pub use dispatch::StdRemoteActorRefProvider;

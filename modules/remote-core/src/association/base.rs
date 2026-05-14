@@ -22,14 +22,15 @@ use crate::{
     offer_outcome::OfferOutcome, quarantine_reason::QuarantineReason, send_queue::SendQueue,
   },
   config::{
-    DEFAULT_HANDSHAKE_TIMEOUT, DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE, DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+    DEFAULT_ACK_RECEIVE_WINDOW, DEFAULT_ACK_SEND_WINDOW, DEFAULT_HANDSHAKE_TIMEOUT,
+    DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE, DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
     DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE, DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER, LargeMessageDestinations,
     RemoteConfig,
   },
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   instrument::{HandshakePhase, RemoteInstrument},
   transport::{BackpressureSignal, TransportEndpoint},
-  wire::{HandshakeReq, HandshakeRsp},
+  wire::{AckPdu, HandshakeReq, HandshakeRsp},
 };
 
 /// Per-remote association aggregating the state machine, the send queue, and
@@ -47,12 +48,16 @@ pub struct Association {
   deferred_user_count: usize,
   outbound_control_queue_size: usize,
   outbound_message_queue_size: usize,
+  ack_send_window: u32,
   large_message_destinations: LargeMessageDestinations,
   remove_quarantined_association_after: Duration,
   handshake_timeout: Duration,
   handshake_generation: u64,
   local: UniqueAddress,
   remote: Address,
+  next_system_sequence: u64,
+  pending_system: Vec<PendingSystemEnvelope>,
+  inbound_system_sequences: InboundSystemSequenceTracker,
 }
 
 #[derive(Debug)]
@@ -60,7 +65,68 @@ struct AssociationQueueLimits {
   control:                    usize,
   message:                    usize,
   large_message:              usize,
+  ack_send_window:            u32,
+  ack_receive_window:         u32,
   large_message_destinations: LargeMessageDestinations,
+}
+
+#[derive(Clone, Debug)]
+struct PendingSystemEnvelope {
+  sequence:        u64,
+  envelope:        OutboundEnvelope,
+  last_sent_at_ms: Option<u64>,
+}
+
+#[derive(Debug)]
+struct InboundSystemSequenceTracker {
+  cumulative_ack: u64,
+  highest_seen:   u64,
+  receive_window: u32,
+}
+
+impl InboundSystemSequenceTracker {
+  const fn new(receive_window: u32) -> Self {
+    Self { cumulative_ack: 0, highest_seen: 0, receive_window }
+  }
+
+  fn observe(&mut self, sequence: u64) -> (bool, AckPdu) {
+    let should_deliver = self.mark_received(sequence);
+    let nack_bitmap = self.nack_bitmap();
+    (should_deliver, AckPdu::new(sequence, self.cumulative_ack, nack_bitmap))
+  }
+
+  fn mark_received(&mut self, sequence: u64) -> bool {
+    if sequence <= self.cumulative_ack {
+      return false;
+    }
+    if sequence == self.cumulative_ack.saturating_add(1) {
+      self.cumulative_ack = sequence;
+      self.highest_seen = self.highest_seen.max(sequence);
+      return true;
+    }
+    self.highest_seen = self.highest_seen.max(sequence);
+    false
+  }
+
+  fn nack_bitmap(&self) -> u64 {
+    let window = u64::from(self.receive_window.min(64));
+    let mut bitmap = 0_u64;
+    let mut offset = 1_u64;
+    while offset <= window {
+      let sequence = self.cumulative_ack.saturating_add(offset);
+      if sequence > self.highest_seen {
+        break;
+      }
+      bitmap |= 1_u64 << (offset - 1);
+      offset += 1;
+    }
+    bitmap
+  }
+
+  const fn reset(&mut self) {
+    self.cumulative_ack = 0;
+    self.highest_seen = 0;
+  }
 }
 
 impl Association {
@@ -74,6 +140,8 @@ impl Association {
         control:                    DEFAULT_OUTBOUND_CONTROL_QUEUE_SIZE,
         message:                    DEFAULT_OUTBOUND_MESSAGE_QUEUE_SIZE,
         large_message:              DEFAULT_OUTBOUND_LARGE_MESSAGE_QUEUE_SIZE,
+        ack_send_window:            DEFAULT_ACK_SEND_WINDOW,
+        ack_receive_window:         DEFAULT_ACK_RECEIVE_WINDOW,
         large_message_destinations: LargeMessageDestinations::new(),
       },
       DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER,
@@ -91,6 +159,8 @@ impl Association {
         control:                    config.outbound_control_queue_size(),
         message:                    config.outbound_message_queue_size(),
         large_message:              config.outbound_large_message_queue_size(),
+        ack_send_window:            config.ack_send_window(),
+        ack_receive_window:         config.ack_receive_window(),
         large_message_destinations: config.large_message_destinations().clone(),
       },
       config.remove_quarantined_association_after(),
@@ -329,6 +399,7 @@ impl Association {
         let mut effects = Vec::new();
         let deferred = mem::take(&mut self.deferred);
         self.clear_deferred_counts();
+        self.reset_redelivery_state();
         instrument.record_handshake(&self.authority_endpoint(), HandshakePhase::Rejected, now_ms);
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Gated {
           authority:      self.authority_string(),
@@ -364,6 +435,7 @@ impl Association {
         let mut discarded = mem::take(&mut self.deferred);
         self.clear_deferred_counts();
         discarded.append(&mut self.send_queue.drain_all());
+        self.reset_redelivery_state();
         effects.push(AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined {
           authority:      self.authority_string(),
           reason:         reason.message().into(),
@@ -463,9 +535,42 @@ impl Association {
   pub fn next_outbound(&mut self, now_ms: u64, instrument: &mut dyn RemoteInstrument) -> Option<OutboundEnvelope> {
     let envelope = self.send_queue.next_outbound();
     if let Some(envelope) = &envelope {
+      self.mark_system_envelope_sent(envelope, now_ms);
       instrument.on_send(envelope, now_ms);
     }
     envelope
+  }
+
+  /// Applies an inbound ACK/NACK PDU to the retained system-priority send
+  /// window.
+  pub fn apply_ack(&mut self, pdu: &AckPdu, now_ms: u64) -> Vec<AssociationEffect> {
+    self.record_handshake_activity(now_ms);
+    self.pending_system.retain(|pending| pending.sequence > pdu.cumulative_ack());
+    let resend = self.nacked_pending_envelopes(pdu, now_ms);
+    if resend.is_empty() { Vec::new() } else { vec![AssociationEffect::ResendEnvelopes { envelopes: resend }] }
+  }
+
+  /// Observes an inbound system-priority sequence and returns whether it should
+  /// be delivered to actor-core plus the ACK/NACK effects to send back.
+  pub fn observe_inbound_system_envelope(&mut self, sequence: u64, now_ms: u64) -> (bool, Vec<AssociationEffect>) {
+    self.record_handshake_activity(now_ms);
+    let (should_deliver, pdu) = self.inbound_system_sequences.observe(sequence);
+    (should_deliver, vec![AssociationEffect::SendAck { pdu }])
+  }
+
+  /// Returns pending system-priority envelopes whose redelivery deadline has elapsed.
+  pub fn resend_due(&mut self, now_ms: u64, resend_after_ms: u64) -> Vec<AssociationEffect> {
+    let mut envelopes = Vec::new();
+    for pending in &mut self.pending_system {
+      let Some(last_sent_at_ms) = pending.last_sent_at_ms else {
+        continue;
+      };
+      if now_ms.saturating_sub(last_sent_at_ms) >= resend_after_ms {
+        pending.last_sent_at_ms = Some(now_ms);
+        envelopes.push(pending.envelope.clone());
+      }
+    }
+    if envelopes.is_empty() { Vec::new() } else { vec![AssociationEffect::ResendEnvelopes { envelopes }] }
   }
 
   /// Applies a backpressure signal to the internal send queue.
@@ -499,12 +604,16 @@ impl Association {
       deferred_user_count: 0,
       outbound_control_queue_size: queue_limits.control,
       outbound_message_queue_size: queue_limits.message,
+      ack_send_window: queue_limits.ack_send_window,
       large_message_destinations: queue_limits.large_message_destinations,
       remove_quarantined_association_after,
       handshake_timeout,
       handshake_generation: 0,
       local,
       remote,
+      next_system_sequence: 1,
+      pending_system: Vec::new(),
+      inbound_system_sequences: InboundSystemSequenceTracker::new(queue_limits.ack_receive_window),
     }
   }
 
@@ -519,13 +628,24 @@ impl Association {
     now_ms: u64,
     instrument: &mut dyn RemoteInstrument,
   ) -> Vec<AssociationEffect> {
+    if envelope.priority().is_system() && !self.send_queue.has_system_capacity() {
+      return self.control_queue_overflow_effects(envelope, now_ms, instrument);
+    }
+    if !self.redelivery_window_has_capacity_for(&envelope) {
+      return self.control_queue_overflow_effects(envelope, now_ms, instrument);
+    }
+    let (envelope, redelivery_sequence) = self.assign_redelivery_sequence(envelope);
+    let pending = envelope.clone();
     let offer = if self.should_use_large_message_queue(&envelope) {
       self.send_queue.offer_large_message(envelope)
     } else {
       self.send_queue.offer(envelope)
     };
     match offer {
-      | OfferOutcome::Accepted => Vec::new(),
+      | OfferOutcome::Accepted => {
+        self.track_pending_system_envelope_for(redelivery_sequence, &pending);
+        Vec::new()
+      },
       | OfferOutcome::QueueFull { envelope } if envelope.priority().is_system() => {
         self.control_queue_overflow_effects(*envelope, now_ms, instrument)
       },
@@ -601,6 +721,64 @@ impl Association {
       }
     }
     effects.push(AssociationEffect::DiscardEnvelopes { reason, envelopes: vec![envelope] });
+  }
+
+  const fn redelivery_window_has_capacity_for(&self, envelope: &OutboundEnvelope) -> bool {
+    !envelope.priority().is_system()
+      || envelope.redelivery_sequence().is_some()
+      || self.pending_system.len() < self.ack_send_window as usize
+  }
+
+  const fn assign_redelivery_sequence(&mut self, envelope: OutboundEnvelope) -> (OutboundEnvelope, Option<u64>) {
+    if !envelope.priority().is_system() {
+      return (envelope.with_redelivery_sequence(None), None);
+    }
+    if let Some(sequence) = envelope.redelivery_sequence() {
+      return (envelope, Some(sequence));
+    }
+    let sequence = self.next_system_sequence;
+    self.next_system_sequence = self.next_system_sequence.saturating_add(1);
+    (envelope.with_redelivery_sequence(Some(sequence)), Some(sequence))
+  }
+
+  fn track_pending_system_envelope_for(&mut self, sequence: Option<u64>, envelope: &OutboundEnvelope) {
+    let Some(sequence) = sequence else {
+      return;
+    };
+    if self.pending_system.iter().any(|pending| pending.sequence == sequence) {
+      return;
+    }
+    self.pending_system.push(PendingSystemEnvelope { sequence, envelope: envelope.clone(), last_sent_at_ms: None });
+  }
+
+  pub(crate) fn mark_system_envelope_sent(&mut self, envelope: &OutboundEnvelope, now_ms: u64) {
+    let Some(sequence) = envelope.redelivery_sequence() else {
+      return;
+    };
+    if let Some(pending) = self.pending_system.iter_mut().find(|pending| pending.sequence == sequence) {
+      pending.last_sent_at_ms = Some(now_ms);
+    }
+  }
+
+  fn nacked_pending_envelopes(&mut self, pdu: &AckPdu, now_ms: u64) -> Vec<OutboundEnvelope> {
+    let mut envelopes = Vec::new();
+    for bit in 0..64 {
+      if pdu.nack_bitmap() & (1_u64 << bit) == 0 {
+        continue;
+      }
+      let sequence = pdu.cumulative_ack().saturating_add(bit + 1);
+      if let Some(pending) = self.pending_system.iter_mut().find(|pending| pending.sequence == sequence) {
+        pending.last_sent_at_ms = Some(now_ms);
+        envelopes.push(pending.envelope.clone());
+      }
+    }
+    envelopes
+  }
+
+  fn reset_redelivery_state(&mut self) {
+    self.next_system_sequence = 1;
+    self.pending_system.clear();
+    self.inbound_system_sequences.reset();
   }
 
   fn quarantine_removal_deadline(&self, now_ms: u64) -> u64 {

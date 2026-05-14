@@ -47,8 +47,10 @@ fn watch_remote_target_uses_resource_aware_detector_factory() {
   let stable_watch_effects =
     state.handle(WatcherCommand::Watch { target: stable_target.clone(), watcher: watcher.clone() });
   let strict_watch_effects = state.handle(WatcherCommand::Watch { target: strict_target.clone(), watcher });
-  assert!(matches!(stable_watch_effects.as_slice(), [WatcherEffect::SendHeartbeat { .. }]));
-  assert!(matches!(strict_watch_effects.as_slice(), [WatcherEffect::SendHeartbeat { .. }]));
+  assert!(stable_watch_effects.iter().any(|effect| matches!(effect, WatcherEffect::SendWatch { .. })));
+  assert!(stable_watch_effects.iter().any(|effect| matches!(effect, WatcherEffect::SendHeartbeat { .. })));
+  assert!(strict_watch_effects.iter().any(|effect| matches!(effect, WatcherEffect::SendWatch { .. })));
+  assert!(strict_watch_effects.iter().any(|effect| matches!(effect, WatcherEffect::SendHeartbeat { .. })));
 
   let stable_node = remote_node();
   let strict_node = Address::new("remote-sys", "10.0.0.2", 2552);

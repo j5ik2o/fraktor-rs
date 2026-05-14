@@ -5,7 +5,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::mem;
+use core::{mem, time::Duration};
 
 use fraktor_actor_core_kernel_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage},
@@ -167,6 +167,10 @@ impl Remote {
         self.handle_outbound_enqueued(&authority, envelope, now_ms)?;
         Ok(())
       },
+      | RemoteEvent::OutboundControl { remote, pdu, now_ms } => self.handle_outbound_control(&remote, pdu, now_ms),
+      | RemoteEvent::RedeliveryTimerFired { authority, now_ms } => {
+        self.handle_redelivery_timer_fired(&authority, now_ms)
+      },
       | RemoteEvent::HandshakeTimerFired { authority, generation, now_ms } => {
         self.handle_handshake_timer_fired(&authority, generation, now_ms)
       },
@@ -216,6 +220,12 @@ impl Remote {
       self.apply_association_effects(association_index, effects, now_ms)?;
     }
     self.drain_outbound(association_index, now_ms)
+  }
+
+  fn handle_outbound_control(&mut self, remote: &Address, pdu: ControlPdu, _now_ms: u64) -> Result<(), RemotingError> {
+    self.lifecycle.ensure_running()?;
+    self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)?;
+    map_wire_delivery_result(remote, self.transport.send_control(remote, pdu))
   }
 
   fn ensure_association(&mut self, remote: Address) -> Result<usize, RemotingError> {
@@ -278,6 +288,18 @@ impl Remote {
     self.apply_association_effects(association_index, effects, now_ms)
   }
 
+  fn handle_redelivery_timer_fired(&mut self, authority: &TransportEndpoint, now_ms: u64) -> Result<(), RemotingError> {
+    let Some(association_index) = self.association_index_for_authority(authority) else {
+      return Ok(());
+    };
+    if !self.associations[association_index].state().is_active() {
+      return Ok(());
+    }
+    let resend_after_ms = duration_to_saturated_millis(self.config.system_message_resend_interval());
+    let effects = self.associations[association_index].resend_due(now_ms, resend_after_ms);
+    self.apply_association_effects(association_index, effects, now_ms)
+  }
+
   fn handle_inbound_frame_received(
     &mut self,
     authority: &TransportEndpoint,
@@ -289,10 +311,7 @@ impl Remote {
       | WireFrame::Envelope(pdu) => self.handle_inbound_envelope_pdu(authority, &pdu, now_ms),
       | WireFrame::Handshake(pdu) => self.handle_inbound_handshake_pdu(pdu, now_ms),
       | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(&pdu, now_ms),
-      | WireFrame::Ack(pdu) => {
-        self.handle_inbound_ack_pdu(authority, &pdu, now_ms);
-        Ok(())
-      },
+      | WireFrame::Ack(pdu) => self.handle_inbound_ack_pdu(authority, &pdu, now_ms),
     }
   }
 
@@ -376,6 +395,17 @@ impl Remote {
       | None => None,
     };
     let priority = OutboundPriority::from_wire(pdu.priority()).ok_or(RemotingError::CodecFailed)?;
+    if priority.is_system() {
+      let sequence = pdu.redelivery_sequence().ok_or(RemotingError::CodecFailed)?;
+      let (should_deliver, effects) = {
+        let association = &mut self.associations[association_index];
+        association.observe_inbound_system_envelope(sequence, now_ms)
+      };
+      self.apply_association_effects(association_index, effects, now_ms)?;
+      if !should_deliver {
+        return Ok(());
+      }
+    }
     let serialized = SerializedMessage::new(
       SerializerId::from_raw(pdu.serializer_id()),
       pdu.manifest().map(ToString::to_string),
@@ -445,8 +475,12 @@ impl Remote {
     map_wire_delivery_result(&remote, self.transport.send_control(&remote, response))
   }
 
-  fn handle_inbound_ack_pdu(&mut self, authority: &TransportEndpoint, pdu: &AckPdu, now_ms: u64) {
-    // TODO(remote-redelivery): ACK window に基づく再送状態更新は redelivery 状態導入時に実装する。
+  fn handle_inbound_ack_pdu(
+    &mut self,
+    authority: &TransportEndpoint,
+    pdu: &AckPdu,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
     tracing::debug!(
       authority = %authority.authority(),
       sequence_number = pdu.sequence_number(),
@@ -456,8 +490,10 @@ impl Remote {
       "inbound ack pdu observed"
     );
     if let Some(index) = self.association_index_for_authority(authority) {
-      self.associations[index].record_handshake_activity(now_ms);
+      let effects = self.associations[index].apply_ack(pdu, now_ms);
+      self.apply_association_effects(index, effects, now_ms)?;
     }
+    Ok(())
   }
 
   fn handle_connection_lost(
@@ -560,6 +596,28 @@ impl Remote {
           pending.extend(recursive.into_iter().rev());
         },
         | AssociationEffect::DiscardEnvelopes { .. } => {},
+        | AssociationEffect::SendAck { pdu } => {
+          let remote = self.associations[association_index].remote().clone();
+          map_wire_delivery_result(&remote, self.transport.send_ack(&remote, pdu))?;
+        },
+        | AssociationEffect::ResendEnvelopes { envelopes } => {
+          for envelope in envelopes {
+            self.associations[association_index].mark_system_envelope_sent(&envelope, now_ms);
+            self.instrument.on_send(&envelope, now_ms);
+            match self.transport.send(envelope) {
+              | Ok(()) => {},
+              | Err((TransportError::SendFailed, envelope)) => {
+                let authority = TransportEndpoint::new(self.associations[association_index].remote().to_string());
+                self.instrument.record_dropped_envelope(&authority, &envelope, now_ms);
+              },
+              | Err((_error, envelope)) => {
+                let recursive =
+                  self.associations[association_index].enqueue(*envelope, now_ms, self.instrument.as_mut());
+                pending.extend(recursive.into_iter().rev());
+              },
+            }
+          }
+        },
         | AssociationEffect::PublishLifecycle(event) => self.event_publisher.publish_lifecycle(event),
         | AssociationEffect::StartHandshake { authority, timeout, generation } => {
           let (remote, request) = {
@@ -668,6 +726,11 @@ fn parse_endpoint(endpoint: &str) -> Option<(&str, u16)> {
   let (host, port) = endpoint.rsplit_once(':')?;
   let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
   Some((host, port.parse::<u16>().ok()?))
+}
+
+fn duration_to_saturated_millis(duration: Duration) -> u64 {
+  let millis = duration.as_millis();
+  if millis > u128::from(u64::MAX) { u64::MAX } else { millis as u64 }
 }
 
 fn map_wire_delivery_result(remote: &Address, result: Result<(), TransportError>) -> Result<(), RemotingError> {

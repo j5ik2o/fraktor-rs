@@ -18,15 +18,16 @@ use super::EnvelopePayload;
 /// silent truncation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnvelopePdu {
-  recipient_path: String,
-  sender_path:    Option<String>,
-  correlation_hi: u64,
-  correlation_lo: u32,
+  recipient_path:      String,
+  sender_path:         Option<String>,
+  correlation_hi:      u64,
+  correlation_lo:      u32,
   /// Raw priority byte (0 = System, 1 = User).
-  priority:       u8,
-  serializer_id:  u32,
-  manifest:       Option<String>,
-  payload:        Bytes,
+  priority:            u8,
+  redelivery_sequence: Option<u64>,
+  serializer_id:       u32,
+  manifest:            Option<String>,
+  payload:             Bytes,
 }
 
 impl EnvelopePdu {
@@ -49,10 +50,18 @@ impl EnvelopePdu {
       correlation_hi,
       correlation_lo,
       priority,
+      redelivery_sequence: None,
       serializer_id: payload.serializer_id,
       manifest: payload.manifest,
       payload: payload.bytes,
     }
+  }
+
+  /// Returns a copy carrying the given ACK/NACK redelivery sequence metadata.
+  #[must_use]
+  pub const fn with_redelivery_sequence(mut self, sequence: Option<u64>) -> Self {
+    self.redelivery_sequence = sequence;
+    self
   }
 
   /// Returns the recipient actor path.
@@ -83,6 +92,12 @@ impl EnvelopePdu {
   #[must_use]
   pub const fn priority(&self) -> u8 {
     self.priority
+  }
+
+  /// Returns the ACK/NACK redelivery sequence metadata.
+  #[must_use]
+  pub const fn redelivery_sequence(&self) -> Option<u64> {
+    self.redelivery_sequence
   }
 
   /// Returns the serializer identifier.

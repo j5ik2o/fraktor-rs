@@ -12,6 +12,20 @@ use crate::address::Address;
 /// pure transition function.
 #[derive(Clone, Debug)]
 pub enum WatcherEffect {
+  /// Ask the adapter to send a remote `Watch` system message.
+  SendWatch {
+    /// Remote actor being watched.
+    target:  ActorPath,
+    /// Actor that receives the termination notification.
+    watcher: ActorPath,
+  },
+  /// Ask the adapter to send a remote `Unwatch` system message.
+  SendUnwatch {
+    /// Remote actor that was watched.
+    target:  ActorPath,
+    /// Actor that should stop receiving termination notifications.
+    watcher: ActorPath,
+  },
   /// Ask the adapter to send a heartbeat towards the given remote node.
   SendHeartbeat {
     /// Address of the peer that should receive the heartbeat.
@@ -35,7 +49,7 @@ pub enum WatcherEffect {
   RewatchRemoteTargets {
     /// Remote node whose incarnation UID changed.
     node:    Address,
-    /// Remote actor targets hosted by the node.
-    targets: Vec<ActorPath>,
+    /// Remote actor target / watcher pairs that must be watched again.
+    watches: Vec<(ActorPath, ActorPath)>,
   },
 }

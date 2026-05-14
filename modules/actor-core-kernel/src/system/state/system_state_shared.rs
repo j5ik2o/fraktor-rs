@@ -753,7 +753,12 @@ impl SystemStateShared {
           }
           Ok(())
         },
-        | SystemMessage::DeathWatchNotification(_) => Ok(()),
+        | SystemMessage::DeathWatchNotification(terminated) => {
+          if self.remote_watch_hook.handle_deathwatch_notification(pid, terminated) {
+            return Ok(());
+          }
+          Ok(())
+        },
         | SystemMessage::PipeTask(_) => Ok(()),
         | other => Err(SendError::closed(AnyMessage::new(other))),
       }

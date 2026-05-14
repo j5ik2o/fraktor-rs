@@ -10,21 +10,22 @@ use fraktor_actor_core_kernel_rs::{
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
-    messaging::AnyMessage,
+    messaging::{AnyMessage, system_message::SystemMessage},
   },
   event::stream::EventStreamEvent,
-  serialization::ActorRefResolveCache,
-  system::ActorSystem,
+  system::{ActorSystem, remote::RemoteWatchHook},
 };
 use fraktor_remote_core_rs::{
   address::{Address as RemoteCoreAddress, RemoteNodeId, UniqueAddress},
   config::RemoteConfig,
+  envelope::OutboundPriority,
   extension::{
     REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
     RemoteEvent,
   },
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::TransportEndpoint,
+  watcher::WatcherCommand,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
@@ -32,7 +33,10 @@ use tokio::{
   time::timeout,
 };
 
-use super::{StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller};
+use super::{
+  StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
+  remote_actor_path_registry::RemoteActorPathRegistry, remote_watch_hook::StdRemoteWatchHook,
+};
 use crate::{
   extension_installer::RemotingExtensionInstaller, tests::test_support_test::EventHarness,
   transport::tcp::TcpRemoteTransport,
@@ -106,6 +110,7 @@ struct ProviderFixture {
   actor_ref_calls: SharedLock<Vec<ActorPath>>,
   event_harness:   EventHarness,
   event_rx:        Receiver<RemoteEvent>,
+  registry:        SharedLock<RemoteActorPathRegistry>,
 }
 
 impl ProviderFixture {
@@ -135,16 +140,17 @@ fn make_provider_fixture() -> ProviderFixture {
     Box::new(StubRemoteProvider::new(actor_ref_calls.clone())) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let (event_tx, event_rx) = mpsc::channel(8);
   let event_harness = EventHarness::new();
-  let provider = StdRemoteActorRefProvider::new(
+  let registry = RemoteActorPathRegistry::new_shared();
+  let provider = StdRemoteActorRefProvider::new_with_registry(
     local_address(),
     local_actor_ref_provider_handle_shared,
     remote_provider,
     event_tx,
-    ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
+    registry.clone(),
     Instant::now(),
   );
-  ProviderFixture { provider, actor_ref_calls, event_harness, event_rx }
+  ProviderFixture { provider, actor_ref_calls, event_harness, event_rx, registry }
 }
 
 fn make_provider() -> StdRemoteActorRefProvider {
@@ -157,13 +163,13 @@ fn make_provider_with_event_sender(event_sender: Sender<RemoteEvent>) -> StdRemo
   let remote_provider =
     Box::new(StubRemoteProvider::new(actor_ref_calls)) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let event_harness = EventHarness::new();
-  StdRemoteActorRefProvider::new(
+  StdRemoteActorRefProvider::new_with_registry(
     local_address(),
     local_actor_ref_provider_handle_shared,
     remote_provider,
     event_sender,
-    ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
+    RemoteActorPathRegistry::new_shared(),
     Instant::now(),
   )
 }
@@ -173,13 +179,13 @@ fn make_provider_with_remote_error(error: ProviderError) -> StdRemoteActorRefPro
   let remote_provider = Box::new(RejectingRemoteProvider::new(error)) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let (event_tx, _event_rx) = mpsc::channel(8);
   let event_harness = EventHarness::new();
-  StdRemoteActorRefProvider::new(
+  StdRemoteActorRefProvider::new_with_registry(
     local_address(),
     local_actor_ref_provider_handle_shared,
     remote_provider,
     event_tx,
-    ActorRefResolveCache::default(),
     event_harness.publisher().clone(),
+    RemoteActorPathRegistry::new_shared(),
     Instant::now(),
   )
 }
@@ -188,6 +194,41 @@ fn assert_remote_actor_ref_path(result: Result<ActorRef, StdRemoteActorRefProvid
   let actor_ref = result.expect("remote actor ref should resolve");
   let canonical_path = actor_ref.canonical_path().expect("remote actor ref canonical path");
   assert_eq!(canonical_path.to_canonical_uri(), expected_path.to_canonical_uri());
+}
+
+fn remote_actor_path() -> ActorPath {
+  ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse")
+}
+
+fn register_local_path(system: &ActorSystem, pid: Pid, name: &str) -> ActorPath {
+  let path = ActorPath::root().child("user").child(name);
+  system.state().register_actor_path(pid, &path);
+  system.state().canonical_actor_path(&pid).expect("registered path should have canonical form")
+}
+
+fn make_remote_watch_hook_fixture(
+  registry: SharedLock<RemoteActorPathRegistry>,
+) -> (StdRemoteWatchHook, Receiver<RemoteEvent>, Receiver<WatcherCommand>, EventHarness) {
+  make_remote_watch_hook_fixture_with_capacities(registry, 8, 8)
+}
+
+fn make_remote_watch_hook_fixture_with_watcher_capacity(
+  registry: SharedLock<RemoteActorPathRegistry>,
+  watcher_capacity: usize,
+) -> (StdRemoteWatchHook, Receiver<RemoteEvent>, Receiver<WatcherCommand>, EventHarness) {
+  make_remote_watch_hook_fixture_with_capacities(registry, 8, watcher_capacity)
+}
+
+fn make_remote_watch_hook_fixture_with_capacities(
+  registry: SharedLock<RemoteActorPathRegistry>,
+  event_capacity: usize,
+  watcher_capacity: usize,
+) -> (StdRemoteWatchHook, Receiver<RemoteEvent>, Receiver<WatcherCommand>, EventHarness) {
+  let harness = EventHarness::new();
+  let (event_tx, event_rx) = mpsc::channel(event_capacity);
+  let (watcher_tx, watcher_rx) = mpsc::channel(watcher_capacity);
+  let hook = StdRemoteWatchHook::new(registry, harness.system().state(), event_tx, watcher_tx, Instant::now());
+  (hook, event_rx, watcher_rx, harness)
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +309,32 @@ fn remote_actor_ref_resolution_reuses_cached_actor_ref_pid() {
 
   assert_eq!(first.pid(), second.pid());
   assert_eq!(fixture.actor_ref_call_count(), 1);
+}
+
+#[test]
+fn remote_actor_ref_resolution_records_pid_path_mapping() {
+  let mut fixture = make_provider_fixture();
+  let remote_path = remote_actor_path();
+
+  let actor_ref = fixture.provider.actor_ref(remote_path.clone()).expect("remote actor ref should resolve");
+
+  let recorded = fixture.registry.with_lock(|registry| registry.path_for_pid(&actor_ref.pid()));
+  assert_eq!(recorded.as_ref().map(ActorPath::to_canonical_uri), Some(remote_path.to_canonical_uri()));
+}
+
+#[test]
+fn remote_actor_ref_sender_removes_pid_path_mapping_after_last_ref_is_dropped() {
+  let mut fixture = make_provider_fixture();
+  let registry = fixture.registry.clone();
+  let remote_path = remote_actor_path();
+
+  let actor_ref = fixture.provider.actor_ref(remote_path).expect("remote actor ref should resolve");
+  let pid = actor_ref.pid();
+  drop(fixture.provider);
+
+  assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_some());
+  drop(actor_ref);
+  assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_none());
 }
 
 #[test]
@@ -448,4 +515,220 @@ fn watch_local_authority_path_returns_not_remote() {
   let local_path = ActorPathParser::parse("fraktor.tcp://local-sys@127.0.0.1:2551/user/worker").expect("parse");
   let err = provider.watch(local_path, Pid::new(1, 1)).unwrap_err();
   assert!(matches!(err, StdRemoteActorRefProviderError::NotRemote));
+}
+
+#[test]
+fn remote_watch_hook_forwards_watch_command() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(900, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path.clone()));
+  let (mut hook, _event_rx, mut watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let local_pid = Pid::new(901, 0);
+  let local_path = register_local_path(harness.system(), local_pid, "watcher");
+
+  assert!(hook.handle_watch(remote_pid, local_pid));
+
+  let command = watcher_rx.try_recv().expect("watch command should be enqueued");
+  assert!(matches!(
+    command,
+    WatcherCommand::Watch { target, watcher }
+      if target.to_canonical_uri() == remote_path.to_canonical_uri()
+        && watcher.to_canonical_uri() == local_path.to_canonical_uri()
+  ));
+}
+
+#[test]
+fn remote_watch_hook_treats_full_watcher_queue_as_handled() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(905, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, mut watcher_rx, harness) =
+    make_remote_watch_hook_fixture_with_watcher_capacity(registry, 1);
+  let local_pid = Pid::new(906, 0);
+  let _local_path = register_local_path(harness.system(), local_pid, "watcher-full");
+
+  assert!(hook.handle_watch(remote_pid, local_pid));
+  assert!(hook.handle_watch(remote_pid, local_pid));
+  assert!(matches!(watcher_rx.try_recv(), Ok(WatcherCommand::Watch { .. })));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_true_when_watcher_queue_is_closed() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(907, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let local_pid = Pid::new(908, 0);
+  let _local_path = register_local_path(harness.system(), local_pid, "watcher-closed");
+  drop(watcher_rx);
+
+  assert!(hook.handle_watch(remote_pid, local_pid));
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_watcher_path_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(909, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_watch(remote_pid, Pid::new(909, 1)));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_forwards_unwatch_command() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(910, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path.clone()));
+  let (mut hook, _event_rx, mut watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let local_pid = Pid::new(911, 0);
+  let local_path = register_local_path(harness.system(), local_pid, "watcher");
+
+  assert!(hook.handle_unwatch(remote_pid, local_pid));
+
+  let command = watcher_rx.try_recv().expect("unwatch command should be enqueued");
+  assert!(matches!(
+    command,
+    WatcherCommand::Unwatch { target, watcher }
+      if target.to_canonical_uri() == remote_path.to_canonical_uri()
+        && watcher.to_canonical_uri() == local_path.to_canonical_uri()
+  ));
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_mapping_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_watch(Pid::new(920, 0), Pid::new(921, 0)));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_unwatch_mapping_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_unwatch(Pid::new(920, 0), Pid::new(921, 0)));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_unwatch_watcher_path_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_pid = Pid::new(922, 0);
+  let remote_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_unwatch(remote_pid, Pid::new(922, 1)));
+  assert!(watcher_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_deathwatch_watcher_mapping_is_unresolved() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let (mut hook, mut event_rx, _watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+
+  assert!(!hook.handle_deathwatch_notification(Pid::new(923, 0), Pid::new(923, 1)));
+  assert!(event_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_notification_recipient_is_not_remote() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let watcher_pid = Pid::new(924, 0);
+  registry.with_lock(|registry| registry.record(watcher_pid, ActorPath::root().child("user").child("local")));
+  let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let terminated_pid = Pid::new(924, 1);
+  let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-local");
+
+  assert!(!hook.handle_deathwatch_notification(watcher_pid, terminated_pid));
+  assert!(event_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_forwards_deathwatch_notification_envelope() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_watcher_pid = Pid::new(930, 0);
+  let remote_watcher_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path.clone()));
+  let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let terminated_pid = Pid::new(931, 0);
+  let terminated_path = register_local_path(harness.system(), terminated_pid, "terminated");
+
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+
+  let event = event_rx.try_recv().expect("notification envelope should be enqueued");
+  assert!(matches!(
+    event,
+    RemoteEvent::OutboundEnqueued { authority, envelope, .. }
+      if authority == TransportEndpoint::new("remote-sys@10.0.0.1:2552")
+        && envelope.priority() == OutboundPriority::System
+        && envelope.recipient().to_canonical_uri() == remote_watcher_path.to_canonical_uri()
+        && envelope.sender().map(ActorPath::to_canonical_uri) == Some(terminated_path.to_canonical_uri())
+        && envelope.message().downcast_ref::<SystemMessage>()
+          == Some(&SystemMessage::DeathWatchNotification(terminated_pid))
+  ));
+}
+
+#[test]
+fn remote_watch_hook_forwards_deathwatch_notification_without_sender_when_terminated_path_is_unknown() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_watcher_pid = Pid::new(932, 0);
+  let remote_watcher_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path.clone()));
+  let (mut hook, mut event_rx, _watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
+  let terminated_pid = Pid::new(933, 0);
+
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+
+  let event = event_rx.try_recv().expect("notification envelope should be enqueued");
+  assert!(matches!(
+    event,
+    RemoteEvent::OutboundEnqueued { authority, envelope, .. }
+      if authority == TransportEndpoint::new("remote-sys@10.0.0.1:2552")
+        && envelope.priority() == OutboundPriority::System
+        && envelope.recipient().to_canonical_uri() == remote_watcher_path.to_canonical_uri()
+        && envelope.sender().is_none()
+        && envelope.message().downcast_ref::<SystemMessage>()
+          == Some(&SystemMessage::DeathWatchNotification(terminated_pid))
+  ));
+}
+
+#[test]
+fn remote_watch_hook_returns_false_when_notification_event_queue_is_full() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_watcher_pid = Pid::new(934, 0);
+  let remote_watcher_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path));
+  let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture_with_capacities(registry, 1, 8);
+  let terminated_pid = Pid::new(935, 0);
+  let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-full");
+
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+  assert!(!hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundEnqueued { .. })));
+  assert!(event_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_watch_hook_returns_true_when_notification_event_queue_is_closed() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  let remote_watcher_pid = Pid::new(936, 0);
+  let remote_watcher_path = remote_actor_path();
+  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path));
+  let (mut hook, event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
+  let terminated_pid = Pid::new(937, 0);
+  let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-closed");
+  drop(event_rx);
+
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
 }
