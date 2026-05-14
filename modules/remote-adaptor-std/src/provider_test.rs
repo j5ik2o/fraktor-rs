@@ -725,8 +725,8 @@ fn remote_watch_hook_forwards_deathwatch_notification_without_sender_when_termin
   ));
 }
 
-#[test]
-fn remote_watch_hook_returns_false_when_notification_event_queue_is_full() {
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_watch_hook_defers_notification_when_event_queue_is_full() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_watcher_pid = Pid::new(934, 0);
   let remote_watcher_path = remote_actor_path();
@@ -736,8 +736,13 @@ fn remote_watch_hook_returns_false_when_notification_event_queue_is_full() {
   let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-full");
 
   assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
-  assert!(!hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
   assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundEnqueued { .. })));
+  let deferred = timeout(Duration::from_millis(50), event_rx.recv())
+    .await
+    .expect("deferred notification should be delivered")
+    .expect("event queue should remain open");
+  assert!(matches!(deferred, RemoteEvent::OutboundEnqueued { .. }));
   assert!(event_rx.try_recv().is_err());
 }
 

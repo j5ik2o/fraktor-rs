@@ -6,6 +6,7 @@ mod tests;
 
 use std::{
   sync::{Arc, Mutex},
+  thread,
   time::{Duration, Instant},
 };
 
@@ -258,11 +259,18 @@ fn enqueue_outbound(
   envelope: OutboundEnvelope,
   now_ms: u64,
 ) -> bool {
-  match event_sender.try_send(RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms }) {
+  let event = RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms };
+  match event_sender.try_send(event) {
     | Ok(()) => true,
-    | Err(TrySendError::Full(_)) => {
+    | Err(TrySendError::Full(event)) => {
       tracing::warn!("remote watch notification event queue is full");
-      false
+      let sender = event_sender.clone();
+      let _send_thread = thread::spawn(move || {
+        // The receiver can close before capacity returns; then there is no consumer left to preserve
+        // delivery for.
+        drop(sender.blocking_send(event));
+      });
+      true
     },
     | Err(TrySendError::Closed(_)) => {
       tracing::warn!("remote watch notification event queue is closed");

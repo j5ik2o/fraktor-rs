@@ -425,6 +425,29 @@ async fn deathwatch_flush_timer_delivery_observes_closed_event_queue() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deathwatch_flush_timer_delivery_enqueues_timer_event() {
+  let local = local_address();
+  let target = remote_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::ZERO);
+  let remote = remote_shared(config, TestRemoteTransport::new(vec![local]));
+  let gate = StdFlushGate::default();
+  let (event_sender, mut event_receiver) = mpsc::channel(8);
+  activate_association(&remote, &target);
+
+  assert!(gate.submit_notification(&remote, notification(&event_sender, &target, 3)));
+
+  let event = timeout(Duration::from_millis(50), event_receiver.recv())
+    .await
+    .expect("flush timer event should be delivered")
+    .expect("event queue should remain open");
+  assert!(matches!(
+    event,
+    RemoteEvent::FlushTimerFired { authority, flush_id: 1, .. }
+      if authority == TransportEndpoint::new(target.to_string())
+  ));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn deathwatch_flush_timeout_releases_notification() {
   let local = local_address();
   let target = remote_address();

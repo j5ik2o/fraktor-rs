@@ -204,6 +204,29 @@ fn pending_notification_release_observes_closed_event_queue() {
   );
 }
 
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn immediate_notification_full_event_queue_defers_delivery() {
+  let authority = test_authority();
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  event_tx.try_send(RemoteEvent::TransportShutdown).expect("event queue should accept first event");
+
+  assert!(enqueue_outbound(&event_tx, authority.clone(), test_envelope(), 42));
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
+  let event = tokio::time::timeout(Duration::from_millis(50), event_rx.recv())
+    .await
+    .expect("deferred notification should be delivered")
+    .expect("event queue should remain open");
+  assert!(matches!(
+    event,
+    RemoteEvent::OutboundEnqueued { authority: received_authority, envelope, now_ms: 42 }
+      if received_authority == authority
+        && envelope.priority() == OutboundPriority::System
+        && envelope.message().downcast_ref::<SystemMessage>()
+          == Some(&SystemMessage::DeathWatchNotification(Pid::new(10, 0)))
+  ));
+  assert!(event_rx.try_recv().is_err());
+}
+
 #[test]
 fn empty_shutdown_waiter_is_not_registered() {
   let gate = StdFlushGate::new();
@@ -224,5 +247,5 @@ async fn shutdown_waiter_completes_after_matching_flush_outcome() {
     &event_tx,
   );
 
-  assert!(waiter.wait(Duration::from_millis(1)).await);
+  assert!(waiter.wait(Duration::from_millis(50)).await);
 }

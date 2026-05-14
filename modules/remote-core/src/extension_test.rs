@@ -1150,6 +1150,39 @@ fn inbound_quarantine_control_quarantines_matching_association() {
 }
 
 #[test]
+fn inbound_quarantine_control_with_mismatched_peer_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(4));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut remote = remote_with_instrument(
+    RecordingTransport::new(vec![local_address.clone()]),
+    config.clone(),
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address, second_remote.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(ControlPdu::Quarantine {
+        authority: second_remote.to_string(),
+        reason:    Some(String::from("spoofed quarantine")),
+      }),
+      now_ms:    70,
+    })
+    .expect("mismatched quarantine authority should be ignored");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(snapshot.events().is_empty());
+}
+
+#[test]
 fn inbound_heartbeat_control_sends_response_to_remote_peer() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1668,6 +1701,36 @@ fn inbound_shutdown_control_quarantines_matching_association() {
   assert_eq!(send_calls.load(Ordering::Relaxed), 0);
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(timeout_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_shutdown_control_with_mismatched_peer_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let recorder = SharedLock::new_with_driver::<DefaultMutex<_>>(RemotingFlightRecorder::new(4));
+  let instrument = SharedRecorderInstrument::new(recorder.clone());
+  let mut remote = remote_with_instrument(
+    RecordingTransport::new(vec![local_address.clone()]),
+    config.clone(),
+    event_publisher(),
+    Box::new(instrument),
+  );
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address, second_remote.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(ControlPdu::Shutdown { authority: second_remote.to_string() }),
+      now_ms:    80,
+    })
+    .expect("mismatched shutdown authority should be ignored");
+
+  let snapshot = recorder.with_lock(|recorder| recorder.snapshot());
+  assert!(snapshot.events().is_empty());
 }
 
 #[test]

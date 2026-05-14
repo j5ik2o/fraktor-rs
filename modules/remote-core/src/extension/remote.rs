@@ -533,9 +533,9 @@ impl Remote {
         Ok(())
       },
       | ControlPdu::Quarantine { authority, reason } => {
-        self.handle_inbound_quarantine_control(authority, reason, now_ms)
+        self.handle_inbound_quarantine_control(peer_authority, authority, reason, now_ms)
       },
-      | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(authority, now_ms),
+      | ControlPdu::Shutdown { authority } => self.handle_inbound_shutdown_control(peer_authority, authority, now_ms),
       | ControlPdu::FlushRequest { authority, flush_id, lane_id, expected_acks, .. } => self
         .handle_inbound_flush_request_control(peer_authority, authority, *flush_id, *lane_id, *expected_acks, now_ms),
       | ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks } => {
@@ -566,7 +566,7 @@ impl Remote {
     expected_acks: u32,
     now_ms: u64,
   ) -> Result<(), RemotingError> {
-    let Some(index) = self.verified_flush_association_index(peer_authority, authority) else {
+    let Some(index) = self.verified_control_association_index(peer_authority, authority) else {
       return Ok(());
     };
     self.associations[index].record_handshake_activity(now_ms);
@@ -585,7 +585,7 @@ impl Remote {
     expected_acks: u32,
     now_ms: u64,
   ) -> Result<(), RemotingError> {
-    let Some(index) = self.verified_flush_association_index(peer_authority, authority) else {
+    let Some(index) = self.verified_control_association_index(peer_authority, authority) else {
       return Ok(());
     };
     self.associations[index].record_handshake_activity(now_ms);
@@ -593,7 +593,7 @@ impl Remote {
     self.apply_association_effects(index, effects, now_ms)
   }
 
-  fn verified_flush_association_index(
+  fn verified_control_association_index(
     &self,
     peer_authority: &TransportEndpoint,
     claimed_authority: &str,
@@ -605,7 +605,7 @@ impl Remote {
       let peer = peer_authority.authority();
       let associated = peer_remote.to_string();
       tracing::warn!(
-        "ignoring flush control pdu with mismatched authority: peer={peer}, claimed={claimed_authority}, associated={associated}"
+        "ignoring control pdu with mismatched authority: peer={peer}, claimed={claimed_authority}, associated={associated}"
       );
       return None;
     }
@@ -687,14 +687,12 @@ impl Remote {
 
   fn handle_inbound_quarantine_control(
     &mut self,
+    peer_authority: &TransportEndpoint,
     authority: &str,
     reason: &Option<String>,
     now_ms: u64,
   ) -> Result<(), RemotingError> {
-    let Some(remote) = parse_authority(authority) else {
-      return Ok(());
-    };
-    let Some(index) = self.association_index_for_remote(&remote) else {
+    let Some(index) = self.verified_control_association_index(peer_authority, authority) else {
       return Ok(());
     };
     let reason = QuarantineReason::new(reason.as_deref().unwrap_or("remote quarantine"));
@@ -702,11 +700,13 @@ impl Remote {
     self.apply_association_effects(index, effects, now_ms)
   }
 
-  fn handle_inbound_shutdown_control(&mut self, authority: &str, now_ms: u64) -> Result<(), RemotingError> {
-    let Some(remote) = parse_authority(authority) else {
-      return Ok(());
-    };
-    let Some(index) = self.association_index_for_remote(&remote) else {
+  fn handle_inbound_shutdown_control(
+    &mut self,
+    peer_authority: &TransportEndpoint,
+    authority: &str,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let Some(index) = self.verified_control_association_index(peer_authority, authority) else {
       return Ok(());
     };
     self.associations[index].record_handshake_activity(now_ms);
