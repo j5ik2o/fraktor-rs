@@ -15,10 +15,10 @@ const DEFAULT_SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_FLIGHT_RECORDER_CAPACITY: usize = 1024;
 
 /// Default ack-based redelivery send window (Pekko Artery default).
-const DEFAULT_ACK_SEND_WINDOW: u32 = 1024;
+pub(crate) const DEFAULT_ACK_SEND_WINDOW: u32 = 1024;
 
 /// Default ack-based redelivery receive window (Pekko Artery default).
-const DEFAULT_ACK_RECEIVE_WINDOW: u32 = 1024;
+pub(crate) const DEFAULT_ACK_RECEIVE_WINDOW: u32 = 1024;
 
 /// Default system message buffer size.
 const DEFAULT_SYSTEM_MESSAGE_BUFFER_SIZE: usize = 20_000;

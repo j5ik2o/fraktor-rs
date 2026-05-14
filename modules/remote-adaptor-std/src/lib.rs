@@ -16,3 +16,4 @@ pub mod extension_installer;
 pub mod provider;
 mod tokio_remote_event_receiver;
 pub mod transport;
+mod watcher;

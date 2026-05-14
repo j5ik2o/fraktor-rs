@@ -43,11 +43,18 @@ fn watch_remote_target_registers_pair_and_sends_initial_heartbeat() {
   let mut state = new_state();
   let target = remote_target(1);
   let watcher = local_watcher();
-  let effects = state.handle(WatcherCommand::Watch { target, watcher });
+  let effects = state.handle(WatcherCommand::Watch { target: target.clone(), watcher: watcher.clone() });
 
   assert_eq!(state.watch_pair_count(), 1);
   assert_eq!(state.node_count(), 1);
-  assert!(matches!(effects.as_slice(), [WatcherEffect::SendHeartbeat { .. }]));
+  assert!(effects.iter().any(|effect| matches!(
+    effect,
+    WatcherEffect::SendWatch {
+      target: effect_target,
+      watcher: effect_watcher,
+    } if effect_target == &target && effect_watcher == &watcher
+  )));
+  assert!(effects.iter().any(|effect| matches!(effect, WatcherEffect::SendHeartbeat { .. })));
 }
 
 #[test]
@@ -56,8 +63,9 @@ fn watching_same_pair_is_idempotent() {
   let target = remote_target(1);
   let watcher = local_watcher();
   let _ = state.handle(WatcherCommand::Watch { target: target.clone(), watcher: watcher.clone() });
-  let _ = state.handle(WatcherCommand::Watch { target, watcher });
+  let effects = state.handle(WatcherCommand::Watch { target, watcher });
   assert_eq!(state.watch_pair_count(), 1);
+  assert!(!effects.iter().any(|effect| matches!(effect, WatcherEffect::SendWatch { .. })));
 }
 
 #[test]
@@ -79,9 +87,16 @@ fn unwatch_removes_the_pair_and_cleans_up_node_when_empty() {
   let _ = state.handle(WatcherCommand::Watch { target: target.clone(), watcher: watcher.clone() });
   assert_eq!(state.node_count(), 1);
 
-  let _ = state.handle(WatcherCommand::Unwatch { target, watcher });
+  let effects = state.handle(WatcherCommand::Unwatch { target: target.clone(), watcher: watcher.clone() });
   assert_eq!(state.watch_pair_count(), 0);
   assert_eq!(state.node_count(), 0);
+  assert!(effects.iter().any(|effect| matches!(
+    effect,
+    WatcherEffect::SendUnwatch {
+      target: effect_target,
+      watcher: effect_watcher,
+    } if effect_target == &target && effect_watcher == &watcher
+  )));
 }
 
 #[test]
@@ -131,8 +146,8 @@ fn heartbeat_response_received_records_initial_uid_and_rewatches_targets() {
     effect,
     WatcherEffect::RewatchRemoteTargets {
       node: effect_node,
-      targets
-    } if effect_node == &node && targets == &alloc::vec![target.clone()]
+      watches
+    } if effect_node == &node && watches == &alloc::vec![(target.clone(), local_watcher())]
   )));
 }
 
@@ -165,8 +180,8 @@ fn heartbeat_response_received_with_changed_uid_rewatches_targets() {
     effect,
     WatcherEffect::RewatchRemoteTargets {
       node: effect_node,
-      targets
-    } if effect_node == &node && targets == &alloc::vec![target.clone()]
+      watches
+    } if effect_node == &node && watches == &alloc::vec![(target.clone(), local_watcher())]
   )));
 }
 

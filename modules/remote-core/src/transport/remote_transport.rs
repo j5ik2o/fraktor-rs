@@ -8,7 +8,7 @@ use crate::{
   association::QuarantineReason,
   envelope::OutboundEnvelope,
   transport::{transport_endpoint::TransportEndpoint, transport_error::TransportError},
-  wire::{ControlPdu, HandshakePdu},
+  wire::{AckPdu, ControlPdu, HandshakePdu},
 };
 
 /// The single transport port exposed by `fraktor-remote-core-rs`.
@@ -92,6 +92,16 @@ pub trait RemoteTransport {
   /// queue is full, [`TransportError::ConnectionClosed`] if no connection to
   /// `remote` exists, or another transport-specific error when delivery fails.
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError>;
+
+  /// Sends a wire-level ACK/NACK PDU to `remote`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running,
+  /// [`TransportError::Backpressure`] if the transport's synchronous handoff
+  /// queue is full, [`TransportError::ConnectionClosed`] if no connection to
+  /// `remote` exists, or another transport-specific error when delivery fails.
+  fn send_ack(&mut self, remote: &Address, pdu: AckPdu) -> Result<(), TransportError>;
 
   /// Sends a wire-level handshake PDU to `remote`.
   ///

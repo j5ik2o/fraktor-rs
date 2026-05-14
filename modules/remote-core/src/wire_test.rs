@@ -31,14 +31,15 @@ fn test_envelope_pdu(
   priority: u8,
   payload: Bytes,
 ) -> EnvelopePdu {
-  EnvelopePdu::new(
+  let pdu = EnvelopePdu::new(
     recipient_path,
     sender_path,
     correlation_hi,
     correlation_lo,
     priority,
     EnvelopePayload::new(5, None, payload),
-  )
+  );
+  if priority == 0 { pdu.with_redelivery_sequence(Some(100)) } else { pdu }
 }
 
 #[test]
@@ -71,6 +72,7 @@ fn envelope_roundtrip_without_sender_path() {
   let mut bytes = to_bytes(buf);
   let decoded = codec.decode(&mut bytes).unwrap();
   assert_eq!(decoded, pdu);
+  assert_eq!(decoded.redelivery_sequence(), Some(100));
 }
 
 #[test]
@@ -106,8 +108,10 @@ fn envelope_manifest_none_encodes_as_zero_tag_after_serializer_id() {
   let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let mut buf = BytesMut::new();
   EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
-  assert_eq!(&buf[26..30], &5_u32.to_be_bytes());
-  assert_eq!(buf[30], 0x00);
+  assert_eq!(buf[26], 0x01);
+  assert_eq!(&buf[27..35], &100_u64.to_be_bytes());
+  assert_eq!(&buf[35..39], &5_u32.to_be_bytes());
+  assert_eq!(buf[39], 0x00);
 }
 
 #[test]
@@ -119,6 +123,40 @@ fn envelope_sender_path_none_encodes_as_zero_tag() {
   // [len(4)][version(1)][kind(1)][recipient_len(4)=0x00000002][recipient(2)][sender_tag] sender_tag
   // index = 4 + 1 + 1 + 4 + 2 = 12
   assert_eq!(buf[12], 0x00);
+}
+
+#[test]
+fn system_envelope_carries_redelivery_sequence_metadata() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  let mut bytes = to_bytes(buf);
+  let decoded = EnvelopeCodec::new().decode(&mut bytes).unwrap();
+  assert_eq!(decoded.redelivery_sequence(), Some(100));
+}
+
+#[test]
+fn user_envelope_omits_redelivery_sequence_metadata() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 1, Bytes::new());
+  let mut buf = BytesMut::new();
+  EnvelopeCodec::new().encode(&pdu, &mut buf).unwrap();
+  let mut bytes = to_bytes(buf);
+  let decoded = EnvelopeCodec::new().decode(&mut bytes).unwrap();
+  assert_eq!(decoded.redelivery_sequence(), None);
+}
+
+#[test]
+fn system_envelope_without_redelivery_sequence_is_rejected() {
+  let pdu = EnvelopePdu::new("/r".to_string(), None, 0, 0, 0, EnvelopePayload::new(5, None, Bytes::new()));
+  let err = EnvelopeCodec::new().encode(&pdu, &mut BytesMut::new()).unwrap_err();
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn user_envelope_with_redelivery_sequence_is_rejected() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 1, Bytes::new()).with_redelivery_sequence(Some(10));
+  let err = EnvelopeCodec::new().encode(&pdu, &mut BytesMut::new()).unwrap_err();
+  assert_eq!(err, WireError::InvalidFormat);
 }
 
 #[test]

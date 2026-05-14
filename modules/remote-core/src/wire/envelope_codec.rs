@@ -2,16 +2,19 @@
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
-use crate::wire::{
-  codec::Codec,
-  envelope_payload::EnvelopePayload,
-  envelope_pdu::EnvelopePdu,
-  frame_header::KIND_ENVELOPE,
-  primitives::{
-    begin_frame, decode_bytes, decode_option_string, decode_string, encode_bytes, encode_option_string, encode_string,
-    patch_frame_length, read_frame_header,
+use crate::{
+  envelope::OutboundPriority,
+  wire::{
+    codec::Codec,
+    envelope_payload::EnvelopePayload,
+    envelope_pdu::EnvelopePdu,
+    frame_header::KIND_ENVELOPE,
+    primitives::{
+      begin_frame, decode_bytes, decode_option_string, decode_string, encode_bytes, encode_option_string,
+      encode_string, patch_frame_length, read_frame_header,
+    },
+    wire_error::WireError,
   },
-  wire_error::WireError,
 };
 
 /// Zero-sized codec for [`EnvelopePdu`] producing the `kind = 0x01` frame.
@@ -34,6 +37,7 @@ impl Codec<EnvelopePdu> for EnvelopeCodec {
     buf.put_u64(value.correlation_hi());
     buf.put_u32(value.correlation_lo());
     buf.put_u8(value.priority());
+    encode_redelivery_sequence(value.priority(), value.redelivery_sequence(), buf)?;
     buf.put_u32(value.serializer_id());
     encode_option_string(value.manifest(), buf)?;
     encode_bytes(value.payload(), buf)?;
@@ -44,12 +48,16 @@ impl Codec<EnvelopePdu> for EnvelopeCodec {
     let _ = read_frame_header(buf, KIND_ENVELOPE)?;
     let recipient_path = decode_string(buf)?;
     let sender_path = decode_option_string(buf)?;
-    if buf.remaining() < 8 + 4 + 1 + 4 {
+    if buf.remaining() < 8 + 4 + 1 + 1 + 4 {
       return Err(WireError::Truncated);
     }
     let correlation_hi = buf.get_u64();
     let correlation_lo = buf.get_u32();
     let priority = buf.get_u8();
+    let redelivery_sequence = decode_redelivery_sequence(priority, buf)?;
+    if buf.remaining() < 4 {
+      return Err(WireError::Truncated);
+    }
     let serializer_id = buf.get_u32();
     let manifest = decode_option_string(buf)?;
     let payload = decode_bytes(buf)?;
@@ -61,5 +69,46 @@ impl Codec<EnvelopePdu> for EnvelopeCodec {
       priority,
       EnvelopePayload::new(serializer_id, manifest, payload),
     ))
+    .map(|pdu| pdu.with_redelivery_sequence(redelivery_sequence))
+  }
+}
+
+fn encode_redelivery_sequence(priority: u8, sequence: Option<u64>, buf: &mut BytesMut) -> Result<(), WireError> {
+  match (OutboundPriority::from_wire(priority), sequence) {
+    | (Some(OutboundPriority::System), Some(sequence)) => {
+      buf.put_u8(1);
+      buf.put_u64(sequence);
+      Ok(())
+    },
+    | (Some(OutboundPriority::User), None) => {
+      buf.put_u8(0);
+      Ok(())
+    },
+    | _ => Err(WireError::InvalidFormat),
+  }
+}
+
+fn decode_redelivery_sequence(priority: u8, buf: &mut Bytes) -> Result<Option<u64>, WireError> {
+  let Some(priority) = OutboundPriority::from_wire(priority) else {
+    return Err(WireError::InvalidFormat);
+  };
+  if buf.remaining() < 1 {
+    return Err(WireError::Truncated);
+  }
+  let flag = buf.get_u8();
+  let sequence = match flag {
+    | 0 => None,
+    | 1 => {
+      if buf.remaining() < 8 {
+        return Err(WireError::Truncated);
+      }
+      Some(buf.get_u64())
+    },
+    | _ => return Err(WireError::InvalidFormat),
+  };
+  match (priority, sequence) {
+    | (OutboundPriority::System, Some(sequence)) => Ok(Some(sequence)),
+    | (OutboundPriority::User, None) => Ok(None),
+    | _ => Err(WireError::InvalidFormat),
   }
 }

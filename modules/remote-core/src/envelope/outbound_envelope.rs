@@ -20,12 +20,13 @@ use crate::{address::RemoteNodeId, envelope::priority::OutboundPriority};
 /// no message is silently lost across reconnect.
 #[derive(Debug, Clone)]
 pub struct OutboundEnvelope {
-  recipient:      ActorPath,
-  sender:         Option<ActorPath>,
-  message:        AnyMessage,
-  priority:       OutboundPriority,
-  remote_node:    RemoteNodeId,
-  correlation_id: CorrelationId,
+  recipient:           ActorPath,
+  sender:              Option<ActorPath>,
+  message:             AnyMessage,
+  priority:            OutboundPriority,
+  remote_node:         RemoteNodeId,
+  correlation_id:      CorrelationId,
+  redelivery_sequence: Option<u64>,
 }
 
 impl OutboundEnvelope {
@@ -39,7 +40,7 @@ impl OutboundEnvelope {
     remote_node: RemoteNodeId,
     correlation_id: CorrelationId,
   ) -> Self {
-    Self { recipient, sender, message, priority, remote_node, correlation_id }
+    Self { recipient, sender, message, priority, remote_node, correlation_id, redelivery_sequence: None }
   }
 
   /// Returns the recipient actor path.
@@ -76,6 +77,19 @@ impl OutboundEnvelope {
   #[must_use]
   pub const fn correlation_id(&self) -> CorrelationId {
     self.correlation_id
+  }
+
+  /// Returns the ACK/NACK redelivery sequence for system-priority envelopes.
+  #[must_use]
+  pub const fn redelivery_sequence(&self) -> Option<u64> {
+    self.redelivery_sequence
+  }
+
+  /// Returns a copy carrying the given ACK/NACK redelivery sequence.
+  #[must_use]
+  pub const fn with_redelivery_sequence(mut self, sequence: Option<u64>) -> Self {
+    self.redelivery_sequence = sequence;
+    self
   }
 
   /// Consumes the envelope and returns its constituent parts.

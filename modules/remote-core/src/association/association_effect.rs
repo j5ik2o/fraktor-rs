@@ -7,6 +7,7 @@ use fraktor_actor_core_kernel_rs::event::stream::RemotingLifecycleEvent;
 
 use crate::{
   association::quarantine_reason::QuarantineReason, envelope::OutboundEnvelope, transport::TransportEndpoint,
+  wire::AckPdu,
 };
 
 /// Side-effect requested by an association state transition.
@@ -40,6 +41,17 @@ pub enum AssociationEffect {
   /// queue after a handshake completed).
   SendEnvelopes {
     /// Envelopes to send, in priority order.
+    envelopes: Vec<OutboundEnvelope>,
+  },
+  /// Send an ACK/NACK PDU for inbound system-priority envelopes.
+  SendAck {
+    /// ACK/NACK PDU to send to the association peer.
+    pdu: AckPdu,
+  },
+  /// Re-send retained system-priority envelopes without assigning new sequence
+  /// numbers.
+  ResendEnvelopes {
+    /// Envelopes to re-send, keeping their existing redelivery sequence.
     envelopes: Vec<OutboundEnvelope>,
   },
   /// Discard the given envelopes because the peer is quarantined.

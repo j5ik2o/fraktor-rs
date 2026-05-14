@@ -12,4 +12,8 @@ pub trait RemoteWatchHook: Send + 'static {
 
   /// Handles an unwatch request. Returns `true` when the provider consumed the message.
   fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool;
+
+  /// Handles a remote-bound termination notification. Returns `true` when the provider consumed the
+  /// message.
+  fn handle_deathwatch_notification(&mut self, watcher: Pid, terminated: Pid) -> bool;
 }

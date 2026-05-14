@@ -8,11 +8,13 @@ use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Actor, ActorContext,
+    Actor, ActorContext, Pid,
+    actor_path::ActorPathParser,
+    actor_ref::ActorRef,
     actor_ref_provider::LocalActorRefProviderInstaller,
     error::ActorError,
     extension::{ExtensionInstaller, ExtensionInstallers},
-    messaging::{AnyMessage, AnyMessageView},
+    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
     props::Props,
   },
   event::stream::{CorrelationId, EventStreamEvent, EventStreamSubscriber, RemotingLifecycleEvent, subscriber_handle},
@@ -23,7 +25,7 @@ use fraktor_actor_core_kernel_rs::{
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::{
-  address::{Address, RemoteNodeId},
+  address::{Address, RemoteNodeId, UniqueAddress},
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundPriority},
@@ -32,11 +34,13 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use tokio::{
   net::TcpStream,
+  sync::mpsc::{self as tokio_mpsc, UnboundedSender},
   time::{sleep, timeout},
 };
 
 use crate::{
   extension_installer::remoting_extension_installer::{RemotingExtensionInstaller, deliver_inbound_envelope},
+  provider::StdRemoteActorRefProviderInstaller,
   tests::test_support_test::EventHarness,
   transport::tcp::TcpRemoteTransport,
 };
@@ -51,8 +55,17 @@ struct RecordingEventSubscriber {
 
 struct CustomPayload;
 
+struct StartRemoteWatch {
+  target: ActorRef,
+}
+
 struct CustomPayloadSerializer {
   id: SerializerId,
+}
+
+struct RecordingTerminationActor {
+  terminated_tx: UnboundedSender<Pid>,
+  watched_tx:    UnboundedSender<()>,
 }
 
 impl RecordingBytesActor {
@@ -73,11 +86,38 @@ impl CustomPayloadSerializer {
   }
 }
 
+impl StartRemoteWatch {
+  fn new(target: ActorRef) -> Self {
+    Self { target }
+  }
+}
+
+impl RecordingTerminationActor {
+  fn new(terminated_tx: UnboundedSender<Pid>, watched_tx: UnboundedSender<()>) -> Self {
+    Self { terminated_tx, watched_tx }
+  }
+}
+
 impl Actor for RecordingBytesActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(bytes) = message.downcast_ref::<Bytes>() {
       self.tx.send(bytes.clone()).expect("recording channel should be open");
     }
+    Ok(())
+  }
+}
+
+impl Actor for RecordingTerminationActor {
+  fn receive(&mut self, context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(command) = message.downcast_ref::<StartRemoteWatch>() {
+      context.watch(&command.target).expect("remote watch should install");
+      self.watched_tx.send(()).expect("watch recording channel should be open");
+    }
+    Ok(())
+  }
+
+  fn on_terminated(&mut self, _context: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
+    self.terminated_tx.send(terminated).expect("termination recording channel should be open");
     Ok(())
   }
 }
@@ -416,6 +456,86 @@ fn inbound_delivery_bridge_sends_bytes_payload_to_local_actor() {
 
   let received = rx.recv_timeout(Duration::from_secs(1)).expect("local actor should receive inbound remote payload");
   assert_eq!(received, Bytes::from_static(b"inbound payload"));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn inbound_delivery_bridge_deduplicates_remote_deathwatch_notification() {
+  let local_address = Address::new("local-sys", "127.0.0.1", 2551);
+  let remoting_installer = ArcShared::new(RemotingExtensionInstaller::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]),
+    remote_config(),
+  ));
+  let installers = ExtensionInstallers::default().with_shared_extension_installer(remoting_installer.clone());
+  let provider_installer = StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(
+    UniqueAddress::new(local_address, 7),
+    remoting_installer,
+  );
+  let config = std_actor_system_config(TestTickDriver::default())
+    .with_system_name("local-sys")
+    .with_extension_installers(installers)
+    .with_actor_ref_provider_installer(provider_installer);
+  let system = ActorSystem::create_with_noop_guardian(config).expect("actor system should build");
+  let (terminated_tx, mut terminated_rx) = tokio_mpsc::unbounded_channel();
+  let (watched_tx, mut watched_rx) = tokio_mpsc::unbounded_channel();
+  let props = Props::from_fn({
+    let terminated_tx = terminated_tx.clone();
+    let watched_tx = watched_tx.clone();
+    move || RecordingTerminationActor::new(terminated_tx.clone(), watched_tx.clone())
+  });
+  let watcher = system.actor_of_named(&props, "remote-watcher").expect("watcher actor should spawn");
+  let watcher_path = watcher.actor_ref().path().expect("watcher path");
+  assert_eq!(system.pid_by_path(&watcher_path), Some(watcher.actor_ref().pid()));
+  let remote_target_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/target")
+    .expect("remote target path should parse");
+  let remote_target = system.resolve_actor_ref(remote_target_path.clone()).expect("remote target should resolve");
+  assert_eq!(
+    system.resolve_actor_ref(remote_target_path.clone()).expect("remote target should stay cached").pid(),
+    remote_target.pid()
+  );
+  let mut watcher_ref = watcher.actor_ref().clone();
+
+  watcher_ref
+    .try_tell(AnyMessage::new(StartRemoteWatch::new(remote_target.clone())))
+    .expect("watch command should reach local actor");
+  timeout(Duration::from_secs(1), watched_rx.recv()).await.expect("watch should be installed").expect("watch channel");
+  assert!(
+    system
+      .state()
+      .cell(&watcher.actor_ref().pid())
+      .expect("watcher cell should exist")
+      .is_watching(remote_target.pid()),
+    "watcher should track remote target before inbound notification"
+  );
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      watcher_path.clone(),
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(0, 0))),
+      Some(remote_target_path.clone()),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  let terminated = timeout(Duration::from_secs(1), terminated_rx.recv())
+    .await
+    .expect("termination should be delivered once")
+    .expect("termination channel");
+  assert_eq!(terminated, remote_target.pid());
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      watcher_path,
+      RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(0, 0))),
+      Some(remote_target_path),
+      CorrelationId::nil(),
+      OutboundPriority::System,
+    ),
+    &system,
+  );
+  assert!(timeout(Duration::from_millis(50), terminated_rx.recv()).await.is_err());
+  terminate_system(&system).await;
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

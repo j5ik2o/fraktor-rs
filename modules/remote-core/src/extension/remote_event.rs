@@ -3,9 +3,10 @@
 use alloc::boxed::Box;
 
 use crate::{
+  address::Address,
   envelope::OutboundEnvelope,
   transport::{TransportEndpoint, TransportError as ConnectionLostCause},
-  wire::WireFrame,
+  wire::{ControlPdu, WireFrame},
 };
 
 /// Events pushed by adapter code and consumed by the core remote event loop.
@@ -36,6 +37,22 @@ pub enum RemoteEvent {
     /// Envelope to enqueue and drain.
     envelope:  Box<OutboundEnvelope>,
     /// Monotonic millis at which the outbound envelope was observed.
+    now_ms:    u64,
+  },
+  /// An outbound control PDU has been submitted by adapter code.
+  OutboundControl {
+    /// Remote address that should receive the control PDU.
+    remote: Address,
+    /// Control PDU to send.
+    pdu:    ControlPdu,
+    /// Monotonic millis at which the outbound control PDU was observed.
+    now_ms: u64,
+  },
+  /// A redelivery timer fired for a remote authority.
+  RedeliveryTimerFired {
+    /// Remote authority whose pending system envelopes should be checked.
+    authority: TransportEndpoint,
+    /// Monotonic millis at which the timer fired.
     now_ms:    u64,
   },
   /// A transport connection was lost.

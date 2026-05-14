@@ -24,7 +24,7 @@ use fraktor_remote_core_rs::{
   envelope::OutboundEnvelope,
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::{ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu},
+  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use tokio::{
@@ -290,6 +290,10 @@ impl TcpRemoteTransport {
     self.send_wire_frame(remote, WireFrame::Control(pdu))
   }
 
+  pub(crate) fn send_ack(&mut self, remote: &Address, pdu: AckPdu) -> Result<(), TransportError> {
+    self.send_wire_frame(remote, WireFrame::Ack(pdu))
+  }
+
   fn send_wire_frame(&mut self, remote: &Address, frame: WireFrame) -> Result<(), TransportError> {
     self.send_wire_frame_to_client(remote, |client| client.send(frame))
   }
@@ -345,6 +349,7 @@ pub(super) fn outbound_envelope_to_pdu(
       Bytes::from(serialized.bytes().to_vec()),
     ),
   ))
+  .map(|pdu| pdu.with_redelivery_sequence(envelope.redelivery_sequence()))
 }
 
 fn remote_address_from_envelope(envelope: &OutboundEnvelope) -> Result<Address, TransportError> {
@@ -438,6 +443,10 @@ impl RemoteTransport for TcpRemoteTransport {
 
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     TcpRemoteTransport::send_control(self, remote, pdu)
+  }
+
+  fn send_ack(&mut self, remote: &Address, pdu: AckPdu) -> Result<(), TransportError> {
+    TcpRemoteTransport::send_ack(self, remote, pdu)
   }
 
   fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError> {

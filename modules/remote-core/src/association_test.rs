@@ -19,7 +19,7 @@ use crate::{
   envelope::{OutboundEnvelope, OutboundPriority},
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, TransportEndpoint},
-  wire::{HandshakeReq, HandshakeRsp},
+  wire::{AckPdu, HandshakeReq, HandshakeRsp},
 };
 
 // ---------------------------------------------------------------------------
@@ -1108,6 +1108,74 @@ fn next_outbound_returns_system_then_user_through_association() {
 }
 
 #[test]
+fn system_envelope_receives_redelivery_sequence_but_user_envelope_does_not() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::User, "u1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+
+  let system = a.next_outbound(11, &mut NoopInstrument).expect("system envelope");
+  assert_eq!(system.redelivery_sequence(), Some(1));
+  let user = a.next_outbound(12, &mut NoopInstrument).expect("user envelope");
+  assert_eq!(user.redelivery_sequence(), None);
+}
+
+#[test]
+fn cumulative_ack_removes_pending_system_envelopes() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s3"), 10);
+
+  let effects = a.apply_ack(&AckPdu::new(2, 2, 0), 20);
+  assert!(effects.is_empty());
+  let resend = a.apply_ack(&AckPdu::new(3, 2, 0b1), 21);
+  assert_resend_payloads(&resend, &["s3"]);
+}
+
+#[test]
+fn nack_bitmap_selects_missing_pending_envelope_for_resend() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s1"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s3"), 10);
+  let _ = enqueue(&mut a, make_envelope(OutboundPriority::System, "s4"), 10);
+
+  let effects = a.apply_ack(&AckPdu::new(4, 1, 0b10), 20);
+  assert_resend_payloads(&effects, &["s3"]);
+}
+
+#[test]
+fn inbound_system_sequence_tracking_generates_ack_and_suppresses_duplicate() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let (deliver_first, first_effects) = a.observe_inbound_system_envelope(1, 10);
+  assert!(deliver_first);
+  assert_ack(&first_effects, 1, 1, 0);
+
+  let (deliver_duplicate, duplicate_effects) = a.observe_inbound_system_envelope(1, 11);
+  assert!(!deliver_duplicate);
+  assert_ack(&duplicate_effects, 1, 1, 0);
+}
+
+#[test]
+fn inbound_system_gap_generates_nack_bitmap_then_advances_when_gap_arrives() {
+  let mut a = active_association_from_config(&RemoteConfig::new("127.0.0.1"));
+
+  let (deliver_first, _) = a.observe_inbound_system_envelope(1, 10);
+  assert!(deliver_first);
+  let (deliver_gap, gap_effects) = a.observe_inbound_system_envelope(3, 11);
+  assert!(deliver_gap);
+  assert_ack(&gap_effects, 3, 1, 0b1);
+
+  let (deliver_missing, filled_effects) = a.observe_inbound_system_envelope(2, 12);
+  assert!(deliver_missing);
+  assert_ack(&filled_effects, 2, 3, 0);
+}
+
+#[test]
 fn apply_backpressure_propagates_to_send_queue() {
   let mut a = new_association();
   associate_idle(&mut a, 0);
@@ -1228,5 +1296,23 @@ fn assert_discard_contains_priority(effects: &[AssociationEffect], priority: Out
       envelopes.iter().any(|envelope| envelope.priority() == priority),
       "discarded envelopes should contain the rejected priority"
     );
+  }
+}
+
+fn assert_resend_payloads(effects: &[AssociationEffect], expected: &[&str]) {
+  let resend =
+    effects.iter().find(|effect| matches!(effect, AssociationEffect::ResendEnvelopes { .. })).expect("resend effect");
+  if let AssociationEffect::ResendEnvelopes { envelopes } = resend {
+    let actual = envelopes.iter().map(payload_string).collect::<Vec<_>>();
+    assert_eq!(actual, expected);
+  }
+}
+
+fn assert_ack(effects: &[AssociationEffect], sequence_number: u64, cumulative_ack: u64, nack_bitmap: u64) {
+  let ack = effects.iter().find(|effect| matches!(effect, AssociationEffect::SendAck { .. })).expect("ack effect");
+  if let AssociationEffect::SendAck { pdu } = ack {
+    assert_eq!(pdu.sequence_number(), sequence_number);
+    assert_eq!(pdu.cumulative_ack(), cumulative_ack);
+    assert_eq!(pdu.nack_bitmap(), nack_bitmap);
   }
 }

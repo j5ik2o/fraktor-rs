@@ -13,7 +13,11 @@ use std::{
 use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
-  actor::{actor_path::ActorPathParser, messaging::AnyMessage},
+  actor::{
+    Pid,
+    actor_path::ActorPathParser,
+    messaging::{AnyMessage, system_message::SystemMessage},
+  },
   event::stream::CorrelationId,
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
 };
@@ -31,7 +35,7 @@ use crate::{
   },
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemoteInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
+  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
 };
 
 struct RecordingTransport {
@@ -44,6 +48,8 @@ struct RecordingTransport {
   send_calls: ArcShared<AtomicUsize>,
   control_calls: ArcShared<AtomicUsize>,
   control_frames: SharedLock<Vec<(Address, ControlPdu)>>,
+  ack_calls: ArcShared<AtomicUsize>,
+  ack_frames: SharedLock<Vec<(Address, AckPdu)>>,
   handshake_calls: ArcShared<AtomicUsize>,
   timeout_calls: ArcShared<AtomicUsize>,
   timeout_before_handshake_calls: ArcShared<AtomicUsize>,
@@ -192,6 +198,8 @@ impl RecordingTransport {
       send_calls: ArcShared::new(AtomicUsize::new(0)),
       control_calls: ArcShared::new(AtomicUsize::new(0)),
       control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      ack_calls: ArcShared::new(AtomicUsize::new(0)),
+      ack_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -210,6 +218,8 @@ impl RecordingTransport {
       send_calls: ArcShared::new(AtomicUsize::new(0)),
       control_calls: ArcShared::new(AtomicUsize::new(0)),
       control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      ack_calls: ArcShared::new(AtomicUsize::new(0)),
+      ack_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -232,6 +242,8 @@ impl RecordingTransport {
       send_calls: ArcShared::new(AtomicUsize::new(0)),
       control_calls: ArcShared::new(AtomicUsize::new(0)),
       control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      ack_calls: ArcShared::new(AtomicUsize::new(0)),
+      ack_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -250,6 +262,8 @@ impl RecordingTransport {
       send_calls: ArcShared::new(AtomicUsize::new(0)),
       control_calls: ArcShared::new(AtomicUsize::new(0)),
       control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      ack_calls: ArcShared::new(AtomicUsize::new(0)),
+      ack_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
       handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -299,6 +313,18 @@ impl RemoteTransport for RecordingTransport {
       return Err(error);
     }
     self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
+    Ok(())
+  }
+
+  fn send_ack(&mut self, remote: &Address, pdu: AckPdu) -> Result<(), TransportError> {
+    self.ack_calls.fetch_add(1, Ordering::Relaxed);
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    if let Err(error) = self.send_result.clone() {
+      return Err(error);
+    }
+    self.ack_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
     Ok(())
   }
 
@@ -1132,6 +1158,47 @@ fn outbound_high_watermark_notification_does_not_pause_internal_drain() {
   remote.handle_remote_event(make_event()).expect("third enqueue should be handled");
 
   assert_eq!(send_calls.load(Ordering::Relaxed), 3);
+}
+
+#[test]
+fn redelivery_timer_resends_unacked_watch_system_message() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_system_message_resend_interval(Duration::from_millis(50));
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let send_calls = transport.send_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before outbound delivery");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/target").expect("recipient path");
+  let sender = ActorPathParser::parse("fraktor.tcp://sys@127.0.0.1:2552/user/watcher").expect("sender path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    Some(sender),
+    AnyMessage::from(SystemMessage::Watch(Pid::new(0, 0))),
+    OutboundPriority::System,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  let authority = TransportEndpoint::new(remote_address.to_string());
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: authority.clone(),
+      envelope:  Box::new(envelope),
+      now_ms:    10,
+    })
+    .expect("watch system message should be sent");
+  remote
+    .handle_remote_event(RemoteEvent::RedeliveryTimerFired { authority: authority.clone(), now_ms: 59 })
+    .expect("early redelivery timer should be ignored");
+  assert_eq!(send_calls.load(Ordering::Relaxed), 1);
+
+  remote
+    .handle_remote_event(RemoteEvent::RedeliveryTimerFired { authority, now_ms: 60 })
+    .expect("redelivery timer should resend unacked watch system message");
+
+  assert_eq!(send_calls.load(Ordering::Relaxed), 2);
 }
 
 #[test]

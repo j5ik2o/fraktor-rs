@@ -688,6 +688,29 @@ fn remote_watch_hook_consumes_unwatch_is_invoked() {
 }
 
 #[test]
+fn remote_watch_hook_consumes_deathwatch_notification_is_invoked() {
+  let state = build_shared_state();
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let calls = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::with_notification(
+    calls.clone(),
+    false,
+    false,
+    true,
+  )));
+
+  state
+    .send_system_message(watcher_pid, SystemMessage::DeathWatchNotification(target_pid))
+    .expect("death-watch notification send ok");
+
+  let calls = calls.lock();
+  assert_eq!(calls.notification_calls, 1);
+  assert_eq!(calls.last_notification, Some((watcher_pid, target_pid)));
+}
+
+#[test]
 fn remote_watch_hook_replaces_previous_registration() {
   let state = build_shared_state_with_noop_dispatcher();
   let watcher_pid = state.allocate_pid();
@@ -759,21 +782,33 @@ struct RestartProbeActor;
 
 #[derive(Default)]
 struct RemoteWatchHookCalls {
-  watch_calls:   usize,
-  unwatch_calls: usize,
-  last_watch:    Option<(Pid, Pid)>,
-  last_unwatch:  Option<(Pid, Pid)>,
+  watch_calls:        usize,
+  unwatch_calls:      usize,
+  notification_calls: usize,
+  last_watch:         Option<(Pid, Pid)>,
+  last_unwatch:       Option<(Pid, Pid)>,
+  last_notification:  Option<(Pid, Pid)>,
 }
 
 struct RecordingRemoteWatchHook {
-  calls:           ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>,
-  consume_watch:   bool,
-  consume_unwatch: bool,
+  calls:                ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>,
+  consume_watch:        bool,
+  consume_unwatch:      bool,
+  consume_notification: bool,
 }
 
 impl RecordingRemoteWatchHook {
   fn new(calls: ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>, consume_watch: bool, consume_unwatch: bool) -> Self {
-    Self { calls, consume_watch, consume_unwatch }
+    Self::with_notification(calls, consume_watch, consume_unwatch, false)
+  }
+
+  fn with_notification(
+    calls: ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>,
+    consume_watch: bool,
+    consume_unwatch: bool,
+    consume_notification: bool,
+  ) -> Self {
+    Self { calls, consume_watch, consume_unwatch, consume_notification }
   }
 }
 
@@ -790,6 +825,13 @@ impl crate::system::remote::RemoteWatchHook for RecordingRemoteWatchHook {
     calls.unwatch_calls += 1;
     calls.last_unwatch = Some((target, watcher));
     self.consume_unwatch
+  }
+
+  fn handle_deathwatch_notification(&mut self, watcher: Pid, terminated: Pid) -> bool {
+    let mut calls = self.calls.lock();
+    calls.notification_calls += 1;
+    calls.last_notification = Some((watcher, terminated));
+    self.consume_notification
   }
 }
 
