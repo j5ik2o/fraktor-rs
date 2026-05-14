@@ -883,6 +883,21 @@ fn start_flush_deduplicates_lane_ids() {
 }
 
 #[test]
+fn start_flush_wraps_flush_id_after_maximum() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  association.set_next_flush_id_for_test(u64::MAX);
+
+  let first = association.start_flush(FlushScope::Shutdown, &[0], Duration::from_millis(50), 100);
+  let second = association.start_flush(FlushScope::BeforeDeathWatchNotification, &[1], Duration::from_millis(50), 101);
+
+  assert!(matches!(&first[0], AssociationEffect::ScheduleFlushTimeout { flush_id, .. } if *flush_id == u64::MAX));
+  assert_flush_request(&first[1], u64::MAX, FlushScope::Shutdown, 0, 1);
+  assert!(matches!(&second[0], AssociationEffect::ScheduleFlushTimeout { flush_id: 0, .. }));
+  assert_flush_request(&second[1], 0, FlushScope::BeforeDeathWatchNotification, 1, 1);
+}
+
+#[test]
 fn start_flush_fails_when_association_is_not_active() {
   let mut association = new_association();
 

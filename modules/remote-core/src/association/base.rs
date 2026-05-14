@@ -786,7 +786,7 @@ impl Association {
 
   const fn next_flush_id(&mut self) -> u64 {
     let flush_id = self.next_flush_id;
-    self.next_flush_id = self.next_flush_id.saturating_add(1);
+    self.next_flush_id = self.next_flush_id.wrapping_add(1);
     flush_id
   }
 
