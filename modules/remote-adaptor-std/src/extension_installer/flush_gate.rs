@@ -18,7 +18,7 @@ use fraktor_remote_core_rs::{
 use tokio::{
   sync::{
     Notify,
-    mpsc::{self, Sender, UnboundedSender, error::TrySendError},
+    mpsc::{self, Sender, error::TrySendError},
   },
   time::sleep,
 };
@@ -26,6 +26,7 @@ use tokio::{
 use crate::association::std_instant_elapsed_millis;
 
 const FLUSH_GATE_LOCK_POISONED: &str = "std flush gate lock should not be poisoned";
+const RETRY_QUEUE_CAPACITY: usize = 64;
 
 /// Coordinates std-owned waiters and pending notifications for flush outcomes.
 #[derive(Clone)]
@@ -52,7 +53,7 @@ pub(crate) struct StdFlushNotification<'a> {
 struct StdFlushGateState {
   pending_notifications: Vec<PendingNotification>,
   shutdown_waiters:      Vec<StdFlushWaitHandle>,
-  retry_sender:          Option<UnboundedSender<RemoteEvent>>,
+  retry_sender:          Option<Sender<RemoteEvent>>,
 }
 
 struct PendingNotification {
@@ -240,17 +241,23 @@ impl StdFlushGate {
   fn defer_outbound_event(&self, event_sender: &Sender<RemoteEvent>, event: RemoteEvent) {
     tracing::warn!("remote watch notification event queue is full");
     let retry_sender = self.retry_sender_for(event_sender);
-    if retry_sender.send(event).is_err() {
-      tracing::warn!("remote watch notification retry queue is closed");
+    match retry_sender.try_send(event) {
+      | Ok(()) => {},
+      | Err(TrySendError::Full(_)) => {
+        tracing::warn!("remote watch notification retry queue is full");
+      },
+      | Err(TrySendError::Closed(_)) => {
+        tracing::warn!("remote watch notification retry queue is closed");
+      },
     }
   }
 
-  fn retry_sender_for(&self, event_sender: &Sender<RemoteEvent>) -> UnboundedSender<RemoteEvent> {
+  fn retry_sender_for(&self, event_sender: &Sender<RemoteEvent>) -> Sender<RemoteEvent> {
     let mut state = self.inner.lock().expect(FLUSH_GATE_LOCK_POISONED);
     if let Some(retry_sender) = &state.retry_sender {
       return retry_sender.clone();
     }
-    let (retry_sender, mut retry_receiver) = mpsc::unbounded_channel();
+    let (retry_sender, mut retry_receiver) = mpsc::channel(RETRY_QUEUE_CAPACITY);
     let sender = event_sender.clone();
     let _retry_task = tokio::spawn(async move {
       while let Some(event) = retry_receiver.recv().await {

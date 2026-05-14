@@ -263,6 +263,26 @@ async fn deferred_notifications_reuse_single_retry_worker() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn deferred_notification_retry_queue_is_bounded() {
+  let gate = StdFlushGate::new();
+  let authority = test_authority();
+  let (event_tx, event_rx) = mpsc::channel(1);
+  event_tx.try_send(RemoteEvent::TransportShutdown).expect("event queue should accept first event");
+
+  let retry_sender = gate.retry_sender_for(&event_tx);
+  retry_sender.try_send(test_outbound_event(authority.clone(), 41)).expect("retry queue should accept first event");
+  tokio::task::yield_now().await;
+  for index in 0..RETRY_QUEUE_CAPACITY {
+    retry_sender
+      .try_send(test_outbound_event(authority.clone(), index as u64))
+      .expect("retry queue should accept up to its bounded capacity");
+  }
+
+  gate.defer_outbound_event(&event_tx, test_outbound_event(authority, 42));
+  drop(event_rx);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn deferred_notification_retry_worker_observes_closed_event_queue() {
   let gate = StdFlushGate::new();
   let authority = test_authority();
