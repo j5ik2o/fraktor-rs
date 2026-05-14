@@ -141,6 +141,29 @@ fn pending_notification_waits_for_all_flush_ids() {
 }
 
 #[test]
+fn pending_notification_ignores_outcome_for_other_authority() {
+  let gate = StdFlushGate::new();
+  let authority = test_authority();
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  push_pending_notification(&gate, authority.clone(), vec![1]);
+
+  gate.observe_outcomes(
+    vec![RemoteFlushOutcome::Completed {
+      authority: TransportEndpoint::new("other-sys@10.0.0.2:2552"),
+      flush_id:  1,
+      scope:     FlushScope::BeforeDeathWatchNotification,
+    }],
+    &event_tx,
+  );
+
+  assert!(event_rx.try_recv().is_err());
+  let pending = &gate.inner.lock().expect(FLUSH_GATE_LOCK_POISONED).pending_notifications;
+  assert_eq!(pending.len(), 1);
+  assert_eq!(pending[0].authority, authority);
+  assert_eq!(pending[0].flush_ids, vec![1]);
+}
+
+#[test]
 fn pending_notification_release_observes_full_event_queue() {
   let gate = StdFlushGate::new();
   let authority = test_authority();

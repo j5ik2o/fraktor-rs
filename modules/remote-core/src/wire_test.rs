@@ -349,6 +349,25 @@ fn control_flush_request_roundtrip() {
 }
 
 #[test]
+fn control_flush_request_roundtrips_before_deathwatch_scope() {
+  let pdu = ControlPdu::FlushRequest {
+    authority:     "sys@host:4".to_string(),
+    flush_id:      42,
+    scope:         FlushScope::BeforeDeathWatchNotification,
+    lane_id:       3,
+    expected_acks: 2,
+  };
+  let codec = ControlCodec::new();
+  let mut buf = BytesMut::new();
+  codec.encode(&pdu, &mut buf).unwrap();
+  let mut bytes = to_bytes(buf);
+
+  let decoded = codec.decode(&mut bytes).unwrap();
+
+  assert_eq!(decoded, pdu);
+}
+
+#[test]
 fn control_flush_ack_roundtrip() {
   let pdu = ControlPdu::FlushAck {
     authority:     "sys@host:5".to_string(),

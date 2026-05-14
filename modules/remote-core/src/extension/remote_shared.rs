@@ -94,22 +94,27 @@ impl RemoteShared {
     self.with_write(Remote::drain_inbound_envelopes)
   }
 
-  /// Starts a flush session for active associations.
+  /// Starts a flush session and consumes the outcomes produced by that start.
   ///
-  /// When `authority` is `Some`, only the matching active association is
-  /// targeted. When it is `None`, every active association is targeted.
+  /// This keeps the flush start and outcome drain in a single write-lock
+  /// operation so another event loop cannot consume immediate failure outcomes
+  /// before the caller registers its local waiter or pending notification.
   ///
   /// # Errors
   ///
   /// Returns the same error as [`Remote::start_flush`].
-  pub fn start_flush(
+  pub fn start_flush_and_drain_outcomes(
     &self,
     authority: Option<&TransportEndpoint>,
     scope: FlushScope,
     lane_ids: &[u32],
     now_ms: u64,
-  ) -> Result<Vec<RemoteFlushTimer>, RemotingError> {
-    self.with_write(|remote| remote.start_flush(authority, scope, lane_ids, now_ms))
+  ) -> Result<(Vec<RemoteFlushTimer>, Vec<RemoteFlushOutcome>), RemotingError> {
+    self.with_write(|remote| {
+      let timers = remote.start_flush(authority, scope, lane_ids, now_ms)?;
+      let outcomes = remote.drain_flush_outcomes();
+      Ok((timers, outcomes))
+    })
   }
 
   /// Drains flush outcomes observed by the shared core event loop.

@@ -421,7 +421,7 @@ async fn deathwatch_flush_timer_delivery_observes_closed_event_queue() {
   drop(event_receiver);
 
   assert!(gate.submit_notification(&remote, notification(&event_sender, &target, 3)));
-  sleep(Duration::from_millis(1)).await;
+  sleep(Duration::from_millis(10)).await;
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

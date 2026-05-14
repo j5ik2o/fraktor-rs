@@ -461,10 +461,10 @@ async fn wait_for_shutdown_flush(
 ) -> Result<(), RemotingError> {
   let lane_ids = writer_lane_ids_for_config(config);
   let now_ms = std_instant_elapsed_millis(monotonic_epoch);
-  let timers = remote.start_flush(None, FlushScope::Shutdown, &lane_ids, now_ms)?;
+  let (timers, outcomes) = remote.start_flush_and_drain_outcomes(None, FlushScope::Shutdown, &lane_ids, now_ms)?;
   let waiter = flush_gate.register_shutdown_waiter(&timers);
   schedule_flush_timers(event_sender, monotonic_epoch, &timers);
-  flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);
+  flush_gate.observe_outcomes(outcomes, event_sender);
   if let Some(waiter) = waiter
     && !waiter.wait(config.shutdown_flush_timeout()).await
   {

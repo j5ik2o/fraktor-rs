@@ -602,11 +602,10 @@ impl Remote {
     let index = self.association_index_for_authority(peer_authority)?;
     let peer_remote = self.associations[index].remote();
     if peer_remote != &claimed_remote {
+      let peer = peer_authority.authority();
+      let associated = peer_remote.to_string();
       tracing::warn!(
-        peer = %peer_authority.authority(),
-        claimed = claimed_authority,
-        associated = %peer_remote,
-        "ignoring flush control pdu with mismatched authority"
+        "ignoring flush control pdu with mismatched authority: peer={peer}, claimed={claimed_authority}, associated={associated}"
       );
       return None;
     }

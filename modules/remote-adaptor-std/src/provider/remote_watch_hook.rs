@@ -47,8 +47,8 @@ pub(crate) struct StdRemoteWatchHook {
   event_sender:    Sender<RemoteEvent>,
   watcher_sender:  Sender<WatcherCommand>,
   monotonic_epoch: Instant,
-  remote_shared:   Option<RemoteShared>,
-  flush_gate:      Option<StdFlushGate>,
+  remote_shared:   RemoteShared,
+  flush_gate:      StdFlushGate,
   flush_lane_ids:  Vec<u32>,
 }
 
@@ -67,8 +67,8 @@ impl StdRemoteWatchHook {
       event_sender,
       watcher_sender,
       monotonic_epoch,
-      remote_shared: Some(flush_config.remote_shared),
-      flush_gate: Some(flush_config.flush_gate),
+      remote_shared: flush_config.remote_shared,
+      flush_gate: flush_config.flush_gate,
       flush_lane_ids: flush_config.flush_lane_ids,
     }
   }
@@ -120,37 +120,16 @@ impl StdRemoteWatchHook {
     ))
   }
 
-  fn enqueue_system_message(&self, recipient: ActorPath, sender: Option<ActorPath>, message: SystemMessage) -> bool {
-    let Some((authority, envelope, now_ms)) = self.system_message_envelope(recipient, sender, message) else {
-      return false;
-    };
-    let event = RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms };
-    match self.event_sender.try_send(event) {
-      | Ok(()) => true,
-      | Err(TrySendError::Full(_)) => {
-        tracing::warn!("remote watch notification event queue is full");
-        false
-      },
-      | Err(TrySendError::Closed(_)) => {
-        tracing::warn!("remote watch notification event queue is closed");
-        true
-      },
-    }
-  }
-
   fn enqueue_system_message_after_flush(
     &self,
     recipient: ActorPath,
     sender: Option<ActorPath>,
     message: SystemMessage,
   ) -> bool {
-    let (Some(remote_shared), Some(flush_gate)) = (&self.remote_shared, &self.flush_gate) else {
-      return self.enqueue_system_message(recipient, sender, message);
-    };
     let Some((authority, envelope, now_ms)) = self.system_message_envelope(recipient, sender, message) else {
       return false;
     };
-    flush_gate.submit_notification(remote_shared, StdFlushNotification {
+    self.flush_gate.submit_notification(&self.remote_shared, StdFlushNotification {
       event_sender: &self.event_sender,
       monotonic_epoch: self.monotonic_epoch,
       lane_ids: &self.flush_lane_ids,

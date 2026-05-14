@@ -1546,6 +1546,34 @@ fn flush_request_send_backpressure_exposes_failed_outcome() {
 }
 
 #[test]
+fn remote_shared_start_flush_and_drain_outcomes_returns_immediate_failures() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::Backpressure));
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before starting flush");
+  remote.insert_association(active_association(local_address, remote_address, &config));
+  let remote = RemoteShared::new(remote);
+
+  let (timers, outcomes) = remote
+    .start_flush_and_drain_outcomes(None, FlushScope::BeforeDeathWatchNotification, &[0], 100)
+    .expect("flush send backpressure should be returned with its outcome");
+
+  assert_eq!(timers.len(), 1);
+  assert!(matches!(
+    outcomes.as_slice(),
+    [RemoteFlushOutcome::Failed {
+      flush_id: 1,
+      scope: FlushScope::BeforeDeathWatchNotification,
+      pending_lanes,
+      ..
+    }] if pending_lanes == &vec![0]
+  ));
+  assert!(remote.drain_flush_outcomes().is_empty());
+}
+
+#[test]
 fn remote_flush_outcome_accessors_return_variant_fields() {
   let authority = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
   let completed =
