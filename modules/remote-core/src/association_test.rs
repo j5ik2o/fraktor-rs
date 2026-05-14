@@ -19,7 +19,7 @@ use crate::{
   envelope::{OutboundEnvelope, OutboundPriority},
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, TransportEndpoint},
-  wire::{AckPdu, HandshakeReq, HandshakeRsp},
+  wire::{AckPdu, FlushScope, HandshakeReq, HandshakeRsp},
 };
 
 // ---------------------------------------------------------------------------
@@ -118,6 +118,28 @@ fn active_association_from_config(config: &RemoteConfig) -> Association {
   assert!(!effects.is_empty(), "handshake response should emit lifecycle effects");
   assert!(association.state().is_active());
   association
+}
+
+fn assert_flush_request(
+  effect: &AssociationEffect,
+  expected_flush_id: u64,
+  expected_scope: FlushScope,
+  expected_lane_id: u32,
+  expected_ack_count: u32,
+) {
+  assert!(matches!(
+    effect,
+    AssociationEffect::SendFlushRequest {
+      flush_id,
+      scope,
+      lane_id,
+      expected_acks,
+      ..
+    } if *flush_id == expected_flush_id
+      && *scope == expected_scope
+      && *lane_id == expected_lane_id
+      && *expected_acks == expected_ack_count
+  ));
 }
 
 // ---------------------------------------------------------------------------
@@ -808,6 +830,235 @@ fn recover_from_handshaking_is_no_op() {
   let effects = a.recover(Some(sample_endpoint()), 10, &mut NoopInstrument);
   assert!(matches!(a.state(), AssociationState::Handshaking { .. }));
   assert!(effects.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// flush session semantics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn start_shutdown_flush_emits_lane_requests_and_timer() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+
+  let effects = association.start_flush(FlushScope::Shutdown, &[0, 1, 2], Duration::from_millis(50), 100);
+
+  assert!(matches!(&effects[0], AssociationEffect::ScheduleFlushTimeout {
+    flush_id: 1,
+    scope: FlushScope::Shutdown,
+    deadline_ms: 150,
+    ..
+  }));
+  assert_flush_request(&effects[1], 1, FlushScope::Shutdown, 0, 3);
+  assert_flush_request(&effects[2], 1, FlushScope::Shutdown, 1, 3);
+  assert_flush_request(&effects[3], 1, FlushScope::Shutdown, 2, 3);
+}
+
+#[test]
+fn start_deathwatch_flush_keeps_lane_zero_when_supplied() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+
+  let effects =
+    association.start_flush(FlushScope::BeforeDeathWatchNotification, &[0, 1], Duration::from_millis(50), 100);
+
+  assert_flush_request(&effects[1], 1, FlushScope::BeforeDeathWatchNotification, 0, 2);
+  assert_flush_request(&effects[2], 1, FlushScope::BeforeDeathWatchNotification, 1, 2);
+}
+
+#[test]
+fn start_flush_deduplicates_lane_ids() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+
+  let effects = association.start_flush(FlushScope::Shutdown, &[2, 2, 1], Duration::from_millis(50), 100);
+
+  assert!(matches!(&effects[0], AssociationEffect::ScheduleFlushTimeout {
+    flush_id: 1,
+    scope: FlushScope::Shutdown,
+    ..
+  }));
+  assert_flush_request(&effects[1], 1, FlushScope::Shutdown, 2, 2);
+  assert_flush_request(&effects[2], 1, FlushScope::Shutdown, 1, 2);
+}
+
+#[test]
+fn start_flush_wraps_flush_id_after_maximum() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  association.set_next_flush_id_for_test(u64::MAX);
+
+  let first = association.start_flush(FlushScope::Shutdown, &[0], Duration::from_millis(50), 100);
+  let second = association.start_flush(FlushScope::BeforeDeathWatchNotification, &[1], Duration::from_millis(50), 101);
+
+  assert!(matches!(&first[0], AssociationEffect::ScheduleFlushTimeout { flush_id, .. } if *flush_id == u64::MAX));
+  assert_flush_request(&first[1], u64::MAX, FlushScope::Shutdown, 0, 1);
+  assert!(matches!(&second[0], AssociationEffect::ScheduleFlushTimeout { flush_id: 0, .. }));
+  assert_flush_request(&second[1], 0, FlushScope::BeforeDeathWatchNotification, 1, 1);
+}
+
+#[test]
+fn start_flush_fails_when_association_is_not_active() {
+  let mut association = new_association();
+
+  let effects = association.start_flush(FlushScope::Shutdown, &[0, 0, 1], Duration::from_millis(50), 100);
+
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::FlushFailed {
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      reason,
+      ..
+    }] if pending_lanes == &vec![0, 1] && reason == "association is not active"
+  ));
+}
+
+#[test]
+fn flush_with_empty_lane_set_completes_immediately() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+
+  let effects = association.start_flush(FlushScope::Shutdown, &[], Duration::from_millis(50), 100);
+
+  assert!(matches!(effects.as_slice(), [AssociationEffect::FlushCompleted {
+    flush_id: 1,
+    scope: FlushScope::Shutdown,
+    ..
+  }]));
+}
+
+#[test]
+fn flush_ack_completes_and_duplicate_ack_is_ignored() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started = association.start_flush(FlushScope::Shutdown, &[0, 1], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 3);
+
+  assert!(association.apply_flush_ack(1, 0, 2).is_empty());
+  assert!(association.apply_flush_ack(1, 0, 2).is_empty());
+
+  let effects = association.apply_flush_ack(1, 1, 2);
+
+  assert!(matches!(effects.as_slice(), [AssociationEffect::FlushCompleted {
+    flush_id: 1,
+    scope: FlushScope::Shutdown,
+    ..
+  }]));
+}
+
+#[test]
+fn flush_timer_releases_pending_session() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started = association.start_flush(FlushScope::Shutdown, &[0, 1], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 3);
+
+  assert!(association.flush_timed_out(1, 148).is_empty());
+  let effects = association.flush_timed_out(1, 149);
+
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::FlushTimedOut {
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      ..
+    }] if pending_lanes == &vec![0, 1]
+  ));
+}
+
+#[test]
+fn flush_timer_near_miss_releases_deathwatch_session() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started =
+    association.start_flush(FlushScope::BeforeDeathWatchNotification, &[0, 1], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 3);
+
+  let effects = association.flush_timed_out(1, 149);
+
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::FlushTimedOut {
+      flush_id: 1,
+      scope: FlushScope::BeforeDeathWatchNotification,
+      pending_lanes,
+      ..
+    }] if pending_lanes == &vec![0, 1]
+  ));
+}
+
+#[test]
+fn unknown_flush_inputs_are_ignored() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started = association.start_flush(FlushScope::Shutdown, &[0], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 2);
+
+  assert!(association.apply_flush_ack(99, 0, 1).is_empty());
+  assert!(association.flush_timed_out(99, 200).is_empty());
+  assert!(association.fail_flush(99, String::from("missing")).is_empty());
+}
+
+#[test]
+fn connection_loss_gates_and_fails_pending_flush() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started = association.start_flush(FlushScope::Shutdown, &[0], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 2);
+
+  let effects = association.gate(Some(200), 200);
+
+  assert!(effects.iter().any(|effect| matches!(
+    effect,
+    AssociationEffect::FlushFailed {
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      ..
+    } if pending_lanes == &vec![0]
+  )));
+}
+
+#[test]
+fn quarantine_fails_pending_flush() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  let started = association.start_flush(FlushScope::Shutdown, &[0], Duration::from_millis(50), 100);
+  assert_eq!(started.len(), 2);
+
+  let effects = association.quarantine(QuarantineReason::new("fatal"), 200, &mut NoopInstrument);
+
+  assert!(effects.iter().any(|effect| matches!(
+    effect,
+    AssociationEffect::FlushFailed {
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      ..
+    } if pending_lanes == &vec![0]
+  )));
+}
+
+#[test]
+fn flush_does_not_start_when_prior_outbound_queue_is_pending() {
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut association = active_association_from_config(&config);
+  assert!(enqueue(&mut association, make_envelope(OutboundPriority::User, "queued"), 100).is_empty());
+
+  let effects = association.start_flush(FlushScope::Shutdown, &[0], Duration::from_millis(50), 101);
+
+  assert!(matches!(
+    effects.as_slice(),
+    [AssociationEffect::FlushFailed {
+      flush_id: 1,
+      scope: FlushScope::Shutdown,
+      pending_lanes,
+      ..
+    }] if pending_lanes == &vec![0]
+  ));
 }
 
 // ---------------------------------------------------------------------------

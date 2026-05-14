@@ -32,6 +32,8 @@ mod remote_actor_ref_resolve_cache_outcome;
 mod remote_authority_snapshot;
 mod remote_event;
 mod remote_event_receiver;
+mod remote_flush_outcome;
+mod remote_flush_timer;
 mod remote_run_future;
 mod remote_shared;
 mod remote_shared_run_future;
@@ -48,6 +50,8 @@ pub use remote_actor_ref_resolve_cache_outcome::RemoteActorRefResolveCacheOutcom
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
 pub use remote_event::RemoteEvent;
 pub use remote_event_receiver::RemoteEventReceiver;
+pub use remote_flush_outcome::RemoteFlushOutcome;
+pub use remote_flush_timer::RemoteFlushTimer;
 pub use remote_run_future::RemoteRunFuture;
 pub use remote_shared::RemoteShared;
 pub use remote_shared_run_future::RemoteSharedRunFuture;

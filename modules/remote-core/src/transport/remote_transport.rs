@@ -93,6 +93,20 @@ pub trait RemoteTransport {
   /// `remote` exists, or another transport-specific error when delivery fails.
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError>;
 
+  /// Sends a wire-level flush request to a specific outbound writer lane.
+  ///
+  /// Implementations without lane-aware writers may fall back to
+  /// [`Self::send_control`]. Lane-aware transports must enqueue the request
+  /// behind frames already queued for `lane_id`.
+  ///
+  /// # Errors
+  ///
+  /// Returns the same transport-level errors as [`Self::send_control`].
+  fn send_flush_request(&mut self, remote: &Address, pdu: ControlPdu, lane_id: u32) -> Result<(), TransportError> {
+    let _ = lane_id;
+    self.send_control(remote, pdu)
+  }
+
   /// Sends a wire-level ACK/NACK PDU to `remote`.
   ///
   /// # Errors

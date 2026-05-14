@@ -12,20 +12,23 @@ use fraktor_actor_core_kernel_rs::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, system_message::SystemMessage},
   },
-  event::stream::EventStreamEvent,
+  event::stream::{CorrelationId, EventStreamEvent},
+  serialization::default_serialization_extension_id,
   system::{ActorSystem, remote::RemoteWatchHook},
 };
 use fraktor_remote_core_rs::{
   address::{Address as RemoteCoreAddress, RemoteNodeId, UniqueAddress},
+  association::QuarantineReason,
   config::RemoteConfig,
-  envelope::OutboundPriority,
+  envelope::{OutboundEnvelope, OutboundPriority},
   extension::{
-    REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
-    RemoteEvent,
+    EventPublisher, REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, Remote, RemoteActorRefResolveCacheEvent,
+    RemoteActorRefResolveCacheOutcome, RemoteEvent, RemoteShared,
   },
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
-  transport::TransportEndpoint,
+  transport::{RemoteTransport, TransportEndpoint, TransportError},
   watcher::WatcherCommand,
+  wire::{AckPdu, ControlPdu, HandshakePdu, HandshakeRsp},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
@@ -35,10 +38,12 @@ use tokio::{
 
 use super::{
   StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
-  remote_actor_path_registry::RemoteActorPathRegistry, remote_watch_hook::StdRemoteWatchHook,
+  remote_actor_path_registry::RemoteActorPathRegistry,
+  remote_watch_hook::{StdRemoteWatchFlushConfig, StdRemoteWatchHook},
 };
 use crate::{
-  extension_installer::RemotingExtensionInstaller, tests::test_support_test::EventHarness,
+  extension_installer::{RemotingExtensionInstaller, StdFlushGate},
+  tests::test_support_test::EventHarness,
   transport::tcp::TcpRemoteTransport,
 };
 
@@ -98,6 +103,85 @@ impl RemoteActorRefProvider for RejectingRemoteProvider {
 
   fn unwatch(&mut self, _watchee: ActorPath, _watcher: Pid) -> Result<(), ProviderError> {
     Err(self.error.clone())
+  }
+}
+
+struct NoopRemoteTransport {
+  addresses: Vec<RemoteCoreAddress>,
+}
+
+impl NoopRemoteTransport {
+  fn new(addresses: Vec<RemoteCoreAddress>) -> Self {
+    Self { addresses }
+  }
+}
+
+impl RemoteTransport for NoopRemoteTransport {
+  fn start(&mut self) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn connect_peer(&mut self, _remote: &RemoteCoreAddress) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
+    Ok(())
+  }
+
+  fn send_control(&mut self, _remote: &RemoteCoreAddress, _pdu: ControlPdu) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send_flush_request(
+    &mut self,
+    _remote: &RemoteCoreAddress,
+    _pdu: ControlPdu,
+    _lane_id: u32,
+  ) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send_ack(&mut self, _remote: &RemoteCoreAddress, _pdu: AckPdu) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send_handshake(&mut self, _remote: &RemoteCoreAddress, _pdu: HandshakePdu) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn schedule_handshake_timeout(
+    &mut self,
+    _authority: &TransportEndpoint,
+    _timeout: Duration,
+    _generation: u64,
+  ) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn addresses(&self) -> &[RemoteCoreAddress] {
+    &self.addresses
+  }
+
+  fn default_address(&self) -> Option<&RemoteCoreAddress> {
+    self.addresses.first()
+  }
+
+  fn local_address_for_remote(&self, _remote: &RemoteCoreAddress) -> Option<&RemoteCoreAddress> {
+    self.default_address()
+  }
+
+  fn quarantine(
+    &mut self,
+    _address: &RemoteCoreAddress,
+    _uid: Option<u64>,
+    _reason: QuarantineReason,
+  ) -> Result<(), TransportError> {
+    Ok(())
   }
 }
 
@@ -200,6 +284,17 @@ fn remote_actor_path() -> ActorPath {
   ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse")
 }
 
+fn noop_transport_envelope(target: &RemoteCoreAddress) -> OutboundEnvelope {
+  OutboundEnvelope::new(
+    remote_actor_path(),
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new(target.system(), target.host(), Some(target.port()), 1),
+    CorrelationId::nil(),
+  )
+}
+
 fn register_local_path(system: &ActorSystem, pid: Pid, name: &str) -> ActorPath {
   let path = ActorPath::root().child("user").child(name);
   system.state().register_actor_path(pid, &path);
@@ -227,8 +322,27 @@ fn make_remote_watch_hook_fixture_with_capacities(
   let harness = EventHarness::new();
   let (event_tx, event_rx) = mpsc::channel(event_capacity);
   let (watcher_tx, watcher_rx) = mpsc::channel(watcher_capacity);
-  let hook = StdRemoteWatchHook::new(registry, harness.system().state(), event_tx, watcher_tx, Instant::now());
+  let flush_config = remote_watch_flush_config(&harness);
+  let hook = StdRemoteWatchHook::new_with_flush_gate(
+    registry,
+    harness.system().state(),
+    event_tx,
+    watcher_tx,
+    Instant::now(),
+    flush_config,
+  );
   (hook, event_rx, watcher_rx, harness)
+}
+
+fn remote_watch_flush_config(harness: &EventHarness) -> StdRemoteWatchFlushConfig {
+  let serialization_extension = harness.system().extended().register_extension(&default_serialization_extension_id());
+  let remote = Remote::new(
+    NoopRemoteTransport::new(vec![RemoteCoreAddress::new("local-sys", "127.0.0.1", 0)]),
+    RemoteConfig::new("127.0.0.1"),
+    EventPublisher::new(harness.system().downgrade()),
+    serialization_extension,
+  );
+  StdRemoteWatchFlushConfig::new(RemoteShared::new(remote), StdFlushGate::default(), vec![0])
 }
 
 // ---------------------------------------------------------------------------
@@ -243,6 +357,33 @@ fn local_path_without_authority_is_dispatched_to_local_provider() {
   // the call lands on `LocalProvider(...)` (not on `CoreProvider`).
   let err = provider.actor_ref(local_path).unwrap_err();
   assert!(matches!(err, StdRemoteActorRefProviderError::LocalProvider(_)), "expected LocalProvider error, got {err:?}");
+}
+
+#[test]
+fn noop_remote_transport_fixture_handles_provider_flush_contract_without_io() {
+  let local = RemoteCoreAddress::new("local-sys", "127.0.0.1", 2551);
+  let remote = RemoteCoreAddress::new("remote-sys", "10.0.0.1", 2552);
+  let mut transport = NoopRemoteTransport::new(vec![local.clone()]);
+
+  assert_eq!(transport.addresses(), [local.clone()].as_slice());
+  assert_eq!(transport.default_address(), Some(&local));
+  assert_eq!(transport.local_address_for_remote(&remote), Some(&local));
+
+  transport.start().expect("start should be a no-op");
+  transport.connect_peer(&remote).expect("connect should be a no-op");
+  transport.send(noop_transport_envelope(&remote)).expect("send should be a no-op");
+  let control = ControlPdu::Shutdown { authority: local.to_string() };
+  transport.send_control(&remote, control.clone()).expect("control send should be a no-op");
+  transport.send_flush_request(&remote, control, 0).expect("flush request should be a no-op");
+  transport.send_ack(&remote, AckPdu::new(1, 1, 0)).expect("ack should be a no-op");
+  transport
+    .send_handshake(&remote, HandshakePdu::Rsp(HandshakeRsp::new(UniqueAddress::new(local.clone(), 1))))
+    .expect("handshake should be a no-op");
+  transport
+    .schedule_handshake_timeout(&TransportEndpoint::new(remote.to_string()), Duration::from_millis(1), 1)
+    .expect("handshake timeout should be a no-op");
+  transport.quarantine(&remote, Some(1), QuarantineReason::new("test")).expect("quarantine should be a no-op");
+  transport.shutdown().expect("shutdown should be a no-op");
 }
 
 #[test]
@@ -703,8 +844,8 @@ fn remote_watch_hook_forwards_deathwatch_notification_without_sender_when_termin
   ));
 }
 
-#[test]
-fn remote_watch_hook_returns_false_when_notification_event_queue_is_full() {
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_watch_hook_defers_notification_when_event_queue_is_full() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_watcher_pid = Pid::new(934, 0);
   let remote_watcher_path = remote_actor_path();
@@ -714,8 +855,13 @@ fn remote_watch_hook_returns_false_when_notification_event_queue_is_full() {
   let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-full");
 
   assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
-  assert!(!hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
   assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundEnqueued { .. })));
+  let deferred = timeout(Duration::from_millis(50), event_rx.recv())
+    .await
+    .expect("deferred notification should be delivered")
+    .expect("event queue should remain open");
+  assert!(matches!(deferred, RemoteEvent::OutboundEnqueued { .. }));
   assert!(event_rx.try_recv().is_err());
 }
 

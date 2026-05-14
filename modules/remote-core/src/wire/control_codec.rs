@@ -5,6 +5,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use crate::wire::{
   codec::Codec,
   control_pdu::ControlPdu,
+  flush_scope::FlushScope,
   frame_header::KIND_CONTROL,
   primitives::{
     begin_frame, decode_option_string, decode_string, encode_option_string, encode_string, patch_frame_length,
@@ -17,6 +18,8 @@ const SUBKIND_HEARTBEAT: u8 = 0x00;
 const SUBKIND_QUARANTINE: u8 = 0x01;
 const SUBKIND_SHUTDOWN: u8 = 0x02;
 const SUBKIND_HEARTBEAT_RESPONSE: u8 = 0x03;
+const SUBKIND_FLUSH_REQUEST: u8 = 0x04;
+const SUBKIND_FLUSH_ACK: u8 = 0x05;
 
 /// Zero-sized codec for [`ControlPdu`].
 #[derive(Clone, Copy, Debug, Default)]
@@ -55,6 +58,23 @@ impl Codec<ControlPdu> for ControlCodec {
         encode_string(authority, buf)?;
         encode_option_string(None, buf)?;
       },
+      | ControlPdu::FlushRequest { authority, flush_id, scope, lane_id, expected_acks } => {
+        buf.put_u8(SUBKIND_FLUSH_REQUEST);
+        encode_string(authority, buf)?;
+        encode_option_string(None, buf)?;
+        buf.put_u64(*flush_id);
+        buf.put_u8(scope.to_wire());
+        buf.put_u32(*lane_id);
+        buf.put_u32(*expected_acks);
+      },
+      | ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks } => {
+        buf.put_u8(SUBKIND_FLUSH_ACK);
+        encode_string(authority, buf)?;
+        encode_option_string(None, buf)?;
+        buf.put_u64(*flush_id);
+        buf.put_u32(*lane_id);
+        buf.put_u32(*expected_acks);
+      },
     }
     patch_frame_length(buf, len_pos)
   }
@@ -77,6 +97,25 @@ impl Codec<ControlPdu> for ControlCodec {
       },
       | SUBKIND_QUARANTINE => Ok(ControlPdu::Quarantine { authority, reason }),
       | SUBKIND_SHUTDOWN => Ok(ControlPdu::Shutdown { authority }),
+      | SUBKIND_FLUSH_REQUEST => {
+        if buf.remaining() < 17 {
+          return Err(WireError::Truncated);
+        }
+        let flush_id = buf.get_u64();
+        let scope = FlushScope::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
+        let lane_id = buf.get_u32();
+        let expected_acks = buf.get_u32();
+        Ok(ControlPdu::FlushRequest { authority, flush_id, scope, lane_id, expected_acks })
+      },
+      | SUBKIND_FLUSH_ACK => {
+        if buf.remaining() < 16 {
+          return Err(WireError::Truncated);
+        }
+        let flush_id = buf.get_u64();
+        let lane_id = buf.get_u32();
+        let expected_acks = buf.get_u32();
+        Ok(ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks })
+      },
       | _ => Err(WireError::InvalidFormat),
     }
   }

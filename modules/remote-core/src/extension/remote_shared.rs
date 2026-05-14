@@ -15,7 +15,12 @@ use crate::{
   address::Address,
   association::QuarantineReason,
   envelope::InboundEnvelope,
-  extension::{Remote, RemoteEvent, RemoteEventReceiver, RemoteSharedRunFuture, Remoting, RemotingError},
+  extension::{
+    Remote, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteFlushTimer, RemoteSharedRunFuture, Remoting,
+    RemotingError,
+  },
+  transport::TransportEndpoint,
+  wire::FlushScope,
 };
 
 /// Shared wrapper for driving remoting through interior locking.
@@ -87,6 +92,35 @@ impl RemoteShared {
   #[must_use]
   pub fn drain_inbound_envelopes(&self) -> Vec<InboundEnvelope> {
     self.with_write(Remote::drain_inbound_envelopes)
+  }
+
+  /// Starts a flush session and consumes the outcomes produced by that start.
+  ///
+  /// This keeps the flush start and outcome drain in a single write-lock
+  /// operation so another event loop cannot consume immediate failure outcomes
+  /// before the caller registers its local waiter or pending notification.
+  ///
+  /// # Errors
+  ///
+  /// Returns the same error as [`Remote::start_flush`].
+  pub fn start_flush_and_drain_outcomes(
+    &self,
+    authority: Option<&TransportEndpoint>,
+    scope: FlushScope,
+    lane_ids: &[u32],
+    now_ms: u64,
+  ) -> Result<(Vec<RemoteFlushTimer>, Vec<RemoteFlushOutcome>), RemotingError> {
+    self.with_write(|remote| {
+      let timers = remote.start_flush(authority, scope, lane_ids, now_ms)?;
+      let outcomes = remote.drain_flush_outcomes();
+      Ok((timers, outcomes))
+    })
+  }
+
+  /// Drains flush outcomes observed by the shared core event loop.
+  #[must_use]
+  pub fn drain_flush_outcomes(&self) -> Vec<RemoteFlushOutcome> {
+    self.with_write(Remote::drain_flush_outcomes)
   }
 
   /// Establishes a transport peer writer for `remote`.
