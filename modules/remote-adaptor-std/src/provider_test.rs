@@ -720,7 +720,7 @@ fn remote_watch_hook_returns_false_when_notification_event_queue_is_full() {
 }
 
 #[test]
-fn remote_watch_hook_returns_false_when_notification_event_queue_is_closed() {
+fn remote_watch_hook_returns_true_when_notification_event_queue_is_closed() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_watcher_pid = Pid::new(936, 0);
   let remote_watcher_path = remote_actor_path();
@@ -730,5 +730,5 @@ fn remote_watch_hook_returns_false_when_notification_event_queue_is_closed() {
   let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-closed");
   drop(event_rx);
 
-  assert!(!hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
+  assert!(hook.handle_deathwatch_notification(remote_watcher_pid, terminated_pid));
 }

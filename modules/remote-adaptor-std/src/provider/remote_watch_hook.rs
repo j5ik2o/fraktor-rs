@@ -87,9 +87,13 @@ impl StdRemoteWatchHook {
     };
     match self.event_sender.try_send(event) {
       | Ok(()) => true,
-      | Err(TrySendError::Full(_) | TrySendError::Closed(_)) => {
-        tracing::warn!("remote watch notification event queue rejected envelope");
+      | Err(TrySendError::Full(_)) => {
+        tracing::warn!("remote watch notification event queue is full");
         false
+      },
+      | Err(TrySendError::Closed(_)) => {
+        tracing::warn!("remote watch notification event queue is closed");
+        true
       },
     }
   }

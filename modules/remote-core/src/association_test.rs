@@ -1211,7 +1211,7 @@ fn resend_due_skips_system_envelope_that_has_not_been_sent() {
 }
 
 #[test]
-fn enqueue_in_active_discards_when_redelivery_window_is_full() {
+fn enqueue_in_active_quarantines_when_redelivery_window_is_full() {
   let config = RemoteConfig::new("localhost").with_ack_send_window(1);
   let mut a = active_association_from_config(&config);
 
@@ -1219,7 +1219,14 @@ fn enqueue_in_active_discards_when_redelivery_window_is_full() {
   let second = enqueue(&mut a, make_envelope(OutboundPriority::System, "s2"), 11);
 
   assert!(first.is_empty());
-  assert_single_discard_with_priority(&second, OutboundPriority::System);
+  assert!(a.state().is_quarantined(), "redelivery window overflow must quarantine the association");
+  assert!(
+    second
+      .iter()
+      .any(|effect| matches!(effect, AssociationEffect::PublishLifecycle(RemotingLifecycleEvent::Quarantined { .. }))),
+    "redelivery window overflow must publish a quarantine lifecycle event"
+  );
+  assert_discard_contains_priority(&second, OutboundPriority::System);
 }
 
 #[test]

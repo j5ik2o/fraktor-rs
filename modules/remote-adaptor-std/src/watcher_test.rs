@@ -159,7 +159,7 @@ async fn watcher_send_helpers_log_and_return_when_event_receiver_is_closed() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn send_system_envelope_returns_when_recipient_is_local() {
+async fn send_system_envelope_does_not_enqueue_event_for_local_recipient() {
   let (event_tx, mut event_rx) = mpsc::channel(1);
 
   send_system_envelope(

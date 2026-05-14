@@ -292,6 +292,9 @@ impl Remote {
     let Some(association_index) = self.association_index_for_authority(authority) else {
       return Ok(());
     };
+    if !self.associations[association_index].state().is_active() {
+      return Ok(());
+    }
     let resend_after_ms = duration_to_saturated_millis(self.config.system_message_resend_interval());
     let effects = self.associations[association_index].resend_due(now_ms, resend_after_ms);
     self.apply_association_effects(association_index, effects, now_ms)

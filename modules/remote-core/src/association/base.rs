@@ -632,7 +632,7 @@ impl Association {
       return self.control_queue_overflow_effects(envelope, now_ms, instrument);
     }
     if !self.redelivery_window_has_capacity_for(&envelope) {
-      return Self::queue_full_discard_effect(envelope);
+      return self.control_queue_overflow_effects(envelope, now_ms, instrument);
     }
     let (envelope, redelivery_sequence) = self.assign_redelivery_sequence(envelope);
     let pending = envelope.clone();

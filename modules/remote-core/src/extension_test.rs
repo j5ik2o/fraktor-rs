@@ -1376,6 +1376,34 @@ fn redelivery_timer_requeues_system_message_when_transport_is_unavailable() {
 }
 
 #[test]
+fn redelivery_timer_ignores_handshaking_association() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1").with_system_message_resend_interval(Duration::from_millis(50));
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let send_calls = transport.send_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before connection loss");
+  remote.insert_association(association_with_sent_system_envelope(local_address, remote_address.clone(), &config));
+  let authority = TransportEndpoint::new(remote_address.to_string());
+
+  remote
+    .handle_remote_event(RemoteEvent::ConnectionLost {
+      authority: authority.clone(),
+      cause:     TransportError::ConnectionClosed,
+      now_ms:    42,
+    })
+    .expect("connection loss should start handshake recovery");
+  remote
+    .handle_remote_event(RemoteEvent::RedeliveryTimerFired { authority, now_ms: 100 })
+    .expect("handshaking redelivery timer should be ignored");
+
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(send_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
 fn connection_lost_recovers_active_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
