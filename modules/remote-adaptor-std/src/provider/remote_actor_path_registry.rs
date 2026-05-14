@@ -19,6 +19,10 @@ impl RemoteActorPathRegistry {
     self.paths.insert(pid, path);
   }
 
+  pub(crate) fn remove(&mut self, pid: &Pid) {
+    drop(self.paths.remove(pid));
+  }
+
   pub(crate) fn path_for_pid(&self, pid: &Pid) -> Option<ActorPath> {
     self.paths.get(pid).cloned()
   }

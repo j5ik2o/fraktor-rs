@@ -196,7 +196,7 @@ impl StdRemoteActorRefProvider {
     let pid = Self::allocate_remote_pid(next_remote_pid)?;
     let path = remote_ref.path().clone();
     registry.with_lock(|registry| registry.record(pid, path.clone()));
-    let sender = RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch);
+    let sender = RemoteActorRefSender::new(pid, remote_ref, event_sender, registry.clone(), monotonic_epoch);
     Ok(ActorRef::with_canonical_path(pid, sender, path))
   }
 
