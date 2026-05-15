@@ -600,18 +600,17 @@ impl ActorSystem {
       return Ok(None);
     };
 
-    let deployable_metadata = props.deployable_metadata().cloned();
+    let Some(deployable_metadata) = props.deployable_metadata().cloned() else {
+      self.state.release_name(parent, name);
+      return Err(SpawnError::invalid_props("remote deployment requires deployable props metadata"));
+    };
     let request =
-      RemoteDeploymentRequest::new(parent_pid, pid, name.to_string(), child_path, scope, deployable_metadata.clone());
+      RemoteDeploymentRequest::new(parent_pid, pid, name.to_string(), child_path, scope, Some(deployable_metadata));
     match self.state.deploy_remote_child(request) {
       | RemoteDeploymentOutcome::UseLocalDeployment => Ok(None),
-      | RemoteDeploymentOutcome::RemoteCreated(actor_ref) if deployable_metadata.is_some() => {
+      | RemoteDeploymentOutcome::RemoteCreated(actor_ref) => {
         self.state.release_name(parent, name);
         Ok(Some(ChildRef::new(actor_ref, self.state.clone())))
-      },
-      | RemoteDeploymentOutcome::RemoteCreated(_) => {
-        self.state.release_name(parent, name);
-        Err(SpawnError::invalid_props("remote deployment requires deployable props metadata"))
       },
       | RemoteDeploymentOutcome::Failed(reason) => {
         self.state.release_name(parent, name);

@@ -220,7 +220,7 @@ fn remote_deployment_use_local_outcome_continues_local_spawn() {
     TestRemoteDeploymentOutcome::UseLocalDeployment,
   ));
 
-  let child = system.actor_of_named(&Props::from_fn(|| TestActor), "loopback-child").expect("local child should spawn");
+  let child = system.actor_of_named(&deployable_test_props(), "loopback-child").expect("local child should spawn");
 
   assert_eq!(calls.lock().len(), 1);
   assert!(system.actor_ref_by_pid(child.pid()).is_some());
@@ -276,7 +276,7 @@ fn remote_deployment_non_deployable_remote_create_is_spawn_error() {
     },
     | other => panic!("expected invalid props, got {other:?}"),
   }
-  assert!(calls.lock().first().and_then(RemoteDeploymentRequest::deployable_metadata).is_none());
+  assert!(calls.lock().is_empty());
 }
 
 #[test]
