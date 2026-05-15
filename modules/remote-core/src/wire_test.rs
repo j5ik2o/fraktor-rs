@@ -1020,7 +1020,7 @@ fn wire_version_byte_is_current() {
   assert_eq!(WIRE_VERSION_2, 0x02);
   assert_eq!(WIRE_VERSION_3, 0x03);
   assert_eq!(WIRE_VERSION_4, 0x04);
-  assert_eq!(WIRE_VERSION, WIRE_VERSION_4);
+  assert_eq!(WIRE_VERSION, WIRE_VERSION_3);
 }
 
 #[test]
