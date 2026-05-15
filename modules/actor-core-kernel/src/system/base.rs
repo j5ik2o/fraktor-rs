@@ -645,12 +645,10 @@ impl ActorSystem {
     let Some((child_path, scope)) = self.remote_deployment_for(parent_pid, name_hint) else {
       return Ok(None);
     };
-    let name = self.state.assign_name(parent, Some(name_hint), REMOTE_DEPLOYMENT_RESERVED_PID)?;
-
     let Some(deployable_metadata) = props.deployable_metadata().cloned() else {
-      self.state.release_name(parent, &name);
       return Err(SpawnError::invalid_props("remote deployment requires deployable props metadata"));
     };
+    let name = self.state.assign_name(parent, Some(name_hint), REMOTE_DEPLOYMENT_RESERVED_PID)?;
     let request = RemoteDeploymentRequest::new(
       parent_pid,
       REMOTE_DEPLOYMENT_RESERVED_PID,
