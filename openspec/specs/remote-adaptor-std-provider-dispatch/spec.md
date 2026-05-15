@@ -158,3 +158,86 @@ TBD - created by archiving change remote-redesign. Update Purpose after archive.
 
 - **WHEN** ローカル actor を watch するユースケースを設計書として確認する
 - **THEN** `StdRemoteActorRefProvider::watch` ではなく、解決済み local `ActorRef` に対する actor-core の通常経路 (`ActorContext::watch` 等) を使うことが明記されている
+
+### Requirement: provider registers remote watch hook
+
+std remote actor-ref provider installer は actor-core に remote watch hook を登録する SHALL。hook は provider が materialize した remote actor ref の pid/path mapping を使い、remote-bound watch/unwatch/notification を std watcher task または remote outbound lane へ渡す。
+
+#### Scenario: installer registers hook
+
+- **WHEN** `StdRemoteActorRefProviderInstaller::install` が remote-aware provider を actor system に登録する
+- **THEN** installer は同じ actor system に remote watch hook を登録する
+- **AND** hook は provider が保持する remote pid/path mapping を参照できる
+
+#### Scenario: remote actor ref materialization records mapping
+
+- **WHEN** `StdRemoteActorRefProvider::actor_ref(remote_path)` が remote actor ref を materialize する
+- **THEN** provider は生成した synthetic remote pid と `remote_path` の対応を registry に記録する
+- **AND** registry は remote watch hook から参照できる
+
+#### Scenario: local actor ref is not recorded as remote mapping
+
+- **WHEN** `StdRemoteActorRefProvider::actor_ref(local_path)` が local provider に委譲される
+- **THEN** provider は local actor の pid/path を remote pid/path registry に記録しない
+
+### Requirement: remote watch hook forwards watch commands
+
+remote watch hook は actor-core から渡された target pid と watcher pid を actor path へ解決し、remote target に対する watch/unwatch command を std watcher task へ渡す SHALL。解決できない場合は hook が `false` を返し、actor-core の既存 fallback を維持する MUST。
+
+#### Scenario: remote watch is forwarded
+
+- **GIVEN** target pid が provider の remote pid/path registry に存在する
+- **AND** watcher pid が local actor path として解決できる
+- **WHEN** actor-core が `SystemMessage::Watch(watcher)` を target pid へ送る
+- **THEN** remote watch hook は `WatcherCommand::Watch { target, watcher }` 相当を std watcher task へ渡す
+- **AND** hook は `true` を返す
+
+#### Scenario: remote unwatch is forwarded
+
+- **GIVEN** target pid が provider の remote pid/path registry に存在する
+- **AND** watcher pid が local actor path として解決できる
+- **WHEN** actor-core が `SystemMessage::Unwatch(watcher)` を target pid へ送る
+- **THEN** remote watch hook は `WatcherCommand::Unwatch { target, watcher }` 相当を std watcher task へ渡す
+- **AND** hook は `true` を返す
+
+#### Scenario: unresolved mapping does not consume
+
+- **WHEN** remote watch hook が target pid または watcher pid を actor path へ解決できない
+- **THEN** hook は `false` を返す
+- **AND** actor-core は既存 fallback を実行できる
+
+### Requirement: remote watch hook forwards DeathWatchNotification
+
+remote watch hook は actor-core から渡された remote watcher pid と terminated target pid を actor path へ解決し、remote-bound `DeathWatchNotification` を system priority envelope として enqueue する前に std flush gate へ渡す SHALL。remote watcher pid を解決できない場合、hook は notification を消費してはならない（MUST NOT）。
+
+remote watcher pid は解決できたが terminated target pid を local actor path へ解決できない場合、hook は notification を消費する SHALL。ただし invalid actor path metadata を持つ notification を enqueue してはならず（MUST NOT）、解決失敗を log または test-observable error path で観測可能にする MUST。
+
+#### Scenario: remote notification is gated before enqueue
+
+- **GIVEN** watcher pid が provider の remote pid/path registry に存在する
+- **AND** terminated target pid が local actor path として解決できる
+- **WHEN** actor-core が `SystemMessage::DeathWatchNotification(target)` を watcher pid へ送る
+- **THEN** remote watch hook は recipient を watcher path、sender metadata を target path とする pending notification を std flush gate へ渡す
+- **AND** hook は同じ call stack で `RemoteEvent::OutboundEnqueued` を送らない
+- **AND** hook は `true` を返す
+
+#### Scenario: flush outcome enqueues remote notification
+
+- **GIVEN** remote watch hook が std flush gate に pending notification を渡している
+- **WHEN** flush gate が matching `BeforeDeathWatchNotification` flush completed / timed-out / failed outcome を観測する
+- **THEN** flush gate は pending notification を `RemoteEvent::OutboundEnqueued` の system priority envelope として enqueue する
+- **AND** notification は一度だけ enqueue される
+
+#### Scenario: unresolved remote watcher does not consume notification
+
+- **WHEN** remote watch hook が watcher pid を remote actor path へ解決できない
+- **THEN** hook は `false` を返す
+- **AND** notification を std flush gate または remote outbound lane へ渡さない
+
+#### Scenario: unresolved local target does not send invalid notification
+
+- **GIVEN** watcher pid が provider の remote pid/path registry に存在する
+- **WHEN** remote watch hook が terminated target pid を local actor path へ解決できない
+- **THEN** hook は `true` を返す
+- **AND** invalid actor path metadata を持つ notification を std flush gate または remote outbound lane へ渡さない
+- **AND** failure は log または test-observable error path で観測できる
