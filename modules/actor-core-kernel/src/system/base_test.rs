@@ -311,6 +311,21 @@ fn remote_deployment_remote_child_lifecycle_commands_are_unsupported() {
   assert_remote_lifecycle_unsupported(child.resume());
 }
 
+#[test]
+fn terminated_local_child_with_canonical_authority_is_not_remote_child() {
+  let remoting = RemotingConfig::default().with_canonical_host("127.0.0.1").with_canonical_port(2552);
+  let system = ActorSystem::new_empty_with(|config| config.with_remoting_config(remoting));
+  let child = system.actor_of_named(&Props::from_fn(|| TestActor), "local-child").expect("local child should spawn");
+  let canonical_path = child.actor_ref().canonical_path().expect("canonical path");
+
+  assert!(canonical_path.parts().authority_endpoint().is_some());
+
+  system.state().remove_cell(&child.pid());
+  let result = child.stop();
+
+  assert!(matches!(result, Err(SendError::Closed(_))));
+}
+
 struct SpawnRecorderActor {
   log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
