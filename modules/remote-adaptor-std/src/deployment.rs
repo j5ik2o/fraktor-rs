@@ -31,7 +31,7 @@ use tokio::{
   task::JoinHandle,
 };
 
-use crate::association::std_instant_elapsed_millis;
+use crate::association::{parse_remote_authority, std_instant_elapsed_millis};
 
 const PARENT_PATH_INVALID: &str = "target parent path is invalid";
 const MAX_STALE_DEPLOYMENT_RESPONSES: usize = 128;
@@ -245,8 +245,8 @@ fn spawn_error(error: SpawnError) -> (RemoteDeploymentFailureCode, String) {
 }
 
 fn response_remote_for_command(command: &DeploymentDaemonCommand) -> Option<Address> {
-  let authority = parse_remote_address(command.authority.authority());
-  let origin = parse_remote_address(command.request.origin_node());
+  let authority = parse_remote_authority(command.authority.authority());
+  let origin = parse_remote_authority(command.request.origin_node());
   match (authority, origin) {
     | (Some(authority), Some(origin)) => {
       if authority != origin {
@@ -269,11 +269,4 @@ fn response_remote_for_command(command: &DeploymentDaemonCommand) -> Option<Addr
     },
     | (None, None) => None,
   }
-}
-
-fn parse_remote_address(raw: &str) -> Option<Address> {
-  let (system, endpoint) = raw.split_once('@')?;
-  let (host, port) = endpoint.rsplit_once(':')?;
-  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
-  Some(Address::new(system, host, port.parse::<u16>().ok()?))
 }

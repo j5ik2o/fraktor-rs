@@ -43,7 +43,7 @@ use tokio::{
 };
 
 use crate::{
-  association::std_instant_elapsed_millis,
+  association::{parse_remote_authority, std_instant_elapsed_millis},
   deployment::{DeploymentDaemonCommand, DeploymentResponse, DeploymentResponseDispatcher, spawn_deployment_daemon},
   extension_installer::flush_gate::{StdFlushGate, schedule_flush_timers},
   tokio_remote_event_receiver::TokioMpscRemoteEventReceiver,
@@ -593,8 +593,8 @@ fn route_deployment_event(
         let reason = error.to_string();
         let command = error.into_inner();
         tracing::warn!(?reason, "remote deployment request enqueue failed");
-        let Some(remote) =
-          parse_address(command.authority.authority()).or_else(|| parse_address(command.request.origin_node()))
+        let Some(remote) = parse_remote_authority(command.authority.authority())
+          .or_else(|| parse_remote_authority(command.request.origin_node()))
         else {
           tracing::warn!(
             authority = command.authority.authority(),
@@ -635,11 +635,10 @@ pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sen
   };
   let command = match frame {
     | WireFrame::Control(ControlPdu::Heartbeat { authority }) => {
-      parse_address(authority).map(|from| WatcherCommand::HeartbeatReceived { from, now: *now_ms })
+      parse_remote_authority(authority).map(|from| WatcherCommand::HeartbeatReceived { from, now: *now_ms })
     },
-    | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => {
-      parse_address(authority).map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms })
-    },
+    | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => parse_remote_authority(authority)
+      .map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms }),
     | WireFrame::Control(
       ControlPdu::Quarantine { .. }
       | ControlPdu::Shutdown { .. }
@@ -659,13 +658,6 @@ pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sen
   if let Err(error) = watcher_sender.try_send(command) {
     tracing::warn!(?error, "remote watcher inbound command enqueue failed");
   }
-}
-
-fn parse_address(authority: &str) -> Option<Address> {
-  let (system, endpoint) = authority.split_once('@')?;
-  let (host, port) = endpoint.rsplit_once(':')?;
-  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
-  Some(Address::new(system, host, port.parse::<u16>().ok()?))
 }
 
 fn deliver_inbound_envelopes(remote: &RemoteShared, system: &ActorSystem) {
