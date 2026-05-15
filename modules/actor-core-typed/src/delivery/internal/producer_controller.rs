@@ -276,14 +276,12 @@ impl ProducerController {
       let runtime_settings = settings.clone();
       let runtime_load_state_adapter = load_state_adapter;
       Behaviors::receive_message(move |ctx, command: &ProducerControllerCommand<A>| {
-        Ok(receive_producer_controller_command(
-          ctx,
-          command,
-          &state,
-          &runtime_settings,
-          &self_ref,
-          &runtime_load_state_adapter,
-        ))
+        let command_context = ProducerCommandContext {
+          settings:           &runtime_settings,
+          self_ref:           &self_ref,
+          load_state_adapter: &runtime_load_state_adapter,
+        };
+        Ok(receive_producer_controller_command(ctx, command, &state, &command_context))
       })
     })
   }
@@ -301,23 +299,20 @@ fn receive_producer_controller_command<A>(
   ctx: &mut TypedActorContext<'_, ProducerControllerCommand<A>>,
   command: &ProducerControllerCommand<A>,
   state: &SharedLock<ProducerControllerState<A>>,
-  settings: &ProducerControllerConfig,
-  self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
-  load_state_adapter: &Option<TypedActorRef<DurableProducerQueueState<A>>>,
+  command_context: &ProducerCommandContext<'_, A>,
 ) -> Behavior<ProducerControllerCommand<A>>
 where
   A: Clone + Send + Sync + 'static, {
-  let command_context = ProducerCommandContext { settings, self_ref, load_state_adapter };
   let mut stop_self = None::<String>;
   // ロック保持中に遅延アクションを収集し、ロック解放後に実行する。
   // メッセージアダプタ経由の再入デッドロックを回避するため。
   let deferred = state.with_lock(|state| {
     let mut deferred = Vec::new();
-    collect_producer_deferred_for_command(state, command, &command_context, &mut deferred, &mut stop_self);
-    maybe_schedule_resend_first(state, settings, self_ref, ctx);
+    collect_producer_deferred_for_command(state, command, command_context, &mut deferred, &mut stop_self);
+    maybe_schedule_resend_first(state, command_context.settings, command_context.self_ref, ctx);
     deferred
   });
-  execute_deferred(ctx, deferred, settings, self_ref);
+  execute_deferred(ctx, deferred, command_context.settings, command_context.self_ref);
   stop_producer_after_timeout(ctx, stop_self);
   Behaviors::same()
 }
@@ -356,7 +351,14 @@ fn collect_producer_deferred_for_command<A>(
       collect_on_durable_queue_message_stored(state, ack, deferred);
     },
     | ProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
-      collect_producer_load_timeout(state, *attempt, command_context, deferred, stop_self);
+      collect_producer_load_timeout(
+        state,
+        *attempt,
+        command_context.settings,
+        command_context.load_state_adapter,
+        deferred,
+        stop_self,
+      );
     },
     | ProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt } => {
       collect_producer_store_timeout(state, *seq_nr, *attempt, command_context.settings, deferred, stop_self);
@@ -441,7 +443,8 @@ fn collect_producer_durable_queue_loaded<A>(
 fn collect_producer_load_timeout<A>(
   state: &mut ProducerControllerState<A>,
   attempt: u32,
-  command_context: &ProducerCommandContext<'_, A>,
+  settings: &ProducerControllerConfig,
+  load_state_adapter: &Option<TypedActorRef<DurableProducerQueueState<A>>>,
   deferred: &mut Vec<DeferredAction<A>>,
   stop_self: &mut Option<String>,
 ) where
@@ -449,10 +452,10 @@ fn collect_producer_load_timeout<A>(
   if !state.awaiting_load {
     return;
   }
-  if attempt >= command_context.settings.durable_queue_retry_attempts() {
+  if attempt >= settings.durable_queue_retry_attempts() {
     *stop_self = Some(alloc::format!("ProducerController durable queue load timed out after {} attempts", attempt));
   } else if let (Some(durable_queue), Some(load_state_adapter)) =
-    (state.durable_queue.clone(), command_context.load_state_adapter.clone())
+    (state.durable_queue.clone(), load_state_adapter.clone())
   {
     deferred.push(DeferredAction::TellDurableQueue {
       target:  durable_queue,

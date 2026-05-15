@@ -3259,8 +3259,8 @@ where
   if island_plan.islands().len() <= 1 {
     drive_lazy_single_island(island_plan.into_single_plan())?;
   } else {
-    let (mut islands, crossings) = island_plan.into_parts();
-    drive_lazy_multi_island(&mut islands, crossings)?;
+    let (islands, crossings) = island_plan.into_parts();
+    drive_lazy_multi_island(islands, crossings)?;
   }
   completion.try_take().unwrap_or(Err(StreamError::Failed))
 }
@@ -3320,11 +3320,11 @@ fn drive_lazy_single_stream_once(stream: &mut Stream, idle_budget: usize) -> Res
 }
 
 fn drive_lazy_multi_island(
-  islands: &mut Vec<SingleIslandPlan>,
+  mut islands: Vec<SingleIslandPlan>,
   crossings: Vec<IslandCrossing>,
 ) -> Result<(), StreamError> {
-  let boundaries = wire_lazy_island_boundaries(islands, crossings);
-  let mut streams = start_lazy_island_streams(core::mem::take(islands))?;
+  let boundaries = wire_lazy_island_boundaries(&mut islands, crossings);
+  let mut streams = start_lazy_island_streams(islands)?;
   drive_lazy_streams_until_terminal(&mut streams, &boundaries)
 }
 

@@ -46,6 +46,7 @@ struct FlowStageStep {
   progressed:       bool,
 }
 
+#[derive(Clone, Copy)]
 struct SinkStagePorts {
   inlet:      PortId,
   input_type: TypeId,
@@ -232,7 +233,8 @@ impl GraphInterpreter {
     }
 
     match self.drive_running() {
-      | Ok(progressed) => Self::drive_outcome(progressed),
+      | Ok(true) => DriveOutcome::Progressed,
+      | Ok(false) => DriveOutcome::Idle,
       | Err(error) => {
         self.fail(&error);
         DriveOutcome::Progressed
@@ -259,10 +261,6 @@ impl GraphInterpreter {
     Ok(progressed)
   }
 
-  const fn drive_outcome(progressed: bool) -> DriveOutcome {
-    if progressed { DriveOutcome::Progressed } else { DriveOutcome::Idle }
-  }
-
   fn start_sinks_if_needed(&mut self) -> Result<bool, StreamError> {
     if self.on_start_done {
       return Ok(false);
@@ -273,27 +271,15 @@ impl GraphInterpreter {
   }
 
   fn pull_and_drive_flows_if_needed(&mut self) -> Result<bool, StreamError> {
-    let pull_result = self.pull_sources_for_current_need();
-    if !self.flow_drive_requested() {
+    let did_pull = if self.demand.has_demand() {
+      self.pull_sources_if_needed()?
+    } else if self.has_flow_requesting_upstream_drain() {
+      self.pull_sources_for_flows_requesting_drain()?
+    } else {
       return Ok(false);
-    }
-    let did_pull = pull_result?;
+    };
     let drove_flows = self.drive_flow_stages_until_idle()?;
     Ok(did_pull || drove_flows)
-  }
-
-  fn pull_sources_for_current_need(&mut self) -> Result<bool, StreamError> {
-    if self.demand.has_demand() {
-      return self.pull_sources_if_needed();
-    }
-    if self.has_flow_requesting_upstream_drain() {
-      return self.pull_sources_for_flows_requesting_drain();
-    }
-    Ok(false)
-  }
-
-  fn flow_drive_requested(&self) -> bool {
-    self.demand.has_demand() || self.has_flow_requesting_upstream_drain()
   }
 
   fn drive_flow_stages_until_idle(&mut self) -> Result<bool, StreamError> {
@@ -319,19 +305,13 @@ impl GraphInterpreter {
       && !self.restart_waiting()
       && !self.has_flow_requesting_upstream_drain()
       && self.all_edge_buffers_empty()
-      && !self.flow_has_any_pending_output()
+      && !self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
   }
 
   fn restart_waiting(&self) -> bool {
-    self.source_restart_waiting() || self.sink_restart_waiting() || self.flow_restart_waiting_any()
-  }
-
-  fn flow_restart_waiting_any(&self) -> bool {
-    self.flow_order.iter().any(|stage_index| self.flow_restart_waiting(*stage_index))
-  }
-
-  fn flow_has_any_pending_output(&self) -> bool {
-    self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
+    self.source_restart_waiting()
+      || self.sink_restart_waiting()
+      || self.flow_order.iter().any(|stage_index| self.flow_restart_waiting(*stage_index))
   }
 
   fn finish_sources_done_stream(&mut self) -> Result<bool, StreamError> {
@@ -354,7 +334,7 @@ impl GraphInterpreter {
     self.all_sources_done()
       && self.state == StreamState::Running
       && !self.restart_waiting()
-      && !self.flow_has_any_pending_output()
+      && !self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
   }
 
   fn tick_flow_stages(&mut self) -> Result<bool, StreamError> {

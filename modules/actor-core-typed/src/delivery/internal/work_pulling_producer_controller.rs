@@ -395,13 +395,16 @@ impl WorkPullingProducerController {
         s.durable_queue = durable_queue.clone();
         s.awaiting_load = durable_queue.is_some();
       });
-      if !start_wppc_durable_queue_load(
-        ctx,
-        &state,
-        durable_queue.as_ref(),
-        load_state_adapter.as_ref(),
-        durable_queue_request_timeout,
-        &self_ref,
+      if matches!(
+        start_wppc_durable_queue_load(
+          ctx,
+          &state,
+          durable_queue.as_ref(),
+          load_state_adapter.as_ref(),
+          durable_queue_request_timeout,
+          &self_ref,
+        ),
+        DurableQueueLoadStart::Stop
       ) {
         return Behaviors::stopped();
       }
@@ -412,22 +415,22 @@ impl WorkPullingProducerController {
       let runtime_durable_queue_request_timeout = durable_queue_request_timeout;
       Behaviors::receive_message(move |ctx, command: &WorkPullingProducerControllerCommand<A>| {
         let command_context = WorkPullingCommandContext {
-          producer_id:                  &producer_id_inner,
-          self_ref:                     &self_ref,
+          producer_id: &producer_id_inner,
+          self_ref: &self_ref,
           producer_controller_settings: &runtime_producer_controller_settings,
-          load_state_adapter:           &runtime_load_state_adapter,
-        };
-        Ok(receive_work_pulling_command(
-          ctx,
-          command,
-          &state,
-          &command_context,
+          load_state_adapter: &runtime_load_state_adapter,
           internal_ask_timeout,
-          runtime_durable_queue_request_timeout,
-        ))
+          durable_queue_request_timeout: runtime_durable_queue_request_timeout,
+        };
+        Ok(receive_work_pulling_command(ctx, command, &state, &command_context))
       })
     })
   }
+}
+
+enum DurableQueueLoadStart {
+  Continue,
+  Stop,
 }
 
 fn start_wppc_durable_queue_load<A>(
@@ -437,31 +440,31 @@ fn start_wppc_durable_queue_load<A>(
   load_state_adapter: Option<&TypedActorRef<DurableProducerQueueState<A>>>,
   durable_queue_request_timeout: Duration,
   self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
-) -> bool
+) -> DurableQueueLoadStart
 where
   A: Clone + Send + Sync + 'static, {
   if let (Some(durable_queue), Some(load_state_adapter)) = (durable_queue.cloned(), load_state_adapter.cloned())
-    && !request_wppc_durable_queue_load(ctx, durable_queue, load_state_adapter)
+    && matches!(request_wppc_durable_queue_load(ctx, durable_queue, load_state_adapter), DurableQueueLoadStart::Stop)
   {
-    return false;
+    return DurableQueueLoadStart::Stop;
   }
   schedule_wppc_initial_load_timeout(ctx, state, durable_queue_request_timeout, self_ref);
-  true
+  DurableQueueLoadStart::Continue
 }
 
 fn request_wppc_durable_queue_load<A>(
   ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   mut durable_queue: TypedActorRef<DurableProducerQueueCommand<A>>,
   load_state_adapter: TypedActorRef<DurableProducerQueueState<A>>,
-) -> bool
+) -> DurableQueueLoadStart
 where
   A: Clone + Send + Sync + 'static, {
   if let Err(error) = durable_queue.try_tell(DurableProducerQueueCommand::load_state(load_state_adapter)) {
     let message = alloc::format!("WorkPullingProducerController failed to request durable queue state: {:?}", error);
     ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
-    return false;
+    return DurableQueueLoadStart::Stop;
   }
-  true
+  DurableQueueLoadStart::Continue
 }
 
 fn schedule_wppc_initial_load_timeout<A>(
@@ -487,10 +490,12 @@ fn schedule_wppc_initial_load_timeout<A>(
 struct WorkPullingCommandContext<'a, A>
 where
   A: Clone + Send + Sync + 'static, {
-  producer_id:                  &'a str,
-  self_ref:                     &'a TypedActorRef<WorkPullingProducerControllerCommand<A>>,
+  producer_id: &'a str,
+  self_ref: &'a TypedActorRef<WorkPullingProducerControllerCommand<A>>,
   producer_controller_settings: &'a ProducerControllerConfig,
-  load_state_adapter:           &'a Option<TypedActorRef<DurableProducerQueueState<A>>>,
+  load_state_adapter: &'a Option<TypedActorRef<DurableProducerQueueState<A>>>,
+  internal_ask_timeout: Duration,
+  durable_queue_request_timeout: Duration,
 }
 
 fn receive_work_pulling_command<A>(
@@ -498,8 +503,6 @@ fn receive_work_pulling_command<A>(
   command: &WorkPullingProducerControllerCommand<A>,
   state: &SharedLock<WorkPullingState<A>>,
   command_context: &WorkPullingCommandContext<'_, A>,
-  internal_ask_timeout: Duration,
-  durable_queue_request_timeout: Duration,
 ) -> Behavior<WorkPullingProducerControllerCommand<A>>
 where
   A: Clone + Send + Sync + 'static, {
@@ -517,7 +520,7 @@ where
     );
     deferred
   });
-  execute_wppc_deferred(deferred, ctx, state, internal_ask_timeout, durable_queue_request_timeout);
+  execute_wppc_deferred(deferred, ctx, state, command_context);
   emit_wppc_timeout_warning(ctx, timeout_warning);
   stop_wppc_after_command_timeout(ctx, stop_self);
   Behaviors::same()
@@ -565,7 +568,14 @@ fn collect_wppc_deferred_for_command<A>(
       collect_on_durable_queue_message_stored(state, ack, command_context.self_ref, deferred);
     },
     | WorkPullingProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
-      collect_wppc_load_timeout(state, *attempt, command_context, deferred, stop_self);
+      collect_wppc_load_timeout(
+        state,
+        *attempt,
+        command_context.producer_controller_settings,
+        command_context.load_state_adapter,
+        deferred,
+        stop_self,
+      );
     },
     | WorkPullingProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt } => {
       collect_wppc_store_timeout(
@@ -616,7 +626,8 @@ fn collect_wppc_durable_queue_loaded<A>(
 fn collect_wppc_load_timeout<A>(
   state: &mut WorkPullingState<A>,
   attempt: u32,
-  command_context: &WorkPullingCommandContext<'_, A>,
+  producer_controller_settings: &ProducerControllerConfig,
+  load_state_adapter: &Option<TypedActorRef<DurableProducerQueueState<A>>>,
   deferred: &mut Vec<WppcDeferredAction<A>>,
   stop_self: &mut Option<String>,
 ) where
@@ -624,11 +635,11 @@ fn collect_wppc_load_timeout<A>(
   if !state.awaiting_load {
     return;
   }
-  if attempt >= command_context.producer_controller_settings.durable_queue_retry_attempts() {
+  if attempt >= producer_controller_settings.durable_queue_retry_attempts() {
     *stop_self =
       Some(alloc::format!("WorkPullingProducerController durable queue load timed out after {} attempts", attempt));
   } else if let (Some(durable_queue), Some(load_state_adapter)) =
-    (state.durable_queue.clone(), command_context.load_state_adapter.clone())
+    (state.durable_queue.clone(), load_state_adapter.clone())
   {
     deferred.push(WppcDeferredAction::TellDurableQueue {
       target:  durable_queue,
@@ -1062,17 +1073,23 @@ pub(crate) fn collect_on_durable_queue_message_stored<A>(
 }
 
 /// Executes deferred actions outside the state lock.
-pub(crate) fn execute_wppc_deferred<A>(
+fn execute_wppc_deferred<A>(
   actions: Vec<WppcDeferredAction<A>>,
   ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   state: &SharedLock<WorkPullingState<A>>,
-  internal_ask_timeout: Duration,
-  durable_queue_request_timeout: Duration,
+  command_context: &WorkPullingCommandContext<'_, A>,
 ) where
   A: Clone + Send + Sync + 'static, {
   let mut pending: VecDeque<WppcDeferredAction<A>> = actions.into_iter().collect();
   while let Some(action) = pending.pop_front() {
-    execute_wppc_action(action, &mut pending, ctx, state, internal_ask_timeout, durable_queue_request_timeout);
+    execute_wppc_action(
+      action,
+      &mut pending,
+      ctx,
+      state,
+      command_context.internal_ask_timeout,
+      command_context.durable_queue_request_timeout,
+    );
   }
 }
 
@@ -1252,6 +1269,10 @@ fn execute_wppc_spawn_worker<A>(
   // 登録前に tell() すると demand シグナルが消失する。
   if let Some((entry, pc_ref)) = spawn_worker_actor::<A>(ctx, worker_ref, pc_producer_id, producer_controller_settings)
   {
+    // 1 回目の state.with_lock は spawn_worker_actor の結果を登録するためだけに使う。
+    // start_spawned_worker_pc のインラインディスパッチで InternalDemand
+    // が同期的に返る可能性があるため、 collect_after_worker_spawn の 2 回目の state.with_lock で
+    // pending work と request_next を安全に回収する。
     state.with_lock(|state| {
       state.workers.insert(pid_key(worker_ref), entry);
     });

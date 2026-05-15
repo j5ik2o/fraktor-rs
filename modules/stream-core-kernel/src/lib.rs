@@ -373,25 +373,16 @@ fn collect_stream_plan_stage_ports(stages: &[StageDefinition]) -> Result<StreamP
   let mut output_ports = Vec::with_capacity(stages.len());
 
   for (stage_index, stage) in stages.iter().enumerate() {
-    collect_stream_plan_stage_index(stage, stage_index, &mut source_indices, &mut sink_indices);
+    match stage {
+      | StageDefinition::Source(_) => source_indices.push(stage_index),
+      | StageDefinition::Flow(_) => {},
+      | StageDefinition::Sink(_) => sink_indices.push(stage_index),
+    }
     collect_unique_stage_port(&mut input_ports, stage.inlet(), stage_index)?;
     collect_unique_stage_port(&mut output_ports, stage.outlet(), stage_index)?;
   }
 
   Ok(StreamPlanStagePorts { source_indices, sink_indices, input_ports, output_ports })
-}
-
-fn collect_stream_plan_stage_index(
-  stage: &StageDefinition,
-  stage_index: usize,
-  source_indices: &mut Vec<usize>,
-  sink_indices: &mut Vec<usize>,
-) {
-  match stage {
-    | StageDefinition::Source(_) => source_indices.push(stage_index),
-    | StageDefinition::Flow(_) => {},
-    | StageDefinition::Sink(_) => sink_indices.push(stage_index),
-  }
 }
 
 fn collect_unique_stage_port(
@@ -425,8 +416,8 @@ fn build_stream_plan_topology(
   for (from, to, mat) in edges {
     let from_stage = stage_index_for_port(&stage_ports.output_ports, from)?;
     let to_stage = stage_index_for_port(&stage_ports.input_ports, to)?;
-    topology.outgoing[from_stage] = topology.outgoing[from_stage].saturating_add(1);
-    topology.incoming[to_stage] = topology.incoming[to_stage].saturating_add(1);
+    topology.outgoing[from_stage] += 1;
+    topology.incoming[to_stage] += 1;
     topology.adjacency[from_stage].push(to_stage);
     topology.edges.push(StreamPlanEdge { from_port: from, to_port: to, mat });
   }
@@ -434,15 +425,12 @@ fn build_stream_plan_topology(
 }
 
 fn empty_stream_plan_topology(stage_count: usize, edge_count: usize) -> StreamPlanTopology {
-  let mut incoming = Vec::with_capacity(stage_count);
-  let mut outgoing = Vec::with_capacity(stage_count);
-  let mut adjacency = Vec::with_capacity(stage_count);
-  for _ in 0..stage_count {
-    incoming.push(0_usize);
-    outgoing.push(0_usize);
-    adjacency.push(Vec::new());
+  StreamPlanTopology {
+    edges:     Vec::with_capacity(edge_count),
+    incoming:  alloc::vec![0_usize; stage_count],
+    outgoing:  alloc::vec![0_usize; stage_count],
+    adjacency: alloc::vec![Vec::new(); stage_count],
   }
-  StreamPlanTopology { edges: Vec::with_capacity(edge_count), incoming, outgoing, adjacency }
 }
 
 fn stage_index_for_port(ports: &[(PortId, usize)], port: PortId) -> Result<usize, StreamError> {
@@ -505,16 +493,15 @@ const fn validate_sink_degree(incoming: usize) -> Result<(), StreamError> {
 
 fn topological_stream_plan_order(
   stage_count: usize,
-  incoming: Vec<usize>,
+  mut incoming: Vec<usize>,
   adjacency: &[Vec<usize>],
 ) -> Result<Vec<usize>, StreamError> {
   let mut ready = stream_plan_ready_stages(&incoming);
-  let mut processing_incoming = incoming;
   let mut ordered_indices = Vec::new();
 
   while let Some(stage_index) = ready.pop() {
     ordered_indices.push(stage_index);
-    collect_ready_downstream_stages(stage_index, adjacency, &mut processing_incoming, &mut ready);
+    collect_ready_downstream_stages(stage_index, adjacency, &mut incoming, &mut ready);
   }
 
   if ordered_indices.len() != stage_count {
@@ -540,7 +527,7 @@ fn collect_ready_downstream_stages(
   ready: &mut Vec<usize>,
 ) {
   for next_index in &adjacency[stage_index] {
-    processing_incoming[*next_index] = processing_incoming[*next_index].saturating_sub(1);
+    processing_incoming[*next_index] -= 1;
     if processing_incoming[*next_index] == 0 {
       ready.push(*next_index);
     }
