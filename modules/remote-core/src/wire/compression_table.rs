@@ -159,6 +159,8 @@ impl CompressionTable {
       if entry.advertised_generation == Some(generation) {
         entry.acknowledged_generation = Some(generation);
         applied = true;
+      } else {
+        entry.acknowledged_generation = None;
       }
     }
     if applied {
@@ -188,11 +190,6 @@ impl CompressionTable {
   pub fn apply_advertisement(&mut self, generation: u64, entries: &[CompressionTableEntry]) -> Result<bool, WireError> {
     if !self.is_enabled() {
       return Ok(false);
-    }
-    if let Some(max) = self.max
-      && entries.len() > max.get()
-    {
-      return Err(WireError::InvalidFormat);
     }
     if has_duplicate_entry_id(entries) {
       return Err(WireError::InvalidFormat);

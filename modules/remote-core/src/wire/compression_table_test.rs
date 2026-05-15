@@ -1,7 +1,7 @@
 use alloc::string::ToString;
 use core::num::NonZeroUsize;
 
-use super::CompressionTable;
+use super::{CompressionTable, CompressionTableEntryState};
 use crate::wire::{CompressionTableEntry, CompressionTableKind, WireError};
 
 fn max(value: usize) -> Option<NonZeroUsize> {
@@ -118,6 +118,27 @@ fn stale_ack_is_ignored() {
 }
 
 #[test]
+fn ack_clears_entries_not_present_in_acknowledged_generation() {
+  let mut table = CompressionTable::new(max(2));
+  table.entries.push(CompressionTableEntryState {
+    id: 1,
+    literal: "/user/a".to_string(),
+    hit_count: 2,
+    advertised_generation: Some(1),
+    acknowledged_generation: Some(1),
+  });
+  table.entries.push(CompressionTableEntryState::new(2, "/user/b".to_string()));
+  table.entries[1].hit_count = 1;
+  table.entries[1].advertised_generation = Some(2);
+  table.latest_pending_generation = Some(2);
+
+  assert!(table.acknowledge(2));
+
+  assert_eq!(table.encode("/user/a").as_literal(), Some("/user/a"));
+  assert_eq!(table.encode("/user/b").as_table_ref(), Some(2));
+}
+
+#[test]
 fn inbound_advertisement_resolves_entry_ids() {
   let mut table = CompressionTable::new(max(4));
   let entries = [CompressionTableEntry::new(9, "/user/a".to_string())];
@@ -129,15 +150,15 @@ fn inbound_advertisement_resolves_entry_ids() {
 }
 
 #[test]
-fn inbound_advertisement_rejects_entries_over_configured_max() {
+fn inbound_advertisement_accepts_entries_over_local_advertisement_bound() {
   let mut table = CompressionTable::new(max(1));
   let entries =
     [CompressionTableEntry::new(9, "/user/a".to_string()), CompressionTableEntry::new(10, "/user/b".to_string())];
 
-  let err = table.apply_advertisement(7, &entries).unwrap_err();
+  assert_eq!(table.apply_advertisement(7, &entries), Ok(true));
 
-  assert_eq!(err, WireError::InvalidFormat);
-  assert!(table.is_empty());
+  assert_eq!(table.resolve(9), Some("/user/a"));
+  assert_eq!(table.resolve(10), Some("/user/b"));
 }
 
 #[test]

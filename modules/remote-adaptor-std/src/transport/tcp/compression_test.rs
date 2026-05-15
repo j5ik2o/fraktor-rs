@@ -138,6 +138,41 @@ fn inbound_manifest_advertisement_resolves_manifest_metadata() {
 }
 
 #[test]
+fn inbound_advertisement_accepts_peer_table_larger_than_local_max() {
+  let config = RemoteCompressionConfig::new().with_actor_ref_max(max(1));
+  let mut tables = TcpCompressionTables::new(config);
+  let frame = WireFrame::Control(ControlPdu::CompressionAdvertisement {
+    authority:  "remote@host:1".to_string(),
+    table_kind: CompressionTableKind::ActorRef,
+    generation: 9,
+    entries:    vec![
+      CompressionTableEntry::new(3, "/user/a".to_string()),
+      CompressionTableEntry::new(4, "/user/b".to_string()),
+    ],
+  });
+
+  let action = tables.handle_inbound_frame(frame, "local@host:2").unwrap();
+
+  assert!(matches!(
+    action,
+    InboundCompressionAction::Reply {
+      pdu: ControlPdu::CompressionAck {
+        authority,
+        table_kind: CompressionTableKind::ActorRef,
+        generation: 9,
+      },
+      authority: peer_authority,
+    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
+  ));
+  let action =
+    tables.handle_inbound_frame(envelope_frame(CompressedText::table_ref(4), None, None), "local@host:2").unwrap();
+  assert!(matches!(
+    action,
+    InboundCompressionAction::Forward(WireFrame::Envelope(pdu)) if pdu.recipient_path() == "/user/b"
+  ));
+}
+
+#[test]
 fn outbound_acknowledged_metadata_uses_table_refs() {
   let mut tables = TcpCompressionTables::new(RemoteCompressionConfig::new());
 
