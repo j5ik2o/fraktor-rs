@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
-
-export CODEX_HOME=${REPO_ROOT}/.codex-corporate
+export CODEX_HOME="${HOME}/.codex-corporate"
 
 ensure_local_codex_config() {
   local config_path="${CODEX_HOME}/config.toml"
-  local base_config="${REPO_ROOT}/.codex/config.toml"
-  local project_header="[projects.\"${REPO_ROOT}\"]"
+  local base_config="${HOME}/.codex/config.toml"
+  local project_header="[projects.\"${HOME}\"]"
 
   mkdir -p "${CODEX_HOME}"
   if [[ -L "${config_path}" ]]; then
@@ -27,19 +24,4 @@ ensure_local_codex_config() {
 }
 
 ensure_local_codex_config
-# --happy オプションを検出して Happy Coder モードで起動
-use_happy=false
-args=()
-for arg in "$@"; do
-  if [[ "$arg" == "--happy" ]]; then
-    use_happy=true
-  else
-    args+=("$arg")
-  fi
-done
-
-if $use_happy; then
-  exec mise exec -- happy codex "${args[@]}"
-else
-  exec mise exec -- codex --dangerously-bypass-approvals-and-sandbox "${args[@]}"
-fi
+exec mise exec -- codex --dangerously-bypass-approvals-and-sandbox "$@"
