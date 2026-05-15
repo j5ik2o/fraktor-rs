@@ -1,4 +1,4 @@
-# PR の追加変更行は base coverage からの低下を許可せず、
+# PR の追加変更行は未カバーを許可せず、
 # project 全体の微小低下では PR を落とさない。
 coverage:
   status:
@@ -10,7 +10,7 @@ coverage:
         informational: false
     patch:
       default:
-        target: auto
+        target: 100%
         threshold: 0%
         if_not_found: failure
         informational: false
