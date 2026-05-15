@@ -91,15 +91,30 @@ fn acked_entries_encode_as_table_refs() {
 }
 
 #[test]
-fn stale_ack_is_ignored() {
+fn advertisement_waits_for_pending_ack_before_advancing_generation() {
   let mut table = CompressionTable::new(max(4));
   table.observe("/user/a");
   let generation_1 = table.create_advertisement(CompressionTableKind::ActorRef).unwrap().generation();
+
+  assert!(table.create_advertisement(CompressionTableKind::ActorRef).is_none());
+  assert_eq!(table.latest_pending_generation(), Some(generation_1));
+  assert_eq!(table.encode("/user/a").as_literal(), Some("/user/a"));
+  assert!(table.acknowledge(generation_1));
+
+  table.observe("/user/a");
   let generation_2 = table.create_advertisement(CompressionTableKind::ActorRef).unwrap().generation();
 
-  assert!(!table.acknowledge(generation_1));
-  assert_eq!(table.latest_pending_generation(), Some(generation_2));
-  assert_eq!(table.encode("/user/a").as_literal(), Some("/user/a"));
+  assert_eq!(generation_2, generation_1 + 1);
+}
+
+#[test]
+fn stale_ack_is_ignored() {
+  let mut table = CompressionTable::new(max(4));
+  table.observe("/user/a");
+  let generation = table.create_advertisement(CompressionTableKind::ActorRef).unwrap().generation();
+
+  assert!(!table.acknowledge(generation + 1));
+  assert_eq!(table.latest_pending_generation(), Some(generation));
 }
 
 #[test]

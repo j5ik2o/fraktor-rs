@@ -8,7 +8,7 @@ use crate::{
     AckCodec, AckPdu, Codec, CompressedText, CompressionTableEntry, CompressionTableKind, ControlCodec, ControlPdu,
     EnvelopeCodec, EnvelopePayload, EnvelopePdu, FlushScope, HandshakeCodec, HandshakePdu, HandshakeReq, HandshakeRsp,
     KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WIRE_VERSION, WIRE_VERSION_1,
-    WIRE_VERSION_2, WireError,
+    WIRE_VERSION_2, WIRE_VERSION_3, WireError,
   },
 };
 
@@ -773,6 +773,18 @@ fn unknown_version_byte_is_rejected() {
 }
 
 #[test]
+fn previous_wire_version_byte_is_rejected() {
+  let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
+  let codec = EnvelopeCodec::new();
+  let mut buf = BytesMut::new();
+  codec.encode(&pdu, &mut buf).unwrap();
+  buf[4] = WIRE_VERSION_2;
+  let mut bytes = to_bytes(buf);
+  let err = codec.decode(&mut bytes).unwrap_err();
+  assert_eq!(err, WireError::UnknownVersion);
+}
+
+#[test]
 fn unknown_kind_byte_is_rejected() {
   let pdu = test_envelope_pdu("/r".to_string(), None, 0, 0, 0, Bytes::new());
   let codec = EnvelopeCodec::new();
@@ -826,7 +838,8 @@ fn all_kinds_are_distinct() {
 fn wire_version_byte_is_current() {
   assert_eq!(WIRE_VERSION_1, 0x01);
   assert_eq!(WIRE_VERSION_2, 0x02);
-  assert_eq!(WIRE_VERSION, WIRE_VERSION_2);
+  assert_eq!(WIRE_VERSION_3, 0x03);
+  assert_eq!(WIRE_VERSION, WIRE_VERSION_3);
 }
 
 #[test]

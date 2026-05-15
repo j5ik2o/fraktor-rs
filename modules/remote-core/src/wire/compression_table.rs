@@ -123,6 +123,9 @@ impl CompressionTable {
     if self.entries.is_empty() {
       return None;
     }
+    if self.latest_pending_generation.is_some() {
+      return None;
+    }
 
     let generation = self.next_generation;
     self.next_generation = self.next_generation.saturating_add(1);
