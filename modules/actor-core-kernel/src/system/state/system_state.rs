@@ -506,7 +506,9 @@ impl SystemState {
     }
     let pid = self.allocate_pid();
     let registry = self.registries.entry_or_insert(parent);
-    debug_assert!(registry.replace_if(name, expected, pid));
+    if !registry.replace_if(name, expected, pid) {
+      return Err(SpawnError::name_conflict(name));
+    }
     Ok(pid)
   }
 
