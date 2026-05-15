@@ -98,9 +98,7 @@ impl EnvelopePdu {
   /// Returns the recipient actor path.
   #[must_use]
   pub fn recipient_path(&self) -> &str {
-    let literal = self.recipient_path.as_literal();
-    debug_assert!(literal.is_some(), "recipient_path() called on unresolved compressed table reference");
-    literal.unwrap_or("")
+    expect_recipient_path_literal(&self.recipient_path)
   }
 
   /// Returns the recipient actor path metadata.
@@ -112,7 +110,7 @@ impl EnvelopePdu {
   /// Returns the sender actor path, if known.
   #[must_use]
   pub fn sender_path(&self) -> Option<&str> {
-    self.sender_path.as_ref().and_then(CompressedText::as_literal)
+    self.sender_path.as_ref().map(expect_sender_path_literal)
   }
 
   /// Returns the sender actor path metadata, if known.
@@ -154,7 +152,7 @@ impl EnvelopePdu {
   /// Returns the optional serializer manifest.
   #[must_use]
   pub fn manifest(&self) -> Option<&str> {
-    self.manifest.as_ref().and_then(CompressedText::as_literal)
+    self.manifest.as_ref().map(expect_manifest_literal)
   }
 
   /// Returns the optional serializer manifest metadata.
@@ -167,5 +165,26 @@ impl EnvelopePdu {
   #[must_use]
   pub const fn payload(&self) -> &Bytes {
     &self.payload
+  }
+}
+
+fn expect_recipient_path_literal(metadata: &CompressedText) -> &str {
+  match metadata {
+    | CompressedText::Literal(literal) => literal.as_str(),
+    | CompressedText::TableRef(_) => panic!("recipient_path() called on unresolved compressed table reference"),
+  }
+}
+
+fn expect_sender_path_literal(metadata: &CompressedText) -> &str {
+  match metadata {
+    | CompressedText::Literal(literal) => literal.as_str(),
+    | CompressedText::TableRef(_) => panic!("sender_path() called on unresolved compressed table reference"),
+  }
+}
+
+fn expect_manifest_literal(metadata: &CompressedText) -> &str {
+  match metadata {
+    | CompressedText::Literal(literal) => literal.as_str(),
+    | CompressedText::TableRef(_) => panic!("manifest() called on unresolved compressed table reference"),
   }
 }

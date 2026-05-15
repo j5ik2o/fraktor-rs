@@ -295,10 +295,9 @@ fn envelope_actor_path_reference_metadata_roundtrips() {
   assert_eq!(decoded.payload(), &Bytes::from_static(b"hello"));
 }
 
-#[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "recipient_path() called on unresolved compressed table reference")]
-fn envelope_recipient_path_panics_for_unresolved_table_ref_in_debug() {
+fn envelope_recipient_path_panics_for_unresolved_table_ref() {
   let pdu = EnvelopePdu::new_with_metadata(
     CompressedText::table_ref(3),
     None,
@@ -310,6 +309,38 @@ fn envelope_recipient_path_panics_for_unresolved_table_ref_in_debug() {
   );
 
   let _ = pdu.recipient_path();
+}
+
+#[test]
+#[should_panic(expected = "sender_path() called on unresolved compressed table reference")]
+fn envelope_sender_path_panics_for_unresolved_table_ref() {
+  let pdu = EnvelopePdu::new_with_metadata(
+    CompressedText::literal("/user/recipient".to_string()),
+    Some(CompressedText::table_ref(3)),
+    1,
+    2,
+    1,
+    EnvelopePayload::new(7, None, Bytes::from_static(b"hello")),
+    None,
+  );
+
+  let _ = pdu.sender_path();
+}
+
+#[test]
+#[should_panic(expected = "manifest() called on unresolved compressed table reference")]
+fn envelope_manifest_panics_for_unresolved_table_ref() {
+  let pdu = EnvelopePdu::new_with_metadata(
+    CompressedText::literal("/user/recipient".to_string()),
+    None,
+    1,
+    2,
+    1,
+    EnvelopePayload::new(7, None, Bytes::from_static(b"hello")),
+    Some(CompressedText::table_ref(5)),
+  );
+
+  let _ = pdu.manifest();
 }
 
 #[test]
