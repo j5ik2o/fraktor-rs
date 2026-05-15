@@ -5,7 +5,7 @@ use std::{
   string::{String, ToString},
   sync::{
     atomic::{AtomicU64, Ordering},
-    mpsc::Receiver,
+    mpsc::{Receiver, RecvTimeoutError},
   },
   thread::{self, ThreadId},
   time::{Duration, Instant},
@@ -114,6 +114,10 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
         self.dispatcher.cancel(correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment timed out"))
       },
+      | Err(DeploymentResponseWaitError::RecvDisconnected) => {
+        self.dispatcher.cancel(correlation_hi, correlation_lo);
+        RemoteDeploymentOutcome::Failed(String::from("remote deployment response channel closed"))
+      },
       | Err(DeploymentResponseWaitError::CurrentThreadEventLoop) => {
         self.dispatcher.cancel(correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from(
@@ -126,6 +130,7 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
 
 enum DeploymentResponseWaitError {
   RecvTimeout,
+  RecvDisconnected,
   CurrentThreadEventLoop,
 }
 
@@ -136,13 +141,22 @@ fn recv_deployment_response(
 ) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
   match Handle::try_current() {
     | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
-      tokio::task::block_in_place(|| receiver.recv_timeout(timeout))
-        .map_err(|_error| DeploymentResponseWaitError::RecvTimeout)
+      tokio::task::block_in_place(|| recv_timeout(receiver, timeout))
     },
     | Ok(_) if thread::current().id() == install_thread => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
-    | Ok(_) => receiver.recv_timeout(timeout).map_err(|_error| DeploymentResponseWaitError::RecvTimeout),
-    | Err(_) => receiver.recv_timeout(timeout).map_err(|_error| DeploymentResponseWaitError::RecvTimeout),
+    | Ok(_) => recv_timeout(receiver, timeout),
+    | Err(_) => recv_timeout(receiver, timeout),
   }
+}
+
+fn recv_timeout(
+  receiver: &Receiver<DeploymentResponse>,
+  timeout: Duration,
+) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
+  receiver.recv_timeout(timeout).map_err(|error| match error {
+    | RecvTimeoutError::Timeout => DeploymentResponseWaitError::RecvTimeout,
+    | RecvTimeoutError::Disconnected => DeploymentResponseWaitError::RecvDisconnected,
+  })
 }
 
 impl StdRemoteDeploymentHook {

@@ -584,6 +584,30 @@ fn remote_deployment_hook_timeout_is_bounded_and_cancels_pending() {
 }
 
 #[test]
+fn remote_deployment_hook_closed_response_channel_is_not_timeout() {
+  let (hook, mut event_rx, dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let request = deployment_request(
+    "closed-channel-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let join = thread::spawn(move || hook.deploy_child(request));
+
+  let event = event_rx.blocking_recv().expect("deployment request should be enqueued");
+  let (correlation_hi, correlation_lo) = match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      (request.correlation_hi(), request.correlation_lo())
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  };
+  dispatcher.cancel(correlation_hi, correlation_lo);
+
+  let outcome = join.join().expect("deployment hook thread should complete");
+
+  assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("response channel closed")));
+}
+
+#[test]
 fn deployment_response_dispatcher_records_unknown_response_as_stale() {
   let dispatcher = DeploymentResponseDispatcher::default();
 
