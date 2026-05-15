@@ -267,9 +267,13 @@ fn remote_path(address: &Address, local_path: &ActorPath) -> ActorPath {
 }
 
 fn remote_deployer_for_child(child_name: &str, address: &Address) -> Deployer {
+  remote_deployer_for_path(&format!("/user/{child_name}"), address)
+}
+
+fn remote_deployer_for_path(path: &str, address: &Address) -> Deployer {
   let mut deployer = Deployer::new();
   let target = ActorAddress::remote(address.system(), address.host(), address.port());
-  deployer.register(format!("/user/{child_name}"), Deploy::new().with_scope(Scope::Remote(RemoteScope::new(target))));
+  deployer.register(path, Deploy::new().with_scope(Scope::Remote(RemoteScope::new(target))));
   deployer
 }
 
@@ -443,6 +447,79 @@ async fn two_node_remote_deployment_spawns_actor_and_delivers_user_message() {
 
   let received = recv_until(&mut target_rx, String::from("deployed-message")).await;
   assert_eq!(received, String::from("deployed-message"));
+
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_node_remote_deployment_parent_observes_child_termination() {
+  let parent_name = "deployment-parent-a";
+  let child_name = "watched-deployed-b";
+  let node_b = build_node(reserve_port(), 72);
+  let node_a = build_node_with_deployer(reserve_port(), 71, remote_deployer_for_child(child_name, &node_b.address));
+  let (mut warm_rx_a, warm_path_a) = spawn_recording_actor(&node_a.system, "deployment-watch-warm-a");
+  let (mut warm_rx_b, warm_path_b) = spawn_recording_actor(&node_b.system, "deployment-watch-warm-b");
+  let mut warm_ref_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &warm_path_b))
+    .expect("node A should resolve warm target on node B");
+  let mut warm_ref_a = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &warm_path_a))
+    .expect("node B should resolve warm target on node A");
+  warm_bidirectional_remote_delivery(&mut warm_ref_b, &mut warm_rx_b, &mut warm_ref_a, &mut warm_rx_a).await;
+
+  let (target_tx, mut target_rx) = mpsc::unbounded_channel();
+  node_b.system.extended().register_deployable_actor_factory("watched-recording-string", move |payload: AnyMessage| {
+    let payload =
+      payload.downcast_ref::<String>().ok_or_else(|| DeployableFactoryError::new("payload must be String"))?;
+    if payload != "watched-factory-payload" {
+      return Err(DeployableFactoryError::new("unexpected factory payload"));
+    }
+    let tx = target_tx.clone();
+    Ok(Props::from_fn(move || RecordingStringActor::new(tx.clone())))
+  });
+  let (unused_tx, _unused_rx) = mpsc::unbounded_channel();
+  let child_props = Props::from_fn(move || RecordingStringActor::new(unused_tx.clone()))
+    .with_name(child_name)
+    .with_deployable_metadata(DeployablePropsMetadata::new(
+      "watched-recording-string",
+      AnyMessage::new(String::from("watched-factory-payload")),
+    ));
+  let (terminated_tx, mut terminated_rx) = mpsc::unbounded_channel();
+  let (ack_tx, mut ack_rx) = mpsc::unbounded_channel();
+  let parent_props = Props::from_fn(move || RecordingDeathwatchActor::new(terminated_tx.clone(), ack_tx.clone()));
+  let parent = node_a.system.actor_of_named(&parent_props, parent_name).expect("parent actor should spawn");
+  let mut parent_ref = parent.actor_ref().clone();
+  let system_a = node_a.system.clone();
+  let remote_child = tokio::task::spawn_blocking(move || system_a.actor_of_named(&child_props, child_name))
+    .await
+    .expect("blocking remote child spawn should complete")
+    .expect("remote child should spawn");
+  let remote_child = remote_child.actor_ref().clone();
+
+  parent_ref
+    .try_tell(AnyMessage::new(StartRemoteWatch::new(remote_child.clone())))
+    .expect("watch command should enqueue");
+  wait_for_ack(&mut ack_rx, "watch").await;
+  let mut remote_child_ref = remote_child.clone();
+  remote_child_ref
+    .try_tell(AnyMessage::new(String::from("after-parent-watch")))
+    .expect("barrier send to remote-deployed child");
+  let _after_watch = recv_until(&mut target_rx, String::from("after-parent-watch")).await;
+  assert!(terminated_rx.try_recv().is_err(), "parent must not observe termination before target child stops");
+
+  let created_path = remote_child.canonical_path().expect("remote child canonical path");
+  let local_child =
+    node_b.system.resolve_actor_ref(created_path).expect("target node should resolve remote-deployed child locally");
+  node_b.system.stop(&local_child).expect("remote-deployed child should stop locally on target node");
+
+  let terminated = timeout(Duration::from_secs(5), terminated_rx.recv())
+    .await
+    .expect("remote-deployed child termination notification timeout")
+    .expect("termination channel should stay open");
+  assert_eq!(terminated, remote_child.pid());
 
   node_a.shutdown().await;
   node_b.shutdown().await;

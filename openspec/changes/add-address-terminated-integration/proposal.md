@@ -1,22 +1,22 @@
 ## Why
 
-remote の残ギャップは、Pekko `RemoteWatcher` が remote node failure 時に `AddressTerminated` を publish する契約が actor-core / std remote stack に存在しない点に集中している。現状は remote target ごとの DeathWatch 通知は行えるが、node-level failure を event stream で観測し、remote deployment watcher や daemon lifecycle が同じ failure signal を共有する境界がない。
+remote の残ギャップは、Pekko `RemoteWatcher` が remote node failure 時に `AddressTerminated` を発行する契約が actor-core / std remote stack に存在しない点に集中している。現状は remote target ごとの DeathWatch 通知は行えるが、ノード単位の failure を event stream で観測し、remote deployment watcher や daemon lifecycle が同じ failure signal を共有する境界がない。
 
 ## What Changes
 
 - actor-core event stream に remote address termination を表す event と classifier key を追加する。
-- remote watcher state が remote node unavailable 判定を actor-level termination だけでなく address-level termination effect として表現できるようにする。
-- std watcher task が address termination effect を actor-core event stream へ publish する。
+- remote watcher state が remote node unavailable 判定を、actor-level termination だけでなく address-level termination effect として表現できるようにする。
+- std watcher task が address termination effect を actor-core event stream へ発行する。
 - inbound remote DeathWatch 通知と address termination の責務境界を明確化し、node failure と actor termination を混同しない。
-- remote deployment watcher / daemon 側が address termination event を利用して remote-created child の cleanup / failure propagation を実装できる契約を追加する。
+- remote deployment watcher / daemon 側が address termination event を利用して remote-created child のクリーンアップ / failure propagation を実装できる契約を追加する。
 
 ## Capabilities
 
-### New Capabilities
+### 新規 Capabilities
 
 - `remote-address-terminated-integration`: remote node failure を actor-core event stream の address-terminated topic 相当へ接続し、std remote watcher と remote deployment lifecycle が共有できる統合契約を定義する。
 
-### Modified Capabilities
+### 変更 Capabilities
 
 - `pekko-eventstream-subchannel`: `AddressTerminated` event variant と classifier key を event stream subchannel contract に追加する。
 - `remote-core-watcher-state`: remote node unavailable 判定時に address-level termination effect を返す契約を追加する。
