@@ -33,7 +33,7 @@ impl RemoteDeploymentRequest {
     self.parent
   }
 
-  /// Returns the synthetic pid allocated by actor-core for this spawn request.
+  /// Returns the local placeholder pid for this spawn request.
   #[must_use]
   pub const fn child_pid(&self) -> Pid {
     self.child_pid

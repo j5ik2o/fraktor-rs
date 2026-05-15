@@ -131,7 +131,7 @@ impl RecordingRemoteDeploymentHook {
 }
 
 impl RemoteDeploymentHook for RecordingRemoteDeploymentHook {
-  fn deploy_child(&mut self, request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
+  fn deploy_child(&self, request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
     self.calls.lock().push(request);
     match self.outcome.clone() {
       | TestRemoteDeploymentOutcome::RemoteCreated(actor) => RemoteDeploymentOutcome::RemoteCreated(actor),
@@ -183,6 +183,7 @@ fn remote_deployment_spawn_invokes_hook_without_local_cell() {
   let metadata = request.deployable_metadata().expect("deployable metadata");
 
   assert_eq!(requests.len(), 1);
+  assert_eq!(request.child_pid(), Pid::new(0, 0));
   assert_eq!(request.child_name(), "remote-child");
   assert_eq!(request.child_path().to_relative_string(), "/user/remote-child");
   assert_eq!(request.scope().node(), &Address::remote("remote-system", "remote.example.com", 2552));

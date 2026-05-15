@@ -53,6 +53,7 @@ use crate::{
 
 const PARENT_MISSING: &str = "parent actor not found";
 const CREATE_SEND_FAILED: &str = "create system message delivery failed";
+const REMOTE_DEPLOYMENT_RESERVED_PID: Pid = Pid::new(0, 0);
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystem {
@@ -563,11 +564,11 @@ impl ActorSystem {
   }
 
   fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {
-    let pid = self.state.allocate_pid();
-    let name = self.state.assign_name(parent, props.name(), pid)?;
-    if let Some(child) = self.try_remote_deployment(parent, pid, &name, props)? {
+    if let Some(child) = self.try_remote_deployment(parent, props)? {
       return Ok(child);
     }
+    let pid = self.state.allocate_pid();
+    let name = self.state.assign_name(parent, props.name(), pid)?;
     let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
 
     // AC-H4 TOCTOU-safe order: registration must complete before the `Create`
@@ -586,34 +587,41 @@ impl ActorSystem {
     Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
   }
 
-  fn try_remote_deployment(
-    &self,
-    parent: Option<Pid>,
-    pid: Pid,
-    name: &str,
-    props: &Props,
-  ) -> Result<Option<ChildRef>, SpawnError> {
+  fn try_remote_deployment(&self, parent: Option<Pid>, props: &Props) -> Result<Option<ChildRef>, SpawnError> {
     let Some(parent_pid) = parent else {
       return Ok(None);
     };
-    let Some((child_path, scope)) = self.remote_deployment_for(parent_pid, name) else {
+    let Some(name_hint) = props.name() else {
       return Ok(None);
     };
+    let Some((child_path, scope)) = self.remote_deployment_for(parent_pid, name_hint) else {
+      return Ok(None);
+    };
+    let name = self.state.assign_name(parent, Some(name_hint), REMOTE_DEPLOYMENT_RESERVED_PID)?;
 
     let Some(deployable_metadata) = props.deployable_metadata().cloned() else {
-      self.state.release_name(parent, name);
+      self.state.release_name(parent, &name);
       return Err(SpawnError::invalid_props("remote deployment requires deployable props metadata"));
     };
-    let request =
-      RemoteDeploymentRequest::new(parent_pid, pid, name.to_string(), child_path, scope, Some(deployable_metadata));
+    let request = RemoteDeploymentRequest::new(
+      parent_pid,
+      REMOTE_DEPLOYMENT_RESERVED_PID,
+      name.clone(),
+      child_path,
+      scope,
+      Some(deployable_metadata),
+    );
     match self.state.deploy_remote_child(request) {
-      | RemoteDeploymentOutcome::UseLocalDeployment => Ok(None),
+      | RemoteDeploymentOutcome::UseLocalDeployment => {
+        self.state.release_name(parent, &name);
+        Ok(None)
+      },
       | RemoteDeploymentOutcome::RemoteCreated(actor_ref) => {
-        self.state.release_name(parent, name);
+        self.state.release_name(parent, &name);
         Ok(Some(ChildRef::new(actor_ref, self.state.clone())))
       },
       | RemoteDeploymentOutcome::Failed(reason) => {
-        self.state.release_name(parent, name);
+        self.state.release_name(parent, &name);
         Err(SpawnError::invalid_props(reason))
       },
     }

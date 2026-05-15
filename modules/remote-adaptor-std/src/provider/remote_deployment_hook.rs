@@ -71,7 +71,7 @@ impl StdRemoteDeploymentHook {
 }
 
 impl RemoteDeploymentHook for StdRemoteDeploymentHook {
-  fn deploy_child(&mut self, request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
+  fn deploy_child(&self, request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
     let target = match remote_target_address(request.scope().node(), &self.local_address) {
       | Ok(RemoteTarget::Local) => return RemoteDeploymentOutcome::UseLocalDeployment,
       | Ok(RemoteTarget::Remote(target)) => target,

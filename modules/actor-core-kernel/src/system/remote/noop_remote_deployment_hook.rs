@@ -8,7 +8,7 @@ use super::{RemoteDeploymentHook, RemoteDeploymentOutcome, RemoteDeploymentReque
 pub(crate) struct NoopRemoteDeploymentHook;
 
 impl RemoteDeploymentHook for NoopRemoteDeploymentHook {
-  fn deploy_child(&mut self, _request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
+  fn deploy_child(&self, _request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
     RemoteDeploymentOutcome::Failed("remote deployment hook is not installed".to_string())
   }
 }

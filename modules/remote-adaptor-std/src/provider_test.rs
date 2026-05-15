@@ -419,7 +419,7 @@ fn local_path_without_authority_is_dispatched_to_local_provider() {
 
 #[test]
 fn remote_deployment_hook_loopback_returns_local_outcome() {
-  let (mut hook, mut event_rx, _dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(50));
+  let (hook, mut event_rx, _dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(50));
   let request = deployment_request(
     "loopback-deploy",
     ActorAddress::remote("local-sys", "127.0.0.1", 2551),
@@ -434,7 +434,7 @@ fn remote_deployment_hook_loopback_returns_local_outcome() {
 
 #[test]
 fn remote_deployment_hook_rejects_non_deployable_props_without_enqueue() {
-  let (mut hook, mut event_rx, _dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(50));
+  let (hook, mut event_rx, _dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(50));
   let request = deployment_request("non-deployable", ActorAddress::remote("remote-sys", "10.0.0.1", 2552), None);
 
   let outcome = hook.deploy_child(request);
@@ -445,7 +445,7 @@ fn remote_deployment_hook_rejects_non_deployable_props_without_enqueue() {
 
 #[test]
 fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
-  let (mut hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let (hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
   let request = deployment_request(
     "remote-deploy",
     ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
@@ -482,7 +482,7 @@ fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
 
 #[test]
 fn remote_deployment_hook_brackets_ipv6_target_parent_host() {
-  let (mut hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));
+  let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));
   let request =
     deployment_request("remote-deploy", ActorAddress::remote("remote-sys", "::1", 2552), Some(deployable_metadata()));
 
@@ -500,7 +500,7 @@ fn remote_deployment_hook_brackets_ipv6_target_parent_host() {
 
 #[test]
 fn remote_deployment_hook_timeout_is_bounded_and_cancels_pending() {
-  let (mut hook, mut event_rx, dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(10));
+  let (hook, mut event_rx, dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(10));
   let request = deployment_request(
     "timeout-deploy",
     ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
