@@ -10,6 +10,7 @@ mod tests;
 
 mod base;
 mod client;
+mod compression;
 mod connection_loss_reporter;
 mod frame_codec;
 mod frame_codec_error;

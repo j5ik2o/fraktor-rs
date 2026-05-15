@@ -6,8 +6,11 @@ pub const WIRE_VERSION_1: u8 = 0x01;
 /// Wire format version that adds system-envelope redelivery metadata.
 pub const WIRE_VERSION_2: u8 = 0x02;
 
+/// Wire format version that adds envelope and control compression metadata.
+pub const WIRE_VERSION_3: u8 = 0x03;
+
 /// Current wire format version.
-pub const WIRE_VERSION: u8 = WIRE_VERSION_2;
+pub const WIRE_VERSION: u8 = WIRE_VERSION_3;
 
 /// Offset of the PDU kind byte in an encoded frame.
 pub const FRAME_KIND_OFFSET: usize = 5;

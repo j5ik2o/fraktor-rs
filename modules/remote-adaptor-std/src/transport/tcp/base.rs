@@ -20,7 +20,7 @@ use fraktor_actor_core_kernel_rs::serialization::{SerializationCallScope, Serial
 use fraktor_remote_core_rs::{
   address::Address,
   association::QuarantineReason,
-  config::RemoteConfig,
+  config::{RemoteCompressionConfig, RemoteConfig},
   envelope::OutboundEnvelope,
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
@@ -68,6 +68,7 @@ pub struct TcpRemoteTransport {
   inbound_workers:            Vec<JoinHandle<Result<(), TransportError>>>,
   inbound_lanes:              usize,
   outbound_lanes:             usize,
+  compression_config:         RemoteCompressionConfig,
   serialization_extension:    Option<ArcShared<SerializationExtensionShared>>,
   running:                    bool,
 }
@@ -113,17 +114,19 @@ impl TcpRemoteTransport {
     let bind_addr = alloc::format!("{bind_host}:{bind_port}");
     let local_addresses = vec![Address::new(system_name, config.canonical_host(), advertised_port)];
     let frame_codec = WireFrameCodec::with_maximum_frame_size(config.maximum_frame_size());
+    let compression_config = *config.compression_config();
     Self::with_frame_codec_and_lanes(
       bind_addr,
       local_addresses,
       frame_codec,
       config.inbound_lanes(),
       config.outbound_lanes(),
+      compression_config,
     )
   }
 
   fn with_frame_codec(bind_addr: String, local_addresses: Vec<Address>, frame_codec: WireFrameCodec) -> Self {
-    Self::with_frame_codec_and_lanes(bind_addr, local_addresses, frame_codec, 1, 1)
+    Self::with_frame_codec_and_lanes(bind_addr, local_addresses, frame_codec, 1, 1, RemoteCompressionConfig::new())
   }
 
   fn with_frame_codec_and_lanes(
@@ -132,6 +135,7 @@ impl TcpRemoteTransport {
     frame_codec: WireFrameCodec,
     inbound_lanes: usize,
     outbound_lanes: usize,
+    compression_config: RemoteCompressionConfig,
   ) -> Self {
     assert!(inbound_lanes > 0, "inbound lanes must be greater than zero");
     assert!(outbound_lanes > 0, "outbound lanes must be greater than zero");
@@ -141,7 +145,7 @@ impl TcpRemoteTransport {
       configured_local_addresses: local_addresses.clone(),
       local_addresses,
       default_address,
-      server: TcpServer::with_frame_codec(bind_addr.clone(), frame_codec),
+      server: TcpServer::with_frame_codec_and_compression_config(bind_addr.clone(), frame_codec, compression_config),
       bind_addr,
       frame_codec,
       clients: BTreeMap::new(),
@@ -152,6 +156,7 @@ impl TcpRemoteTransport {
       inbound_workers: Vec::new(),
       inbound_lanes,
       outbound_lanes,
+      compression_config,
       serialization_extension: None,
       running: false,
     }
@@ -241,7 +246,9 @@ impl TcpRemoteTransport {
   }
 
   fn client_connect_options(&self, remote: &Address) -> TcpClientConnectOptions {
-    let options = TcpClientConnectOptions::new(self.frame_codec).with_outbound_lanes(self.outbound_lanes);
+    let options = TcpClientConnectOptions::new(self.frame_codec)
+      .with_outbound_lanes(self.outbound_lanes)
+      .with_compression_config(self.compression_config, self.local_authority());
     if let Some(event_sender) = self.remote_event_tx.clone() {
       options.with_connection_loss_reporter(
         event_sender,
@@ -262,6 +269,23 @@ impl TcpRemoteTransport {
       })
       .collect();
     self.default_address = self.local_addresses.first().cloned();
+  }
+
+  fn local_authority(&self) -> String {
+    self.default_address.as_ref().map(ToString::to_string).unwrap_or_default()
+  }
+
+  fn local_authority_from_addresses(addresses: &[Address], bound_port: u16) -> String {
+    addresses
+      .first()
+      .map(|address| {
+        if address.port() == 0 {
+          Address::new(address.system(), address.host(), bound_port).to_string()
+        } else {
+          address.to_string()
+        }
+      })
+      .unwrap_or_default()
   }
 
   fn peer_key_for_address(address: &Address) -> String {
@@ -394,10 +418,12 @@ impl RemoteTransport for TcpRemoteTransport {
     if self.running {
       return Err(TransportError::AlreadyRunning);
     }
+    let configured_local_addresses = self.configured_local_addresses.clone();
     let bound_addr = self.server.start_with_remote_events(
       self.inbound_txs.clone(),
       self.remote_event_tx.clone(),
       self.monotonic_epoch,
+      move |bound_port| Self::local_authority_from_addresses(&configured_local_addresses, bound_port),
     )?;
     self.apply_bound_port_to_advertised_addresses(bound_addr.port());
     self.running = true;

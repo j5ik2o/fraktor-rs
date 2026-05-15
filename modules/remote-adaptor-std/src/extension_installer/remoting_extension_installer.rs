@@ -518,7 +518,9 @@ pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sen
       ControlPdu::Quarantine { .. }
       | ControlPdu::Shutdown { .. }
       | ControlPdu::FlushRequest { .. }
-      | ControlPdu::FlushAck { .. },
+      | ControlPdu::FlushAck { .. }
+      | ControlPdu::CompressionAdvertisement { .. }
+      | ControlPdu::CompressionAck { .. },
     )
     | WireFrame::Envelope(_)
     | WireFrame::Handshake(_)

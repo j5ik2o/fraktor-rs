@@ -36,7 +36,8 @@ use crate::{
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemoteInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
   wire::{
-    AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame,
+    AckPdu, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq,
+    HandshakeRsp, WireFrame,
   },
 };
 
@@ -1287,6 +1288,31 @@ fn inbound_heartbeat_response_with_mismatched_peer_authority_is_ignored() {
       now_ms:    80,
     })
     .expect("mismatched heartbeat response authority should be ignored");
+
+  assert_eq!(control_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_compression_control_is_transport_local_noop() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address]);
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config, event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::CompressionAck {
+        authority:  remote_address.to_string(),
+        table_kind: CompressionTableKind::ActorRef,
+        generation: 7,
+      }),
+      now_ms:    80,
+    })
+    .expect("compression control should be ignored by the core remote extension");
 
   assert_eq!(control_calls.load(Ordering::Relaxed), 0);
 }

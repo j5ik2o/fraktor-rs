@@ -1,9 +1,18 @@
 //! Codec for [`ControlPdu`].
 
+#[cfg(test)]
+#[path = "control_codec_test.rs"]
+mod tests;
+
+use alloc::vec::Vec;
+use core::num::TryFromIntError;
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::wire::{
   codec::Codec,
+  compression_table_entry::CompressionTableEntry,
+  compression_table_kind::CompressionTableKind,
   control_pdu::ControlPdu,
   flush_scope::FlushScope,
   frame_header::KIND_CONTROL,
@@ -20,6 +29,9 @@ const SUBKIND_SHUTDOWN: u8 = 0x02;
 const SUBKIND_HEARTBEAT_RESPONSE: u8 = 0x03;
 const SUBKIND_FLUSH_REQUEST: u8 = 0x04;
 const SUBKIND_FLUSH_ACK: u8 = 0x05;
+const SUBKIND_COMPRESSION_ADVERTISEMENT: u8 = 0x06;
+const SUBKIND_COMPRESSION_ACK: u8 = 0x07;
+const MIN_COMPRESSION_ENTRY_BYTES: usize = 4 + 4;
 
 /// Zero-sized codec for [`ControlPdu`].
 #[derive(Clone, Copy, Debug, Default)]
@@ -75,6 +87,21 @@ impl Codec<ControlPdu> for ControlCodec {
         buf.put_u32(*lane_id);
         buf.put_u32(*expected_acks);
       },
+      | ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries } => {
+        buf.put_u8(SUBKIND_COMPRESSION_ADVERTISEMENT);
+        encode_string(authority, buf)?;
+        encode_option_string(None, buf)?;
+        buf.put_u8(table_kind.to_wire());
+        buf.put_u64(*generation);
+        encode_compression_entries(entries, buf)?;
+      },
+      | ControlPdu::CompressionAck { authority, table_kind, generation } => {
+        buf.put_u8(SUBKIND_COMPRESSION_ACK);
+        encode_string(authority, buf)?;
+        encode_option_string(None, buf)?;
+        buf.put_u8(table_kind.to_wire());
+        buf.put_u64(*generation);
+      },
     }
     patch_frame_length(buf, len_pos)
   }
@@ -116,7 +143,57 @@ impl Codec<ControlPdu> for ControlCodec {
         let expected_acks = buf.get_u32();
         Ok(ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks })
       },
+      | SUBKIND_COMPRESSION_ADVERTISEMENT => {
+        if reason.is_some() {
+          return Err(WireError::InvalidFormat);
+        }
+        if buf.remaining() < 13 {
+          return Err(WireError::Truncated);
+        }
+        let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
+        let generation = buf.get_u64();
+        let entries = decode_compression_entries(buf)?;
+        Ok(ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries })
+      },
+      | SUBKIND_COMPRESSION_ACK => {
+        if reason.is_some() {
+          return Err(WireError::InvalidFormat);
+        }
+        if buf.remaining() < 9 {
+          return Err(WireError::Truncated);
+        }
+        let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
+        let generation = buf.get_u64();
+        Ok(ControlPdu::CompressionAck { authority, table_kind, generation })
+      },
       | _ => Err(WireError::InvalidFormat),
     }
   }
+}
+
+fn encode_compression_entries(entries: &[CompressionTableEntry], buf: &mut BytesMut) -> Result<(), WireError> {
+  buf.put_u32(compression_entry_count(entries.len())?);
+  for entry in entries {
+    buf.put_u32(entry.id());
+    encode_string(entry.literal(), buf)?;
+  }
+  Ok(())
+}
+
+fn compression_entry_count(entries_len: usize) -> Result<u32, WireError> {
+  u32::try_from(entries_len).map_err(|_err: TryFromIntError| WireError::InvalidFormat)
+}
+
+fn decode_compression_entries(buf: &mut Bytes) -> Result<Vec<CompressionTableEntry>, WireError> {
+  let entry_count = buf.get_u32() as usize;
+  if entry_count > buf.remaining() / MIN_COMPRESSION_ENTRY_BYTES {
+    return Err(WireError::Truncated);
+  }
+  let mut entries = Vec::with_capacity(entry_count);
+  for _ in 0..entry_count {
+    let id = buf.get_u32();
+    let literal = decode_string(buf)?;
+    entries.push(CompressionTableEntry::new(id, literal));
+  }
+  Ok(entries)
 }

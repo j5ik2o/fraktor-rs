@@ -546,6 +546,7 @@ impl Remote {
       | ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks } => {
         self.handle_inbound_flush_ack_control(peer_authority, authority, *flush_id, *lane_id, *expected_acks, now_ms)
       },
+      | ControlPdu::CompressionAdvertisement { .. } | ControlPdu::CompressionAck { .. } => Ok(()),
     }
   }
 

@@ -1,15 +1,16 @@
 //! Control PDU: heartbeat / quarantine / shutdown / flush signalling.
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 
-use super::FlushScope;
+use super::{CompressionTableEntry, CompressionTableKind, FlushScope};
 
 /// Wire-level control PDU carrying non-envelope signalling between nodes.
 ///
 /// Each variant shares the same frame `kind = 0x04` and is differentiated by an
 /// inner `subkind` byte at the start of the body (`0x00 = Heartbeat`,
 /// `0x01 = Quarantine`, `0x02 = Shutdown`, `0x03 = HeartbeatResponse`,
-/// `0x04 = FlushRequest`, `0x05 = FlushAck`).
+/// `0x04 = FlushRequest`, `0x05 = FlushAck`,
+/// `0x06 = CompressionAdvertisement`, `0x07 = CompressionAck`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ControlPdu {
   /// Periodic liveness signal from the sending node.
@@ -59,5 +60,25 @@ pub enum ControlPdu {
     lane_id:       u32,
     /// Number of acknowledgements expected by the requester.
     expected_acks: u32,
+  },
+  /// Advertisement of compression table entries.
+  CompressionAdvertisement {
+    /// Authority string (typically the sender's canonical address).
+    authority:  String,
+    /// Compression table kind.
+    table_kind: CompressionTableKind,
+    /// Advertisement generation.
+    generation: u64,
+    /// Advertised entries.
+    entries:    Vec<CompressionTableEntry>,
+  },
+  /// Acknowledgement for a compression table advertisement.
+  CompressionAck {
+    /// Authority string (typically the sender's canonical address).
+    authority:  String,
+    /// Compression table kind.
+    table_kind: CompressionTableKind,
+    /// Acknowledged advertisement generation.
+    generation: u64,
   },
 }
