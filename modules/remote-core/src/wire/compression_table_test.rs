@@ -60,6 +60,18 @@ fn disabled_table_does_not_track_hits_or_advertise() {
 }
 
 #[test]
+fn disabled_table_still_applies_inbound_advertisements() {
+  let mut table = CompressionTable::new(None);
+  let entries = [CompressionTableEntry::new(9, "/user/a".to_string())];
+
+  assert_eq!(table.apply_advertisement(7, &entries), Ok(()));
+
+  assert!(table.create_advertisement(CompressionTableKind::ActorRef).is_none());
+  assert_eq!(table.encode("/user/a").as_literal(), Some("/user/a"));
+  assert_eq!(table.resolve(9), Some("/user/a"));
+}
+
+#[test]
 fn advertisement_is_bounded_and_deterministic() {
   let mut table = CompressionTable::new(max(3));
   table.observe("/user/a");
@@ -143,7 +155,7 @@ fn inbound_advertisement_resolves_entry_ids() {
   let mut table = CompressionTable::new(max(4));
   let entries = [CompressionTableEntry::new(9, "/user/a".to_string())];
 
-  assert_eq!(table.apply_advertisement(7, &entries), Ok(true));
+  assert_eq!(table.apply_advertisement(7, &entries), Ok(()));
 
   assert_eq!(table.resolve(9), Some("/user/a"));
   assert_eq!(table.resolve(10), None);
@@ -155,7 +167,7 @@ fn inbound_advertisement_accepts_entries_over_local_advertisement_bound() {
   let entries =
     [CompressionTableEntry::new(9, "/user/a".to_string()), CompressionTableEntry::new(10, "/user/b".to_string())];
 
-  assert_eq!(table.apply_advertisement(7, &entries), Ok(true));
+  assert_eq!(table.apply_advertisement(7, &entries), Ok(()));
 
   assert_eq!(table.resolve(9), Some("/user/a"));
   assert_eq!(table.resolve(10), Some("/user/b"));

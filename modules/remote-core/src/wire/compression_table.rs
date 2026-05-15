@@ -55,7 +55,7 @@ impl CompressionTable {
     Self { max, next_entry_id: 1, next_generation: 1, latest_pending_generation: None, entries: Vec::new() }
   }
 
-  /// Returns true when this table kind is enabled.
+  /// Returns true when outbound compression for this table kind is enabled.
   #[must_use]
   pub const fn is_enabled(&self) -> bool {
     self.max.is_some()
@@ -187,10 +187,7 @@ impl CompressionTable {
   /// # Errors
   ///
   /// Returns [`WireError::InvalidFormat`] when the advertisement contains duplicate entry ids.
-  pub fn apply_advertisement(&mut self, generation: u64, entries: &[CompressionTableEntry]) -> Result<bool, WireError> {
-    if !self.is_enabled() {
-      return Ok(false);
-    }
+  pub fn apply_advertisement(&mut self, generation: u64, entries: &[CompressionTableEntry]) -> Result<(), WireError> {
     if has_duplicate_entry_id(entries) {
       return Err(WireError::InvalidFormat);
     }
@@ -198,15 +195,12 @@ impl CompressionTable {
     self.entries.clear();
     self.entries.extend(entries.iter().map(|entry| CompressionTableEntryState::from_advertisement(entry, generation)));
     self.latest_pending_generation = None;
-    Ok(true)
+    Ok(())
   }
 
   /// Resolves an inbound table reference id to a literal value.
   #[must_use]
   pub fn resolve(&self, entry_id: u32) -> Option<&str> {
-    if !self.is_enabled() {
-      return None;
-    }
     self.entries.iter().find(|entry| entry.id == entry_id).map(|entry| entry.literal.as_str())
   }
 }

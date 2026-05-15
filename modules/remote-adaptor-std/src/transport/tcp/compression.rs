@@ -58,15 +58,11 @@ impl TcpCompressionTables {
       },
       | WireFrame::Control(ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries }) => {
         let authority = TransportEndpoint::new(authority);
-        let applied = self.inbound_table_mut(table_kind).apply_advertisement(generation, &entries)?;
-        if applied {
-          Ok(InboundCompressionAction::Reply {
-            pdu: ControlPdu::CompressionAck { authority: local_authority.to_string(), table_kind, generation },
-            authority,
-          })
-        } else {
-          Ok(InboundCompressionAction::Consumed { authority })
-        }
+        self.inbound_table_mut(table_kind).apply_advertisement(generation, &entries)?;
+        Ok(InboundCompressionAction::Reply {
+          pdu: ControlPdu::CompressionAck { authority: local_authority.to_string(), table_kind, generation },
+          authority,
+        })
       },
       | WireFrame::Control(ControlPdu::CompressionAck { authority, table_kind, generation }) => {
         let authority = TransportEndpoint::new(authority);

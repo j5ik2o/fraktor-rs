@@ -225,7 +225,7 @@ fn unknown_inbound_reference_is_rejected() {
 }
 
 #[test]
-fn disabled_config_keeps_literals_and_does_not_ack_advertisements() {
+fn disabled_config_keeps_local_outbound_literals_but_accepts_peer_advertisements() {
   let config = RemoteCompressionConfig::new().with_actor_ref_max(None).with_manifest_max(max(1));
   let mut tables = TcpCompressionTables::new(config);
 
@@ -241,7 +241,22 @@ fn disabled_config_keeps_literals_and_does_not_ack_advertisements() {
     .unwrap();
   assert!(matches!(
     action,
-    InboundCompressionAction::Consumed { authority } if authority.authority() == "remote@host:1"
+    InboundCompressionAction::Reply {
+      pdu: ControlPdu::CompressionAck {
+      authority,
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+    },
+      authority: peer_authority,
+    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
+  ));
+
+  let action =
+    tables.handle_inbound_frame(envelope_frame(CompressedText::table_ref(3), None, None), "local@host:2").unwrap();
+
+  assert!(matches!(
+    action,
+    InboundCompressionAction::Forward(WireFrame::Envelope(pdu)) if pdu.recipient_path() == "/user/a"
   ));
 }
 

@@ -6,6 +6,8 @@
 
 `RemoteCompressionConfig` の対象 kind の max が `None` の場合、その kind の compression table は disabled として扱い、hit count、advertisement、compressed reference encode を行ってはならない（MUST NOT）。
 
+この disabled state は local outbound compression の無効化を表し、peer から届く inbound advertisement の適用と inbound table reference の復元を拒否してはならない（MUST NOT）。
+
 #### Scenario: 繰り返し literal は hit count を更新する
 
 - **WHEN** actor ref table に同じ canonical actor path を複数回 observe する
@@ -17,6 +19,13 @@
 - **GIVEN** actor-ref compression max が `None` である
 - **WHEN** actor ref table に canonical actor path を observe する
 - **THEN** table は hit count と advertisement candidate を保持しない
+
+#### Scenario: disabled kind は inbound advertisement を適用できる
+
+- **GIVEN** actor-ref compression max が `None` である
+- **WHEN** peer から actor ref table advertisement を受信する
+- **THEN** table は advertised entry ids と literal values を inbound resolution 用に保持する
+- **AND** outbound encode は actor ref literal のまま維持される
 
 #### Scenario: table max は advertised entries を制限する
 

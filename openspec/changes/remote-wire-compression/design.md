@@ -48,9 +48,11 @@ outbound table は observed literals の hit count から generation ごとの a
 
 この選択により、table sync の race で message delivery が止まる頻度を抑えられる。inbound に未知 reference が来た場合は peer の protocol violation として失敗させる。
 
-### 判断 5: max = None は kind 単位の無効化
+### 判断 5: max = None は kind 単位の local outbound 無効化
 
-`RemoteCompressionConfig::actor_ref_max() == None` の場合 actor-ref compression を無効化し、`manifest_max() == None` の場合 manifest compression を無効化する。無効化された kind では hit count も advertisement も compressed reference encode も行わない。
+`RemoteCompressionConfig::actor_ref_max() == None` の場合 actor-ref の local outbound compression を無効化し、`manifest_max() == None` の場合 manifest の local outbound compression を無効化する。無効化された kind では hit count も advertisement も compressed reference encode も行わない。
+
+この設定は peer から届く inbound advertisement の拒否条件ではない。inbound table は peer の advertisement を保存して ack し、後続 envelope の table reference を復元できなければならない。これにより、一方だけが outbound compression を無効化した接続でも peer の pending generation が永久に詰まらない。
 
 ## リスク / トレードオフ
 

@@ -35,6 +35,14 @@ std TCP transport は inbound `ControlPdu::CompressionAdvertisement` と `Contro
 - **AND** 同じ table kind と generation を持つ `ControlPdu::CompressionAck` を peer writer へ enqueue する
 - **AND** advertisement frame を `RemoteEvent::InboundFrameReceived` として送信しない
 
+#### Scenario: local outbound disabled でも inbound advertisement は ack する
+
+- **GIVEN** `RemoteConfig` の actor-ref max が `None` である
+- **WHEN** TCP reader が actor-ref の `ControlPdu::CompressionAdvertisement` を受信する
+- **THEN** transport は inbound actor-ref table を更新する
+- **AND** 同じ table kind と generation を持つ `ControlPdu::CompressionAck` を peer writer へ enqueue する
+- **AND** 後続の inbound envelope に含まれる actor-ref table reference を復元できる
+
 #### Scenario: inbound ack は outbound table を mark する
 
 - **GIVEN** TCP reader が `ControlPdu::CompressionAck` を受信する

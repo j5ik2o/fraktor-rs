@@ -53,12 +53,12 @@ large-message と lane 設定は、設定保持だけでなく `Association` お
 - **THEN** transport の peer-local actor-ref compression table configuration は最大 64 entries として保持される
 - **AND** peer-local manifest compression table configuration は最大 32 entries として保持される
 
-#### Scenario: compression max None は kind 単位で無効化する
+#### Scenario: compression max None は local outbound を kind 単位で無効化する
 
 - **GIVEN** `RemoteConfig` に `actor_ref_max = None` と `manifest_max = Some(32)` を持つ compression settings を設定する
 - **WHEN** `TcpRemoteTransport::from_config(system_name, config)` を呼ぶ
-- **THEN** actor-ref compression は disabled になる
-- **AND** manifest compression は enabled のまま保持される
+- **THEN** actor-ref local outbound compression は disabled になる
+- **AND** manifest local outbound compression は enabled のまま保持される
 
 #### Scenario: advertisement interval は std transport timer に渡される
 
