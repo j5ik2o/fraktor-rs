@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
-
-export CODEX_HOME=${REPO_ROOT}/.codex-personal
+export CODEX_HOME="${HOME}/.codex-personal"
 
 ensure_local_codex_config() {
   local config_path="${CODEX_HOME}/config.toml"
-  local base_config="${REPO_ROOT}/.codex/config.toml"
-  local project_header="[projects.\"${REPO_ROOT}\"]"
+  local base_config="${HOME}/.codex/config.toml"
+  local project_header="[projects.\"${HOME}\"]"
 
   mkdir -p "${CODEX_HOME}"
   if [[ -L "${config_path}" ]]; then
