@@ -487,23 +487,27 @@ impl SystemState {
     }
   }
 
-  /// Moves an existing name reservation to its real pid without releasing the name.
+  /// Moves an existing name reservation to a newly allocated pid without releasing the name.
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError`] if the name is no longer bound to `expected`.
-  pub(crate) fn reassign_name(
+  pub(crate) fn reassign_name_to_allocated_pid(
     &mut self,
     parent: Option<Pid>,
     name: &str,
     expected: Pid,
-    pid: Pid,
-  ) -> Result<(), SpawnError> {
-    let registry = self.registries.entry_or_insert(parent);
-    if registry.replace_if(name, expected, pid) {
-      return Ok(());
+  ) -> Result<Pid, SpawnError> {
+    {
+      let registry = self.registries.entry_or_insert(parent);
+      if registry.resolve(name) != Some(expected) {
+        return Err(SpawnError::name_conflict(name));
+      }
     }
-    Err(SpawnError::name_conflict(name))
+    let pid = self.allocate_pid();
+    let registry = self.registries.entry_or_insert(parent);
+    debug_assert!(registry.replace_if(name, expected, pid));
+    Ok(pid)
   }
 
   pub(crate) fn register_ask_future(&mut self, future: ActorFutureShared<AskResult>) {

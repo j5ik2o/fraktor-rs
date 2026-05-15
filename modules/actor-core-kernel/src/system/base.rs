@@ -599,8 +599,7 @@ impl ActorSystem {
     props: &Props,
     reserved_name: String,
   ) -> Result<ChildRef, SpawnError> {
-    let pid = self.state.allocate_pid();
-    self.state.reassign_name(parent, &reserved_name, REMOTE_DEPLOYMENT_RESERVED_PID, pid)?;
+    let pid = self.state.reassign_name_to_allocated_pid(parent, &reserved_name, REMOTE_DEPLOYMENT_RESERVED_PID)?;
     let name = reserved_name.clone();
     match self.spawn_local_with_assigned_name(parent, props, pid, reserved_name) {
       | Ok(child) => Ok(child),

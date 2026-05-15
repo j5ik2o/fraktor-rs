@@ -389,13 +389,18 @@ impl SystemStateShared {
     self.inner.with_write(|inner| inner.release_name(parent, name));
   }
 
-  /// Moves an existing name reservation to its real pid without releasing the name.
+  /// Moves an existing name reservation to a newly allocated pid without releasing the name.
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError`] if the name is no longer bound to `expected`.
-  pub fn reassign_name(&self, parent: Option<Pid>, name: &str, expected: Pid, pid: Pid) -> Result<(), SpawnError> {
-    self.inner.with_write(|inner| inner.reassign_name(parent, name, expected, pid))
+  pub fn reassign_name_to_allocated_pid(
+    &self,
+    parent: Option<Pid>,
+    name: &str,
+    expected: Pid,
+  ) -> Result<Pid, SpawnError> {
+    self.inner.with_write(|inner| inner.reassign_name_to_allocated_pid(parent, name, expected))
   }
 
   /// Stores the root guardian cell reference.
