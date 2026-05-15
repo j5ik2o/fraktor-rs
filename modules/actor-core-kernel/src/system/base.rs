@@ -368,7 +368,7 @@ impl ActorSystem {
       },
     };
     let named_props = props.clone().with_name(name);
-    self.spawn_child(parent_pid, &named_props)
+    self.spawn_child_local(parent_pid, &named_props)
   }
 
   /// Emits a log event with the specified severity.
@@ -474,13 +474,23 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
   pub(crate) fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.ensure_spawnable_parent(parent)?;
+    self.spawn_with_parent(Some(parent), props)
+  }
+
+  fn spawn_child_local(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.ensure_spawnable_parent(parent)?;
+    self.spawn_local_with_parent(Some(parent), props)
+  }
+
+  fn ensure_spawnable_parent(&self, parent: Pid) -> Result<(), SpawnError> {
     if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
       return Err(SpawnError::system_not_bootstrapped());
     }
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
-    self.spawn_with_parent(Some(parent), props)
+    Ok(())
   }
 
   /// Returns an [`ActorRef`] for the specified pid if the actor is registered.
@@ -574,6 +584,10 @@ impl ActorSystem {
     if let Some(child) = self.try_remote_deployment(parent, props)? {
       return Ok(child);
     }
+    self.spawn_local_with_parent(parent, props)
+  }
+
+  fn spawn_local_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
     let cell = self.build_cell_for_spawn(pid, parent, name, props)?;

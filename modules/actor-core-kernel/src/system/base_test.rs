@@ -1201,6 +1201,24 @@ fn spawn_child_at_rejects_resolved_non_local_parent() {
 }
 
 #[test]
+fn spawn_child_at_uses_local_spawn_even_when_deployer_matches() {
+  let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("remote-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    calls.clone(),
+    TestRemoteDeploymentOutcome::Failed("spawn_child_at should stay local"),
+  ));
+  let parent_path = system.user_guardian_ref().path().expect("user guardian path");
+
+  let child = system
+    .spawn_child_at(parent_path, &deployable_test_props(), "remote-child")
+    .expect("spawn_child_at should create a local child");
+
+  assert!(system.actor_ref_by_pid(child.pid()).is_some());
+  assert!(calls.lock().is_empty());
+}
+
+#[test]
 fn resolve_actor_ref_fails_when_authority_missing() {
   let system = ActorSystem::new_empty();
   let parts = ActorPathParts::local("cellactor").with_scheme(ActorPathScheme::FraktorTcp);
