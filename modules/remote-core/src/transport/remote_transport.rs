@@ -100,7 +100,9 @@ pub trait RemoteTransport {
   /// Returns [`TransportError::NotStarted`] if the transport is not running,
   /// [`TransportError::Backpressure`] if the transport's synchronous handoff
   /// queue is full, or [`TransportError::ConnectionClosed`] if no connection to
-  /// `remote` exists.
+  /// `remote` exists. The default implementation returns
+  /// [`TransportError::NotAvailable`] for transports that do not support
+  /// deployment frames.
   fn send_deployment(&mut self, remote: &Address, pdu: RemoteDeploymentPdu) -> Result<(), TransportError> {
     let _ = remote;
     let _ = pdu;

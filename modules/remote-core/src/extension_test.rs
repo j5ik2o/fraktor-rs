@@ -37,7 +37,7 @@ use crate::{
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
   wire::{
     AckPdu, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq,
-    HandshakeRsp, WireFrame,
+    HandshakeRsp, RemoteDeploymentCreateFailure, RemoteDeploymentFailureCode, RemoteDeploymentPdu, WireFrame,
   },
 };
 
@@ -878,6 +878,29 @@ fn inbound_handshake_request_rejects_forged_local_destination() {
     .expect("forged destination should be ignored without failing the event loop");
 
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_deployment_frame_without_adapter_routing_is_error() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    1,
+    2,
+    RemoteDeploymentFailureCode::SpawnFailed,
+    String::from("unrouted"),
+  ));
+
+  let result = remote.handle_remote_event(RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Deployment(pdu),
+    now_ms:    42,
+  });
+
+  assert_eq!(result, Err(RemotingError::UnimplementedEvent));
 }
 
 #[test]

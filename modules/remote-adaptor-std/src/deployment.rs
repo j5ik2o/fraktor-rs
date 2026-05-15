@@ -5,7 +5,7 @@
 mod tests;
 
 use std::{
-  collections::BTreeMap,
+  collections::{BTreeMap, VecDeque},
   string::{String, ToString},
   sync::mpsc,
   time::Instant,
@@ -34,6 +34,7 @@ use tokio::{
 use crate::association::std_instant_elapsed_millis;
 
 const PARENT_PATH_INVALID: &str = "target parent path is invalid";
+const MAX_STALE_DEPLOYMENT_RESPONSES: usize = 128;
 
 type DeploymentCorrelation = (u64, u32);
 type PendingDeploymentResponses = BTreeMap<DeploymentCorrelation, mpsc::Sender<DeploymentResponse>>;
@@ -41,7 +42,7 @@ type PendingDeploymentResponses = BTreeMap<DeploymentCorrelation, mpsc::Sender<D
 #[derive(Default)]
 struct DeploymentResponseState {
   pending: PendingDeploymentResponses,
-  stale:   Vec<DeploymentResponse>,
+  stale:   VecDeque<DeploymentResponse>,
 }
 
 /// Origin-side deployment response.
@@ -100,7 +101,12 @@ impl DeploymentResponseDispatcher {
   }
 
   fn record_stale(&self, response: DeploymentResponse) {
-    self.state.with_lock(|state| state.stale.push(response));
+    self.state.with_lock(|state| {
+      if state.stale.len() == MAX_STALE_DEPLOYMENT_RESPONSES {
+        state.stale.pop_front();
+      }
+      state.stale.push_back(response);
+    });
     tracing::warn!(stale_responses = self.stale_len(), "remote deployment response did not match a pending request");
   }
 
@@ -118,8 +124,8 @@ impl DeploymentResponseDispatcher {
 
 /// Command consumed by the deployment daemon.
 pub(crate) struct DeploymentDaemonCommand {
-  authority: TransportEndpoint,
-  request:   RemoteDeploymentCreateRequest,
+  pub(crate) authority: TransportEndpoint,
+  pub(crate) request:   RemoteDeploymentCreateRequest,
 }
 
 impl DeploymentDaemonCommand {
@@ -149,12 +155,14 @@ async fn run_deployment_daemon(
   monotonic_epoch: Instant,
 ) {
   while let Some(command) = receiver.recv().await {
-    let remote = match parse_remote_address(command.request.origin_node())
-      .or_else(|| parse_remote_address(command.authority.authority()))
-    {
+    let remote = match response_remote_for_command(&command) {
       | Some(remote) => remote,
       | None => {
-        tracing::warn!(origin_node = command.request.origin_node(), "remote deployment response address is invalid");
+        tracing::warn!(
+          authority = command.authority.authority(),
+          origin_node = command.request.origin_node(),
+          "remote deployment response address is invalid"
+        );
         continue;
       },
     };
@@ -233,6 +241,33 @@ fn spawn_error(error: SpawnError) -> (RemoteDeploymentFailureCode, String) {
     | SpawnError::NameConflict(name) => (RemoteDeploymentFailureCode::DuplicateChildName, name),
     | SpawnError::InvalidProps(reason) => (RemoteDeploymentFailureCode::InvalidRequest, reason),
     | other => (RemoteDeploymentFailureCode::SpawnFailed, format!("{other:?}")),
+  }
+}
+
+fn response_remote_for_command(command: &DeploymentDaemonCommand) -> Option<Address> {
+  let authority = parse_remote_address(command.authority.authority());
+  let origin = parse_remote_address(command.request.origin_node());
+  match (authority, origin) {
+    | (Some(authority), Some(origin)) => {
+      if authority != origin {
+        tracing::warn!(
+          authority = command.authority.authority(),
+          origin_node = command.request.origin_node(),
+          "remote deployment origin node differs from inbound authority; replying to inbound authority"
+        );
+      }
+      Some(authority)
+    },
+    | (Some(authority), None) => Some(authority),
+    | (None, Some(origin)) => {
+      tracing::warn!(
+        authority = command.authority.authority(),
+        origin_node = command.request.origin_node(),
+        "remote deployment inbound authority is invalid; falling back to origin node"
+      );
+      Some(origin)
+    },
+    | (None, None) => None,
   }
 }
 

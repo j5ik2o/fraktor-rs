@@ -155,9 +155,11 @@ fn remote_deployment_create_success_roundtrip() {
   let mut buf = BytesMut::new();
   RemoteDeploymentCodec::new().encode(&pdu, &mut buf).unwrap();
 
-  let decoded = RemoteDeploymentCodec::new().decode(&mut to_bytes(buf)).unwrap();
+  let mut bytes = to_bytes(buf);
+  let decoded = RemoteDeploymentCodec::new().decode(&mut bytes).unwrap();
 
   assert_eq!(decoded, pdu);
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
 }
 
 #[test]
@@ -171,9 +173,11 @@ fn remote_deployment_create_failure_roundtrip() {
   let mut buf = BytesMut::new();
   RemoteDeploymentCodec::new().encode(&pdu, &mut buf).unwrap();
 
-  let decoded = RemoteDeploymentCodec::new().decode(&mut to_bytes(buf)).unwrap();
+  let mut bytes = to_bytes(buf);
+  let decoded = RemoteDeploymentCodec::new().decode(&mut bytes).unwrap();
 
   assert_eq!(decoded, pdu);
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
 }
 
 #[test]

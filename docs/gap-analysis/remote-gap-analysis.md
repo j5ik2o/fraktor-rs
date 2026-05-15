@@ -42,7 +42,7 @@ raw declaration count は Scala / Java / JVM 固有 API を含む参考値であ
 
 ## サマリー
 
-remote は address primitives、failure detector、association state、wire PDU、TCP transport shell、compression table application、resolve cache、remote `ActorRef` materialization、actor-core serialization registry backed payload の outbound / inbound delivery、remote deployment create まで実装済みである。
+remote は address primitives、failure detector、association state、wire PDU、TCP transport shell、compression table application、resolve cache、remote `ActorRef` materialization、actor-core serialization registry backed payload の outbound / inbound delivery、remote deployment create まで実装済みである。固定スコープ概念カバレッジは 74/75 (98.7%) である。
 
 一方で、残ギャップは `AddressTerminated` integration に集中している。remote DeathWatch の watch / unwatch / notification delivery、ACK/NACK redelivery、shutdown / DeathWatch 前 flush lifecycle、RemoteScope child create は接続済みである。
 

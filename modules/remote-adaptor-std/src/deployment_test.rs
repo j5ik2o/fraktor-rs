@@ -13,9 +13,11 @@ use fraktor_actor_core_kernel_rs::{
   serialization::{builtin::STRING_ID, default_serialization_extension_id},
   system::{ActorSystem, remote::RemotingConfig},
 };
-use fraktor_remote_core_rs::wire::{RemoteDeploymentCreateRequest, RemoteDeploymentFailureCode, RemoteDeploymentPdu};
+use fraktor_remote_core_rs::wire::{
+  RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentFailureCode, RemoteDeploymentPdu,
+};
 
-use super::handle_create_request;
+use super::{DeploymentResponse, DeploymentResponseDispatcher, MAX_STALE_DEPLOYMENT_RESPONSES, handle_create_request};
 
 struct TestActor;
 
@@ -121,4 +123,20 @@ fn invalid_payload_returns_deserialization_failure() {
     panic!("invalid payload should fail");
   };
   assert_eq!(failure.code(), RemoteDeploymentFailureCode::DeserializationFailed);
+}
+
+#[test]
+fn deployment_response_dispatcher_bounds_stale_responses() {
+  let dispatcher = DeploymentResponseDispatcher::default();
+
+  for index in 0..(MAX_STALE_DEPLOYMENT_RESPONSES + 1) {
+    dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+      index as u64,
+      0,
+      RemoteDeploymentFailureCode::SpawnFailed,
+      String::from("late"),
+    )));
+  }
+
+  assert_eq!(dispatcher.stale_len(), MAX_STALE_DEPLOYMENT_RESPONSES);
 }

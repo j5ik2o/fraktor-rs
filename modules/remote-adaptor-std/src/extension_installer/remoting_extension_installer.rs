@@ -29,7 +29,10 @@ use fraktor_remote_core_rs::{
   instrument::RemotingFlightRecorder,
   transport::RemoteTransport,
   watcher::WatcherCommand,
-  wire::{ControlPdu, FlushScope, RemoteDeploymentPdu, WireFrame},
+  wire::{
+    ControlPdu, FlushScope, RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentFailureCode,
+    RemoteDeploymentPdu, WireFrame,
+  },
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use futures::future::poll_fn;
@@ -580,13 +583,31 @@ fn route_deployment_event(
   deployment_sender: &Sender<DeploymentDaemonCommand>,
   deployment_response_dispatcher: &DeploymentResponseDispatcher,
 ) -> Option<RemoteEvent> {
-  let RemoteEvent::InboundFrameReceived { authority, frame: WireFrame::Deployment(pdu), .. } = event else {
+  let RemoteEvent::InboundFrameReceived { authority, frame: WireFrame::Deployment(pdu), now_ms } = event else {
     return Some(event);
   };
   match pdu {
     | RemoteDeploymentPdu::CreateRequest(request) => {
-      if let Err(error) = deployment_sender.try_send(DeploymentDaemonCommand::create(authority, request)) {
-        tracing::warn!(?error, "remote deployment request enqueue failed");
+      let command = DeploymentDaemonCommand::create(authority, request);
+      if let Err(error) = deployment_sender.try_send(command) {
+        let reason = error.to_string();
+        let command = error.into_inner();
+        tracing::warn!(?reason, "remote deployment request enqueue failed");
+        let Some(remote) =
+          parse_address(command.authority.authority()).or_else(|| parse_address(command.request.origin_node()))
+        else {
+          tracing::warn!(
+            authority = command.authority.authority(),
+            origin_node = command.request.origin_node(),
+            "remote deployment request enqueue failure response address is invalid"
+          );
+          return None;
+        };
+        return Some(RemoteEvent::OutboundDeployment {
+          remote,
+          pdu: deployment_enqueue_failure(&command.request, reason),
+          now_ms,
+        });
       }
     },
     | RemoteDeploymentPdu::CreateSuccess(success) => {
@@ -597,6 +618,15 @@ fn route_deployment_event(
     },
   }
   None
+}
+
+fn deployment_enqueue_failure(request: &RemoteDeploymentCreateRequest, reason: String) -> RemoteDeploymentPdu {
+  RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    request.correlation_hi(),
+    request.correlation_lo(),
+    RemoteDeploymentFailureCode::SpawnFailed,
+    reason,
+  ))
 }
 
 pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sender: &Sender<WatcherCommand>) {

@@ -481,6 +481,24 @@ fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
 }
 
 #[test]
+fn remote_deployment_hook_brackets_ipv6_target_parent_host() {
+  let (mut hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));
+  let request =
+    deployment_request("remote-deploy", ActorAddress::remote("remote-sys", "::1", 2552), Some(deployable_metadata()));
+
+  let outcome = hook.deploy_child(request);
+  let event = event_rx.try_recv().expect("deployment request should be enqueued");
+
+  match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      assert_eq!(request.target_parent_path(), "fraktor.tcp://remote-sys@[::1]:2552/user");
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  }
+  assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("timed out")));
+}
+
+#[test]
 fn remote_deployment_hook_timeout_is_bounded_and_cancels_pending() {
   let (mut hook, mut event_rx, dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(10));
   let request = deployment_request(

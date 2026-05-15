@@ -1,6 +1,7 @@
 //! Std remote deployment hook.
 
 use std::{
+  net::{IpAddr, Ipv6Addr},
   string::{String, ToString},
   sync::atomic::{AtomicU64, Ordering},
   time::{Duration, Instant},
@@ -174,10 +175,22 @@ fn target_parent_path(request: &RemoteDeploymentRequest, target: &Address) -> Re
   if parent_len == 0 {
     return Err(String::from(TARGET_PARENT_REQUIRED));
   }
-  let mut path = format!("fraktor.tcp://{}@{}:{}", target.system(), target.host(), target.port());
+  let mut path = format!("fraktor.tcp://{}@{}:{}", target.system(), uri_host(target.host()), target.port());
   for segment in segments.iter().take(parent_len) {
     path.push('/');
     path.push_str(segment.as_str());
   }
   Ok(path)
+}
+
+fn uri_host(host: &str) -> String {
+  if host.starts_with('[') {
+    return host.to_string();
+  }
+  match host.parse::<IpAddr>() {
+    | Ok(IpAddr::V6(_)) => format!("[{host}]"),
+    | Ok(IpAddr::V4(_)) => host.to_string(),
+    | Err(_) if host.parse::<Ipv6Addr>().is_ok() || host.contains(':') => format!("[{host}]"),
+    | Err(_) => host.to_string(),
+  }
 }

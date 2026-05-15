@@ -404,7 +404,10 @@ impl Remote {
       | WireFrame::Handshake(pdu) => self.handle_inbound_handshake_pdu(pdu, now_ms),
       | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(authority, &pdu, now_ms),
       | WireFrame::Ack(pdu) => self.handle_inbound_ack_pdu(authority, &pdu, now_ms),
-      | WireFrame::Deployment(_) => Ok(()),
+      | WireFrame::Deployment(pdu) => {
+        tracing::warn!(?pdu, "deployment frame reached remote core without adapter routing");
+        Err(RemotingError::UnimplementedEvent)
+      },
     }
   }
 
