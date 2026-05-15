@@ -76,6 +76,23 @@ pub(super) struct RemotingRunState {
   termination_handle: Option<JoinHandle<()>>,
 }
 
+struct RemotingInstallChannels {
+  event_sender:        Sender<RemoteEvent>,
+  event_receiver:      Receiver<RemoteEvent>,
+  watcher_sender:      Sender<WatcherCommand>,
+  watcher_receiver:    Receiver<WatcherCommand>,
+  deployment_sender:   Sender<DeploymentDaemonCommand>,
+  deployment_receiver: Receiver<DeploymentDaemonCommand>,
+}
+
+struct RemotingInstallResources {
+  remote:                  RemoteShared,
+  local_address:           Address,
+  serialization_extension: ArcShared<SerializationExtensionShared>,
+  monotonic_epoch:         Instant,
+  channels:                RemotingInstallChannels,
+}
+
 /// Handles needed by the std remote actor-ref provider.
 pub(crate) struct RemoteProviderFlushHandles {
   /// Remote event sender.
@@ -215,31 +232,44 @@ impl RemotingExtensionInstaller {
 
 impl ExtensionInstaller for RemotingExtensionInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
+    let transport = self.take_transport_for_install()?;
+    let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
+    let resources = self.build_remoting_install_resources(system, transport, serialization_extension);
+    resources.remote.start().map_err(remoting_build_error)?;
+    let rollback_remote = resources.remote.clone();
+    let rollback_event_sender = resources.channels.event_sender.clone();
+    let install_result = self.finish_remoting_install(system, resources);
+    if let Err(error) = install_result {
+      rollback_started_remote(&rollback_remote, &rollback_event_sender, &self.run_state);
+      return Err(error);
+    }
+    Ok(())
+  }
+}
+
+impl RemotingExtensionInstaller {
+  fn take_transport_for_install(&self) -> Result<TcpRemoteTransport, ActorSystemBuildError> {
     let mut transport_slot =
       self.transport.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(TRANSPORT_LOCK_POISONED)))?;
     if self.remote_shared.get().is_some() {
       return Err(ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)));
     }
-    let Some(transport) = transport_slot.take() else {
-      return Err(ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)));
-    };
-    let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
-    let (event_sender, event_receiver) = mpsc::channel(self.config.remote_event_queue_size());
-    let (watcher_sender, watcher_receiver) = mpsc::channel(self.config.remote_event_queue_size());
-    let (deployment_sender, deployment_receiver) = mpsc::channel(self.config.remote_event_queue_size());
+    transport_slot.take().ok_or_else(|| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
+  }
+
+  fn build_remoting_install_resources(
+    &self,
+    system: &ActorSystem,
+    transport: TcpRemoteTransport,
+    serialization_extension: ArcShared<SerializationExtensionShared>,
+  ) -> RemotingInstallResources {
+    let channels = create_remoting_install_channels(self.config.remote_event_queue_size());
     let monotonic_epoch = Instant::now();
     let transport = transport
       .with_monotonic_epoch(monotonic_epoch)
-      .with_remote_event_sender(event_sender.clone())
+      .with_remote_event_sender(channels.event_sender.clone())
       .with_serialization_extension(serialization_extension.clone());
-    let local_address =
-      transport.default_address().or_else(|| transport.addresses().first()).cloned().unwrap_or_else(|| {
-        Address::new(
-          system.state().system_name(),
-          self.config.canonical_host(),
-          self.config.canonical_port().or_else(|| self.config.bind_port()).unwrap_or(0),
-        )
-      });
+    let local_address = remoting_local_address(&transport, system, &self.config);
     let event_publisher = EventPublisher::new(system.downgrade());
     let remote = RemoteShared::new(Remote::with_instrument(
       transport,
@@ -248,79 +278,117 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       serialization_extension.clone(),
       Box::new(RemotingFlightRecorder::new(self.config.flight_recorder_capacity())),
     ));
-    remote.start().map_err(remoting_build_error)?;
-    let install_result = (|| -> Result<(), ActorSystemBuildError> {
-      let mut run_state = self
-        .run_state
-        .lock()
-        .map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
-      run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
-      spawn_run_task_with_state(
-        &mut run_state,
-        remote.clone(),
-        system.clone(),
-        watcher_sender.clone(),
-        deployment_sender.clone(),
-        self.deployment_response_dispatcher.clone(),
-        event_sender.clone(),
-        self.flush_gate.clone(),
-      )
-      .map_err(remoting_build_error)?;
-      spawn_watcher_task_with_state(
-        &mut run_state,
-        watcher_receiver,
-        event_sender.clone(),
-        system.clone(),
-        local_address,
-        monotonic_epoch,
-        self.config.system_message_resend_interval(),
-      )
-      .map_err(remoting_build_error)?;
-      spawn_deployment_daemon_with_state(
-        &mut run_state,
-        deployment_receiver,
-        system.clone(),
-        serialization_extension.clone(),
-        event_sender.clone(),
-        monotonic_epoch,
-      )
-      .map_err(remoting_build_error)?;
-      let shutdown_flush_context =
-        ShutdownFlushContext { config: self.config.clone(), monotonic_epoch, flush_gate: self.flush_gate.clone() };
-      spawn_shutdown_on_system_termination(
-        system,
-        remote.clone(),
-        event_sender.clone(),
-        &mut run_state,
-        self.run_state.clone(),
-        shutdown_flush_context,
-      )
-      .map_err(remoting_build_error)?;
-      self
-        .event_sender
-        .set(event_sender.clone())
-        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-      self
-        .watcher_sender
-        .set(watcher_sender.clone())
-        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-      self
-        .monotonic_epoch
-        .set(monotonic_epoch)
-        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-      // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
-      self
-        .remote_shared
-        .set(remote.clone())
-        .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
-      Ok(())
-    })();
-    if let Err(error) = install_result {
-      rollback_started_remote(&remote, &event_sender, &self.run_state);
-      return Err(error);
-    }
-    Ok(())
+    RemotingInstallResources { remote, local_address, serialization_extension, monotonic_epoch, channels }
   }
+
+  fn finish_remoting_install(
+    &self,
+    system: &ActorSystem,
+    resources: RemotingInstallResources,
+  ) -> Result<(), ActorSystemBuildError> {
+    let RemotingInstallResources { remote, local_address, serialization_extension, monotonic_epoch, channels } =
+      resources;
+    let RemotingInstallChannels {
+      event_sender,
+      event_receiver,
+      watcher_sender,
+      watcher_receiver,
+      deployment_sender,
+      deployment_receiver,
+    } = channels;
+    let mut run_state =
+      self.run_state.lock().map_err(|_| ActorSystemBuildError::Configuration(String::from(RUN_STATE_LOCK_POISONED)))?;
+    run_state.receiver = Some(TokioMpscRemoteEventReceiver::new(event_receiver));
+    spawn_run_task_with_state(
+      &mut run_state,
+      remote.clone(),
+      system.clone(),
+      watcher_sender.clone(),
+      deployment_sender,
+      self.deployment_response_dispatcher.clone(),
+      event_sender.clone(),
+      self.flush_gate.clone(),
+    )
+    .map_err(remoting_build_error)?;
+    spawn_watcher_task_with_state(
+      &mut run_state,
+      watcher_receiver,
+      event_sender.clone(),
+      system.clone(),
+      local_address,
+      monotonic_epoch,
+      self.config.system_message_resend_interval(),
+    )
+    .map_err(remoting_build_error)?;
+    spawn_deployment_daemon_with_state(
+      &mut run_state,
+      deployment_receiver,
+      system.clone(),
+      serialization_extension,
+      event_sender.clone(),
+      monotonic_epoch,
+    )
+    .map_err(remoting_build_error)?;
+    let shutdown_flush_context =
+      ShutdownFlushContext { config: self.config.clone(), monotonic_epoch, flush_gate: self.flush_gate.clone() };
+    spawn_shutdown_on_system_termination(
+      system,
+      remote.clone(),
+      event_sender.clone(),
+      &mut run_state,
+      self.run_state.clone(),
+      shutdown_flush_context,
+    )
+    .map_err(remoting_build_error)?;
+    self.store_remoting_install_handles(event_sender, watcher_sender, monotonic_epoch, remote)
+  }
+
+  fn store_remoting_install_handles(
+    &self,
+    event_sender: Sender<RemoteEvent>,
+    watcher_sender: Sender<WatcherCommand>,
+    monotonic_epoch: Instant,
+    remote: RemoteShared,
+  ) -> Result<(), ActorSystemBuildError> {
+    self
+      .event_sender
+      .set(event_sender)
+      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+    self
+      .watcher_sender
+      .set(watcher_sender)
+      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+    self
+      .monotonic_epoch
+      .set(monotonic_epoch)
+      .map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))?;
+    // ExtensionInstaller::install は &self 契約のため、一回限りの初期化に OnceLock を使う。
+    self.remote_shared.set(remote).map_err(|_| ActorSystemBuildError::Configuration(String::from(ALREADY_INSTALLED)))
+  }
+}
+
+fn create_remoting_install_channels(queue_size: usize) -> RemotingInstallChannels {
+  let (event_sender, event_receiver) = mpsc::channel(queue_size);
+  let (watcher_sender, watcher_receiver) = mpsc::channel(queue_size);
+  let (deployment_sender, deployment_receiver) = mpsc::channel(queue_size);
+  RemotingInstallChannels {
+    event_sender,
+    event_receiver,
+    watcher_sender,
+    watcher_receiver,
+    deployment_sender,
+    deployment_receiver,
+  }
+}
+
+fn remoting_local_address(transport: &TcpRemoteTransport, system: &ActorSystem, config: &RemoteConfig) -> Address {
+  transport.default_address().or_else(|| transport.addresses().first()).cloned().unwrap_or_else(|| {
+    Address::new(
+      system.state().system_name(),
+      config.canonical_host(),
+      config.canonical_port().or_else(|| config.bind_port()).unwrap_or(0),
+    )
+  })
 }
 
 fn remoting_build_error(error: RemotingError) -> ActorSystemBuildError {

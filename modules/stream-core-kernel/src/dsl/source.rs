@@ -35,7 +35,7 @@ use super::{
     take_while_definition, take_within_definition, throttle_definition, unzip_definition, unzip_with_definition,
     watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
-  shape::{Inlet, Outlet, StreamShape},
+  shape::{Inlet, Outlet, PortId, StreamShape},
   sink::Sink,
   source_group_by_sub_flow::SourceGroupBySubFlow,
   source_sub_flow::SourceSubFlow,
@@ -43,11 +43,11 @@ use super::{
   validate_positive_argument,
 };
 use crate::{
-  SubstreamCancelStrategy,
+  StreamPlan, SubstreamCancelStrategy,
   attributes::Attributes,
   r#impl::{
     fusing::{StreamBufferConfig, map_definition},
-    interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter},
+    interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandCrossing, IslandSplitter, SingleIslandPlan},
     materialization::Stream,
   },
   materialization::DriveOutcome,
@@ -3253,6 +3253,21 @@ fn drain_source_for_lazy_source<Out>(source: Source<Out, StreamNotUsed>) -> Resu
 where
   Out: Send + Sync + 'static, {
   let mut graph = source.graph;
+  let completion = attach_lazy_source_collect_sink::<Out>(&mut graph)?;
+  let plan = graph.into_plan()?;
+  let island_plan = IslandSplitter::split(plan);
+  if island_plan.islands().len() <= 1 {
+    drive_lazy_single_island(island_plan.into_single_plan())?;
+  } else {
+    let (mut islands, crossings) = island_plan.into_parts();
+    drive_lazy_multi_island(&mut islands, crossings)?;
+  }
+  completion.try_take().unwrap_or(Err(StreamError::Failed))
+}
+
+fn attach_lazy_source_collect_sink<Out>(graph: &mut StreamGraph) -> Result<StreamFuture<Vec<Out>>, StreamError>
+where
+  Out: Send + Sync + 'static, {
   let Some(tail_outlet_id) = graph.tail_outlet() else {
     return Err(StreamError::InvalidConnection);
   };
@@ -3262,78 +3277,128 @@ where
   let sink_inlet_id = sink_graph.head_inlet().ok_or(StreamError::InvalidConnection)?;
   graph.append(sink_graph);
   let sink_inlet = Inlet::<Out>::from_id(sink_inlet_id);
+  attach_lazy_source_fanout_branches(graph, tail_outlet_id, &tail_outlet, &sink_inlet);
+  Ok(completion)
+}
 
-  if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
-    for _ in 1..expected_fan_out {
-      // lazy_source でも multi-outlet source の fan-out 契約どおりに各複製を収集する。
-      let branch = map_definition::<Out, Out, _>(|value| value);
-      let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
-      let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
-      graph.push_stage(StageDefinition::Flow(branch));
-      graph.connect_or_panic(&tail_outlet, &branch_inlet, MatCombine::Left);
-      graph.connect_or_panic(&branch_outlet, &sink_inlet, MatCombine::Right);
-    }
+fn attach_lazy_source_fanout_branches<Out>(
+  graph: &mut StreamGraph,
+  tail_outlet_id: PortId,
+  tail_outlet: &Outlet<Out>,
+  sink_inlet: &Inlet<Out>,
+) where
+  Out: Send + Sync + 'static, {
+  let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) else {
+    return;
+  };
+  for _ in 1..expected_fan_out {
+    // lazy_source でも multi-outlet source の fan-out 契約どおりに各複製を収集する。
+    let branch = map_definition::<Out, Out, _>(|value| value);
+    let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
+    let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
+    graph.push_stage(StageDefinition::Flow(branch));
+    graph.connect_or_panic(tail_outlet, &branch_inlet, MatCombine::Left);
+    graph.connect_or_panic(&branch_outlet, sink_inlet, MatCombine::Right);
   }
+}
 
-  let plan = graph.into_plan()?;
-  let island_plan = IslandSplitter::split(plan);
-  if island_plan.islands().len() <= 1 {
-    let mut stream = Stream::new(island_plan.into_single_plan(), StreamBufferConfig::default());
+fn drive_lazy_single_island(plan: StreamPlan) -> Result<(), StreamError> {
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start()?;
+  let mut idle_budget = 1024_usize;
+  while !stream.state().is_terminal() {
+    idle_budget = drive_lazy_single_stream_once(&mut stream, idle_budget)?;
+  }
+  Ok(())
+}
+
+fn drive_lazy_single_stream_once(stream: &mut Stream, idle_budget: usize) -> Result<usize, StreamError> {
+  match stream.drive() {
+    | DriveOutcome::Progressed => Ok(1024),
+    | DriveOutcome::Idle => decrement_lazy_idle_budget(idle_budget),
+  }
+}
+
+fn drive_lazy_multi_island(
+  islands: &mut Vec<SingleIslandPlan>,
+  crossings: Vec<IslandCrossing>,
+) -> Result<(), StreamError> {
+  let boundaries = wire_lazy_island_boundaries(islands, crossings);
+  let mut streams = start_lazy_island_streams(core::mem::take(islands))?;
+  drive_lazy_streams_until_terminal(&mut streams, &boundaries)
+}
+
+fn wire_lazy_island_boundaries(
+  islands: &mut [SingleIslandPlan],
+  crossings: Vec<IslandCrossing>,
+) -> Vec<(IslandBoundaryShared, usize)> {
+  let mut boundaries = Vec::with_capacity(crossings.len());
+  for crossing in crossings {
+    let upstream_idx = crossing.from_island().as_usize();
+    let downstream_idx = crossing.to_island().as_usize();
+    let boundary_capacity =
+      islands[downstream_idx].input_buffer_capacity_for_inlet(crossing.to_port()).unwrap_or(DEFAULT_BOUNDARY_CAPACITY);
+    let boundary = IslandBoundaryShared::new(boundary_capacity);
+    boundaries.push((boundary.clone(), downstream_idx));
+    islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), crossing.element_type());
+    islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), crossing.element_type());
+  }
+  boundaries
+}
+
+fn start_lazy_island_streams(islands: Vec<SingleIslandPlan>) -> Result<Vec<Stream>, StreamError> {
+  let mut streams = Vec::with_capacity(islands.len());
+  for island in islands {
+    let mut stream = Stream::new(island.into_stream_plan(), StreamBufferConfig::default());
     stream.start()?;
-    let mut idle_budget = 1024_usize;
-    while !stream.state().is_terminal() {
-      match stream.drive() {
-        | DriveOutcome::Progressed => idle_budget = 1024,
-        | DriveOutcome::Idle => {
-          if idle_budget == 0 {
-            return Err(StreamError::WouldBlock);
-          }
-          idle_budget = idle_budget.saturating_sub(1);
-        },
-      }
-    }
-  } else {
-    let (mut islands, crossings) = island_plan.into_parts();
-    let mut boundaries = Vec::with_capacity(crossings.len());
-    for crossing in crossings {
-      let upstream_idx = crossing.from_island().as_usize();
-      let downstream_idx = crossing.to_island().as_usize();
-      let boundary_capacity = islands[downstream_idx]
-        .input_buffer_capacity_for_inlet(crossing.to_port())
-        .unwrap_or(DEFAULT_BOUNDARY_CAPACITY);
-      let boundary = IslandBoundaryShared::new(boundary_capacity);
-      boundaries.push((boundary.clone(), downstream_idx));
-      islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), crossing.element_type());
-      islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), crossing.element_type());
-    }
-    let mut streams = Vec::with_capacity(islands.len());
-    for island in islands {
-      let mut stream = Stream::new(island.into_stream_plan(), StreamBufferConfig::default());
-      stream.start()?;
-      streams.push(stream);
-    }
-    let mut idle_budget = 4096_usize;
-    while streams.iter().any(|stream| !stream.state().is_terminal()) {
-      let mut progressed = false;
-      for stream in &mut streams {
-        if !stream.state().is_terminal() && matches!(stream.drive(), DriveOutcome::Progressed) {
-          progressed = true;
-        }
-      }
-      if progressed {
-        idle_budget = 4096;
-      } else if idle_budget == 0
-        || boundaries
-          .iter()
-          .any(|(boundary, downstream_idx)| boundary.is_full() && streams[*downstream_idx].state().is_terminal())
-      {
-        return Err(StreamError::WouldBlock);
-      } else {
-        idle_budget = idle_budget.saturating_sub(1);
-      }
+    streams.push(stream);
+  }
+  Ok(streams)
+}
+
+fn drive_lazy_streams_until_terminal(
+  streams: &mut [Stream],
+  boundaries: &[(IslandBoundaryShared, usize)],
+) -> Result<(), StreamError> {
+  let mut idle_budget = 4096_usize;
+  while streams.iter().any(|stream| !stream.state().is_terminal()) {
+    if drive_lazy_streams_once(streams) {
+      idle_budget = 4096;
+    } else if lazy_streams_would_block(idle_budget, boundaries, streams) {
+      return Err(StreamError::WouldBlock);
+    } else {
+      idle_budget = idle_budget.saturating_sub(1);
     }
   }
-  completion.try_take().unwrap_or(Err(StreamError::Failed))
+  Ok(())
+}
+
+fn drive_lazy_streams_once(streams: &mut [Stream]) -> bool {
+  let mut progressed = false;
+  for stream in streams {
+    if !stream.state().is_terminal() && matches!(stream.drive(), DriveOutcome::Progressed) {
+      progressed = true;
+    }
+  }
+  progressed
+}
+
+fn lazy_streams_would_block(
+  idle_budget: usize,
+  boundaries: &[(IslandBoundaryShared, usize)],
+  streams: &[Stream],
+) -> bool {
+  idle_budget == 0
+    || boundaries
+      .iter()
+      .any(|(boundary, downstream_idx)| boundary.is_full() && streams[*downstream_idx].state().is_terminal())
+}
+
+const fn decrement_lazy_idle_budget(idle_budget: usize) -> Result<usize, StreamError> {
+  if idle_budget == 0 {
+    return Err(StreamError::WouldBlock);
+  }
+  Ok(idle_budget.saturating_sub(1))
 }
 
 impl<Out> GraphStageLogic<StreamNotUsed, Out, StreamNotUsed> for SingleSourceLogic<Out>

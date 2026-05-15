@@ -31,6 +31,12 @@ struct FlowStagePorts {
   output_type: TypeId,
 }
 
+#[derive(Clone, Copy)]
+struct SourceStagePorts {
+  outlet:      PortId,
+  output_type: TypeId,
+}
+
 #[derive(Default)]
 struct FlowStageStep {
   outputs:          Vec<DynValue>,
@@ -510,80 +516,93 @@ impl GraphInterpreter {
     let mut progressed = false;
 
     for &source_position in source_positions {
-      if self.source_done[source_position] {
-        continue;
-      }
-      if self.source_restart_waiting_at(source_position) {
-        continue;
-      }
-
-      let source_index = self.source_indices[source_position];
-      let (source_outlet, source_output_type) = match &self.stages[source_index] {
-        | StageDefinition::Source(source) => (source.outlet, source.output_type),
-        | _ => return Err(StreamError::InvalidConnection),
-      };
-
-      if self.has_buffered_outgoing(source_outlet) {
-        continue;
-      }
-
-      let pulled_result = {
-        let StageDefinition::Source(source) = &mut self.stages[source_index] else {
-          return Err(StreamError::InvalidConnection);
-        };
-        source.logic.pull()
-      };
-
-      let pulled = match pulled_result {
-        | Ok(pulled) => pulled,
-        | Err(StreamError::WouldBlock) => continue,
-        | Err(error) => match self.handle_source_failure(source_position, error)? {
-          | FailureDisposition::Continue => {
-            progressed = true;
-            continue;
-          },
-          | FailureDisposition::Complete => {
-            self.complete_source(source_position)?;
-            progressed = true;
-            continue;
-          },
-          | FailureDisposition::Fail(error) => return Err(error),
-        },
-      };
-
-      match pulled {
-        | Some(value) => {
-          if value.as_ref().type_id() != source_output_type {
-            return Err(StreamError::TypeMismatch);
-          }
-          self.offer_to_next_outgoing_edge(source_outlet, value)?;
-          progressed = true;
-        },
-        | None => {
-          let (should_restart, complete_on_exhaustion) = {
-            let StageDefinition::Source(source) = &mut self.stages[source_index] else {
-              return Err(StreamError::InvalidConnection);
-            };
-            if let Some(restart) = &mut source.restart {
-              (restart.schedule(self.tick_count), restart.complete_on_max_restarts())
-            } else {
-              (false, true)
-            }
-          };
-          if should_restart {
-            progressed = true;
-            continue;
-          }
-          if !complete_on_exhaustion {
-            return Err(StreamError::Failed);
-          }
-          self.complete_source(source_position)?;
-          progressed = true;
-        },
-      }
+      progressed |= self.pull_source_position_if_needed(source_position)?;
     }
 
     Ok(progressed)
+  }
+
+  fn pull_source_position_if_needed(&mut self, source_position: usize) -> Result<bool, StreamError> {
+    if !self.source_ready_to_pull(source_position) {
+      return Ok(false);
+    }
+
+    let source_index = self.source_indices[source_position];
+    let ports = self.source_stage_ports(source_index)?;
+    if self.has_buffered_outgoing(ports.outlet) {
+      return Ok(false);
+    }
+
+    match self.pull_source_value(source_index) {
+      | Ok(Some(value)) => self.emit_source_value(ports, value),
+      | Ok(None) => self.complete_or_restart_source(source_position, source_index),
+      | Err(StreamError::WouldBlock) => Ok(false),
+      | Err(error) => self.apply_source_failure(source_position, error),
+    }
+  }
+
+  fn source_ready_to_pull(&self, source_position: usize) -> bool {
+    !self.source_done[source_position] && !self.source_restart_waiting_at(source_position)
+  }
+
+  fn source_stage_ports(&self, source_index: usize) -> Result<SourceStagePorts, StreamError> {
+    match &self.stages[source_index] {
+      | StageDefinition::Source(source) => {
+        Ok(SourceStagePorts { outlet: source.outlet, output_type: source.output_type })
+      },
+      | _ => Err(StreamError::InvalidConnection),
+    }
+  }
+
+  fn pull_source_value(&mut self, source_index: usize) -> Result<Option<DynValue>, StreamError> {
+    let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    source.logic.pull()
+  }
+
+  fn emit_source_value(&mut self, ports: SourceStagePorts, value: DynValue) -> Result<bool, StreamError> {
+    if value.as_ref().type_id() != ports.output_type {
+      return Err(StreamError::TypeMismatch);
+    }
+    self.offer_to_next_outgoing_edge(ports.outlet, value)?;
+    Ok(true)
+  }
+
+  fn complete_or_restart_source(&mut self, source_position: usize, source_index: usize) -> Result<bool, StreamError> {
+    let (should_restart, complete_on_exhaustion) = self.schedule_source_restart_or_complete(source_index)?;
+    if should_restart {
+      return Ok(true);
+    }
+    if !complete_on_exhaustion {
+      return Err(StreamError::Failed);
+    }
+    self.complete_source(source_position)?;
+    Ok(true)
+  }
+
+  fn schedule_source_restart_or_complete(&mut self, source_index: usize) -> Result<(bool, bool), StreamError> {
+    let StageDefinition::Source(source) = &mut self.stages[source_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(
+      if let Some(restart) = &mut source.restart {
+        (restart.schedule(self.tick_count), restart.complete_on_max_restarts())
+      } else {
+        (false, true)
+      },
+    )
+  }
+
+  fn apply_source_failure(&mut self, source_position: usize, error: StreamError) -> Result<bool, StreamError> {
+    match self.handle_source_failure(source_position, error)? {
+      | FailureDisposition::Continue => Ok(true),
+      | FailureDisposition::Complete => {
+        self.complete_source(source_position)?;
+        Ok(true)
+      },
+      | FailureDisposition::Fail(error) => Err(error),
+    }
   }
 
   fn drive_flow_stages_once(&mut self) -> Result<bool, StreamError> {

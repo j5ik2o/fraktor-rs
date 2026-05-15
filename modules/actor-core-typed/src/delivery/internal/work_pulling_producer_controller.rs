@@ -395,24 +395,15 @@ impl WorkPullingProducerController {
         s.durable_queue = durable_queue.clone();
         s.awaiting_load = durable_queue.is_some();
       });
-      if let (Some(mut durable_queue), Some(load_state_adapter)) =
-        (durable_queue.as_ref().cloned(), load_state_adapter.as_ref().cloned())
-        && let Err(error) = durable_queue.try_tell(DurableProducerQueueCommand::load_state(load_state_adapter))
-      {
-        let message =
-          alloc::format!("WorkPullingProducerController failed to request durable queue state: {:?}", error);
-        ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
+      if !start_wppc_durable_queue_load(
+        ctx,
+        &state,
+        durable_queue.as_ref(),
+        load_state_adapter.as_ref(),
+        durable_queue_request_timeout,
+        &self_ref,
+      ) {
         return Behaviors::stopped();
-      } else if state.with_lock(|state| state.awaiting_load)
-        && let Err(error) = ctx.schedule_once(
-          durable_queue_request_timeout,
-          self_ref.clone(),
-          WorkPullingProducerControllerCommand::durable_queue_load_timed_out(1),
-        )
-      {
-        let message =
-          alloc::format!("WorkPullingProducerController failed to schedule durable queue load timeout: {:?}", error);
-        ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
       }
 
       let producer_id_inner = producer_id.clone();
@@ -420,138 +411,315 @@ impl WorkPullingProducerController {
       let runtime_producer_controller_settings = producer_controller_settings.clone();
       let runtime_durable_queue_request_timeout = durable_queue_request_timeout;
       Behaviors::receive_message(move |ctx, command: &WorkPullingProducerControllerCommand<A>| {
-        let mut stop_self = None::<String>;
-        let mut timeout_warning = None::<String>;
-        let deferred = state.with_lock(|state| {
-          let mut deferred: Vec<WppcDeferredAction<A>> = Vec::new();
-          match command.kind() {
-            | WorkPullingProducerControllerCommandKind::Start { producer } => {
-              state.producer = Some(producer.clone());
-              collect_maybe_request_next(state, &mut deferred);
-            },
-            | WorkPullingProducerControllerCommandKind::Msg { message } => {
-              state.awaiting_msg = false;
-              collect_on_msg(state, message.clone(), &mut deferred);
-            },
-            | WorkPullingProducerControllerCommandKind::GetWorkerStats { reply_to } => {
-              let stats = WorkerStats::new(state.worker_count());
-              deferred.push(WppcDeferredAction::TellWorkerStats(reply_to.clone(), stats));
-            },
-            | WorkPullingProducerControllerCommandKind::WorkerListing { listing } => {
-              collect_on_worker_listing(
-                state,
-                listing,
-                &producer_id_inner,
-                &self_ref,
-                &runtime_producer_controller_settings,
-                &mut deferred,
-              );
-            },
-            | WorkPullingProducerControllerCommandKind::InternalDemand { request } => {
-              collect_on_internal_demand(state, request, &mut deferred);
-            },
-            | WorkPullingProducerControllerCommandKind::DurableQueueLoaded { state: loaded } => {
-              state.current_seq_nr = loaded.current_seq_nr();
-              state.awaiting_load = false;
-              for sent in loaded.unconfirmed() {
-                deferred.push(WppcDeferredAction::TellSelf(
-                  self_ref.clone(),
-                  WorkPullingProducerControllerCommand::replay_stored_message(sent.clone()),
-                ));
-              }
-              if loaded.unconfirmed().is_empty() {
-                collect_maybe_request_next(state, &mut deferred);
-              }
-            },
-            | WorkPullingProducerControllerCommandKind::DurableQueueMessageStored { ack } => {
-              collect_on_durable_queue_message_stored(state, ack, &self_ref, &mut deferred);
-            },
-            | WorkPullingProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
-              if state.awaiting_load {
-                if *attempt >= runtime_producer_controller_settings.durable_queue_retry_attempts() {
-                  stop_self = Some(alloc::format!(
-                    "WorkPullingProducerController durable queue load timed out after {} attempts",
-                    attempt
-                  ));
-                } else if let (Some(durable_queue), Some(load_state_adapter)) =
-                  (state.durable_queue.clone(), runtime_load_state_adapter.clone())
-                {
-                  deferred.push(WppcDeferredAction::TellDurableQueue {
-                    target:  durable_queue,
-                    message: DurableProducerQueueCommand::load_state(load_state_adapter),
-                    timeout: Some(WppcDurableQueueTimeout::Load { attempt: attempt + 1 }),
-                  });
-                }
-              }
-            },
-            | WorkPullingProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt } => {
-              if let Some(pending) = state.pending_stores.get(seq_nr) {
-                if *attempt >= runtime_producer_controller_settings.durable_queue_retry_attempts() {
-                  stop_self = Some(alloc::format!(
-                    "WorkPullingProducerController durable queue store timed out for seq_nr {} after {} attempts",
-                    seq_nr,
-                    attempt
-                  ));
-                } else if let (Some(durable_queue), Some(store_ack_adapter)) =
-                  (state.durable_queue.clone(), state.store_ack_adapter.clone())
-                {
-                  let sent = MessageSent::new(
-                    *seq_nr,
-                    pending.message.clone(),
-                    false,
-                    pending.confirmation_qualifier.clone(),
-                    0,
-                  );
-                  deferred.push(WppcDeferredAction::TellDurableQueue {
-                    target:  durable_queue,
-                    message: DurableProducerQueueCommand::store_message_sent(sent, store_ack_adapter),
-                    timeout: Some(WppcDurableQueueTimeout::Store { seq_nr: *seq_nr, attempt: attempt + 1 }),
-                  });
-                }
-              }
-            },
-            | WorkPullingProducerControllerCommandKind::WorkerDeliveryTimedOut { worker_key, worker_local_seq_nr } => {
-              if let Some(entry) = state.workers.remove(worker_key) {
-                if let Some(sent) = entry.in_flight.get(worker_local_seq_nr) {
-                  timeout_warning = Some(alloc::format!(
-                    "WorkPullingProducerController worker delivery timed out for worker {} local_seq_nr {} total_seq_nr {}; removing stalled worker and replaying in-flight messages",
-                    worker_key,
-                    worker_local_seq_nr,
-                    sent.seq_nr()
-                  ));
-                }
-                deferred.push(WppcDeferredAction::StopWorkerPc(entry.producer_controller.clone()));
-                for inflight in entry.in_flight.into_values() {
-                  deferred.push(WppcDeferredAction::TellSelf(
-                    self_ref.clone(),
-                    WorkPullingProducerControllerCommand::replay_stored_message(inflight),
-                  ));
-                }
-                collect_maybe_request_next(state, &mut deferred);
-              }
-            },
-            | WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } => {
-              collect_on_replayed_message(state, sent.clone(), &mut deferred);
-            },
-          }
-          deferred
-        }); // ステートロックはここで解放される
-
-        execute_wppc_deferred(deferred, ctx, &state, internal_ask_timeout, runtime_durable_queue_request_timeout);
-        if let Some(message) = timeout_warning {
-          ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-        }
-        if let Some(message) = stop_self {
-          ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
-          if let Err(error) = ctx.stop_self() {
-            let stop_message =
-              alloc::format!("WorkPullingProducerController failed to stop after timeout: {:?}", error);
-            ctx.system().emit_log(LogLevel::Warn, stop_message, Some(ctx.pid()), None);
-          }
-        }
-        Ok(Behaviors::same())
+        let command_context = WorkPullingCommandContext {
+          producer_id:                  &producer_id_inner,
+          self_ref:                     &self_ref,
+          producer_controller_settings: &runtime_producer_controller_settings,
+          load_state_adapter:           &runtime_load_state_adapter,
+        };
+        Ok(receive_work_pulling_command(
+          ctx,
+          command,
+          &state,
+          &command_context,
+          internal_ask_timeout,
+          runtime_durable_queue_request_timeout,
+        ))
       })
     })
+  }
+}
+
+fn start_wppc_durable_queue_load<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  state: &SharedLock<WorkPullingState<A>>,
+  durable_queue: Option<&TypedActorRef<DurableProducerQueueCommand<A>>>,
+  load_state_adapter: Option<&TypedActorRef<DurableProducerQueueState<A>>>,
+  durable_queue_request_timeout: Duration,
+  self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
+) -> bool
+where
+  A: Clone + Send + Sync + 'static, {
+  if let (Some(durable_queue), Some(load_state_adapter)) = (durable_queue.cloned(), load_state_adapter.cloned())
+    && !request_wppc_durable_queue_load(ctx, durable_queue, load_state_adapter)
+  {
+    return false;
+  }
+  schedule_wppc_initial_load_timeout(ctx, state, durable_queue_request_timeout, self_ref);
+  true
+}
+
+fn request_wppc_durable_queue_load<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  mut durable_queue: TypedActorRef<DurableProducerQueueCommand<A>>,
+  load_state_adapter: TypedActorRef<DurableProducerQueueState<A>>,
+) -> bool
+where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(error) = durable_queue.try_tell(DurableProducerQueueCommand::load_state(load_state_adapter)) {
+    let message = alloc::format!("WorkPullingProducerController failed to request durable queue state: {:?}", error);
+    ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
+    return false;
+  }
+  true
+}
+
+fn schedule_wppc_initial_load_timeout<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  state: &SharedLock<WorkPullingState<A>>,
+  durable_queue_request_timeout: Duration,
+  self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if state.with_lock(|state| state.awaiting_load)
+    && let Err(error) = ctx.schedule_once(
+      durable_queue_request_timeout,
+      self_ref.clone(),
+      WorkPullingProducerControllerCommand::durable_queue_load_timed_out(1),
+    )
+  {
+    let message =
+      alloc::format!("WorkPullingProducerController failed to schedule durable queue load timeout: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+struct WorkPullingCommandContext<'a, A>
+where
+  A: Clone + Send + Sync + 'static, {
+  producer_id:                  &'a str,
+  self_ref:                     &'a TypedActorRef<WorkPullingProducerControllerCommand<A>>,
+  producer_controller_settings: &'a ProducerControllerConfig,
+  load_state_adapter:           &'a Option<TypedActorRef<DurableProducerQueueState<A>>>,
+}
+
+fn receive_work_pulling_command<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  command: &WorkPullingProducerControllerCommand<A>,
+  state: &SharedLock<WorkPullingState<A>>,
+  command_context: &WorkPullingCommandContext<'_, A>,
+  internal_ask_timeout: Duration,
+  durable_queue_request_timeout: Duration,
+) -> Behavior<WorkPullingProducerControllerCommand<A>>
+where
+  A: Clone + Send + Sync + 'static, {
+  let mut stop_self = None::<String>;
+  let mut timeout_warning = None::<String>;
+  let deferred = state.with_lock(|state| {
+    let mut deferred: Vec<WppcDeferredAction<A>> = Vec::new();
+    collect_wppc_deferred_for_command(
+      state,
+      command,
+      command_context,
+      &mut deferred,
+      &mut stop_self,
+      &mut timeout_warning,
+    );
+    deferred
+  });
+  execute_wppc_deferred(deferred, ctx, state, internal_ask_timeout, durable_queue_request_timeout);
+  emit_wppc_timeout_warning(ctx, timeout_warning);
+  stop_wppc_after_command_timeout(ctx, stop_self);
+  Behaviors::same()
+}
+
+fn collect_wppc_deferred_for_command<A>(
+  state: &mut WorkPullingState<A>,
+  command: &WorkPullingProducerControllerCommand<A>,
+  command_context: &WorkPullingCommandContext<'_, A>,
+  deferred: &mut Vec<WppcDeferredAction<A>>,
+  stop_self: &mut Option<String>,
+  timeout_warning: &mut Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  match command.kind() {
+    | WorkPullingProducerControllerCommandKind::Start { producer } => {
+      state.producer = Some(producer.clone());
+      collect_maybe_request_next(state, deferred);
+    },
+    | WorkPullingProducerControllerCommandKind::Msg { message } => {
+      state.awaiting_msg = false;
+      collect_on_msg(state, message.clone(), deferred);
+    },
+    | WorkPullingProducerControllerCommandKind::GetWorkerStats { reply_to } => {
+      let stats = WorkerStats::new(state.worker_count());
+      deferred.push(WppcDeferredAction::TellWorkerStats(reply_to.clone(), stats));
+    },
+    | WorkPullingProducerControllerCommandKind::WorkerListing { listing } => {
+      collect_on_worker_listing(
+        state,
+        listing,
+        command_context.producer_id,
+        command_context.self_ref,
+        command_context.producer_controller_settings,
+        deferred,
+      );
+    },
+    | WorkPullingProducerControllerCommandKind::InternalDemand { request } => {
+      collect_on_internal_demand(state, request, deferred);
+    },
+    | WorkPullingProducerControllerCommandKind::DurableQueueLoaded { state: loaded } => {
+      collect_wppc_durable_queue_loaded(state, loaded, command_context.self_ref, deferred);
+    },
+    | WorkPullingProducerControllerCommandKind::DurableQueueMessageStored { ack } => {
+      collect_on_durable_queue_message_stored(state, ack, command_context.self_ref, deferred);
+    },
+    | WorkPullingProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
+      collect_wppc_load_timeout(state, *attempt, command_context, deferred, stop_self);
+    },
+    | WorkPullingProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt } => {
+      collect_wppc_store_timeout(
+        state,
+        *seq_nr,
+        *attempt,
+        command_context.producer_controller_settings,
+        deferred,
+        stop_self,
+      );
+    },
+    | WorkPullingProducerControllerCommandKind::WorkerDeliveryTimedOut { worker_key, worker_local_seq_nr } => {
+      collect_wppc_worker_delivery_timeout(
+        state,
+        *worker_key,
+        *worker_local_seq_nr,
+        command_context.self_ref,
+        deferred,
+        timeout_warning,
+      );
+    },
+    | WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } => {
+      collect_on_replayed_message(state, sent.clone(), deferred);
+    },
+  }
+}
+
+fn collect_wppc_durable_queue_loaded<A>(
+  state: &mut WorkPullingState<A>,
+  loaded: &DurableProducerQueueState<A>,
+  self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
+  deferred: &mut Vec<WppcDeferredAction<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  state.current_seq_nr = loaded.current_seq_nr();
+  state.awaiting_load = false;
+  for sent in loaded.unconfirmed() {
+    deferred.push(WppcDeferredAction::TellSelf(
+      self_ref.clone(),
+      WorkPullingProducerControllerCommand::replay_stored_message(sent.clone()),
+    ));
+  }
+  if loaded.unconfirmed().is_empty() {
+    collect_maybe_request_next(state, deferred);
+  }
+}
+
+fn collect_wppc_load_timeout<A>(
+  state: &mut WorkPullingState<A>,
+  attempt: u32,
+  command_context: &WorkPullingCommandContext<'_, A>,
+  deferred: &mut Vec<WppcDeferredAction<A>>,
+  stop_self: &mut Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if !state.awaiting_load {
+    return;
+  }
+  if attempt >= command_context.producer_controller_settings.durable_queue_retry_attempts() {
+    *stop_self =
+      Some(alloc::format!("WorkPullingProducerController durable queue load timed out after {} attempts", attempt));
+  } else if let (Some(durable_queue), Some(load_state_adapter)) =
+    (state.durable_queue.clone(), command_context.load_state_adapter.clone())
+  {
+    deferred.push(WppcDeferredAction::TellDurableQueue {
+      target:  durable_queue,
+      message: DurableProducerQueueCommand::load_state(load_state_adapter),
+      timeout: Some(WppcDurableQueueTimeout::Load { attempt: attempt + 1 }),
+    });
+  }
+}
+
+fn collect_wppc_store_timeout<A>(
+  state: &mut WorkPullingState<A>,
+  seq_nr: u64,
+  attempt: u32,
+  producer_controller_settings: &ProducerControllerConfig,
+  deferred: &mut Vec<WppcDeferredAction<A>>,
+  stop_self: &mut Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let Some(pending) = state.pending_stores.get(&seq_nr) else {
+    return;
+  };
+  if attempt >= producer_controller_settings.durable_queue_retry_attempts() {
+    *stop_self = Some(alloc::format!(
+      "WorkPullingProducerController durable queue store timed out for seq_nr {} after {} attempts",
+      seq_nr,
+      attempt
+    ));
+  } else if let (Some(durable_queue), Some(store_ack_adapter)) =
+    (state.durable_queue.clone(), state.store_ack_adapter.clone())
+  {
+    let sent = MessageSent::new(seq_nr, pending.message.clone(), false, pending.confirmation_qualifier.clone(), 0);
+    deferred.push(WppcDeferredAction::TellDurableQueue {
+      target:  durable_queue,
+      message: DurableProducerQueueCommand::store_message_sent(sent, store_ack_adapter),
+      timeout: Some(WppcDurableQueueTimeout::Store { seq_nr, attempt: attempt + 1 }),
+    });
+  }
+}
+
+fn collect_wppc_worker_delivery_timeout<A>(
+  state: &mut WorkPullingState<A>,
+  worker_key: u64,
+  worker_local_seq_nr: u64,
+  self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
+  deferred: &mut Vec<WppcDeferredAction<A>>,
+  timeout_warning: &mut Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let Some(entry) = state.workers.remove(&worker_key) else {
+    return;
+  };
+  if let Some(sent) = entry.in_flight.get(&worker_local_seq_nr) {
+    *timeout_warning = Some(alloc::format!(
+      "WorkPullingProducerController worker delivery timed out for worker {} local_seq_nr {} total_seq_nr {}; removing stalled worker and replaying in-flight messages",
+      worker_key,
+      worker_local_seq_nr,
+      sent.seq_nr()
+    ));
+  }
+  deferred.push(WppcDeferredAction::StopWorkerPc(entry.producer_controller.clone()));
+  for inflight in entry.in_flight.into_values() {
+    deferred.push(WppcDeferredAction::TellSelf(
+      self_ref.clone(),
+      WorkPullingProducerControllerCommand::replay_stored_message(inflight),
+    ));
+  }
+  collect_maybe_request_next(state, deferred);
+}
+
+fn emit_wppc_timeout_warning<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  message: Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if let Some(message) = message {
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn stop_wppc_after_command_timeout<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  message: Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let Some(message) = message else {
+    return;
+  };
+  ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
+  if let Err(error) = ctx.stop_self() {
+    let stop_message = alloc::format!("WorkPullingProducerController failed to stop after timeout: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, stop_message, Some(ctx.pid()), None);
   }
 }
 
@@ -904,137 +1072,246 @@ pub(crate) fn execute_wppc_deferred<A>(
   A: Clone + Send + Sync + 'static, {
   let mut pending: VecDeque<WppcDeferredAction<A>> = actions.into_iter().collect();
   while let Some(action) = pending.pop_front() {
-    match action {
-      | WppcDeferredAction::TellWorker { mut target, message, worker_key, worker_local_seq_nr } => {
-        if let Err(error) = target.try_tell(message) {
-          let message =
-            alloc::format!("WorkPullingProducerController failed to send message to worker controller: {:?}", error);
-          ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-        } else if let Err(error) = ctx.schedule_once(
-          internal_ask_timeout,
-          ctx.self_ref(),
-          WorkPullingProducerControllerCommand::worker_delivery_timed_out(worker_key, worker_local_seq_nr),
-        ) {
-          let message =
-            alloc::format!("WorkPullingProducerController failed to schedule worker delivery timeout: {:?}", error);
-          ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-        }
-      },
-      | WppcDeferredAction::TellDurableQueue { mut target, message, timeout } => {
-        if let Err(error) = target.try_tell(message) {
-          let message = alloc::format!("WorkPullingProducerController failed to talk to durable queue: {:?}", error);
-          ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
-          if let Err(stop_error) = ctx.stop_self() {
-            let stop_message = alloc::format!(
-              "WorkPullingProducerController failed to stop after durable queue failure: {:?}",
-              stop_error
-            );
-            ctx.system().emit_log(LogLevel::Warn, stop_message, Some(ctx.pid()), None);
-          }
-        } else if let Some(timeout) = timeout {
-          let command = match timeout {
-            | WppcDurableQueueTimeout::Load { attempt } => {
-              WorkPullingProducerControllerCommand::durable_queue_load_timed_out(attempt)
-            },
-            | WppcDurableQueueTimeout::Store { seq_nr, attempt } => {
-              WorkPullingProducerControllerCommand::durable_queue_store_timed_out(seq_nr, attempt)
-            },
-          };
-          if let Err(error) = ctx.schedule_once(durable_queue_request_timeout, ctx.self_ref(), command) {
-            let message =
-              alloc::format!("WorkPullingProducerController failed to schedule durable queue timeout: {:?}", error);
-            ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-          }
-        }
-      },
-      | WppcDeferredAction::TellSelf(mut target, msg) => {
-        if let Err(error) = target.try_tell(msg) {
-          let message =
-            alloc::format!("WorkPullingProducerController failed to enqueue internal replay command: {:?}", error);
-          ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-        }
-      },
-      | WppcDeferredAction::TellWorkerStats(mut target, msg) => {
-        if let Err(error) = target.try_tell(msg) {
-          let message = alloc::format!("WorkPullingProducerController failed to send worker stats reply: {:?}", error);
-          ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-        }
-      },
-      | WppcDeferredAction::RequestNext(mut target, msg) => {
-        if let Err(error) = target.try_tell(msg) {
-          let message = alloc::format!("WorkPullingProducerController failed to request next work item: {:?}", error);
-          ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-        }
-      },
-      | WppcDeferredAction::StopWorkerPc(mut pc_ref) => {
-        if let Err(error) = stop_worker_producer_controller(&mut pc_ref) {
-          let message = alloc::format!("WorkPullingProducerController failed to stop worker controller: {:?}", error);
-          ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-        }
-      },
-      | WppcDeferredAction::SpawnWorker {
-        worker_ref,
-        producer_id: pc_producer_id,
-        demand_adapter,
-        producer_controller_settings,
-      } => {
-        // ワーカー PC を生成し、先に state に登録してから tell() する。
-        // インラインディスパッチで InternalDemand が即座に返るため、
-        // 登録前に tell() すると demand シグナルが消失する。
-        if let Some((entry, pc_ref)) =
-          spawn_worker_actor::<A>(ctx, &worker_ref, &pc_producer_id, &producer_controller_settings)
-        {
-          // 先にワーカーを登録する
-          state.with_lock(|state| {
-            state.workers.insert(pid_key(&worker_ref), entry);
-          });
-
-          // ワーカー PC に Start と RegisterConsumer を送信する。
-          // InternalDemand がインラインで処理され、state.workers に
-          // 登録済みなので demand シグナルが正しく反映される。
-          let mut pc_start = pc_ref.clone();
-          if let Err(error) = pc_start.try_tell(ProducerController::start(demand_adapter.clone())) {
-            let message =
-              alloc::format!("WorkPullingProducerController failed to start worker controller: {:?}", error);
-            ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-          }
-
-          let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
-          let mut pc_reg = pc_ref;
-          if let Err(error) = pc_reg.try_tell(ProducerController::register_consumer(cc_ref)) {
-            let message = alloc::format!(
-              "WorkPullingProducerController failed to register worker consumer controller: {:?}",
-              error
-            );
-            ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
-          }
-
-          // バッファ済みメッセージを排出する
-          let drain_deferred = state.with_lock(|s| {
-            let mut drain_deferred = Vec::new();
-            collect_drain_buffered(s, &mut drain_deferred);
-            collect_maybe_request_next(s, &mut drain_deferred);
-            drain_deferred
-          });
-          pending.extend(drain_deferred);
-        }
-      },
-      | WppcDeferredAction::LogDropped { total_seq_nr, buffered_len, buffer_size, message_type } => {
-        ctx.system().emit_log(
-          LogLevel::Warn,
-          alloc::format!(
-            "WorkPullingProducerController dropped buffered message: seq_nr={}, buffered_len={}, buffer_size={}, message_type={}",
-            total_seq_nr,
-            buffered_len,
-            buffer_size,
-            message_type
-          ),
-          Some(ctx.pid()),
-          None,
-        );
-      },
-    }
+    execute_wppc_action(action, &mut pending, ctx, state, internal_ask_timeout, durable_queue_request_timeout);
   }
+}
+
+fn execute_wppc_action<A>(
+  action: WppcDeferredAction<A>,
+  pending: &mut VecDeque<WppcDeferredAction<A>>,
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  state: &SharedLock<WorkPullingState<A>>,
+  internal_ask_timeout: Duration,
+  durable_queue_request_timeout: Duration,
+) where
+  A: Clone + Send + Sync + 'static, {
+  match action {
+    | WppcDeferredAction::TellWorker { target, message, worker_key, worker_local_seq_nr } => {
+      execute_wppc_tell_worker(ctx, target, message, worker_key, worker_local_seq_nr, internal_ask_timeout);
+    },
+    | WppcDeferredAction::TellDurableQueue { target, message, timeout } => {
+      execute_wppc_tell_durable_queue(ctx, target, message, timeout, durable_queue_request_timeout);
+    },
+    | WppcDeferredAction::TellSelf(target, msg) => execute_wppc_tell_self(ctx, target, msg),
+    | WppcDeferredAction::TellWorkerStats(target, msg) => execute_wppc_tell_worker_stats(ctx, target, msg),
+    | WppcDeferredAction::RequestNext(target, msg) => execute_wppc_request_next(ctx, target, msg),
+    | WppcDeferredAction::StopWorkerPc(pc_ref) => execute_wppc_stop_worker_pc(ctx, pc_ref),
+    | WppcDeferredAction::SpawnWorker {
+      worker_ref,
+      producer_id: pc_producer_id,
+      demand_adapter,
+      producer_controller_settings,
+    } => {
+      execute_wppc_spawn_worker(
+        ctx,
+        state,
+        pending,
+        &worker_ref,
+        &pc_producer_id,
+        demand_adapter,
+        &producer_controller_settings,
+      );
+    },
+    | WppcDeferredAction::LogDropped { total_seq_nr, buffered_len, buffer_size, message_type } => {
+      emit_wppc_dropped_log(ctx, total_seq_nr, buffered_len, buffer_size, message_type);
+    },
+  }
+}
+
+fn execute_wppc_tell_worker<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  mut target: TypedActorRef<ProducerControllerCommand<A>>,
+  message: ProducerControllerCommand<A>,
+  worker_key: u64,
+  worker_local_seq_nr: u64,
+  internal_ask_timeout: Duration,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(error) = target.try_tell(message) {
+    let message =
+      alloc::format!("WorkPullingProducerController failed to send message to worker controller: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  } else if let Err(error) = ctx.schedule_once(
+    internal_ask_timeout,
+    ctx.self_ref(),
+    WorkPullingProducerControllerCommand::worker_delivery_timed_out(worker_key, worker_local_seq_nr),
+  ) {
+    let message =
+      alloc::format!("WorkPullingProducerController failed to schedule worker delivery timeout: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn execute_wppc_tell_durable_queue<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  mut target: TypedActorRef<DurableProducerQueueCommand<A>>,
+  message: DurableProducerQueueCommand<A>,
+  timeout: Option<WppcDurableQueueTimeout>,
+  durable_queue_request_timeout: Duration,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(error) = target.try_tell(message) {
+    let message = alloc::format!("WorkPullingProducerController failed to talk to durable queue: {:?}", error);
+    ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
+    stop_wppc_after_durable_queue_failure(ctx);
+  } else if let Some(timeout) = timeout {
+    schedule_wppc_durable_queue_timeout(ctx, timeout, durable_queue_request_timeout);
+  }
+}
+
+fn stop_wppc_after_durable_queue_failure<A>(ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>)
+where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(stop_error) = ctx.stop_self() {
+    let stop_message =
+      alloc::format!("WorkPullingProducerController failed to stop after durable queue failure: {:?}", stop_error);
+    ctx.system().emit_log(LogLevel::Warn, stop_message, Some(ctx.pid()), None);
+  }
+}
+
+fn schedule_wppc_durable_queue_timeout<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  timeout: WppcDurableQueueTimeout,
+  durable_queue_request_timeout: Duration,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let command = match timeout {
+    | WppcDurableQueueTimeout::Load { attempt } => {
+      WorkPullingProducerControllerCommand::durable_queue_load_timed_out(attempt)
+    },
+    | WppcDurableQueueTimeout::Store { seq_nr, attempt } => {
+      WorkPullingProducerControllerCommand::durable_queue_store_timed_out(seq_nr, attempt)
+    },
+  };
+  if let Err(error) = ctx.schedule_once(durable_queue_request_timeout, ctx.self_ref(), command) {
+    let message = alloc::format!("WorkPullingProducerController failed to schedule durable queue timeout: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn execute_wppc_tell_self<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  mut target: TypedActorRef<WorkPullingProducerControllerCommand<A>>,
+  msg: WorkPullingProducerControllerCommand<A>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(error) = target.try_tell(msg) {
+    let message =
+      alloc::format!("WorkPullingProducerController failed to enqueue internal replay command: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn execute_wppc_tell_worker_stats<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  mut target: TypedActorRef<WorkerStats>,
+  msg: WorkerStats,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(error) = target.try_tell(msg) {
+    let message = alloc::format!("WorkPullingProducerController failed to send worker stats reply: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn execute_wppc_request_next<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  mut target: TypedActorRef<WorkPullingProducerControllerRequestNext<A>>,
+  msg: WorkPullingProducerControllerRequestNext<A>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(error) = target.try_tell(msg) {
+    let message = alloc::format!("WorkPullingProducerController failed to request next work item: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn execute_wppc_stop_worker_pc<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  mut pc_ref: TypedActorRef<ProducerControllerCommand<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if let Err(error) = stop_worker_producer_controller(&mut pc_ref) {
+    let message = alloc::format!("WorkPullingProducerController failed to stop worker controller: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn execute_wppc_spawn_worker<A>(
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  state: &SharedLock<WorkPullingState<A>>,
+  pending: &mut VecDeque<WppcDeferredAction<A>>,
+  worker_ref: &ActorRef,
+  pc_producer_id: &str,
+  demand_adapter: TypedActorRef<ProducerControllerRequestNext<A>>,
+  producer_controller_settings: &ProducerControllerConfig,
+) where
+  A: Clone + Send + Sync + 'static, {
+  // ワーカー PC を生成し、先に state に登録してから tell() する。
+  // インラインディスパッチで InternalDemand が即座に返るため、
+  // 登録前に tell() すると demand シグナルが消失する。
+  if let Some((entry, pc_ref)) = spawn_worker_actor::<A>(ctx, worker_ref, pc_producer_id, producer_controller_settings)
+  {
+    state.with_lock(|state| {
+      state.workers.insert(pid_key(worker_ref), entry);
+    });
+    start_spawned_worker_pc(ctx, worker_ref, pc_ref, demand_adapter);
+    pending.extend(collect_after_worker_spawn(state));
+  }
+}
+
+fn start_spawned_worker_pc<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  worker_ref: &ActorRef,
+  pc_ref: TypedActorRef<ProducerControllerCommand<A>>,
+  demand_adapter: TypedActorRef<ProducerControllerRequestNext<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let mut pc_start = pc_ref.clone();
+  if let Err(error) = pc_start.try_tell(ProducerController::start(demand_adapter)) {
+    let message = alloc::format!("WorkPullingProducerController failed to start worker controller: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+  let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
+  let mut pc_reg = pc_ref;
+  if let Err(error) = pc_reg.try_tell(ProducerController::register_consumer(cc_ref)) {
+    let message =
+      alloc::format!("WorkPullingProducerController failed to register worker consumer controller: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
+  }
+}
+
+fn collect_after_worker_spawn<A>(state: &SharedLock<WorkPullingState<A>>) -> Vec<WppcDeferredAction<A>>
+where
+  A: Clone + Send + Sync + 'static, {
+  state.with_lock(|s| {
+    let mut drain_deferred = Vec::new();
+    collect_drain_buffered(s, &mut drain_deferred);
+    collect_maybe_request_next(s, &mut drain_deferred);
+    drain_deferred
+  })
+}
+
+fn emit_wppc_dropped_log<A>(
+  ctx: &TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  total_seq_nr: u64,
+  buffered_len: usize,
+  buffer_size: u32,
+  message_type: &'static str,
+) where
+  A: Clone + Send + Sync + 'static, {
+  ctx.system().emit_log(
+    LogLevel::Warn,
+    alloc::format!(
+      "WorkPullingProducerController dropped buffered message: seq_nr={}, buffered_len={}, buffer_size={}, message_type={}",
+      total_seq_nr,
+      buffered_len,
+      buffer_size,
+      message_type
+    ),
+    Some(ctx.pid()),
+    None,
+  );
 }
 
 fn stop_worker_producer_controller<A>(

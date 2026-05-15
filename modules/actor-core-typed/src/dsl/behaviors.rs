@@ -705,19 +705,31 @@ where
   }
 
   match options.logger_name() {
-    | Some(logger_name) => match options.level() {
-      | LogLevel::Trace => tracing::trace!(actor = %pid, logger_name, ?message, "received message"),
-      | LogLevel::Debug => tracing::debug!(actor = %pid, logger_name, ?message, "received message"),
-      | LogLevel::Info => tracing::info!(actor = %pid, logger_name, ?message, "received message"),
-      | LogLevel::Warn => tracing::warn!(actor = %pid, logger_name, ?message, "received message"),
-      | LogLevel::Error => tracing::error!(actor = %pid, logger_name, ?message, "received message"),
-    },
-    | None => match options.level() {
-      | LogLevel::Trace => tracing::trace!(actor = %pid, ?message, "received message"),
-      | LogLevel::Debug => tracing::debug!(actor = %pid, ?message, "received message"),
-      | LogLevel::Info => tracing::info!(actor = %pid, ?message, "received message"),
-      | LogLevel::Warn => tracing::warn!(actor = %pid, ?message, "received message"),
-      | LogLevel::Error => tracing::error!(actor = %pid, ?message, "received message"),
-    },
+    | Some(logger_name) => log_received_message_with_logger(options.level(), pid, logger_name, message),
+    | None => log_received_message_without_logger(options.level(), pid, message),
+  }
+}
+
+fn log_received_message_with_logger<M>(level: LogLevel, pid: Pid, logger_name: &str, message: &M)
+where
+  M: Debug, {
+  match level {
+    | LogLevel::Trace => tracing::trace!(actor = %pid, logger_name, ?message, "received message"),
+    | LogLevel::Debug => tracing::debug!(actor = %pid, logger_name, ?message, "received message"),
+    | LogLevel::Info => tracing::info!(actor = %pid, logger_name, ?message, "received message"),
+    | LogLevel::Warn => tracing::warn!(actor = %pid, logger_name, ?message, "received message"),
+    | LogLevel::Error => tracing::error!(actor = %pid, logger_name, ?message, "received message"),
+  }
+}
+
+fn log_received_message_without_logger<M>(level: LogLevel, pid: Pid, message: &M)
+where
+  M: Debug, {
+  match level {
+    | LogLevel::Trace => tracing::trace!(actor = %pid, ?message, "received message"),
+    | LogLevel::Debug => tracing::debug!(actor = %pid, ?message, "received message"),
+    | LogLevel::Info => tracing::info!(actor = %pid, ?message, "received message"),
+    | LogLevel::Warn => tracing::warn!(actor = %pid, ?message, "received message"),
+    | LogLevel::Error => tracing::error!(actor = %pid, ?message, "received message"),
   }
 }

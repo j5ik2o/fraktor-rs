@@ -276,142 +276,260 @@ impl ProducerController {
       let runtime_settings = settings.clone();
       let runtime_load_state_adapter = load_state_adapter;
       Behaviors::receive_message(move |ctx, command: &ProducerControllerCommand<A>| {
-        let mut stop_self = None::<String>;
-        // ロック保持中に遅延アクションを収集し、ロック解放後に実行する。
-        // メッセージアダプタ経由の再入デッドロックを回避するため。
-        let deferred = state.with_lock(|state| {
-          let mut deferred = Vec::new();
-          match command.kind() {
-            | ProducerControllerCommandKind::Start { producer } => {
-              state.producer = Some(producer.clone());
-              collect_request_next(state, &mut deferred);
-            },
-            | ProducerControllerCommandKind::RegisterConsumer { consumer_controller } => {
-              state.consumer_controller = Some(consumer_controller.clone());
-              // 新しい CC を登録する際にセッション状態をリセットする。
-              // 次のメッセージに first=true を付けて CC に状態リセットを促す。
-              state.send_first = true;
-              state.requested = false;
-              state.requested_seq_nr = 0;
-              state.awaiting_msg = false;
-              collect_request_next(state, &mut deferred);
-            },
-            | ProducerControllerCommandKind::Msg { message } => {
-              state.awaiting_msg = false;
-              collect_on_msg(state, message.clone(), &self_ref, &mut deferred);
-            },
-            | ProducerControllerCommandKind::Request { confirmed_seq_nr, request_up_to_seq_nr, support_resend } => {
-              let previous_confirmed_seq_nr = state.confirmed_seq_nr;
-              state.support_resend = *support_resend;
-              state.on_confirmed(*confirmed_seq_nr);
-              collect_store_confirmed(state, previous_confirmed_seq_nr, state.confirmed_seq_nr, &mut deferred);
-              state.requested_seq_nr = *request_up_to_seq_nr;
-              state.requested = true;
-              collect_request_next(state, &mut deferred);
-            },
-            | ProducerControllerCommandKind::Resend { from_seq_nr } => {
-              collect_resend(state, *from_seq_nr, &mut deferred);
-            },
-            | ProducerControllerCommandKind::Ack { confirmed_seq_nr } => {
-              let previous_confirmed_seq_nr = state.confirmed_seq_nr;
-              state.on_confirmed(*confirmed_seq_nr);
-              collect_store_confirmed(state, previous_confirmed_seq_nr, state.confirmed_seq_nr, &mut deferred);
-            },
-            | ProducerControllerCommandKind::DurableQueueLoaded { state: loaded } => {
-              state.current_seq_nr = loaded.current_seq_nr();
-              state.confirmed_seq_nr = loaded.highest_confirmed_seq_nr();
-              state.unconfirmed = loaded
-                .unconfirmed()
-                .iter()
-                .map(|sent| {
-                  SequencedMessage::new(
-                    state.producer_id.clone(),
-                    sent.seq_nr(),
-                    sent.message().clone(),
-                    false,
-                    sent.ack(),
-                    self_ref.clone(),
-                  )
-                })
-                .collect();
-              state.awaiting_load = false;
-              collect_request_next(state, &mut deferred);
-            },
-            | ProducerControllerCommandKind::DurableQueueMessageStored { ack } => {
-              collect_on_durable_queue_message_stored(state, ack, &mut deferred);
-            },
-            | ProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
-              if state.awaiting_load {
-                if *attempt >= runtime_settings.durable_queue_retry_attempts() {
-                  stop_self =
-                    Some(alloc::format!("ProducerController durable queue load timed out after {} attempts", attempt));
-                } else if let (Some(durable_queue), Some(load_state_adapter)) =
-                  (state.durable_queue.clone(), runtime_load_state_adapter.clone())
-                {
-                  deferred.push(DeferredAction::TellDurableQueue {
-                    target:  durable_queue,
-                    message: DurableProducerQueueCommand::load_state(load_state_adapter),
-                    timeout: Some(DurableQueueTimeout::Load { attempt: attempt + 1 }),
-                  });
-                }
-              }
-            },
-            | ProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt } => {
-              if let Some(pending_delivery) = state.pending_delivery.as_ref()
-                && pending_delivery.sequenced.seq_nr() == *seq_nr
-              {
-                if *attempt >= runtime_settings.durable_queue_retry_attempts() {
-                  stop_self = Some(alloc::format!(
-                    "ProducerController durable queue store timed out for seq_nr {} after {} attempts",
-                    seq_nr,
-                    attempt
-                  ));
-                } else if let (Some(durable_queue), Some(store_ack_adapter)) =
-                  (state.durable_queue.clone(), state.store_ack_adapter.clone())
-                {
-                  let sent = MessageSent::new(
-                    pending_delivery.sequenced.seq_nr(),
-                    pending_delivery.sequenced.message().clone(),
-                    pending_delivery.sequenced.ack(),
-                    NO_QUALIFIER,
-                    0,
-                  );
-                  deferred.push(DeferredAction::TellDurableQueue {
-                    target:  durable_queue,
-                    message: DurableProducerQueueCommand::store_message_sent(sent, store_ack_adapter),
-                    timeout: Some(DurableQueueTimeout::Store { seq_nr: *seq_nr, attempt: attempt + 1 }),
-                  });
-                }
-              }
-            },
-            | ProducerControllerCommandKind::ResendFirstUnconfirmed { seq_nr } => {
-              if state.resend_first_seq_nr == Some(*seq_nr) {
-                state.resend_first_seq_nr = None;
-              }
-              if let Some(first) = state.unconfirmed.first().cloned()
-                && first.seq_nr() == *seq_nr
-                && let Some(cc) = state.consumer_controller.clone()
-              {
-                deferred
-                  .push(DeferredAction::SendSequenced(cc, ConsumerControllerCommand::sequenced_msg(first.as_first())));
-              }
-            },
-          }
-          maybe_schedule_resend_first(state, &runtime_settings, &self_ref, ctx);
-          deferred
-        }); // ステートロックはここで解放される
-
-        execute_deferred(ctx, deferred, &runtime_settings, &self_ref);
-        if let Some(message) = stop_self {
-          ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
-          if let Err(error) = ctx.stop_self() {
-            let stop_message = alloc::format!("ProducerController failed to stop after timeout: {:?}", error);
-            ctx.system().emit_log(LogLevel::Warn, stop_message, Some(ctx.pid()), None);
-          }
-        }
-        Ok(Behaviors::same())
+        Ok(receive_producer_controller_command(
+          ctx,
+          command,
+          &state,
+          &runtime_settings,
+          &self_ref,
+          &runtime_load_state_adapter,
+        ))
       })
     })
+  }
+}
+
+struct ProducerCommandContext<'a, A>
+where
+  A: Clone + Send + Sync + 'static, {
+  settings:           &'a ProducerControllerConfig,
+  self_ref:           &'a TypedActorRef<ProducerControllerCommand<A>>,
+  load_state_adapter: &'a Option<TypedActorRef<DurableProducerQueueState<A>>>,
+}
+
+fn receive_producer_controller_command<A>(
+  ctx: &mut TypedActorContext<'_, ProducerControllerCommand<A>>,
+  command: &ProducerControllerCommand<A>,
+  state: &SharedLock<ProducerControllerState<A>>,
+  settings: &ProducerControllerConfig,
+  self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
+  load_state_adapter: &Option<TypedActorRef<DurableProducerQueueState<A>>>,
+) -> Behavior<ProducerControllerCommand<A>>
+where
+  A: Clone + Send + Sync + 'static, {
+  let command_context = ProducerCommandContext { settings, self_ref, load_state_adapter };
+  let mut stop_self = None::<String>;
+  // ロック保持中に遅延アクションを収集し、ロック解放後に実行する。
+  // メッセージアダプタ経由の再入デッドロックを回避するため。
+  let deferred = state.with_lock(|state| {
+    let mut deferred = Vec::new();
+    collect_producer_deferred_for_command(state, command, &command_context, &mut deferred, &mut stop_self);
+    maybe_schedule_resend_first(state, settings, self_ref, ctx);
+    deferred
+  });
+  execute_deferred(ctx, deferred, settings, self_ref);
+  stop_producer_after_timeout(ctx, stop_self);
+  Behaviors::same()
+}
+
+fn collect_producer_deferred_for_command<A>(
+  state: &mut ProducerControllerState<A>,
+  command: &ProducerControllerCommand<A>,
+  command_context: &ProducerCommandContext<'_, A>,
+  deferred: &mut Vec<DeferredAction<A>>,
+  stop_self: &mut Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  match command.kind() {
+    | ProducerControllerCommandKind::Start { producer } => {
+      state.producer = Some(producer.clone());
+      collect_request_next(state, deferred);
+    },
+    | ProducerControllerCommandKind::RegisterConsumer { consumer_controller } => {
+      collect_producer_register_consumer(state, consumer_controller, deferred);
+    },
+    | ProducerControllerCommandKind::Msg { message } => {
+      state.awaiting_msg = false;
+      collect_on_msg(state, message.clone(), command_context.self_ref, deferred);
+    },
+    | ProducerControllerCommandKind::Request { confirmed_seq_nr, request_up_to_seq_nr, support_resend } => {
+      collect_producer_request(state, *confirmed_seq_nr, *request_up_to_seq_nr, *support_resend, deferred);
+    },
+    | ProducerControllerCommandKind::Resend { from_seq_nr } => collect_resend(state, *from_seq_nr, deferred),
+    | ProducerControllerCommandKind::Ack { confirmed_seq_nr } => {
+      collect_producer_ack(state, *confirmed_seq_nr, deferred);
+    },
+    | ProducerControllerCommandKind::DurableQueueLoaded { state: loaded } => {
+      collect_producer_durable_queue_loaded(state, loaded, command_context.self_ref, deferred);
+    },
+    | ProducerControllerCommandKind::DurableQueueMessageStored { ack } => {
+      collect_on_durable_queue_message_stored(state, ack, deferred);
+    },
+    | ProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
+      collect_producer_load_timeout(state, *attempt, command_context, deferred, stop_self);
+    },
+    | ProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt } => {
+      collect_producer_store_timeout(state, *seq_nr, *attempt, command_context.settings, deferred, stop_self);
+    },
+    | ProducerControllerCommandKind::ResendFirstUnconfirmed { seq_nr } => {
+      collect_producer_resend_first_unconfirmed(state, *seq_nr, deferred);
+    },
+  }
+}
+
+fn collect_producer_register_consumer<A>(
+  state: &mut ProducerControllerState<A>,
+  consumer_controller: &TypedActorRef<ConsumerControllerCommand<A>>,
+  deferred: &mut Vec<DeferredAction<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  state.consumer_controller = Some(consumer_controller.clone());
+  // 新しい CC を登録する際にセッション状態をリセットする。
+  // 次のメッセージに first=true を付けて CC に状態リセットを促す。
+  state.send_first = true;
+  state.requested = false;
+  state.requested_seq_nr = 0;
+  state.awaiting_msg = false;
+  collect_request_next(state, deferred);
+}
+
+fn collect_producer_request<A>(
+  state: &mut ProducerControllerState<A>,
+  confirmed_seq_nr: SeqNr,
+  request_up_to_seq_nr: SeqNr,
+  support_resend: bool,
+  deferred: &mut Vec<DeferredAction<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let previous_confirmed_seq_nr = state.confirmed_seq_nr;
+  state.support_resend = support_resend;
+  state.on_confirmed(confirmed_seq_nr);
+  collect_store_confirmed(state, previous_confirmed_seq_nr, state.confirmed_seq_nr, deferred);
+  state.requested_seq_nr = request_up_to_seq_nr;
+  state.requested = true;
+  collect_request_next(state, deferred);
+}
+
+fn collect_producer_ack<A>(
+  state: &mut ProducerControllerState<A>,
+  confirmed_seq_nr: SeqNr,
+  deferred: &mut Vec<DeferredAction<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let previous_confirmed_seq_nr = state.confirmed_seq_nr;
+  state.on_confirmed(confirmed_seq_nr);
+  collect_store_confirmed(state, previous_confirmed_seq_nr, state.confirmed_seq_nr, deferred);
+}
+
+fn collect_producer_durable_queue_loaded<A>(
+  state: &mut ProducerControllerState<A>,
+  loaded: &DurableProducerQueueState<A>,
+  self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
+  deferred: &mut Vec<DeferredAction<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  state.current_seq_nr = loaded.current_seq_nr();
+  state.confirmed_seq_nr = loaded.highest_confirmed_seq_nr();
+  state.unconfirmed = loaded
+    .unconfirmed()
+    .iter()
+    .map(|sent| {
+      SequencedMessage::new(
+        state.producer_id.clone(),
+        sent.seq_nr(),
+        sent.message().clone(),
+        false,
+        sent.ack(),
+        self_ref.clone(),
+      )
+    })
+    .collect();
+  state.awaiting_load = false;
+  collect_request_next(state, deferred);
+}
+
+fn collect_producer_load_timeout<A>(
+  state: &mut ProducerControllerState<A>,
+  attempt: u32,
+  command_context: &ProducerCommandContext<'_, A>,
+  deferred: &mut Vec<DeferredAction<A>>,
+  stop_self: &mut Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if !state.awaiting_load {
+    return;
+  }
+  if attempt >= command_context.settings.durable_queue_retry_attempts() {
+    *stop_self = Some(alloc::format!("ProducerController durable queue load timed out after {} attempts", attempt));
+  } else if let (Some(durable_queue), Some(load_state_adapter)) =
+    (state.durable_queue.clone(), command_context.load_state_adapter.clone())
+  {
+    deferred.push(DeferredAction::TellDurableQueue {
+      target:  durable_queue,
+      message: DurableProducerQueueCommand::load_state(load_state_adapter),
+      timeout: Some(DurableQueueTimeout::Load { attempt: attempt + 1 }),
+    });
+  }
+}
+
+fn collect_producer_store_timeout<A>(
+  state: &mut ProducerControllerState<A>,
+  seq_nr: SeqNr,
+  attempt: u32,
+  settings: &ProducerControllerConfig,
+  deferred: &mut Vec<DeferredAction<A>>,
+  stop_self: &mut Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let Some(pending_delivery) = state.pending_delivery.as_ref() else {
+    return;
+  };
+  if pending_delivery.sequenced.seq_nr() != seq_nr {
+    return;
+  }
+  if attempt >= settings.durable_queue_retry_attempts() {
+    *stop_self = Some(alloc::format!(
+      "ProducerController durable queue store timed out for seq_nr {} after {} attempts",
+      seq_nr,
+      attempt
+    ));
+  } else if let (Some(durable_queue), Some(store_ack_adapter)) =
+    (state.durable_queue.clone(), state.store_ack_adapter.clone())
+  {
+    let sent = MessageSent::new(
+      pending_delivery.sequenced.seq_nr(),
+      pending_delivery.sequenced.message().clone(),
+      pending_delivery.sequenced.ack(),
+      NO_QUALIFIER,
+      0,
+    );
+    deferred.push(DeferredAction::TellDurableQueue {
+      target:  durable_queue,
+      message: DurableProducerQueueCommand::store_message_sent(sent, store_ack_adapter),
+      timeout: Some(DurableQueueTimeout::Store { seq_nr, attempt: attempt + 1 }),
+    });
+  }
+}
+
+fn collect_producer_resend_first_unconfirmed<A>(
+  state: &mut ProducerControllerState<A>,
+  seq_nr: SeqNr,
+  deferred: &mut Vec<DeferredAction<A>>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  if state.resend_first_seq_nr == Some(seq_nr) {
+    state.resend_first_seq_nr = None;
+  }
+  if let Some(first) = state.unconfirmed.first().cloned()
+    && first.seq_nr() == seq_nr
+    && let Some(cc) = state.consumer_controller.clone()
+  {
+    deferred.push(DeferredAction::SendSequenced(cc, ConsumerControllerCommand::sequenced_msg(first.as_first())));
+  }
+}
+
+fn stop_producer_after_timeout<A>(
+  ctx: &mut TypedActorContext<'_, ProducerControllerCommand<A>>,
+  message: Option<String>,
+) where
+  A: Clone + Send + Sync + 'static, {
+  let Some(message) = message else {
+    return;
+  };
+  ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
+  if let Err(error) = ctx.stop_self() {
+    let stop_message = alloc::format!("ProducerController failed to stop after timeout: {:?}", error);
+    ctx.system().emit_log(LogLevel::Warn, stop_message, Some(ctx.pid()), None);
   }
 }
 

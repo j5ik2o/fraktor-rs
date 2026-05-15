@@ -15,7 +15,7 @@ use fraktor_remote_core_rs::{
   config::RemoteCompressionConfig,
   extension::RemoteEvent,
   transport::{TransportEndpoint, TransportError},
-  wire::CompressionTableKind,
+  wire::{CompressionTableKind, ControlPdu},
 };
 use futures::{SinkExt as _, StreamExt as _, future::poll_fn};
 use tokio::{
@@ -72,6 +72,11 @@ struct TcpClientRunOptions {
   compression_config:       RemoteCompressionConfig,
   local_authority:          String,
   connection_loss_reporter: Option<ConnectionLossReporter>,
+}
+
+enum TcpClientLoopDecision {
+  Continue,
+  Stop(Option<TransportError>),
 }
 
 impl TcpClientConnectOptions {
@@ -265,35 +270,17 @@ async fn run(
     tokio::select! {
       next = framed.next() => match next {
         | Some(Ok(decoded)) => {
-          let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
-            | Ok(InboundCompressionAction::Forward(frame)) => frame,
-            | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
-              authority = Some(frame_authority);
-              if framed.send(WireFrame::Control(pdu)).await.is_err() { break Some(TransportError::SendFailed); }
-              continue;
-            },
-            | Ok(InboundCompressionAction::Consumed { authority: frame_authority }) => {
-              authority = Some(frame_authority);
-              continue;
-            },
-            | Err(err) => {
-              tracing::warn!(?err, peer = %peer_addr, "tcp client compression frame error");
-              break Some(TransportError::SendFailed);
-            },
-          };
-          if let Some(frame_authority) = authority_for_frame(&decoded) {
-            authority = Some(frame_authority);
-          }
-          let lane_index = inbound_lane_index(&peer_addr, authority.as_ref(), &decoded, inbound_txs.len());
-          let Some(inbound_tx) = inbound_txs.get(lane_index) else {
-            break Some(TransportError::NotAvailable);
-          };
-          if inbound_tx.send(InboundFrameEvent {
-            peer: peer_addr.clone(),
-            authority: authority.clone(),
-            frame: decoded,
-          }).is_err() {
-            break None;
+          match handle_inbound_tcp_frame(
+            decoded,
+            &mut framed,
+            &mut compression_tables,
+            &local_authority,
+            &peer_addr,
+            &mut authority,
+            &inbound_txs,
+          ).await {
+            | TcpClientLoopDecision::Continue => continue,
+            | TcpClientLoopDecision::Stop(cause) => break cause,
           }
         }
         | Some(Err(err)) => {
@@ -304,27 +291,31 @@ async fn run(
       },
       next = next_writer_frame(&mut writer_rxs, &mut next_writer_lane) => match next {
         | Some(frame) => {
-          let frame = compression_tables.apply_outbound_frame(frame);
-          if let Err(err) = framed.send(frame).await {
-            tracing::warn!(?err, peer = %peer_addr, "tcp client write error");
-            break Some(TransportError::SendFailed);
+          if let Some(cause) = send_outbound_tcp_frame(frame, &mut framed, &mut compression_tables, &peer_addr).await {
+            break Some(cause);
           }
         }
         | None => break None,
       },
       _ = next_compression_advertisement_tick(&mut actor_ref_advertisement_interval) => {
-        let send_failed = match compression_tables.create_advertisement(CompressionTableKind::ActorRef, &local_authority) {
-          | Some(frame) => framed.send(frame).await.is_err(),
-          | None => false,
-        };
-        if send_failed { break Some(TransportError::SendFailed); }
+        if let Some(cause) = send_tcp_compression_advertisement(
+          &mut framed,
+          &mut compression_tables,
+          CompressionTableKind::ActorRef,
+          &local_authority,
+        ).await {
+          break Some(cause);
+        }
       },
       _ = next_compression_advertisement_tick(&mut manifest_advertisement_interval) => {
-        let send_failed = match compression_tables.create_advertisement(CompressionTableKind::Manifest, &local_authority) {
-          | Some(frame) => framed.send(frame).await.is_err(),
-          | None => false,
-        };
-        if send_failed { break Some(TransportError::SendFailed); }
+        if let Some(cause) = send_tcp_compression_advertisement(
+          &mut framed,
+          &mut compression_tables,
+          CompressionTableKind::Manifest,
+          &local_authority,
+        ).await {
+          break Some(cause);
+        }
       },
     }
   };
@@ -334,6 +325,94 @@ async fn run(
   if let Err(err) = framed.close().await {
     tracing::debug!(?err, "tcp client framed close failed during shutdown");
   }
+}
+
+async fn handle_inbound_tcp_frame(
+  decoded: WireFrame,
+  framed: &mut Framed<TcpStream, WireFrameCodec>,
+  compression_tables: &mut TcpCompressionTables,
+  local_authority: &str,
+  peer_addr: &str,
+  authority: &mut Option<TransportEndpoint>,
+  inbound_txs: &[UnboundedSender<InboundFrameEvent>],
+) -> TcpClientLoopDecision {
+  let decoded = match compression_tables.handle_inbound_frame(decoded, local_authority) {
+    | Ok(InboundCompressionAction::Forward(frame)) => frame,
+    | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
+      *authority = Some(frame_authority);
+      return send_tcp_control_reply(framed, pdu).await;
+    },
+    | Ok(InboundCompressionAction::Consumed { authority: frame_authority }) => {
+      *authority = Some(frame_authority);
+      return TcpClientLoopDecision::Continue;
+    },
+    | Err(err) => {
+      tracing::warn!(?err, peer = %peer_addr, "tcp client compression frame error");
+      return TcpClientLoopDecision::Stop(Some(TransportError::SendFailed));
+    },
+  };
+  forward_inbound_tcp_frame(decoded, peer_addr, authority, inbound_txs)
+}
+
+async fn send_tcp_control_reply(
+  framed: &mut Framed<TcpStream, WireFrameCodec>,
+  pdu: ControlPdu,
+) -> TcpClientLoopDecision {
+  if framed.send(WireFrame::Control(pdu)).await.is_err() {
+    TcpClientLoopDecision::Stop(Some(TransportError::SendFailed))
+  } else {
+    TcpClientLoopDecision::Continue
+  }
+}
+
+fn forward_inbound_tcp_frame(
+  decoded: WireFrame,
+  peer_addr: &str,
+  authority: &mut Option<TransportEndpoint>,
+  inbound_txs: &[UnboundedSender<InboundFrameEvent>],
+) -> TcpClientLoopDecision {
+  if let Some(frame_authority) = authority_for_frame(&decoded) {
+    *authority = Some(frame_authority);
+  }
+  let lane_index = inbound_lane_index(peer_addr, authority.as_ref(), &decoded, inbound_txs.len());
+  let Some(inbound_tx) = inbound_txs.get(lane_index) else {
+    return TcpClientLoopDecision::Stop(Some(TransportError::NotAvailable));
+  };
+  if inbound_tx
+    .send(InboundFrameEvent { peer: peer_addr.into(), authority: authority.clone(), frame: decoded })
+    .is_err()
+  {
+    return TcpClientLoopDecision::Stop(None);
+  }
+  TcpClientLoopDecision::Continue
+}
+
+async fn send_outbound_tcp_frame(
+  frame: WireFrame,
+  framed: &mut Framed<TcpStream, WireFrameCodec>,
+  compression_tables: &mut TcpCompressionTables,
+  peer_addr: &str,
+) -> Option<TransportError> {
+  let frame = compression_tables.apply_outbound_frame(frame);
+  if let Err(err) = framed.send(frame).await {
+    tracing::warn!(?err, peer = %peer_addr, "tcp client write error");
+    return Some(TransportError::SendFailed);
+  }
+  None
+}
+
+async fn send_tcp_compression_advertisement(
+  framed: &mut Framed<TcpStream, WireFrameCodec>,
+  compression_tables: &mut TcpCompressionTables,
+  kind: CompressionTableKind,
+  local_authority: &str,
+) -> Option<TransportError> {
+  if let Some(frame) = compression_tables.create_advertisement(kind, local_authority)
+    && framed.send(frame).await.is_err()
+  {
+    return Some(TransportError::SendFailed);
+  }
+  None
 }
 
 async fn next_writer_frame(writer_rxs: &mut [Receiver<WireFrame>], next_writer_lane: &mut usize) -> Option<WireFrame> {
