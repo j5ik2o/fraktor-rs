@@ -193,6 +193,25 @@ fn remote_deployment_spawn_invokes_hook_without_local_cell() {
 }
 
 #[test]
+fn remote_deployment_success_releases_local_name_reservation() {
+  let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("remote-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    calls.clone(),
+    TestRemoteDeploymentOutcome::RemoteCreated(remote_created_ref("remote-child")),
+  ));
+
+  let first = system.actor_of_named(&deployable_test_props(), "remote-child").expect("first remote child should spawn");
+  let second = system
+    .actor_of_named(&deployable_test_props(), "remote-child")
+    .expect("name should be reusable after remote spawn");
+
+  assert_eq!(first.pid(), Pid::new(900, 0));
+  assert_eq!(second.pid(), Pid::new(900, 0));
+  assert_eq!(calls.lock().len(), 2);
+}
+
+#[test]
 fn remote_deployment_use_local_outcome_continues_local_spawn() {
   let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("loopback-child")));

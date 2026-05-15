@@ -184,7 +184,7 @@ impl RemotingExtensionInstaller {
       flush_gate: self.flush_gate.clone(),
       flush_lane_ids: writer_lane_ids_for_config(&self.config),
       deployment_response_dispatcher: self.deployment_response_dispatcher.clone(),
-      deployment_timeout: self.config.handshake_timeout(),
+      deployment_timeout: self.config.deployment_timeout(),
     })
   }
 

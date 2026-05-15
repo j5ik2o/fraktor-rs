@@ -606,6 +606,7 @@ impl ActorSystem {
     match self.state.deploy_remote_child(request) {
       | RemoteDeploymentOutcome::UseLocalDeployment => Ok(None),
       | RemoteDeploymentOutcome::RemoteCreated(actor_ref) if deployable_metadata.is_some() => {
+        self.state.release_name(parent, name);
         Ok(Some(ChildRef::new(actor_ref, self.state.clone())))
       },
       | RemoteDeploymentOutcome::RemoteCreated(_) => {
