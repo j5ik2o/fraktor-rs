@@ -40,6 +40,16 @@ struct FlowStageStep {
   progressed:       bool,
 }
 
+struct SinkStagePorts {
+  inlet:      PortId,
+  input_type: TypeId,
+}
+
+enum SinkPushOutcome {
+  Decision(SinkDecision),
+  Progressed,
+}
+
 /// Executes a stream graph using a port-driven runtime.
 pub(crate) struct GraphInterpreter {
   stages:                 Vec<StageDefinition>,
@@ -215,134 +225,130 @@ impl GraphInterpreter {
       return DriveOutcome::Idle;
     }
 
-    self.tick_count = self.tick_count.saturating_add(1);
-
-    if let Err(error) = self.tick_restart_windows() {
-      self.fail(&error);
-      return DriveOutcome::Progressed;
-    }
-
-    let mut progressed = false;
-
-    match self.tick_flow_stages() {
-      | Ok(true) => progressed = true,
-      | Ok(false) => {},
+    match self.drive_running() {
+      | Ok(progressed) => Self::drive_outcome(progressed),
       | Err(error) => {
         self.fail(&error);
-        return DriveOutcome::Progressed;
+        DriveOutcome::Progressed
       },
     }
+  }
 
-    if !self.on_start_done {
-      match self.start_sinks() {
-        | Ok(()) => {
-          self.on_start_done = true;
-          progressed = true;
-        },
-        | Err(error) => {
-          self.fail(&error);
-          return DriveOutcome::Progressed;
-        },
-      }
-    }
+  fn drive_running(&mut self) -> Result<bool, StreamError> {
+    self.tick_count = self.tick_count.saturating_add(1);
+    self.tick_restart_windows()?;
+
+    let mut progressed = self.tick_flow_stages()?;
+    progressed |= self.start_sinks_if_needed()?;
 
     if self.state != StreamState::Running {
-      return DriveOutcome::Progressed;
+      return Ok(true);
     }
 
-    let pull_result = if self.demand.has_demand() {
-      self.pull_sources_if_needed()
-    } else if self.has_flow_requesting_upstream_drain() {
-      self.pull_sources_for_flows_requesting_drain()
-    } else {
-      Ok(false)
-    };
-    if self.demand.has_demand() || self.has_flow_requesting_upstream_drain() {
-      match pull_result {
-        | Ok(did_pull) => {
-          if did_pull {
-            progressed = true;
-          }
-        },
-        | Err(error) => {
-          self.fail(&error);
-          return DriveOutcome::Progressed;
-        },
-      }
+    progressed |= self.pull_and_drive_flows_if_needed()?;
+    progressed |= self.complete_if_runtime_work_done();
+    progressed |= self.drive_sinks_once()?;
+    progressed |= self.finish_sources_done_stream()?;
 
-      loop {
-        match self.drive_flow_stages_once() {
-          | Ok(true) => progressed = true,
-          | Ok(false) => break,
-          | Err(error) => {
-            self.fail(&error);
-            return DriveOutcome::Progressed;
-          },
-        }
-      }
+    Ok(progressed)
+  }
+
+  const fn drive_outcome(progressed: bool) -> DriveOutcome {
+    if progressed { DriveOutcome::Progressed } else { DriveOutcome::Idle }
+  }
+
+  fn start_sinks_if_needed(&mut self) -> Result<bool, StreamError> {
+    if self.on_start_done {
+      return Ok(false);
     }
+    self.start_sinks()?;
+    self.on_start_done = true;
+    Ok(true)
+  }
 
-    if self.state == StreamState::Running
-      && self.all_sinks_done()
-      && self.all_sources_done()
-      && !self.source_restart_waiting()
-      && !self.sink_restart_waiting()
-      && !self.flow_order.iter().any(|stage_index| self.flow_restart_waiting(*stage_index))
-      && !self.has_flow_requesting_upstream_drain()
-      && self.all_edge_buffers_empty()
-      && !self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
-    {
-      self.state = StreamState::Completed;
+  fn pull_and_drive_flows_if_needed(&mut self) -> Result<bool, StreamError> {
+    let pull_result = self.pull_sources_for_current_need();
+    if !self.flow_drive_requested() {
+      return Ok(false);
+    }
+    let did_pull = pull_result?;
+    let drove_flows = self.drive_flow_stages_until_idle()?;
+    Ok(did_pull || drove_flows)
+  }
+
+  fn pull_sources_for_current_need(&mut self) -> Result<bool, StreamError> {
+    if self.demand.has_demand() {
+      return self.pull_sources_if_needed();
+    }
+    if self.has_flow_requesting_upstream_drain() {
+      return self.pull_sources_for_flows_requesting_drain();
+    }
+    Ok(false)
+  }
+
+  fn flow_drive_requested(&self) -> bool {
+    self.demand.has_demand() || self.has_flow_requesting_upstream_drain()
+  }
+
+  fn drive_flow_stages_until_idle(&mut self) -> Result<bool, StreamError> {
+    let mut progressed = false;
+    while self.drive_flow_stages_once()? {
       progressed = true;
     }
+    Ok(progressed)
+  }
 
-    match self.drive_sinks_once() {
-      | Ok(true) => progressed = true,
-      | Ok(false) => {},
-      | Err(error) => {
-        self.fail(&error);
-        return DriveOutcome::Progressed;
-      },
+  fn complete_if_runtime_work_done(&mut self) -> bool {
+    if !self.runtime_work_done() {
+      return false;
+    }
+    self.state = StreamState::Completed;
+    true
+  }
+
+  fn runtime_work_done(&self) -> bool {
+    self.state == StreamState::Running
+      && self.all_sinks_done()
+      && self.all_sources_done()
+      && !self.restart_waiting()
+      && !self.has_flow_requesting_upstream_drain()
+      && self.all_edge_buffers_empty()
+      && !self.flow_has_any_pending_output()
+  }
+
+  fn restart_waiting(&self) -> bool {
+    self.source_restart_waiting() || self.sink_restart_waiting() || self.flow_restart_waiting_any()
+  }
+
+  fn flow_restart_waiting_any(&self) -> bool {
+    self.flow_order.iter().any(|stage_index| self.flow_restart_waiting(*stage_index))
+  }
+
+  fn flow_has_any_pending_output(&self) -> bool {
+    self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
+  }
+
+  fn finish_sources_done_stream(&mut self) -> Result<bool, StreamError> {
+    if !self.sources_done_stream_ready_to_finish() {
+      return Ok(false);
     }
 
-    if self.all_sources_done()
+    let mut progressed = self.drive_flow_stages_until_idle()?;
+    if self.all_edge_buffers_empty() {
+      progressed |= self.finish_sinks()?;
+      if self.all_sinks_done() {
+        self.state = StreamState::Completed;
+        progressed = true;
+      }
+    }
+    Ok(progressed)
+  }
+
+  fn sources_done_stream_ready_to_finish(&self) -> bool {
+    self.all_sources_done()
       && self.state == StreamState::Running
-      && !self.source_restart_waiting()
-      && !self.sink_restart_waiting()
-      && !self.flow_order.iter().any(|stage_index| self.flow_restart_waiting(*stage_index))
-      && !self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
-    {
-      loop {
-        match self.drive_flow_stages_once() {
-          | Ok(true) => progressed = true,
-          | Ok(false) => break,
-          | Err(error) => {
-            self.fail(&error);
-            return DriveOutcome::Progressed;
-          },
-        }
-      }
-
-      if self.all_edge_buffers_empty() {
-        match self.finish_sinks() {
-          | Ok(did_finish) => {
-            if did_finish {
-              progressed = true;
-            }
-            if self.all_sinks_done() {
-              self.state = StreamState::Completed;
-              progressed = true;
-            }
-          },
-          | Err(error) => {
-            self.fail(&error);
-            return DriveOutcome::Progressed;
-          },
-        }
-      }
-    }
-
-    if progressed { DriveOutcome::Progressed } else { DriveOutcome::Idle }
+      && !self.restart_waiting()
+      && !self.flow_has_any_pending_output()
   }
 
   fn tick_flow_stages(&mut self) -> Result<bool, StreamError> {
@@ -892,110 +898,131 @@ impl GraphInterpreter {
     }
 
     let sink_index = self.sink_indices[sink_position];
-    let (sink_inlet, sink_input_type) = match &self.stages[sink_index] {
-      | StageDefinition::Sink(sink) => (sink.inlet, sink.input_type),
-      | _ => return Err(StreamError::InvalidConnection),
-    };
+    let ports = self.sink_stage_ports(sink_index)?;
     if self.sink_restart_waiting_at(sink_index) {
       return Ok(false);
     }
-    let mut progressed = false;
+
+    let progressed = self.tick_sink_stage(sink_position, sink_index)?;
+    if !self.demand.has_demand() {
+      return Ok(progressed);
+    }
+
+    if !self.sink_can_accept_input(sink_index)? {
+      return self.finish_sink_if_input_exhausted(sink_position, sink_index, progressed);
+    }
+
+    let Some((_, value)) = self.poll_from_incoming_edges(ports.inlet, None)? else {
+      return self.finish_sink_if_input_exhausted(sink_position, sink_index, progressed);
+    };
+    if value.as_ref().type_id() != ports.input_type {
+      return Err(StreamError::TypeMismatch);
+    }
+    self.demand.consume(1)?;
+
+    match self.push_sink_input(sink_position, sink_index, value)? {
+      | SinkPushOutcome::Decision(decision) => self.apply_sink_decision(sink_position, sink_index, decision),
+      | SinkPushOutcome::Progressed => Ok(true),
+    }
+  }
+
+  fn sink_stage_ports(&self, sink_index: usize) -> Result<SinkStagePorts, StreamError> {
+    match &self.stages[sink_index] {
+      | StageDefinition::Sink(sink) => Ok(SinkStagePorts { inlet: sink.inlet, input_type: sink.input_type }),
+      | _ => Err(StreamError::InvalidConnection),
+    }
+  }
+
+  fn tick_sink_stage(&mut self, sink_position: usize, sink_index: usize) -> Result<bool, StreamError> {
     let on_tick_result = {
       let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
         return Err(StreamError::InvalidConnection);
       };
       sink.logic.on_tick(&mut self.demand)
     };
-    let sink_tick_progressed = match on_tick_result {
-      | Ok(sink_tick_progressed) => sink_tick_progressed,
+    match on_tick_result {
+      | Ok(sink_tick_progressed) => Ok(sink_tick_progressed),
       | Err(StreamError::StreamDetached) => {
         self.detach_sink_position(sink_position)?;
-        return Ok(true);
+        Ok(true)
       },
-      | Err(error) => match self.handle_sink_failure(sink_index, error)? {
-        | FailureDisposition::Continue => return Ok(true),
-        | FailureDisposition::Complete => {
-          self.complete_sink_position(sink_position)?;
-          return Ok(true);
-        },
-        | FailureDisposition::Fail(error) => return Err(error),
+      | Err(error) => self.apply_sink_failure(sink_position, sink_index, error),
+    }
+  }
+
+  fn apply_sink_failure(
+    &mut self,
+    sink_position: usize,
+    sink_index: usize,
+    error: StreamError,
+  ) -> Result<bool, StreamError> {
+    match self.handle_sink_failure(sink_index, error)? {
+      | FailureDisposition::Continue => Ok(true),
+      | FailureDisposition::Complete => {
+        self.complete_sink_position(sink_position)?;
+        Ok(true)
       },
-    };
-    if sink_tick_progressed {
-      progressed = true;
+      | FailureDisposition::Fail(error) => Err(error),
     }
-    if !self.demand.has_demand() {
+  }
+
+  fn sink_can_accept_input(&self, sink_index: usize) -> Result<bool, StreamError> {
+    let StageDefinition::Sink(sink) = &self.stages[sink_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(sink.logic.can_accept_input())
+  }
+
+  fn finish_sink_if_input_exhausted(
+    &mut self,
+    sink_position: usize,
+    sink_index: usize,
+    progressed: bool,
+  ) -> Result<bool, StreamError> {
+    if !self.stage_input_exhausted(sink_index) {
       return Ok(progressed);
     }
 
-    let sink_can_accept = {
-      let StageDefinition::Sink(sink) = &self.stages[sink_index] else {
-        return Err(StreamError::InvalidConnection);
-      };
-      sink.logic.can_accept_input()
-    };
-    if !sink_can_accept {
-      if self.stage_input_exhausted(sink_index) {
-        let upstream_progressed = self.notify_sink_upstream_finish(sink_position)?;
-        if self.sink_has_pending_work(sink_index)? {
-          return Ok(progressed || upstream_progressed);
-        }
-        self.complete_sink_position(sink_position)?;
-        return Ok(true);
-      }
-      return Ok(progressed);
+    let upstream_progressed = self.notify_sink_upstream_finish(sink_position)?;
+    if self.sink_has_pending_work(sink_index)? {
+      return Ok(progressed || upstream_progressed);
     }
+    self.complete_sink_position(sink_position)?;
+    Ok(true)
+  }
 
-    let Some((_, value)) = self.poll_from_incoming_edges(sink_inlet, None)? else {
-      if self.stage_input_exhausted(sink_index) {
-        let upstream_progressed = self.notify_sink_upstream_finish(sink_position)?;
-        if self.sink_has_pending_work(sink_index)? {
-          return Ok(progressed || upstream_progressed);
-        }
-        self.complete_sink_position(sink_position)?;
-        return Ok(true);
-      }
-      return Ok(progressed);
-    };
-    if value.as_ref().type_id() != sink_input_type {
-      return Err(StreamError::TypeMismatch);
-    }
-    self.demand.consume(1)?;
-
+  fn push_sink_input(
+    &mut self,
+    sink_position: usize,
+    sink_index: usize,
+    value: DynValue,
+  ) -> Result<SinkPushOutcome, StreamError> {
     let decision_result = {
       let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
         return Err(StreamError::InvalidConnection);
       };
       sink.logic.on_push(value, &mut self.demand)
     };
-    let decision = match decision_result {
-      | Ok(decision) => decision,
+    match decision_result {
+      | Ok(decision) => Ok(SinkPushOutcome::Decision(decision)),
       | Err(StreamError::StreamDetached) => {
         self.detach_sink_position(sink_position)?;
-        return Ok(true);
+        Ok(SinkPushOutcome::Progressed)
       },
-      | Err(error) => match self.handle_sink_failure(sink_index, error)? {
-        | FailureDisposition::Continue => return Ok(true),
-        | FailureDisposition::Complete => {
-          self.complete_sink_position(sink_position)?;
-          return Ok(true);
-        },
-        | FailureDisposition::Fail(error) => return Err(error),
-      },
-    };
+      | Err(error) => self.apply_sink_failure(sink_position, sink_index, error).map(|_| SinkPushOutcome::Progressed),
+    }
+  }
+
+  fn apply_sink_decision(
+    &mut self,
+    sink_position: usize,
+    sink_index: usize,
+    decision: SinkDecision,
+  ) -> Result<bool, StreamError> {
     match decision {
       | SinkDecision::Continue => Ok(true),
       | SinkDecision::Complete => {
-        let (should_restart, complete_on_exhaustion) = {
-          let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
-            return Err(StreamError::InvalidConnection);
-          };
-          if let Some(restart) = &mut sink.restart {
-            (restart.schedule(self.tick_count), restart.complete_on_max_restarts())
-          } else {
-            (false, true)
-          }
-        };
+        let (should_restart, complete_on_exhaustion) = self.schedule_sink_restart_or_complete(sink_index)?;
         if should_restart {
           return Ok(true);
         }
@@ -1006,6 +1033,19 @@ impl GraphInterpreter {
         Ok(true)
       },
     }
+  }
+
+  fn schedule_sink_restart_or_complete(&mut self, sink_index: usize) -> Result<(bool, bool), StreamError> {
+    let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(
+      if let Some(restart) = &mut sink.restart {
+        (restart.schedule(self.tick_count), restart.complete_on_max_restarts())
+      } else {
+        (false, true)
+      },
+    )
   }
 
   fn finish_sinks(&mut self) -> Result<bool, StreamError> {
