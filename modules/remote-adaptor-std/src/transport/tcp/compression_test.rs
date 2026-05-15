@@ -233,3 +233,12 @@ async fn disabled_compression_advertisement_tick_remains_pending() {
 
   assert!(result.is_err());
 }
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn enabled_compression_advertisement_tick_completes() {
+  let mut interval = compression_advertisement_interval(max(1), Duration::from_millis(1));
+
+  let result = tokio::time::timeout(Duration::from_secs(1), next_compression_advertisement_tick(&mut interval)).await;
+
+  assert!(result.is_ok());
+}

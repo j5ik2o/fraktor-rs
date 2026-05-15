@@ -19,8 +19,8 @@ use fraktor_remote_core_rs::{
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
   wire::{
-    AckPdu, CompressionTableEntry, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu,
-    HandshakeReq, WireError,
+    AckPdu, CompressedText, CompressionTableEntry, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu,
+    HandshakePdu, HandshakeReq, WireError,
   },
 };
 use fraktor_utils_core_rs::sync::ArcShared;
@@ -98,6 +98,18 @@ fn large_envelope_frame() -> WireFrame {
     0,
     1,
     Bytes::from(vec![0_u8; MINIMUM_MAXIMUM_FRAME_SIZE]),
+  ))
+}
+
+fn compressed_recipient_envelope_frame(entry_id: u32) -> WireFrame {
+  WireFrame::Envelope(EnvelopePdu::new_with_metadata(
+    CompressedText::table_ref(entry_id),
+    None,
+    0x1234,
+    0,
+    1,
+    EnvelopePayload::new(5, None, Bytes::from_static(b"bad-ref")),
+    None,
   ))
 }
 
@@ -917,12 +929,280 @@ async fn tcp_server_consumes_compression_advertisement_and_replies_with_ack() {
     ack,
     WireFrame::Control(ControlPdu::CompressionAck { table_kind: CompressionTableKind::ActorRef, generation: 7, .. })
   ));
+  framed
+    .send(WireFrame::Control(ControlPdu::CompressionAck {
+      authority:  "remote@host:1".to_string(),
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+    }))
+    .await
+    .expect("compression ack should be written");
+  let handshake = WireFrame::Handshake(HandshakePdu::Req(HandshakeReq::new(
+    UniqueAddress::new(Address::new("remote-sys", "host", 1), 7),
+    Address::new("local-sys", "host", 2),
+  )));
+  framed.send(handshake.clone()).await.expect("handshake should be written");
+  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
+    .await
+    .expect("handshake should reach server inbound lane")
+    .expect("handshake event should be present");
+  assert_eq!(event.frame, handshake);
+  server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn tcp_server_rejects_invalid_compressed_envelope() {
+  use tokio::{
+    net::TcpStream,
+    sync::{mpsc, mpsc::error::TryRecvError},
+  };
+
+  let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = make_test_server();
+  let bind_addr = start_test_server(&mut server, server_inbound_tx);
+  let mut framed =
+    Framed::new(TcpStream::connect(bind_addr).await.expect("client stream should connect"), WireFrameCodec::new());
+
+  framed.send(compressed_recipient_envelope_frame(99)).await.expect("invalid compressed envelope should be written");
+  let closed = tokio::time::timeout(Duration::from_secs(5), framed.next())
+    .await
+    .expect("server should close the invalid compressed stream");
+
+  assert!(
+    closed.is_none() || closed.is_some_and(|frame| frame.is_err()),
+    "invalid compressed envelope should not produce a reply frame"
+  );
   tokio::task::yield_now().await;
   assert!(
-    matches!(server_inbound_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
-    "compression advertisement must not reach the inbound event loop"
+    matches!(server_inbound_rx.try_recv(), Err(TryRecvError::Empty)),
+    "invalid compressed envelope must not reach the inbound event loop"
   );
   server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn tcp_server_closes_when_compression_ack_cannot_be_encoded() {
+  use tokio::{net::TcpStream, sync::mpsc};
+
+  let (server_inbound_tx, _server_inbound_rx) = mpsc::unbounded_channel();
+  let mut server = TcpServer::with_frame_codec_and_compression_config(
+    "127.0.0.1:0".to_string(),
+    WireFrameCodec::with_maximum_frame_size(MINIMUM_MAXIMUM_FRAME_SIZE),
+    RemoteCompressionConfig::new(),
+  );
+  let bind_addr = server
+    .start_with_remote_events(vec![server_inbound_tx], None, Instant::now(), |_bound_port| {
+      format!("local@{}", "x".repeat(MINIMUM_MAXIMUM_FRAME_SIZE))
+    })
+    .expect("server should bind to a system-assigned port");
+  let mut framed =
+    Framed::new(TcpStream::connect(bind_addr).await.expect("client stream should connect"), WireFrameCodec::new());
+
+  framed
+    .send(WireFrame::Control(ControlPdu::CompressionAdvertisement {
+      authority:  "remote@host:1".to_string(),
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+      entries:    vec![CompressionTableEntry::new(3, "/user/a".to_string())],
+    }))
+    .await
+    .expect("compression advertisement should be written");
+  let closed = tokio::time::timeout(Duration::from_secs(5), framed.next())
+    .await
+    .expect("server should close after an unencodable compression ack");
+
+  assert!(
+    closed.is_none() || closed.is_some_and(|frame| frame.is_err()),
+    "unencodable compression ack should not produce a reply frame"
+  );
+  server.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn tcp_client_consumes_inbound_compression_controls_and_rejects_bad_refs() {
+  use tokio::{
+    net::TcpListener,
+    sync::{mpsc, mpsc::error::TryRecvError},
+  };
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener should bind");
+  let peer_addr = listener.local_addr().expect("listener should expose local address").to_string();
+  let (client_inbound_tx, mut client_inbound_rx) = mpsc::unbounded_channel();
+  let (event_tx, mut event_rx) = mpsc::channel(4);
+  let mut client = TcpClient::connect(
+    peer_addr,
+    vec![client_inbound_tx],
+    TcpClientConnectOptions::new(WireFrameCodec::new())
+      .with_compression_config(RemoteCompressionConfig::new(), "local@host:2".to_string())
+      .with_connection_loss_reporter(event_tx, TransportEndpoint::new("remote@host:1".to_string()), Instant::now()),
+  )
+  .expect("client should schedule connection");
+  let (stream, _) = listener.accept().await.expect("client should connect");
+  let mut framed = Framed::new(stream, WireFrameCodec::new());
+  let inbound_frame = WireFrame::Handshake(HandshakePdu::Req(HandshakeReq::new(
+    UniqueAddress::new(Address::new("remote-sys", "host", 1), 7),
+    Address::new("local-sys", "host", 2),
+  )));
+
+  framed.send(inbound_frame.clone()).await.expect("handshake should be written");
+  let inbound_event = tokio::time::timeout(Duration::from_secs(5), client_inbound_rx.recv())
+    .await
+    .expect("handshake should reach client inbound lane")
+    .expect("handshake event should be present");
+  assert_eq!(inbound_event.frame, inbound_frame);
+  assert_eq!(inbound_event.authority, Some(TransportEndpoint::new("remote-sys@host:1".to_string())));
+
+  framed
+    .send(WireFrame::Control(ControlPdu::CompressionAdvertisement {
+      authority:  "remote@host:1".to_string(),
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+      entries:    vec![CompressionTableEntry::new(3, "/user/a".to_string())],
+    }))
+    .await
+    .expect("compression advertisement should be written");
+  let ack = tokio::time::timeout(Duration::from_secs(5), framed.next())
+    .await
+    .expect("compression ack should arrive")
+    .expect("compression ack frame")
+    .expect("compression ack should decode");
+  assert!(matches!(
+    ack,
+    WireFrame::Control(ControlPdu::CompressionAck {
+      authority,
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+    }) if authority == "local@host:2"
+  ));
+
+  framed
+    .send(WireFrame::Control(ControlPdu::CompressionAck {
+      authority:  "remote@host:1".to_string(),
+      table_kind: CompressionTableKind::ActorRef,
+      generation: 7,
+    }))
+    .await
+    .expect("compression ack should be written");
+  framed.send(compressed_recipient_envelope_frame(99)).await.expect("invalid compressed envelope should be written");
+  let connection_lost = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("connection-lost event should arrive")
+    .expect("connection-lost event should be present");
+
+  assert_connection_lost_event(
+    connection_lost,
+    TransportEndpoint::new("remote@host:1".to_string()),
+    TransportError::SendFailed,
+  );
+  match client_inbound_rx.try_recv() {
+    | Err(TryRecvError::Empty | TryRecvError::Disconnected) => {},
+    | Ok(event) => {
+      panic!("compression control frames and invalid compressed envelopes must not reach inbound: {event:?}")
+    },
+  }
+  client.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn tcp_client_connect_failure_reports_connection_loss() {
+  use tokio::{net::TcpListener, sync::mpsc};
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener should bind");
+  let peer_addr = listener.local_addr().expect("listener should expose local address").to_string();
+  drop(listener);
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let mut client = TcpClient::connect(
+    peer_addr,
+    vec![client_inbound_tx],
+    TcpClientConnectOptions::new(WireFrameCodec::new()).with_connection_loss_reporter(
+      event_tx,
+      TransportEndpoint::new("remote@host:1".to_string()),
+      Instant::now(),
+    ),
+  )
+  .expect("client should schedule connection");
+
+  let connection_lost = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
+    .await
+    .expect("connection-lost event should arrive")
+    .expect("connection-lost event should be present");
+
+  assert_connection_lost_event(
+    connection_lost,
+    TransportEndpoint::new("remote@host:1".to_string()),
+    TransportError::SendFailed,
+  );
+  client.shutdown();
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn tcp_client_sends_compression_advertisements_for_observed_metadata() {
+  use tokio::{net::TcpListener, sync::mpsc};
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener should bind");
+  let peer_addr = listener.local_addr().expect("listener should expose local address").to_string();
+  let compression_config = RemoteCompressionConfig::new()
+    .with_actor_ref_advertisement_interval(Duration::from_millis(1))
+    .with_manifest_advertisement_interval(Duration::from_millis(1));
+  let (client_inbound_tx, _client_inbound_rx) = mpsc::unbounded_channel();
+  let mut client = TcpClient::connect(
+    peer_addr,
+    vec![client_inbound_tx],
+    TcpClientConnectOptions::new(WireFrameCodec::new())
+      .with_compression_config(compression_config, "local@host:2".to_string()),
+  )
+  .expect("client should schedule connection");
+  let (stream, _) = listener.accept().await.expect("client should connect");
+  let mut framed = Framed::new(stream, WireFrameCodec::new());
+  tokio::time::sleep(Duration::from_millis(2)).await;
+
+  client
+    .send(WireFrame::Envelope(EnvelopePdu::new(
+      "/user/echo".to_string(),
+      None,
+      0x1234,
+      0,
+      1,
+      EnvelopePayload::new(5, Some("example.Manifest".to_string()), Bytes::from_static(b"hi")),
+    )))
+    .expect("client should enqueue envelope");
+
+  let mut saw_actor_ref_advertisement = false;
+  let mut saw_manifest_advertisement = false;
+  while !(saw_actor_ref_advertisement && saw_manifest_advertisement) {
+    let frame = tokio::time::timeout(Duration::from_secs(5), framed.next())
+      .await
+      .expect("client frame should arrive")
+      .expect("client frame should be present")
+      .expect("client frame should decode");
+    match frame {
+      | WireFrame::Control(ControlPdu::CompressionAdvertisement {
+        authority,
+        table_kind: CompressionTableKind::ActorRef,
+        entries,
+        ..
+      }) => {
+        assert_eq!(authority, "local@host:2");
+        assert!(entries.iter().any(|entry| entry.literal() == "/user/echo"));
+        saw_actor_ref_advertisement = true;
+      },
+      | WireFrame::Control(ControlPdu::CompressionAdvertisement {
+        authority,
+        table_kind: CompressionTableKind::Manifest,
+        entries,
+        ..
+      }) => {
+        assert_eq!(authority, "local@host:2");
+        assert!(entries.iter().any(|entry| entry.literal() == "example.Manifest"));
+        saw_manifest_advertisement = true;
+      },
+      | WireFrame::Envelope(_) => {},
+      | other => panic!("unexpected client frame: {other:?}"),
+    }
+  }
+
+  client.shutdown();
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

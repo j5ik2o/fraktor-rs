@@ -1,6 +1,11 @@
 //! Codec for [`ControlPdu`].
 
+#[cfg(test)]
+#[path = "control_codec_test.rs"]
+mod tests;
+
 use alloc::vec::Vec;
+use core::num::TryFromIntError;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
@@ -167,10 +172,7 @@ impl Codec<ControlPdu> for ControlCodec {
 }
 
 fn encode_compression_entries(entries: &[CompressionTableEntry], buf: &mut BytesMut) -> Result<(), WireError> {
-  if entries.len() > u32::MAX as usize {
-    return Err(WireError::InvalidFormat);
-  }
-  buf.put_u32(entries.len() as u32);
+  buf.put_u32(compression_entry_count(entries.len())?);
   for entry in entries {
     buf.put_u32(entry.id());
     encode_string(entry.literal(), buf)?;
@@ -178,19 +180,17 @@ fn encode_compression_entries(entries: &[CompressionTableEntry], buf: &mut Bytes
   Ok(())
 }
 
+fn compression_entry_count(entries_len: usize) -> Result<u32, WireError> {
+  u32::try_from(entries_len).map_err(|_err: TryFromIntError| WireError::InvalidFormat)
+}
+
 fn decode_compression_entries(buf: &mut Bytes) -> Result<Vec<CompressionTableEntry>, WireError> {
-  if buf.remaining() < 4 {
-    return Err(WireError::Truncated);
-  }
   let entry_count = buf.get_u32() as usize;
   if entry_count > buf.remaining() / MIN_COMPRESSION_ENTRY_BYTES {
     return Err(WireError::Truncated);
   }
   let mut entries = Vec::with_capacity(entry_count);
   for _ in 0..entry_count {
-    if buf.remaining() < 4 {
-      return Err(WireError::Truncated);
-    }
     let id = buf.get_u32();
     let literal = decode_string(buf)?;
     entries.push(CompressionTableEntry::new(id, literal));

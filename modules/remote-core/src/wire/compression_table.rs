@@ -99,16 +99,13 @@ impl CompressionTable {
 
   /// Observes a literal value and updates its hit count.
   pub fn observe(&mut self, literal: &str) {
-    if !self.is_enabled() {
+    let Some(max) = self.max else {
       return;
-    }
+    };
     if let Some(entry) = self.entries.iter_mut().find(|entry| entry.literal == literal) {
       entry.hit_count = entry.hit_count.saturating_add(1);
       return;
     }
-    let Some(max) = self.max else {
-      return;
-    };
     if self.entries.len() >= max.get() {
       return;
     }

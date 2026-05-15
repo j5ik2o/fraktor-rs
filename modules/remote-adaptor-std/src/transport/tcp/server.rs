@@ -170,8 +170,8 @@ async fn read_loop(
           | Ok(InboundCompressionAction::Forward(frame)) => frame,
           | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
             authority = Some(frame_authority);
-            if let Err(err) = framed.send(WireFrame::Control(pdu)).await {
-              tracing::warn!(?err, peer = %peer, "tcp server compression ack write error");
+            let send_failed = framed.send(WireFrame::Control(pdu)).await.is_err();
+            if send_failed {
               break Some(TransportError::SendFailed);
             }
             continue;

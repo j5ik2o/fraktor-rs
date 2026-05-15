@@ -269,10 +269,7 @@ async fn run(
             | Ok(InboundCompressionAction::Forward(frame)) => frame,
             | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
               authority = Some(frame_authority);
-              if let Err(err) = framed.send(WireFrame::Control(pdu)).await {
-                tracing::warn!(?err, peer = %peer_addr, "tcp client compression ack write error");
-                break Some(TransportError::SendFailed);
-              }
+              if framed.send(WireFrame::Control(pdu)).await.is_err() { break Some(TransportError::SendFailed); }
               continue;
             },
             | Ok(InboundCompressionAction::Consumed { authority: frame_authority }) => {
@@ -316,20 +313,18 @@ async fn run(
         | None => break None,
       },
       _ = next_compression_advertisement_tick(&mut actor_ref_advertisement_interval) => {
-        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::ActorRef, &local_authority)
-          && let Err(err) = framed.send(frame).await
-        {
-          tracing::warn!(?err, peer = %peer_addr, "tcp client actor-ref compression advertisement write error");
-          break Some(TransportError::SendFailed);
-        }
+        let send_failed = match compression_tables.create_advertisement(CompressionTableKind::ActorRef, &local_authority) {
+          | Some(frame) => framed.send(frame).await.is_err(),
+          | None => false,
+        };
+        if send_failed { break Some(TransportError::SendFailed); }
       },
       _ = next_compression_advertisement_tick(&mut manifest_advertisement_interval) => {
-        if let Some(frame) = compression_tables.create_advertisement(CompressionTableKind::Manifest, &local_authority)
-          && let Err(err) = framed.send(frame).await
-        {
-          tracing::warn!(?err, peer = %peer_addr, "tcp client manifest compression advertisement write error");
-          break Some(TransportError::SendFailed);
-        }
+        let send_failed = match compression_tables.create_advertisement(CompressionTableKind::Manifest, &local_authority) {
+          | Some(frame) => framed.send(frame).await.is_err(),
+          | None => false,
+        };
+        if send_failed { break Some(TransportError::SendFailed); }
       },
     }
   };
