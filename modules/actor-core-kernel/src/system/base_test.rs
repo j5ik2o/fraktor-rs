@@ -247,6 +247,25 @@ fn remote_deployment_use_local_outcome_keeps_name_reserved_for_local_spawn() {
 }
 
 #[test]
+fn remote_deployment_use_local_failure_releases_name_reservation() {
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("loopback-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    ArcShared::new(SpinSyncMutex::new(Vec::new())),
+    TestRemoteDeploymentOutcome::UseLocalDeployment,
+  ));
+  let capabilities = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
+  let mailbox =
+    MailboxConfig::default().with_capabilities(capabilities).with_requirement(MailboxRequirement::for_stash());
+  let invalid_props = deployable_test_props().with_mailbox_config(mailbox);
+
+  let failed = system.actor_of_named(&invalid_props, "loopback-child");
+  let retry = system.actor_of_named(&deployable_test_props(), "loopback-child");
+
+  assert!(matches!(failed, Err(SpawnError::InvalidProps(_))));
+  assert!(retry.is_ok());
+}
+
+#[test]
 fn remote_deployment_failed_outcome_does_not_fallback_to_local_spawn() {
   let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("failed-child")));
