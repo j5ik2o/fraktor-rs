@@ -406,7 +406,7 @@ impl Remote {
       | WireFrame::Ack(pdu) => self.handle_inbound_ack_pdu(authority, &pdu, now_ms),
       | WireFrame::Deployment(pdu) => {
         tracing::warn!(?pdu, "deployment frame reached remote core without adapter routing");
-        Err(RemotingError::UnimplementedEvent)
+        Ok(())
       },
     }
   }

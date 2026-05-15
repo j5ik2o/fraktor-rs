@@ -881,7 +881,7 @@ fn inbound_handshake_request_rejects_forged_local_destination() {
 }
 
 #[test]
-fn inbound_deployment_frame_without_adapter_routing_is_error() {
+fn inbound_deployment_frame_without_adapter_routing_is_ignored() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let mut remote =
@@ -900,7 +900,7 @@ fn inbound_deployment_frame_without_adapter_routing_is_error() {
     now_ms:    42,
   });
 
-  assert_eq!(result, Err(RemotingError::UnimplementedEvent));
+  result.expect("unrouted deployment frame should not fail the event loop");
 }
 
 #[test]

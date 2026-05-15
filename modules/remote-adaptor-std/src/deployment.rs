@@ -92,8 +92,8 @@ impl DeploymentResponseDispatcher {
     let sender = self.state.with_lock(|state| state.pending.remove(&key));
     match sender {
       | Some(sender) => {
-        if sender.send(response.clone()).is_err() {
-          self.record_stale(response);
+        if let Err(error) = sender.send(response) {
+          self.record_stale(error.0);
         }
       },
       | None => self.record_stale(response),
