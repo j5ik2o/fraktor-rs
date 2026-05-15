@@ -5,7 +5,7 @@ use std::{
   string::{String, ToString},
   sync::{
     atomic::{AtomicU64, Ordering},
-    mpsc::{Receiver, RecvTimeoutError},
+    mpsc::Receiver,
   },
   time::{Duration, Instant},
 };
@@ -107,23 +107,36 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       | Ok(DeploymentResponse::Failure(failure)) => {
         RemoteDeploymentOutcome::Failed(format!("{:?}: {}", failure.code(), failure.reason()))
       },
-      | Err(_) => {
+      | Err(DeploymentResponseWaitError::RecvTimeout) => {
         self.dispatcher.cancel(correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment timed out"))
+      },
+      | Err(DeploymentResponseWaitError::CurrentThreadEventLoop) => {
+        self.dispatcher.cancel(correlation_hi, correlation_lo);
+        RemoteDeploymentOutcome::Failed(String::from(
+          "remote deployment cannot wait synchronously on a current-thread Tokio runtime",
+        ))
       },
     }
   }
 }
 
+enum DeploymentResponseWaitError {
+  RecvTimeout,
+  CurrentThreadEventLoop,
+}
+
 fn recv_deployment_response(
   receiver: &Receiver<DeploymentResponse>,
   timeout: Duration,
-) -> Result<DeploymentResponse, RecvTimeoutError> {
+) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
   match Handle::try_current() {
     | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
       tokio::task::block_in_place(|| receiver.recv_timeout(timeout))
+        .map_err(|_error| DeploymentResponseWaitError::RecvTimeout)
     },
-    | _ => receiver.recv_timeout(timeout),
+    | Ok(_) => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
+    | Err(_) => receiver.recv_timeout(timeout).map_err(|_error| DeploymentResponseWaitError::RecvTimeout),
   }
 }
 

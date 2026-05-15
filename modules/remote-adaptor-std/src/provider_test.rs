@@ -498,6 +498,29 @@ fn remote_deployment_hook_brackets_ipv6_target_parent_host() {
   assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("timed out")));
 }
 
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_deployment_hook_current_thread_runtime_fails_without_blocking() {
+  let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let request = deployment_request(
+    "remote-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let started = Instant::now();
+
+  let outcome = hook.deploy_child(request);
+
+  assert!(
+    started.elapsed() < Duration::from_millis(100),
+    "current-thread runtime should fail fast instead of blocking"
+  );
+  assert!(matches!(
+    outcome,
+    RemoteDeploymentOutcome::Failed(reason) if reason.contains("current-thread Tokio runtime")
+  ));
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundDeployment { .. })));
+}
+
 #[test]
 fn remote_deployment_hook_invalid_target_parent_path_does_not_consume_correlation() {
   let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));

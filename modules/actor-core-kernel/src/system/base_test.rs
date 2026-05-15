@@ -183,7 +183,7 @@ fn remote_deployment_spawn_invokes_hook_without_local_cell() {
   let metadata = request.deployable_metadata().expect("deployable metadata");
 
   assert_eq!(requests.len(), 1);
-  assert_eq!(request.child_pid(), Pid::new(0, 0));
+  assert_eq!(request.child_pid(), Pid::new(u64::MAX, u32::MAX));
   assert_eq!(request.child_name(), "remote-child");
   assert_eq!(request.child_path().to_relative_string(), "/user/remote-child");
   assert_eq!(request.scope().node(), &Address::remote("remote-system", "remote.example.com", 2552));

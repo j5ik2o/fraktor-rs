@@ -54,7 +54,7 @@ use crate::{
 const PARENT_MISSING: &str = "parent actor not found";
 const TARGET_PARENT_NOT_LOCAL: &str = "target parent path is not a local actor";
 const CREATE_SEND_FAILED: &str = "create system message delivery failed";
-const REMOTE_DEPLOYMENT_RESERVED_PID: Pid = Pid::new(0, 0);
+const REMOTE_DEPLOYMENT_RESERVED_PID: Pid = Pid::new(u64::MAX, u32::MAX);
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystem {
