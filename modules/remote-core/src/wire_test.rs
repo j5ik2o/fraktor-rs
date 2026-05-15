@@ -38,12 +38,20 @@ fn insert_control_reason(buf: &mut BytesMut, authority: &str, reason: &str) {
 }
 
 fn remote_deployment_manifest_tag_index(buf: &[u8]) -> usize {
-  let mut index = 6 + 1 + 8 + 4;
-  for _ in 0..4 {
+  const FRAME_HEADER_LEN: usize = 6;
+  const DEPLOYMENT_KIND_LEN: usize = 1;
+  const CORRELATION_HI_LEN: usize = 8;
+  const CORRELATION_LO_LEN: usize = 4;
+  const STRING_LEN_PREFIX: usize = 4;
+  const STRING_FIELD_COUNT_BEFORE_MANIFEST: usize = 4;
+  const MANIFEST_TAG_LEN: usize = 4;
+
+  let mut index = FRAME_HEADER_LEN + DEPLOYMENT_KIND_LEN + CORRELATION_HI_LEN + CORRELATION_LO_LEN;
+  for _ in 0..STRING_FIELD_COUNT_BEFORE_MANIFEST {
     let len = u32::from_be_bytes([buf[index], buf[index + 1], buf[index + 2], buf[index + 3]]) as usize;
-    index += 4 + len;
+    index += STRING_LEN_PREFIX + len;
   }
-  index + 4
+  index + MANIFEST_TAG_LEN
 }
 
 fn sample_handshake_from() -> UniqueAddress {

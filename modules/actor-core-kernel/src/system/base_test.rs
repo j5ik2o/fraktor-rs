@@ -1167,6 +1167,25 @@ fn resolve_actor_ref_injects_canonical_authority() {
 }
 
 #[test]
+fn spawn_child_at_rejects_resolved_non_local_parent() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_remoting_config(remoting);
+  let state = SystemState::build_from_owned_config(config).expect("state");
+  let system = ActorSystem::from_system_state(SystemStateShared::new(state));
+  let actor_ref_provider_handle_shared =
+    ActorRefProviderHandleShared::new(DummyActorRefProvider::new(ArcShared::new(SpinSyncMutex::new(None))));
+  system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared).expect("register provider");
+  system.state().mark_root_started();
+
+  let result = system.spawn_child_at(ActorPath::root().child("remote-parent"), &Props::from_fn(|| TestActor), "child");
+
+  match result {
+    | Err(SpawnError::InvalidProps(reason)) => assert_eq!(reason, "target parent path is not a local actor"),
+    | other => panic!("expected invalid props, got {other:?}"),
+  }
+}
+
+#[test]
 fn resolve_actor_ref_fails_when_authority_missing() {
   let system = ActorSystem::new_empty();
   let parts = ActorPathParts::local("cellactor").with_scheme(ActorPathScheme::FraktorTcp);

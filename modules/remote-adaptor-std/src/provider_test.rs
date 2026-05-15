@@ -499,6 +499,40 @@ fn remote_deployment_hook_brackets_ipv6_target_parent_host() {
 }
 
 #[test]
+fn remote_deployment_hook_invalid_target_parent_path_does_not_consume_correlation() {
+  let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));
+  let invalid = RemoteDeploymentRequest::new(
+    Pid::new(41, 0),
+    Pid::new(42, 0),
+    String::from("invalid-parent"),
+    ActorPath::root(),
+    RemoteScope::new(ActorAddress::remote("remote-sys", "10.0.0.1", 2552)),
+    Some(deployable_metadata()),
+  );
+
+  let invalid_outcome = hook.deploy_child(invalid);
+
+  assert!(matches!(invalid_outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("target parent path")));
+  assert!(event_rx.try_recv().is_err());
+
+  let valid = deployment_request(
+    "remote-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let valid_outcome = hook.deploy_child(valid);
+  let event = event_rx.try_recv().expect("deployment request should be enqueued");
+
+  match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      assert_eq!(request.correlation_hi(), 1);
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  }
+  assert!(matches!(valid_outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("timed out")));
+}
+
+#[test]
 fn remote_deployment_hook_timeout_is_bounded_and_cancels_pending() {
   let (hook, mut event_rx, dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(10));
   let request = deployment_request(

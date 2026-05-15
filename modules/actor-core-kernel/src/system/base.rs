@@ -52,6 +52,7 @@ use crate::{
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
+const TARGET_PARENT_NOT_LOCAL: &str = "target parent path is not a local actor";
 const CREATE_SEND_FAILED: &str = "create system message delivery failed";
 const REMOTE_DEPLOYMENT_RESERVED_PID: Pid = Pid::new(0, 0);
 
@@ -355,10 +356,16 @@ impl ActorSystem {
   pub fn spawn_child_at(&self, parent_path: ActorPath, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
     let parent_pid = match self.pid_by_path(&parent_path) {
       | Some(pid) => pid,
-      | None => self
-        .resolve_actor_ref(parent_path)
-        .map_err(|error| SpawnError::invalid_props(format!("target parent path not found: {error:?}")))?
-        .pid(),
+      | None => {
+        let actor_ref = self
+          .resolve_actor_ref(parent_path)
+          .map_err(|error| SpawnError::invalid_props(format!("target parent path not found: {error:?}")))?;
+        let pid = actor_ref.pid();
+        if self.actor_ref_by_pid(pid).is_none() {
+          return Err(SpawnError::invalid_props(TARGET_PARENT_NOT_LOCAL));
+        }
+        pid
+      },
     };
     let named_props = props.clone().with_name(name);
     self.spawn_child(parent_pid, &named_props)

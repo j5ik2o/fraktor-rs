@@ -102,7 +102,7 @@ impl DeploymentResponseDispatcher {
 
   fn record_stale(&self, response: DeploymentResponse) {
     self.state.with_lock(|state| {
-      if state.stale.len() == MAX_STALE_DEPLOYMENT_RESPONSES {
+      if state.stale.len() >= MAX_STALE_DEPLOYMENT_RESPONSES {
         state.stale.pop_front();
       }
       state.stale.push_back(response);

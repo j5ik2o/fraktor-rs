@@ -3,7 +3,10 @@
 use std::{
   net::{IpAddr, Ipv6Addr},
   string::{String, ToString},
-  sync::atomic::{AtomicU64, Ordering},
+  sync::{
+    atomic::{AtomicU64, Ordering},
+    mpsc::{Receiver, RecvTimeoutError},
+  },
   time::{Duration, Instant},
 };
 
@@ -22,7 +25,10 @@ use fraktor_remote_core_rs::{
   wire::{RemoteDeploymentCreateRequest, RemoteDeploymentPdu},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
-use tokio::sync::mpsc::Sender;
+use tokio::{
+  runtime::{Handle, RuntimeFlavor},
+  sync::mpsc::Sender,
+};
 
 use crate::{
   association::std_instant_elapsed_millis,
@@ -96,7 +102,7 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       self.dispatcher.cancel(correlation_hi, correlation_lo);
       return RemoteDeploymentOutcome::Failed(format!("remote deployment request enqueue failed: {error:?}"));
     }
-    match receiver.recv_timeout(self.timeout) {
+    match recv_deployment_response(&receiver, self.timeout) {
       | Ok(DeploymentResponse::Success(success)) => self.resolve_remote_actor(success.actor_path()),
       | Ok(DeploymentResponse::Failure(failure)) => {
         RemoteDeploymentOutcome::Failed(format!("{:?}: {}", failure.code(), failure.reason()))
@@ -109,6 +115,18 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
   }
 }
 
+fn recv_deployment_response(
+  receiver: &Receiver<DeploymentResponse>,
+  timeout: Duration,
+) -> Result<DeploymentResponse, RecvTimeoutError> {
+  match Handle::try_current() {
+    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
+      tokio::task::block_in_place(|| receiver.recv_timeout(timeout))
+    },
+    | _ => receiver.recv_timeout(timeout),
+  }
+}
+
 impl StdRemoteDeploymentHook {
   fn create_request(
     &self,
@@ -117,11 +135,12 @@ impl StdRemoteDeploymentHook {
     target: &Address,
   ) -> Result<RemoteDeploymentCreateRequest, String> {
     let serialized = self.serialize_payload(metadata)?;
+    let target_parent_path = target_parent_path(request, target)?;
     let correlation_hi = self.next_correlation.fetch_add(1, Ordering::Relaxed);
     Ok(RemoteDeploymentCreateRequest::new(
       correlation_hi,
       0,
-      target_parent_path(request, target)?,
+      target_parent_path,
       request.child_name().to_string(),
       metadata.factory_id().to_string(),
       self.local_address.address().to_string(),
