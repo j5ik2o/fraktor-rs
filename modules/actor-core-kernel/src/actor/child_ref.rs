@@ -115,9 +115,7 @@ impl ChildRef {
   }
 
   fn is_remote_child(&self) -> bool {
-    self.actor.system_state().is_none()
-      && self.system.cell(&self.pid()).is_none()
-      && self.actor.canonical_path().and_then(|path| path.parts().authority_endpoint()).is_some()
+    self.actor.system_state().is_none() && self.system.cell(&self.pid()).is_none()
   }
 
   fn unsupported_remote_lifecycle(message: SystemMessage) -> SendError {

@@ -389,6 +389,15 @@ impl SystemStateShared {
     self.inner.with_write(|inner| inner.release_name(parent, name));
   }
 
+  /// Moves an existing name reservation to its real pid without releasing the name.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] if the name is no longer bound to `expected`.
+  pub fn reassign_name(&self, parent: Option<Pid>, name: &str, expected: Pid, pid: Pid) -> Result<(), SpawnError> {
+    self.inner.with_write(|inner| inner.reassign_name(parent, name, expected, pid))
+  }
+
   /// Stores the root guardian cell reference.
   pub(crate) fn set_root_guardian(&self, cell: &ArcShared<ActorCell>) {
     self.inner.with_write(|inner| inner.set_root_guardian(cell));

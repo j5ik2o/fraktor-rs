@@ -361,7 +361,7 @@ impl ActorSystem {
           .resolve_actor_ref(parent_path)
           .map_err(|error| SpawnError::invalid_props(format!("target parent path not found: {error:?}")))?;
         let pid = actor_ref.pid();
-        if self.actor_ref_by_pid(pid).is_none() {
+        if actor_ref.system_state().is_none() || self.actor_ref_by_pid(pid).is_none() {
           return Err(SpawnError::invalid_props(TARGET_PARENT_NOT_LOCAL));
         }
         pid
@@ -590,6 +590,27 @@ impl ActorSystem {
   fn spawn_local_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
+    self.spawn_local_with_assigned_name(parent, props, pid, name)
+  }
+
+  fn spawn_local_with_reserved_name(
+    &self,
+    parent: Option<Pid>,
+    props: &Props,
+    reserved_name: String,
+  ) -> Result<ChildRef, SpawnError> {
+    let pid = self.state.allocate_pid();
+    self.state.reassign_name(parent, &reserved_name, REMOTE_DEPLOYMENT_RESERVED_PID, pid)?;
+    self.spawn_local_with_assigned_name(parent, props, pid, reserved_name)
+  }
+
+  fn spawn_local_with_assigned_name(
+    &self,
+    parent: Option<Pid>,
+    props: &Props,
+    pid: Pid,
+    name: String,
+  ) -> Result<ChildRef, SpawnError> {
     let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
 
     // AC-H4 TOCTOU-safe order: registration must complete before the `Create`
@@ -634,8 +655,8 @@ impl ActorSystem {
     );
     match self.state.deploy_remote_child(request) {
       | RemoteDeploymentOutcome::UseLocalDeployment => {
-        self.state.release_name(parent, &name);
-        Ok(None)
+        let child = self.spawn_local_with_reserved_name(parent, props, name)?;
+        Ok(Some(child))
       },
       | RemoteDeploymentOutcome::RemoteCreated(actor_ref) => {
         self.state.release_name(parent, &name);

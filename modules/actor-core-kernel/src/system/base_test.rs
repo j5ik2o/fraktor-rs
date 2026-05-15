@@ -159,6 +159,10 @@ fn remote_created_ref(name: &str) -> ActorRef {
   ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, path)
 }
 
+fn remote_created_ref_without_canonical_path() -> ActorRef {
+  ActorRef::new_with_builtin_lock(Pid::new(901, 0), NullSender)
+}
+
 fn assert_remote_lifecycle_unsupported(result: Result<(), SendError>) {
   match result {
     | Err(SendError::InvalidPayload { context, .. }) => {
@@ -225,6 +229,21 @@ fn remote_deployment_use_local_outcome_continues_local_spawn() {
 
   assert_eq!(calls.lock().len(), 1);
   assert!(system.actor_ref_by_pid(child.pid()).is_some());
+}
+
+#[test]
+fn remote_deployment_use_local_outcome_keeps_name_reserved_for_local_spawn() {
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("loopback-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    ArcShared::new(SpinSyncMutex::new(Vec::new())),
+    TestRemoteDeploymentOutcome::UseLocalDeployment,
+  ));
+
+  let child = system.actor_of_named(&deployable_test_props(), "loopback-child").expect("local child should spawn");
+  let retry = system.actor_of_named(&deployable_test_props(), "loopback-child");
+
+  assert!(system.actor_ref_by_pid(child.pid()).is_some());
+  assert!(matches!(retry, Err(SpawnError::NameConflict(name)) if name == "loopback-child"));
 }
 
 #[test]
@@ -309,6 +328,18 @@ fn remote_deployment_remote_child_lifecycle_commands_are_unsupported() {
   assert_remote_lifecycle_unsupported(child.stop());
   assert_remote_lifecycle_unsupported(child.suspend());
   assert_remote_lifecycle_unsupported(child.resume());
+}
+
+#[test]
+fn remote_deployment_remote_child_without_canonical_path_lifecycle_commands_are_unsupported() {
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("lifecycle-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    ArcShared::new(SpinSyncMutex::new(Vec::new())),
+    TestRemoteDeploymentOutcome::RemoteCreated(remote_created_ref_without_canonical_path()),
+  ));
+  let child = system.actor_of_named(&deployable_test_props(), "lifecycle-child").expect("remote child should spawn");
+
+  assert_remote_lifecycle_unsupported(child.stop());
 }
 
 #[test]
@@ -1158,6 +1189,30 @@ impl ActorRefProvider for DummyActorRefProvider {
   }
 }
 
+struct FixedActorRefProvider {
+  actor_ref: ActorRef,
+}
+
+impl FixedActorRefProvider {
+  fn new(actor_ref: ActorRef) -> Self {
+    Self { actor_ref }
+  }
+}
+
+impl ActorRefProvider for FixedActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::FraktorTcp]
+  }
+
+  fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
+    Ok(self.actor_ref.clone())
+  }
+
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
+  }
+}
+
 #[test]
 fn resolve_actor_ref_injects_canonical_authority() {
   let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
@@ -1193,6 +1248,36 @@ fn spawn_child_at_rejects_resolved_non_local_parent() {
   system.state().mark_root_started();
 
   let result = system.spawn_child_at(ActorPath::root().child("remote-parent"), &Props::from_fn(|| TestActor), "child");
+
+  match result {
+    | Err(SpawnError::InvalidProps(reason)) => assert_eq!(reason, "target parent path is not a local actor"),
+    | other => panic!("expected invalid props, got {other:?}"),
+  }
+}
+
+#[test]
+fn spawn_child_at_rejects_resolved_non_local_parent_even_when_pid_matches_local_cell() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_remoting_config(remoting);
+  let state = SystemState::build_from_owned_config(config).expect("state");
+  let system = ActorSystem::from_system_state(SystemStateShared::new(state));
+  let parent_pid = system.allocate_pid();
+  let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor))
+    .expect("create actor cell");
+  system.state().register_cell(parent_cell);
+  let actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(FixedActorRefProvider::new(
+    ActorRef::new_with_builtin_lock(parent_pid, NullSender),
+  ));
+  system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared).expect("register provider");
+  system.state().mark_root_started();
+
+  let result = system.spawn_child_at(
+    ActorPath::from_parts(ActorPathParts::local("remote-system").with_scheme(ActorPathScheme::FraktorTcp))
+      .child("remote-parent"),
+    &Props::from_fn(|| TestActor),
+    "child",
+  );
 
   match result {
     | Err(SpawnError::InvalidProps(reason)) => assert_eq!(reason, "target parent path is not a local actor"),
