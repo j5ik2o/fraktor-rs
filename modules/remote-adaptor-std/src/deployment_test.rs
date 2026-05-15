@@ -4,7 +4,8 @@ use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Actor, ActorContext,
+    Actor, ActorContext, Pid,
+    actor_path::ActorPathParser,
     actor_ref_provider::LocalActorRefProviderInstaller,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
@@ -85,11 +86,14 @@ fn create_request_creates_actor_and_returns_canonical_path() {
 fn duplicate_child_name_returns_structured_failure() {
   let system = system_with_factory();
   let serialization = system.extended().register_extension(&default_serialization_extension_id());
+  let request = request(&system, "echo", "dup-worker", string_payload("payload"));
+  let parent_path = ActorPathParser::parse(request.target_parent_path()).expect("parent path should parse");
+  let parent = system
+    .pid_by_path(&parent_path)
+    .unwrap_or_else(|| system.resolve_actor_ref(parent_path).expect("parent path should resolve").pid());
+  system.state().assign_name(Some(parent), Some(request.child_name()), Pid::new(9_999, 0)).expect("reserve child name");
 
-  let _ =
-    handle_create_request(&system, &serialization, request(&system, "echo", "dup-worker", string_payload("payload")));
-  let pdu =
-    handle_create_request(&system, &serialization, request(&system, "echo", "dup-worker", string_payload("payload")));
+  let pdu = handle_create_request(&system, &serialization, request);
 
   let RemoteDeploymentPdu::CreateFailure(failure) = pdu else {
     panic!("duplicate name should fail: {pdu:?}");
