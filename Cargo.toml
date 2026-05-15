@@ -115,7 +115,7 @@ bincode = { version = "2.0.1", default-features = false, features = ["alloc", "s
 bytes = { version = "1.7", default-features = false }
 libm = { version = "0.2", default-features = false }
 loom = "0.7"
-spin = { version = "0.10", default-features = false }
+spin = { version = "0.11", default-features = false }
 static_assertions = "1.1.0"
 static_cell = "2"
 thiserror = { version = "2.0.17", default-features = false }
