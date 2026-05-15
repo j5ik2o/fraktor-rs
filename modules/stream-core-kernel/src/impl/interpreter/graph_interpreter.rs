@@ -1,4 +1,5 @@
 use alloc::{vec, vec::Vec};
+use core::any::TypeId;
 
 mod failure_restart;
 #[cfg(test)]
@@ -22,6 +23,22 @@ use crate::{
   snapshot::RunningInterpreter,
   stream_ref::StreamRefSettings,
 };
+
+struct FlowStagePorts {
+  inlet:       PortId,
+  outlet:      PortId,
+  input_type:  TypeId,
+  output_type: TypeId,
+}
+
+#[derive(Default)]
+struct FlowStageStep {
+  outputs:          Vec<DynValue>,
+  consumed_input:   bool,
+  skip_stage_input: bool,
+  force_shutdown:   bool,
+  progressed:       bool,
+}
 
 /// Executes a stream graph using a port-driven runtime.
 pub(crate) struct GraphInterpreter {
@@ -568,216 +585,292 @@ impl GraphInterpreter {
 
     for flow_index in 0..self.flow_order.len() {
       let stage_index = self.flow_order[flow_index];
-      if self.flow_done_at(stage_index) {
-        continue;
-      }
-      if self.flow_restart_waiting(stage_index) {
-        continue;
-      }
-      if self.mark_flow_source_done(stage_index)? {
+      if self.drive_flow_stage_once(stage_index)? {
         progressed = true;
       }
-      let (flow_inlet, flow_outlet, flow_input_type, flow_output_type) = match &self.stages[stage_index] {
-        | StageDefinition::Flow(flow) => (flow.inlet, flow.outlet, flow.input_type, flow.output_type),
-        | _ => continue,
-      };
-      let outgoing_buffered = self.has_buffered_outgoing(flow_outlet);
-      let can_accept_input_while_output_buffered = match &self.stages[stage_index] {
-        | StageDefinition::Flow(flow) => flow.logic.can_accept_input_while_output_buffered(),
-        | _ => false,
-      };
-      if outgoing_buffered && !can_accept_input_while_output_buffered {
-        continue;
-      }
-
-      let mut consumed_input = false;
-      let mut outputs = Vec::new();
-      let mut skip_stage_input = false;
-      let mut force_shutdown = false;
-
-      let async_outputs = {
-        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-          return Err(StreamError::InvalidConnection);
-        };
-        flow.logic.on_async_callback()
-      };
-      outputs.extend(match async_outputs {
-        | Ok(outputs) => outputs,
-        | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
-          | FailureDisposition::Continue => {
-            progressed = true;
-            skip_stage_input = true;
-            Vec::new()
-          },
-          | FailureDisposition::Complete => {
-            if !force_shutdown && !self.all_sources_done() {
-              self.set_all_sources_done()?;
-            }
-            progressed = true;
-            skip_stage_input = true;
-            force_shutdown = true;
-            Vec::new()
-          },
-          | FailureDisposition::Fail(error) => return Err(error),
-        },
-      });
-
-      let timer_outputs = {
-        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-          return Err(StreamError::InvalidConnection);
-        };
-        flow.logic.on_timer()
-      };
-      outputs.extend(match timer_outputs {
-        | Ok(outputs) => outputs,
-        | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
-          | FailureDisposition::Continue => {
-            progressed = true;
-            skip_stage_input = true;
-            Vec::new()
-          },
-          | FailureDisposition::Complete => {
-            if !force_shutdown && !self.all_sources_done() {
-              self.set_all_sources_done()?;
-            }
-            progressed = true;
-            skip_stage_input = true;
-            force_shutdown = true;
-            Vec::new()
-          },
-          | FailureDisposition::Fail(error) => return Err(error),
-        },
-      });
-
-      let can_accept_input = if skip_stage_input {
-        false
-      } else {
-        match &self.stages[stage_index] {
-          | StageDefinition::Flow(flow) => !self.flow_source_done_at(stage_index) && flow.logic.can_accept_input(),
-          | _ => false,
-        }
-      };
-
-      let preferred_input_slot = match &self.stages[stage_index] {
-        | StageDefinition::Flow(flow) => flow.logic.preferred_input_edge_slot(),
-        | _ => None,
-      };
-      if can_accept_input
-        && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet, preferred_input_slot)?
-      {
-        consumed_input = true;
-        if input.as_ref().type_id() != flow_input_type {
-          return Err(StreamError::TypeMismatch);
-        }
-
-        let apply_result = {
-          let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-            return Err(StreamError::InvalidConnection);
-          };
-          flow.logic.apply_with_edge(edge_index, input)
-        };
-        let input_outputs = match apply_result {
-          | Ok(outputs) => outputs,
-          | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
-            | FailureDisposition::Continue => {
-              progressed = true;
-              skip_stage_input = true;
-              Vec::new()
-            },
-            | FailureDisposition::Complete => {
-              if !force_shutdown && !self.all_sources_done() {
-                self.set_all_sources_done()?;
-              }
-              progressed = true;
-              skip_stage_input = true;
-              force_shutdown = true;
-              Vec::new()
-            },
-            | FailureDisposition::Fail(error) => return Err(error),
-          },
-        };
-        outputs.extend(input_outputs);
-      }
-
-      // apply で新しい出力が出ず、未送信バッファもなく、この tick で input apply を明示的に
-      // skip していないときだけ drain_pending に進める。
-      let can_drain_pending = outputs.is_empty() && !outgoing_buffered && !skip_stage_input;
-      if can_drain_pending {
-        let drain_result = {
-          let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-            return Err(StreamError::InvalidConnection);
-          };
-          flow.logic.drain_pending()
-        };
-        outputs = match drain_result {
-          | Ok(outputs) => outputs,
-          | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
-            | FailureDisposition::Continue => {
-              progressed = true;
-              continue;
-            },
-            | FailureDisposition::Complete => {
-              if !self.all_sources_done() {
-                self.set_all_sources_done()?;
-              }
-              self.shutdown_flow_stage(stage_index)?;
-              self.maybe_finish_flow_stage(stage_index);
-              progressed = true;
-              continue;
-            },
-            | FailureDisposition::Fail(error) => return Err(error),
-          },
-        };
-      }
-
-      if consumed_input {
-        progressed = true;
-      }
-
-      let shutdown_requested = {
-        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-          return Err(StreamError::InvalidConnection);
-        };
-        flow.logic.take_shutdown_request()
-      };
-      if outputs.is_empty() {
-        if shutdown_requested || force_shutdown {
-          self.shutdown_flow_stage(stage_index)?;
-          progressed = true;
-        }
-        if self.maybe_finish_flow_stage(stage_index) {
-          progressed = true;
-        }
-        continue;
-      }
-
-      let outgoing_edges = self.outgoing_edge_indices(flow_outlet)?;
-      for output in outputs {
-        if output.as_ref().type_id() != flow_output_type {
-          return Err(StreamError::TypeMismatch);
-        }
-        let selected_slot = {
-          let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-            return Err(StreamError::InvalidConnection);
-          };
-          flow.logic.take_next_output_edge_slot()
-        };
-        match selected_slot {
-          | Some(slot) => {
-            let target = outgoing_edges[slot % outgoing_edges.len()];
-            self.offer_to_outgoing_edge(target, output)?;
-          },
-          | None => self.offer_to_next_outgoing_edge(flow_outlet, output)?,
-        }
-      }
-      if shutdown_requested || force_shutdown {
-        self.shutdown_flow_stage(stage_index)?;
-      }
-      self.maybe_finish_flow_stage(stage_index);
-      progressed = true;
     }
 
     Ok(progressed)
+  }
+
+  fn drive_flow_stage_once(&mut self, stage_index: usize) -> Result<bool, StreamError> {
+    if self.flow_stage_inactive(stage_index) {
+      return Ok(false);
+    }
+
+    let source_progressed = self.mark_flow_source_done(stage_index)?;
+    let Some(ports) = self.flow_stage_ports(stage_index) else {
+      return Ok(source_progressed);
+    };
+    let outgoing_buffered = self.has_buffered_outgoing(ports.outlet);
+    if self.flow_stage_output_backpressured(stage_index, outgoing_buffered) {
+      return Ok(source_progressed);
+    }
+
+    let stage_progressed = self.drive_ready_flow_stage_once(stage_index, &ports, outgoing_buffered)?;
+    Ok(source_progressed || stage_progressed)
+  }
+
+  fn flow_stage_inactive(&self, stage_index: usize) -> bool {
+    self.flow_done_at(stage_index) || self.flow_restart_waiting(stage_index)
+  }
+
+  fn flow_stage_output_backpressured(&self, stage_index: usize, outgoing_buffered: bool) -> bool {
+    outgoing_buffered && !self.flow_can_accept_input_while_output_buffered(stage_index)
+  }
+
+  fn drive_ready_flow_stage_once(
+    &mut self,
+    stage_index: usize,
+    ports: &FlowStagePorts,
+    outgoing_buffered: bool,
+  ) -> Result<bool, StreamError> {
+    let mut step = FlowStageStep::default();
+    self.append_flow_async_outputs(stage_index, &mut step)?;
+    self.append_flow_timer_outputs(stage_index, &mut step)?;
+    self.apply_flow_stage_input_if_ready(stage_index, ports, &mut step)?;
+    if self.drain_flow_stage_pending_if_ready(stage_index, outgoing_buffered, &mut step)? {
+      return Ok(true);
+    }
+
+    let progressed = step.consumed_input || step.progressed;
+    let shutdown_requested = self.take_flow_shutdown_request(stage_index)?;
+    if step.outputs.is_empty() {
+      let finished = self.finish_flow_stage_without_outputs(stage_index, shutdown_requested, step.force_shutdown)?;
+      return Ok(progressed || finished);
+    }
+
+    self.emit_flow_stage_outputs(stage_index, ports, step.outputs)?;
+    if shutdown_requested || step.force_shutdown {
+      self.shutdown_flow_stage(stage_index)?;
+    }
+    self.maybe_finish_flow_stage(stage_index);
+    Ok(true)
+  }
+
+  fn flow_stage_ports(&self, stage_index: usize) -> Option<FlowStagePorts> {
+    match &self.stages[stage_index] {
+      | StageDefinition::Flow(flow) => Some(FlowStagePorts {
+        inlet:       flow.inlet,
+        outlet:      flow.outlet,
+        input_type:  flow.input_type,
+        output_type: flow.output_type,
+      }),
+      | _ => None,
+    }
+  }
+
+  fn flow_can_accept_input_while_output_buffered(&self, stage_index: usize) -> bool {
+    match &self.stages[stage_index] {
+      | StageDefinition::Flow(flow) => flow.logic.can_accept_input_while_output_buffered(),
+      | _ => false,
+    }
+  }
+
+  fn append_flow_async_outputs(&mut self, stage_index: usize, step: &mut FlowStageStep) -> Result<(), StreamError> {
+    let async_outputs = {
+      let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+        return Err(StreamError::InvalidConnection);
+      };
+      flow.logic.on_async_callback()
+    };
+    self.append_flow_hook_outputs(stage_index, async_outputs, step)
+  }
+
+  fn append_flow_timer_outputs(&mut self, stage_index: usize, step: &mut FlowStageStep) -> Result<(), StreamError> {
+    let timer_outputs = {
+      let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+        return Err(StreamError::InvalidConnection);
+      };
+      flow.logic.on_timer()
+    };
+    self.append_flow_hook_outputs(stage_index, timer_outputs, step)
+  }
+
+  fn append_flow_hook_outputs(
+    &mut self,
+    stage_index: usize,
+    hook_outputs: Result<Vec<DynValue>, StreamError>,
+    step: &mut FlowStageStep,
+  ) -> Result<(), StreamError> {
+    match hook_outputs {
+      | Ok(outputs) => {
+        step.outputs.extend(outputs);
+        Ok(())
+      },
+      | Err(error) => self.apply_flow_failure_to_step(stage_index, &error, step),
+    }
+  }
+
+  fn apply_flow_failure_to_step(
+    &mut self,
+    stage_index: usize,
+    error: &StreamError,
+    step: &mut FlowStageStep,
+  ) -> Result<(), StreamError> {
+    match self.handle_flow_failure(stage_index, error)? {
+      | FailureDisposition::Continue => {
+        step.progressed = true;
+        step.skip_stage_input = true;
+        Ok(())
+      },
+      | FailureDisposition::Complete => {
+        if !step.force_shutdown && !self.all_sources_done() {
+          self.set_all_sources_done()?;
+        }
+        step.progressed = true;
+        step.skip_stage_input = true;
+        step.force_shutdown = true;
+        Ok(())
+      },
+      | FailureDisposition::Fail(error) => Err(error),
+    }
+  }
+
+  fn apply_flow_stage_input_if_ready(
+    &mut self,
+    stage_index: usize,
+    ports: &FlowStagePorts,
+    step: &mut FlowStageStep,
+  ) -> Result<(), StreamError> {
+    if !self.flow_can_accept_input(stage_index, step.skip_stage_input) {
+      return Ok(());
+    }
+
+    let preferred_input_slot = self.flow_preferred_input_edge_slot(stage_index);
+    let Some((edge_index, input)) = self.poll_from_incoming_edges(ports.inlet, preferred_input_slot)? else {
+      return Ok(());
+    };
+    step.consumed_input = true;
+    if input.as_ref().type_id() != ports.input_type {
+      return Err(StreamError::TypeMismatch);
+    }
+
+    let apply_result = {
+      let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+        return Err(StreamError::InvalidConnection);
+      };
+      flow.logic.apply_with_edge(edge_index, input)
+    };
+    match apply_result {
+      | Ok(outputs) => {
+        step.outputs.extend(outputs);
+        Ok(())
+      },
+      | Err(error) => self.apply_flow_failure_to_step(stage_index, &error, step),
+    }
+  }
+
+  fn flow_can_accept_input(&self, stage_index: usize, skip_stage_input: bool) -> bool {
+    if skip_stage_input || self.flow_source_done_at(stage_index) {
+      return false;
+    }
+    match &self.stages[stage_index] {
+      | StageDefinition::Flow(flow) => flow.logic.can_accept_input(),
+      | _ => false,
+    }
+  }
+
+  fn flow_preferred_input_edge_slot(&self, stage_index: usize) -> Option<usize> {
+    match &self.stages[stage_index] {
+      | StageDefinition::Flow(flow) => flow.logic.preferred_input_edge_slot(),
+      | _ => None,
+    }
+  }
+
+  fn drain_flow_stage_pending_if_ready(
+    &mut self,
+    stage_index: usize,
+    outgoing_buffered: bool,
+    step: &mut FlowStageStep,
+  ) -> Result<bool, StreamError> {
+    // apply で新しい出力が出ず、未送信バッファもなく、この tick で input apply を明示的に
+    // skip していないときだけ drain_pending に進める。
+    if !step.outputs.is_empty() || outgoing_buffered || step.skip_stage_input {
+      return Ok(false);
+    }
+
+    let drain_result = {
+      let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+        return Err(StreamError::InvalidConnection);
+      };
+      flow.logic.drain_pending()
+    };
+    match drain_result {
+      | Ok(outputs) => {
+        step.outputs = outputs;
+        Ok(false)
+      },
+      | Err(error) => self.handle_flow_drain_failure(stage_index, &error),
+    }
+  }
+
+  fn handle_flow_drain_failure(&mut self, stage_index: usize, error: &StreamError) -> Result<bool, StreamError> {
+    match self.handle_flow_failure(stage_index, error)? {
+      | FailureDisposition::Continue => Ok(true),
+      | FailureDisposition::Complete => {
+        if !self.all_sources_done() {
+          self.set_all_sources_done()?;
+        }
+        self.shutdown_flow_stage(stage_index)?;
+        self.maybe_finish_flow_stage(stage_index);
+        Ok(true)
+      },
+      | FailureDisposition::Fail(error) => Err(error),
+    }
+  }
+
+  fn take_flow_shutdown_request(&mut self, stage_index: usize) -> Result<bool, StreamError> {
+    let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(flow.logic.take_shutdown_request())
+  }
+
+  fn finish_flow_stage_without_outputs(
+    &mut self,
+    stage_index: usize,
+    shutdown_requested: bool,
+    force_shutdown: bool,
+  ) -> Result<bool, StreamError> {
+    let mut progressed = false;
+    if shutdown_requested || force_shutdown {
+      self.shutdown_flow_stage(stage_index)?;
+      progressed = true;
+    }
+    if self.maybe_finish_flow_stage(stage_index) {
+      progressed = true;
+    }
+    Ok(progressed)
+  }
+
+  fn emit_flow_stage_outputs(
+    &mut self,
+    stage_index: usize,
+    ports: &FlowStagePorts,
+    outputs: Vec<DynValue>,
+  ) -> Result<(), StreamError> {
+    let outgoing_edges = self.outgoing_edge_indices(ports.outlet)?;
+    for output in outputs {
+      if output.as_ref().type_id() != ports.output_type {
+        return Err(StreamError::TypeMismatch);
+      }
+      match self.take_flow_next_output_edge_slot(stage_index)? {
+        | Some(slot) => {
+          let target = outgoing_edges[slot % outgoing_edges.len()];
+          self.offer_to_outgoing_edge(target, output)?;
+        },
+        | None => self.offer_to_next_outgoing_edge(ports.outlet, output)?,
+      }
+    }
+    Ok(())
+  }
+
+  fn take_flow_next_output_edge_slot(&mut self, stage_index: usize) -> Result<Option<usize>, StreamError> {
+    let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(flow.logic.take_next_output_edge_slot())
   }
 
   fn drive_sinks_once(&mut self) -> Result<bool, StreamError> {
