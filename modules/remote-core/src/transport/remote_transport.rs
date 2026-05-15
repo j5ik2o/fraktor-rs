@@ -8,7 +8,7 @@ use crate::{
   association::QuarantineReason,
   envelope::OutboundEnvelope,
   transport::{transport_endpoint::TransportEndpoint, transport_error::TransportError},
-  wire::{AckPdu, ControlPdu, HandshakePdu},
+  wire::{AckPdu, ControlPdu, HandshakePdu, RemoteDeploymentPdu},
 };
 
 /// The single transport port exposed by `fraktor-remote-core-rs`.
@@ -92,6 +92,20 @@ pub trait RemoteTransport {
   /// queue is full, [`TransportError::ConnectionClosed`] if no connection to
   /// `remote` exists, or another transport-specific error when delivery fails.
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError>;
+
+  /// Sends a wire-level remote deployment PDU to `remote`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TransportError::NotStarted`] if the transport is not running,
+  /// [`TransportError::Backpressure`] if the transport's synchronous handoff
+  /// queue is full, or [`TransportError::ConnectionClosed`] if no connection to
+  /// `remote` exists.
+  fn send_deployment(&mut self, remote: &Address, pdu: RemoteDeploymentPdu) -> Result<(), TransportError> {
+    let _ = remote;
+    let _ = pdu;
+    Err(TransportError::NotAvailable)
+  }
 
   /// Sends a wire-level flush request to a specific outbound writer lane.
   ///

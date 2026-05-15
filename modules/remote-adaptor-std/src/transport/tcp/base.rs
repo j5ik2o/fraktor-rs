@@ -24,7 +24,7 @@ use fraktor_remote_core_rs::{
   envelope::OutboundEnvelope,
   extension::RemoteEvent,
   transport::{RemoteTransport, TransportEndpoint, TransportError},
-  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu},
+  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, HandshakePdu, RemoteDeploymentPdu},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use tokio::{
@@ -314,6 +314,10 @@ impl TcpRemoteTransport {
     self.send_wire_frame(remote, WireFrame::Control(pdu))
   }
 
+  pub(crate) fn send_deployment(&mut self, remote: &Address, pdu: RemoteDeploymentPdu) -> Result<(), TransportError> {
+    self.send_wire_frame(remote, WireFrame::Deployment(pdu))
+  }
+
   pub(crate) fn send_flush_request(
     &mut self,
     remote: &Address,
@@ -487,6 +491,10 @@ impl RemoteTransport for TcpRemoteTransport {
 
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
     TcpRemoteTransport::send_control(self, remote, pdu)
+  }
+
+  fn send_deployment(&mut self, remote: &Address, pdu: RemoteDeploymentPdu) -> Result<(), TransportError> {
+    TcpRemoteTransport::send_deployment(self, remote, pdu)
   }
 
   fn send_flush_request(&mut self, remote: &Address, pdu: ControlPdu, lane_id: u32) -> Result<(), TransportError> {

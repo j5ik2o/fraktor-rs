@@ -12,6 +12,7 @@ extern crate alloc;
 mod tests;
 
 mod association;
+mod deployment;
 pub mod extension_installer;
 pub mod provider;
 mod tokio_remote_event_receiver;

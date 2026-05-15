@@ -27,7 +27,7 @@ use super::{
   super::termination_state::TerminationState, ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller,
   ActorRefProviderCallers, ActorRefProviderHandleShared, ActorRefProviders, AskFutures, AuthorityState, CellsShared,
   Extensions, ExtraTopLevels, GuardianKind, GuardiansState, Registries, RemoteAuthorityError, RemoteAuthorityRegistry,
-  RemoteWatchHookDynShared, RemotingConfig, TempActors,
+  RemoteDeploymentHookDynShared, RemoteWatchHookDynShared, RemotingConfig, TempActors,
 };
 use crate::{
   actor::{
@@ -40,6 +40,7 @@ use crate::{
     deploy::Deployer,
     invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
     messaging::{AnyMessage, AskResult, system_message::FailurePayload},
+    props::{DeployableActorFactory, DeployableActorFactoryRegistry, DeployableFactoryLookupError, Props},
     scheduler::{
       SchedulerBackedDelayProvider, SchedulerContext, SchedulerShared,
       task_run::TaskRunSummary,
@@ -97,6 +98,7 @@ pub struct SystemState {
   extensions: Extensions,
   actor_ref_providers: ActorRefProviders,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallers,
+  remote_deployment_hook: RemoteDeploymentHookDynShared,
   remote_watch_hook: RemoteWatchHookDynShared,
   invoke_guard_factory: ArcShared<Box<dyn InvokeGuardFactory>>,
   dispatchers: Dispatchers,
@@ -107,6 +109,7 @@ pub struct SystemState {
   /// [`ActorSystemConfig::with_mailbox_clock`] before the system is built.
   mailbox_shared_set: MailboxSharedSet,
   deployer: Deployer,
+  deployable_actor_factory_registry: DeployableActorFactoryRegistry,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistry,
   remote_authority_registry: RemoteAuthorityRegistry,
@@ -159,12 +162,14 @@ impl SystemState {
       failure_inflight: AtomicU64::new(0),
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
+      remote_deployment_hook: RemoteDeploymentHookDynShared::noop(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
       invoke_guard_factory: NoopInvokeGuardFactory::shared(),
       dispatchers,
       mailboxes,
       mailbox_shared_set: MailboxSharedSet::builtin(),
       deployer: Deployer::default(),
+      deployable_actor_factory_registry: DeployableActorFactoryRegistry::new(),
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistry::default(),
       remote_authority_registry: RemoteAuthorityRegistry::default(),
@@ -229,12 +234,14 @@ impl SystemState {
       failure_inflight: AtomicU64::new(0),
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
+      remote_deployment_hook: RemoteDeploymentHookDynShared::noop(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
       invoke_guard_factory,
       dispatchers,
       mailboxes,
       mailbox_shared_set,
-      deployer: Deployer::default(),
+      deployer: config.deployer().clone(),
+      deployable_actor_factory_registry: config.deployable_actor_factory_registry().clone(),
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistry::default(),
       remote_authority_registry: RemoteAuthorityRegistry::default(),
@@ -294,6 +301,8 @@ impl SystemState {
     self.path_identity.guardian_kind = config.default_guardian();
     self.dispatchers = config.dispatchers().clone();
     self.mailboxes = config.mailboxes().clone();
+    self.deployer = config.deployer().clone();
+    self.deployable_actor_factory_registry = config.deployable_actor_factory_registry().clone();
     self.default_circuit_breaker_config = config.default_circuit_breaker_config();
     self.named_circuit_breaker_config = config.named_circuit_breaker_config().clone();
     if let Some(remoting) = config.remoting_config() {
@@ -353,6 +362,29 @@ impl SystemState {
   #[must_use]
   pub fn deployer(&self) -> Deployer {
     self.deployer.clone()
+  }
+
+  /// Registers or replaces a deployable actor factory.
+  pub fn register_deployable_actor_factory(
+    &mut self,
+    factory_id: impl Into<String>,
+    factory: Box<dyn DeployableActorFactory>,
+  ) {
+    self.deployable_actor_factory_registry.register(factory_id, factory);
+  }
+
+  /// Resolves deployable actor props from a factory id and deserialized payload.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DeployableFactoryLookupError`] when the id is unknown or the factory rejects the
+  /// payload.
+  pub fn deployable_props_for_payload(
+    &self,
+    factory_id: &str,
+    payload: AnyMessage,
+  ) -> Result<Props, DeployableFactoryLookupError> {
+    self.deployable_actor_factory_registry.props_for_payload(factory_id, payload)
   }
 
   /// Returns the start time of the actor system (epoch-relative duration).
@@ -505,6 +537,12 @@ impl SystemState {
   #[must_use]
   pub(crate) fn remote_watch_hook_handle(&self) -> RemoteWatchHookDynShared {
     self.remote_watch_hook.clone()
+  }
+
+  /// Returns the shared remote deployment hook handle.
+  #[must_use]
+  pub(crate) fn remote_deployment_hook_handle(&self) -> RemoteDeploymentHookDynShared {
+    self.remote_deployment_hook.clone()
   }
 
   /// Registers the root guardian PID.

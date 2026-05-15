@@ -84,6 +84,9 @@ impl ChildRef {
   ///
   /// Returns an error when the stop signal cannot be delivered.
   pub fn stop(&self) -> Result<(), SendError> {
+    if self.is_remote_child() {
+      return Err(Self::unsupported_remote_lifecycle(SystemMessage::Stop));
+    }
     self.system.send_system_message(self.pid(), SystemMessage::Stop)
   }
 
@@ -93,6 +96,9 @@ impl ChildRef {
   ///
   /// Returns an error when the suspend signal cannot be delivered.
   pub fn suspend(&self) -> Result<(), SendError> {
+    if self.is_remote_child() {
+      return Err(Self::unsupported_remote_lifecycle(SystemMessage::Suspend));
+    }
     self.system.send_system_message(self.pid(), SystemMessage::Suspend)
   }
 
@@ -102,7 +108,19 @@ impl ChildRef {
   ///
   /// Returns an error when the resume signal cannot be delivered.
   pub fn resume(&self) -> Result<(), SendError> {
+    if self.is_remote_child() {
+      return Err(Self::unsupported_remote_lifecycle(SystemMessage::Resume));
+    }
     self.system.send_system_message(self.pid(), SystemMessage::Resume)
+  }
+
+  fn is_remote_child(&self) -> bool {
+    self.system.cell(&self.pid()).is_none()
+      && self.actor.canonical_path().and_then(|path| path.parts().authority_endpoint()).is_some()
+  }
+
+  fn unsupported_remote_lifecycle(message: SystemMessage) -> SendError {
+    SendError::invalid_payload(AnyMessage::new(message), "remote child lifecycle command is not supported")
   }
 }
 

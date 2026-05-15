@@ -1,11 +1,17 @@
 //! Extended ActorSystem API surface for infrastructure components.
 
-use alloc::{boxed::Box, string::ToString};
+use alloc::{
+  boxed::Box,
+  string::{String, ToString},
+};
 use core::any::Any;
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use super::{ActorSystem, ActorSystemBuildError, RegisterExtraTopLevelError, remote::RemoteWatchHook};
+use super::{
+  ActorSystem, ActorSystemBuildError, RegisterExtraTopLevelError,
+  remote::{RemoteDeploymentHook, RemoteWatchHook},
+};
 use crate::{
   actor::{
     ChildRef,
@@ -15,7 +21,7 @@ use crate::{
     actor_selection::ActorSelection,
     error::SendError,
     extension::{Extension, ExtensionId},
-    props::Props,
+    props::{DeployableActorFactory, Props},
     spawn::SpawnError,
   },
   dispatch::{
@@ -134,6 +140,21 @@ impl ExtendedActorSystem {
     self.inner.state().register_remote_watch_hook(dyn_hook);
   }
 
+  /// Registers a remote deployment hook that handles remote-scoped child spawn.
+  pub fn register_remote_deployment_hook<H>(&self, hook: H)
+  where
+    H: RemoteDeploymentHook, {
+    let dyn_hook: Box<dyn RemoteDeploymentHook> = Box::new(hook);
+    self.inner.state().register_remote_deployment_hook(dyn_hook);
+  }
+
+  /// Registers a target-node deployable actor factory.
+  pub fn register_deployable_actor_factory<F>(&self, factory_id: impl Into<String>, factory: F)
+  where
+    F: DeployableActorFactory, {
+    self.inner.state().register_deployable_actor_factory(factory_id, Box::new(factory));
+  }
+
   /// Registers an extra top-level actor name before the system finishes startup.
   ///
   /// # Errors
@@ -164,6 +185,15 @@ impl ExtendedActorSystem {
   /// Returns [`SpawnError`] when the actor cannot be created, including duplicate names.
   pub fn actor_of_named(&self, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
     self.inner.actor_of_named(props, name)
+  }
+
+  /// Spawns a named child under the actor identified by `parent_path`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the parent cannot be resolved or the child cannot be created.
+  pub fn spawn_child_at(&self, parent_path: ActorPath, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
+    self.inner.spawn_child_at(parent_path, props, name)
   }
 
   /// Sends a stop signal to the specified actor reference.

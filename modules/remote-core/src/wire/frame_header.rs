@@ -9,8 +9,11 @@ pub const WIRE_VERSION_2: u8 = 0x02;
 /// Wire format version that adds envelope and control compression metadata.
 pub const WIRE_VERSION_3: u8 = 0x03;
 
+/// Wire format version that adds remote deployment request/response frames.
+pub const WIRE_VERSION_4: u8 = 0x04;
+
 /// Current wire format version.
-pub const WIRE_VERSION: u8 = WIRE_VERSION_3;
+pub const WIRE_VERSION: u8 = WIRE_VERSION_4;
 
 /// Offset of the PDU kind byte in an encoded frame.
 pub const FRAME_KIND_OFFSET: usize = 5;
@@ -29,6 +32,9 @@ pub const KIND_CONTROL: u8 = 0x04;
 
 /// Kind byte for [`crate::wire::AckPdu`].
 pub const KIND_ACK: u8 = 0x05;
+
+/// Kind byte for [`crate::wire::RemoteDeploymentPdu`].
+pub const KIND_DEPLOYMENT: u8 = 0x06;
 
 /// Wire frame header: length prefix + version byte + kind byte.
 ///

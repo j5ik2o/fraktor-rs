@@ -15,14 +15,15 @@ use fraktor_utils_core_rs::{
 use super::ActorSystem;
 use crate::{
   actor::{
-    Actor, ActorCell, ActorContext, Pid,
+    Actor, ActorCell, ActorContext, Address, Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
-    actor_ref::ActorRef,
+    actor_ref::{ActorRef, NullSender},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, ActorRefResolveError},
-    error::{ActorError, ActorErrorReason},
+    deploy::{Deploy, Deployer, RemoteScope, Scope},
+    error::{ActorError, ActorErrorReason, SendError},
     lifecycle::LifecycleStage,
-    messaging::{AnyMessageView, system_message::SystemMessage},
-    props::{MailboxConfig, MailboxRequirement, Props},
+    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
+    props::{DeployablePropsMetadata, MailboxConfig, MailboxRequirement, Props},
     scheduler::{
       SchedulerConfig,
       task_run::{TaskRunError, TaskRunPriority},
@@ -43,7 +44,7 @@ use crate::{
   system::{
     TerminationSignal,
     base::LogLevel,
-    remote::RemotingConfig,
+    remote::{RemoteDeploymentHook, RemoteDeploymentOutcome, RemoteDeploymentRequest, RemotingConfig},
     state::{SystemStateShared, system_state::SystemState},
   },
 };
@@ -109,6 +110,185 @@ impl Actor for TestActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
+}
+
+#[derive(Clone)]
+enum TestRemoteDeploymentOutcome {
+  RemoteCreated(ActorRef),
+  UseLocalDeployment,
+  Failed(&'static str),
+}
+
+struct RecordingRemoteDeploymentHook {
+  calls:   ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>>,
+  outcome: TestRemoteDeploymentOutcome,
+}
+
+impl RecordingRemoteDeploymentHook {
+  fn new(calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>>, outcome: TestRemoteDeploymentOutcome) -> Self {
+    Self { calls, outcome }
+  }
+}
+
+impl RemoteDeploymentHook for RecordingRemoteDeploymentHook {
+  fn deploy_child(&mut self, request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
+    self.calls.lock().push(request);
+    match self.outcome.clone() {
+      | TestRemoteDeploymentOutcome::RemoteCreated(actor) => RemoteDeploymentOutcome::RemoteCreated(actor),
+      | TestRemoteDeploymentOutcome::UseLocalDeployment => RemoteDeploymentOutcome::UseLocalDeployment,
+      | TestRemoteDeploymentOutcome::Failed(reason) => RemoteDeploymentOutcome::Failed(reason.into()),
+    }
+  }
+}
+
+fn remote_deployer_for_child(name: &str) -> Deployer {
+  let mut deployer = Deployer::new();
+  let remote = Address::remote("remote-system", "remote.example.com", 2552);
+  deployer.register(format!("/user/{name}"), Deploy::new().with_scope(Scope::Remote(RemoteScope::new(remote))));
+  deployer
+}
+
+fn deployable_test_props() -> Props {
+  Props::from_fn(|| TestActor)
+    .with_deployable_metadata(DeployablePropsMetadata::new("echo", AnyMessage::new(String::from("payload"))))
+}
+
+fn remote_created_ref(name: &str) -> ActorRef {
+  let parts = ActorPathParts::with_authority("remote-system", Some(("remote.example.com", 2552)));
+  let path = ActorPath::from_parts(parts).child(name);
+  ActorRef::with_canonical_path(Pid::new(900, 0), NullSender, path)
+}
+
+fn assert_remote_lifecycle_unsupported(result: Result<(), SendError>) {
+  match result {
+    | Err(SendError::InvalidPayload { context, .. }) => {
+      assert_eq!(context, "remote child lifecycle command is not supported");
+    },
+    | other => panic!("expected unsupported remote lifecycle error, got {other:?}"),
+  }
+}
+
+#[test]
+fn remote_deployment_spawn_invokes_hook_without_local_cell() {
+  let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("remote-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    calls.clone(),
+    TestRemoteDeploymentOutcome::RemoteCreated(remote_created_ref("remote-child")),
+  ));
+
+  let child = system.actor_of_named(&deployable_test_props(), "remote-child").expect("remote child should spawn");
+  let requests = calls.lock().clone();
+  let request = requests.first().expect("hook should be invoked");
+  let metadata = request.deployable_metadata().expect("deployable metadata");
+
+  assert_eq!(requests.len(), 1);
+  assert_eq!(request.child_name(), "remote-child");
+  assert_eq!(request.child_path().to_relative_string(), "/user/remote-child");
+  assert_eq!(request.scope().node(), &Address::remote("remote-system", "remote.example.com", 2552));
+  assert_eq!(metadata.factory_id(), "echo");
+  assert_eq!(metadata.payload().downcast_ref::<String>().map(String::as_str), Some("payload"));
+  assert_eq!(child.pid(), Pid::new(900, 0));
+  assert!(system.actor_ref_by_pid(child.pid()).is_none());
+}
+
+#[test]
+fn remote_deployment_use_local_outcome_continues_local_spawn() {
+  let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("loopback-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    calls.clone(),
+    TestRemoteDeploymentOutcome::UseLocalDeployment,
+  ));
+
+  let child = system.actor_of_named(&Props::from_fn(|| TestActor), "loopback-child").expect("local child should spawn");
+
+  assert_eq!(calls.lock().len(), 1);
+  assert!(system.actor_ref_by_pid(child.pid()).is_some());
+}
+
+#[test]
+fn remote_deployment_failed_outcome_does_not_fallback_to_local_spawn() {
+  let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("failed-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    calls.clone(),
+    TestRemoteDeploymentOutcome::Failed("remote create failed"),
+  ));
+
+  let result = system.actor_of_named(&deployable_test_props(), "failed-child");
+
+  match result {
+    | Err(SpawnError::InvalidProps(reason)) => assert_eq!(reason, "remote create failed"),
+    | other => panic!("expected invalid props, got {other:?}"),
+  }
+  let request = calls.lock().first().cloned().expect("hook request");
+  assert!(system.actor_ref_by_pid(request.child_pid()).is_none());
+}
+
+#[test]
+fn remote_deployment_missing_hook_is_spawn_error() {
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("missing-hook-child")));
+
+  let result = system.actor_of_named(&deployable_test_props(), "missing-hook-child");
+
+  match result {
+    | Err(SpawnError::InvalidProps(reason)) => assert_eq!(reason, "remote deployment hook is not installed"),
+    | other => panic!("expected invalid props, got {other:?}"),
+  }
+}
+
+#[test]
+fn remote_deployment_non_deployable_remote_create_is_spawn_error() {
+  let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("non-deployable-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    calls.clone(),
+    TestRemoteDeploymentOutcome::RemoteCreated(remote_created_ref("non-deployable-child")),
+  ));
+
+  let result = system.actor_of_named(&Props::from_fn(|| TestActor), "non-deployable-child");
+
+  match result {
+    | Err(SpawnError::InvalidProps(reason)) => {
+      assert_eq!(reason, "remote deployment requires deployable props metadata");
+    },
+    | other => panic!("expected invalid props, got {other:?}"),
+  }
+  assert!(calls.lock().first().and_then(RemoteDeploymentRequest::deployable_metadata).is_none());
+}
+
+#[test]
+fn remote_deployment_timeout_failure_is_spawn_error() {
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("timeout-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    ArcShared::new(SpinSyncMutex::new(Vec::new())),
+    TestRemoteDeploymentOutcome::Failed("remote deployment timed out"),
+  ));
+
+  let result = system.actor_of_named(&deployable_test_props(), "timeout-child");
+
+  match result {
+    | Err(SpawnError::InvalidProps(reason)) => assert_eq!(reason, "remote deployment timed out"),
+    | other => panic!("expected invalid props, got {other:?}"),
+  }
+}
+
+#[test]
+fn remote_deployment_remote_child_lifecycle_commands_are_unsupported() {
+  let calls: ArcShared<SpinSyncMutex<Vec<RemoteDeploymentRequest>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_deployer(remote_deployer_for_child("lifecycle-child")));
+  system.extended().register_remote_deployment_hook(RecordingRemoteDeploymentHook::new(
+    calls,
+    TestRemoteDeploymentOutcome::RemoteCreated(remote_created_ref("lifecycle-child")),
+  ));
+  let child = system.actor_of_named(&deployable_test_props(), "lifecycle-child").expect("remote child should spawn");
+
+  assert_remote_lifecycle_unsupported(child.stop());
+  assert_remote_lifecycle_unsupported(child.suspend());
+  assert_remote_lifecycle_unsupported(child.resume());
 }
 
 struct SpawnRecorderActor {

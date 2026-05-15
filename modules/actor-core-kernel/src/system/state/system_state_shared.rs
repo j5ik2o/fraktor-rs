@@ -20,7 +20,8 @@ use fraktor_utils_core_rs::sync::{ArcShared, DefaultRwLock, SharedAccess, Shared
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandleShared, AuthorityState, CellsShared, GuardianKind,
-  RemoteAuthorityError, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
+  RemoteAuthorityError, RemoteDeploymentHook, RemoteDeploymentHookDynShared, RemoteDeploymentOutcome,
+  RemoteDeploymentRequest, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
   system_state::{FailureOutcome, SystemState},
 };
 use crate::{
@@ -38,6 +39,7 @@ use crate::{
       AnyMessage, AskResult,
       system_message::{FailurePayload, SystemMessage},
     },
+    props::{DeployableActorFactory, DeployableFactoryLookupError, Props},
     scheduler::{
       SchedulerBackedDelayProvider, SchedulerShared, task_run::TaskRunSummary, tick_driver::TickDriverBundle,
     },
@@ -70,6 +72,7 @@ pub struct SystemStateShared {
   dead_letter: DeadLetterShared,
   cells: CellsShared,
   termination_signal: TerminationSignal,
+  remote_deployment_hook: RemoteDeploymentHookDynShared,
   remote_watch_hook: RemoteWatchHookDynShared,
   invoke_guard_factory_cached: ArcShared<Box<dyn InvokeGuardFactory>>,
   scheduler: SchedulerShared,
@@ -91,6 +94,7 @@ impl Clone for SystemStateShared {
       dead_letter: self.dead_letter.clone(),
       cells: self.cells.clone(),
       termination_signal: self.termination_signal.clone(),
+      remote_deployment_hook: self.remote_deployment_hook.clone(),
       remote_watch_hook: self.remote_watch_hook.clone(),
       invoke_guard_factory_cached: self.invoke_guard_factory_cached.clone(),
       scheduler: self.scheduler.clone(),
@@ -114,6 +118,7 @@ impl SystemStateShared {
     let dead_letter = state.dead_letter_store();
     let cells = state.cells_handle();
     let termination_signal = TerminationSignal::new(state.termination_state());
+    let remote_deployment_hook = state.remote_deployment_hook_handle();
     let remote_watch_hook = state.remote_watch_hook_handle();
     let invoke_guard_factory_cached = state.invoke_guard_factory();
     let scheduler = state.scheduler();
@@ -132,6 +137,7 @@ impl SystemStateShared {
       dead_letter,
       cells,
       termination_signal,
+      remote_deployment_hook,
       remote_watch_hook,
       invoke_guard_factory_cached,
       scheduler,
@@ -154,6 +160,7 @@ impl SystemStateShared {
       dead_letter,
       cells,
       termination_signal,
+      remote_deployment_hook,
       remote_watch_hook,
       invoke_guard_factory_cached,
       scheduler,
@@ -171,6 +178,7 @@ impl SystemStateShared {
         guard.dead_letter_store(),
         guard.cells_handle(),
         TerminationSignal::new(guard.termination_state()),
+        guard.remote_deployment_hook_handle(),
         guard.remote_watch_hook_handle(),
         guard.invoke_guard_factory(),
         guard.scheduler(),
@@ -190,6 +198,7 @@ impl SystemStateShared {
       dead_letter,
       cells,
       termination_signal,
+      remote_deployment_hook,
       remote_watch_hook,
       invoke_guard_factory_cached,
       scheduler,
@@ -327,6 +336,29 @@ impl SystemStateShared {
   #[must_use]
   pub fn deployer(&self) -> Deployer {
     self.inner.with_read(|inner| inner.deployer())
+  }
+
+  /// Registers or replaces a deployable actor factory.
+  pub fn register_deployable_actor_factory(
+    &self,
+    factory_id: impl Into<String>,
+    factory: Box<dyn DeployableActorFactory>,
+  ) {
+    self.inner.with_write(|inner| inner.register_deployable_actor_factory(factory_id, factory));
+  }
+
+  /// Resolves deployable actor props from a factory id and deserialized payload.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DeployableFactoryLookupError`] when the id is unknown or the factory rejects the
+  /// payload.
+  pub fn deployable_props_for_payload(
+    &self,
+    factory_id: &str,
+    payload: AnyMessage,
+  ) -> Result<Props, DeployableFactoryLookupError> {
+    self.inner.with_read(|inner| inner.deployable_props_for_payload(factory_id, payload))
   }
 
   /// Returns the start time of the actor system (epoch-relative duration).
@@ -677,6 +709,17 @@ impl SystemStateShared {
   /// Registers a remote watch hook.
   pub fn register_remote_watch_hook(&self, hook: Box<dyn RemoteWatchHook>) {
     self.remote_watch_hook.replace(hook);
+  }
+
+  /// Registers a remote deployment hook.
+  pub fn register_remote_deployment_hook(&self, hook: Box<dyn RemoteDeploymentHook>) {
+    self.remote_deployment_hook.replace(hook);
+  }
+
+  /// Invokes the installed remote deployment hook.
+  #[must_use]
+  pub fn deploy_remote_child(&self, request: RemoteDeploymentRequest) -> RemoteDeploymentOutcome {
+    self.remote_deployment_hook.deploy_child(request)
   }
 
   /// Returns an actor ref provider.
