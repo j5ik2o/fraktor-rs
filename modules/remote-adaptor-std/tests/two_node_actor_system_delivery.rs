@@ -48,20 +48,12 @@ struct OrderedDeathwatchActor {
   tx: UnboundedSender<OrderedDeathwatchEvent>,
 }
 
-struct RemoteDeploymentParentActor {
-  child_props:   Props,
-  spawned_tx:    UnboundedSender<Result<ActorRef, String>>,
-  terminated_tx: UnboundedSender<Pid>,
-}
-
 #[derive(Debug, PartialEq, Eq)]
 enum OrderedDeathwatchEvent {
   WatchInstalled,
   UserMessage(String),
   Terminated(Pid),
 }
-
-struct SpawnRemoteChild;
 
 struct StartRemoteWatch {
   target: ActorRef,
@@ -104,16 +96,6 @@ impl RecordingDeathwatchActor {
 impl OrderedDeathwatchActor {
   fn new(tx: UnboundedSender<OrderedDeathwatchEvent>) -> Self {
     Self { tx }
-  }
-}
-
-impl RemoteDeploymentParentActor {
-  fn new(
-    child_props: Props,
-    spawned_tx: UnboundedSender<Result<ActorRef, String>>,
-    terminated_tx: UnboundedSender<Pid>,
-  ) -> Self {
-    Self { child_props, spawned_tx, terminated_tx }
   }
 }
 
@@ -169,43 +151,6 @@ impl Actor for OrderedDeathwatchActor {
 
   fn on_terminated(&mut self, _context: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
     self.tx.send(OrderedDeathwatchEvent::Terminated(terminated)).expect("ordered channel should be open");
-    Ok(())
-  }
-}
-
-impl Actor for RemoteDeploymentParentActor {
-  fn receive(&mut self, context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if message.downcast_ref::<SpawnRemoteChild>().is_some() {
-      let child = match context.spawn_child(&self.child_props) {
-        | Ok(child) => child,
-        | Err(error) => {
-          self
-            .spawned_tx
-            .send(Err(format!("remote child spawn failed: {error:?}")))
-            .map_err(|_| ActorError::recoverable("remote child spawn channel closed"))?;
-          return Ok(());
-        },
-      };
-      if let Err(error) = context.watch(child.actor_ref()) {
-        self
-          .spawned_tx
-          .send(Err(format!("remote child watch failed: {error:?}")))
-          .map_err(|_| ActorError::recoverable("remote child spawn channel closed"))?;
-        return Ok(());
-      }
-      self
-        .spawned_tx
-        .send(Ok(child.actor_ref().clone()))
-        .map_err(|_| ActorError::recoverable("remote child spawn channel closed"))?;
-    }
-    Ok(())
-  }
-
-  fn on_terminated(&mut self, _context: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
-    self
-      .terminated_tx
-      .send(terminated)
-      .map_err(|_| ActorError::recoverable("remote child termination channel closed"))?;
     Ok(())
   }
 }
@@ -323,10 +268,6 @@ fn remote_path(address: &Address, local_path: &ActorPath) -> ActorPath {
 
 fn remote_deployer_for_child(child_name: &str, address: &Address) -> Deployer {
   remote_deployer_for_path(&format!("/user/{child_name}"), address)
-}
-
-fn remote_deployer_for_child_of(parent_name: &str, child_name: &str, address: &Address) -> Deployer {
-  remote_deployer_for_path(&format!("/user/{parent_name}/{child_name}"), address)
 }
 
 fn remote_deployer_for_path(path: &str, address: &Address) -> Deployer {
@@ -516,11 +457,7 @@ async fn two_node_remote_deployment_parent_observes_child_termination() {
   let parent_name = "deployment-parent-a";
   let child_name = "watched-deployed-b";
   let node_b = build_node(reserve_port(), 72);
-  let node_a = build_node_with_deployer(
-    reserve_port(),
-    71,
-    remote_deployer_for_child_of(parent_name, child_name, &node_b.address),
-  );
+  let node_a = build_node_with_deployer(reserve_port(), 71, remote_deployer_for_child(child_name, &node_b.address));
   let (mut warm_rx_a, warm_path_a) = spawn_recording_actor(&node_a.system, "deployment-watch-warm-a");
   let (mut warm_rx_b, warm_path_b) = spawn_recording_actor(&node_b.system, "deployment-watch-warm-b");
   let mut warm_ref_b = node_a
@@ -543,10 +480,6 @@ async fn two_node_remote_deployment_parent_observes_child_termination() {
     let tx = target_tx.clone();
     Ok(Props::from_fn(move || RecordingStringActor::new(tx.clone())))
   });
-  let (target_parent_tx, _target_parent_rx) = mpsc::unbounded_channel();
-  let target_parent_props = Props::from_fn(move || RecordingStringActor::new(target_parent_tx.clone()));
-  let _target_parent =
-    node_b.system.actor_of_named(&target_parent_props, parent_name).expect("target parent actor should spawn");
   let (unused_tx, _unused_rx) = mpsc::unbounded_channel();
   let child_props = Props::from_fn(move || RecordingStringActor::new(unused_tx.clone()))
     .with_name(child_name)
@@ -554,21 +487,22 @@ async fn two_node_remote_deployment_parent_observes_child_termination() {
       "watched-recording-string",
       AnyMessage::new(String::from("watched-factory-payload")),
     ));
-  let (spawned_tx, mut spawned_rx) = mpsc::unbounded_channel();
   let (terminated_tx, mut terminated_rx) = mpsc::unbounded_channel();
-  let parent_props = Props::from_fn(move || {
-    RemoteDeploymentParentActor::new(child_props.clone(), spawned_tx.clone(), terminated_tx.clone())
-  });
+  let (ack_tx, mut ack_rx) = mpsc::unbounded_channel();
+  let parent_props = Props::from_fn(move || RecordingDeathwatchActor::new(terminated_tx.clone(), ack_tx.clone()));
   let parent = node_a.system.actor_of_named(&parent_props, parent_name).expect("parent actor should spawn");
   let mut parent_ref = parent.actor_ref().clone();
-
-  parent_ref.try_tell(AnyMessage::new(SpawnRemoteChild)).expect("spawn command should enqueue");
-
-  let remote_child = timeout(Duration::from_secs(5), spawned_rx.recv())
+  let system_a = node_a.system.clone();
+  let remote_child = tokio::task::spawn_blocking(move || system_a.actor_of_named(&child_props, child_name))
     .await
-    .expect("remote child spawn notification timeout")
-    .expect("spawn channel should stay open")
-    .expect("remote child should spawn and install watch");
+    .expect("blocking remote child spawn should complete")
+    .expect("remote child should spawn");
+  let remote_child = remote_child.actor_ref().clone();
+
+  parent_ref
+    .try_tell(AnyMessage::new(StartRemoteWatch::new(remote_child.clone())))
+    .expect("watch command should enqueue");
+  wait_for_ack(&mut ack_rx, "watch").await;
   let mut remote_child_ref = remote_child.clone();
   remote_child_ref
     .try_tell(AnyMessage::new(String::from("after-parent-watch")))
