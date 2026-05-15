@@ -18,7 +18,7 @@ use fraktor_actor_core_kernel_rs::{
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   event::stream::CorrelationId,
-  serialization::default_serialization_extension_id,
+  serialization::{SerializationExtensionShared, default_serialization_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::{
@@ -29,8 +29,12 @@ use fraktor_remote_core_rs::{
   instrument::RemotingFlightRecorder,
   transport::RemoteTransport,
   watcher::WatcherCommand,
-  wire::{ControlPdu, FlushScope, WireFrame},
+  wire::{
+    ControlPdu, FlushScope, RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentFailureCode,
+    RemoteDeploymentPdu, WireFrame,
+  },
 };
+use fraktor_utils_core_rs::sync::ArcShared;
 use futures::future::poll_fn;
 use tokio::{
   runtime::Handle,
@@ -39,7 +43,8 @@ use tokio::{
 };
 
 use crate::{
-  association::std_instant_elapsed_millis,
+  association::{parse_remote_authority, std_instant_elapsed_millis},
+  deployment::{DeploymentDaemonCommand, DeploymentResponse, DeploymentResponseDispatcher, spawn_deployment_daemon},
   extension_installer::flush_gate::{StdFlushGate, schedule_flush_timers},
   tokio_remote_event_receiver::TokioMpscRemoteEventReceiver,
   transport::tcp::TcpRemoteTransport,
@@ -52,37 +57,43 @@ const RUN_STATE_LOCK_POISONED: &str = "remote run_state lock should not be poiso
 
 /// Extension installer for the `fraktor-remote-adaptor-std-rs` runtime.
 pub struct RemotingExtensionInstaller {
-  transport:       Mutex<Option<TcpRemoteTransport>>,
-  config:          RemoteConfig,
-  remote_shared:   OnceLock<RemoteShared>,
-  event_sender:    OnceLock<Sender<RemoteEvent>>,
-  watcher_sender:  OnceLock<Sender<WatcherCommand>>,
+  transport: Mutex<Option<TcpRemoteTransport>>,
+  config: RemoteConfig,
+  remote_shared: OnceLock<RemoteShared>,
+  event_sender: OnceLock<Sender<RemoteEvent>>,
+  watcher_sender: OnceLock<Sender<WatcherCommand>>,
   monotonic_epoch: OnceLock<Instant>,
-  run_state:       Arc<Mutex<RemotingRunState>>,
-  flush_gate:      StdFlushGate,
+  run_state: Arc<Mutex<RemotingRunState>>,
+  flush_gate: StdFlushGate,
+  deployment_response_dispatcher: DeploymentResponseDispatcher,
 }
 
 pub(super) struct RemotingRunState {
   receiver:           Option<TokioMpscRemoteEventReceiver>,
   handle:             Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
   watcher_handle:     Option<JoinHandle<()>>,
+  deployment_handle:  Option<JoinHandle<()>>,
   termination_handle: Option<JoinHandle<()>>,
 }
 
 /// Handles needed by the std remote actor-ref provider.
 pub(crate) struct RemoteProviderFlushHandles {
   /// Remote event sender.
-  pub(crate) event_sender:    Sender<RemoteEvent>,
+  pub(crate) event_sender:                   Sender<RemoteEvent>,
   /// Monotonic epoch shared with remoting tasks.
-  pub(crate) monotonic_epoch: Instant,
+  pub(crate) monotonic_epoch:                Instant,
   /// Watcher command sender.
-  pub(crate) watcher_sender:  Sender<WatcherCommand>,
+  pub(crate) watcher_sender:                 Sender<WatcherCommand>,
   /// Shared remote core handle.
-  pub(crate) remote_shared:   RemoteShared,
+  pub(crate) remote_shared:                  RemoteShared,
   /// Shared std flush gate.
-  pub(crate) flush_gate:      StdFlushGate,
+  pub(crate) flush_gate:                     StdFlushGate,
   /// Message-capable writer lane ids.
-  pub(crate) flush_lane_ids:  Vec<u32>,
+  pub(crate) flush_lane_ids:                 Vec<u32>,
+  /// Deployment response dispatcher.
+  pub(crate) deployment_response_dispatcher: DeploymentResponseDispatcher,
+  /// Deployment request timeout.
+  pub(crate) deployment_timeout:             Duration,
 }
 
 #[derive(Clone)]
@@ -94,7 +105,13 @@ struct ShutdownFlushContext {
 
 impl RemotingRunState {
   pub(super) const fn new() -> Self {
-    Self { receiver: None, handle: None, watcher_handle: None, termination_handle: None }
+    Self {
+      receiver:           None,
+      handle:             None,
+      watcher_handle:     None,
+      deployment_handle:  None,
+      termination_handle: None,
+    }
   }
 }
 
@@ -104,6 +121,9 @@ impl Drop for RemotingRunState {
       handle.abort();
     }
     if let Some(handle) = self.watcher_handle.take() {
+      handle.abort();
+    }
+    if let Some(handle) = self.deployment_handle.take() {
       handle.abort();
     }
     if let Some(handle) = self.termination_handle.take() {
@@ -126,6 +146,7 @@ impl RemotingExtensionInstaller {
       monotonic_epoch: OnceLock::new(),
       run_state: Arc::new(Mutex::new(RemotingRunState::new())),
       flush_gate: StdFlushGate::new(),
+      deployment_response_dispatcher: DeploymentResponseDispatcher::default(),
     }
   }
 
@@ -165,6 +186,8 @@ impl RemotingExtensionInstaller {
       remote_shared,
       flush_gate: self.flush_gate.clone(),
       flush_lane_ids: writer_lane_ids_for_config(&self.config),
+      deployment_response_dispatcher: self.deployment_response_dispatcher.clone(),
+      deployment_timeout: self.config.deployment_timeout(),
     })
   }
 
@@ -203,6 +226,7 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
     let (event_sender, event_receiver) = mpsc::channel(self.config.remote_event_queue_size());
     let (watcher_sender, watcher_receiver) = mpsc::channel(self.config.remote_event_queue_size());
+    let (deployment_sender, deployment_receiver) = mpsc::channel(self.config.remote_event_queue_size());
     let monotonic_epoch = Instant::now();
     let transport = transport
       .with_monotonic_epoch(monotonic_epoch)
@@ -221,7 +245,7 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
       transport,
       self.config.clone(),
       event_publisher,
-      serialization_extension,
+      serialization_extension.clone(),
       Box::new(RemotingFlightRecorder::new(self.config.flight_recorder_capacity())),
     ));
     remote.start().map_err(remoting_build_error)?;
@@ -236,6 +260,8 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
         remote.clone(),
         system.clone(),
         watcher_sender.clone(),
+        deployment_sender.clone(),
+        self.deployment_response_dispatcher.clone(),
         event_sender.clone(),
         self.flush_gate.clone(),
       )
@@ -248,6 +274,15 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
         local_address,
         monotonic_epoch,
         self.config.system_message_resend_interval(),
+      )
+      .map_err(remoting_build_error)?;
+      spawn_deployment_daemon_with_state(
+        &mut run_state,
+        deployment_receiver,
+        system.clone(),
+        serialization_extension.clone(),
+        event_sender.clone(),
+        monotonic_epoch,
       )
       .map_err(remoting_build_error)?;
       let shutdown_flush_context =
@@ -311,6 +346,9 @@ pub(super) fn rollback_started_remote(
       if let Some(handle) = run_state.watcher_handle.take() {
         handle.abort();
       }
+      if let Some(handle) = run_state.deployment_handle.take() {
+        handle.abort();
+      }
       if let Some(handle) = run_state.termination_handle.take() {
         handle.abort();
       }
@@ -319,11 +357,14 @@ pub(super) fn rollback_started_remote(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_run_task_with_state(
   run_state: &mut RemotingRunState,
   remote: RemoteShared,
   system: ActorSystem,
   watcher_sender: Sender<WatcherCommand>,
+  deployment_sender: Sender<DeploymentDaemonCommand>,
+  deployment_response_dispatcher: DeploymentResponseDispatcher,
   event_sender: Sender<RemoteEvent>,
   flush_gate: StdFlushGate,
 ) -> Result<(), RemotingError> {
@@ -335,11 +376,36 @@ fn spawn_run_task_with_state(
   };
   let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
   let handle = handle.spawn(async move {
-    let result =
-      run_remote_with_delivery(&remote, &mut receiver, &system, &watcher_sender, &event_sender, &flush_gate).await;
+    let result = run_remote_with_delivery(
+      &remote,
+      &mut receiver,
+      &system,
+      &watcher_sender,
+      &deployment_sender,
+      deployment_response_dispatcher,
+      &event_sender,
+      &flush_gate,
+    )
+    .await;
     (receiver, result)
   });
   run_state.handle = Some(handle);
+  Ok(())
+}
+
+fn spawn_deployment_daemon_with_state(
+  run_state: &mut RemotingRunState,
+  deployment_receiver: Receiver<DeploymentDaemonCommand>,
+  system: ActorSystem,
+  serialization_extension: ArcShared<SerializationExtensionShared>,
+  event_sender: Sender<RemoteEvent>,
+  monotonic_epoch: Instant,
+) -> Result<(), RemotingError> {
+  if run_state.deployment_handle.is_some() {
+    return Err(RemotingError::AlreadyRunning);
+  }
+  run_state.deployment_handle =
+    Some(spawn_deployment_daemon(deployment_receiver, system, serialization_extension, event_sender, monotonic_epoch));
   Ok(())
 }
 
@@ -428,6 +494,9 @@ async fn shutdown_remote_and_join(
     if let Some(handle) = run_state.watcher_handle.take() {
       handle.abort();
     }
+    if let Some(handle) = run_state.deployment_handle.take() {
+      handle.abort();
+    }
     run_state.handle.take()
   };
   let Some(handle) = handle else {
@@ -477,11 +546,14 @@ fn writer_lane_ids_for_config(config: &RemoteConfig) -> Vec<u32> {
   (0..config.outbound_lanes()).filter_map(|lane_id| u32::try_from(lane_id).ok()).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_remote_with_delivery(
   remote: &RemoteShared,
   receiver: &mut TokioMpscRemoteEventReceiver,
   system: &ActorSystem,
   watcher_sender: &Sender<WatcherCommand>,
+  deployment_sender: &Sender<DeploymentDaemonCommand>,
+  deployment_response_dispatcher: DeploymentResponseDispatcher,
   event_sender: &Sender<RemoteEvent>,
   flush_gate: &StdFlushGate,
 ) -> Result<(), RemotingError> {
@@ -493,6 +565,9 @@ async fn run_remote_with_delivery(
       | Some(event) => event,
       | None => return Err(RemotingError::EventReceiverClosed),
     };
+    let Some(event) = route_deployment_event(event, deployment_sender, &deployment_response_dispatcher) else {
+      continue;
+    };
     forward_watcher_command_for_event(&event, watcher_sender);
     let should_stop = remote.handle_event(event)?;
     flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);
@@ -503,17 +578,67 @@ async fn run_remote_with_delivery(
   }
 }
 
+fn route_deployment_event(
+  event: RemoteEvent,
+  deployment_sender: &Sender<DeploymentDaemonCommand>,
+  deployment_response_dispatcher: &DeploymentResponseDispatcher,
+) -> Option<RemoteEvent> {
+  let RemoteEvent::InboundFrameReceived { authority, frame: WireFrame::Deployment(pdu), now_ms } = event else {
+    return Some(event);
+  };
+  match pdu {
+    | RemoteDeploymentPdu::CreateRequest(request) => {
+      let command = DeploymentDaemonCommand::create(authority, request);
+      if let Err(error) = deployment_sender.try_send(command) {
+        let reason = error.to_string();
+        let command = error.into_inner();
+        tracing::warn!(?reason, "remote deployment request enqueue failed");
+        let Some(remote) = parse_remote_authority(command.authority.authority())
+          .or_else(|| parse_remote_authority(command.request.origin_node()))
+        else {
+          tracing::warn!(
+            authority = command.authority.authority(),
+            origin_node = command.request.origin_node(),
+            "remote deployment request enqueue failure response address is invalid"
+          );
+          return None;
+        };
+        return Some(RemoteEvent::OutboundDeployment {
+          remote,
+          pdu: deployment_enqueue_failure(&command.request, reason),
+          now_ms,
+        });
+      }
+    },
+    | RemoteDeploymentPdu::CreateSuccess(success) => {
+      deployment_response_dispatcher.complete(DeploymentResponse::Success(success));
+    },
+    | RemoteDeploymentPdu::CreateFailure(failure) => {
+      deployment_response_dispatcher.complete(DeploymentResponse::Failure(failure));
+    },
+  }
+  None
+}
+
+fn deployment_enqueue_failure(request: &RemoteDeploymentCreateRequest, reason: String) -> RemoteDeploymentPdu {
+  RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    request.correlation_hi(),
+    request.correlation_lo(),
+    RemoteDeploymentFailureCode::SpawnFailed,
+    reason,
+  ))
+}
+
 pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sender: &Sender<WatcherCommand>) {
   let RemoteEvent::InboundFrameReceived { frame, now_ms, .. } = event else {
     return;
   };
   let command = match frame {
     | WireFrame::Control(ControlPdu::Heartbeat { authority }) => {
-      parse_address(authority).map(|from| WatcherCommand::HeartbeatReceived { from, now: *now_ms })
+      parse_remote_authority(authority).map(|from| WatcherCommand::HeartbeatReceived { from, now: *now_ms })
     },
-    | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => {
-      parse_address(authority).map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms })
-    },
+    | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => parse_remote_authority(authority)
+      .map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms }),
     | WireFrame::Control(
       ControlPdu::Quarantine { .. }
       | ControlPdu::Shutdown { .. }
@@ -524,7 +649,8 @@ pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sen
     )
     | WireFrame::Envelope(_)
     | WireFrame::Handshake(_)
-    | WireFrame::Ack(_) => None,
+    | WireFrame::Ack(_)
+    | WireFrame::Deployment(_) => None,
   };
   let Some(command) = command else {
     return;
@@ -532,13 +658,6 @@ pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sen
   if let Err(error) = watcher_sender.try_send(command) {
     tracing::warn!(?error, "remote watcher inbound command enqueue failed");
   }
-}
-
-fn parse_address(authority: &str) -> Option<Address> {
-  let (system, endpoint) = authority.split_once('@')?;
-  let (host, port) = endpoint.rsplit_once(':')?;
-  let host = host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host);
-  Some(Address::new(system, host, port.parse::<u16>().ok()?))
 }
 
 fn deliver_inbound_envelopes(remote: &RemoteShared, system: &ActorSystem) {

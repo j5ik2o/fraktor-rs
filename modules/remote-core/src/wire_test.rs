@@ -7,8 +7,10 @@ use crate::{
   wire::{
     AckCodec, AckPdu, Codec, CompressedText, CompressionTableEntry, CompressionTableKind, ControlCodec, ControlPdu,
     EnvelopeCodec, EnvelopePayload, EnvelopePdu, FlushScope, HandshakeCodec, HandshakePdu, HandshakeReq, HandshakeRsp,
-    KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WIRE_VERSION, WIRE_VERSION_1,
-    WIRE_VERSION_2, WIRE_VERSION_3, WireError,
+    KIND_ACK, KIND_CONTROL, KIND_DEPLOYMENT, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
+    RemoteDeploymentCodec, RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentCreateSuccess,
+    RemoteDeploymentFailureCode, RemoteDeploymentPdu, WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2, WIRE_VERSION_3,
+    WIRE_VERSION_4, WireError,
   },
 };
 
@@ -33,6 +35,23 @@ fn insert_control_reason(buf: &mut BytesMut, authority: &str, reason: &str) {
   buf.extend_from_slice(reason.as_bytes());
   buf.unsplit(tail);
   patch_frame_len(buf);
+}
+
+fn remote_deployment_manifest_tag_index(buf: &[u8]) -> usize {
+  const FRAME_HEADER_LEN: usize = 6;
+  const DEPLOYMENT_KIND_LEN: usize = 1;
+  const CORRELATION_HI_LEN: usize = 8;
+  const CORRELATION_LO_LEN: usize = 4;
+  const STRING_LEN_PREFIX: usize = 4;
+  const STRING_FIELD_COUNT_BEFORE_MANIFEST: usize = 4;
+  const MANIFEST_TAG_LEN: usize = 4;
+
+  let mut index = FRAME_HEADER_LEN + DEPLOYMENT_KIND_LEN + CORRELATION_HI_LEN + CORRELATION_LO_LEN;
+  for _ in 0..STRING_FIELD_COUNT_BEFORE_MANIFEST {
+    let len = u32::from_be_bytes([buf[index], buf[index + 1], buf[index + 2], buf[index + 3]]) as usize;
+    index += STRING_LEN_PREFIX + len;
+  }
+  index + MANIFEST_TAG_LEN
 }
 
 fn sample_handshake_from() -> UniqueAddress {
@@ -60,6 +79,20 @@ fn test_envelope_pdu(
     EnvelopePayload::new(5, None, payload),
   );
   if priority == 0 { pdu.with_redelivery_sequence(Some(100)) } else { pdu }
+}
+
+fn test_remote_deployment_request() -> RemoteDeploymentPdu {
+  RemoteDeploymentPdu::CreateRequest(RemoteDeploymentCreateRequest::new(
+    0x0123_4567_89ab_cdef,
+    0xfedc_ba98,
+    "/user/parent".to_string(),
+    "child".to_string(),
+    "echo".to_string(),
+    "origin-system@127.0.0.1:2551".to_string(),
+    700,
+    Some("example.Payload".to_string()),
+    Bytes::from_static(b"payload"),
+  ))
 }
 
 #[test]
@@ -93,6 +126,130 @@ fn envelope_roundtrip_without_sender_path() {
   let decoded = codec.decode(&mut bytes).unwrap();
   assert_eq!(decoded, pdu);
   assert_eq!(decoded.redelivery_sequence(), Some(100));
+}
+
+#[test]
+fn remote_deployment_create_request_roundtrip() {
+  let pdu = test_remote_deployment_request();
+  let codec = RemoteDeploymentCodec::new();
+  let mut buf = BytesMut::new();
+  codec.encode(&pdu, &mut buf).unwrap();
+  let mut bytes = to_bytes(buf);
+  let decoded = codec.decode(&mut bytes).unwrap();
+
+  assert_eq!(decoded, pdu);
+  match decoded {
+    | RemoteDeploymentPdu::CreateRequest(request) => {
+      assert_eq!(request.target_parent_path(), "/user/parent");
+      assert_eq!(request.child_name(), "child");
+      assert_eq!(request.factory_id(), "echo");
+      assert_eq!(request.origin_node(), "origin-system@127.0.0.1:2551");
+      assert_eq!(request.serializer_id(), 700);
+      assert_eq!(request.manifest(), Some("example.Payload"));
+      assert_eq!(request.payload(), &Bytes::from_static(b"payload"));
+    },
+    | _ => panic!("expected create request"),
+  }
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
+}
+
+#[test]
+fn remote_deployment_create_success_roundtrip() {
+  let pdu = RemoteDeploymentPdu::CreateSuccess(RemoteDeploymentCreateSuccess::new(
+    0x1111_2222_3333_4444,
+    0x5555_6666,
+    "fraktor.tcp://remote-system@remote.example.com:2552/user/child".to_string(),
+  ));
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&pdu, &mut buf).unwrap();
+
+  let mut bytes = to_bytes(buf);
+  let decoded = RemoteDeploymentCodec::new().decode(&mut bytes).unwrap();
+
+  assert_eq!(decoded, pdu);
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
+}
+
+#[test]
+fn remote_deployment_create_failure_roundtrip() {
+  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    0x1111_2222_3333_4444,
+    0x5555_6666,
+    RemoteDeploymentFailureCode::UnknownFactoryId,
+    "unknown factory id: echo".to_string(),
+  ));
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&pdu, &mut buf).unwrap();
+
+  let mut bytes = to_bytes(buf);
+  let decoded = RemoteDeploymentCodec::new().decode(&mut bytes).unwrap();
+
+  assert_eq!(decoded, pdu);
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
+}
+
+#[test]
+fn remote_deployment_frame_kind_is_distinct_from_envelope() {
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&test_remote_deployment_request(), &mut buf).unwrap();
+
+  assert_eq!(buf[5], KIND_DEPLOYMENT);
+  assert_ne!(buf[5], KIND_ENVELOPE);
+
+  let err = EnvelopeCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+  assert_eq!(err, WireError::UnknownKind);
+}
+
+#[test]
+fn remote_deployment_decode_rejects_invalid_variant_tag() {
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&test_remote_deployment_request(), &mut buf).unwrap();
+  buf[6] = 0xee;
+
+  let err = RemoteDeploymentCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn remote_deployment_decode_rejects_invalid_failure_code() {
+  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    1,
+    2,
+    RemoteDeploymentFailureCode::Timeout,
+    "timeout".to_string(),
+  ));
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&pdu, &mut buf).unwrap();
+  buf[19] = 0xee;
+
+  let err = RemoteDeploymentCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn remote_deployment_decode_rejects_invalid_payload_manifest_tag() {
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&test_remote_deployment_request(), &mut buf).unwrap();
+  let manifest_tag_index = remote_deployment_manifest_tag_index(&buf);
+  buf[manifest_tag_index] = 0xee;
+
+  let err = RemoteDeploymentCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::InvalidFormat);
+}
+
+#[test]
+fn remote_deployment_decode_rejects_truncated_payload_metadata() {
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&test_remote_deployment_request(), &mut buf).unwrap();
+  buf.truncate(buf.len() - 2);
+  patch_frame_len(&mut buf);
+
+  let err = RemoteDeploymentCodec::new().decode(&mut to_bytes(buf)).unwrap_err();
+
+  assert_eq!(err, WireError::Truncated);
 }
 
 #[test]
@@ -857,7 +1014,7 @@ fn oversized_length_field_is_rejected() {
 
 #[test]
 fn all_kinds_are_distinct() {
-  let kinds = [KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, KIND_CONTROL, KIND_ACK];
+  let kinds = [KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, KIND_CONTROL, KIND_ACK, KIND_DEPLOYMENT];
   for (i, &a) in kinds.iter().enumerate() {
     for &b in &kinds[i + 1..] {
       assert_ne!(a, b, "kind {a:#04x} collides with {b:#04x}");
@@ -870,6 +1027,7 @@ fn wire_version_byte_is_current() {
   assert_eq!(WIRE_VERSION_1, 0x01);
   assert_eq!(WIRE_VERSION_2, 0x02);
   assert_eq!(WIRE_VERSION_3, 0x03);
+  assert_eq!(WIRE_VERSION_4, 0x04);
   assert_eq!(WIRE_VERSION, WIRE_VERSION_3);
 }
 

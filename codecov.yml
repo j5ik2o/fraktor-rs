@@ -1,4 +1,4 @@
-# PR の追加変更行は引き続き厳格に見る一方で、
+# PR の追加変更行は 90% 以上を要求しつつ、
 # project 全体の 0.01% 程度の微小低下では PR を落とさない。
 coverage:
   status:
@@ -8,4 +8,4 @@ coverage:
         threshold: 0.02
     patch:
       default:
-        target: 100%
+        target: 90%

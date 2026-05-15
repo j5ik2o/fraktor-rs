@@ -46,6 +46,6 @@ pub(crate) fn authority_for_frame(frame: &WireFrame) -> Option<TransportEndpoint
     | WireFrame::Handshake(HandshakePdu::Rsp(response)) => {
       Some(TransportEndpoint::new(response.from().address().to_string()))
     },
-    | WireFrame::Control(_) | WireFrame::Envelope(_) | WireFrame::Ack(_) => None,
+    | WireFrame::Control(_) | WireFrame::Envelope(_) | WireFrame::Ack(_) | WireFrame::Deployment(_) => None,
   }
 }

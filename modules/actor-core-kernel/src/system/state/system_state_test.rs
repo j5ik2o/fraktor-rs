@@ -414,6 +414,18 @@ fn system_state_release_name() {
 }
 
 #[test]
+fn system_state_reassign_name_to_allocated_pid_updates_registry() {
+  let mut state = build_state();
+  let reserved_pid = Pid::new(u64::MAX, u32::MAX);
+
+  let _name = state.assign_name(None, Some("test-actor"), reserved_pid).expect("reserved name");
+  let actual_pid = state.reassign_name_to_allocated_pid(None, "test-actor", reserved_pid).expect("reassigned name");
+  let registry = state.registries.get_mut(&None).expect("root registry");
+
+  assert_eq!(registry.resolve("test-actor"), Some(actual_pid));
+}
+
+#[test]
 fn system_state_user_guardian_pid() {
   let state = build_state();
   assert!(state.user_guardian_pid().is_none());

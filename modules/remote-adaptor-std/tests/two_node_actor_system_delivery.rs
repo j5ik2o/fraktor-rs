@@ -5,13 +5,14 @@ use std::{format, net::TcpListener, time::Duration};
 use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Actor, ActorContext, ChildRef, Pid,
+    Actor, ActorContext, Address as ActorAddress, ChildRef, Pid,
     actor_path::{ActorPath, ActorPathParser},
     actor_ref::ActorRef,
+    deploy::{Deploy, Deployer, RemoteScope, Scope},
     error::ActorError,
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
-    props::Props,
+    props::{DeployableFactoryError, DeployablePropsMetadata, Props},
   },
   event::stream::{
     EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent, subscriber_handle,
@@ -179,6 +180,19 @@ fn build_node(port: u16, uid: u64) -> RemoteNode {
 }
 
 fn build_node_with_remote_config(port: u16, uid: u64, remote_config: RemoteConfig) -> RemoteNode {
+  build_node_with_remote_config_and_deployer(port, uid, remote_config, Deployer::new())
+}
+
+fn build_node_with_deployer(port: u16, uid: u64, deployer: Deployer) -> RemoteNode {
+  build_node_with_remote_config_and_deployer(port, uid, RemoteConfig::new("127.0.0.1"), deployer)
+}
+
+fn build_node_with_remote_config_and_deployer(
+  port: u16,
+  uid: u64,
+  remote_config: RemoteConfig,
+  deployer: Deployer,
+) -> RemoteNode {
   let address = Address::new(SYSTEM_NAME, "127.0.0.1", port);
   let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address.clone()]);
   let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config));
@@ -192,6 +206,7 @@ fn build_node_with_remote_config(port: u16, uid: u64, remote_config: RemoteConfi
     .with_remoting_config(
       RemotingConfig::default().with_canonical_host(address.host()).with_canonical_port(address.port()),
     )
+    .with_deployer(deployer)
     .with_extension_installers(extension_installers)
     .with_actor_ref_provider_installer(provider_installer);
   let system = ActorSystem::create_with_noop_guardian(config).expect("actor system should build");
@@ -249,6 +264,13 @@ fn remote_path(address: &Address, local_path: &ActorPath) -> ActorPath {
     local_path.to_relative_string()
   ))
   .expect("remote actor path should parse")
+}
+
+fn remote_deployer_for_child(child_name: &str, address: &Address) -> Deployer {
+  let mut deployer = Deployer::new();
+  let target = ActorAddress::remote(address.system(), address.host(), address.port());
+  deployer.register(format!("/user/{child_name}"), Deploy::new().with_scope(Scope::Remote(RemoteScope::new(target))));
+  deployer
 }
 
 async fn recv_until(rx: &mut UnboundedReceiver<String>, expected: String) -> String {
@@ -368,6 +390,59 @@ async fn two_node_actor_system_delivery_sends_registered_string_payloads() {
   let received_a = recv_until(&mut rx_a, String::from("to-a")).await;
   assert_eq!(received_b, String::from("to-b"));
   assert_eq!(received_a, String::from("to-a"));
+
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn two_node_remote_deployment_spawns_actor_and_delivers_user_message() {
+  let child_name = "deployed-b";
+  let node_b = build_node(reserve_port(), 62);
+  let node_a = build_node_with_deployer(reserve_port(), 61, remote_deployer_for_child(child_name, &node_b.address));
+  let (mut warm_rx_a, warm_path_a) = spawn_recording_actor(&node_a.system, "deployment-warm-a");
+  let (mut warm_rx, warm_path) = spawn_recording_actor(&node_b.system, "deployment-warm-b");
+  let mut warm_ref = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &warm_path))
+    .expect("node A should resolve warm target on node B");
+  let mut warm_ref_a = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &warm_path_a))
+    .expect("node B should resolve warm target on node A");
+  warm_bidirectional_remote_delivery(&mut warm_ref, &mut warm_rx, &mut warm_ref_a, &mut warm_rx_a).await;
+  let (target_tx, mut target_rx) = mpsc::unbounded_channel();
+  node_b.system.extended().register_deployable_actor_factory("recording-string", move |payload: AnyMessage| {
+    let payload =
+      payload.downcast_ref::<String>().ok_or_else(|| DeployableFactoryError::new("payload must be String"))?;
+    if payload != "factory-payload" {
+      return Err(DeployableFactoryError::new("unexpected factory payload"));
+    }
+    let tx = target_tx.clone();
+    Ok(Props::from_fn(move || RecordingStringActor::new(tx.clone())))
+  });
+  let (unused_tx, _unused_rx) = mpsc::unbounded_channel();
+  let props = Props::from_fn(move || RecordingStringActor::new(unused_tx.clone())).with_deployable_metadata(
+    DeployablePropsMetadata::new("recording-string", AnyMessage::new(String::from("factory-payload"))),
+  );
+  let system_a = node_a.system.clone();
+  let child = tokio::task::spawn_blocking(move || system_a.actor_of_named(&props, child_name))
+    .await
+    .expect("blocking spawn should complete")
+    .expect("remote child should spawn");
+
+  let created_path = child.actor_ref().canonical_path().expect("deployed child canonical path");
+  let mut local_created_ref =
+    node_b.system.resolve_actor_ref(created_path.clone()).expect("target node should resolve deployed child locally");
+  local_created_ref.try_tell(AnyMessage::new(String::from("local-deployed"))).expect("local send to deployed child");
+  let local_received = recv_until(&mut target_rx, String::from("local-deployed")).await;
+  assert_eq!(local_received, String::from("local-deployed"));
+
+  let mut actor_ref = child.actor_ref().clone();
+  actor_ref.try_tell(AnyMessage::new(String::from("deployed-message"))).expect("send to deployed child");
+
+  let received = recv_until(&mut target_rx, String::from("deployed-message")).await;
+  assert_eq!(received, String::from("deployed-message"));
 
   node_a.shutdown().await;
   node_b.shutdown().await;

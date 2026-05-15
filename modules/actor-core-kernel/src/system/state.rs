@@ -10,7 +10,10 @@ use super::{
   extra_top_levels::ExtraTopLevels,
   guardian::{GuardianKind, GuardiansState},
   registries::Registries,
-  remote::{RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig},
+  remote::{
+    RemoteAuthorityError, RemoteAuthorityRegistry, RemoteDeploymentHook, RemoteDeploymentHookDynShared,
+    RemoteDeploymentOutcome, RemoteDeploymentRequest, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig,
+  },
   temp_actors::TempActors,
 };
 use crate::actor::actor_ref_provider::{

@@ -5,8 +5,8 @@ use crate::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
-    messaging::AnyMessageView,
-    props::{MailboxConfig, Props},
+    messaging::{AnyMessage, AnyMessageView},
+    props::{DeployablePropsMetadata, MailboxConfig, Props},
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
 };
@@ -54,6 +54,33 @@ fn clone_preserves_tags() {
   let props = Props::from_fn(|| TestActor).with_tags(["a", "b"]);
   let cloned = props.clone();
   assert_eq!(*cloned.tags(), *props.tags());
+}
+
+#[test]
+fn deployable_metadata_is_absent_by_default() {
+  let props = Props::from_fn(|| TestActor);
+
+  assert!(props.deployable_metadata().is_none());
+}
+
+#[test]
+fn deployable_metadata_exposes_factory_id_and_payload_without_factory_pointer() {
+  let props = Props::from_fn(|| TestActor)
+    .with_deployable_metadata(DeployablePropsMetadata::new("echo", AnyMessage::new(String::from("payload"))));
+  let metadata = props.deployable_metadata().expect("deployable metadata");
+
+  assert_eq!(metadata.factory_id(), "echo");
+  assert_eq!(metadata.payload().downcast_ref::<String>().map(String::as_str), Some("payload"));
+}
+
+#[test]
+fn clone_preserves_deployable_metadata() {
+  let props = Props::from_fn(|| TestActor)
+    .with_deployable_metadata(DeployablePropsMetadata::new("echo", AnyMessage::new(String::from("payload"))));
+
+  let cloned = props.clone();
+
+  assert_eq!(cloned.deployable_metadata().map(DeployablePropsMetadata::factory_id), Some("echo"));
 }
 
 #[test]

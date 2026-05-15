@@ -136,6 +136,42 @@ fn remote_shared_not_started(config: RemoteConfig, transport: TestRemoteTranspor
   RemoteShared::new(Remote::new(transport, config, EventPublisher::new(system.downgrade()), serialization_extension()))
 }
 
+#[test]
+fn route_deployment_event_returns_failure_when_daemon_queue_closed() {
+  let (sender, receiver) = mpsc::channel(1);
+  drop(receiver);
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let request = RemoteDeploymentCreateRequest::new(
+    1,
+    2,
+    String::from("/user"),
+    String::from("child"),
+    String::from("echo"),
+    String::from("origin@127.0.0.1:2551"),
+    1,
+    None,
+    Bytes::from_static(b"payload"),
+  );
+  let event = RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new("origin@127.0.0.1:2551"),
+    frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateRequest(request)),
+    now_ms:    99,
+  };
+
+  let routed = route_deployment_event(event, &sender, &dispatcher).expect("enqueue failure should be routed");
+
+  match routed {
+    | RemoteEvent::OutboundDeployment { remote, pdu: RemoteDeploymentPdu::CreateFailure(failure), now_ms } => {
+      assert_eq!(remote, Address::new("origin", "127.0.0.1", 2551));
+      assert_eq!(failure.correlation_hi(), 1);
+      assert_eq!(failure.correlation_lo(), 2);
+      assert_eq!(failure.code(), RemoteDeploymentFailureCode::SpawnFailed);
+      assert_eq!(now_ms, 99);
+    },
+    | other => panic!("expected outbound deployment failure, got {other:?}"),
+  }
+}
+
 fn activate_association(remote: &RemoteShared, target: &Address) {
   remote
     .handle_event(RemoteEvent::OutboundEnqueued {

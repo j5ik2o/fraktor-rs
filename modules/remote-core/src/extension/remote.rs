@@ -26,7 +26,10 @@ use crate::{
   },
   instrument::{NoopInstrument, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{AckPdu, ControlPdu, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
+  wire::{
+    AckPdu, ControlPdu, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp, RemoteDeploymentPdu,
+    WireFrame,
+  },
 };
 
 /// Core remoting lifecycle implementation backed by a transport port.
@@ -211,6 +214,9 @@ impl Remote {
         Ok(())
       },
       | RemoteEvent::OutboundControl { remote, pdu, now_ms } => self.handle_outbound_control(&remote, pdu, now_ms),
+      | RemoteEvent::OutboundDeployment { remote, pdu, now_ms } => {
+        self.handle_outbound_deployment(&remote, pdu, now_ms)
+      },
       | RemoteEvent::RedeliveryTimerFired { authority, now_ms } => {
         self.handle_redelivery_timer_fired(&authority, now_ms)
       },
@@ -272,6 +278,17 @@ impl Remote {
     self.lifecycle.ensure_running()?;
     self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)?;
     map_wire_delivery_result(remote, self.transport.send_control(remote, pdu))
+  }
+
+  fn handle_outbound_deployment(
+    &mut self,
+    remote: &Address,
+    pdu: RemoteDeploymentPdu,
+    _now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.lifecycle.ensure_running()?;
+    self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)?;
+    map_wire_delivery_result(remote, self.transport.send_deployment(remote, pdu))
   }
 
   fn ensure_association(&mut self, remote: Address) -> Result<usize, RemotingError> {
@@ -387,6 +404,10 @@ impl Remote {
       | WireFrame::Handshake(pdu) => self.handle_inbound_handshake_pdu(pdu, now_ms),
       | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(authority, &pdu, now_ms),
       | WireFrame::Ack(pdu) => self.handle_inbound_ack_pdu(authority, &pdu, now_ms),
+      | WireFrame::Deployment(pdu) => {
+        tracing::warn!(?pdu, "deployment frame reached remote core without adapter routing");
+        Ok(())
+      },
     }
   }
 

@@ -6,6 +6,8 @@
 
 mod inbound_dispatch;
 mod monotonic_millis;
+mod remote_authority;
 
 pub(crate) use inbound_dispatch::{authority_for_frame, run_inbound_dispatch};
 pub(crate) use monotonic_millis::std_instant_elapsed_millis;
+pub(crate) use remote_authority::parse_remote_authority;

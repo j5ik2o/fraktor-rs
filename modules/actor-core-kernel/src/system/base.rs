@@ -20,7 +20,7 @@ use fraktor_utils_core_rs::{
 use super::{
   ActorSystemWeak, Blocker, ExtendedActorSystem, TerminationSignal,
   guardian::{NoopGuardianActor, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
-  remote::RemotingConfig,
+  remote::{RemoteDeploymentOutcome, RemoteDeploymentRequest, RemotingConfig},
 };
 use crate::{
   actor::{
@@ -32,6 +32,7 @@ use crate::{
     },
     actor_ref_provider::ActorRefResolveError,
     actor_selection::ActorSelection,
+    deploy::{RemoteScope, Scope},
     error::SendError,
     messaging::{AnyMessage, AskResult, system_message::SystemMessage},
     props::{MailboxRequirement, Props},
@@ -51,7 +52,9 @@ use crate::{
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
+const TARGET_PARENT_NOT_LOCAL: &str = "target parent path is not a local actor";
 const CREATE_SEND_FAILED: &str = "create system message delivery failed";
+const REMOTE_DEPLOYMENT_RESERVED_PID: Pid = Pid::new(u64::MAX, u32::MAX);
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystem {
@@ -345,6 +348,29 @@ impl ActorSystem {
     self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
+  /// Spawns a named child under the actor identified by `parent_path`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the parent cannot be resolved or the child cannot be created.
+  pub fn spawn_child_at(&self, parent_path: ActorPath, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
+    let parent_pid = match self.pid_by_path(&parent_path) {
+      | Some(pid) => pid,
+      | None => {
+        let actor_ref = self
+          .resolve_actor_ref(parent_path)
+          .map_err(|error| SpawnError::invalid_props(format!("target parent path not found: {error:?}")))?;
+        let pid = actor_ref.pid();
+        if actor_ref.system_state().is_none() || self.actor_ref_by_pid(pid).is_none() {
+          return Err(SpawnError::invalid_props(TARGET_PARENT_NOT_LOCAL));
+        }
+        pid
+      },
+    };
+    let named_props = props.clone().with_name(name);
+    self.spawn_child_local(parent_pid, &named_props)
+  }
+
   /// Emits a log event with the specified severity.
   pub fn emit_log(
     &self,
@@ -448,13 +474,23 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
   pub(crate) fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.ensure_spawnable_parent(parent)?;
+    self.spawn_with_parent(Some(parent), props)
+  }
+
+  fn spawn_child_local(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.ensure_spawnable_parent(parent)?;
+    self.spawn_local_with_parent(Some(parent), props)
+  }
+
+  fn ensure_spawnable_parent(&self, parent: Pid) -> Result<(), SpawnError> {
     if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
       return Err(SpawnError::system_not_bootstrapped());
     }
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
-    self.spawn_with_parent(Some(parent), props)
+    Ok(())
   }
 
   /// Returns an [`ActorRef`] for the specified pid if the actor is registered.
@@ -545,8 +581,42 @@ impl ActorSystem {
   }
 
   fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {
+    if let Some(child) = self.try_remote_deployment(parent, props)? {
+      return Ok(child);
+    }
+    self.spawn_local_with_parent(parent, props)
+  }
+
+  fn spawn_local_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
+    self.spawn_local_with_assigned_name(parent, props, pid, name)
+  }
+
+  fn spawn_local_with_reserved_name(
+    &self,
+    parent: Option<Pid>,
+    props: &Props,
+    reserved_name: String,
+  ) -> Result<ChildRef, SpawnError> {
+    let pid = self.state.reassign_name_to_allocated_pid(parent, &reserved_name, REMOTE_DEPLOYMENT_RESERVED_PID)?;
+    let name = reserved_name.clone();
+    match self.spawn_local_with_assigned_name(parent, props, pid, reserved_name) {
+      | Ok(child) => Ok(child),
+      | Err(error) => {
+        self.state.release_name(parent, &name);
+        Err(error)
+      },
+    }
+  }
+
+  fn spawn_local_with_assigned_name(
+    &self,
+    parent: Option<Pid>,
+    props: &Props,
+    pid: Pid,
+    name: String,
+  ) -> Result<ChildRef, SpawnError> {
     let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
 
     // AC-H4 TOCTOU-safe order: registration must complete before the `Create`
@@ -563,6 +633,54 @@ impl ActorSystem {
     self.perform_create_handshake(parent, pid, &cell)?;
 
     Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
+  }
+
+  fn try_remote_deployment(&self, parent: Option<Pid>, props: &Props) -> Result<Option<ChildRef>, SpawnError> {
+    let Some(parent_pid) = parent else {
+      return Ok(None);
+    };
+    let Some(name_hint) = props.name() else {
+      return Ok(None);
+    };
+    let Some((child_path, scope)) = self.remote_deployment_for(parent_pid, name_hint) else {
+      return Ok(None);
+    };
+    let Some(deployable_metadata) = props.deployable_metadata().cloned() else {
+      return Err(SpawnError::invalid_props("remote deployment requires deployable props metadata"));
+    };
+    let name = self.state.assign_name(parent, Some(name_hint), REMOTE_DEPLOYMENT_RESERVED_PID)?;
+    let request = RemoteDeploymentRequest::new(
+      parent_pid,
+      REMOTE_DEPLOYMENT_RESERVED_PID,
+      name.clone(),
+      child_path,
+      scope,
+      Some(deployable_metadata),
+    );
+    match self.state.deploy_remote_child(request) {
+      | RemoteDeploymentOutcome::UseLocalDeployment => {
+        let child = self.spawn_local_with_reserved_name(parent, props, name)?;
+        Ok(Some(child))
+      },
+      | RemoteDeploymentOutcome::RemoteCreated(actor_ref) => {
+        self.state.release_name(parent, &name);
+        Ok(Some(ChildRef::new(actor_ref, self.state.clone())))
+      },
+      | RemoteDeploymentOutcome::Failed(reason) => {
+        self.state.release_name(parent, &name);
+        Err(SpawnError::invalid_props(reason))
+      },
+    }
+  }
+
+  fn remote_deployment_for(&self, parent: Pid, name: &str) -> Option<(ActorPath, RemoteScope)> {
+    let child_path = self.state.actor_path(&parent)?.child(name);
+    let deployer = self.state.deployer();
+    let deploy = deployer.deploy_for(&child_path.to_relative_string())?;
+    match deploy.scope() {
+      | Scope::Remote(scope) => Some((child_path, scope.clone())),
+      | Scope::Local => None,
+    }
   }
 
   /// Installs the bidirectional supervision watch between `parent` and the

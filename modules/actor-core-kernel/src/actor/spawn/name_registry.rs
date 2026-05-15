@@ -50,6 +50,18 @@ impl NameRegistry {
     self.entries.get(name).copied()
   }
 
+  /// Replaces the pid for `name` when it is still bound to `expected`.
+  pub fn replace_if(&mut self, name: &str, expected: Pid, pid: Pid) -> bool {
+    let Some(entry) = self.entries.get_mut(name) else {
+      return false;
+    };
+    if *entry != expected {
+      return false;
+    }
+    *entry = pid;
+    true
+  }
+
   /// Removes the provided name from the registry and returns the previous pid.
   pub fn remove(&mut self, name: &str) -> Option<Pid> {
     self.entries.remove(name)

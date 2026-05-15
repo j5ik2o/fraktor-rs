@@ -8,6 +8,9 @@ use crate::config::{LargeMessageDestinations, RemoteCompressionConfig};
 /// Default handshake timeout (20 seconds), matching Pekko Artery advanced defaults.
 pub(crate) const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Default remote deployment request timeout.
+const DEFAULT_DEPLOYMENT_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Default shutdown flush timeout (5 seconds).
 const DEFAULT_SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -106,6 +109,7 @@ pub struct RemoteConfig {
   bind_hostname: Option<String>,
   bind_port: Option<u16>,
   handshake_timeout: Duration,
+  deployment_timeout: Duration,
   shutdown_flush_timeout: Duration,
   flight_recorder_capacity: usize,
   ack_send_window: u32,
@@ -151,6 +155,7 @@ impl RemoteConfig {
       bind_hostname: None,
       bind_port: None,
       handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
+      deployment_timeout: DEFAULT_DEPLOYMENT_TIMEOUT,
       shutdown_flush_timeout: DEFAULT_SHUTDOWN_FLUSH_TIMEOUT,
       flight_recorder_capacity: DEFAULT_FLIGHT_RECORDER_CAPACITY,
       ack_send_window: DEFAULT_ACK_SEND_WINDOW,
@@ -211,6 +216,18 @@ impl RemoteConfig {
   #[must_use]
   pub const fn with_handshake_timeout(mut self, timeout: Duration) -> Self {
     self.handshake_timeout = timeout;
+    self
+  }
+
+  /// Returns a copy with the given remote deployment request timeout.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `timeout` is zero.
+  #[must_use]
+  pub const fn with_deployment_timeout(mut self, timeout: Duration) -> Self {
+    assert!(!timeout.is_zero(), "deployment timeout must be greater than zero");
+    self.deployment_timeout = timeout;
     self
   }
 
@@ -564,6 +581,12 @@ impl RemoteConfig {
   #[must_use]
   pub const fn handshake_timeout(&self) -> Duration {
     self.handshake_timeout
+  }
+
+  /// Returns the remote deployment request timeout.
+  #[must_use]
+  pub const fn deployment_timeout(&self) -> Duration {
+    self.deployment_timeout
   }
 
   /// Returns the shutdown flush timeout.
