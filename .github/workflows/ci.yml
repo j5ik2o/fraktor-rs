@@ -224,6 +224,81 @@ jobs:
           name: fraktor-coverage
           fail_ci_if_error: true
 
+  # Codecov の外部 status が完了し、失敗していないことを CI Success に伝播する。
+  codecov-status:
+    name: Codecov Status
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    needs: coverage
+    if: always()
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Wait for Codecov status checks
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+          CODECOV_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const coverageResult = process.env.COVERAGE_RESULT;
+            if (coverageResult !== "success") {
+              throw new Error(`coverage failed or was skipped: ${coverageResult}`);
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const ref = process.env.CODECOV_SHA;
+            const requiredChecks = ["codecov/project"];
+
+            if (process.env.IS_PULL_REQUEST === "true") {
+              requiredChecks.push("codecov/patch");
+            } else {
+              core.info("Skipping codecov/patch outside pull_request events");
+            }
+
+            for (const checkName of requiredChecks) {
+              await waitForCheck(checkName);
+            }
+
+            async function waitForCheck(checkName) {
+              for (let attempt = 1; attempt <= 60; attempt += 1) {
+                const response = await github.rest.checks.listForRef({
+                  owner,
+                  repo,
+                  ref,
+                  check_name: checkName,
+                  per_page: 100,
+                });
+                const run = response.data.check_runs
+                  .filter((checkRun) => checkRun.name === checkName)
+                  .sort((left, right) => {
+                    const rightTime = Date.parse(right.started_at || right.created_at);
+                    const leftTime = Date.parse(left.started_at || left.created_at);
+                    return rightTime - leftTime;
+                  })[0];
+
+                if (run) {
+                  core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
+
+                  if (run.status === "completed") {
+                    if (run.conclusion === "success") {
+                      return;
+                    }
+
+                    throw new Error(`${checkName} failed with conclusion=${run.conclusion}`);
+                  }
+                } else {
+                  core.info(`${checkName}: waiting for Codecov check run (${attempt}/60)`);
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 10000));
+              }
+
+              throw new Error(`${checkName} did not report within timeout`);
+            }
+
   # Documentation build
   docs:
     name: Documentation
@@ -278,6 +353,7 @@ jobs:
       - test
       - integration-e2e
       - coverage
+      - codecov-status
       - docs
       - examples
     if: always()
@@ -302,6 +378,10 @@ jobs:
           fi
           if [[ "${{ needs.coverage.result }}" != "success" ]]; then
             echo "coverage failed"
+            exit 1
+          fi
+          if [[ "${{ needs['codecov-status'].result }}" != "success" ]]; then
+            echo "codecov-status failed"
             exit 1
           fi
           if [[ "${{ needs.docs.result }}" != "success" ]]; then
