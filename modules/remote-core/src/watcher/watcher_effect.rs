@@ -1,6 +1,6 @@
 //! Effects emitted by [`crate::watcher::WatcherState`].
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPath;
 
@@ -37,6 +37,15 @@ pub enum WatcherEffect {
     target:   ActorPath,
     /// Watchers that must be notified of termination.
     watchers: Vec<ActorPath>,
+  },
+  /// The remote node was declared terminated for event-stream publication.
+  AddressTerminated {
+    /// Terminated remote node.
+    node:               Address,
+    /// Human-readable termination reason metadata.
+    reason:             String,
+    /// Monotonic millis timestamp when the termination was observed.
+    observed_at_millis: u64,
   },
   /// The remote node has been quarantined and all its targets should be
   /// considered terminated.

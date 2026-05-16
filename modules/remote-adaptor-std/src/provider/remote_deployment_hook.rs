@@ -95,8 +95,8 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
     };
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
-    let receiver = self.dispatcher.register(correlation_hi, correlation_lo);
     let now_ms = std_instant_elapsed_millis(self.monotonic_epoch);
+    let receiver = self.dispatcher.register(correlation_hi, correlation_lo, target.to_string(), now_ms);
     if let Err(error) = self.event_sender.try_send(RemoteEvent::OutboundDeployment {
       remote: target,
       pdu: RemoteDeploymentPdu::CreateRequest(create_request),

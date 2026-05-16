@@ -17,7 +17,7 @@ use fraktor_actor_core_kernel_rs::{
     extension::ExtensionInstaller,
     messaging::{AnyMessage, system_message::SystemMessage},
   },
-  event::stream::CorrelationId,
+  event::stream::{CorrelationId, EventStreamSubscription},
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
@@ -44,7 +44,10 @@ use tokio::{
 
 use crate::{
   association::{parse_remote_authority, std_instant_elapsed_millis},
-  deployment::{DeploymentDaemonCommand, DeploymentResponse, DeploymentResponseDispatcher, spawn_deployment_daemon},
+  deployment::{
+    DeploymentDaemonCommand, DeploymentResponse, DeploymentResponseDispatcher, spawn_deployment_daemon,
+    subscribe_address_terminated,
+  },
   extension_installer::flush_gate::{StdFlushGate, schedule_flush_timers},
   tokio_remote_event_receiver::TokioMpscRemoteEventReceiver,
   transport::tcp::TcpRemoteTransport,
@@ -69,10 +72,11 @@ pub struct RemotingExtensionInstaller {
 }
 
 pub(super) struct RemotingRunState {
-  receiver:           Option<TokioMpscRemoteEventReceiver>,
-  handle:             Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
-  watcher_handle:     Option<JoinHandle<()>>,
-  deployment_handle:  Option<JoinHandle<()>>,
+  receiver: Option<TokioMpscRemoteEventReceiver>,
+  handle: Option<JoinHandle<(TokioMpscRemoteEventReceiver, Result<(), RemotingError>)>>,
+  watcher_handle: Option<JoinHandle<()>>,
+  deployment_handle: Option<JoinHandle<()>>,
+  deployment_address_terminated_subscription: Option<EventStreamSubscription>,
   termination_handle: Option<JoinHandle<()>>,
 }
 
@@ -123,10 +127,11 @@ struct ShutdownFlushContext {
 impl RemotingRunState {
   pub(super) const fn new() -> Self {
     Self {
-      receiver:           None,
-      handle:             None,
-      watcher_handle:     None,
-      deployment_handle:  None,
+      receiver: None,
+      handle: None,
+      watcher_handle: None,
+      deployment_handle: None,
+      deployment_address_terminated_subscription: None,
       termination_handle: None,
     }
   }
@@ -143,6 +148,7 @@ impl Drop for RemotingRunState {
     if let Some(handle) = self.deployment_handle.take() {
       handle.abort();
     }
+    self.deployment_address_terminated_subscription.take();
     if let Some(handle) = self.termination_handle.take() {
       handle.abort();
     }
@@ -329,6 +335,12 @@ impl RemotingExtensionInstaller {
       monotonic_epoch,
     )
     .map_err(remoting_build_error)?;
+    install_deployment_address_terminated_subscription_with_state(
+      &mut run_state,
+      system,
+      self.deployment_response_dispatcher.clone(),
+    )
+    .map_err(remoting_build_error)?;
     let shutdown_flush_context =
       ShutdownFlushContext { config: self.config.clone(), monotonic_epoch, flush_gate: self.flush_gate.clone() };
     spawn_shutdown_on_system_termination(
@@ -417,6 +429,7 @@ pub(super) fn rollback_started_remote(
       if let Some(handle) = run_state.deployment_handle.take() {
         handle.abort();
       }
+      run_state.deployment_address_terminated_subscription.take();
       if let Some(handle) = run_state.termination_handle.take() {
         handle.abort();
       }
@@ -474,6 +487,19 @@ fn spawn_deployment_daemon_with_state(
   }
   run_state.deployment_handle =
     Some(spawn_deployment_daemon(deployment_receiver, system, serialization_extension, event_sender, monotonic_epoch));
+  Ok(())
+}
+
+fn install_deployment_address_terminated_subscription_with_state(
+  run_state: &mut RemotingRunState,
+  system: &ActorSystem,
+  deployment_response_dispatcher: DeploymentResponseDispatcher,
+) -> Result<(), RemotingError> {
+  if run_state.deployment_address_terminated_subscription.is_some() {
+    return Err(RemotingError::AlreadyRunning);
+  }
+  run_state.deployment_address_terminated_subscription =
+    Some(subscribe_address_terminated(system, deployment_response_dispatcher));
   Ok(())
 }
 
@@ -565,6 +591,7 @@ async fn shutdown_remote_and_join(
     if let Some(handle) = run_state.deployment_handle.take() {
       handle.abort();
     }
+    run_state.deployment_address_terminated_subscription.take();
     run_state.handle.take()
   };
   let Some(handle) = handle else {

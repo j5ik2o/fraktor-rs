@@ -1,5 +1,5 @@
 #[cfg(feature = "alloc")]
-use alloc::string::String;
+use alloc::{format, string::String};
 #[cfg(feature = "alloc")]
 use core::time::Duration;
 
@@ -16,7 +16,7 @@ use crate::{
   dispatch::mailbox::metrics_event::MailboxMetricsEvent,
   event::{
     logging::{LogEvent, LogLevel},
-    stream::{AdapterFailureEvent, UnhandledMessageEvent},
+    stream::{AdapterFailureEvent, AddressTerminatedEvent, UnhandledMessageEvent},
   },
   serialization::{SerializationErrorEvent, SerializerId},
 };
@@ -170,6 +170,16 @@ fn event_stream_event_serialization_clone() {
     },
     | _ => panic!("Expected Serialization variants"),
   }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_address_terminated_clone() {
+  let payload =
+    AddressTerminatedEvent::new("remote-sys@10.0.0.1:2552", "Deemed unreachable by remote failure detector", 60_000);
+  let event = EventStreamEvent::AddressTerminated(payload.clone());
+  let cloned = event.clone();
+  assert_eq!(format!("{event:?}"), format!("{cloned:?}"));
 }
 
 #[cfg(feature = "alloc")]
