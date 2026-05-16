@@ -17,6 +17,8 @@ pub enum RemoteDeploymentFailureCode {
   Unsupported,
   /// The request was structurally invalid.
   InvalidRequest,
+  /// The target remote address terminated before create completed.
+  AddressTerminated,
 }
 
 impl RemoteDeploymentFailureCode {
@@ -29,6 +31,7 @@ impl RemoteDeploymentFailureCode {
       | Self::Timeout => 0x05,
       | Self::Unsupported => 0x06,
       | Self::InvalidRequest => 0x07,
+      | Self::AddressTerminated => 0x08,
     }
   }
 
@@ -41,6 +44,7 @@ impl RemoteDeploymentFailureCode {
       | 0x05 => Some(Self::Timeout),
       | 0x06 => Some(Self::Unsupported),
       | 0x07 => Some(Self::InvalidRequest),
+      | 0x08 => Some(Self::AddressTerminated),
       | _ => None,
     }
   }

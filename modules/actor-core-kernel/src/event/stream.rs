@@ -4,6 +4,7 @@
 
 mod actor_ref_subscriber;
 mod adapter_failure_event;
+mod address_terminated_event;
 mod backpressure_signal;
 mod base;
 mod classifier_key;
@@ -27,6 +28,7 @@ mod unhandled_message_event;
 
 pub use actor_ref_subscriber::ActorRefEventStreamSubscriber;
 pub use adapter_failure_event::AdapterFailureEvent;
+pub use address_terminated_event::AddressTerminatedEvent;
 pub use backpressure_signal::BackpressureSignal;
 pub use base::EventStream;
 pub use classifier_key::ClassifierKey;

@@ -16,7 +16,7 @@ use crate::{
   dispatch::mailbox::metrics_event::MailboxMetricsEvent,
   event::{
     logging::{LogEvent, LogLevel},
-    stream::{AdapterFailureEvent, UnhandledMessageEvent},
+    stream::{AdapterFailureEvent, AddressTerminatedEvent, UnhandledMessageEvent},
   },
   serialization::{SerializationErrorEvent, SerializerId},
 };
@@ -169,6 +169,23 @@ fn event_stream_event_serialization_clone() {
       assert_eq!(e1.serializer_id(), e2.serializer_id());
     },
     | _ => panic!("Expected Serialization variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_address_terminated_clone() {
+  let payload =
+    AddressTerminatedEvent::new("remote-sys@10.0.0.1:2552", "Deemed unreachable by remote failure detector", 60_000);
+  let event = EventStreamEvent::AddressTerminated(payload.clone());
+  let cloned = event.clone();
+  match (event, cloned) {
+    | (EventStreamEvent::AddressTerminated(left), EventStreamEvent::AddressTerminated(right)) => {
+      assert_eq!(left.authority(), right.authority());
+      assert_eq!(left.reason(), right.reason());
+      assert_eq!(left.observed_at_millis(), right.observed_at_millis());
+    },
+    | _ => panic!("Expected AddressTerminated variants"),
   }
 }
 

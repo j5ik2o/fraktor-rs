@@ -33,6 +33,8 @@ pub enum ClassifierKey {
   RemotingBackpressure,
   /// Remoting lifecycle change notification.
   RemotingLifecycle,
+  /// Remote node-level address termination notification.
+  AddressTerminated,
   /// Scheduler tick metrics snapshot.
   SchedulerTick,
   /// Tick driver activation snapshot.
@@ -59,6 +61,7 @@ impl ClassifierKey {
       | EventStreamEvent::RemoteAuthority(_) => Self::RemoteAuthority,
       | EventStreamEvent::RemotingBackpressure(_) => Self::RemotingBackpressure,
       | EventStreamEvent::RemotingLifecycle(_) => Self::RemotingLifecycle,
+      | EventStreamEvent::AddressTerminated(_) => Self::AddressTerminated,
       | EventStreamEvent::SchedulerTick(_) => Self::SchedulerTick,
       | EventStreamEvent::TickDriver(_) => Self::TickDriver,
       | EventStreamEvent::Extension { .. } => Self::Extension,

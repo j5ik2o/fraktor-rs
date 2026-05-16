@@ -15,9 +15,11 @@ use crate::{
   event::{
     logging::{LogEvent, LogLevel},
     stream::{
-      ClassifierKey, EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, tests::subscriber_handle,
+      AddressTerminatedEvent, ClassifierKey, EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber,
+      RemoteAuthorityEvent, RemotingLifecycleEvent, tests::subscriber_handle,
     },
   },
+  system::state::AuthorityState,
 };
 
 struct RecordingSubscriber {
@@ -57,6 +59,10 @@ fn dead_letter_event(payload: &str, timestamp_millis: u64) -> DeadLetterEntry {
     Some(Pid::new(9, 0)),
     Duration::from_millis(timestamp_millis),
   )
+}
+
+fn address_terminated_event(authority: &str, timestamp_millis: u64) -> AddressTerminatedEvent {
+  AddressTerminatedEvent::new(authority, "Deemed unreachable by remote failure detector", timestamp_millis)
 }
 
 #[test]
@@ -236,6 +242,29 @@ fn concrete_key_subscriber_receives_only_matching_events() {
 }
 
 #[test]
+fn address_terminated_subscriber_receives_only_address_events() {
+  let stream = EventStreamShared::default();
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let _subscription = stream.subscribe_with_key(ClassifierKey::AddressTerminated, &subscriber);
+
+  stream.publish(&EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::Started));
+  stream.publish(&EventStreamEvent::AddressTerminated(address_terminated_event("remote-sys@10.0.0.1:2552", 42)));
+  stream.publish(&EventStreamEvent::RemoteAuthority(RemoteAuthorityEvent::new(
+    "remote-sys@10.0.0.1:2552",
+    AuthorityState::Connected,
+  )));
+
+  let recorded = events.lock().clone();
+  assert_eq!(recorded.len(), 1);
+  assert!(matches!(
+    &recorded[0],
+    EventStreamEvent::AddressTerminated(event)
+      if event.authority() == "remote-sys@10.0.0.1:2552" && event.observed_at_millis() == 42
+  ));
+}
+
+#[test]
 fn all_key_subscriber_receives_all_event_variants() {
   let stream = EventStreamShared::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -244,13 +273,14 @@ fn all_key_subscriber_receives_all_event_variants() {
 
   stream.publish(&EventStreamEvent::Log(log_event("all-log", 1)));
   stream.publish(&EventStreamEvent::Lifecycle(lifecycle_event("all-lifecycle", 2)));
+  stream.publish(&EventStreamEvent::AddressTerminated(address_terminated_event("remote-sys@10.0.0.1:2552", 3)));
   stream.publish(&EventStreamEvent::Extension {
     name:    String::from("cluster"),
     payload: AnyMessage::new(String::from("all-extension")),
   });
 
   let recorded = events.lock().clone();
-  assert_eq!(recorded.len(), 3);
+  assert_eq!(recorded.len(), 4);
   assert!(recorded.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "all-log")));
   assert!(
     recorded
@@ -264,6 +294,10 @@ fn all_key_subscriber_receives_all_event_variants() {
     },
     | _ => false,
   }));
+  assert!(recorded.iter().any(|event| matches!(
+    event,
+    EventStreamEvent::AddressTerminated(address) if address.authority() == "remote-sys@10.0.0.1:2552"
+  )));
 }
 
 #[test]

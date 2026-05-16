@@ -1,4 +1,7 @@
-use std::string::{String, ToString};
+use std::{
+  string::{String, ToString},
+  time::Duration,
+};
 
 use bytes::Bytes;
 use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
@@ -11,14 +14,19 @@ use fraktor_actor_core_kernel_rs::{
     messaging::{AnyMessage, AnyMessageView},
     props::{DeployableFactoryError, Props},
   },
+  event::stream::{AddressTerminatedEvent, EventStreamEvent},
   serialization::{builtin::STRING_ID, default_serialization_extension_id},
   system::{ActorSystem, remote::RemotingConfig},
 };
 use fraktor_remote_core_rs::wire::{
-  RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentFailureCode, RemoteDeploymentPdu,
+  RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentCreateSuccess,
+  RemoteDeploymentFailureCode, RemoteDeploymentPdu,
 };
 
-use super::{DeploymentResponse, DeploymentResponseDispatcher, MAX_STALE_DEPLOYMENT_RESPONSES, handle_create_request};
+use super::{
+  DeploymentResponse, DeploymentResponseDispatcher, MAX_STALE_DEPLOYMENT_RESPONSES, handle_create_request,
+  subscribe_address_terminated,
+};
 
 struct TestActor;
 
@@ -63,6 +71,12 @@ fn request(system: &ActorSystem, factory_id: &str, child_name: &str, payload: By
     None,
     payload,
   )
+}
+
+impl DeploymentResponseDispatcher {
+  fn remote_created_len(&self) -> usize {
+    self.state.with_lock(|state| state.remote_created.values().map(|deployments| deployments.len()).sum())
+  }
 }
 
 #[test]
@@ -143,4 +157,111 @@ fn deployment_response_dispatcher_bounds_stale_responses() {
   }
 
   assert_eq!(dispatcher.stale_len(), MAX_STALE_DEPLOYMENT_RESPONSES);
+}
+
+#[test]
+fn successful_deployment_response_tracks_remote_created_child() {
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let receiver = dispatcher.register(7, 8, "remote-sys@10.0.0.1:2552", 10);
+
+  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+    7,
+    8,
+    String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
+  )));
+
+  let response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should complete");
+  assert!(matches!(response, DeploymentResponse::Success(_)));
+  assert_eq!(dispatcher.remote_created_len(), 1);
+}
+
+#[test]
+fn address_termination_cleans_remote_created_tracking() {
+  let system = system_with_factory();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let _subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(9, 10, "remote-sys@10.0.0.1:2552", 10);
+
+  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+    9,
+    10,
+    String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
+  )));
+  let _response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should complete");
+  assert_eq!(dispatcher.remote_created_len(), 1);
+
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    "remote-sys@10.0.0.1:2552",
+    "Deemed unreachable by remote failure detector",
+    20,
+  )));
+
+  assert_eq!(dispatcher.remote_created_len(), 0);
+}
+
+#[test]
+fn address_terminated_subscription_fails_matching_pending_deployment() {
+  let system = system_with_factory();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let _subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(1, 2, "remote-sys@10.0.0.1:2552", 10);
+
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    "remote-sys@10.0.0.1:2552",
+    "Deemed unreachable by remote failure detector",
+    20,
+  )));
+
+  let response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should fail");
+  let DeploymentResponse::Failure(failure) = response else {
+    panic!("address termination should produce failure");
+  };
+  assert_eq!(failure.correlation_hi(), 1);
+  assert_eq!(failure.correlation_lo(), 2);
+  assert_eq!(failure.code(), RemoteDeploymentFailureCode::AddressTerminated);
+  assert!(failure.reason().contains("remote-sys@10.0.0.1:2552"));
+}
+
+#[test]
+fn replayed_old_address_termination_is_ignored_for_new_pending_deployment() {
+  let system = system_with_factory();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let _subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(3, 4, "remote-sys@10.0.0.1:2552", 50);
+
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    "remote-sys@10.0.0.1:2552",
+    "old replayed termination",
+    20,
+  )));
+
+  assert!(receiver.try_recv().is_err());
+  dispatcher.cancel(3, 4);
+}
+
+#[test]
+fn late_deployment_response_after_address_termination_is_stale() {
+  let system = system_with_factory();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let _subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(5, 6, "remote-sys@10.0.0.1:2552", 10);
+
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    "remote-sys@10.0.0.1:2552",
+    "Deemed unreachable by remote failure detector",
+    20,
+  )));
+  let response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should fail");
+  assert!(matches!(
+    response,
+    DeploymentResponse::Failure(failure) if failure.code() == RemoteDeploymentFailureCode::AddressTerminated
+  ));
+
+  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+    5,
+    6,
+    String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/late"),
+  )));
+
+  assert_eq!(dispatcher.stale_len(), 1);
 }
