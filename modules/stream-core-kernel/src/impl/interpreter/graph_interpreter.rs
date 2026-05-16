@@ -632,6 +632,11 @@ impl GraphInterpreter {
   ) -> Result<bool, StreamError> {
     let mut step = FlowStageStep::default();
     self.append_flow_async_outputs(stage_index, &mut step)?;
+    if step.force_shutdown {
+      let shutdown_requested = self.take_flow_shutdown_request(stage_index)?;
+      let finished = self.finish_flow_stage_without_outputs(stage_index, shutdown_requested, true)?;
+      return Ok(step.progressed || finished);
+    }
     self.append_flow_timer_outputs(stage_index, &mut step)?;
     self.apply_flow_stage_input_if_ready(stage_index, ports, &mut step)?;
     if self.drain_flow_stage_pending_if_ready(stage_index, outgoing_buffered, &mut step)? {
@@ -906,6 +911,9 @@ impl GraphInterpreter {
     }
 
     let progressed = self.tick_sink_stage(sink_position, sink_index)?;
+    if self.sink_done[sink_position] {
+      return Ok(progressed);
+    }
     if !self.demand.has_demand() {
       return Ok(progressed);
     }

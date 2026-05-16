@@ -332,6 +332,49 @@ fn flow_failure_complete_updates_step_and_closes_sources() {
 }
 
 #[test]
+fn flow_async_restart_exhaustion_skips_timer_callback() {
+  struct AsyncRestartExhaustedFlowLogic {
+    timer_calls: ArcShared<SpinSyncMutex<u8>>,
+  }
+
+  impl FlowLogic for AsyncRestartExhaustedFlowLogic {
+    fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+      Ok(vec![input])
+    }
+
+    fn on_async_callback(&mut self) -> Result<Vec<DynValue>, StreamError> {
+      Err(StreamError::Failed)
+    }
+
+    fn on_timer(&mut self) -> Result<Vec<DynValue>, StreamError> {
+      let mut timer_calls = self.timer_calls.lock();
+      *timer_calls = timer_calls.saturating_add(1);
+      Ok(vec![Box::new(10_u32)])
+    }
+  }
+
+  let timer_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let coverage_timer_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let mut coverage_logic = AsyncRestartExhaustedFlowLogic { timer_calls: coverage_timer_calls.clone() };
+  let mut outputs = coverage_logic.apply(Box::new(1_u32)).expect("apply outputs");
+  assert_eq!(outputs.len(), 1);
+  assert_eq!(*outputs.remove(0).downcast::<u32>().expect("u32 output"), 1);
+  assert_eq!(coverage_logic.on_timer().expect("timer output").len(), 1);
+  assert_eq!(*coverage_timer_calls.lock(), 1);
+
+  let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
+  let (mut interpreter, _, flow_index, _) = single_flow_interpreter_with_logic(
+    Box::new(AsyncRestartExhaustedFlowLogic { timer_calls: timer_calls.clone() }),
+    Some(restart),
+  );
+  let ports = interpreter.flow_stage_ports(flow_index).expect("flow ports");
+
+  assert_eq!(interpreter.drive_ready_flow_stage_once(flow_index, &ports, false), Ok(true));
+  assert_eq!(*timer_calls.lock(), 0);
+  assert!(interpreter.flow_done_at(flow_index));
+}
+
+#[test]
 fn flow_drain_failure_complete_finishes_flow_without_failing_stream() {
   let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
   let (mut interpreter, _, flow_index, _) =
@@ -449,6 +492,76 @@ fn sink_failure_completes_when_restart_budget_is_exhausted() {
 
   assert_eq!(interpreter.apply_sink_failure(0, 1, StreamError::Failed), Ok(true));
   assert!(interpreter.sink_done[0]);
+}
+
+#[test]
+fn sink_drive_returns_after_tick_completes_sink() {
+  struct CompletingTickSinkLogic {
+    can_accept_calls: ArcShared<SpinSyncMutex<u8>>,
+  }
+
+  impl SinkLogic for CompletingTickSinkLogic {
+    fn can_accept_input(&self) -> bool {
+      let mut can_accept_calls = self.can_accept_calls.lock();
+      *can_accept_calls = can_accept_calls.saturating_add(1);
+      true
+    }
+
+    fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+      demand.request(1)
+    }
+
+    fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+      Ok(SinkDecision::Continue)
+    }
+
+    fn on_complete(&mut self) -> Result<(), StreamError> {
+      Ok(())
+    }
+
+    fn on_error(&mut self, _error: StreamError) {}
+
+    fn on_tick(&mut self, _demand: &mut DemandTracker) -> Result<bool, StreamError> {
+      Err(StreamError::Failed)
+    }
+  }
+
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let can_accept_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let coverage_can_accept_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let mut coverage_logic = CompletingTickSinkLogic { can_accept_calls: coverage_can_accept_calls.clone() };
+  let mut coverage_demand = DemandTracker::new();
+  assert!(coverage_logic.can_accept_input());
+  assert_eq!(coverage_logic.on_start(&mut coverage_demand), Ok(()));
+  assert_eq!(coverage_logic.on_push(Box::new(1_u32), &mut coverage_demand), Ok(SinkDecision::Continue));
+  assert_eq!(coverage_logic.on_complete(), Ok(()));
+  coverage_logic.on_error(StreamError::Failed);
+  assert_eq!(coverage_logic.on_tick(&mut coverage_demand), Err(StreamError::Failed));
+  assert_eq!(*coverage_can_accept_calls.lock(), 1);
+
+  let source = source_single_u32(source_outlet, 1);
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(CompletingTickSinkLogic { can_accept_calls: can_accept_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 0))),
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start_sinks().expect("start sink demand");
+
+  assert_eq!(interpreter.drive_sink_once(0), Ok(true));
+  assert!(interpreter.sink_done[0]);
+  assert_eq!(*can_accept_calls.lock(), 0);
 }
 
 #[test]
