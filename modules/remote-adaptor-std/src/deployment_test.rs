@@ -75,7 +75,7 @@ fn request(system: &ActorSystem, factory_id: &str, child_name: &str, payload: By
 
 impl DeploymentResponseDispatcher {
   fn remote_created_len(&self) -> usize {
-    self.state.with_lock(|state| state.remote_created.values().map(|deployments| deployments.len()).sum())
+    self.state.with_lock(|state| state.remote_created.values().sum())
   }
 }
 

@@ -42,7 +42,7 @@ const MAX_STALE_DEPLOYMENT_RESPONSES: usize = 128;
 
 type DeploymentCorrelation = (u64, u32);
 type PendingDeploymentResponses = BTreeMap<DeploymentCorrelation, PendingDeploymentResponse>;
-type RemoteCreatedDeployments = BTreeMap<String, BTreeMap<DeploymentCorrelation, String>>;
+type RemoteCreatedDeployments = BTreeMap<String, usize>;
 
 struct PendingDeploymentResponse {
   authority:         String,
@@ -132,13 +132,10 @@ impl DeploymentResponseDispatcher {
     let pending = self.state.with_lock(|state| {
       let pending = state.pending.remove(&key);
       if let Some(pending) = pending.as_ref()
-        && let DeploymentResponse::Success(success) = &response
+        && let DeploymentResponse::Success(_) = &response
       {
-        state
-          .remote_created
-          .entry(pending.authority.clone())
-          .or_default()
-          .insert(key, success.actor_path().to_string());
+        let count = state.remote_created.entry(pending.authority.clone()).or_insert(0);
+        *count = count.saturating_add(1);
       }
       pending
     });
