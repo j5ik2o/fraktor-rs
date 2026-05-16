@@ -1,5 +1,5 @@
 #[cfg(feature = "alloc")]
-use alloc::string::String;
+use alloc::{format, string::String};
 #[cfg(feature = "alloc")]
 use core::time::Duration;
 
@@ -179,14 +179,7 @@ fn event_stream_event_address_terminated_clone() {
     AddressTerminatedEvent::new("remote-sys@10.0.0.1:2552", "Deemed unreachable by remote failure detector", 60_000);
   let event = EventStreamEvent::AddressTerminated(payload.clone());
   let cloned = event.clone();
-  match (event, cloned) {
-    | (EventStreamEvent::AddressTerminated(left), EventStreamEvent::AddressTerminated(right)) => {
-      assert_eq!(left.authority(), right.authority());
-      assert_eq!(left.reason(), right.reason());
-      assert_eq!(left.observed_at_millis(), right.observed_at_millis());
-    },
-    | _ => panic!("Expected AddressTerminated variants"),
-  }
+  assert_eq!(format!("{event:?}"), format!("{cloned:?}"));
 }
 
 #[cfg(feature = "alloc")]

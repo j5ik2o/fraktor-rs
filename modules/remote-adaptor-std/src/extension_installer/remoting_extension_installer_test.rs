@@ -388,6 +388,26 @@ fn rollback_started_remote_drops_deployment_address_terminated_subscription() {
   assert!(receiver.try_recv().is_err());
 }
 
+#[test]
+fn install_deployment_address_terminated_subscription_rejects_duplicate_subscription() {
+  let system = create_noop_actor_system();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let mut run_state = RemotingRunState {
+    receiver: None,
+    handle: None,
+    watcher_handle: None,
+    deployment_handle: None,
+    deployment_address_terminated_subscription: Some(subscription),
+    termination_handle: None,
+  };
+
+  assert_eq!(
+    install_deployment_address_terminated_subscription_with_state(&mut run_state, &system, dispatcher),
+    Err(RemotingError::AlreadyRunning)
+  );
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn install_rolls_back_started_remote_when_handle_storage_fails() {
   let installer = RemotingExtensionInstaller::new(

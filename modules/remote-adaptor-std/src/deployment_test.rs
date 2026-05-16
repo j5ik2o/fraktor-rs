@@ -144,6 +144,25 @@ fn invalid_payload_returns_deserialization_failure() {
 }
 
 #[test]
+fn unexpected_payload_returns_factory_rejected_failure() {
+  let system = system_with_factory();
+  let serialization = system.extended().register_extension(&default_serialization_extension_id());
+
+  let pdu =
+    handle_create_request(&system, &serialization, request(&system, "echo", "worker", string_payload("unexpected")));
+
+  assert_eq!(
+    pdu,
+    RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+      1,
+      2,
+      RemoteDeploymentFailureCode::SpawnFailed,
+      String::from("unexpected payload"),
+    ))
+  );
+}
+
+#[test]
 fn deployment_response_dispatcher_bounds_stale_responses() {
   let dispatcher = DeploymentResponseDispatcher::default();
 
@@ -157,6 +176,22 @@ fn deployment_response_dispatcher_bounds_stale_responses() {
   }
 
   assert_eq!(dispatcher.stale_len(), MAX_STALE_DEPLOYMENT_RESPONSES);
+}
+
+#[test]
+fn deployment_response_dispatcher_records_stale_when_receiver_is_dropped() {
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let receiver = dispatcher.register(11, 12, "remote-sys@10.0.0.1:2552", 10);
+  drop(receiver);
+
+  dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+    11,
+    12,
+    RemoteDeploymentFailureCode::SpawnFailed,
+    String::from("late"),
+  )));
+
+  assert_eq!(dispatcher.stale_len(), 1);
 }
 
 #[test]
@@ -213,13 +248,17 @@ fn address_terminated_subscription_fails_matching_pending_deployment() {
   )));
 
   let response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should fail");
-  let DeploymentResponse::Failure(failure) = response else {
-    panic!("address termination should produce failure");
-  };
-  assert_eq!(failure.correlation_hi(), 1);
-  assert_eq!(failure.correlation_lo(), 2);
-  assert_eq!(failure.code(), RemoteDeploymentFailureCode::AddressTerminated);
-  assert!(failure.reason().contains("remote-sys@10.0.0.1:2552"));
+  assert_eq!(
+    response,
+    DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+      1,
+      2,
+      RemoteDeploymentFailureCode::AddressTerminated,
+      String::from(
+        "remote deployment target address terminated: authority=remote-sys@10.0.0.1:2552, reason=Deemed unreachable by remote failure detector",
+      ),
+    ))
+  );
 }
 
 #[test]
