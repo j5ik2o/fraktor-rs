@@ -1,6 +1,6 @@
 # remote モジュール ギャップ分析
 
-更新日: 2026-05-15 (16th edition / deployment response close 分類後の再検証)
+更新日: 2026-05-16 (17th edition / 現行ツリー再検証)
 
 ## 比較スコープ定義
 
@@ -39,6 +39,12 @@
 | Pekko protobuf control PDU byte compatibility | responsibility parity だけを対象にし、Pekko ノードとの wire-level 相互運用は目標にしない |
 
 raw declaration count は Scala / Java / JVM 固有 API を含む参考値であり、parity 分母には使わない。固定スコープでは、Rust の no_std / std 境界上で再現可能な remote actor transport 契約だけを分母にする。
+
+### 再検証メモ
+
+2026-05-16 時点の現行ツリーで、`modules/remote-core/src/lib.rs`、`modules/remote-adaptor-std/src/lib.rs`、`references/pekko/remote/src/main/scala/org/apache/pekko/remote/` を再確認した。`remote-core/src/domain/` は引き続き存在せず、`remote-core/src/` 直下の公開 modules が core 相当境界である。
+
+Pekko 側は `RemoteWatcher` が `AddressTerminatedTopic` へ `AddressTerminated` を publish する契約を持つ。一方、fraktor-rs 側は `WatcherState` / std watcher task による remote `DeathWatchNotification` と quarantine lifecycle はあるが、actor-core event stream に address-level termination topic 相当の公開契約はまだない。このため、残ギャップは前回同様 `AddressTerminated` integration に集約される。
 
 ## サマリー
 
