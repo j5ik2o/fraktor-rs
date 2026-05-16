@@ -10,10 +10,12 @@ use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_path::ActorPathParser,
+    extension::ExtensionInstaller,
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   event::stream::CorrelationId,
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
+  system::ActorSystemBuildError,
 };
 use fraktor_remote_core_rs::{
   address::{RemoteNodeId, UniqueAddress},
@@ -29,7 +31,7 @@ use tokio::{
 };
 
 use super::*;
-use crate::extension_installer::flush_gate::StdFlushNotification;
+use crate::{extension_installer::flush_gate::StdFlushNotification, transport::tcp::TcpRemoteTransport};
 
 struct TestRemoteTransport {
   addresses:    Vec<Address>,
@@ -319,6 +321,24 @@ async fn shutdown_remote_and_join_continues_when_shutdown_flush_is_not_started()
   .await
   .expect("shutdown should not hang")
   .expect("shutdown should continue after flush setup failure");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn install_rolls_back_started_remote_when_handle_storage_fails() {
+  let installer = RemotingExtensionInstaller::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]),
+    RemoteConfig::new("127.0.0.1"),
+  );
+  let (event_sender, _event_receiver) = mpsc::channel(1);
+  installer.event_sender.set(event_sender).expect("preloaded event sender should be accepted");
+  let system = create_noop_actor_system();
+
+  let error = installer.install(&system).expect_err("handle storage failure should abort install");
+
+  match error {
+    | ActorSystemBuildError::Configuration(message) => assert_eq!(message, ALREADY_INSTALLED),
+    | other => panic!("expected configuration error, got {other:?}"),
+  }
 }
 
 #[test]

@@ -12,7 +12,8 @@ use portable_atomic::{AtomicU64, Ordering};
 
 use super::resizer::Resizer;
 use crate::{
-  TypedActorRef, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal, props::TypedProps,
+  TypedActorRef, actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal,
+  props::TypedProps,
 };
 
 #[cfg(test)]
@@ -156,164 +157,249 @@ where
     let routee_props_mapper = self.routee_props_mapper;
 
     Behaviors::setup(move |ctx| {
-      let bf = behavior_factory.clone();
-      let props = TypedProps::<M>::from_behavior_factory(move || {
-        let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
-        factory()
-      });
-      let props = if let Some(ref mapper) = routee_props_mapper { mapper(props) } else { props };
-
-      let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
-      for _ in 0..pool_size {
-        match ctx.spawn_child_watched(&props) {
-          | Ok(child) => routee_vec.push(child.into_actor_ref()),
-          | Err(e) => {
-            let msg = alloc::format!("pool router failed to spawn child: {:?}", e);
-            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
-            break;
-          },
-        }
-      }
-
+      let props = build_pool_routee_props(&behavior_factory, routee_props_mapper.as_ref());
+      let routee_vec = spawn_pool_routees(ctx, &props, pool_size);
       let props_for_resize = resizer.as_ref().map(|_| props.clone());
-
       let routees = SharedLock::new_with_driver::<DefaultMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
-
-      let select_targets: ArcShared<RouteSelector<M>> = match strategy.clone() {
-        | PoolRouteStrategy::RoundRobin => {
-          let index = AtomicUsize::new(0);
-          ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
-            let idx = index.fetch_add(1, Ordering::Relaxed) % guard.len();
-            vec![guard[idx].clone()]
-          })
-        },
-        | PoolRouteStrategy::Broadcast => ArcShared::new(|guard: &[TypedActorRef<M>], _message: &M| guard.to_vec()),
-        | PoolRouteStrategy::Random { seed } => {
-          let random_seed = AtomicU64::new(0);
-          ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
-            let mixed_seed = random_seed.fetch_add(1, Ordering::Relaxed) ^ seed;
-            let idx = pseudo_random_index(mixed_seed, guard.len());
-            vec![guard[idx].clone()]
-          })
-        },
-        | PoolRouteStrategy::ConsistentHash { hash_fn } => {
-          ArcShared::new(move |guard: &[TypedActorRef<M>], message: &M| {
-            let idx = select_consistent_hash_index(guard, message, &*hash_fn);
-            vec![guard[idx].clone()]
-          })
-        },
-        | PoolRouteStrategy::SmallestMailbox => ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
-          let idx = select_smallest_mailbox_index(guard);
-          vec![guard[idx].clone()]
-        }),
-      };
-
+      let select_targets = pool_route_selector(strategy.clone());
       let broadcast_predicate_for_message = broadcast_predicate.clone();
       let resizer_for_msg = resizer.clone();
       let message_counter = AtomicU64::new(0);
       Behaviors::receive_message(move |ctx, message: &M| {
         if let Some(ref resizer) = resizer_for_msg {
           let counter = message_counter.fetch_add(1, Ordering::Relaxed);
-          // Pekko `ResizablePoolCell` 相当の順序で呼び出す:
-          // 1. `is_time_for_resize` を先にチェック（軽量、通常 false）
-          // 2. true の場合のみ mailbox スナップショットを取り、`report_message_count` → `resize` を
-          //    **同じスナップショット** で実行する。
-          //
-          // `report_message_count` は内部で `check_time` を更新するため、先に
-          // 呼んでしまうと `is_time_for_resize` の時刻差判定が常にゼロとなり
-          // resize が発火しなくなる（Pekko も同様の順序制約を持つ。
-          // 参照: `OptimalSizeExploringResizer.scala:201-203, 262` および
-          // `Resizer.scala:286-309`）。
-          if resizer.is_time_for_resize(counter) {
-            let mailbox_sizes = routees_for_msg.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
-            resizer.report_message_count(&mailbox_sizes, counter);
-            let delta = resizer.resize(&mailbox_sizes);
-            if delta > 0 {
-              if let Some(ref resize_props) = props_for_resize {
-                let mut new_routees = Vec::new();
-                for _ in 0..delta {
-                  match ctx.spawn_child_watched(resize_props) {
-                    | Ok(child) => new_routees.push(child.into_actor_ref()),
-                    | Err(e) => {
-                      let msg = alloc::format!("pool router resize failed to spawn child: {:?}", e);
-                      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
-                      break;
-                    },
-                  }
-                }
-                if !new_routees.is_empty() {
-                  routees_for_msg.with_lock(|guard| {
-                    guard.extend(new_routees);
-                  });
-                }
-              }
-            } else if delta < 0 {
-              let abs_delta = (-delta) as usize;
-              // Pekko 原典 (`Resizer.scala:305` の `currentRoutees.drop(...)`) と同じく
-              // 末尾の routee を停止対象にする。
-              let to_stop: Vec<TypedActorRef<M>> = {
-                routees_for_msg.with_lock(|guard| {
-                  let remove_count = abs_delta.min(guard.len().saturating_sub(1));
-                  let split_at = guard.len() - remove_count;
-                  guard.split_off(split_at)
-                })
-              };
-              for routee in &to_stop {
-                if let Err(e) = ctx.stop_actor_by_ref(routee) {
-                  ctx.system().emit_log(
-                    LogLevel::Warn,
-                    alloc::format!("pool router failed to stop routee during resize: {:?}", e),
-                    Some(ctx.pid()),
-                    None,
-                  );
-                }
-              }
-            }
-          }
+          maybe_resize_pool(ctx, &routees_for_msg, &props_for_resize, resizer, counter);
         }
-
-        let targets = {
-          let guard = routees_for_msg.with_lock(|routees| routees.clone());
-          if guard.is_empty() {
-            return Ok(Behaviors::same());
-          }
-          if let Some(predicate) = broadcast_predicate_for_message.as_ref() {
-            if predicate(message) { guard.to_vec() } else { select_targets(&guard, message) }
-          } else {
-            select_targets(&guard, message)
-          }
+        let Some(targets) =
+          select_pool_targets(&routees_for_msg, &select_targets, &broadcast_predicate_for_message, message)
+        else {
+          return Ok(Behaviors::same());
         };
-        for mut target in targets {
-          if let Err(error) = target.try_tell(message.clone()) {
-            ctx.system().emit_log(
-              LogLevel::Warn,
-              alloc::format!("pool router failed to deliver message to routee: {:?}", error),
-              Some(ctx.pid()),
-              None,
-            );
-          }
-        }
+        deliver_pool_message(ctx, targets, message);
         Ok(Behaviors::same())
       })
-      .receive_signal(move |_ctx, signal| match signal {
-        | BehaviorSignal::Terminated(terminated) => {
-          let pid = terminated.pid();
-          let is_empty = routees_for_sig.with_lock(|guard| {
-            if let Some(pos) = guard.iter().position(|r| r.pid() == pid) {
-              guard.remove(pos);
-            }
-            guard.is_empty()
-          });
-          if is_empty {
-            return Ok(Behaviors::stopped());
-          }
-          Ok(Behaviors::same())
-        },
-        | _ => Ok(Behaviors::same()),
-      })
+      .receive_signal(move |_ctx, signal| Ok(handle_pool_signal(&routees_for_sig, signal)))
     })
+  }
+}
+
+fn build_pool_routee_props<M>(
+  behavior_factory: &ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
+  routee_props_mapper: Option<&ArcShared<RouteePropsMapper<M>>>,
+) -> TypedProps<M>
+where
+  M: Send + Sync + Clone + 'static, {
+  let bf = behavior_factory.clone();
+  let props = TypedProps::<M>::from_behavior_factory(move || {
+    let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
+    factory()
+  });
+  if let Some(mapper) = routee_props_mapper { mapper(props) } else { props }
+}
+
+fn spawn_pool_routees<M>(
+  ctx: &mut TypedActorContext<'_, M>,
+  props: &TypedProps<M>,
+  pool_size: usize,
+) -> Vec<TypedActorRef<M>>
+where
+  M: Send + Sync + Clone + 'static, {
+  let mut routees = Vec::with_capacity(pool_size);
+  for _ in 0..pool_size {
+    match ctx.spawn_child_watched(props) {
+      | Ok(child) => routees.push(child.into_actor_ref()),
+      | Err(e) => {
+        let msg = alloc::format!("pool router failed to spawn child: {:?}", e);
+        ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
+        break;
+      },
+    }
+  }
+  routees
+}
+
+fn pool_route_selector<M>(strategy: PoolRouteStrategy<M>) -> ArcShared<RouteSelector<M>>
+where
+  M: Send + Sync + Clone + 'static, {
+  match strategy {
+    | PoolRouteStrategy::RoundRobin => {
+      let index = AtomicUsize::new(0);
+      ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
+        let idx = index.fetch_add(1, Ordering::Relaxed) % guard.len();
+        vec![guard[idx].clone()]
+      })
+    },
+    | PoolRouteStrategy::Broadcast => ArcShared::new(|guard: &[TypedActorRef<M>], _message: &M| guard.to_vec()),
+    | PoolRouteStrategy::Random { seed } => {
+      let random_seed = AtomicU64::new(0);
+      ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
+        let mixed_seed = random_seed.fetch_add(1, Ordering::Relaxed) ^ seed;
+        let idx = pseudo_random_index(mixed_seed, guard.len());
+        vec![guard[idx].clone()]
+      })
+    },
+    | PoolRouteStrategy::ConsistentHash { hash_fn } => {
+      ArcShared::new(move |guard: &[TypedActorRef<M>], message: &M| {
+        let idx = select_consistent_hash_index(guard, message, &*hash_fn);
+        vec![guard[idx].clone()]
+      })
+    },
+    | PoolRouteStrategy::SmallestMailbox => ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
+      let idx = select_smallest_mailbox_index(guard);
+      vec![guard[idx].clone()]
+    }),
+  }
+}
+
+fn maybe_resize_pool<M>(
+  ctx: &mut TypedActorContext<'_, M>,
+  routees: &SharedLock<Vec<TypedActorRef<M>>>,
+  props_for_resize: &Option<TypedProps<M>>,
+  resizer: &ArcShared<dyn Resizer>,
+  counter: u64,
+) where
+  M: Send + Sync + Clone + 'static, {
+  // Pekko `ResizablePoolCell` 相当の順序で呼び出す:
+  // 1. `is_time_for_resize` を先にチェック（軽量、通常 false）
+  // 2. true の場合のみ mailbox スナップショットを取り、`report_message_count` → `resize` を
+  //    **同じスナップショット** で実行する。
+  //
+  // `report_message_count` は内部で `check_time` を更新するため、先に
+  // 呼んでしまうと `is_time_for_resize` の時刻差判定が常にゼロとなり
+  // resize が発火しなくなる（Pekko も同様の順序制約を持つ。
+  // 参照: `OptimalSizeExploringResizer.scala:201-203, 262` および
+  // `Resizer.scala:286-309`）。
+  if !resizer.is_time_for_resize(counter) {
+    return;
+  }
+  let mailbox_sizes = routees.with_lock(|routees| observe_routee_mailbox_sizes(routees.as_slice()));
+  resizer.report_message_count(&mailbox_sizes, counter);
+  resize_pool_by_delta(ctx, routees, props_for_resize, resizer.resize(&mailbox_sizes));
+}
+
+fn resize_pool_by_delta<M>(
+  ctx: &mut TypedActorContext<'_, M>,
+  routees: &SharedLock<Vec<TypedActorRef<M>>>,
+  props_for_resize: &Option<TypedProps<M>>,
+  delta: i32,
+) where
+  M: Send + Sync + Clone + 'static, {
+  if delta > 0 {
+    if let Some(resize_props) = props_for_resize {
+      grow_pool_routees(ctx, routees, resize_props, delta);
+    }
+  } else if delta < 0 {
+    shrink_pool_routees(ctx, routees, delta);
+  }
+}
+
+fn grow_pool_routees<M>(
+  ctx: &mut TypedActorContext<'_, M>,
+  routees: &SharedLock<Vec<TypedActorRef<M>>>,
+  resize_props: &TypedProps<M>,
+  delta: i32,
+) where
+  M: Send + Sync + Clone + 'static, {
+  let mut new_routees = Vec::new();
+  for _ in 0..delta {
+    match ctx.spawn_child_watched(resize_props) {
+      | Ok(child) => new_routees.push(child.into_actor_ref()),
+      | Err(e) => {
+        let msg = alloc::format!("pool router resize failed to spawn child: {:?}", e);
+        ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
+        break;
+      },
+    }
+  }
+  if !new_routees.is_empty() {
+    routees.with_lock(|guard| {
+      guard.extend(new_routees);
+    });
+  }
+}
+
+fn shrink_pool_routees<M>(ctx: &mut TypedActorContext<'_, M>, routees: &SharedLock<Vec<TypedActorRef<M>>>, delta: i32)
+where
+  M: Send + Sync + Clone + 'static, {
+  let abs_delta = (-delta) as usize;
+  // Pekko 原典 (`Resizer.scala:305` の `currentRoutees.drop(...)`) と同じく
+  // 末尾の routee を停止対象にする。
+  let to_stop: Vec<TypedActorRef<M>> = {
+    routees.with_lock(|guard| {
+      let remove_count = abs_delta.min(guard.len().saturating_sub(1));
+      let split_at = guard.len() - remove_count;
+      guard.split_off(split_at)
+    })
+  };
+  for routee in &to_stop {
+    stop_pool_routee(ctx, routee);
+  }
+}
+
+fn stop_pool_routee<M>(ctx: &mut TypedActorContext<'_, M>, routee: &TypedActorRef<M>)
+where
+  M: Send + Sync + Clone + 'static, {
+  if let Err(e) = ctx.stop_actor_by_ref(routee) {
+    ctx.system().emit_log(
+      LogLevel::Warn,
+      alloc::format!("pool router failed to stop routee during resize: {:?}", e),
+      Some(ctx.pid()),
+      None,
+    );
+  }
+}
+
+fn select_pool_targets<M>(
+  routees: &SharedLock<Vec<TypedActorRef<M>>>,
+  select_targets: &ArcShared<RouteSelector<M>>,
+  broadcast_predicate: &Option<ArcShared<BroadcastPredicate<M>>>,
+  message: &M,
+) -> Option<Vec<TypedActorRef<M>>>
+where
+  M: Send + Sync + Clone + 'static, {
+  let guard = routees.with_lock(|routees| routees.clone());
+  if guard.is_empty() {
+    return None;
+  }
+  if broadcast_predicate.as_ref().is_some_and(|predicate| predicate(message)) {
+    Some(guard)
+  } else {
+    Some(select_targets(&guard, message))
+  }
+}
+
+fn deliver_pool_message<M>(ctx: &TypedActorContext<'_, M>, targets: Vec<TypedActorRef<M>>, message: &M)
+where
+  M: Send + Sync + Clone + 'static, {
+  for mut target in targets {
+    if let Err(error) = target.try_tell(message.clone()) {
+      ctx.system().emit_log(
+        LogLevel::Warn,
+        alloc::format!("pool router failed to deliver message to routee: {:?}", error),
+        Some(ctx.pid()),
+        None,
+      );
+    }
+  }
+}
+
+fn handle_pool_signal<M>(routees: &SharedLock<Vec<TypedActorRef<M>>>, signal: &BehaviorSignal) -> Behavior<M>
+where
+  M: Send + Sync + Clone + 'static, {
+  match signal {
+    | BehaviorSignal::Terminated(terminated) => {
+      let pid = terminated.pid();
+      let is_empty = routees.with_lock(|guard| {
+        if let Some(pos) = guard.iter().position(|r| r.pid() == pid) {
+          guard.remove(pos);
+        }
+        guard.is_empty()
+      });
+      if is_empty { Behaviors::stopped() } else { Behaviors::same() }
+    },
+    | _ => Behaviors::same(),
   }
 }
 

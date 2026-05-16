@@ -209,12 +209,101 @@ where
       && self.actor.persistence_context().state() == PersistentActorState::ProcessingCommands
   }
 
+  fn receive_journal_response(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    response: &JournalResponse,
+  ) -> Result<(), ActorError> {
+    let current_instance_id = self.actor.persistence_context().instance_id();
+    let recovery_running = self.is_recovery_running();
+    self.actor.handle_journal_response(response);
+    self.update_recovery_timeout_after_journal_response(ctx, response)?;
+    if recovery_running {
+      self.fail_on_recovery_journal_failure(response)?;
+    }
+    Self::fail_on_current_write_failure(response, current_instance_id)?;
+    if self.should_unstash_after_journal_response(response, current_instance_id) {
+      // unstash_all は Result<usize, ActorError>。`?` でエラーを伝播したうえで
+      // 件数 usize は分岐に不要なため捨てる (式文扱い)。
+      ctx.unstash_all()?;
+    }
+    Ok(())
+  }
+
+  fn fail_on_recovery_journal_failure(&self, response: &JournalResponse) -> Result<(), ActorError> {
+    match response {
+      | JournalResponse::ReplayMessagesFailure { cause } => Err(ActorError::fatal(format!(
+        "persistent actor stopped after replay failure for persistence id {}: {:?}",
+        self.actor.persistence_id(),
+        cause
+      ))),
+      | JournalResponse::HighestSequenceNrFailure { persistence_id, cause } => Err(ActorError::fatal(format!(
+        "persistent actor stopped after highest sequence number lookup failure for persistence id {}: {:?}",
+        persistence_id, cause
+      ))),
+      | _ => Ok(()),
+    }
+  }
+
+  fn fail_on_current_write_failure(response: &JournalResponse, current_instance_id: u32) -> Result<(), ActorError> {
+    if let JournalResponse::WriteMessageFailure { repr, cause, instance_id } = response
+      && *instance_id == current_instance_id
+    {
+      return Err(ActorError::fatal(format!(
+        "persistent actor stopped after write failure for persistence id {} sequence number {}: {:?}",
+        repr.persistence_id(),
+        repr.sequence_nr(),
+        cause
+      )));
+    }
+    Ok(())
+  }
+
+  fn receive_snapshot_response(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    response: &SnapshotResponse,
+  ) -> Result<(), ActorError> {
+    let should_unstash = should_unstash_after_snapshot_response(response);
+    self.actor.handle_snapshot_response(response, ctx);
+    self.update_recovery_timeout_after_snapshot_response(ctx, response)?;
+    if should_unstash && !self.is_recovery_running() && !self.actor.persistence_context().should_stash_commands() {
+      ctx.unstash_all()?;
+    }
+    Ok(())
+  }
+
+  fn receive_user_command(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
+  ) -> Result<(), ActorError> {
+    let recovery_running = self.is_recovery_running();
+    let should_stash = self.actor.persistence_context().should_stash_commands();
+    if recovery_running || should_stash {
+      return self.stash_current_message(ctx);
+    }
+    self.actor.handle_command(ctx, message)
+  }
+
   fn is_recovery_running(&mut self) -> bool {
     matches!(
       self.actor.persistence_context().state(),
       PersistentActorState::RecoveryStarted | PersistentActorState::Recovering
     )
   }
+}
+
+const fn should_unstash_after_snapshot_response(response: &SnapshotResponse) -> bool {
+  matches!(
+    response,
+    SnapshotResponse::SaveSnapshotSuccess { .. }
+      | SnapshotResponse::SaveSnapshotFailure { .. }
+      | SnapshotResponse::DeleteSnapshotSuccess { .. }
+      | SnapshotResponse::DeleteSnapshotFailure { .. }
+      | SnapshotResponse::DeleteSnapshotsSuccess { .. }
+      | SnapshotResponse::DeleteSnapshotsFailure { .. }
+  )
 }
 
 impl<A> Actor for PersistentActorAdapter<A>
@@ -247,61 +336,10 @@ where
 
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(response) = message.downcast_ref::<JournalResponse>() {
-      let current_instance_id = self.actor.persistence_context().instance_id();
-      let recovery_running = self.is_recovery_running();
-      self.actor.handle_journal_response(response);
-      self.update_recovery_timeout_after_journal_response(ctx, response)?;
-      if recovery_running {
-        match response {
-          | JournalResponse::ReplayMessagesFailure { cause } => {
-            return Err(ActorError::fatal(format!(
-              "persistent actor stopped after replay failure for persistence id {}: {:?}",
-              self.actor.persistence_id(),
-              cause
-            )));
-          },
-          | JournalResponse::HighestSequenceNrFailure { persistence_id, cause } => {
-            return Err(ActorError::fatal(format!(
-              "persistent actor stopped after highest sequence number lookup failure for persistence id {}: {:?}",
-              persistence_id, cause
-            )));
-          },
-          | _ => {},
-        }
-      }
-      if let JournalResponse::WriteMessageFailure { repr, cause, instance_id } = response
-        && *instance_id == current_instance_id
-      {
-        return Err(ActorError::fatal(format!(
-          "persistent actor stopped after write failure for persistence id {} sequence number {}: {:?}",
-          repr.persistence_id(),
-          repr.sequence_nr(),
-          cause
-        )));
-      }
-      if self.should_unstash_after_journal_response(response, current_instance_id) {
-        // unstash_all は Result<usize, ActorError>。`?` でエラーを伝播したうえで
-        // 件数 usize は分岐に不要なため捨てる (式文扱い)。
-        ctx.unstash_all()?;
-      }
-      return Ok(());
+      return self.receive_journal_response(ctx, response);
     }
     if let Some(response) = message.downcast_ref::<SnapshotResponse>() {
-      let should_unstash = matches!(
-        response,
-        SnapshotResponse::SaveSnapshotSuccess { .. }
-          | SnapshotResponse::SaveSnapshotFailure { .. }
-          | SnapshotResponse::DeleteSnapshotSuccess { .. }
-          | SnapshotResponse::DeleteSnapshotFailure { .. }
-          | SnapshotResponse::DeleteSnapshotsSuccess { .. }
-          | SnapshotResponse::DeleteSnapshotsFailure { .. }
-      );
-      self.actor.handle_snapshot_response(response, ctx);
-      self.update_recovery_timeout_after_snapshot_response(ctx, response)?;
-      if should_unstash && !self.is_recovery_running() && !self.actor.persistence_context().should_stash_commands() {
-        ctx.unstash_all()?;
-      }
-      return Ok(());
+      return self.receive_snapshot_response(ctx, response);
     }
     if let Some(tick) = message.downcast_ref::<RecoveryTick>() {
       self.handle_recovery_tick(ctx, *tick)?;
@@ -311,12 +349,7 @@ where
       self.actor.on_recovery_timed_out(signal);
       return Ok(());
     }
-    let recovery_running = self.is_recovery_running();
-    let should_stash = self.actor.persistence_context().should_stash_commands();
-    if recovery_running || should_stash {
-      return self.stash_current_message(ctx);
-    }
-    self.actor.handle_command(ctx, message)
+    self.receive_user_command(ctx, message)
   }
 
   fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {

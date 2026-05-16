@@ -1,7 +1,19 @@
+use core::sync::atomic::{AtomicBool, Ordering};
+use std::{
+  sync::{Arc, Barrier},
+  thread::{self, JoinHandle},
+};
+
 use crate::{
   actor::{Pid, messaging::system_message::SystemMessage},
   dispatch::mailbox::system_queue::SystemQueue,
 };
+
+const PRODUCERS: u64 = 4;
+const ITEMS_PER_PRODUCER: u64 = 200;
+const TOTAL: usize = (PRODUCERS * ITEMS_PER_PRODUCER) as usize;
+const CONSUMERS: usize = 2;
+const ROUNDS: usize = 50;
 
 #[test]
 fn fifo_ordering_is_preserved() {
@@ -32,60 +44,37 @@ fn len_tracks_push_and_pop_operations() {
   assert_eq!(queue.len(), 0);
 }
 
+#[test]
+#[should_panic(expected = "unexpected message variant")]
+fn collect_fifo_consumer_values_panics_on_unexpected_message() {
+  let queue = Arc::new(SystemQueue::new());
+  queue.push(SystemMessage::Stop);
+  let barrier = Arc::new(Barrier::new(1));
+  let done = Arc::new(AtomicBool::new(true));
+
+  let _ = collect_fifo_consumer_values(queue, barrier, done);
+}
+
+#[test]
+fn collect_all_fifo_values_includes_remaining_queue_items() {
+  let queue = SystemQueue::new();
+  queue.push(SystemMessage::Watch(Pid::new(42, 0)));
+
+  assert_eq!(collect_all_fifo_values(&queue, Vec::new()), vec![42]);
+}
+
 /// Regression test for GitHub issue #126: concurrent pushers + poppers must
 /// preserve per-producer FIFO order. The old `return_to_head()` broke this by
 /// reinserting the reversed chain one node at a time, interleaving with new pushes.
 #[test]
 fn concurrent_push_pop_preserves_per_producer_fifo() {
-  use core::sync::atomic::{AtomicBool, Ordering};
-  use std::{
-    sync::{Arc, Barrier},
-    thread,
-  };
-
-  const PRODUCERS: u64 = 4;
-  const ITEMS_PER_PRODUCER: u64 = 200;
-  const TOTAL: usize = (PRODUCERS * ITEMS_PER_PRODUCER) as usize;
-  const CONSUMERS: usize = 2;
-  const ROUNDS: usize = 50;
-
   for _ in 0..ROUNDS {
     let queue = Arc::new(SystemQueue::new());
     let done = Arc::new(AtomicBool::new(false));
     let barrier = Arc::new(Barrier::new((PRODUCERS as usize) + CONSUMERS));
 
-    let mut producer_handles = Vec::new();
-    for producer in 0..PRODUCERS {
-      let q = Arc::clone(&queue);
-      let b = Arc::clone(&barrier);
-      producer_handles.push(thread::spawn(move || {
-        b.wait();
-        let base = producer * ITEMS_PER_PRODUCER;
-        for seq in 0..ITEMS_PER_PRODUCER {
-          q.push(SystemMessage::Watch(Pid::new(base + seq, 0)));
-        }
-      }));
-    }
-
-    let mut consumer_handles = Vec::new();
-    for _ in 0..CONSUMERS {
-      let q = Arc::clone(&queue);
-      let b = Arc::clone(&barrier);
-      let d = Arc::clone(&done);
-      consumer_handles.push(thread::spawn(move || {
-        b.wait();
-        let mut collected = Vec::new();
-        loop {
-          match q.pop() {
-            | Some(SystemMessage::Watch(pid)) => collected.push(pid.value()),
-            | Some(_) => panic!("unexpected message variant"),
-            | None if d.load(Ordering::Acquire) => break,
-            | None => thread::yield_now(),
-          }
-        }
-        collected
-      }));
-    }
+    let producer_handles = spawn_fifo_producers(Arc::clone(&queue), Arc::clone(&barrier));
+    let consumer_handles = spawn_fifo_consumers(Arc::clone(&queue), Arc::clone(&barrier), Arc::clone(&done));
 
     for h in producer_handles {
       h.join().unwrap();
@@ -96,40 +85,98 @@ fn concurrent_push_pop_preserves_per_producer_fifo() {
 
     // Verify per-producer FIFO: within each consumer's output,
     // items from the same producer must appear in push order.
-    for (cidx, seq) in consumer_results.iter().enumerate() {
-      for producer in 0..PRODUCERS {
-        let base = producer * ITEMS_PER_PRODUCER;
-        let end = base + ITEMS_PER_PRODUCER;
-        let producer_items: Vec<u64> = seq.iter().copied().filter(|&v| v >= base && v < end).collect();
-        for w in producer_items.windows(2) {
-          assert!(
-            w[0] < w[1],
-            "FIFO violated: consumer {cidx}, producer {producer}: {v0} before {v1}",
-            v0 = w[0],
-            v1 = w[1],
-          );
-        }
-      }
-    }
+    assert_per_producer_fifo(&consumer_results);
+    assert_eq!(
+      collect_all_fifo_values(&queue, consumer_results),
+      expected_fifo_values(),
+      "all messages must be delivered exactly once"
+    );
+  }
+}
 
-    let mut all_values: Vec<u64> = consumer_results.into_iter().flatten().collect();
-    while let Some(msg) = queue.pop() {
-      if let SystemMessage::Watch(pid) = msg {
-        all_values.push(pid.value());
-      }
-    }
-
-    all_values.sort();
-    let mut expected: Vec<u64> = Vec::with_capacity(TOTAL);
-    for producer in 0..PRODUCERS {
+fn spawn_fifo_producers(queue: Arc<SystemQueue>, barrier: Arc<Barrier>) -> Vec<JoinHandle<()>> {
+  let mut handles = Vec::new();
+  for producer in 0..PRODUCERS {
+    let q = Arc::clone(&queue);
+    let b = Arc::clone(&barrier);
+    handles.push(thread::spawn(move || {
+      b.wait();
       let base = producer * ITEMS_PER_PRODUCER;
       for seq in 0..ITEMS_PER_PRODUCER {
-        expected.push(base + seq);
+        q.push(SystemMessage::Watch(Pid::new(base + seq, 0)));
       }
-    }
-    expected.sort();
-    assert_eq!(all_values, expected, "all messages must be delivered exactly once");
+    }));
   }
+  handles
+}
+
+fn spawn_fifo_consumers(
+  queue: Arc<SystemQueue>,
+  barrier: Arc<Barrier>,
+  done: Arc<AtomicBool>,
+) -> Vec<JoinHandle<Vec<u64>>> {
+  let mut handles = Vec::new();
+  for _ in 0..CONSUMERS {
+    let q = Arc::clone(&queue);
+    let b = Arc::clone(&barrier);
+    let d = Arc::clone(&done);
+    handles.push(thread::spawn(move || collect_fifo_consumer_values(q, b, d)));
+  }
+  handles
+}
+
+fn collect_fifo_consumer_values(queue: Arc<SystemQueue>, barrier: Arc<Barrier>, done: Arc<AtomicBool>) -> Vec<u64> {
+  barrier.wait();
+  let mut collected = Vec::new();
+  loop {
+    match queue.pop() {
+      | Some(SystemMessage::Watch(pid)) => collected.push(pid.value()),
+      | Some(_) => panic!("unexpected message variant"),
+      | None if done.load(Ordering::Acquire) => break,
+      | None => thread::yield_now(),
+    }
+  }
+  collected
+}
+
+fn assert_per_producer_fifo(consumer_results: &[Vec<u64>]) {
+  for (consumer_index, sequence) in consumer_results.iter().enumerate() {
+    for producer in 0..PRODUCERS {
+      assert_producer_fifo(consumer_index, producer, sequence);
+    }
+  }
+}
+
+fn assert_producer_fifo(consumer_index: usize, producer: u64, sequence: &[u64]) {
+  let base = producer * ITEMS_PER_PRODUCER;
+  let end = base + ITEMS_PER_PRODUCER;
+  let producer_items: Vec<u64> = sequence.iter().copied().filter(|&value| value >= base && value < end).collect();
+  for window in producer_items.windows(2) {
+    assert!(window[0] < window[1], "FIFO violated for consumer {consumer_index}, producer {producer}",);
+  }
+}
+
+fn collect_all_fifo_values(queue: &SystemQueue, consumer_results: Vec<Vec<u64>>) -> Vec<u64> {
+  let mut all_values: Vec<u64> = consumer_results.into_iter().flatten().collect();
+  while let Some(msg) = queue.pop() {
+    if let SystemMessage::Watch(pid) = msg {
+      all_values.push(pid.value());
+    }
+  }
+  all_values.sort();
+  all_values
+}
+
+fn expected_fifo_values() -> Vec<u64> {
+  let mut expected = Vec::with_capacity(TOTAL);
+  for producer in 0..PRODUCERS {
+    let base = producer * ITEMS_PER_PRODUCER;
+    for seq in 0..ITEMS_PER_PRODUCER {
+      expected.push(base + seq);
+    }
+  }
+  expected.sort();
+  expected
 }
 
 /// Verify per-producer FIFO: items from each producer appear in the

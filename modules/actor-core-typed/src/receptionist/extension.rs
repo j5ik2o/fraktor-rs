@@ -1,6 +1,10 @@
 //! Receptionist runtime implementation details.
 
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{
+  collections::BTreeMap,
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::any::TypeId;
 
 use fraktor_actor_core_kernel_rs::{
@@ -40,6 +44,13 @@ pub(crate) struct ReceptionistExtensionId;
 pub(crate) enum WatchTarget {
   RegisteredActor(ActorRef),
   Subscriber(TypedActorRef<Listing>),
+}
+
+struct ReceptionistCommandContext<'a, Watch> {
+  state:        &'a mut ReceptionistState,
+  system:       &'a ActorSystem,
+  origin:       Option<Pid>,
+  watch_target: &'a mut Watch,
 }
 
 /// Receptionist actor that manages service registrations and subscriptions.
@@ -282,106 +293,177 @@ pub(crate) fn handle_command<Watch>(
 ) -> Result<(), ActorError>
 where
   Watch: FnMut(WatchTarget) -> Result<(), ActorError>, {
+  let mut context = ReceptionistCommandContext { state, system, origin, watch_target: &mut watch_target };
   match command {
     | ReceptionistCommand::Register { service_id, type_id, actor_ref, reply_to } => {
-      let key = (service_id.clone(), *type_id);
-      let already_registered = state
-        .registrations
-        .get(&key)
-        .is_some_and(|entry| entry.iter().any(|existing| existing.pid() == actor_ref.pid()));
-      if !already_registered {
-        watch_target(WatchTarget::RegisteredActor(actor_ref.clone()))?;
-        state.registrations.entry(key.clone()).or_default().push(actor_ref.clone());
-        notify_subscribers(&state.subscribers, &key, &state.registrations, system, origin);
-      }
-      if let Some(reply_to) = reply_to.clone() {
-        let ack = Registered::new(service_id.clone(), *type_id, actor_ref.clone());
-        try_send_registered_ack(reply_to, ack, system, origin);
-      }
+      handle_register_command(&mut context, service_id, *type_id, actor_ref, reply_to)?;
     },
     | ReceptionistCommand::Deregister { service_id, type_id, actor_ref, reply_to } => {
-      let key = (service_id.clone(), *type_id);
-      let mut registrations_updated = false;
-      let mut remove_key = false;
-      if let Some(entry) = state.registrations.get_mut(&key) {
-        let before = entry.len();
-        entry.retain(|existing| existing.pid() != actor_ref.pid());
-        registrations_updated = entry.len() != before;
-        remove_key = entry.is_empty();
-      }
-      if remove_key {
-        state.registrations.remove(&key);
-      }
-      if registrations_updated {
-        notify_subscribers(&state.subscribers, &key, &state.registrations, system, origin);
-      }
-      if let Some(reply_to) = reply_to.clone() {
-        let ack = Deregistered::new(service_id.clone(), *type_id, actor_ref.clone());
-        try_send_deregistered_ack(reply_to, ack, system, origin);
-      }
+      handle_deregister_command(&mut context, service_id, *type_id, actor_ref, reply_to);
     },
     | ReceptionistCommand::Subscribe { service_id, type_id, subscriber } => {
-      let key = (service_id.clone(), *type_id);
-      let current = state.registrations.get(&key).cloned().unwrap_or_default();
-      let listing = Listing::new(service_id.clone(), *type_id, current);
-      let mut typed_subscriber = subscriber.clone();
-      if let Err(error) = typed_subscriber.try_tell(listing) {
-        system.emit_log(
-          LogLevel::Warn,
-          alloc::format!(
-            "receptionist failed to send initial listing to subscriber {:?} for service_id={} type_id={:?}: {:?}",
-            subscriber.pid(),
-            service_id,
-            type_id,
-            error
-          ),
-          origin,
-          None,
-        );
-      }
-      let already_subscribed = state
-        .subscribers
-        .get(&key)
-        .is_some_and(|subscribers| subscribers.iter().any(|existing| existing.pid() == subscriber.pid()));
-      if !already_subscribed {
-        watch_target(WatchTarget::Subscriber(subscriber.clone()))?;
-        state.subscribers.entry(key).or_default().push(subscriber.clone());
-      }
+      handle_subscribe_command(&mut context, service_id, *type_id, subscriber)?;
     },
     | ReceptionistCommand::Unsubscribe { service_id, type_id, subscriber } => {
-      let key = (service_id.clone(), *type_id);
-      let mut remove_key = false;
-      if let Some(subscribers) = state.subscribers.get_mut(&key) {
-        subscribers.retain(|existing| existing.pid() != subscriber.pid());
-        remove_key = subscribers.is_empty();
-      }
-      if remove_key {
-        state.subscribers.remove(&key);
-      }
+      handle_unsubscribe_command(&mut context, service_id, *type_id, subscriber);
     },
     | ReceptionistCommand::Find { service_id, type_id, reply_to } => {
-      let key = (service_id.clone(), *type_id);
-      let current = state.registrations.get(&key).cloned().unwrap_or_default();
-      let listing = Listing::new(service_id.clone(), *type_id, current);
-      let mut reply_to = reply_to.clone();
-      if let Err(error) = reply_to.try_tell(listing) {
-        system.emit_log(
-          LogLevel::Warn,
-          alloc::format!(
-            "receptionist failed to reply with listing to {:?} for service_id={} type_id={:?}: {:?}",
-            reply_to.pid(),
-            service_id,
-            type_id,
-            error
-          ),
-          origin,
-          None,
-        );
-      }
+      handle_find_command(&mut context, service_id, *type_id, reply_to);
     },
   }
 
   Ok(())
+}
+
+fn handle_register_command<Watch>(
+  context: &mut ReceptionistCommandContext<'_, Watch>,
+  service_id: &str,
+  type_id: TypeId,
+  actor_ref: &ActorRef,
+  reply_to: &Option<TypedActorRef<Registered>>,
+) -> Result<(), ActorError>
+where
+  Watch: FnMut(WatchTarget) -> Result<(), ActorError>, {
+  let key = (service_id.to_string(), type_id);
+  let already_registered = context
+    .state
+    .registrations
+    .get(&key)
+    .is_some_and(|entry| entry.iter().any(|existing| existing.pid() == actor_ref.pid()));
+  if !already_registered {
+    (context.watch_target)(WatchTarget::RegisteredActor(actor_ref.clone()))?;
+    context.state.registrations.entry(key.clone()).or_default().push(actor_ref.clone());
+    notify_subscribers(&context.state.subscribers, &key, &context.state.registrations, context.system, context.origin);
+  }
+  if let Some(reply_to) = reply_to.clone() {
+    let ack = Registered::new(service_id.to_string(), type_id, actor_ref.clone());
+    try_send_registered_ack(reply_to, ack, context.system, context.origin);
+  }
+  Ok(())
+}
+
+fn handle_deregister_command<Watch>(
+  context: &mut ReceptionistCommandContext<'_, Watch>,
+  service_id: &str,
+  type_id: TypeId,
+  actor_ref: &ActorRef,
+  reply_to: &Option<TypedActorRef<Deregistered>>,
+) {
+  let key = (service_id.to_string(), type_id);
+  let registrations_updated = remove_receptionist_registration(context.state, &key, actor_ref);
+  if registrations_updated {
+    notify_subscribers(&context.state.subscribers, &key, &context.state.registrations, context.system, context.origin);
+  }
+  if let Some(reply_to) = reply_to.clone() {
+    let ack = Deregistered::new(service_id.to_string(), type_id, actor_ref.clone());
+    try_send_deregistered_ack(reply_to, ack, context.system, context.origin);
+  }
+}
+
+fn remove_receptionist_registration(state: &mut ReceptionistState, key: &RegistryKey, actor_ref: &ActorRef) -> bool {
+  let mut registrations_updated = false;
+  let mut remove_key = false;
+  if let Some(entry) = state.registrations.get_mut(key) {
+    let before = entry.len();
+    entry.retain(|existing| existing.pid() != actor_ref.pid());
+    registrations_updated = entry.len() != before;
+    remove_key = entry.is_empty();
+  }
+  if remove_key {
+    state.registrations.remove(key);
+  }
+  registrations_updated
+}
+
+fn handle_subscribe_command<Watch>(
+  context: &mut ReceptionistCommandContext<'_, Watch>,
+  service_id: &str,
+  type_id: TypeId,
+  subscriber: &TypedActorRef<Listing>,
+) -> Result<(), ActorError>
+where
+  Watch: FnMut(WatchTarget) -> Result<(), ActorError>, {
+  let key = (service_id.to_string(), type_id);
+  send_initial_listing(context, service_id, type_id, subscriber, &key);
+  let already_subscribed = context
+    .state
+    .subscribers
+    .get(&key)
+    .is_some_and(|subscribers| subscribers.iter().any(|existing| existing.pid() == subscriber.pid()));
+  if !already_subscribed {
+    (context.watch_target)(WatchTarget::Subscriber(subscriber.clone()))?;
+    context.state.subscribers.entry(key).or_default().push(subscriber.clone());
+  }
+  Ok(())
+}
+
+fn send_initial_listing<Watch>(
+  context: &ReceptionistCommandContext<'_, Watch>,
+  service_id: &str,
+  type_id: TypeId,
+  subscriber: &TypedActorRef<Listing>,
+  key: &RegistryKey,
+) {
+  let current = context.state.registrations.get(key).cloned().unwrap_or_default();
+  let listing = Listing::new(service_id.to_string(), type_id, current);
+  let mut typed_subscriber = subscriber.clone();
+  if let Err(error) = typed_subscriber.try_tell(listing) {
+    context.system.emit_log(
+      LogLevel::Warn,
+      alloc::format!(
+        "receptionist failed to send initial listing to subscriber {:?} for service_id={} type_id={:?}: {:?}",
+        subscriber.pid(),
+        service_id,
+        type_id,
+        error
+      ),
+      context.origin,
+      None,
+    );
+  }
+}
+
+fn handle_unsubscribe_command<Watch>(
+  context: &mut ReceptionistCommandContext<'_, Watch>,
+  service_id: &str,
+  type_id: TypeId,
+  subscriber: &TypedActorRef<Listing>,
+) {
+  let key = (service_id.to_string(), type_id);
+  let mut remove_key = false;
+  if let Some(subscribers) = context.state.subscribers.get_mut(&key) {
+    subscribers.retain(|existing| existing.pid() != subscriber.pid());
+    remove_key = subscribers.is_empty();
+  }
+  if remove_key {
+    context.state.subscribers.remove(&key);
+  }
+}
+
+fn handle_find_command<Watch>(
+  context: &mut ReceptionistCommandContext<'_, Watch>,
+  service_id: &str,
+  type_id: TypeId,
+  reply_to: &TypedActorRef<Listing>,
+) {
+  let key = (service_id.to_string(), type_id);
+  let current = context.state.registrations.get(&key).cloned().unwrap_or_default();
+  let listing = Listing::new(service_id.to_string(), type_id, current);
+  let mut reply_to = reply_to.clone();
+  if let Err(error) = reply_to.try_tell(listing) {
+    context.system.emit_log(
+      LogLevel::Warn,
+      alloc::format!(
+        "receptionist failed to reply with listing to {:?} for service_id={} type_id={:?}: {:?}",
+        reply_to.pid(),
+        service_id,
+        type_id,
+        error
+      ),
+      context.origin,
+      None,
+    );
+  }
 }
 
 fn try_send_registered_ack(

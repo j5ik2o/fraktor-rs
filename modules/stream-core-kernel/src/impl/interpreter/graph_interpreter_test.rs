@@ -12,10 +12,13 @@ use fraktor_utils_core_rs::{
   sync::{ArcShared, SpinSyncMutex},
 };
 
-use super::super::{
-  buffered_edge::BufferedEdge, compiled_graph_plan::CompiledGraphPlan, failure_disposition::FailureDisposition,
-  graph_connections::GraphConnections, interpreter_snapshot_builder::InterpreterSnapshotBuilder,
-  outlet_dispatch_state::OutletDispatchState,
+use super::{
+  super::{
+    buffered_edge::BufferedEdge, compiled_graph_plan::CompiledGraphPlan, failure_disposition::FailureDisposition,
+    graph_connections::GraphConnections, interpreter_snapshot_builder::InterpreterSnapshotBuilder,
+    outlet_dispatch_state::OutletDispatchState,
+  },
+  FlowStageStep,
 };
 use crate::{
   Attributes, DynValue, FailureAction, FlowDefinition, FlowLogic, KillSwitchCommandTarget,
@@ -59,6 +62,571 @@ fn linear_plan(source: SourceDefinition, flows: Vec<FlowDefinition>, sink: SinkD
 
 fn stream_plan(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> StreamPlan {
   StreamPlan::from_parts(stages, edges).expect("valid stream graph shape")
+}
+
+fn single_flow_interpreter_with_logic(
+  logic: Box<dyn FlowLogic>,
+  restart: Option<RestartBackoff>,
+) -> (GraphInterpreter, PortId, usize, usize) {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let source = source_single_u32(source_outlet, 1);
+  let flow = FlowDefinition {
+    kind: StageKind::FlowMap,
+    inlet: flow_inlet.id(),
+    outlet: flow_outlet.id(),
+    input_type: TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::Left,
+    logic,
+    supervision: SupervisionStrategy::Stop,
+    restart,
+    attributes: Attributes::new(),
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, StreamFuture::new());
+  let plan =
+    stream_plan(vec![StageDefinition::Source(source), StageDefinition::Flow(flow), StageDefinition::Sink(sink)], vec![
+      (source_outlet.id(), flow_inlet.id(), MatCombine::Left),
+      (flow_outlet.id(), sink_inlet.id(), MatCombine::Right),
+    ]);
+  (GraphInterpreter::new(plan, StreamBufferConfig::default()), source_outlet.id(), 1, 2)
+}
+
+fn single_flow_interpreter() -> (GraphInterpreter, PortId, usize, usize) {
+  single_flow_interpreter_with_logic(Box::new(IncrementFlowLogic), None)
+}
+
+#[test]
+fn stream_plan_rejects_duplicate_stage_ports() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let source_a = source_single_u32(source_outlet, 1);
+  let source_b = source_single_u32(Outlet::from_id(source_outlet.id()), 2);
+  let sink = collect_u32_sequence_sink(sink_inlet, StreamFuture::new());
+
+  let error = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source_a), StageDefinition::Source(source_b), StageDefinition::Sink(sink)],
+    vec![(source_outlet.id(), sink_inlet.id(), MatCombine::Right)],
+  )
+  .err()
+  .expect("duplicate outlet should be rejected");
+
+  assert_eq!(error, StreamError::InvalidConnection);
+}
+
+#[test]
+fn stream_plan_rejects_missing_source_or_sink_stage() {
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(IncrementFlowLogic),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    attributes:  Attributes::new(),
+  };
+
+  let error = StreamPlan::from_parts(vec![StageDefinition::Flow(flow)], vec![(
+    flow_outlet.id(),
+    flow_inlet.id(),
+    MatCombine::Right,
+  )])
+  .err()
+  .expect("missing source and sink should be rejected");
+
+  assert_eq!(error, StreamError::InvalidConnection);
+}
+
+#[test]
+fn stream_plan_rejects_source_without_outgoing_edge() {
+  let connected_outlet: Outlet<u32> = Outlet::new();
+  let unconnected_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let connected_source = source_single_u32(connected_outlet, 1);
+  let unconnected_source = source_single_u32(unconnected_outlet, 2);
+  let sink = collect_u32_sequence_sink(sink_inlet, StreamFuture::new());
+
+  let error = StreamPlan::from_parts(
+    vec![
+      StageDefinition::Source(connected_source),
+      StageDefinition::Source(unconnected_source),
+      StageDefinition::Sink(sink),
+    ],
+    vec![(connected_outlet.id(), sink_inlet.id(), MatCombine::Right)],
+  )
+  .err()
+  .expect("source without outgoing edge should be rejected");
+
+  assert_eq!(error, StreamError::InvalidConnection);
+}
+
+#[test]
+fn stream_plan_rejects_flow_without_required_edges() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let source = source_single_u32(source_outlet, 1);
+  let flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(IncrementFlowLogic),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    attributes:  Attributes::new(),
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, StreamFuture::new());
+
+  let error = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(flow), StageDefinition::Sink(sink)],
+    vec![(source_outlet.id(), sink_inlet.id(), MatCombine::Right)],
+  )
+  .err()
+  .expect("flow without incoming and outgoing edges should be rejected");
+
+  assert_eq!(error, StreamError::InvalidConnection);
+}
+
+#[test]
+fn stream_plan_rejects_sink_without_incoming_edge() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let connected_sink_inlet: Inlet<u32> = Inlet::new();
+  let unconnected_sink_inlet: Inlet<u32> = Inlet::new();
+  let source = source_single_u32(source_outlet, 1);
+  let connected_sink = collect_u32_sequence_sink(connected_sink_inlet, StreamFuture::new());
+  let unconnected_sink = collect_u32_sequence_sink(unconnected_sink_inlet, StreamFuture::new());
+
+  let error = StreamPlan::from_parts(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Sink(connected_sink),
+      StageDefinition::Sink(unconnected_sink),
+    ],
+    vec![(source_outlet.id(), connected_sink_inlet.id(), MatCombine::Right)],
+  )
+  .err()
+  .expect("sink without incoming edge should be rejected");
+
+  assert_eq!(error, StreamError::InvalidConnection);
+}
+
+#[test]
+fn drive_running_reports_progress_when_state_is_already_terminal() {
+  let (mut interpreter, _, _, _) = single_flow_interpreter();
+  interpreter.state = StreamState::Completed;
+
+  assert_eq!(interpreter.drive_running(), Ok(true));
+}
+
+#[test]
+fn source_helpers_reject_invalid_stage_and_type_mismatch() {
+  let (mut interpreter, _, flow_index, _) = single_flow_interpreter();
+
+  assert_eq!(interpreter.source_stage_ports(flow_index).err(), Some(StreamError::InvalidConnection));
+  assert_eq!(interpreter.pull_source_value(flow_index).err(), Some(StreamError::InvalidConnection));
+  assert_eq!(interpreter.schedule_source_restart_or_complete(flow_index).err(), Some(StreamError::InvalidConnection));
+  let ports = interpreter.source_stage_ports(0).expect("source ports");
+  assert_eq!(interpreter.emit_source_value(ports, Box::new("bad")), Err(StreamError::TypeMismatch));
+}
+
+#[test]
+fn source_completion_fails_when_restart_budget_exhaustion_is_configured_to_fail() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(EmptyTestSourceLogic),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 0).with_complete_on_max_restarts(false))),
+    attributes:  Attributes::new(),
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, StreamFuture::new());
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  assert_eq!(interpreter.complete_or_restart_source(0, 0), Err(StreamError::Failed));
+}
+
+#[test]
+fn flow_helpers_reject_non_flow_stage_indices() {
+  let (mut interpreter, _, _, _) = single_flow_interpreter();
+  interpreter.flow_slots[0] = Some(0);
+
+  assert_eq!(interpreter.drive_flow_stage_once(0), Ok(false));
+  assert!(interpreter.flow_stage_ports(0).is_none());
+  assert!(!interpreter.flow_can_accept_input_while_output_buffered(0));
+  assert!(!interpreter.flow_can_accept_input(0, false));
+  assert_eq!(interpreter.flow_preferred_input_edge_slot(0), None);
+  assert_eq!(
+    interpreter.append_flow_async_outputs(0, &mut FlowStageStep::default()),
+    Err(StreamError::InvalidConnection)
+  );
+  assert_eq!(
+    interpreter.append_flow_timer_outputs(0, &mut FlowStageStep::default()),
+    Err(StreamError::InvalidConnection)
+  );
+  assert_eq!(
+    interpreter.drain_flow_stage_pending_if_ready(0, false, &mut FlowStageStep::default()),
+    Err(StreamError::InvalidConnection)
+  );
+  assert!(matches!(interpreter.apply_flow_logic_with_edge(0, 0, Box::new(1_u32)), Err(StreamError::InvalidConnection)));
+  assert_eq!(interpreter.take_flow_shutdown_request(0), Err(StreamError::InvalidConnection));
+  assert_eq!(interpreter.take_flow_next_output_edge_slot(0), Err(StreamError::InvalidConnection));
+}
+
+#[test]
+fn flow_logic_helper_applies_with_selected_edge() {
+  let (mut interpreter, _, flow_index, _) = single_flow_interpreter();
+
+  let mut outputs =
+    interpreter.apply_flow_logic_with_edge(flow_index, 0, Box::new(1_u32)).expect("flow logic should apply");
+
+  assert_eq!(outputs.len(), 1);
+  assert_eq!(*outputs.remove(0).downcast::<u32>().expect("u32 output"), 2_u32);
+}
+
+#[test]
+fn flow_input_rejects_type_mismatch_before_applying_logic() {
+  let (mut interpreter, source_outlet, flow_index, _) = single_flow_interpreter();
+  interpreter.offer_to_next_outgoing_edge(source_outlet, Box::new("bad")).expect("buffer bad input");
+  let ports = interpreter.flow_stage_ports(flow_index).expect("flow ports");
+
+  assert_eq!(
+    interpreter.apply_flow_stage_input_if_ready(flow_index, &ports, &mut FlowStageStep::default()),
+    Err(StreamError::TypeMismatch)
+  );
+}
+
+#[test]
+fn flow_failure_complete_updates_step_and_closes_sources() {
+  let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
+  let (mut interpreter, _, flow_index, _) =
+    single_flow_interpreter_with_logic(Box::new(DrainFailingFlowLogic), Some(restart));
+  let mut step = FlowStageStep::default();
+  assert!(!interpreter.all_sources_done());
+
+  assert_eq!(interpreter.apply_flow_failure_to_step(flow_index, &StreamError::Failed, &mut step), Ok(()));
+
+  assert!(step.progressed);
+  assert!(step.skip_stage_input);
+  assert!(step.force_shutdown);
+  assert!(interpreter.all_sources_done());
+}
+
+#[test]
+fn flow_async_restart_exhaustion_skips_timer_callback() {
+  struct AsyncRestartExhaustedFlowLogic {
+    timer_calls: ArcShared<SpinSyncMutex<u8>>,
+  }
+
+  impl FlowLogic for AsyncRestartExhaustedFlowLogic {
+    fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+      Ok(vec![input])
+    }
+
+    fn on_async_callback(&mut self) -> Result<Vec<DynValue>, StreamError> {
+      Err(StreamError::Failed)
+    }
+
+    fn on_timer(&mut self) -> Result<Vec<DynValue>, StreamError> {
+      let mut timer_calls = self.timer_calls.lock();
+      *timer_calls = timer_calls.saturating_add(1);
+      Ok(vec![Box::new(10_u32)])
+    }
+  }
+
+  let timer_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let coverage_timer_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let mut coverage_logic = AsyncRestartExhaustedFlowLogic { timer_calls: coverage_timer_calls.clone() };
+  let mut outputs = coverage_logic.apply(Box::new(1_u32)).expect("apply outputs");
+  assert_eq!(outputs.len(), 1);
+  assert_eq!(*outputs.remove(0).downcast::<u32>().expect("u32 output"), 1);
+  assert_eq!(coverage_logic.on_timer().expect("timer output").len(), 1);
+  assert_eq!(*coverage_timer_calls.lock(), 1);
+
+  let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
+  let (mut interpreter, _, flow_index, _) = single_flow_interpreter_with_logic(
+    Box::new(AsyncRestartExhaustedFlowLogic { timer_calls: timer_calls.clone() }),
+    Some(restart),
+  );
+  let ports = interpreter.flow_stage_ports(flow_index).expect("flow ports");
+
+  assert_eq!(interpreter.drive_ready_flow_stage_once(flow_index, &ports, false), Ok(true));
+  assert_eq!(*timer_calls.lock(), 0);
+  assert!(interpreter.flow_done_at(flow_index));
+}
+
+#[test]
+fn flow_drain_failure_complete_finishes_flow_without_failing_stream() {
+  let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
+  let (mut interpreter, _, flow_index, _) =
+    single_flow_interpreter_with_logic(Box::new(DrainFailingFlowLogic), Some(restart));
+  assert!(!interpreter.all_sources_done());
+
+  assert_eq!(interpreter.handle_flow_drain_failure(flow_index, &StreamError::Failed), Ok(true));
+  assert!(interpreter.all_sources_done());
+  assert!(interpreter.flow_done_at(flow_index));
+}
+
+#[test]
+fn sink_helpers_reject_non_sink_stage_indices() {
+  let (mut interpreter, _, _, _) = single_flow_interpreter();
+
+  assert_eq!(interpreter.sink_stage_ports(0).err(), Some(StreamError::InvalidConnection));
+  assert_eq!(interpreter.sink_can_accept_input(0), Err(StreamError::InvalidConnection));
+  assert_eq!(interpreter.schedule_sink_restart_or_complete(0).err(), Some(StreamError::InvalidConnection));
+}
+
+#[test]
+fn sink_drive_rejects_type_mismatch_before_pushing_logic() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let source = source_single_u32(source_outlet, 1);
+  let sink = collect_u32_sequence_sink(sink_inlet, StreamFuture::new());
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start_sinks().expect("start sink demand");
+  interpreter.offer_to_next_outgoing_edge(source_outlet.id(), Box::new("bad")).expect("buffer bad input");
+
+  assert_eq!(interpreter.drive_sink_once(0), Err(StreamError::TypeMismatch));
+}
+
+#[test]
+fn sink_tick_failure_is_routed_through_sink_failure_policy() {
+  struct TickFailingSinkLogic;
+
+  impl SinkLogic for TickFailingSinkLogic {
+    fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+      demand.request(1)
+    }
+
+    fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+      Ok(SinkDecision::Continue)
+    }
+
+    fn on_complete(&mut self) -> Result<(), StreamError> {
+      Ok(())
+    }
+
+    fn on_error(&mut self, _error: StreamError) {}
+
+    fn on_tick(&mut self, _demand: &mut DemandTracker) -> Result<bool, StreamError> {
+      Err(StreamError::Failed)
+    }
+  }
+
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let source = source_single_u32(source_outlet, 1);
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(TickFailingSinkLogic),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  let mut logic = TickFailingSinkLogic;
+  let mut demand = DemandTracker::new();
+
+  assert_eq!(logic.on_start(&mut demand), Ok(()));
+  assert_eq!(logic.on_push(Box::new(1_u32), &mut demand), Ok(SinkDecision::Continue));
+  assert_eq!(logic.on_complete(), Ok(()));
+  logic.on_error(StreamError::Failed);
+
+  assert_eq!(interpreter.tick_sink_stage(0, 1), Err(StreamError::Failed));
+}
+
+#[test]
+fn sink_failure_completes_when_restart_budget_is_exhausted() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamFuture::new();
+  let source = source_single_u32(source_outlet, 1);
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(AlwaysFailCollectSinkLogic { completion }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 0))),
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  assert_eq!(interpreter.apply_sink_failure(0, 1, StreamError::Failed), Ok(true));
+  assert!(interpreter.sink_done[0]);
+}
+
+#[test]
+fn sink_drive_returns_after_tick_completes_sink() {
+  struct CompletingTickSinkLogic {
+    can_accept_calls: ArcShared<SpinSyncMutex<u8>>,
+  }
+
+  impl SinkLogic for CompletingTickSinkLogic {
+    fn can_accept_input(&self) -> bool {
+      let mut can_accept_calls = self.can_accept_calls.lock();
+      *can_accept_calls = can_accept_calls.saturating_add(1);
+      true
+    }
+
+    fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+      demand.request(1)
+    }
+
+    fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+      Ok(SinkDecision::Continue)
+    }
+
+    fn on_complete(&mut self) -> Result<(), StreamError> {
+      Ok(())
+    }
+
+    fn on_error(&mut self, _error: StreamError) {}
+
+    fn on_tick(&mut self, _demand: &mut DemandTracker) -> Result<bool, StreamError> {
+      Err(StreamError::Failed)
+    }
+  }
+
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let can_accept_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let coverage_can_accept_calls = ArcShared::new(SpinSyncMutex::new(0_u8));
+  let mut coverage_logic = CompletingTickSinkLogic { can_accept_calls: coverage_can_accept_calls.clone() };
+  let mut coverage_demand = DemandTracker::new();
+  assert!(coverage_logic.can_accept_input());
+  assert_eq!(coverage_logic.on_start(&mut coverage_demand), Ok(()));
+  assert_eq!(coverage_logic.on_push(Box::new(1_u32), &mut coverage_demand), Ok(SinkDecision::Continue));
+  assert_eq!(coverage_logic.on_complete(), Ok(()));
+  coverage_logic.on_error(StreamError::Failed);
+  assert_eq!(coverage_logic.on_tick(&mut coverage_demand), Err(StreamError::Failed));
+  assert_eq!(*coverage_can_accept_calls.lock(), 1);
+
+  let source = source_single_u32(source_outlet, 1);
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(CompletingTickSinkLogic { can_accept_calls: can_accept_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 0))),
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start_sinks().expect("start sink demand");
+
+  assert_eq!(interpreter.drive_sink_once(0), Ok(true));
+  assert!(interpreter.sink_done[0]);
+  assert_eq!(*can_accept_calls.lock(), 0);
+}
+
+#[test]
+fn sink_finish_waits_when_sink_still_has_pending_work() {
+  struct PendingWorkSinkLogic;
+
+  impl SinkLogic for PendingWorkSinkLogic {
+    fn can_accept_input(&self) -> bool {
+      false
+    }
+
+    fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+      demand.request(1)
+    }
+
+    fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+      Ok(SinkDecision::Continue)
+    }
+
+    fn on_complete(&mut self) -> Result<(), StreamError> {
+      Ok(())
+    }
+
+    fn on_error(&mut self, _error: StreamError) {}
+
+    fn on_upstream_finish(&mut self) -> Result<bool, StreamError> {
+      Ok(true)
+    }
+
+    fn has_pending_work(&self) -> bool {
+      true
+    }
+  }
+
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let source = source_single_u32(source_outlet, 1);
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(PendingWorkSinkLogic),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  let mut logic = PendingWorkSinkLogic;
+  let mut demand = DemandTracker::new();
+
+  assert!(!logic.can_accept_input());
+  assert_eq!(logic.on_push(Box::new(1_u32), &mut demand), Ok(SinkDecision::Continue));
+  assert_eq!(logic.on_complete(), Ok(()));
+  logic.on_error(StreamError::Failed);
+  interpreter.start_sinks().expect("start sink demand");
+  interpreter.complete_source(0).expect("source completion closes sink input");
+
+  assert_eq!(interpreter.finish_sink_if_input_exhausted(0, 1, false), Ok(true));
+  assert!(!interpreter.sink_done[0]);
 }
 
 #[test]
