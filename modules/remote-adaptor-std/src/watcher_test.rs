@@ -12,15 +12,35 @@ use fraktor_actor_core_kernel_rs::{
     actor_ref_provider::LocalActorRefProviderInstaller,
     messaging::system_message::SystemMessage,
   },
+  event::stream::{ClassifierKey, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::ActorSystem,
 };
 use fraktor_remote_core_rs::{address::Address, extension::RemoteEvent, watcher::WatcherEffect, wire::ControlPdu};
-use tokio::{sync::mpsc, time::timeout};
+use tokio::{
+  sync::mpsc::{self, UnboundedSender},
+  time::timeout,
+};
 
 use super::{
   apply_effects, default_detector_factory, notify_local_watchers, run_watcher_task, send_heartbeat,
   send_redelivery_tick, send_system_envelope,
 };
+
+struct RecordingEventSubscriber {
+  sender: UnboundedSender<EventStreamEvent>,
+}
+
+impl RecordingEventSubscriber {
+  fn new(sender: UnboundedSender<EventStreamEvent>) -> Self {
+    Self { sender }
+  }
+}
+
+impl EventStreamSubscriber for RecordingEventSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if self.sender.send(event.clone()).is_err() {}
+  }
+}
 
 fn local_address() -> Address {
   Address::new("local-sys", "127.0.0.1", 2551)
@@ -73,6 +93,9 @@ async fn run_watcher_task_returns_when_command_channel_closes() {
 async fn apply_effects_emits_remote_events_for_watch_heartbeat_and_rewatch() {
   let (event_tx, mut event_rx) = mpsc::channel(8);
   let system = local_actor_system();
+  let (stream_tx, mut stream_rx) = mpsc::unbounded_channel();
+  let subscriber = subscriber_handle(RecordingEventSubscriber::new(stream_tx));
+  let _subscription = system.event_stream().subscribe_with_key(ClassifierKey::AddressTerminated, &subscriber);
   let target = remote_path("target");
   let watcher = local_path("watcher");
   let remote = remote_address();
@@ -85,6 +108,11 @@ async fn apply_effects_emits_remote_events_for_watch_heartbeat_and_rewatch() {
       WatcherEffect::SendUnwatch { target: target.clone(), watcher: watcher.clone() },
       WatcherEffect::SendHeartbeat { to: remote.clone() },
       WatcherEffect::NotifyTerminated { target: local_target_path, watchers: alloc::vec![local_watcher_path] },
+      WatcherEffect::AddressTerminated {
+        node:               remote.clone(),
+        reason:             String::from("Deemed unreachable by remote failure detector"),
+        observed_at_millis: 42,
+      },
       WatcherEffect::NotifyQuarantined { node: remote.clone() },
       WatcherEffect::RewatchRemoteTargets { node: remote.clone(), watches: alloc::vec![(target, watcher)] },
     ],
@@ -117,6 +145,16 @@ async fn apply_effects_emits_remote_events_for_watch_heartbeat_and_rewatch() {
     } if authority.authority() == "remote-sys@10.0.0.1:2552"
   )));
   assert_eq!(events.iter().filter(|event| matches!(event, RemoteEvent::OutboundEnqueued { .. })).count(), 3);
+
+  let address_event = stream_rx.try_recv().expect("address termination should be published");
+  assert!(matches!(
+    address_event,
+    EventStreamEvent::AddressTerminated(event)
+      if event.authority() == "remote-sys@10.0.0.1:2552"
+        && event.reason() == "Deemed unreachable by remote failure detector"
+        && event.observed_at_millis() == 42
+  ));
+  assert!(stream_rx.try_recv().is_err());
 }
 
 #[test]

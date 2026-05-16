@@ -31,6 +31,8 @@ type Map<K, V> = HashMap<K, V, RandomState>;
 type DetectorFactory = fn(&Address) -> PhiAccrualFailureDetector;
 type DetectorRegistry = DefaultFailureDetectorRegistry<Address, PhiAccrualFailureDetector, DetectorFactory>;
 
+const ADDRESS_TERMINATED_REASON: &str = "Deemed unreachable by remote failure detector";
+
 /// Pure state portion of the remote watcher.
 ///
 /// `WatcherState` tracks which local actors are watching which remote actors
@@ -222,6 +224,11 @@ impl WatcherState {
           }
         }
       }
+      effects.push(WatcherEffect::AddressTerminated {
+        node:               node.clone(),
+        reason:             String::from(ADDRESS_TERMINATED_REASON),
+        observed_at_millis: now,
+      });
       effects.push(WatcherEffect::NotifyQuarantined { node });
     }
 

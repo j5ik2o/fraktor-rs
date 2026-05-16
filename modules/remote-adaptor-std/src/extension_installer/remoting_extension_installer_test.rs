@@ -13,7 +13,7 @@ use fraktor_actor_core_kernel_rs::{
     extension::ExtensionInstaller,
     messaging::{AnyMessage, system_message::SystemMessage},
   },
-  event::stream::CorrelationId,
+  event::stream::{AddressTerminatedEvent, CorrelationId, EventStreamEvent},
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
   system::ActorSystemBuildError,
 };
@@ -321,6 +321,91 @@ async fn shutdown_remote_and_join_continues_when_shutdown_flush_is_not_started()
   .await
   .expect("shutdown should not hang")
   .expect("shutdown should continue after flush setup failure");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn shutdown_remote_and_join_drops_deployment_address_terminated_subscription() {
+  let local = local_address();
+  let target = remote_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(5));
+  let remote = remote_shared(config.clone(), TestRemoteTransport::new(vec![local]));
+  let system = create_noop_actor_system();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(1, 2, target.to_string(), 1);
+  let run_state = Arc::new(Mutex::new(RemotingRunState {
+    receiver: None,
+    handle: None,
+    watcher_handle: None,
+    deployment_handle: None,
+    deployment_address_terminated_subscription: Some(subscription),
+    termination_handle: None,
+  }));
+
+  timeout(
+    Duration::from_secs(1),
+    shutdown_remote_and_join(remote, None, run_state, config, Instant::now(), StdFlushGate::default()),
+  )
+  .await
+  .expect("shutdown should not hang")
+  .expect("shutdown should complete");
+
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    target.to_string(),
+    "post-shutdown",
+    2,
+  )));
+
+  assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn rollback_started_remote_drops_deployment_address_terminated_subscription() {
+  let local = local_address();
+  let target = remote_address();
+  let remote = remote_shared(RemoteConfig::new("127.0.0.1"), TestRemoteTransport::new(vec![local]));
+  let (event_sender, _event_receiver) = mpsc::channel(8);
+  let system = create_noop_actor_system();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(3, 4, target.to_string(), 1);
+  let run_state = Arc::new(Mutex::new(RemotingRunState {
+    receiver: None,
+    handle: None,
+    watcher_handle: None,
+    deployment_handle: None,
+    deployment_address_terminated_subscription: Some(subscription),
+    termination_handle: None,
+  }));
+
+  rollback_started_remote(&remote, &event_sender, &run_state);
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    target.to_string(),
+    "rollback",
+    2,
+  )));
+
+  assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn install_deployment_address_terminated_subscription_rejects_duplicate_subscription() {
+  let system = create_noop_actor_system();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let mut run_state = RemotingRunState {
+    receiver: None,
+    handle: None,
+    watcher_handle: None,
+    deployment_handle: None,
+    deployment_address_terminated_subscription: Some(subscription),
+    termination_handle: None,
+  };
+
+  assert_eq!(
+    install_deployment_address_terminated_subscription_with_state(&mut run_state, &system, dispatcher),
+    Err(RemotingError::AlreadyRunning)
+  );
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
