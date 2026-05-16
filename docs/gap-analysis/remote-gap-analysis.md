@@ -68,6 +68,23 @@ Pekko 側は `RemoteWatcher` が `AddressTerminatedTopic` へ `AddressTerminated
 
 この棚卸しから、`remote-core` 自体の公開契約は Pekko Artery compatible remote core として揃っている。前版で `AddressTerminated` integration gap とした箇所は、Pekko の topic-driven route と fraktor-rs の effect/hook-driven route の構造差であり、remote DeathWatch termination delivery の未実装 gap ではない。
 
+## remote-adaptor-std 詳細棚卸し
+
+`remote-adaptor-std` も独立に再確認した。crate root で公開される境界は `extension_installer`、`provider`、`transport` の3 module であり、`association`、`deployment`、`watcher` は std runtime の内部 glue として使われる。Pekko 側の JVM / Akka Streams 実装技術そのものではなく、Artery TCP adaptor が担う runtime responsibility に対応させる。raw pub-visible count は `pub` / `pub(crate)` / `pub(super)` の adapter 内可視宣言を含む参考値である。
+
+| remote-adaptor-std module | raw pub-visible types | raw pub-visible fns | Pekko 対応責務 | Pekko 参照 | 評価 |
+|---------------------------|-----------------------|---------------------|----------------|------------|------|
+| `extension_installer` | 6 | 15 | remoting extension install, event loop task, inbound envelope delivery, watcher command forwarding, deployment PDU routing, shutdown flush, DeathWatch 前 flush gate | `Remoting.scala`, `ArteryTransport.scala`, `FlushOnShutdown.scala`, `FlushBeforeDeathWatchNotification.scala`, `InboundQuarantineCheck.scala` | adaptor-owned gap なし |
+| `provider` | 9 | 13 | std actor-ref provider, local/loopback/remote dispatch, synthetic remote pid registry, remote actor-ref sender, resolve-cache event, remote watch hook, remote deployment hook | `RemoteActorRefProvider.scala`, `RemoteActorRef`, `RemoteDeployer.scala`, `RemoteDaemon.scala` | adaptor-owned gap なし |
+| `transport` | 12 | 31 | TCP listener/client, frame codec, inbound/outbound lanes, connection-loss event, handshake/control/ack/deployment send, serializer-backed envelope send, compression advertisement/ack | `artery/tcp/ArteryTcpTransport.scala`, `artery/tcp/TcpFraming.scala`, `artery/compress/CompressionProtocol.scala`, `artery/compress/InboundCompressions.scala` | adaptor-owned gap なし。TLS / Aeron は対象外 |
+| `association` | 0 | 5 | inbound decoded-frame dispatch, handshake authority extraction, remote authority parsing, monotonic millis conversion | `artery/Association.scala`, `artery/ArteryTransport.scala` | internal glue として実装済み |
+| `deployment` | 3 | 6 | inbound remote deployment daemon, create request handling, deployable payload deserialize, child spawn, success/failure response dispatch, stale response bounding | `RemoteDaemon.scala`, `RemoteDeployer.scala`, `serialization/DaemonMsgCreateSerializer.scala` | adaptor-owned gap なし |
+| `watcher` | 0 | 2 | watcher command task, heartbeat/control enqueue, watch/unwatch system envelope enqueue, `NotifyTerminated` -> local `DeathWatchNotification` delivery | `RemoteWatcher.scala`, `DeathWatch.scala` | adaptor-owned gap なし。`AddressTerminated` は topic ではなく effect 経路で接続済み |
+
+`remote-adaptor-std` production code 上の `todo!()` / `unimplemented!()` / `panic!("not implemented")` は検出されなかった。実装経路としては、outbound user message は `RemoteActorRefSender` -> `RemoteEvent::OutboundEnqueued` -> `TcpRemoteTransport::send` -> actor-core serialization registry -> `EnvelopePdu` へ進み、inbound user message は `TcpServer` / `TcpClient` -> `run_inbound_dispatch` -> `Remote::handle_event` -> `deliver_inbound_envelope` -> local actor mailbox へ進む。
+
+remote DeathWatch は std adaptor 側でも接続済みである。outbound watch/unwatch は actor-core の `RemoteWatchHook` から `StdRemoteWatchHook`、`WatcherCommand`、`run_watcher_task`、system envelope へ進む。remote node failure は `WatcherEffect::NotifyTerminated` から `notify_local_watchers` が `SystemMessage::DeathWatchNotification` を送る。inbound remote `DeathWatchNotification` は `deliver_inbound_deathwatch_notification` が sender / watcher path を PID に解決して actor-core に渡す。remote-bound `DeathWatchNotification` は `StdFlushGate` が `FlushScope::BeforeDeathWatchNotification` を開始し、flush outcome 後に notification envelope を enqueue する。
+
 ## サマリー
 
 remote は address primitives、failure detector、association state、wire PDU、TCP transport shell、compression table application、resolve cache、remote `ActorRef` materialization、actor-core serialization registry backed payload の outbound / inbound delivery、remote deployment create、deployment response timeout / closed channel 分類まで実装済みである。固定スコープ概念カバレッジは 75/75 (100%) である。
