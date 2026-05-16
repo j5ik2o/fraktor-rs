@@ -44,6 +44,25 @@ fn len_tracks_push_and_pop_operations() {
   assert_eq!(queue.len(), 0);
 }
 
+#[test]
+#[should_panic(expected = "unexpected message variant")]
+fn collect_fifo_consumer_values_panics_on_unexpected_message() {
+  let queue = Arc::new(SystemQueue::new());
+  queue.push(SystemMessage::Stop);
+  let barrier = Arc::new(Barrier::new(1));
+  let done = Arc::new(AtomicBool::new(true));
+
+  let _ = collect_fifo_consumer_values(queue, barrier, done);
+}
+
+#[test]
+fn collect_all_fifo_values_includes_remaining_queue_items() {
+  let queue = SystemQueue::new();
+  queue.push(SystemMessage::Watch(Pid::new(42, 0)));
+
+  assert_eq!(collect_all_fifo_values(&queue, Vec::new()), vec![42]);
+}
+
 /// Regression test for GitHub issue #126: concurrent pushers + poppers must
 /// preserve per-producer FIFO order. The old `return_to_head()` broke this by
 /// reinserting the reversed chain one node at a time, interleaving with new pushes.
@@ -133,12 +152,7 @@ fn assert_producer_fifo(consumer_index: usize, producer: u64, sequence: &[u64]) 
   let end = base + ITEMS_PER_PRODUCER;
   let producer_items: Vec<u64> = sequence.iter().copied().filter(|&value| value >= base && value < end).collect();
   for window in producer_items.windows(2) {
-    assert!(
-      window[0] < window[1],
-      "FIFO violated: consumer {consumer_index}, producer {producer}: {v0} before {v1}",
-      v0 = window[0],
-      v1 = window[1],
-    );
+    assert!(window[0] < window[1], "FIFO violated for consumer {consumer_index}, producer {producer}",);
   }
 }
 

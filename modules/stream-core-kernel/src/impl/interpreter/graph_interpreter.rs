@@ -720,9 +720,7 @@ impl GraphInterpreter {
         Ok(())
       },
       | FailureDisposition::Complete => {
-        if !step.force_shutdown && !self.all_sources_done() {
-          self.set_all_sources_done()?;
-        }
+        self.set_all_sources_done()?;
         step.progressed = true;
         step.skip_stage_input = true;
         step.force_shutdown = true;
@@ -751,12 +749,7 @@ impl GraphInterpreter {
       return Err(StreamError::TypeMismatch);
     }
 
-    let apply_result = {
-      let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-        return Err(StreamError::InvalidConnection);
-      };
-      flow.logic.apply_with_edge(edge_index, input)
-    };
+    let apply_result = self.apply_flow_logic_with_edge(stage_index, edge_index, input);
     match apply_result {
       | Ok(outputs) => {
         step.outputs.extend(outputs);
@@ -764,6 +757,18 @@ impl GraphInterpreter {
       },
       | Err(error) => self.apply_flow_failure_to_step(stage_index, &error, step),
     }
+  }
+
+  fn apply_flow_logic_with_edge(
+    &mut self,
+    stage_index: usize,
+    edge_index: usize,
+    input: DynValue,
+  ) -> Result<Vec<DynValue>, StreamError> {
+    let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    flow.logic.apply_with_edge(edge_index, input)
   }
 
   fn flow_can_accept_input(&self, stage_index: usize, skip_stage_input: bool) -> bool {
@@ -814,9 +819,7 @@ impl GraphInterpreter {
     match self.handle_flow_failure(stage_index, error)? {
       | FailureDisposition::Continue => Ok(true),
       | FailureDisposition::Complete => {
-        if !self.all_sources_done() {
-          self.set_all_sources_done()?;
-        }
+        self.set_all_sources_done()?;
         self.shutdown_flow_stage(stage_index)?;
         self.maybe_finish_flow_stage(stage_index);
         Ok(true)
