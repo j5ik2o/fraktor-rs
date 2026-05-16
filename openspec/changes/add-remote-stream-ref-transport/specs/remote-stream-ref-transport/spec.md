@@ -30,7 +30,7 @@ The system SHALL provide a StreamRef resolver contract that converts `SourceRef`
 
 ### Requirement: stream-core remains independent from remote and std
 
-The StreamRef remote transport implementation SHALL keep `stream-core-kernel` independent from `remote-core`, `remote-adaptor-std`, tokio, TCP, and std-only ActorSystem resources. Core SHALL own protocol semantics, settings, sequence validation, local handoff, and stream errors only.
+The remote StreamRef implementation SHALL keep `stream-core-kernel` independent from `remote-core`, `remote-adaptor-std`, tokio, TCP, and std-only ActorSystem resources. Core SHALL own protocol semantics, settings, sequence validation, local handoff, and stream errors only.
 
 #### Scenario: stream-core has no remote dependency
 
@@ -97,7 +97,14 @@ Remote partner actor termination, remote address termination, and transport conn
 #### Scenario: address termination fails the stream
 
 - **WHEN** the remote address that owns the paired endpoint is published as terminated before normal protocol completion
-- **THEN** the materialized stream fails with a remote StreamRef actor terminated error
+- **THEN** the materialized stream fails with a remote-address termination stream error
+- **AND** the failure context identifies the terminated remote address
+
+#### Scenario: transport connection loss fails the stream
+
+- **WHEN** the remote actor delivery path reports connection loss for the paired endpoint before normal protocol completion
+- **THEN** the materialized stream fails with a transport-related stream error
+- **AND** the failure is not reported as normal completion or as an invalid partner error
 
 #### Scenario: normal completion remains protocol-driven
 

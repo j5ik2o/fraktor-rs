@@ -33,7 +33,7 @@
 - [ ] 5.1 Verify elements are not delivered without remote cumulative demand.
 - [ ] 5.2 Preserve pending elements when transport enqueue reports backpressure, or fail the stream with an observable error.
 - [ ] 5.3 Verify completion is observed only after pending sequenced elements are delivered.
-- [ ] 5.4 Map partner DeathWatch notification, address termination, transport connection loss, invalid sequence, invalid demand, and invalid partner to stream failure.
+- [ ] 5.4 Map partner DeathWatch notification, address termination, transport connection loss, invalid sequence, invalid demand, and invalid partner to distinct observable stream failures.
 - [ ] 5.5 Verify cancellation propagates to the remote partner and prevents further element publication for that ref.
 
 ## 6. Integration Tests and Documentation

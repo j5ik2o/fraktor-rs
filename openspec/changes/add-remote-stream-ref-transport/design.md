@@ -8,7 +8,7 @@ remote 側は `StdRemoteActorRefProvider` による remote ActorRef materializat
 
 **Goals:**
 
-- `SourceRef` / `SinkRef` を remote ActorRef として serialization format 化し、別 ActorSystem で復元できる契約を定義する。
+- `SourceRef` / `SinkRef` を remote endpoint actor path として serialization format 化し、別 ActorSystem で remote-capable ref として復元できる契約を定義する。
 - local handoff と remote handoff を分離し、`stream-core-kernel` の no_std 境界を維持する。
 - StreamRef demand / element / completion / failure / cancellation を remote user payload として配送し、backpressure と terminal signal を失わない。
 - remote partner termination、address termination、invalid partner、sequence mismatch を stream failure として観測可能にする。
@@ -50,7 +50,7 @@ remote StreamRef は一度だけ partner と接続できる。最初の handshak
 
 ### 決定 5: remote termination は stream failure へ写像する
 
-partner actor の DeathWatch notification、remote address termination、transport-level connection closed は StreamRef endpoint に観測可能な failure として伝播する。failure は `RemoteStreamRefActorTerminated` 相当、subscription timeout、invalid sequence、invalid partner のような stream error として分類する。
+partner actor の DeathWatch notification、remote address termination、transport-level connection closed は StreamRef endpoint に観測可能な failure として伝播する。partner actor termination は `RemoteStreamRefActorTerminated` 相当へ、address termination / connection closed は remote address または transport context を含む stream failure へ写像し、subscription timeout、invalid sequence、invalid partner と混同しない。
 
 remote node failure を silent completion に写像する案は、要素喪失を正常終了として隠すため採用しない。
 

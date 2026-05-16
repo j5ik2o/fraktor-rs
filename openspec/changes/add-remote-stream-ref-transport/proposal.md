@@ -4,8 +4,8 @@ stream の固定スコープで残る非 TLS ギャップは、`SourceRef` / `Si
 
 ## What Changes
 
-- `SourceRef` / `SinkRef` を serialization format へ変換し、remote actor ref として復元できる `StreamRefResolver` 相当の契約を追加する。
-- local handoff と remote transport handoff を分離し、`stream-core-kernel` が `remote-core` / `remote-adaptor-std` に依存しない境界を定義する。
+- `SourceRef` / `SinkRef` を serialization format へ変換し、remote endpoint ActorRef を介した ref として復元できる `StreamRefResolver` 相当の契約を追加する。
+- local handoff と remote actor handoff を分離し、`stream-core-kernel` が `remote-core` / `remote-adaptor-std` に依存しない境界を定義する。
 - StreamRef protocol message を remote user payload として配送できる serializer / manifest / dispatch contract を追加する。
 - remote 側 StreamRef partner actor の termination、subscription timeout、invalid partner、sequence mismatch を stream failure として観測できるようにする。
 - TLS stream API は対象外とし、汎用 `Tcp` stream DSL は別 change に分離する。
@@ -14,7 +14,7 @@ stream の固定スコープで残る非 TLS ギャップは、`SourceRef` / `Si
 
 ### New Capabilities
 
-- `remote-stream-ref-transport`: `SourceRef` / `SinkRef` を remote ActorRef と serialization format 経由で共有し、remote boundary 越しに back-pressured stream handoff を成立させる契約。
+- `remote-stream-ref-transport`: `SourceRef` / `SinkRef` を endpoint actor path と serialization format 経由で共有し、remote boundary 越しに back-pressured stream handoff を成立させる契約。
 
 ### Modified Capabilities
 
@@ -28,7 +28,6 @@ stream の固定スコープで残る非 TLS ギャップは、`SourceRef` / `Si
 - `modules/stream-core-kernel/src/dsl/stream_refs.rs`
 - `modules/stream-adaptor-std/src/`
 - `modules/remote-adaptor-std/src/provider/`
-- `modules/remote-adaptor-std/src/transport/`
 - `modules/actor-core-kernel/src/serialization/`
 - `docs/gap-analysis/stream-gap-analysis.md`
 
