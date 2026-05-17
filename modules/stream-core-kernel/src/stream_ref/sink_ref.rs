@@ -259,7 +259,11 @@ where
     let send_result = self.send_to_target(StreamRefRemoteStreamFailure::new(format!("{error}")));
     let release_result = self.release_target_watch();
     match (send_result, release_result) {
-      | (Err(send_error), _) => self.state.fail(send_error),
+      | (Err(send_error), Err(release_error)) => self.state.fail(Self::stream_error_from_context(format!(
+        "failed to notify StreamRef target about upstream failure: {send_error}; failed to release target watch: \
+         {release_error}"
+      ))),
+      | (Err(send_error), Ok(())) => self.state.fail(send_error),
       | (Ok(()), Err(release_error)) => self.state.fail(release_error),
       | (Ok(()), Ok(())) => {},
     }

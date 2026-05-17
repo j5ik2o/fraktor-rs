@@ -35,6 +35,10 @@ struct UserFailingSender {
   system_messages: ArcShared<SpinSyncMutex<Vec<SystemMessage>>>,
 }
 
+struct SystemFailingSender {
+  user_messages: ArcShared<SpinSyncMutex<usize>>,
+}
+
 impl RecordingSender {
   fn new() -> (ArcShared<SpinSyncMutex<Vec<SystemMessage>>>, ArcShared<SpinSyncMutex<usize>>, Self) {
     let system_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
@@ -49,6 +53,14 @@ impl UserFailingSender {
     let system_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
     let sender = Self { system_messages: system_messages.clone() };
     (system_messages, sender)
+  }
+}
+
+impl SystemFailingSender {
+  fn new() -> (ArcShared<SpinSyncMutex<usize>>, Self) {
+    let user_messages = ArcShared::new(SpinSyncMutex::new(0_usize));
+    let sender = Self { user_messages: user_messages.clone() };
+    (user_messages, sender)
   }
 }
 
@@ -70,6 +82,16 @@ impl ActorRefSender for UserFailingSender {
       return Ok(SendOutcome::Delivered);
     }
     Err(SendError::closed(message))
+  }
+}
+
+impl ActorRefSender for SystemFailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    if message.downcast_ref::<SystemMessage>().is_some() {
+      return Err(SendError::closed(message));
+    }
+    *self.user_messages.lock() += 1;
+    Ok(SendOutcome::Delivered)
   }
 }
 
@@ -96,6 +118,15 @@ fn temp_user_failing_actor(system: &ActorSystem) -> (ActorRef, ArcShared<SpinSyn
     ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(sender)), &system_state);
   let _name = system_state.register_temp_actor(actor_ref.clone());
   (actor_ref, system_messages)
+}
+
+fn temp_system_failing_actor(system: &ActorSystem) -> (ActorRef, ArcShared<SpinSyncMutex<usize>>) {
+  let (user_messages, sender) = SystemFailingSender::new();
+  let system_state = system.state();
+  let actor_ref =
+    ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(sender)), &system_state);
+  let _name = system_state.register_temp_actor(actor_ref.clone());
+  (actor_ref, user_messages)
 }
 
 #[test]
@@ -186,7 +217,26 @@ fn actor_backed_sink_ref_on_error_sends_failure_and_records_send_errors() {
   let mut release_failed = ActorBackedSinkRefLogic::<u32>::failed(StreamError::Failed);
   release_failed.endpoint_actor = Some(endpoint_actor);
   release_failed.on_error(StreamError::StreamDetached);
-  assert_eq!(release_failed.state.error_result(), Err(StreamError::StreamRefTargetNotInitialized));
+  match release_failed.state.error_result() {
+    | Err(StreamError::FailedWithContext { message, .. }) => {
+      assert!(message.contains("failed to notify StreamRef target"));
+      assert!(message.contains("failed to release target watch"));
+    },
+    | other => panic!("expected combined send/release failure, got {other:?}"),
+  }
+}
+
+#[test]
+fn actor_backed_sink_ref_on_error_records_release_failure_after_notify_success() {
+  let system = build_system();
+  let (target, user_messages) = temp_system_failing_actor(&system);
+  let mut logic = ActorBackedSinkRefLogic::<u32>::new(target);
+  logic.attach_actor_system(system);
+
+  logic.on_error(StreamError::Failed);
+
+  assert_eq!(*user_messages.lock(), 1);
+  assert!(matches!(logic.state.error_result(), Err(StreamError::FailedWithContext { .. })));
 }
 
 #[test]
