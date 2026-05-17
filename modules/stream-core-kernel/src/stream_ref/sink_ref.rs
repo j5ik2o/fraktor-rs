@@ -256,11 +256,12 @@ where
   }
 
   fn on_error(&mut self, error: StreamError) {
-    if let Err(send_error) = self.send_to_target(StreamRefRemoteStreamFailure::new(format!("{error}"))) {
-      self.state.fail(send_error);
-    }
-    if let Err(release_error) = self.release_target_watch() {
-      self.state.fail(release_error);
+    let send_result = self.send_to_target(StreamRefRemoteStreamFailure::new(format!("{error}")));
+    let release_result = self.release_target_watch();
+    match (send_result, release_result) {
+      | (Err(send_error), _) => self.state.fail(send_error),
+      | (Ok(()), Err(release_error)) => self.state.fail(release_error),
+      | (Ok(()), Ok(())) => {},
     }
   }
 
