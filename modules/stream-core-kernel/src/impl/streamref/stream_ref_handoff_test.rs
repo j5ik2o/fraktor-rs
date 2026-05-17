@@ -294,6 +294,20 @@ fn terminal_cleanup_failures_are_reported_from_completion_cancel_and_failure_pat
 }
 
 #[test]
+fn poll_or_drain_reports_completion_cleanup_failure() {
+  let system = build_system();
+  let watcher = temp_failing_actor(&system);
+  let (handoff, endpoint) = attached_handoff(&system);
+  system
+    .state()
+    .send_system_message(endpoint.actor_ref().pid(), SystemMessage::Watch(watcher.pid()))
+    .expect("register watcher");
+
+  handoff.complete();
+  assert_eq!(handoff.poll_or_drain(), Err(StreamError::WouldBlock));
+}
+
+#[test]
 fn remote_enqueue_paths_reject_failure_closed_and_overflow_states() {
   let failed = StreamRefHandoff::<u32>::new();
   failed.fail(StreamError::Failed);
