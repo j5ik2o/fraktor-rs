@@ -72,6 +72,23 @@ impl ActorRefSender for FailingSender {
   }
 }
 
+struct UnwatchFailingSender {
+  system_messages: ArcShared<SpinSyncMutex<Vec<SystemMessage>>>,
+}
+
+impl ActorRefSender for UnwatchFailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    let is_unwatch = matches!(message.downcast_ref::<SystemMessage>(), Some(SystemMessage::Unwatch(_)));
+    if let Some(system_message) = message.downcast_ref::<SystemMessage>() {
+      self.system_messages.lock().push(system_message.clone());
+    }
+    if is_unwatch {
+      return Err(SendError::full(message));
+    }
+    Ok(SendOutcome::Delivered)
+  }
+}
+
 fn build_system() -> ActorSystem {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler))
@@ -94,6 +111,16 @@ fn temp_failing_actor(system: &ActorSystem) -> ActorRef {
     ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(FailingSender)), &system_state);
   let _name = system_state.register_temp_actor(actor_ref.clone());
   actor_ref
+}
+
+fn temp_unwatch_failing_actor(system: &ActorSystem) -> (ActorRef, ArcShared<SpinSyncMutex<Vec<SystemMessage>>>) {
+  let system_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let sender = UnwatchFailingSender { system_messages: system_messages.clone() };
+  let system_state = system.state();
+  let actor_ref =
+    ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(sender)), &system_state);
+  let _name = system_state.register_temp_actor(actor_ref.clone());
+  (actor_ref, system_messages)
 }
 
 fn attached_handoff(system: &ActorSystem) -> (StreamRefHandoff<u32>, StageActor) {
@@ -278,6 +305,22 @@ fn pair_partner_actor_unwatches_partner_when_pairing_fails_after_watch() {
   assert!(matches!(error, StreamError::InvalidPartnerActor { .. }));
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
   assert!(matches!(handoff.offer(10_u32), Err(StreamError::InvalidPartnerActor { .. })));
+}
+
+#[test]
+fn pair_partner_actor_reports_unwatch_rollback_failure() {
+  let system = build_system();
+  let (partner, system_messages) = temp_unwatch_failing_actor(&system);
+  let (handoff, endpoint_actor) = attached_handoff(&system);
+  let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
+  let endpoint_pid = endpoint_actor.actor_ref().pid();
+  handoff.pair_endpoint_for_test("already-paired");
+
+  let error = handoff.pair_partner_actor(partner_key, partner).expect_err("pairing should fail");
+
+  assert!(matches!(error, StreamError::MaterializedResourceRollbackFailed { .. }));
+  assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
+  assert!(matches!(handoff.offer(10_u32), Err(StreamError::MaterializedResourceRollbackFailed { .. })));
 }
 
 #[test]
