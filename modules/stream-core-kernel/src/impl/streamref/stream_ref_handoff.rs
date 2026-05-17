@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, collections::VecDeque, string::String, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
 use core::{marker::PhantomData, num::NonZeroU64};
 
 use fraktor_actor_core_kernel_rs::actor::{actor_ref::ActorRef, messaging::AnyMessage};
@@ -130,6 +130,21 @@ impl<T> StreamRefHandoff<T> {
 
   pub(crate) fn ensure_partner(&self, got_ref: String) -> Result<(), StreamError> {
     self.inner.lock().endpoint.ensure_partner(got_ref)
+  }
+
+  pub(crate) fn ensure_partner_actor(&self, actor_ref: &ActorRef) -> Result<(), StreamError> {
+    if let Some(path) = actor_ref.canonical_path() {
+      return self.ensure_partner(path.to_canonical_uri());
+    }
+    let got_ref = format!("{:?}", actor_ref.pid());
+    let guard = self.inner.lock();
+    if let Some(cleanup) = &guard.cleanup
+      && let Some(partner_actor) = cleanup.partner_actor()
+      && partner_actor.pid() == actor_ref.pid()
+    {
+      return Ok(());
+    }
+    guard.endpoint.ensure_partner(got_ref)
   }
 
   pub(crate) fn subscribe(&self) {

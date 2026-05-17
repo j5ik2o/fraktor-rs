@@ -236,6 +236,22 @@ fn pair_partner_actor_watches_partner_and_sends_demand() {
 }
 
 #[test]
+fn ensure_partner_actor_accepts_stopped_partner_by_pid() {
+  let system = build_system();
+  let (partner, _system_messages, _demand_messages) = temp_recording_actor(&system);
+  let (other, _other_system_messages, _other_demand_messages) = temp_recording_actor(&system);
+  let (handoff, _endpoint_actor) = attached_handoff(&system);
+  let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
+
+  handoff.pair_partner_actor(partner_key, partner.clone()).expect("pair partner");
+  system.state().unregister_temp_actor_by_pid(&partner.pid());
+  system.state().unregister_temp_actor_by_pid(&other.pid());
+
+  assert_eq!(handoff.ensure_partner_actor(&partner), Ok(()));
+  assert!(matches!(handoff.ensure_partner_actor(&other), Err(StreamError::InvalidPartnerActor { .. })));
+}
+
+#[test]
 fn pair_partner_actor_does_not_pair_when_watch_fails() {
   let system = build_system();
   let partner = temp_failing_actor(&system);

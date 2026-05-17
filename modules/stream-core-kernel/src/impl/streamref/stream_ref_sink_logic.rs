@@ -163,10 +163,6 @@ where
     Self { handoff, system, endpoint_actor_ref, partner_actor: None, _pd: PhantomData }
   }
 
-  fn actor_key(actor_ref: &ActorRef) -> Result<String, StreamError> {
-    actor_ref.canonical_path().map(|path| path.to_canonical_uri()).ok_or(StreamError::StreamRefTargetNotInitialized)
-  }
-
   fn stream_error_from_context(message: impl Into<String>) -> StreamError {
     StreamError::failed_with_context(message.into())
   }
@@ -202,8 +198,7 @@ where
   }
 
   fn accept_demand(&mut self, message: StreamRefCumulativeDemand, sender: &ActorRef) -> Result<(), StreamError> {
-    let sender_key = Self::actor_key(sender)?;
-    self.handoff.ensure_partner(sender_key)?;
+    self.handoff.ensure_partner_actor(sender)?;
     self.handoff.record_cumulative_demand_from(message.seq_nr(), message.demand())?;
     self.flush_ready_protocols()
   }
