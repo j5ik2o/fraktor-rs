@@ -54,6 +54,22 @@ fn setup_registers_protocol_bindings_and_manifest_routes() {
     setup.manifest_routes().get(SEQUENCED_ON_NEXT_MANIFEST),
     Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)])
   );
+  assert_eq!(
+    setup.manifest_routes().get(CUMULATIVE_DEMAND_MANIFEST),
+    Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)])
+  );
+  assert_eq!(
+    setup.manifest_routes().get(ON_SUBSCRIBE_HANDSHAKE_MANIFEST),
+    Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)])
+  );
+  assert_eq!(
+    setup.manifest_routes().get(REMOTE_STREAM_COMPLETED_MANIFEST),
+    Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)])
+  );
+  assert_eq!(
+    setup.manifest_routes().get(REMOTE_STREAM_FAILURE_MANIFEST),
+    Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)])
+  );
   assert_eq!(setup.manifest_routes().get(ACK_MANIFEST), Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)]));
   assert_eq!(setup.manifest_routes().get(SOURCE_REF_MANIFEST), Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)]));
   assert_eq!(setup.manifest_routes().get(SINK_REF_MANIFEST), Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)]));

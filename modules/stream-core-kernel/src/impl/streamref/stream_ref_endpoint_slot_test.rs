@@ -43,3 +43,16 @@ fn canonical_actor_path_uses_stage_actor_path() {
   assert!(canonical.starts_with("fraktor://"));
   assert!(canonical.contains("/temp/"));
 }
+
+#[test]
+fn set_actor_ref_keeps_first_materialized_endpoint() {
+  let system = build_system();
+  let first = StageActor::new(&system, Box::new(NoopReceive));
+  let second = StageActor::new(&system, Box::new(NoopReceive));
+  let slot = StreamRefEndpointSlot::new();
+
+  slot.set_actor_ref(first.actor_ref().clone());
+  slot.set_actor_ref(second.actor_ref().clone());
+
+  assert_eq!(slot.actor_ref().expect("endpoint actor"), first.actor_ref().clone());
+}

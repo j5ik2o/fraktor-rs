@@ -187,6 +187,17 @@ fn source_ref_serialized_message_rejects_local_ref_without_endpoint_actor() {
 }
 
 #[test]
+fn sink_ref_serialized_message_rejects_local_ref_without_endpoint_actor() {
+  let resolver = StreamRefResolver::new(build_system());
+  let sink_ref = SinkRef::<u32>::new(StreamRefHandoff::new(), StreamRefEndpointSlot::new());
+
+  let error =
+    resolver.sink_ref_to_serialized_message(&sink_ref).expect_err("local SinkRef must not serialize as payload");
+
+  assert!(matches!(error, SerializationError::NotSerializable(_)));
+}
+
+#[test]
 fn resolve_sink_ref_message_rejects_source_ref_manifest() {
   let resolver = StreamRefResolver::new(build_system());
   let serialized =

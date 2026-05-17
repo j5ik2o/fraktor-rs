@@ -13,10 +13,12 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::{ActorBackedSourceRefLogic, SourceRef};
 use crate::{
+  StreamError,
   dsl::Source,
   r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff},
   materialization::StreamNotUsed,
   source_logic::SourceLogic,
+  stream_ref::StreamRefSettings,
 };
 
 struct RecordingSender {
@@ -85,4 +87,16 @@ fn actor_backed_source_ref_watches_target_when_attached() {
   let endpoint_pid = logic.endpoint_actor_ref().expect("endpoint actor ref").pid();
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid)]);
   assert_eq!(*user_messages.lock(), 1);
+}
+
+#[test]
+fn actor_backed_source_ref_fails_when_partner_never_subscribes_before_timeout() {
+  let system = build_system();
+  let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
+  let mut logic = ActorBackedSourceRefLogic::<u32>::new(target);
+  logic.attach_stream_ref_settings(StreamRefSettings::new().with_subscription_timeout_ticks(1));
+
+  let error = logic.pull().expect_err("subscription timeout");
+
+  assert!(matches!(error, StreamError::StreamRefSubscriptionTimeout { .. }));
 }

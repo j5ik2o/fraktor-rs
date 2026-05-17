@@ -30,7 +30,10 @@ impl StreamRefEndpointSlot {
 
   /// Installs the materialized endpoint actor reference.
   pub(crate) fn set_actor_ref(&self, actor_ref: ActorRef) {
-    *self.actor_ref.lock() = Some(actor_ref);
+    let mut slot = self.actor_ref.lock();
+    if slot.is_none() {
+      *slot = Some(actor_ref);
+    }
   }
 
   /// Returns the installed endpoint actor reference.
