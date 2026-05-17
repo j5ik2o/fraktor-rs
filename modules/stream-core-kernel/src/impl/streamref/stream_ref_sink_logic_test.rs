@@ -21,6 +21,21 @@ fn awaiting_remote_subscription_requests_demand_after_subscribe() {
 }
 
 #[test]
+fn awaiting_remote_subscription_rejects_push_before_subscribe() {
+  let handoff = StreamRefHandoff::<u32>::new();
+  let mut logic = StreamRefSinkLogic::awaiting_remote_subscription(handoff.clone());
+  let mut demand = DemandTracker::new();
+
+  let input: DynValue = Box::new(10_u32);
+  let error = logic.on_push(input, &mut demand).expect_err("push before subscribe");
+
+  assert_eq!(error, StreamError::WouldBlock);
+  assert!(!demand.has_demand());
+  handoff.subscribe();
+  assert_eq!(handoff.poll_or_drain(), Err(StreamError::WouldBlock));
+}
+
+#[test]
 fn awaiting_remote_subscription_fails_after_configured_ticks() {
   let handoff = StreamRefHandoff::<u32>::new();
   let mut logic = StreamRefSinkLogic::awaiting_remote_subscription(handoff);

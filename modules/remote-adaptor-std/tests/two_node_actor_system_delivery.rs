@@ -1,6 +1,11 @@
 //! Actor-system level two-node remote delivery proof.
 
-use std::{format, net::TcpListener, time::Duration};
+use std::{
+  any::{Any, TypeId},
+  format,
+  net::TcpListener,
+  time::Duration,
+};
 
 use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
 use fraktor_actor_core_kernel_rs::{
@@ -15,7 +20,12 @@ use fraktor_actor_core_kernel_rs::{
     props::{DeployableFactoryError, DeployablePropsMetadata, Props},
   },
   event::stream::{
-    EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent, subscriber_handle,
+    ClassifierKey, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent,
+    subscriber_handle,
+  },
+  serialization::{
+    SerializationError, SerializationExtensionInstaller, SerializationSetupBuilder, SerializedMessage, Serializer,
+    SerializerId,
   },
   system::{ActorSystem, remote::RemotingConfig},
 };
@@ -27,16 +37,39 @@ use fraktor_remote_core_rs::{
   address::{Address, UniqueAddress},
   config::RemoteConfig,
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_stream_core_kernel_rs::{
+  DynValue, SourceLogic, StreamError,
+  dsl::{Sink, Source, StreamRefs},
+  materialization::{ActorMaterializer, ActorMaterializerConfig, KeepBoth, KeepRight, StreamDone},
+  stage::StageKind,
+  stream_ref::{
+    STREAM_REF_PROTOCOL_SERIALIZER_NAME, SinkRef, SourceRef, StreamRefProtocolSerializationSetup, StreamRefResolver,
+  },
+};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use tokio::{
   sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
-  time::{Instant, timeout},
+  time::{Instant, sleep, timeout},
 };
 
 const SYSTEM_NAME: &str = "remote-e2e";
+const SOURCE_REF_ENVELOPE_SERIALIZER_NAME: &str = "stream-ref-source-envelope";
+const SINK_REF_ENVELOPE_SERIALIZER_NAME: &str = "stream-ref-sink-envelope";
+const SOURCE_REF_ENVELOPE_MANIFEST: &str = "fraktor.test.SourceRefEnvelope";
+const SINK_REF_ENVELOPE_MANIFEST: &str = "fraktor.test.SinkRefEnvelope";
+const SOURCE_REF_ENVELOPE_SERIALIZER_ID: SerializerId = SerializerId::from_raw(710);
+const SINK_REF_ENVELOPE_SERIALIZER_ID: SerializerId = SerializerId::from_raw(711);
 
 struct RecordingStringActor {
   tx: UnboundedSender<String>,
+}
+
+struct RecordingSourceRefActor {
+  tx: UnboundedSender<SourceRef<i32>>,
+}
+
+struct RecordingSinkRefActor {
+  tx: UnboundedSender<SinkRef<i32>>,
 }
 
 struct RecordingDeathwatchActor {
@@ -67,8 +100,43 @@ struct LifecycleRecorder {
   tx: UnboundedSender<RemotingLifecycleEvent>,
 }
 
+struct AddressTerminatedRecorder {
+  tx: UnboundedSender<EventStreamEvent>,
+}
+
+#[derive(Clone)]
+struct SerializationSystemSlot {
+  system: ArcShared<SpinSyncMutex<Option<ActorSystem>>>,
+}
+
+struct SourceRefEnvelope {
+  source_ref: ArcShared<SpinSyncMutex<Option<SourceRef<i32>>>>,
+}
+
+struct SinkRefEnvelope {
+  sink_ref: ArcShared<SpinSyncMutex<Option<SinkRef<i32>>>>,
+}
+
+struct SourceRefEnvelopeSerializer {
+  system_slot: SerializationSystemSlot,
+}
+
+struct SinkRefEnvelopeSerializer {
+  system_slot: SerializationSystemSlot,
+}
+
+struct OneThenNeverSourceLogic {
+  value: Option<i32>,
+}
+
 impl LifecycleRecorder {
   fn new(tx: UnboundedSender<RemotingLifecycleEvent>) -> Self {
+    Self { tx }
+  }
+}
+
+impl AddressTerminatedRecorder {
+  fn new(tx: UnboundedSender<EventStreamEvent>) -> Self {
     Self { tx }
   }
 }
@@ -81,8 +149,26 @@ impl EventStreamSubscriber for LifecycleRecorder {
   }
 }
 
+impl EventStreamSubscriber for AddressTerminatedRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    self.tx.send(event.clone()).expect("address-terminated channel should be open");
+  }
+}
+
 impl RecordingStringActor {
   fn new(tx: UnboundedSender<String>) -> Self {
+    Self { tx }
+  }
+}
+
+impl RecordingSourceRefActor {
+  fn new(tx: UnboundedSender<SourceRef<i32>>) -> Self {
+    Self { tx }
+  }
+}
+
+impl RecordingSinkRefActor {
+  fn new(tx: UnboundedSender<SinkRef<i32>>) -> Self {
     Self { tx }
   }
 }
@@ -111,10 +197,115 @@ impl StopRemoteWatch {
   }
 }
 
+impl SerializationSystemSlot {
+  fn new() -> Self {
+    Self { system: ArcShared::new(SpinSyncMutex::new(None)) }
+  }
+
+  fn set(&self, system: ActorSystem) {
+    *self.system.lock() = Some(system);
+  }
+
+  fn system(&self) -> Result<ActorSystem, SerializationError> {
+    self.system.lock().clone().ok_or(SerializationError::Uninitialized)
+  }
+}
+
+impl SourceRefEnvelope {
+  fn new(source_ref: SourceRef<i32>) -> Self {
+    Self { source_ref: ArcShared::new(SpinSyncMutex::new(Some(source_ref))) }
+  }
+
+  fn with_source_ref<F>(&self, serialize: F) -> Result<SerializedMessage, SerializationError>
+  where
+    F: FnOnce(&SourceRef<i32>) -> Result<SerializedMessage, SerializationError>, {
+    let guard = self.source_ref.lock();
+    let Some(source_ref) = guard.as_ref() else {
+      return Err(SerializationError::InvalidFormat);
+    };
+    serialize(source_ref)
+  }
+
+  fn take(&self) -> Option<SourceRef<i32>> {
+    self.source_ref.lock().take()
+  }
+}
+
+impl SinkRefEnvelope {
+  fn new(sink_ref: SinkRef<i32>) -> Self {
+    Self { sink_ref: ArcShared::new(SpinSyncMutex::new(Some(sink_ref))) }
+  }
+
+  fn with_sink_ref<F>(&self, serialize: F) -> Result<SerializedMessage, SerializationError>
+  where
+    F: FnOnce(&SinkRef<i32>) -> Result<SerializedMessage, SerializationError>, {
+    let guard = self.sink_ref.lock();
+    let Some(sink_ref) = guard.as_ref() else {
+      return Err(SerializationError::InvalidFormat);
+    };
+    serialize(sink_ref)
+  }
+
+  fn take(&self) -> Option<SinkRef<i32>> {
+    self.sink_ref.lock().take()
+  }
+}
+
+impl SourceRefEnvelopeSerializer {
+  const fn new(system_slot: SerializationSystemSlot) -> Self {
+    Self { system_slot }
+  }
+}
+
+impl SinkRefEnvelopeSerializer {
+  const fn new(system_slot: SerializationSystemSlot) -> Self {
+    Self { system_slot }
+  }
+}
+
+impl OneThenNeverSourceLogic {
+  const fn new(value: i32) -> Self {
+    Self { value: Some(value) }
+  }
+}
+
+impl SourceLogic for OneThenNeverSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    match self.value.take() {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
+  fn should_drain_on_shutdown(&self) -> bool {
+    false
+  }
+}
+
 impl Actor for RecordingStringActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(text) = message.downcast_ref::<String>() {
       self.tx.send(text.clone()).expect("recording channel should be open");
+    }
+    Ok(())
+  }
+}
+
+impl Actor for RecordingSourceRefActor {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(envelope) = message.downcast_ref::<SourceRefEnvelope>() {
+      let source_ref = envelope.take().expect("source ref envelope should contain payload");
+      self.tx.send(source_ref).expect("source ref recording channel should be open");
+    }
+    Ok(())
+  }
+}
+
+impl Actor for RecordingSinkRefActor {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(envelope) = message.downcast_ref::<SinkRefEnvelope>() {
+      let sink_ref = envelope.take().expect("sink ref envelope should contain payload");
+      self.tx.send(sink_ref).expect("sink ref recording channel should be open");
     }
     Ok(())
   }
@@ -152,6 +343,66 @@ impl Actor for OrderedDeathwatchActor {
   fn on_terminated(&mut self, _context: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
     self.tx.send(OrderedDeathwatchEvent::Terminated(terminated)).expect("ordered channel should be open");
     Ok(())
+  }
+}
+
+impl Serializer for SourceRefEnvelopeSerializer {
+  fn identifier(&self) -> SerializerId {
+    SOURCE_REF_ENVELOPE_SERIALIZER_ID
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let envelope = message.downcast_ref::<SourceRefEnvelope>().ok_or(SerializationError::InvalidFormat)?;
+    let system = self.system_slot.system()?;
+    let resolver = StreamRefResolver::new(system);
+    let nested = envelope.with_source_ref(|source_ref| resolver.source_ref_to_serialized_message(source_ref))?;
+    Ok(nested.encode())
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    let nested = SerializedMessage::decode(bytes)?;
+    let system = self.system_slot.system()?;
+    let resolver = StreamRefResolver::new(system);
+    let source_ref = resolver.resolve_source_ref_message::<i32>(&nested)?;
+    Ok(Box::new(SourceRefEnvelope::new(source_ref)))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+}
+
+impl Serializer for SinkRefEnvelopeSerializer {
+  fn identifier(&self) -> SerializerId {
+    SINK_REF_ENVELOPE_SERIALIZER_ID
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let envelope = message.downcast_ref::<SinkRefEnvelope>().ok_or(SerializationError::InvalidFormat)?;
+    let system = self.system_slot.system()?;
+    let resolver = StreamRefResolver::new(system);
+    let nested = envelope.with_sink_ref(|sink_ref| resolver.sink_ref_to_serialized_message(sink_ref))?;
+    Ok(nested.encode())
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    let nested = SerializedMessage::decode(bytes)?;
+    let system = self.system_slot.system()?;
+    let resolver = StreamRefResolver::new(system);
+    let sink_ref = resolver.resolve_sink_ref_message::<i32>(&nested)?;
+    Ok(Box::new(SinkRefEnvelope::new(sink_ref)))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
   }
 }
 
@@ -213,6 +464,61 @@ fn build_node_with_remote_config_and_deployer(
   RemoteNode { system, address, installer }
 }
 
+fn build_stream_ref_node(port: u16, uid: u64) -> RemoteNode {
+  let address = Address::new(SYSTEM_NAME, "127.0.0.1", port);
+  let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address.clone()]);
+  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, RemoteConfig::new("127.0.0.1")));
+  let system_slot = SerializationSystemSlot::new();
+  let serialization_installer = stream_ref_serialization_installer(system_slot.clone());
+  let extension_installers = ExtensionInstallers::default()
+    .with_extension_installer(serialization_installer)
+    .with_shared_extension_installer(installer.clone());
+  let provider_installer = StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(
+    UniqueAddress::new(address.clone(), uid),
+    installer.clone(),
+  );
+  let config = std_actor_system_config(TestTickDriver::default())
+    .with_system_name(SYSTEM_NAME)
+    .with_remoting_config(
+      RemotingConfig::default().with_canonical_host(address.host()).with_canonical_port(address.port()),
+    )
+    .with_extension_installers(extension_installers)
+    .with_actor_ref_provider_installer(provider_installer);
+  let system = ActorSystem::create_with_noop_guardian(config).expect("actor system should build");
+  system_slot.set(system.clone());
+  RemoteNode { system, address, installer }
+}
+
+fn stream_ref_serialization_installer(system_slot: SerializationSystemSlot) -> SerializationExtensionInstaller {
+  let source_ref_serializer: ArcShared<dyn Serializer> =
+    ArcShared::new(SourceRefEnvelopeSerializer::new(system_slot.clone()));
+  let sink_ref_serializer: ArcShared<dyn Serializer> = ArcShared::new(SinkRefEnvelopeSerializer::new(system_slot));
+  let setup = SerializationSetupBuilder::new()
+    .apply_adapter(&StreamRefProtocolSerializationSetup::new())
+    .expect("apply stream ref protocol setup")
+    .register_serializer(SOURCE_REF_ENVELOPE_SERIALIZER_NAME, SOURCE_REF_ENVELOPE_SERIALIZER_ID, source_ref_serializer)
+    .expect("register source ref envelope serializer")
+    .bind::<SourceRefEnvelope>(SOURCE_REF_ENVELOPE_SERIALIZER_NAME)
+    .expect("bind source ref envelope")
+    .bind_remote_manifest::<SourceRefEnvelope>(SOURCE_REF_ENVELOPE_MANIFEST)
+    .expect("bind source ref envelope manifest")
+    .register_manifest_route(SOURCE_REF_ENVELOPE_MANIFEST, 0, SOURCE_REF_ENVELOPE_SERIALIZER_NAME)
+    .expect("route source ref envelope manifest")
+    .register_serializer(SINK_REF_ENVELOPE_SERIALIZER_NAME, SINK_REF_ENVELOPE_SERIALIZER_ID, sink_ref_serializer)
+    .expect("register sink ref envelope serializer")
+    .bind::<SinkRefEnvelope>(SINK_REF_ENVELOPE_SERIALIZER_NAME)
+    .expect("bind sink ref envelope")
+    .bind_remote_manifest::<SinkRefEnvelope>(SINK_REF_ENVELOPE_MANIFEST)
+    .expect("bind sink ref envelope manifest")
+    .register_manifest_route(SINK_REF_ENVELOPE_MANIFEST, 0, SINK_REF_ENVELOPE_SERIALIZER_NAME)
+    .expect("route sink ref envelope manifest")
+    .set_fallback(STREAM_REF_PROTOCOL_SERIALIZER_NAME)
+    .expect("set stream ref protocol fallback")
+    .build()
+    .expect("build stream ref serialization setup");
+  SerializationExtensionInstaller::new(setup)
+}
+
 fn spawn_recording_actor(system: &ActorSystem, name: &'static str) -> (UnboundedReceiver<String>, ActorPath) {
   let (rx, _child, path) = spawn_recording_child(system, name);
   (rx, path)
@@ -224,6 +530,35 @@ fn spawn_recording_child(system: &ActorSystem, name: &'static str) -> (Unbounded
   let child = system.actor_of_named(&props, name).expect("recording actor should spawn");
   let path = child.actor_ref().path().expect("recording actor should have a path");
   (rx, child, path)
+}
+
+fn spawn_source_ref_recording_actor(
+  system: &ActorSystem,
+  name: &'static str,
+) -> (UnboundedReceiver<SourceRef<i32>>, ActorPath) {
+  let (tx, rx) = mpsc::unbounded_channel();
+  let props = Props::from_fn(move || RecordingSourceRefActor::new(tx.clone()));
+  let child = system.actor_of_named(&props, name).expect("source ref recording actor should spawn");
+  let path = child.actor_ref().path().expect("source ref recording actor should have a path");
+  (rx, path)
+}
+
+fn spawn_sink_ref_recording_actor(
+  system: &ActorSystem,
+  name: &'static str,
+) -> (UnboundedReceiver<SinkRef<i32>>, ActorPath) {
+  let (tx, rx) = mpsc::unbounded_channel();
+  let props = Props::from_fn(move || RecordingSinkRefActor::new(tx.clone()));
+  let child = system.actor_of_named(&props, name).expect("sink ref recording actor should spawn");
+  let path = child.actor_ref().path().expect("sink ref recording actor should have a path");
+  (rx, path)
+}
+
+fn build_stream_materializer(system: ActorSystem) -> ActorMaterializer {
+  let config = ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1));
+  let mut materializer = ActorMaterializer::new(system, config);
+  materializer.start().expect("materializer start");
+  materializer
 }
 
 fn spawn_deathwatch_actor(
@@ -252,6 +587,15 @@ fn subscribe_lifecycle(system: &ActorSystem) -> (UnboundedReceiver<RemotingLifec
   let (tx, rx) = mpsc::unbounded_channel();
   let subscriber = subscriber_handle(LifecycleRecorder::new(tx));
   let subscription = system.event_stream().subscribe(&subscriber);
+  (rx, subscription)
+}
+
+fn subscribe_address_terminated(
+  system: &ActorSystem,
+) -> (UnboundedReceiver<EventStreamEvent>, EventStreamSubscription) {
+  let (tx, rx) = mpsc::unbounded_channel();
+  let subscriber = subscriber_handle(AddressTerminatedRecorder::new(tx));
+  let subscription = system.event_stream().subscribe_with_key(ClassifierKey::AddressTerminated, &subscriber);
   (rx, subscription)
 }
 
@@ -342,6 +686,35 @@ async fn wait_for_ordered_event(
   }
 }
 
+async fn wait_for_address_terminated(rx: &mut UnboundedReceiver<EventStreamEvent>, expected_authority: &str) {
+  timeout(Duration::from_secs(5), async {
+    loop {
+      match rx.recv().await {
+        | Some(EventStreamEvent::AddressTerminated(event)) if event.authority() == expected_authority => return,
+        | Some(_) => {},
+        | None => panic!("address-terminated channel closed before expected authority {expected_authority}"),
+      }
+    }
+  })
+  .await
+  .expect("address-terminated event timeout");
+}
+
+fn assert_remote_stream_ref_actor_terminated(result: Result<StreamDone, StreamError>) {
+  match result {
+    | Err(StreamError::RemoteStreamRefActorTerminated { message }) => {
+      assert!(message.contains("remote stream ref partner actor terminated"));
+    },
+    | Err(StreamError::MaterializedResourceRollbackFailed { primary, .. }) => match *primary {
+      | StreamError::RemoteStreamRefActorTerminated { message } => {
+        assert!(message.contains("remote stream ref partner actor terminated"));
+      },
+      | error => panic!("expected remote stream ref actor termination as rollback primary, got {error:?}"),
+    },
+    | other => panic!("expected remote stream ref actor termination failure, got {other:?}"),
+  }
+}
+
 async fn warm_bidirectional_remote_delivery(
   ref_to_b: &mut ActorRef,
   rx_b: &mut UnboundedReceiver<String>,
@@ -395,6 +768,189 @@ async fn two_node_actor_system_delivery_sends_registered_string_payloads() {
   assert_eq!(received_b, String::from("to-b"));
   assert_eq!(received_a, String::from("to-a"));
 
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_node_source_ref_payload_carries_backpressured_elements() {
+  let node_a = build_stream_ref_node(reserve_port(), 101);
+  let node_b = build_stream_ref_node(reserve_port(), 102);
+  let (mut warm_rx_a, warm_path_a) = spawn_recording_actor(&node_a.system, "source-ref-warm-a");
+  let (mut warm_rx_b, warm_path_b) = spawn_recording_actor(&node_b.system, "source-ref-warm-b");
+  let mut warm_ref_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &warm_path_b))
+    .expect("node A should resolve node B warm actor");
+  let mut warm_ref_a = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &warm_path_a))
+    .expect("node B should resolve node A warm actor");
+  warm_bidirectional_remote_delivery(&mut warm_ref_b, &mut warm_rx_b, &mut warm_ref_a, &mut warm_rx_a).await;
+  let mut materializer_a = build_stream_materializer(node_a.system.clone());
+  let mut materializer_b = build_stream_materializer(node_b.system.clone());
+  let (mut source_ref_rx, source_ref_receiver_path) =
+    spawn_source_ref_recording_actor(&node_b.system, "source-ref-receiver-b");
+  let source_ref = Source::from_array([1_i32, 2, 3])
+    .into_mat(StreamRefs::source_ref::<i32>(), KeepRight)
+    .run(&mut materializer_a)
+    .expect("source ref producer should materialize")
+    .into_materialized();
+  let mut receiver_ref = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &source_ref_receiver_path))
+    .expect("node A should resolve node B source-ref receiver");
+
+  receiver_ref
+    .try_tell(AnyMessage::new(SourceRefEnvelope::new(source_ref)))
+    .expect("source ref envelope should send to node B");
+
+  let received_source_ref = timeout(Duration::from_secs(5), source_ref_rx.recv())
+    .await
+    .expect("source ref envelope receive timeout")
+    .expect("source ref channel should stay open");
+  let completion = received_source_ref
+    .into_source()
+    .run_with(Sink::<i32, _>::collect(), &mut materializer_b)
+    .expect("remote source ref consumer should materialize")
+    .into_materialized();
+  let collected = timeout(Duration::from_secs(5), completion)
+    .await
+    .expect("source ref stream completion timeout")
+    .expect("source ref stream should complete");
+
+  assert_eq!(collected, vec![1_i32, 2, 3]);
+
+  materializer_a.shutdown().expect("node A materializer shutdown");
+  materializer_b.shutdown().expect("node B materializer shutdown");
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_node_source_ref_connection_loss_address_termination_deathwatch_fails_before_protocol_completion() {
+  let node_a = build_stream_ref_node(reserve_port(), 121);
+  let node_b = build_stream_ref_node(reserve_port(), 122);
+  let (mut address_terminated_rx, _address_terminated_subscription) = subscribe_address_terminated(&node_b.system);
+  let (mut warm_rx_a, warm_path_a) = spawn_recording_actor(&node_a.system, "source-ref-failure-warm-a");
+  let (mut warm_rx_b, warm_path_b) = spawn_recording_actor(&node_b.system, "source-ref-failure-warm-b");
+  let mut warm_ref_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &warm_path_b))
+    .expect("node A should resolve node B warm actor");
+  let mut warm_ref_a = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &warm_path_a))
+    .expect("node B should resolve node A warm actor");
+  warm_bidirectional_remote_delivery(&mut warm_ref_b, &mut warm_rx_b, &mut warm_ref_a, &mut warm_rx_a).await;
+  let mut materializer_a = build_stream_materializer(node_a.system.clone());
+  let mut materializer_b = build_stream_materializer(node_b.system.clone());
+  let (mut source_ref_rx, source_ref_receiver_path) =
+    spawn_source_ref_recording_actor(&node_b.system, "source-ref-failure-receiver-b");
+  let source_ref = Source::from_logic(StageKind::Custom, OneThenNeverSourceLogic::new(7_i32))
+    .into_mat(StreamRefs::source_ref::<i32>(), KeepRight)
+    .run(&mut materializer_a)
+    .expect("source ref producer should materialize")
+    .into_materialized();
+  let mut receiver_ref = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &source_ref_receiver_path))
+    .expect("node A should resolve node B source-ref receiver");
+
+  receiver_ref
+    .try_tell(AnyMessage::new(SourceRefEnvelope::new(source_ref)))
+    .expect("source ref envelope should send to node B");
+
+  let received_source_ref = timeout(Duration::from_secs(5), source_ref_rx.recv())
+    .await
+    .expect("source ref envelope receive timeout")
+    .expect("source ref channel should stay open");
+  let (element_tx, mut element_rx) = mpsc::unbounded_channel();
+  let completion = received_source_ref
+    .into_source()
+    .run_with(
+      Sink::<i32, _>::foreach(move |value| {
+        element_tx.send(value).expect("element probe channel should be open");
+      }),
+      &mut materializer_b,
+    )
+    .expect("remote source ref consumer should materialize")
+    .into_materialized();
+  let first = timeout(Duration::from_secs(5), element_rx.recv())
+    .await
+    .expect("source ref first element timeout")
+    .expect("element probe channel should stay open");
+  assert_eq!(first, 7_i32);
+  sleep(Duration::from_millis(100)).await;
+
+  timeout(Duration::from_secs(5), node_a.installer.shutdown_and_join())
+    .await
+    .expect("node A remoting shutdown timeout")
+    .expect("node A remoting shutdown should succeed");
+  warm_ref_a
+    .try_tell(AnyMessage::new(String::from("probe-after-node-a-shutdown")))
+    .expect("post-shutdown probe should enqueue and surface transport connection loss");
+  wait_for_address_terminated(&mut address_terminated_rx, &node_a.address.to_string()).await;
+  let result = timeout(Duration::from_secs(5), completion).await.expect("source ref failure completion timeout");
+  assert_remote_stream_ref_actor_terminated(result);
+
+  match materializer_a.shutdown() {
+    | Ok(()) => {},
+    | Err(StreamError::FailedWithContext { message, .. })
+      if message.contains("graceful shutdown exceeded drain round limit") => {},
+    | Err(error) => panic!("node A materializer shutdown failed unexpectedly: {error:?}"),
+  }
+  materializer_b.shutdown().expect("node B materializer shutdown");
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_node_sink_ref_payload_carries_backpressured_elements() {
+  let node_a = build_stream_ref_node(reserve_port(), 111);
+  let node_b = build_stream_ref_node(reserve_port(), 112);
+  let (mut warm_rx_a, warm_path_a) = spawn_recording_actor(&node_a.system, "sink-ref-warm-a");
+  let (mut warm_rx_b, warm_path_b) = spawn_recording_actor(&node_b.system, "sink-ref-warm-b");
+  let mut warm_ref_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &warm_path_b))
+    .expect("node A should resolve node B warm actor");
+  let mut warm_ref_a = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &warm_path_a))
+    .expect("node B should resolve node A warm actor");
+  warm_bidirectional_remote_delivery(&mut warm_ref_b, &mut warm_rx_b, &mut warm_ref_a, &mut warm_rx_a).await;
+  let mut materializer_a = build_stream_materializer(node_a.system.clone());
+  let mut materializer_b = build_stream_materializer(node_b.system.clone());
+  let (mut sink_ref_rx, sink_ref_receiver_path) = spawn_sink_ref_recording_actor(&node_a.system, "sink-ref-receiver-a");
+  let consumer = StreamRefs::sink_ref::<i32>().into_mat(Sink::<i32, _>::collect(), KeepBoth);
+  let (sink_ref, completion) =
+    consumer.run(&mut materializer_b).expect("sink ref consumer should materialize").into_materialized();
+  let mut receiver_ref = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &sink_ref_receiver_path))
+    .expect("node B should resolve node A sink-ref receiver");
+
+  receiver_ref
+    .try_tell(AnyMessage::new(SinkRefEnvelope::new(sink_ref)))
+    .expect("sink ref envelope should send to node A");
+
+  let received_sink_ref = timeout(Duration::from_secs(5), sink_ref_rx.recv())
+    .await
+    .expect("sink ref envelope receive timeout")
+    .expect("sink ref channel should stay open");
+  let _producer = Source::from_array([10_i32, 20, 30])
+    .run_with(received_sink_ref.into_sink(), &mut materializer_a)
+    .expect("remote sink ref producer should materialize");
+  let collected = timeout(Duration::from_secs(5), completion)
+    .await
+    .expect("sink ref stream completion timeout")
+    .expect("sink ref stream should complete");
+
+  assert_eq!(collected, vec![10_i32, 20, 30]);
+
+  materializer_a.shutdown().expect("node A materializer shutdown");
+  materializer_b.shutdown().expect("node B materializer shutdown");
   node_a.shutdown().await;
   node_b.shutdown().await;
 }

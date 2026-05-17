@@ -2,7 +2,7 @@
 
 ### Requirement: StreamRef preserves backpressure and terminal ordering
 
-StreamRef handoff SHALL preserve stream-level backpressure, pending elements, completion, failure, and cancellation across both local resolver round-trip and remote actor remoting boundary. Transport enqueue backpressure MUST be observable separately from stream-level demand and MUST NOT silently drop accepted stream elements.
+StreamRef handoff SHALL preserve stream-level backpressure, pending elements, completion, failure, and cancellation across both actor-backed local endpoint proof and remote actor remoting boundary. Transport enqueue backpressure MUST be observable separately from stream-level demand and MUST NOT silently drop accepted stream elements.
 
 #### Scenario: elements are not sent without demand
 

@@ -7,6 +7,8 @@ use core::{
   task::{Context, Poll},
 };
 
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
+use fraktor_actor_core_kernel_rs::system::ActorSystem;
 use fraktor_utils_core_rs::{
   collections::queue::OverflowPolicy,
   sync::{ArcShared, SpinSyncMutex},
@@ -36,6 +38,7 @@ use crate::{
   shape::{Inlet, Outlet, PortId},
   snapshot::{ConnectionState, InterpreterSnapshot},
   stage::{AsyncCallback, StageKind, TimerGraphStageLogic},
+  stream_ref::StreamRefSettings,
 };
 
 fn drive_to_completion(interpreter: &mut GraphInterpreter) {
@@ -142,6 +145,57 @@ fn stream_plan_rejects_missing_source_or_sink_stage() {
   .expect("missing source and sink should be rejected");
 
   assert_eq!(error, StreamError::InvalidConnection);
+}
+
+#[test]
+fn materializer_context_is_attached_to_source_and_sink_logic() {
+  let source_attached = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let sink_attached = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamFuture::new();
+  let source = SourceDefinition {
+    kind:        StageKind::Custom,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::Left,
+    logic:       Box::new(ActorSystemAwareSourceLogic { attached: source_attached.clone(), value: Some(1_u32) }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    attributes:  Attributes::new(),
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::Custom,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::Right,
+    logic:       Box::new(ActorSystemAwareSinkLogic {
+      attached:   sink_attached.clone(),
+      completion: completion.clone(),
+      values:     Vec::new(),
+    }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    attributes:  Attributes::new(),
+  };
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let system = create_noop_actor_system();
+  let mut interpreter = GraphInterpreter::new_with_materializer_context(
+    plan,
+    StreamBufferConfig::default(),
+    Some(&system),
+    &StreamRefSettings::new(),
+  );
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(*source_attached.lock(), 1);
+  assert_eq!(*sink_attached.lock(), 1);
+  assert_eq!(completion.value(), Completion::Ready(Ok(vec![1_u32])));
 }
 
 #[test]
@@ -5083,6 +5137,17 @@ struct CancelAwareSequenceSourceLogic {
   cancels: ArcShared<SpinSyncMutex<u32>>,
 }
 
+struct ActorSystemAwareSourceLogic {
+  attached: ArcShared<SpinSyncMutex<u32>>,
+  value:    Option<u32>,
+}
+
+struct ActorSystemAwareSinkLogic {
+  attached:   ArcShared<SpinSyncMutex<u32>>,
+  completion: StreamFuture<Vec<u32>>,
+  values:     Vec<u32>,
+}
+
 impl SourceLogic for CancelAwareSequenceSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     *self.pulls.lock() += 1;
@@ -5097,6 +5162,18 @@ impl SourceLogic for CancelAwareSequenceSourceLogic {
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     *self.cancels.lock() += 1;
     Ok(())
+  }
+}
+
+impl SourceLogic for ActorSystemAwareSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(self.value.take().map(|value| Box::new(value) as DynValue))
+  }
+
+  fn attach_actor_system(&mut self, system: ActorSystem) {
+    drop(system);
+    let mut attached = self.attached.lock();
+    *attached = attached.saturating_add(1);
   }
 }
 
@@ -5294,6 +5371,34 @@ impl SourceLogic for RestartBeforeEmitSourceLogic {
 
 struct NoDemandSinkLogic {
   completion: StreamFuture<StreamDone>,
+}
+
+impl SinkLogic for ActorSystemAwareSinkLogic {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    self.values.push(value);
+    demand.request(1)?;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    self.completion.complete(Ok(self.values.clone()));
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.completion.complete(Err(error));
+  }
+
+  fn attach_actor_system(&mut self, system: ActorSystem) {
+    drop(system);
+    let mut attached = self.attached.lock();
+    *attached = attached.saturating_add(1);
+  }
 }
 
 impl SinkLogic for NoDemandSinkLogic {

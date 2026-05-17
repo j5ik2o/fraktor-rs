@@ -19,7 +19,8 @@ The system SHALL materialize a `SourceRef<T>` from a producer stream, and a seri
 #### Scenario: SourceRef round-trip carries elements locally
 
 - **GIVEN** a producer stream has materialized a `SourceRef<T>`
-- **WHEN** the same ActorSystem converts the ref to serialization format and resolves it back to `SourceRef<T>`
+- **AND** the ref is backed by a materialized endpoint actor with a canonical actor path
+- **WHEN** the same ActorSystem converts the ref to serialization format and resolves it back to `SourceRef<T>` through provider dispatch
 - **AND** the resolved ref is consumed by a sink
 - **THEN** all produced elements are observed in order
 - **AND** normal completion is observed after the elements
@@ -43,7 +44,8 @@ The system SHALL materialize a `SinkRef<T>` from a consumer sink, and a serializ
 #### Scenario: SinkRef round-trip carries elements locally
 
 - **GIVEN** a consumer sink has materialized a `SinkRef<T>`
-- **WHEN** the same ActorSystem converts the ref to serialization format and resolves it back to `SinkRef<T>`
+- **AND** the ref is backed by a materialized endpoint actor with a canonical actor path
+- **WHEN** the same ActorSystem converts the ref to serialization format and resolves it back to `SinkRef<T>` through provider dispatch
 - **AND** a producer stream writes to the resolved ref
 - **THEN** the original consumer sink observes all elements in order
 - **AND** normal completion is observed after the elements
@@ -70,19 +72,19 @@ The system SHALL treat canonical actor path strings as resolver and serializer i
 - **THEN** they do not present `SourceRef` serialization as resolving to `SinkRef`
 - **AND** they do not present `SinkRef` serialization as resolving to `SourceRef`
 
-### Requirement: local materialization proof gates remote transport
+### Requirement: actor-backed local materialization proof gates remote transport
 
-The remote StreamRef implementation SHALL prove local resolver round-trip behavior before relying on remote transport integration.
+The remote StreamRef implementation SHALL prove actor-backed endpoint materialization and resolver behavior before relying on remote transport integration. Local handoff-only refs, placeholder actor path strings, and in-process fake serialization maps MUST NOT satisfy this gate.
 
 #### Scenario: local SourceRef proof is required before remote SourceRef test
 
 - **WHEN** a two-ActorSystem `SourceRef` transport test is added
-- **THEN** a non-ignored local `SourceRef` resolver round-trip test already proves element delivery, backpressure, and completion
+- **THEN** a non-ignored local `SourceRef` actor-backed endpoint proof already proves endpoint ownership, canonical path conversion, provider-dispatch resolve, element delivery, backpressure, and completion
 
 #### Scenario: local SinkRef proof is required before remote SinkRef test
 
 - **WHEN** a two-ActorSystem `SinkRef` transport test is added
-- **THEN** a non-ignored local `SinkRef` resolver round-trip test already proves element delivery, backpressure, and completion
+- **THEN** a non-ignored local `SinkRef` actor-backed endpoint proof already proves endpoint ownership, canonical path conversion, provider-dispatch resolve, element delivery, backpressure, and completion
 
 #### Scenario: endpoint state changes wake materialized stream
 
