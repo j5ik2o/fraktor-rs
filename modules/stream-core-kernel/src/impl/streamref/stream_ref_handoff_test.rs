@@ -314,6 +314,18 @@ fn send_cumulative_demand_without_cleanup_or_partner_is_noop() {
 }
 
 #[test]
+fn send_cumulative_demand_reports_partner_send_failure() {
+  let system = build_system();
+  let partner = temp_failing_actor(&system);
+  let handoff = StreamRefHandoff::<u32>::new();
+  let endpoint_actor = StageActor::new(&system, Box::new(NoopReceive));
+  let demand = NonZeroU64::new(1).expect("demand");
+  handoff.attach_endpoint_actor(endpoint_actor, Some(partner));
+
+  assert_eq!(handoff.send_cumulative_demand_to_partner(0, demand), Err(StreamError::WouldBlock));
+}
+
+#[test]
 fn subscribe_after_remote_pair_records_invalid_partner_failure() {
   let system = build_system();
   let (partner, _system_messages, _demand_messages) = temp_recording_actor(&system);
