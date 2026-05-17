@@ -250,8 +250,9 @@ where
 
   fn on_complete(&mut self) -> Result<(), StreamError> {
     let seq_nr = self.state.next_seq_nr();
-    self.send_to_target(StreamRefRemoteStreamCompleted::new(seq_nr))?;
-    self.release_target_watch()
+    let send_result = self.send_to_target(StreamRefRemoteStreamCompleted::new(seq_nr));
+    let release_result = self.release_target_watch();
+    send_result.and(release_result)
   }
 
   fn on_error(&mut self, error: StreamError) {

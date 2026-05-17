@@ -185,36 +185,50 @@ fn actor_backed_source_ref_sends_demand_after_subscription() {
 #[test]
 fn actor_backed_source_ref_receive_accepts_ack_completion_and_failure() {
   let system = build_system();
+  let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = ActorBackedSourceRefReceive::new(handoff.clone(), system);
+  let mut receive = ActorBackedSourceRefReceive::new(handoff.clone(), system, &target);
 
-  receive.receive(StageActorEnvelope::new(ActorRef::null(), AnyMessage::new(StreamRefAck))).expect("ack accepted");
+  receive.receive(StageActorEnvelope::new(target.clone(), AnyMessage::new(StreamRefAck))).expect("ack accepted");
   assert!(handoff.is_subscribed());
 
   receive
-    .receive(StageActorEnvelope::new(ActorRef::null(), AnyMessage::new(StreamRefRemoteStreamCompleted::new(0))))
+    .receive(StageActorEnvelope::new(target.clone(), AnyMessage::new(StreamRefRemoteStreamCompleted::new(0))))
     .expect("completion accepted");
   assert_eq!(handoff.poll_or_drain(), Ok(None));
 
   let failed = StreamRefHandoff::<u32>::new();
-  let mut failed_receive = ActorBackedSourceRefReceive::new(failed.clone(), build_system());
+  let mut failed_receive = ActorBackedSourceRefReceive::new(failed.clone(), build_system(), &target);
   failed_receive
-    .receive(StageActorEnvelope::new(
-      ActorRef::null(),
-      AnyMessage::new(StreamRefRemoteStreamFailure::new(String::from("boom"))),
-    ))
+    .receive(StageActorEnvelope::new(target, AnyMessage::new(StreamRefRemoteStreamFailure::new(String::from("boom")))))
     .expect("failure accepted");
   assert!(matches!(failed.poll_or_drain(), Err(StreamError::FailedWithContext { .. })));
 }
 
 #[test]
+fn actor_backed_source_ref_receive_rejects_invalid_sender() {
+  let system = build_system();
+  let (target, _target_system_messages, _target_user_messages) = temp_recording_actor(&system);
+  let (other, _other_system_messages, _other_user_messages) = temp_recording_actor(&system);
+  let handoff = StreamRefHandoff::<u32>::new();
+  let mut receive = ActorBackedSourceRefReceive::new(handoff.clone(), system, &target);
+
+  let error =
+    receive.receive(StageActorEnvelope::new(other, AnyMessage::new(StreamRefAck))).expect_err("invalid sender");
+
+  assert!(matches!(error, StreamError::InvalidPartnerActor { .. }));
+  assert!(!handoff.is_subscribed());
+}
+
+#[test]
 fn actor_backed_source_ref_receive_reports_payload_deserialization_error() {
   let system = build_system();
+  let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = ActorBackedSourceRefReceive::new(handoff, system);
+  let mut receive = ActorBackedSourceRefReceive::new(handoff, system, &target);
   let payload = SerializedMessage::new(SerializerId::from_raw(9_999), None, vec![1, 2, 3]);
   let error = receive
-    .receive(StageActorEnvelope::new(ActorRef::null(), AnyMessage::new(StreamRefSequencedOnNext::new(0, payload))))
+    .receive(StageActorEnvelope::new(target, AnyMessage::new(StreamRefSequencedOnNext::new(0, payload))))
     .expect_err("unknown nested serializer should fail");
 
   assert!(matches!(error, StreamError::FailedWithContext { .. }));
@@ -222,27 +236,29 @@ fn actor_backed_source_ref_receive_reports_payload_deserialization_error() {
 
 #[test]
 fn actor_backed_source_ref_receive_handles_deathwatch_and_unknown_messages() {
+  let system = build_system();
+  let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = ActorBackedSourceRefReceive::new(handoff, build_system());
+  let mut receive = ActorBackedSourceRefReceive::new(handoff, system, &target);
 
   let deathwatch_error = receive
     .receive(StageActorEnvelope::new(
-      ActorRef::null(),
+      target.clone(),
       AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(99, 0))),
     ))
     .expect_err("deathwatch should fail active handoff");
   let unknown_error =
-    receive.receive(StageActorEnvelope::new(ActorRef::null(), AnyMessage::new(7_u32))).expect_err("unknown message");
+    receive.receive(StageActorEnvelope::new(target.clone(), AnyMessage::new(7_u32))).expect_err("unknown message");
 
   assert!(matches!(deathwatch_error, StreamError::RemoteStreamRefActorTerminated { .. }));
   assert_eq!(unknown_error, StreamError::Failed);
 
   let terminal = StreamRefHandoff::<u32>::new();
   terminal.close_for_cancel();
-  let mut terminal_receive = ActorBackedSourceRefReceive::new(terminal, build_system());
+  let mut terminal_receive = ActorBackedSourceRefReceive::new(terminal, build_system(), &target);
   assert_eq!(
     terminal_receive.receive(StageActorEnvelope::new(
-      ActorRef::null(),
+      target,
       AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(100, 0))),
     )),
     Ok(())

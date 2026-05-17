@@ -224,6 +224,19 @@ fn pair_partner_actor_watches_partner_and_sends_demand() {
 }
 
 #[test]
+fn pair_partner_actor_does_not_pair_when_watch_fails() {
+  let system = build_system();
+  let partner = temp_failing_actor(&system);
+  let (handoff, _endpoint_actor) = attached_handoff(&system);
+  let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
+
+  let _error = handoff.pair_partner_actor(partner_key.clone(), partner).expect_err("watch should fail");
+
+  assert!(!handoff.is_subscribed());
+  assert_eq!(handoff.ensure_partner(partner_key), Err(StreamError::StreamRefTargetNotInitialized));
+}
+
+#[test]
 fn send_cumulative_demand_without_cleanup_or_partner_is_noop() {
   let system = build_system();
   let handoff = StreamRefHandoff::<u32>::new();

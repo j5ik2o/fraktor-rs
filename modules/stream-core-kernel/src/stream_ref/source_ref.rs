@@ -217,8 +217,10 @@ where
   }
 
   fn attach_actor_system(&mut self, system: ActorSystem) {
-    let endpoint_actor =
-      StageActor::new(&system, Box::new(ActorBackedSourceRefReceive::<T>::new(self.handoff.clone(), system.clone())));
+    let endpoint_actor = StageActor::new(
+      &system,
+      Box::new(ActorBackedSourceRefReceive::<T>::new(self.handoff.clone(), system.clone(), &self.target_actor)),
+    );
     self.handoff.attach_endpoint_actor(endpoint_actor.clone(), Some(self.target_actor.clone()));
     self.endpoint_actor = Some(endpoint_actor);
     let watch_result = self.watch_target_actor();
@@ -232,18 +234,42 @@ where
 }
 
 struct ActorBackedSourceRefReceive<T> {
-  handoff: StreamRefHandoff<T>,
-  system:  ActorSystem,
-  _pd:     PhantomData<fn() -> T>,
+  handoff:          StreamRefHandoff<T>,
+  system:           ActorSystem,
+  target_actor_pid: Pid,
+  target_actor_ref: String,
+  _pd:              PhantomData<fn() -> T>,
 }
 
 impl<T> ActorBackedSourceRefReceive<T> {
-  const fn new(handoff: StreamRefHandoff<T>, system: ActorSystem) -> Self {
-    Self { handoff, system, _pd: PhantomData }
+  fn new(handoff: StreamRefHandoff<T>, system: ActorSystem, target_actor: &ActorRef) -> Self {
+    Self {
+      handoff,
+      system,
+      target_actor_pid: target_actor.pid(),
+      target_actor_ref: Self::actor_label(target_actor),
+      _pd: PhantomData,
+    }
   }
 
   fn stream_error_from_context(message: impl Into<String>) -> StreamError {
     StreamError::failed_with_context(message.into())
+  }
+
+  fn actor_label(actor_ref: &ActorRef) -> String {
+    actor_ref.canonical_path().map(|path| path.to_canonical_uri()).unwrap_or_else(|| format!("{:?}", actor_ref.pid()))
+  }
+
+  fn ensure_sender(&self, sender: &ActorRef) -> Result<String, StreamError> {
+    let got_ref = Self::actor_label(sender);
+    if sender.pid() == self.target_actor_pid {
+      return Ok(got_ref);
+    }
+    Err(StreamError::InvalidPartnerActor {
+      expected_ref: self.target_actor_ref.clone().into(),
+      got_ref:      got_ref.into(),
+      message:      "stream ref message came from a non-partner actor".into(),
+    })
   }
 
   fn deserialize_value(&self, message: &StreamRefSequencedOnNext) -> Result<T, StreamError>
@@ -282,17 +308,21 @@ where
       return self.accept_partner_terminated(terminated);
     }
     if envelope.message().downcast_ref::<StreamRefAck>().is_some() {
-      self.handoff.subscribe();
+      let got_ref = self.ensure_sender(envelope.sender())?;
+      self.handoff.pair_partner_actor(got_ref, envelope.sender().clone())?;
       return Ok(());
     }
     if let Some(message) = envelope.message().downcast_ref::<StreamRefSequencedOnNext>() {
+      self.ensure_sender(envelope.sender())?;
       let value = self.deserialize_value(message)?;
       return self.handoff.enqueue_remote_element(message.seq_nr(), value);
     }
     if let Some(message) = envelope.message().downcast_ref::<StreamRefRemoteStreamCompleted>() {
+      self.ensure_sender(envelope.sender())?;
       return self.handoff.enqueue_remote_completed(message.seq_nr());
     }
     if let Some(message) = envelope.message().downcast_ref::<StreamRefRemoteStreamFailure>() {
+      self.ensure_sender(envelope.sender())?;
       self.handoff.enqueue_remote_failure(String::from(message.message()));
       return Ok(());
     }

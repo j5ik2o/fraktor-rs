@@ -97,9 +97,20 @@ impl<T> StreamRefHandoff<T> {
 
   pub(crate) fn pair_partner_actor(&self, got_ref: String, partner_actor: ActorRef) -> Result<(), StreamError> {
     let mut guard = self.inner.lock();
-    guard.endpoint.pair_partner(got_ref)?;
+    if let Some(cleanup) = &mut guard.cleanup
+      && cleanup.partner_actor().is_none()
+      && let Err(error) = cleanup.endpoint_actor().watch(&partner_actor)
+    {
+      guard.failure = Some(error.clone());
+      guard.closed = true;
+      return Err(error);
+    }
+    if let Err(error) = guard.endpoint.pair_partner(got_ref) {
+      guard.failure = Some(error.clone());
+      guard.closed = true;
+      return Err(error);
+    }
     if let Some(cleanup) = &mut guard.cleanup {
-      cleanup.endpoint_actor().watch(&partner_actor)?;
       cleanup.set_partner_actor(partner_actor);
     }
     guard.subscribed = true;

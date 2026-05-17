@@ -31,12 +31,24 @@ struct RecordingSender {
   user_messages:   ArcShared<SpinSyncMutex<usize>>,
 }
 
+struct UserFailingSender {
+  system_messages: ArcShared<SpinSyncMutex<Vec<SystemMessage>>>,
+}
+
 impl RecordingSender {
   fn new() -> (ArcShared<SpinSyncMutex<Vec<SystemMessage>>>, ArcShared<SpinSyncMutex<usize>>, Self) {
     let system_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
     let user_messages = ArcShared::new(SpinSyncMutex::new(0_usize));
     let sender = Self { system_messages: system_messages.clone(), user_messages: user_messages.clone() };
     (system_messages, user_messages, sender)
+  }
+}
+
+impl UserFailingSender {
+  fn new() -> (ArcShared<SpinSyncMutex<Vec<SystemMessage>>>, Self) {
+    let system_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+    let sender = Self { system_messages: system_messages.clone() };
+    (system_messages, sender)
   }
 }
 
@@ -48,6 +60,16 @@ impl ActorRefSender for RecordingSender {
       *self.user_messages.lock() += 1;
     }
     Ok(SendOutcome::Delivered)
+  }
+}
+
+impl ActorRefSender for UserFailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    if let Some(system_message) = message.downcast_ref::<SystemMessage>() {
+      self.system_messages.lock().push(system_message.clone());
+      return Ok(SendOutcome::Delivered);
+    }
+    Err(SendError::closed(message))
   }
 }
 
@@ -65,6 +87,15 @@ fn temp_recording_actor(
     ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(sender)), &system_state);
   let _name = system_state.register_temp_actor(actor_ref.clone());
   (actor_ref, system_messages, user_messages)
+}
+
+fn temp_user_failing_actor(system: &ActorSystem) -> (ActorRef, ArcShared<SpinSyncMutex<Vec<SystemMessage>>>) {
+  let (system_messages, sender) = UserFailingSender::new();
+  let system_state = system.state();
+  let actor_ref =
+    ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(sender)), &system_state);
+  let _name = system_state.register_temp_actor(actor_ref.clone());
+  (actor_ref, system_messages)
 }
 
 #[test]
@@ -173,6 +204,20 @@ fn actor_backed_sink_ref_watches_target_and_releases_on_complete() {
 
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
   assert_eq!(*user_messages.lock(), 2);
+}
+
+#[test]
+fn actor_backed_sink_ref_releases_watch_when_completion_send_fails() {
+  let system = build_system();
+  let (target, system_messages) = temp_user_failing_actor(&system);
+  let mut logic = ActorBackedSinkRefLogic::<u32>::new(target);
+
+  logic.attach_actor_system(system);
+  let endpoint_pid = logic.endpoint_actor_ref().expect("endpoint actor ref").pid();
+  let error = logic.on_complete().expect_err("completion send should fail");
+
+  assert!(matches!(error, StreamError::FailedWithContext { .. }));
+  assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
 }
 
 #[test]
