@@ -262,7 +262,7 @@ impl<T> ActorBackedSourceRefReceive<T> {
 
   fn ensure_sender(&self, sender: &ActorRef) -> Result<String, StreamError> {
     let got_ref = Self::actor_label(sender);
-    if sender.pid() == self.target_actor_pid {
+    if got_ref == self.target_actor_ref || sender.pid() == self.target_actor_pid {
       return Ok(got_ref);
     }
     Err(StreamError::InvalidPartnerActor {
