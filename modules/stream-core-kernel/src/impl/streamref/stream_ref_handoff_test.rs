@@ -24,6 +24,10 @@ impl<T> StreamRefHandoff<T> {
   pub(crate) fn push_protocol_for_test(&self, protocol: StreamRefProtocol) {
     self.inner.lock().values.push_back(protocol);
   }
+
+  pub(crate) fn pair_endpoint_for_test(&self, got_ref: &'static str) {
+    self.inner.lock().endpoint.pair_partner(got_ref).expect("pair endpoint");
+  }
 }
 
 struct NoopReceive;
@@ -242,6 +246,22 @@ fn pair_partner_actor_does_not_pair_when_watch_fails() {
 
   assert!(!handoff.is_subscribed());
   assert_eq!(handoff.ensure_partner(partner_key), Err(StreamError::StreamRefTargetNotInitialized));
+}
+
+#[test]
+fn pair_partner_actor_unwatches_partner_when_pairing_fails_after_watch() {
+  let system = build_system();
+  let (partner, system_messages, _demand_messages) = temp_recording_actor(&system);
+  let (handoff, endpoint_actor) = attached_handoff(&system);
+  let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
+  let endpoint_pid = endpoint_actor.actor_ref().pid();
+  handoff.pair_endpoint_for_test("already-paired");
+
+  let error = handoff.pair_partner_actor(partner_key, partner).expect_err("pairing should fail");
+
+  assert!(matches!(error, StreamError::InvalidPartnerActor { .. }));
+  assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
+  assert!(matches!(handoff.offer(10_u32), Err(StreamError::InvalidPartnerActor { .. })));
 }
 
 #[test]

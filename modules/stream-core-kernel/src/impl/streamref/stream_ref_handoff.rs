@@ -97,18 +97,29 @@ impl<T> StreamRefHandoff<T> {
 
   pub(crate) fn pair_partner_actor(&self, got_ref: String, partner_actor: ActorRef) -> Result<(), StreamError> {
     let mut guard = self.inner.lock();
-    if let Some(cleanup) = &mut guard.cleanup
+    let watched_partner = if let Some(cleanup) = &mut guard.cleanup
       && cleanup.partner_actor().is_none()
-      && let Err(error) = cleanup.endpoint_actor().watch(&partner_actor)
     {
-      guard.failure = Some(error.clone());
-      guard.closed = true;
-      return Err(error);
-    }
+      if let Err(error) = cleanup.endpoint_actor().watch(&partner_actor) {
+        guard.failure = Some(error.clone());
+        guard.closed = true;
+        return Err(error);
+      }
+      true
+    } else {
+      false
+    };
     if let Err(error) = guard.endpoint.pair_partner(got_ref) {
-      guard.failure = Some(error.clone());
+      let mut reported_error = error.clone();
+      if watched_partner
+        && let Some(cleanup) = &guard.cleanup
+        && let Err(rollback_error) = cleanup.endpoint_actor().unwatch(&partner_actor)
+      {
+        reported_error = StreamError::materialized_resource_rollback_failed(error, rollback_error);
+      }
+      guard.failure = Some(reported_error.clone());
       guard.closed = true;
-      return Err(error);
+      return Err(reported_error);
     }
     if let Some(cleanup) = &mut guard.cleanup {
       cleanup.set_partner_actor(partner_actor);
