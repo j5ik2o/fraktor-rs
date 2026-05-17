@@ -22,6 +22,8 @@ pub(crate) const STREAM_REF_SUBSCRIPTION_TIMEOUT_MESSAGE: &str =
   "remote stream ref partner did not subscribe before the configured timeout";
 const LOCAL_STREAM_REF_PARTNER: &str = "local-stream-ref-partner";
 const STREAM_REF_TERMINAL_CLEANUP_FAILURE_MESSAGE: &str = "stream ref terminal cleanup failed";
+const STREAM_REF_PARTNER_UNAVAILABLE_CLEANUP_MISSING: &str = "endpoint cleanup missing";
+const STREAM_REF_PARTNER_UNAVAILABLE_PARTNER_MISSING: &str = "partner actor missing";
 
 struct StreamRefHandoffState<T> {
   values:          VecDeque<StreamRefProtocol>,
@@ -327,19 +329,45 @@ impl<T> StreamRefHandoff<T> {
   }
 
   pub(crate) fn send_cumulative_demand_to_partner(&self, seq_nr: u64, demand: NonZeroU64) -> Result<(), StreamError> {
+    let message = StreamRefCumulativeDemand::new(seq_nr, demand);
     let (endpoint_actor, mut partner_actor) = {
       let guard = self.inner.lock();
       let Some(cleanup) = &guard.cleanup else {
-        return Ok(());
+        let error = StreamError::StreamRefPartnerUnavailable {
+          seq_nr: message.seq_nr(),
+          demand: message.demand(),
+          reason: STREAM_REF_PARTNER_UNAVAILABLE_CLEANUP_MISSING,
+        };
+        tracing::warn!(
+          seq_nr = message.seq_nr(),
+          demand = message.demand().get(),
+          cleanup = false,
+          partner_actor = false,
+          ?error,
+          "stream ref cumulative demand partner unavailable"
+        );
+        return Err(error);
       };
+      let endpoint_actor = cleanup.endpoint_actor_ref();
       let Some(partner_actor) = cleanup.partner_actor() else {
-        // Handshake may not have paired the endpoint yet; the recorded demand
-        // stays in the handoff and will be sent after the partner is known.
-        return Ok(());
+        let error = StreamError::StreamRefPartnerUnavailable {
+          seq_nr: message.seq_nr(),
+          demand: message.demand(),
+          reason: STREAM_REF_PARTNER_UNAVAILABLE_PARTNER_MISSING,
+        };
+        tracing::warn!(
+          ?endpoint_actor,
+          seq_nr = message.seq_nr(),
+          demand = message.demand().get(),
+          cleanup = true,
+          partner_actor = false,
+          ?error,
+          "stream ref cumulative demand partner unavailable"
+        );
+        return Err(error);
       };
-      (cleanup.endpoint_actor_ref(), partner_actor)
+      (endpoint_actor, partner_actor)
     };
-    let message = StreamRefCumulativeDemand::new(seq_nr, demand);
     partner_actor
       .try_tell(AnyMessage::new(message).with_sender(endpoint_actor))
       .map_err(|error| StreamError::from_send_error(&error))

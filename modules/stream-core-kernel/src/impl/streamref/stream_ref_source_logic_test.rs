@@ -25,6 +25,17 @@ use crate::{
   },
 };
 
+impl<T> SourceRefEndpointReceive<T>
+where
+  T: Send + Sync + 'static,
+{
+  fn send_to_partner<M>(&mut self, message: M) -> Result<(), StreamError>
+  where
+    M: Send + Sync + 'static, {
+    self.endpoint.send_to_partner(message)
+  }
+}
+
 struct RecordingSender {
   user_messages: ArcShared<SpinSyncMutex<usize>>,
 }

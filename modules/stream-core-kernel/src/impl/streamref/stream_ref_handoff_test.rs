@@ -342,15 +342,21 @@ fn pair_partner_actor_records_duplicate_partner_failure() {
 }
 
 #[test]
-fn send_cumulative_demand_without_cleanup_or_partner_is_noop() {
+fn send_cumulative_demand_without_cleanup_or_partner_reports_partner_unavailable() {
   let system = build_system();
   let handoff = StreamRefHandoff::<u32>::new();
   let demand = NonZeroU64::new(1).expect("demand");
 
-  assert_eq!(handoff.send_cumulative_demand_to_partner(0, demand), Ok(()));
+  assert_eq!(
+    handoff.send_cumulative_demand_to_partner(0, demand),
+    Err(StreamError::StreamRefPartnerUnavailable { seq_nr: 0, demand, reason: "endpoint cleanup missing" })
+  );
 
   let (attached, endpoint_actor) = attached_handoff(&system);
-  assert_eq!(attached.send_cumulative_demand_to_partner(0, demand), Ok(()));
+  assert_eq!(
+    attached.send_cumulative_demand_to_partner(0, demand),
+    Err(StreamError::StreamRefPartnerUnavailable { seq_nr: 0, demand, reason: "partner actor missing" })
+  );
   let mut endpoint_ref = endpoint_actor.actor_ref().clone();
   endpoint_ref.try_tell(AnyMessage::new(())).expect("enqueue noop");
   assert_eq!(endpoint_actor.drain_pending(), Ok(()));

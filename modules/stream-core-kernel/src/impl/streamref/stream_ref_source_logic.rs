@@ -97,6 +97,9 @@ impl<T> StreamRefSourceLogic<T> {
 
   fn signal_partner_demand(&self) -> Result<(), StreamError> {
     let demand = NonZeroU64::MIN;
+    if self.endpoint.is_none() {
+      return self.handoff.record_cumulative_demand();
+    }
     self.handoff.send_cumulative_demand_to_partner(self.handoff.next_expected_seq_nr(), demand)?;
     self.handoff.record_cumulative_demand()
   }
@@ -130,13 +133,6 @@ where
       .downcast::<T>()
       .map(|value| *value)
       .map_err(|_| Self::stream_error_from_context("StreamRef payload type mismatch"))
-  }
-
-  #[cfg(test)]
-  fn send_to_partner<M>(&mut self, message: M) -> Result<(), StreamError>
-  where
-    M: Send + Sync + 'static, {
-    self.endpoint.send_to_partner(message)
   }
 
   fn accept_handshake(
