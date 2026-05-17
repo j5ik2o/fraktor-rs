@@ -192,6 +192,14 @@ fn offer_rejects_values_beyond_configured_buffer_capacity() {
 }
 
 #[test]
+fn offer_rejects_values_after_normal_completion() {
+  let handoff = StreamRefHandoff::<u32>::new();
+
+  assert_eq!(handoff.complete(), 0);
+  assert_eq!(handoff.offer(10_u32), Err(StreamError::StreamDetached));
+}
+
+#[test]
 fn stale_cumulative_demand_after_delivered_sequence_is_ignored() {
   let handoff = StreamRefHandoff::new();
   let demand = NonZeroU64::new(1).expect("demand");
@@ -234,6 +242,24 @@ fn pair_partner_actor_does_not_pair_when_watch_fails() {
 
   assert!(!handoff.is_subscribed());
   assert_eq!(handoff.ensure_partner(partner_key), Err(StreamError::StreamRefTargetNotInitialized));
+}
+
+#[test]
+fn pair_partner_actor_records_duplicate_partner_failure() {
+  let system = build_system();
+  let (first_partner, _first_system_messages, _first_demand_messages) = temp_recording_actor(&system);
+  let (second_partner, _second_system_messages, _second_demand_messages) = temp_recording_actor(&system);
+  let (handoff, _endpoint_actor) = attached_handoff(&system);
+  let first_partner_key = first_partner.canonical_path().expect("canonical path").to_canonical_uri();
+  let second_partner_key = second_partner.canonical_path().expect("canonical path").to_canonical_uri();
+
+  handoff.pair_partner_actor(first_partner_key, first_partner).expect("first partner");
+
+  let error =
+    handoff.pair_partner_actor(second_partner_key, second_partner).expect_err("duplicate partner should fail");
+
+  assert!(matches!(error, StreamError::InvalidPartnerActor { .. }));
+  assert!(matches!(handoff.offer(10_u32), Err(StreamError::InvalidPartnerActor { .. })));
 }
 
 #[test]

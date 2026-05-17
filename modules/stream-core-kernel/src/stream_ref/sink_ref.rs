@@ -129,6 +129,10 @@ impl<T> ActorBackedSinkRefLogic<T> {
     actor_ref.canonical_path().map(|path| path.to_canonical_uri()).ok_or(StreamError::StreamRefTargetNotInitialized)
   }
 
+  fn actor_label(actor_ref: &ActorRef) -> String {
+    actor_ref.canonical_path().map(|path| path.to_canonical_uri()).unwrap_or_else(|| format!("{:?}", actor_ref.pid()))
+  }
+
   fn stream_error_from_context(message: impl Into<String>) -> StreamError {
     StreamError::failed_with_context(message.into())
   }
@@ -252,7 +256,15 @@ where
     let seq_nr = self.state.next_seq_nr();
     let send_result = self.send_to_target(StreamRefRemoteStreamCompleted::new(seq_nr));
     let release_result = self.release_target_watch();
-    send_result.and(release_result)
+    match (send_result, release_result) {
+      | (Err(send_error), Err(release_error)) => Err(Self::stream_error_from_context(format!(
+        "failed to notify StreamRef target about completion: {send_error}; failed to release target watch: \
+         {release_error}"
+      ))),
+      | (Err(send_error), Ok(())) => Err(send_error),
+      | (Ok(()), Err(release_error)) => Err(release_error),
+      | (Ok(()), Ok(())) => Ok(()),
+    }
   }
 
   fn on_error(&mut self, error: StreamError) {
@@ -281,9 +293,10 @@ where
     let Some(target_actor) = &self.target_actor else {
       return;
     };
-    let target_actor_key = Self::actor_key(target_actor);
-    let endpoint_actor =
-      StageActor::new(&system, Box::new(ActorBackedSinkRefReceive::new(self.state.clone(), target_actor_key)));
+    let endpoint_actor = StageActor::new(
+      &system,
+      Box::new(ActorBackedSinkRefReceive::new(self.state.clone(), Self::actor_label(target_actor), target_actor.pid())),
+    );
     self.system = Some(system);
     self.endpoint_actor = Some(endpoint_actor);
     let watch_result = self.watch_target_actor();
@@ -391,26 +404,27 @@ impl ActorBackedSinkRefState {
 
 struct ActorBackedSinkRefReceive {
   state:            ActorBackedSinkRefStateShared,
-  target_actor_key: Result<String, StreamError>,
+  target_actor_ref: String,
+  target_actor_pid: Pid,
 }
 
 impl ActorBackedSinkRefReceive {
-  const fn new(state: ActorBackedSinkRefStateShared, target_actor_key: Result<String, StreamError>) -> Self {
-    Self { state, target_actor_key }
+  const fn new(state: ActorBackedSinkRefStateShared, target_actor_ref: String, target_actor_pid: Pid) -> Self {
+    Self { state, target_actor_ref, target_actor_pid }
   }
 
-  fn actor_key(actor_ref: &ActorRef) -> Result<String, StreamError> {
-    actor_ref.canonical_path().map(|path| path.to_canonical_uri()).ok_or(StreamError::StreamRefTargetNotInitialized)
+  fn actor_label(actor_ref: &ActorRef) -> String {
+    actor_ref.canonical_path().map(|path| path.to_canonical_uri()).unwrap_or_else(|| format!("{:?}", actor_ref.pid()))
   }
 
   fn ensure_sender(&self, sender: &ActorRef) -> Result<(), StreamError> {
-    let expected_ref = self.target_actor_key.clone()?;
-    let got_ref = Self::actor_key(sender)?;
-    if expected_ref == got_ref {
+    let got_ref = Self::actor_label(sender);
+    // Remote senders are identified by canonical path; local loopback may only preserve the PID.
+    if got_ref == self.target_actor_ref || sender.pid() == self.target_actor_pid {
       return Ok(());
     }
     Err(StreamError::InvalidPartnerActor {
-      expected_ref: expected_ref.into(),
+      expected_ref: self.target_actor_ref.clone().into(),
       got_ref:      got_ref.into(),
       message:      "stream ref message came from a non-partner actor".into(),
     })

@@ -211,7 +211,8 @@ fn actor_backed_sink_ref_on_error_sends_failure_and_records_send_errors() {
     &system,
     Box::new(ActorBackedSinkRefReceive::new(
       ActorBackedSinkRefStateShared::new(),
-      Err(StreamError::StreamRefTargetNotInitialized),
+      String::from("missing"),
+      Pid::new(0, 0),
     )),
   );
   let mut release_failed = ActorBackedSinkRefLogic::<u32>::failed(StreamError::Failed);
@@ -271,6 +272,31 @@ fn actor_backed_sink_ref_releases_watch_when_completion_send_fails() {
 }
 
 #[test]
+fn actor_backed_sink_ref_on_complete_reports_send_and_release_failures() {
+  let system = build_system();
+  let endpoint_actor = StageActor::new(
+    &system,
+    Box::new(ActorBackedSinkRefReceive::new(
+      ActorBackedSinkRefStateShared::new(),
+      String::from("missing"),
+      Pid::new(0, 0),
+    )),
+  );
+  let mut release_failed = ActorBackedSinkRefLogic::<u32>::failed(StreamError::Failed);
+  release_failed.endpoint_actor = Some(endpoint_actor);
+
+  let error = release_failed.on_complete().expect_err("completion and release should fail");
+
+  match error {
+    | StreamError::FailedWithContext { message, .. } => {
+      assert!(message.contains("failed to notify StreamRef target about completion"));
+      assert!(message.contains("failed to release target watch"));
+    },
+    | other => panic!("expected combined completion/release failure, got {other:?}"),
+  }
+}
+
+#[test]
 fn actor_backed_sink_ref_state_ignores_stale_cumulative_demand() {
   let state = ActorBackedSinkRefStateShared::new();
   let demand = NonZeroU64::new(1).expect("demand");
@@ -310,7 +336,7 @@ fn actor_backed_sink_ref_receive_accepts_partner_protocols() {
   let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
   let sender_key = target.canonical_path().expect("canonical path").to_canonical_uri();
   let state = ActorBackedSinkRefStateShared::new();
-  let mut receive = ActorBackedSinkRefReceive::new(state.clone(), Ok(sender_key));
+  let mut receive = ActorBackedSinkRefReceive::new(state.clone(), sender_key, target.pid());
   let demand = NonZeroU64::new(2).expect("demand");
 
   receive.receive(StageActorEnvelope::new(target.clone(), AnyMessage::new(StreamRefAck))).expect("ack accepted");
@@ -327,12 +353,34 @@ fn actor_backed_sink_ref_receive_accepts_partner_protocols() {
 }
 
 #[test]
+fn actor_backed_sink_ref_receive_accepts_pid_fallback_sender() {
+  let system = build_system();
+  let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
+  let sender_key = target.canonical_path().expect("canonical path").to_canonical_uri();
+  let target_pid = target.pid();
+  let state = ActorBackedSinkRefStateShared::new();
+  let mut receive = ActorBackedSinkRefReceive::new(state.clone(), sender_key, target_pid);
+  let (_pid_system_messages, _pid_user_messages, pid_sender) = RecordingSender::new();
+  let pid_only_sender = ActorRef::new(target_pid, ActorRefSenderShared::new(Box::new(pid_sender)));
+  let demand = NonZeroU64::new(1).expect("demand");
+
+  receive
+    .receive(StageActorEnvelope::new(pid_only_sender.clone(), AnyMessage::new(StreamRefAck)))
+    .expect("ack accepted");
+  receive
+    .receive(StageActorEnvelope::new(pid_only_sender, AnyMessage::new(StreamRefCumulativeDemand::new(0, demand))))
+    .expect("pid fallback demand accepted");
+
+  assert!(state.can_accept_input());
+}
+
+#[test]
 fn actor_backed_sink_ref_receive_rejects_invalid_sender_unknown_message_and_deathwatch() {
   let system = build_system();
   let (target, _target_system_messages, _target_user_messages) = temp_recording_actor(&system);
   let (other, _other_system_messages, _other_user_messages) = temp_recording_actor(&system);
   let sender_key = target.canonical_path().expect("canonical path").to_canonical_uri();
-  let mut receive = ActorBackedSinkRefReceive::new(ActorBackedSinkRefStateShared::new(), Ok(sender_key));
+  let mut receive = ActorBackedSinkRefReceive::new(ActorBackedSinkRefStateShared::new(), sender_key, target.pid());
 
   let invalid_sender_error =
     receive.receive(StageActorEnvelope::new(other, AnyMessage::new(StreamRefAck))).expect_err("invalid sender");
@@ -353,7 +401,7 @@ fn actor_backed_sink_ref_receive_ignores_deathwatch_after_terminal_failure() {
   let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
   let sender_key = target.canonical_path().expect("canonical path").to_canonical_uri();
   let state = ActorBackedSinkRefStateShared::new();
-  let mut receive = ActorBackedSinkRefReceive::new(state.clone(), Ok(sender_key));
+  let mut receive = ActorBackedSinkRefReceive::new(state.clone(), sender_key, target.pid());
 
   state.fail(StreamError::Failed);
 
