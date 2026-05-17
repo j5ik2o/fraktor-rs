@@ -725,27 +725,40 @@ fn deployment_enqueue_failure(request: &RemoteDeploymentCreateRequest, reason: S
 }
 
 pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sender: &Sender<WatcherCommand>) {
-  let RemoteEvent::InboundFrameReceived { frame, now_ms, .. } = event else {
-    return;
-  };
-  let command = match frame {
-    | WireFrame::Control(ControlPdu::Heartbeat { authority }) => {
-      parse_remote_authority(authority).map(|from| WatcherCommand::HeartbeatReceived { from, now: *now_ms })
+  let command = match event {
+    | RemoteEvent::InboundFrameReceived { frame, now_ms, .. } => match frame {
+      | WireFrame::Control(ControlPdu::Heartbeat { authority }) => {
+        parse_remote_authority(authority).map(|from| WatcherCommand::HeartbeatReceived { from, now: *now_ms })
+      },
+      | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => parse_remote_authority(authority)
+        .map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms }),
+      | WireFrame::Control(
+        ControlPdu::Quarantine { .. }
+        | ControlPdu::Shutdown { .. }
+        | ControlPdu::FlushRequest { .. }
+        | ControlPdu::FlushAck { .. }
+        | ControlPdu::CompressionAdvertisement { .. }
+        | ControlPdu::CompressionAck { .. },
+      )
+      | WireFrame::Envelope(_)
+      | WireFrame::Handshake(_)
+      | WireFrame::Ack(_)
+      | WireFrame::Deployment(_) => None,
     },
-    | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => parse_remote_authority(authority)
-      .map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms }),
-    | WireFrame::Control(
-      ControlPdu::Quarantine { .. }
-      | ControlPdu::Shutdown { .. }
-      | ControlPdu::FlushRequest { .. }
-      | ControlPdu::FlushAck { .. }
-      | ControlPdu::CompressionAdvertisement { .. }
-      | ControlPdu::CompressionAck { .. },
-    )
-    | WireFrame::Envelope(_)
-    | WireFrame::Handshake(_)
-    | WireFrame::Ack(_)
-    | WireFrame::Deployment(_) => None,
+    | RemoteEvent::ConnectionLost { authority, cause, now_ms } => {
+      parse_remote_authority(authority.authority()).map(|from| WatcherCommand::ConnectionLost {
+        from,
+        reason: format!("remote transport connection lost: {cause:?}"),
+        now: *now_ms,
+      })
+    },
+    | RemoteEvent::TransportShutdown
+    | RemoteEvent::OutboundEnqueued { .. }
+    | RemoteEvent::OutboundControl { .. }
+    | RemoteEvent::OutboundDeployment { .. }
+    | RemoteEvent::RedeliveryTimerFired { .. }
+    | RemoteEvent::HandshakeTimerFired { .. }
+    | RemoteEvent::FlushTimerFired { .. } => None,
   };
   let Some(command) = command else {
     return;

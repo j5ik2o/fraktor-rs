@@ -31,6 +31,7 @@ workspace = true
 
 [dev-dependencies]
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["tokio-executor", "test-support"] }
+fraktor-stream-core-kernel-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 critical-section = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util", "test-util"] }

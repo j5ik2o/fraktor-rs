@@ -36,10 +36,23 @@ struct RecordingReceive {
   values: ArcShared<SpinSyncMutex<Vec<u32>>>,
 }
 
+struct RecordingDeathwatchReceive {
+  messages: ArcShared<SpinSyncMutex<Vec<SystemMessage>>>,
+}
+
 impl StageActorReceive for RecordingReceive {
   fn receive(&mut self, envelope: StageActorEnvelope) -> Result<(), StreamError> {
     if let Some(value) = envelope.message().downcast_ref::<u32>() {
       self.values.lock().push(*value);
+    }
+    Ok(())
+  }
+}
+
+impl StageActorReceive for RecordingDeathwatchReceive {
+  fn receive(&mut self, envelope: StageActorEnvelope) -> Result<(), StreamError> {
+    if let Some(message) = envelope.message().downcast_ref::<SystemMessage>() {
+      self.messages.lock().push(message.clone());
     }
     Ok(())
   }
@@ -118,6 +131,22 @@ fn watch_and_unwatch_deliver_system_messages_from_stage_actor_pid() {
   stage_actor.unwatch(&target).expect("unwatch");
 
   assert_eq!(*messages.lock(), vec![SystemMessage::Watch(stage_actor_pid), SystemMessage::Unwatch(stage_actor_pid)]);
+}
+
+#[test]
+fn deathwatch_notification_reaches_receive_even_when_target_pid_was_not_tracked() {
+  let system = build_system();
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::<SystemMessage>::new()));
+  let stage_actor = StageActor::new(&system, Box::new(RecordingDeathwatchReceive { messages: messages.clone() }));
+  let terminated = Pid::new(991, 0);
+
+  system
+    .state()
+    .send_system_message(stage_actor.actor_ref().pid(), SystemMessage::DeathWatchNotification(terminated))
+    .expect("death-watch notification should enqueue");
+  stage_actor.drain_pending().expect("drain notification");
+
+  assert_eq!(*messages.lock(), vec![SystemMessage::DeathWatchNotification(terminated)]);
 }
 
 #[test]

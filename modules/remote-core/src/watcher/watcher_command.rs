@@ -1,5 +1,7 @@
 //! Commands driving [`crate::watcher::WatcherState`].
 
+use alloc::string::String;
+
 use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPath;
 
 use crate::address::Address;
@@ -49,5 +51,14 @@ pub enum WatcherCommand {
   HeartbeatTick {
     /// Monotonic millis at which the tick fires.
     now: u64,
+  },
+  /// The transport reported that the connection to `from` was lost.
+  ConnectionLost {
+    /// Address of the remote node whose connection was lost.
+    from:   Address,
+    /// Human-readable termination reason metadata.
+    reason: String,
+    /// Monotonic millis at which the loss was observed.
+    now:    u64,
   },
 }

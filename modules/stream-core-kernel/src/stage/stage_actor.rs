@@ -153,9 +153,7 @@ impl ActorRefSender for StageActorSender {
           return Ok(SendOutcome::Delivered);
         },
         | SystemMessage::DeathWatchNotification(target) => {
-          if !self.state.remove_watching(target) {
-            return Ok(SendOutcome::Delivered);
-          }
+          self.state.remove_watching(target);
         },
         | _ => {},
       }

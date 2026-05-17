@@ -1,31 +1,33 @@
 ## ADDED Requirements
 
-### Requirement: StreamRef resolver serializes refs as canonical actor paths
+### Requirement: StreamRef resolver serializes materialized refs as canonical actor paths
 
-The system SHALL provide a StreamRef resolver contract that converts `SourceRef` and `SinkRef` backed by remote-capable endpoints to canonical actor path strings, and resolves those strings back into refs through the actor-ref provider surface.
+The system SHALL provide resolver support that converts materialized `SourceRef<T>` and `SinkRef<T>` values backed by endpoint actors to canonical actor path strings, and resolves those strings back into the same ref kind through the actor-ref provider surface.
 
 #### Scenario: SourceRef is converted to serialization format
 
-- **WHEN** a remote-capable `SourceRef` is passed to the StreamRef resolver
+- **WHEN** a materialized remote-capable `SourceRef<T>` is passed to the StreamRef resolver
 - **THEN** the resolver returns the canonical actor path string of the SourceRef endpoint actor
-- **AND** the string includes the remote authority needed by another ActorSystem to resolve it
+- **AND** the string includes the authority needed by another ActorSystem to resolve it
 
 #### Scenario: SinkRef is converted to serialization format
 
-- **WHEN** a remote-capable `SinkRef` is passed to the StreamRef resolver
+- **WHEN** a materialized remote-capable `SinkRef<T>` is passed to the StreamRef resolver
 - **THEN** the resolver returns the canonical actor path string of the SinkRef endpoint actor
-- **AND** the string includes the remote authority needed by another ActorSystem to resolve it
+- **AND** the string includes the authority needed by another ActorSystem to resolve it
 
 #### Scenario: Serialized SourceRef is resolved through provider dispatch
 
 - **WHEN** another ActorSystem resolves a serialized SourceRef string
 - **THEN** the resolver uses the actor-ref provider surface to materialize the remote endpoint ActorRef
+- **AND** it returns a `SourceRef<T>` backed by that endpoint
 - **AND** it does not parse the path into a transport connection by itself
 
 #### Scenario: Serialized SinkRef is resolved through provider dispatch
 
 - **WHEN** another ActorSystem resolves a serialized SinkRef string
 - **THEN** the resolver uses the actor-ref provider surface to materialize the remote endpoint ActorRef
+- **AND** it returns a `SinkRef<T>` backed by that endpoint
 - **AND** it does not parse the path into a transport connection by itself
 
 ### Requirement: stream-core remains independent from remote and std

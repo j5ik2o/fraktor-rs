@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use fraktor_actor_core_kernel_rs::actor::actor_path::{ActorPath, ActorPathParser};
 
 use super::WatcherState;
@@ -84,4 +86,27 @@ fn heartbeat_received_for_unknown_node_does_not_register_monitoring_state() {
   // Then
   assert!(effects.is_empty());
   assert!(tick_effects.is_empty());
+}
+
+#[test]
+fn termination_effects_without_targets_report_address_and_quarantine_only() {
+  let mut state = new_state();
+  let node = remote_node();
+  let reason = String::from("manual termination");
+
+  let effects = state.termination_effects_for_node(&node, reason.clone(), 77);
+
+  assert!(!effects.iter().any(|effect| matches!(effect, WatcherEffect::NotifyTerminated { .. })));
+  assert!(effects.iter().any(|effect| {
+    matches!(
+      effect,
+      WatcherEffect::AddressTerminated { node: terminated, reason: observed_reason, observed_at_millis: 77 }
+        if terminated == &node && observed_reason == &reason
+    )
+  }));
+  assert!(
+    effects
+      .iter()
+      .any(|effect| matches!(effect, WatcherEffect::NotifyQuarantined { node: quarantined } if quarantined == &node))
+  );
 }

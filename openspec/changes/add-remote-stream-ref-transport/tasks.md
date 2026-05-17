@@ -1,46 +1,68 @@
-## 1. Baseline and Contract Review
+## 0. Change Rework Gate
 
-- [ ] 1.1 Re-read Pekko `StreamRefs`, `StreamRefResolverImpl`, `StreamRefsMaster`, `SourceRefImpl`, `SinkRefImpl`, and stream ref protocol references; record only implementation-relevant notes in tests or code comments.
-- [ ] 1.2 Inspect current `stream-core-kernel` StreamRef local handoff, protocol, settings, and error mapping before editing.
-- [ ] 1.3 Inspect current remote provider dispatch, remote watch hook, serialization registry, and TCP outbound envelope path before editing.
-- [ ] 1.4 Run focused baseline tests for StreamRef, stream backpressure, remote provider dispatch, remote watch hook, and serialization paths.
+- [x] 0.1 現行 change が考慮不足である理由を `problem-analysis.md` に固定する。
+- [x] 0.2 既存の fake local resolver / fake serialization format / path-string-first 実装が残っていないことを確認する。
+- [x] 0.3 この change を「remote transport 実装」ではなく「remote-capable StreamRef endpoint semantics + resolver/serializer wiring」として再定義する。
 
-## 2. StreamRef Core Boundary
+## 1. Baseline Contract Review
 
-- [ ] 2.1 Keep `stream-core-kernel` free of `remote-core`, `remote-adaptor-std`, tokio, and std-only dependencies while adding any protocol or error surface needed by remote StreamRef.
-- [ ] 2.2 Add or adjust StreamRef protocol tests for sequence validation, invalid demand, remote failure, and terminal ordering that are shared by local and remote handoff.
-- [ ] 2.3 Preserve existing local `SourceRef::into_source` and `SinkRef::into_sink` semantics while making remote-capable endpoint ownership explicit.
-- [ ] 2.4 Add tests proving local handoff still works without remote runtime installation.
+- [x] 1.1 Pekko `StreamRefs.sourceRef` / `StreamRefs.sinkRef` / `StreamRefResolverImpl` / `SourceRefImpl` / `SinkRefImpl` / `StreamRefsMaster` / `StreamRefSerializer` / remote StreamRef specs を、endpoint actor ownership と resolver direction の観点で読み直す。
+- [x] 1.2 fraktor-rs 現行 `stream-core-kernel` の `SourceRef<T>` / `SinkRef<T>` が local handoff wrapper であることを確認し、remote-capable endpoint ref と同一型で扱う場合の追加表現を列挙する。
+- [x] 1.3 `stream-adaptor-std`、`remote-adaptor-std`、`actor-core-kernel` の依存方向を確認し、endpoint actor / resolver / serializer を置ける crate 境界を決める。
+- [x] 1.4 `stream-core-kernel` の no_std と remote 非依存を維持できない設計案を明示的に棄却する。
 
-## 3. Resolver and Serialization Integration
+## 2. StreamRef Representation Decision
 
-- [ ] 3.1 Implement StreamRef resolver installation in the std adaptor or integration layer without adding remote dependencies to stream-core.
-- [ ] 3.2 Convert remote-capable `SourceRef` and `SinkRef` to canonical endpoint actor path strings using actor-core path APIs.
-- [ ] 3.3 Resolve serialized SourceRef and SinkRef strings through ActorSystem actor-ref provider dispatch, including loopback and remote authority cases.
-- [ ] 3.4 Register StreamRef protocol payload serializers or equivalent manifest routes required for remote delivery.
-- [ ] 3.5 Add tests for missing serializer registration and unsupported ref implementation failures.
+- [x] 2.1 `SourceRef<T>` / `SinkRef<T>` の内部表現を、local handoff backend と remote actor-backed backend のどちらも表せる形に決める。
+- [x] 2.2 remote actor-backed backend が保持する最小データを決める: endpoint `ActorRef`、canonical path、type marker、one-shot state、materialized resource owner など。
+- [x] 2.3 local-only ref を resolver serialization へ渡した場合の failure を定義する。fake actor path string を成功扱いにしない。
+- [x] 2.4 `SourceRef` は `SourceRef` として resolve し、`SinkRef` は `SinkRef` として resolve する向きを API 名・テスト名・serializer helper 名で固定する。
+- [x] 2.5 application-level examples では typed `SourceRef<T>` / `SinkRef<T>` payload workflow を主経路にし、actor path string を主 API にしない。
 
-## 4. Remote Endpoint Actor Wiring
+## 3. Endpoint Actor Ownership And Wake Contract
 
-- [ ] 4.1 Materialize SourceRef and SinkRef endpoint actors as owned stream resources with deterministic shutdown on completion, cancellation, and failure.
-- [ ] 4.2 Route cumulative demand, sequenced elements, handshake, completion, failure, and cancellation through normal remote ActorRef delivery.
-- [ ] 4.3 Enforce one-shot partner pairing and reject double materialization or messages from a non-partner actor.
-- [ ] 4.4 Connect endpoint partner watches through the existing actor watch path and remote watch hook.
-- [ ] 4.5 Ensure watch release failures, send failures, and endpoint shutdown failures are observable and not silently ignored.
+- [x] 3.1 producer stream から materialized `SourceRef<T>` を作るとき、どの endpoint actor がどの stream resource に所有されるかを定義する。
+- [x] 3.2 consumer sink から materialized `SinkRef<T>` を作るとき、どの endpoint actor がどの stream resource に所有されるかを定義する。
+- [x] 3.3 handshake、demand、element、completion、failure、cancellation が endpoint state を更新した後、materialized stream を wake / drive する経路を実装または明示する。
+- [x] 3.4 completion / cancellation / failure 時に endpoint actor が deterministic shutdown し、watch release failure / shutdown failure を観測可能にする。
+- [x] 3.5 one-shot partner pairing、double materialization、non-partner message の observable failure を endpoint actor state に組み込む。
 
-## 5. Backpressure and Failure Semantics
+## 4. Local Actor-Backed Resolver Gate
 
-- [ ] 5.1 Verify elements are not delivered without remote cumulative demand.
-- [ ] 5.2 Preserve pending elements when transport enqueue reports backpressure, or fail the stream with an observable error.
-- [ ] 5.3 Verify completion is observed only after pending sequenced elements are delivered.
-- [ ] 5.4 Map partner DeathWatch notification, address termination, transport connection loss, invalid sequence, invalid demand, and invalid partner to distinct observable stream failures.
-- [ ] 5.5 Verify cancellation propagates to the remote partner and prevents further element publication for that ref.
+- [x] 4.1 local handoff だけでなく actor-backed endpoint を持つ `SourceRef<T>` を materialize し、canonical actor path string に変換できることを lower-level test で確認する。
+- [x] 4.2 actor-backed `SinkRef<T>` を materialize し、canonical actor path string に変換できることを lower-level test で確認する。
+- [x] 4.3 serialized `SourceRef` は `SourceRef<T>` へ、serialized `SinkRef` は `SinkRef<T>` へ ActorSystem provider dispatch 経由で resolve する。
+- [x] 4.4 loopback authority は local actor delivery に解決され、transport connection を直接組み立てないことを確認する。
+- [x] 4.5 unsupported local-only ref / missing endpoint actor / invalid path format は成功にせず、明示 failure として返す。
 
-## 6. Integration Tests and Documentation
+## 5. Protocol Serializer And Payload Support
 
-- [ ] 6.1 Add two-ActorSystem integration tests for passing a SourceRef as a remote message payload and streaming elements with backpressure.
-- [ ] 6.2 Add two-ActorSystem integration tests for passing a SinkRef as a remote message payload and streaming elements with backpressure.
-- [ ] 6.3 Add remote failure integration tests for partner termination and address termination before protocol completion.
-- [ ] 6.4 Update `docs/gap-analysis/stream-gap-analysis.md` to reflect the StreamRef remote gap status after implementation.
-- [ ] 6.5 Run targeted crate tests, `mise exec -- openspec validate add-remote-stream-ref-transport --strict`, and `git diff --check`.
-- [ ] 6.6 Unless a narrower verification scope is explicitly approved, run `./scripts/ci-check.sh ai all` before marking the change complete.
+- [x] 5.1 StreamRef protocol payload serializer または manifest route を登録する。
+- [x] 5.2 typed `SourceRef<T>` / `SinkRef<T>` を domain message payload として扱える serializer support を追加する。
+- [x] 5.3 missing serializer registration、unsupported payload manifest、type mismatch の failure tests を追加する。
+- [x] 5.4 StreamRef protocol message は通常の remote actor envelope に載せ、`RemoteTransport` に StreamRef 専用 method / wire frame を追加しない。
+
+## 6. Backpressure And Terminal Semantics
+
+- [x] 6.1 cumulative stream-level demand なしに element が配送されないことを検証する。
+- [x] 6.2 demand 到着前または transport enqueue backpressure 中の accepted element を silently drop しないことを検証する。
+- [x] 6.3 pending sequenced elements が配送された後にのみ normal completion が観測されることを検証する。
+- [x] 6.4 failure / cancellation / invalid sequence / invalid demand / invalid partner / duplicate materialization が normal completion に潰されないことを検証する。
+- [x] 6.5 cancellation が remote partner へ伝播し、その ref への追加 publication を止めることを検証する。
+
+## 7. Remote Integration
+
+- [x] 7.1 typed `SourceRef<T>` を remote message payload として渡し、two-ActorSystem 間で backpressure 付き stream が流れる integration test を追加する。
+- [x] 7.2 typed `SinkRef<T>` を remote message payload として渡し、two-ActorSystem 間で backpressure 付き stream が流れる integration test を追加する。
+- [x] 7.3 partner DeathWatch、address termination、transport connection loss が protocol completion 前に stream failure として観測される remote failure integration tests を追加する。
+- [x] 7.4 remote watch hook と endpoint partner watch / unwatch を接続し、watch release failure を握りつぶさない。
+
+## 8. Documentation And Verification
+
+- [x] 8.1 local actor-backed resolver proof と two-ActorSystem typed payload proof が通った後にのみ `docs/gap-analysis/stream-gap-analysis.md` を更新する。
+- [x] 8.2 targeted crate tests、`mise exec -- openspec validate add-remote-stream-ref-transport --strict`、`git diff --check` を実行する。
+- [x] 8.3 明示的に狭い検証範囲が承認されていない限り、完了前に `./scripts/ci-check.sh ai all` を実行する。
+
+### Verification Gate
+
+PR 可能条件は、fake local format ではなく actor-backed endpoint ref の local resolver proof と、two-ActorSystem typed `SourceRef` / `SinkRef` payload tests が `#[ignore]` なしで pass することである。

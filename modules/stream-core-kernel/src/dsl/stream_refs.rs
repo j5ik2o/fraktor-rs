@@ -4,7 +4,7 @@ mod tests;
 
 use super::{Sink, Source, StageKind, StreamNotUsed};
 use crate::{
-  r#impl::streamref::{StreamRefHandoff, StreamRefSinkLogic, StreamRefSourceLogic},
+  r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff, StreamRefSinkLogic, StreamRefSourceLogic},
   stream_ref::{SinkRef, SourceRef},
 };
 
@@ -18,8 +18,9 @@ impl StreamRefs {
   where
     T: Send + Sync + 'static, {
     let handoff = StreamRefHandoff::new();
-    let source_ref = SourceRef::new(handoff.clone());
-    let logic = StreamRefSinkLogic::awaiting_remote_subscription(handoff);
+    let endpoint = StreamRefEndpointSlot::new();
+    let source_ref = SourceRef::new(handoff.clone(), endpoint.clone());
+    let logic = StreamRefSinkLogic::awaiting_remote_subscription_with_endpoint(handoff, endpoint);
     Sink::from_logic(StageKind::Custom, logic).map_materialized_value(|_| source_ref)
   }
 
@@ -29,8 +30,9 @@ impl StreamRefs {
   where
     T: Send + Sync + 'static, {
     let handoff = StreamRefHandoff::new();
-    let sink_ref = SinkRef::new(handoff.clone());
-    let logic = StreamRefSourceLogic::awaiting_remote_subscription(handoff);
+    let endpoint = StreamRefEndpointSlot::new();
+    let sink_ref = SinkRef::new(handoff.clone(), endpoint.clone());
+    let logic = StreamRefSourceLogic::awaiting_remote_subscription_with_endpoint(handoff, endpoint);
     Source::<T, StreamNotUsed>::from_logic(StageKind::Custom, logic).map_materialized_value(|_| sink_ref)
   }
 }
