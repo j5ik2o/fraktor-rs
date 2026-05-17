@@ -2,22 +2,20 @@ use alloc::{boxed::Box, format, string::String};
 use core::{any::TypeId, marker::PhantomData, num::NonZeroU64};
 
 use fraktor_actor_core_kernel_rs::{
-  actor::{
-    Pid,
-    actor_ref::ActorRef,
-    messaging::{AnyMessage, system_message::SystemMessage},
-  },
+  actor::{actor_ref::ActorRef, messaging::system_message::SystemMessage},
   serialization::default_serialization_extension_id,
   system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::SharedAccess;
 
-use super::{StreamRefEndpointSlot, StreamRefHandoff};
+use super::{
+  StreamRefEndpointReceiveState, StreamRefEndpointSlot, StreamRefHandoff, StreamRefTargetNotInitializedReceive,
+};
 use crate::{
   DynValue, SourceLogic, StreamError,
   stage::{StageActor, StageActorEnvelope, StageActorReceive},
   stream_ref::{
-    StreamRefAck, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted, StreamRefRemoteStreamFailure,
+    StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted, StreamRefRemoteStreamFailure,
     StreamRefSequencedOnNext, StreamRefSettings,
   },
 };
@@ -88,7 +86,7 @@ impl<T> StreamRefSourceLogic<T> {
       return;
     }
     let endpoint_actor = StageActor::new(system, Box::new(StreamRefTargetNotInitializedReceive));
-    endpoint_actor.r#become(Box::new(StreamRefEndpointReceive::<T>::new(
+    endpoint_actor.r#become(Box::new(SourceRefEndpointReceive::<T>::new(
       self.handoff.clone(),
       system.clone(),
       endpoint_actor.actor_ref().clone(),
@@ -104,32 +102,21 @@ impl<T> StreamRefSourceLogic<T> {
   }
 }
 
-struct StreamRefTargetNotInitializedReceive;
-
-impl StageActorReceive for StreamRefTargetNotInitializedReceive {
-  fn receive(&mut self, _envelope: StageActorEnvelope) -> Result<(), StreamError> {
-    Err(StreamError::StreamRefTargetNotInitialized)
-  }
+struct SourceRefEndpointReceive<T> {
+  endpoint: StreamRefEndpointReceiveState<T>,
+  system:   ActorSystem,
 }
 
-struct StreamRefEndpointReceive<T> {
-  handoff:            StreamRefHandoff<T>,
-  system:             ActorSystem,
-  endpoint_actor_ref: ActorRef,
-  partner_actor:      Option<ActorRef>,
-  _pd:                PhantomData<fn() -> T>,
-}
-
-impl<T> StreamRefEndpointReceive<T>
+impl<T> SourceRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
   const fn new(handoff: StreamRefHandoff<T>, system: ActorSystem, endpoint_actor_ref: ActorRef) -> Self {
-    Self { handoff, system, endpoint_actor_ref, partner_actor: None, _pd: PhantomData }
+    Self { endpoint: StreamRefEndpointReceiveState::new(handoff, endpoint_actor_ref), system }
   }
 
   fn stream_error_from_context(message: impl Into<String>) -> StreamError {
-    StreamError::failed_with_context(message.into())
+    StreamRefEndpointReceiveState::<T>::stream_error_from_context(message)
   }
 
   fn deserialize_value(&self, message: &StreamRefSequencedOnNext) -> Result<T, StreamError> {
@@ -145,16 +132,11 @@ where
       .map_err(|_| Self::stream_error_from_context("StreamRef payload type mismatch"))
   }
 
+  #[cfg(test)]
   fn send_to_partner<M>(&mut self, message: M) -> Result<(), StreamError>
   where
     M: Send + Sync + 'static, {
-    let Some(partner_actor) = &self.partner_actor else {
-      return Err(StreamError::StreamRefTargetNotInitialized);
-    };
-    let mut partner_actor = partner_actor.clone();
-    partner_actor
-      .try_tell(AnyMessage::new(message).with_sender(self.endpoint_actor_ref.clone()))
-      .map_err(|error| StreamError::from_send_error(&error))
+    self.endpoint.send_to_partner(message)
   }
 
   fn accept_handshake(
@@ -162,35 +144,22 @@ where
     message: &StreamRefOnSubscribeHandshake,
     sender: &ActorRef,
   ) -> Result<(), StreamError> {
-    let partner_actor = sender.clone();
-    self.handoff.pair_partner_actor(String::from(message.target_ref_path()), partner_actor.clone())?;
-    self.partner_actor = Some(partner_actor);
-    self.send_to_partner(StreamRefAck)
+    self.endpoint.accept_handshake(message, sender)
   }
 
   fn ensure_sender(&self, sender: &ActorRef) -> Result<(), StreamError> {
-    self.handoff.ensure_partner_actor(sender)
-  }
-
-  fn accept_partner_terminated(&self, terminated: &Pid) -> Result<(), StreamError> {
-    if self.handoff.is_terminal() {
-      return Ok(());
-    }
-    let error = StreamError::RemoteStreamRefActorTerminated {
-      message: format!("remote stream ref partner actor terminated: {terminated:?}").into(),
-    };
-    Err(self.handoff.fail_and_report(error))
+    self.endpoint.ensure_sender(sender)
   }
 }
 
-impl<T> StageActorReceive for StreamRefEndpointReceive<T>
+impl<T> StageActorReceive for SourceRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
   fn receive(&mut self, envelope: StageActorEnvelope) -> Result<(), StreamError> {
     if let Some(SystemMessage::DeathWatchNotification(terminated)) = envelope.message().downcast_ref::<SystemMessage>()
     {
-      return self.accept_partner_terminated(terminated);
+      return self.endpoint.accept_partner_terminated(terminated);
     }
     if let Some(message) = envelope.message().downcast_ref::<StreamRefOnSubscribeHandshake>() {
       return self.accept_handshake(message, envelope.sender());
@@ -198,15 +167,15 @@ where
     if let Some(message) = envelope.message().downcast_ref::<StreamRefSequencedOnNext>() {
       self.ensure_sender(envelope.sender())?;
       let value = self.deserialize_value(message)?;
-      return self.handoff.enqueue_remote_element(message.seq_nr(), value);
+      return self.endpoint.handoff().enqueue_remote_element(message.seq_nr(), value);
     }
     if let Some(message) = envelope.message().downcast_ref::<StreamRefRemoteStreamCompleted>() {
       self.ensure_sender(envelope.sender())?;
-      return self.handoff.enqueue_remote_completed(message.seq_nr());
+      return self.endpoint.handoff().enqueue_remote_completed(message.seq_nr());
     }
     if let Some(message) = envelope.message().downcast_ref::<StreamRefRemoteStreamFailure>() {
       self.ensure_sender(envelope.sender())?;
-      self.handoff.enqueue_remote_failure(String::from(message.message()));
+      self.endpoint.handoff().enqueue_remote_failure(String::from(message.message()));
       return Ok(());
     }
     Err(StreamError::Failed)

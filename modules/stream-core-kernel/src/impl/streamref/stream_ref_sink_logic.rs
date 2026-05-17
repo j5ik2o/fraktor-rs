@@ -2,23 +2,22 @@ use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::marker::PhantomData;
 
 use fraktor_actor_core_kernel_rs::{
-  actor::{
-    Pid,
-    actor_ref::ActorRef,
-    messaging::{AnyMessage, system_message::SystemMessage},
-  },
+  actor::{actor_ref::ActorRef, messaging::system_message::SystemMessage},
   serialization::{SerializationCallScope, SerializedMessage, default_serialization_extension_id},
   system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::SharedAccess;
 
-use super::{StreamRefEndpointSlot, StreamRefHandoff, stream_ref_protocol::StreamRefProtocol};
+use super::{
+  StreamRefEndpointReceiveState, StreamRefEndpointSlot, StreamRefHandoff, StreamRefTargetNotInitializedReceive,
+  stream_ref_protocol::StreamRefProtocol,
+};
 use crate::{
   DemandTracker, DynValue, SinkDecision, SinkLogic, StreamError, downcast_value,
   materialization::{StreamDone, StreamFuture},
   stage::{StageActor, StageActorEnvelope, StageActorReceive},
   stream_ref::{
-    StreamRefAck, StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted,
+    StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted,
     StreamRefRemoteStreamFailure, StreamRefSequencedOnNext, StreamRefSettings,
   },
 };
@@ -129,7 +128,7 @@ impl<T> StreamRefSinkLogic<T> {
       return;
     }
     let endpoint_actor = StageActor::new(system, Box::new(StreamRefTargetNotInitializedReceive));
-    endpoint_actor.r#become(Box::new(StreamRefEndpointReceive::<T>::new(
+    endpoint_actor.r#become(Box::new(SinkRefEndpointReceive::<T>::new(
       self.handoff.clone(),
       system.clone(),
       endpoint_actor.actor_ref().clone(),
@@ -139,32 +138,21 @@ impl<T> StreamRefSinkLogic<T> {
   }
 }
 
-struct StreamRefTargetNotInitializedReceive;
-
-impl StageActorReceive for StreamRefTargetNotInitializedReceive {
-  fn receive(&mut self, _envelope: StageActorEnvelope) -> Result<(), StreamError> {
-    Err(StreamError::StreamRefTargetNotInitialized)
-  }
+struct SinkRefEndpointReceive<T> {
+  endpoint: StreamRefEndpointReceiveState<T>,
+  system:   ActorSystem,
 }
 
-struct StreamRefEndpointReceive<T> {
-  handoff:            StreamRefHandoff<T>,
-  system:             ActorSystem,
-  endpoint_actor_ref: ActorRef,
-  partner_actor:      Option<ActorRef>,
-  _pd:                PhantomData<fn(T)>,
-}
-
-impl<T> StreamRefEndpointReceive<T>
+impl<T> SinkRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
   const fn new(handoff: StreamRefHandoff<T>, system: ActorSystem, endpoint_actor_ref: ActorRef) -> Self {
-    Self { handoff, system, endpoint_actor_ref, partner_actor: None, _pd: PhantomData }
+    Self { endpoint: StreamRefEndpointReceiveState::new(handoff, endpoint_actor_ref), system }
   }
 
   fn stream_error_from_context(message: impl Into<String>) -> StreamError {
-    StreamError::failed_with_context(message.into())
+    StreamRefEndpointReceiveState::<T>::stream_error_from_context(message)
   }
 
   fn serialize_value(&self, value: &T) -> Result<SerializedMessage, StreamError> {
@@ -177,13 +165,7 @@ where
   fn send_to_partner<M>(&mut self, message: M) -> Result<(), StreamError>
   where
     M: Send + Sync + 'static, {
-    let Some(partner_actor) = &self.partner_actor else {
-      return Err(StreamError::StreamRefTargetNotInitialized);
-    };
-    let mut partner_actor = partner_actor.clone();
-    partner_actor
-      .try_tell(AnyMessage::new(message).with_sender(self.endpoint_actor_ref.clone()))
-      .map_err(|error| StreamError::from_send_error(&error))
+    self.endpoint.send_to_partner(message)
   }
 
   fn accept_handshake(
@@ -191,15 +173,12 @@ where
     message: &StreamRefOnSubscribeHandshake,
     sender: &ActorRef,
   ) -> Result<(), StreamError> {
-    let partner_actor = sender.clone();
-    self.handoff.pair_partner_actor(String::from(message.target_ref_path()), partner_actor.clone())?;
-    self.partner_actor = Some(partner_actor);
-    self.send_to_partner(StreamRefAck)
+    self.endpoint.accept_handshake(message, sender)
   }
 
   fn accept_demand(&mut self, message: StreamRefCumulativeDemand, sender: &ActorRef) -> Result<(), StreamError> {
-    self.handoff.ensure_partner_actor(sender)?;
-    self.handoff.record_cumulative_demand_from(message.seq_nr(), message.demand())?;
+    self.endpoint.ensure_sender(sender)?;
+    self.endpoint.handoff().record_cumulative_demand_from(message.seq_nr(), message.demand())?;
     self.flush_ready_protocols()
   }
 
@@ -226,35 +205,25 @@ where
       }
     }
     if terminal_drained {
-      self.handoff.cleanup_after_terminal_delivery()?;
+      self.endpoint.handoff().cleanup_after_terminal_delivery()?;
     }
     Ok(())
   }
 
   fn flush_ready_protocols(&mut self) -> Result<(), StreamError> {
-    let messages = self.handoff.drain_ready_protocols()?;
+    let messages = self.endpoint.handoff().drain_ready_protocols()?;
     self.flush_protocol_messages(messages)
-  }
-
-  fn accept_partner_terminated(&self, terminated: &Pid) -> Result<(), StreamError> {
-    if self.handoff.is_terminal() {
-      return Ok(());
-    }
-    let error = StreamError::RemoteStreamRefActorTerminated {
-      message: format!("remote stream ref partner actor terminated: {terminated:?}").into(),
-    };
-    Err(self.handoff.fail_and_report(error))
   }
 }
 
-impl<T> StageActorReceive for StreamRefEndpointReceive<T>
+impl<T> StageActorReceive for SinkRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
   fn receive(&mut self, envelope: StageActorEnvelope) -> Result<(), StreamError> {
     if let Some(SystemMessage::DeathWatchNotification(terminated)) = envelope.message().downcast_ref::<SystemMessage>()
     {
-      return self.accept_partner_terminated(terminated);
+      return self.endpoint.accept_partner_terminated(terminated);
     }
     if let Some(message) = envelope.message().downcast_ref::<StreamRefOnSubscribeHandshake>() {
       return self.accept_handshake(message, envelope.sender());
