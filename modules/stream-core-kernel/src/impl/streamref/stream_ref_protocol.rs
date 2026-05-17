@@ -3,7 +3,6 @@
 mod tests;
 
 use alloc::borrow::Cow;
-use core::num::NonZeroU64;
 
 use crate::{DynValue, StreamError};
 
@@ -11,7 +10,6 @@ pub(crate) const INVALID_SEQUENCE_NUMBER_MESSAGE: &str = "invalid stream ref seq
 
 pub(crate) enum StreamRefProtocol {
   SequencedOnNext { seq_nr: u64, payload: DynValue },
-  CumulativeDemand { seq_nr: u64, demand: NonZeroU64 },
   OnSubscribeHandshake,
   RemoteStreamCompleted { seq_nr: u64 },
   RemoteStreamFailure { message: Cow<'static, str> },

@@ -199,6 +199,20 @@ fn materializer_context_is_attached_to_source_and_sink_logic() {
 }
 
 #[test]
+fn actor_system_aware_sink_logic_records_error_completion() {
+  let completion = StreamFuture::new();
+  let mut logic = ActorSystemAwareSinkLogic {
+    attached:   ArcShared::new(SpinSyncMutex::new(0)),
+    completion: completion.clone(),
+    values:     Vec::new(),
+  };
+
+  logic.on_error(StreamError::Failed);
+
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
 fn stream_plan_rejects_source_without_outgoing_edge() {
   let connected_outlet: Outlet<u32> = Outlet::new();
   let unconnected_outlet: Outlet<u32> = Outlet::new();

@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, format, string::String};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::marker::PhantomData;
 
 use fraktor_actor_core_kernel_rs::{
@@ -208,8 +208,7 @@ where
     self.flush_ready_protocols()
   }
 
-  fn flush_ready_protocols(&mut self) -> Result<(), StreamError> {
-    let messages = self.handoff.drain_ready_protocols()?;
+  fn flush_protocol_messages(&mut self, messages: Vec<StreamRefProtocol>) -> Result<(), StreamError> {
     let mut terminal_drained = false;
     for message in messages {
       match message {
@@ -226,9 +225,7 @@ where
           terminal_drained = true;
           self.send_to_partner(StreamRefRemoteStreamFailure::new(message.into_owned()))?;
         },
-        | StreamRefProtocol::CumulativeDemand { .. }
-        | StreamRefProtocol::OnSubscribeHandshake
-        | StreamRefProtocol::Ack => {
+        | StreamRefProtocol::OnSubscribeHandshake | StreamRefProtocol::Ack => {
           return Err(StreamError::Failed);
         },
       }
@@ -237,6 +234,11 @@ where
       self.handoff.cleanup_after_terminal_delivery()?;
     }
     Ok(())
+  }
+
+  fn flush_ready_protocols(&mut self) -> Result<(), StreamError> {
+    let messages = self.handoff.drain_ready_protocols()?;
+    self.flush_protocol_messages(messages)
   }
 
   fn accept_partner_terminated(&self, terminated: &Pid) -> Result<(), StreamError> {

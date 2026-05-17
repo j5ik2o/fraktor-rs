@@ -26,11 +26,16 @@ fn sequenced_on_next_round_trips_serialized_payload() {
   let message = StreamRefSequencedOnNext::new(3, nested.clone());
 
   let bytes = serializer.to_binary(&message).expect("serialize sequenced payload");
+  let decoded_by_type =
+    serializer.from_binary(&bytes, Some(TypeId::of::<StreamRefSequencedOnNext>())).expect("deserialize by type");
   let decoded =
     serializer.from_binary_with_manifest(&bytes, SEQUENCED_ON_NEXT_MANIFEST).expect("deserialize sequenced payload");
 
+  let decoded_by_type = decoded_by_type.downcast::<StreamRefSequencedOnNext>().expect("sequenced payload by type");
   let decoded = decoded.downcast::<StreamRefSequencedOnNext>().expect("sequenced payload");
   assert_eq!(serializer.manifest(&message), SEQUENCED_ON_NEXT_MANIFEST);
+  assert_eq!(decoded_by_type.seq_nr(), 3);
+  assert_eq!(decoded_by_type.payload(), &nested);
   assert_eq!(decoded.seq_nr(), 3);
   assert_eq!(decoded.payload(), &nested);
 }
@@ -97,6 +102,26 @@ fn handshake_completion_failure_and_ack_round_trip() {
     .expect("decode ack")
     .downcast::<StreamRefAck>()
     .expect("ack");
+  let typed_handshake = serializer
+    .from_binary(&handshake_bytes, Some(TypeId::of::<StreamRefOnSubscribeHandshake>()))
+    .expect("typed handshake")
+    .downcast::<StreamRefOnSubscribeHandshake>()
+    .expect("typed handshake");
+  let typed_completed = serializer
+    .from_binary(&completed_bytes, Some(TypeId::of::<StreamRefRemoteStreamCompleted>()))
+    .expect("typed completed")
+    .downcast::<StreamRefRemoteStreamCompleted>()
+    .expect("typed completed");
+  let typed_failure = serializer
+    .from_binary(&failure_bytes, Some(TypeId::of::<StreamRefRemoteStreamFailure>()))
+    .expect("typed failure")
+    .downcast::<StreamRefRemoteStreamFailure>()
+    .expect("typed failure");
+  let typed_ack = serializer
+    .from_binary(&ack_bytes, Some(TypeId::of::<StreamRefAck>()))
+    .expect("typed ack")
+    .downcast::<StreamRefAck>()
+    .expect("typed ack");
 
   assert_eq!(serializer.manifest(&handshake), ON_SUBSCRIBE_HANDSHAKE_MANIFEST);
   assert_eq!(serializer.manifest(&completed), REMOTE_STREAM_COMPLETED_MANIFEST);
@@ -106,6 +131,10 @@ fn handshake_completion_failure_and_ack_round_trip() {
   assert_eq!(decoded_completed.seq_nr(), completed.seq_nr());
   assert_eq!(decoded_failure.message(), failure.message());
   assert_eq!(*decoded_ack, StreamRefAck);
+  assert_eq!(typed_handshake.target_ref_path(), handshake.target_ref_path());
+  assert_eq!(typed_completed.seq_nr(), completed.seq_nr());
+  assert_eq!(typed_failure.message(), failure.message());
+  assert_eq!(*typed_ack, StreamRefAck);
 }
 
 #[test]
@@ -126,11 +155,23 @@ fn source_ref_and_sink_ref_payloads_round_trip_actor_paths() {
     .expect("decode sink ref payload")
     .downcast::<StreamRefSinkRefPayload>()
     .expect("sink ref payload");
+  let typed_source = serializer
+    .from_binary(&source_bytes, Some(TypeId::of::<StreamRefSourceRefPayload>()))
+    .expect("typed source ref payload")
+    .downcast::<StreamRefSourceRefPayload>()
+    .expect("typed source ref payload");
+  let typed_sink = serializer
+    .from_binary(&sink_bytes, Some(TypeId::of::<StreamRefSinkRefPayload>()))
+    .expect("typed sink ref payload")
+    .downcast::<StreamRefSinkRefPayload>()
+    .expect("typed sink ref payload");
 
   assert_eq!(serializer.manifest(&source_ref), SOURCE_REF_MANIFEST);
   assert_eq!(serializer.manifest(&sink_ref), SINK_REF_MANIFEST);
   assert_eq!(decoded_source.actor_path(), source_ref.actor_path());
   assert_eq!(decoded_sink.actor_path(), sink_ref.actor_path());
+  assert_eq!(typed_source.actor_path(), source_ref.actor_path());
+  assert_eq!(typed_sink.actor_path(), sink_ref.actor_path());
 }
 
 #[test]
@@ -140,4 +181,47 @@ fn unknown_manifest_returns_unknown_manifest() {
   let error = serializer.from_binary_with_manifest(&[], "missing").expect_err("unknown manifest should fail");
 
   assert_eq!(error, SerializationError::UnknownManifest(String::from("missing")));
+}
+
+#[test]
+fn serializer_reports_manifest_support_and_identity() {
+  let serializer = serializer();
+
+  assert_eq!(serializer.identifier(), STREAM_REF_PROTOCOL_SERIALIZER_ID);
+  assert!(serializer.include_manifest());
+  assert!(serializer.as_any().is::<StreamRefProtocolSerializer>());
+  assert!(serializer.as_string_manifest().is_some());
+}
+
+#[test]
+fn unsupported_message_and_type_hint_are_rejected() {
+  let serializer = serializer();
+
+  let binary_error = serializer.to_binary(&7_u32).expect_err("unsupported message type");
+  let missing_hint_error = serializer.from_binary(&[], None).expect_err("missing type hint");
+  let unsupported_hint_error =
+    serializer.from_binary(&[], Some(TypeId::of::<u32>())).expect_err("unsupported type hint");
+
+  assert_eq!(binary_error, SerializationError::InvalidFormat);
+  assert_eq!(missing_hint_error, SerializationError::InvalidFormat);
+  assert_eq!(unsupported_hint_error, SerializationError::InvalidFormat);
+  assert_eq!(serializer.manifest(&7_u32), "");
+}
+
+#[test]
+fn malformed_wire_values_are_rejected() {
+  let serializer = serializer();
+
+  let short_len_prefix =
+    serializer.from_binary_with_manifest(&[0, 0, 0], ON_SUBSCRIBE_HANDSHAKE_MANIFEST).expect_err("short length prefix");
+  let short_u64 = serializer.from_binary_with_manifest(&[0], REMOTE_STREAM_COMPLETED_MANIFEST).expect_err("short u64");
+  let overlong_string = serializer
+    .from_binary_with_manifest(&[3, 0, 0, 0, b'a'], REMOTE_STREAM_FAILURE_MANIFEST)
+    .expect_err("overlong string");
+  let non_empty_ack = serializer.from_binary_with_manifest(&[1], ACK_MANIFEST).expect_err("ack should be empty");
+
+  assert_eq!(short_len_prefix, SerializationError::InvalidFormat);
+  assert_eq!(short_u64, SerializationError::InvalidFormat);
+  assert_eq!(overlong_string, SerializationError::InvalidFormat);
+  assert_eq!(non_empty_ack, SerializationError::InvalidFormat);
 }

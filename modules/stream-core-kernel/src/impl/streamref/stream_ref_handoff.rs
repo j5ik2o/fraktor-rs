@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, collections::VecDeque, string::String, vec::Vec};
 use core::{marker::PhantomData, num::NonZeroU64};
 
 use fraktor_actor_core_kernel_rs::actor::{actor_ref::ActorRef, messaging::AnyMessage};
@@ -188,14 +188,8 @@ impl<T> StreamRefHandoff<T> {
     let requested_error = error.clone();
     let mut guard = self.inner.lock();
     if guard.failure.is_none() {
-      let message = StreamRefProtocol::RemoteStreamFailure { message: Cow::Owned(format!("{error}")) };
-      if matches!(message, StreamRefProtocol::RemoteStreamFailure { .. }) {
-        guard.values.clear();
-      }
+      guard.values.clear();
       guard.endpoint.fail(error.clone());
-      if !guard.endpoint.is_failed() {
-        return guard.failure.clone().unwrap_or(requested_error);
-      }
       debug_assert!(guard.endpoint.is_failed());
       debug_assert!(guard.endpoint.is_shutdown_requested());
       debug_assert!(guard.endpoint.failure().is_some());
@@ -259,34 +253,26 @@ impl<T> StreamRefHandoff<T> {
         guard.closed = true;
         Err(error)
       },
-      | Some(
-        StreamRefProtocol::CumulativeDemand { .. } | StreamRefProtocol::OnSubscribeHandshake | StreamRefProtocol::Ack,
-      ) => Err(StreamError::Failed),
+      | Some(StreamRefProtocol::OnSubscribeHandshake | StreamRefProtocol::Ack) => Err(StreamError::Failed),
       | None if guard.closed => Ok(None),
       | None => Err(StreamError::WouldBlock),
     }
   }
 
   pub(crate) fn record_cumulative_demand(&self) -> Result<(), StreamError> {
-    let Some(demand) = NonZeroU64::new(1) else {
-      return Err(StreamError::InvalidDemand { requested: 0 });
-    };
+    let demand = NonZeroU64::MIN;
     let seq_nr = self.inner.lock().next_in_seq_nr;
     self.record_cumulative_demand_from(seq_nr, demand)
   }
 
   pub(crate) fn record_cumulative_demand_from(&self, seq_nr: u64, demand: NonZeroU64) -> Result<(), StreamError> {
     let mut guard = self.inner.lock();
-    let message = StreamRefProtocol::CumulativeDemand { seq_nr, demand };
-    match message {
-      | StreamRefProtocol::CumulativeDemand { seq_nr, .. } if seq_nr < guard.next_in_seq_nr => Ok(()),
-      | StreamRefProtocol::CumulativeDemand { seq_nr, demand } => {
-        StreamRefProtocol::validate_sequence(guard.next_in_seq_nr, seq_nr)?;
-        guard.pending_demand = guard.pending_demand.max(demand.get());
-        Ok(())
-      },
-      | _ => Err(StreamError::Failed),
+    if seq_nr < guard.next_in_seq_nr {
+      return Ok(());
     }
+    StreamRefProtocol::validate_sequence(guard.next_in_seq_nr, seq_nr)?;
+    guard.pending_demand = guard.pending_demand.max(demand.get());
+    Ok(())
   }
 
   pub(crate) fn next_expected_seq_nr(&self) -> u64 {
@@ -378,9 +364,7 @@ impl<T> StreamRefHandoff<T> {
           messages.push(StreamRefProtocol::RemoteStreamFailure { message });
           break;
         },
-        | StreamRefProtocol::CumulativeDemand { .. }
-        | StreamRefProtocol::OnSubscribeHandshake
-        | StreamRefProtocol::Ack => {
+        | StreamRefProtocol::OnSubscribeHandshake | StreamRefProtocol::Ack => {
           return Err(StreamError::Failed);
         },
       }

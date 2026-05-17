@@ -4,7 +4,9 @@ use core::any::TypeId;
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::setup::ActorSystemConfig,
-  serialization::{SerializationCallScope, SerializationExtension, SerializationSetupBuilder},
+  serialization::{
+    SerializationBuilderError, SerializationCallScope, SerializationExtension, SerializationSetupBuilder,
+  },
   system::ActorSystem,
 };
 
@@ -73,6 +75,20 @@ fn setup_registers_protocol_bindings_and_manifest_routes() {
   assert_eq!(setup.manifest_routes().get(ACK_MANIFEST), Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)]));
   assert_eq!(setup.manifest_routes().get(SOURCE_REF_MANIFEST), Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)]));
   assert_eq!(setup.manifest_routes().get(SINK_REF_MANIFEST), Some(&vec![(0, STREAM_REF_PROTOCOL_SERIALIZER_ID)]));
+}
+
+#[test]
+fn setup_rejects_duplicate_serializer_registration() {
+  let builder = SerializationSetupBuilder::new()
+    .apply_adapter(&StreamRefProtocolSerializationSetup::new())
+    .expect("first setup application");
+
+  let error = builder
+    .apply_adapter(&StreamRefProtocolSerializationSetup::new())
+    .err()
+    .expect("second setup application must reject duplicate serializer");
+
+  assert!(matches!(error, SerializationBuilderError::DuplicateName(_)));
 }
 
 #[test]

@@ -2,7 +2,10 @@ use alloc::{boxed::Box, vec::Vec};
 
 use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with;
 use fraktor_actor_core_kernel_rs::{
-  actor::{actor_ref_provider::LocalActorRefProviderInstaller, messaging::AnyMessage, scheduler::SchedulerConfig},
+  actor::{
+    actor_ref::ActorRef, actor_ref_provider::LocalActorRefProviderInstaller, messaging::AnyMessage,
+    scheduler::SchedulerConfig,
+  },
   serialization::{SerializationError, SerializedMessage, SerializerId},
   system::ActorSystem,
 };
@@ -13,16 +16,11 @@ use crate::{
   StreamError,
   r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff},
   stage::{StageActor, StageActorEnvelope, StageActorReceive},
-  stream_ref::{SINK_REF_MANIFEST, SOURCE_REF_MANIFEST, STREAM_REF_PROTOCOL_SERIALIZER_ID, SinkRef, SourceRef},
+  stream_ref::{
+    SINK_REF_MANIFEST, SOURCE_REF_MANIFEST, STREAM_REF_PROTOCOL_SERIALIZER_ID, SinkRef, SourceRef,
+    StreamRefSinkRefPayload,
+  },
 };
-
-struct NoopReceive;
-
-impl StageActorReceive for NoopReceive {
-  fn receive(&mut self, _envelope: StageActorEnvelope) -> Result<(), StreamError> {
-    Ok(())
-  }
-}
 
 struct RecordingReceive {
   values: ArcShared<SpinSyncMutex<Vec<u32>>>,
@@ -32,6 +30,11 @@ impl RecordingReceive {
   const fn new(values: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
     Self { values }
   }
+}
+
+fn recording_stage_actor(system: &ActorSystem) -> (StageActor, ArcShared<SpinSyncMutex<Vec<u32>>>) {
+  let values = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  (StageActor::new(system, Box::new(RecordingReceive::new(values.clone()))), values)
 }
 
 impl StageActorReceive for RecordingReceive {
@@ -59,7 +62,7 @@ fn assert_failed_with_context(error: StreamError, message: &str) {
 #[test]
 fn source_ref_format_round_trip_resolves_same_endpoint_actor_through_provider_dispatch() {
   let system = build_system();
-  let stage_actor = StageActor::new(&system, Box::new(NoopReceive));
+  let (stage_actor, _values) = recording_stage_actor(&system);
   let source_ref = SourceRef::<u32>::from_endpoint_actor(stage_actor.actor_ref().clone());
   let resolver = StreamRefResolver::new(system);
 
@@ -73,7 +76,7 @@ fn source_ref_format_round_trip_resolves_same_endpoint_actor_through_provider_di
 #[test]
 fn sink_ref_format_round_trip_resolves_same_endpoint_actor_through_provider_dispatch() {
   let system = build_system();
-  let stage_actor = StageActor::new(&system, Box::new(NoopReceive));
+  let (stage_actor, _values) = recording_stage_actor(&system);
   let sink_ref = SinkRef::<u32>::from_endpoint_actor(stage_actor.actor_ref().clone());
   let resolver = StreamRefResolver::new(system);
 
@@ -87,7 +90,7 @@ fn sink_ref_format_round_trip_resolves_same_endpoint_actor_through_provider_disp
 #[test]
 fn source_ref_serialized_message_round_trip_restores_typed_ref() {
   let system = build_system();
-  let stage_actor = StageActor::new(&system, Box::new(NoopReceive));
+  let (stage_actor, _values) = recording_stage_actor(&system);
   let source_ref = SourceRef::<u32>::from_endpoint_actor(stage_actor.actor_ref().clone());
   let resolver = StreamRefResolver::new(system);
 
@@ -103,7 +106,7 @@ fn source_ref_serialized_message_round_trip_restores_typed_ref() {
 #[test]
 fn sink_ref_serialized_message_round_trip_restores_typed_ref() {
   let system = build_system();
-  let stage_actor = StageActor::new(&system, Box::new(NoopReceive));
+  let (stage_actor, _values) = recording_stage_actor(&system);
   let sink_ref = SinkRef::<u32>::from_endpoint_actor(stage_actor.actor_ref().clone());
   let resolver = StreamRefResolver::new(system);
 
@@ -118,8 +121,7 @@ fn sink_ref_serialized_message_round_trip_restores_typed_ref() {
 #[test]
 fn resolved_source_ref_endpoint_uses_loopback_actor_delivery() {
   let system = build_system();
-  let values = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let stage_actor = StageActor::new(&system, Box::new(RecordingReceive::new(values.clone())));
+  let (stage_actor, values) = recording_stage_actor(&system);
   let source_ref = SourceRef::<u32>::from_endpoint_actor(stage_actor.actor_ref().clone());
   let resolver = StreamRefResolver::new(system);
   let serialized = resolver.source_ref_to_format(&source_ref).expect("source ref format");
@@ -138,8 +140,7 @@ fn resolved_source_ref_endpoint_uses_loopback_actor_delivery() {
 #[test]
 fn resolved_sink_ref_endpoint_uses_loopback_actor_delivery() {
   let system = build_system();
-  let values = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let stage_actor = StageActor::new(&system, Box::new(RecordingReceive::new(values.clone())));
+  let (stage_actor, values) = recording_stage_actor(&system);
   let sink_ref = SinkRef::<u32>::from_endpoint_actor(stage_actor.actor_ref().clone());
   let resolver = StreamRefResolver::new(system);
   let serialized = resolver.sink_ref_to_format(&sink_ref).expect("sink ref format");
@@ -153,6 +154,17 @@ fn resolved_sink_ref_endpoint_uses_loopback_actor_delivery() {
   stage_actor.drain_pending().expect("drain loopback delivery");
 
   assert_eq!(values.lock().as_slice(), &[11_u32]);
+}
+
+#[test]
+fn recording_receive_rejects_non_u32_payloads() {
+  let values = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let mut receive = RecordingReceive::new(values);
+
+  assert_eq!(
+    receive.receive(StageActorEnvelope::new(ActorRef::null(), AnyMessage::new("not u32"))),
+    Err(StreamError::TypeMismatch)
+  );
 }
 
 #[test]
@@ -203,10 +215,10 @@ fn resolve_sink_ref_message_rejects_source_ref_manifest() {
   let serialized =
     SerializedMessage::new(STREAM_REF_PROTOCOL_SERIALIZER_ID, Some(SOURCE_REF_MANIFEST.into()), Vec::new());
 
-  let error = match resolver.resolve_sink_ref_message::<u32>(&serialized) {
-    | Ok(_) => panic!("SourceRef manifest must not resolve as SinkRef"),
-    | Err(error) => error,
-  };
+  let error = resolver
+    .resolve_sink_ref_message::<u32>(&serialized)
+    .err()
+    .expect("SourceRef manifest must not resolve as SinkRef");
 
   assert_eq!(error, SerializationError::UnknownManifest(SOURCE_REF_MANIFEST.into()));
 }
@@ -217,10 +229,10 @@ fn resolve_source_ref_message_rejects_missing_serializer_registration() {
   let missing_serializer = SerializerId::from_raw(999);
   let serialized = SerializedMessage::new(missing_serializer, Some(SOURCE_REF_MANIFEST.into()), Vec::new());
 
-  let error = match resolver.resolve_source_ref_message::<u32>(&serialized) {
-    | Ok(_) => panic!("missing StreamRef serializer must not resolve SourceRef"),
-    | Err(error) => error,
-  };
+  let error = resolver
+    .resolve_source_ref_message::<u32>(&serialized)
+    .err()
+    .expect("missing StreamRef serializer must not resolve SourceRef");
 
   assert_eq!(error, SerializationError::UnknownSerializer(missing_serializer));
 }
@@ -231,10 +243,10 @@ fn resolve_source_ref_message_rejects_unsupported_manifest() {
   let serialized =
     SerializedMessage::new(STREAM_REF_PROTOCOL_SERIALIZER_ID, Some("missing.StreamRefManifest".into()), Vec::new());
 
-  let error = match resolver.resolve_source_ref_message::<u32>(&serialized) {
-    | Ok(_) => panic!("unsupported manifest must not resolve SourceRef"),
-    | Err(error) => error,
-  };
+  let error = resolver
+    .resolve_source_ref_message::<u32>(&serialized)
+    .err()
+    .expect("unsupported manifest must not resolve SourceRef");
 
   assert_eq!(error, SerializationError::UnknownManifest("missing.StreamRefManifest".into()));
 }
@@ -245,10 +257,10 @@ fn resolve_source_ref_message_rejects_sink_ref_type_mismatch() {
   let serialized =
     SerializedMessage::new(STREAM_REF_PROTOCOL_SERIALIZER_ID, Some(SINK_REF_MANIFEST.into()), Vec::new());
 
-  let error = match resolver.resolve_source_ref_message::<u32>(&serialized) {
-    | Ok(_) => panic!("SinkRef manifest must not resolve as SourceRef"),
-    | Err(error) => error,
-  };
+  let error = resolver
+    .resolve_source_ref_message::<u32>(&serialized)
+    .err()
+    .expect("SinkRef manifest must not resolve as SourceRef");
 
   assert_eq!(error, SerializationError::UnknownManifest(SINK_REF_MANIFEST.into()));
 }
@@ -257,10 +269,7 @@ fn resolve_source_ref_message_rejects_sink_ref_type_mismatch() {
 fn resolve_source_ref_rejects_invalid_path_format() {
   let resolver = StreamRefResolver::new(build_system());
 
-  let error = match resolver.resolve_source_ref::<u32>("not a stream ref path") {
-    | Ok(_) => panic!("invalid path must fail"),
-    | Err(error) => error,
-  };
+  let error = resolver.resolve_source_ref::<u32>("not a stream ref path").err().expect("invalid path must fail");
 
   assert_failed_with_context(error, "invalid StreamRef actor path");
 }
@@ -269,10 +278,23 @@ fn resolve_source_ref_rejects_invalid_path_format() {
 fn resolve_sink_ref_rejects_missing_endpoint_actor() {
   let resolver = StreamRefResolver::new(build_system());
 
-  let error = match resolver.resolve_sink_ref::<u32>("fraktor://cellactor/user/temp/missing") {
-    | Ok(_) => panic!("missing endpoint must fail"),
-    | Err(error) => error,
-  };
+  let error = resolver
+    .resolve_sink_ref::<u32>("fraktor://cellactor/user/temp/missing")
+    .err()
+    .expect("missing endpoint must fail");
 
   assert_failed_with_context(error, "StreamRef provider dispatch failed");
+}
+
+#[test]
+fn serialized_message_payload_validation_rejects_manifest_mismatch_and_missing_manifest() {
+  let mismatched_payload = StreamRefSinkRefPayload::new(String::from("fraktor://cellactor/user/temp/ref"));
+  let mismatch = StreamRefResolver::payload_to_serialized_message(&mismatched_payload, SOURCE_REF_MANIFEST)
+    .expect_err("SinkRef payload must not serialize as SourceRef");
+  assert_eq!(mismatch, SerializationError::InvalidFormat);
+
+  let resolver = StreamRefResolver::new(build_system());
+  let missing_manifest = SerializedMessage::new(STREAM_REF_PROTOCOL_SERIALIZER_ID, None, Vec::new());
+  let error = resolver.resolve_source_ref_message::<u32>(&missing_manifest).err().expect("missing manifest must fail");
+  assert_eq!(error, SerializationError::InvalidFormat);
 }

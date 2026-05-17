@@ -1,7 +1,10 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with;
-use fraktor_actor_core_kernel_rs::{actor::scheduler::SchedulerConfig, system::ActorSystem};
+use fraktor_actor_core_kernel_rs::{
+  actor::{messaging::AnyMessage, scheduler::SchedulerConfig},
+  system::ActorSystem,
+};
 
 use super::StreamRefEndpointSlot;
 use crate::{
@@ -36,7 +39,10 @@ fn canonical_actor_path_uses_stage_actor_path() {
   let system = build_system();
   let stage_actor = StageActor::new(&system, Box::new(NoopReceive));
   let slot = StreamRefEndpointSlot::new();
+  let mut actor_ref = stage_actor.actor_ref().clone();
 
+  actor_ref.try_tell(AnyMessage::new(())).expect("enqueue noop");
+  stage_actor.drain_pending().expect("drain noop");
   slot.set_actor_ref(stage_actor.actor_ref().clone());
 
   let canonical = slot.canonical_actor_path().expect("canonical actor path");

@@ -111,10 +111,13 @@ fn cleanup_unwatches_partner_and_stops_endpoint_actor() {
   let partner_pid = system.allocate_pid();
   let (partner_actor, messages) = temp_actor_with_recording_sender(&system, partner_pid);
   let endpoint_actor = StageActor::new(&system, Box::new(NoopReceive));
+  let mut endpoint_ref = endpoint_actor.actor_ref().clone();
   let endpoint_pid = endpoint_actor.actor_ref().pid();
   let mut state = StreamRefEndpointState::new();
   let cleanup = StreamRefEndpointCleanup { endpoint_actor, partner_actor: Some(partner_actor) };
 
+  endpoint_ref.try_tell(AnyMessage::new(())).expect("enqueue noop");
+  cleanup.endpoint_actor.drain_pending().expect("drain noop");
   cleanup.run(&mut state).expect("cleanup");
 
   assert_eq!(*messages.lock(), vec![SystemMessage::Unwatch(endpoint_pid)]);

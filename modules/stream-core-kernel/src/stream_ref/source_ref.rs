@@ -81,12 +81,12 @@ where
         handoff.subscribe();
         Source::from_logic(StageKind::Custom, StreamRefSourceLogic::subscribed(handoff))
       },
-      | SourceRefBackend::ActorBacked { endpoint } => {
-        debug_assert!(endpoint.canonical_actor_path().is_ok());
-        match endpoint.actor_ref() {
-          | Ok(actor_ref) => Source::from_logic(StageKind::Custom, ActorBackedSourceRefLogic::<T>::new(actor_ref)),
-          | Err(error) => Source::failed(error),
-        }
+      | SourceRefBackend::ActorBacked { endpoint } => match endpoint.actor_ref() {
+        | Ok(actor_ref) => {
+          debug_assert!(actor_ref.canonical_path().is_some());
+          Source::from_logic(StageKind::Custom, ActorBackedSourceRefLogic::<T>::new(actor_ref))
+        },
+        | Err(error) => Source::failed(error),
       },
     }
   }
@@ -164,9 +164,7 @@ impl<T> ActorBackedSourceRefLogic<T> {
   }
 
   fn send_demand(&mut self) -> Result<(), StreamError> {
-    let Some(demand) = NonZeroU64::new(1) else {
-      return Err(StreamError::InvalidDemand { requested: 0 });
-    };
+    let demand = NonZeroU64::MIN;
     let endpoint_actor_ref = self.endpoint_actor_ref()?;
     let message = StreamRefCumulativeDemand::new(self.handoff.next_expected_seq_nr(), demand);
     let mut target_actor = self.target_actor.clone();

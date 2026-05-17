@@ -1,38 +1,28 @@
 use core::{hint, time::Duration};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
+use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with;
 use fraktor_actor_core_kernel_rs::{
-  actor::{
-    Actor, ActorContext, actor_ref_provider::LocalActorRefProviderInstaller, error::ActorError,
-    messaging::AnyMessageView, props::Props, scheduler::SchedulerConfig, setup::ActorSystemConfig,
-  },
+  actor::{actor_ref_provider::LocalActorRefProviderInstaller, scheduler::SchedulerConfig},
   system::ActorSystem,
 };
 
 use super::StreamRefs;
 use crate::{
+  DynValue, SourceLogic, StreamError,
   dsl::{Sink, Source},
   materialization::{
     ActorMaterializer, ActorMaterializerConfig, Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, Materialized,
   },
+  stage::StageKind,
   stream_ref::{SinkRef, SourceRef, StreamRefResolver},
 };
 
-struct GuardianActor;
-
-impl Actor for GuardianActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
-
 fn build_system() -> ActorSystem {
-  let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
-  let config = ActorSystemConfig::new(TestTickDriver::default())
-    .with_scheduler_config(scheduler)
-    .with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default());
-  ActorSystem::create_from_props(&props, config).expect("system should build")
+  create_noop_actor_system_with(|config| {
+    config.with_scheduler_config(scheduler).with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default())
+  })
 }
 
 fn build_materializer(system: ActorSystem) -> ActorMaterializer {
@@ -73,6 +63,14 @@ where
   );
 }
 
+struct PendingSourceLogic;
+
+impl SourceLogic for PendingSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+}
+
 #[test]
 fn source_ref_returns_sink_materializing_source_ref() {
   let _sink: Sink<u32, SourceRef<u32>> = StreamRefs::source_ref();
@@ -81,6 +79,24 @@ fn source_ref_returns_sink_materializing_source_ref() {
 #[test]
 fn sink_ref_returns_source_materializing_sink_ref() {
   let _source: Source<u32, SinkRef<u32>> = StreamRefs::sink_ref();
+}
+
+#[test]
+fn drive_pair_until_covers_ready_and_timeout_paths() {
+  let mut materializer = build_materializer(build_system());
+  let left = Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic)
+    .into_mat(Sink::ignore(), KeepRight)
+    .run(&mut materializer)
+    .expect("left pending stream");
+  let right = Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic)
+    .into_mat(Sink::ignore(), KeepRight)
+    .run(&mut materializer)
+    .expect("right pending stream");
+
+  drive_pair_until(&left, &right, || true);
+  let result = catch_unwind(AssertUnwindSafe(|| drive_pair_until(&left, &right, || false)));
+
+  assert!(result.is_err());
 }
 
 #[test]

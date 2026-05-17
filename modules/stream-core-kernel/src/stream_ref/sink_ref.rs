@@ -82,12 +82,12 @@ where
         let logic = StreamRefSinkLogic::subscribed(handoff, None);
         Sink::from_logic(StageKind::Custom, logic)
       },
-      | SinkRefBackend::ActorBacked { endpoint } => {
-        debug_assert!(endpoint.canonical_actor_path().is_ok());
-        match endpoint.actor_ref() {
-          | Ok(actor_ref) => Sink::from_logic(StageKind::Custom, ActorBackedSinkRefLogic::<T>::new(actor_ref)),
-          | Err(error) => Sink::from_logic(StageKind::Custom, ActorBackedSinkRefLogic::<T>::failed(error)),
-        }
+      | SinkRefBackend::ActorBacked { endpoint } => match endpoint.actor_ref() {
+        | Ok(actor_ref) => {
+          debug_assert!(actor_ref.canonical_path().is_some());
+          Sink::from_logic(StageKind::Custom, ActorBackedSinkRefLogic::<T>::new(actor_ref))
+        },
+        | Err(error) => Sink::from_logic(StageKind::Custom, ActorBackedSinkRefLogic::<T>::failed(error)),
       },
     }
   }

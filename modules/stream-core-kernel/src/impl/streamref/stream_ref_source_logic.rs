@@ -98,9 +98,7 @@ impl<T> StreamRefSourceLogic<T> {
   }
 
   fn signal_partner_demand(&self) -> Result<(), StreamError> {
-    let Some(demand) = NonZeroU64::new(1) else {
-      return Err(StreamError::InvalidDemand { requested: 0 });
-    };
+    let demand = NonZeroU64::MIN;
     self.handoff.send_cumulative_demand_to_partner(self.handoff.next_expected_seq_nr(), demand)?;
     self.handoff.record_cumulative_demand()
   }
