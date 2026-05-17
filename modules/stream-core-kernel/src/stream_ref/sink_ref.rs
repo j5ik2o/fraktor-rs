@@ -309,6 +309,9 @@ impl ActorBackedSinkRefStateShared {
     if let Some(error) = &guard.failure {
       return Err(error.clone());
     }
+    if seq_nr < guard.next_out_seq_nr {
+      return Ok(());
+    }
     if seq_nr != guard.next_out_seq_nr {
       return Err(StreamError::InvalidSequenceNumber {
         expected_seq_nr: guard.next_out_seq_nr,
@@ -316,7 +319,7 @@ impl ActorBackedSinkRefStateShared {
         message:         Cow::Borrowed("invalid stream ref sequence number"),
       });
     }
-    guard.pending_remote_demand = guard.pending_remote_demand.saturating_add(demand.get());
+    guard.pending_remote_demand = guard.pending_remote_demand.max(demand.get());
     Ok(())
   }
 

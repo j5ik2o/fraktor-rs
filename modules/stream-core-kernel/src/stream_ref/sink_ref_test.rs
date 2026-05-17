@@ -1,3 +1,5 @@
+use core::num::NonZeroU64;
+
 use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with;
 use fraktor_actor_core_kernel_rs::{
   actor::{
@@ -10,8 +12,9 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
-use super::{ActorBackedSinkRefLogic, SinkRef};
+use super::{ActorBackedSinkRefLogic, ActorBackedSinkRefStateShared, SinkRef};
 use crate::{
+  StreamError,
   dsl::Sink,
   r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff},
   materialization::StreamNotUsed,
@@ -80,4 +83,19 @@ fn actor_backed_sink_ref_watches_target_and_releases_on_complete() {
 
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
   assert_eq!(*user_messages.lock(), 2);
+}
+
+#[test]
+fn actor_backed_sink_ref_state_ignores_stale_cumulative_demand() {
+  let state = ActorBackedSinkRefStateShared::new();
+  let demand = NonZeroU64::new(1).expect("demand");
+  state.subscribe();
+
+  assert_eq!(state.accept_demand(0, demand), Ok(()));
+  assert_eq!(state.accept_demand(0, demand), Ok(()));
+  assert_eq!(state.reserve_next_seq_nr(), Ok(0));
+  assert_eq!(state.accept_demand(0, demand), Ok(()));
+  assert_eq!(state.reserve_next_seq_nr(), Err(StreamError::WouldBlock));
+  assert_eq!(state.accept_demand(1, demand), Ok(()));
+  assert_eq!(state.reserve_next_seq_nr(), Ok(1));
 }

@@ -1,3 +1,5 @@
+use core::num::NonZeroU64;
+
 use super::StreamRefHandoff;
 use crate::{StreamError, stage::CancellationCause};
 
@@ -80,4 +82,20 @@ fn offer_rejects_values_beyond_configured_buffer_capacity() {
 
   assert_eq!(handoff.offer(10_u32), Ok(0));
   assert_eq!(handoff.offer(20_u32), Err(StreamError::BufferOverflow));
+}
+
+#[test]
+fn stale_cumulative_demand_after_delivered_sequence_is_ignored() {
+  let handoff = StreamRefHandoff::new();
+  let demand = NonZeroU64::new(1).expect("demand");
+
+  assert_eq!(handoff.offer(10_u32), Ok(0));
+  assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
+  assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
+  assert_eq!(handoff.drain_ready_protocols().expect("first drain").len(), 1);
+  assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
+  assert_eq!(handoff.offer(20_u32), Ok(1));
+  assert!(handoff.drain_ready_protocols().expect("stale demand drain").is_empty());
+  assert_eq!(handoff.record_cumulative_demand_from(1, demand), Ok(()));
+  assert_eq!(handoff.drain_ready_protocols().expect("second drain").len(), 1);
 }

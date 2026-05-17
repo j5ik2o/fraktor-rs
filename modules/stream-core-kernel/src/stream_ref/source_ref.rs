@@ -167,7 +167,8 @@ impl<T> ActorBackedSourceRefLogic<T> {
     let mut target_actor = self.target_actor.clone();
     target_actor
       .try_tell(AnyMessage::new(message).with_sender(endpoint_actor_ref))
-      .map_err(|error| StreamError::from_send_error(&error))
+      .map_err(|error| StreamError::from_send_error(&error))?;
+    self.handoff.record_cumulative_demand()
   }
 
   fn watch_target_actor(&self) -> Result<(), StreamError> {
@@ -194,7 +195,6 @@ where
       | Err(error) => return Err(error),
     }
     self.send_demand()?;
-    self.handoff.record_cumulative_demand()?;
     self.drain_endpoint_actor()?;
     self.handoff.poll_or_drain().map(|value| value.map(|value| Box::new(value) as DynValue))
   }

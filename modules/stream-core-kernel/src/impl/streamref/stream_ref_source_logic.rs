@@ -101,7 +101,8 @@ impl<T> StreamRefSourceLogic<T> {
     let Some(demand) = NonZeroU64::new(1) else {
       return Err(StreamError::InvalidDemand { requested: 0 });
     };
-    self.handoff.send_cumulative_demand_to_partner(self.handoff.next_expected_seq_nr(), demand)
+    self.handoff.send_cumulative_demand_to_partner(self.handoff.next_expected_seq_nr(), demand)?;
+    self.handoff.record_cumulative_demand()
   }
 }
 
@@ -234,7 +235,6 @@ where
       | Err(error) => return Err(error),
     }
     self.signal_partner_demand()?;
-    self.handoff.record_cumulative_demand()?;
     self.handoff.drain_endpoint_actor()?;
     self.handoff.poll_or_drain().map(|value| value.map(|value| Box::new(value) as DynValue))
   }

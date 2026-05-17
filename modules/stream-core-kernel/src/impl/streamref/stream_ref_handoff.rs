@@ -279,13 +279,11 @@ impl<T> StreamRefHandoff<T> {
     let mut guard = self.inner.lock();
     let message = StreamRefProtocol::CumulativeDemand { seq_nr, demand };
     match message {
-      | StreamRefProtocol::CumulativeDemand { seq_nr, demand } if demand.get() > 0 => {
+      | StreamRefProtocol::CumulativeDemand { seq_nr, .. } if seq_nr < guard.next_in_seq_nr => Ok(()),
+      | StreamRefProtocol::CumulativeDemand { seq_nr, demand } => {
         StreamRefProtocol::validate_sequence(guard.next_in_seq_nr, seq_nr)?;
-        guard.pending_demand = guard.pending_demand.saturating_add(demand.get());
+        guard.pending_demand = guard.pending_demand.max(demand.get());
         Ok(())
-      },
-      | StreamRefProtocol::CumulativeDemand { demand, .. } => {
-        Err(StreamError::InvalidDemand { requested: demand.get() })
       },
       | _ => Err(StreamError::Failed),
     }
