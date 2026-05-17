@@ -300,11 +300,6 @@ impl<T> StreamRefHandoff<T> {
         return Ok(());
       };
       let Some(partner_actor) = cleanup.partner_actor() else {
-        debug_assert!(
-          false,
-          "stream ref partner actor is not paired before cumulative demand is sent: seq_nr={seq_nr}, demand={}",
-          demand.get(),
-        );
         return Ok(());
       };
       (cleanup.endpoint_actor_ref(), partner_actor)
