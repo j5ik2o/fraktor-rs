@@ -352,6 +352,10 @@ impl ActorBackedSinkRefStateShared {
     guard.failure.is_none() && guard.subscribed && guard.pending_remote_demand > 0
   }
 
+  fn is_terminal(&self) -> bool {
+    self.inner.lock().failure.is_some()
+  }
+
   fn error_result(&self) -> Result<(), StreamError> {
     match &self.inner.lock().failure {
       | Some(error) => Err(error.clone()),
@@ -413,6 +417,9 @@ impl ActorBackedSinkRefReceive {
   }
 
   fn accept_partner_terminated(&self, terminated: &Pid) -> Result<(), StreamError> {
+    if self.state.is_terminal() {
+      return Ok(());
+    }
     let error = StreamError::RemoteStreamRefActorTerminated {
       message: format!("remote stream ref partner actor terminated: {terminated:?}").into(),
     };

@@ -346,3 +346,23 @@ fn actor_backed_sink_ref_receive_rejects_invalid_sender_unknown_message_and_deat
   assert_eq!(unknown_message_error, StreamError::Failed);
   assert!(matches!(deathwatch_error, StreamError::RemoteStreamRefActorTerminated { .. }));
 }
+
+#[test]
+fn actor_backed_sink_ref_receive_ignores_deathwatch_after_terminal_failure() {
+  let system = build_system();
+  let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
+  let sender_key = target.canonical_path().expect("canonical path").to_canonical_uri();
+  let state = ActorBackedSinkRefStateShared::new();
+  let mut receive = ActorBackedSinkRefReceive::new(state.clone(), Ok(sender_key));
+
+  state.fail(StreamError::Failed);
+
+  assert_eq!(
+    receive.receive(StageActorEnvelope::new(
+      target,
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(99, 0))),
+    )),
+    Ok(())
+  );
+  assert_eq!(state.error_result(), Err(StreamError::Failed));
+}

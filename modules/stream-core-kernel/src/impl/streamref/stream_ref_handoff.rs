@@ -297,6 +297,8 @@ impl<T> StreamRefHandoff<T> {
         return Ok(());
       };
       let Some(partner_actor) = cleanup.partner_actor() else {
+        // Handshake may not have paired the endpoint yet; the recorded demand
+        // stays in the handoff and will be sent after the partner is known.
         return Ok(());
       };
       (cleanup.endpoint_actor_ref(), partner_actor)
