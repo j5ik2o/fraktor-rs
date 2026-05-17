@@ -218,13 +218,11 @@ fn actor_backed_sink_ref_on_error_sends_failure_and_records_send_errors() {
   let mut release_failed = ActorBackedSinkRefLogic::<u32>::failed(StreamError::Failed);
   release_failed.endpoint_actor = Some(endpoint_actor);
   release_failed.on_error(StreamError::StreamDetached);
-  match release_failed.state.error_result() {
-    | Err(StreamError::FailedWithContext { message, .. }) => {
-      assert!(message.contains("failed to notify StreamRef target"));
-      assert!(message.contains("failed to release target watch"));
-    },
-    | other => panic!("expected combined send/release failure, got {other:?}"),
-  }
+  let error = release_failed.state.error_result().expect_err("combined send/release failure");
+  assert!(matches!(error, StreamError::FailedWithContext { .. }));
+  let message = error.to_string();
+  assert!(message.contains("failed to notify StreamRef target"));
+  assert!(message.contains("failed to release target watch"));
 }
 
 #[test]
@@ -272,6 +270,19 @@ fn actor_backed_sink_ref_releases_watch_when_completion_send_fails() {
 }
 
 #[test]
+fn actor_backed_sink_ref_on_complete_reports_release_failure_after_notify_success() {
+  let system = build_system();
+  let (target, user_messages) = temp_system_failing_actor(&system);
+  let mut logic = ActorBackedSinkRefLogic::<u32>::new(target);
+
+  logic.attach_actor_system(system);
+  let error = logic.on_complete().expect_err("release should fail");
+
+  assert_eq!(*user_messages.lock(), 1);
+  assert!(matches!(error, StreamError::FailedWithContext { .. }));
+}
+
+#[test]
 fn actor_backed_sink_ref_on_complete_reports_send_and_release_failures() {
   let system = build_system();
   let endpoint_actor = StageActor::new(
@@ -287,13 +298,10 @@ fn actor_backed_sink_ref_on_complete_reports_send_and_release_failures() {
 
   let error = release_failed.on_complete().expect_err("completion and release should fail");
 
-  match error {
-    | StreamError::FailedWithContext { message, .. } => {
-      assert!(message.contains("failed to notify StreamRef target about completion"));
-      assert!(message.contains("failed to release target watch"));
-    },
-    | other => panic!("expected combined completion/release failure, got {other:?}"),
-  }
+  assert!(matches!(error, StreamError::FailedWithContext { .. }));
+  let message = error.to_string();
+  assert!(message.contains("failed to notify StreamRef target about completion"));
+  assert!(message.contains("failed to release target watch"));
 }
 
 #[test]
