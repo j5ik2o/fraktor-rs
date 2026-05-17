@@ -399,8 +399,10 @@ fn terminal_cleanup_failures_are_reported_from_completion_cancel_and_failure_pat
     .expect("register watcher");
 
   complete_handoff.complete();
-  assert_eq!(complete_handoff.cleanup_after_terminal_delivery(), Err(StreamError::WouldBlock));
-  assert_eq!(complete_handoff.poll_or_drain(), Err(StreamError::WouldBlock));
+  let error = complete_handoff.cleanup_after_terminal_delivery().expect_err("terminal cleanup failure");
+  assert!(matches!(error, StreamError::MaterializedResourceRollbackFailed { .. }));
+  assert_eq!(error.materialization_cleanup_failure(), Some(&StreamError::WouldBlock));
+  assert!(matches!(complete_handoff.poll_or_drain(), Err(StreamError::MaterializedResourceRollbackFailed { .. })));
 
   let watcher = temp_failing_actor(&system);
   let (cancel_handoff, cancel_endpoint) = attached_handoff(&system);
@@ -434,7 +436,9 @@ fn poll_or_drain_reports_completion_cleanup_failure() {
     .expect("register watcher");
 
   handoff.complete();
-  assert_eq!(handoff.poll_or_drain(), Err(StreamError::WouldBlock));
+  let error = handoff.poll_or_drain().expect_err("completion cleanup failure");
+  assert!(matches!(error, StreamError::MaterializedResourceRollbackFailed { .. }));
+  assert_eq!(error.materialization_cleanup_failure(), Some(&StreamError::WouldBlock));
 }
 
 #[test]

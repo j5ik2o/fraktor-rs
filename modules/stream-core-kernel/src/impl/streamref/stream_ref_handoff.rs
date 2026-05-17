@@ -21,6 +21,7 @@ mod tests;
 pub(crate) const STREAM_REF_SUBSCRIPTION_TIMEOUT_MESSAGE: &str =
   "remote stream ref partner did not subscribe before the configured timeout";
 const LOCAL_STREAM_REF_PARTNER: &str = "local-stream-ref-partner";
+const STREAM_REF_TERMINAL_CLEANUP_FAILURE_MESSAGE: &str = "stream ref terminal cleanup failed";
 
 struct StreamRefHandoffState<T> {
   values:          VecDeque<StreamRefProtocol>,
@@ -72,6 +73,13 @@ impl<T> StreamRefHandoff<T> {
   fn run_endpoint_cleanup(guard: &mut StreamRefHandoffState<T>) -> Option<StreamError> {
     let cleanup = guard.cleanup.take()?;
     cleanup.run(&mut guard.endpoint).err()
+  }
+
+  fn terminal_cleanup_failure(cleanup_error: StreamError) -> StreamError {
+    StreamError::materialized_resource_rollback_failed(
+      StreamError::failed_with_context(STREAM_REF_TERMINAL_CLEANUP_FAILURE_MESSAGE),
+      cleanup_error,
+    )
   }
 
   const fn cancellation_error() -> StreamError {
@@ -210,8 +218,9 @@ impl<T> StreamRefHandoff<T> {
     }
     match Self::run_endpoint_cleanup(&mut guard) {
       | Some(error) => {
-        guard.failure = Some(error.clone());
-        Err(error)
+        let failure = Self::terminal_cleanup_failure(error);
+        guard.failure = Some(failure.clone());
+        Err(failure)
       },
       | None => Ok(()),
     }
@@ -279,8 +288,9 @@ impl<T> StreamRefHandoff<T> {
         StreamRefProtocol::validate_sequence(guard.next_in_seq_nr, seq_nr)?;
         guard.closed = true;
         if let Some(error) = Self::run_endpoint_cleanup(&mut guard) {
-          guard.failure = Some(error.clone());
-          return Err(error);
+          let failure = Self::terminal_cleanup_failure(error);
+          guard.failure = Some(failure.clone());
+          return Err(failure);
         }
         Ok(None)
       },

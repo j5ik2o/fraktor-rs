@@ -45,6 +45,14 @@ impl ActorRefSender for RecordingSender {
   }
 }
 
+struct FailingSender;
+
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::full(message))
+  }
+}
+
 fn build_system() -> ActorSystem {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler))
@@ -57,6 +65,14 @@ fn temp_recording_actor(system: &ActorSystem) -> (ActorRef, ArcShared<SpinSyncMu
     ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(sender)), &system_state);
   let _name = system_state.register_temp_actor(actor_ref.clone());
   (actor_ref, user_messages)
+}
+
+fn temp_failing_actor(system: &ActorSystem) -> ActorRef {
+  let system_state = system.state();
+  let actor_ref =
+    ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(FailingSender)), &system_state);
+  let _name = system_state.register_temp_actor(actor_ref.clone());
+  actor_ref
 }
 
 #[test]
@@ -90,6 +106,27 @@ fn subscribed_source_propagates_handoff_failure() {
   let mut logic = StreamRefSourceLogic::subscribed(handoff);
 
   assert_eq!(logic.pull().expect_err("handoff failure"), StreamError::Failed);
+}
+
+#[test]
+fn subscribed_source_reports_terminal_cleanup_failure() {
+  let system = build_system();
+  let watcher = temp_failing_actor(&system);
+  let endpoint = StreamRefEndpointSlot::new();
+  let handoff = StreamRefHandoff::<u32>::new();
+  handoff.subscribe();
+  let mut logic = StreamRefSourceLogic::awaiting_remote_subscription_with_endpoint(handoff.clone(), endpoint.clone());
+  logic.attach_actor_system(system.clone());
+  system
+    .state()
+    .send_system_message(endpoint.actor_ref().expect("endpoint actor").pid(), SystemMessage::Watch(watcher.pid()))
+    .expect("register watcher");
+
+  handoff.complete();
+  let error = logic.pull().expect_err("terminal cleanup failure");
+
+  assert!(matches!(error, StreamError::MaterializedResourceRollbackFailed { .. }));
+  assert_eq!(error.materialization_cleanup_failure(), Some(&StreamError::WouldBlock));
 }
 
 #[test]
