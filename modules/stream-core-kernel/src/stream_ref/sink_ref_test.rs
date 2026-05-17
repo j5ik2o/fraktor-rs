@@ -197,11 +197,13 @@ fn actor_backed_sink_ref_on_error_sends_failure_and_records_send_errors() {
   let mut logic = ActorBackedSinkRefLogic::<u32>::new(target);
   logic.attach_actor_system(system.clone());
   let endpoint_pid = logic.endpoint_actor_ref().expect("endpoint actor ref").pid();
+  assert!(system.state().actor_path(&endpoint_pid).is_some());
 
   logic.on_error(StreamError::Failed);
 
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
   assert_eq!(*user_messages.lock(), 2);
+  assert!(system.state().actor_path(&endpoint_pid).is_none());
 
   let mut send_failed = ActorBackedSinkRefLogic::<u32>::failed(StreamError::Failed);
   send_failed.on_error(StreamError::StreamDetached);
@@ -244,8 +246,9 @@ fn actor_backed_sink_ref_watches_target_and_releases_on_complete() {
   let (target, system_messages, user_messages) = temp_recording_actor(&system);
   let mut logic = ActorBackedSinkRefLogic::<u32>::new(target);
 
-  logic.attach_actor_system(system);
+  logic.attach_actor_system(system.clone());
   let endpoint_pid = logic.endpoint_actor_ref().expect("endpoint actor ref").pid();
+  assert!(system.state().actor_path(&endpoint_pid).is_some());
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid)]);
   assert_eq!(*user_messages.lock(), 1);
 
@@ -253,6 +256,7 @@ fn actor_backed_sink_ref_watches_target_and_releases_on_complete() {
 
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
   assert_eq!(*user_messages.lock(), 2);
+  assert!(system.state().actor_path(&endpoint_pid).is_none());
 }
 
 #[test]
@@ -267,6 +271,24 @@ fn actor_backed_sink_ref_releases_watch_when_completion_send_fails() {
 
   assert!(matches!(error, StreamError::FailedWithContext { .. }));
   assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
+}
+
+#[test]
+fn actor_backed_sink_ref_on_complete_reports_endpoint_stop_failure() {
+  let system = build_system();
+  let (target, system_messages, user_messages) = temp_recording_actor(&system);
+  let (watcher, _watcher_user_messages) = temp_system_failing_actor(&system);
+  let mut logic = ActorBackedSinkRefLogic::<u32>::new(target);
+
+  logic.attach_actor_system(system.clone());
+  let endpoint_pid = logic.endpoint_actor_ref().expect("endpoint actor ref").pid();
+  system.state().send_system_message(endpoint_pid, SystemMessage::Watch(watcher.pid())).expect("watch endpoint actor");
+  let error = logic.on_complete().expect_err("endpoint stop should fail");
+
+  assert!(matches!(error, StreamError::FailedWithContext { .. }));
+  assert_eq!(*system_messages.lock(), vec![SystemMessage::Watch(endpoint_pid), SystemMessage::Unwatch(endpoint_pid)]);
+  assert_eq!(*user_messages.lock(), 2);
+  assert!(system.state().actor_path(&endpoint_pid).is_none());
 }
 
 #[test]

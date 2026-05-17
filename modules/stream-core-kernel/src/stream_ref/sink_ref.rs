@@ -180,6 +180,29 @@ impl<T> ActorBackedSinkRefLogic<T> {
     endpoint_actor.unwatch(&target_actor)
   }
 
+  fn stop_endpoint_actor(&self) -> Result<(), StreamError> {
+    match &self.endpoint_actor {
+      | Some(endpoint_actor) => endpoint_actor.stop(),
+      | None => Ok(()),
+    }
+  }
+
+  fn merge_terminal_result(
+    primary_result: Result<(), StreamError>,
+    cleanup_result: Result<(), StreamError>,
+    primary_context: &str,
+    cleanup_context: &str,
+  ) -> Result<(), StreamError> {
+    match (primary_result, cleanup_result) {
+      | (Err(primary_error), Err(cleanup_error)) => Err(Self::stream_error_from_context(format!(
+        "{primary_context}: {primary_error}; {cleanup_context}: {cleanup_error}"
+      ))),
+      | (Err(primary_error), Ok(())) => Err(primary_error),
+      | (Ok(()), Err(cleanup_error)) => Err(cleanup_error),
+      | (Ok(()), Ok(())) => Ok(()),
+    }
+  }
+
   fn send_handshake(&mut self) -> Result<(), StreamError> {
     let endpoint_actor_ref = self.endpoint_actor_ref()?;
     let target_ref_path = Self::actor_key(&endpoint_actor_ref)?;
@@ -256,28 +279,37 @@ where
     let seq_nr = self.state.next_seq_nr();
     let send_result = self.send_to_target(StreamRefRemoteStreamCompleted::new(seq_nr));
     let release_result = self.release_target_watch();
-    match (send_result, release_result) {
-      | (Err(send_error), Err(release_error)) => Err(Self::stream_error_from_context(format!(
-        "failed to notify StreamRef target about completion: {send_error}; failed to release target watch: \
-         {release_error}"
-      ))),
-      | (Err(send_error), Ok(())) => Err(send_error),
-      | (Ok(()), Err(release_error)) => Err(release_error),
-      | (Ok(()), Ok(())) => Ok(()),
-    }
+    let cleanup_result = Self::merge_terminal_result(
+      send_result,
+      release_result,
+      "failed to notify StreamRef target about completion",
+      "failed to release target watch",
+    );
+    Self::merge_terminal_result(
+      cleanup_result,
+      self.stop_endpoint_actor(),
+      "failed to finish actor-backed SinkRef completion",
+      "failed to stop StreamRef endpoint actor",
+    )
   }
 
   fn on_error(&mut self, error: StreamError) {
     let send_result = self.send_to_target(StreamRefRemoteStreamFailure::new(format!("{error}")));
     let release_result = self.release_target_watch();
-    match (send_result, release_result) {
-      | (Err(send_error), Err(release_error)) => self.state.fail(Self::stream_error_from_context(format!(
-        "failed to notify StreamRef target about upstream failure: {send_error}; failed to release target watch: \
-         {release_error}"
-      ))),
-      | (Err(send_error), Ok(())) => self.state.fail(send_error),
-      | (Ok(()), Err(release_error)) => self.state.fail(release_error),
-      | (Ok(()), Ok(())) => {},
+    let cleanup_result = Self::merge_terminal_result(
+      send_result,
+      release_result,
+      "failed to notify StreamRef target about upstream failure",
+      "failed to release target watch",
+    );
+    match Self::merge_terminal_result(
+      cleanup_result,
+      self.stop_endpoint_actor(),
+      "failed to finish actor-backed SinkRef failure",
+      "failed to stop StreamRef endpoint actor",
+    ) {
+      | Ok(()) => {},
+      | Err(error) => self.state.fail(error),
     }
   }
 
