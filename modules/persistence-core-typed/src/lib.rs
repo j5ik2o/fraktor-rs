@@ -18,6 +18,7 @@ mod persistence_effector;
 mod persistence_effector_config;
 mod persistence_effector_message_adapter;
 mod persistence_effector_signal;
+mod persistence_effector_signal_auth;
 mod persistence_id;
 mod persistence_mode;
 mod retention_criteria;
