@@ -1379,10 +1379,8 @@ impl ActorCell {
       for child in &children {
         state.children_state.shall_die(*child);
       }
-      debug_assert!(
-        state.children_state.set_children_termination_reason(SuspendReason::Termination),
-        "children_state must be Terminating after marking live children for termination",
-      );
+      let reason_updated = state.children_state.set_children_termination_reason(SuspendReason::Termination);
+      debug_assert!(reason_updated, "children_state must be Terminating after marking live children for termination",);
       Some(children)
     })
   }
