@@ -100,7 +100,10 @@ impl<T> StreamRefSourceLogic<T> {
     if self.endpoint.is_none() {
       return self.handoff.record_cumulative_demand();
     }
-    self.handoff.send_cumulative_demand_to_partner(self.handoff.next_expected_seq_nr(), demand)?;
+    match self.handoff.send_cumulative_demand_to_partner(self.handoff.next_expected_seq_nr(), demand) {
+      | Ok(()) | Err(StreamError::StreamRefPartnerUnavailable { .. }) => {},
+      | Err(error) => return Err(error),
+    }
     self.handoff.record_cumulative_demand()
   }
 }

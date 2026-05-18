@@ -237,13 +237,28 @@ fn stale_cumulative_demand_after_delivered_sequence_is_ignored() {
 
   assert_eq!(handoff.offer(10_u32), Ok(0));
   assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
-  assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
   assert_eq!(handoff.drain_ready_protocols().expect("first drain").len(), 1);
   assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
   assert_eq!(handoff.offer(20_u32), Ok(1));
   assert!(handoff.drain_ready_protocols().expect("stale demand drain").is_empty());
   assert_eq!(handoff.record_cumulative_demand_from(1, demand), Ok(()));
   assert_eq!(handoff.drain_ready_protocols().expect("second drain").len(), 1);
+}
+
+#[test]
+fn cumulative_demand_at_current_sequence_accumulates_pending_capacity() {
+  let handoff = StreamRefHandoff::new();
+  let demand = NonZeroU64::new(1).expect("demand");
+
+  assert_eq!(handoff.offer(10_u32), Ok(0));
+  assert_eq!(handoff.offer(20_u32), Ok(1));
+  assert_eq!(handoff.offer(30_u32), Ok(2));
+  assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
+  assert_eq!(handoff.record_cumulative_demand_from(0, demand), Ok(()));
+
+  assert_eq!(handoff.drain_ready_protocols().expect("drain accumulated demand").len(), 2);
+  assert!(handoff.has_pending_protocols());
+  assert!(handoff.drain_ready_protocols().expect("demand exhausted").is_empty());
 }
 
 #[test]

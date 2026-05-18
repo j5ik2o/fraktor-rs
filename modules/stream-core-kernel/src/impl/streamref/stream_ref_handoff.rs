@@ -320,7 +320,7 @@ impl<T> StreamRefHandoff<T> {
       return Ok(());
     }
     StreamRefProtocol::validate_sequence(guard.next_in_seq_nr, seq_nr)?;
-    guard.pending_demand = guard.pending_demand.max(demand.get());
+    guard.pending_demand = guard.pending_demand.saturating_add(demand.get());
     Ok(())
   }
 
