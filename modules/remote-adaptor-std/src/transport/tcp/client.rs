@@ -338,12 +338,10 @@ async fn handle_inbound_tcp_frame(
 ) -> TcpClientLoopDecision {
   let decoded = match compression_tables.handle_inbound_frame(decoded, local_authority) {
     | Ok(InboundCompressionAction::Forward(frame)) => frame,
-    | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
-      *authority = Some(frame_authority);
+    | Ok(InboundCompressionAction::Reply { pdu }) => {
       return send_tcp_control_reply(framed, pdu).await;
     },
-    | Ok(InboundCompressionAction::Consumed { authority: frame_authority }) => {
-      *authority = Some(frame_authority);
+    | Ok(InboundCompressionAction::Consumed) => {
       return TcpClientLoopDecision::Continue;
     },
     | Err(err) => {
