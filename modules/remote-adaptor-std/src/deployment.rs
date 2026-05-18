@@ -124,12 +124,20 @@ impl DeploymentResponseDispatcher {
   }
 
   /// Completes a pending request or records the stale response.
-  pub(crate) fn complete(&self, response: DeploymentResponse) {
+  pub(crate) fn complete(&self, authority: &str, response: DeploymentResponse) {
+    let normalized_authority = normalize_authority(authority);
     let key = match &response {
       | DeploymentResponse::Success(success) => (success.correlation_hi(), success.correlation_lo()),
       | DeploymentResponse::Failure(failure) => (failure.correlation_hi(), failure.correlation_lo()),
     };
     let pending = self.state.with_lock(|state| {
+      let expected = state.pending.get(&key)?;
+      let matches_exact = expected.authority == authority;
+      let matches_normalized =
+        normalized_authority.as_deref().is_some_and(|normalized| normalized == expected.authority.as_str());
+      if !matches_exact && !matches_normalized {
+        return None;
+      }
       let pending = state.pending.remove(&key);
       if let Some(pending) = pending.as_ref()
         && let DeploymentResponse::Success(_) = &response
@@ -345,6 +353,13 @@ fn spawn_error(error: SpawnError) -> (RemoteDeploymentFailureCode, String) {
 
 fn address_terminated_failure_reason(event: &AddressTerminatedEvent) -> String {
   format!("remote deployment target address terminated: authority={}, reason={}", event.authority(), event.reason())
+}
+
+fn normalize_authority(raw: &str) -> Option<String> {
+  if let Some((_, stripped)) = raw.split_once("://") {
+    return parse_remote_authority(stripped).map(|value| value.to_string());
+  }
+  parse_remote_authority(raw).map(|value| value.to_string())
 }
 
 fn response_remote_for_command(command: &DeploymentDaemonCommand) -> Option<Address> {

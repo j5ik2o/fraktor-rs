@@ -167,12 +167,15 @@ fn deployment_response_dispatcher_bounds_stale_responses() {
   let dispatcher = DeploymentResponseDispatcher::default();
 
   for index in 0..(MAX_STALE_DEPLOYMENT_RESPONSES + 1) {
-    dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
-      index as u64,
-      0,
-      RemoteDeploymentFailureCode::SpawnFailed,
-      String::from("late"),
-    )));
+    dispatcher.complete(
+      "fraktor.tcp://remote-sys@10.0.0.1:2552",
+      DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+        index as u64,
+        0,
+        RemoteDeploymentFailureCode::SpawnFailed,
+        String::from("late"),
+      )),
+    );
   }
 
   assert_eq!(dispatcher.stale_len(), MAX_STALE_DEPLOYMENT_RESPONSES);
@@ -184,12 +187,15 @@ fn deployment_response_dispatcher_records_stale_when_receiver_is_dropped() {
   let receiver = dispatcher.register(11, 12, "remote-sys@10.0.0.1:2552", 10);
   drop(receiver);
 
-  dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
-    11,
-    12,
-    RemoteDeploymentFailureCode::SpawnFailed,
-    String::from("late"),
-  )));
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+      11,
+      12,
+      RemoteDeploymentFailureCode::SpawnFailed,
+      String::from("late"),
+    )),
+  );
 
   assert_eq!(dispatcher.stale_len(), 1);
 }
@@ -199,15 +205,38 @@ fn successful_deployment_response_tracks_remote_created_child() {
   let dispatcher = DeploymentResponseDispatcher::default();
   let receiver = dispatcher.register(7, 8, "remote-sys@10.0.0.1:2552", 10);
 
-  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
-    7,
-    8,
-    String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
-  )));
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+      7,
+      8,
+      String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
+    )),
+  );
 
   let response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should complete");
   assert!(matches!(response, DeploymentResponse::Success(_)));
   assert_eq!(dispatcher.remote_created_len(), 1);
+}
+
+#[test]
+fn deployment_response_dispatcher_rejects_response_from_other_authority() {
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let receiver = dispatcher.register(13, 14, "remote-sys@10.0.0.1:2552", 10);
+
+  dispatcher.complete(
+    "other-sys@10.0.0.2:2552",
+    DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+      13,
+      14,
+      RemoteDeploymentFailureCode::SpawnFailed,
+      String::from("wrong authority"),
+    )),
+  );
+
+  assert!(receiver.try_recv().is_err());
+  assert_eq!(dispatcher.stale_len(), 1);
+  dispatcher.cancel(13, 14);
 }
 
 #[test]
@@ -217,11 +246,14 @@ fn address_termination_cleans_remote_created_tracking() {
   let _subscription = subscribe_address_terminated(&system, dispatcher.clone());
   let receiver = dispatcher.register(9, 10, "remote-sys@10.0.0.1:2552", 10);
 
-  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
-    9,
-    10,
-    String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
-  )));
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+      9,
+      10,
+      String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
+    )),
+  );
   let _response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should complete");
   assert_eq!(dispatcher.remote_created_len(), 1);
 
@@ -296,11 +328,14 @@ fn late_deployment_response_after_address_termination_is_stale() {
     DeploymentResponse::Failure(failure) if failure.code() == RemoteDeploymentFailureCode::AddressTerminated
   ));
 
-  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
-    5,
-    6,
-    String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/late"),
-  )));
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+      5,
+      6,
+      String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/late"),
+    )),
+  );
 
   assert_eq!(dispatcher.stale_len(), 1);
 }

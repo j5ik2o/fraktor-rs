@@ -174,6 +174,33 @@ fn route_deployment_event_returns_failure_when_daemon_queue_closed() {
   }
 }
 
+#[test]
+fn route_deployment_event_completes_failure_with_sender_authority() {
+  let (sender, _receiver) = mpsc::channel(1);
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let target = remote_address();
+  let receiver = dispatcher.register(5, 6, target.to_string(), 1);
+  let failure =
+    RemoteDeploymentCreateFailure::new(5, 6, RemoteDeploymentFailureCode::SpawnFailed, String::from("spawn failed"));
+  let event = RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(target.to_string()),
+    frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateFailure(failure)),
+    now_ms:    99,
+  };
+
+  let routed = route_deployment_event(event, &sender, &dispatcher);
+
+  assert!(routed.is_none());
+  let response = receiver.try_recv().expect("failure response should complete matching deployment");
+  assert!(matches!(
+    response,
+    DeploymentResponse::Failure(failure)
+      if failure.correlation_hi() == 5
+        && failure.correlation_lo() == 6
+        && failure.code() == RemoteDeploymentFailureCode::SpawnFailed
+  ));
+}
+
 fn activate_association(remote: &RemoteShared, target: &Address) {
   remote
     .handle_event(RemoteEvent::OutboundEnqueued {
