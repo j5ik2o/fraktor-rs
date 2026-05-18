@@ -745,13 +745,7 @@ pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sen
       | WireFrame::Ack(_)
       | WireFrame::Deployment(_) => None,
     },
-    | RemoteEvent::ConnectionLost { authority, cause, now_ms } => {
-      parse_remote_authority(authority.authority()).map(|from| WatcherCommand::ConnectionLost {
-        from,
-        reason: format!("remote transport connection lost: {cause:?}"),
-        now: *now_ms,
-      })
-    },
+    | RemoteEvent::ConnectionLost { .. } => None,
     | RemoteEvent::TransportShutdown
     | RemoteEvent::OutboundEnqueued { .. }
     | RemoteEvent::OutboundControl { .. }
