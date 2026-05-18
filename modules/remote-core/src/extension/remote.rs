@@ -1,5 +1,9 @@
 //! Default core implementation of the remoting lifecycle API.
 
+#[cfg(test)]
+#[path = "remote_test.rs"]
+mod tests;
+
 use alloc::{
   boxed::Box,
   format,
@@ -301,20 +305,11 @@ impl Remote {
     Ok(self.associations.len() - 1)
   }
 
-  fn ensure_association_for_handshake_request(&mut self, request: &HandshakeReq) -> Option<usize> {
+  fn association_index_for_handshake_request(&self, request: &HandshakeReq) -> Option<usize> {
     if !self.is_local_handshake_destination(request.to()) {
       return None;
     }
-    if let Some(index) = self.association_index_for_remote(request.from().address()) {
-      return Some(index);
-    }
-    let association = Association::from_config(
-      UniqueAddress::new(request.to().clone(), 0),
-      request.from().address().clone(),
-      &self.config,
-    );
-    self.insert_association(association);
-    Some(self.associations.len() - 1)
+    self.association_index_for_remote(request.from().address())
   }
 
   fn association_index_for_remote(&self, remote: &Address) -> Option<usize> {
@@ -419,7 +414,7 @@ impl Remote {
   }
 
   fn handle_inbound_handshake_request(&mut self, request: &HandshakeReq, now_ms: u64) -> Result<(), RemotingError> {
-    let Some(association_index) = self.ensure_association_for_handshake_request(request) else {
+    let Some(association_index) = self.association_index_for_handshake_request(request) else {
       return Ok(());
     };
     let accepted = {
