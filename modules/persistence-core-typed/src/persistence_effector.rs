@@ -172,14 +172,14 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr } => {
+            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
               let effector =
                 Self::active(config.clone(), store_ref.clone(), reply_to.clone(), *sequence_nr, on_ready.clone());
               let next = on_ready(state.clone(), effector)?;
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::Failed { error } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -432,7 +432,7 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedEvents { events, sequence_nr } => {
+            | PersistenceEffectorSignal::PersistedEvents { events, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
@@ -442,10 +442,10 @@ where
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr } => {
+            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
               effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
             },
-            | PersistenceEffectorSignal::Failed { error } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -479,7 +479,7 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedEvents { events, sequence_nr } => {
+            | PersistenceEffectorSignal::PersistedEvents { events, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
@@ -507,10 +507,10 @@ where
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr } => {
+            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
               effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
             },
-            | PersistenceEffectorSignal::Failed { error } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -541,7 +541,7 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedSnapshot { snapshot, sequence_nr } => {
+            | PersistenceEffectorSignal::PersistedSnapshot { snapshot, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
@@ -568,10 +568,10 @@ where
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr } => {
+            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
               effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
             },
-            | PersistenceEffectorSignal::Failed { error } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -593,7 +593,7 @@ where
     Behaviors::receive_message(move |ctx, message| {
       if let Some(signal) = adapter.unwrap_signal(message) {
         return match signal {
-          | PersistenceEffectorSignal::DeletedSnapshots { to_sequence_nr: deleted_to_sequence_nr }
+          | PersistenceEffectorSignal::DeletedSnapshots { to_sequence_nr: deleted_to_sequence_nr, .. }
             if *deleted_to_sequence_nr == to_sequence_nr =>
           {
             let next = snapshot.with_lock(|snapshot_slot| {
@@ -608,10 +608,10 @@ where
           | PersistenceEffectorSignal::DeletedSnapshots { .. } => {
             Err(ActorError::fatal("unexpected snapshot deletion acknowledgement"))
           },
-          | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr } => {
+          | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
             effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
           },
-          | PersistenceEffectorSignal::Failed { error } => Err(ActorError::fatal(error.to_string())),
+          | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
           | _ => Ok(Behaviors::unhandled()),
         };
       }
