@@ -4,6 +4,11 @@
 
 /// Props structure module.
 mod base;
+mod deployable_actor_factory;
+mod deployable_actor_factory_registry;
+mod deployable_factory_error;
+mod deployable_factory_lookup_error;
+mod deployable_props_metadata;
 /// Actor factory module.
 mod factory;
 /// Shared wrapper for actor factory.
@@ -17,6 +22,11 @@ mod mailbox_requirement;
 mod supervisor_options;
 
 pub use base::Props;
+pub use deployable_actor_factory::DeployableActorFactory;
+pub use deployable_actor_factory_registry::DeployableActorFactoryRegistry;
+pub use deployable_factory_error::DeployableFactoryError;
+pub use deployable_factory_lookup_error::DeployableFactoryLookupError;
+pub use deployable_props_metadata::DeployablePropsMetadata;
 pub use factory::ActorFactory;
 pub use factory_shared::ActorFactoryShared;
 pub use mailbox_config::MailboxConfig;

@@ -13,4 +13,4 @@ mod island_splitter;
 mod outlet_dispatch_state;
 
 pub(crate) use island_boundary::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared};
-pub(crate) use island_splitter::{IslandSplitter, SingleIslandPlan};
+pub(crate) use island_splitter::{IslandCrossing, IslandSplitter, SingleIslandPlan};

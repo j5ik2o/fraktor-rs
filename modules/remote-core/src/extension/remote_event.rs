@@ -6,7 +6,7 @@ use crate::{
   address::Address,
   envelope::OutboundEnvelope,
   transport::{TransportEndpoint, TransportError as ConnectionLostCause},
-  wire::{ControlPdu, WireFrame},
+  wire::{ControlPdu, RemoteDeploymentPdu, WireFrame},
 };
 
 /// Events pushed by adapter code and consumed by the core remote event loop.
@@ -55,6 +55,15 @@ pub enum RemoteEvent {
     /// Control PDU to send.
     pdu:    ControlPdu,
     /// Monotonic millis at which the outbound control PDU was observed.
+    now_ms: u64,
+  },
+  /// An outbound deployment PDU has been submitted by adapter code.
+  OutboundDeployment {
+    /// Remote address that should receive the deployment PDU.
+    remote: Address,
+    /// Deployment PDU to send.
+    pdu:    RemoteDeploymentPdu,
+    /// Monotonic millis at which the outbound deployment PDU was observed.
     now_ms: u64,
   },
   /// A redelivery timer fired for a remote authority.

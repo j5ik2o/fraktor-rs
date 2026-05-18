@@ -26,6 +26,7 @@ fn new_uses_defaults_for_optional_fields() {
   assert_eq!(s.canonical_host(), "localhost");
   assert_eq!(s.canonical_port(), None);
   assert_eq!(s.handshake_timeout(), Duration::from_secs(20));
+  assert_eq!(s.deployment_timeout(), Duration::from_secs(60));
   assert_eq!(s.shutdown_flush_timeout(), Duration::from_secs(5));
   assert!(s.flight_recorder_capacity() > 0);
   assert_eq!(s.ack_send_window(), 1024);
@@ -89,6 +90,7 @@ fn method_chain_applies_all_changes() {
   let s = RemoteConfig::new("localhost")
     .with_canonical_port(8080)
     .with_handshake_timeout(Duration::from_secs(30))
+    .with_deployment_timeout(Duration::from_secs(45))
     .with_shutdown_flush_timeout(Duration::from_secs(10))
     .with_flight_recorder_capacity(4096)
     .with_ack_send_window(128)
@@ -108,6 +110,7 @@ fn method_chain_applies_all_changes() {
   assert_eq!(s.canonical_host(), "localhost");
   assert_eq!(s.canonical_port(), Some(8080));
   assert_eq!(s.handshake_timeout(), Duration::from_secs(30));
+  assert_eq!(s.deployment_timeout(), Duration::from_secs(45));
   assert_eq!(s.shutdown_flush_timeout(), Duration::from_secs(10));
   assert_eq!(s.flight_recorder_capacity(), 4096);
   assert_eq!(s.ack_send_window(), 128);
@@ -343,6 +346,13 @@ fn restart_timing_settings_reject_zero_duration() {
 
   assert!(outbound_backoff.is_err());
   assert!(outbound_timeout.is_err());
+}
+
+#[test]
+fn with_deployment_timeout_rejects_zero() {
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_deployment_timeout(Duration::ZERO));
+
+  assert!(result.is_err());
 }
 
 #[test]

@@ -234,7 +234,7 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 
 ### Requirement: Remote は CQS core logic 層であり Remote::run を持つ
 
-`Remote` 構造体は CQS 原則を厳格に守る core logic 層 SHALL。状態を変更する method はすべて `&mut self`（Command）、状態を読む method は `&self`（Query）。`Remote::run(&mut self, receiver)` は排他所有時の core event loop として存在する SHALL。`Remote` 自体に共有・並行性責務を持たせてはならない（MUST NOT、内部可変性 / `Arc` / `Mutex` を field に持たない）。
+`Remote` 構造体は CQS 原則を厳格に守る core logic 層 SHALL。状態を変更する method はすべて `&mut self`（Command）、状態を読む method は `&self`（Query）。`Remote::run(&mut self, receiver)` は排他所有時の core event loop として存在する SHALL。`Remote` 自体に共有・並行性責務を持たせてはならない（MUST NOT）。ただし inbound deserialization のため、actor-core-kernel の no_std 互換 `SerializationExtensionShared` または同等の concrete shared serialization handle を外部 extension dependency として保持してよい（MAY）。この例外は serialization registry 共有のためだけに限定し、`Remote` 自身の lifecycle / association / inbound buffer 状態を共有ロックや std 実行基盤型へ移してはならない（MUST NOT）。
 
 #### Scenario: Remote の CQS 遵守
 
@@ -242,11 +242,13 @@ Pending --transition_to_start()--> Starting --mark_started()--> Running
 - **THEN** 状態を変更する method（`start` / `shutdown` / `quarantine` / `handle_remote_event` / `set_instrument` / `run` 等）はすべて `&mut self` を取る
 - **AND** 状態を読む method（`addresses` / `lifecycle` / `config` 等）はすべて `&self` を取る
 
-#### Scenario: Remote 内部の並行性吸収責務の不在
+#### Scenario: Remote の serialization dependency は共有状態責務を増やさない
 
 - **WHEN** `Remote` の field を検査する
-- **THEN** `Arc<Mutex<..>>` / `RwLock<..>` / `Cell<..>` / `RefCell<..>` 等の内部可変性を持つ field が存在しない
-- **AND** instrument 用の `Box<dyn RemoteInstrument + Send>` 以外に動的ディスパッチ用の field を持たない
+- **THEN** `SerializationExtensionShared` または同等の no_std serialization shared handle を保持してよい
+- **AND** lifecycle / association / inbound envelope buffer など `Remote` 所有状態を `Arc<Mutex<..>>` / `RwLock<..>` / `Cell<..>` / `RefCell<..>` / std 実行基盤型へ移してはならない
+- **AND** transport port 用の `Box<dyn RemoteTransport + Send>` と instrument 用の `Box<dyn RemoteInstrument + Send>` 以外に動的ディスパッチ用の field を持たない
+- **AND** `RemoteShared` は `Remote` の sharing wrapper に留まり、serialization handle を重複保持しない
 
 #### Scenario: Remote::run の存在と所有権
 
@@ -640,7 +642,7 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 
 ### Requirement: Codec 経路の明文化
 
-`Remote::handle_remote_event` は inbound 側で adapter から渡された core wire frame bytes を既存 core wire codec（`EnvelopeCodec` / `HandshakeCodec` / `ControlCodec` / `AckCodec`）で復号してから `Association` に渡す SHALL。outbound 側は現行 port 境界を維持し、`Association::next_outbound` の戻り値である `OutboundEnvelope` をそのまま `RemoteTransport::send` に渡す SHALL。core 側で `Codec<OutboundEnvelope>` / `Codec<InboundEnvelope>` を新設して raw bytes を `RemoteTransport::send` に渡してはならない（MUST NOT）。
+`Remote::handle_remote_event` は inbound 側で adaptor から渡された core wire frame bytes を既存 core wire codec（`EnvelopeCodec` / `HandshakeCodec` / `ControlCodec` / `AckCodec`）で復号してから `Association` に渡す SHALL。`EnvelopePdu` の場合は、PDU に含まれる serializer id / manifest / payload bytes から actor-core `SerializedMessage` 相当を構築し、outbound 側で `SerializationCallScope::Remote` により生成された serialized payload として deserialize してから `InboundEnvelope` に buffer しなければならない（MUST）。outbound 側は現行 port 境界を維持し、`Association::next_outbound` の戻り値である `OutboundEnvelope` をそのまま `RemoteTransport::send` に渡す SHALL。core 側で `Codec<OutboundEnvelope>` / `Codec<InboundEnvelope>` を新設して raw bytes を `RemoteTransport::send` に渡してはならない（MUST NOT）。
 
 #### Scenario: inbound decode の経路
 
@@ -648,11 +650,25 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 - **THEN** core wire frame header の kind に応じて `EnvelopeCodec` / `HandshakeCodec` / `ControlCodec` / `AckCodec` のいずれかで復号する
 - **AND** 復号した PDU を該当 association の dispatch 経路に渡し、state transition に必要な時刻には `now_ms` を使う
 
+#### Scenario: inbound envelope は deserialize 済み AnyMessage として buffer される
+
+- **WHEN** `Remote::handle_remote_event` が有効な `EnvelopePdu` を復号する
+- **THEN** `EnvelopePdu` の serializer id / manifest / payload bytes を使って actor-core serialization で payload を deserialize する
+- **AND** buffer される `InboundEnvelope` の message は deserialize 済み payload を持つ `AnyMessage` である
+- **AND** erased payload を `AnyMessage::new(Box<dyn Any + Send + Sync>)` 相当で二重 boxing してはならない
+- **AND** local delivery bridge に `SerializedMessage` や raw bytes の特別扱いを要求しない
+
+#### Scenario: inbound deserialization failure は buffer しない
+
+- **WHEN** `EnvelopePdu` の serializer id が未登録、manifest が不正、または payload bytes が serializer で decode できない
+- **THEN** `Remote::handle_remote_event` は該当 payload を `InboundEnvelope` として buffer しない
+- **AND** failure は `RemotingError::CodecFailed` または serialization failure を観測できる error / log path に流れる
+
 #### Scenario: outbound encode の経路
 
 - **WHEN** `Remote::handle_remote_event` が `Association::next_outbound()` で `OutboundEnvelope` を取得する
 - **THEN** `RemoteTransport::send(envelope)` を呼ぶ
-- **AND** core 側で raw bytes 化しない（wire encode は transport adapter の責務）
+- **AND** core 側で raw bytes 化しない（wire encode は transport adaptor の責務）
 
 ### Requirement: outbound watermark backpressure の発火経路
 
@@ -693,3 +709,60 @@ run task の wake と完了観測を 1 step で行う adapter 固有の async su
 - **WHEN** `Remote::handle_remote_event` の実装ソースを検査する
 - **THEN** `let _ = ...` による `Result` 握りつぶしが存在しない
 - **AND** 失敗は `?` で伝播するか、`match` で観測可能な経路（log / metric / instrument）に分岐する
+
+### Requirement: Remote は inbound deserialization のため serialization extension を保持する
+
+`Remote` は inbound envelope frame を local delivery 用 `InboundEnvelope` に変換するため、actor-core-kernel の `SerializationExtensionShared` または同等の concrete shared serialization handle を保持しなければならない（MUST）。この依存は actor-core-kernel の no_std 互換型に限定し、std 実行基盤型を `remote-core` に持ち込んではならない（MUST NOT）。`RemoteShared` はこの handle を別途保持せず、serialization handle を受け取った `Remote` を `RemoteShared::new(remote)` で包む薄い wrapper のままでなければならない（MUST）。
+
+#### Scenario: Remote construction は serialization extension を受け取る
+
+- **WHEN** `Remote` の constructor を検査する
+- **THEN** inbound deserialization に使う serialization extension shared handle を受け取る経路が存在する
+- **AND** `RemoteShared::new(remote)` は serialization handle を別引数で受け取らない
+- **AND** `remote-core` は `std::` 型を import しない
+
+#### Scenario: actor-core-kernel の serialization surface を使う
+
+- **WHEN** inbound envelope payload を deserialize する実装を検査する
+- **THEN** actor-core-kernel の `SerializationExtensionShared` / `SerializationExtension` 経由で deserialize する
+- **AND** `EnvelopePdu` の serializer id / manifest / payload bytes から actor-core `SerializedMessage` を構築する
+- **AND** remote 専用の重複 serializer registry を新設しない
+
+### Requirement: Remote exposes flush start, ack, timer, and outcome surface
+
+`Remote` / `RemoteShared` は active association の flush 開始、inbound `FlushAck`、flush timer input、connection loss による flush release を扱う SHALL。std adaptor が shutdown waiter と DeathWatch pending notification を解放できるよう、flush completed / timed-out / failed outcome を `RemoteShared` の event-step return value、drain API、または同等の lock-free-after-step surface で観測可能にしなければならない（MUST）。
+
+`RemoteShared` は raw lock guard や `Association` 参照を std adaptor へ公開してはならない（MUST NOT）。std adaptor は `Association` を直接操作せず、`RemoteShared` の最小 API または `RemoteEvent` 経由で flush input を渡す。
+
+#### Scenario: shutdown flush starts before shutdown transition
+
+- **WHEN** std adaptor が shutdown flush を開始する
+- **THEN** `Remote` は active association ごとに flush target writer lane set を受け取る
+- **AND** 対象 association の prior outbound queue を drain してから flush request effect を実行する
+- **AND** drain できない場合は flush start failure または timeout outcome を観測可能にする
+- **AND** `RemoteShared::shutdown` は flush wait の後に呼ばれる
+
+#### Scenario: inbound FlushAck updates association and exposes outcome
+
+- **WHEN** `RemoteEvent::InboundFrameReceived` または同等の input で `ControlPdu::FlushAck` を受信する
+- **THEN** `Remote` は対象 association の flush session に ack を適用する
+- **AND** session が完了した場合は flush completed outcome を std adaptor が write lock 外で観測できる
+
+#### Scenario: inbound FlushRequest returns ack through transport
+
+- **WHEN** `RemoteEvent::InboundFrameReceived` または同等の input で `ControlPdu::FlushRequest { flush_id, lane_id, expected_acks, .. }` を受信する
+- **THEN** `Remote` は同じ flush id、lane id、expected ack 数を持つ `ControlPdu::FlushAck` を `RemoteTransport` 経由で送信元へ返す
+- **AND** flush request を actor-core envelope delivery へ進めない
+
+#### Scenario: flush timer input releases pending session
+
+- **WHEN** std adaptor の timer task が flush deadline 到達を core に入力する
+- **THEN** `Remote` は matching flush session を timed-out outcome として解放する
+- **AND** stale flush id または既に完了済みの timer input は no-op として扱う
+
+#### Scenario: connection loss releases pending flush
+
+- **GIVEN** active association に pending flush session がある
+- **WHEN** `RemoteEvent::ConnectionLost` または quarantine transition が association に適用される
+- **THEN** `Remote` は pending flush session を failed または timed-out outcome として解放する
+- **AND** std adaptor は shutdown waiter または DeathWatch pending notification を先へ進められる

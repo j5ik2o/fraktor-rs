@@ -186,7 +186,8 @@ impl CompressionTable {
   ///
   /// # Errors
   ///
-  /// Returns [`WireError::InvalidFormat`] when the advertisement exceeds the configured max or contains duplicate entry ids.
+  /// Returns [`WireError::InvalidFormat`] when the advertisement exceeds the configured max or
+  /// contains duplicate entry ids.
   pub fn apply_advertisement(&mut self, generation: u64, entries: &[CompressionTableEntry]) -> Result<(), WireError> {
     if self.max.is_some_and(|max| entries.len() > max.get()) {
       return Err(WireError::InvalidFormat);

@@ -16,15 +16,23 @@ use crate::TypedActorRef;
 #[derive(Clone, Debug)]
 pub struct Listing {
   service_id: String,
-  type_id:    TypeId,
-  refs:       Vec<ActorRef>,
+  type_id: TypeId,
+  refs: Vec<ActorRef>,
+  services_were_added_or_removed: bool,
 }
 
 impl Listing {
   /// Creates a new listing.
   #[must_use]
   pub fn new(service_id: impl Into<String>, type_id: TypeId, refs: Vec<ActorRef>) -> Self {
-    Self { service_id: service_id.into(), type_id, refs }
+    Self { service_id: service_id.into(), type_id, refs, services_were_added_or_removed: true }
+  }
+
+  /// Sets whether this listing reflects added or removed services.
+  #[must_use]
+  pub const fn with_services_were_added_or_removed(mut self, value: bool) -> Self {
+    self.services_were_added_or_removed = value;
+    self
   }
 
   /// Returns the service identifier.
@@ -106,11 +114,8 @@ impl Listing {
   }
 
   /// Returns whether the listing reflects added or removed services.
-  // TODO: Track actual add/remove diffs when clustered receptionist reachability
-  // semantics are introduced. The current local-only implementation mirrors
-  // Pekko's non-clustered contract and therefore always returns true.
   #[must_use]
   pub const fn services_were_added_or_removed(&self) -> bool {
-    true
+    self.services_were_added_or_removed
   }
 }

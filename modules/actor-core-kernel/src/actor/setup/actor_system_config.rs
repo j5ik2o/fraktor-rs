@@ -13,8 +13,10 @@ use crate::{
   actor::{
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref_provider::ActorRefProviderInstaller,
+    deploy::Deployer,
     extension::ExtensionInstallers,
     invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
+    props::DeployableActorFactoryRegistry,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::CircuitBreakerConfig,
   },
@@ -41,6 +43,8 @@ pub struct ActorSystemConfig {
   invoke_guard_factory: Option<ArcShared<Box<dyn InvokeGuardFactory>>>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
+  deployer: Deployer,
+  deployable_actor_factory_registry: DeployableActorFactoryRegistry,
   /// Optional monotonic clock installed into [`MailboxSharedSet`] during
   /// `SystemState::build_from_owned_config`. `None` leaves deadline
   /// enforcement disabled (Pekko `isThroughputDeadlineTimeDefined = false`
@@ -143,6 +147,20 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_mailbox(mut self, id: impl Into<String>, factory: impl MailboxFactory + 'static) -> Self {
     self.mailboxes.register_or_update(id, factory);
+    self
+  }
+
+  /// Replaces the classic deployment descriptor registry.
+  #[must_use]
+  pub fn with_deployer(mut self, deployer: Deployer) -> Self {
+    self.deployer = deployer;
+    self
+  }
+
+  /// Replaces the deployable actor factory registry used by remote deployment targets.
+  #[must_use]
+  pub fn with_deployable_actor_factory_registry(mut self, registry: DeployableActorFactoryRegistry) -> Self {
+    self.deployable_actor_factory_registry = registry;
     self
   }
 
@@ -255,6 +273,18 @@ impl ActorSystemConfig {
     &self.mailboxes
   }
 
+  /// Returns the configured classic deployment descriptor registry.
+  #[must_use]
+  pub const fn deployer(&self) -> &Deployer {
+    &self.deployer
+  }
+
+  /// Returns the deployable actor factory registry.
+  #[must_use]
+  pub const fn deployable_actor_factory_registry(&self) -> &DeployableActorFactoryRegistry {
+    &self.deployable_actor_factory_registry
+  }
+
   /// Returns the default circuit-breaker configuration.
   #[must_use]
   pub const fn default_circuit_breaker_config(&self) -> CircuitBreakerConfig {
@@ -325,6 +355,8 @@ impl Default for ActorSystemConfig {
       invoke_guard_factory: None,
       dispatchers,
       mailboxes,
+      deployer: Deployer::new(),
+      deployable_actor_factory_registry: DeployableActorFactoryRegistry::new(),
       mailbox_clock: None,
       default_circuit_breaker_config: CircuitBreakerConfig::default(),
       named_circuit_breaker_config: BTreeMap::new(),

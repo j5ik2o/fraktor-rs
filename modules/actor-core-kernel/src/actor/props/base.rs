@@ -7,8 +7,8 @@ use alloc::{boxed::Box, collections::BTreeSet, string::String, vec::Vec};
 use fraktor_utils_core_rs::collections::queue::capabilities::QueueCapabilityRegistry;
 
 use super::{
-  factory::ActorFactory, factory_shared::ActorFactoryShared, mailbox_config::MailboxConfig,
-  mailbox_requirement::MailboxRequirement,
+  deployable_props_metadata::DeployablePropsMetadata, factory::ActorFactory, factory_shared::ActorFactoryShared,
+  mailbox_config::MailboxConfig, mailbox_requirement::MailboxRequirement,
 };
 use crate::{actor::Actor, dispatch::mailbox::MailboxPolicy};
 
@@ -22,6 +22,7 @@ pub struct Props {
   middleware: Vec<String>,
   dispatcher_id: Option<String>,
   dispatcher_same_as_parent: bool,
+  deployable_metadata: Option<DeployablePropsMetadata>,
 }
 
 impl Props {
@@ -37,6 +38,7 @@ impl Props {
       middleware: Vec::new(),
       dispatcher_id: None,
       dispatcher_same_as_parent: false,
+      deployable_metadata: None,
     }
   }
 
@@ -56,6 +58,7 @@ impl Props {
       middleware: Vec::new(),
       dispatcher_id: None,
       dispatcher_same_as_parent: false,
+      deployable_metadata: None,
     }
   }
 
@@ -80,6 +83,12 @@ impl Props {
   #[must_use]
   pub const fn factory(&self) -> Option<&ActorFactoryShared> {
     self.factory.as_ref()
+  }
+
+  /// Returns the remote deployment metadata, if configured.
+  #[must_use]
+  pub const fn deployable_metadata(&self) -> Option<&DeployablePropsMetadata> {
+    self.deployable_metadata.as_ref()
   }
 
   /// Returns the configured actor name, if any.
@@ -146,6 +155,20 @@ impl Props {
   pub fn with_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
     self.mailbox_config = mailbox_config;
     self.mailbox_id = None;
+    self
+  }
+
+  /// Marks these props as remotely deployable with wire-safe factory metadata.
+  #[must_use]
+  pub fn with_deployable_metadata(mut self, metadata: DeployablePropsMetadata) -> Self {
+    self.deployable_metadata = Some(metadata);
+    self
+  }
+
+  /// Clears remote deployment metadata.
+  #[must_use]
+  pub fn without_deployable_metadata(mut self) -> Self {
+    self.deployable_metadata = None;
     self
   }
 
@@ -248,6 +271,7 @@ impl Clone for Props {
       middleware: self.middleware.clone(),
       dispatcher_id: self.dispatcher_id.clone(),
       dispatcher_same_as_parent: self.dispatcher_same_as_parent,
+      deployable_metadata: self.deployable_metadata.clone(),
     }
   }
 }

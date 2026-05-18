@@ -4,6 +4,7 @@ use std::{boxed::Box, string::String, sync::Mutex};
 
 use fraktor_actor_core_kernel_rs::{
   actor::actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderInstaller, LocalActorRefProvider},
+  serialization::default_serialization_extension_id,
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_core_rs::{address::UniqueAddress, extension::EventPublisher, provider::RemoteActorRefProvider};
@@ -13,6 +14,7 @@ use super::{
   StdRemoteActorRefProvider,
   path_remote_actor_ref_provider::PathRemoteActorRefProvider,
   remote_actor_path_registry::RemoteActorPathRegistry,
+  remote_deployment_hook::StdRemoteDeploymentHook,
   remote_watch_hook::{StdRemoteWatchFlushConfig, StdRemoteWatchHook},
 };
 use crate::extension_installer::{RemoteProviderFlushHandles, RemotingExtensionInstaller};
@@ -61,6 +63,8 @@ impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
       remote_shared,
       flush_gate,
       flush_lane_ids,
+      deployment_response_dispatcher,
+      deployment_timeout,
     } = self.event_sender_epoch_watcher_and_flush()?;
     let local_provider = ActorRefProviderHandleShared::new(LocalActorRefProvider::new_with_state(&system.state()));
     let registry = RemoteActorPathRegistry::new_shared();
@@ -78,10 +82,20 @@ impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
     system.extended().register_remote_watch_hook(StdRemoteWatchHook::new_with_flush_gate(
       registry,
       system.state(),
-      event_sender,
+      event_sender.clone(),
       watcher_sender,
       monotonic_epoch,
       StdRemoteWatchFlushConfig::new(remote_shared, flush_gate, flush_lane_ids),
+    ));
+    let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
+    system.extended().register_remote_deployment_hook(StdRemoteDeploymentHook::new(
+      self.local_address.clone(),
+      system.clone(),
+      event_sender,
+      monotonic_epoch,
+      serialization_extension,
+      deployment_response_dispatcher,
+      deployment_timeout,
     ));
     Ok(())
   }
