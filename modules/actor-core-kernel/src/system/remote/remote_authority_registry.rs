@@ -175,11 +175,6 @@ impl RemoteAuthorityRegistry {
   pub fn deferred_count(&self, authority: &str) -> usize {
     self.entries.get(authority).map(|e| e.deferred.len()).unwrap_or(0)
   }
-
-  #[cfg(test)]
-  const fn total_deferred_count(&self) -> usize {
-    self.total_deferred
-  }
 }
 
 impl Default for RemoteAuthorityRegistry {

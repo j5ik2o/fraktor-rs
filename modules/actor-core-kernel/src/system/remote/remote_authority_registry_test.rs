@@ -10,6 +10,12 @@ use crate::{
   },
 };
 
+impl RemoteAuthorityRegistry {
+  const fn total_deferred_count(&self) -> usize {
+    self.total_deferred
+  }
+}
+
 #[test]
 fn test_initial_state_is_unresolved() {
   let registry = RemoteAuthorityRegistry::new();
