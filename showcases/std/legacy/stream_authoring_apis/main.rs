@@ -4,8 +4,8 @@
 
 use std::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,
@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_stream_core_rs::core::{
+use fraktor_stream_core_kernel_rs::{
   StreamError,
   dsl::{Flow, GraphDsl, GraphDslBuilder, Sink, Source, StreamRefs},
   materialization::{ActorMaterializer, ActorMaterializerConfig, KeepLeft, KeepRight, StreamNotUsed},
@@ -26,7 +26,7 @@ use fraktor_stream_core_rs::core::{
     SubSinkInletHandler, SubSourceOutlet, SubSourceOutletHandler,
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 struct GuardianActor;
 
@@ -102,11 +102,10 @@ impl SubSourceOutletHandler<u32> for ExampleSubSourceHandler {
   }
 }
 
-#[allow(clippy::print_stdout)]
 fn main() {
   let props = Props::from_fn(|| GuardianActor);
   let config = ActorSystemConfig::new(StdTickDriver::default());
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("actor system");
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("materializer start");

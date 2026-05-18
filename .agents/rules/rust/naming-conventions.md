@@ -14,14 +14,8 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 
 ## 禁止サフィックス（ambiguous-suffix-lint で機械的に強制）
 
-| サフィックス | 問題 | 代替案 |
-|--------------|------|--------|
-| Manager | 「全部やる箱」になる | Registry, Coordinator, Dispatcher, Controller |
-| Util | 設計されていない再利用コード | 具体的な動詞を含む名前（例: DateFormatter） |
-| Facade | 責務の境界が不明確 | Gateway, Adapter, Bridge |
-| Service | 層や責務が未整理 | Executor, Scheduler, Evaluator, Repository, Policy |
-| Runtime | 何が動くのか不明 | Executor, Scheduler, EventLoop, Environment |
-| Engine | 実行体の責務が不明確 | Executor, Evaluator, Processor, Pipeline |
+禁止サフィックスと責務別の代替案は `../avoiding-ambiguous-suffixes.md` を正とする。
+Rust では `ambiguous-suffix-lint` により、この表に含まれるサフィックスを機械的に検出する。
 
 ### 例外
 
@@ -36,7 +30,7 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 
 2. この名前だけで責務を一文で説明できるか？
    ├─ Yes → 外部API由来なら #[allow] で許可
-   └─ No → 代替案テーブルから具体名を選ぶ
+   └─ No → ../avoiding-ambiguous-suffixes.md の代替案から具体名を選ぶ
 ```
 
 ## Shared / Handle 命名
@@ -53,17 +47,6 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 - `*Handle` も基本は `with_write` / `with_read` を提供し、複合操作をまとめる
 - 管理対象が複数の場合は `*HandleSet` / `*Context` で「束ね役」であることを明示
 - 詳細は `docs/guides/shared_vs_handle.md` を参照
-
-## 責務別命名パターン
-
-| 責務 | 推奨パターン |
-|------|------------|
-| データ保持・管理 | `*Registry`, `*Catalog`, `*Index`, `*Table`, `*Store` |
-| 選択・分岐・方針 | `*Policy`, `*Selector`, `*Router` |
-| 仲介・調停・制御 | `*Coordinator`, `*Dispatcher`, `*Controller` |
-| 生成・構築 | `*Factory`, `*Builder` |
-| 変換・適合 | `*Adapter`, `*Bridge`, `*Mapper` |
-| 実行・評価 | `*Executor`, `*Scheduler`, `*Evaluator` |
 
 ## ファイル・ディレクトリ・型の命名
 

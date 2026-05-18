@@ -1,0 +1,40 @@
+//! Sender used to deliver ask responses back to the awaiting future.
+
+#[cfg(test)]
+#[path = "ask_reply_sender_test.rs"]
+mod tests;
+
+use fraktor_utils_core_rs::sync::SharedAccess;
+
+use crate::{
+  actor::{
+    actor_ref::{ActorRefSender, SendOutcome},
+    error::SendError,
+    messaging::{AnyMessage, AskResult},
+  },
+  support::futures::ActorFutureShared,
+};
+
+/// Sender that completes the associated `ActorFuture` when a reply arrives.
+pub struct AskReplySender {
+  future: ActorFutureShared<AskResult>,
+}
+
+impl AskReplySender {
+  /// Creates a new reply sender.
+  #[must_use]
+  pub const fn new(future: ActorFutureShared<AskResult>) -> Self {
+    Self { future }
+  }
+}
+
+impl ActorRefSender for AskReplySender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    // Lock, complete with Ok, then wake outside the lock to avoid deadlock.
+    let waker = self.future.with_write(|af| af.complete(Ok(message)));
+    if let Some(w) = waker {
+      w.wake();
+    }
+    Ok(SendOutcome::Delivered)
+  }
+}

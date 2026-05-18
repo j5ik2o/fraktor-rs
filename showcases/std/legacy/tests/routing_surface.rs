@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::core::typed::{
+use fraktor_actor_core_typed_rs::{
   TypedProps,
   dsl::{Behaviors, routing::Routers},
 };
