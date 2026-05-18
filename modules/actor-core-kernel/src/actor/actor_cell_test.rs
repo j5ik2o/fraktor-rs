@@ -1473,6 +1473,14 @@ fn ac_h2_t2_fault_terminate_with_children_transitions_to_terminating() {
     "AC-H2: fault_terminate 後は ChildrenContainer が Terminating(Termination) に遷移"
   );
   assert!(!parent.children_state_is_normal(), "AC-H2: Terminating 中は is_normal=false");
+  assert!(parent.mailbox().is_suspended(), "AC-H2: 子 stop 待ちの間は user mailbox を suspend");
+
+  parent_invoker.system_invoke(SystemMessage::Stop).expect("duplicate parent stop while terminating");
+  assert_eq!(
+    log.lock().clone(),
+    vec!["pre_start"],
+    "AC-H2: duplicate Stop while Terminating must keep post_stop deferred"
+  );
 }
 
 #[test]
