@@ -1046,7 +1046,8 @@ impl SystemStateShared {
   ///
   /// # Errors
   ///
-  /// Returns [`RemoteAuthorityError`] if the authority is quarantined.
+  /// Returns [`RemoteAuthorityError`] if the authority is quarantined or the deferred queue is
+  /// full.
   pub fn remote_authority_defer(
     &self,
     authority: impl Into<String>,
@@ -1059,7 +1060,8 @@ impl SystemStateShared {
   ///
   /// # Errors
   ///
-  /// Returns [`RemoteAuthorityError`] if the authority is quarantined.
+  /// Returns [`RemoteAuthorityError`] if the authority is quarantined or the deferred queue is
+  /// full.
   pub fn remote_authority_try_defer(
     &self,
     authority: impl Into<String>,

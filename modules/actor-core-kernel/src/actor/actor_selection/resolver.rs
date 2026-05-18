@@ -8,7 +8,10 @@ use crate::{
     actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
     messaging::AnyMessage,
   },
-  system::{remote::RemoteAuthorityRegistry, state::AuthorityState},
+  system::{
+    remote::{RemoteAuthorityError, RemoteAuthorityRegistry},
+    state::AuthorityState,
+  },
 };
 
 /// Resolves relative actor selection expressions against a base path.
@@ -58,9 +61,10 @@ impl ActorSelectionResolver {
   ///
   /// # Errors
   ///
-  /// If the authority is unresolved, the provided `message` is deferred (when present) and
-  /// [`PathResolutionError::AuthorityUnresolved`] is returned. When the authority is quarantined,
-  /// [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
+  /// If the authority is unresolved, the provided `message` is deferred when capacity allows and
+  /// [`PathResolutionError::AuthorityUnresolved`] is returned. If the deferred queue is full,
+  /// [`PathResolutionError::AuthorityDeferredQueueFull`] is returned. When the authority is
+  /// quarantined, [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
   pub fn ensure_authority_state(
     path: &ActorPath,
     authority_registry: &mut RemoteAuthorityRegistry,
@@ -76,7 +80,7 @@ impl ActorSelectionResolver {
         if let Some(envelope) = message {
           authority_registry
             .defer_send(endpoint.clone(), envelope)
-            .map_err(|_| PathResolutionError::AuthorityQuarantined)?;
+            .map_err(Self::remote_authority_error_to_path_resolution)?;
         }
         Err(PathResolutionError::AuthorityUnresolved)
       },
@@ -99,5 +103,12 @@ impl ActorSelectionResolver {
     let resolved = Self::resolve_relative(base, selection)?;
     Self::ensure_authority_state(&resolved, authority_registry, message).map_err(ActorSelectionError::from)?;
     Ok(resolved)
+  }
+
+  const fn remote_authority_error_to_path_resolution(error: RemoteAuthorityError) -> PathResolutionError {
+    match error {
+      | RemoteAuthorityError::Quarantined => PathResolutionError::AuthorityQuarantined,
+      | RemoteAuthorityError::DeferredQueueFull => PathResolutionError::AuthorityDeferredQueueFull,
+    }
   }
 }

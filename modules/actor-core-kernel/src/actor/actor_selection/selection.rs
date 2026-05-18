@@ -22,6 +22,7 @@ use crate::{
   },
   system::{
     ActorSystem,
+    remote::RemoteAuthorityError,
     state::{AuthorityState, SystemStateShared},
   },
 };
@@ -136,11 +137,18 @@ impl ActorSelection {
           self
             .system
             .remote_authority_defer(authority, message.clone())
-            .map_err(|_| ActorSelectionError::from(PathResolutionError::AuthorityQuarantined))?;
+            .map_err(|error| ActorSelectionError::from(Self::remote_authority_error_to_path_resolution(error)))?;
         }
         Err(ActorSelectionError::from(PathResolutionError::AuthorityUnresolved))
       },
       | AuthorityState::Quarantine { .. } => Err(ActorSelectionError::from(PathResolutionError::AuthorityQuarantined)),
+    }
+  }
+
+  const fn remote_authority_error_to_path_resolution(error: RemoteAuthorityError) -> PathResolutionError {
+    match error {
+      | RemoteAuthorityError::Quarantined => PathResolutionError::AuthorityQuarantined,
+      | RemoteAuthorityError::DeferredQueueFull => PathResolutionError::AuthorityDeferredQueueFull,
     }
   }
 

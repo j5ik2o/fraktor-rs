@@ -13,6 +13,8 @@ pub enum PathResolutionError {
   AuthorityUnresolved,
   /// Authority is currently quarantined.
   AuthorityQuarantined,
+  /// Authority is unresolved and its deferred queue cannot accept more messages.
+  AuthorityDeferredQueueFull,
   /// UID is reserved and cannot be reused yet.
   UidReserved {
     /// The reserved UID.
@@ -26,6 +28,7 @@ impl Display for PathResolutionError {
       | PathResolutionError::PidUnknown => write!(f, "PID not found in registry"),
       | PathResolutionError::AuthorityUnresolved => write!(f, "authority is not resolved"),
       | PathResolutionError::AuthorityQuarantined => write!(f, "authority is quarantined"),
+      | PathResolutionError::AuthorityDeferredQueueFull => write!(f, "authority deferred queue is full"),
       | PathResolutionError::UidReserved { uid } => {
         write!(f, "UID {} is reserved and cannot be reused", uid.value())
       },

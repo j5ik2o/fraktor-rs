@@ -1,5 +1,7 @@
+use alloc::format;
 use core::time::Duration;
 
+use super::{MAX_DEFERRED_MESSAGES_PER_AUTHORITY, MAX_DEFERRED_MESSAGES_TOTAL};
 use crate::{
   actor::messaging::AnyMessage,
   system::{
@@ -235,4 +237,65 @@ fn test_multiple_authorities_independent_states() {
   registry.set_quarantine("host2", 0, Some(Duration::from_secs(300)));
   assert_eq!(registry.state("host1"), AuthorityState::Connected);
   assert!(matches!(registry.state("host2"), AuthorityState::Quarantine { .. }));
+}
+
+#[test]
+fn test_defer_send_rejects_when_per_authority_queue_is_full() {
+  let mut registry = RemoteAuthorityRegistry::new();
+
+  for index in 0..MAX_DEFERRED_MESSAGES_PER_AUTHORITY {
+    registry.defer_send("remote1", AnyMessage::new(index)).expect("defer");
+  }
+
+  let result = registry.defer_send("remote1", AnyMessage::new(MAX_DEFERRED_MESSAGES_PER_AUTHORITY));
+
+  assert!(matches!(result, Err(RemoteAuthorityError::DeferredQueueFull)));
+  assert_eq!(registry.deferred_count("remote1"), MAX_DEFERRED_MESSAGES_PER_AUTHORITY);
+  assert_eq!(registry.total_deferred_count(), MAX_DEFERRED_MESSAGES_PER_AUTHORITY);
+}
+
+#[test]
+fn test_defer_send_rejects_when_global_deferred_queue_is_full() {
+  let mut registry = RemoteAuthorityRegistry::new();
+
+  for index in 0..MAX_DEFERRED_MESSAGES_TOTAL {
+    let authority = format!("remote-{index}:2552");
+    registry.defer_send(authority, AnyMessage::new(index)).expect("defer");
+  }
+
+  let result = registry.defer_send("overflow:2552", AnyMessage::new(MAX_DEFERRED_MESSAGES_TOTAL));
+
+  assert!(matches!(result, Err(RemoteAuthorityError::DeferredQueueFull)));
+  assert_eq!(registry.deferred_count("overflow:2552"), 0);
+  assert_eq!(registry.total_deferred_count(), MAX_DEFERRED_MESSAGES_TOTAL);
+}
+
+#[test]
+fn test_set_connected_decrements_total_deferred_count() {
+  let mut registry = RemoteAuthorityRegistry::new();
+
+  registry.defer_send("remote1", AnyMessage::new(1i32)).expect("defer");
+  registry.defer_send("remote1", AnyMessage::new(2i32)).expect("defer");
+  registry.defer_send("remote2", AnyMessage::new(3i32)).expect("defer");
+
+  let deferred = registry.set_connected("remote1").expect("deferred");
+
+  assert_eq!(deferred.len(), 2);
+  assert_eq!(registry.deferred_count("remote1"), 0);
+  assert_eq!(registry.deferred_count("remote2"), 1);
+  assert_eq!(registry.total_deferred_count(), 1);
+}
+
+#[test]
+fn test_set_quarantine_decrements_total_deferred_count() {
+  let mut registry = RemoteAuthorityRegistry::new();
+
+  registry.defer_send("remote1", AnyMessage::new(1i32)).expect("defer");
+  registry.defer_send("remote2", AnyMessage::new(2i32)).expect("defer");
+
+  registry.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
+
+  assert_eq!(registry.deferred_count("remote1"), 0);
+  assert_eq!(registry.deferred_count("remote2"), 1);
+  assert_eq!(registry.total_deferred_count(), 1);
 }

@@ -209,6 +209,31 @@ fn test_ensure_authority_state_defers_and_errors_when_unresolved() {
 }
 
 #[test]
+fn test_ensure_authority_state_reports_queue_full_when_deferred_queue_is_full() {
+  let parts = ActorPathParts::with_authority("remote-sys", Some(("host.example.com", 2552)));
+  let path = ActorPath::from_parts(parts).child("worker");
+  let mut registry = RemoteAuthorityRegistry::new();
+  let mut accepted = 0;
+
+  loop {
+    match registry.defer_send("host.example.com:2552", AnyMessage::new(accepted)) {
+      | Ok(()) => {
+        accepted += 1;
+        assert!(accepted <= 10_000, "deferred queue must be bounded");
+      },
+      | Err(RemoteAuthorityError::DeferredQueueFull) => break,
+      | Err(error) => panic!("unexpected remote authority error: {error:?}"),
+    }
+  }
+
+  let err =
+    ActorSelectionResolver::ensure_authority_state(&path, &mut registry, Some(AnyMessage::new(accepted))).unwrap_err();
+
+  assert!(matches!(err, PathResolutionError::AuthorityDeferredQueueFull));
+  assert_eq!(registry.deferred_count("host.example.com:2552"), accepted);
+}
+
+#[test]
 fn test_ensure_authority_state_rejects_quarantine() {
   let parts = ActorPathParts::with_authority("remote-sys", Some(("blocked-host", 2553)));
   let path = ActorPath::from_parts(parts).child("logger");
