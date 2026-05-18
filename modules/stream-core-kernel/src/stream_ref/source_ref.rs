@@ -171,7 +171,8 @@ impl<T> ActorBackedSourceRefLogic<T> {
     target_actor
       .try_tell(AnyMessage::new(message).with_sender(endpoint_actor_ref))
       .map_err(|error| StreamError::from_send_error(&error))?;
-    self.handoff.record_cumulative_demand()
+    self.handoff.record_cumulative_demand();
+    Ok(())
   }
 
   fn watch_target_actor(&self) -> Result<(), StreamError> {

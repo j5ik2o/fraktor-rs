@@ -308,10 +308,10 @@ impl<T> StreamRefHandoff<T> {
     }
   }
 
-  pub(crate) fn record_cumulative_demand(&self) -> Result<(), StreamError> {
+  pub(crate) fn record_cumulative_demand(&self) {
     let demand = NonZeroU64::MIN;
-    let seq_nr = self.inner.lock().next_in_seq_nr;
-    self.record_cumulative_demand_from(seq_nr, demand)
+    let mut guard = self.inner.lock();
+    guard.pending_demand = guard.pending_demand.saturating_add(demand.get());
   }
 
   pub(crate) fn record_cumulative_demand_from(&self, seq_nr: u64, demand: NonZeroU64) -> Result<(), StreamError> {

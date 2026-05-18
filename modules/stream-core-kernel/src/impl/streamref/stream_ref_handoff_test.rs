@@ -184,9 +184,9 @@ fn poll_or_drain_returns_values_then_completion() {
   assert_eq!(handoff.offer(20_u32), Ok(1));
   assert_eq!(handoff.complete(), 2);
 
-  assert_eq!(handoff.record_cumulative_demand(), Ok(()));
+  handoff.record_cumulative_demand();
   assert_eq!(handoff.poll_or_drain(), Ok(Some(10_u32)));
-  assert_eq!(handoff.record_cumulative_demand(), Ok(()));
+  handoff.record_cumulative_demand();
   assert_eq!(handoff.poll_or_drain(), Ok(Some(20_u32)));
   assert_eq!(handoff.poll_or_drain(), Ok(None));
 }
@@ -198,7 +198,7 @@ fn poll_or_drain_waits_for_cumulative_demand_before_delivering_value() {
   assert_eq!(handoff.offer(10_u32), Ok(0));
 
   assert_eq!(handoff.poll_or_drain(), Err(StreamError::WouldBlock));
-  assert_eq!(handoff.record_cumulative_demand(), Ok(()));
+  handoff.record_cumulative_demand();
   assert_eq!(handoff.poll_or_drain(), Ok(Some(10_u32)));
 }
 
@@ -210,7 +210,7 @@ fn completion_waits_behind_pending_elements_until_demand_arrives() {
   assert_eq!(handoff.complete(), 1);
 
   assert_eq!(handoff.poll_or_drain(), Err(StreamError::WouldBlock));
-  assert_eq!(handoff.record_cumulative_demand(), Ok(()));
+  handoff.record_cumulative_demand();
   assert_eq!(handoff.poll_or_drain(), Ok(Some(10_u32)));
   assert_eq!(handoff.poll_or_drain(), Ok(None));
 }
