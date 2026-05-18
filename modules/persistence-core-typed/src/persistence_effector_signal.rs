@@ -10,6 +10,7 @@ use crate::persistence_effector_signal_auth::PersistenceEffectorSignalAuth;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PersistenceEffectorSignal<S, E> {
   /// Recovery completed with the recovered state and latest sequence number.
+  #[non_exhaustive]
   RecoveryCompleted {
     #[doc(hidden)]
     auth:        PersistenceEffectorSignalAuth,
@@ -19,6 +20,7 @@ pub enum PersistenceEffectorSignal<S, E> {
     sequence_nr: u64,
   },
   /// Events were persisted in order.
+  #[non_exhaustive]
   PersistedEvents {
     #[doc(hidden)]
     auth:        PersistenceEffectorSignalAuth,
@@ -28,6 +30,7 @@ pub enum PersistenceEffectorSignal<S, E> {
     sequence_nr: u64,
   },
   /// A snapshot was persisted.
+  #[non_exhaustive]
   PersistedSnapshot {
     #[doc(hidden)]
     auth:        PersistenceEffectorSignalAuth,
@@ -37,6 +40,7 @@ pub enum PersistenceEffectorSignal<S, E> {
     sequence_nr: u64,
   },
   /// Old snapshots were deleted.
+  #[non_exhaustive]
   DeletedSnapshots {
     #[doc(hidden)]
     auth:           PersistenceEffectorSignalAuth,
@@ -44,6 +48,7 @@ pub enum PersistenceEffectorSignal<S, E> {
     to_sequence_nr: u64,
   },
   /// Persistence failed.
+  #[non_exhaustive]
   Failed {
     #[doc(hidden)]
     auth:  PersistenceEffectorSignalAuth,

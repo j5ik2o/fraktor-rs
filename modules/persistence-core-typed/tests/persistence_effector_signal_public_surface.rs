@@ -19,9 +19,36 @@ fn main() {
 }
 "#;
 
+const REUSED_AUTH_SOURCE: &str = r#"
+use fraktor_persistence_core_typed_rs::PersistenceEffectorSignal;
+
+fn forge(signal: PersistenceEffectorSignal<u64, u64>) -> PersistenceEffectorSignal<u64, u64> {
+  let auth = match signal {
+    | PersistenceEffectorSignal::RecoveryCompleted { auth, .. }
+    | PersistenceEffectorSignal::PersistedEvents { auth, .. }
+    | PersistenceEffectorSignal::PersistedSnapshot { auth, .. }
+    | PersistenceEffectorSignal::DeletedSnapshots { auth, .. }
+    | PersistenceEffectorSignal::Failed { auth, .. } => auth,
+  };
+
+  PersistenceEffectorSignal::RecoveryCompleted {
+    auth,
+    state: 999,
+    sequence_nr: 999,
+  }
+}
+
+fn main() {}
+"#;
+
 #[test]
 fn persistence_effector_signal_auth_cannot_be_forged_from_external_crate() {
   assert_fixture_build_failure_contains("persistence-effector-signal-auth-forged", FORGED_SIGNAL_SOURCE, "Default");
+  assert_fixture_build_failure_contains(
+    "persistence-effector-signal-auth-reused",
+    REUSED_AUTH_SOURCE,
+    "non-exhaustive",
+  );
 }
 
 fn assert_fixture_build_failure_contains(name: &str, source: &str, expected: &str) {
