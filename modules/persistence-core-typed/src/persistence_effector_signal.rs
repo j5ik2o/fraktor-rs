@@ -13,7 +13,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   /// Recovery completed with the recovered state and latest sequence number.
   RecoveryCompleted {
     #[doc(hidden)]
-    auth:       PersistenceEffectorSignalAuth,
+    auth:        PersistenceEffectorSignalAuth,
     /// Recovered state.
     state:       S,
     /// Latest recovered sequence number.
@@ -22,7 +22,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   /// Events were persisted in order.
   PersistedEvents {
     #[doc(hidden)]
-    auth:       PersistenceEffectorSignalAuth,
+    auth:        PersistenceEffectorSignalAuth,
     /// Persisted events.
     events:      Vec<E>,
     /// Latest sequence number after the batch.
@@ -31,7 +31,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   /// A snapshot was persisted.
   PersistedSnapshot {
     #[doc(hidden)]
-    auth:       PersistenceEffectorSignalAuth,
+    auth:        PersistenceEffectorSignalAuth,
     /// Persisted snapshot state.
     snapshot:    S,
     /// Snapshot sequence number.
@@ -40,7 +40,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   /// Old snapshots were deleted.
   DeletedSnapshots {
     #[doc(hidden)]
-    auth:       PersistenceEffectorSignalAuth,
+    auth:           PersistenceEffectorSignalAuth,
     /// Inclusive upper sequence number for deletion.
     to_sequence_nr: u64,
   },
