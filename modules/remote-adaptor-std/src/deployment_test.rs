@@ -236,7 +236,18 @@ fn deployment_response_dispatcher_rejects_response_from_other_authority() {
 
   assert!(receiver.try_recv().is_err());
   assert_eq!(dispatcher.stale_len(), 1);
-  dispatcher.cancel(13, 14);
+
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+      13,
+      14,
+      String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
+    )),
+  );
+
+  let response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should remain available");
+  assert!(matches!(response, DeploymentResponse::Success(_)));
 }
 
 #[test]
