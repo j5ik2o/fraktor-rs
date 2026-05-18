@@ -1,6 +1,6 @@
 # persistence モジュール ギャップ分析
 
-更新日: 2026-05-19
+更新日: 2026-05-19 JST (Phase 1 kernel 契約更新後)
 
 ## 比較スコープ定義
 
@@ -74,22 +74,22 @@ classic write-side persistence は、persistent actor、journal、snapshot、eve
 
 fraktor-rs は Pekko の `PersistentActor` と複数 mix-in trait を、`Eventsourced` と `PersistentActor` に統合している。`persist` / `persist_async` / `persist_all` / `defer` / snapshot / delete / recovery callbacks は存在する。根拠は `modules/persistence-core-kernel/src/persistent/persistent_actor.rs:23`、`modules/persistence-core-kernel/src/persistent/eventsourced.rs:21`、`modules/persistence-core-kernel/src/persistent/eventsourced.rs:48`。
 
-| Pekko API / 契約 | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|------------------|-----------|-------------|----------|--------|------|
-| `RecoveryCompleted` signal type | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/PersistentActor.scala:29`, `PersistentActor.scala:35` | 部分実装 | kernel | trivial | `modules/persistence-core-kernel/src/persistent/eventsourced.rs:48` に `on_recovery_completed` callback はあるが、recovery signal として公開型はない |
-| `SnapshotOffer` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/SnapshotProtocol.scala:157` | 部分実装 | kernel | trivial | `modules/persistence-core-kernel/src/persistent/eventsourced.rs:38` に `receive_snapshot` callback はあるが、recovery signal としての `SnapshotOffer` 型はない |
-| `PersistenceSettings` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/Persistence.scala:40` | 未対応 | kernel/config | easy | recovery timeout、stash、journal / snapshot 設定を束ねる公開設定型がない。現状は `JournalActorConfig` / `SnapshotActorConfig` に分散 |
-| `AtomicWrite` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/Persistent.scala:45`, `Persistent.scala:49` | 部分実装 | kernel/journal | medium | `modules/persistence-core-kernel/src/journal/journal_message.rs:17` は `Vec<PersistentRepr>` を送るが、原子書き込み単位を表す公開型がない |
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| `RecoveryCompleted` signal type | `PersistentActor.scala:29`, `PersistentActor.scala:35` | 実装済み / non-goal | core | n/a | classic は `on_recovery_completed` callback と internal `JournalResponseAction::RecoveryCompleted` で表現済み。typed は `PersistenceEffectorSignal::RecoveryCompleted` を公開済み。Pekko 同名の classic 公開型追加は現設計では不要 |
+| `SnapshotOffer` | `SnapshotProtocol.scala:157` | 実装済み | core | done | `SnapshotOffer` と `receive_snapshot_offer` を追加し、既存 `receive_snapshot` callback と互換 |
+| `PersistenceSettings` | `Persistence.scala:40` | 実装済み | core/config | done | `PersistenceSettings` が `JournalActorConfig` / `SnapshotActorConfig` を束ね、store actor retry 設定を公開 |
+| `AtomicWrite` | `Persistent.scala:45`, `Persistent.scala:49` | 部分実装 | core/journal | medium | `JournalMessage::WriteMessages` は `Vec<PersistentRepr>` を送るが、原子書き込み単位を表す公開型がない |
 
 ### 2. Journal / snapshot store protocol　✅ 実装済み 13/16 (81%)
 
 `Journal` は Pekko の `AsyncWriteJournal` と `AsyncRecovery` を統合した trait として存在し、`JournalActor` / `JournalMessage` / `JournalResponse` もある。`SnapshotStore`、`SnapshotActor`、`SnapshotMessage`、`SnapshotResponse`、`SnapshotMetadata`、`SnapshotSelectionCriteria` も実装済み。根拠は `modules/persistence-core-kernel/src/journal/base.rs:9`、`modules/persistence-core-kernel/src/journal/journal_message.rs:15`、`modules/persistence-core-kernel/src/snapshot/snapshot_store.rs:10`、`modules/persistence-core-kernel/src/snapshot/snapshot_message.rs:17`。
 
-| Pekko API / 契約 | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|------------------|-----------|-------------|----------|--------|------|
-| `NoSnapshotStore` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/snapshot/NoSnapshotStore.scala:28` | 未対応 | kernel/snapshot | trivial | 何もしない `SnapshotStore` 実装 |
-| `LocalSnapshotStore` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/snapshot/local/LocalSnapshotStore.scala:40` | 未対応 | std/snapshot | medium | ファイルシステム依存。kernel ではなく std adapter が妥当 |
-| snapshot retry / plugin settings の公開契約 | `references/pekko/persistence/src/main/resources/reference.conf:272`, `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/Persistence.scala:176` | 部分実装 | kernel/config | easy | `modules/persistence-core-kernel/src/snapshot/snapshot_actor_config.rs:5` はあるが、Pekko 互換の persistence settings として統合されていない |
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| `NoSnapshotStore` | `snapshot/NoSnapshotStore.scala:28` | 実装済み | core/snapshot | done | 何もしない `SnapshotStore` 実装 |
+| `LocalSnapshotStore` | `snapshot/local/LocalSnapshotStore.scala:40` | 未対応 | std/snapshot | medium | ファイルシステム依存。core ではなく std adapter が妥当 |
+| snapshot retry settings の公開契約 | `Persistence.scala:40`, `SnapshotProtocol.scala:235` | 実装済み | core/config | done | `SnapshotActorConfig` を `PersistenceSettings` から渡せる。plugin settings は fraktor-rs の trait 実装注入モデルでは non-goal |
 
 ### 3. Persistent representation / adapters / serialization　✅ 実装済み 11/14 (79%)
 
@@ -105,28 +105,28 @@ fraktor-rs は Pekko の `PersistentActor` と複数 mix-in trait を、`Eventso
 
 `AtLeastOnceDelivery`、`AtLeastOnceDeliveryConfig`、`AtLeastOnceDeliverySnapshot`、`UnconfirmedDelivery`、`UnconfirmedWarning`、`RedeliveryTick` は存在する。未確認配送の snapshot / restore、redelivery、confirm も実装済み。根拠は `modules/persistence-core-kernel/src/delivery/at_least_once_delivery.rs:21`、`modules/persistence-core-kernel/src/delivery/at_least_once_delivery.rs:72`、`modules/persistence-core-kernel/src/delivery/at_least_once_delivery.rs:103`。
 
-| Pekko API / 契約 | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|------------------|-----------|-------------|----------|--------|------|
-| `MaxUnconfirmedMessagesExceededException` 相当 | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/AtLeastOnceDelivery.scala:80`, `AtLeastOnceDelivery.scala:126` | 部分実装 | kernel/delivery | trivial | 現状は `modules/persistence-core-kernel/src/delivery/at_least_once_delivery.rs:214` で `PersistenceError::MessagePassing("max unconfirmed deliveries exceeded")` を返す。専用 error variant がない |
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| `MaxUnconfirmedMessagesExceededException` 相当 | `AtLeastOnceDelivery.scala:80`, `AtLeastOnceDelivery.scala:126` | 実装済み | core/delivery | done | `PersistenceError::MaxUnconfirmedMessagesExceeded` を返す |
 
 ### 5. Durable State store contract　✅ 実装済み 5/8 (63%)
 
 `DurableStateStore`、`DurableStateUpdateStore`、`DurableStateStoreProvider`、`DurableStateStoreRegistry`、`DurableStateError` は存在する。ただし Pekko の revision / tag を含む durable state write-side contract とはまだ差がある。根拠は `modules/persistence-core-kernel/src/state/durable_state_store.rs:12`、`modules/persistence-core-kernel/src/state/durable_state_update_store.rs:6`、`modules/persistence-core-kernel/src/state/durable_state_store_registry.rs:18`。
 
-| Pekko API / 契約 | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|------------------|-----------|-------------|----------|--------|------|
-| `GetObjectResult[A]` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/state/scaladsl/DurableStateStore.scala:26`, `DurableStateStore.scala:31` | 未対応 | kernel/durable_state | trivial | 現状は `modules/persistence-core-kernel/src/state/durable_state_store.rs:14` が `Option<A>` だけを返し、revision を保持しない |
-| revision / tag aware update store | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/state/scaladsl/DurableStateUpdateStore.scala:24`, `DurableStateUpdateStore.scala:37` | 部分実装 | kernel/durable_state | medium | `modules/persistence-core-kernel/src/state/durable_state_store.rs:17` と `durable_state_store.rs:20` に revision / tag がない |
-| `DeleteRevisionException` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/state/exception/DurableStateException.scala:41` | 未対応 | kernel/durable_state | trivial | `modules/persistence-core-kernel/src/state/durable_state_error.rs:12` に revision mismatch 系の variant がない |
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| `GetObjectResult[A]` | `state/scaladsl/DurableStateStore.scala:31`, `state/scaladsl/DurableStateStore.scala:35` | 実装済み | core/durable_state | done | `GetObjectResult<A>` が value と revision を保持し、`DurableStateStore::get_object` が返す |
+| revision / tag aware update store | `state/scaladsl/DurableStateUpdateStore.scala:37`, `state/scaladsl/DurableStateUpdateStore.scala:63` | 部分実装 | core/durable_state | medium | `upsert_object` と `delete_object` に revision / tag がない |
+| `DeleteRevisionException` | `state/exception/DurableStateException.scala:41` | 実装済み | core/durable_state | done | `DurableStateError::DeleteRevision` を追加 |
 
 ### 6. Plugin / extension / in-memory stores　✅ 実装済み 5/7 (71%)
 
-`PersistenceExtension`、`PersistenceExtensionId`、`PersistenceExtensionInstaller`、`PersistencePluginProxy`、`InMemoryJournal`、`InMemorySnapshotStore` は存在する。HOCON loading は対象外だが、Rust 側にも runtime plugin selection の公開契約はまだ薄い。根拠は `modules/persistence-core-kernel/src/extension/persistence_extension.rs:26`、`modules/persistence-core-kernel/src/journal/persistence_plugin_proxy.rs:19`、`modules/persistence-core-kernel/src/journal/in_memory_journal.rs:21`、`modules/persistence-core-kernel/src/snapshot/in_memory_snapshot_store.rs:23`。
+`PersistenceExtension`、`PersistenceExtensionId`、`PersistenceExtensionInstaller`、`PersistencePluginProxy`、`InMemoryJournal`、`InMemorySnapshotStore` は存在する。HOCON loading と runtime plugin id selection は対象外であり、Rust 側は `Journal` / `SnapshotStore` trait 実装を注入するモデルを採用する。
 
-| Pekko API / 契約 | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|------------------|-----------|-------------|----------|--------|------|
-| `RuntimePluginConfig` | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/Eventsourced.scala:78`, `Eventsourced.scala:86` | 未対応 | kernel/config | easy | HOCON ではなく Rust の型付き plugin config として定義可能 |
-| plugin target location / proxy extension semantics | `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/journal/PersistencePluginProxy.scala:38`, `PersistencePluginProxy.scala:85` | 部分実装 | kernel/plugin + std/runtime | medium | `modules/persistence-core-kernel/src/journal/persistence_plugin_proxy.rs:19` は forwarding object だが、Pekko の target location / extension actor semantics まではない |
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| `RuntimePluginConfig` | `Persistence.scala:127` | non-goal | core/config | n/a | Pekko には存在するが、fraktor-rs は plugin 形式ではなく `Journal` / `SnapshotStore` trait 実装注入に留めるため不要 |
+| plugin target location / proxy extension semantics | `journal/PersistencePluginProxy.scala:38`, `journal/PersistencePluginProxy.scala:85` | 部分実装 | core/plugin + std/runtime | medium | `PersistencePluginProxy<J, S>` は forwarding object だが、Pekko の target location / extension actor semantics まではない |
 
 ### 7. Persistent FSM compatibility　✅ 実装済み 1/1 (100%)
 
@@ -177,7 +177,47 @@ Durable state store contract は kernel に存在するが、Pekko typed の wri
 
 `modules/persistence-core-kernel/src` と `modules/persistence-core-typed/src` に対して `todo!()`、`unimplemented!()`、`panic!("not implemented")`、`TODO`、`FIXME`、`placeholder`、`stub` を検索した範囲では、公開 API 直下の未完成スタブは見つからなかった。
 
-`PersistentActor::defer` / `defer_async` は recovery 中に panic するが、これは Pekko 互換の不正利用検出であり、未実装スタブではない。根拠は `modules/persistence-core-kernel/src/persistent/persistent_actor.rs:191`、`modules/persistence-core-kernel/src/persistent/persistent_actor.rs:220`。
+`PersistentActor::defer` / `defer_async` は recovery 中に panic するが、これは Pekko 互換の不正利用検出であり、未実装スタブではない。
+
+## 実装優先度
+
+### Phase 1: trivial / easy
+
+| 項目 | 実装先層 | 根拠 | 状態 |
+|------|----------|------|------|
+| `SnapshotOffer` | core | カテゴリ1 | 実装済み |
+| `PersistenceSettings` | core/config | カテゴリ1 | 実装済み |
+| `NoSnapshotStore` | core/snapshot | カテゴリ2 | 実装済み |
+| snapshot retry settings の公開契約 | core/config | カテゴリ2 | 実装済み |
+| `MaxUnconfirmedMessagesExceededException` 相当 | core/delivery | カテゴリ4 | 実装済み |
+| `GetObjectResult[A]` | core/durable_state | カテゴリ5 | 実装済み |
+| `DeleteRevisionException` | core/durable_state | カテゴリ5 | 実装済み |
+| typed `Recovery` / typed `SnapshotSelectionCriteria` | core/typed | カテゴリ8 | 未実装 |
+| typed `EventAdapter` / `EventSeq` / `SnapshotAdapter` | core/typed | カテゴリ8 | 未実装 |
+| `DurableStateSignal` family | core/typed | カテゴリ9 | 未実装 |
+
+### Phase 2: medium
+
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| `AtomicWrite` | core/journal | カテゴリ1 |
+| `LocalSnapshotStore` | std/snapshot | カテゴリ2 |
+| `MessageSerializer` | core/serialization | カテゴリ3 |
+| `SnapshotSerializer` | core/serialization | カテゴリ3 |
+| adapter manifest と serializer manifest の接続 | core/serialization | カテゴリ3 |
+| revision / tag aware update store | core/durable_state | カテゴリ5 |
+| plugin target location / proxy extension semantics | core/plugin + std/runtime | カテゴリ6 |
+| `EventSourcedSignal` family | core/typed | カテゴリ8 |
+| `PublishedEvent` / `EventRejectedException` | core/typed | カテゴリ8 |
+
+### Phase 3: hard
+
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| `EventSourcedBehavior[C,E,S]` | core/typed | カテゴリ8 |
+| `Effect` / `EffectBuilder` / `ReplyEffect` | core/typed | カテゴリ8 |
+| `DurableStateBehavior[C,S]` | core/typed | カテゴリ9 |
+| durable state `Effect` / `EffectBuilder` / `ReplyEffect` | core/typed | カテゴリ9 |
 
 ## 内部モジュール構造ギャップ
 
@@ -193,64 +233,10 @@ Durable state store contract は kernel に存在するが、Pekko typed の wri
 | plugin adapter 境界 | core extension は generic journal / snapshot を直接受ける | std runtime で plugin selection / local snapshot store をどう表すか |
 | typed effector と Pekko typed DSL の境界 | `PersistenceEffector` は通常 `Behavior` に統合されるが、Pekko の `EffectBuilder` / signal / adapter をそのまま露出しない | parity 目標を effector-first で固定するか、Pekko direct DSL を追加するか |
 
-## 実装優先度
-
-ここで出す優先度は「今の要求で実装すべきか」ではなく、「Pekko parity ギャップをどの順で埋めるか」を示す。YAGNI は適用しない。
-
-### Phase 1: trivial / easy
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `RecoveryCompleted` signal type | kernel | カテゴリ1 |
-| `SnapshotOffer` | kernel | カテゴリ1 |
-| `PersistenceSettings` | kernel/config | カテゴリ1 |
-| `NoSnapshotStore` | kernel/snapshot | カテゴリ2 |
-| snapshot retry / plugin settings の公開契約 | kernel/config | カテゴリ2 |
-| `MaxUnconfirmedMessagesExceededException` 相当 | kernel/delivery | カテゴリ4 |
-| `GetObjectResult[A]` | kernel/durable_state | カテゴリ5 |
-| `DeleteRevisionException` | kernel/durable_state | カテゴリ5 |
-| `RuntimePluginConfig` | kernel/config | カテゴリ6 |
-| typed `Recovery` / typed `SnapshotSelectionCriteria` | typed | カテゴリ8 |
-| typed `EventAdapter` / `EventSeq` / `SnapshotAdapter` | typed | カテゴリ8 |
-| `DurableStateSignal` family | typed | カテゴリ9 |
-
-### Phase 2: medium
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `AtomicWrite` | kernel/journal | カテゴリ1 |
-| `LocalSnapshotStore` | std/snapshot | カテゴリ2 |
-| `MessageSerializer` | kernel/serialization | カテゴリ3 |
-| `SnapshotSerializer` | kernel/serialization | カテゴリ3 |
-| adapter manifest と serializer manifest の接続 | kernel/serialization | カテゴリ3 |
-| revision / tag aware update store | kernel/durable_state | カテゴリ5 |
-| plugin target location / proxy extension semantics | kernel/plugin + std/runtime | カテゴリ6 |
-| `EventSourcedSignal` family | typed | カテゴリ8 |
-| `PublishedEvent` / `EventRejectedException` | typed | カテゴリ8 |
-| behavior-level `onPersistFailure` | typed | カテゴリ8 |
-
-### Phase 3: hard
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `EventSourcedBehavior[C,E,S]` | typed | カテゴリ8 |
-| `Effect` / `EffectBuilder` / `ReplyEffect` | typed | カテゴリ8 |
-| `DurableStateBehavior[C,S]` | typed | カテゴリ9 |
-| durable state `Effect` / `EffectBuilder` / `ReplyEffect` | typed | カテゴリ9 |
-
-### 対象外 (n/a)
-
-| 項目 | 理由 |
-|------|------|
-| `persistence-query` | write-side runtime とは別スコープ |
-| Java DSL / Scala syntax sugar | Rust API として再現不要 |
-| HOCON plugin loading / JVM reflection | JVM 固有 |
-| replicated event sourcing / CRDT / typed reliable delivery queue | 現 persistence 固定スコープ外 |
-
 ## まとめ
 
 persistence は classic write-side の基礎部品はかなり揃っている。`PersistentActor`、journal、snapshot、event adapter、at-least-once delivery、durable state store registry、in-memory store は存在し、panic 系スタブも見つからない。
 
-低コストで parity を前進できるのは、`RecoveryCompleted` / `SnapshotOffer` の signal 型、`NoSnapshotStore`、durable state の `GetObjectResult` / `DeleteRevisionException`、typed recovery / adapter wrapper である。
+Phase 1 の kernel 側低コスト項目は `SnapshotOffer`、`PersistenceSettings`、`NoSnapshotStore`、snapshot retry settings、`MaxUnconfirmedMessagesExceededException` 相当、`GetObjectResult[A]`、`DeleteRevisionException` まで実装済みである。`RecoveryCompleted` の classic 同名公開型と `RuntimePluginConfig` / plugin settings は現設計では non-goal とした。
 
-主要ギャップは、`AtomicWrite`、serialization contract、revision / tag aware durable state update、typed `EventSourcedBehavior` direct DSL、typed `DurableStateBehavior` である。typed write-side は effector-first API として前進しているが、Pekko parity の観点では `EffectBuilder`、signal、adapter、behavior-level failure supervision がまだ閉じていない。内部構造比較は、serializer / revision model と typed durable state の公開契約を決めた後に進めるのが妥当である。
+主要ギャップは、`AtomicWrite`、serialization contract、revision / tag aware durable state update、typed adapter / signal、typed `DurableStateBehavior` である。typed write-side は effector-first API として前進しているが、Pekko parity の観点では `EffectBuilder`、signal、adapter、behavior-level failure supervision がまだ閉じていない。内部構造比較は、serializer / revision model と typed durable state の公開契約を決めた後に進めるのが妥当である。

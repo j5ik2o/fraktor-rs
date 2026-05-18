@@ -1,5 +1,8 @@
 use alloc::{vec, vec::Vec};
-use core::future::{Pending, Ready, pending, ready};
+use core::{
+  future::{Pending, Ready, pending, ready},
+  sync::atomic::{AtomicU32, Ordering},
+};
 
 use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
 use fraktor_actor_core_kernel_rs::{
@@ -169,6 +172,127 @@ impl crate::journal::Journal for RetryJournal {
   }
 }
 
+struct ScriptedJournal {
+  replay_failures_left:  AtomicU32,
+  delete_failures_left:  AtomicU32,
+  highest_failures_left: AtomicU32,
+  highest_sequence_nr:   u64,
+}
+
+impl ScriptedJournal {
+  fn new(replay_failures_left: u32, delete_failures_left: u32, highest_failures_left: u32) -> Self {
+    Self {
+      replay_failures_left:  AtomicU32::new(replay_failures_left),
+      delete_failures_left:  AtomicU32::new(delete_failures_left),
+      highest_failures_left: AtomicU32::new(highest_failures_left),
+      highest_sequence_nr:   42,
+    }
+  }
+
+  fn consume_failure(counter: &AtomicU32) -> bool {
+    counter.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| value.checked_sub(1)).is_ok()
+  }
+}
+
+impl crate::journal::Journal for ScriptedJournal {
+  type DeleteFuture<'a>
+    = Ready<Result<(), JournalError>>
+  where
+    Self: 'a;
+  type HighestSeqNrFuture<'a>
+    = Ready<Result<u64, JournalError>>
+  where
+    Self: 'a;
+  type ReplayFuture<'a>
+    = Ready<Result<Vec<PersistentRepr>, JournalError>>
+  where
+    Self: 'a;
+  type WriteFuture<'a>
+    = Ready<Result<(), JournalError>>
+  where
+    Self: 'a;
+
+  fn write_messages<'a>(&'a mut self, _messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
+    ready(Ok(()))
+  }
+
+  fn replay_messages<'a>(
+    &'a self,
+    _persistence_id: &'a str,
+    _from_sequence_nr: u64,
+    _to_sequence_nr: u64,
+    _max: u64,
+  ) -> Self::ReplayFuture<'a> {
+    if Self::consume_failure(&self.replay_failures_left) {
+      ready(Err(JournalError::ReadFailed("replay failed".into())))
+    } else {
+      ready(Ok(Vec::new()))
+    }
+  }
+
+  fn delete_messages_to<'a>(&'a mut self, _persistence_id: &'a str, _to_sequence_nr: u64) -> Self::DeleteFuture<'a> {
+    if Self::consume_failure(&self.delete_failures_left) {
+      ready(Err(JournalError::DeleteFailed("delete failed".into())))
+    } else {
+      ready(Ok(()))
+    }
+  }
+
+  fn highest_sequence_nr<'a>(&'a self, _persistence_id: &'a str) -> Self::HighestSeqNrFuture<'a> {
+    if Self::consume_failure(&self.highest_failures_left) {
+      ready(Err(JournalError::ReadFailed("highest failed".into())))
+    } else {
+      ready(Ok(self.highest_sequence_nr))
+    }
+  }
+}
+
+#[test]
+fn scripted_journal_success_paths_are_exercised() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor =
+    JournalActor::<ScriptedJournal>::new_with_config(ScriptedJournal::new(0, 0, 0), JournalActorConfig::new(0));
+  let (sender, store) = create_sender();
+
+  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
+  let write = JournalMessage::WriteMessages {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    messages:       vec![repr],
+    sender:         sender.clone(),
+    instance_id:    7,
+  };
+  let any_message = AnyMessage::new(write);
+  actor.receive(&mut ctx, any_message.as_view()).expect("write receive failed");
+
+  let replay = JournalMessage::ReplayMessages {
+    persistence_id:   "pid-1".into(),
+    from_sequence_nr: 1,
+    to_sequence_nr:   1,
+    max:              10,
+    sender:           sender.clone(),
+  };
+  let any_message = AnyMessage::new(replay);
+  actor.receive(&mut ctx, any_message.as_view()).expect("replay receive failed");
+
+  let delete = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    sender:         sender.clone(),
+  };
+  let any_message = AnyMessage::new(delete);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete receive failed");
+
+  let highest = JournalMessage::GetHighestSequenceNr { persistence_id: "pid-1".into(), from_sequence_nr: 0, sender };
+  let any_message = AnyMessage::new(highest);
+  actor.receive(&mut ctx, any_message.as_view()).expect("highest receive failed");
+
+  let responses = store.lock();
+  assert_eq!(responses.len(), 5);
+}
+
 #[test]
 fn journal_actor_write_messages_sends_responses() {
   let system = new_test_system();
@@ -199,18 +323,28 @@ fn journal_actor_write_messages_sends_responses() {
   let mut batch_success_instance_id = None;
   for response in responses.iter() {
     let response = response.payload().downcast_ref::<JournalResponse>().expect("unexpected payload");
-    match response {
-      | JournalResponse::WriteMessageSuccess { .. } => success_count += 1,
-      | JournalResponse::WriteMessagesSuccessful { instance_id } => {
-        batch_success += 1;
-        batch_success_instance_id = Some(*instance_id);
-      },
-      | _ => {},
+    if let JournalResponse::WriteMessageSuccess { .. } = response {
+      success_count += 1;
+    }
+    if let JournalResponse::WriteMessagesSuccessful { instance_id } = response {
+      batch_success += 1;
+      batch_success_instance_id = Some(*instance_id);
     }
   }
   assert_eq!(success_count, 2);
   assert_eq!(batch_success, 1);
   assert_eq!(batch_success_instance_id, Some(9));
+}
+
+#[test]
+fn journal_actor_ignores_unrelated_messages() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = JournalActor::<InMemoryJournal>::new(InMemoryJournal::new());
+
+  let any_message = AnyMessage::new(());
+  actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 }
 
 #[test]
@@ -237,6 +371,40 @@ fn journal_actor_pending_does_not_emit_failure() {
 
   let responses = store.lock();
   assert_eq!(responses.len(), 0);
+}
+
+#[test]
+fn journal_actor_pending_replay_delete_and_highest_do_not_emit_failure() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let config = JournalActorConfig::new(0);
+  let mut actor = JournalActor::<PendingJournal>::new_with_config(PendingJournal, config);
+  let (sender, store) = create_sender();
+
+  let replay = JournalMessage::ReplayMessages {
+    persistence_id:   "pid-1".into(),
+    from_sequence_nr: 1,
+    to_sequence_nr:   3,
+    max:              10,
+    sender:           sender.clone(),
+  };
+  let any_message = AnyMessage::new(replay);
+  actor.receive(&mut ctx, any_message.as_view()).expect("replay receive failed");
+
+  let delete = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 3,
+    sender:         sender.clone(),
+  };
+  let any_message = AnyMessage::new(delete);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete receive failed");
+
+  let highest = JournalMessage::GetHighestSequenceNr { persistence_id: "pid-1".into(), from_sequence_nr: 0, sender };
+  let any_message = AnyMessage::new(highest);
+  actor.receive(&mut ctx, any_message.as_view()).expect("highest receive failed");
+
+  assert!(store.lock().is_empty());
 }
 
 #[test]
@@ -272,21 +440,146 @@ fn journal_actor_retry_max_exceeded_on_errors() {
   let mut batch_failures = 0;
   for response in responses.iter() {
     let response = response.payload().downcast_ref::<JournalResponse>().expect("unexpected payload");
-    match response {
-      | JournalResponse::WriteMessageFailure { cause, .. } => {
-        assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
-        failures += 1;
-      },
-      | JournalResponse::WriteMessagesFailed { cause, instance_id, .. } => {
-        assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
-        assert_eq!(*instance_id, 1);
-        batch_failures += 1;
-      },
-      | _ => {},
+    if let JournalResponse::WriteMessageFailure { cause, .. } = response {
+      assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
+      failures += 1;
+    }
+    if let JournalResponse::WriteMessagesFailed { cause, instance_id, .. } = response {
+      assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
+      assert_eq!(*instance_id, 1);
+      batch_failures += 1;
     }
   }
   assert_eq!(failures, 1);
   assert_eq!(batch_failures, 1);
+}
+
+#[test]
+fn journal_actor_replay_failure_after_retry_exhausted() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let config = JournalActorConfig::new(1);
+  let mut actor = JournalActor::<ScriptedJournal>::new_with_config(ScriptedJournal::new(2, 0, 0), config);
+  let (sender, store) = create_sender();
+
+  let replay = JournalMessage::ReplayMessages {
+    persistence_id: "pid-1".into(),
+    from_sequence_nr: 1,
+    to_sequence_nr: 3,
+    max: 10,
+    sender,
+  };
+  let any_message = AnyMessage::new(replay);
+  actor.receive(&mut ctx, any_message.as_view()).expect("replay receive failed");
+  assert!(store.lock().is_empty());
+
+  let poll = AnyMessage::new(JournalPoll);
+  actor.receive(&mut ctx, poll.as_view()).expect("poll receive failed");
+
+  let responses = store.lock();
+  assert_eq!(responses.len(), 1);
+  let response = responses[0].payload().downcast_ref::<JournalResponse>().expect("unexpected payload");
+  assert!(
+    matches!(response, JournalResponse::ReplayMessagesFailure { cause } if cause == &JournalError::ReadFailed("replay failed".into()))
+  );
+}
+
+#[test]
+fn journal_actor_delete_and_highest_success_responses() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = JournalActor::<InMemoryJournal>::new(InMemoryJournal::new());
+  let (sender, store) = create_sender();
+
+  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
+  let write = JournalMessage::WriteMessages {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    messages:       vec![repr],
+    sender:         sender.clone(),
+    instance_id:    7,
+  };
+  let any_message = AnyMessage::new(write);
+  actor.receive(&mut ctx, any_message.as_view()).expect("write receive failed");
+  store.lock().clear();
+
+  let delete = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    sender:         sender.clone(),
+  };
+  let any_message = AnyMessage::new(delete);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete receive failed");
+
+  let highest = JournalMessage::GetHighestSequenceNr { persistence_id: "pid-1".into(), from_sequence_nr: 0, sender };
+  let any_message = AnyMessage::new(highest);
+  actor.receive(&mut ctx, any_message.as_view()).expect("highest receive failed");
+
+  let responses = store.lock();
+  let mut delete_success = None;
+  let mut highest_sequence_nr = None;
+  for response in responses.iter() {
+    let response = response.payload().downcast_ref::<JournalResponse>().expect("unexpected payload");
+    if let JournalResponse::DeleteMessagesSuccess { to_sequence_nr } = response {
+      delete_success = Some(*to_sequence_nr);
+    }
+    if let JournalResponse::HighestSequenceNr { persistence_id, sequence_nr } = response {
+      assert_eq!(persistence_id, "pid-1");
+      highest_sequence_nr = Some(*sequence_nr);
+    }
+  }
+  assert_eq!(delete_success, Some(1));
+  assert_eq!(highest_sequence_nr, Some(1));
+}
+
+#[test]
+fn journal_actor_delete_failure_after_retry_exhausted() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let config = JournalActorConfig::new(1);
+  let mut actor = JournalActor::<ScriptedJournal>::new_with_config(ScriptedJournal::new(0, 2, 0), config);
+  let (sender, store) = create_sender();
+
+  let delete = JournalMessage::DeleteMessagesTo { persistence_id: "pid-1".into(), to_sequence_nr: 9, sender };
+  let any_message = AnyMessage::new(delete);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete receive failed");
+  assert!(store.lock().is_empty());
+
+  let poll = AnyMessage::new(JournalPoll);
+  actor.receive(&mut ctx, poll.as_view()).expect("poll receive failed");
+
+  let responses = store.lock();
+  assert_eq!(responses.len(), 1);
+  let response = responses[0].payload().downcast_ref::<JournalResponse>().expect("unexpected payload");
+  assert!(matches!(response, JournalResponse::DeleteMessagesFailure { cause, to_sequence_nr }
+      if cause == &JournalError::DeleteFailed("delete failed".into()) && *to_sequence_nr == 9));
+}
+
+#[test]
+fn journal_actor_highest_failure_after_retry_exhausted() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let config = JournalActorConfig::new(1);
+  let mut actor = JournalActor::<ScriptedJournal>::new_with_config(ScriptedJournal::new(0, 0, 2), config);
+  let (sender, store) = create_sender();
+
+  let highest = JournalMessage::GetHighestSequenceNr { persistence_id: "pid-1".into(), from_sequence_nr: 0, sender };
+  let any_message = AnyMessage::new(highest);
+  actor.receive(&mut ctx, any_message.as_view()).expect("highest receive failed");
+  assert!(store.lock().is_empty());
+
+  let poll = AnyMessage::new(JournalPoll);
+  actor.receive(&mut ctx, poll.as_view()).expect("poll receive failed");
+
+  let responses = store.lock();
+  assert_eq!(responses.len(), 1);
+  let response = responses[0].payload().downcast_ref::<JournalResponse>().expect("unexpected payload");
+  assert!(matches!(response, JournalResponse::HighestSequenceNrFailure { persistence_id, cause }
+      if persistence_id == "pid-1" && cause == &JournalError::ReadFailed("highest failed".into())));
 }
 
 #[test]

@@ -58,6 +58,7 @@ coverage_packages() {
   printf '%s\n' \
     "fraktor-actor-core-kernel-rs" \
     "fraktor-actor-adaptor-std-rs" \
+    "fraktor-persistence-core-kernel-rs" \
     "fraktor-stream-core-kernel-rs" \
     "fraktor-stream-core-actor-typed-rs" \
     "fraktor-stream-adaptor-std-rs" \

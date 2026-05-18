@@ -211,7 +211,7 @@ impl AtLeastOnceDelivery {
   where
     M: Any + Send + Sync + 'static, {
     if !self.can_accept_more() {
-      return Err(PersistenceError::MessagePassing("max unconfirmed deliveries exceeded".into()));
+      return Err(PersistenceError::MaxUnconfirmedMessagesExceeded { max_unconfirmed: self.config.max_unconfirmed() });
     }
 
     let delivery_id = self.next_delivery_id();

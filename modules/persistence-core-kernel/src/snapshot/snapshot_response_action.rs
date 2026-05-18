@@ -1,8 +1,12 @@
 //! Actions derived from snapshot responses.
 
+#[cfg(test)]
+#[path = "snapshot_response_action_test.rs"]
+mod tests;
+
 use crate::{
   persistent::Eventsourced,
-  snapshot::{Snapshot, SnapshotError, SnapshotMetadata, SnapshotSelectionCriteria},
+  snapshot::{Snapshot, SnapshotError, SnapshotMetadata, SnapshotOffer, SnapshotSelectionCriteria},
 };
 
 /// Actions to apply on the actor after snapshot response handling.
@@ -25,7 +29,9 @@ impl SnapshotResponseAction {
   pub(crate) fn apply(self, actor: &mut impl Eventsourced) {
     match self {
       | SnapshotResponseAction::None => {},
-      | SnapshotResponseAction::ReceiveSnapshot(snapshot) => actor.receive_snapshot(&snapshot),
+      | SnapshotResponseAction::ReceiveSnapshot(snapshot) => {
+        actor.receive_snapshot_offer(&SnapshotOffer::new(snapshot))
+      },
       | SnapshotResponseAction::SnapshotSaved(metadata) => actor.on_snapshot_saved(&metadata),
       | SnapshotResponseAction::SnapshotDeleted(metadata) => actor.on_snapshot_deleted(&metadata),
       | SnapshotResponseAction::SnapshotsDeleted(criteria) => actor.on_snapshots_deleted(&criteria),

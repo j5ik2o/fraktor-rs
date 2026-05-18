@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::{future::Future, pin::Pin};
 
-use crate::state::DurableStateError;
+use crate::state::{DurableStateError, GetObjectResult};
 
 pub(crate) type DurableStateStoreFuture<'a, T> =
   Pin<Box<dyn Future<Output = Result<T, DurableStateError>> + Send + 'a>>;
@@ -11,7 +11,7 @@ pub(crate) type DurableStateStoreFuture<'a, T> =
 /// Durable state store abstraction using object-safe boxed futures.
 pub trait DurableStateStore<A: Send>: Send + Sync + 'static {
   /// Loads the durable state object for the persistence identifier.
-  fn get_object<'a>(&'a self, persistence_id: &'a str) -> DurableStateStoreFuture<'a, Option<A>>;
+  fn get_object<'a>(&'a self, persistence_id: &'a str) -> DurableStateStoreFuture<'a, GetObjectResult<A>>;
 
   /// Inserts or updates the durable state object for the persistence identifier.
   fn upsert_object<'a>(&'a mut self, persistence_id: &'a str, object: A) -> DurableStateStoreFuture<'a, ()>;

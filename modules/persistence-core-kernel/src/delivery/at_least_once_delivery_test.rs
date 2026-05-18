@@ -11,7 +11,10 @@ use fraktor_utils_core_rs::{
   time::TimerInstant,
 };
 
-use crate::delivery::{AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick, UnconfirmedDelivery};
+use crate::{
+  delivery::{AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick, UnconfirmedDelivery},
+  error::PersistenceError,
+};
 
 type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
 
@@ -112,9 +115,11 @@ fn deliver_rejects_when_max_unconfirmed_exceeded() {
   let mut delivery = AtLeastOnceDelivery::new(config);
   let (destination, _store) = create_sender();
 
-  let _ = delivery.deliver(destination.clone(), None, TimerInstant::from_ticks(0, Duration::from_secs(1)), |id| id);
+  delivery
+    .deliver(destination.clone(), None, TimerInstant::from_ticks(0, Duration::from_secs(1)), |id| id)
+    .expect("first delivery should succeed");
   let result = delivery.deliver(destination, None, TimerInstant::from_ticks(0, Duration::from_secs(1)), |id| id);
-  assert!(result.is_err());
+  assert_eq!(result, Err(PersistenceError::MaxUnconfirmedMessagesExceeded { max_unconfirmed: 1 }));
 }
 
 #[test]
