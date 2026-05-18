@@ -407,7 +407,14 @@ impl Remote {
     };
     let local = self.associations[index].local().clone();
     let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
-    self.transport.send_control(&remote, response).map_err(|_| RemotingError::TransportUnavailable)
+    if let Err(error) = self.transport.send_control(&remote, response) {
+      tracing::debug!(
+        ?error,
+        remote = %remote,
+        "dropping heartbeat response because control channel is unavailable"
+      );
+    }
+    Ok(())
   }
 
   fn handle_inbound_ack_pdu(&mut self, authority: &TransportEndpoint, pdu: &AckPdu, now_ms: u64) {

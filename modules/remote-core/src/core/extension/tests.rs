@@ -41,6 +41,7 @@ struct RecordingTransport {
   start_result: Result<(), TransportError>,
   shutdown_result: Result<(), TransportError>,
   send_result: Result<(), TransportError>,
+  control_result: Result<(), TransportError>,
   running: bool,
   shutdown_calls: ArcShared<AtomicUsize>,
   send_calls: ArcShared<AtomicUsize>,
@@ -188,6 +189,7 @@ impl RecordingTransport {
       start_result: Ok(()),
       shutdown_result: Ok(()),
       send_result: Ok(()),
+      control_result: Ok(()),
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -205,6 +207,7 @@ impl RecordingTransport {
       start_result: Ok(()),
       shutdown_result,
       send_result: Ok(()),
+      control_result: Ok(()),
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -226,6 +229,7 @@ impl RecordingTransport {
       start_result,
       shutdown_result: Ok(()),
       send_result: Ok(()),
+      control_result: Ok(()),
       running: false,
       shutdown_calls,
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -243,6 +247,25 @@ impl RecordingTransport {
       start_result: Ok(()),
       shutdown_result: Ok(()),
       send_result,
+      control_result: Ok(()),
+      running: false,
+      shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
+      send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+    }
+  }
+
+  fn with_control_result(addresses: Vec<Address>, control_result: Result<(), TransportError>) -> Self {
+    Self {
+      addresses,
+      start_result: Ok(()),
+      shutdown_result: Ok(()),
+      send_result: Ok(()),
+      control_result,
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -287,8 +310,13 @@ impl RemoteTransport for RecordingTransport {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
-    self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
-    Ok(())
+    match self.control_result.clone() {
+      | Ok(()) => {
+        self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
+        Ok(())
+      },
+      | Err(error) => Err(error),
+    }
   }
 
   fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
@@ -887,6 +915,30 @@ fn inbound_heartbeat_control_sends_response_to_remote_peer() {
       uid: 1
     } if authority.as_str() == local_authority
   ));
+}
+
+#[test]
+fn inbound_heartbeat_control_send_failure_does_not_stop_remote() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_control_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
+  let control_calls = transport.control_calls.clone();
+  let mut remote = Remote::new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let pdu = ControlPdu::Heartbeat { authority: remote_address.to_string() };
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(pdu),
+      now_ms:    76,
+    })
+    .expect("heartbeat control send failure should not stop remote");
+
+  assert_eq!(control_calls.load(Ordering::Relaxed), 1);
 }
 
 #[test]
