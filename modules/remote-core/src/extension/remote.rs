@@ -546,7 +546,10 @@ impl Remote {
     now_ms: u64,
   ) -> Result<(), RemotingError> {
     match pdu {
-      | ControlPdu::Heartbeat { authority } => self.handle_inbound_heartbeat_control(peer_authority, authority, now_ms),
+      | ControlPdu::Heartbeat { authority } => {
+        self.handle_inbound_heartbeat_control(peer_authority, authority, now_ms);
+        Ok(())
+      },
       | ControlPdu::HeartbeatResponse { authority, .. } => {
         if let Some(index) = self.verified_control_association_index(peer_authority, authority) {
           self.associations[index].record_handshake_activity(now_ms);
@@ -566,20 +569,21 @@ impl Remote {
     }
   }
 
-  fn handle_inbound_heartbeat_control(
-    &mut self,
-    peer_authority: &TransportEndpoint,
-    authority: &str,
-    now_ms: u64,
-  ) -> Result<(), RemotingError> {
+  fn handle_inbound_heartbeat_control(&mut self, peer_authority: &TransportEndpoint, authority: &str, now_ms: u64) {
     let Some(index) = self.verified_control_association_index(peer_authority, authority) else {
-      return Ok(());
+      return;
     };
     self.associations[index].record_handshake_activity(now_ms);
     let remote = self.associations[index].remote().clone();
     let local = self.associations[index].local().clone();
     let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
-    map_wire_delivery_result(&remote, self.transport.send_control(&remote, response))
+    if let Err(error) = self.transport.send_control(&remote, response) {
+      tracing::debug!(
+        ?error,
+        remote = %remote,
+        "dropping heartbeat response because control channel is unavailable"
+      );
+    }
   }
 
   fn handle_inbound_flush_request_control(
