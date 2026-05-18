@@ -446,7 +446,7 @@ async fn forward_watcher_command_logs_when_queue_is_full() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn forward_watcher_command_forwards_connection_lost() {
+async fn forward_watcher_command_does_not_forward_connection_lost() {
   let (watcher_tx, mut watcher_rx) = tokio_mpsc::channel(1);
   let event = RemoteEvent::ConnectionLost {
     authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
@@ -456,15 +456,7 @@ async fn forward_watcher_command_forwards_connection_lost() {
 
   forward_watcher_command_for_event(&event, &watcher_tx);
 
-  let command = watcher_rx.try_recv().expect("connection lost should enqueue watcher command");
-  assert!(matches!(
-    command,
-    WatcherCommand::ConnectionLost {
-      from,
-      reason,
-      now
-    } if from == Address::new("remote-sys", "10.0.0.1", 2552) && reason.contains("ConnectionClosed") && now == 77
-  ));
+  assert!(watcher_rx.try_recv().is_err(), "connection lost should not enqueue watcher command");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

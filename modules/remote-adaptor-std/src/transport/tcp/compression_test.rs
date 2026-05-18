@@ -92,8 +92,7 @@ fn inbound_advertisement_updates_table_and_replies_with_ack() {
       table_kind: CompressionTableKind::ActorRef,
       generation: 7,
     },
-      authority: peer_authority,
-    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
+    } if authority == "local@host:2"
   ));
 
   let action =
@@ -120,8 +119,7 @@ fn inbound_manifest_advertisement_resolves_manifest_metadata() {
       table_kind: CompressionTableKind::Manifest,
       generation: 8,
     },
-      authority: peer_authority,
-    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
+    } if authority == "local@host:2"
   ));
 
   let action = tables
@@ -138,7 +136,7 @@ fn inbound_manifest_advertisement_resolves_manifest_metadata() {
 }
 
 #[test]
-fn inbound_advertisement_accepts_peer_table_larger_than_local_max() {
+fn inbound_advertisement_rejects_peer_table_larger_than_local_max() {
   let config = RemoteCompressionConfig::new().with_actor_ref_max(max(1));
   let mut tables = TcpCompressionTables::new(config);
   let frame = WireFrame::Control(ControlPdu::CompressionAdvertisement {
@@ -151,25 +149,9 @@ fn inbound_advertisement_accepts_peer_table_larger_than_local_max() {
     ],
   });
 
-  let action = tables.handle_inbound_frame(frame, "local@host:2").unwrap();
+  let err = tables.handle_inbound_frame(frame, "local@host:2").unwrap_err();
 
-  assert!(matches!(
-    action,
-    InboundCompressionAction::Reply {
-      pdu: ControlPdu::CompressionAck {
-        authority,
-        table_kind: CompressionTableKind::ActorRef,
-        generation: 9,
-      },
-      authority: peer_authority,
-    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
-  ));
-  let action =
-    tables.handle_inbound_frame(envelope_frame(CompressedText::table_ref(4), None, None), "local@host:2").unwrap();
-  assert!(matches!(
-    action,
-    InboundCompressionAction::Forward(WireFrame::Envelope(pdu)) if pdu.recipient_path() == "/user/b"
-  ));
+  assert_eq!(err, WireError::InvalidFormat);
 }
 
 #[test]
@@ -196,11 +178,11 @@ fn outbound_acknowledged_metadata_uses_table_refs() {
   );
   assert!(matches!(
     tables.handle_inbound_frame(ack_frame(CompressionTableKind::ActorRef, actor_generation), "local@host:2"),
-    Ok(InboundCompressionAction::Consumed { authority }) if authority.authority() == "remote@host:1"
+    Ok(InboundCompressionAction::Consumed)
   ));
   assert!(matches!(
     tables.handle_inbound_frame(ack_frame(CompressionTableKind::Manifest, manifest_generation), "local@host:2"),
-    Ok(InboundCompressionAction::Consumed { authority }) if authority.authority() == "remote@host:1"
+    Ok(InboundCompressionAction::Consumed)
   ));
 
   let second = tables.apply_outbound_frame(literal_envelope_frame("/user/a", Some("example.Manifest")));
@@ -243,12 +225,11 @@ fn disabled_config_keeps_local_outbound_literals_but_accepts_peer_advertisements
     action,
     InboundCompressionAction::Reply {
       pdu: ControlPdu::CompressionAck {
-      authority,
-      table_kind: CompressionTableKind::ActorRef,
-      generation: 7,
-    },
-      authority: peer_authority,
-    } if authority == "local@host:2" && peer_authority.authority() == "remote@host:1"
+        authority,
+        table_kind: CompressionTableKind::ActorRef,
+        generation: 7,
+      },
+    } if authority == "local@host:2"
   ));
 
   let action =

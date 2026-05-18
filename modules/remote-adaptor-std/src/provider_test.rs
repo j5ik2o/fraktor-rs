@@ -466,11 +466,14 @@ fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
     },
     | other => panic!("expected deployment create request, got {other:?}"),
   };
-  dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
-    correlation_hi,
-    correlation_lo,
-    success_path.clone(),
-  )));
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+      correlation_hi,
+      correlation_lo,
+      success_path.clone(),
+    )),
+  );
 
   let outcome = join.join().expect("deployment hook thread should complete");
   let RemoteDeploymentOutcome::RemoteCreated(actor_ref) = outcome else {
@@ -574,12 +577,15 @@ fn remote_deployment_hook_timeout_is_bounded_and_cancels_pending() {
   };
   assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("timed out")));
 
-  dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
-    correlation_hi,
-    correlation_lo,
-    RemoteDeploymentFailureCode::SpawnFailed,
-    String::from("late"),
-  )));
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+      correlation_hi,
+      correlation_lo,
+      RemoteDeploymentFailureCode::SpawnFailed,
+      String::from("late"),
+    )),
+  );
   assert_eq!(dispatcher.stale_len(), 1);
 }
 
@@ -611,12 +617,15 @@ fn remote_deployment_hook_closed_response_channel_is_not_timeout() {
 fn deployment_response_dispatcher_records_unknown_response_as_stale() {
   let dispatcher = DeploymentResponseDispatcher::default();
 
-  dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
-    7,
-    0,
-    RemoteDeploymentFailureCode::SpawnFailed,
-    String::from("unknown"),
-  )));
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+      7,
+      0,
+      RemoteDeploymentFailureCode::SpawnFailed,
+      String::from("unknown"),
+    )),
+  );
 
   assert_eq!(dispatcher.stale_len(), 1);
 }
