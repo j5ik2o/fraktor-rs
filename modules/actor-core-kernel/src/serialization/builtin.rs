@@ -106,13 +106,24 @@ fn register_defaults_inner<F>(
 ) -> Result<(), SerializationError>
 where
   F: FnMut(&'static str, SerializerId), {
+  register_scalar_defaults(registry, &mut on_collision)?;
+  register_container_defaults(registry, &mut on_collision)?;
+  register_misc_defaults(registry, system_state, &mut on_collision)
+}
+
+fn register_scalar_defaults<F>(
+  registry: &ArcShared<SerializationRegistry>,
+  on_collision: &mut F,
+) -> Result<(), SerializationError>
+where
+  F: FnMut(&'static str, SerializerId), {
   register::<_, _>(
     registry,
     NULL_ID,
     NullSerializer::new(NULL_ID),
     "null",
     Some((TypeId::of::<()>(), "()".into())),
-    &mut on_collision,
+    on_collision,
   )?;
   register::<_, _>(
     registry,
@@ -120,7 +131,7 @@ where
     BoolSerializer::new(BOOL_ID),
     "bool",
     Some((TypeId::of::<bool>(), "bool".into())),
-    &mut on_collision,
+    on_collision,
   )?;
   register::<_, _>(
     registry,
@@ -128,7 +139,7 @@ where
     I32Serializer::new(I32_ID),
     "i32",
     Some((TypeId::of::<i32>(), "i32".into())),
-    &mut on_collision,
+    on_collision,
   )?;
   register::<_, _>(
     registry,
@@ -136,15 +147,24 @@ where
     StringSerializer::new(STRING_ID),
     "string",
     Some((TypeId::of::<String>(), "String".into())),
-    &mut on_collision,
+    on_collision,
   )?;
+  Ok(())
+}
+
+fn register_container_defaults<F>(
+  registry: &ArcShared<SerializationRegistry>,
+  on_collision: &mut F,
+) -> Result<(), SerializationError>
+where
+  F: FnMut(&'static str, SerializerId), {
   register::<_, _>(
     registry,
     BYTES_ID,
     BytesSerializer::new(BYTES_ID),
     "bytes",
     Some((TypeId::of::<Vec<u8>>(), "Vec<u8>".into())),
-    &mut on_collision,
+    on_collision,
   )?;
   register::<_, _>(
     registry,
@@ -152,7 +172,7 @@ where
     ByteStringSerializer::new(BYTE_STRING_ID),
     "byte_string",
     Some((TypeId::of::<ByteString>(), "ByteString".into())),
-    &mut on_collision,
+    on_collision,
   )?;
   register::<_, _>(
     registry,
@@ -160,7 +180,7 @@ where
     SystemMessageSerializer::new(SYSTEM_MESSAGE_ID),
     "system_message",
     Some((TypeId::of::<SystemMessage>(), "SystemMessage".into())),
-    &mut on_collision,
+    on_collision,
   )?;
   register::<_, _>(
     registry,
@@ -168,15 +188,25 @@ where
     MessageContainerSerializer::new(MESSAGE_CONTAINER_ID, registry.downgrade()),
     "message_container",
     Some((TypeId::of::<ActorSelectionMessage>(), "ActorSelectionMessage".into())),
-    &mut on_collision,
+    on_collision,
   )?;
+  Ok(())
+}
+
+fn register_misc_defaults<F>(
+  registry: &ArcShared<SerializationRegistry>,
+  system_state: Option<SystemStateWeak>,
+  on_collision: &mut F,
+) -> Result<(), SerializationError>
+where
+  F: FnMut(&'static str, SerializerId), {
   let misc_registered = register::<_, _>(
     registry,
     MISC_MESSAGE_ID,
     misc_message_serializer(MISC_MESSAGE_ID, registry.downgrade(), system_state),
     "misc_message",
     Some((TypeId::of::<Identify>(), "Identify".into())),
-    &mut on_collision,
+    on_collision,
   )?;
   if misc_registered {
     registry.register_binding(TypeId::of::<ActorIdentity>(), "ActorIdentity", MISC_MESSAGE_ID)?;

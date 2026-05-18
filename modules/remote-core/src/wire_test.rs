@@ -189,6 +189,24 @@ fn remote_deployment_create_failure_roundtrip() {
 }
 
 #[test]
+fn remote_deployment_address_terminated_failure_roundtrip() {
+  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    0x1111_2222_3333_4444,
+    0x5555_6666,
+    RemoteDeploymentFailureCode::AddressTerminated,
+    "remote deployment target address terminated".to_string(),
+  ));
+  let mut buf = BytesMut::new();
+  RemoteDeploymentCodec::new().encode(&pdu, &mut buf).unwrap();
+
+  let mut bytes = to_bytes(buf);
+  let decoded = RemoteDeploymentCodec::new().decode(&mut bytes).unwrap();
+
+  assert_eq!(decoded, pdu);
+  assert_eq!(bytes.len(), 0, "decoder should fully consume the frame");
+}
+
+#[test]
 fn remote_deployment_frame_kind_is_distinct_from_envelope() {
   let mut buf = BytesMut::new();
   RemoteDeploymentCodec::new().encode(&test_remote_deployment_request(), &mut buf).unwrap();
@@ -966,7 +984,7 @@ fn previous_wire_version_byte_is_rejected() {
   let codec = EnvelopeCodec::new();
   let mut buf = BytesMut::new();
   codec.encode(&pdu, &mut buf).unwrap();
-  buf[4] = WIRE_VERSION_2;
+  buf[4] = WIRE_VERSION_3;
   let mut bytes = to_bytes(buf);
   let err = codec.decode(&mut bytes).unwrap_err();
   assert_eq!(err, WireError::UnknownVersion);
@@ -1028,7 +1046,7 @@ fn wire_version_byte_is_current() {
   assert_eq!(WIRE_VERSION_2, 0x02);
   assert_eq!(WIRE_VERSION_3, 0x03);
   assert_eq!(WIRE_VERSION_4, 0x04);
-  assert_eq!(WIRE_VERSION, WIRE_VERSION_3);
+  assert_eq!(WIRE_VERSION, WIRE_VERSION_4);
 }
 
 #[test]

@@ -95,9 +95,9 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
     };
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
-    let expected_authority = format!("fraktor.tcp://{target}");
-    let receiver = self.dispatcher.register(expected_authority.clone(), correlation_hi, correlation_lo);
+    let expected_authority = target.to_string();
     let now_ms = std_instant_elapsed_millis(self.monotonic_epoch);
+    let receiver = self.dispatcher.register(expected_authority.clone(), correlation_hi, correlation_lo, now_ms);
     if let Err(error) = self.event_sender.try_send(RemoteEvent::OutboundDeployment {
       remote: target,
       pdu: RemoteDeploymentPdu::CreateRequest(create_request),

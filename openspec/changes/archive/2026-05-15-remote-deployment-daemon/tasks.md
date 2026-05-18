@@ -44,6 +44,6 @@ Baseline evidence (2026-05-15): `cargo test -p fraktor-actor-core-kernel-rs depl
 
 - [x] 6.1 deployable actor を remote-spawn し、返却 remote ref へ user message を送る two-node test を追加する。
 - [x] 6.2 unknown factory id、duplicate child name、timeout、non-deployable props の failure-path tests を追加する。
-- [ ] 6.3 parent が remote child termination を既存 remote DeathWatch path で観測する coverage を追加する。
+- [x] 6.3 parent が remote child termination を既存 remote DeathWatch path で観測する coverage を追加する。
 - [x] 6.4 実装後に `docs/gap-analysis/remote-gap-analysis.md` を更新する。
 - [x] 6.5 affected crates の targeted tests を実行し、その後 `mise exec -- openspec validate remote-deployment-daemon --strict` と `git diff --check` を実行する。

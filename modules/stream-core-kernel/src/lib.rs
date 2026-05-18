@@ -298,6 +298,20 @@ pub(crate) struct StreamPlan {
   kill_switch_states:        Vec<KillSwitchStateHandle>,
 }
 
+struct StreamPlanStagePorts {
+  source_indices: Vec<usize>,
+  sink_indices:   Vec<usize>,
+  input_ports:    Vec<(PortId, usize)>,
+  output_ports:   Vec<(PortId, usize)>,
+}
+
+struct StreamPlanTopology {
+  edges:     Vec<StreamPlanEdge>,
+  incoming:  Vec<usize>,
+  outgoing:  Vec<usize>,
+  adjacency: Vec<Vec<usize>>,
+}
+
 impl StreamPlan {
   pub(crate) fn from_parts(
     stages: Vec<StageDefinition>,
@@ -307,135 +321,21 @@ impl StreamPlan {
       return Err(StreamError::InvalidConnection);
     }
 
-    let mut source_indices = Vec::new();
-    let mut sink_indices = Vec::new();
+    let stage_ports = collect_stream_plan_stage_ports(&stages)?;
+    validate_stream_plan_stage_presence(&stage_ports)?;
+    let topology = build_stream_plan_topology(stages.len(), edges, &stage_ports)?;
+    validate_stream_plan_degrees(&stages, &topology)?;
+    let ordered_indices = topological_stream_plan_order(stages.len(), topology.incoming, &topology.adjacency)?;
+    let flow_order = stream_plan_flow_order(&stages, ordered_indices);
 
-    let mut input_ports = Vec::with_capacity(stages.len());
-    let mut output_ports = Vec::with_capacity(stages.len());
-
-    for (stage_index, stage) in stages.iter().enumerate() {
-      match stage {
-        | StageDefinition::Source(_) => {
-          source_indices.push(stage_index);
-        },
-        | StageDefinition::Flow(_) => {},
-        | StageDefinition::Sink(_) => {
-          sink_indices.push(stage_index);
-        },
-      }
-
-      if let Some(inlet) = stage.inlet() {
-        if input_ports.iter().any(|(port, _)| *port == inlet) {
-          return Err(StreamError::InvalidConnection);
-        }
-        input_ports.push((inlet, stage_index));
-      }
-      if let Some(outlet) = stage.outlet() {
-        if output_ports.iter().any(|(port, _)| *port == outlet) {
-          return Err(StreamError::InvalidConnection);
-        }
-        output_ports.push((outlet, stage_index));
-      }
-    }
-
-    if source_indices.is_empty() {
-      return Err(StreamError::InvalidConnection);
-    }
-    if sink_indices.is_empty() {
-      return Err(StreamError::InvalidConnection);
-    }
-
-    let mut incoming = Vec::with_capacity(stages.len());
-    let mut outgoing = Vec::with_capacity(stages.len());
-    let mut adjacency = Vec::with_capacity(stages.len());
-
-    for _ in 0..stages.len() {
-      incoming.push(0_usize);
-      outgoing.push(0_usize);
-      adjacency.push(Vec::new());
-    }
-
-    let mut plan_edges = Vec::with_capacity(edges.len());
-
-    for (from, to, mat) in edges {
-      let Some(from_stage) = output_ports.iter().find(|(port, _)| *port == from).map(|(_, stage_index)| *stage_index)
-      else {
-        return Err(StreamError::InvalidConnection);
-      };
-      let Some(to_stage) = input_ports.iter().find(|(port, _)| *port == to).map(|(_, stage_index)| *stage_index) else {
-        return Err(StreamError::InvalidConnection);
-      };
-      outgoing[from_stage] = outgoing[from_stage].saturating_add(1);
-      incoming[to_stage] = incoming[to_stage].saturating_add(1);
-      adjacency[from_stage].push(to_stage);
-      plan_edges.push(StreamPlanEdge { from_port: from, to_port: to, mat });
-    }
-
-    for stage_index in 0..stages.len() {
-      match &stages[stage_index] {
-        | StageDefinition::Source(_) => {
-          if outgoing[stage_index] == 0 {
-            return Err(StreamError::InvalidConnection);
-          }
-        },
-        | StageDefinition::Flow(definition) => {
-          if incoming[stage_index] == 0 {
-            return Err(StreamError::InvalidConnection);
-          }
-          if let Some(expected_fan_in) = definition.logic.expected_fan_in()
-            && incoming[stage_index] != expected_fan_in
-          {
-            return Err(StreamError::InvalidConnection);
-          }
-          if outgoing[stage_index] == 0 {
-            return Err(StreamError::InvalidConnection);
-          }
-          if let Some(expected_fan_out) = definition.logic.expected_fan_out()
-            && outgoing[stage_index] != expected_fan_out
-          {
-            return Err(StreamError::InvalidConnection);
-          }
-        },
-        | StageDefinition::Sink(_) => {
-          if incoming[stage_index] == 0 {
-            return Err(StreamError::InvalidConnection);
-          }
-        },
-      }
-    }
-
-    let mut ready = Vec::new();
-    for (stage_index, count) in incoming.iter().enumerate() {
-      if *count == 0 {
-        ready.push(stage_index);
-      }
-    }
-
-    let mut processing_incoming = incoming;
-    let mut ordered_indices = Vec::new();
-
-    while let Some(stage_index) = ready.pop() {
-      ordered_indices.push(stage_index);
-      for next_index in &adjacency[stage_index] {
-        processing_incoming[*next_index] = processing_incoming[*next_index].saturating_sub(1);
-        if processing_incoming[*next_index] == 0 {
-          ready.push(*next_index);
-        }
-      }
-    }
-
-    if ordered_indices.len() != stages.len() {
-      return Err(StreamError::InvalidConnection);
-    }
-
-    let mut flow_order = Vec::new();
-    for stage_index in ordered_indices {
-      if matches!(stages[stage_index], StageDefinition::Flow(_)) {
-        flow_order.push(stage_index);
-      }
-    }
-
-    Ok(Self { stages, edges: plan_edges, source_indices, sink_indices, flow_order, kill_switch_states: Vec::new() })
+    Ok(Self {
+      stages,
+      edges: topology.edges,
+      source_indices: stage_ports.source_indices,
+      sink_indices: stage_ports.sink_indices,
+      flow_order,
+      kill_switch_states: Vec::new(),
+    })
   }
 
   /// Creates a `StreamPlan` from pre-validated parts (used by island splitting).
@@ -464,6 +364,184 @@ impl StreamPlan {
   fn shared_kill_switch_states(&self) -> &[KillSwitchStateHandle] {
     &self.kill_switch_states
   }
+}
+
+fn collect_stream_plan_stage_ports(stages: &[StageDefinition]) -> Result<StreamPlanStagePorts, StreamError> {
+  let mut source_indices = Vec::new();
+  let mut sink_indices = Vec::new();
+  let mut input_ports = Vec::with_capacity(stages.len());
+  let mut output_ports = Vec::with_capacity(stages.len());
+
+  for (stage_index, stage) in stages.iter().enumerate() {
+    match stage {
+      | StageDefinition::Source(_) => source_indices.push(stage_index),
+      | StageDefinition::Flow(_) => {},
+      | StageDefinition::Sink(_) => sink_indices.push(stage_index),
+    }
+    collect_unique_stage_port(&mut input_ports, stage.inlet(), stage_index)?;
+    collect_unique_stage_port(&mut output_ports, stage.outlet(), stage_index)?;
+  }
+
+  Ok(StreamPlanStagePorts { source_indices, sink_indices, input_ports, output_ports })
+}
+
+fn collect_unique_stage_port(
+  ports: &mut Vec<(PortId, usize)>,
+  port: Option<PortId>,
+  stage_index: usize,
+) -> Result<(), StreamError> {
+  let Some(port) = port else {
+    return Ok(());
+  };
+  if ports.iter().any(|(existing, _)| *existing == port) {
+    return Err(StreamError::InvalidConnection);
+  }
+  ports.push((port, stage_index));
+  Ok(())
+}
+
+const fn validate_stream_plan_stage_presence(stage_ports: &StreamPlanStagePorts) -> Result<(), StreamError> {
+  if stage_ports.source_indices.is_empty() || stage_ports.sink_indices.is_empty() {
+    return Err(StreamError::InvalidConnection);
+  }
+  Ok(())
+}
+
+fn build_stream_plan_topology(
+  stage_count: usize,
+  edges: Vec<(PortId, PortId, MatCombine)>,
+  stage_ports: &StreamPlanStagePorts,
+) -> Result<StreamPlanTopology, StreamError> {
+  let mut topology = empty_stream_plan_topology(stage_count, edges.len());
+  for (from, to, mat) in edges {
+    let from_stage = stage_index_for_port(&stage_ports.output_ports, from)?;
+    let to_stage = stage_index_for_port(&stage_ports.input_ports, to)?;
+    topology.outgoing[from_stage] += 1;
+    topology.incoming[to_stage] += 1;
+    topology.adjacency[from_stage].push(to_stage);
+    topology.edges.push(StreamPlanEdge { from_port: from, to_port: to, mat });
+  }
+  Ok(topology)
+}
+
+fn empty_stream_plan_topology(stage_count: usize, edge_count: usize) -> StreamPlanTopology {
+  StreamPlanTopology {
+    edges:     Vec::with_capacity(edge_count),
+    incoming:  alloc::vec![0_usize; stage_count],
+    outgoing:  alloc::vec![0_usize; stage_count],
+    adjacency: alloc::vec![Vec::new(); stage_count],
+  }
+}
+
+fn stage_index_for_port(ports: &[(PortId, usize)], port: PortId) -> Result<usize, StreamError> {
+  ports
+    .iter()
+    .find(|(existing, _)| *existing == port)
+    .map(|(_, stage_index)| *stage_index)
+    .ok_or(StreamError::InvalidConnection)
+}
+
+fn validate_stream_plan_degrees(stages: &[StageDefinition], topology: &StreamPlanTopology) -> Result<(), StreamError> {
+  for (stage_index, stage) in stages.iter().enumerate() {
+    validate_stream_plan_stage_degree(stage, topology.incoming[stage_index], topology.outgoing[stage_index])?;
+  }
+  Ok(())
+}
+
+fn validate_stream_plan_stage_degree(
+  stage: &StageDefinition,
+  incoming: usize,
+  outgoing: usize,
+) -> Result<(), StreamError> {
+  match stage {
+    | StageDefinition::Source(_) => validate_source_degree(outgoing),
+    | StageDefinition::Flow(definition) => validate_flow_degree(definition, incoming, outgoing),
+    | StageDefinition::Sink(_) => validate_sink_degree(incoming),
+  }
+}
+
+const fn validate_source_degree(outgoing: usize) -> Result<(), StreamError> {
+  if outgoing == 0 {
+    return Err(StreamError::InvalidConnection);
+  }
+  Ok(())
+}
+
+fn validate_flow_degree(definition: &FlowDefinition, incoming: usize, outgoing: usize) -> Result<(), StreamError> {
+  if incoming == 0 || outgoing == 0 {
+    return Err(StreamError::InvalidConnection);
+  }
+  if let Some(expected_fan_in) = definition.logic.expected_fan_in()
+    && incoming != expected_fan_in
+  {
+    return Err(StreamError::InvalidConnection);
+  }
+  if let Some(expected_fan_out) = definition.logic.expected_fan_out()
+    && outgoing != expected_fan_out
+  {
+    return Err(StreamError::InvalidConnection);
+  }
+  Ok(())
+}
+
+const fn validate_sink_degree(incoming: usize) -> Result<(), StreamError> {
+  if incoming == 0 {
+    return Err(StreamError::InvalidConnection);
+  }
+  Ok(())
+}
+
+fn topological_stream_plan_order(
+  stage_count: usize,
+  mut incoming: Vec<usize>,
+  adjacency: &[Vec<usize>],
+) -> Result<Vec<usize>, StreamError> {
+  let mut ready = stream_plan_ready_stages(&incoming);
+  let mut ordered_indices = Vec::new();
+
+  while let Some(stage_index) = ready.pop() {
+    ordered_indices.push(stage_index);
+    collect_ready_downstream_stages(stage_index, adjacency, &mut incoming, &mut ready);
+  }
+
+  if ordered_indices.len() != stage_count {
+    return Err(StreamError::InvalidConnection);
+  }
+  Ok(ordered_indices)
+}
+
+fn stream_plan_ready_stages(incoming: &[usize]) -> Vec<usize> {
+  let mut ready = Vec::new();
+  for (stage_index, count) in incoming.iter().enumerate() {
+    if *count == 0 {
+      ready.push(stage_index);
+    }
+  }
+  ready
+}
+
+fn collect_ready_downstream_stages(
+  stage_index: usize,
+  adjacency: &[Vec<usize>],
+  processing_incoming: &mut [usize],
+  ready: &mut Vec<usize>,
+) {
+  for next_index in &adjacency[stage_index] {
+    processing_incoming[*next_index] -= 1;
+    if processing_incoming[*next_index] == 0 {
+      ready.push(*next_index);
+    }
+  }
+}
+
+fn stream_plan_flow_order(stages: &[StageDefinition], ordered_indices: Vec<usize>) -> Vec<usize> {
+  let mut flow_order = Vec::new();
+  for stage_index in ordered_indices {
+    if matches!(stages[stage_index], StageDefinition::Flow(_)) {
+      flow_order.push(stage_index);
+    }
+  }
+  flow_order
 }
 
 pub(crate) struct StreamPlanEdge {

@@ -4,7 +4,7 @@
 #[path = "control_codec_test.rs"]
 mod tests;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::num::TryFromIntError;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -48,61 +48,7 @@ impl ControlCodec {
 impl Codec<ControlPdu> for ControlCodec {
   fn encode(&self, value: &ControlPdu, buf: &mut BytesMut) -> Result<(), WireError> {
     let len_pos = begin_frame(buf, KIND_CONTROL);
-    match value {
-      | ControlPdu::Heartbeat { authority } => {
-        buf.put_u8(SUBKIND_HEARTBEAT);
-        encode_string(authority, buf)?;
-        encode_option_string(None, buf)?;
-      },
-      | ControlPdu::HeartbeatResponse { authority, uid } => {
-        buf.put_u8(SUBKIND_HEARTBEAT_RESPONSE);
-        encode_string(authority, buf)?;
-        encode_option_string(None, buf)?;
-        buf.put_u64(*uid);
-      },
-      | ControlPdu::Quarantine { authority, reason } => {
-        buf.put_u8(SUBKIND_QUARANTINE);
-        encode_string(authority, buf)?;
-        encode_option_string(reason.as_deref(), buf)?;
-      },
-      | ControlPdu::Shutdown { authority } => {
-        buf.put_u8(SUBKIND_SHUTDOWN);
-        encode_string(authority, buf)?;
-        encode_option_string(None, buf)?;
-      },
-      | ControlPdu::FlushRequest { authority, flush_id, scope, lane_id, expected_acks } => {
-        buf.put_u8(SUBKIND_FLUSH_REQUEST);
-        encode_string(authority, buf)?;
-        encode_option_string(None, buf)?;
-        buf.put_u64(*flush_id);
-        buf.put_u8(scope.to_wire());
-        buf.put_u32(*lane_id);
-        buf.put_u32(*expected_acks);
-      },
-      | ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks } => {
-        buf.put_u8(SUBKIND_FLUSH_ACK);
-        encode_string(authority, buf)?;
-        encode_option_string(None, buf)?;
-        buf.put_u64(*flush_id);
-        buf.put_u32(*lane_id);
-        buf.put_u32(*expected_acks);
-      },
-      | ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries } => {
-        buf.put_u8(SUBKIND_COMPRESSION_ADVERTISEMENT);
-        encode_string(authority, buf)?;
-        encode_option_string(None, buf)?;
-        buf.put_u8(table_kind.to_wire());
-        buf.put_u64(*generation);
-        encode_compression_entries(entries, buf)?;
-      },
-      | ControlPdu::CompressionAck { authority, table_kind, generation } => {
-        buf.put_u8(SUBKIND_COMPRESSION_ACK);
-        encode_string(authority, buf)?;
-        encode_option_string(None, buf)?;
-        buf.put_u8(table_kind.to_wire());
-        buf.put_u64(*generation);
-      },
-    }
+    encode_control_body(value, buf)?;
     patch_frame_length(buf, len_pos)
   }
 
@@ -114,61 +60,147 @@ impl Codec<ControlPdu> for ControlCodec {
     let subkind = buf.get_u8();
     let authority = decode_string(buf)?;
     let reason = decode_option_string(buf)?;
-    match subkind {
-      | SUBKIND_HEARTBEAT => Ok(ControlPdu::Heartbeat { authority }),
-      | SUBKIND_HEARTBEAT_RESPONSE => {
-        if buf.remaining() < 8 {
-          return Err(WireError::Truncated);
-        }
-        Ok(ControlPdu::HeartbeatResponse { authority, uid: buf.get_u64() })
-      },
-      | SUBKIND_QUARANTINE => Ok(ControlPdu::Quarantine { authority, reason }),
-      | SUBKIND_SHUTDOWN => Ok(ControlPdu::Shutdown { authority }),
-      | SUBKIND_FLUSH_REQUEST => {
-        if buf.remaining() < 17 {
-          return Err(WireError::Truncated);
-        }
-        let flush_id = buf.get_u64();
-        let scope = FlushScope::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
-        let lane_id = buf.get_u32();
-        let expected_acks = buf.get_u32();
-        Ok(ControlPdu::FlushRequest { authority, flush_id, scope, lane_id, expected_acks })
-      },
-      | SUBKIND_FLUSH_ACK => {
-        if buf.remaining() < 16 {
-          return Err(WireError::Truncated);
-        }
-        let flush_id = buf.get_u64();
-        let lane_id = buf.get_u32();
-        let expected_acks = buf.get_u32();
-        Ok(ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks })
-      },
-      | SUBKIND_COMPRESSION_ADVERTISEMENT => {
-        if reason.is_some() {
-          return Err(WireError::InvalidFormat);
-        }
-        if buf.remaining() < 13 {
-          return Err(WireError::Truncated);
-        }
-        let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
-        let generation = buf.get_u64();
-        let entries = decode_compression_entries(buf)?;
-        Ok(ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries })
-      },
-      | SUBKIND_COMPRESSION_ACK => {
-        if reason.is_some() {
-          return Err(WireError::InvalidFormat);
-        }
-        if buf.remaining() < 9 {
-          return Err(WireError::Truncated);
-        }
-        let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
-        let generation = buf.get_u64();
-        Ok(ControlPdu::CompressionAck { authority, table_kind, generation })
-      },
-      | _ => Err(WireError::InvalidFormat),
-    }
+    decode_control_body(subkind, authority, reason, buf)
   }
+}
+
+fn encode_control_body(value: &ControlPdu, buf: &mut BytesMut) -> Result<(), WireError> {
+  match value {
+    | ControlPdu::Heartbeat { authority } => encode_authority_control(SUBKIND_HEARTBEAT, authority, None, buf),
+    | ControlPdu::HeartbeatResponse { authority, uid } => {
+      encode_authority_control(SUBKIND_HEARTBEAT_RESPONSE, authority, None, buf)?;
+      buf.put_u64(*uid);
+      Ok(())
+    },
+    | ControlPdu::Quarantine { authority, reason } => {
+      encode_authority_control(SUBKIND_QUARANTINE, authority, reason.as_deref(), buf)
+    },
+    | ControlPdu::Shutdown { authority } => encode_authority_control(SUBKIND_SHUTDOWN, authority, None, buf),
+    | ControlPdu::FlushRequest { authority, flush_id, scope, lane_id, expected_acks } => {
+      encode_authority_control(SUBKIND_FLUSH_REQUEST, authority, None, buf)?;
+      buf.put_u64(*flush_id);
+      buf.put_u8(scope.to_wire());
+      buf.put_u32(*lane_id);
+      buf.put_u32(*expected_acks);
+      Ok(())
+    },
+    | ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks } => {
+      encode_authority_control(SUBKIND_FLUSH_ACK, authority, None, buf)?;
+      buf.put_u64(*flush_id);
+      buf.put_u32(*lane_id);
+      buf.put_u32(*expected_acks);
+      Ok(())
+    },
+    | ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries } => {
+      encode_compression_advertisement(authority, *table_kind, *generation, entries, buf)
+    },
+    | ControlPdu::CompressionAck { authority, table_kind, generation } => {
+      encode_authority_control(SUBKIND_COMPRESSION_ACK, authority, None, buf)?;
+      buf.put_u8(table_kind.to_wire());
+      buf.put_u64(*generation);
+      Ok(())
+    },
+  }
+}
+
+fn encode_authority_control(
+  subkind: u8,
+  authority: &str,
+  reason: Option<&str>,
+  buf: &mut BytesMut,
+) -> Result<(), WireError> {
+  buf.put_u8(subkind);
+  encode_string(authority, buf)?;
+  encode_option_string(reason, buf)
+}
+
+fn encode_compression_advertisement(
+  authority: &str,
+  table_kind: CompressionTableKind,
+  generation: u64,
+  entries: &[CompressionTableEntry],
+  buf: &mut BytesMut,
+) -> Result<(), WireError> {
+  encode_authority_control(SUBKIND_COMPRESSION_ADVERTISEMENT, authority, None, buf)?;
+  buf.put_u8(table_kind.to_wire());
+  buf.put_u64(generation);
+  encode_compression_entries(entries, buf)
+}
+
+fn decode_control_body(
+  subkind: u8,
+  authority: String,
+  reason: Option<String>,
+  buf: &mut Bytes,
+) -> Result<ControlPdu, WireError> {
+  match subkind {
+    | SUBKIND_HEARTBEAT => Ok(ControlPdu::Heartbeat { authority }),
+    | SUBKIND_HEARTBEAT_RESPONSE => decode_heartbeat_response(authority, buf),
+    | SUBKIND_QUARANTINE => Ok(ControlPdu::Quarantine { authority, reason }),
+    | SUBKIND_SHUTDOWN => Ok(ControlPdu::Shutdown { authority }),
+    | SUBKIND_FLUSH_REQUEST => decode_flush_request(authority, buf),
+    | SUBKIND_FLUSH_ACK => decode_flush_ack(authority, buf),
+    | SUBKIND_COMPRESSION_ADVERTISEMENT => decode_compression_advertisement(authority, reason.as_deref(), buf),
+    | SUBKIND_COMPRESSION_ACK => decode_compression_ack(authority, reason.as_deref(), buf),
+    | _ => Err(WireError::InvalidFormat),
+  }
+}
+
+fn decode_heartbeat_response(authority: String, buf: &mut Bytes) -> Result<ControlPdu, WireError> {
+  ensure_remaining(buf, 8)?;
+  Ok(ControlPdu::HeartbeatResponse { authority, uid: buf.get_u64() })
+}
+
+fn decode_flush_request(authority: String, buf: &mut Bytes) -> Result<ControlPdu, WireError> {
+  ensure_remaining(buf, 17)?;
+  let flush_id = buf.get_u64();
+  let scope = FlushScope::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
+  let lane_id = buf.get_u32();
+  let expected_acks = buf.get_u32();
+  Ok(ControlPdu::FlushRequest { authority, flush_id, scope, lane_id, expected_acks })
+}
+
+fn decode_flush_ack(authority: String, buf: &mut Bytes) -> Result<ControlPdu, WireError> {
+  ensure_remaining(buf, 16)?;
+  let flush_id = buf.get_u64();
+  let lane_id = buf.get_u32();
+  let expected_acks = buf.get_u32();
+  Ok(ControlPdu::FlushAck { authority, flush_id, lane_id, expected_acks })
+}
+
+fn decode_compression_advertisement(
+  authority: String,
+  reason: Option<&str>,
+  buf: &mut Bytes,
+) -> Result<ControlPdu, WireError> {
+  ensure_no_reason(reason)?;
+  ensure_remaining(buf, 13)?;
+  let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
+  let generation = buf.get_u64();
+  let entries = decode_compression_entries(buf)?;
+  Ok(ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries })
+}
+
+fn decode_compression_ack(authority: String, reason: Option<&str>, buf: &mut Bytes) -> Result<ControlPdu, WireError> {
+  ensure_no_reason(reason)?;
+  ensure_remaining(buf, 9)?;
+  let table_kind = CompressionTableKind::from_wire(buf.get_u8()).ok_or(WireError::InvalidFormat)?;
+  let generation = buf.get_u64();
+  Ok(ControlPdu::CompressionAck { authority, table_kind, generation })
+}
+
+const fn ensure_no_reason(reason: Option<&str>) -> Result<(), WireError> {
+  if reason.is_some() {
+    return Err(WireError::InvalidFormat);
+  }
+  Ok(())
+}
+
+fn ensure_remaining(buf: &Bytes, len: usize) -> Result<(), WireError> {
+  if buf.remaining() < len {
+    return Err(WireError::Truncated);
+  }
+  Ok(())
 }
 
 fn encode_compression_entries(entries: &[CompressionTableEntry], buf: &mut BytesMut) -> Result<(), WireError> {

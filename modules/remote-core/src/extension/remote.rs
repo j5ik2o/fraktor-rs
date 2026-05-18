@@ -1,5 +1,9 @@
 //! Default core implementation of the remoting lifecycle API.
 
+#[cfg(test)]
+#[path = "remote_test.rs"]
+mod tests;
+
 use alloc::{
   boxed::Box,
   format,
@@ -301,20 +305,11 @@ impl Remote {
     Ok(self.associations.len() - 1)
   }
 
-  fn ensure_association_for_handshake_request(&mut self, request: &HandshakeReq) -> Option<usize> {
+  fn association_index_for_handshake_request(&self, request: &HandshakeReq) -> Option<usize> {
     if !self.is_local_handshake_destination(request.to()) {
       return None;
     }
-    if let Some(index) = self.association_index_for_remote(request.from().address()) {
-      return Some(index);
-    }
-    let association = Association::from_config(
-      UniqueAddress::new(request.to().clone(), 0),
-      request.from().address().clone(),
-      &self.config,
-    );
-    self.insert_association(association);
-    Some(self.associations.len() - 1)
+    self.association_index_for_remote(request.from().address())
   }
 
   fn association_index_for_remote(&self, remote: &Address) -> Option<usize> {
@@ -419,7 +414,7 @@ impl Remote {
   }
 
   fn handle_inbound_handshake_request(&mut self, request: &HandshakeReq, now_ms: u64) -> Result<(), RemotingError> {
-    let Some(association_index) = self.ensure_association_for_handshake_request(request) else {
+    let Some(association_index) = self.association_index_for_handshake_request(request) else {
       return Ok(());
     };
     let accepted = {
@@ -732,9 +727,10 @@ impl Remote {
       return Ok(());
     };
     self.associations[index].record_handshake_activity(now_ms);
-    let reason = QuarantineReason::new("remote shutdown");
-    let effects = self.associations[index].quarantine(reason, now_ms, self.instrument.as_mut());
-    self.apply_association_effects(index, effects, now_ms)
+    let gate_effects = self.associations[index].gate(None, now_ms);
+    self.apply_association_effects(index, gate_effects, now_ms)?;
+    let recover_effects = self.associations[index].recover(None, now_ms, self.instrument.as_mut());
+    self.apply_association_effects(index, recover_effects, now_ms)
   }
 
   pub(crate) fn collect_flush_start_effects(

@@ -20,8 +20,9 @@ use crate::{
   event::{
     logging::{LogEvent, LogLevel},
     stream::{
-      AdapterFailureEvent, BackpressureSignal, CorrelationId, EventStreamEvent, RemoteAuthorityEvent,
-      RemotingBackpressureEvent, RemotingLifecycleEvent, TickDriverSnapshot, UnhandledMessageEvent,
+      AdapterFailureEvent, AddressTerminatedEvent, BackpressureSignal, CorrelationId, EventStreamEvent,
+      RemoteAuthorityEvent, RemotingBackpressureEvent, RemotingLifecycleEvent, TickDriverSnapshot,
+      UnhandledMessageEvent,
     },
   },
   serialization::{SerializationErrorEvent, SerializerId},
@@ -110,6 +111,13 @@ fn classifier_key_for_event_maps_all_variants() {
 
   let remoting_lifecycle = EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::Started);
   assert_eq!(ClassifierKey::for_event(&remoting_lifecycle), ClassifierKey::RemotingLifecycle);
+
+  let address_terminated = EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    "remote-sys@10.0.0.1:2552",
+    "Deemed unreachable by remote failure detector",
+    11,
+  ));
+  assert_eq!(ClassifierKey::for_event(&address_terminated), ClassifierKey::AddressTerminated);
 
   let scheduler_tick =
     EventStreamEvent::SchedulerTick(SchedulerTickMetrics::new(TickDriverKind::Manual, 10, None, 32, 1));

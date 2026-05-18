@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::actor_path::{ActorPath, ActorPathParser};
 
@@ -32,6 +32,13 @@ fn local_watcher() -> ActorPath {
 
 fn address_of(system: &str, host: &str, port: u16) -> Address {
   Address::new(system, host, port)
+}
+
+fn address_terminated_count_for(effects: &[WatcherEffect], expected_node: &Address) -> usize {
+  effects
+    .iter()
+    .filter(|effect| matches!(effect, WatcherEffect::AddressTerminated { node, .. } if node == expected_node))
+    .count()
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +270,8 @@ fn heartbeat_tick_emits_send_heartbeat_for_every_tracked_node() {
 
 #[test]
 fn long_silence_triggers_terminated_and_quarantined_effects() {
+  // Pekko reference: RemoteWatcher.scala:197-207 publishes AddressTerminated after failure detection;
+  // RemoteDaemon.scala:82 and 232 subscribe and react to that signal.
   let mut state = new_state();
   let target = remote_target(1);
   let watcher = local_watcher();
@@ -284,15 +293,28 @@ fn long_silence_triggers_terminated_and_quarantined_effects() {
       | _ => None,
     })
     .collect();
+  let address_terminated: Vec<_> = effects
+    .iter()
+    .filter_map(|e| match e {
+      | WatcherEffect::AddressTerminated { node, reason, observed_at_millis } => {
+        Some((node.clone(), reason.clone(), *observed_at_millis))
+      },
+      | _ => None,
+    })
+    .collect();
   let quarantined: Vec<_> = effects.iter().filter(|e| matches!(e, WatcherEffect::NotifyQuarantined { .. })).collect();
   assert_eq!(terminated.len(), 1);
   assert_eq!(terminated[0].0, target);
   assert_eq!(terminated[0].1, [watcher]);
+  assert_eq!(address_terminated.len(), 1);
+  assert_eq!(address_terminated[0].0, node);
+  assert_eq!(address_terminated[0].1, "Deemed unreachable by remote failure detector");
+  assert_eq!(address_terminated[0].2, 60_000);
   assert_eq!(quarantined.len(), 1);
 }
 
 #[test]
-fn notify_terminated_is_not_duplicated_across_ticks() {
+fn address_terminated_and_notify_terminated_are_not_duplicated_across_ticks() {
   let mut state = new_state();
   let _ = state.handle(WatcherCommand::Watch { target: remote_target(1), watcher: local_watcher() });
   let node = address_of("remote-sys", "10.0.0.1", 2552);
@@ -305,8 +327,71 @@ fn notify_terminated_is_not_duplicated_across_ticks() {
 
   let first_terminated = first.iter().filter(|e| matches!(e, WatcherEffect::NotifyTerminated { .. })).count();
   let second_terminated = second.iter().filter(|e| matches!(e, WatcherEffect::NotifyTerminated { .. })).count();
+  let first_address_terminated = address_terminated_count_for(&first, &node);
+  let second_address_terminated = address_terminated_count_for(&second, &node);
   assert_eq!(first_terminated, 1);
   assert_eq!(second_terminated, 0, "second tick must not re-emit the same termination");
+  assert_eq!(first_address_terminated, 1);
+  assert_eq!(second_address_terminated, 0, "second tick must not re-emit the same address termination");
+}
+
+#[test]
+fn connection_lost_triggers_terminated_and_address_terminated_effects() {
+  let mut state = new_state();
+  let target = remote_target(1);
+  let watcher = local_watcher();
+  drop(state.handle(WatcherCommand::Watch { target: target.clone(), watcher: watcher.clone() }));
+  let node = address_of("remote-sys", "10.0.0.1", 2552);
+  let reason = String::from("remote transport connection lost: ConnectionClosed");
+
+  let effects =
+    state.handle(WatcherCommand::ConnectionLost { from: node.clone(), reason: reason.clone(), now: 42 });
+
+  let terminated: Vec<_> = effects
+    .iter()
+    .filter_map(|effect| match effect {
+      | WatcherEffect::NotifyTerminated { target, watchers } => Some((target.clone(), watchers.clone())),
+      | _ => None,
+    })
+    .collect();
+  let address_terminated: Vec<_> = effects
+    .iter()
+    .filter_map(|effect| match effect {
+      | WatcherEffect::AddressTerminated { node, reason, observed_at_millis } => {
+        Some((node.clone(), reason.clone(), *observed_at_millis))
+      },
+      | _ => None,
+    })
+    .collect();
+  let quarantined: Vec<_> =
+    effects.iter().filter(|effect| matches!(effect, WatcherEffect::NotifyQuarantined { .. })).collect();
+
+  assert_eq!(terminated, vec![(target, vec![watcher])]);
+  assert_eq!(address_terminated, vec![(node, reason, 42)]);
+  assert_eq!(quarantined.len(), 1);
+}
+
+#[test]
+fn connection_lost_is_not_duplicated_for_same_node() {
+  let mut state = new_state();
+  drop(state.handle(WatcherCommand::Watch { target: remote_target(1), watcher: local_watcher() }));
+  let node = address_of("remote-sys", "10.0.0.1", 2552);
+
+  let first =
+    state.handle(WatcherCommand::ConnectionLost { from: node.clone(), reason: String::from("first"), now: 42 });
+  let second =
+    state.handle(WatcherCommand::ConnectionLost { from: node.clone(), reason: String::from("second"), now: 43 });
+
+  let first_terminated = first.iter().filter(|effect| matches!(effect, WatcherEffect::NotifyTerminated { .. })).count();
+  let second_terminated =
+    second.iter().filter(|effect| matches!(effect, WatcherEffect::NotifyTerminated { .. })).count();
+  let first_address_terminated = address_terminated_count_for(&first, &node);
+  let second_address_terminated = address_terminated_count_for(&second, &node);
+
+  assert_eq!(first_terminated, 1);
+  assert_eq!(second_terminated, 0, "second connection loss must not re-emit the same termination");
+  assert_eq!(first_address_terminated, 1);
+  assert_eq!(second_address_terminated, 0, "second connection loss must not re-emit the same address termination");
 }
 
 #[test]
@@ -320,9 +405,11 @@ fn heartbeat_received_after_notification_reopens_the_detector() {
   let _first = state.handle(WatcherCommand::HeartbeatTick { now: 60_000 });
 
   // A fresh heartbeat re-opens the detector and clears the notified flag.
-  let _ = state.handle(WatcherCommand::HeartbeatReceived { from: node, now: 70_000 });
+  let _ = state.handle(WatcherCommand::HeartbeatReceived { from: node.clone(), now: 70_000 });
   // Another prolonged silence should yield a fresh termination notification.
   let effects = state.handle(WatcherCommand::HeartbeatTick { now: 200_000 });
   let terminated_again = effects.iter().filter(|e| matches!(e, WatcherEffect::NotifyTerminated { .. })).count();
+  let address_terminated_again = address_terminated_count_for(&effects, &node);
   assert_eq!(terminated_again, 1);
+  assert_eq!(address_terminated_again, 1);
 }

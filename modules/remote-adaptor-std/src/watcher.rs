@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use fraktor_actor_core_kernel_rs::{
   actor::{Pid, actor_path::ActorPath, messaging::system_message::SystemMessage},
-  event::stream::CorrelationId,
+  event::stream::{AddressTerminatedEvent, CorrelationId, EventStreamEvent},
   system::ActorSystem,
 };
 use fraktor_remote_core_rs::{
@@ -94,6 +94,9 @@ pub(crate) async fn apply_effects(
         send_redelivery_tick(event_sender, to, now_ms).await;
       },
       | WatcherEffect::NotifyTerminated { target, watchers } => notify_local_watchers(system, target, watchers),
+      | WatcherEffect::AddressTerminated { node, reason, observed_at_millis } => {
+        publish_address_terminated(system, node, reason, observed_at_millis);
+      },
       | WatcherEffect::NotifyQuarantined { node } => {
         tracing::warn!(remote = %node, "remote watcher marked node quarantined");
       },
@@ -111,6 +114,11 @@ pub(crate) async fn apply_effects(
       },
     }
   }
+}
+
+fn publish_address_terminated(system: &ActorSystem, node: Address, reason: String, observed_at_millis: u64) {
+  let event = AddressTerminatedEvent::new(node.to_string(), reason, observed_at_millis);
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(event));
 }
 
 fn notify_local_watchers(system: &ActorSystem, target: ActorPath, watchers: Vec<ActorPath>) {
