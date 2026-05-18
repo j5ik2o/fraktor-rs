@@ -134,7 +134,7 @@ fn deployment_response_dispatcher_bounds_stale_responses() {
   let dispatcher = DeploymentResponseDispatcher::default();
 
   for index in 0..(MAX_STALE_DEPLOYMENT_RESPONSES + 1) {
-    dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+    dispatcher.complete("fraktor.tcp://remote-sys@10.0.0.1:2552", DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
       index as u64,
       0,
       RemoteDeploymentFailureCode::SpawnFailed,

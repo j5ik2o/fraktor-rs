@@ -611,10 +611,10 @@ fn route_deployment_event(
       }
     },
     | RemoteDeploymentPdu::CreateSuccess(success) => {
-      deployment_response_dispatcher.complete(DeploymentResponse::Success(success));
+      deployment_response_dispatcher.complete(authority.authority(), DeploymentResponse::Success(success));
     },
     | RemoteDeploymentPdu::CreateFailure(failure) => {
-      deployment_response_dispatcher.complete(DeploymentResponse::Failure(failure));
+      deployment_response_dispatcher.complete(authority.authority(), DeploymentResponse::Failure(failure));
     },
   }
   None

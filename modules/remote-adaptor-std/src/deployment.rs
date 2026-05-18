@@ -37,7 +37,8 @@ const PARENT_PATH_INVALID: &str = "target parent path is invalid";
 const MAX_STALE_DEPLOYMENT_RESPONSES: usize = 128;
 
 type DeploymentCorrelation = (u64, u32);
-type PendingDeploymentResponses = BTreeMap<DeploymentCorrelation, mpsc::Sender<DeploymentResponse>>;
+type PendingDeploymentKey = (String, DeploymentCorrelation);
+type PendingDeploymentResponses = BTreeMap<PendingDeploymentKey, mpsc::Sender<DeploymentResponse>>;
 
 #[derive(Default)]
 struct DeploymentResponseState {
@@ -68,27 +69,33 @@ impl Default for DeploymentResponseDispatcher {
 
 impl DeploymentResponseDispatcher {
   /// Registers a pending request.
-  pub(crate) fn register(&self, correlation_hi: u64, correlation_lo: u32) -> mpsc::Receiver<DeploymentResponse> {
+  pub(crate) fn register(
+    &self,
+    expected_authority: String,
+    correlation_hi: u64,
+    correlation_lo: u32,
+  ) -> mpsc::Receiver<DeploymentResponse> {
     let (sender, receiver) = mpsc::channel();
     self.state.with_lock(|state| {
-      state.pending.insert((correlation_hi, correlation_lo), sender);
+      state.pending.insert((expected_authority, (correlation_hi, correlation_lo)), sender);
     });
     receiver
   }
 
   /// Removes a pending request without completing it.
-  pub(crate) fn cancel(&self, correlation_hi: u64, correlation_lo: u32) {
+  pub(crate) fn cancel(&self, expected_authority: &str, correlation_hi: u64, correlation_lo: u32) {
     self.state.with_lock(|state| {
-      state.pending.remove(&(correlation_hi, correlation_lo));
+      state.pending.remove(&(expected_authority.to_string(), (correlation_hi, correlation_lo)));
     });
   }
 
   /// Completes a pending request or records the stale response.
-  pub(crate) fn complete(&self, response: DeploymentResponse) {
-    let key = match &response {
+  pub(crate) fn complete(&self, authority: &str, response: DeploymentResponse) {
+    let correlation = match &response {
       | DeploymentResponse::Success(success) => (success.correlation_hi(), success.correlation_lo()),
       | DeploymentResponse::Failure(failure) => (failure.correlation_hi(), failure.correlation_lo()),
     };
+    let key = (authority.to_string(), correlation);
     let sender = self.state.with_lock(|state| state.pending.remove(&key));
     match sender {
       | Some(sender) => {

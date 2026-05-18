@@ -95,14 +95,15 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
     };
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
-    let receiver = self.dispatcher.register(correlation_hi, correlation_lo);
+    let expected_authority = format!("fraktor.tcp://{target}");
+    let receiver = self.dispatcher.register(expected_authority.clone(), correlation_hi, correlation_lo);
     let now_ms = std_instant_elapsed_millis(self.monotonic_epoch);
     if let Err(error) = self.event_sender.try_send(RemoteEvent::OutboundDeployment {
       remote: target,
       pdu: RemoteDeploymentPdu::CreateRequest(create_request),
       now_ms,
     }) {
-      self.dispatcher.cancel(correlation_hi, correlation_lo);
+      self.dispatcher.cancel(&expected_authority, correlation_hi, correlation_lo);
       return RemoteDeploymentOutcome::Failed(format!("remote deployment request enqueue failed: {error:?}"));
     }
     match recv_deployment_response(&receiver, self.timeout, self.install_thread) {
@@ -111,15 +112,15 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
         RemoteDeploymentOutcome::Failed(format!("{:?}: {}", failure.code(), failure.reason()))
       },
       | Err(DeploymentResponseWaitError::RecvTimeout) => {
-        self.dispatcher.cancel(correlation_hi, correlation_lo);
+        self.dispatcher.cancel(&expected_authority, correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment timed out"))
       },
       | Err(DeploymentResponseWaitError::RecvDisconnected) => {
-        self.dispatcher.cancel(correlation_hi, correlation_lo);
+        self.dispatcher.cancel(&expected_authority, correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment response channel closed"))
       },
       | Err(DeploymentResponseWaitError::CurrentThreadEventLoop) => {
-        self.dispatcher.cancel(correlation_hi, correlation_lo);
+        self.dispatcher.cancel(&expected_authority, correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from(
           "remote deployment cannot wait synchronously on a current-thread Tokio runtime",
         ))
