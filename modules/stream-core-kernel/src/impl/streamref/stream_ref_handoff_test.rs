@@ -14,10 +14,10 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use tracing::{
   Event, Id, Metadata, Subscriber,
-  field::{Field, Visit},
+  field::{Empty, Field, Visit},
   level_filters::LevelFilter,
   span::{Attributes, Record},
-  subscriber,
+  subscriber, trace_span,
 };
 
 use super::{StreamRefHandoff, StreamRefProtocol};
@@ -81,7 +81,13 @@ impl Subscriber for EnabledTracingSubscriber {
 }
 
 fn with_enabled_tracing<T>(f: impl FnOnce() -> T) -> T {
-  subscriber::with_default(EnabledTracingSubscriber, f)
+  subscriber::with_default(EnabledTracingSubscriber, || {
+    let span = trace_span!("stream_ref_handoff_test", probe = Empty);
+    span.record("probe", true);
+    span.follows_from(span.id());
+    let _entered = span.enter();
+    f()
+  })
 }
 
 struct RecordingSender {
