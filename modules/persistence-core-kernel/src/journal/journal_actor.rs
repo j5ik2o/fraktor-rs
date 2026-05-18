@@ -117,7 +117,7 @@ where
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
     for entry in in_flight {
-      if let Some(entry) = poll_entry(&mut self.journal, entry, &mut cx, retry_max)? {
+      if let Some(entry) = poll_entry(&mut self.journal, entry, &mut cx, retry_max) {
         pending.push(entry);
       }
     }
@@ -195,7 +195,7 @@ fn poll_entry<J: Journal>(
   mut entry: JournalInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
-) -> Result<Option<JournalInFlight>, ActorError>
+) -> Option<JournalInFlight>
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
@@ -204,7 +204,7 @@ where
   let mut poll_context = JournalPollContext { journal, retry_max };
   let keep_pending = match &mut entry {
     | JournalInFlight::Write { future, messages, sender, instance_id, retry_count } => {
-      poll_write_entry(&mut poll_context, cx, future, messages, sender, *instance_id, retry_count)?
+      poll_write_entry(&mut poll_context, cx, future, messages, sender, *instance_id, retry_count)
     },
     | JournalInFlight::Replay {
       future,
@@ -220,17 +220,17 @@ where
         to_sequence_nr:   *to_sequence_nr,
         max:              *max,
       };
-      poll_replay_entry(&mut poll_context, cx, future, sender, persistence_id, request, retry_count)?
+      poll_replay_entry(&mut poll_context, cx, future, sender, persistence_id, request, retry_count)
     },
     | JournalInFlight::Delete { future, sender, persistence_id, to_sequence_nr, retry_count } => {
-      poll_delete_entry(&mut poll_context, cx, future, sender, persistence_id, *to_sequence_nr, retry_count)?
+      poll_delete_entry(&mut poll_context, cx, future, sender, persistence_id, *to_sequence_nr, retry_count)
     },
     | JournalInFlight::Highest { future, sender, persistence_id, retry_count } => {
-      poll_highest_entry(&mut poll_context, cx, future, sender, persistence_id, retry_count)?
+      poll_highest_entry(&mut poll_context, cx, future, sender, persistence_id, retry_count)
     },
   };
 
-  if keep_pending { Ok(Some(entry)) } else { Ok(None) }
+  if keep_pending { Some(entry) } else { None }
 }
 
 fn poll_write_entry<J: Journal>(
@@ -241,30 +241,26 @@ fn poll_write_entry<J: Journal>(
   sender: &mut ActorRef,
   instance_id: u32,
   retry_count: &mut u32,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::WriteFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(())) => {
-      send_write_success(sender, messages, instance_id)?;
-      Ok(false)
+      send_write_success(sender, messages, instance_id);
+      false
     },
     | Poll::Ready(Err(error)) => {
       retry_or_fail_write(poll_context, future, messages, sender, instance_id, retry_count, error)
     },
-    | Poll::Pending => Ok(true),
+    | Poll::Pending => true,
   }
 }
 
-fn send_write_success(sender: &mut ActorRef, messages: &[PersistentRepr], instance_id: u32) -> Result<(), ActorError> {
+fn send_write_success(sender: &mut ActorRef, messages: &[PersistentRepr], instance_id: u32) {
   for repr in messages.iter().cloned() {
-    sender
-      .try_tell(AnyMessage::new(JournalResponse::WriteMessageSuccess { repr, instance_id }))
-      .map_err(|error| ActorError::from_send_error(&error))?;
+    tell_response(sender, JournalResponse::WriteMessageSuccess { repr, instance_id });
   }
-  sender
-    .try_tell(AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id }))
-    .map_err(|error| ActorError::from_send_error(&error))
+  tell_response(sender, JournalResponse::WriteMessagesSuccessful { instance_id });
 }
 
 fn retry_or_fail_write<J: Journal>(
@@ -275,36 +271,27 @@ fn retry_or_fail_write<J: Journal>(
   instance_id: u32,
   retry_count: &mut u32,
   error: JournalError,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::WriteFuture<'a>: Send + 'static, {
   if *retry_count < poll_context.retry_max {
     *retry_count = retry_count.saturating_add(1);
     *future = Box::pin(poll_context.journal.write_messages(messages));
-    return Ok(true);
+    return true;
   }
-  send_write_failure(sender, messages, instance_id, error)?;
-  Ok(false)
+  send_write_failure(sender, messages, instance_id, error);
+  false
 }
 
-fn send_write_failure(
-  sender: &mut ActorRef,
-  messages: &[PersistentRepr],
-  instance_id: u32,
-  error: JournalError,
-) -> Result<(), ActorError> {
+fn send_write_failure(sender: &mut ActorRef, messages: &[PersistentRepr], instance_id: u32, error: JournalError) {
   for repr in messages.iter().cloned() {
-    sender
-      .try_tell(AnyMessage::new(JournalResponse::WriteMessageFailure { repr, cause: error.clone(), instance_id }))
-      .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+    tell_response(sender, JournalResponse::WriteMessageFailure { repr, cause: error.clone(), instance_id });
   }
-  sender
-    .try_tell(AnyMessage::new(JournalResponse::WriteMessagesFailed {
-      cause: error,
-      write_count: messages.len() as u64,
-      instance_id,
-    }))
-    .map_err(|send_error| ActorError::from_send_error(&send_error))
+  tell_response(sender, JournalResponse::WriteMessagesFailed {
+    cause: error,
+    write_count: messages.len() as u64,
+    instance_id,
+  });
 }
 
 fn poll_replay_entry<J: Journal>(
@@ -315,35 +302,31 @@ fn poll_replay_entry<J: Journal>(
   persistence_id: &str,
   request: JournalReplayRequest,
   retry_count: &mut u32,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::ReplayFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(messages)) => {
-      send_replay_success(sender, &messages)?;
-      Ok(false)
+      send_replay_success(sender, &messages);
+      false
     },
     | Poll::Ready(Err(error)) => {
       retry_or_fail_replay(poll_context, future, sender, persistence_id, request, retry_count, error)
     },
-    | Poll::Pending => Ok(true),
+    | Poll::Pending => true,
   }
 }
 
-fn send_replay_success(sender: &mut ActorRef, messages: &[PersistentRepr]) -> Result<(), ActorError> {
+fn send_replay_success(sender: &mut ActorRef, messages: &[PersistentRepr]) {
   let mut highest = 0;
   for repr in messages.iter().cloned() {
     highest = repr.sequence_nr();
     if repr.deleted() {
       continue;
     }
-    sender
-      .try_tell(AnyMessage::new(JournalResponse::ReplayedMessage { persistent_repr: repr }))
-      .map_err(|error| ActorError::from_send_error(&error))?;
+    tell_response(sender, JournalResponse::ReplayedMessage { persistent_repr: repr });
   }
-  sender
-    .try_tell(AnyMessage::new(JournalResponse::RecoverySuccess { highest_sequence_nr: highest }))
-    .map_err(|error| ActorError::from_send_error(&error))
+  tell_response(sender, JournalResponse::RecoverySuccess { highest_sequence_nr: highest });
 }
 
 fn retry_or_fail_replay<J: Journal>(
@@ -354,7 +337,7 @@ fn retry_or_fail_replay<J: Journal>(
   request: JournalReplayRequest,
   retry_count: &mut u32,
   error: JournalError,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::ReplayFuture<'a>: Send + 'static, {
   if *retry_count < poll_context.retry_max {
@@ -365,12 +348,10 @@ where
       request.to_sequence_nr,
       request.max,
     ));
-    return Ok(true);
+    return true;
   }
-  sender
-    .try_tell(AnyMessage::new(JournalResponse::ReplayMessagesFailure { cause: error }))
-    .map_err(|send_error| ActorError::from_send_error(&send_error))?;
-  Ok(false)
+  tell_response(sender, JournalResponse::ReplayMessagesFailure { cause: error });
+  false
 }
 
 fn poll_delete_entry<J: Journal>(
@@ -381,20 +362,18 @@ fn poll_delete_entry<J: Journal>(
   persistence_id: &str,
   to_sequence_nr: u64,
   retry_count: &mut u32,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::DeleteFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(())) => {
-      sender
-        .try_tell(AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr }))
-        .map_err(|error| ActorError::from_send_error(&error))?;
-      Ok(false)
+      tell_response(sender, JournalResponse::DeleteMessagesSuccess { to_sequence_nr });
+      false
     },
     | Poll::Ready(Err(error)) => {
       retry_or_fail_delete(poll_context, future, sender, persistence_id, to_sequence_nr, retry_count, error)
     },
-    | Poll::Pending => Ok(true),
+    | Poll::Pending => true,
   }
 }
 
@@ -406,18 +385,16 @@ fn retry_or_fail_delete<J: Journal>(
   to_sequence_nr: u64,
   retry_count: &mut u32,
   error: JournalError,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::DeleteFuture<'a>: Send + 'static, {
   if *retry_count < poll_context.retry_max {
     *retry_count = retry_count.saturating_add(1);
     *future = Box::pin(poll_context.journal.delete_messages_to(persistence_id, to_sequence_nr));
-    return Ok(true);
+    return true;
   }
-  sender
-    .try_tell(AnyMessage::new(JournalResponse::DeleteMessagesFailure { cause: error, to_sequence_nr }))
-    .map_err(|send_error| ActorError::from_send_error(&send_error))?;
-  Ok(false)
+  tell_response(sender, JournalResponse::DeleteMessagesFailure { cause: error, to_sequence_nr });
+  false
 }
 
 fn poll_highest_entry<J: Journal>(
@@ -427,23 +404,18 @@ fn poll_highest_entry<J: Journal>(
   sender: &mut ActorRef,
   persistence_id: &str,
   retry_count: &mut u32,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(sequence_nr)) => {
-      sender
-        .try_tell(AnyMessage::new(JournalResponse::HighestSequenceNr {
-          persistence_id: persistence_id.into(),
-          sequence_nr,
-        }))
-        .map_err(|error| ActorError::from_send_error(&error))?;
-      Ok(false)
+      tell_response(sender, JournalResponse::HighestSequenceNr { persistence_id: persistence_id.into(), sequence_nr });
+      false
     },
     | Poll::Ready(Err(error)) => {
       retry_or_fail_highest(poll_context, future, sender, persistence_id, retry_count, error)
     },
-    | Poll::Pending => Ok(true),
+    | Poll::Pending => true,
   }
 }
 
@@ -454,19 +426,22 @@ fn retry_or_fail_highest<J: Journal>(
   persistence_id: &str,
   retry_count: &mut u32,
   error: JournalError,
-) -> Result<bool, ActorError>
+) -> bool
 where
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static, {
   if *retry_count < poll_context.retry_max {
     *retry_count = retry_count.saturating_add(1);
     *future = Box::pin(poll_context.journal.highest_sequence_nr(persistence_id));
-    return Ok(true);
+    return true;
   }
-  sender
-    .try_tell(AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
-      persistence_id: persistence_id.into(),
-      cause:          error,
-    }))
-    .map_err(|send_error| ActorError::from_send_error(&send_error))?;
-  Ok(false)
+  tell_response(sender, JournalResponse::HighestSequenceNrFailure {
+    persistence_id: persistence_id.into(),
+    cause:          error,
+  });
+  false
+}
+
+fn tell_response(sender: &mut ActorRef, response: JournalResponse) {
+  // 返信先の閉鎖は要求元側の状態なので、journal actor 自身の失敗にはしない。
+  sender.tell(AnyMessage::new(response));
 }

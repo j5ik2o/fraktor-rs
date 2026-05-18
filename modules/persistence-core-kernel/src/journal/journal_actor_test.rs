@@ -629,3 +629,94 @@ fn journal_actor_replay_filters_deleted_messages() {
   assert_eq!(replayed, vec![1, 3]);
   assert_eq!(recovery_highest, Some(3));
 }
+
+#[test]
+fn journal_actor_success_responses_to_null_sender_do_not_fail() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = JournalActor::<InMemoryJournal>::new(InMemoryJournal::new());
+
+  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
+  let write = JournalMessage::WriteMessages {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    messages:       vec![repr],
+    sender:         ActorRef::null(),
+    instance_id:    7,
+  };
+  let any_message = AnyMessage::new(write);
+  actor.receive(&mut ctx, any_message.as_view()).expect("write receive failed");
+
+  let replay = JournalMessage::ReplayMessages {
+    persistence_id:   "pid-1".into(),
+    from_sequence_nr: 1,
+    to_sequence_nr:   1,
+    max:              10,
+    sender:           ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(replay);
+  actor.receive(&mut ctx, any_message.as_view()).expect("replay receive failed");
+
+  let delete = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    sender:         ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(delete);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete receive failed");
+
+  let highest = JournalMessage::GetHighestSequenceNr {
+    persistence_id:   "pid-1".into(),
+    from_sequence_nr: 0,
+    sender:           ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(highest);
+  actor.receive(&mut ctx, any_message.as_view()).expect("highest receive failed");
+}
+
+#[test]
+fn journal_actor_failure_responses_to_null_sender_do_not_fail() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
+  let write = JournalMessage::WriteMessages {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    messages:       vec![repr],
+    sender:         ActorRef::null(),
+    instance_id:    7,
+  };
+  let mut write_actor = JournalActor::<RetryJournal>::new_with_config(RetryJournal::new(1), JournalActorConfig::new(0));
+  let any_message = AnyMessage::new(write);
+  write_actor.receive(&mut ctx, any_message.as_view()).expect("write receive failed");
+
+  let mut actor =
+    JournalActor::<ScriptedJournal>::new_with_config(ScriptedJournal::new(1, 1, 1), JournalActorConfig::new(0));
+  let replay = JournalMessage::ReplayMessages {
+    persistence_id:   "pid-1".into(),
+    from_sequence_nr: 1,
+    to_sequence_nr:   1,
+    max:              10,
+    sender:           ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(replay);
+  actor.receive(&mut ctx, any_message.as_view()).expect("replay receive failed");
+
+  let delete = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 1,
+    sender:         ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(delete);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete receive failed");
+
+  let highest = JournalMessage::GetHighestSequenceNr {
+    persistence_id:   "pid-1".into(),
+    from_sequence_nr: 0,
+    sender:           ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(highest);
+  actor.receive(&mut ctx, any_message.as_view()).expect("highest receive failed");
+}

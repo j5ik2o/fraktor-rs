@@ -576,3 +576,81 @@ fn snapshot_actor_delete_many_failure_after_retry_exhausted() {
   assert!(matches!(response, SnapshotResponse::DeleteSnapshotsFailure { criteria, error }
       if criteria.max_sequence_nr() == u64::MAX && error == &SnapshotError::DeleteFailed("delete many failed".into())));
 }
+
+#[test]
+fn snapshot_actor_success_responses_to_null_sender_do_not_fail() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = SnapshotActor::<InMemorySnapshotStore>::new(InMemorySnapshotStore::new());
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10);
+
+  let save = SnapshotMessage::SaveSnapshot {
+    metadata: metadata.clone(),
+    snapshot: ArcShared::new(1_i32),
+    sender:   ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(save);
+  actor.receive(&mut ctx, any_message.as_view()).expect("save receive failed");
+
+  let load = SnapshotMessage::LoadSnapshot {
+    persistence_id: "pid-1".into(),
+    criteria:       SnapshotSelectionCriteria::latest(),
+    sender:         ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(load);
+  actor.receive(&mut ctx, any_message.as_view()).expect("load receive failed");
+
+  let delete_one = SnapshotMessage::DeleteSnapshot { metadata, sender: ActorRef::null() };
+  let any_message = AnyMessage::new(delete_one);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete one receive failed");
+
+  let delete_many = SnapshotMessage::DeleteSnapshots {
+    persistence_id: "pid-1".into(),
+    criteria:       SnapshotSelectionCriteria::latest(),
+    sender:         ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(delete_many);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete many receive failed");
+}
+
+#[test]
+fn snapshot_actor_failure_responses_to_null_sender_do_not_fail() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10);
+  let save = SnapshotMessage::SaveSnapshot {
+    metadata: metadata.clone(),
+    snapshot: ArcShared::new(1_i32),
+    sender:   ActorRef::null(),
+  };
+  let mut save_actor =
+    SnapshotActor::<RetrySnapshotStore>::new_with_config(RetrySnapshotStore::new(1), SnapshotActorConfig::new(0));
+  let any_message = AnyMessage::new(save);
+  save_actor.receive(&mut ctx, any_message.as_view()).expect("save receive failed");
+
+  let mut actor = SnapshotActor::<ScriptedSnapshotStore>::new_with_config(
+    ScriptedSnapshotStore::new(1, 1, 1),
+    SnapshotActorConfig::new(0),
+  );
+  let load = SnapshotMessage::LoadSnapshot {
+    persistence_id: "pid-1".into(),
+    criteria:       SnapshotSelectionCriteria::latest(),
+    sender:         ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(load);
+  actor.receive(&mut ctx, any_message.as_view()).expect("load receive failed");
+
+  let delete_one = SnapshotMessage::DeleteSnapshot { metadata, sender: ActorRef::null() };
+  let any_message = AnyMessage::new(delete_one);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete one receive failed");
+
+  let delete_many = SnapshotMessage::DeleteSnapshots {
+    persistence_id: "pid-1".into(),
+    criteria:       SnapshotSelectionCriteria::latest(),
+    sender:         ActorRef::null(),
+  };
+  let any_message = AnyMessage::new(delete_many);
+  actor.receive(&mut ctx, any_message.as_view()).expect("delete many receive failed");
+}
