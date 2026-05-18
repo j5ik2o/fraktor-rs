@@ -1350,9 +1350,10 @@ impl ActorCell {
     }
 
     if let Some(children) = self.mark_children_for_termination() {
-      if !children.is_empty() {
-        self.mailbox().suspend();
+      if children.is_empty() {
+        return Ok(());
       }
+      self.mailbox().suspend();
       let dispatcher = self.new_dispatcher_shared();
       dispatcher.run_with_drive_guard(|| {
         for child in &children {
