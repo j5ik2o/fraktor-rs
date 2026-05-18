@@ -620,7 +620,7 @@ async fn remote_transport_server_connection_close_emits_connection_lost_after_au
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn remote_transport_server_compression_control_sets_authority_for_connection_loss() {
+async fn remote_transport_server_compression_control_does_not_set_authority_for_connection_loss() {
   use tokio::{net::TcpStream, sync::mpsc};
 
   use crate::transport::tcp::TcpRemoteTransport;
@@ -662,15 +662,8 @@ async fn remote_transport_server_compression_control_sets_authority_for_connecti
   ));
 
   framed.close().await.expect("client close should be written");
-  let connection_lost = tokio::time::timeout(Duration::from_secs(5), event_rx.recv())
-    .await
-    .expect("connection-lost event should arrive")
-    .expect("connection-lost event should be present");
-  assert_connection_lost_event(
-    connection_lost,
-    TransportEndpoint::new(remote.to_string()),
-    TransportError::ConnectionClosed,
-  );
+  let connection_lost = tokio::time::timeout(Duration::from_millis(100), event_rx.recv()).await;
+  assert!(connection_lost.is_err(), "compression control frame must not set connection authority");
 
   transport.shutdown().expect("transport shutdown should succeed");
 }

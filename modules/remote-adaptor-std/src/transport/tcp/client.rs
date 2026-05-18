@@ -267,13 +267,11 @@ async fn run(
         | Some(Ok(decoded)) => {
           let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
             | Ok(InboundCompressionAction::Forward(frame)) => frame,
-            | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
-              authority = Some(frame_authority);
+            | Ok(InboundCompressionAction::Reply { pdu }) => {
               if framed.send(WireFrame::Control(pdu)).await.is_err() { break Some(TransportError::SendFailed); }
               continue;
             },
-            | Ok(InboundCompressionAction::Consumed { authority: frame_authority }) => {
-              authority = Some(frame_authority);
+            | Ok(InboundCompressionAction::Consumed) => {
               continue;
             },
             | Err(err) => {
