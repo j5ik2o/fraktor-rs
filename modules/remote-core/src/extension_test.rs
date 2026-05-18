@@ -46,6 +46,7 @@ struct RecordingTransport {
   start_result: Result<(), TransportError>,
   shutdown_result: Result<(), TransportError>,
   send_result: Result<(), TransportError>,
+  control_result: Result<(), TransportError>,
   running: bool,
   shutdown_calls: ArcShared<AtomicUsize>,
   send_calls: ArcShared<AtomicUsize>,
@@ -196,6 +197,7 @@ impl RecordingTransport {
       start_result: Ok(()),
       shutdown_result: Ok(()),
       send_result: Ok(()),
+      control_result: Ok(()),
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -216,6 +218,7 @@ impl RecordingTransport {
       start_result: Ok(()),
       shutdown_result,
       send_result: Ok(()),
+      control_result: Ok(()),
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -240,6 +243,7 @@ impl RecordingTransport {
       start_result,
       shutdown_result: Ok(()),
       send_result: Ok(()),
+      control_result: Ok(()),
       running: false,
       shutdown_calls,
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -260,6 +264,28 @@ impl RecordingTransport {
       start_result: Ok(()),
       shutdown_result: Ok(()),
       send_result,
+      control_result: Ok(()),
+      running: false,
+      shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
+      send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      ack_calls: ArcShared::new(AtomicUsize::new(0)),
+      ack_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+    }
+  }
+
+  fn with_control_result(addresses: Vec<Address>, control_result: Result<(), TransportError>) -> Self {
+    Self {
+      addresses,
+      start_result: Ok(()),
+      shutdown_result: Ok(()),
+      send_result: Ok(()),
+      control_result,
       running: false,
       shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
       send_calls: ArcShared::new(AtomicUsize::new(0)),
@@ -312,11 +338,13 @@ impl RemoteTransport for RecordingTransport {
     if !self.running {
       return Err(TransportError::NotStarted);
     }
-    if let Err(error) = self.send_result.clone() {
-      return Err(error);
+    match self.control_result.clone() {
+      | Ok(()) => {
+        self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
+        Ok(())
+      },
+      | Err(error) => Err(error),
     }
-    self.control_frames.with_lock(|frames| frames.push((remote.clone(), pdu)));
-    Ok(())
   }
 
   fn send_ack(&mut self, remote: &Address, pdu: AckPdu) -> Result<(), TransportError> {
@@ -1275,7 +1303,7 @@ fn inbound_heartbeat_control_send_failure_does_not_stop_remote() {
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");
   let transport =
-    RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
+    RecordingTransport::with_control_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
   let control_calls = transport.control_calls.clone();
   let control_frames = transport.control_frames.clone();
   let mut remote = remote_new(transport, config.clone(), event_publisher());
@@ -1811,7 +1839,8 @@ fn flush_request_send_backpressure_exposes_failed_outcome() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
-  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::Backpressure));
+  let transport =
+    RecordingTransport::with_control_result(vec![local_address.clone()], Err(TransportError::Backpressure));
   let control_calls = transport.control_calls.clone();
   let mut remote = remote_new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before starting flush");
@@ -1840,7 +1869,8 @@ fn remote_shared_start_flush_and_drain_outcomes_returns_immediate_failures() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(50));
-  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::Backpressure));
+  let transport =
+    RecordingTransport::with_control_result(vec![local_address.clone()], Err(TransportError::Backpressure));
   let mut remote = remote_new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before starting flush");
   remote.insert_association(active_association(local_address, remote_address, &config));
@@ -1898,7 +1928,8 @@ fn inbound_heartbeat_control_backpressure_keeps_event_loop_alive() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");
-  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::Backpressure));
+  let transport =
+    RecordingTransport::with_control_result(vec![local_address.clone()], Err(TransportError::Backpressure));
   let control_calls = transport.control_calls.clone();
   let mut remote = remote_new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before inbound control");
