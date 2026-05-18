@@ -128,7 +128,7 @@ impl<T> StreamRefSinkLogic<T> {
       return;
     }
     let endpoint_actor = StageActor::new(system, Box::new(StreamRefTargetNotInitializedReceive));
-    endpoint_actor.r#become(Box::new(SinkRefEndpointReceive::<T>::new(
+    endpoint_actor.r#become(Box::new(SourceRefEndpointReceive::<T>::new(
       self.handoff.clone(),
       system.clone(),
       endpoint_actor.actor_ref().clone(),
@@ -138,12 +138,12 @@ impl<T> StreamRefSinkLogic<T> {
   }
 }
 
-struct SinkRefEndpointReceive<T> {
+struct SourceRefEndpointReceive<T> {
   endpoint: StreamRefEndpointReceiveState<T>,
   system:   ActorSystem,
 }
 
-impl<T> SinkRefEndpointReceive<T>
+impl<T> SourceRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
@@ -216,7 +216,7 @@ where
   }
 }
 
-impl<T> StageActorReceive for SinkRefEndpointReceive<T>
+impl<T> StageActorReceive for SourceRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
@@ -272,6 +272,7 @@ where
   }
 
   fn on_error(&mut self, error: StreamError) {
+    self.terminal_queued = true;
     self.handoff.fail(error.clone());
     self.complete_materialized(Err(error));
   }

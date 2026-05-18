@@ -14,7 +14,7 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
-use super::{SinkRefEndpointReceive, StreamRefProtocol, StreamRefSinkLogic, StreamRefTargetNotInitializedReceive};
+use super::{SourceRefEndpointReceive, StreamRefProtocol, StreamRefSinkLogic, StreamRefTargetNotInitializedReceive};
 use crate::{
   DemandTracker, DynValue, SinkLogic, StreamError,
   r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff},
@@ -113,6 +113,20 @@ fn subscribed_sink_completes_materialized_completion() {
 }
 
 #[test]
+fn subscribed_sink_error_marks_terminal_and_preserves_error_completion() {
+  let handoff = StreamRefHandoff::<u32>::new();
+  handoff.subscribe();
+  let completion = StreamFuture::<StreamDone>::new();
+  let mut logic = StreamRefSinkLogic::subscribed(handoff, Some(completion.clone()));
+
+  logic.on_error(StreamError::Failed);
+  logic.on_complete().expect("late complete should stay idempotent");
+
+  assert!(logic.terminal_queued);
+  assert_eq!(completion.value(), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
 fn subscribed_sink_respects_configured_buffer_capacity() {
   let handoff = StreamRefHandoff::<u32>::new();
   handoff.subscribe();
@@ -158,7 +172,7 @@ fn endpoint_receive_handshake_pairs_partner_and_flushes_completion_on_demand() {
   let (partner, user_messages) = temp_recording_actor(&system);
   let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SinkRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
+  let mut receive = SourceRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
   let demand = NonZeroU64::new(1).expect("demand");
 
   receive
@@ -179,10 +193,10 @@ fn endpoint_receive_flushes_failure_and_rejects_control_protocols_on_demand() {
   let (partner, user_messages) = temp_recording_actor(&system);
   let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SinkRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
+  let mut receive = SourceRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
   let demand = NonZeroU64::new(1).expect("demand");
 
-  let helper_error = SinkRefEndpointReceive::<u32>::stream_error_from_context("boom");
+  let helper_error = SourceRefEndpointReceive::<u32>::stream_error_from_context("boom");
   assert!(matches!(helper_error, StreamError::FailedWithContext { .. }));
   receive
     .receive(StageActorEnvelope::new(partner.clone(), AnyMessage::new(StreamRefOnSubscribeHandshake::new(partner_key))))
@@ -195,7 +209,7 @@ fn endpoint_receive_flushes_failure_and_rejects_control_protocols_on_demand() {
   assert_eq!(*user_messages.lock(), 2);
 
   let invalid = StreamRefHandoff::<u32>::new();
-  let mut invalid_receive = SinkRefEndpointReceive::new(invalid.clone(), build_system(), ActorRef::null());
+  let mut invalid_receive = SourceRefEndpointReceive::new(invalid.clone(), build_system(), ActorRef::null());
   let invalid_partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
   invalid_receive
     .receive(StageActorEnvelope::new(
@@ -217,7 +231,7 @@ fn endpoint_receive_accepts_remote_failure_and_keeps_draining_terminal_notificat
   let (partner, _user_messages) = temp_recording_actor(&system);
   let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SinkRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
+  let mut receive = SourceRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
 
   receive
     .receive(StageActorEnvelope::new(partner.clone(), AnyMessage::new(StreamRefOnSubscribeHandshake::new(partner_key))))
@@ -242,7 +256,7 @@ fn endpoint_receive_accepts_remote_failure_and_keeps_draining_terminal_notificat
 #[test]
 fn endpoint_receive_rejects_control_protocol_messages_from_ready_flush() {
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SinkRefEndpointReceive::new(handoff, build_system(), ActorRef::null());
+  let mut receive = SourceRefEndpointReceive::new(handoff, build_system(), ActorRef::null());
 
   assert_eq!(receive.flush_protocol_messages(Vec::from([StreamRefProtocol::Ack])), Err(StreamError::Failed));
   assert_eq!(
@@ -256,7 +270,7 @@ fn endpoint_receive_rejects_unpaired_send_unknown_message_and_active_deathwatch(
   let system = build_system();
   let (partner, _user_messages) = temp_recording_actor(&system);
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SinkRefEndpointReceive::new(handoff, system, ActorRef::null());
+  let mut receive = SourceRefEndpointReceive::new(handoff, system, ActorRef::null());
   let demand = NonZeroU64::new(1).expect("demand");
 
   assert_eq!(
@@ -287,7 +301,7 @@ fn endpoint_receive_ignores_deathwatch_after_terminal_handoff() {
   let (partner, _user_messages) = temp_recording_actor(&system);
   let handoff = StreamRefHandoff::<u32>::new();
   handoff.close_for_cancel();
-  let mut receive = SinkRefEndpointReceive::new(handoff, system, ActorRef::null());
+  let mut receive = SourceRefEndpointReceive::new(handoff, system, ActorRef::null());
 
   assert_eq!(
     receive.receive(StageActorEnvelope::new(

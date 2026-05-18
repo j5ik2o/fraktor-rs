@@ -86,7 +86,7 @@ impl<T> StreamRefSourceLogic<T> {
       return;
     }
     let endpoint_actor = StageActor::new(system, Box::new(StreamRefTargetNotInitializedReceive));
-    endpoint_actor.r#become(Box::new(SourceRefEndpointReceive::<T>::new(
+    endpoint_actor.r#become(Box::new(SinkRefEndpointReceive::<T>::new(
       self.handoff.clone(),
       system.clone(),
       endpoint_actor.actor_ref().clone(),
@@ -110,12 +110,12 @@ impl<T> StreamRefSourceLogic<T> {
   }
 }
 
-struct SourceRefEndpointReceive<T> {
+struct SinkRefEndpointReceive<T> {
   endpoint: StreamRefEndpointReceiveState<T>,
   system:   ActorSystem,
 }
 
-impl<T> SourceRefEndpointReceive<T>
+impl<T> SinkRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
@@ -153,7 +153,7 @@ where
   }
 }
 
-impl<T> StageActorReceive for SourceRefEndpointReceive<T>
+impl<T> StageActorReceive for SinkRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {

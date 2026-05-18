@@ -14,7 +14,7 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
-use super::{SourceRefEndpointReceive, StreamRefSourceLogic, StreamRefTargetNotInitializedReceive};
+use super::{SinkRefEndpointReceive, StreamRefSourceLogic, StreamRefTargetNotInitializedReceive};
 use crate::{
   SourceLogic, StreamError,
   r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff},
@@ -25,7 +25,7 @@ use crate::{
   },
 };
 
-impl<T> SourceRefEndpointReceive<T>
+impl<T> SinkRefEndpointReceive<T>
 where
   T: Send + Sync + 'static,
 {
@@ -214,7 +214,7 @@ fn endpoint_receive_handshake_pairs_partner_and_accepts_terminal_messages() {
   let (partner, user_messages) = temp_recording_actor(&system);
   let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SourceRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
+  let mut receive = SinkRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
 
   receive
     .receive(StageActorEnvelope::new(partner.clone(), AnyMessage::new(StreamRefOnSubscribeHandshake::new(partner_key))))
@@ -228,7 +228,7 @@ fn endpoint_receive_handshake_pairs_partner_and_accepts_terminal_messages() {
   assert_eq!(handoff.poll_or_drain(), Ok(None));
 
   let failed = StreamRefHandoff::<u32>::new();
-  let mut failed_receive = SourceRefEndpointReceive::new(failed.clone(), build_system(), ActorRef::null());
+  let mut failed_receive = SinkRefEndpointReceive::new(failed.clone(), build_system(), ActorRef::null());
   let failed_partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
   failed_receive
     .receive(StageActorEnvelope::new(
@@ -248,10 +248,10 @@ fn endpoint_receive_reports_payload_deserialization_error() {
   let (partner, _user_messages) = temp_recording_actor(&system);
   let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SourceRefEndpointReceive::new(handoff, system, ActorRef::null());
+  let mut receive = SinkRefEndpointReceive::new(handoff, system, ActorRef::null());
   let payload = SerializedMessage::new(SerializerId::from_raw(9_999), None, vec![1, 2, 3]);
 
-  let helper_error = SourceRefEndpointReceive::<u32>::stream_error_from_context("boom");
+  let helper_error = SinkRefEndpointReceive::<u32>::stream_error_from_context("boom");
   assert!(matches!(helper_error, StreamError::FailedWithContext { .. }));
   receive
     .receive(StageActorEnvelope::new(partner.clone(), AnyMessage::new(StreamRefOnSubscribeHandshake::new(partner_key))))
@@ -269,7 +269,7 @@ fn endpoint_receive_rejects_unpaired_send_invalid_sender_unknown_message_and_act
   let (partner, _user_messages) = temp_recording_actor(&system);
   let (other, _other_messages) = temp_recording_actor(&system);
   let handoff = StreamRefHandoff::<u32>::new();
-  let mut receive = SourceRefEndpointReceive::new(handoff, system, ActorRef::null());
+  let mut receive = SinkRefEndpointReceive::new(handoff, system, ActorRef::null());
 
   assert_eq!(
     receive.send_to_partner(StreamRefRemoteStreamCompleted::new(0)),
@@ -304,7 +304,7 @@ fn endpoint_receive_ignores_deathwatch_after_terminal_handoff() {
   let (partner, _user_messages) = temp_recording_actor(&system);
   let handoff = StreamRefHandoff::<u32>::new();
   handoff.close_for_cancel();
-  let mut receive = SourceRefEndpointReceive::new(handoff, system, ActorRef::null());
+  let mut receive = SinkRefEndpointReceive::new(handoff, system, ActorRef::null());
 
   assert_eq!(
     receive.receive(StageActorEnvelope::new(
