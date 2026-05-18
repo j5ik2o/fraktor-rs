@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 
-use crate::{PersistenceEffectorSignal, persistence_effector_signal::PersistenceEffectorSignalAuth};
+use crate::{PersistenceEffectorSignal, persistence_effector_signal_auth::PersistenceEffectorSignalAuth};
 
 #[derive(Clone, Debug)]
 pub(crate) enum PersistenceStoreReply<S, E> {

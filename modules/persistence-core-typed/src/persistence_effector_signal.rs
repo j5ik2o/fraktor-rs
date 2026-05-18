@@ -4,8 +4,7 @@ use alloc::vec::Vec;
 
 use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PersistenceEffectorSignalAuth(());
+use crate::persistence_effector_signal_auth::PersistenceEffectorSignalAuth;
 
 /// Stable signal delivered to the aggregate actor through its private message type.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,11 +50,4 @@ pub enum PersistenceEffectorSignal<S, E> {
     /// Persistence kernel error.
     error: PersistenceError,
   },
-}
-
-impl PersistenceEffectorSignalAuth {
-  #[must_use]
-  pub(crate) const fn new() -> Self {
-    Self(())
-  }
 }
