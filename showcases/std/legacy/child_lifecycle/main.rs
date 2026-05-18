@@ -12,15 +12,19 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
+  actor::{
     error::ActorError,
     setup::ActorSystemConfig,
     supervision::{RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
-  typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal},
+  event::logging::LogLevel,
 };
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal,
+};
+use fraktor_showcases_std::subscribe_typed_tracing_logger;
 
 // --- メッセージ定義 ---
 
@@ -39,19 +43,24 @@ enum ChildCommand {
 // crashes_remaining を Arc<AtomicU32> で共有し、リスタートを跨いでカウントを維持する
 
 fn fussy_worker(crashes_remaining: Arc<AtomicU32>) -> Behavior<ChildCommand> {
-  Behaviors::receive_message(move |_ctx, message: &ChildCommand| match message {
+  Behaviors::receive_message(move |ctx, message: &ChildCommand| match message {
     | ChildCommand::Work => {
-      println!("  [child] 正常に処理しました");
+      ctx.system().emit_log(LogLevel::Info, "[child] processed work", Some(ctx.pid()), None);
       Ok(Behaviors::same())
     },
     | ChildCommand::Crash => {
       let remaining = crashes_remaining.load(Ordering::Acquire);
       if remaining > 0 {
         crashes_remaining.fetch_sub(1, Ordering::Release);
-        println!("  [child] クラッシュします (残り {} 回)", remaining - 1);
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          format!("[child] crashing, remaining restarts: {}", remaining - 1),
+          Some(ctx.pid()),
+          None,
+        );
         Err(ActorError::recoverable("simulated crash"))
       } else {
-        println!("  [child] クラッシュ回数を超過、正常処理に切り替え");
+        ctx.system().emit_log(LogLevel::Info, "[child] switching back to normal work", Some(ctx.pid()), None);
         Ok(Behaviors::same())
       }
     },
@@ -81,9 +90,9 @@ fn parent() -> Behavior<ParentCommand> {
       .expect("spawn child");
     let child_ref = child.actor_ref();
 
-    Behaviors::receive_message(move |_ctx, message: &ParentCommand| match message {
+    Behaviors::receive_message(move |ctx, message: &ParentCommand| match message {
       | ParentCommand::Start => {
-        println!("[parent] 子アクターにクラッシュを指示します");
+        ctx.system().emit_log(LogLevel::Info, "[parent] sending crash commands to child", Some(ctx.pid()), None);
         let mut child = child_ref.clone();
         child.tell(ChildCommand::Crash);
         child.tell(ChildCommand::Crash);
@@ -91,16 +100,26 @@ fn parent() -> Behavior<ParentCommand> {
         Ok(Behaviors::same())
       },
     })
-    .receive_signal(|_ctx, signal| {
+    .receive_signal(|ctx, signal| {
       match signal {
         | BehaviorSignal::Terminated(terminated) => {
-          println!("[parent] 子アクター {:?} の停止を検知 (Terminated)", terminated.pid());
+          ctx.system().emit_log(
+            LogLevel::Info,
+            format!("[parent] observed child termination: {:?}", terminated.pid()),
+            Some(ctx.pid()),
+            None,
+          );
         },
         | BehaviorSignal::ChildFailed(child_failed) => {
-          println!("[parent] 子アクター {:?} が失敗: {:?}", child_failed.pid(), child_failed.error());
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            format!("[parent] child failed: {:?}: {:?}", child_failed.pid(), child_failed.error()),
+            Some(ctx.pid()),
+            None,
+          );
         },
         | BehaviorSignal::PreRestart => {
-          println!("[parent] PreRestart シグナル受信");
+          ctx.system().emit_log(LogLevel::Info, "[parent] received PreRestart", Some(ctx.pid()), None);
         },
         | _ => {},
       }
@@ -113,13 +132,12 @@ fn parent() -> Behavior<ParentCommand> {
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   use std::thread;
 
-  let props = TypedProps::from_behavior_factory(parent);
-  let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+  let system = TypedActorSystem::create_from_behavior_factory(parent, ActorSystemConfig::new(StdTickDriver::default()))
+    .expect("system");
+  let _log_subscription = subscribe_typed_tracing_logger(&system);
   let termination = system.when_terminated();
 
   // 親アクターにメッセージを送信して子ライフサイクルのデモを開始
@@ -127,6 +145,7 @@ fn main() {
 
   // supervision と再起動が行われる時間を待つ
   thread::sleep(std::time::Duration::from_millis(300));
+  println!("child_lifecycle completed supervised child restart flow");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

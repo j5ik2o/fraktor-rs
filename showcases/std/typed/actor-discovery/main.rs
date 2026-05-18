@@ -1,21 +1,17 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{
-    TypedActorSystem, TypedProps,
-    dsl::Behaviors,
-    receptionist::{Listing, Receptionist, ServiceKey},
-  },
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{
+  TypedActorSystem, TypedProps,
+  dsl::Behaviors,
+  receptionist::{Listing, Receptionist, ServiceKey},
 };
 
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let system = TypedActorSystem::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+  let system = TypedActorSystem::create_from_props(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
     .expect("system");
   let termination = system.when_terminated();
   let key = ServiceKey::<u32>::new("typed-discovery-example");
@@ -29,14 +25,15 @@ fn main() {
   let listing = wait_for_listing(&mut receptionist_ref, &key);
   let instances = listing.service_instances(&key).expect("matching key");
   assert!(instances.contains(&service_ref));
+  println!("typed_actor_discovery found {} service instance(s)", instances.len());
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());
 }
 
 fn wait_for_listing(
-  receptionist_ref: &mut fraktor_actor_core_rs::core::typed::TypedActorRef<
-    fraktor_actor_core_rs::core::typed::receptionist::ReceptionistCommand,
+  receptionist_ref: &mut fraktor_actor_core_typed_rs::TypedActorRef<
+    fraktor_actor_core_typed_rs::receptionist::ReceptionistCommand,
   >,
   key: &ServiceKey<u32>,
 ) -> Listing {

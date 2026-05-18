@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use fraktor_cluster_core_rs::core::identity::{ClusterIdentity, ClusterIdentityError};
+use fraktor_cluster_core_rs::identity::{ClusterIdentity, ClusterIdentityError};
 
 #[test]
 fn new_rejects_empty_kind() {

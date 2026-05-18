@@ -72,3 +72,15 @@ Cargo.lock
 /.codex*/logs*
 /.codex*/plugins/
 /.codex*/skills/
+/.codex*/.codex-global-state.json*
+/.codex*/computer-use/
+/.codex*/sqlite/
+/.codex*/vendor_imports/
+/.codex*/ambient-suggestions/
+/.codex*/archived_sessions/
+/.codex*/memories/
+/.codex*/AGENTS.md
+/.codex*/session_index.jsonl
+/.codex-corporate/config.toml
+/.codex-personal/config.toml
+

@@ -1,10 +1,8 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::thread;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::{ActorError, ActorErrorReason},
@@ -14,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 struct Start;
 struct Crash;
@@ -81,7 +79,7 @@ fn main() {
     move || GuardianActor { events: events.clone() }
   });
   let system =
-    ActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    ActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
@@ -89,6 +87,7 @@ fn main() {
   let snapshot = events.with_lock(|events| events.clone());
   assert!(snapshot.contains(&"pre-restart"));
   assert!(snapshot.contains(&"post-restart"));
+  println!("kernel_fault_tolerance observed events: {snapshot:?}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

@@ -11,11 +11,10 @@
 
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors},
-};
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, event::logging::LogLevel};
+use fraktor_actor_core_typed_rs::{Behavior, TypedActorRef, TypedActorSystem, dsl::Behaviors};
+use fraktor_showcases_std::subscribe_typed_tracing_logger;
 
 // =============================================================================
 // パート 1: カウンターアクター（イミュータブルな状態遷移）
@@ -54,13 +53,13 @@ enum GateCommand {
 }
 
 fn locked(pass_count: u32) -> Behavior<GateCommand> {
-  Behaviors::receive_message(move |_ctx, message| match message {
+  Behaviors::receive_message(move |ctx, message| match message {
     | GateCommand::InsertCoin => {
-      println!("locked -> unlocked");
+      ctx.system().emit_log(LogLevel::Info, "locked -> unlocked", Some(ctx.pid()), None);
       Ok(unlocked(pass_count))
     },
     | GateCommand::PassThrough => {
-      println!("locked: PassThrough ignored");
+      ctx.system().emit_log(LogLevel::Info, "locked: PassThrough ignored", Some(ctx.pid()), None);
       Ok(Behaviors::ignore())
     },
     | GateCommand::ReadPassCount { reply_to } => {
@@ -73,14 +72,14 @@ fn locked(pass_count: u32) -> Behavior<GateCommand> {
 }
 
 fn unlocked(pass_count: u32) -> Behavior<GateCommand> {
-  Behaviors::receive_message(move |_ctx, message| match message {
+  Behaviors::receive_message(move |ctx, message| match message {
     | GateCommand::PassThrough => {
       let next_total = pass_count + 1;
-      println!("unlocked -> locked (total {next_total})");
+      ctx.system().emit_log(LogLevel::Info, format!("unlocked -> locked (total {next_total})"), Some(ctx.pid()), None);
       Ok(locked(next_total))
     },
     | GateCommand::InsertCoin => {
-      println!("unlocked: extra InsertCoin ignored");
+      ctx.system().emit_log(LogLevel::Info, "unlocked: extra InsertCoin ignored", Some(ctx.pid()), None);
       Ok(Behaviors::ignore())
     },
     | GateCommand::ReadPassCount { reply_to } => {
@@ -94,7 +93,6 @@ fn unlocked(pass_count: u32) -> Behavior<GateCommand> {
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   println!("=== Part 1: Counter ===");
   run_counter();
@@ -107,9 +105,9 @@ fn main() {
 fn run_counter() {
   use std::{thread, time::Instant};
 
-  let props = TypedProps::from_behavior_factory(|| counter(0));
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(|| counter(0), ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
   let mut counter_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
@@ -140,9 +138,10 @@ fn run_counter() {
 fn run_gate() {
   use std::{thread, time::Instant};
 
-  let props = TypedProps::from_behavior_factory(|| locked(0));
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_behavior_factory(|| locked(0), ActorSystemConfig::new(StdTickDriver::default()))
+      .expect("system");
+  let _log_subscription = subscribe_typed_tracing_logger(&system);
   let mut gate = system.user_guardian_ref();
   let termination = system.when_terminated();
 

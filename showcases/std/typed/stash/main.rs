@@ -1,15 +1,11 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::{thread, time::Instant};
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::{
-  kernel::actor::setup::ActorSystemConfig,
-  typed::{
-    Behavior, TypedActorRef, TypedActorSystem, TypedProps,
-    dsl::{Behaviors, StashBuffer},
-  },
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::actor::setup::ActorSystemConfig;
+use fraktor_actor_core_typed_rs::{
+  Behavior, TypedActorRef, TypedActorSystem, TypedProps,
+  dsl::{Behaviors, StashBuffer},
 };
 
 #[derive(Clone)]
@@ -60,14 +56,16 @@ fn open(total: i32) -> Behavior<Command> {
 fn main() {
   let props = TypedProps::from_behavior_factory(|| buffering(0)).with_stash_mailbox();
   let system =
-    TypedActorSystem::create_with_config(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
+    TypedActorSystem::create_from_props(&props, ActorSystemConfig::new(StdTickDriver::default())).expect("system");
   let termination = system.when_terminated();
   let mut actor = system.user_guardian_ref();
 
   actor.tell(Command::Buffer(5));
   actor.tell(Command::Buffer(3));
   actor.tell(Command::Open);
-  assert_eq!(read_total(&mut actor), 208);
+  let total = read_total(&mut actor);
+  assert_eq!(total, 208);
+  println!("typed_stash unstashed total: {total}");
 
   system.terminate().expect("terminate");
   termination.wait_blocking(&StdBlocker::new());

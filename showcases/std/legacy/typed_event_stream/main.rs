@@ -1,26 +1,22 @@
-#![cfg(not(target_os = "none"))]
-
 use core::time::Duration;
 use std::vec::Vec;
 
-use fraktor_actor_adaptor_std_rs::std::tick_driver::StdTickDriver;
-use fraktor_actor_core_rs::core::{
-  kernel::{
-    actor::{
-      Pid,
-      actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-      error::SendError,
-      messaging::AnyMessage,
-      setup::ActorSystemConfig,
-    },
-    event::{
-      logging::{LogEvent, LogLevel},
-      stream::EventStreamEvent,
-    },
+use fraktor_actor_adaptor_std_rs::tick_driver::StdTickDriver;
+use fraktor_actor_core_kernel_rs::{
+  actor::{
+    Pid,
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+    error::SendError,
+    messaging::AnyMessage,
+    setup::ActorSystemConfig,
   },
-  typed::{TypedActorSystem, TypedProps, dsl::Behaviors, eventstream::EventStreamCommand},
+  event::{
+    logging::{LogEvent, LogLevel},
+    stream::EventStreamEvent,
+  },
 };
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
+use fraktor_actor_core_typed_rs::{TypedActorSystem, TypedProps, dsl::Behaviors, eventstream::EventStreamCommand};
+use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 
 struct CollectorSender {
   events: SharedLock<Vec<EventStreamEvent>>,
@@ -45,7 +41,7 @@ impl ActorRefSender for CollectorSender {
 fn main() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system =
-    TypedActorSystem::<u32>::create_with_config(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
+    TypedActorSystem::<u32>::create_from_props(&guardian_props, ActorSystemConfig::new(StdTickDriver::default()))
       .expect("system");
 
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
@@ -112,6 +108,7 @@ fn main() {
     .expect("system actor");
   assert_eq!(system_actor.path().expect("system actor path").to_string(), "/system/typed-event-stream-example");
   assert!(system.print_tree().contains("typed-event-stream-example"));
+  println!("typed_event_stream collected {} event(s)", events.with_lock(|events| events.len()));
 
   system.terminate().expect("terminate");
 }

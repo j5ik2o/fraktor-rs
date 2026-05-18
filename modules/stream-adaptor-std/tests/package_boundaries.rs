@@ -1,6 +1,6 @@
 use core::any::TypeId;
 
-use fraktor_stream_adaptor_std_rs::std::{
+use fraktor_stream_adaptor_std_rs::{
   io::{FileIO, SourceFactory, StreamConverters},
   materializer::{SystemMaterializer, SystemMaterializerId},
 };
