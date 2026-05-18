@@ -890,7 +890,7 @@ fn inbound_heartbeat_control_sends_response_to_remote_peer() {
 }
 
 #[test]
-fn inbound_shutdown_control_quarantines_matching_association() {
+fn inbound_shutdown_control_gates_and_restarts_matching_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");
@@ -926,11 +926,11 @@ fn inbound_shutdown_control_quarantines_matching_association() {
       envelope:  Box::new(envelope),
       now_ms:    81,
     })
-    .expect("quarantined association should discard outbound");
+    .expect("gated association should restart before outbound is sent");
 
   assert_eq!(send_calls.load(Ordering::Relaxed), 0);
-  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
-  assert_eq!(timeout_calls.load(Ordering::Relaxed), 0);
+  assert!(handshake_calls.load(Ordering::Relaxed) >= 1);
+  assert!(timeout_calls.load(Ordering::Relaxed) >= 1);
 }
 
 #[test]

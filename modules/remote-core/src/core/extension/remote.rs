@@ -502,9 +502,10 @@ impl Remote {
       return Ok(());
     };
     self.associations[index].record_handshake_activity(now_ms);
-    let reason = QuarantineReason::new("remote shutdown");
-    let effects = self.associations[index].quarantine(reason, now_ms, self.instrument.as_mut());
-    self.apply_association_effects(index, effects, now_ms)
+    let gate_effects = self.associations[index].gate(None, now_ms);
+    self.apply_association_effects(index, gate_effects, now_ms)?;
+    let recover_effects = self.associations[index].recover(None, now_ms, self.instrument.as_mut());
+    self.apply_association_effects(index, recover_effects, now_ms)
   }
 
   fn apply_association_effects(
