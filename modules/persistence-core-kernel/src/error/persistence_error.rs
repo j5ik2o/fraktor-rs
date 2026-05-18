@@ -22,6 +22,11 @@ pub enum PersistenceError {
   StateMachine(String),
   /// Message passing failed.
   MessagePassing(String),
+  /// At-least-once delivery exceeded the configured unconfirmed message limit.
+  MaxUnconfirmedMessagesExceeded {
+    /// Configured maximum number of unconfirmed messages.
+    max_unconfirmed: usize,
+  },
 }
 
 impl Display for PersistenceError {
@@ -32,6 +37,9 @@ impl Display for PersistenceError {
       | PersistenceError::Recovery(reason) => write!(formatter, "recovery error: {}", reason),
       | PersistenceError::StateMachine(reason) => write!(formatter, "state machine error: {}", reason),
       | PersistenceError::MessagePassing(reason) => write!(formatter, "message passing error: {}", reason),
+      | PersistenceError::MaxUnconfirmedMessagesExceeded { max_unconfirmed } => {
+        write!(formatter, "max unconfirmed messages exceeded: limit {}", max_unconfirmed)
+      },
     }
   }
 }

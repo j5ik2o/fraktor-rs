@@ -36,3 +36,10 @@ fn persistence_error_display_message_passing() {
 
   assert_eq!(error.to_string(), "message passing error: sender missing");
 }
+
+#[test]
+fn persistence_error_display_max_unconfirmed_messages_exceeded() {
+  let error = PersistenceError::MaxUnconfirmedMessagesExceeded { max_unconfirmed: 3 };
+
+  assert_eq!(error.to_string(), "max unconfirmed messages exceeded: limit 3");
+}

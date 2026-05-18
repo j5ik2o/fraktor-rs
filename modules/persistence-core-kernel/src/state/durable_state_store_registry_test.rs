@@ -14,6 +14,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::state::{
   DurableStateError, DurableStateStore, DurableStateStoreProvider, DurableStateStoreRegistry, DurableStateUpdateStore,
+  GetObjectResult,
 };
 
 const TEST_PROVIDER_ID: &str = "in-memory";
@@ -24,29 +25,37 @@ type DurableStateFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, DurableSt
 
 #[derive(Default)]
 struct TestDurableStateStore {
-  objects: BTreeMap<String, i32>,
-  updates: BTreeMap<String, Vec<i32>>,
+  objects:   BTreeMap<String, i32>,
+  revisions: BTreeMap<String, u64>,
+  updates:   BTreeMap<String, Vec<i32>>,
 }
 
 impl TestDurableStateStore {
   const fn new() -> Self {
-    Self { objects: BTreeMap::new(), updates: BTreeMap::new() }
+    Self { objects: BTreeMap::new(), revisions: BTreeMap::new(), updates: BTreeMap::new() }
   }
 }
 
 impl DurableStateStore<i32> for TestDurableStateStore {
-  fn get_object<'a>(&'a self, persistence_id: &'a str) -> DurableStateFuture<'a, Option<i32>> {
-    Box::pin(ready(Ok(self.objects.get(persistence_id).copied())))
+  fn get_object<'a>(&'a self, persistence_id: &'a str) -> DurableStateFuture<'a, GetObjectResult<i32>> {
+    let result = self.objects.get(persistence_id).copied().map_or_else(GetObjectResult::empty, |value| {
+      let revision = *self.revisions.get(persistence_id).expect("revision must exist when object exists");
+      GetObjectResult::new(Some(value), revision)
+    });
+    Box::pin(ready(Ok(result)))
   }
 
   fn upsert_object<'a>(&'a mut self, persistence_id: &'a str, object: i32) -> DurableStateFuture<'a, ()> {
     self.objects.insert(persistence_id.to_string(), object);
+    let revision = self.revisions.get(persistence_id).copied().unwrap_or(0).saturating_add(1);
+    self.revisions.insert(persistence_id.to_string(), revision);
     self.updates.entry(persistence_id.to_string()).or_default().push(object);
     Box::pin(ready(Ok(())))
   }
 
   fn delete_object<'a>(&'a mut self, persistence_id: &'a str) -> DurableStateFuture<'a, ()> {
     self.objects.remove(persistence_id);
+    self.revisions.remove(persistence_id);
     Box::pin(ready(Ok(())))
   }
 }
@@ -101,11 +110,13 @@ fn register_and_resolve_provider_for_crud_operations() {
 
   poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 42)).expect("upsert durable state");
   let loaded = poll_ready(store.get_object(TEST_PERSISTENCE_ID)).expect("get durable state");
-  assert_eq!(loaded, Some(42));
+  assert_eq!(loaded.value(), Some(&42));
+  assert_eq!(loaded.revision(), 1);
 
   poll_ready(store.delete_object(TEST_PERSISTENCE_ID)).expect("delete durable state");
   let loaded_after_delete = poll_ready(store.get_object(TEST_PERSISTENCE_ID)).expect("get durable state after delete");
-  assert_eq!(loaded_after_delete, None);
+  assert!(loaded_after_delete.is_empty());
+  assert_eq!(loaded_after_delete.revision(), 0);
 }
 
 #[test]

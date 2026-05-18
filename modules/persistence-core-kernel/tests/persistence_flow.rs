@@ -176,12 +176,12 @@ fn recovery_flow_snapshot_then_replay() {
   let repr1 = PersistentRepr::new("pid-1", 2, ArcShared::new(Event::Incremented(6)));
   let repr2 = PersistentRepr::new("pid-1", 3, ArcShared::new(Event::Incremented(2)));
   let repr3 = PersistentRepr::new("pid-1", 4, ArcShared::new(Event::Incremented(3)));
-  let _ = drive_ready(journal.write_messages(&[repr0, repr1, repr2, repr3]));
+  drive_ready(journal.write_messages(&[repr0, repr1, repr2, repr3])).expect("seed journal");
 
   let mut snapshot_store = InMemorySnapshotStore::new();
   let snapshot_metadata = SnapshotMetadata::new("pid-1", 2, 0);
   let snapshot_payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(10_i32);
-  let _ = drive_ready(snapshot_store.save_snapshot(snapshot_metadata, snapshot_payload));
+  drive_ready(snapshot_store.save_snapshot(snapshot_metadata, snapshot_payload)).expect("seed snapshot");
 
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);

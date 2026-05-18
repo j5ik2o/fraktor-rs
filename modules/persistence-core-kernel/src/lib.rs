@@ -57,6 +57,7 @@
 
 extern crate alloc;
 
+pub mod config;
 pub mod delivery;
 pub mod error;
 pub mod extension;

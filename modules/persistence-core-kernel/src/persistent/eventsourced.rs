@@ -12,7 +12,7 @@ use crate::{
   error::PersistenceError,
   journal::JournalError,
   persistent::{PersistentRepr, Recovery, RecoveryTimedOut},
-  snapshot::{Snapshot, SnapshotError, SnapshotMetadata, SnapshotSelectionCriteria},
+  snapshot::{Snapshot, SnapshotError, SnapshotMetadata, SnapshotOffer, SnapshotSelectionCriteria},
 };
 
 /// Event-sourced actor interface.
@@ -36,6 +36,11 @@ pub trait Eventsourced: Send {
 
   /// Handles loaded snapshot during recovery.
   fn receive_snapshot(&mut self, snapshot: &Snapshot);
+
+  /// Handles a loaded snapshot offer during recovery.
+  fn receive_snapshot_offer(&mut self, offer: &SnapshotOffer) {
+    self.receive_snapshot(offer.snapshot());
+  }
 
   /// Handles incoming commands.
   ///

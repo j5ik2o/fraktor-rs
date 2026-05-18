@@ -24,6 +24,16 @@ fn durable_state_error_display_delete_object_failed() {
 }
 
 #[test]
+fn durable_state_error_display_delete_revision() {
+  let error = DurableStateError::delete_revision("pid-1", 3, 2);
+
+  assert_eq!(
+    error.to_string(),
+    "delete durable state object failed for 'pid-1': expected revision 3, actual revision 2"
+  );
+}
+
+#[test]
 fn durable_state_error_display_changes_failed() {
   let error = DurableStateError::ChangesFailed("stream closed".into());
 

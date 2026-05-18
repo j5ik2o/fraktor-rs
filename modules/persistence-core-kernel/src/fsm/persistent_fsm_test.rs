@@ -88,7 +88,7 @@ impl TestPersistentFsmActor {
 
   fn new_with_refs(journal: ActorRef, snapshot: ActorRef) -> Self {
     let mut actor = Self::new();
-    let _ = actor.context.bind_actor_refs(journal, snapshot);
+    actor.context.bind_actor_refs(journal, snapshot).expect("bind actor refs");
     actor
   }
 }
