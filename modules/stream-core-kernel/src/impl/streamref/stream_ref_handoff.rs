@@ -322,11 +322,14 @@ impl<T> StreamRefHandoff<T> {
 
   pub(crate) fn record_cumulative_demand_from(&self, seq_nr: u64, demand: NonZeroU64) -> Result<(), StreamError> {
     let mut guard = self.inner.lock();
-    if seq_nr < guard.next_in_seq_nr {
-      return Ok(());
+    if seq_nr > guard.next_in_seq_nr {
+      StreamRefProtocol::validate_sequence(guard.next_in_seq_nr, seq_nr)?;
     }
-    StreamRefProtocol::validate_sequence(guard.next_in_seq_nr, seq_nr)?;
-    guard.pending_demand = guard.pending_demand.saturating_add(demand.get());
+    let requested_until = seq_nr.saturating_add(demand.get());
+    let current_until = guard.next_in_seq_nr.saturating_add(guard.pending_demand);
+    if requested_until > current_until {
+      guard.pending_demand = requested_until.saturating_sub(guard.next_in_seq_nr);
+    }
     Ok(())
   }
 
