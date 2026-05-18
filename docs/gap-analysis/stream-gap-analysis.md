@@ -1,6 +1,6 @@
 # stream モジュール ギャップ分析
 
-更新日: 2026-05-17 (18th edition / StreamRef remote failure integration 反映)
+更新日: 2026-05-18 (19th edition / StreamRef post-merge current-tree 再確認)
 
 ## 比較スコープ定義
 
@@ -35,6 +35,7 @@
 |------|----------|
 | core crate | `modules/stream-core-kernel/src/lib.rs` が stream core modules を公開し、`#![cfg_attr(not(test), no_std)]` と `#![deny(cfg_std_forbid)]` を持つ |
 | core root | `modules/stream-core-kernel/src/` が存在し、DSL / impl / stage / materialization / stream_ref / shape などに分割されている |
+| typed interop crate | `modules/stream-core-actor-typed/src/lib.rs` が typed actor 連携 DSL を公開し、`#![cfg_attr(not(test), no_std)]` と `#![deny(cfg_std_forbid)]` を持つ |
 | std crate | `modules/stream-adaptor-std/src/lib.rs` が `pub mod io;` と `pub mod materializer;` を公開する |
 | std root | `modules/stream-adaptor-std/src/` が存在し、`io/` と `materializer/` を公開する |
 | Pekko stream | `references/pekko/stream/src/main/` が存在する |
@@ -48,15 +49,15 @@ API 面の hard / medium ギャップは 5 件以下であり、主要 operator 
 
 ## サマリー
 
-stream の固定スコープにおける API parity は高い。StreamRef は actor-backed resolver / serializer、two-ActorSystem typed `SourceRef<T>` / `SinkRef<T>` payload proof、remote connection loss / address termination / DeathWatch を protocol completion 前の stream failure として観測する integration まで進んだ。残ギャップは TCP / TLS の std IO integration に集中している。
+stream の固定スコープにおける API parity は高い。StreamRef は actor-backed resolver / serializer、two-ActorSystem typed `SourceRef<T>` / `SinkRef<T>` payload proof、remote connection loss / address termination / DeathWatch を protocol completion 前の stream failure として観測する integration までマージ済みである。残ギャップは TCP / TLS の std IO integration に集中している。
 
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象概念 | 50 |
 | fraktor-rs 固定スコープ対応概念 | 47 |
 | 固定スコープ概念カバレッジ | 47/50 (94%) |
-| fraktor-rs raw public type declarations | 367 (`stream-core-kernel`: 359 / `stream-core-actor-typed`: 1 / `stream-adaptor-std`: 7) |
-| fraktor-rs raw public method declarations | 1932 (`stream-core-kernel`: 1913 / `stream-core-actor-typed`: 2 / `stream-adaptor-std`: 17) |
+| fraktor-rs raw public type declarations | 384 (`stream-core-kernel`: 376 / `stream-core-actor-typed`: 1 / `stream-adaptor-std`: 7) |
+| fraktor-rs raw public method declarations | 2027 (`stream-core-kernel`: 2008 / `stream-core-actor-typed`: 2 / `stream-adaptor-std`: 17) |
 | Pekko raw public type declarations | 689 (stream + stream-typed `src/main/scala` 参考値) |
 | Pekko raw `scaladsl` public method candidates | 978 (参考値) |
 | hard / medium / easy / trivial gap | 2 / 0 / 0 / 1 |
