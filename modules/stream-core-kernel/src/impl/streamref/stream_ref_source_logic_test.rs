@@ -64,6 +64,17 @@ impl ActorRefSender for FailingSender {
   }
 }
 
+struct DemandFailingSender;
+
+impl ActorRefSender for DemandFailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    if message.downcast_ref::<SystemMessage>().is_some() {
+      return Ok(SendOutcome::Delivered);
+    }
+    Err(SendError::full(message))
+  }
+}
+
 fn build_system() -> ActorSystem {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler))
@@ -82,6 +93,17 @@ fn temp_failing_actor(system: &ActorSystem) -> ActorRef {
   let system_state = system.state();
   let actor_ref =
     ActorRef::from_shared(system.allocate_pid(), ActorRefSenderShared::new(Box::new(FailingSender)), &system_state);
+  let _name = system_state.register_temp_actor(actor_ref.clone());
+  actor_ref
+}
+
+fn temp_demand_failing_actor(system: &ActorSystem) -> ActorRef {
+  let system_state = system.state();
+  let actor_ref = ActorRef::from_shared(
+    system.allocate_pid(),
+    ActorRefSenderShared::new(Box::new(DemandFailingSender)),
+    &system_state,
+  );
   let _name = system_state.register_temp_actor(actor_ref.clone());
   actor_ref
 }
@@ -170,6 +192,20 @@ fn target_not_initialized_receive_reports_uninitialized() {
     receive.receive(StageActorEnvelope::new(ActorRef::null(), AnyMessage::new(7_u32))),
     Err(StreamError::StreamRefTargetNotInitialized)
   );
+}
+
+#[test]
+fn signal_partner_demand_propagates_partner_send_failure() {
+  let system = build_system();
+  let partner = temp_demand_failing_actor(&system);
+  let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
+  let endpoint = StreamRefEndpointSlot::new();
+  let handoff = StreamRefHandoff::<u32>::new();
+  let mut logic = StreamRefSourceLogic::awaiting_remote_subscription_with_endpoint(handoff.clone(), endpoint);
+  logic.attach_actor_system(system);
+  handoff.pair_partner_actor(partner_key, partner).expect("pair partner");
+
+  assert_eq!(logic.signal_partner_demand(), Err(StreamError::WouldBlock));
 }
 
 #[test]

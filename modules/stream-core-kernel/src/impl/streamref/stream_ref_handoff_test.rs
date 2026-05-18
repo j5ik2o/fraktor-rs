@@ -1,5 +1,5 @@
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
-use core::num::NonZeroU64;
+use core::{fmt::Debug, num::NonZeroU64};
 
 use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with;
 use fraktor_actor_core_kernel_rs::{
@@ -12,6 +12,13 @@ use fraktor_actor_core_kernel_rs::{
   system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
+use tracing::{
+  Event, Id, Metadata, Subscriber,
+  field::{Field, Visit},
+  level_filters::LevelFilter,
+  span::{Attributes, Record},
+  subscriber,
+};
 
 use super::{StreamRefHandoff, StreamRefProtocol};
 use crate::{
@@ -36,6 +43,45 @@ impl StageActorReceive for NoopReceive {
   fn receive(&mut self, _envelope: StageActorEnvelope) -> Result<(), StreamError> {
     Ok(())
   }
+}
+
+struct EnabledTracingSubscriber;
+
+struct IgnoreFields;
+
+impl Visit for IgnoreFields {
+  fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
+}
+
+impl Subscriber for EnabledTracingSubscriber {
+  fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+    true
+  }
+
+  fn max_level_hint(&self) -> Option<LevelFilter> {
+    Some(LevelFilter::TRACE)
+  }
+
+  fn new_span(&self, _span: &Attributes<'_>) -> Id {
+    Id::from_u64(1)
+  }
+
+  fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+  fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+  fn event(&self, event: &Event<'_>) {
+    let mut fields = IgnoreFields;
+    event.record(&mut fields);
+  }
+
+  fn enter(&self, _span: &Id) {}
+
+  fn exit(&self, _span: &Id) {}
+}
+
+fn with_enabled_tracing<T>(f: impl FnOnce() -> T) -> T {
+  subscriber::with_default(EnabledTracingSubscriber, f)
 }
 
 struct RecordingSender {
@@ -362,16 +408,20 @@ fn send_cumulative_demand_without_cleanup_or_partner_reports_partner_unavailable
   let handoff = StreamRefHandoff::<u32>::new();
   let demand = NonZeroU64::new(1).expect("demand");
 
-  assert_eq!(
-    handoff.send_cumulative_demand_to_partner(0, demand),
-    Err(StreamError::StreamRefPartnerUnavailable { seq_nr: 0, demand, reason: "endpoint cleanup missing" })
-  );
+  with_enabled_tracing(|| {
+    assert_eq!(
+      handoff.send_cumulative_demand_to_partner(0, demand),
+      Err(StreamError::StreamRefPartnerUnavailable { seq_nr: 0, demand, reason: "endpoint cleanup missing" })
+    );
+  });
 
   let (attached, endpoint_actor) = attached_handoff(&system);
-  assert_eq!(
-    attached.send_cumulative_demand_to_partner(0, demand),
-    Err(StreamError::StreamRefPartnerUnavailable { seq_nr: 0, demand, reason: "partner actor missing" })
-  );
+  with_enabled_tracing(|| {
+    assert_eq!(
+      attached.send_cumulative_demand_to_partner(0, demand),
+      Err(StreamError::StreamRefPartnerUnavailable { seq_nr: 0, demand, reason: "partner actor missing" })
+    );
+  });
   let mut endpoint_ref = endpoint_actor.actor_ref().clone();
   endpoint_ref.try_tell(AnyMessage::new(())).expect("enqueue noop");
   assert_eq!(endpoint_actor.drain_pending(), Ok(()));

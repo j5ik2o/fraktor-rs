@@ -84,6 +84,8 @@ fn sink_ref_returns_source_materializing_sink_ref() {
 #[test]
 fn drive_pair_until_covers_ready_and_timeout_paths() {
   let mut materializer = build_materializer(build_system());
+  let terminal_left =
+    Source::<u32, _>::empty().into_mat(Sink::ignore(), KeepRight).run(&mut materializer).expect("terminal left stream");
   let left = Source::<u32, _>::from_logic(StageKind::Custom, PendingSourceLogic)
     .into_mat(Sink::ignore(), KeepRight)
     .run(&mut materializer)
@@ -93,9 +95,14 @@ fn drive_pair_until_covers_ready_and_timeout_paths() {
     .run(&mut materializer)
     .expect("right pending stream");
 
+  while !terminal_left.stream().state().is_terminal() {
+    let _outcome = terminal_left.stream().drive();
+  }
   drive_pair_until(&left, &right, || true);
+  let left_terminal_result = catch_unwind(AssertUnwindSafe(|| drive_pair_until(&terminal_left, &right, || false)));
   let result = catch_unwind(AssertUnwindSafe(|| drive_pair_until(&left, &right, || false)));
 
+  assert!(left_terminal_result.is_err());
   assert!(result.is_err());
 }
 
