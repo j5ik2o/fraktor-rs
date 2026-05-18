@@ -12,6 +12,7 @@ use super::{ActorCell, ActorCellInvoker};
 use crate::{
   actor::{
     Actor, ActorContext, Pid, ReceiveTimeoutState, WatchRegistrationKind,
+    actor_ref::dead_letter::DeadLetterReason,
     error::{ActorError, ActorErrorReason, PipeSpawnError},
     messaging::{
       ActorIdentity, AnyMessage, AnyMessageView, Identify, Kill, NotInfluenceReceiveTimeout, PoisonPill,
@@ -1585,6 +1586,31 @@ fn ac_h2_t5_user_request_child_stop_does_not_finish_parent_terminate() {
     "AC-H2: UserRequest completion returns the child container to normal"
   );
   assert!(state.cell(&parent.pid()).is_some(), "AC-H2: UserRequest completion must not terminate the parent");
+}
+
+#[test]
+fn ac_h2_t6_fault_terminate_records_child_stop_send_error() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props = Props::from_fn(|| ProbeActor);
+  let parent = ActorCell::create(state.clone(), Pid::new(280, 0), None, "term-parent5".to_string(), &parent_props)
+    .expect("create parent");
+  state.register_cell(parent.clone());
+
+  let missing_child = Pid::new(281, 0);
+  parent.register_child(missing_child);
+
+  let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
+  parent_invoker.system_invoke(SystemMessage::Stop).expect("parent stop with missing child");
+
+  let dead_letters = state.dead_letters();
+  assert!(
+    dead_letters.iter().any(|entry| {
+      entry.recipient() == Some(missing_child)
+        && entry.reason() == DeadLetterReason::RecipientUnavailable
+        && entry.message().downcast_ref::<SystemMessage>().is_some_and(|message| matches!(message, SystemMessage::Stop))
+    }),
+    "AC-H2: failed Stop delivery to a child must be recorded as deadletter"
+  );
 }
 
 // ============================================================================
