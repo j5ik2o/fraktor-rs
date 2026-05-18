@@ -684,11 +684,7 @@ fn route_deployment_event(
   match pdu {
     | RemoteDeploymentPdu::CreateRequest(request) => {
       if authority.authority() != request.origin_node() {
-        tracing::warn!(
-          authority = authority.authority(),
-          origin_node = request.origin_node(),
-          "dropping remote deployment request with mismatched origin authority"
-        );
+        tracing::warn!("dropping remote deployment request with mismatched origin authority");
         return None;
       }
       let command = DeploymentDaemonCommand::create(authority, request);

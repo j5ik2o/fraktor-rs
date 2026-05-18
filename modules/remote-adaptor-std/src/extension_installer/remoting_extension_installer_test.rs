@@ -175,6 +175,33 @@ fn route_deployment_event_returns_failure_when_daemon_queue_closed() {
 }
 
 #[test]
+fn route_deployment_event_drops_request_from_mismatched_origin_authority() {
+  let (sender, mut receiver) = mpsc::channel(1);
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let request = RemoteDeploymentCreateRequest::new(
+    1,
+    2,
+    String::from("/user"),
+    String::from("child"),
+    String::from("echo"),
+    String::from("origin@127.0.0.1:2551"),
+    1,
+    None,
+    Bytes::from_static(b"payload"),
+  );
+  let event = RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new("spoofed@127.0.0.1:2551"),
+    frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateRequest(request)),
+    now_ms:    99,
+  };
+
+  let routed = route_deployment_event(event, &sender, &dispatcher);
+
+  assert!(routed.is_none());
+  assert!(receiver.try_recv().is_err());
+}
+
+#[test]
 fn route_deployment_event_completes_failure_with_sender_authority() {
   let (sender, _receiver) = mpsc::channel(1);
   let dispatcher = DeploymentResponseDispatcher::default();
