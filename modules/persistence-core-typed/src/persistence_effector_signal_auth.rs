@@ -1,6 +1,6 @@
 //! Authentication marker for persistence effector signals.
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PersistenceEffectorSignalAuth(());
 
 impl PersistenceEffectorSignalAuth {
