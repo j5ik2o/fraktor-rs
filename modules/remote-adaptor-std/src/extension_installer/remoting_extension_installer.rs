@@ -683,6 +683,14 @@ fn route_deployment_event(
   };
   match pdu {
     | RemoteDeploymentPdu::CreateRequest(request) => {
+      if authority.authority() != request.origin_node() {
+        tracing::warn!(
+          authority = authority.authority(),
+          origin_node = request.origin_node(),
+          "dropping remote deployment request with mismatched origin authority"
+        );
+        return None;
+      }
       let command = DeploymentDaemonCommand::create(authority, request);
       if let Err(error) = deployment_sender.try_send(command) {
         let reason = error.to_string();
@@ -706,10 +714,10 @@ fn route_deployment_event(
       }
     },
     | RemoteDeploymentPdu::CreateSuccess(success) => {
-      deployment_response_dispatcher.complete(DeploymentResponse::Success(success));
+      deployment_response_dispatcher.complete(authority.authority(), DeploymentResponse::Success(success));
     },
     | RemoteDeploymentPdu::CreateFailure(failure) => {
-      deployment_response_dispatcher.complete(DeploymentResponse::Failure(failure));
+      deployment_response_dispatcher.complete(authority.authority(), DeploymentResponse::Failure(failure));
     },
   }
   None

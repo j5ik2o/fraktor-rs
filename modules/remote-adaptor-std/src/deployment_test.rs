@@ -167,7 +167,7 @@ fn deployment_response_dispatcher_bounds_stale_responses() {
   let dispatcher = DeploymentResponseDispatcher::default();
 
   for index in 0..(MAX_STALE_DEPLOYMENT_RESPONSES + 1) {
-    dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+    dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
       index as u64,
       0,
       RemoteDeploymentFailureCode::SpawnFailed,
@@ -184,7 +184,7 @@ fn deployment_response_dispatcher_records_stale_when_receiver_is_dropped() {
   let receiver = dispatcher.register(11, 12, "remote-sys@10.0.0.1:2552", 10);
   drop(receiver);
 
-  dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+  dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
     11,
     12,
     RemoteDeploymentFailureCode::SpawnFailed,
@@ -199,7 +199,7 @@ fn successful_deployment_response_tracks_remote_created_child() {
   let dispatcher = DeploymentResponseDispatcher::default();
   let receiver = dispatcher.register(7, 8, "remote-sys@10.0.0.1:2552", 10);
 
-  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+  dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
     7,
     8,
     String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
@@ -217,7 +217,7 @@ fn address_termination_cleans_remote_created_tracking() {
   let _subscription = subscribe_address_terminated(&system, dispatcher.clone());
   let receiver = dispatcher.register(9, 10, "remote-sys@10.0.0.1:2552", 10);
 
-  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+  dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
     9,
     10,
     String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/created"),
@@ -296,7 +296,7 @@ fn late_deployment_response_after_address_termination_is_stale() {
     DeploymentResponse::Failure(failure) if failure.code() == RemoteDeploymentFailureCode::AddressTerminated
   ));
 
-  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+  dispatcher.complete("remote-sys@10.0.0.1:2552", DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
     5,
     6,
     String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/late"),

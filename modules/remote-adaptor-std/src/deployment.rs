@@ -124,7 +124,7 @@ impl DeploymentResponseDispatcher {
   }
 
   /// Completes a pending request or records the stale response.
-  pub(crate) fn complete(&self, response: DeploymentResponse) {
+  pub(crate) fn complete(&self, inbound_authority: &str, response: DeploymentResponse) {
     let key = match &response {
       | DeploymentResponse::Success(success) => (success.correlation_hi(), success.correlation_lo()),
       | DeploymentResponse::Failure(failure) => (failure.correlation_hi(), failure.correlation_lo()),
@@ -132,6 +132,7 @@ impl DeploymentResponseDispatcher {
     let pending = self.state.with_lock(|state| {
       let pending = state.pending.remove(&key);
       if let Some(pending) = pending.as_ref()
+        && pending.authority == inbound_authority
         && let DeploymentResponse::Success(_) = &response
       {
         let count = state.remote_created.entry(pending.authority.clone()).or_insert(0);
@@ -140,7 +141,8 @@ impl DeploymentResponseDispatcher {
       pending
     });
     match pending {
-      | Some(pending) => self.send_or_record_stale(pending.sender, response),
+      | Some(pending) if pending.authority == inbound_authority => self.send_or_record_stale(pending.sender, response),
+      | Some(_) => self.record_stale(response),
       | None => self.record_stale(response),
     }
   }
