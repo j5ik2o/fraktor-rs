@@ -40,7 +40,7 @@ use fraktor_remote_core_rs::{
 use fraktor_stream_core_kernel_rs::{
   DynValue, SourceLogic, StreamError,
   dsl::{Sink, Source, StreamRefs},
-  materialization::{ActorMaterializer, ActorMaterializerConfig, KeepBoth, KeepRight, StreamDone},
+  materialization::{ActorMaterializer, ActorMaterializerConfig, KeepBoth, KeepRight, StreamDone, StreamFuture},
   stage::StageKind,
   stream_ref::{
     STREAM_REF_PROTOCOL_SERIALIZER_NAME, SinkRef, SourceRef, StreamRefProtocolSerializationSetup, StreamRefResolver,
@@ -951,6 +951,83 @@ async fn two_node_sink_ref_payload_carries_backpressured_elements() {
 
   materializer_a.shutdown().expect("node A materializer shutdown");
   materializer_b.shutdown().expect("node B materializer shutdown");
+  node_a.shutdown().await;
+  node_b.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_node_sink_ref_connection_loss_address_termination_deathwatch_fails_before_protocol_completion() {
+  let node_a = build_stream_ref_node(reserve_port(), 131);
+  let node_b = build_stream_ref_node(reserve_port(), 132);
+  let (mut address_terminated_rx, _address_terminated_subscription) = subscribe_address_terminated(&node_a.system);
+  let (mut warm_rx_a, warm_path_a) = spawn_recording_actor(&node_a.system, "sink-ref-failure-warm-a");
+  let (mut warm_rx_b, warm_path_b) = spawn_recording_actor(&node_b.system, "sink-ref-failure-warm-b");
+  let mut warm_ref_b = node_a
+    .system
+    .resolve_actor_ref(remote_path(&node_b.address, &warm_path_b))
+    .expect("node A should resolve node B warm actor");
+  let mut warm_ref_a = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &warm_path_a))
+    .expect("node B should resolve node A warm actor");
+  warm_bidirectional_remote_delivery(&mut warm_ref_b, &mut warm_rx_b, &mut warm_ref_a, &mut warm_rx_a).await;
+  let mut materializer_a = build_stream_materializer(node_a.system.clone());
+  let mut materializer_b = build_stream_materializer(node_b.system.clone());
+  let (mut sink_ref_rx, sink_ref_receiver_path) =
+    spawn_sink_ref_recording_actor(&node_a.system, "sink-ref-failure-receiver-a");
+  let (element_tx, mut element_rx) = mpsc::unbounded_channel();
+  let consumer = StreamRefs::sink_ref::<i32>().into_mat(
+    Sink::<i32, _>::foreach(move |value| {
+      element_tx.send(value).expect("element probe channel should be open");
+    }),
+    KeepBoth,
+  );
+  let (sink_ref, _consumer_completion) =
+    consumer.run(&mut materializer_b).expect("sink ref consumer should materialize").into_materialized();
+  let mut receiver_ref = node_b
+    .system
+    .resolve_actor_ref(remote_path(&node_a.address, &sink_ref_receiver_path))
+    .expect("node B should resolve node A sink-ref receiver");
+
+  receiver_ref
+    .try_tell(AnyMessage::new(SinkRefEnvelope::new(sink_ref)))
+    .expect("sink ref envelope should send to node A");
+
+  let received_sink_ref = timeout(Duration::from_secs(5), sink_ref_rx.recv())
+    .await
+    .expect("sink ref envelope receive timeout")
+    .expect("sink ref channel should stay open");
+  let producer_sink =
+    Sink::combine_mat(received_sink_ref.into_sink(), Sink::<i32, StreamFuture<StreamDone>>::ignore(), KeepRight);
+  let producer_completion = Source::from_logic(StageKind::Custom, OneThenNeverSourceLogic::new(11_i32))
+    .run_with(producer_sink, &mut materializer_a)
+    .expect("remote sink ref producer should materialize")
+    .into_materialized();
+  let first = timeout(Duration::from_secs(5), element_rx.recv())
+    .await
+    .expect("sink ref first element timeout")
+    .expect("element probe channel should stay open");
+  assert_eq!(first, 11_i32);
+  sleep(Duration::from_millis(100)).await;
+
+  timeout(Duration::from_secs(5), node_b.installer.shutdown_and_join())
+    .await
+    .expect("node B remoting shutdown timeout")
+    .expect("node B remoting shutdown should succeed");
+  warm_ref_b
+    .try_tell(AnyMessage::new(String::from("probe-after-node-b-shutdown")))
+    .expect("post-shutdown probe should enqueue and surface transport connection loss");
+  wait_for_address_terminated(&mut address_terminated_rx, &node_b.address.to_string()).await;
+  let result = timeout(Duration::from_secs(5), producer_completion).await.expect("sink ref failure completion timeout");
+  assert_remote_stream_ref_actor_terminated(result);
+
+  materializer_a.shutdown().expect("node A materializer shutdown");
+  match materializer_b.shutdown() {
+    | Ok(()) => {},
+    | Err(StreamError::FailedWithContext { message, .. })
+      if message.contains("graceful shutdown exceeded drain round limit") => {},
+    | Err(error) => panic!("node B materializer shutdown failed unexpectedly: {error:?}"),
+  }
   node_a.shutdown().await;
   node_b.shutdown().await;
 }
