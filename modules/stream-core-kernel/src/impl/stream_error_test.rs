@@ -1,4 +1,5 @@
 use alloc::{borrow::Cow, string::String};
+use core::num::NonZeroU64;
 
 use fraktor_actor_core_kernel_rs::actor::{error::SendError, messaging::AnyMessage};
 
@@ -551,6 +552,21 @@ fn invalid_partner_actor_display_includes_actor_context() {
   assert!(rendered.contains("expected: pekko://sys/user/expected"), "expected ref must be rendered: {rendered}");
   assert!(rendered.contains("got: pekko://sys/user/got"), "got ref must be rendered: {rendered}");
   assert!(rendered.contains("one-shot references"), "Pekko one-shot guidance must be rendered: {rendered}");
+}
+
+#[test]
+fn stream_ref_partner_unavailable_display_includes_demand_context() {
+  // Given: cumulative demand that could not be sent to a partner actor
+  let demand = NonZeroU64::new(7).expect("demand");
+  let error = StreamError::StreamRefPartnerUnavailable { seq_nr: 3, demand, reason: "partner actor missing" };
+
+  // When: formatting with Display
+  let rendered = alloc::format!("{error}");
+
+  // Then: the diagnostic carries the sequence and demand values callers need
+  assert!(rendered.contains("seq_nr=3"), "sequence number must be rendered: {rendered}");
+  assert!(rendered.contains("demand=7"), "demand must be rendered: {rendered}");
+  assert!(rendered.contains("partner actor missing"), "reason must be rendered: {rendered}");
 }
 
 #[test]

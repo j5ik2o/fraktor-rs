@@ -1,6 +1,6 @@
 //! Decoded wire frame variants exchanged between transport adapters and core remoting.
 
-use crate::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu};
+use crate::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, RemoteDeploymentPdu};
 
 /// Decoded on-the-wire frame consumed by the core remote event loop.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -13,4 +13,6 @@ pub enum WireFrame {
   Control(ControlPdu),
   /// System message delivery acknowledgement.
   Ack(AckPdu),
+  /// Remote deployment create request or response.
+  Deployment(RemoteDeploymentPdu),
 }

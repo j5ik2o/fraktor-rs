@@ -1,17 +1,3 @@
-developer_instructions = """
-実装を開始する場合、Planモードで提示した計画内容を、docs/plan/*.mdファイルへ書き出すこと。
-計画が存在しない場合はこの指示は無視して構わない。
-"""
-hide_agent_reasoning = false
-model = "gpt-5.5"
-model_auto_compact_token_limit = 950000
-model_context_window = 1000000
-model_reasoning_summary = "detailed"
-network_access = true
-personality = "pragmatic"
-show_raw_agent_reasoning = true
-web_search = "live"
-
 [agents]
 max_depth = 1
 max_threads = 4

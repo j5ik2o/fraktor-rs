@@ -7,9 +7,10 @@ mod tests;
 use alloc::string::String;
 
 use super::{
-  adapter_failure_event::AdapterFailureEvent, remote_authority_event::RemoteAuthorityEvent,
-  remoting_backpressure_event::RemotingBackpressureEvent, remoting_lifecycle_event::RemotingLifecycleEvent,
-  tick_driver_snapshot::TickDriverSnapshot, unhandled_message_event::UnhandledMessageEvent,
+  adapter_failure_event::AdapterFailureEvent, address_terminated_event::AddressTerminatedEvent,
+  remote_authority_event::RemoteAuthorityEvent, remoting_backpressure_event::RemotingBackpressureEvent,
+  remoting_lifecycle_event::RemotingLifecycleEvent, tick_driver_snapshot::TickDriverSnapshot,
+  unhandled_message_event::UnhandledMessageEvent,
 };
 use crate::{
   actor::{
@@ -46,6 +47,8 @@ pub enum EventStreamEvent {
   RemotingBackpressure(RemotingBackpressureEvent),
   /// Remoting lifecycle change notification.
   RemotingLifecycle(RemotingLifecycleEvent),
+  /// Remote node-level address termination notification.
+  AddressTerminated(AddressTerminatedEvent),
   /// Scheduler tick metrics snapshot.
   SchedulerTick(SchedulerTickMetrics),
   /// Tick driver activation snapshot.
@@ -73,6 +76,7 @@ impl Clone for EventStreamEvent {
       | Self::RemoteAuthority(event) => Self::RemoteAuthority(event.clone()),
       | Self::RemotingBackpressure(event) => Self::RemotingBackpressure(event.clone()),
       | Self::RemotingLifecycle(event) => Self::RemotingLifecycle(event.clone()),
+      | Self::AddressTerminated(event) => Self::AddressTerminated(event.clone()),
       | Self::SchedulerTick(event) => Self::SchedulerTick(event.clone()),
       | Self::TickDriver(event) => Self::TickDriver(event.clone()),
       | Self::Extension { name, payload } => Self::Extension { name: name.clone(), payload: payload.clone() },

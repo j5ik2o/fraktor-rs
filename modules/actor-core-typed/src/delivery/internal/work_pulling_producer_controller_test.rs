@@ -325,6 +325,17 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
     SharedLock::new_with_driver::<SpinSyncMutex<_>>(WorkPullingState::<u32>::new("test-producer".to_string(), 16));
   let durable_queue =
     TypedActorRef::from_untyped(crate::test_support::actor_ref_with_sender(Pid::new(999, 0), FailingSender));
+  let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
+  let producer_settings = ProducerControllerConfig::new();
+  let load_state_adapter = None;
+  let command_context = WorkPullingCommandContext {
+    producer_id: "test-producer",
+    self_ref: &self_ref,
+    producer_controller_settings: &producer_settings,
+    load_state_adapter: &load_state_adapter,
+    internal_ask_timeout: Duration::from_millis(1),
+    durable_queue_request_timeout: Duration::from_millis(1),
+  };
 
   execute_wppc_deferred(
     vec![WppcDeferredAction::TellDurableQueue {
@@ -334,8 +345,7 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
     }],
     &mut typed_ctx,
     &state,
-    Duration::from_millis(1),
-    Duration::from_millis(1),
+    &command_context,
   );
 
   assert_eq!(lifecycle.lock().as_slice(), &["pre_start", "post_stop"]);

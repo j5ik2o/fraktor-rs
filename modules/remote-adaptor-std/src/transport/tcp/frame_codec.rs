@@ -4,7 +4,7 @@
 use bytes::BytesMut;
 use fraktor_remote_core_rs::wire::{
   AckCodec, Codec, ControlCodec, EnvelopeCodec, FRAME_KIND_OFFSET, HandshakeCodec, KIND_ACK, KIND_CONTROL,
-  KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, WireError, WireFrame,
+  KIND_DEPLOYMENT, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP, RemoteDeploymentCodec, WireError, WireFrame,
 };
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -76,6 +76,7 @@ impl Encoder<WireFrame> for WireFrameCodec {
       | WireFrame::Handshake(pdu) => HandshakeCodec::new().encode(&pdu, &mut frame),
       | WireFrame::Control(pdu) => ControlCodec::new().encode(&pdu, &mut frame),
       | WireFrame::Ack(pdu) => AckCodec::new().encode(&pdu, &mut frame),
+      | WireFrame::Deployment(pdu) => RemoteDeploymentCodec::new().encode(&pdu, &mut frame),
     }
     .map_err(FrameCodecError::from)?;
 
@@ -117,6 +118,7 @@ impl Decoder for WireFrameCodec {
       | KIND_HANDSHAKE_REQ | KIND_HANDSHAKE_RSP => HandshakeCodec::new().decode(&mut frame).map(WireFrame::Handshake),
       | KIND_CONTROL => ControlCodec::new().decode(&mut frame).map(WireFrame::Control),
       | KIND_ACK => AckCodec::new().decode(&mut frame).map(WireFrame::Ack),
+      | KIND_DEPLOYMENT => RemoteDeploymentCodec::new().decode(&mut frame).map(WireFrame::Deployment),
       | _ => Err(WireError::UnknownKind),
     };
     Ok(Some(decoded?))

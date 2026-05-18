@@ -10,10 +10,12 @@ use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_path::ActorPathParser,
+    extension::ExtensionInstaller,
     messaging::{AnyMessage, system_message::SystemMessage},
   },
-  event::stream::CorrelationId,
+  event::stream::{AddressTerminatedEvent, CorrelationId, EventStreamEvent},
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
+  system::ActorSystemBuildError,
 };
 use fraktor_remote_core_rs::{
   address::{RemoteNodeId, UniqueAddress},
@@ -29,7 +31,7 @@ use tokio::{
 };
 
 use super::*;
-use crate::extension_installer::flush_gate::StdFlushNotification;
+use crate::{extension_installer::flush_gate::StdFlushNotification, transport::tcp::TcpRemoteTransport};
 
 struct TestRemoteTransport {
   addresses:    Vec<Address>,
@@ -134,6 +136,42 @@ fn remote_shared(config: RemoteConfig, transport: TestRemoteTransport) -> Remote
 fn remote_shared_not_started(config: RemoteConfig, transport: TestRemoteTransport) -> RemoteShared {
   let system = create_noop_actor_system();
   RemoteShared::new(Remote::new(transport, config, EventPublisher::new(system.downgrade()), serialization_extension()))
+}
+
+#[test]
+fn route_deployment_event_returns_failure_when_daemon_queue_closed() {
+  let (sender, receiver) = mpsc::channel(1);
+  drop(receiver);
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let request = RemoteDeploymentCreateRequest::new(
+    1,
+    2,
+    String::from("/user"),
+    String::from("child"),
+    String::from("echo"),
+    String::from("origin@127.0.0.1:2551"),
+    1,
+    None,
+    Bytes::from_static(b"payload"),
+  );
+  let event = RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new("origin@127.0.0.1:2551"),
+    frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateRequest(request)),
+    now_ms:    99,
+  };
+
+  let routed = route_deployment_event(event, &sender, &dispatcher).expect("enqueue failure should be routed");
+
+  match routed {
+    | RemoteEvent::OutboundDeployment { remote, pdu: RemoteDeploymentPdu::CreateFailure(failure), now_ms } => {
+      assert_eq!(remote, Address::new("origin", "127.0.0.1", 2551));
+      assert_eq!(failure.correlation_hi(), 1);
+      assert_eq!(failure.correlation_lo(), 2);
+      assert_eq!(failure.code(), RemoteDeploymentFailureCode::SpawnFailed);
+      assert_eq!(now_ms, 99);
+    },
+    | other => panic!("expected outbound deployment failure, got {other:?}"),
+  }
 }
 
 fn activate_association(remote: &RemoteShared, target: &Address) {
@@ -283,6 +321,109 @@ async fn shutdown_remote_and_join_continues_when_shutdown_flush_is_not_started()
   .await
   .expect("shutdown should not hang")
   .expect("shutdown should continue after flush setup failure");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn shutdown_remote_and_join_drops_deployment_address_terminated_subscription() {
+  let local = local_address();
+  let target = remote_address();
+  let config = RemoteConfig::new("127.0.0.1").with_shutdown_flush_timeout(Duration::from_millis(5));
+  let remote = remote_shared(config.clone(), TestRemoteTransport::new(vec![local]));
+  let system = create_noop_actor_system();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(1, 2, target.to_string(), 1);
+  let run_state = Arc::new(Mutex::new(RemotingRunState {
+    receiver: None,
+    handle: None,
+    watcher_handle: None,
+    deployment_handle: None,
+    deployment_address_terminated_subscription: Some(subscription),
+    termination_handle: None,
+  }));
+
+  timeout(
+    Duration::from_secs(1),
+    shutdown_remote_and_join(remote, None, run_state, config, Instant::now(), StdFlushGate::default()),
+  )
+  .await
+  .expect("shutdown should not hang")
+  .expect("shutdown should complete");
+
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    target.to_string(),
+    "post-shutdown",
+    2,
+  )));
+
+  assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn rollback_started_remote_drops_deployment_address_terminated_subscription() {
+  let local = local_address();
+  let target = remote_address();
+  let remote = remote_shared(RemoteConfig::new("127.0.0.1"), TestRemoteTransport::new(vec![local]));
+  let (event_sender, _event_receiver) = mpsc::channel(8);
+  let system = create_noop_actor_system();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let receiver = dispatcher.register(3, 4, target.to_string(), 1);
+  let run_state = Arc::new(Mutex::new(RemotingRunState {
+    receiver: None,
+    handle: None,
+    watcher_handle: None,
+    deployment_handle: None,
+    deployment_address_terminated_subscription: Some(subscription),
+    termination_handle: None,
+  }));
+
+  rollback_started_remote(&remote, &event_sender, &run_state);
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    target.to_string(),
+    "rollback",
+    2,
+  )));
+
+  assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn install_deployment_address_terminated_subscription_rejects_duplicate_subscription() {
+  let system = create_noop_actor_system();
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let subscription = subscribe_address_terminated(&system, dispatcher.clone());
+  let mut run_state = RemotingRunState {
+    receiver: None,
+    handle: None,
+    watcher_handle: None,
+    deployment_handle: None,
+    deployment_address_terminated_subscription: Some(subscription),
+    termination_handle: None,
+  };
+
+  assert_eq!(
+    install_deployment_address_terminated_subscription_with_state(&mut run_state, &system, dispatcher),
+    Err(RemotingError::AlreadyRunning)
+  );
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn install_rolls_back_started_remote_when_handle_storage_fails() {
+  let installer = RemotingExtensionInstaller::new(
+    TcpRemoteTransport::new("127.0.0.1:0", vec![Address::new("local-sys", "127.0.0.1", 0)]),
+    RemoteConfig::new("127.0.0.1"),
+  );
+  let (event_sender, _event_receiver) = mpsc::channel(1);
+  installer.event_sender.set(event_sender).expect("preloaded event sender should be accepted");
+  let system = create_noop_actor_system();
+
+  let error = installer.install(&system).expect_err("handle storage failure should abort install");
+
+  match error {
+    | ActorSystemBuildError::Configuration(message) => assert_eq!(message, ALREADY_INSTALLED),
+    | other => panic!("expected configuration error, got {other:?}"),
+  }
 }
 
 #[test]

@@ -22,6 +22,7 @@ fraktor-utils-core-rs = { workspace = true, default-features = false, features =
 fraktor-actor-core-kernel-rs = { workspace = true }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 miniz_oxide = { version = "0.9", optional = true, default-features = false, features = ["with-alloc"] }
+tracing = { workspace = true, default-features = false }
 
 [lints]
 workspace = true

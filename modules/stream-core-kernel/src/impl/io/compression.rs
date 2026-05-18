@@ -57,60 +57,9 @@ impl Compression {
   /// Returns `StreamError::CompressionError` if the data is invalid or exceeds
   /// `max_bytes_per_chunk`.
   pub fn gunzip_bytes_with_options(bytes: &[u8], max_bytes_per_chunk: usize) -> Result<Vec<u8>, StreamError> {
-    if bytes.len() < 18 {
-      return Err(StreamError::CompressionError { kind: "gzip_too_short" });
-    }
-    if bytes[0] != 0x1f || bytes[1] != 0x8b || bytes[2] != 0x08 {
-      return Err(StreamError::CompressionError { kind: "gzip_header" });
-    }
-    let flags = bytes[3];
-    if flags & 0b1110_0000 != 0 {
-      return Err(StreamError::CompressionError { kind: "gzip_flags" });
-    }
-    let payload_end = bytes.len().saturating_sub(8);
-    let mut payload_start = 10_usize;
-
-    if flags & 0x04 != 0 {
-      if payload_start + 2 > payload_end {
-        return Err(StreamError::CompressionError { kind: "gzip_extra_len" });
-      }
-      let extra_len = u16::from_le_bytes([bytes[payload_start], bytes[payload_start + 1]]) as usize;
-      payload_start += 2;
-      if payload_start + extra_len > payload_end {
-        return Err(StreamError::CompressionError { kind: "gzip_extra" });
-      }
-      payload_start += extra_len;
-    }
-    if flags & 0x08 != 0 {
-      payload_start = consume_gzip_zero_terminated_field(bytes, payload_start, payload_end)?;
-    }
-    if flags & 0x10 != 0 {
-      payload_start = consume_gzip_zero_terminated_field(bytes, payload_start, payload_end)?;
-    }
-    if flags & 0x02 != 0 {
-      if payload_start + 2 > payload_end {
-        return Err(StreamError::CompressionError { kind: "gzip_header_crc" });
-      }
-      payload_start += 2;
-    }
-    if payload_start > payload_end {
-      return Err(StreamError::CompressionError { kind: "gzip_payload_bounds" });
-    }
-
-    let payload = &bytes[payload_start..payload_end];
-    let expected_crc =
-      u32::from_le_bytes([bytes[payload_end], bytes[payload_end + 1], bytes[payload_end + 2], bytes[payload_end + 3]]);
-    let expected_len = u32::from_le_bytes([
-      bytes[payload_end + 4],
-      bytes[payload_end + 5],
-      bytes[payload_end + 6],
-      bytes[payload_end + 7],
-    ]);
-    if usize::try_from(expected_len).ok().filter(|len| *len <= max_bytes_per_chunk).is_none() {
-      return Err(StreamError::CompressionError { kind: "gzip_too_large" });
-    }
-    let decompressed = Self::inflate_gzip_payload(payload, max_bytes_per_chunk)?;
-    if crc32(&decompressed) != expected_crc || (decompressed.len() as u32) != expected_len {
+    let gzip_parts = parse_gzip_member(bytes, max_bytes_per_chunk)?;
+    let decompressed = Self::inflate_gzip_payload(gzip_parts.payload, max_bytes_per_chunk)?;
+    if crc32(&decompressed) != gzip_parts.expected_crc || (decompressed.len() as u32) != gzip_parts.expected_len {
       return Err(StreamError::CompressionError { kind: "gzip_trailer" });
     }
     Ok(decompressed)
@@ -209,6 +158,89 @@ impl Compression {
     }
     Ok(decompressed)
   }
+}
+
+struct GzipMember<'a> {
+  payload:      &'a [u8],
+  expected_crc: u32,
+  expected_len: u32,
+}
+
+fn parse_gzip_member(bytes: &[u8], max_bytes_per_chunk: usize) -> Result<GzipMember<'_>, StreamError> {
+  let (flags, payload_end) = validate_gzip_header(bytes)?;
+  let payload_start = consume_gzip_optional_fields(bytes, flags, payload_end)?;
+  if payload_start > payload_end {
+    return Err(StreamError::CompressionError { kind: "gzip_payload_bounds" });
+  }
+
+  let expected_crc =
+    u32::from_le_bytes([bytes[payload_end], bytes[payload_end + 1], bytes[payload_end + 2], bytes[payload_end + 3]]);
+  let expected_len = u32::from_le_bytes([
+    bytes[payload_end + 4],
+    bytes[payload_end + 5],
+    bytes[payload_end + 6],
+    bytes[payload_end + 7],
+  ]);
+  validate_gzip_expected_len(expected_len, max_bytes_per_chunk)?;
+  Ok(GzipMember { payload: &bytes[payload_start..payload_end], expected_crc, expected_len })
+}
+
+fn validate_gzip_header(bytes: &[u8]) -> Result<(u8, usize), StreamError> {
+  if bytes.len() < 18 {
+    return Err(StreamError::CompressionError { kind: "gzip_too_short" });
+  }
+  if bytes[0] != 0x1f || bytes[1] != 0x8b || bytes[2] != 0x08 {
+    return Err(StreamError::CompressionError { kind: "gzip_header" });
+  }
+  let flags = bytes[3];
+  if flags & 0b1110_0000 != 0 {
+    return Err(StreamError::CompressionError { kind: "gzip_flags" });
+  }
+  Ok((flags, bytes.len().saturating_sub(8)))
+}
+
+fn consume_gzip_optional_fields(bytes: &[u8], flags: u8, payload_end: usize) -> Result<usize, StreamError> {
+  let mut payload_start = 10_usize;
+
+  if flags & 0x04 != 0 {
+    payload_start = consume_gzip_extra_field(bytes, payload_start, payload_end)?;
+  }
+  if flags & 0x08 != 0 {
+    payload_start = consume_gzip_zero_terminated_field(bytes, payload_start, payload_end)?;
+  }
+  if flags & 0x10 != 0 {
+    payload_start = consume_gzip_zero_terminated_field(bytes, payload_start, payload_end)?;
+  }
+  if flags & 0x02 != 0 {
+    payload_start = consume_gzip_header_crc(payload_start, payload_end)?;
+  }
+  Ok(payload_start)
+}
+
+fn consume_gzip_extra_field(bytes: &[u8], mut payload_start: usize, payload_end: usize) -> Result<usize, StreamError> {
+  if payload_start + 2 > payload_end {
+    return Err(StreamError::CompressionError { kind: "gzip_extra_len" });
+  }
+  let extra_len = u16::from_le_bytes([bytes[payload_start], bytes[payload_start + 1]]) as usize;
+  payload_start += 2;
+  if payload_start + extra_len > payload_end {
+    return Err(StreamError::CompressionError { kind: "gzip_extra" });
+  }
+  Ok(payload_start + extra_len)
+}
+
+fn consume_gzip_header_crc(payload_start: usize, payload_end: usize) -> Result<usize, StreamError> {
+  if payload_start + 2 > payload_end {
+    return Err(StreamError::CompressionError { kind: "gzip_header_crc" });
+  }
+  Ok(payload_start + 2)
+}
+
+fn validate_gzip_expected_len(expected_len: u32, max_bytes_per_chunk: usize) -> Result<(), StreamError> {
+  if usize::try_from(expected_len).ok().filter(|len| *len <= max_bytes_per_chunk).is_some() {
+    return Ok(());
+  }
+  Err(StreamError::CompressionError { kind: "gzip_too_large" })
 }
 
 fn consume_gzip_zero_terminated_field(

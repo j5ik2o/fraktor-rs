@@ -17,6 +17,7 @@ mod path_remote_actor_ref_provider;
 mod provider_dispatch_error;
 mod remote_actor_path_registry;
 mod remote_actor_ref_sender;
+mod remote_deployment_hook;
 mod remote_watch_hook;
 mod std_remote_actor_ref_provider_installer;
 

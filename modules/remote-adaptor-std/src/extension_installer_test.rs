@@ -33,7 +33,7 @@ use fraktor_remote_core_rs::{
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundPriority},
   extension::{Remote, RemoteEvent, RemoteShared, RemotingError},
-  transport::TransportEndpoint,
+  transport::{TransportEndpoint, TransportError},
   watcher::WatcherCommand,
   wire::{ControlPdu, WireFrame},
 };
@@ -443,6 +443,28 @@ async fn forward_watcher_command_logs_when_queue_is_full() {
   forward_watcher_command_for_event(&event, &watcher_tx);
 
   assert!(matches!(watcher_rx.try_recv(), Ok(WatcherCommand::HeartbeatReceived { now: 1, .. })));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn forward_watcher_command_forwards_connection_lost() {
+  let (watcher_tx, mut watcher_rx) = tokio_mpsc::channel(1);
+  let event = RemoteEvent::ConnectionLost {
+    authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
+    cause:     TransportError::ConnectionClosed,
+    now_ms:    77,
+  };
+
+  forward_watcher_command_for_event(&event, &watcher_tx);
+
+  let command = watcher_rx.try_recv().expect("connection lost should enqueue watcher command");
+  assert!(matches!(
+    command,
+    WatcherCommand::ConnectionLost {
+      from,
+      reason,
+      now
+    } if from == Address::new("remote-sys", "10.0.0.1", 2552) && reason.contains("ConnectionClosed") && now == 77
+  ));
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]

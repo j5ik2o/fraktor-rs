@@ -30,6 +30,12 @@ mod handshake_pdu;
 mod handshake_req;
 mod handshake_rsp;
 mod primitives;
+mod remote_deployment_codec;
+mod remote_deployment_create_failure;
+mod remote_deployment_create_request;
+mod remote_deployment_create_success;
+mod remote_deployment_failure_code;
+mod remote_deployment_pdu;
 mod wire_error;
 mod wire_frame;
 
@@ -48,12 +54,18 @@ pub use envelope_payload::EnvelopePayload;
 pub use envelope_pdu::EnvelopePdu;
 pub use flush_scope::FlushScope;
 pub use frame_header::{
-  FRAME_KIND_OFFSET, FrameHeader, KIND_ACK, KIND_CONTROL, KIND_ENVELOPE, KIND_HANDSHAKE_REQ, KIND_HANDSHAKE_RSP,
-  WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2, WIRE_VERSION_3,
+  FRAME_KIND_OFFSET, FrameHeader, KIND_ACK, KIND_CONTROL, KIND_DEPLOYMENT, KIND_ENVELOPE, KIND_HANDSHAKE_REQ,
+  KIND_HANDSHAKE_RSP, WIRE_VERSION, WIRE_VERSION_1, WIRE_VERSION_2, WIRE_VERSION_3, WIRE_VERSION_4,
 };
 pub use handshake_codec::HandshakeCodec;
 pub use handshake_pdu::HandshakePdu;
 pub use handshake_req::HandshakeReq;
 pub use handshake_rsp::HandshakeRsp;
+pub use remote_deployment_codec::RemoteDeploymentCodec;
+pub use remote_deployment_create_failure::RemoteDeploymentCreateFailure;
+pub use remote_deployment_create_request::RemoteDeploymentCreateRequest;
+pub use remote_deployment_create_success::RemoteDeploymentCreateSuccess;
+pub use remote_deployment_failure_code::RemoteDeploymentFailureCode;
+pub use remote_deployment_pdu::RemoteDeploymentPdu;
 pub use wire_error::WireError;
 pub use wire_frame::WireFrame;

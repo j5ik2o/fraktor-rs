@@ -1,5 +1,9 @@
 //! Default core implementation of the remoting lifecycle API.
 
+#[cfg(test)]
+#[path = "remote_test.rs"]
+mod tests;
+
 use alloc::{
   boxed::Box,
   format,
@@ -26,7 +30,10 @@ use crate::{
   },
   instrument::{NoopInstrument, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
-  wire::{AckPdu, ControlPdu, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp, WireFrame},
+  wire::{
+    AckPdu, ControlPdu, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp, RemoteDeploymentPdu,
+    WireFrame,
+  },
 };
 
 /// Core remoting lifecycle implementation backed by a transport port.
@@ -211,6 +218,9 @@ impl Remote {
         Ok(())
       },
       | RemoteEvent::OutboundControl { remote, pdu, now_ms } => self.handle_outbound_control(&remote, pdu, now_ms),
+      | RemoteEvent::OutboundDeployment { remote, pdu, now_ms } => {
+        self.handle_outbound_deployment(&remote, pdu, now_ms)
+      },
       | RemoteEvent::RedeliveryTimerFired { authority, now_ms } => {
         self.handle_redelivery_timer_fired(&authority, now_ms)
       },
@@ -274,6 +284,17 @@ impl Remote {
     map_wire_delivery_result(remote, self.transport.send_control(remote, pdu))
   }
 
+  fn handle_outbound_deployment(
+    &mut self,
+    remote: &Address,
+    pdu: RemoteDeploymentPdu,
+    _now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.lifecycle.ensure_running()?;
+    self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)?;
+    map_wire_delivery_result(remote, self.transport.send_deployment(remote, pdu))
+  }
+
   fn ensure_association(&mut self, remote: Address) -> Result<usize, RemotingError> {
     if let Some(index) = self.association_index_for_remote(&remote) {
       return Ok(index);
@@ -284,20 +305,11 @@ impl Remote {
     Ok(self.associations.len() - 1)
   }
 
-  fn ensure_association_for_handshake_request(&mut self, request: &HandshakeReq) -> Option<usize> {
+  fn association_index_for_handshake_request(&self, request: &HandshakeReq) -> Option<usize> {
     if !self.is_local_handshake_destination(request.to()) {
       return None;
     }
-    if let Some(index) = self.association_index_for_remote(request.from().address()) {
-      return Some(index);
-    }
-    let association = Association::from_config(
-      UniqueAddress::new(request.to().clone(), 0),
-      request.from().address().clone(),
-      &self.config,
-    );
-    self.insert_association(association);
-    Some(self.associations.len() - 1)
+    self.association_index_for_remote(request.from().address())
   }
 
   fn association_index_for_remote(&self, remote: &Address) -> Option<usize> {
@@ -387,6 +399,10 @@ impl Remote {
       | WireFrame::Handshake(pdu) => self.handle_inbound_handshake_pdu(pdu, now_ms),
       | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(authority, &pdu, now_ms),
       | WireFrame::Ack(pdu) => self.handle_inbound_ack_pdu(authority, &pdu, now_ms),
+      | WireFrame::Deployment(pdu) => {
+        tracing::warn!(?pdu, "deployment frame reached remote core without adapter routing");
+        Ok(())
+      },
     }
   }
 
@@ -398,7 +414,7 @@ impl Remote {
   }
 
   fn handle_inbound_handshake_request(&mut self, request: &HandshakeReq, now_ms: u64) -> Result<(), RemotingError> {
-    let Some(association_index) = self.ensure_association_for_handshake_request(request) else {
+    let Some(association_index) = self.association_index_for_handshake_request(request) else {
       return Ok(());
     };
     let accepted = {
@@ -711,9 +727,10 @@ impl Remote {
       return Ok(());
     };
     self.associations[index].record_handshake_activity(now_ms);
-    let reason = QuarantineReason::new("remote shutdown");
-    let effects = self.associations[index].quarantine(reason, now_ms, self.instrument.as_mut());
-    self.apply_association_effects(index, effects, now_ms)
+    let gate_effects = self.associations[index].gate(None, now_ms);
+    self.apply_association_effects(index, gate_effects, now_ms)?;
+    let recover_effects = self.associations[index].recover(None, now_ms, self.instrument.as_mut());
+    self.apply_association_effects(index, recover_effects, now_ms)
   }
 
   pub(crate) fn collect_flush_start_effects(

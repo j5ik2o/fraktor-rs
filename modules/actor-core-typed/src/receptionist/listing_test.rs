@@ -171,9 +171,15 @@ fn service_instances_deduplicate_duplicate_refs() {
   assert_eq!(instances.into_iter().next().expect("one instance").pid(), Pid::new(9, 0));
 }
 
-/// `services_were_added_or_removed` is always `true` for local-only listings.
+/// `services_were_added_or_removed` defaults to `true` for local-only listings.
 #[test]
 fn services_were_added_or_removed_returns_true_for_local_listing() {
   let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
   assert!(listing.services_were_added_or_removed());
+}
+
+#[test]
+fn services_were_added_or_removed_can_be_set_to_false() {
+  let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]).with_services_were_added_or_removed(false);
+  assert!(!listing.services_were_added_or_removed());
 }

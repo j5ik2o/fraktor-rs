@@ -37,7 +37,7 @@ use crate::{
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
   wire::{
     AckPdu, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq,
-    HandshakeRsp, WireFrame,
+    HandshakeRsp, RemoteDeploymentCreateFailure, RemoteDeploymentFailureCode, RemoteDeploymentPdu, WireFrame,
   },
 };
 
@@ -878,6 +878,59 @@ fn inbound_handshake_request_rejects_forged_local_destination() {
     .expect("forged destination should be ignored without failing the event loop");
 
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_handshake_requests_from_unknown_sources_do_not_create_associations() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let handshake_calls = transport.handshake_calls.clone();
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+
+  for index in 0..64_u16 {
+    let remote_address = Address::new("remote-sys", "10.0.0.1", 30_000 + index);
+    let request = HandshakePdu::Req(HandshakeReq::new(
+      UniqueAddress::new(remote_address.clone(), u64::from(index) + 1),
+      local_address.clone(),
+    ));
+
+    remote
+      .handle_remote_event(RemoteEvent::InboundFrameReceived {
+        authority: TransportEndpoint::new(remote_address.to_string()),
+        frame:     WireFrame::Handshake(request),
+        now_ms:    u64::from(index) + 42,
+      })
+      .expect("unknown inbound handshake should be ignored without failing the event loop");
+  }
+
+  assert_eq!(remote.association_count_for_test(), 0);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_deployment_frame_without_adapter_routing_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    1,
+    2,
+    RemoteDeploymentFailureCode::SpawnFailed,
+    String::from("unrouted"),
+  ));
+
+  let result = remote.handle_remote_event(RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Deployment(pdu),
+    now_ms:    42,
+  });
+
+  result.expect("unrouted deployment frame should not fail the event loop");
 }
 
 #[test]
@@ -1838,7 +1891,7 @@ fn inbound_heartbeat_control_backpressure_keeps_event_loop_alive() {
 }
 
 #[test]
-fn inbound_shutdown_control_quarantines_matching_association() {
+fn inbound_shutdown_control_gates_and_restarts_matching_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");
@@ -1874,11 +1927,11 @@ fn inbound_shutdown_control_quarantines_matching_association() {
       envelope:  Box::new(envelope),
       now_ms:    81,
     })
-    .expect("quarantined association should discard outbound");
+    .expect("gated association should restart before outbound is sent");
 
   assert_eq!(send_calls.load(Ordering::Relaxed), 0);
-  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
-  assert_eq!(timeout_calls.load(Ordering::Relaxed), 0);
+  assert!(handshake_calls.load(Ordering::Relaxed) >= 1);
+  assert!(timeout_calls.load(Ordering::Relaxed) >= 1);
 }
 
 #[test]

@@ -1,20 +1,33 @@
 use alloc::vec::Vec;
-use std::time::{Duration, Instant};
+use std::{
+  thread,
+  time::{Duration, Instant},
+};
 
-use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
+use fraktor_actor_adaptor_std_rs::{
+  system::{create_noop_actor_system_with, std_actor_system_config},
+  tick_driver::TestTickDriver,
+};
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Pid,
+    Address as ActorAddress, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathScheme},
     actor_ref::ActorRef,
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
+    actor_ref_provider::{
+      ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider, LocalActorRefProviderInstaller,
+    },
+    deploy::RemoteScope,
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{AnyMessage, system_message::SystemMessage},
+    props::DeployablePropsMetadata,
   },
   event::stream::{CorrelationId, EventStreamEvent},
   serialization::default_serialization_extension_id,
-  system::{ActorSystem, remote::RemoteWatchHook},
+  system::{
+    ActorSystem,
+    remote::{RemoteDeploymentHook, RemoteDeploymentOutcome, RemoteDeploymentRequest, RemoteWatchHook},
+  },
 };
 use fraktor_remote_core_rs::{
   address::{Address as RemoteCoreAddress, RemoteNodeId, UniqueAddress},
@@ -28,7 +41,10 @@ use fraktor_remote_core_rs::{
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::{RemoteTransport, TransportEndpoint, TransportError},
   watcher::WatcherCommand,
-  wire::{AckPdu, ControlPdu, HandshakePdu, HandshakeRsp},
+  wire::{
+    AckPdu, ControlPdu, HandshakePdu, HandshakeRsp, RemoteDeploymentCreateFailure, RemoteDeploymentCreateSuccess,
+    RemoteDeploymentFailureCode, RemoteDeploymentPdu,
+  },
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
@@ -39,9 +55,11 @@ use tokio::{
 use super::{
   StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
   remote_actor_path_registry::RemoteActorPathRegistry,
+  remote_deployment_hook::StdRemoteDeploymentHook,
   remote_watch_hook::{StdRemoteWatchFlushConfig, StdRemoteWatchHook},
 };
 use crate::{
+  deployment::{DeploymentResponse, DeploymentResponseDispatcher},
   extension_installer::{RemotingExtensionInstaller, StdFlushGate},
   tests::test_support_test::EventHarness,
   transport::tcp::TcpRemoteTransport,
@@ -345,6 +363,46 @@ fn remote_watch_flush_config(harness: &EventHarness) -> StdRemoteWatchFlushConfi
   StdRemoteWatchFlushConfig::new(RemoteShared::new(remote), StdFlushGate::default(), vec![0])
 }
 
+fn deployment_request(
+  child_name: &str,
+  target: ActorAddress,
+  metadata: Option<DeployablePropsMetadata>,
+) -> RemoteDeploymentRequest {
+  RemoteDeploymentRequest::new(
+    Pid::new(41, 0),
+    Pid::new(42, 0),
+    String::from(child_name),
+    ActorPath::root().child(child_name),
+    RemoteScope::new(target),
+    metadata,
+  )
+}
+
+fn deployable_metadata() -> DeployablePropsMetadata {
+  DeployablePropsMetadata::new("echo", AnyMessage::new(String::from("payload")))
+}
+
+fn remote_deployment_hook_fixture(
+  timeout: Duration,
+) -> (StdRemoteDeploymentHook, mpsc::Receiver<RemoteEvent>, DeploymentResponseDispatcher, ActorSystem) {
+  let system = create_noop_actor_system_with(|config| {
+    config.with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default())
+  });
+  let serialization = system.extended().register_extension(&default_serialization_extension_id());
+  let (event_sender, event_rx) = mpsc::channel(8);
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let hook = StdRemoteDeploymentHook::new(
+    local_address(),
+    system.clone(),
+    event_sender,
+    Instant::now(),
+    serialization,
+    dispatcher.clone(),
+    timeout,
+  );
+  (hook, event_rx, dispatcher, system)
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -357,6 +415,210 @@ fn local_path_without_authority_is_dispatched_to_local_provider() {
   // the call lands on `LocalProvider(...)` (not on `CoreProvider`).
   let err = provider.actor_ref(local_path).unwrap_err();
   assert!(matches!(err, StdRemoteActorRefProviderError::LocalProvider(_)), "expected LocalProvider error, got {err:?}");
+}
+
+#[test]
+fn remote_deployment_hook_loopback_returns_local_outcome() {
+  let (hook, mut event_rx, _dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(50));
+  let request = deployment_request(
+    "loopback-deploy",
+    ActorAddress::remote("local-sys", "127.0.0.1", 2551),
+    Some(deployable_metadata()),
+  );
+
+  let outcome = hook.deploy_child(request);
+
+  assert!(matches!(outcome, RemoteDeploymentOutcome::UseLocalDeployment));
+  assert!(event_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_deployment_hook_rejects_non_deployable_props_without_enqueue() {
+  let (hook, mut event_rx, _dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(50));
+  let request = deployment_request("non-deployable", ActorAddress::remote("remote-sys", "10.0.0.1", 2552), None);
+
+  let outcome = hook.deploy_child(request);
+
+  assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("deployable props metadata")));
+  assert!(event_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
+  let (hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let request = deployment_request(
+    "remote-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let success_path = system.user_guardian_ref().canonical_path().expect("user guardian path").to_canonical_uri();
+  let join = thread::spawn(move || hook.deploy_child(request));
+
+  let event = event_rx.blocking_recv().expect("deployment request should be enqueued");
+  let (correlation_hi, correlation_lo) = match event {
+    | RemoteEvent::OutboundDeployment { remote, pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      assert_eq!(remote, RemoteCoreAddress::new("remote-sys", "10.0.0.1", 2552));
+      assert_eq!(request.target_parent_path(), "fraktor.tcp://remote-sys@10.0.0.1:2552/user");
+      assert_eq!(request.child_name(), "remote-deploy");
+      assert_eq!(request.factory_id(), "echo");
+      assert_eq!(request.origin_node(), "local-sys@127.0.0.1:2551");
+      (request.correlation_hi(), request.correlation_lo())
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  };
+  dispatcher.complete(DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+    correlation_hi,
+    correlation_lo,
+    success_path.clone(),
+  )));
+
+  let outcome = join.join().expect("deployment hook thread should complete");
+  let RemoteDeploymentOutcome::RemoteCreated(actor_ref) = outcome else {
+    panic!("expected remote actor ref, got {outcome:?}");
+  };
+  let canonical = actor_ref.canonical_path().expect("resolved ref should keep canonical path");
+  assert_eq!(canonical.to_canonical_uri(), success_path);
+}
+
+#[test]
+fn remote_deployment_hook_brackets_ipv6_target_parent_host() {
+  let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));
+  let request =
+    deployment_request("remote-deploy", ActorAddress::remote("remote-sys", "::1", 2552), Some(deployable_metadata()));
+
+  let outcome = hook.deploy_child(request);
+  let event = event_rx.try_recv().expect("deployment request should be enqueued");
+
+  match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      assert_eq!(request.target_parent_path(), "fraktor.tcp://remote-sys@[::1]:2552/user");
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  }
+  assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("timed out")));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_deployment_hook_current_thread_runtime_fails_without_blocking() {
+  let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let request = deployment_request(
+    "remote-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let started = Instant::now();
+
+  let outcome = hook.deploy_child(request);
+
+  assert!(
+    started.elapsed() < Duration::from_millis(100),
+    "current-thread runtime should fail fast instead of blocking"
+  );
+  assert!(matches!(
+    outcome,
+    RemoteDeploymentOutcome::Failed(reason) if reason.contains("current-thread Tokio runtime")
+  ));
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundDeployment { .. })));
+}
+
+#[test]
+fn remote_deployment_hook_invalid_target_parent_path_does_not_consume_correlation() {
+  let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));
+  let invalid = RemoteDeploymentRequest::new(
+    Pid::new(41, 0),
+    Pid::new(42, 0),
+    String::from("invalid-parent"),
+    ActorPath::root(),
+    RemoteScope::new(ActorAddress::remote("remote-sys", "10.0.0.1", 2552)),
+    Some(deployable_metadata()),
+  );
+
+  let invalid_outcome = hook.deploy_child(invalid);
+
+  assert!(matches!(invalid_outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("target parent path")));
+  assert!(event_rx.try_recv().is_err());
+
+  let valid = deployment_request(
+    "remote-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let valid_outcome = hook.deploy_child(valid);
+  let event = event_rx.try_recv().expect("deployment request should be enqueued");
+
+  match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      assert_eq!(request.correlation_hi(), 1);
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  }
+  assert!(matches!(valid_outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("timed out")));
+}
+
+#[test]
+fn remote_deployment_hook_timeout_is_bounded_and_cancels_pending() {
+  let (hook, mut event_rx, dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_millis(10));
+  let request = deployment_request(
+    "timeout-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+
+  let outcome = hook.deploy_child(request);
+  let event = event_rx.try_recv().expect("deployment request should be enqueued before timeout");
+  let (correlation_hi, correlation_lo) = match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      (request.correlation_hi(), request.correlation_lo())
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  };
+  assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("timed out")));
+
+  dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+    correlation_hi,
+    correlation_lo,
+    RemoteDeploymentFailureCode::SpawnFailed,
+    String::from("late"),
+  )));
+  assert_eq!(dispatcher.stale_len(), 1);
+}
+
+#[test]
+fn remote_deployment_hook_closed_response_channel_is_not_timeout() {
+  let (hook, mut event_rx, dispatcher, _harness) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let request = deployment_request(
+    "closed-channel-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let join = thread::spawn(move || hook.deploy_child(request));
+
+  let event = event_rx.blocking_recv().expect("deployment request should be enqueued");
+  let (correlation_hi, correlation_lo) = match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      (request.correlation_hi(), request.correlation_lo())
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  };
+  dispatcher.cancel(correlation_hi, correlation_lo);
+
+  let outcome = join.join().expect("deployment hook thread should complete");
+
+  assert!(matches!(outcome, RemoteDeploymentOutcome::Failed(reason) if reason.contains("response channel closed")));
+}
+
+#[test]
+fn deployment_response_dispatcher_records_unknown_response_as_stale() {
+  let dispatcher = DeploymentResponseDispatcher::default();
+
+  dispatcher.complete(DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
+    7,
+    0,
+    RemoteDeploymentFailureCode::SpawnFailed,
+    String::from("unknown"),
+  )));
+
+  assert_eq!(dispatcher.stale_len(), 1);
 }
 
 #[test]
