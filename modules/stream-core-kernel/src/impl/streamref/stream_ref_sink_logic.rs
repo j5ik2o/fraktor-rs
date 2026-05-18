@@ -231,6 +231,11 @@ where
     if let Some(message) = envelope.message().downcast_ref::<StreamRefCumulativeDemand>() {
       return self.accept_demand(*message, envelope.sender());
     }
+    if let Some(message) = envelope.message().downcast_ref::<StreamRefRemoteStreamFailure>() {
+      self.endpoint.ensure_sender(envelope.sender())?;
+      self.endpoint.handoff().enqueue_remote_failure(String::from(message.message()));
+      return Ok(());
+    }
     Err(StreamError::Failed)
   }
 }

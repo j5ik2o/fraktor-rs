@@ -20,7 +20,9 @@ use crate::{
   r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff},
   materialization::{Completion, StreamDone, StreamFuture},
   stage::{StageActorEnvelope, StageActorReceive},
-  stream_ref::{StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake, StreamRefSettings},
+  stream_ref::{
+    StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamFailure, StreamRefSettings,
+  },
 };
 
 struct RecordingSender {
@@ -206,6 +208,34 @@ fn endpoint_receive_flushes_failure_and_rejects_control_protocols_on_demand() {
     invalid_receive
       .receive(StageActorEnvelope::new(partner, AnyMessage::new(StreamRefCumulativeDemand::new(0, demand)),)),
     Err(StreamError::Failed)
+  );
+}
+
+#[test]
+fn endpoint_receive_accepts_remote_failure_and_keeps_draining_terminal_notifications() {
+  let system = build_system();
+  let (partner, _user_messages) = temp_recording_actor(&system);
+  let partner_key = partner.canonical_path().expect("canonical path").to_canonical_uri();
+  let handoff = StreamRefHandoff::<u32>::new();
+  let mut receive = SinkRefEndpointReceive::new(handoff.clone(), system, ActorRef::null());
+
+  receive
+    .receive(StageActorEnvelope::new(partner.clone(), AnyMessage::new(StreamRefOnSubscribeHandshake::new(partner_key))))
+    .expect("handshake");
+  receive
+    .receive(StageActorEnvelope::new(
+      partner.clone(),
+      AnyMessage::new(StreamRefRemoteStreamFailure::new(String::from("cancelled"))),
+    ))
+    .expect("remote failure");
+
+  assert!(matches!(handoff.offer(10_u32), Err(StreamError::FailedWithContext { .. })));
+  assert_eq!(
+    receive.receive(StageActorEnvelope::new(
+      partner,
+      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(99, 0))),
+    )),
+    Ok(())
   );
 }
 
