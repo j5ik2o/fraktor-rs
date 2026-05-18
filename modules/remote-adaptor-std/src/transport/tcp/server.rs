@@ -168,16 +168,14 @@ async fn read_loop(
       | Some(Ok(decoded)) => {
         let decoded = match compression_tables.handle_inbound_frame(decoded, &local_authority) {
           | Ok(InboundCompressionAction::Forward(frame)) => frame,
-          | Ok(InboundCompressionAction::Reply { pdu, authority: frame_authority }) => {
-            authority = Some(frame_authority);
+          | Ok(InboundCompressionAction::Reply { pdu }) => {
             let send_failed = framed.send(WireFrame::Control(pdu)).await.is_err();
             if send_failed {
               break Some(TransportError::SendFailed);
             }
             continue;
           },
-          | Ok(InboundCompressionAction::Consumed { authority: frame_authority }) => {
-            authority = Some(frame_authority);
+          | Ok(InboundCompressionAction::Consumed) => {
             continue;
           },
           | Err(err) => {

@@ -162,15 +162,16 @@ fn inbound_advertisement_resolves_entry_ids() {
 }
 
 #[test]
-fn inbound_advertisement_accepts_entries_over_local_advertisement_bound() {
+fn inbound_advertisement_rejects_entries_over_local_advertisement_bound() {
   let mut table = CompressionTable::new(max(1));
   let entries =
     [CompressionTableEntry::new(9, "/user/a".to_string()), CompressionTableEntry::new(10, "/user/b".to_string())];
 
-  assert_eq!(table.apply_advertisement(7, &entries), Ok(()));
+  let err = table.apply_advertisement(7, &entries).unwrap_err();
 
-  assert_eq!(table.resolve(9), Some("/user/a"));
-  assert_eq!(table.resolve(10), Some("/user/b"));
+  assert_eq!(err, WireError::InvalidFormat);
+  assert_eq!(table.resolve(9), None);
+  assert_eq!(table.resolve(10), None);
 }
 
 #[test]

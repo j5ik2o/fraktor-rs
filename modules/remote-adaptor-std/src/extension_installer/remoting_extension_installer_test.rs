@@ -174,6 +174,33 @@ fn route_deployment_event_returns_failure_when_daemon_queue_closed() {
   }
 }
 
+#[test]
+fn route_deployment_event_completes_failure_with_sender_authority() {
+  let (sender, _receiver) = mpsc::channel(1);
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let target = remote_address();
+  let receiver = dispatcher.register(5, 6, target.to_string(), 1);
+  let failure =
+    RemoteDeploymentCreateFailure::new(5, 6, RemoteDeploymentFailureCode::SpawnFailed, String::from("spawn failed"));
+  let event = RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(target.to_string()),
+    frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateFailure(failure)),
+    now_ms:    99,
+  };
+
+  let routed = route_deployment_event(event, &sender, &dispatcher);
+
+  assert!(routed.is_none());
+  let response = receiver.try_recv().expect("failure response should complete matching deployment");
+  assert!(matches!(
+    response,
+    DeploymentResponse::Failure(failure)
+      if failure.correlation_hi() == 5
+        && failure.correlation_lo() == 6
+        && failure.code() == RemoteDeploymentFailureCode::SpawnFailed
+  ));
+}
+
 fn activate_association(remote: &RemoteShared, target: &Address) {
   remote
     .handle_event(RemoteEvent::OutboundEnqueued {
@@ -332,7 +359,7 @@ async fn shutdown_remote_and_join_drops_deployment_address_terminated_subscripti
   let system = create_noop_actor_system();
   let dispatcher = DeploymentResponseDispatcher::default();
   let subscription = subscribe_address_terminated(&system, dispatcher.clone());
-  let receiver = dispatcher.register(target.to_string(), 1, 2, 1);
+  let receiver = dispatcher.register(1, 2, target.to_string(), 1);
   let run_state = Arc::new(Mutex::new(RemotingRunState {
     receiver: None,
     handle: None,
@@ -368,7 +395,7 @@ fn rollback_started_remote_drops_deployment_address_terminated_subscription() {
   let system = create_noop_actor_system();
   let dispatcher = DeploymentResponseDispatcher::default();
   let subscription = subscribe_address_terminated(&system, dispatcher.clone());
-  let receiver = dispatcher.register(target.to_string(), 3, 4, 1);
+  let receiver = dispatcher.register(3, 4, target.to_string(), 1);
   let run_state = Arc::new(Mutex::new(RemotingRunState {
     receiver: None,
     handle: None,

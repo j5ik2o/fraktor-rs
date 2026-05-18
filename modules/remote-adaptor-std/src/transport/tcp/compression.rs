@@ -9,7 +9,6 @@ use core::{future::pending, num::NonZeroUsize, time::Duration};
 
 use fraktor_remote_core_rs::{
   config::RemoteCompressionConfig,
-  transport::TransportEndpoint,
   wire::{CompressedText, CompressionTable, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu, WireError},
 };
 use tokio::time::{Instant as TokioInstant, Interval, interval_at};
@@ -19,8 +18,8 @@ use super::WireFrame;
 #[derive(Debug)]
 pub(crate) enum InboundCompressionAction {
   Forward(WireFrame),
-  Reply { pdu: ControlPdu, authority: TransportEndpoint },
-  Consumed { authority: TransportEndpoint },
+  Reply { pdu: ControlPdu },
+  Consumed,
 }
 
 pub(crate) struct TcpCompressionTables {
@@ -56,18 +55,16 @@ impl TcpCompressionTables {
       | WireFrame::Envelope(pdu) => {
         self.resolve_inbound_envelope(pdu).map(WireFrame::Envelope).map(InboundCompressionAction::Forward)
       },
-      | WireFrame::Control(ControlPdu::CompressionAdvertisement { authority, table_kind, generation, entries }) => {
-        let authority = TransportEndpoint::new(authority);
+      | WireFrame::Control(ControlPdu::CompressionAdvertisement { authority: _, table_kind, generation, entries }) => {
         self.inbound_table_mut(table_kind).apply_advertisement(generation, &entries)?;
         Ok(InboundCompressionAction::Reply {
           pdu: ControlPdu::CompressionAck { authority: local_authority.to_string(), table_kind, generation },
-          authority,
         })
       },
       | WireFrame::Control(ControlPdu::CompressionAck { authority, table_kind, generation }) => {
-        let authority = TransportEndpoint::new(authority);
+        let _ = authority;
         self.outbound_table_mut(table_kind).acknowledge(generation);
-        Ok(InboundCompressionAction::Consumed { authority })
+        Ok(InboundCompressionAction::Consumed)
       },
       | frame => Ok(InboundCompressionAction::Forward(frame)),
     }

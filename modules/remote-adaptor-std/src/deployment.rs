@@ -100,15 +100,15 @@ impl DeploymentResponseDispatcher {
   /// Registers a pending request.
   pub(crate) fn register(
     &self,
-    expected_authority: String,
     correlation_hi: u64,
     correlation_lo: u32,
+    authority: impl Into<String>,
     started_at_millis: u64,
   ) -> mpsc::Receiver<DeploymentResponse> {
     let (sender, receiver) = mpsc::channel();
     self.state.with_lock(|state| {
       state.pending.insert((correlation_hi, correlation_lo), PendingDeploymentResponse {
-        authority: expected_authority,
+        authority: authority.into(),
         started_at_millis,
         sender,
       });
@@ -117,16 +117,9 @@ impl DeploymentResponseDispatcher {
   }
 
   /// Removes a pending request without completing it.
-  pub(crate) fn cancel(&self, expected_authority: &str, correlation_hi: u64, correlation_lo: u32) {
-    let normalized_authority = normalize_authority(expected_authority);
+  pub(crate) fn cancel(&self, correlation_hi: u64, correlation_lo: u32) {
     self.state.with_lock(|state| {
-      let key = (correlation_hi, correlation_lo);
-      if let Some(pending) = state.pending.get(&key)
-        && (pending.authority == expected_authority
-          || normalized_authority.as_deref().is_some_and(|normalized| normalized == pending.authority.as_str()))
-      {
-        state.pending.remove(&key);
-      }
+      state.pending.remove(&(correlation_hi, correlation_lo));
     });
   }
 
@@ -138,9 +131,7 @@ impl DeploymentResponseDispatcher {
       | DeploymentResponse::Failure(failure) => (failure.correlation_hi(), failure.correlation_lo()),
     };
     let pending = self.state.with_lock(|state| {
-      let Some(expected) = state.pending.get(&key) else {
-        return None;
-      };
+      let expected = state.pending.get(&key)?;
       let matches_exact = expected.authority == authority;
       let matches_normalized =
         normalized_authority.as_deref().is_some_and(|normalized| normalized == expected.authority.as_str());
