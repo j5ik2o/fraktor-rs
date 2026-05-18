@@ -1436,12 +1436,10 @@ fn ac_h2_t1_register_child_keeps_container_normal() {
 }
 
 #[test]
-#[ignore = "Phase A3 dependency: fault_terminate のみ post_stop 遅延 + Terminating(Termination) 遷移を要する。pekko-restart-completion の scope 外"]
 fn ac_h2_t2_fault_terminate_with_children_transitions_to_terminating() {
-  // AC-H2 / Phase A3: handle_stop (fault_terminate) は live child がある間
+  // AC-H2: handle_stop (fault_terminate) は live child がある間
   // post_stop と mark_terminated を遅延し、ChildrenContainer を Terminating(Termination)
-  // に遷移させる。現状 handle_stop は post_stop を同期実行するため本テストは
-  // Phase A3 の fault_terminate 配線まで ignore。
+  // に遷移させる。
   let state = ActorSystem::new_empty().state();
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let parent_props = Props::from_fn({
@@ -1478,13 +1476,10 @@ fn ac_h2_t2_fault_terminate_with_children_transitions_to_terminating() {
 }
 
 #[test]
-#[ignore = "Phase A3 dependency: finish_terminate dispatch on Termination state-change is out of scope for pekko-restart-completion"]
 fn ac_h2_t3_finish_terminate_runs_post_stop_after_last_child() {
-  // AC-H2 / Phase A3: Terminating(Termination) 状態で最後の子が
+  // AC-H2: Terminating(Termination) 状態で最後の子が
   // handle_death_watch_notification されたとき finish_terminate が起動し、
-  // post_stop が実行される。本 change (pekko-restart-completion) は
-  // `Recreation` state-change のみ dispatch し、`Termination` は
-  // `// TODO(Phase A3)` マーク（tasks.md 4.2 step 8）のため本テストは ignore。
+  // post_stop が実行される。
   let state = ActorSystem::new_empty().state();
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let parent_props = Props::from_fn({
@@ -1517,6 +1512,39 @@ fn ac_h2_t3_finish_terminate_runs_post_stop_after_last_child() {
     "AC-H2: 最後の子 termination → finish_terminate 経由で post_stop が呼ばれる"
   );
   assert!(parent.children().is_empty(), "AC-H2: 子 termination 後に children() は空");
+}
+
+#[test]
+fn ac_h2_t4_finish_terminate_ignores_duplicate_child_notification() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let parent_props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let parent = ActorCell::create(state.clone(), Pid::new(276, 0), None, "term-parent3".to_string(), &parent_props)
+    .expect("create parent");
+  let child_props = Props::from_fn(|| ProbeActor);
+  let child =
+    ActorCell::create(state.clone(), Pid::new(277, 0), Some(parent.pid()), "term-child3".to_string(), &child_props)
+      .expect("create child");
+  state.register_cell(parent.clone());
+  state.register_cell(child.clone());
+  parent.register_child(child.pid());
+  parent.register_watching(child.pid());
+
+  let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
+  parent_invoker.system_invoke(SystemMessage::Create).expect("parent create");
+  parent_invoker.system_invoke(SystemMessage::Stop).expect("parent stop with live child");
+
+  parent.handle_death_watch_notification(child.pid()).expect("first death-watch notification");
+  parent.handle_death_watch_notification(child.pid()).expect("duplicate death-watch notification");
+
+  assert_eq!(
+    log.lock().clone(),
+    vec!["pre_start", "post_stop"],
+    "AC-H2: duplicate child notification must not run post_stop twice"
+  );
 }
 
 // ============================================================================

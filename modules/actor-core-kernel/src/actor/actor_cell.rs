@@ -1106,8 +1106,8 @@ impl ActorCell {
   /// 6. Remove `pid` from `terminated_queued` so subsequent notifications for a re-registered pid
   ///    can fire again.
   /// 7. When the state transition reported `Some(SuspendReason::Recreation(cause))`, drive
-  ///    `finish_recreate` with the cause. `Termination` / `Creation` transitions are left for a
-  ///    Phase A3 follow-up.
+  ///    `finish_recreate` with the cause. When it reported `Some(SuspendReason::Termination)`,
+  ///    drive `finish_terminate`.
   pub(crate) fn handle_death_watch_notification(&self, pid: Pid) -> Result<(), ActorError> {
     let Some((has_user_watch, state_change)) = self.state.with_write(|state| {
       if !state.watching_contains_pid(pid) {
@@ -1143,27 +1143,26 @@ impl ActorCell {
 
     self.state.with_write(|state| state.terminated_queued.retain(|existing| *existing != pid));
 
-    if let Some(SuspendReason::Recreation(cause)) = state_change {
-      debug_assert!(
-        self.state.with_read(|state| state.deferred_recreate_cause.as_ref().is_none_or(|stored| stored == &cause)),
-        "deferred_recreate_cause must match the cause returned by remove_child_and_get_state_change",
-      );
+    if let Some(state_change) = state_change {
+      let completion_result = match state_change {
+        | SuspendReason::Recreation(cause) => {
+          debug_assert!(
+            self.state.with_read(|state| state.deferred_recreate_cause.as_ref().is_none_or(|stored| stored == &cause)),
+            "deferred_recreate_cause must match the cause returned by remove_child_and_get_state_change",
+          );
+          self.finish_recreate(&cause)
+        },
+        | SuspendReason::Termination => self.finish_terminate(),
+        | SuspendReason::UserRequest => Ok(()),
+      };
       // Pekko parity: user-callback delivery (on_terminated / try_tell) and
-      // finish_recreate are logically independent. finish_recreate internally
-      // reports its own failure to the supervisor via set_failed_fatally +
-      // report_failure. If the user callback also failed, surface that error
-      // to the caller so the user-visible failure is not silently dropped by
-      // the `?` operator on finish_recreate's Err. When the delivery
-      // succeeded, propagate the finish_recreate result instead.
-      let recreate_result = self.finish_recreate(&cause);
+      // lifecycle completion are logically independent. If both fail, surface
+      // the user-visible delivery failure.
       return match delivery_result {
-        | Ok(()) => recreate_result,
+        | Ok(()) => completion_result,
         | Err(delivery_error) => Err(delivery_error),
       };
     }
-    // TODO(Phase A3): dispatch `Some(SuspendReason::Termination)` →
-    // `finish_terminate(pid)` once that path is ported. `SuspendReason::Creation`
-    // (Pekko `pre_start` handshake) は該当経路を移植する段階で variant と共に追加する。
 
     delivery_result
   }
@@ -1344,6 +1343,53 @@ impl ActorCell {
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
+    {
+      let mut ctx = self.make_context();
+      ctx.cancel_receive_timeout();
+      ctx.clear_sender();
+    }
+
+    if let Some(children) = self.mark_children_for_termination() {
+      let dispatcher = self.new_dispatcher_shared();
+      dispatcher.run_with_drive_guard(|| {
+        for child in &children {
+          if let Err(send_error) = self.system().send_system_message(*child, SystemMessage::Stop) {
+            self.system().record_send_error(Some(*child), &send_error);
+          }
+        }
+      });
+      return Ok(());
+    }
+
+    self.finish_terminate()
+  }
+
+  fn mark_children_for_termination(&self) -> Option<Vec<Pid>> {
+    self.state.with_write(|state| {
+      if state.children_state.is_terminating() {
+        return Some(Vec::new());
+      }
+      let children = state.children_state.children();
+      if children.is_empty() {
+        return None;
+      }
+      for child in &children {
+        state.children_state.shall_die(*child);
+      }
+      debug_assert!(
+        state.children_state.set_children_termination_reason(SuspendReason::Termination),
+        "children_state must be Terminating after marking live children for termination",
+      );
+      Some(children)
+    })
+  }
+
+  fn finish_terminate(&self) -> Result<(), ActorError> {
+    debug_assert!(
+      self.children().is_empty(),
+      "finish_terminate expects all children to be removed from children_state"
+    );
+
     let mut ctx = self.make_context();
     ctx.cancel_receive_timeout();
     let result = self.actor.with_write(|actor| actor.post_stop(&mut ctx));
@@ -1352,14 +1398,6 @@ impl ActorCell {
       self.publish_lifecycle(LifecycleStage::Stopped);
     }
 
-    let children_snapshot = self.children();
-    for child in &children_snapshot {
-      if let Err(send_error) = self.system().send_system_message(*child, SystemMessage::Stop) {
-        self.system().record_send_error(Some(*child), &send_error);
-      }
-    }
-
-    self.clear_child_stats(&children_snapshot);
     self.drop_stash_messages();
     self.drop_timer_handles();
     self.mark_terminated();
