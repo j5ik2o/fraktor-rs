@@ -136,13 +136,23 @@ impl GraphInterpreter {
   ) {
     for stage in stages {
       match stage {
-        | StageDefinition::Source(source) => source.logic.attach_stream_ref_settings(stream_ref_settings.clone()),
+        | StageDefinition::Source(source) => {
+          if let Some(system) = actor_system {
+            source.logic.attach_actor_system(system.clone());
+          }
+          source.logic.attach_stream_ref_settings(stream_ref_settings.clone());
+        },
         | StageDefinition::Flow(flow) => {
           if let Some(system) = actor_system {
             flow.logic.attach_actor_system(system.clone());
           }
         },
-        | StageDefinition::Sink(sink) => sink.logic.attach_stream_ref_settings(stream_ref_settings.clone()),
+        | StageDefinition::Sink(sink) => {
+          if let Some(system) = actor_system {
+            sink.logic.attach_actor_system(system.clone());
+          }
+          sink.logic.attach_stream_ref_settings(stream_ref_settings.clone());
+        },
       };
     }
   }

@@ -1,82 +1,111 @@
 ## Context
 
-Pekko `SourceRef` / `SinkRef` は remote boundary を越えて渡すための actor-backed reference であり、`StreamRefResolver` はそれらを actor path の serialization format に変換して復元する。fraktor-rs の `StreamRefs` は `StreamRefHandoff` による local handoff、protocol enum、settings、exception variants を持つが、remote resolver / serializer / actor transport 連携は存在しない。
+Pekko `SourceRef` / `SinkRef` は remote boundary を越えて渡せる actor-backed reference である。重要なのは actor path string そのものではなく、stream graph を materialize した結果として ref が得られ、その ref を受け取った側が同じ向きの ref として materialize できる点にある。
 
-remote 側は `StdRemoteActorRefProvider` による remote ActorRef materialization、`RemoteActorRefSender` による `RemoteEvent::OutboundEnqueued` 接続、serialization registry から envelope payload への変換、TCP transport、DeathWatch / `AddressTerminated` が揃っている。次の設計課題は、stream-core に remote 依存を入れずに StreamRef protocol を actor transport へ接続することである。
+途中実装では resolver、endpoint actor、protocol payload serializer、failure mapping の infrastructure は進んだ。しかし materialized `SourceRef` / `SinkRef` が actor-backed endpoint として何を保持し、誰に所有され、state change 後にどう stream を再駆動するかが未決だったため、local proof が要素を完了まで運べず stall した。これは remote transport の不具合ではなく、remote-capable endpoint 表現と materialization contract が未確定であることを示している。
+
+この design は、remote transport 実装より先に materialization semantics を確定するための修正版である。
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- `SourceRef` / `SinkRef` を remote endpoint actor path として serialization format 化し、別 ActorSystem で remote-capable ref として復元できる契約を定義する。
-- local handoff と remote handoff を分離し、`stream-core-kernel` の no_std 境界を維持する。
-- StreamRef demand / element / completion / failure / cancellation を remote user payload として配送し、backpressure と terminal signal を失わない。
-- remote partner termination、address termination、invalid partner、sequence mismatch を stream failure として観測可能にする。
-- 既存 remote actor ref provider / transport / serialization 経路を利用し、StreamRef 専用の transport port を追加しない。
+- Pekko `StreamRefs.sourceRef` / `StreamRefs.sinkRef` 相当の public workflow を fraktor-rs の型と crate 境界に合わせて定義する。
+- serialized `SourceRef<T>` は `SourceRef<T>` として、serialized `SinkRef<T>` は `SinkRef<T>` として resolve される向きを固定する。
+- actor-backed endpoint ref の local proof で endpoint ownership、canonical path 化、provider dispatch 経由の resolve、element、backpressure、completion、failure、cancellation が end-to-end に流れることを remote transport 前の必須 gate にする。
+- `SourceRef` / `SinkRef` を application-level payload として渡せるように見える contract を維持し、actor path string は serializer / resolver support の内部表現に留める。
+- `stream-core-kernel` の no_std 境界を維持し、remote ActorSystem / task / serialization registry / TCP transport 接続は std adaptor または integration layer に閉じる。
+- remote partner termination、address termination、transport connection loss、invalid partner、invalid demand、sequence mismatch を stream failure として観測可能にする。
 
 **Non-Goals:**
 
 - TLS stream API、TLS option、TLS protocol message の実装。
 - 汎用 `Tcp`, `IncomingConnection`, `OutgoingConnection` stream DSL の実装。
 - Reactive Streams TCK / Java DSL / Scala implicit API の再現。
-- remote transport wire format の互換拡張や StreamRef 専用 frame の追加。
+- StreamRef 専用 transport port、transport method、wire frame の追加。
 - cluster sharding、pub-sub、persistence replay と StreamRef の統合。
+- application code に actor path string を直接扱わせる workflow の推奨。
 
 ## Decisions
 
-### 決定 1: StreamRef remote endpoint は actor path で表現する
+### 決定 1: Public workflow は Pekko の materialization 向きに合わせる
 
-`SourceRef` / `SinkRef` の remote serialization format は、Pekko と同様に endpoint actor の canonical actor path string とする。binary token や独自 id table ではなく actor path を使うことで、既存 `ActorRefResolver` / `StdRemoteActorRefProvider` / remote watch hook の契約に乗せられる。
+`SourceRef` は producer 側 stream を `StreamRefs.source_ref` 相当で materialize して得る。受信側は serialized `SourceRef` を `SourceRef` として resolve し、`into_source` / `source` 相当で consume する。
 
-代替案として StreamRef 専用 registry id を remote wire に載せる方法があるが、remote actor ref 解決と DeathWatch を二重実装することになるため採用しない。
+`SinkRef` は consumer 側 sink を `StreamRefs.sink_ref` 相当で materialize して得る。受信側は serialized `SinkRef` を `SinkRef` として resolve し、`into_sink` / `sink` 相当へ produce する。
 
-### 決定 2: `stream-core-kernel` は protocol と local semantics だけを持つ
+`spawn_source_ref -> resolve_sink_ref` や `spawn_sink_ref -> resolve_source_ref` のように向きが反転して見える API は、public contract にしない。内部実装で partner endpoint を作る必要がある場合も、外側から見える名前とテストは `SourceRef` resolves to `SourceRef`、`SinkRef` resolves to `SinkRef` に揃える。
 
-`stream-core-kernel` は no_std のまま、StreamRef protocol、settings、sequence validation、local handoff、stream failure mapping を保持する。ActorSystem、remote ActorRef、tokio task、serialization registry、TCP transport は持たない。
+### 決定 2: Actor-backed endpoint proof を remote 前の gate にする
 
-remote endpoint actor の起動、actor path の serialization format 化、serialized path の resolve、remote protocol message の送受信は std 側または stream / remote integration layer の責務にする。core から `remote-core` へ直接依存する案は crate 境界を逆転させるため採用しない。
+resolver / serializer は、serialize できる実体として actor-backed endpoint ref が存在して初めて意味を持つ。そのため、remote ActorSystem をまたぐ前に、同一 ActorSystem 内で以下を通常テストとして pass させる。
 
-### 決定 3: StreamRef protocol は通常の remote user payload として配送する
+- producer stream -> actor-backed materialized `SourceRef<T>` -> canonical endpoint actor path -> provider dispatch -> resolved `SourceRef<T>` -> consumer sink
+- consumer sink -> actor-backed materialized `SinkRef<T>` -> canonical endpoint actor path -> provider dispatch -> resolved `SinkRef<T>` -> producer stream
 
-`SequencedOnNext`、`CumulativeDemand`、`OnSubscribeHandshake`、completion、failure、ack は StreamRef protocol payload として serializer に登録し、通常の remote actor envelope 経由で配送する。`RemoteTransport` に StreamRef 専用 method や wire frame を追加しない。
+この proof では、endpoint actor ownership、one-shot pairing、demand 到着前の element 保持、accepted element と completion の順序、failure / cancellation の伝播、stream interpreter の wake / drive が成立していることを確認する。local handoff を in-process map や placeholder path string に保存するだけの proof は、この gate を満たさない。ここが通らない場合、remote integration に進まない。
 
-これにより transport は既存の backpressure / retry / serialization failure / connection closed の観測経路を使える。専用 frame は高速化余地があるが、今は意味論を増やして検証面を広げるため採用しない。
+### 決定 3: Actor path string は internal serialization format とする
 
-### 決定 4: remote endpoint actor は partner を固定し、one-shot を守る
+Pekko と同様に endpoint actor の canonical actor path string を serialization format に使う。ただし、これは serializer / resolver support の内部表現であり、application-level workflow の中心には置かない。
 
-remote StreamRef は一度だけ partner と接続できる。最初の handshake で partner actor ref を固定し、以後は partner 以外からの protocol message を invalid partner failure として扱う。二重 materialization は成功させない。
+Rust では `SourceRef<T>` / `SinkRef<T>` が generic で、内部に endpoint abstraction を持ち、`stream-core-kernel` は remote / std 非依存を維持する必要がある。そのため、typed ref object を core で直接 remote serializer に載せるのではなく、std adaptor または domain message serializer が resolver support を使って actor path string へ変換する。
 
-これは Pekko の StreamRef が 1:1 pair であることに対応する。broadcast や multicast は複数の新しい StreamRef を作ることで表現し、単一 StreamRef の共有を許可しない。
+この方針でも、ユーザーから見える contract は「domain message が `SourceRef<T>` / `SinkRef<T>` を持ち、remote 側で同じ ref として使える」ことである。明示 format は lower-level test と serializer support API に限定する。
 
-### 決定 5: remote termination は stream failure へ写像する
+### 決定 4: `stream-core-kernel` は protocol semantics を持ち、remote wiring は持たない
 
-partner actor の DeathWatch notification、remote address termination、transport-level connection closed は StreamRef endpoint に観測可能な failure として伝播する。partner actor termination は `RemoteStreamRefActorTerminated` 相当へ、address termination / connection closed は remote address または transport context を含む stream failure へ写像し、subscription timeout、invalid sequence、invalid partner と混同しない。
+`stream-core-kernel` は no_std のまま、StreamRef settings、protocol model、sequence validation、demand validation、terminal ordering、local handoff、stream failure mapping を保持する。ActorSystem、remote ActorRef、tokio task、serialization registry、TCP transport は持たない。
 
-remote node failure を silent completion に写像する案は、要素喪失を正常終了として隠すため採用しない。
+remote endpoint actor の起動、canonical path format 化、serialized path の resolve、StreamRef protocol payload serializer registration、remote watch integration は std adaptor または integration layer の責務にする。
 
-### 決定 6: TCP stream API は別 change に分離する
+### 決定 5: StreamRef protocol は通常の remote actor payload として配送する
 
-remote-adaptor-std には TCP transport 実装があるが、これは actor remoting envelope 用であり、Pekko Stream の汎用 byte stream TCP API とは責務が異なる。この change は StreamRef remote handoff に限定し、`Tcp` stream DSL と TCP error marker 型の実装は別 change で扱う。
+`OnSubscribeHandshake`、`CumulativeDemand`、`SequencedOnNext`、completion、failure、ack / cancellation は StreamRef protocol payload として serializer に登録し、通常の remote actor envelope 経由で配送する。`RemoteTransport` に StreamRef 専用 method や wire frame は追加しない。
+
+transport backpressure は envelope enqueue / connection failure として扱い、stream-level demand と混同しない。accepted element を silently drop する実装は不可とする。
+
+実装では StreamRef protocol serializer id を `41` とし、Pekko `StreamRefSerializer` と同じ manifest 文字列 `A/B/C/D/G/H` を protocol message 型に割り当てる。`SequencedOnNext` の element は raw `DynValue` ではなく nested `SerializedMessage` として保持し、typed domain payload をどの serializer で包むかは 5.2 の責務として残す。
+
+typed `SourceRef<T>` / `SinkRef<T>` は generic `TypeId` と ActorSystem-bound resolve が必要なため、全 `T` に対する global serializer binding にはしない。domain message serializer は `StreamRefResolver` の field helper を使い、`SourceRef` を manifest `E`、`SinkRef` を manifest `F` の nested `SerializedMessage` に変換する。復号側は同じ helper から provider dispatch 経由で typed ref を復元する。
+
+remote 側は `RemoteActorRefSender` が通常の `RemoteEvent::OutboundEnqueued` を作り、`TcpRemoteTransport` の `outbound_envelope_to_pdu` が既存の `SerializationExtension` で payload を bytes 化する経路を使う。`remote-core` / `remote-adaptor-std` に StreamRef 専用 `RemoteTransport` method や wire frame は追加しない。
+
+### 決定 6: Endpoint actor は materialized stream resource に従属する
+
+remote endpoint actor は stream graph の materialized resource として所有される。one-shot partner pairing を守り、最初の valid handshake で partner を固定し、二重 materialization や partner 以外からの protocol message は observable failure にする。
+
+endpoint actor state だけが更新されて stream interpreter が進まない状態を避けるため、handshake、demand、element、terminal、failure、cancellation の state change は materialized stream を再駆動する wake / drive contract を持つ。
+
+### 決定 7: Remote termination は normal completion にしない
+
+partner DeathWatch、remote address termination、transport connection loss は StreamRef failure へ写像する。normal completion は protocol completion を sequence 通りに受け取り、pending element がすべて観測された場合だけ成立する。
+
+local handoff proof では、`SequencedOnNext` は累積 demand が記録されるまで `WouldBlock` として保持し、pending element が残っている間は normal completion を先に返さない。cancellation は `CancellationCause::NoMoreElementsNeeded` として観測させ、`Ok(None)` の normal completion には潰さない。endpoint cleanup は paired partner がある場合に `StreamRefRemoteStreamFailure("NoMoreElementsNeeded")` を通常 actor message として送り、送信失敗は cleanup failure として返す。
+
+remote actor enqueue backpressure は通常の actor envelope 送信失敗として扱う。既存 `RemoteActorRefSender` は full / closed channel 時に元 payload を `SendError` として返すため、StreamRef protocol payload も remote transport へ silently drop されない。ただし cancellation signal が two-ActorSystem 境界を越えることの実証は、7.x の remote integration で扱う。
 
 ## Risks / Trade-offs
 
-- StreamRef endpoint actor と stream materializer lifecycle が循環しやすい -> endpoint actor は stream graph の materialized resource として所有し、shutdown / cancellation の責務を tasks で明確化する。
-- protocol payload serializer が未登録だと remote delivery が失敗する -> std installer または integration setup が serializer registration を必須化し、未登録は materialization failure として観測する。
-- remote backpressure と transport backpressure の区別が曖昧になる -> StreamRef demand は stream-level credit、transport backpressure は envelope enqueue failure として別エラー経路にする。
-- DeathWatch / `AddressTerminated` と StreamRef completion が競合する -> failure は remote termination を優先し、正常 completion は protocol completion を sequence 通り受けた場合だけに限定する。
-- actor path string format が将来変わる可能性がある -> resolver は actor-core の canonical path API に委譲し、StreamRef 独自 parser を持たない。
+- Rust の generic `SourceRef<T>` / `SinkRef<T>` と type-erased actor serialization registry の相性が悪い -> built-in core serializer ではなく、std adaptor の resolver support と domain message serializer の責務を明確化する。
+- explicit actor path string helper が public workflow として広がる -> docs / tests では typed ref payload workflow を主経路にし、format tests は lower-level contract として分離する。
+- actor-backed local proof を先に要求すると remote 実装の着手が遅れる -> fake resolver proof と remote transport failure を混同しないための gate として必要。
+- endpoint actor と stream interpreter の lifecycle が循環しやすい -> materialized resource ownership、deterministic shutdown、wake / drive signal を tasks で明示する。
+- DeathWatch / `AddressTerminated` と protocol completion が競合する -> remote termination before accepted protocol completion は failure を優先する。
 
 ## Migration Plan
 
-1. StreamRef remote endpoint / resolver の spec と tests を追加し、local handoff の既存 tests をベースラインとして維持する。
-2. protocol payload serializer と remote endpoint actor の最小実装を std / integration layer に追加する。
-3. `SourceRef` / `SinkRef` の local conversion と remote resolver conversion を分離し、二重 materialization / invalid partner / sequence failure tests を追加する。
-4. two ActorSystem integration test で `SourceRef` と `SinkRef` を remote message payload として渡し、要素、demand、completion、failure が伝播することを検証する。
-5. 実装後に `docs/gap-analysis/stream-gap-analysis.md` を更新し、StreamRef remote gap の状態を反映する。
+1. 現在の途中実装を前提にせず、Pekko `StreamRefs.sourceRef` / `StreamRefs.sinkRef` と fraktor-rs の既存 local StreamRef 実装を再確認する。
+2. `SourceRef` / `SinkRef` の public materialization workflow、resolver direction、remote-capable endpoint 表現を tests で固定する。
+3. endpoint actor ownership、one-shot pairing、deterministic shutdown、wake / drive contract を std adaptor / integration layer 側で成立させる。
+4. actor-backed local resolver proof を通常テストとして追加し、canonical path 化、provider dispatch、element、backpressure、completion、failure、cancellation を pass させる。
+5. local proof の後に、serializer support、protocol payload registration、remote watch integration を std adaptor / integration layer に接続する。
+6. two-ActorSystem integration test で typed `SourceRef` / `SinkRef` payload workflow を検証する。
+7. remote failure integration test を追加する。
+8. 実装後に `docs/gap-analysis/stream-gap-analysis.md` と tasks を更新する。
 
-rollback は active change を削除することで行う。pre-release のため legacy compatibility alias は追加しない。
+Rollback は active change の実装差分を破棄することで行う。pre-release のため legacy compatibility alias は追加しない。
 
 ## Open Questions
 
-- endpoint actor を `stream-adaptor-std` に置くか、`stream-remote-adaptor-std` 相当の新 integration crate を作るかは実装時に Cargo 依存方向を確認して決める。
-- StreamRef protocol serializer id の割り当て範囲は既存 built-in serializer id と衝突しない値を実装時に確定する。
+- endpoint actor を `stream-adaptor-std` に置くか、stream / remote integration crate を新設するかは、actor-backed endpoint 表現を決める時点で Cargo 依存方向を確認して決める。

@@ -6,6 +6,7 @@ use alloc::{borrow::Cow, boxed::Box, format, string::String};
 use core::{
   any::TypeId,
   fmt::{self, Formatter, Result as FmtResult},
+  num::NonZeroU64,
 };
 
 use fraktor_actor_core_kernel_rs::actor::error::SendError;
@@ -146,6 +147,15 @@ pub enum StreamError {
     got_ref:      Cow<'static, str>,
     /// Human-readable partner failure message.
     message:      Cow<'static, str>,
+  },
+  /// Indicates that a StreamRef partner actor is not available for demand delivery.
+  StreamRefPartnerUnavailable {
+    /// Sequence number attached to the cumulative demand.
+    seq_nr: u64,
+    /// Cumulative demand that could not be delivered.
+    demand: NonZeroU64,
+    /// Reason the partner actor is unavailable.
+    reason: &'static str,
   },
   /// Indicates an IO operation failed.
   IoError {
@@ -329,6 +339,9 @@ impl fmt::Display for StreamError {
            Do note that stream refs are one-shot references and have to be paired up in 1:1 pairs. \
            Multi-cast such as broadcast etc can be implemented by sharing multiple new stream references."
         )
+      },
+      | Self::StreamRefPartnerUnavailable { seq_nr, demand, reason } => {
+        write!(f, "stream ref partner actor unavailable: seq_nr={seq_nr} demand={} reason={reason}", demand.get())
       },
       | Self::IoError { kind, message } => {
         write!(f, "IO error ({kind}): {message}")

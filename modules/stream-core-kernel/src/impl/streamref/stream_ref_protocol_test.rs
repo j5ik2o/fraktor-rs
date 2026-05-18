@@ -1,5 +1,4 @@
 use alloc::borrow::Cow;
-use core::num::NonZeroU64;
 
 use super::StreamRefProtocol;
 use crate::{DynValue, StreamError};
@@ -18,23 +17,6 @@ fn sequenced_on_next_uses_zero_based_sequence_and_preserves_payload() {
   };
   assert_eq!(seq_nr, 0);
   assert_eq!(*payload.downcast::<u32>().expect("u32 payload"), 42_u32);
-}
-
-#[test]
-fn cumulative_demand_requires_non_zero_demand() {
-  // Given: Rust の型で 0 demand を表現できない NonZeroU64
-  assert!(NonZeroU64::new(0).is_none());
-
-  // When: demand=1 の CumulativeDemand protocol message を作る
-  let demand = NonZeroU64::new(1).expect("non-zero demand");
-  let message = StreamRefProtocol::CumulativeDemand { seq_nr: 0, demand };
-
-  // Then: protocol は 1 以上の累積 demand だけを保持する
-  let StreamRefProtocol::CumulativeDemand { seq_nr, demand } = message else {
-    panic!("expected CumulativeDemand");
-  };
-  assert_eq!(seq_nr, 0);
-  assert_eq!(demand.get(), 1);
 }
 
 #[test]

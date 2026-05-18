@@ -97,6 +97,7 @@ impl WatcherState {
       | WatcherCommand::HeartbeatReceived { from, now } => self.on_heartbeat(&from, now),
       | WatcherCommand::HeartbeatResponseReceived { from, uid, now } => self.on_heartbeat_response(&from, uid, now),
       | WatcherCommand::HeartbeatTick { now } => self.on_tick(now),
+      | WatcherCommand::ConnectionLost { from, reason, now } => self.on_connection_lost(&from, reason, now),
     }
   }
 
@@ -216,22 +217,31 @@ impl WatcherState {
     }
 
     for node in unavailable_nodes {
-      self.already_notified.insert(node.clone(), ());
-      if let Some(targets) = self.targets_by_node.get(&node) {
-        for target in targets.clone() {
-          if let Some(watchers) = self.watching.get(&target) {
-            effects.push(WatcherEffect::NotifyTerminated { target: target.clone(), watchers: watchers.clone() });
-          }
-        }
-      }
-      effects.push(WatcherEffect::AddressTerminated {
-        node:               node.clone(),
-        reason:             String::from(ADDRESS_TERMINATED_REASON),
-        observed_at_millis: now,
-      });
-      effects.push(WatcherEffect::NotifyQuarantined { node });
+      effects.extend(self.termination_effects_for_node(&node, String::from(ADDRESS_TERMINATED_REASON), now));
     }
 
+    effects
+  }
+
+  fn on_connection_lost(&mut self, from: &Address, reason: String, now: u64) -> Vec<WatcherEffect> {
+    if !self.targets_by_node.contains_key(from) || self.already_notified.contains_key(from) {
+      return Vec::new();
+    }
+    self.termination_effects_for_node(from, reason, now)
+  }
+
+  fn termination_effects_for_node(&mut self, node: &Address, reason: String, now: u64) -> Vec<WatcherEffect> {
+    let mut effects = Vec::new();
+    self.already_notified.insert(node.clone(), ());
+    if let Some(targets) = self.targets_by_node.get(node) {
+      for target in targets.clone() {
+        if let Some(watchers) = self.watching.get(&target) {
+          effects.push(WatcherEffect::NotifyTerminated { target: target.clone(), watchers: watchers.clone() });
+        }
+      }
+    }
+    effects.push(WatcherEffect::AddressTerminated { node: node.clone(), reason, observed_at_millis: now });
+    effects.push(WatcherEffect::NotifyQuarantined { node: node.clone() });
     effects
   }
 }
