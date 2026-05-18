@@ -1555,6 +1555,38 @@ fn ac_h2_t4_finish_terminate_ignores_duplicate_child_notification() {
   );
 }
 
+#[test]
+fn ac_h2_t5_user_request_child_stop_does_not_finish_parent_terminate() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props = Props::from_fn(|| ProbeActor);
+  let parent = ActorCell::create(state.clone(), Pid::new(278, 0), None, "term-parent4".to_string(), &parent_props)
+    .expect("create parent");
+  let child_props = Props::from_fn(|| ProbeActor);
+  let child =
+    ActorCell::create(state.clone(), Pid::new(279, 0), Some(parent.pid()), "term-child4".to_string(), &child_props)
+      .expect("create child");
+  state.register_cell(parent.clone());
+  state.register_cell(child.clone());
+  parent.register_child(child.pid());
+  parent.register_supervision_watching(child.pid());
+
+  let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
+  parent_invoker.system_invoke(SystemMessage::StopChild(child.pid())).expect("stop child");
+  assert!(
+    parent.children_state_is_terminating(),
+    "AC-H2: StopChild marks the child container as Terminating(UserRequest)"
+  );
+
+  parent.handle_death_watch_notification(child.pid()).expect("child death-watch notification");
+
+  assert!(parent.children().is_empty(), "AC-H2: child is removed after UserRequest completion");
+  assert!(
+    !parent.children_state_is_terminating(),
+    "AC-H2: UserRequest completion returns the child container to normal"
+  );
+  assert!(state.cell(&parent.pid()).is_some(), "AC-H2: UserRequest completion must not terminate the parent");
+}
+
 // ============================================================================
 // AC-H4: fault_recreate / finish_* completion waiting (PIDs 300-339)
 //
