@@ -1,0 +1,107 @@
+use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
+
+use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
+use crate::OverflowStrategy;
+
+pub(crate) struct BufferLogic<In> {
+  pub(crate) capacity:          usize,
+  pub(crate) overflow_strategy: OverflowStrategy,
+  pub(crate) pending:           VecDeque<In>,
+  pub(crate) source_done:       bool,
+}
+
+impl<In> BufferLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn offer_with_strategy(&mut self, value: In) -> Result<(), StreamError> {
+    if self.capacity == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    if self.pending.len() < self.capacity {
+      self.pending.push_back(value);
+      return Ok(());
+    }
+
+    match self.overflow_strategy {
+      // Pekko parity: `EmitEarly.isBackpressure = true`. Inside this generic
+      // `buffer` stage (no upstream delay), EmitEarly behaves like
+      // `Backpressure`: hold the element until downstream catches up.
+      | OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly => Ok(()),
+      | OverflowStrategy::DropHead => {
+        let _ = self.pending.pop_front();
+        self.pending.push_back(value);
+        Ok(())
+      },
+      | OverflowStrategy::DropTail => {
+        let _ = self.pending.pop_back();
+        self.pending.push_back(value);
+        Ok(())
+      },
+      | OverflowStrategy::DropBuffer => {
+        self.pending.clear();
+        self.pending.push_back(value);
+        Ok(())
+      },
+      | OverflowStrategy::DropNew => {
+        // Pekko parity: `OverflowStrategy.dropNew` rejects the newly arrived
+        // element when the buffer is full. The incoming `value` is discarded
+        // silently; the pending buffer stays intact.
+        drop(value);
+        Ok(())
+      },
+      | OverflowStrategy::Fail => Err(StreamError::BufferOverflow),
+    }
+  }
+}
+
+impl<In> FlowLogic for BufferLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.offer_with_strategy(value)?;
+    Ok(Vec::new())
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn can_accept_input(&self) -> bool {
+    match self.overflow_strategy {
+      // EmitEarly mirrors Backpressure here (Pekko `isBackpressure = true`).
+      | OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly => self.pending.len() < self.capacity,
+      | OverflowStrategy::DropHead
+      | OverflowStrategy::DropTail
+      | OverflowStrategy::DropBuffer
+      | OverflowStrategy::DropNew
+      | OverflowStrategy::Fail => true,
+    }
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let can_emit_on_backpressure =
+      matches!(self.overflow_strategy, OverflowStrategy::Backpressure | OverflowStrategy::EmitEarly)
+        && self.pending.len() >= self.capacity;
+    if !self.source_done && !can_emit_on_backpressure {
+      return Ok(Vec::new());
+    }
+    let Some(value) = self.pending.pop_front() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn has_pending_output(&self) -> bool {
+    !self.pending.is_empty()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    self.source_done = false;
+    Ok(())
+  }
+}

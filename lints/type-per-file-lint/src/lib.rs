@@ -134,7 +134,7 @@ fn should_ignore(path: &Path) -> bool {
   }
 
   if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
-    if file_name == "tests.rs" || file_name.ends_with("_tests.rs") {
+    if file_name == "tests.rs" || file_name.ends_with("_test.rs") || file_name.ends_with("_tests.rs") {
       return true;
     }
   }

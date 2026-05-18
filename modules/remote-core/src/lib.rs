@@ -65,17 +65,17 @@
 //!
 //! | `fraktor-remote-core-rs` module | Pekko Artery counterpart |
 //! |---|---|
-//! | [`core::address`]          | `akka.actor.Address` / `UniqueAddress` |
-//! | [`core::association`]      | `akka.remote.artery.Association` (state machine + send queue) |
-//! | [`core::envelope`]         | `akka.remote.artery.OutboundEnvelope` / `InboundEnvelope` |
-//! | [`core::extension`]        | `akka.remote.RemoteActorRefProvider` lifecycle portion |
-//! | [`core::failure_detector`] | `akka.remote.PhiAccrualFailureDetector` |
-//! | [`core::instrument`]       | `akka.remote.artery.RemoteInstrument` + `FlightRecorder` |
-//! | [`core::provider`]         | `akka.remote.RemoteActorRefProvider` (remote path portion) |
-//! | [`core::config`]           | `akka.remote.RemoteSettings` |
-//! | [`core::transport`]        | `akka.remote.artery.RemoteTransport` |
-//! | [`core::watcher`]          | `akka.remote.RemoteWatcher` (state portion only) |
-//! | [`core::wire`]             | `akka.remote.artery.Codecs` (independent binary format) |
+//! | [`address`]          | `akka.actor.Address` / `UniqueAddress` |
+//! | [`association`]      | `akka.remote.artery.Association` (state machine + send queue) |
+//! | [`envelope`]         | `akka.remote.artery.OutboundEnvelope` / `InboundEnvelope` |
+//! | [`extension`]        | `akka.remote.RemoteActorRefProvider` lifecycle portion |
+//! | [`failure_detector`] | `akka.remote.PhiAccrualFailureDetector` |
+//! | [`instrument`]       | `akka.remote.artery.RemoteInstrument` + `FlightRecorder` |
+//! | [`provider`]         | `akka.remote.RemoteActorRefProvider` (remote path portion) |
+//! | [`config`]           | `akka.remote.RemoteSettings` |
+//! | [`transport`]        | `akka.remote.artery.RemoteTransport` |
+//! | [`watcher`]          | `akka.remote.RemoteWatcher` (state portion only) |
+//! | [`wire`]             | `akka.remote.artery.Codecs` (independent binary format) |
 //!
 //! ## Design invariants
 //!
@@ -90,14 +90,34 @@
 //!   the caller (typically derived from `std::time::Instant` or `tokio::time::Instant` differences
 //!   on the adapter side). Wall-clock values are not supported. This keeps every transition a pure
 //!   function of `(state, command, now_ms)`.
-//! - **Public boundary**: This crate deliberately exposes remote core components under [`core`].
+//! - **Public boundary**: This crate deliberately exposes remote core components at the crate root.
 //!   Consumers address types through their full submodule path (e.g.
-//!   `fraktor_remote_core_rs::core::association::Association`) so that the responsibility owning a
-//!   type is always visible at the call site.
+//!   `fraktor_remote_core_rs::association::Association`) so that the responsibility owning a type
+//!   is always visible at the call site.
 //!
 //! See `openspec/changes/remote-redesign/design.md` for the full rationale.
 
 extern crate alloc;
 
-/// Remote core primitives and state machines (no_std).
-pub mod core;
+/// Remote address model.
+pub mod address;
+/// Remote association state machine.
+pub mod association;
+/// Remote configuration types.
+pub mod config;
+/// Remote envelope model.
+pub mod envelope;
+/// Remote extension lifecycle.
+pub mod extension;
+/// Failure detector algorithms and registry.
+pub mod failure_detector;
+/// Remote instrumentation and flight recorder types.
+pub mod instrument;
+/// Remote actor reference provider abstractions.
+pub mod provider;
+/// Remote transport port types.
+pub mod transport;
+/// Remote watcher state machine.
+pub mod watcher;
+/// Wire protocol codecs and frames.
+pub mod wire;

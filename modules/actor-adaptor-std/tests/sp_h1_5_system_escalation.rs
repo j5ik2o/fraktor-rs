@@ -5,8 +5,8 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{actor::install_panic_invoke_guard, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{actor::install_panic_invoke_guard, tick_driver::TestTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, ChildRef,
     error::ActorError,
@@ -19,7 +19,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 struct Crash;
@@ -102,7 +102,7 @@ fn panic_guard_escalates_receive_panic_through_supervisor_path() {
   });
 
   let config = install_panic_invoke_guard(ActorSystemConfig::new(TestTickDriver::default()));
-  let system = ActorSystem::create_with_config(&props, config).expect("system");
+  let system = ActorSystem::create_from_props(&props, config).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
   let mut child = child_slot.lock().clone().expect("child");

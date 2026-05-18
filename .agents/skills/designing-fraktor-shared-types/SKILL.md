@@ -162,7 +162,7 @@ SharedRwLock::new_with_driver::<DefaultRwLock<_>>(value)
 
 - `xyz.rs`: ロジック本体（Xyz）
 - `xyz_shared.rs`: 共有ラッパー（XyzShared、`SharedLock<T>` または `SharedRwLock<T>` を内包）
-- `xyz/tests.rs`: ロジック本体のテスト（ロックなしで書く）
+- `xyz_test.rs`: ロジック本体のテスト（ロックなしで書く）
 
 ## 使用例
 

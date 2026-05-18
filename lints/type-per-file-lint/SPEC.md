@@ -9,7 +9,7 @@
 
 - 同一ファイル内で 2 つ以上の `struct` / `enum` / `trait` が定義された場合は違反とみなす。
 - `#[allow(type_per_file::multiple_type_definitions)]` などで明示的に無効化されている箇所は例外とする。
-- ビルド生成物や `tests/` ディレクトリ配下、`*_tests.rs`・`tests.rs` は対象外とする。
+- ビルド生成物や `tests/` ディレクトリ配下、`*_test.rs`・`*_tests.rs`・`tests.rs` は対象外とする。
 - マクロ展開で生成された型定義は対象外とする。
 
 ## 推奨される修正手順

@@ -5,8 +5,8 @@ mod common;
 use std::vec::Vec;
 
 use common::wait_until;
-use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -19,7 +19,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::{ActorSystem, SpinBlocker},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 
@@ -76,7 +76,7 @@ fn std_adaptor_boot_flow_wires_config_dispatcher_mailbox_scheduler_logging_and_t
     let message_log = message_log.clone();
     move || BootActor::new(message_log.clone())
   });
-  let system = ActorSystem::create_with_config(&props, config).expect("std actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("std actor system");
   let subscriber = subscriber_handle(LogRecorder::new(log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

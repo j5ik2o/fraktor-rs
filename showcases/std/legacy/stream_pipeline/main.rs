@@ -9,29 +9,16 @@
 
 use std::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::std::{StdBlocker, tick_driver::StdTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
-  actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, setup::ActorSystemConfig},
-  system::ActorSystem,
-};
-use fraktor_stream_core_rs::core::{
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, system::ActorSystem};
+use fraktor_stream_core_kernel_rs::{
   dsl::{Sink, Source},
   materialization::{ActorMaterializer, ActorMaterializerConfig, KeepRight},
 };
 
-struct GuardianActor;
-
-impl Actor for GuardianActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
-
-#[allow(clippy::print_stdout)]
 fn main() {
-  let props = Props::from_fn(|| GuardianActor);
   let config = ActorSystemConfig::new(StdTickDriver::default());
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::create_with_noop_guardian(config).expect("actor system");
   let mut mat =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   mat.start().expect("materializer start");

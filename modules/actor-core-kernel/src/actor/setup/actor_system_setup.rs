@@ -1,0 +1,127 @@
+//! Actor-system setup facade composed from bootstrap and runtime config.
+
+#[cfg(test)]
+#[path = "actor_system_setup_test.rs"]
+mod tests;
+
+use alloc::{boxed::Box, string::String};
+
+use fraktor_utils_core_rs::sync::ArcShared;
+
+use crate::{
+  actor::{
+    actor_ref_provider::ActorRefProviderInstaller,
+    extension::ExtensionInstallers,
+    scheduler::{SchedulerConfig, tick_driver::TickDriver},
+    setup::{ActorSystemConfig, BootstrapSetup, CircuitBreakerConfig},
+  },
+  dispatch::{dispatcher::MessageDispatcherFactory, mailbox::MailboxFactory},
+};
+
+/// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
+pub struct ActorSystemSetup {
+  config: ActorSystemConfig,
+}
+
+impl ActorSystemSetup {
+  /// Creates a new actor-system setup from the provided bootstrap setup.
+  #[must_use]
+  pub fn new(bootstrap: BootstrapSetup) -> Self {
+    Self { config: bootstrap.into_actor_system_config() }
+  }
+
+  /// Replaces the bootstrap portion of this setup.
+  ///
+  /// Runtime settings such as dispatcher, mailbox, extension, provider,
+  /// scheduler, and tick driver configuration are preserved.
+  #[must_use]
+  pub fn with_bootstrap_setup(self, bootstrap: BootstrapSetup) -> Self {
+    let config = self.config;
+    let bootstrap = bootstrap.into_actor_system_config();
+    let config = config.with_system_name(bootstrap.system_name()).with_default_guardian(bootstrap.default_guardian());
+    let config = config.with_remoting_config(bootstrap.remoting_config().cloned());
+    let config = config.with_start_time(bootstrap.start_time());
+    Self { config }
+  }
+
+  /// Configures the runtime scheduler.
+  #[must_use]
+  pub fn with_scheduler_config(self, config: SchedulerConfig) -> Self {
+    Self { config: self.config.with_scheduler_config(config) }
+  }
+
+  /// Configures the tick driver.
+  #[must_use]
+  pub fn with_tick_driver(self, driver: impl TickDriver + 'static) -> Self {
+    Self { config: self.config.with_tick_driver(driver) }
+  }
+
+  /// Registers extension installers.
+  #[must_use]
+  pub fn with_extension_installers(self, installers: ExtensionInstallers) -> Self {
+    Self { config: self.config.with_extension_installers(installers) }
+  }
+
+  /// Registers a custom actor-ref provider installer.
+  #[must_use]
+  pub fn with_actor_ref_provider_installer<P>(self, installer: P) -> Self
+  where
+    P: ActorRefProviderInstaller + 'static, {
+    Self { config: self.config.with_actor_ref_provider_installer(installer) }
+  }
+
+  /// Registers a dispatcher configurator under the supplied id.
+  #[must_use]
+  pub fn with_dispatcher_factory(
+    self,
+    id: impl Into<String>,
+    configurator: ArcShared<Box<dyn MessageDispatcherFactory>>,
+  ) -> Self {
+    Self { config: self.config.with_dispatcher_factory(id, configurator) }
+  }
+
+  /// Registers or updates a mailbox factory under the supplied id.
+  ///
+  /// Accepts any [`MailboxFactory`] implementation, including
+  /// [`MailboxConfig`] via its bridge impl.
+  #[must_use]
+  pub fn with_mailbox(self, id: impl Into<String>, factory: impl MailboxFactory + 'static) -> Self {
+    Self { config: self.config.with_mailbox(id, factory) }
+  }
+
+  /// Replaces the default circuit-breaker configuration.
+  #[must_use]
+  pub fn with_default_circuit_breaker_config(self, config: CircuitBreakerConfig) -> Self {
+    Self { config: self.config.with_default_circuit_breaker_config(config) }
+  }
+
+  /// Registers circuit-breaker configuration for a named logical id.
+  #[must_use]
+  pub fn with_named_circuit_breaker_config(self, id: impl Into<String>, config: CircuitBreakerConfig) -> Self {
+    Self { config: self.config.with_named_circuit_breaker_config(id, config) }
+  }
+
+  /// Returns the underlying actor-system config.
+  #[must_use]
+  pub const fn as_actor_system_config(&self) -> &ActorSystemConfig {
+    &self.config
+  }
+
+  /// Consumes the setup and returns the underlying actor-system config.
+  #[must_use]
+  pub fn into_actor_system_config(self) -> ActorSystemConfig {
+    self.config
+  }
+}
+
+impl Default for ActorSystemSetup {
+  fn default() -> Self {
+    Self::new(BootstrapSetup::default())
+  }
+}
+
+impl From<ActorSystemSetup> for ActorSystemConfig {
+  fn from(value: ActorSystemSetup) -> Self {
+    value.into_actor_system_config()
+  }
+}

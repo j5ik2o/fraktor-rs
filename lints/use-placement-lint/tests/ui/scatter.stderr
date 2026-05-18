@@ -1,4 +1,4 @@
-warning: `use` と `mod` 宣言はファイル冒頭にまとめて配置してください
+error: `use` と `mod` 宣言はファイルまたはモジュール冒頭にまとめて配置してください
   --> $DIR/scatter.rs:5:1
    |
 LL | / #[path = "auxiliary/helpers_inline.rs"]
@@ -6,19 +6,19 @@ LL | | mod helpers;
    | |____________^
    |
    = help: この宣言を最初の `use` / `mod` ブロックより前に移動しましょう
-   = note: AI向けアドバイス: コメントや属性を含めたまま、該当の `use` / `mod` ブロックをファイル上部へ移動して一箇所に集約してください。
-   = note: `#[warn(use_mod_placement)]` on by default
+   = note: AI向けアドバイス: コメントや属性を含めたまま、該当の `use` / `mod` ブロックを冒頭へ移動して一箇所に集約してください。
+   = note: `#[deny(use_mod_placement)]` on by default
 
-warning: `use` と `mod` 宣言はファイル冒頭にまとめて配置してください
+error: `use` と `mod` 宣言はファイルまたはモジュール冒頭にまとめて配置してください
   --> $DIR/scatter.rs:8:1
    |
 LL | use std::str::FromStr;
    | ^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: この宣言を最初の `use` / `mod` ブロックより前に移動しましょう
-   = note: AI向けアドバイス: コメントや属性を含めたまま、該当の `use` / `mod` ブロックをファイル上部へ移動して一箇所に集約してください。
+   = note: AI向けアドバイス: コメントや属性を含めたまま、該当の `use` / `mod` ブロックを冒頭へ移動して一箇所に集約してください。
 
-warning: `use` と `mod` 宣言はファイル冒頭にまとめて配置してください
+error: `use` と `mod` 宣言はファイルまたはモジュール冒頭にまとめて配置してください
   --> $DIR/scatter.rs:10:1
    |
 LL | / #[cfg(test)]
@@ -26,7 +26,7 @@ LL | | mod tests;
    | |__________^
    |
    = help: この宣言を最初の `use` / `mod` ブロックより前に移動しましょう
-   = note: AI向けアドバイス: コメントや属性を含めたまま、該当の `use` / `mod` ブロックをファイル上部へ移動して一箇所に集約してください。
+   = note: AI向けアドバイス: コメントや属性を含めたまま、該当の `use` / `mod` ブロックを冒頭へ移動して一箇所に集約してください。
 
-warning: 3 warnings emitted
+error: aborting due to 3 previous errors
 

@@ -1,0 +1,203 @@
+use super::MergeHubSourceLogic;
+use crate::{
+  SourceLogic, StreamError,
+  dsl::{MergeHub, Sink},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamShared, StreamState},
+  },
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph},
+};
+
+struct TestMaterializer {
+  calls: usize,
+}
+
+impl TestMaterializer {
+  const fn new() -> Self {
+    Self { calls: 0 }
+  }
+}
+
+impl Default for TestMaterializer {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl Materializer for TestMaterializer {
+  fn start(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
+    self.calls = self.calls.saturating_add(1);
+    let (plan, materialized) = graph.into_parts();
+    let mut stream = Stream::new(plan, StreamBufferConfig::default());
+    stream.start()?;
+    let stream = StreamShared::new(stream);
+    Ok(Materialized::new(stream, materialized))
+  }
+
+  fn shutdown(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+}
+
+#[test]
+fn merge_hub_preserves_offer_order() {
+  let hub = MergeHub::new();
+  let _source = hub.source();
+  hub.offer(1_u32).expect("offer 1");
+  hub.offer(2_u32).expect("offer 2");
+  hub.offer(3_u32).expect("offer 3");
+
+  assert_eq!(hub.poll(), Some(1_u32));
+  assert_eq!(hub.poll(), Some(2_u32));
+  assert_eq!(hub.poll(), Some(3_u32));
+  assert_eq!(hub.poll(), None);
+}
+
+#[test]
+fn merge_hub_source_drains_as_stream_source() {
+  let hub = MergeHub::new();
+  let _source = hub.source();
+  hub.offer(10_u32).expect("offer 10");
+  hub.offer(20_u32).expect("offer 20");
+  let mut materializer = TestMaterializer::default();
+
+  let first_graph = hub.source().into_mat(Sink::head(), KeepRight);
+  let first = first_graph.run(&mut materializer).expect("first materialize");
+  for _ in 0..4 {
+    let _ = first.stream().drive();
+    if first.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(first.materialized().value(), Completion::Ready(Ok(10_u32)));
+
+  let second_graph = hub.source().into_mat(Sink::head(), KeepRight);
+  let second = second_graph.run(&mut materializer).expect("second materialize");
+  for _ in 0..4 {
+    let _ = second.stream().drive();
+    if second.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(second.materialized().value(), Completion::Ready(Ok(20_u32)));
+}
+
+#[test]
+fn merge_hub_source_waits_for_later_offer_without_completing() {
+  let hub = MergeHub::new();
+  let graph = hub.source().into_mat(Sink::head(), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  for _ in 0..3 {
+    let _ = materialized.stream().drive();
+  }
+  assert_eq!(materialized.stream().state(), StreamState::Running);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
+
+  hub.offer(42_u32).expect("offer 42");
+  for _ in 0..4 {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(42_u32)));
+}
+
+#[test]
+fn merge_hub_source_does_not_drain_on_shutdown() {
+  let hub = MergeHub::<u32>::new();
+  let logic = MergeHubSourceLogic { state: hub.state.clone() };
+
+  assert!(!logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn merge_hub_rejects_offer_until_receiver_is_activated() {
+  let hub = MergeHub::new();
+
+  let blocked = hub.offer(1_u32);
+  assert_eq!(blocked, Err(StreamError::WouldBlock));
+
+  let _source = hub.source();
+  assert!(hub.offer(2_u32).is_ok());
+  assert_eq!(hub.poll(), Some(2_u32));
+}
+
+#[test]
+fn merge_hub_rejects_offer_after_drain_started() {
+  let hub = MergeHub::new();
+  let _source = hub.source();
+  hub.offer(1_u32).expect("offer before drain");
+
+  let control = hub.draining_control();
+  control.drain();
+
+  assert!(control.is_draining());
+  assert_eq!(hub.offer(2_u32), Err(StreamError::WouldBlock));
+  assert_eq!(hub.poll(), Some(1_u32));
+  assert_eq!(hub.poll(), None);
+}
+
+#[test]
+fn merge_hub_drain_and_complete_flushes_buffer_and_completes_source() {
+  let hub = MergeHub::new();
+  let graph = hub.source().into_mat(Sink::last(), KeepRight);
+  hub.offer(1_u32).expect("offer 1");
+  hub.offer(2_u32).expect("offer 2");
+
+  let control = hub.draining_control();
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  for _ in 0..3 {
+    let _ = materialized.stream().drive();
+  }
+  assert_eq!(materialized.stream().state(), StreamState::Running);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
+
+  control.drain_and_complete();
+
+  assert!(control.is_draining());
+  assert_eq!(hub.offer(3_u32), Err(StreamError::WouldBlock));
+
+  for _ in 0..8 {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(2_u32)));
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
+  assert!(hub.is_empty());
+}
+
+#[test]
+fn merge_hub_source_completes_after_drain_when_queue_is_empty() {
+  let hub = MergeHub::<u32>::new();
+  let control = hub.draining_control();
+  let graph = hub.source().into_mat(Sink::ignore(), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  for _ in 0..3 {
+    let _ = materialized.stream().drive();
+  }
+  assert_eq!(materialized.stream().state(), StreamState::Running);
+
+  control.drain();
+  for _ in 0..8 {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
+}

@@ -1,13 +1,12 @@
 #![cfg(not(target_os = "none"))]
 
-#[path = "../support/common.rs"]
 mod common;
 
 use std::vec::Vec;
 
 use common::wait_until;
-use fraktor_actor_adaptor_std_rs::std::{system::std_actor_system_config, tick_driver::TestTickDriver};
-use fraktor_actor_core_rs::core::kernel::{
+use fraktor_actor_adaptor_std_rs::{system::std_actor_system_config, tick_driver::TestTickDriver};
+use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, ChildRef, Pid,
     actor_ref::dead_letter::DeadLetterReason,
@@ -21,7 +20,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::{ActorSystem, SpinBlocker},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 struct Deliver(u32);
@@ -125,7 +124,7 @@ fn actor_runtime_boot_wires_std_config_scheduler_logging_watch_stop_and_dead_let
     let terminated_log = terminated_log.clone();
     move || Guardian::new(deliveries.clone(), child_slot.clone(), terminated_log.clone())
   });
-  let system = ActorSystem::create_with_config(&props, config).expect("actor system");
+  let system = ActorSystem::create_from_props(&props, config).expect("actor system");
   let subscriber = subscriber_handle(LogRecorder::new(log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

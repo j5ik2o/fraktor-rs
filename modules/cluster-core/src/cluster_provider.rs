@@ -1,0 +1,71 @@
+//! ClusterProvider abstraction for membership/discovery backends (no_std).
+//!
+//! Mirrors protoactor-go's `cluster.ClusterProvider`. Defined in core so that
+//! no_std logic can depend on it; std adapters provide concrete transport.
+
+use crate::cluster_provider_error::ClusterProviderError;
+
+/// Local cluster provider for membership-aware scenarios.
+mod local_cluster_provider_generic;
+/// Shared wrapper for LocalClusterProvider implementations.
+mod local_cluster_provider_shared_generic;
+/// Weak wrapper for LocalClusterProvider shared handles.
+mod local_cluster_provider_weak;
+/// No-op provider useful for tests and single-process runs.
+mod noop_cluster_provider;
+/// Static cluster provider for predetermined topology scenarios.
+mod static_cluster_provider;
+
+pub use local_cluster_provider_generic::LocalClusterProvider;
+pub use local_cluster_provider_shared_generic::LocalClusterProviderShared;
+pub use local_cluster_provider_weak::LocalClusterProviderWeak;
+pub use noop_cluster_provider::NoopClusterProvider;
+pub use static_cluster_provider::StaticClusterProvider;
+
+/// Integrates the cluster runtime with an external membership system.
+pub trait ClusterProvider: Send + Sync {
+  /// Starts the node as a full cluster member.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when the provider fails to initialise
+  /// membership, discovery, or transport wiring.
+  fn start_member(&mut self) -> Result<(), ClusterProviderError>;
+
+  /// Starts the node as a lightweight cluster client.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when client initialisation fails.
+  fn start_client(&mut self) -> Result<(), ClusterProviderError>;
+
+  /// Explicitly downs the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when the provider fails to apply downing.
+  fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError>;
+
+  /// Requests a member join for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when the provider cannot process the join request.
+  fn join(&mut self, authority: &str) -> Result<(), ClusterProviderError>;
+
+  /// Requests a graceful member leave for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when the provider cannot process the leave request.
+  fn leave(&mut self, authority: &str) -> Result<(), ClusterProviderError>;
+
+  /// Shuts down the provider and releases resources.
+  ///
+  /// `graceful` indicates whether in-flight operations should be drained before teardown.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when teardown steps fail.
+  fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterProviderError>;
+}
