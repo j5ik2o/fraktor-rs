@@ -205,6 +205,9 @@ impl<T> StreamRefHandoff<T> {
   pub(crate) fn complete(&self) -> u64 {
     let mut guard = self.inner.lock();
     let seq_nr = guard.next_out_seq_nr;
+    if guard.failure.is_some() || guard.closed {
+      return seq_nr;
+    }
     guard.values.push_back(StreamRefProtocol::RemoteStreamCompleted { seq_nr });
     guard.endpoint.complete();
     debug_assert!(guard.endpoint.is_completed());
@@ -235,6 +238,9 @@ impl<T> StreamRefHandoff<T> {
   pub(crate) fn fail_and_report(&self, error: StreamError) -> StreamError {
     let requested_error = error.clone();
     let mut guard = self.inner.lock();
+    if guard.closed && guard.failure.is_none() {
+      return requested_error;
+    }
     if guard.failure.is_none() {
       guard.values.clear();
       guard.endpoint.fail(error.clone());
@@ -252,7 +258,7 @@ impl<T> StreamRefHandoff<T> {
 
   pub(crate) fn close_for_cancel(&self) {
     let mut guard = self.inner.lock();
-    if guard.failure.is_some() {
+    if guard.failure.is_some() || guard.closed {
       return;
     }
     let cancellation_error = Self::cancellation_error();

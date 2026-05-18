@@ -242,6 +242,30 @@ fn repeated_failure_and_cancel_keep_first_terminal_failure() {
 }
 
 #[test]
+fn later_terminal_transitions_keep_first_terminal_state() {
+  let completed = StreamRefHandoff::<u32>::new();
+  assert_eq!(completed.complete(), 0);
+  let _ignored = completed.fail_and_report(StreamError::Failed);
+  completed.close_for_cancel();
+  assert_eq!(completed.poll_or_drain(), Ok(None));
+  assert_eq!(completed.offer(10), Err(StreamError::StreamDetached));
+
+  let cancelled = StreamRefHandoff::<u32>::new();
+  cancelled.close_for_cancel();
+  assert_eq!(cancelled.complete(), 0);
+  assert_eq!(
+    cancelled.poll_or_drain(),
+    Err(StreamError::CancellationCause { cause: CancellationCause::no_more_elements_needed() })
+  );
+
+  let failed = StreamRefHandoff::<u32>::new();
+  failed.fail(StreamError::Failed);
+  assert_eq!(failed.complete(), 0);
+  failed.close_for_cancel();
+  assert_eq!(failed.poll_or_drain(), Err(StreamError::Failed));
+}
+
+#[test]
 fn close_for_cancel_is_observed_as_cancellation_not_completion() {
   let handoff = StreamRefHandoff::<u32>::new();
 
