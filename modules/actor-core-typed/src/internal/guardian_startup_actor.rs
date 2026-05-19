@@ -1,5 +1,9 @@
 //! Delays typed user guardian startup until actor-system bootstrap completes.
 
+#[cfg(test)]
+#[path = "guardian_startup_actor_test.rs"]
+mod tests;
+
 use alloc::{boxed::Box, vec::Vec};
 use core::mem;
 
@@ -20,6 +24,14 @@ use fraktor_utils_core_rs::sync::SharedAccess;
 use super::GuardianStartupStart;
 
 /// Pekko-compatible startup gate for the typed user guardian.
+const GUARDIAN_STARTUP_DEFERRED_LIMIT: usize = 1024;
+
+const GUARDIAN_STARTUP_DEFERRED_NO_ACTIVE_MESSAGE_REASON: &str =
+  "guardian startup deferral requires an active user message";
+const GUARDIAN_STARTUP_DEFERRED_OVERFLOW_REASON: &str = "guardian startup deferred buffer overflow";
+
+struct GuardianStartupDeferralError;
+
 pub(crate) struct GuardianStartupActor {
   inner:    Box<dyn Actor + Send>,
   started:  bool,
@@ -76,8 +88,15 @@ impl GuardianStartupActor {
 
   fn defer_current_message(&mut self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
     let Some(message) = ctx.clone_current_message() else {
-      return Err(ActorError::recoverable("guardian startup deferral requires an active user message"));
+      return Err(ActorError::recoverable_typed::<GuardianStartupDeferralError>(
+        GUARDIAN_STARTUP_DEFERRED_NO_ACTIVE_MESSAGE_REASON,
+      ));
     };
+    if self.deferred.len() >= GUARDIAN_STARTUP_DEFERRED_LIMIT {
+      return Err(ActorError::recoverable_typed::<GuardianStartupDeferralError>(
+        GUARDIAN_STARTUP_DEFERRED_OVERFLOW_REASON,
+      ));
+    }
     self.deferred.push(message);
     Ok(())
   }
@@ -144,6 +163,11 @@ impl Actor for GuardianStartupActor {
   }
 
   fn post_restart(&mut self, ctx: &mut ActorContext<'_>, reason: &ActorErrorReason) -> Result<(), ActorError> {
+    if reason.is_source_type::<GuardianStartupDeferralError>() {
+      self.started = false;
+      self.deferred.clear();
+      return Ok(());
+    }
     self.started = true;
     self.inner.post_restart(ctx, reason)?;
     self.deliver_deferred(ctx)
