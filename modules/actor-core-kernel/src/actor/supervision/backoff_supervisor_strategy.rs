@@ -3,13 +3,11 @@
 use core::time::Duration;
 
 use super::restart_limit::RestartLimit;
-use crate::event::logging::LogLevel;
+use crate::{actor::DEFAULT_STASH_CAPACITY, event::logging::LogLevel};
 
 #[cfg(test)]
 #[path = "backoff_supervisor_strategy_test.rs"]
 mod tests;
-
-const DEFAULT_STASH_CAPACITY: usize = 1000;
 
 /// Supervisor strategy providing exponential backoff for restart delays.
 ///
