@@ -12,7 +12,7 @@ use super::{
   supervisor_strategy_kind::SupervisorStrategyKind,
 };
 use crate::{
-  actor::{error::ActorError, supervision::restart_statistics::RestartStatistics},
+  actor::{DEFAULT_STASH_CAPACITY, error::ActorError, supervision::restart_statistics::RestartStatistics},
   event::logging::LogLevel,
 };
 
@@ -24,8 +24,6 @@ type SupervisorDecider = fn(&ActorError) -> SupervisorDirective;
 
 /// Boxed closure decider supporting type-discriminated supervision chains.
 type DynDecider = ArcShared<dyn Fn(&ActorError) -> SupervisorDirective + Send + Sync>;
-
-const DEFAULT_STASH_CAPACITY: usize = 1000;
 
 /// Supervisor configuration controlling restart policies.
 ///
