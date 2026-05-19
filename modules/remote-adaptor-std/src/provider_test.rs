@@ -525,6 +525,46 @@ async fn remote_deployment_hook_current_thread_runtime_fails_without_blocking() 
   assert!(event_rx.try_recv().is_err());
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn remote_deployment_hook_multi_thread_wait_resolves_matching_success() {
+  let (hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let request = deployment_request(
+    "remote-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let success_path = system.user_guardian_ref().canonical_path().expect("user guardian path").to_canonical_uri();
+  let completion = tokio::spawn({
+    let success_path = success_path.clone();
+    async move {
+      let event = timeout(Duration::from_secs(1), event_rx.recv())
+        .await
+        .expect("deployment request should be enqueued")
+        .expect("deployment request channel should stay open");
+      let (correlation_hi, correlation_lo) = match event {
+        | RemoteEvent::OutboundDeployment { remote, pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+          assert_eq!(remote, RemoteCoreAddress::new("remote-sys", "10.0.0.1", 2552));
+          (request.correlation_hi(), request.correlation_lo())
+        },
+        | other => panic!("expected deployment create request, got {other:?}"),
+      };
+      dispatcher.complete(
+        "remote-sys@10.0.0.1:2552",
+        DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(correlation_hi, correlation_lo, success_path)),
+      );
+    }
+  });
+
+  let outcome = hook.deploy_child(request);
+  completion.await.expect("deployment response completion task should finish");
+
+  let RemoteDeploymentOutcome::RemoteCreated(actor_ref) = outcome else {
+    panic!("expected remote actor ref, got {outcome:?}");
+  };
+  let canonical = actor_ref.canonical_path().expect("resolved ref should keep canonical path");
+  assert_eq!(canonical.to_canonical_uri(), success_path);
+}
+
 #[test]
 fn remote_deployment_hook_invalid_target_parent_path_does_not_consume_correlation() {
   let (hook, mut event_rx, _dispatcher, _system) = remote_deployment_hook_fixture(Duration::from_millis(10));

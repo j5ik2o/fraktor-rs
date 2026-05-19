@@ -40,6 +40,8 @@ const DEPLOYABLE_METADATA_REQUIRED: &str = "remote deployment requires deployabl
 const TARGET_HOST_REQUIRED: &str = "remote deployment target host is missing";
 const TARGET_PORT_REQUIRED: &str = "remote deployment target port is missing";
 const TARGET_PARENT_REQUIRED: &str = "remote deployment target parent path is missing";
+const CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED: &str =
+  "remote deployment cannot wait synchronously on a current-thread Tokio runtime";
 
 /// Std adapter hook that turns actor-core remote deployment requests into wire create requests.
 pub(crate) struct StdRemoteDeploymentHook {
@@ -93,11 +95,9 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       | Ok(create_request) => create_request,
       | Err(reason) => return RemoteDeploymentOutcome::Failed(reason),
     };
-    if matches!(current_runtime_wait_mode(self.install_thread), DeploymentWaitMode::CurrentThreadRuntime) {
-      return RemoteDeploymentOutcome::Failed(String::from(
-        "remote deployment cannot wait synchronously on a current-thread Tokio runtime",
-      ));
-    }
+    let Some(wait_mode) = current_runtime_wait_mode(self.install_thread) else {
+      return RemoteDeploymentOutcome::Failed(String::from(CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED));
+    };
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
     let expected_authority = target.to_string();
@@ -111,7 +111,7 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       self.dispatcher.cancel(correlation_hi, correlation_lo);
       return RemoteDeploymentOutcome::Failed(format!("remote deployment request enqueue failed: {error:?}"));
     }
-    match recv_deployment_response(&receiver, self.timeout, self.install_thread) {
+    match recv_deployment_response(&receiver, self.timeout, wait_mode) {
       | Ok(DeploymentResponse::Success(success)) => self.resolve_remote_actor(success.actor_path()),
       | Ok(DeploymentResponse::Failure(failure)) => {
         RemoteDeploymentOutcome::Failed(format!("{:?}: {}", failure.code(), failure.reason()))
@@ -124,12 +124,6 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
         self.dispatcher.cancel(correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment response channel closed"))
       },
-      | Err(DeploymentResponseWaitError::CurrentThreadEventLoop) => {
-        self.dispatcher.cancel(correlation_hi, correlation_lo);
-        RemoteDeploymentOutcome::Failed(String::from(
-          "remote deployment cannot wait synchronously on a current-thread Tokio runtime",
-        ))
-      },
     }
   }
 }
@@ -137,32 +131,28 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
 enum DeploymentResponseWaitError {
   RecvTimeout,
   RecvDisconnected,
-  CurrentThreadEventLoop,
 }
 
 enum DeploymentWaitMode {
   BlockInPlace,
-  CurrentThreadRuntime,
   DirectRecv,
 }
 
-fn current_runtime_wait_mode(install_thread: ThreadId) -> DeploymentWaitMode {
+fn current_runtime_wait_mode(install_thread: ThreadId) -> Option<DeploymentWaitMode> {
   match Handle::try_current() {
-    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => DeploymentWaitMode::BlockInPlace,
-    | Ok(_) if thread::current().id() == install_thread => DeploymentWaitMode::CurrentThreadRuntime,
-    | Ok(_) => DeploymentWaitMode::DirectRecv,
-    | Err(_) => DeploymentWaitMode::DirectRecv,
+    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => Some(DeploymentWaitMode::BlockInPlace),
+    | Ok(_) if thread::current().id() == install_thread => None,
+    | Ok(_) | Err(_) => Some(DeploymentWaitMode::DirectRecv),
   }
 }
 
 fn recv_deployment_response(
   receiver: &Receiver<DeploymentResponse>,
   timeout: Duration,
-  install_thread: ThreadId,
+  wait_mode: DeploymentWaitMode,
 ) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
-  match current_runtime_wait_mode(install_thread) {
+  match wait_mode {
     | DeploymentWaitMode::BlockInPlace => tokio::task::block_in_place(|| recv_timeout(receiver, timeout)),
-    | DeploymentWaitMode::CurrentThreadRuntime => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
     | DeploymentWaitMode::DirectRecv => recv_timeout(receiver, timeout),
   }
 }
