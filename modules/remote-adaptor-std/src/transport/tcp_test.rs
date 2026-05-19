@@ -40,6 +40,7 @@ use crate::transport::tcp::{
 
 const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+const MAXIMUM_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 fn append_declared_frame_header(buf: &mut BytesMut, length: usize) {
   let length = u32::try_from(length).expect("test frame length should fit in u32");
@@ -347,6 +348,12 @@ fn wire_frame_codec_rejects_frame_above_configured_maximum_frame_size() {
   let err = codec.decode(&mut buf).expect_err("oversized frame must be rejected");
   assert!(matches!(err, FrameCodecError::Wire(WireError::FrameTooLarge)));
   assert_eq!(buf.len(), 6, "oversized header must not partially consume the buffer");
+}
+
+#[test]
+fn wire_frame_codec_rejects_maximum_frame_size_above_upper_bound() {
+  let result = std::panic::catch_unwind(|| WireFrameCodec::with_maximum_frame_size(MAXIMUM_MAXIMUM_FRAME_SIZE + 1));
+  assert!(result.is_err(), "configured maximum frame size above 16 MiB must be rejected");
 }
 
 #[test]

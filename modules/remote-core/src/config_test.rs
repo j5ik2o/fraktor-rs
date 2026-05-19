@@ -210,6 +210,15 @@ fn with_maximum_frame_size_rejects_values_below_minimum() {
 }
 
 #[test]
+fn with_maximum_frame_size_rejects_values_above_maximum() {
+  // When: 最大値超過の frame size を指定する
+  let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_maximum_frame_size(16 * 1024 * 1024 + 1));
+
+  // Then: 不正な frame size として拒否する
+  assert!(result.is_err());
+}
+
+#[test]
 fn with_buffer_pool_size_rejects_zero() {
   // When: buffer pool size に 0 を指定する
   let result = std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_buffer_pool_size(0));

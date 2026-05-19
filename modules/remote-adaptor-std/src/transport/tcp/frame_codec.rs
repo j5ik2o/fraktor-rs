@@ -21,6 +21,8 @@ const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 
 /// Minimum accepted maximum frame size.
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+/// Maximum accepted maximum frame size.
+const MAXIMUM_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 fn declared_frame_length(frame: &[u8]) -> Result<usize, FrameCodecError> {
   if frame.len() < FRAME_HEADER_LEN {
@@ -52,10 +54,11 @@ impl WireFrameCodec {
   ///
   /// # Panics
   ///
-  /// Panics when `maximum_frame_size` is smaller than 32 KiB.
+  /// Panics when `maximum_frame_size` is outside 32 KiB..=16 MiB.
   #[must_use]
   pub const fn with_maximum_frame_size(maximum_frame_size: usize) -> Self {
     assert!(maximum_frame_size >= MINIMUM_MAXIMUM_FRAME_SIZE, "maximum frame size must be at least 32 KiB");
+    assert!(maximum_frame_size <= MAXIMUM_MAXIMUM_FRAME_SIZE, "maximum frame size must be at most 16 MiB");
     Self { maximum_frame_size }
   }
 }
@@ -105,7 +108,7 @@ impl Decoder for WireFrameCodec {
     if length > self.maximum_frame_size {
       return Err(FrameCodecError::from(WireError::FrameTooLarge));
     }
-    let total = 4 + length;
+    let total = 4usize.checked_add(length).ok_or(FrameCodecError::Wire(WireError::FrameTooLarge))?;
     if src.len() < total {
       // frame の残りが届くまで待つ。
       return Ok(None);
