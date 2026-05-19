@@ -390,22 +390,6 @@ where
     });
   }
 
-  fn recover_after_store_restart(
-    &self,
-    ctx: &mut TypedActorContext<'_, M>,
-    stash: &StashBuffer<M>,
-    state: &S,
-    sequence_nr: u64,
-  ) -> Result<Behavior<M>, ActorError> {
-    let on_ready =
-      self.on_ready.clone().ok_or_else(|| ActorError::fatal("persistence recovery callback is not available"))?;
-    let effector =
-      Self::active(self.config.clone(), self.store_ref()?, self.reply_to()?, sequence_nr, on_ready.clone());
-    let next = on_ready(state.clone(), effector)?;
-    stash.unstash_all(ctx)?;
-    Ok(next)
-  }
-
   fn wait_for_event(&self, callback: EventCallback<E, M>) -> Behavior<M> {
     let callback = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(callback));
     self.wait_for_events(Box::new(move |events| match events.first() {
@@ -422,12 +406,10 @@ where
       | None => return fatal_behavior("persistence message adapter is not configured"),
     };
     let callback = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(callback));
-    let effector = self.clone();
     let sequence_nr_cell = self.sequence_nr.clone();
     Behaviors::with_stash(self.config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let callback = callback.clone();
-      let effector = effector.clone();
       let sequence_nr_cell = sequence_nr_cell.clone();
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
@@ -441,9 +423,6 @@ where
               })?;
               stash.unstash_all(ctx)?;
               Ok(next)
-            },
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
-              effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
             | _ => Ok(Behaviors::unhandled()),
@@ -507,9 +486,6 @@ where
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
-              effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
-            },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
             | _ => Ok(Behaviors::unhandled()),
           };
@@ -530,14 +506,12 @@ where
     let store_ref = self.store_ref.clone();
     let reply_to = self.reply_to.clone();
     let retention_criteria = *self.config.retention_criteria();
-    let effector = self.clone();
     Behaviors::with_stash(self.config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let callback = callback.clone();
       let sequence_nr_cell = sequence_nr_cell.clone();
       let store_ref = store_ref.clone();
       let reply_to = reply_to.clone();
-      let effector = effector.clone();
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
@@ -559,7 +533,6 @@ where
                   snapshot.clone(),
                   to_sequence_nr,
                   stash,
-                  effector.clone(),
                 ));
               }
               let next = callback.with_lock(|slot| {
@@ -567,9 +540,6 @@ where
               })?;
               stash.unstash_all(ctx)?;
               Ok(next)
-            },
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
-              effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
             | _ => Ok(Behaviors::unhandled()),
@@ -587,7 +557,6 @@ where
     snapshot: S,
     to_sequence_nr: u64,
     stash: StashBuffer<M>,
-    effector: PersistenceEffector<S, E, M>,
   ) -> Behavior<M> {
     let snapshot = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(snapshot));
     Behaviors::receive_message(move |ctx, message| {
@@ -607,9 +576,6 @@ where
           },
           | PersistenceEffectorSignal::DeletedSnapshots { .. } => {
             Err(ActorError::fatal("unexpected snapshot deletion acknowledgement"))
-          },
-          | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
-            effector.recover_after_store_restart(ctx, &stash, state, *sequence_nr)
           },
           | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
           | _ => Ok(Behaviors::unhandled()),
