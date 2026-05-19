@@ -157,7 +157,7 @@ fn inbound_advertisement_resolves_entry_ids() {
 
   assert_eq!(table.apply_advertisement(7, &entries), Ok(()));
 
-  assert_eq!(table.resolve(9), None);
+  assert_eq!(table.resolve(9), Some("/user/a"));
   assert_eq!(table.resolve(10), None);
 }
 

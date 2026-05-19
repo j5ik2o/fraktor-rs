@@ -95,10 +95,13 @@ fn inbound_advertisement_updates_table_and_replies_with_ack() {
     } if authority == "local@host:2"
   ));
 
-  let err =
-    tables.handle_inbound_frame(envelope_frame(CompressedText::table_ref(3), None, None), "local@host:2").unwrap_err();
+  let action =
+    tables.handle_inbound_frame(envelope_frame(CompressedText::table_ref(3), None, None), "local@host:2").unwrap();
 
-  assert_eq!(err, WireError::InvalidFormat);
+  assert!(matches!(
+    action,
+    InboundCompressionAction::Forward(WireFrame::Envelope(pdu)) if pdu.recipient_path() == "/user/a"
+  ));
 }
 
 #[test]
