@@ -215,15 +215,9 @@ fn test_ensure_authority_state_reports_queue_full_when_deferred_queue_is_full() 
   let mut registry = RemoteAuthorityRegistry::new();
   let mut accepted = 0;
 
-  loop {
-    match registry.defer_send("host.example.com:2552", AnyMessage::new(accepted)) {
-      | Ok(()) => {
-        accepted += 1;
-        assert!(accepted <= 10_000, "deferred queue must be bounded");
-      },
-      | Err(RemoteAuthorityError::DeferredQueueFull) => break,
-      | Err(error) => panic!("unexpected remote authority error: {error:?}"),
-    }
+  while registry.defer_send("host.example.com:2552", AnyMessage::new(accepted)).is_ok() {
+    accepted += 1;
+    assert!(accepted <= 10_000, "deferred queue must be bounded");
   }
 
   let err =
@@ -231,6 +225,18 @@ fn test_ensure_authority_state_reports_queue_full_when_deferred_queue_is_full() 
 
   assert!(matches!(err, PathResolutionError::AuthorityDeferredQueueFull));
   assert_eq!(registry.deferred_count("host.example.com:2552"), accepted);
+}
+
+#[test]
+fn remote_authority_errors_map_to_path_resolution_errors() {
+  assert_eq!(
+    super::remote_authority_error_to_path_resolution(RemoteAuthorityError::Quarantined),
+    PathResolutionError::AuthorityQuarantined
+  );
+  assert_eq!(
+    super::remote_authority_error_to_path_resolution(RemoteAuthorityError::DeferredQueueFull),
+    PathResolutionError::AuthorityDeferredQueueFull
+  );
 }
 
 #[test]
@@ -443,6 +449,27 @@ fn actor_selection_tell_defers_when_remote_authority_is_unresolved() {
 
   assert!(matches!(error, ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)));
   assert_eq!(system.state().remote_authority_deferred_count("peer.example.com:2552"), 1);
+}
+
+#[test]
+fn actor_selection_tell_reports_queue_full_when_remote_deferred_queue_is_full() {
+  let system = build_selection_system();
+  let authority = "full-peer.example.com:2552";
+  let mut accepted = 0;
+  while system.state().remote_authority_defer(authority, AnyMessage::new(accepted)).is_ok() {
+    accepted += 1;
+    assert!(accepted <= 10_000, "deferred queue must be bounded");
+  }
+
+  let path =
+    ActorPath::from_parts(ActorPathParts::with_authority("selection-spec", Some(("full-peer.example.com", 2552))))
+      .child("worker");
+  let selection = ActorSelection::from_path(system.state(), &path);
+
+  let error = selection.tell(AnyMessage::new(String::from("remote")), None).expect_err("deferred queue full");
+
+  assert!(matches!(error, ActorSelectionError::Authority(PathResolutionError::AuthorityDeferredQueueFull)));
+  assert_eq!(system.state().remote_authority_deferred_count(authority), accepted);
 }
 
 #[test]
