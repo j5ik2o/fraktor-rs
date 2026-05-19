@@ -1390,6 +1390,15 @@ fn delay_keeps_single_path_behavior() {
 }
 
 #[test]
+fn delay_preserves_order_for_multiple_inputs() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().delay(2).expect("delay"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
 fn delay_rejects_zero_ticks() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   let result = flow.delay(0);
@@ -1522,6 +1531,27 @@ fn map_async_logic_keeps_order_and_tracks_pending_output() {
 }
 
 #[test]
+fn map_async_logic_does_not_accept_input_when_completed_entries_are_queued() {
+  let mut logic = MapAsyncLogic::<u32, u32, _, MixedMapAsyncFuture<u32>> {
+    func:        |value: u32| {
+      if value == 0 { MixedMapAsyncFuture::Never } else { MixedMapAsyncFuture::Ready(Some(value.saturating_add(1))) }
+    },
+    parallelism: 2,
+    pending:     VecDeque::new(),
+    _pd:         PhantomData,
+  };
+
+  let _ = logic.apply(Box::new(0_u32)).expect("apply stalled");
+  let _ = logic.apply(Box::new(1_u32)).expect("apply ready");
+  assert!(!logic.can_accept_input());
+
+  let outputs = logic.drain_pending().expect("drain");
+  assert!(outputs.is_empty());
+  assert!(logic.has_pending_output());
+  assert!(!logic.can_accept_input());
+}
+
+#[test]
 fn conflate_with_seed_logic_defers_and_merges_pending_values() {
   let mut logic = ConflateWithSeedLogic::<u32, u32, _, _> {
     seed:         |value| value + 10,
@@ -1583,6 +1613,23 @@ impl<T: Unpin> Future for YieldThenOutputFuture<T> {
       Poll::Pending
     } else {
       Poll::Ready(this.value.take().expect("future value"))
+    }
+  }
+}
+
+enum MixedMapAsyncFuture<T> {
+  Never,
+  Ready(Option<T>),
+}
+
+impl<T: Unpin> Future for MixedMapAsyncFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let this = self.get_mut();
+    match this {
+      | Self::Never => Poll::Pending,
+      | Self::Ready(value) => Poll::Ready(value.take().expect("future value")),
     }
   }
 }
@@ -2397,7 +2444,8 @@ fn supervision_variants_keep_single_path_behavior() {
 
 #[test]
 fn zip_logic_on_restart_clears_pending_state() {
-  let mut logic = ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new() };
+  let mut logic =
+    ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   let first = logic.apply_with_edge(0, Box::new(1_u32)).expect("first apply");
   assert!(first.is_empty());
@@ -2406,6 +2454,48 @@ fn zip_logic_on_restart_clears_pending_state() {
 
   let second = logic.apply_with_edge(1, Box::new(2_u32)).expect("second apply");
   assert!(second.is_empty());
+}
+
+#[test]
+fn zip_logic_prefers_empty_input_slot_until_group_is_ready() {
+  let mut logic =
+    ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
+
+  assert!(logic.can_accept_input_from_edge(0));
+  assert!(!logic.can_accept_input_from_edge(2));
+
+  let first = logic.apply_with_edge(0, Box::new(1_u32)).expect("first apply");
+
+  assert!(first.is_empty());
+  assert!(logic.can_accept_input());
+  assert_eq!(logic.preferred_input_edge_slot(), Some(1));
+  assert!(!logic.can_accept_input_from_edge(0));
+  assert!(logic.can_accept_input_from_edge(1));
+
+  let second = logic.apply_with_edge(1, Box::new(2_u32)).expect("second apply");
+
+  assert_eq!(second.len(), 1);
+  assert!(logic.can_accept_input());
+  assert_eq!(logic.preferred_input_edge_slot(), Some(0));
+  assert!(logic.can_accept_input_from_edge(0));
+  logic.on_source_done().expect("source done");
+  assert!(!logic.can_accept_input_from_edge(0));
+}
+
+#[test]
+fn zip_logic_drain_pending_emits_ready_group() {
+  let mut left = VecDeque::new();
+  left.push_back(3_u32);
+  let mut right = VecDeque::new();
+  right.push_back(4_u32);
+  let mut logic =
+    ZipLogic::<u32> { fan_in: 2, edge_slots: vec![0, 1], pending: vec![left, right], source_done: true };
+
+  let drained = logic.drain_pending().expect("drain");
+
+  assert_eq!(drained.len(), 1);
+  let values = drained.into_iter().next().expect("zipped values").downcast::<Vec<u32>>().expect("Vec<u32>");
+  assert_eq!(*values, vec![3_u32, 4_u32]);
 }
 
 #[test]

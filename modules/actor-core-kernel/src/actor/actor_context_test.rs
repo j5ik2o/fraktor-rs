@@ -440,6 +440,26 @@ fn actor_context_stash_with_limit_detects_overflow() {
 }
 
 #[test]
+fn actor_context_stash_uses_default_capacity_limit() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))).with_stash_mailbox();
+  let cell = register_cell(&system, pid, "self", &props);
+
+  let mut context = ActorContext::new(&system, pid);
+  for i in 0..1000_i32 {
+    context.set_current_message(Some(AnyMessage::new(i)));
+    context.stash().expect("stash within default limit");
+  }
+  context.set_current_message(Some(AnyMessage::new(1001_i32)));
+
+  let error = context.stash().expect_err("default stash limit overflow should fail");
+
+  assert!(ActorContext::is_stash_overflow_error(&error));
+  assert_eq!(cell.stashed_message_len(), 1000);
+}
+
+#[test]
 fn actor_context_stash_with_limit_requires_active_message() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();

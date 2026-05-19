@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::{ArcShared, ExclusiveCell, SharedAccess};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::actor_lifecycle::Actor;
 
@@ -13,14 +13,14 @@ use super::actor_lifecycle::Actor;
 /// access from multiple owners.
 #[derive(Clone)]
 pub struct ActorShared {
-  inner: ArcShared<ExclusiveCell<Box<dyn Actor + Send>>>,
+  inner: SharedLock<Box<dyn Actor + Send>>,
 }
 
 impl ActorShared {
-  /// Creates a new shared wrapper using a CAS-backed exclusive cell.
+  /// Creates a new shared wrapper around the provided actor.
   #[must_use]
   pub fn new(actor: Box<dyn Actor + Send>) -> Self {
-    Self { inner: ArcShared::new(ExclusiveCell::new(actor)) }
+    Self { inner: SharedLock::new_with_driver::<DefaultMutex<_>>(actor) }
   }
 }
 

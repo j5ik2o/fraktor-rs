@@ -26,6 +26,7 @@ use crate::{
 
 pub(crate) const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
 pub(crate) const STASH_REQUIRES_DEQUE_REASON: &str = "stash requires deque-capable mailbox";
+pub(crate) const DEFAULT_STASH_CAPACITY: usize = 1000;
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContext<'a> {
@@ -121,7 +122,7 @@ impl ActorContext<'_> {
   ///
   /// Returns an error when no current message is active or when the actor cell is unavailable.
   pub fn stash(&mut self) -> Result<(), ActorError> {
-    self.stash_with_limit(usize::MAX)
+    self.stash_with_limit(DEFAULT_STASH_CAPACITY)
   }
 
   /// Stashes the currently processed user message with an explicit stash limit.

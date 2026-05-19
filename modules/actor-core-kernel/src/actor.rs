@@ -45,7 +45,7 @@ pub use actor_cell::ActorCell;
 pub(crate) use actor_cell_state::ActorCellState;
 pub(crate) use actor_cell_state_shared::ActorCellStateShared;
 pub use actor_context::ActorContext;
-pub(crate) use actor_context::{STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON};
+pub(crate) use actor_context::{DEFAULT_STASH_CAPACITY, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON};
 pub use actor_lifecycle::Actor;
 pub use actor_shared::ActorShared;
 pub use address::Address;

@@ -52,6 +52,10 @@ where
     Ok(())
   }
 
+  fn can_accept_input(&self) -> bool {
+    self.pending.is_empty()
+  }
+
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
     let Some(entry) = self.pending.front() else {
       return Ok(Vec::new());
