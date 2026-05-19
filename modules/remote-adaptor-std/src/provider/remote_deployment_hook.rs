@@ -7,7 +7,6 @@ use std::{
     atomic::{AtomicU64, Ordering},
     mpsc::{Receiver, RecvTimeoutError},
   },
-  thread::{self, ThreadId},
   time::{Duration, Instant},
 };
 
@@ -52,7 +51,6 @@ pub(crate) struct StdRemoteDeploymentHook {
   serialization:    ArcShared<SerializationExtensionShared>,
   dispatcher:       DeploymentResponseDispatcher,
   timeout:          Duration,
-  install_thread:   ThreadId,
   next_correlation: AtomicU64,
 }
 
@@ -75,7 +73,6 @@ impl StdRemoteDeploymentHook {
       serialization,
       dispatcher,
       timeout,
-      install_thread: thread::current().id(),
       next_correlation: AtomicU64::new(1),
     }
   }
@@ -95,7 +92,7 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       | Ok(create_request) => create_request,
       | Err(reason) => return RemoteDeploymentOutcome::Failed(reason),
     };
-    let Some(wait_mode) = current_runtime_wait_mode(self.install_thread) else {
+    let Some(wait_mode) = current_runtime_wait_mode() else {
       return RemoteDeploymentOutcome::Failed(String::from(CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED));
     };
     let correlation_hi = create_request.correlation_hi();
@@ -138,10 +135,10 @@ enum DeploymentWaitMode {
   DirectRecv,
 }
 
-fn current_runtime_wait_mode(install_thread: ThreadId) -> Option<DeploymentWaitMode> {
+fn current_runtime_wait_mode() -> Option<DeploymentWaitMode> {
   match Handle::try_current() {
+    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::CurrentThread => None,
     | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => Some(DeploymentWaitMode::BlockInPlace),
-    | Ok(_) if thread::current().id() == install_thread => None,
     | Ok(_) | Err(_) => Some(DeploymentWaitMode::DirectRecv),
   }
 }

@@ -49,7 +49,6 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
   sync::mpsc::{self, Receiver, Sender},
-  task::spawn_blocking,
   time::timeout,
 };
 
@@ -453,7 +452,7 @@ async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() 
     Some(deployable_metadata()),
   );
   let success_path = system.user_guardian_ref().canonical_path().expect("user guardian path").to_canonical_uri();
-  let join = spawn_blocking(move || hook.deploy_child(request));
+  let join = thread::spawn(move || hook.deploy_child(request));
 
   let event = event_rx.recv().await.expect("deployment request should be enqueued");
   let (correlation_hi, correlation_lo) = match event {
@@ -476,7 +475,7 @@ async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() 
     )),
   );
 
-  let outcome = join.await.expect("deployment hook blocking task should complete");
+  let outcome = join.join().expect("deployment hook thread should complete");
   let RemoteDeploymentOutcome::RemoteCreated(actor_ref) = outcome else {
     panic!("expected remote actor ref, got {outcome:?}");
   };
