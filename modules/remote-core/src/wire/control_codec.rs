@@ -217,12 +217,14 @@ fn compression_entry_count(entries_len: usize) -> Result<u32, WireError> {
 }
 
 fn decode_compression_entries(buf: &mut Bytes) -> Result<Vec<CompressionTableEntry>, WireError> {
+  ensure_remaining(buf, 4)?;
   let entry_count = buf.get_u32() as usize;
   if entry_count > buf.remaining() / MIN_COMPRESSION_ENTRY_BYTES {
     return Err(WireError::Truncated);
   }
   let mut entries = Vec::with_capacity(entry_count);
   for _ in 0..entry_count {
+    ensure_remaining(buf, 4)?;
     let id = buf.get_u32();
     let literal = decode_string(buf)?;
     entries.push(CompressionTableEntry::new(id, literal));
