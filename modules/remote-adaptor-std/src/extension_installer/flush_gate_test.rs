@@ -274,7 +274,13 @@ async fn deferred_notification_retry_queue_is_bounded() {
 
   let retry_sender = gate.retry_sender_for(&event_tx);
   retry_sender.try_send(test_outbound_event(authority.clone(), 41)).expect("retry queue should accept first event");
-  tokio::task::yield_now().await;
+  tokio::time::timeout(Duration::from_millis(100), async {
+    while retry_sender.capacity() != RETRY_QUEUE_CAPACITY {
+      sleep(Duration::from_millis(1)).await;
+    }
+  })
+  .await
+  .expect("retry worker should consume the first retry event");
   for index in 0..RETRY_QUEUE_CAPACITY {
     retry_sender
       .try_send(test_outbound_event(authority.clone(), index as u64))
