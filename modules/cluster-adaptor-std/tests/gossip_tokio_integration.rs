@@ -115,7 +115,7 @@ async fn gossip_delta_triggers_topology_update() {
   let local_a = transport_a.local_addr().to_string();
   let transport_b = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8).with_allowed_peers(vec![local_a.clone()]),
-    tokio::runtime::Handle::current(),
+    Handle::current(),
   )
   .expect("transport bind");
   let target_b = transport_b.local_addr().to_string();

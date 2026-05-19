@@ -69,7 +69,7 @@ async fn recv_drops_delta_from_untrusted_udp_peer() {
   let sender = UdpSocket::bind("127.0.0.1:0").await.expect("sender bind");
   let config = TokioGossipTransportConfig::new(bind_addr.to_string(), 1024, 8)
     .with_allowed_peers(vec![trusted.local_addr().expect("trusted local addr").to_string()]);
-  let mut transport = TokioGossipTransport::bind(config, tokio::runtime::Handle::current()).expect("transport bind");
+  let mut transport = TokioGossipTransport::bind(config, Handle::current()).expect("transport bind");
 
   let payload = transport.encode_delta(&sample_delta()).expect("encode");
   sender.send_to(&payload, bind_addr).await.expect("send");
