@@ -2,7 +2,7 @@
 
 use alloc::{string::ToString, vec::Vec};
 
-use super::actor_selection_error::ActorSelectionError;
+use super::{actor_selection_error::ActorSelectionError, remote_authority_error_to_path_resolution};
 use crate::{
   actor::{
     actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
@@ -58,9 +58,10 @@ impl ActorSelectionResolver {
   ///
   /// # Errors
   ///
-  /// If the authority is unresolved, the provided `message` is deferred (when present) and
-  /// [`PathResolutionError::AuthorityUnresolved`] is returned. When the authority is quarantined,
-  /// [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
+  /// If the authority is unresolved, the provided `message` is deferred when capacity allows and
+  /// [`PathResolutionError::AuthorityUnresolved`] is returned. If the deferred queue is full,
+  /// [`PathResolutionError::AuthorityDeferredQueueFull`] is returned. When the authority is
+  /// quarantined, [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
   pub fn ensure_authority_state(
     path: &ActorPath,
     authority_registry: &mut RemoteAuthorityRegistry,
@@ -76,7 +77,7 @@ impl ActorSelectionResolver {
         if let Some(envelope) = message {
           authority_registry
             .defer_send(endpoint.clone(), envelope)
-            .map_err(|_| PathResolutionError::AuthorityQuarantined)?;
+            .map_err(remote_authority_error_to_path_resolution)?;
         }
         Err(PathResolutionError::AuthorityUnresolved)
       },

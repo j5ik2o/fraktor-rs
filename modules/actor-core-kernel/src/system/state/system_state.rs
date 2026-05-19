@@ -1092,7 +1092,7 @@ impl SystemState {
   /// # Errors
   ///
   /// Returns [`RemoteAuthorityError::Quarantined`] if the target authority is currently
-  /// quarantined.
+  /// quarantined, or [`RemoteAuthorityError::DeferredQueueFull`] if the deferred queue is full.
   pub fn remote_authority_defer(
     &mut self,
     authority: impl Into<String>,
@@ -1105,7 +1105,8 @@ impl SystemState {
   ///
   /// # Errors
   ///
-  /// Returns [`RemoteAuthorityError::Quarantined`] when the authority remains quarantined.
+  /// Returns [`RemoteAuthorityError::Quarantined`] when the authority remains quarantined, or
+  /// [`RemoteAuthorityError::DeferredQueueFull`] if the deferred queue is full.
   pub fn remote_authority_try_defer(
     &mut self,
     authority: impl Into<String>,

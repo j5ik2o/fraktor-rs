@@ -9,7 +9,7 @@ use core::{
   time::Duration,
 };
 
-use super::{ActorSelectionError, ActorSelectionResolver};
+use super::{ActorSelectionError, ActorSelectionResolver, remote_authority_error_to_path_resolution};
 use crate::{
   actor::{
     actor_path::{
@@ -136,7 +136,7 @@ impl ActorSelection {
           self
             .system
             .remote_authority_defer(authority, message.clone())
-            .map_err(|_| ActorSelectionError::from(PathResolutionError::AuthorityQuarantined))?;
+            .map_err(|error| ActorSelectionError::from(remote_authority_error_to_path_resolution(error)))?;
         }
         Err(ActorSelectionError::from(PathResolutionError::AuthorityUnresolved))
       },

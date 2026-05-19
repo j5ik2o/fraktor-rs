@@ -130,6 +130,7 @@ fn path_resolution_error_display_matches_public_contract() {
     (PathResolutionError::PidUnknown, "PID not found in registry"),
     (PathResolutionError::AuthorityUnresolved, "authority is not resolved"),
     (PathResolutionError::AuthorityQuarantined, "authority is quarantined"),
+    (PathResolutionError::AuthorityDeferredQueueFull, "authority deferred queue is full"),
     (PathResolutionError::UidReserved { uid: ActorUid::new(42) }, "UID 42 is reserved and cannot be reused"),
   ];
 

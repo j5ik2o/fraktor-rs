@@ -11,7 +11,7 @@ use crate::actor::{
 pub enum ActorSelectionError {
   /// The relative path itself was invalid.
   InvalidPath(ActorPathError),
-  /// Authority resolution failed (unresolved/quarantine).
+  /// Authority resolution failed (unresolved/quarantine/deferred queue full).
   Authority(PathResolutionError),
   /// Actor reference lookup failed.
   Resolve(ActorRefResolveError),
