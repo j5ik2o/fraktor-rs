@@ -736,7 +736,7 @@ fn remote_actor_ref_resolution_records_pid_path_mapping() {
 }
 
 #[test]
-fn remote_actor_ref_sender_removes_pid_path_mapping_after_last_ref_is_dropped() {
+fn remote_actor_ref_sender_drop_keeps_pid_path_mapping_for_remote_deathwatch() {
   let mut fixture = make_provider_fixture();
   let registry = fixture.registry.clone();
   let remote_path = remote_actor_path();
@@ -747,7 +747,7 @@ fn remote_actor_ref_sender_removes_pid_path_mapping_after_last_ref_is_dropped() 
 
   assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_some());
   drop(actor_ref);
-  assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_none());
+  assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_some());
 }
 
 #[test]

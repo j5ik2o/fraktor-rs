@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Pid,
     actor_ref::{ActorRefSender, SendOutcome},
     error::SendError,
     messaging::AnyMessage,
@@ -17,18 +16,14 @@ use fraktor_remote_core_rs::{
   provider::RemoteActorRef,
   transport::TransportEndpoint,
 };
-use fraktor_utils_core_rs::sync::SharedLock;
 use tokio::sync::mpsc::{Sender, error::TrySendError};
 
-use super::remote_actor_path_registry::RemoteActorPathRegistry;
 use crate::association::std_instant_elapsed_millis;
 
 /// Sender that wraps a [`RemoteActorRef`] and pushes outbound work to `Remote`.
 pub struct RemoteActorRefSender {
-  pid:             Pid,
   remote_ref:      RemoteActorRef,
   event_tx:        Sender<RemoteEvent>,
-  registry:        SharedLock<RemoteActorPathRegistry>,
   monotonic_epoch: Instant,
 }
 
@@ -36,13 +31,11 @@ impl RemoteActorRefSender {
   /// Creates a new sender for the given `remote_ref`.
   #[must_use]
   pub(crate) fn new(
-    pid: Pid,
     remote_ref: RemoteActorRef,
     event_tx: Sender<RemoteEvent>,
-    registry: SharedLock<RemoteActorPathRegistry>,
     monotonic_epoch: Instant,
   ) -> Self {
-    Self { pid, remote_ref, event_tx, registry, monotonic_epoch }
+    Self { remote_ref, event_tx, monotonic_epoch }
   }
 
   fn remote_authority(&self) -> Option<String> {
@@ -75,12 +68,6 @@ impl RemoteActorRefSender {
       },
       | _ => None,
     }
-  }
-}
-
-impl Drop for RemoteActorRefSender {
-  fn drop(&mut self) {
-    self.registry.with_lock(|registry| registry.remove(&self.pid));
   }
 }
 
