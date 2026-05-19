@@ -1390,6 +1390,15 @@ fn delay_keeps_single_path_behavior() {
 }
 
 #[test]
+fn delay_preserves_order_for_multiple_inputs() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().delay(2).expect("delay"))
+    .run_with_collect_sink()
+    .expect("run_with_collect_sink");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
 fn delay_rejects_zero_ticks() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   let result = flow.delay(0);
