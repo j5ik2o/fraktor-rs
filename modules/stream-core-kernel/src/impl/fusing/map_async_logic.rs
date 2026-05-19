@@ -25,18 +25,6 @@ where
   Completed(Out),
 }
 
-impl<Out, Fut> MapAsyncEntry<Out, Fut>
-where
-  Fut: Future<Output = Out> + Send + 'static,
-{
-  const fn is_pending(&self) -> bool {
-    match self {
-      | Self::InFlight(_) => true,
-      | Self::Completed(_) => false,
-    }
-  }
-}
-
 impl<In, Out, F, Fut> FlowLogic for MapAsyncLogic<In, Out, F, Fut>
 where
   In: Send + Sync + 'static,
@@ -55,7 +43,7 @@ where
     if self.parallelism == 0 {
       return false;
     }
-    self.pending.iter().filter(|entry| entry.is_pending()).count() < self.parallelism
+    self.pending.len() < self.parallelism
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
