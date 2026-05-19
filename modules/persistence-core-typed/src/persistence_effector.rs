@@ -37,7 +37,6 @@ where
   store_ref:       Option<TypedActorRef<PersistenceStoreCommand<S, E>>>,
   reply_to:        Option<TypedActorRef<PersistenceStoreReply<S, E>>>,
   ephemeral_store: Option<ArcShared<EphemeralPersistenceStore>>,
-  on_ready:        Option<ArcShared<OnReady<S, E, M>>>,
   sequence_nr:     SharedLock<u64>,
   _message:        PhantomData<fn() -> M>,
 }
@@ -113,7 +112,6 @@ where
       store_ref: None,
       reply_to: None,
       ephemeral_store: None,
-      on_ready: None,
       sequence_nr: SharedLock::new_with_driver::<DefaultMutex<_>>(0),
       _message: PhantomData,
     }
@@ -129,7 +127,6 @@ where
       store_ref: None,
       reply_to: None,
       ephemeral_store: Some(store),
-      on_ready: None,
       sequence_nr: SharedLock::new_with_driver::<DefaultMutex<_>>(sequence_nr),
       _message: PhantomData,
     }
@@ -140,14 +137,12 @@ where
     store_ref: TypedActorRef<PersistenceStoreCommand<S, E>>,
     reply_to: TypedActorRef<PersistenceStoreReply<S, E>>,
     sequence_nr: u64,
-    on_ready: ArcShared<OnReady<S, E, M>>,
   ) -> Self {
     Self {
       config,
       store_ref: Some(store_ref),
       reply_to: Some(reply_to),
       ephemeral_store: None,
-      on_ready: Some(on_ready),
       sequence_nr: SharedLock::new_with_driver::<DefaultMutex<_>>(sequence_nr),
       _message: PhantomData,
     }
@@ -173,8 +168,7 @@ where
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
             | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
-              let effector =
-                Self::active(config.clone(), store_ref.clone(), reply_to.clone(), *sequence_nr, on_ready.clone());
+              let effector = Self::active(config.clone(), store_ref.clone(), reply_to.clone(), *sequence_nr);
               let next = on_ready(state.clone(), effector)?;
               stash.unstash_all(ctx)?;
               Ok(next)
@@ -618,7 +612,6 @@ where
       store_ref:       self.store_ref.clone(),
       reply_to:        self.reply_to.clone(),
       ephemeral_store: self.ephemeral_store.clone(),
-      on_ready:        self.on_ready.clone(),
       sequence_nr:     self.sequence_nr.clone(),
       _message:        PhantomData,
     }
