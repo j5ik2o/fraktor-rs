@@ -9,7 +9,7 @@
 
 mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
 
-編集前に対象範囲のlintを実行すること。実行コマンドは各ピースの instruction 指示を優先する。
+編集前に対象範囲のlintを実行すること。実行コマンドは各ワークフローの instruction 指示を優先する。
 
 ## CQS 原則
 
@@ -33,12 +33,24 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 - Scala trait 階層 → Rust trait + 合成
 - Scala implicit → Rust ジェネリクスまたは通常の引数
 - sealed trait + case classes → enum
+- Java/Scala の `*Exception` 型 → Rust の `*Error` 型 (例: `ThrowableNotSerializableException` → `ThrowableNotSerializableError`)
 
 ## テストポリシー
 
 - テストは `{type}/tests.rs` に配置
 - テストをコメントアウトや無視しない
-- 全タスク完了時は各ピースで定義された最終CIゲートを通す
+- 全タスク完了時は各ワークフローで定義された最終CIゲートを通す
+
+## CI 実行制限
+
+- `./scripts/ci-check.sh ai all` は `final-ci` ステップ専用。他のステップでは実行禁止
+- 変更範囲に限定した単体版（例: `./scripts/ci-check.sh ai dylint -m モジュール名`）は許可
+
+## アーティファクト配置ルール
+
+- takt ワークフロー実行中に生成するレポート・計画・分析・決定ログ等の中間アーティファクトは **`.takt/` 配下にのみ**配置すること
+- プロジェクトルート直下やソースツリー内（`reports/`, `docs/plans/` 等）に中間アーティファクトを書き出してはならない
+- ソースコードの編集（`modules/`, `showcases/std/` 等）はこの制約の対象外
 
 ## REJECT 基準
 
@@ -47,3 +59,5 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 - 1ファイル複数公開型（lint 違反）
 - テストなしの実装
 - 後方互換のための不要なコード
+- `./scripts/ci-check.sh ai all` の `final-ci` 以外での実行
+- `.takt/` 外への中間アーティファクト配置

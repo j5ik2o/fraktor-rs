@@ -14,7 +14,7 @@
 5. コミットメッセージ形式: `<type>(<scope>): <english summary> (#<issue-number>)`
    - `<type>` は `fix|feat|refactor|test|docs|chore` のいずれか
    - メッセージは英語で書く（日本語禁止）
-6. `./scripts/ci-check.sh all` を実行し、最終 PASS を確認する
+6. `./scripts/ci-check.sh ai all` を実行し、最終 PASS を確認する
 
 ## コミット禁止時の対応
 
@@ -32,4 +32,4 @@
 
 ## 最終ci-check結果
 
-- `./scripts/ci-check.sh all`: PASS / FAIL
+- `./scripts/ci-check.sh ai all`: PASS / FAIL

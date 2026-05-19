@@ -9,12 +9,47 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner to use for this manual CI run
+        required: true
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - self-hosted
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: "4"
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
-  DYLINT_VERSION: "4.1.0"
+  DYLINT_VERSION: "6.0.0"
+  RUST_TOOLCHAIN: nightly-2025-12-01
+  # NOTE: On self-hosted runners, CARGO_HOME, RUSTUP_HOME, and TMPDIR are set
+  # per-job via the `./.github/actions/setup-isolated-rust` composite action.
+  # They are NOT pinned at the workflow level because:
+  #   1. `${{ github.workspace }}/.cargo` is a *fixed* path inside each
+  #      runner's `_work/<repo>` directory. On self-hosted runners that
+  #      reuse the same workspace between successive jobs, stale state
+  #      from a crashed previous job (broken `.cargo/bin/cargo` symlink,
+  #      half-written registry index, etc.) leaks into the next job.
+  #   2. The cargo/rustup binaries themselves are installed by
+  #      `dtolnay/rust-toolchain` under `${HOME}/.cargo/bin`, not under
+  #      the workflow-pinned `CARGO_HOME`. When PATH lookup happens to
+  #      land on the workspace path first, the shell tries
+  #      `<workspace>/.cargo/bin/cargo` which may not exist, and the job
+  #      fails with ENOENT.
+  #   3. Multiple self-hosted runners share the same home directory
+  #      (`~/.cargo/bin/` and `~/.rustup/`), so concurrent jobs calling
+  #      `rustup default <toolchain>` can truncate `~/.rustup/settings.toml`
+  #      (missing field `version` error) and overwrite `~/.cargo/bin/rustup`
+  #      while another job is executing it (ETXTBSY / text file busy).
+  # The composite action uses `mktemp -d` rooted at `${RUNNER_TEMP}` for
+  # true uniqueness (auto-cleaned by the runner), COPIES the rustup binary
+  # (not symlink, so ETXTBSY is avoided), and copies `~/.rustup/` so that
+  # toolchain state is isolated from other concurrent jobs. It MUST run
+  # before `dtolnay/rust-toolchain@master` so that action writes to the
+  # isolated paths.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,14 +57,17 @@ jobs:
   # Format check (fastest, prerequisite for other jobs)
   format:
     name: Format Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        if: ${{ runner.environment == 'self-hosted' }}
+        uses: ./.github/actions/setup-isolated-rust
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -39,7 +77,7 @@ jobs:
   # Lint checks
   lint:
     name: Lint Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     needs: format
     strategy:
       matrix:
@@ -51,24 +89,33 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        if: ${{ runner.environment == 'self-hosted' }}
+        uses: ./.github/actions/setup-isolated-rust
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: lint
-          cache-directories: ~/.cargo/bin
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
-  # Build and test
+  # ビルドと単体テスト
+  #
+  # 実行頻度の方針:
+  # - pull_request / main push: まず単体テスト中心の correctness gate を必ず実行する。
+  # - integration / E2E は下の dedicated job で別途実行し、失敗箇所を切り分ける。
+  # - performance / benchmark は CI の正しさゲートに含めない。
   test:
     name: Test (${{ matrix.target.name }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     needs: format
+    env:
+      TEST_TIME_FACTOR: "2.0"
     strategy:
       fail-fast: false
       matrix:
@@ -77,15 +124,18 @@ jobs:
             script: no-std
           - name: std
             script: std
-          - name: workspace
-            script: test
+          - name: unit
+            script: unit-test
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        if: ${{ runner.environment == 'self-hosted' }}
+        uses: ./.github/actions/setup-isolated-rust
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -93,18 +143,199 @@ jobs:
       - name: Run ${{ matrix.target.name }} tests
         run: ./scripts/ci-check.sh ${{ matrix.target.script }}
 
+  # 結合テスト / E2E
+  #
+  # `scripts/ci-check.sh integration-test` は workspace の `--tests --examples`
+  # と cross-crate E2E 専用 crate を明示実行する。actor の classic/typed user flow
+  # や std adaptor boot、`tests/e2e` の runtime boot など、テストピラミッド上の
+  # Integration / E2E 層はここで PR ごとに検証する。
+  integration-e2e:
+    name: Integration / E2E
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    needs: test
+    env:
+      TEST_TIME_FACTOR: "2.0"
+      CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        if: ${{ runner.environment == 'self-hosted' }}
+        uses: ./.github/actions/setup-isolated-rust
+      - name: Setup Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: integration-e2e
+      - name: Run integration and E2E tests
+        run: ./scripts/ci-check.sh integration-test
+
+  # カバレッジレポート
+  #
+  # `scripts/coverage.sh` は各 package の Unit / Contract /
+  # Integration / E2E をまとめて計測し、HTML レポートを生成する。
+  # PR / main push / schedule で成果物として確認できるよう、
+  # 通常テストとは別ジョブで実行して artifact に保存する。
+  coverage:
+    name: Coverage Report
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    needs: integration-e2e
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TEST_TIME_FACTOR: "2.0"
+      CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        if: ${{ runner.environment == 'self-hosted' }}
+        uses: ./.github/actions/setup-isolated-rust
+      - name: Setup Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: coverage
+      - name: Generate fraktor coverage reports
+        run: ./scripts/coverage.sh --tool llvm-cov --format html-lcov --output target/coverage
+      - name: Upload fraktor coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fraktor-coverage-html
+          path: target/coverage/html
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload coverage reports to Codecov
+        # third-party action の mutable tag リスクを避けるため、v6 の commit SHA に固定する。
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
+        with:
+          use_oidc: true
+          files: target/coverage/lcov.info
+          disable_search: true
+          flags: fraktor
+          name: fraktor-coverage
+          fail_ci_if_error: true
+
+  # Codecov の外部 status が完了し、失敗していないことを CI Success に伝播する。
+  codecov-status:
+    name: Codecov Status
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    needs: coverage
+    if: always()
+    permissions:
+      contents: read
+      checks: read
+      statuses: read
+    steps:
+      - name: Wait for Codecov status checks
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+          CODECOV_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const coverageResult = process.env.COVERAGE_RESULT;
+            if (coverageResult !== "success") {
+              throw new Error(`coverage failed or was skipped: ${coverageResult}`);
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const ref = process.env.CODECOV_SHA;
+            const requiredChecks = ["codecov/project"];
+
+            if (process.env.IS_PULL_REQUEST === "true") {
+              requiredChecks.push("codecov/patch");
+            } else {
+              core.info("Skipping codecov/patch outside pull_request events");
+            }
+
+            for (const checkName of requiredChecks) {
+              await waitForCheck(checkName);
+            }
+
+            async function waitForCheck(checkName) {
+              for (let attempt = 1; attempt <= 60; attempt += 1) {
+                const run = await latestCheckRun(checkName);
+
+                if (run) {
+                  core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
+
+                  if (run.status === "completed") {
+                    if (run.conclusion === "success") {
+                      return;
+                    }
+
+                    throw new Error(`${checkName} failed with conclusion=${run.conclusion}`);
+                  }
+                } else {
+                  const status = await latestCommitStatus(checkName);
+                  if (status) {
+                    core.info(`${checkName}: state=${status.state} url=${status.target_url || ""}`);
+
+                    if (status.state === "success") {
+                      return;
+                    }
+                    if (status.state === "failure" || status.state === "error") {
+                      throw new Error(`${checkName} failed with state=${status.state}`);
+                    }
+                  } else {
+                    core.info(`${checkName}: waiting for Codecov status (${attempt}/60)`);
+                  }
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 10000));
+              }
+
+              core.warning(`${checkName} did not report within timeout; coverage upload already succeeded`);
+            }
+
+            async function latestCheckRun(checkName) {
+              const response = await github.rest.checks.listForRef({
+                owner,
+                repo,
+                ref,
+                check_name: checkName,
+                per_page: 100,
+              });
+              return response.data.check_runs
+                .filter((checkRun) => checkRun.name === checkName)
+                .sort((left, right) => {
+                  const rightTime = Date.parse(right.started_at || right.created_at);
+                  const leftTime = Date.parse(left.started_at || left.created_at);
+                  return rightTime - leftTime;
+                })[0];
+            }
+
+            async function latestCommitStatus(checkName) {
+              const response = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref });
+              return response.data.statuses.find((status) => status.context === checkName);
+            }
+
   # Documentation build
   docs:
     name: Documentation
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     needs: format
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        if: ${{ runner.environment == 'self-hosted' }}
+        uses: ./.github/actions/setup-isolated-rust
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -115,15 +346,18 @@ jobs:
   # Examples build
   examples:
     name: Examples
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     needs: format
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+        if: ${{ runner.environment == 'self-hosted' }}
+        uses: ./.github/actions/setup-isolated-rust
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-02-15
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -134,13 +368,50 @@ jobs:
   # All jobs completion check
   ci-success:
     name: CI Success
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     needs:
       - format
       - lint
       - test
+      - integration-e2e
+      - coverage
+      - codecov-status
       - docs
       - examples
+    if: always()
     steps:
       - name: All checks passed
-        run: echo "✅ All CI checks passed successfully"
+        run: |
+          if [[ "${{ needs.format.result }}" != "success" ]]; then
+            echo "format failed"
+            exit 1
+          fi
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "test failed"
+            exit 1
+          fi
+          if [[ "${{ needs['integration-e2e'].result }}" != "success" ]]; then
+            echo "integration-e2e failed"
+            exit 1
+          fi
+          if [[ "${{ needs.coverage.result }}" != "success" ]]; then
+            echo "coverage failed"
+            exit 1
+          fi
+          if [[ "${{ needs['codecov-status'].result }}" != "success" ]]; then
+            echo "codecov-status failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docs.result }}" != "success" ]]; then
+            echo "docs failed"
+            exit 1
+          fi
+          if [[ "${{ needs.examples.result }}" != "success" ]]; then
+            echo "examples failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed successfully"

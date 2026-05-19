@@ -1,0 +1,186 @@
+{
+  "metadata": {
+    "skill_name": "pekko-gap-analysis",
+    "skill_path": "/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/.agents/skills/pekko-gap-analysis",
+    "executor_model": "claude-sonnet-4-6",
+    "timestamp": "2026-03-12T00:00:00Z",
+    "evals_run": ["eval-streams-gap", "eval-actor-gap", "eval-cluster-gap"],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "eval_name": "eval-streams-gap",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 1110.0,
+        "tokens": 130220,
+        "tool_calls": 72,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count", "passed": true, "evidence": "サマリーテーブルに Pekko 66型, fraktor 91型, ~75%, 28項目が記載"},
+        {"text": "Output groups gaps into at least 2 named categories with table format", "passed": true, "evidence": "9カテゴリが5列テーブル形式で記載"},
+        {"text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)", "passed": true, "evidence": "全行に難易度列あり"},
+        {"text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections", "passed": true, "evidence": "Phase 1-4の全セクションが存在"},
+        {"text": "Output includes specific Pekko API names with backtick code formatting", "passed": true, "evidence": "多数のAPI名がバッククォートで記述"},
+        {"text": "Output correctly resolves the pekko reference directory as 'stream' rather than 'streams'", "passed": true, "evidence": "stream/ディレクトリを正しく参照"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "eval-streams-gap",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.5,
+        "passed": 3,
+        "failed": 3,
+        "total": 6,
+        "time_seconds": 592.2,
+        "tokens": 42902,
+        "tool_calls": 112,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count", "passed": false, "evidence": "サマリーテーブルなし"},
+        {"text": "Output groups gaps into at least 2 named categories with table format", "passed": true, "evidence": "複数セクションあるが3列テーブル"},
+        {"text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)", "passed": false, "evidence": "難易度列なし"},
+        {"text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections", "passed": false, "evidence": "高/中/低の3段階を使用"},
+        {"text": "Output includes specific Pekko API names with backtick code formatting", "passed": true, "evidence": "API名はバッククォートで記述"},
+        {"text": "Output correctly resolves the pekko reference directory as 'stream' rather than 'streams'", "passed": true, "evidence": "stream/を正しく参照"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "eval-actor-gap",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 1902.6,
+        "tokens": 144020,
+        "tool_calls": 112,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count", "passed": true, "evidence": "Pekko 230, fraktor 263, ~75%, 26件"},
+        {"text": "Output groups gaps into at least 2 named categories with table format", "passed": true, "evidence": "10以上のカテゴリが5列テーブルで記載"},
+        {"text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)", "passed": true, "evidence": "全行に難易度列あり"},
+        {"text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections", "passed": true, "evidence": "Phase 1-4の全セクションが存在"},
+        {"text": "Output includes specific Pekko API names with backtick code formatting", "passed": true, "evidence": "多数のAPI名がバッククォートで記述"},
+        {"text": "Output mentions key Pekko actor concepts such as Behavior, ActorRef, or TypedActorContext", "passed": true, "evidence": "Behavior, ActorRef, TypedActorContext等全て言及"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "eval-actor-gap",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.33,
+        "passed": 2,
+        "failed": 4,
+        "total": 6,
+        "time_seconds": 220.8,
+        "tokens": 140369,
+        "tool_calls": 54,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count", "passed": false, "evidence": "実装状況サマリーはあるが型数・カバレッジ%の定量テーブルなし"},
+        {"text": "Output groups gaps into at least 2 named categories with table format", "passed": false, "evidence": "ギャップ項目がテーブルではなく番号付きヘッダー形式"},
+        {"text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)", "passed": false, "evidence": "難易度分類なし"},
+        {"text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections", "passed": false, "evidence": "高/中/低優先度の3段階"},
+        {"text": "Output includes specific Pekko API names with backtick code formatting", "passed": true, "evidence": "API名はバッククォートで記述"},
+        {"text": "Output mentions key Pekko actor concepts such as Behavior, ActorRef, or TypedActorContext", "passed": true, "evidence": "主要概念は言及あり"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "eval-cluster-gap",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 2164.9,
+        "tokens": 122600,
+        "tool_calls": 62,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count", "passed": true, "evidence": "Pekko 38, fraktor 130, ~68%, 15件"},
+        {"text": "Output groups gaps into at least 2 named categories with table format", "passed": true, "evidence": "8カテゴリが5列テーブルで記載"},
+        {"text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)", "passed": true, "evidence": "全行に難易度列あり"},
+        {"text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections", "passed": true, "evidence": "Phase 1-4の全セクションが存在"},
+        {"text": "Output includes specific Pekko API names with backtick code formatting", "passed": true, "evidence": "SplitBrainResolverProvider, Reachability等多数"},
+        {"text": "Output considers pekko submodules beyond base cluster directory", "passed": true, "evidence": "sbr/サブディレクトリへの明示的な参照あり"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "eval-cluster-gap",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.5,
+        "passed": 3,
+        "failed": 3,
+        "total": 6,
+        "time_seconds": 152.7,
+        "tokens": 119046,
+        "tool_calls": 28,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count", "passed": false, "evidence": "エグゼクティブサマリーはあるが定量サマリーテーブルなし"},
+        {"text": "Output groups gaps into at least 2 named categories with table format", "passed": true, "evidence": "複数セクションに比較テーブルあり"},
+        {"text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)", "passed": false, "evidence": "優先度目安（高/中/低）はあるが標準難易度分類なし"},
+        {"text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections", "passed": false, "evidence": "Phase 1-4形式なし"},
+        {"text": "Output includes specific Pekko API names with backtick code formatting", "passed": true, "evidence": "KeepMajority, Reachability等がバッククォートで記述"},
+        {"text": "Output considers pekko submodules beyond base cluster directory", "passed": true, "evidence": "cluster-typedへの参照あり"}
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 1725.8, "stddev": 524.7, "min": 1110.0, "max": 2164.9},
+      "tokens": {"mean": 132280, "stddev": 10791, "min": 122600, "max": 144020}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.44, "stddev": 0.09, "min": 0.33, "max": 0.5},
+      "time_seconds": {"mean": 321.9, "stddev": 225.7, "min": 152.7, "max": 592.2},
+      "tokens": {"mean": 100772, "stddev": 51920, "min": 42902, "max": 140369}
+    },
+    "delta": {
+      "pass_rate": "+0.56",
+      "time_seconds": "+1403.9",
+      "tokens": "+31508"
+    }
+  },
+  "notes": [
+    "without_skillの全3ケースで共通して失敗する3項目：サマリーテーブル・難易度列・Phase 1-4構造。スキルの主な価値はこの出力フォーマット標準化にある",
+    "with_skillは3ケース全てで100%通過。スキルのフォーマット指示は明確に機能している",
+    "without_skillはactor(33%)が最も低く、streams/cluster(50%)より悪い。actorはギャップ項目がテーブルではなく箇条書きになる傾向",
+    "実行時間はwith_skillが平均29分でwithout_skillの5分より大幅に長い。これはスキルがより多くのファイルを探索するためと考えられる",
+    "without_skill/streamsが最もトークン数が少ない(42902)にもかかわらず最長時間(592秒)を要した。探索パターンが非効率の可能性"
+  ]
+}

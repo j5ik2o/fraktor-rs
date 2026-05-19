@@ -16,7 +16,7 @@
 - 自分でコードを書く（指摘と修正案の提示のみ）
 - AI特有の問題のレビュー（AI Antipattern Reviewerの仕事）
 - セキュリティ脆弱性のレビュー（Security Reviewerの仕事）
-- Pekkoの全機能の移植を要求する（YAGNIに従う）
+- Pekkoの全機能の移植を要求する（YAGNIに従うが、YAGNIの悪用もしないこと。やるべきことはやる）
 
 ## 行動姿勢
 

@@ -1,0 +1,26 @@
+use std::time::Duration;
+
+use fraktor_actor_adaptor_std_rs::{StdBlocker, tick_driver::StdTickDriver};
+use fraktor_actor_core_kernel_rs::{actor::setup::ActorSystemConfig, system::ActorSystem};
+use fraktor_stream_core_kernel_rs::{
+  OverflowStrategy, ThrottleMode,
+  dsl::{Flow, Sink, Source},
+  materialization::{ActorMaterializer, ActorMaterializerConfig, KeepRight},
+};
+
+fn main() {
+  let config = ActorSystemConfig::new(StdTickDriver::default());
+  let system = ActorSystem::create_with_noop_guardian(config).expect("actor system");
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
+  materializer.start().expect("materializer start");
+  let graph = Source::from_array([1_u32, 2, 3])
+    .via(Flow::new().buffer(2, OverflowStrategy::Backpressure).expect("buffer"))
+    .via(Flow::new().throttle(2, ThrottleMode::Shaping).expect("throttle"))
+    .into_mat(Sink::collect(), KeepRight);
+  let materialized = graph.run(&mut materializer).expect("run");
+  let values = materialized.materialized().wait_blocking(&StdBlocker::new()).expect("stream should succeed");
+  assert_eq!(values, vec![1, 2, 3]);
+  println!("stream_rate collected values with throttle/backpressure: {values:?}");
+  materializer.shutdown().expect("materializer shutdown");
+}

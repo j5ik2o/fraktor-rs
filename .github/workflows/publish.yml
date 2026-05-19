@@ -49,10 +49,10 @@ jobs:
         run: cargo +nightly publish -p fraktor-utils-core-rs --token "${CARGO_TOKEN}"
       - name: Wait for crates.io index (utils-core)
         run: sleep 30
-      - name: Publish fraktor-actor-core-rs
+      - name: Publish fraktor-actor-core-kernel-rs
         env:
           CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
-        run: cargo +nightly publish -p fraktor-actor-core-rs --token "${CARGO_TOKEN}"
+        run: cargo +nightly publish -p fraktor-actor-core-kernel-rs --token "${CARGO_TOKEN}"
       - name: Wait for crates.io index (actor-core)
         run: sleep 30
       - name: Publish fraktor-actor-std-rs

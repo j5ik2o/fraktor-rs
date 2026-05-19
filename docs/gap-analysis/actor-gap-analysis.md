@@ -1,101 +1,167 @@
 # actor モジュール ギャップ分析
 
-> 分析日: 2026-03-10  
-> 対象:
-> - fraktor-rs: `modules/actor/src/`
-> - Pekko: `references/pekko/actor/src/main/scala/org/apache/pekko/{actor,pattern}` と `references/pekko/actor/src/main/java/org/apache/pekko/{actor,pattern}`
+更新日: 2026-05-18
+
+## 比較スコープ定義
+
+この分析では、actor は旧 `actor-core` 内の kernel / typed サブディレクトリではなく、現行の分割済みクレートを parity 単位にする。
+
+| 層 | fraktor-rs 側 | Pekko 側 | 扱い |
+|----|---------------|----------|------|
+| kernel | `modules/actor-core-kernel/src/` | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/`, `references/pekko/actor/src/main/scala/org/apache/pekko/routing/`, `references/pekko/actor/src/main/scala/org/apache/pekko/pattern/`, `references/pekko/actor/src/main/scala/org/apache/pekko/event/` | classic / untyped actor runtime 契約 |
+| typed | `modules/actor-core-typed/src/` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/` | typed actor API と typed runtime 契約。ただし Java DSL は除外 |
+| std adaptor | `modules/actor-adaptor-std/src/` | Pekko の dispatcher / scheduler / logging 実装のうち Rust std adapter として意味を持つ契約 | tokio / thread / clock / tracing 等の adapter 実装 |
+
+対象に含めるもの:
+
+| 分類 | Pekko 側の主な根拠 | fraktor-rs 側の対応 |
+|------|--------------------|---------------------|
+| classic actor core | `Actor.scala`, `ActorRef.scala`, `ActorCell.scala`, `ActorSystem.scala`, `Props.scala`, `ActorPath.scala`, `ActorSelection.scala` | `modules/actor-core-kernel/src/actor/`, `modules/actor-core-kernel/src/system/` |
+| supervision / lifecycle / DeathWatch | `FaultHandling.scala`, `dungeon/DeathWatch.scala`, `MessageAndSignals.scala` | `modules/actor-core-kernel/src/actor/supervision/`, `modules/actor-core-kernel/src/actor/actor_cell.rs`, `modules/actor-core-typed/src/message_and_signals/` |
+| dispatch / mailbox | `dispatch/Mailbox.scala`, dispatcher abstractions | `modules/actor-core-kernel/src/dispatch/`, `modules/actor-adaptor-std/src/dispatch/` |
+| routing | `routing/*.scala`, typed `scaladsl/Routers.scala`, typed `internal/routing/*.scala` | `modules/actor-core-kernel/src/routing/`, `modules/actor-core-typed/src/dsl/routing/` |
+| event / logging | `event/EventStream.scala`, `event/Logging*.scala`, dead letters | `modules/actor-core-kernel/src/event/`, `modules/actor-adaptor-std/src/event/` |
+| pattern | `pattern/AskSupport.scala`, `RetrySupport.scala`, `GracefulStopSupport.scala`, `CircuitBreaker.scala` | `modules/actor-core-kernel/src/pattern/`, `modules/actor-core-typed/src/dsl/ask_pattern.rs`, `modules/actor-adaptor-std/src/pattern/` |
+| typed receptionist / pubsub / delivery | `typed/receptionist/Receptionist.scala`, `typed/pubsub/Topic.scala`, `typed/delivery/*.scala` | `modules/actor-core-typed/src/receptionist/`, `modules/actor-core-typed/src/pubsub/`, `modules/actor-core-typed/src/delivery/` |
+| serialization / extension / shutdown | Pekko serialization contract, extension registry, `CoordinatedShutdown.scala` | `modules/actor-core-kernel/src/serialization/`, `modules/actor-core-kernel/src/actor/extension/`, `modules/actor-core-kernel/src/system/coordinated_shutdown*` |
+
+対象外にするもの:
+
+| 対象外 | 理由 |
+|--------|------|
+| Java DSL / Java interop: `AbstractActor`, `UntypedAbstractActor`, `ReceiveBuilder`, `javadsl/*`, `japi/*` | Java 継承 DSL / builder DSL であり、Rust では trait / builder / typed API に置き換える |
+| Scala implicit / package ops / syntax sugar | Rust API として同型にする必要がない |
+| JVM reflection / classloader / HOCON dynamic loading | JVM 実装方式に依存する |
+| Java serialization / JFR / flight recorder | JVM 固有。Rust 側は serialization trait と tracing adapter を対象にする |
+| deprecated classic remoting / Netty / Aeron 固有実装 | remote / transport の別スコープ |
+| Pekko IO / TCP / UDP / DNS | actor core ではなく transport / network adapter の別スコープ。`modules/actor-core-kernel/src/io.rs` は private placeholder のため parity 分母に入れない |
+| `*-tests`, `*-testkit`, `*-tck`, `src/test`, `multi-jvm` | ユーザーが testkit 調査を明示していないため除外 |
+
+raw declaration count は参考値であり、parity 分母には使わない。
 
 ## サマリー
 
 | 指標 | 値 |
-|---|---:|
-| Pekko 公開型数 | 194 |
-| fraktor-rs 公開型数 | 354 |
-| 同名型カバレッジ | 14/194 (7.2%) |
-| 主要ギャップ項目 | 11 |
+|------|-----|
+| Pekko 固定スコープ対象概念 | 114 |
+| fraktor-rs 固定スコープ対応概念 | 114 |
+| 固定スコープ概念カバレッジ | 114/114 (100%) |
+| raw Pekko public type declarations | 672 参考値（classic/routing/pattern/event: 415, typed: 257。Java DSL / JFR 等の除外前 raw） |
+| raw Pekko public method declarations | 3008 参考値（classic/routing/pattern/event: 2036, typed: 972） |
+| raw Rust public type declarations | 601 参考値（kernel: 450, typed: 133, std: 18） |
+| raw Rust public method declarations | 2496 参考値（kernel: 1858, typed: 608, std: 30） |
+| hard / medium / easy / trivial gap | 0 / 0 / 0 / 0 |
+| `todo!()` / `unimplemented!()` / `panic!("not implemented")` | 0 件 |
+| コメント上の TODO / placeholder | 7 件。うち parity ギャップ扱いは 0 件 |
 
-注記:
-- 同名型カバレッジは「型名一致」のみを数えるため、別名実装は過小評価になる。
-- `fraktor-rs` は 1機能を複数の小型公開型へ分割する設計のため、公開型数は Pekko より多くなる。
+## 層別カバレッジ
+
+| 層 | Pekko 対応範囲 | fraktor-rs 現状 | 評価 |
+|----|----------------|-----------------|------|
+| kernel | classic actor core, DeathWatch, supervision, routing, event, pattern, serialization, shutdown | `fraktor-actor-core-kernel-rs` として独立。主要公開契約は到達可能 | parent termination completion と remote DeathWatch / `AddressTerminated` 経路は接続済み |
+| typed | typed ref/system/behavior/context, signal, router, receptionist, pubsub, delivery | `fraktor-actor-core-typed-rs` として独立し kernel に依存 | typed surface はカバー。`Listing.services_were_added_or_removed` は actor 側データ契約を保持する |
+| std adaptor | executor, scheduler driver, std clock, tracing logging, circuit breaker registry | `fraktor-actor-adaptor-std-rs` に隔離 | core/std 境界は妥当 |
 
 ## カテゴリ別ギャップ
 
-### 型・トレイト
+ギャップ（未対応・部分実装・n/a）のみテーブルに列挙する。実装済みはカテゴリの件数カウントに含める。
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `Actor` / `ActorRef` / `ActorSystem` / `Props` | `Actor.scala`, `ActorRef.scala`, `ActorSystem.scala`, `Props.scala` | 実装済み (`Actor`, `ActorRef`, `ActorSystem`, `Props`) | - | 基本サーフェスは対応 |
-| `SupervisorStrategy` (`OneForOne`/`AllForOne`) | `FaultHandling.scala` | 実装済み (`SupervisorStrategyKind`) | - | 方針種別は対応 |
-| `ActorSelection` | `ActorSelection.scala:39` | 部分対応 (`ActorSelectionResolver`) | medium | Selection オブジェクトとしての送信/ask 面は未提供 |
-| `Stash` / `UnboundedStash` / `UnrestrictedStash` | `Stash.scala:71` | 部分対応 (`typed::StashBuffer`) | medium | クラシック API 互換は未提供 |
-| `FSM` | `FSM.scala:430` | 部分対応 (`typed::FsmBuilder`) | medium | クラシック FSM trait 互換は未提供 |
-| `Timers` (classic) | `Timers.scala:31` | 部分対応 (`Behaviors::with_timers`) | medium | typed 寄りで classic `Timers` trait は未提供 |
-| `CoordinatedShutdown` | `CoordinatedShutdown.scala:41` | 未対応 | hard | 拡張ポイント/フェーズ実行モデルが未実装 |
-| `Identify` / `ActorIdentity` | `Actor.scala:81`, `Actor.scala:91` | 未対応 | easy | 運用ユーティリティとしては追加容易 |
-| `ReceiveTimeout` (classic) | `Actor.scala:154` | 部分対応 (`TypedActorContext::set_receive_timeout`) | medium | classic 側 API がない |
+### classic actor core 実装済み 12/12 (100%)
 
-### パターン API
+該当ギャップなし。`Actor`, `ActorContext`, `ActorRef`, `ActorPath`, `ActorSelection`, `Props`, `ActorSystem`, address / deploy / child / spawn / stash 相当は kernel に存在する。
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `ask(actorRef, timeout)` | `Patterns.scala:78`, `AskSupport.scala:93` | 部分対応 (`ActorRef::ask`) | easy | timeout 引数を公開 API で指定できない |
-| `ask(actorSelection, timeout)` | `Patterns.scala:237`, `AskSupport.scala:159` | 未対応 | medium | `ActorSelection` 実体不足に依存 |
-| `askWithStatus` | `AskSupport.scala:103` | 実装済み (`TypedActorRef::ask_with_status`) | - | typed 面で対応 |
-| `pipeTo` / `pipeToSelection` | `PipeToSupport.scala:31`, `PipeToSupport.scala:37` | 部分対応 (`pipe_to_self`) | medium | 他 actor/selection への pipe API が未提供 |
-| `gracefulStop` | `GracefulStopSupport.scala:59`, `Patterns.scala:387` | 未対応 | medium | `terminate` はあるが対象 actor 単位 graceful stop がない |
-| `BackoffSupervisor` / `BackoffOpts` | `BackoffSupervisor.scala:22`, `BackoffOptions.scala:27` | 部分対応 (`BackoffSupervisorStrategy`) | easy | オプション DSL 互換は未提供 |
-| `RetrySupport` | `RetrySupport.scala:30` | 未対応 | easy | 補助ユーティリティとして切り出し可能 |
-| `CircuitBreaker` / `CircuitBreakersRegistry` | `CircuitBreaker.scala:133`, `CircuitBreakersRegistry.scala:35` | 未対応 | hard | 実装追加で actor 境界を超える責務増が大きい |
-| `AskTimeoutException` | `AskSupport.scala:38` | 部分対応 (`AskError::Timeout`) | easy | 例外型互換ではなく enum エラー表現 |
+### supervision / lifecycle / DeathWatch 実装済み 10/10 (100%)
 
-### ライフサイクル/制御メッセージ
+該当ギャップなし。parent termination completion は `handle_stop` が live child 停止を defer し、最後の `DeathWatchNotification` で `finish_terminate` を実行する。remote `AddressTerminated` は remote watcher task が node-level event を publish し、remote actor ごとの DeathWatch notification も維持する。
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `PoisonPill` / `Kill` | `Actor.scala:52`, `Actor.scala:67` | 実装済み (`SystemMessage::PoisonPill` / `Kill`, `ActorRef::poison_pill`, `ActorRef::kill`) | - | 互換挙動を提供 |
+### typed core surface 実装済み 12/12 (100%)
 
-## 実装優先度の提案
+該当ギャップなし。`TypedActorRef`, `TypedActorSystem`, `Behavior`, `BehaviorInterceptor`, typed `ActorContext`, signals, typed props, dispatcher / mailbox selector, actor-ref resolver は `actor-core-typed` に分離済み。
 
-### Phase 1: easy（最小追加で効果が高い）
-- `ActorRef::ask` に timeout 指定を追加（既存 `AskError::Timeout` を活用）
-- `graceful_stop` ヘルパを追加（対象 actor 停止 + 完了待機）
-- `RetrySupport` 相当を薄いユーティリティとして追加
+### dispatch / mailbox 実装済み 10/10 (100%)
 
-### Phase 2: medium（互換面を広げる）
-- `ActorSelection` を resolver から一段上げ、`tell`/`ask` を持つ実体 API を追加
-- `pipe_to` / `pipe_to_selection` 相当を追加（`pipe_to_self` 依存で実装）
-- classic 側 `ReceiveTimeout` API の橋渡し
-- classic `Stash` 互換レイヤー（typed `StashBuffer` を下位に利用）
+該当ギャップなし。core の `Executor`, `ExecutorFactory`, `Mailbox`, `MailboxType`, `MailboxRequirement`, `MailboxPolicy`, dispatcher registry と、std の tokio / threaded / pinned / affinity executor adapter が分離されている。
 
-### Phase 3: hard（基盤設計を伴う）
-- `CoordinatedShutdown` 相当（フェーズ/依存順序/期限管理）
-- `CircuitBreaker` + registry
+### routing 実装済み 11/11 (100%)
+
+該当ギャップなし。classic routing は `RoundRobin`, `Random`, `ConsistentHashing`, `SmallestMailbox`, `Pool`, `Group`, `Routee`, `Router`, `RemoteRouter*` を kernel に持つ。typed routing は `Routers`, `PoolRouter`, `GroupRouter`, `TailChopping`, `ScatterGatherFirstCompleted`, `BalancingPool`, `Resizer` を typed に持つ。
+
+### event / logging 実装済み 8/8 (100%)
+
+該当ギャップなし。`EventStream`, subscriber, dead letter, unhandled message, lifecycle/remoting event, logging adapter, logger subscriber, tracing subscriber adapter が確認できる。
+
+### pattern 実装済み 5/5 (100%)
+
+該当ギャップなし。classic `ask`, timeout completion, `retry`, `graceful_stop`, `CircuitBreaker` と typed `AskPattern` が存在する。std registry は `modules/actor-adaptor-std/src/pattern/` に分離されている。
+
+### receptionist / discovery 実装済み 5/5 (100%)
+
+該当ギャップなし。`Listing.services_were_added_or_removed` は local-only の既定値 `true` を維持しつつ、clustered receptionist 側が add/remove 差分有無を設定できる actor-side data contract を持つ。cluster reachability source 自体は cluster モジュールの責務として扱う。
+
+### scheduling / timers 実装済み 5/5 (100%)
+
+該当ギャップなし。kernel `Scheduler`, cancellable registry, receive timeout, classic timer scheduler と typed `TimerScheduler` が存在する。`modules/actor-core-kernel/src/actor/scheduler/scheduler_core.rs:1` は doc 上 placeholder と書かれているが、実体は timer wheel ベース実装を持つためギャップにはしない。
+
+### ref / resolution 実装済み 4/4 (100%)
+
+該当ギャップなし。classic `Identify` / `ActorIdentity`, actor path parser/formatter, actor selection resolver, typed `ActorRefResolver` / setup が存在する。
+
+### delivery / pubsub 実装済み 9/9 (100%)
+
+該当ギャップなし。`ProducerController`, `ConsumerController`, `WorkPullingProducerController`, durable queue, sequence number, confirmation qualifier, message sent state, typed `Topic`, `TopicCommand` が `actor-core-typed` に存在する。
+
+### serialization contract 実装済み 9/9 (100%)
+
+該当ギャップなし。`Serializer`, `SerializerWithStringManifest`, `ByteBufferSerializer`, async serializer, registry, extension, setup builder, serialized message, transport information が kernel に存在する。Java serialization そのものは対象外。
+
+### extension 実装済み 3/3 (100%)
+
+該当ギャップなし。kernel extension trait / id / installer と typed `ExtensionSetup`, typed receptionist extension が存在する。
+
+### coordinated shutdown 実装済み 5/5 (100%)
+
+該当ギャップなし。`CoordinatedShutdown`, phase, reason, installer, error が kernel に存在する。
+
+### std adaptor 実装済み 6/6 (100%)
+
+該当ギャップなし。`TokioExecutor`, `ThreadedExecutor`, `PinnedExecutor`, `AffinityExecutor`, `TokioTickDriver`, `StdClock`, tracing logger subscriber が std adaptor にある。
+
+## 内部モジュール構造メモ
+
+API ギャップは 0/114 まで閉じたため、残りは parity 不足ではなく保守性改善として扱う。
+
+| 構造ギャップ | Pekko側の根拠 | fraktor-rs側の現状 | 推奨アクション | 難易度 | 緊急度 | 備考 |
+|-------------|---------------|--------------------|----------------|--------|--------|------|
+| kernel public surface の広さ | Pekko は public API と `private[pekko]` internal を明確に分ける | `modules/actor-core-kernel/src/actor.rs` が `ActorCell`, `ActorShared`, `ChildRef` など低レベル型を public re-export している | 外部契約として必要な型と `pub(crate)` / internal に落とせる型を棚卸しする | medium | low | parity 不足ではなく保守性改善。pre-release なので破壊的整理は可能 |
+
+## 実装優先度
+
+### Phase 1: trivial / easy
+
+該当なし。
+
+### Phase 2: medium
+
+該当なし。2026-05-18 時点で parent termination completion、remote `AddressTerminated` DeathWatch integration、`Listing.services_were_added_or_removed` の actor 側データ契約は完了している。
+
+### Phase 3: hard
+
+該当なし。
 
 ### 対象外（n/a）
-- JVM/Java DSL 固有サーフェス（`AbstractActor` 系 Java API 互換の完全再現）
-- Scala implicit 前提の記法互換（`?` 演算子等）
 
-## 根拠（主要参照）
+- Java DSL / `javadsl/*` / `japi/*`
+- Scala implicit / package ops / syntax sugar
+- JVM reflection / classloader / HOCON loading
+- Java serialization / JFR / flight recorder
+- deprecated classic remoting / Netty / Aeron 固有実装
+- Pekko IO / TCP / UDP / DNS
+- testkit / TCK / tests
 
-- Pekko:
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorSelection.scala:39`
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/actor/Stash.scala:71`
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/actor/FSM.scala:430`
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/actor/CoordinatedShutdown.scala:41`
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/pattern/Patterns.scala:78`
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/pattern/Patterns.scala:387`
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/pattern/PipeToSupport.scala:31`
-  - `references/pekko/actor/src/main/scala/org/apache/pekko/pattern/CircuitBreaker.scala:133`
+## まとめ
 
-- fraktor-rs:
-  - `modules/actor/src/core/actor/actor_ref/base.rs:27`
-  - `modules/actor/src/core/actor/actor_ref/base.rs:111`
-  - `modules/actor/src/core/actor/actor_ref/base.rs:131`
-  - `modules/actor/src/core/actor/actor_selection/resolver.rs:13`
-  - `modules/actor/src/core/typed/stash_buffer.rs:11`
-  - `modules/actor/src/core/typed/fsm_builder.rs:18`
-  - `modules/actor/src/core/typed/behaviors.rs:192`
-  - `modules/actor/src/core/typed/actor/actor_context.rs:284`
-  - `modules/actor/src/core/typed/actor/actor_ref.rs:97`
-  - `modules/actor/src/core/supervision/backoff_supervisor_strategy.rs:18`
-  - `modules/actor/src/std/system/base.rs:36`
+actor モジュールは、分割後の `actor-core-kernel` / `actor-core-typed` / `actor-adaptor-std` を基準に見て、固定スコープの公開 API parity は 114/114 (100%) まで到達している。
+
+`finish_terminate` 配線、remote `AddressTerminated` DeathWatch integration、typed receptionist の差分フラグ保持はいずれも actor 側の残ギャップから外れる。clustered receptionist の reachability source は cluster モジュール側の拡張責務として扱う。
+
+次のボトルネックは公開 API 追加ではなく、kernel public surface の整理にある。

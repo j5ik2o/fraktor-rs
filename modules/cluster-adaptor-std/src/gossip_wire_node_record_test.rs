@@ -1,0 +1,54 @@
+use alloc::{string::String, vec};
+
+use fraktor_cluster_core_rs::membership::{MembershipVersion, NodeRecord, NodeStatus};
+
+use super::GossipWireNodeRecord;
+
+#[test]
+fn to_record_preserves_app_version_roles_and_exiting_status() {
+  let mut record = NodeRecord::new(
+    String::from("node-1"),
+    String::from("n1:4050"),
+    NodeStatus::Exiting,
+    MembershipVersion::new(9),
+    String::from("2.0.0"),
+    vec![String::from("backend"), String::from("edge")],
+  );
+  record.version = MembershipVersion::new(12);
+
+  let wire = GossipWireNodeRecord::from_record(&record);
+  let decoded = wire.to_record().expect("decode record");
+
+  assert_eq!(decoded, record);
+}
+
+#[test]
+fn to_record_returns_none_for_unknown_status_code() {
+  let wire = GossipWireNodeRecord {
+    node_id:      String::from("node-1"),
+    authority:    String::from("n1:4050"),
+    status:       99,
+    version:      1,
+    join_version: 1,
+    app_version:  String::from("1.0.0"),
+    roles:        vec![String::from("role-a")],
+  };
+
+  assert!(wire.to_record().is_none());
+}
+
+#[test]
+fn to_record_preserves_shutdown_related_statuses() {
+  for status in [NodeStatus::PreparingForShutdown, NodeStatus::ReadyForShutdown] {
+    let record = NodeRecord::new(
+      String::from("node-1"),
+      String::from("n1:4050"),
+      status,
+      MembershipVersion::new(4),
+      String::from("1.0.0"),
+      vec![String::from("role-a")],
+    );
+    let decoded = GossipWireNodeRecord::from_record(&record).to_record().expect("decode");
+    assert_eq!(decoded.status, status);
+  }
+}
