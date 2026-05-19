@@ -93,6 +93,11 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       | Ok(create_request) => create_request,
       | Err(reason) => return RemoteDeploymentOutcome::Failed(reason),
     };
+    if matches!(current_runtime_wait_mode(self.install_thread), DeploymentWaitMode::CurrentThreadRuntime) {
+      return RemoteDeploymentOutcome::Failed(String::from(
+        "remote deployment cannot wait synchronously on a current-thread Tokio runtime",
+      ));
+    }
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
     let expected_authority = target.to_string();
@@ -135,18 +140,30 @@ enum DeploymentResponseWaitError {
   CurrentThreadEventLoop,
 }
 
+enum DeploymentWaitMode {
+  BlockInPlace,
+  CurrentThreadRuntime,
+  DirectRecv,
+}
+
+fn current_runtime_wait_mode(install_thread: ThreadId) -> DeploymentWaitMode {
+  match Handle::try_current() {
+    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => DeploymentWaitMode::BlockInPlace,
+    | Ok(_) if thread::current().id() == install_thread => DeploymentWaitMode::CurrentThreadRuntime,
+    | Ok(_) => DeploymentWaitMode::DirectRecv,
+    | Err(_) => DeploymentWaitMode::DirectRecv,
+  }
+}
+
 fn recv_deployment_response(
   receiver: &Receiver<DeploymentResponse>,
   timeout: Duration,
   install_thread: ThreadId,
 ) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
-  match Handle::try_current() {
-    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
-      tokio::task::block_in_place(|| recv_timeout(receiver, timeout))
-    },
-    | Ok(_) if thread::current().id() == install_thread => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
-    | Ok(_) => recv_timeout(receiver, timeout),
-    | Err(_) => recv_timeout(receiver, timeout),
+  match current_runtime_wait_mode(install_thread) {
+    | DeploymentWaitMode::BlockInPlace => tokio::task::block_in_place(|| recv_timeout(receiver, timeout)),
+    | DeploymentWaitMode::CurrentThreadRuntime => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
+    | DeploymentWaitMode::DirectRecv => recv_timeout(receiver, timeout),
   }
 }
 
