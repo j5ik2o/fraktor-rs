@@ -211,10 +211,7 @@ fn actor_backed_sink_ref_on_error_sends_failure_and_records_send_errors() {
 
   let endpoint_actor = StageActor::new(
     &system,
-    Box::new(ActorBackedSinkRefReceive::new(
-      ActorBackedSinkRefStateShared::new(),
-      String::from("missing"),
-    )),
+    Box::new(ActorBackedSinkRefReceive::new(ActorBackedSinkRefStateShared::new(), String::from("missing"))),
   );
   let mut release_failed = ActorBackedSinkRefLogic::<u32>::failed(StreamError::Failed);
   release_failed.endpoint_actor = Some(endpoint_actor);
@@ -389,8 +386,9 @@ fn actor_backed_sink_ref_receive_rejects_pid_forged_sender() {
   let pid_only_sender = ActorRef::new(target_pid, ActorRefSenderShared::new(Box::new(pid_sender)));
   let demand = NonZeroU64::new(1).expect("demand");
 
-  let ack_error =
-    receive.receive(StageActorEnvelope::new(pid_only_sender.clone(), AnyMessage::new(StreamRefAck))).expect_err("ack rejected");
+  let ack_error = receive
+    .receive(StageActorEnvelope::new(pid_only_sender.clone(), AnyMessage::new(StreamRefAck)))
+    .expect_err("ack rejected");
   let demand_error = receive
     .receive(StageActorEnvelope::new(pid_only_sender, AnyMessage::new(StreamRefCumulativeDemand::new(0, demand))))
     .expect_err("pid forged demand rejected");
