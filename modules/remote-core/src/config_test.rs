@@ -1,3 +1,4 @@
+extern crate std;
 use core::{num::NonZeroUsize, time::Duration};
 
 use crate::config::{LargeMessageDestinationPattern, LargeMessageDestinations, RemoteCompressionConfig, RemoteConfig};
@@ -14,6 +15,7 @@ const DEFAULT_OUTBOUND_LOW_WATERMARK: usize = 512;
 const DEFAULT_REMOVE_QUARANTINED_ASSOCIATION_AFTER: Duration = Duration::from_secs(60 * 60);
 const DEFAULT_COMPRESSION_ADVERTISEMENT_INTERVAL: Duration = Duration::from_secs(60);
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+const MAXIMUM_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 fn non_zero(value: usize) -> NonZeroUsize {
   NonZeroUsize::new(value).expect("test value must be non-zero")
@@ -213,7 +215,7 @@ fn with_maximum_frame_size_rejects_values_below_minimum() {
 fn with_maximum_frame_size_rejects_values_above_maximum() {
   // When: 最大値超過の frame size を指定する
   let result =
-    std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_maximum_frame_size(16 * 1024 * 1024 + 1));
+    std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_maximum_frame_size(MAXIMUM_MAXIMUM_FRAME_SIZE + 1));
 
   // Then: 不正な frame size として拒否する
   assert!(result.is_err());
