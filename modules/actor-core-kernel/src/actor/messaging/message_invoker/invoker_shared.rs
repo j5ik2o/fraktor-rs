@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::{ArcShared, ExclusiveCell, SharedAccess};
+use fraktor_utils_core_rs::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
 
 use super::invoker_trait::MessageInvoker;
 
@@ -13,14 +13,14 @@ use super::invoker_trait::MessageInvoker;
 /// access from multiple owners.
 #[derive(Clone)]
 pub struct MessageInvokerShared {
-  inner: ArcShared<ExclusiveCell<Box<dyn MessageInvoker>>>,
+  inner: SharedRwLock<Box<dyn MessageInvoker>>,
 }
 
 impl MessageInvokerShared {
-  /// Creates a new CAS-backed shared wrapper around the provided invoker.
+  /// Creates a shared wrapper around the provided invoker.
   #[must_use]
   pub fn new(invoker: Box<dyn MessageInvoker>) -> Self {
-    Self { inner: ArcShared::new(ExclusiveCell::new(invoker)) }
+    Self { inner: SharedRwLock::new_with_driver::<DefaultRwLock<_>>(invoker) }
   }
 }
 
