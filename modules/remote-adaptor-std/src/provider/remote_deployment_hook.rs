@@ -7,6 +7,7 @@ use std::{
     atomic::{AtomicU64, Ordering},
     mpsc::{Receiver, RecvTimeoutError},
   },
+  thread::{self, ThreadId},
   time::{Duration, Instant},
 };
 
@@ -44,14 +45,16 @@ const CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED: &str =
 
 /// Std adapter hook that turns actor-core remote deployment requests into wire create requests.
 pub(crate) struct StdRemoteDeploymentHook {
-  local_address:    UniqueAddress,
-  system:           ActorSystem,
-  event_sender:     Sender<RemoteEvent>,
-  monotonic_epoch:  Instant,
-  serialization:    ArcShared<SerializationExtensionShared>,
-  dispatcher:       DeploymentResponseDispatcher,
-  timeout:          Duration,
-  next_correlation: AtomicU64,
+  local_address:         UniqueAddress,
+  system:                ActorSystem,
+  event_sender:          Sender<RemoteEvent>,
+  monotonic_epoch:       Instant,
+  serialization:         ArcShared<SerializationExtensionShared>,
+  dispatcher:            DeploymentResponseDispatcher,
+  timeout:               Duration,
+  // RuntimeFlavor::CurrentThread 判定後に、driver thread と blocking worker を分けるためだけに使う。
+  current_thread_driver: Option<ThreadId>,
+  next_correlation:      AtomicU64,
 }
 
 impl StdRemoteDeploymentHook {
@@ -65,6 +68,10 @@ impl StdRemoteDeploymentHook {
     dispatcher: DeploymentResponseDispatcher,
     timeout: Duration,
   ) -> Self {
+    let current_thread_driver = match Handle::try_current() {
+      | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::CurrentThread => Some(thread::current().id()),
+      | _ => None,
+    };
     Self {
       local_address,
       system,
@@ -73,6 +80,7 @@ impl StdRemoteDeploymentHook {
       serialization,
       dispatcher,
       timeout,
+      current_thread_driver,
       next_correlation: AtomicU64::new(1),
     }
   }
@@ -92,7 +100,7 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       | Ok(create_request) => create_request,
       | Err(reason) => return RemoteDeploymentOutcome::Failed(reason),
     };
-    let Some(wait_mode) = current_runtime_wait_mode() else {
+    let Some(wait_mode) = current_runtime_wait_mode(self.current_thread_driver) else {
       return RemoteDeploymentOutcome::Failed(String::from(CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED));
     };
     let correlation_hi = create_request.correlation_hi();
@@ -135,10 +143,13 @@ enum DeploymentWaitMode {
   DirectRecv,
 }
 
-fn current_runtime_wait_mode() -> Option<DeploymentWaitMode> {
+fn current_runtime_wait_mode(current_thread_driver: Option<ThreadId>) -> Option<DeploymentWaitMode> {
   match Handle::try_current() {
-    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::CurrentThread => None,
     | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => Some(DeploymentWaitMode::BlockInPlace),
+    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::CurrentThread => match current_thread_driver {
+      | Some(driver_thread) if thread::current().id() != driver_thread => Some(DeploymentWaitMode::DirectRecv),
+      | _ => None,
+    },
     | Ok(_) | Err(_) => Some(DeploymentWaitMode::DirectRecv),
   }
 }

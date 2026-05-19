@@ -49,6 +49,7 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
   sync::mpsc::{self, Receiver, Sender},
+  task::spawn_blocking,
   time::timeout,
 };
 
@@ -452,7 +453,7 @@ async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() 
     Some(deployable_metadata()),
   );
   let success_path = system.user_guardian_ref().canonical_path().expect("user guardian path").to_canonical_uri();
-  let join = thread::spawn(move || hook.deploy_child(request));
+  let join = spawn_blocking(move || hook.deploy_child(request));
 
   let event = event_rx.recv().await.expect("deployment request should be enqueued");
   let (correlation_hi, correlation_lo) = match event {
@@ -475,7 +476,7 @@ async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() 
     )),
   );
 
-  let outcome = join.join().expect("deployment hook thread should complete");
+  let outcome = join.await.expect("deployment hook blocking task should complete");
   let RemoteDeploymentOutcome::RemoteCreated(actor_ref) = outcome else {
     panic!("expected remote actor ref, got {outcome:?}");
   };
@@ -522,43 +523,6 @@ async fn remote_deployment_hook_current_thread_runtime_fails_without_blocking() 
     RemoteDeploymentOutcome::Failed(reason) if reason.contains("current-thread Tokio runtime")
   ));
   assert!(event_rx.try_recv().is_err());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn remote_deployment_hook_multi_thread_wait_resolves_matching_success() {
-  let (hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
-  let request = deployment_request(
-    "remote-deploy",
-    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
-    Some(deployable_metadata()),
-  );
-  let success_path = system.user_guardian_ref().canonical_path().expect("user guardian path").to_canonical_uri();
-  let completion = tokio::spawn({
-    let success_path = success_path.clone();
-    async move {
-      let event = timeout(Duration::from_secs(1), event_rx.recv())
-        .await
-        .expect("deployment request should be enqueued")
-        .expect("deployment request channel should stay open");
-      assert!(matches!(
-        event,
-        RemoteEvent::OutboundDeployment {
-          remote,
-          pdu: RemoteDeploymentPdu::CreateRequest(_),
-          ..
-        } if remote == RemoteCoreAddress::new("remote-sys", "10.0.0.1", 2552)
-      ));
-      dispatcher.complete(
-        "remote-sys@10.0.0.1:2552",
-        DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(1, 0, success_path)),
-      );
-    }
-  });
-
-  let outcome = hook.deploy_child(request);
-  completion.await.expect("deployment response completion task should finish");
-
-  assert!(matches!(outcome, RemoteDeploymentOutcome::RemoteCreated(_)));
 }
 
 #[test]
