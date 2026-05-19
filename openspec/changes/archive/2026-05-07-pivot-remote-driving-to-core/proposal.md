@@ -1,0 +1,413 @@
+## Why
+
+`remote-core` は no_std の状態機械、Port trait、wire model を備えるが、現在は駆動の主導権が `remote-adaptor-std` 側の tokio task 群に握られている。`outbound_loop` が 1ms ポーリングで `Association::next_outbound` を回し、`inbound_dispatch` が `accept_handshake_*` を直接呼び、`HandshakeDriver` が timeout を駆動する。`AssociationEffect::StartHandshake` は adaptor 側で無視されており、core が表明した意図が adapter に伝わらない設計欠陥が残っている。
+
+これにより以下の問題が生じる。
+
+- 組み込み / WASM 等で std を使えない環境では tokio task 群を移植する必要があり、core 主導という設計意図が機能しない。
+- `remote-core` には 604 行の `RemoteInstrument` / `RemotingFlightRecorder` が定義されているが、`Association` から一度も呼ばれておらず、配信失敗・handshake 進捗・quarantine が観測不能である。
+- system message の飢餓回避は既存の system / user 2 キュー分離で成立しているが、双方向の watermark backpressure と handshake generation 管理が未実装である。
+- `Remote` から `Codec`、`RemoteTransport`、association registry を駆動する経路が暗黙で、event loop の lifecycle（起動 / 停止）が文書化されていない。
+
+この change では Port & Adapter の境界を明確にし、駆動主導権を core 側に反転する。adapter は I/O と event 通知だけを担当する形に退化させる。
+
+## 設計方針
+
+**二層構造を採用し、CQS 純粋ロジック層と並行性吸収層を分離する。** `Remote` 自体は `&mut self` / `&self` で CQS を守るピュアロジックに保ち、並行性は `RemoteShared(SharedLock<Remote>)` ラッパーが吸収する。`Remoting` trait は `RemoteShared` 側に実装され、すべて `&self` ベースに揃う。
+
+具体的に追加する公開要素は次の **5 つ** とする（純増 +5）。
+
+- `RemoteEvent` enum（adapter が core に通知するイベント種別、closed enum）
+- `RemoteEventReceiver` trait（core が adapter から event を poll する 1 メソッド trait）
+- `RemoteShared` 型（`SharedLock<Remote>` の Sharing 層ラッパー、`Clone`、`impl Remoting`、`run` を提供）
+- `RemoteRunFuture<'a, S>` 型（`Remote::run` が返す concrete Future。single-thread 実行のため `Send` を API 境界に要求しない）
+- `RemoteSharedRunFuture<'a, S>` 型（`RemoteShared::run` が返す concrete Future。共有 wrapper の poll orchestration のみを担う）
+
+これ以外の機能（駆動ループの中身、handshake generation 管理、watermark backpressure、instrument 配線）は **既存型のメソッド・フィールド追加** で実現する。
+
+## What Changes
+
+### 1. `Remote::run` を排他所有 API として残し、`RemoteShared::run` は共有時の薄い lock orchestration に限定する
+
+`Remote` は CQS 純粋ロジック（`&mut self` for Command, `&self` for Query）として残す。`Remote::run(&mut self, receiver)` は **排他所有時の core event loop API として残す**。ただし `remote-core` は `async fn` を採用しないため、`run` は `async fn` ではなく、名前を持つ concrete Future 型 `RemoteRunFuture<'a, S>` を返す。event 1 件分の dispatch は `Remote::handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` に分解し、`Remote::run` も `RemoteShared::run` もこの Command を呼ぶ。**戻り値で停止判定はしない**（CQS 分離）。停止判定は別の Query method `Remote::is_terminated(&self) -> bool` で行う。`RemoteEvent::TransportShutdown` 受信時は、未停止なら `handle_remote_event` 内部で `lifecycle.transition_to_shutdown_requested()` を呼んで状態変更し、既に停止要求済みまたは停止済みなら no-op `Ok(())` とする。
+
+並行性吸収層として `RemoteShared(SharedLock<Remote>)` を新設する。`#[derive(Clone)]` で複数 clone 可能、`SharedLock` 内部で `Remote` の所有権を保持する。
+
+```rust
+use core::task::{Context, Poll};
+
+pub trait RemoteEventReceiver {
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<RemoteEvent>>;
+}
+
+impl Remote {
+    pub fn run<'a, S>(&'a mut self, receiver: &'a mut S)
+        -> RemoteRunFuture<'a, S>
+    where
+        S: RemoteEventReceiver + ?Sized,
+    {
+        RemoteRunFuture::new(self, receiver)
+    }
+}
+
+impl RemoteShared {
+    pub fn run<'a, S>(&'a self, receiver: &'a mut S)
+        -> RemoteSharedRunFuture<'a, S>
+    where
+        S: RemoteEventReceiver + ?Sized,
+    {
+        RemoteSharedRunFuture::new(self, receiver)
+    }
+}
+```
+
+`RemoteRunFuture` / `RemoteSharedRunFuture` は `StreamFuture<T>` / `ActorFutureListener<T>` と同様、名前を持つ concrete Future 型として公開する。`Send` は run API の境界に含めない。multi-thread tokio spawn が必要な adapter 実装だけが、spawn する具体 receiver / future に対して `Send + 'static` を要求する。`async fn` / `async move` / `.await` は `remote-core` 内に書かない。adapter 側だけが tokio task 内で `run_target.run(&mut receiver).await` する。
+
+`RemoteShared::run` は `Remote::run` の共有用 wrapper であり、`Remote` が知らない tokio sender / wake / JoinHandle を持たない。固有の event semantics / lifecycle / effect / transport logic は持たず、`poll_recv(cx)` が `Pending` の間に lock を取らないことと、event 1 件ごとに `with_write` / `with_read` で `Remote` の Command / Query へデリゲートすることだけを行う。per-event lock により、`run` task と並行して他の `RemoteShared` clone から `Remoting` メソッド（`start` / `shutdown` / `quarantine` / `addresses`）を呼べる。event 処理間の隙間で進行する。
+
+`RemoteShared::run` は概念上は `Remote::run` の共有版だが、実装として `SharedLock` の write guard を取得したまま `Remote::run(&mut remote, receiver)` の future を保持してはならない。そうすると `Poll::Pending` の間も lock を保持し、他 clone からの `Remoting` 呼び出しが進行できなくなる。したがって `RemoteSharedRunFuture` は `poll_recv(cx)` の `Ready(Some(event))` ごとに短い `with_write` で `Remote::handle_remote_event` を呼び、続く `with_read` で `Remote::is_terminated` を読む。これは `Remote` の core logic への per-event デリゲートであり、`RemoteShared` に固有責務を追加するものではない。
+
+`Remote::handle_remote_event` 内で event を dispatch し、対応する `Association` メソッドを呼んで effect 列を実行する。`AssociationEffect::StartHandshake` を復活させ、`RemoteTransport` 経由で handshake を開始する。
+
+新規 core 型（`RemoteDriver` / `RemoteDriverHandle` / `RemoteDriverOutcome`）は **作らない**。`Remote::run` / `RemoteShared::run` の終了結果は `Result<(), RemotingError>` で表現する。同期 `Remoting::shutdown` は `RemoteShared` から `Remote::shutdown` へデリゲートして lifecycle を停止要求状態に遷移させるだけで、`event_sender` による wake は行わない。run task の即時 wake と完了観測が必要な場合は、adapter 固有の `RemotingExtensionInstaller::shutdown_and_join` が `event_sender.try_send(TransportShutdown)` と `JoinHandle::await` を担う。同期 `Remoting::shutdown` の内部で `await` してはならない。
+
+`TransportShutdown` は shutdown 要求 event であると同時に、既に `RemoteShared::shutdown` で停止要求済みの run loop を起こす wake event でもある。そのため `Remote::handle_remote_event(TransportShutdown)` は冪等でなければならない。lifecycle が既に停止要求済みまたは停止済みなら no-op で `Ok(())` を返し、未停止の場合だけ lifecycle を停止要求状態へ遷移させる。
+
+### 2. `RemoteEvent` を closed enum、`RemoteEventReceiver` を 1 メソッド trait として追加する
+
+`RemoteEvent` は core が adapter から受け取る closed enum。本 change のスコープでは次の 5 variant **のみ** を含み、scheduling 経路が確定していない event は別 change で variant 追加と一緒に拡張する。
+
+- `InboundFrameReceived { authority, frame, now_ms }` — TCP 受信 frame（core wire frame bytes）
+- `HandshakeTimerFired { authority, generation: u64, now_ms }` — handshake timeout 満了
+- `OutboundEnqueued { authority, envelope: Box<OutboundEnvelope>, now_ms }` — local actor からの送信要求（後述 #10）
+- `ConnectionLost { authority, cause, now_ms }` — 接続切断
+- `TransportShutdown` — 全体停止指示
+
+本 change で **追加しない** variant: `OutboundFrameAcked` / `QuarantineTimerFired` / `BackpressureCleared`（必要時に scheduling 経路と一緒に別 change で導入）。
+
+`RemoteEventReceiver::poll_recv` は `&mut self` と `Context` で `Poll<Option<RemoteEvent>>` を返す。adapter は `tokio::sync::mpsc::Receiver::poll_recv` 等へ委譲して実装する。core 側 trait に `async fn` や `fn recv(..) -> impl Future` は置かず、`Send` も要求しない。
+
+**adapter→core push 用の `RemoteEventSink` trait は core に追加しない**。adapter は内部で sender / receiver pair を保持し、receiver 側だけを `RemoteEventReceiver` として core に渡す。sender 側は adapter 内部の I/O ワーカー / handshake timer task / RemoteActorRef が clone 共有するため、core から見ない。
+
+### 3. handshake timer 予約は `RemoteTransport::schedule_handshake_timeout` で表出する
+
+handshake timer の予約責務は **adapter 側** に置くが、core から adapter に予約を依頼する経路は既存 `RemoteTransport` trait に新 method を追加して表現する。
+
+```rust
+// 既存 trait への追加 (modification of remote-core-transport-port)
+pub trait RemoteTransport {
+    // ...既存 method...
+    fn send_handshake(&mut self, remote: &Address, pdu: HandshakePdu) -> Result<(), TransportError>;
+    fn schedule_handshake_timeout(
+        &mut self,
+        authority: &TransportEndpoint,
+        timeout: Duration,
+        generation: u64,
+    ) -> Result<(), TransportError>;
+}
+```
+
+`Remote::handle_remote_event` が `AssociationEffect::StartHandshake { authority, timeout, generation }` を処理する手順：
+
+1. `HandshakePdu::Req(HandshakeReq::new(local, remote))` を構築し、`RemoteTransport::send_handshake` で送出
+2. 続けて新 method `RemoteTransport::schedule_handshake_timeout(&authority, timeout, generation)` を呼ぶ
+
+adapter 側 `schedule_handshake_timeout` 実装は `tokio::spawn(sleep + push HandshakeTimerFired)` を行う。
+
+**棄却した代替**:
+
+- `Timer` Port 新設 — 純増増える、すでに棄却済み
+- `RemoteTransport::initiate_handshake(authority, timeout, generation, frame_bytes)` 統合形 — `send` との責務混在
+- 新 effect `ScheduleHandshakeTimeout` + 新 trait — 純増 2 個増える
+
+quarantine timer 等、handshake 以外の timer 系経路は本 change のスコープ外とし、別 change で variant 追加 + scheduling 経路の MODIFIED を一緒に行う。
+
+### 4. `RemoteInstrument` を `Box<dyn>` で `Remote` に配線する（ジェネリクス採用しない）
+
+`Remote` は型パラメータを持たず、`instrument: Box<dyn RemoteInstrument + Send>` フィールドで instrument を保持する。
+
+ジェネリクス `Remote<I: RemoteInstrument = ()>` を採用しない理由：
+
+- 参照実装（Apache Pekko の `RemoteInstrument` abstract class、protoactor-go の interface）はいずれも virtual / dyn dispatch を採用しており、production 規模で問題なく動いている
+- hot path での vtable lookup は ~1-2ns 程度であり、tokio mpsc send / codec encode / mutex acquisition 等のコストに対して noise レベル
+- ジェネリクスを採用するとテスト・showcase・cluster adapter まで `<I>` が伝播し、ユーザー API が複雑化する
+- 実行時に instrument を差し替えできなくなる
+- `tracing-rs` / `metrics` / `opentelemetry-rs` 等の Rust 観測ライブラリも dyn 経由が通例
+
+既定 instrument は `pub(crate) struct NoopInstrument` を内部定義し、`Remote::new` で `Box::new(NoopInstrument)` を割り当てる。**`NoopInstrument` は `pub(crate)` で外部公開せず**、ユーザーは `Remote::new` を呼ぶだけで no-op 既定が得られる。
+
+`Remote::with_instrument(transport, config, event_publisher, instrument: Box<dyn RemoteInstrument + Send>)` および `Remote::set_instrument(&mut self, instrument: Box<dyn RemoteInstrument + Send>)` を公開し、ユーザーは構築時または構築後に instrument を差し替えられる。
+
+複数 instrument の合成は **ユーザー責務** とする（独自 composite struct を定義して `RemoteInstrument` を実装）。core 側で tuple impl などの composite ヘルパは提供しない。
+
+`Remote::associate` / `accept_handshake_*` / `quarantine` / `next_outbound` / inbound dispatch / `apply_backpressure` から instrument の対応 method を呼ぶ経路を確定する（呼び出し点は `remote-core-association-state-machine` capability で要件化）。`Association` メソッドは `&mut dyn RemoteInstrument` を引数で受け取り、型パラメータは導入しない。
+
+### 5. system message 飢餓回避は既存の system / user 2 キュー分離で維持する
+
+`Association::SendQueue` は既存仕様（`remote-core-association-state-machine` capability）で system priority と user priority の 2 キュー分離を持ち、system 優先で取り出す挙動が規定されている。本 change ではこの構造を維持し、system message の飢餓回避を継続する。
+
+新規 query として `Association::total_outbound_len(&self) -> usize`（system + user の合計長、deferred は除く）のみを追加する。
+
+### 6. 双方向 watermark backpressure を導入する（既存 BackpressureSignal を流用）
+
+`RemoteConfig` に `outbound_high_watermark` / `outbound_low_watermark` を追加し、queue 長が high を超えると `Association::apply_backpressure(BackpressureSignal::Apply)` を発火、low を下回ると `BackpressureSignal::Release` を発火する。
+
+**新規 variant（`Engaged` / `Released`）は追加せず、既存 `Apply` / `Release` をそのまま使う**。signal は `RemoteInstrument::record_backpressure` 経由で観測可能とする。
+
+### 7. handshake generation を inline `u64` で管理する
+
+`Association` に `handshake_generation: u64` フィールドを追加し、`Handshaking` 状態に入るたびに +1 する。`AssociationEffect::StartHandshake { authority, generation }` と `RemoteEvent::HandshakeTimerFired { authority, generation, now_ms }` で同じ `u64` を運び、古い timeout の発火を `Remote::handle_remote_event` 側で識別して破棄する。
+
+**`HandshakeGeneration` newtype は新設せず、`u64` を直接使う**（外部公開境界での意味付けは rustdoc に依存し、型レベルでは追加しない）。
+
+### 8. adaptor task を I/O ワーカーに退化させる
+
+`remote-adaptor-std` の以下を削除する。
+
+- `outbound_loop.rs`（1ms ポーリングで `next_outbound` を回す tokio task）
+- `handshake_driver.rs`（timeout を tokio sleep で駆動する task）
+
+`inbound_dispatch.rs` は `RemoteEvent::InboundFrameReceived` を adapter 内部 sender に push する I/O ワーカーに退化させる。`Association` の状態遷移メソッドを直接呼ぶ責務を `Remote::handle_remote_event`（`RemoteShared::run` の `with_write` 区間内で実行される）に移す。
+
+`effect_application.rs` の `StartHandshake` ignore 分岐を削除する（`Remote::handle_remote_event` が処理するため adapter ではすでに通らない）。
+
+`RemotingExtensionInstaller` は `ExtensionInstaller::install(&self)` 契約に合わせ、`RemoteShared` を `OnceLock<RemoteShared>` で保持し、`installer.remote() -> Result<RemoteShared, RemotingError>` で外部公開する。raw `SharedLock<Remote>` は露出しない（後述 #9 参照）。
+
+### 9. `RemoteShared(SharedLock<Remote>)` を正式 surface とし、`Remoting` を `RemoteShared` に実装する
+
+`Remote::run(self, ..)` で run task が `Remote` を consume して単独所有する設計は採らない。理由は次の通り:
+
+- `installer.remote() -> SharedLock<Remote>` の現状実装の移行先がない（破壊的変更の経路として `RemoteShared` が必要）
+- `Remoting::quarantine` を run task と並行して呼ぶ手段が消える（`Remote` を消費すると外部から触れない）
+- `RemoteEvent` の closed enum に `quarantine` 用 variant を追加すると本 change のスコープを超える
+
+`Remote::run(&mut self, ..)` は排他所有時の core event loop API として残す。ただし `async fn` ではなく `RemoteRunFuture<'a, S>` を返す。共有が必要な adapter 経路では `RemoteShared(SharedLock<Remote>)` を新設し、`RemoteShared::run(&self, ..)` を **`Remote::run` の薄い共有 wrapper** として使い、`RemoteSharedRunFuture<'a, S>` を返す。`Remoting` trait は共有 surface である `RemoteShared` 側に実装する。
+
+#### `Remoting` trait シグネチャの変更（破壊的）
+
+`Remoting` trait の全メソッドを `&self` ベースへ変更する。`addresses` は内部 read lock のため `&[Address]` ではなく owned `Vec<Address>` を返す。
+
+| メソッド | 旧 | 新 |
+|----------|----|----|
+| `start` | `fn start(&mut self) -> Result<(), RemotingError>` | `fn start(&self) -> Result<(), RemotingError>` |
+| `shutdown` | `fn shutdown(&mut self) -> Result<(), RemotingError>` | `fn shutdown(&self) -> Result<(), RemotingError>` |
+| `quarantine` | `fn quarantine(&mut self, ..) -> Result<(), RemotingError>` | `fn quarantine(&self, ..) -> Result<(), RemotingError>` |
+| `addresses` | `fn addresses(&self) -> &[Address]` | `fn addresses(&self) -> Vec<Address>` |
+
+すべて同期 method（`async fn` / `Future` 戻り値は追加しない）。`impl Remoting for Remote` は **削除** する。`impl Remoting for RemoteShared` を新設し、内部で `with_write` / `with_read` してデリゲートする。
+
+#### Installer の構造（adapter 側、二層構造を支える配線）
+
+```text
+RemotingExtensionInstaller {
+    transport:      std::sync::Mutex<Option<TcpRemoteTransport>>,       // install で take
+    config:         RemoteConfig,                                       // 構築後 immutable
+    remote_shared:  std::sync::OnceLock<RemoteShared>,                  // install で 1 回だけ set
+    event_sender:   std::sync::OnceLock<tokio::sync::mpsc::Sender<RemoteEvent>>,
+    event_receiver: std::sync::Mutex<Option<TokioMpscRemoteEventReceiver>>,
+    run_handle:     std::sync::Mutex<Option<JoinHandle<Result<(), RemotingError>>>>,
+}
+
+pub fn remote(&self) -> Result<RemoteShared, RemotingError> {
+    self.remote_shared.get().cloned().ok_or(RemotingError::NotStarted)
+}
+
+pub fn spawn_run_task(&self) -> Result<(), RemotingError> { ... }        // 明示的に run task 起動
+pub async fn shutdown_and_join(&self) -> Result<(), RemotingError> { ... } // wake + 完了観測
+```
+
+`event_sender` は **adapter installer が保持** する。`RemoteShared` には持たせない（薄いラッパー原則、`Remote` が知らない tokio runtime 都合を core に持ち込まない、Decision 2 の `RemoteEventSink` 排除と対称）。
+
+#### `Remoting::shutdown` の意味論
+
+`RemoteShared::shutdown(&self)` は **`Remote::shutdown` への純デリゲートのみ**：
+
+```rust
+fn shutdown(&self) -> Result<(), RemotingError> {
+    self.with_write(|remote| remote.shutdown())  // lifecycle を terminated に遷移するだけ。既に停止済みなら no-op
+}
+```
+
+wake はしない（`RemoteShared` は `event_sender` を持たない）。run task は次の event 受信時に `Remote::handle_remote_event` 末尾で lifecycle terminated を観測してループ終了するが、`poll_recv(cx)` が `Poll::Pending` のまま event が来なければ即座には停止しない。
+
+#### 完了保証が必要な場合は `shutdown_and_join` を使う
+
+graceful shutdown と完了保証が必要なら、adapter 固有の async surface を使う：
+
+```rust
+installer.shutdown_and_join().await?;
+//   1. RemoteShared::shutdown()                                 — lifecycle 遷移
+//   2. event_sender.try_send(RemoteEvent::TransportShutdown)    — wake (sync try_send、await しない、handler は冪等)
+//   3. run_handle.await                                          — 完了観測 (ここでだけ await)
+```
+
+`Remoting` trait の同期 API が「run task の終了完了まで保証」したように見せてはならない（MUST NOT）。完了保証が必要な呼び出し側は `shutdown_and_join` を使う。
+
+#### `Remoting::addresses()` の実装
+
+`RemoteShared::addresses(&self)` は `with_read(|r| r.addresses().to_vec())` で内部 `Remote` から source of truth を返す。**キャッシュは持たない**（読み取りのたびに read lock + clone）。listening address の動的更新（NAT / port reassignment）にも将来追従できる。
+
+### 10. tokio ベース `RemoteEventReceiver` 実装と `OutboundEnqueued` enqueue 経路を追加する
+
+`remote-adaptor-std` に tokio mpsc 受信側を `RemoteEventReceiver` として実装した型を 1 つ追加する。送信側 sender clone は adapter 内部の I/O ワーカー / handshake timer task / RemoteActorRef が保持する（adapter 内部のため公開 API ではない）。
+
+local actor から remote ref への tell で発生する outbound enqueue は、新 variant `RemoteEvent::OutboundEnqueued { authority, envelope: Box<OutboundEnvelope>, now_ms }` を adapter 内部 sender に push することで `RemoteShared::run` を起こす。`ActorRefSender::send` は同期 trait なので、この経路では `await` しない。adapter は `try_send` で push し、`Full` / `Closed` は `SendError` 等の呼び出し元が観測できる error に変換する（または `SendOutcome::Schedule` 内で tokio task を spawn する場合でも、その spawn 失敗や sender close を握りつぶさない）。
+
+```text
+local actor.tell → adapter RemoteActorRef
+                   → OutboundEnvelope 構築
+                   → Sender::try_send(RemoteEvent::OutboundEnqueued { authority, envelope: Box::new(envelope), now_ms })
+                   → RemoteShared::run が event 受信
+                     → with_write(|remote| remote.handle_remote_event(event))
+                       → Association::enqueue(*envelope, now_ms)
+                       → outbound drain (next_outbound → RemoteTransport::send)
+```
+
+これにより `outbound_loop` 削除後の wake 問題（peer が silent な間 outbound queue が drain されない）が解消する。`AssociationRegistry` の所有権は `Remote` に集約され（`Remote` は `RemoteShared` の `SharedLock` 内に常駐）、`Remote` 自身は内部可変性を持たず CQS を維持する。並行性は `RemoteShared` の `with_write` / `with_read` で吸収する。
+
+zero-copy / per-authority channel 分離は本 change のスコープ外とし、別 change での最適化余地として残す。
+
+#### cluster-* から見た remote 側契約
+
+`cluster-*` は `remote-adaptor-std` を直接呼ばず、`ActorSystem::resolve_actor_ref` と actor-core の `ActorRefProvider` 経由で remote actor ref を取得する。したがって本 change の cluster-facing な完了条件は、cluster 固有の placement / grain / topology 検証ではなく、remote adapter が actor-core の provider surface から利用可能な remote sender を提供することに限定する。
+
+```text
+ClusterApi / GrainRef
+  → ActorSystem::resolve_actor_ref
+    → StdRemoteActorRefProvider
+      → RemoteActorRefSender::send
+        → Sender::try_send(RemoteEvent::OutboundEnqueued { .. })
+          → RemoteShared::run
+            → Remote::handle_remote_event
+```
+
+本 change では `StdRemoteActorRefProvider` / `RemoteActorRefSender` が上記経路で `OutboundEnqueued` を push できることを remote-adaptor 側の契約として扱う。一方、cluster extension と remoting extension を同一 `ActorSystem` に組み込んだ end-to-end 検証、`ClusterApi::get` / `GrainRef` から remote delivery までの integration test、`subscribe_remoting_events` の購読 lifetime 修正は cluster 利用性を証明する **追加 change** で扱う。
+
+## Capabilities
+
+### Modified Capabilities
+
+- **`remote-core-extension`**
+  - `Remote` に `fn handle_remote_event(&mut self, event: RemoteEvent) -> Result<(), RemotingError>` を追加（CQS Command、状態変更のみ、戻り値 `()`）
+  - `Remote` に `fn is_terminated(&self) -> bool` を追加（CQS Query、停止判定。lifecycle terminated / shutdown_requested を観測）
+  - `Remote::run(&mut self, receiver)` は排他所有用 core event loop API として残し、`async fn` ではなく concrete `RemoteRunFuture<'a, S>` を返す。poll 内部で `handle_remote_event` + `is_terminated` を使う
+  - `RemoteShared(SharedLock<Remote>)` 型を新設（`Clone`、`run` を提供、`impl Remoting`）
+  - `RemoteShared` に `pub fn run<'a, S: RemoteEventReceiver + ?Sized>(&'a self, receiver: &'a mut S) -> RemoteSharedRunFuture<'a, S>` を追加（薄いラッパーとしての per-event lock orchestration、`async fn` / `impl Future` 戻り値禁止）
+  - `RemoteRunFuture<'a, S>` / `RemoteSharedRunFuture<'a, S>` を concrete public Future 型として追加（`Send` 境界なし）
+  - `RemoteEvent` enum と `RemoteEventReceiver` trait を core 公開 API として追加
+  - `RemoteEvent` の variant は `InboundFrameReceived` / `HandshakeTimerFired` / `OutboundEnqueued` / `ConnectionLost` / `TransportShutdown` の 5 つに限定（closed enum）。state machine に時刻が必要な variant は `now_ms` を持つ
+  - `Remote::handle_remote_event` は `AssociationEffect::StartHandshake` を 2 ステップ（send_handshake + schedule_handshake_timeout）で処理
+  - `Remote::handle_remote_event` は `RemoteEvent::OutboundEnqueued` を受けて `Association::enqueue(*envelope, now_ms)` + drain
+  - `Remoting` trait の全メソッドを `&self` ベースへ変更（破壊的）。`addresses` は `Vec<Address>` 戻り値。すべて同期 method（`async fn` を増やさない）
+  - `impl Remoting for Remote` を **削除**、`impl Remoting for RemoteShared` を新設（`with_write` / `with_read` で内部 `Remote` にデリゲート）
+  - `Remote` 自身は CQS 純粋ロジックを保つ（`Remote::run(&mut self, ..) -> RemoteRunFuture<'_, S>` を持ち、内部可変性を持たない）
+
+- **`remote-core-transport-port`**
+  - `RemoteTransport` trait に `fn schedule_handshake_timeout(&mut self, authority: &TransportEndpoint, timeout: Duration, generation: u64) -> Result<(), TransportError>` を追加（同期 method、`async fn` は使わない）
+  - 他の timer 系 method（quarantine timer 等）は本 change で追加しない（必要時に別 change）
+
+- **`remote-core-instrument`**
+  - `Remote` は型パラメータを持たず、`Box<dyn RemoteInstrument + Send>` で instrument を保持する
+  - 既定 instrument は `pub(crate) struct NoopInstrument`（`Remote::new` 内部で `Box::new(NoopInstrument)` を割り当てる、外部公開しない）
+  - `Remote::with_instrument(...)` および `Remote::set_instrument(...)` で差し替え可能
+  - tuple composite / `() impl` は提供しない（複数 instrument 合成はユーザー責務）
+  - `Arc<dyn RemoteInstrument>` を hot path で clone しない（所有 `Box<dyn>` 経由）
+
+- **`remote-core-association-state-machine`**
+  - instrument hook を `associate` / `handshake_accepted` / `handshake_timed_out` / `quarantine` / `next_outbound` / inbound dispatch / `apply_backpressure` から呼ぶ
+  - 既存の system / user 2 キュー分離は維持する
+  - watermark 連動のため `total_outbound_len(&self)` クエリを追加する
+  - `handshake_generation: u64` フィールドを追加する（newtype は作らない）
+  - `AssociationEffect::StartHandshake { authority, generation }` のセマンティクスを「`Remote::handle_remote_event` で実行（`RemoteShared::run` の `with_write` 区間内）」と明示し、adapter 無視を禁止する
+  - `BackpressureSignal` の variant は既存 `Apply` / `Release` を維持する（新 variant 追加なし）
+
+- **`remote-adaptor-std-io-worker`**
+  - `outbound_loop` / `handshake_driver` を REMOVED
+  - `inbound_dispatch` は `RemoteEvent::InboundFrameReceived` を adapter 内部 sender に push する I/O ワーカーに退化
+  - tokio mpsc 受信側を `RemoteEventReceiver` として実装した型を 1 つ追加
+  - `RemotingExtensionInstaller` は `RemoteShared` / `event_sender` を `OnceLock`、`event_receiver` / `run_handle` を `Mutex<Option<_>>` として保持し、`installer.remote() -> Result<RemoteShared, RemotingError>` で外部公開する。raw `SharedLock<Remote>` を露出しない
+  - `RemotingExtensionInstaller::install` で `RemoteShared::new(remote)` を構築する（`Remote::start` も run task spawn も install 内では行わない）
+  - 外部から `installer.remote().start()` を呼んで `Remote::start` を実行（transport listening 確立）してから、`installer.spawn_run_task()` 等の明示 API で run task を起動する
+  - `Remoting::addresses()` は `RemoteShared::addresses()` 経由で内部 `Remote` から source of truth を返す（キャッシュは持たない）
+  - 同期 `Remoting::shutdown` は `with_write(|r| r.shutdown())` の純デリゲートのみ（**wake しない**、`RemoteShared` は `event_sender` を持たない）
+  - graceful shutdown は adapter 固有の `installer.shutdown_and_join().await` で wake (`event_sender.try_send(TransportShutdown)`) + 完了観測 (`run_handle.await`) を行う
+  - `RemoteTransport::schedule_handshake_timeout` 実装で tokio task の sleep + push を行う
+  - adapter 側 RemoteActorRef 等の outbound 経路は `RemoteEvent::OutboundEnqueued` を adapter 内部 sender に同期 `try_send` で push する（`AssociationRegistry` の直接 mutate と `send(...).await` を禁止）
+  - actor-core の `ActorRefProvider` surface から remote path を解決した `ActorRef` が、`RemoteActorRefSender` 経由で `RemoteEvent::OutboundEnqueued` を push できることを remote 側契約として保証する（cluster 固有の integration scenario は本 change の対象外）
+  - `effect_application.rs` の `StartHandshake` ignore 分岐を削除
+
+### New Capabilities
+
+なし（既存 capability への変更で完結）。
+
+## Impact
+
+**影響を受けるコード:**
+
+- `modules/remote-core/src/core/extension/remote.rs`（`handle_remote_event` inherent method 追加、`Box<dyn RemoteInstrument + Send>` field、`with_instrument` / `set_instrument` 追加、`impl Remoting for Remote` 削除）
+- `modules/remote-core/src/core/extension/remote_shared.rs`（新規、`RemoteShared(SharedLock<Remote>)`、`run` / `impl Remoting for RemoteShared`）
+- `modules/remote-core/src/core/extension/remoting.rs`（trait シグネチャを `&self` ベースへ変更、`addresses` を `Vec<Address>` 戻り値へ）
+- `modules/remote-core/src/core/extension/remote_event.rs`（新規、closed enum 5 variant）
+- `modules/remote-core/src/core/extension/remote_event_receiver.rs`（新規、1 メソッド trait）
+- `modules/remote-core/src/core/transport/remote_transport.rs`（既存 trait に `schedule_handshake_timeout` method 追加）
+- `modules/remote-core/src/core/association/base.rs`（`&mut dyn RemoteInstrument` 引数追加、watermark 連動、handshake_generation field、total_outbound_len）
+- `modules/remote-core/src/core/association/effect.rs`（`StartHandshake { authority, timeout, generation: u64 }` 拡張、rustdoc 更新）
+- `modules/remote-core/src/core/association/registry.rs`（instrument 参照経路、queue 分離追従）
+- `modules/remote-core/src/core/instrument/`（`pub(crate) NoopInstrument` 内部定義、`RemotingFlightRecorder` への `RemoteInstrument` impl 追加）
+- `modules/remote-core/src/core/config/`（`outbound_high_watermark` / `outbound_low_watermark`）
+- `modules/remote-adaptor-std/src/std/outbound_loop.rs`（削除）
+- `modules/remote-adaptor-std/src/std/handshake_driver.rs`（削除）
+- `modules/remote-adaptor-std/src/std/inbound_dispatch.rs`（I/O ワーカーへ縮退、`InboundFrameReceived` push のみ）
+- `modules/remote-adaptor-std/src/std/effect_application.rs`（`StartHandshake` ignore 削除）
+- `modules/remote-adaptor-std/src/std/tokio_remote_event_receiver.rs`（新規、tokio mpsc 受信ラッパ）
+- `modules/remote-adaptor-std/src/std/extension_installer/remoting_extension_installer.rs`（`OnceLock<RemoteShared>` / `OnceLock<Sender<RemoteEvent>>` / `Mutex<Option<TokioMpscRemoteEventReceiver>>` / `Mutex<Option<JoinHandle<...>>>` field、`installer.remote() -> Result<RemoteShared, RemotingError>`、`spawn_run_task(&self)` / `shutdown_and_join(&self)` adapter 固有 API）
+- `modules/remote-adaptor-std/src/std/`（adapter 側 `RemoteTransport::schedule_handshake_timeout` 実装で `tokio::spawn(sleep)`）
+- `modules/remote-adaptor-std/src/std/`（RemoteActorRef 等の outbound 経路を `OutboundEnqueued` push に切替）
+
+**ファイル収支試算:**
+
+- core: 新規 5（`remote_event.rs` / `remote_event_receiver.rs` / `remote_shared.rs` / `remote_run_future.rs` / `remote_shared_run_future.rs`）、削除 0
+- adapter: 新規 1（`tokio_remote_event_receiver.rs`）、削除 2（`outbound_loop.rs` / `handshake_driver.rs`）
+- 合計 net delta: **+4 ファイル**（新規 6、削除 2）。新規 trait / 型の純増は **5 個**（`RemoteEvent` enum + `RemoteEventReceiver` trait + `RemoteShared` 型 + `RemoteRunFuture` 型 + `RemoteSharedRunFuture` 型）。`RemoteTransport::schedule_handshake_timeout` は既存 trait への method 追加のため新規型カウント外。
+
+**公開 API 影響:**
+
+- `Remote` は型パラメータを持たないまま、`Box<dyn RemoteInstrument + Send>` フィールドを内部に追加する（型シグネチャは変わらない）。`Remote::with_instrument` / `Remote::set_instrument` を新規 public API として追加する。
+- `Remote::handle_remote_event` (Command) と `Remote::is_terminated` (Query) を inherent method として追加する（CQS 分離）。
+- `Remote::run(&mut self, receiver)` は残す。`Remote::run(self, ..)` の consume 形は `&mut self` に変更し、`async fn` ではなく `RemoteRunFuture<'a, S>` を返す。
+- `RemoteShared` 型を新規 public として追加する（`Clone`、`new`、`run`、`impl Remoting`）。
+- `RemoteRunFuture<'a, S>` / `RemoteSharedRunFuture<'a, S>` を新規 public concrete Future 型として追加する。single-thread executor / no_std 利用を妨げないため `Send` 境界は持たせない。
+- `Remoting` trait のシグネチャを破壊的変更:
+  - 全メソッドを `&self` へ
+  - `addresses` の戻り値を `&[Address]` から `Vec<Address>` へ
+  - `async fn` / `Future` 戻り値は引き続き禁止
+- `impl Remoting for Remote` を削除（`impl Remoting for RemoteShared` に移管）。`Remote::start` / `shutdown` / `quarantine` / `addresses` は inherent method として残す（`RemoteShared` がデリゲートで使う）。
+- `RemoteEvent` enum と `RemoteEventReceiver` trait を新規 public 型として追加する。
+- `RemoteEvent` の variant は本 change スコープで **5 つに限定**（`InboundFrameReceived` / `HandshakeTimerFired` / `OutboundEnqueued` / `ConnectionLost` / `TransportShutdown`）。`OutboundEnqueued` は `Box<OutboundEnvelope>` と `now_ms` を持ち、time-sensitive な受信/timeout/connection event も `now_ms` を持つ。
+- `RemoteTransport` 既存 trait に `send_handshake(&mut self, &Address, HandshakePdu) -> Result<(), TransportError>` と `schedule_handshake_timeout(&mut self, &TransportEndpoint, Duration, u64) -> Result<(), TransportError>` を追加（破壊的変更、既存実装は新 method 実装が必須）。
+- `AssociationEffect::StartHandshake` の意味論が「adapter が無視」から「`Remote::handle_remote_event` が send_handshake + schedule_handshake_timeout の 2 ステップで実行」へ変わる。variant に `timeout: Duration` / `generation: u64` を追加。
+- `RemoteConfig` に `outbound_high_watermark` / `outbound_low_watermark` を追加する。
+- `RemotingExtensionInstaller::remote()` の戻り値を `SharedLock<Remote>` から `Result<RemoteShared, RemotingError>` へ変更（破壊的、利用側は `RemoteShared` の `Remoting` trait 経由で start / shutdown / quarantine / addresses を呼ぶ）。
+- `RemotingExtensionInstaller` に adapter 固有の async API として `shutdown_and_join(&self) -> impl Future<Output = Result<(), RemotingError>>` を追加（wake + 完了観測）。同様に明示的な `spawn_run_task(&self) -> Result<(), RemotingError>` を追加（install と spawn の分離）。
+- adapter 側の `outbound_loop` / `handshake_driver` 公開関数は削除される。これは前 change `hide-remote-adaptor-runtime-internals` で internal 化済みのため外部 API 影響は無い。
+
+**挙動影響:**
+
+- 1ms ポーリングが消え、event 駆動になる。outbound throughput と CPU 消費が改善する。
+- system message が ordinary message に飢餓されないことが既存仕様で保証されている状態が継続する。
+- queue が watermark を超えると backpressure signal が発火し、計測可能になる。
+- handshake / quarantine / send / receive の全イベントが instrument に通知される。
+- handshake timeout の古い発火が `Remote::handle_remote_event` 側で破棄され、generation 不一致による誤遷移が発生しない。
+
+## Non-goals
+
+- payload serialization の完成、wire protocol の再設計
+- large message queue の追加（control / ordinary 分離のみ維持）
+- inbound 側 ack window / 動的 receive buffer の調整
+- cluster adaptor、persistence adaptor の駆動見直し
+- cluster extension と remoting extension を同一 `ActorSystem` に組み込む end-to-end 利用検証、`ClusterApi::get` / `GrainRef` から remote delivery までの integration test、`subscribe_remoting_events` の購読 lifetime 修正（追加 change で扱う）
+- failure detector の駆動経路変更（heartbeat は別 change で扱う）
+- `Codec<T>` trait 自体のシグネチャ変更
+- 後方互換 shim、deprecated alias、旧 API 残置
+- 新規 Driver 型 / Handle 型 / Outcome enum / Timer trait / Sink trait / Generation newtype の導入（純増最小化のため。`RemoteShared` と concrete run Future 型 2 つは二層構造と no-async core surface のための例外）
+- `Remote` の型パラメータ化、tuple composite `RemoteInstrument` 実装、`() impl RemoteInstrument` の提供（ユーザー API 単純化のため、dyn dispatch を採用）

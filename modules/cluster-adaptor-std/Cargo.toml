@@ -1,0 +1,42 @@
+[package]
+name = "fraktor-cluster-adaptor-std-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor standard adaptor bindings for cluster runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "cluster", "adaptor", "std"]
+categories = ["concurrency"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-cluster-adaptor-std-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+aws-ecs = ["dep:aws-sdk-ecs", "dep:aws-config"]
+
+[dependencies]
+fraktor-cluster-core-rs = { workspace = true }
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-actor-adaptor-std-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize", "std-locks"] }
+serde = { workspace = true }
+postcard = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
+aws-sdk-ecs = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "net", "macros"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["tokio-executor", "test-support"] }
+fraktor-remote-core-rs = { workspace = true }
+fraktor-remote-adaptor-std-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+bytes = { workspace = true }
+critical-section = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"] }
+anyhow = { workspace = true }

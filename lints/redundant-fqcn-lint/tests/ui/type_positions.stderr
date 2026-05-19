@@ -1,0 +1,57 @@
+warning: `crate::sample::domain::Widget` は `use` 以外で不要な FQCN です
+  --> $DIR/type_positions.rs:12:14
+   |
+LL | type Alias = crate::sample::domain::Widget;
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `use crate::sample::domain::Widget;` を追加し、本文では `Widget` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use crate::sample::domain::Widget;` を追加する 2. この箇所の `crate::sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+   = note: `#[warn(redundant_fqcn)]` on by default
+
+warning: `crate::sample::domain::Widget` は `use` 以外で不要な FQCN です
+  --> $DIR/type_positions.rs:14:20
+   |
+LL | fn accepts(_value: crate::sample::domain::Widget) -> crate::sample::domain::Widget {
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `use crate::sample::domain::Widget;` を追加し、本文では `Widget` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use crate::sample::domain::Widget;` を追加する 2. この箇所の `crate::sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+
+warning: `crate::sample::domain::Widget` は `use` 以外で不要な FQCN です
+  --> $DIR/type_positions.rs:14:54
+   |
+LL | fn accepts(_value: crate::sample::domain::Widget) -> crate::sample::domain::Widget {
+   |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `use crate::sample::domain::Widget;` を追加し、本文では `Widget` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use crate::sample::domain::Widget;` を追加する 2. この箇所の `crate::sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+
+warning: `crate::sample::domain::Widget` は `use` 以外で不要な FQCN です
+  --> $DIR/type_positions.rs:15:3
+   |
+LL |   crate::sample::domain::Widget
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `use crate::sample::domain::Widget;` を追加し、本文では `Widget` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use crate::sample::domain::Widget;` を追加する 2. この箇所の `crate::sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+
+warning: `crate::sample::domain::Widget` は `use` 以外で不要な FQCN です
+  --> $DIR/type_positions.rs:19:10
+   |
+LL |   value: crate::sample::domain::Widget,
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `use crate::sample::domain::Widget;` を追加し、本文では `Widget` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use crate::sample::domain::Widget;` を追加する 2. この箇所の `crate::sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+
+warning: `crate::sample::domain::Widget` は `use` 以外で不要な FQCN です
+  --> $DIR/type_positions.rs:23:23
+   |
+LL |   let value = accepts(crate::sample::domain::Widget);
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `use crate::sample::domain::Widget;` を追加し、本文では `Widget` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use crate::sample::domain::Widget;` を追加する 2. この箇所の `crate::sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+
+warning: 6 warnings emitted
+

@@ -1,39 +1,65 @@
-- すべて日本語でやりとりすること。ソースコード以外の生成されるファイルも日本語で記述すること
-- 設計における価値観は "Less is more" と "YAGNI"（要件達成に必要最低限の設計を行い、不要なものを含めない）
-- 既存の多くの実装を参考にして、一貫性のあるコードを書くこと
-- **後方互換性**: 後方互換は不要（破壊的変更を恐れずに最適な設計を追求すること）
-- **リリース状況**: まだ正式リリース前の開発フェーズ。必要であれば破壊的変更を歓迎し、最適な設計を優先すること
-- serena mcpを有効活用すること
-- 当該ディレクトリ以外を読まないこと
-- **タスクの完了条件**: テストはすべてパスすること。行うべきテストをコメントアウトしたり無視したりしないこと
-- 実装の全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。
-- `./scripts/ci-check.sh all` は所要時間が長いが、完了待ってください。
-- 実装タスク以外（ドキュメント編集など）は`./scripts/ci-check.sh all`を実行する必要ない
-- `./scripts/ci-check.sh`は内部で`cargo`を呼び出すので並行実行できません。
-- CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
-- lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
+# CLAUDE.md
 
-# 基本原則
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-- シンプルさの優先: すべての変更を可能な限りシンプルに保ち、コードへの影響範囲を最小限に抑える。
-- 妥協の排除: 根本原因を特定すること。一時しのぎの修正は行わず、シニア開発者としての基準を維持する。
-- 影響の最小化: 必要な箇所のみを変更し、新たなバグの混入を徹底的に防ぐ。
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## 設計・命名・構造ルール（.claude/rules/rust/）
+## 1. Think Before Coding
 
-詳細は `.claude/rules/rust/` に集約されている。変更する場合は人間から許可を取ること：
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-| ファイル | 内容 |
-|----------|------|
-| `immutability-policy.md` | 内部可変性禁止、&mut self 原則、AShared パターン |
-| `cqs-principle.md` | CQS 原則、違反判定フロー |
-| `type-organization.md` | 1file1type + 例外基準、公開範囲の判断フロー |
-| `naming-conventions.md` | 曖昧サフィックス禁止、Shared/Handle 命名、ドキュメント言語 |
-| `reference-implementation.md` | protoactor-go/pekko 参照手順、Go/Scala → Rust 変換 |
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
-## Dylint lint（8つ、機械的強制）
+## 2. Simplicity First
 
-mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
+**Minimum code that solves the problem. Nothing speculative.**
 
-## AI-DLC and Spec-Driven Development
-@.agents/CC-SDD.md を読むこと
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

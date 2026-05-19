@@ -1,6 +1,6 @@
 AIレビュー指摘に基づき、実装を修正せよ。
 
-**重要方針（このムーブメント固有）:**
+**重要方針（このステップ固有）:**
 - 1回の `ai_fix` で、open finding を**複数件まとめて**処理する。
 - 原則として `new` / `reopened` / `persists` の open finding を今回サイクルで一括対応する。
 - 依存関係や仕様衝突で同時対応できない場合のみ未対応を残し、技術的理由を明記する。
@@ -13,14 +13,13 @@ AIレビュー指摘に基づき、実装を修正せよ。
 3. `family_tag` 単位でまとめ、重複を統合して修正計画を作る。
 4. 計画した finding 群を一括で修正する（最小変更を守る）。
 5. 対象 finding 群に対応する最小限の確認コマンドを実行する（重い一括実行は禁止）。
+6. **`./scripts/ci-check.sh ai dylint` を実行（必須）**
+   - プロジェクト固有 dylint ルール（mod-file / module-wiring / type-per-file / tests-location / use-placement / redundant-fqcn / rustdoc / cfg-std-forbid / ambiguous-suffix / module-examples）をコードベース全体に適用し、エラー 0 件・warning 0 件を確認する
+   - **エラーや warning が出た場合は、このステップ内で必ずコードを修正してから完了報告すること**。lint を `#[allow]` で握りつぶすのは禁止（`immutability-policy.md` / `naming-conventions.md` / `type-organization.md` 等の規約違反を示唆するため、設計で解消する）
+   - 終了コード 0・FAILED 0 件を確認してから「修正完了」と判定する
 
 **禁止事項:**
 - open finding が残っているのに、理由なく「今回対象外」として先送りすること
-- `./scripts/ci-check.sh all` を実行すること（最終段 `final-ci` の責務）
-
-**許可事項:**
-- 必要最小限の範囲で、単体版 `ci-check.sh` を実行してよい
-  - 例: `./scripts/ci-check.sh dylint -m モジュール名`
 
 **修正の原則:**
 - レビュー指摘に直接対応する修正のみ行う（スコープを広げない）
@@ -39,5 +38,7 @@ AIレビュー指摘に基づき、実装を修正せよ。
 - {修正内容、または修正不要の根拠}
 ## 検証
 - {実行した最小限コマンドと結果}
+## dylint結果
+- `./scripts/ci-check.sh ai dylint` の実行結果（終了コードと、エラー/warning が出た場合の修正内容）
 ## 未対応finding（ある場合のみ）
 - {未対応の open finding と技術的理由}

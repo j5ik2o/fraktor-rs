@@ -9,7 +9,7 @@
 | #123 | 実装完了 / スキップ | abcdef1 | fix(remote): ... (#123) |
 
 ## 最終ci-check結果
-- `./scripts/ci-check.sh all`: PASS / FAIL
+- `./scripts/ci-check.sh ai all`: PASS / FAIL
 
 ## 判定
 - 判定: {全issueコミット完了 / 失敗あり}

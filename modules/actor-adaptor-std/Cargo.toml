@@ -1,0 +1,67 @@
+[package]
+name = "fraktor-actor-adaptor-std-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor standard adaptor bindings for actor runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "actor", "adaptor", "std"]
+categories = ["concurrency"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-actor-adaptor-std-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+test-support = []
+tokio-executor = ["dep:tokio"]
+
+[dependencies]
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-utils-adaptor-std-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize", "std-locks"] }
+tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
+tracing = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
+critical-section = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
+serde_json = { workspace = true }
+
+[[bench]]
+name = "actor_baseline"
+path = "benches/actor_baseline.rs"
+harness = false
+required-features = ["tokio-executor"]
+
+[[bench]]
+name = "balancing_dispatcher"
+path = "benches/balancing_dispatcher.rs"
+harness = false
+required-features = ["tokio-executor"]
+
+[[test]]
+name = "circuit_breakers_registry"
+path = "tests/circuit_breakers_registry.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "dispatcher_public_surface"
+path = "tests/dispatcher_public_surface.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "sp_h1_5_system_escalation"
+path = "tests/sp_h1_5_system_escalation.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "std_adaptor_boot_e2e"
+path = "tests/std_adaptor_boot_e2e.rs"
+required-features = ["test-support"]
+
+[lints]
+workspace = true
