@@ -4926,7 +4926,12 @@ where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Vec<In>> = Outlet::new();
-  let logic = ZipLogic::<In> { fan_in, edge_slots: Vec::with_capacity(fan_in), pending: Vec::with_capacity(fan_in) };
+  let logic = ZipLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    source_done: false,
+  };
   FlowDefinition {
     kind:        StageKind::FlowZip,
     inlet:       inlet.id(),

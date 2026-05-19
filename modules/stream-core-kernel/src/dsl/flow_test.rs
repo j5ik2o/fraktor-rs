@@ -2444,7 +2444,8 @@ fn supervision_variants_keep_single_path_behavior() {
 
 #[test]
 fn zip_logic_on_restart_clears_pending_state() {
-  let mut logic = ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new() };
+  let mut logic =
+    ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   let first = logic.apply_with_edge(0, Box::new(1_u32)).expect("first apply");
   assert!(first.is_empty());
@@ -2453,6 +2454,48 @@ fn zip_logic_on_restart_clears_pending_state() {
 
   let second = logic.apply_with_edge(1, Box::new(2_u32)).expect("second apply");
   assert!(second.is_empty());
+}
+
+#[test]
+fn zip_logic_prefers_empty_input_slot_until_group_is_ready() {
+  let mut logic =
+    ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
+
+  assert!(logic.can_accept_input_from_edge(0));
+  assert!(!logic.can_accept_input_from_edge(2));
+
+  let first = logic.apply_with_edge(0, Box::new(1_u32)).expect("first apply");
+
+  assert!(first.is_empty());
+  assert!(logic.can_accept_input());
+  assert_eq!(logic.preferred_input_edge_slot(), Some(1));
+  assert!(!logic.can_accept_input_from_edge(0));
+  assert!(logic.can_accept_input_from_edge(1));
+
+  let second = logic.apply_with_edge(1, Box::new(2_u32)).expect("second apply");
+
+  assert_eq!(second.len(), 1);
+  assert!(logic.can_accept_input());
+  assert_eq!(logic.preferred_input_edge_slot(), Some(0));
+  assert!(logic.can_accept_input_from_edge(0));
+  logic.on_source_done().expect("source done");
+  assert!(!logic.can_accept_input_from_edge(0));
+}
+
+#[test]
+fn zip_logic_drain_pending_emits_ready_group() {
+  let mut left = VecDeque::new();
+  left.push_back(3_u32);
+  let mut right = VecDeque::new();
+  right.push_back(4_u32);
+  let mut logic =
+    ZipLogic::<u32> { fan_in: 2, edge_slots: vec![0, 1], pending: vec![left, right], source_done: true };
+
+  let drained = logic.drain_pending().expect("drain");
+
+  assert_eq!(drained.len(), 1);
+  let values = drained.into_iter().next().expect("zipped values").downcast::<Vec<u32>>().expect("Vec<u32>");
+  assert_eq!(*values, vec![3_u32, 4_u32]);
 }
 
 #[test]
