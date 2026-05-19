@@ -305,3 +305,19 @@ fn test_set_quarantine_decrements_total_deferred_count() {
   assert_eq!(registry.deferred_count("remote2"), 1);
   assert_eq!(registry.total_deferred_count(), 1);
 }
+
+#[test]
+fn test_manual_override_to_connected_decrements_total_deferred_count() {
+  let mut registry = RemoteAuthorityRegistry::new();
+
+  registry.defer_send("remote1", AnyMessage::new(1i32)).expect("defer");
+  registry.defer_send("remote1", AnyMessage::new(2i32)).expect("defer");
+  registry.defer_send("remote2", AnyMessage::new(3i32)).expect("defer");
+
+  registry.manual_override_to_connected("remote1");
+
+  assert_eq!(registry.state("remote1"), AuthorityState::Connected);
+  assert_eq!(registry.deferred_count("remote1"), 0);
+  assert_eq!(registry.deferred_count("remote2"), 1);
+  assert_eq!(registry.total_deferred_count(), 1);
+}

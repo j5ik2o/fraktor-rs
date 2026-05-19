@@ -137,6 +137,8 @@ impl RemoteAuthorityRegistry {
   pub fn manual_override_to_connected(&mut self, authority: &str) {
     if let Some(entry) = self.entries.get_mut(authority) {
       entry.state = AuthorityState::Connected;
+      self.total_deferred = self.total_deferred.saturating_sub(entry.deferred.len());
+      entry.deferred.clear();
     }
   }
 
