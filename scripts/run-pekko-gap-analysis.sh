@@ -29,7 +29,7 @@ fi
 [[ -f "$CLAUDE_WRAPPER" ]] && export TAKT_CLAUDE_CLI_PATH="$CLAUDE_WRAPPER"
 [[ -f "$CODEX_WRAPPER" ]] && export TAKT_CODEX_CLI_PATH="$CODEX_WRAPPER"
 
-MODULES=("actor" "streams" "remote" "cluster" "persistence")
+MODULES=("actor" "stream" "remote" "cluster" "persistence")
 LOG_DIR="${SCRIPT_DIR}/../.takt/logs"
 mkdir -p "$LOG_DIR"
 

@@ -16,10 +16,10 @@
 ```text
 modules/
 ├── utils/       # fraktor-utils-rs: 共有ユーティリティ
-├── actor/       # fraktor-actor-rs: アクターシステムコア
+├── actor/       # fraktor-actor-core-rs: アクターシステムコア
 ├── remote/      # fraktor-remote-rs: リモーティング
-├── cluster/     # fraktor-cluster-rs: クラスタリング
-└── streams/     # fraktor-streams-rs: ストリーム処理
+├── cluster/     # fraktor-cluster-core-rs: クラスタリング
+└── streams/     # fraktor-stream-core-rs: ストリーム処理
 ```
 
 各モジュールの内部構造:
@@ -65,6 +65,7 @@ modules/{name}/src/
 |-------|-----------|-----|
 | `camelCase` メソッド | `snake_case` メソッド | `mapAsync` → `map_async` |
 | `PascalCase` 型 | `PascalCase` 型 | `Source` → `Source` |
+| `*Exception` 型 | `*Error` 型 | `DurableStateException` → `DurableStateError`, `ThrowableNotSerializableException` → `ThrowableNotSerializableError` |
 
 ※ 以前存在した `*Generic<TB>` サフィックスと型エイリアスのパターンは廃止済み。型は直接使用する。
 
@@ -131,4 +132,4 @@ pub struct XyzShared {
 4. `core/` に no_std 実装を配置
 5. 必要に応じて `std/` に具象型エイリアスを追加
 6. テストを `{type}/tests.rs` に作成
-7. `./scripts/ci-check.sh dylint -m <module>` で lint チェック
+7. `./scripts/ci-check.sh ai dylint -m <module>` で lint チェック

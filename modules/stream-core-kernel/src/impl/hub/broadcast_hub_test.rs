@@ -1,0 +1,130 @@
+use super::BroadcastHubSourceLogic;
+use crate::{
+  SourceLogic, StreamError,
+  dsl::{BroadcastHub, Sink},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamShared, StreamState},
+  },
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph},
+};
+
+struct TestMaterializer {
+  calls: usize,
+}
+
+impl TestMaterializer {
+  const fn new() -> Self {
+    Self { calls: 0 }
+  }
+}
+
+impl Default for TestMaterializer {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl Materializer for TestMaterializer {
+  fn start(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
+    self.calls = self.calls.saturating_add(1);
+    let (plan, materialized) = graph.into_parts();
+    let mut stream = Stream::new(plan, StreamBufferConfig::default());
+    stream.start()?;
+    let stream = StreamShared::new(stream);
+    Ok(Materialized::new(stream, materialized))
+  }
+
+  fn shutdown(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+}
+
+#[test]
+fn broadcast_hub_delivers_to_all_subscribers() {
+  let hub = BroadcastHub::new();
+  let left = hub.subscribe();
+  let right = hub.subscribe();
+
+  hub.publish(10_u32).expect("publish 10");
+  hub.publish(20_u32).expect("publish 20");
+
+  assert_eq!(hub.poll(left), Some(10_u32));
+  assert_eq!(hub.poll(left), Some(20_u32));
+  assert_eq!(hub.poll(right), Some(10_u32));
+  assert_eq!(hub.poll(right), Some(20_u32));
+}
+
+#[test]
+fn broadcast_hub_source_for_drains_subscriber_queue() {
+  let hub = BroadcastHub::new();
+  let left = hub.subscribe();
+  let _right = hub.subscribe();
+  hub.publish(1_u32).expect("publish 1");
+  hub.publish(2_u32).expect("publish 2");
+  let mut materializer = TestMaterializer::default();
+
+  let first_graph = hub.source_for(left).into_mat(Sink::head(), KeepRight);
+  let first = first_graph.run(&mut materializer).expect("first materialize");
+  for _ in 0..4 {
+    let _ = first.stream().drive();
+    if first.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(first.materialized().value(), Completion::Ready(Ok(1_u32)));
+
+  let second_graph = hub.source_for(left).into_mat(Sink::head(), KeepRight);
+  let second = second_graph.run(&mut materializer).expect("second materialize");
+  for _ in 0..4 {
+    let _ = second.stream().drive();
+    if second.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(second.materialized().value(), Completion::Ready(Ok(2_u32)));
+}
+
+#[test]
+fn broadcast_hub_source_waits_for_later_publish_without_completing() {
+  let hub = BroadcastHub::new();
+  let left = hub.subscribe();
+  let graph = hub.source_for(left).into_mat(Sink::head(), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  for _ in 0..3 {
+    let _ = materialized.stream().drive();
+  }
+  assert_eq!(materialized.stream().state(), StreamState::Running);
+  assert_eq!(materialized.materialized().value(), Completion::Pending);
+
+  hub.publish(55_u32).expect("publish 55");
+  for _ in 0..4 {
+    let _ = materialized.stream().drive();
+    if materialized.stream().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(materialized.stream().state(), StreamState::Completed);
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(55_u32)));
+}
+
+#[test]
+fn broadcast_hub_source_does_not_drain_on_shutdown() {
+  let hub = BroadcastHub::<u32>::new();
+  let subscriber_id = hub.subscribe();
+  let logic = BroadcastHubSourceLogic { subscribers: hub.subscribers.clone(), subscriber_id };
+
+  assert!(!logic.should_drain_on_shutdown());
+}
+
+#[test]
+fn broadcast_hub_backpressures_when_no_subscriber_exists() {
+  let hub = BroadcastHub::<u32>::new();
+  assert_eq!(hub.publish(1_u32), Err(StreamError::WouldBlock));
+}

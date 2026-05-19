@@ -15,15 +15,15 @@
    - 実装不能（前提不足・外部依存・再現不能など）の場合は **中断しない**
    - `gh issue comment <issue-number> -b "<日本語コメント>"` で理由・次アクションを記録する
    - 次の issue に進む
-5. 各 issue の作業完了時に `./scripts/ci-check.sh all` を実行し、PASS を確認する
-6. 全 issue 処理後に `./scripts/ci-check.sh all` を再実行し、最終 PASS を確認する
+5. 各 issue の作業完了時に `./scripts/ci-check.sh ai all` を実行し、PASS を確認する
+6. 全 issue 処理後に `./scripts/ci-check.sh ai all` を再実行し、最終 PASS を確認する
 7. 全 issue 処理後に受け入れ条件の達成状況を整理する
 
 ## 実装方針
 
 - 既存実装パターンに合わせる
 - 過剰な抽象化を入れない
-- `./scripts/ci-check.sh all` が PASS するまで次の issue に進まない
+- `./scripts/ci-check.sh ai all` が PASS するまで次の issue に進まない
 - 単一 issue が実装不能でもムーブメント全体を中断しない（理由記録後に継続）
 
 ## 実装不能時の記録ルール
@@ -45,5 +45,5 @@
 ## テスト結果
 
 - {issue ごとの実行コマンドと結果}
-- {issue ごとの `./scripts/ci-check.sh all` 実行結果}
-- {最終 `./scripts/ci-check.sh all` 実行結果}
+- {issue ごとの `./scripts/ci-check.sh ai all` 実行結果}
+- {最終 `./scripts/ci-check.sh ai all` 実行結果}
