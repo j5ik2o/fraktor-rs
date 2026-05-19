@@ -1522,6 +1522,27 @@ fn map_async_logic_keeps_order_and_tracks_pending_output() {
 }
 
 #[test]
+fn map_async_logic_does_not_accept_input_when_completed_entries_are_queued() {
+  let mut logic = MapAsyncLogic::<u32, u32, _, MixedMapAsyncFuture<u32>> {
+    func:        |value: u32| {
+      if value == 0 { MixedMapAsyncFuture::Never } else { MixedMapAsyncFuture::Ready(Some(value.saturating_add(1))) }
+    },
+    parallelism: 2,
+    pending:     VecDeque::new(),
+    _pd:         PhantomData,
+  };
+
+  let _ = logic.apply(Box::new(0_u32)).expect("apply stalled");
+  let _ = logic.apply(Box::new(1_u32)).expect("apply ready");
+  assert!(!logic.can_accept_input());
+
+  let outputs = logic.drain_pending().expect("drain");
+  assert!(outputs.is_empty());
+  assert!(logic.has_pending_output());
+  assert!(!logic.can_accept_input());
+}
+
+#[test]
 fn conflate_with_seed_logic_defers_and_merges_pending_values() {
   let mut logic = ConflateWithSeedLogic::<u32, u32, _, _> {
     seed:         |value| value + 10,
@@ -1583,6 +1604,23 @@ impl<T: Unpin> Future for YieldThenOutputFuture<T> {
       Poll::Pending
     } else {
       Poll::Ready(this.value.take().expect("future value"))
+    }
+  }
+}
+
+enum MixedMapAsyncFuture<T> {
+  Never,
+  Ready(Option<T>),
+}
+
+impl<T: Unpin> Future for MixedMapAsyncFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let this = self.get_mut();
+    match this {
+      | Self::Never => Poll::Pending,
+      | Self::Ready(value) => Poll::Ready(value.take().expect("future value")),
     }
   }
 }
