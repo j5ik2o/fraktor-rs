@@ -53,7 +53,7 @@ where
   }
 
   fn can_accept_input(&self) -> bool {
-    self.pending.len() < 1
+    self.pending.is_empty()
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
