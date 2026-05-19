@@ -482,6 +482,11 @@ trait FlowLogic: Send {
     true
   }
 
+  fn can_accept_input_from_edge(&self, edge_index: usize) -> bool {
+    let _ = edge_index;
+    self.can_accept_input()
+  }
+
   fn can_accept_input_while_output_buffered(&self) -> bool {
     false
   }

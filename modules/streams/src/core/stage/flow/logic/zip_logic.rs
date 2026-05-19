@@ -66,6 +66,13 @@ where
     Some(self.fan_in)
   }
 
+  fn can_accept_input_from_edge(&self, edge_index: usize) -> bool {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return self.pending[position].is_empty();
+    }
+    self.edge_slots.len() < self.fan_in
+  }
+
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.edge_slots.clear();
     self.pending.clear();

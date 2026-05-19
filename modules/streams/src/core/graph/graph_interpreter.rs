@@ -520,7 +520,9 @@ impl GraphInterpreter {
         | _ => false,
       };
 
-      if can_accept_input && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet)? {
+      if can_accept_input
+        && let Some((edge_index, input)) = self.poll_from_incoming_edges_for_flow(stage_index, flow_inlet)?
+      {
         consumed_input = true;
         if input.as_ref().type_id() != flow_input_type {
           return Err(StreamError::TypeMismatch);
@@ -761,6 +763,31 @@ impl GraphInterpreter {
         continue;
       }
       let value = edge.buffer.poll()?;
+      return Ok(Some((index, value)));
+    }
+    Ok(None)
+  }
+
+  fn poll_from_incoming_edges_for_flow(
+    &mut self,
+    stage_index: usize,
+    to: PortId,
+  ) -> Result<Option<(usize, DynValue)>, StreamError> {
+    for index in 0..self.edges.len() {
+      let edge = &self.edges[index];
+      if edge.to != to || edge.buffer.is_empty() {
+        continue;
+      }
+
+      let can_accept = match &self.stages[stage_index] {
+        | StageDefinition::Flow(flow) => flow.logic.can_accept_input_from_edge(index),
+        | _ => false,
+      };
+      if !can_accept {
+        continue;
+      }
+
+      let value = self.edges[index].buffer.poll()?;
       return Ok(Some((index, value)));
     }
     Ok(None)
