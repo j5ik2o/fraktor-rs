@@ -2,12 +2,7 @@
 
 use alloc::{string::ToString, vec, vec::Vec};
 
-use fraktor_actor_core_kernel_rs::actor::{
-  ActorContext,
-  error::ActorError,
-  messaging::AnyMessageView,
-  supervision::{BackoffOnFailureOptions, BackoffSupervisor, BackoffSupervisorStrategy},
-};
+use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
 use fraktor_actor_core_typed_rs::{TypedActorRef, TypedProps};
 use fraktor_persistence_core_kernel_rs::{
   error::PersistenceError,
@@ -50,16 +45,7 @@ where
   ) -> TypedProps<PersistenceStoreCommand<S, E>> {
     let child_config = config.clone();
     let child_reply_to = recovery_reply_to.clone();
-    let child_props = persistent_props(move || Self::new(child_config.clone(), child_reply_to.clone()));
-    let backoff_config = config.backoff_config();
-    let strategy = BackoffSupervisorStrategy::new(
-      backoff_config.min_backoff(),
-      backoff_config.max_backoff(),
-      backoff_config.random_factor(),
-    )
-    .with_stash_capacity(config.stash_capacity());
-    let options = BackoffOnFailureOptions::new(child_props, "store".to_string(), strategy);
-    TypedProps::from_props(BackoffSupervisor::props_on_failure(options))
+    TypedProps::from_props(persistent_props(move || Self::new(child_config.clone(), child_reply_to.clone())))
   }
 
   fn new(config: PersistenceEffectorConfig<S, E, M>, recovery_reply_to: ReplyRef<S, E>) -> Self {
