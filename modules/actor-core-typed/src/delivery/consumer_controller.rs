@@ -71,6 +71,10 @@ where
     let window = u64::from(self.settings.flow_control_window());
     remaining <= window / 2
   }
+
+  const fn is_within_requested_window(&self, seq_nr: SeqNr) -> bool {
+    seq_nr <= self.requested_seq_nr
+  }
 }
 
 /// Factory for creating a `ConsumerController` behavior.
@@ -196,7 +200,8 @@ fn collect_on_sequenced_message<A>(
   deferred: &mut Vec<DeferredAction<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
-  if seq_msg.first() {
+  let is_first = seq_msg.first();
+  if is_first {
     state.producer_controller = Some(TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(
       seq_msg.producer_controller().as_untyped().clone(),
     ));
@@ -214,6 +219,15 @@ fn collect_on_sequenced_message<A>(
     return;
   }
 
+  if !is_first && !state.is_within_requested_window(seq_nr) {
+    if !state.settings.only_flow_control()
+      && let Some(pc) = state.producer_controller.clone()
+    {
+      deferred.push(DeferredAction::SendToProducer(pc, ProducerControllerCommand::resend(state.received_seq_nr + 1)));
+    }
+    return;
+  }
+
   if state.is_next_expected(seq_nr) {
     state.received_seq_nr = seq_nr;
     if state.deliver_to.is_some() && !state.waiting_for_confirm {
@@ -228,7 +242,9 @@ fn collect_on_sequenced_message<A>(
     // ギャップ検出: 到着メッセージをスタッシュしてリセンドを要求する。
     // Pekko と同様に、既に受信したメッセージを破棄せず保持し、
     // ギャップが埋まった後に順序通り配信する。
-    state.stashed.push(seq_msg);
+    if !state.stashed.iter().any(|stashed| stashed.seq_nr() == seq_nr) {
+      state.stashed.push(seq_msg);
+    }
     if !state.settings.only_flow_control()
       && let Some(pc) = state.producer_controller.clone()
     {
