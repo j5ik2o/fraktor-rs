@@ -60,12 +60,6 @@ impl StreamIslandActor {
   }
 
   fn propagate_downstream_cancellation(&self) -> Result<(), ActorError> {
-    // Fast path: skip the inner mutex entirely when no boundary has signalled
-    // a downstream cancel since the previous propagation cycle.
-    if !self.downstream_cancellation_control_plane.take_pending() {
-      return Ok(());
-    }
-
     let targets = self
       .downstream_cancellation_control_plane
       .with_locked(|control_plane| control_plane.reserve_cancellation_targets());
