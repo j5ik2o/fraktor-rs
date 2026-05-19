@@ -95,6 +95,8 @@ const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
 
 /// Minimum accepted maximum wire frame size.
 const MINIMUM_MAXIMUM_FRAME_SIZE: usize = 32 * 1024;
+/// Maximum accepted maximum wire frame size.
+const MAXIMUM_MAXIMUM_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 /// Typed remote subsystem configuration.
 ///
@@ -505,10 +507,11 @@ impl RemoteConfig {
   ///
   /// # Panics
   ///
-  /// Panics when `size` is smaller than 32 KiB.
+  /// Panics when `size` is outside 32 KiB..=16 MiB.
   #[must_use]
   pub const fn with_maximum_frame_size(mut self, size: usize) -> Self {
     assert!(size >= MINIMUM_MAXIMUM_FRAME_SIZE, "maximum frame size must be at least 32 KiB");
+    assert!(size <= MAXIMUM_MAXIMUM_FRAME_SIZE, "maximum frame size must be at most 16 MiB");
     self.maximum_frame_size = size;
     self
   }
