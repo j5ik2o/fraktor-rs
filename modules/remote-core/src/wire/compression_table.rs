@@ -189,7 +189,12 @@ impl CompressionTable {
   /// Returns [`WireError::InvalidFormat`] when the advertisement exceeds the configured max or
   /// contains duplicate entry ids.
   pub fn apply_advertisement(&mut self, generation: u64, entries: &[CompressionTableEntry]) -> Result<(), WireError> {
-    if self.max.is_some_and(|max| entries.len() > max.get()) {
+    let Some(max) = self.max else {
+      self.entries.clear();
+      self.latest_pending_generation = None;
+      return Ok(());
+    };
+    if entries.len() > max.get() {
       return Err(WireError::InvalidFormat);
     }
     if has_duplicate_entry_id(entries) {
@@ -205,6 +210,9 @@ impl CompressionTable {
   /// Resolves an inbound table reference id to a literal value.
   #[must_use]
   pub fn resolve(&self, entry_id: u32) -> Option<&str> {
+    if !self.is_enabled() {
+      return None;
+    }
     self.entries.iter().find(|entry| entry.id == entry_id).map(|entry| entry.literal.as_str())
   }
 }

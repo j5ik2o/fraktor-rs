@@ -60,7 +60,7 @@ fn disabled_table_does_not_track_hits_or_advertise() {
 }
 
 #[test]
-fn disabled_table_still_applies_inbound_advertisements() {
+fn disabled_table_ignores_inbound_advertisements() {
   let mut table = CompressionTable::new(None);
   let entries = [CompressionTableEntry::new(9, "/user/a".to_string())];
 
@@ -68,7 +68,7 @@ fn disabled_table_still_applies_inbound_advertisements() {
 
   assert!(table.create_advertisement(CompressionTableKind::ActorRef).is_none());
   assert_eq!(table.encode("/user/a").as_literal(), Some("/user/a"));
-  assert_eq!(table.resolve(9), Some("/user/a"));
+  assert_eq!(table.resolve(9), None);
 }
 
 #[test]
@@ -157,7 +157,7 @@ fn inbound_advertisement_resolves_entry_ids() {
 
   assert_eq!(table.apply_advertisement(7, &entries), Ok(()));
 
-  assert_eq!(table.resolve(9), Some("/user/a"));
+  assert_eq!(table.resolve(9), None);
   assert_eq!(table.resolve(10), None);
 }
 
