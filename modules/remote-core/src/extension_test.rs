@@ -1991,7 +1991,6 @@ fn inbound_shutdown_control_gates_and_restarts_matching_association() {
   assert!(timeout_calls.load(Ordering::Relaxed) >= 1);
 }
 
-
 #[test]
 fn inbound_shutdown_control_does_not_clear_quarantined_association() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
