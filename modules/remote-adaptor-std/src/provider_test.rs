@@ -49,6 +49,7 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
   sync::mpsc::{self, Receiver, Sender},
+  task::spawn_blocking,
   time::timeout,
 };
 
@@ -443,8 +444,8 @@ fn remote_deployment_hook_rejects_non_deployable_props_without_enqueue() {
   assert!(event_rx.try_recv().is_err());
 }
 
-#[test]
-fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
   let (hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
   let request = deployment_request(
     "remote-deploy",
@@ -452,9 +453,9 @@ fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
     Some(deployable_metadata()),
   );
   let success_path = system.user_guardian_ref().canonical_path().expect("user guardian path").to_canonical_uri();
-  let join = thread::spawn(move || hook.deploy_child(request));
+  let join = spawn_blocking(move || hook.deploy_child(request));
 
-  let event = event_rx.blocking_recv().expect("deployment request should be enqueued");
+  let event = event_rx.recv().await.expect("deployment request should be enqueued");
   let (correlation_hi, correlation_lo) = match event {
     | RemoteEvent::OutboundDeployment { remote, pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
       assert_eq!(remote, RemoteCoreAddress::new("remote-sys", "10.0.0.1", 2552));
@@ -475,7 +476,7 @@ fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
     )),
   );
 
-  let outcome = join.join().expect("deployment hook thread should complete");
+  let outcome = join.await.expect("deployment hook blocking task should complete");
   let RemoteDeploymentOutcome::RemoteCreated(actor_ref) = outcome else {
     panic!("expected remote actor ref, got {outcome:?}");
   };
