@@ -7,6 +7,7 @@ use std::{
     atomic::{AtomicU64, Ordering},
     mpsc::{Receiver, RecvTimeoutError},
   },
+  thread::{self, ThreadId},
   time::{Duration, Instant},
 };
 
@@ -49,6 +50,7 @@ pub(crate) struct StdRemoteDeploymentHook {
   serialization:    ArcShared<SerializationExtensionShared>,
   dispatcher:       DeploymentResponseDispatcher,
   timeout:          Duration,
+  install_thread:   ThreadId,
   next_correlation: AtomicU64,
 }
 
@@ -71,6 +73,7 @@ impl StdRemoteDeploymentHook {
       serialization,
       dispatcher,
       timeout,
+      install_thread: thread::current().id(),
       next_correlation: AtomicU64::new(1),
     }
   }
@@ -103,7 +106,7 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       self.dispatcher.cancel(correlation_hi, correlation_lo);
       return RemoteDeploymentOutcome::Failed(format!("remote deployment request enqueue failed: {error:?}"));
     }
-    match recv_deployment_response(&receiver, self.timeout) {
+    match recv_deployment_response(&receiver, self.timeout, self.install_thread) {
       | Ok(DeploymentResponse::Success(success)) => self.resolve_remote_actor(success.actor_path()),
       | Ok(DeploymentResponse::Failure(failure)) => {
         RemoteDeploymentOutcome::Failed(format!("{:?}: {}", failure.code(), failure.reason()))
@@ -135,12 +138,14 @@ enum DeploymentResponseWaitError {
 fn recv_deployment_response(
   receiver: &Receiver<DeploymentResponse>,
   timeout: Duration,
+  install_thread: ThreadId,
 ) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
   match Handle::try_current() {
     | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
       tokio::task::block_in_place(|| recv_timeout(receiver, timeout))
     },
-    | Ok(_) => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
+    | Ok(_) if thread::current().id() == install_thread => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
+    | Ok(_) => recv_timeout(receiver, timeout),
     | Err(_) => recv_timeout(receiver, timeout),
   }
 }

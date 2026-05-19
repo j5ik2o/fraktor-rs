@@ -49,6 +49,7 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
   sync::mpsc::{self, Receiver, Sender},
+  task::spawn_blocking,
   time::timeout,
 };
 
@@ -522,6 +523,41 @@ async fn remote_deployment_hook_current_thread_runtime_fails_without_blocking() 
     RemoteDeploymentOutcome::Failed(reason) if reason.contains("current-thread Tokio runtime")
   ));
   assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundDeployment { .. })));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn remote_deployment_hook_current_thread_spawn_blocking_waits_for_response() {
+  let (hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
+  let request = deployment_request(
+    "remote-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+  let success_path = system.user_guardian_ref().canonical_path().expect("user guardian path").to_canonical_uri();
+  let join = spawn_blocking(move || hook.deploy_child(request));
+
+  let event = event_rx.recv().await.expect("deployment request should be enqueued");
+  let (correlation_hi, correlation_lo) = match event {
+    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      (request.correlation_hi(), request.correlation_lo())
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  };
+  dispatcher.complete(
+    "remote-sys@10.0.0.1:2552",
+    DeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
+      correlation_hi,
+      correlation_lo,
+      success_path.clone(),
+    )),
+  );
+
+  let outcome = join.await.expect("deployment hook blocking task should complete");
+  let RemoteDeploymentOutcome::RemoteCreated(actor_ref) = outcome else {
+    panic!("expected remote actor ref, got {outcome:?}");
+  };
+  let canonical = actor_ref.canonical_path().expect("resolved ref should keep canonical path");
+  assert_eq!(canonical.to_canonical_uri(), success_path);
 }
 
 #[test]
