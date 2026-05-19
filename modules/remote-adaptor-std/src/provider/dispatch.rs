@@ -193,9 +193,15 @@ impl StdRemoteActorRefProvider {
     registry: &SharedLock<RemoteActorPathRegistry>,
     monotonic_epoch: Instant,
   ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
-    let pid = Self::allocate_remote_pid(next_remote_pid)?;
     let path = remote_ref.path().clone();
-    registry.with_lock(|registry| registry.record(pid, path.clone()));
+    let pid = registry.with_lock(|registry| -> Result<Pid, StdRemoteActorRefProviderError> {
+      if let Some(pid) = registry.pid_for_path(&path) {
+        return Ok(pid);
+      }
+      let pid = Self::allocate_remote_pid(next_remote_pid)?;
+      registry.record(pid, path.clone());
+      Ok(pid)
+    })?;
     let sender = RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch);
     Ok(ActorRef::with_canonical_path(pid, sender, path))
   }

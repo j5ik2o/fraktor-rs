@@ -30,11 +30,7 @@ pub struct RemoteActorRefSender {
 impl RemoteActorRefSender {
   /// Creates a new sender for the given `remote_ref`.
   #[must_use]
-  pub(crate) fn new(
-    remote_ref: RemoteActorRef,
-    event_tx: Sender<RemoteEvent>,
-    monotonic_epoch: Instant,
-  ) -> Self {
+  pub(crate) fn new(remote_ref: RemoteActorRef, event_tx: Sender<RemoteEvent>, monotonic_epoch: Instant) -> Self {
     Self { remote_ref, event_tx, monotonic_epoch }
   }
 
