@@ -15,7 +15,10 @@ use fraktor_remote_core_rs::{
   transport::TransportEndpoint,
   wire::FlushScope,
 };
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::{
+  sync::mpsc::{self, Receiver},
+  time::sleep,
+};
 
 use super::*;
 
@@ -291,19 +294,23 @@ async fn deferred_notification_retry_worker_observes_closed_event_queue() {
 
   gate.defer_outbound_event(&event_tx, test_outbound_event(authority.clone(), 42));
   drop(event_rx);
-  for _ in 0..10 {
-    let retry_closed = gate
-      .inner
-      .lock()
-      .expect(FLUSH_GATE_LOCK_POISONED)
-      .retry_sender
-      .as_ref()
-      .is_some_and(|retry_sender| retry_sender.is_closed());
-    if retry_closed {
-      break;
+  tokio::time::timeout(Duration::from_millis(100), async {
+    loop {
+      let retry_closed = gate
+        .inner
+        .lock()
+        .expect(FLUSH_GATE_LOCK_POISONED)
+        .retry_sender
+        .as_ref()
+        .is_some_and(|retry_sender| retry_sender.is_closed());
+      if retry_closed {
+        break;
+      }
+      sleep(Duration::from_millis(1)).await;
     }
-    tokio::task::yield_now().await;
-  }
+  })
+  .await
+  .expect("retry worker should observe closed event queue");
 
   assert!(
     gate

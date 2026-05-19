@@ -6,6 +6,7 @@ mod tests;
 
 use std::{
   sync::{Arc, Mutex},
+  thread::Builder,
   time::{Duration, Instant},
 };
 
@@ -259,14 +260,17 @@ impl StdFlushGate {
     }
     let (retry_sender, mut retry_receiver) = mpsc::channel(RETRY_QUEUE_CAPACITY);
     let sender = event_sender.clone();
-    let _retry_task = std::thread::spawn(move || {
-      while let Some(event) = retry_receiver.blocking_recv() {
-        if sender.blocking_send(event).is_err() {
-          tracing::warn!("remote watch notification event queue is closed");
-          break;
+    let _retry_task = Builder::new()
+      .name("flush_gate-retry".into())
+      .spawn(move || {
+        while let Some(event) = retry_receiver.blocking_recv() {
+          if sender.blocking_send(event).is_err() {
+            tracing::warn!("remote watch notification event queue is closed");
+            break;
+          }
         }
-      }
-    });
+      })
+      .expect("flush gate retry thread should start");
     state.retry_sender = Some(retry_sender.clone());
     retry_sender
   }
