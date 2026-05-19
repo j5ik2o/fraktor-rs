@@ -31,6 +31,10 @@ impl<const N: usize> EmbassyExecutor<N> {
     self.signal.clone()
   }
 
+  pub(crate) fn signal_ready(&self) {
+    self.signal.signal(());
+  }
+
   pub(crate) fn pop_ready(&mut self) -> Option<EmbassyTask> {
     self.queue.try_receive().ok()
   }
