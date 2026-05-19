@@ -1991,6 +1991,57 @@ fn inbound_shutdown_control_gates_and_restarts_matching_association() {
   assert!(timeout_calls.load(Ordering::Relaxed) >= 1);
 }
 
+
+#[test]
+fn inbound_shutdown_control_does_not_clear_quarantined_association() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::Quarantine {
+        authority: remote_address.to_string(),
+        reason:    Some("test quarantine".to_string()),
+      }),
+      now_ms:    80,
+    })
+    .expect("quarantine control should be applied");
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::Shutdown { authority: remote_address.to_string() }),
+      now_ms:    81,
+    })
+    .expect("shutdown control should not clear quarantine");
+
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    82,
+    })
+    .expect("outbound for quarantined association should be discarded");
+
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+}
+
 #[test]
 fn inbound_shutdown_control_with_mismatched_peer_authority_is_ignored() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
