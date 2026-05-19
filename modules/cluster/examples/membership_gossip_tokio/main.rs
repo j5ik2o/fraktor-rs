@@ -103,12 +103,12 @@ async fn main() {
   let coordinator_b = build_coordinator(addr_b);
 
   let transport_a = TokioGossipTransport::bind(
-    TokioGossipTransportConfig::new(addr_a.to_string(), 1024, 16),
+    TokioGossipTransportConfig::new(addr_a.to_string(), 1024, 16).with_allowed_peers(vec![addr_b.to_string()]),
     tokio::runtime::Handle::current(),
   )
   .expect("transport bind");
   let transport_b = TokioGossipTransport::bind(
-    TokioGossipTransportConfig::new(addr_b.to_string(), 1024, 16),
+    TokioGossipTransportConfig::new(addr_b.to_string(), 1024, 16).with_allowed_peers(vec![addr_a.to_string()]),
     tokio::runtime::Handle::current(),
   )
   .expect("transport bind");

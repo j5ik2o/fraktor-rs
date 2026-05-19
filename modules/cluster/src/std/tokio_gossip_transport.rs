@@ -57,6 +57,15 @@ impl TokioGossipTransport {
 
     let (outbound_tx, mut outbound_rx) = mpsc::channel::<OutboundPacket>(config.outbound_capacity);
     let (inbound_tx, inbound_rx) = mpsc::channel::<(String, MembershipDelta)>(config.outbound_capacity);
+    let allowed_peers = config
+      .allowed_peers
+      .iter()
+      .map(|peer| {
+        peer.parse::<SocketAddr>().map_err(|error| GossipTransportError::SendFailed {
+          reason: format!("invalid allowed peer '{peer}': {error}"),
+        })
+      })
+      .collect::<Result<Vec<_>, _>>()?;
 
     let recv_socket = Arc::clone(&socket);
     let recv_task = runtime.spawn(async move {
@@ -67,6 +76,9 @@ impl TokioGossipTransport {
           | Ok((len, addr)) => (&buffer[..len], addr),
           | Err(_) => break,
         };
+        if !allowed_peers.contains(&addr) {
+          continue;
+        }
         if let Ok(delta) = decode_delta(bytes) {
           let _ = inbound_tx.try_send((addr.to_string(), delta));
         }
