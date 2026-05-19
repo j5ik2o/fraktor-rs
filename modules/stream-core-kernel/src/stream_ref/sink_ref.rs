@@ -327,7 +327,7 @@ where
     };
     let endpoint_actor = StageActor::new(
       &system,
-      Box::new(ActorBackedSinkRefReceive::new(self.state.clone(), Self::actor_label(target_actor), target_actor.pid())),
+      Box::new(ActorBackedSinkRefReceive::new(self.state.clone(), Self::actor_label(target_actor))),
     );
     self.system = Some(system);
     self.endpoint_actor = Some(endpoint_actor);
@@ -437,12 +437,11 @@ impl ActorBackedSinkRefState {
 struct ActorBackedSinkRefReceive {
   state:            ActorBackedSinkRefStateShared,
   target_actor_ref: String,
-  target_actor_pid: Pid,
 }
 
 impl ActorBackedSinkRefReceive {
-  const fn new(state: ActorBackedSinkRefStateShared, target_actor_ref: String, target_actor_pid: Pid) -> Self {
-    Self { state, target_actor_ref, target_actor_pid }
+  const fn new(state: ActorBackedSinkRefStateShared, target_actor_ref: String) -> Self {
+    Self { state, target_actor_ref }
   }
 
   fn actor_label(actor_ref: &ActorRef) -> String {
@@ -451,8 +450,7 @@ impl ActorBackedSinkRefReceive {
 
   fn ensure_sender(&self, sender: &ActorRef) -> Result<(), StreamError> {
     let got_ref = Self::actor_label(sender);
-    // Remote senders are identified by canonical path; local loopback may only preserve the PID.
-    if got_ref == self.target_actor_ref || sender.pid() == self.target_actor_pid {
+    if got_ref == self.target_actor_ref {
       return Ok(());
     }
     Err(StreamError::InvalidPartnerActor {
