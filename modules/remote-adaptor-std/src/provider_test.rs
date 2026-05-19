@@ -754,6 +754,25 @@ fn remote_actor_path_registry_replaces_previous_pid_for_same_path() {
 }
 
 #[test]
+fn remote_actor_path_registry_replaces_previous_path_for_same_pid() {
+  let mut registry = RemoteActorPathRegistry::default();
+  let first_path = remote_actor_path();
+  let second_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/remote-actor-replacement").expect("parse");
+  let pid = Pid::new(902, 0);
+
+  registry.record(pid, first_path.clone());
+  registry.record(pid, second_path.clone());
+
+  assert!(registry.pid_for_path(&first_path).is_none());
+  assert_eq!(registry.pid_for_path(&second_path), Some(pid));
+  assert_eq!(
+    registry.path_for_pid(&pid).as_ref().map(ActorPath::to_canonical_uri),
+    Some(second_path.to_canonical_uri())
+  );
+}
+
+#[test]
 fn remote_actor_ref_sender_drop_keeps_pid_path_mapping_for_remote_deathwatch() {
   let mut fixture = make_provider_fixture();
   let registry = fixture.registry.clone();
