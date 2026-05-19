@@ -259,9 +259,9 @@ impl StdFlushGate {
     }
     let (retry_sender, mut retry_receiver) = mpsc::channel(RETRY_QUEUE_CAPACITY);
     let sender = event_sender.clone();
-    let _retry_task = tokio::spawn(async move {
-      while let Some(event) = retry_receiver.recv().await {
-        if sender.send(event).await.is_err() {
+    let _retry_task = std::thread::spawn(move || {
+      while let Some(event) = retry_receiver.blocking_recv() {
+        if sender.blocking_send(event).is_err() {
           tracing::warn!("remote watch notification event queue is closed");
           break;
         }
