@@ -756,7 +756,9 @@ impl GraphInterpreter {
     }
 
     let preferred_input_slot = self.flow_preferred_input_edge_slot(stage_index);
-    let Some((edge_index, input)) = self.poll_from_incoming_edges(ports.inlet, preferred_input_slot)? else {
+    let Some((edge_index, input)) =
+      self.poll_from_flow_incoming_edges(stage_index, ports.inlet, preferred_input_slot)?
+    else {
       return Ok(());
     };
     step.consumed_input = true;
@@ -800,6 +802,13 @@ impl GraphInterpreter {
     match &self.stages[stage_index] {
       | StageDefinition::Flow(flow) => flow.logic.preferred_input_edge_slot(),
       | _ => None,
+    }
+  }
+
+  fn flow_can_accept_input_from_edge(&self, stage_index: usize, edge_slot: usize) -> bool {
+    match &self.stages[stage_index] {
+      | StageDefinition::Flow(flow) => flow.logic.can_accept_input_from_edge(edge_slot),
+      | _ => false,
     }
   }
 
@@ -1095,6 +1104,21 @@ impl GraphInterpreter {
     preferred_slot: Option<usize>,
   ) -> Result<Option<(usize, DynValue)>, StreamError> {
     self.connections.poll_incoming_with_preferred(to, preferred_slot)
+  }
+
+  fn poll_from_flow_incoming_edges(
+    &mut self,
+    stage_index: usize,
+    to: PortId,
+    preferred_slot: Option<usize>,
+  ) -> Result<Option<(usize, DynValue)>, StreamError> {
+    let incoming_count = self.connections.incoming_edge_indices(to).len();
+    let accepted_slots = (0..incoming_count)
+      .map(|edge_slot| self.flow_can_accept_input_from_edge(stage_index, edge_slot))
+      .collect::<Vec<_>>();
+    self
+      .connections
+      .poll_incoming_matching(to, preferred_slot, |edge_slot| accepted_slots.get(edge_slot).copied().unwrap_or(false))
   }
 
   fn offer_to_next_outgoing_edge(&mut self, from: PortId, value: DynValue) -> Result<(), StreamError> {
@@ -1413,8 +1437,18 @@ impl GraphInterpreter {
 
   fn stage_input_exhausted(&self, stage_index: usize) -> bool {
     let incoming_edges = self.incoming_edge_indices_for_stage(stage_index);
-    !incoming_edges.is_empty()
-      && incoming_edges.iter().all(|edge_index| self.connections.edge_closed_and_empty(*edge_index))
+    if incoming_edges.is_empty() {
+      return false;
+    }
+
+    let any_input_closed_empty =
+      incoming_edges.iter().any(|edge_index| self.connections.edge_closed_and_empty(*edge_index));
+    let all_inputs_closed_empty =
+      incoming_edges.iter().all(|edge_index| self.connections.edge_closed_and_empty(*edge_index));
+    match &self.stages[stage_index] {
+      | StageDefinition::Flow(flow) => flow.logic.input_exhausted(any_input_closed_empty, all_inputs_closed_empty),
+      | _ => all_inputs_closed_empty,
+    }
   }
 
   fn incoming_edge_indices_for_stage(&self, stage_index: usize) -> Vec<usize> {

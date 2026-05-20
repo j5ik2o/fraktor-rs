@@ -40,18 +40,21 @@ const DEPLOYABLE_METADATA_REQUIRED: &str = "remote deployment requires deployabl
 const TARGET_HOST_REQUIRED: &str = "remote deployment target host is missing";
 const TARGET_PORT_REQUIRED: &str = "remote deployment target port is missing";
 const TARGET_PARENT_REQUIRED: &str = "remote deployment target parent path is missing";
+const CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED: &str =
+  "remote deployment cannot wait synchronously on a current-thread Tokio runtime";
 
 /// Std adapter hook that turns actor-core remote deployment requests into wire create requests.
 pub(crate) struct StdRemoteDeploymentHook {
-  local_address:    UniqueAddress,
-  system:           ActorSystem,
-  event_sender:     Sender<RemoteEvent>,
-  monotonic_epoch:  Instant,
-  serialization:    ArcShared<SerializationExtensionShared>,
-  dispatcher:       DeploymentResponseDispatcher,
-  timeout:          Duration,
-  install_thread:   ThreadId,
-  next_correlation: AtomicU64,
+  local_address:         UniqueAddress,
+  system:                ActorSystem,
+  event_sender:          Sender<RemoteEvent>,
+  monotonic_epoch:       Instant,
+  serialization:         ArcShared<SerializationExtensionShared>,
+  dispatcher:            DeploymentResponseDispatcher,
+  timeout:               Duration,
+  // RuntimeFlavor::CurrentThread 判定後に、driver thread と blocking worker を分けるためだけに使う。
+  current_thread_driver: Option<ThreadId>,
+  next_correlation:      AtomicU64,
 }
 
 impl StdRemoteDeploymentHook {
@@ -65,6 +68,10 @@ impl StdRemoteDeploymentHook {
     dispatcher: DeploymentResponseDispatcher,
     timeout: Duration,
   ) -> Self {
+    let current_thread_driver = match Handle::try_current() {
+      | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::CurrentThread => Some(thread::current().id()),
+      | _ => None,
+    };
     Self {
       local_address,
       system,
@@ -73,7 +80,7 @@ impl StdRemoteDeploymentHook {
       serialization,
       dispatcher,
       timeout,
-      install_thread: thread::current().id(),
+      current_thread_driver,
       next_correlation: AtomicU64::new(1),
     }
   }
@@ -93,6 +100,9 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       | Ok(create_request) => create_request,
       | Err(reason) => return RemoteDeploymentOutcome::Failed(reason),
     };
+    let Some(wait_mode) = current_runtime_wait_mode(self.current_thread_driver) else {
+      return RemoteDeploymentOutcome::Failed(String::from(CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED));
+    };
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
     let expected_authority = target.to_string();
@@ -106,7 +116,7 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
       self.dispatcher.cancel(correlation_hi, correlation_lo);
       return RemoteDeploymentOutcome::Failed(format!("remote deployment request enqueue failed: {error:?}"));
     }
-    match recv_deployment_response(&receiver, self.timeout, self.install_thread) {
+    match recv_deployment_response(&receiver, self.timeout, wait_mode) {
       | Ok(DeploymentResponse::Success(success)) => self.resolve_remote_actor(success.actor_path()),
       | Ok(DeploymentResponse::Failure(failure)) => {
         RemoteDeploymentOutcome::Failed(format!("{:?}: {}", failure.code(), failure.reason()))
@@ -119,12 +129,6 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
         self.dispatcher.cancel(correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment response channel closed"))
       },
-      | Err(DeploymentResponseWaitError::CurrentThreadEventLoop) => {
-        self.dispatcher.cancel(correlation_hi, correlation_lo);
-        RemoteDeploymentOutcome::Failed(String::from(
-          "remote deployment cannot wait synchronously on a current-thread Tokio runtime",
-        ))
-      },
     }
   }
 }
@@ -132,21 +136,32 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
 enum DeploymentResponseWaitError {
   RecvTimeout,
   RecvDisconnected,
-  CurrentThreadEventLoop,
+}
+
+enum DeploymentWaitMode {
+  BlockInPlace,
+  DirectRecv,
+}
+
+fn current_runtime_wait_mode(current_thread_driver: Option<ThreadId>) -> Option<DeploymentWaitMode> {
+  match Handle::try_current() {
+    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => Some(DeploymentWaitMode::BlockInPlace),
+    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::CurrentThread => match current_thread_driver {
+      | Some(driver_thread) if thread::current().id() != driver_thread => Some(DeploymentWaitMode::DirectRecv),
+      | _ => None,
+    },
+    | Ok(_) | Err(_) => Some(DeploymentWaitMode::DirectRecv),
+  }
 }
 
 fn recv_deployment_response(
   receiver: &Receiver<DeploymentResponse>,
   timeout: Duration,
-  install_thread: ThreadId,
+  wait_mode: DeploymentWaitMode,
 ) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
-  match Handle::try_current() {
-    | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
-      tokio::task::block_in_place(|| recv_timeout(receiver, timeout))
-    },
-    | Ok(_) if thread::current().id() == install_thread => Err(DeploymentResponseWaitError::CurrentThreadEventLoop),
-    | Ok(_) => recv_timeout(receiver, timeout),
-    | Err(_) => recv_timeout(receiver, timeout),
+  match wait_mode {
+    | DeploymentWaitMode::BlockInPlace => tokio::task::block_in_place(|| recv_timeout(receiver, timeout)),
+    | DeploymentWaitMode::DirectRecv => recv_timeout(receiver, timeout),
   }
 }
 

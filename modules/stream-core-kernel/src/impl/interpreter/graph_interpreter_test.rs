@@ -761,6 +761,50 @@ fn graph_connections_dispatches_same_outlet_to_next_edge() {
 }
 
 #[test]
+fn graph_connections_does_not_fallback_to_disallowed_incoming_slot() {
+  let first_outlet: Outlet<u32> = Outlet::new();
+  let second_outlet: Outlet<u32> = Outlet::new();
+  let inlet: Inlet<u32> = Inlet::new();
+  let config = StreamBufferConfig::new(1, OverflowPolicy::Block);
+  let mut connections = GraphConnections::new(
+    vec![
+      BufferedEdge::new(first_outlet.id(), inlet.id(), MatCombine::Left, config),
+      BufferedEdge::new(second_outlet.id(), inlet.id(), MatCombine::Right, config),
+    ],
+    Vec::new(),
+  );
+  connections.offer_at(0, Box::new(1_u32)).expect("first offer");
+  connections.offer_at(1, Box::new(2_u32)).expect("second offer");
+
+  let (slot, value) = connections
+    .poll_incoming_matching(inlet.id(), Some(0), |candidate| candidate == 1)
+    .expect("poll")
+    .expect("accepted slot");
+
+  assert_eq!(slot, 1);
+  assert_eq!(*value.downcast::<u32>().expect("u32"), 2_u32);
+  let (_, remaining) = connections.poll_incoming_with_preferred(inlet.id(), Some(0)).expect("poll").expect("remaining");
+  assert_eq!(*remaining.downcast::<u32>().expect("u32"), 1_u32);
+}
+
+#[test]
+fn flow_can_accept_input_from_edge_returns_false_for_non_flow_stage() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamFuture::new();
+  let source = source_single_u32(source_outlet, 1_u32);
+  let sink = sum_fold_u32_sink(sink_inlet, completion);
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::Right,
+  )]);
+  let interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  assert!(!interpreter.flow_can_accept_input_from_edge(0, 0));
+}
+
+#[test]
 fn interpreter_snapshot_builder_uses_compiled_edges_without_owning_interpreter_drive_state() {
   let graph =
     Source::single(1_u32).map(|value| value + 1).into_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight);
@@ -4756,6 +4800,46 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.value(), Completion::Ready(Ok(230)));
+}
+
+#[test]
+fn zip_flow_completes_when_one_input_finishes_with_other_input_buffered() {
+  let left_outlet: Outlet<u32> = Outlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
+  let completion = StreamFuture::new();
+
+  let left_source = source_sequence_u32(left_outlet, 3);
+  let right_source = source_single_u32(right_outlet, 1);
+  let zip = zip_definition::<u32>(2);
+  let zip_inlet = zip.inlet;
+  let zip_outlet = zip.outlet;
+  let sink = zip_sum_fold_u32_sink(&sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(left_source),
+      StageDefinition::Source(right_source),
+      StageDefinition::Flow(zip),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (left_outlet.id(), zip_inlet, MatCombine::Left),
+      (right_outlet.id(), zip_inlet, MatCombine::Left),
+      (zip_outlet, sink_inlet.id(), MatCombine::Right),
+    ],
+  );
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  for _ in 0..64 {
+    if interpreter.state() != StreamState::Running {
+      break;
+    }
+    assert_eq!(interpreter.drive(), DriveOutcome::Progressed);
+  }
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.value(), Completion::Ready(Ok(2)));
 }
 
 #[test]

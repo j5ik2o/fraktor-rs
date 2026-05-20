@@ -578,6 +578,11 @@ pub(crate) trait FlowLogic: Send {
     true
   }
 
+  fn can_accept_input_from_edge(&self, edge_slot: usize) -> bool {
+    let _ = edge_slot;
+    self.can_accept_input()
+  }
+
   fn can_accept_input_while_output_buffered(&self) -> bool {
     false
   }
@@ -601,6 +606,11 @@ pub(crate) trait FlowLogic: Send {
 
   fn expected_fan_in(&self) -> Option<usize> {
     None
+  }
+
+  fn input_exhausted(&self, any_input_closed_empty: bool, all_inputs_closed_empty: bool) -> bool {
+    let _ = any_input_closed_empty;
+    all_inputs_closed_empty
   }
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {

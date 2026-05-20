@@ -48,16 +48,15 @@ where
     config: PersistenceEffectorConfig<S, E, M>,
     recovery_reply_to: ReplyRef<S, E>,
   ) -> TypedProps<PersistenceStoreCommand<S, E>> {
-    let child_config = config.clone();
-    let child_reply_to = recovery_reply_to.clone();
-    let child_props = persistent_props(move || Self::new(child_config.clone(), child_reply_to.clone()));
-    let backoff_config = config.backoff_config();
+    let backoff_config = config.backoff_config().clone();
+    let stash_capacity = config.stash_capacity();
+    let child_props = persistent_props(move || Self::new(config.clone(), recovery_reply_to.clone()));
     let strategy = BackoffSupervisorStrategy::new(
       backoff_config.min_backoff(),
       backoff_config.max_backoff(),
       backoff_config.random_factor(),
     )
-    .with_stash_capacity(config.stash_capacity());
+    .with_stash_capacity(stash_capacity);
     let options = BackoffOnFailureOptions::new(child_props, "store".to_string(), strategy);
     TypedProps::from_props(BackoffSupervisor::props_on_failure(options))
   }

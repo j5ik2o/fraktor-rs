@@ -4,7 +4,7 @@ use std::thread::yield_now;
 
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
-use super::{BackoffConfig, BackoffSupervisorActor};
+use super::{BackoffConfig, BackoffSupervisorActor, BackoffSupervisorInternalCommand};
 use crate::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -92,6 +92,28 @@ struct FailingOnMessageActor;
 impl Actor for FailingOnMessageActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Err(ActorError::recoverable("boom"))
+  }
+}
+
+struct FailOnOneProbeActor {
+  received: ArcShared<SpinSyncMutex<Vec<i32>>>,
+}
+
+impl FailOnOneProbeActor {
+  fn new(received: ArcShared<SpinSyncMutex<Vec<i32>>>) -> Self {
+    Self { received }
+  }
+}
+
+impl Actor for FailOnOneProbeActor {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    match *message.downcast_ref::<i32>().expect("probe message") {
+      | 1 => Err(ActorError::recoverable("boom")),
+      | value => {
+        self.received.lock().push(value);
+        Ok(())
+      },
+    }
   }
 }
 
@@ -434,6 +456,52 @@ fn on_failure_forwarding_keeps_supervisor_responsive_until_backoff_restart() {
 
   let restarted_child = current_child_pid(&mut sup_ref).expect("restarted child after responsive failure path");
   assert_ne!(restarted_child, initial_child);
+}
+
+#[test]
+fn on_failure_stashes_user_messages_until_backoff_restart() {
+  let system = ActorSystem::new_empty();
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_props = Props::from_fn({
+    let received = received.clone();
+    move || FailOnOneProbeActor::new(received.clone())
+  });
+  let options =
+    BackoffOnFailureOptions::new(child_props, String::from("child"), one_tick_strategy().with_stash_capacity(4));
+  let sup_props = BackoffSupervisor::props_on_failure(options);
+  let sup_pid = system.allocate_pid();
+  let sup_cell = register_cell(&system, sup_pid, "backoff-sup-stash-during-backoff", &sup_props);
+  let mut sup_ref = sup_cell.actor_ref();
+
+  let initial_child = current_child_pid(&mut sup_ref).expect("initial child");
+  sup_ref.tell(AnyMessage::new(1_i32));
+
+  assert_eq!(current_child_pid(&mut sup_ref), None, "failed child should stay stopped until backoff elapses");
+
+  sup_ref.tell(AnyMessage::new(2_i32));
+  assert!(received.lock().is_empty(), "message sent during backoff must wait for the restarted child");
+
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+
+  wait_until(|| *received.lock() == vec![2]);
+  let restarted_child = current_child_pid(&mut sup_ref).expect("restarted child after stashed message replay");
+  assert_ne!(restarted_child, initial_child);
+}
+
+#[test]
+fn start_child_command_clears_restart_scheduled_when_spawn_fails() {
+  let system = ActorSystem::new_empty();
+  let options = BackoffOnFailureOptions::new(noop_props(), String::from("child"), one_tick_strategy());
+  let config = BackoffConfig::from_failure(options);
+  let mut actor = BackoffSupervisorActor::from_config(config);
+  actor.initialized = true;
+  actor.restart_scheduled = true;
+  let mut ctx = ActorContext::new(&system, Pid::new(100, 0));
+
+  let result = actor.handle_internal_command(&mut ctx, &BackoffSupervisorInternalCommand::StartChild);
+
+  assert!(result.is_err(), "unregistered parent context should make child spawn fail");
+  assert!(!actor.restart_scheduled, "consumed restart command must not leave stale scheduled state");
 }
 
 #[test]

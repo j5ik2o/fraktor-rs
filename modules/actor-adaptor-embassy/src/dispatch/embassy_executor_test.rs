@@ -73,3 +73,28 @@ fn executor_shutdown_does_not_stop_other_executor_from_same_factory() {
   assert_eq!(driver.drain_ready(), 1);
   assert_eq!(count.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn driver_drain_ready_with_limit_stops_after_batch() {
+  let factory = EmbassyExecutorFactory::<8>::new();
+  let driver = factory.driver();
+  let executor = factory.create(DEFAULT_DISPATCHER_ID);
+  let count = Arc::new(AtomicUsize::new(0));
+
+  for _ in 0..3 {
+    let count_clone = count.clone();
+    executor
+      .execute(
+        Box::new(move || {
+          count_clone.fetch_add(1, Ordering::SeqCst);
+        }),
+        0,
+      )
+      .expect("execute should enqueue");
+  }
+
+  assert_eq!(driver.drain_ready_with_limit(2), 2);
+  assert_eq!(count.load(Ordering::SeqCst), 2);
+  assert_eq!(driver.drain_ready(), 1);
+  assert_eq!(count.load(Ordering::SeqCst), 3);
+}

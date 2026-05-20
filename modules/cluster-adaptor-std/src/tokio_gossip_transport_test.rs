@@ -45,12 +45,14 @@ async fn poll_returns_empty_when_no_messages() {
 }
 
 #[tokio::test]
-async fn recv_returns_delta_from_udp() {
+async fn recv_returns_delta_from_allowed_udp_peer() {
   let bind_addr = free_udp_addr();
-  let config = TokioGossipTransportConfig::new(bind_addr.to_string(), 1024, 8);
+  let sender = UdpSocket::bind("127.0.0.1:0").await.expect("sender bind");
+  let sender_addr = sender.local_addr().expect("sender local addr");
+  let config =
+    TokioGossipTransportConfig::new(bind_addr.to_string(), 1024, 8).with_allowed_peers(vec![sender_addr.to_string()]);
   let mut transport = TokioGossipTransport::bind(config, Handle::current()).expect("transport bind");
 
-  let sender = UdpSocket::bind("127.0.0.1:0").await.expect("sender bind");
   let payload = transport.encode_delta(&sample_delta()).expect("encode");
   sender.send_to(&payload, bind_addr).await.expect("send");
 
@@ -58,4 +60,21 @@ async fn recv_returns_delta_from_udp() {
   let deltas = transport.poll_deltas();
   assert_eq!(deltas.len(), 1);
   assert_eq!(deltas[0].1, sample_delta());
+}
+
+#[tokio::test]
+async fn recv_drops_delta_from_untrusted_udp_peer() {
+  let bind_addr = free_udp_addr();
+  let trusted = UdpSocket::bind("127.0.0.1:0").await.expect("trusted bind");
+  let sender = UdpSocket::bind("127.0.0.1:0").await.expect("sender bind");
+  let config = TokioGossipTransportConfig::new(bind_addr.to_string(), 1024, 8)
+    .with_allowed_peers(vec![trusted.local_addr().expect("trusted local addr").to_string()]);
+  let mut transport = TokioGossipTransport::bind(config, Handle::current()).expect("transport bind");
+
+  let payload = transport.encode_delta(&sample_delta()).expect("encode");
+  sender.send_to(&payload, bind_addr).await.expect("send");
+
+  tokio::time::sleep(Duration::from_millis(50)).await;
+  let deltas = transport.poll_deltas();
+  assert!(deltas.is_empty());
 }

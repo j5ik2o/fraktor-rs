@@ -68,7 +68,7 @@ impl BackoffSupervisor {
   #[allow(clippy::needless_pass_by_value)]
   pub fn props_on_stop(options: BackoffOnStopOptions) -> Props {
     let config = BackoffConfig::from_stop(options);
-    Props::from_fn(move || BackoffSupervisorActor::from_config(config.clone()))
+    Props::from_fn(move || BackoffSupervisorActor::from_config(config.clone())).with_stash_mailbox()
   }
 
   /// Creates [`Props`] for a backoff supervisor that restarts its child on failure.
@@ -78,7 +78,7 @@ impl BackoffSupervisor {
   #[allow(clippy::needless_pass_by_value)]
   pub fn props_on_failure(options: BackoffOnFailureOptions) -> Props {
     let config = BackoffConfig::from_failure(options);
-    Props::from_fn(move || BackoffSupervisorActor::from_config(config.clone()))
+    Props::from_fn(move || BackoffSupervisorActor::from_config(config.clone())).with_stash_mailbox()
   }
 }
 
@@ -131,6 +131,7 @@ struct BackoffSupervisorActor {
   max_retries: u32,
   initialized: bool,
   pending_restart: bool,
+  restart_scheduled: bool,
 }
 
 impl BackoffSupervisorActor {
@@ -169,6 +170,7 @@ impl BackoffSupervisorActor {
       max_retries: config.max_retries,
       initialized: false,
       pending_restart: false,
+      restart_scheduled: false,
     }
   }
 
@@ -187,6 +189,8 @@ impl BackoffSupervisorActor {
         }
         self.child = Some(child);
         self.initialized = true;
+        self.restart_scheduled = false;
+        ctx.unstash_all()?;
         Ok(())
       },
       | Err(error) => {
@@ -216,13 +220,15 @@ impl BackoffSupervisorActor {
     restart_count.saturating_sub(1)
   }
 
-  fn schedule_start_child(&self, ctx: &mut ActorContext<'_>, next_restart_count: u32) -> Result<(), ActorError> {
+  fn schedule_start_child(&mut self, ctx: &mut ActorContext<'_>, next_restart_count: u32) -> Result<(), ActorError> {
     // Pekko calculates the delay using the current restart counter before incrementing it.
     // We store the incremented restart count first, so map "restart attempt N" to
     // "backoff iteration N-1" explicitly here.
     let backoff_iteration = Self::backoff_iteration_for_restart_count(next_restart_count);
     let delay = self.strategy.compute_backoff(backoff_iteration);
-    Self::schedule_internal_command(ctx, delay, BackoffSupervisorInternalCommand::StartChild)
+    Self::schedule_internal_command(ctx, delay, BackoffSupervisorInternalCommand::StartChild)?;
+    self.restart_scheduled = true;
+    Ok(())
   }
 
   fn schedule_auto_reset(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
@@ -246,6 +252,7 @@ impl BackoffSupervisorActor {
   ) -> Result<(), ActorError> {
     match command {
       | BackoffSupervisorInternalCommand::StartChild => {
+        self.restart_scheduled = false;
         if self.child.is_none() {
           self.start_child(ctx)?;
           self.schedule_auto_reset(ctx)?;
@@ -320,6 +327,8 @@ impl Actor for BackoffSupervisorActor {
     {
       let mut child_ref = child.actor_ref().clone();
       ctx.forward(&mut child_ref, msg);
+    } else if self.restart_scheduled {
+      ctx.stash_with_limit(self.strategy.stash_capacity())?;
     }
     Ok(())
   }

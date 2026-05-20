@@ -38,6 +38,22 @@ impl GraphConnections {
     to: PortId,
     preferred_slot: Option<usize>,
   ) -> Result<Option<(usize, DynValue)>, StreamError> {
+    self.poll_incoming_matching(to, preferred_slot, |_| true)
+  }
+
+  /// Polls one buffered element from incoming edges accepted by the slot predicate.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when the underlying edge buffer rejects a poll.
+  pub(crate) fn poll_incoming_matching<F>(
+    &mut self,
+    to: PortId,
+    preferred_slot: Option<usize>,
+    mut accept_slot: F,
+  ) -> Result<Option<(usize, DynValue)>, StreamError>
+  where
+    F: FnMut(usize) -> bool, {
     let incoming_count = self.edges.iter().filter(|edge| edge.to() == to).count();
     if incoming_count == 0 {
       return Ok(None);
@@ -48,7 +64,7 @@ impl GraphConnections {
       && let Some(edge_index) = self.nth_incoming_index(to, slot)
     {
       preferred_checked = true;
-      if !self.edges[edge_index].is_empty() {
+      if accept_slot(slot) && !self.edges[edge_index].is_empty() {
         let Some(value) = self.edges[edge_index].poll()? else {
           return Err(StreamError::InvalidConnection);
         };
@@ -61,6 +77,7 @@ impl GraphConnections {
     for offset in 0..incoming_count.saturating_sub(skipped_slots) {
       let slot = (start_slot + offset) % incoming_count;
       if let Some(edge_index) = self.nth_incoming_index(to, slot)
+        && accept_slot(slot)
         && !self.edges[edge_index].is_empty()
       {
         let Some(value) = self.edges[edge_index].poll()? else {

@@ -522,7 +522,7 @@ async fn remote_deployment_hook_current_thread_runtime_fails_without_blocking() 
     outcome,
     RemoteDeploymentOutcome::Failed(reason) if reason.contains("current-thread Tokio runtime")
   ));
-  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundDeployment { .. })));
+  assert!(event_rx.try_recv().is_err());
 }
 
 #[test]
@@ -736,7 +736,44 @@ fn remote_actor_ref_resolution_records_pid_path_mapping() {
 }
 
 #[test]
-fn remote_actor_ref_sender_removes_pid_path_mapping_after_last_ref_is_dropped() {
+fn remote_actor_path_registry_replaces_previous_pid_for_same_path() {
+  let mut registry = RemoteActorPathRegistry::default();
+  let remote_path = remote_actor_path();
+  let first_pid = Pid::new(900, 0);
+  let second_pid = Pid::new(901, 0);
+
+  registry.record(first_pid, remote_path.clone());
+  registry.record(second_pid, remote_path.clone());
+
+  assert!(registry.path_for_pid(&first_pid).is_none());
+  assert_eq!(registry.pid_for_path(&remote_path), Some(second_pid));
+  assert_eq!(
+    registry.path_for_pid(&second_pid).as_ref().map(ActorPath::to_canonical_uri),
+    Some(remote_path.to_canonical_uri())
+  );
+}
+
+#[test]
+fn remote_actor_path_registry_replaces_previous_path_for_same_pid() {
+  let mut registry = RemoteActorPathRegistry::default();
+  let first_path = remote_actor_path();
+  let second_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/remote-actor-replacement").expect("parse");
+  let pid = Pid::new(902, 0);
+
+  registry.record(pid, first_path.clone());
+  registry.record(pid, second_path.clone());
+
+  assert!(registry.pid_for_path(&first_path).is_none());
+  assert_eq!(registry.pid_for_path(&second_path), Some(pid));
+  assert_eq!(
+    registry.path_for_pid(&pid).as_ref().map(ActorPath::to_canonical_uri),
+    Some(second_path.to_canonical_uri())
+  );
+}
+
+#[test]
+fn remote_actor_ref_sender_drop_keeps_pid_path_mapping_for_remote_deathwatch() {
   let mut fixture = make_provider_fixture();
   let registry = fixture.registry.clone();
   let remote_path = remote_actor_path();
@@ -747,7 +784,24 @@ fn remote_actor_ref_sender_removes_pid_path_mapping_after_last_ref_is_dropped() 
 
   assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_some());
   drop(actor_ref);
-  assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_none());
+  assert!(registry.with_lock(|registry| registry.path_for_pid(&pid)).is_some());
+}
+
+#[test]
+fn remote_actor_ref_resolution_reuses_recorded_pid_after_cache_eviction() {
+  let mut fixture = make_provider_fixture();
+  let remote_path = remote_actor_path();
+
+  let first = fixture.provider.actor_ref(remote_path.clone()).expect("first remote actor ref should resolve");
+  for index in 0..1024 {
+    let eviction_path =
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/evict-{index}")).expect("parse");
+    let _evicted = fixture.provider.actor_ref(eviction_path).expect("evicting remote actor ref should resolve");
+  }
+  let resolved_again = fixture.provider.actor_ref(remote_path).expect("remote actor ref should resolve after eviction");
+
+  assert_eq!(resolved_again.pid(), first.pid());
+  assert_eq!(fixture.actor_ref_call_count(), 1026);
 }
 
 #[test]
