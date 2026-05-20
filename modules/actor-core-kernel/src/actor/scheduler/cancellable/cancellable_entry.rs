@@ -54,18 +54,14 @@ impl CancellableEntry {
 
   /// Attempts to cancel the entry while it is scheduled or executing.
   pub fn try_cancel(&self) -> bool {
-    let mut current = self.state.load(Ordering::Acquire);
-    loop {
-      let state = CancellableState::from(current);
-      if !matches!(state, CancellableState::Scheduled | CancellableState::Executing) {
-        return false;
-      }
-      match self.state.compare_exchange(current, CancellableState::Cancelled as u8, Ordering::AcqRel, Ordering::Acquire)
-      {
-        | Ok(_) => return true,
-        | Err(actual) => current = actual,
-      }
-    }
+    self
+      .state
+      .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+        let state = CancellableState::from(current);
+        matches!(state, CancellableState::Scheduled | CancellableState::Executing)
+          .then_some(CancellableState::Cancelled as u8)
+      })
+      .is_ok()
   }
 
   /// Forces the entry into the cancelled state regardless of the current state.

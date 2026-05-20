@@ -97,6 +97,19 @@ fn new_stream_island_actor(stream: StreamShared) -> StreamIslandActor {
   )
 }
 
+fn new_stream_island_actor_with_tick_handle_slot(
+  stream: StreamShared,
+  tick_handle_slot: ArcShared<SpinSyncMutex<Option<SchedulerHandle>>>,
+) -> StreamIslandActor {
+  StreamIslandActor::new(
+    stream.clone(),
+    new_drive_gate(),
+    new_downstream_cancellation_control_plane(),
+    vec![stream],
+    tick_handle_slot,
+  )
+}
+
 fn cancel_failing_stream() -> StreamShared {
   let graph = Source::<u32, StreamNotUsed>::from_logic(StageKind::SourceSingle, CancelFailingSourceLogic)
     .into_mat(Sink::ignore(), KeepRight);
@@ -151,6 +164,20 @@ fn drive_command_does_not_drive_terminal_stream() {
   receive_command(&mut actor, StreamIslandCommand::Drive);
 
   assert_eq!(pull_count(&pulls), pulls_before);
+}
+
+#[test]
+fn drive_command_reports_tick_cancellation_failure() {
+  let pulls = new_pull_counter();
+  let stream = counting_stream(pulls);
+  stream.cancel().expect("cancel should reach terminal state");
+  let tick_handle_slot = new_tick_handle_slot();
+  *tick_handle_slot.lock() = Some(SchedulerHandle::new(42));
+  let mut actor = new_stream_island_actor_with_tick_handle_slot(stream, tick_handle_slot);
+
+  let result = receive_command_result(&mut actor, StreamIslandCommand::Drive);
+
+  assert!(result.is_err());
 }
 
 #[test]
