@@ -366,24 +366,27 @@ fn inline_executor_shared() -> ExecutorShared {
   ExecutorShared::new(Box::new(InlineExec), TrampolineState::new())
 }
 
-struct ClosedUserDispatcherFactory {
-  id: &'static str,
+struct RejectingUserDispatcherFactory {
+  id:     &'static str,
+  closed: bool,
 }
 
-impl MessageDispatcherFactory for ClosedUserDispatcherFactory {
+impl MessageDispatcherFactory for RejectingUserDispatcherFactory {
   fn dispatcher(&self) -> MessageDispatcherShared {
     let settings = DispatcherConfig::new(self.id, nz(8), None, Duration::from_secs(1));
-    MessageDispatcherShared::new(Box::new(ClosedUserDispatcher {
-      core: DispatcherCore::new(&settings, inline_executor_shared()),
+    MessageDispatcherShared::new(Box::new(RejectingUserDispatcher {
+      core:   DispatcherCore::new(&settings, inline_executor_shared()),
+      closed: self.closed,
     }))
   }
 }
 
-struct ClosedUserDispatcher {
-  core: DispatcherCore,
+struct RejectingUserDispatcher {
+  core:   DispatcherCore,
+  closed: bool,
 }
 
-impl MessageDispatcher for ClosedUserDispatcher {
+impl MessageDispatcher for RejectingUserDispatcher {
   fn core(&self) -> &DispatcherCore {
     &self.core
   }
@@ -397,31 +400,38 @@ impl MessageDispatcher for ClosedUserDispatcher {
     _receiver: &ArcShared<ActorCell>,
     envelope: Envelope,
   ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
-    Err(SendError::closed(envelope.into_payload()))
+    if self.closed {
+      Err(SendError::closed(envelope.into_payload()))
+    } else {
+      Err(SendError::full(envelope.into_payload()))
+    }
   }
 }
 
-struct StopClosedDispatcherFactory {
-  id:         &'static str,
-  close_stop: ArcShared<SpinSyncMutex<bool>>,
+struct RejectingStopDispatcherFactory {
+  id:          &'static str,
+  reject_stop: ArcShared<SpinSyncMutex<bool>>,
+  closed:      bool,
 }
 
-impl MessageDispatcherFactory for StopClosedDispatcherFactory {
+impl MessageDispatcherFactory for RejectingStopDispatcherFactory {
   fn dispatcher(&self) -> MessageDispatcherShared {
     let settings = DispatcherConfig::new(self.id, nz(8), None, Duration::from_secs(1));
-    MessageDispatcherShared::new(Box::new(StopClosedDispatcher {
-      default:    DefaultDispatcher::new(&settings, inline_executor_shared()),
-      close_stop: self.close_stop.clone(),
+    MessageDispatcherShared::new(Box::new(RejectingStopDispatcher {
+      default:     DefaultDispatcher::new(&settings, inline_executor_shared()),
+      reject_stop: self.reject_stop.clone(),
+      closed:      self.closed,
     }))
   }
 }
 
-struct StopClosedDispatcher {
-  default:    DefaultDispatcher,
-  close_stop: ArcShared<SpinSyncMutex<bool>>,
+struct RejectingStopDispatcher {
+  default:     DefaultDispatcher,
+  reject_stop: ArcShared<SpinSyncMutex<bool>>,
+  closed:      bool,
 }
 
-impl MessageDispatcher for StopClosedDispatcher {
+impl MessageDispatcher for RejectingStopDispatcher {
   fn core(&self) -> &DispatcherCore {
     self.default.core()
   }
@@ -435,8 +445,11 @@ impl MessageDispatcher for StopClosedDispatcher {
     receiver: &ArcShared<ActorCell>,
     message: SystemMessage,
   ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
-    if matches!(message, SystemMessage::Stop) && *self.close_stop.lock() {
-      return Err(SendError::closed(AnyMessage::new(message)));
+    if matches!(message, SystemMessage::Stop) && *self.reject_stop.lock() {
+      if self.closed {
+        return Err(SendError::closed(AnyMessage::new(message)));
+      }
+      return Err(SendError::full(AnyMessage::new(message)));
     }
     self.default.system_dispatch(receiver, message)
   }
@@ -458,8 +471,9 @@ fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, Me
   (ActorSystem::create_from_props(&props, config).expect("system should build"), dispatcher)
 }
 
-fn build_system_with_closed_user_dispatcher(dispatcher_id: &'static str) -> ActorSystem {
-  let configurator: Box<dyn MessageDispatcherFactory> = Box::new(ClosedUserDispatcherFactory { id: dispatcher_id });
+fn build_system_with_rejecting_user_dispatcher(dispatcher_id: &'static str, closed: bool) -> ActorSystem {
+  let configurator: Box<dyn MessageDispatcherFactory> =
+    Box::new(RejectingUserDispatcherFactory { id: dispatcher_id, closed });
   let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
   let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
@@ -469,12 +483,13 @@ fn build_system_with_closed_user_dispatcher(dispatcher_id: &'static str) -> Acto
   ActorSystem::create_from_props(&props, config).expect("system should build")
 }
 
-fn build_system_with_stop_closed_dispatcher(
+fn build_system_with_rejecting_stop_dispatcher(
   dispatcher_id: &'static str,
-  close_stop: ArcShared<SpinSyncMutex<bool>>,
+  reject_stop: ArcShared<SpinSyncMutex<bool>>,
+  closed: bool,
 ) -> ActorSystem {
   let configurator: Box<dyn MessageDispatcherFactory> =
-    Box::new(StopClosedDispatcherFactory { id: dispatcher_id, close_stop });
+    Box::new(RejectingStopDispatcherFactory { id: dispatcher_id, reject_stop, closed });
   let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
   let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
@@ -546,11 +561,17 @@ fn wait_for_system_child_count(system: &ActorSystem, expected: usize) {
 }
 
 fn wait_for_scheduler_job_count(system: &ActorSystem, expected: usize) {
-  let deadline = Instant::now() + Duration::from_secs(5);
-  while Instant::now() < deadline && scheduler_job_count(system) != expected {
+  let mut actual = scheduler_job_count(system);
+  let mut first_poll = true;
+  for _ in 0..4096 {
     thread::yield_now();
+    actual = scheduler_job_count(system);
+    if !first_poll && actual == expected {
+      break;
+    }
+    first_poll = false;
   }
-  assert_eq!(scheduler_job_count(system), expected);
+  assert_eq!(actual, expected);
 }
 
 fn wait_for_actor_cell_removed(system: &ActorSystem, pid: Pid) {
@@ -1380,7 +1401,7 @@ fn drive_actor_owned_streams_until_terminal_reports_direct_drain_round_limit() {
 
 #[test]
 fn request_actor_shutdown_ignores_closed_live_actor_mailbox() {
-  let system = build_system_with_closed_user_dispatcher("closed-user-shutdown");
+  let system = build_system_with_rejecting_user_dispatcher("closed-user-shutdown", true);
   let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-user-shutdown");
   let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
 
@@ -1391,18 +1412,46 @@ fn request_actor_shutdown_ignores_closed_live_actor_mailbox() {
 }
 
 #[test]
+fn request_actor_shutdown_reports_live_actor_delivery_failure() {
+  let system = build_system_with_rejecting_user_dispatcher("full-user-shutdown", false);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("full-user-shutdown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+
+  let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
 fn finish_resource_teardown_ignores_closed_live_actor_stop() {
-  let close_stop = ArcShared::new(SpinSyncMutex::new(false));
-  let system = build_system_with_stop_closed_dispatcher("closed-stop-teardown", close_stop.clone());
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("closed-stop-teardown", reject_stop.clone(), true);
   let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stop-teardown");
   let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
-  *close_stop.lock() = true;
+  *reject_stop.lock() = true;
 
   let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
   resources.island_actors.push(actor.clone());
   let result = ActorMaterializer::finish_resource_teardown(&system, resources);
 
   assert_eq!(result, Ok(()));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn finish_resource_teardown_reports_live_actor_stop_failure() {
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("full-stop-teardown", reject_stop.clone(), false);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("full-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  *reject_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Err(StreamError::Failed));
   assert!(system.state().cell(&actor.pid()).is_some());
 }
 
