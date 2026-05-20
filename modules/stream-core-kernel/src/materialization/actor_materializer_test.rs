@@ -440,8 +440,7 @@ fn wait_for_system_child_count(system: &ActorSystem, expected: usize) {
 }
 
 fn wait_for_scheduler_job_count(system: &ActorSystem, expected: usize) {
-  let deadline = Instant::now() + Duration::from_secs(5);
-  while Instant::now() < deadline && scheduler_job_count(system) != expected {
+  for _ in 0..4096 {
     thread::yield_now();
   }
   assert_eq!(scheduler_job_count(system), expected);
