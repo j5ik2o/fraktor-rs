@@ -499,9 +499,7 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     } else {
-      if let Err(error) = Self::request_actor_shutdown(system, &resources.island_actors) {
-        Self::record_first_error(&mut result, error);
-      }
+      result = result.and(Self::request_actor_shutdown(system, &resources.island_actors));
       if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
         Self::record_first_error(&mut result, error);
       }
