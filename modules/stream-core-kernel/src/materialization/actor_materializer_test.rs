@@ -1080,12 +1080,13 @@ fn terminal_async_stream_stops_island_actors_and_cancels_scheduler_jobs() {
   }
   assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
 
-  materializer.shutdown().expect("shutdown after terminal cleanup");
   for pid in island_pids {
     wait_for_actor_cell_removed(&system, pid);
   }
   assert_eq!(system_child_names(&system).len(), child_count_before_start);
   wait_for_scheduler_job_count(&system, scheduler_jobs_before_start);
+
+  materializer.shutdown().expect("shutdown after terminal cleanup");
   assert!(materializer.streams().is_empty());
 }
 
