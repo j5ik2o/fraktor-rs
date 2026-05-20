@@ -71,6 +71,30 @@ fn accept_inbound_handshake_request(
   }
 }
 
+fn map_inbound_response_delivery_result(
+  remote: &Address,
+  operation: &'static str,
+  result: Result<(), TransportError>,
+) -> Result<bool, RemotingError> {
+  match result {
+    | Ok(()) => Ok(true),
+    | Err(error @ (TransportError::Backpressure | TransportError::ConnectionClosed)) => {
+      tracing::debug!(?error, remote = %remote, operation, "dropping inbound response because peer writer is unavailable");
+      Ok(false)
+    },
+    | Err(
+      error @ (TransportError::UnsupportedScheme
+      | TransportError::NotAvailable
+      | TransportError::AlreadyRunning
+      | TransportError::NotStarted
+      | TransportError::SendFailed),
+    ) => {
+      tracing::debug!(?error, remote = %remote, operation, "inbound response delivery failed");
+      Err(RemotingError::TransportUnavailable)
+    },
+  }
+}
+
 impl Remote {
   /// Creates a new remote lifecycle instance.
   #[must_use]
@@ -447,20 +471,14 @@ impl Remote {
       let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
       (remote, response)
     };
-    if let Err(error) = self.transport.connect_peer(&remote) {
-      tracing::debug!(
-        ?error,
-        remote = %remote,
-        "dropping handshake response because peer writer is unavailable"
-      );
+    if !map_inbound_response_delivery_result(&remote, "connect_peer", self.transport.connect_peer(&remote))? {
       return Ok(());
     }
-    if let Err(error) = self.transport.send_handshake(&remote, response) {
-      tracing::debug!(
-        ?error,
-        remote = %remote,
-        "dropping handshake response because handshake channel is unavailable"
-      );
+    if !map_inbound_response_delivery_result(
+      &remote,
+      "send_handshake",
+      self.transport.send_handshake(&remote, response),
+    )? {
       return Ok(());
     }
     let effects = accept_inbound_handshake_request(

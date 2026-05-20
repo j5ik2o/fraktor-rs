@@ -1137,6 +1137,57 @@ fn inbound_handshake_connect_peer_failure_keeps_event_loop_alive() {
 }
 
 #[test]
+fn inbound_handshake_response_systemic_send_failure_returns_transport_unavailable() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::NotAvailable));
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  remote.insert_association(handshaking_association(local_address.clone(), remote_address.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+  let mut receiver = VecRemoteEventReceiver::new([RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Handshake(handshake),
+    now_ms:    75,
+  }]);
+
+  let error = block_on_ready(remote.run(&mut receiver)).expect_err("systemic send failure should stop remote");
+
+  assert_eq!(error, RemotingError::TransportUnavailable);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Handshaking { .. })));
+}
+
+#[test]
+fn inbound_handshake_connect_peer_systemic_failure_returns_transport_unavailable() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_connect_peer_result(vec![local_address.clone()], Err(TransportError::NotAvailable));
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  remote.insert_association(handshaking_association(local_address.clone(), remote_address.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+  let mut receiver = VecRemoteEventReceiver::new([RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Handshake(handshake),
+    now_ms:    75,
+  }]);
+
+  let error = block_on_ready(remote.run(&mut receiver)).expect_err("systemic connect failure should stop remote");
+
+  assert_eq!(error, RemotingError::TransportUnavailable);
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Handshaking { .. })));
+}
+
+#[test]
 fn inbound_deployment_frame_without_adapter_routing_is_ignored() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
