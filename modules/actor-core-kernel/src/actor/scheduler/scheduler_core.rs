@@ -239,7 +239,8 @@ impl Scheduler {
       if entry.is_completed() {
         return false;
       }
-      if !entry.try_cancel() {
+      let newly_cancelled = entry.try_cancel();
+      if !newly_cancelled && !entry.is_cancelled() {
         return false;
       }
       let removed_job = self.jobs.remove(&handle.raw());
@@ -248,6 +249,8 @@ impl Scheduler {
         let _ = self.wheel.cancel(job.wheel_id);
         self.registry.remove(handle.raw());
         self.metrics.decrement_active();
+      } else if !newly_cancelled {
+        return false;
       }
       self.metrics.increment_dropped();
       self.record_cancel_event(handle.raw());
