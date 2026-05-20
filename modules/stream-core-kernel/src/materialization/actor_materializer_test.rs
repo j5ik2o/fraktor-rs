@@ -1574,6 +1574,7 @@ fn downstream_cancel_sends_cancel_command_to_upstream_island_actor() {
 
   assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
   wait_for_upstream_cancel_command_count(&materializer, 1);
+  drive_registered_streams_until_all_terminal(&materializer);
   assert_eq!(materializer.streams()[0].state(), StreamState::Cancelled);
 }
 
