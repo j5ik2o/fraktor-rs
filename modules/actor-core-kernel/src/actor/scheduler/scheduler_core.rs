@@ -239,7 +239,7 @@ impl Scheduler {
       if entry.is_completed() {
         return false;
       }
-      if !entry.try_cancel() && !entry.is_cancelled() {
+      if !entry.try_cancel() {
         return false;
       }
       let removed_job = self.jobs.remove(&handle.raw());

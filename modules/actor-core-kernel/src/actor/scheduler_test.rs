@@ -544,7 +544,12 @@ fn scheduler_cancel_during_execution_defers_active_timer_decrement() {
 
   assert!(handle.is_cancelled());
   assert_eq!(scheduler.metrics().active_timers(), 1);
+  assert_eq!(scheduler.metrics().dropped_total(), 1);
   assert_eq!(scheduler.job_count_for_test(), 0);
+
+  assert!(!scheduler.cancel(&handle));
+  assert_eq!(scheduler.metrics().active_timers(), 1);
+  assert_eq!(scheduler.metrics().dropped_total(), 1);
 }
 
 #[test]
