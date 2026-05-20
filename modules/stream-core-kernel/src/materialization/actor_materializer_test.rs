@@ -8,15 +8,16 @@ use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorCell, ActorContext, ChildRef, Pid,
     error::{ActorError, SendError},
-    messaging::{AnyMessageView, system_message::SystemMessage},
+    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
     props::Props,
     scheduler::{SchedulerConfig, SchedulerHandle},
     setup::ActorSystemConfig,
   },
   dispatch::{
     dispatcher::{
-      DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, DispatcherCore, ExecuteError, Executor,
-      ExecutorShared, MessageDispatcher, MessageDispatcherFactory, MessageDispatcherShared, TrampolineState,
+      DEFAULT_DISPATCHER_ID, DefaultDispatcher, DefaultDispatcherFactory, DispatcherConfig, DispatcherCore,
+      ExecuteError, Executor, ExecutorShared, MessageDispatcher, MessageDispatcherFactory, MessageDispatcherShared,
+      TrampolineState,
     },
     mailbox::{Envelope, Mailbox},
   },
@@ -400,6 +401,47 @@ impl MessageDispatcher for ClosedUserDispatcher {
   }
 }
 
+struct StopClosedDispatcherFactory {
+  id:         &'static str,
+  close_stop: ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl MessageDispatcherFactory for StopClosedDispatcherFactory {
+  fn dispatcher(&self) -> MessageDispatcherShared {
+    let settings = DispatcherConfig::new(self.id, nz(8), None, Duration::from_secs(1));
+    MessageDispatcherShared::new(Box::new(StopClosedDispatcher {
+      default:    DefaultDispatcher::new(&settings, inline_executor_shared()),
+      close_stop: self.close_stop.clone(),
+    }))
+  }
+}
+
+struct StopClosedDispatcher {
+  default:    DefaultDispatcher,
+  close_stop: ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl MessageDispatcher for StopClosedDispatcher {
+  fn core(&self) -> &DispatcherCore {
+    self.default.core()
+  }
+
+  fn core_mut(&mut self) -> &mut DispatcherCore {
+    self.default.core_mut()
+  }
+
+  fn system_dispatch(
+    &mut self,
+    receiver: &ArcShared<ActorCell>,
+    message: SystemMessage,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    if matches!(message, SystemMessage::Stop) && *self.close_stop.lock() {
+      return Err(SendError::closed(AnyMessage::new(message)));
+    }
+    self.default.system_dispatch(receiver, message)
+  }
+}
+
 fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, MessageDispatcherShared) {
   let executor = inline_executor_shared();
   let settings = DispatcherConfig::new(dispatcher_id, nz(8), None, Duration::from_secs(1));
@@ -418,6 +460,21 @@ fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, Me
 
 fn build_system_with_closed_user_dispatcher(dispatcher_id: &'static str) -> ActorSystem {
   let configurator: Box<dyn MessageDispatcherFactory> = Box::new(ClosedUserDispatcherFactory { id: dispatcher_id });
+  let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
+  let props = Props::from_fn(|| GuardianActor);
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::new(TestTickDriver::default())
+    .with_scheduler_config(scheduler)
+    .with_dispatcher_factory(dispatcher_id, configurator_handle);
+  ActorSystem::create_from_props(&props, config).expect("system should build")
+}
+
+fn build_system_with_stop_closed_dispatcher(
+  dispatcher_id: &'static str,
+  close_stop: ArcShared<SpinSyncMutex<bool>>,
+) -> ActorSystem {
+  let configurator: Box<dyn MessageDispatcherFactory> =
+    Box::new(StopClosedDispatcherFactory { id: dispatcher_id, close_stop });
   let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
   let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
@@ -1328,6 +1385,22 @@ fn request_actor_shutdown_ignores_closed_live_actor_mailbox() {
   let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
 
   let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
+
+  assert_eq!(result, Ok(()));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn finish_resource_teardown_ignores_closed_live_actor_stop() {
+  let close_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_stop_closed_dispatcher("closed-stop-teardown", close_stop.clone());
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  *close_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
 
   assert_eq!(result, Ok(()));
   assert!(system.state().cell(&actor.pid()).is_some());

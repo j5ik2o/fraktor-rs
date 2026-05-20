@@ -464,7 +464,10 @@ impl ActorMaterializer {
       if system.state().cell(&actor.pid()).is_none() {
         continue;
       }
-      if actor.stop().is_err() {
+      if let Err(error) = actor.stop() {
+        if matches!(error, SendError::Closed(_)) || system.state().cell(&actor.pid()).is_none() {
+          continue;
+        }
         Self::record_first_error(&mut result, StreamError::Failed);
       }
     }
