@@ -82,9 +82,7 @@ impl StdRemoteWatchHook {
       | Ok(()) => true,
       | Err(TrySendError::Full(command)) => {
         tracing::warn!(?command, "remote watch command queue is full");
-        // `false` は actor-core 側の dead-actor fallback を起動するため、
-        // remote watcher queue が満杯でも消費済みとして扱う。
-        true
+        false
       },
       | Err(TrySendError::Closed(command)) => {
         tracing::warn!(?command, "remote watch command queue is closed");
