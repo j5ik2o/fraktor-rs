@@ -183,9 +183,6 @@ fn failed_delivery_aborts_graph_streams_and_finishes_in_flight_reservation() {
   let route = DownstreamCancellationRoute::new(boundary, upstream_stream.clone(), running_stream(), upstream_actor);
   let control_plane =
     DownstreamCancellationControlPlaneShared::new(DownstreamCancellationControlPlane::new(vec![route]));
-  // The propagator's fast path skips the lock when this latch is false; we
-  // pre-arm it so the test does not have to also wire up a boundary signal.
-  control_plane.arm_pending();
   let tick_handle_slot = ArcShared::new(SpinSyncMutex::new(None));
   let mut island_actor = StreamIslandActor::new(
     owned_stream.clone(),
