@@ -242,12 +242,13 @@ impl Scheduler {
       if !entry.try_cancel() && !entry.is_cancelled() {
         return false;
       }
-      if let Some(job) = self.jobs.remove(&handle.raw()) {
+      let removed_job = self.jobs.remove(&handle.raw());
+      if let Some(job) = removed_job {
         // must-ignore: registry / jobs から削除済みの handle に対する wheel.cancel の bool は参照不要。
         let _ = self.wheel.cancel(job.wheel_id);
+        self.registry.remove(handle.raw());
+        self.metrics.decrement_active();
       }
-      self.registry.remove(handle.raw());
-      self.metrics.decrement_active();
       self.metrics.increment_dropped();
       self.record_cancel_event(handle.raw());
       true

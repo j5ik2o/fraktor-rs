@@ -386,6 +386,13 @@ impl ActorMaterializer {
     result
   }
 
+  fn actor_mailbox_closed_or_missing(system: &ActorSystem, actor: &ChildRef) -> bool {
+    match system.state().cell(&actor.pid()) {
+      | Some(cell) => cell.mailbox().is_closed(),
+      | None => true,
+    }
+  }
+
   fn request_actor_shutdown(system: &ActorSystem, actors: &[ChildRef]) -> Result<(), StreamError> {
     let mut result = Ok(());
     for actor in actors {
@@ -394,7 +401,9 @@ impl ActorMaterializer {
       }
       let mut actor = actor.clone();
       if let Err(error) = actor.try_tell(AnyMessage::new(StreamIslandCommand::Shutdown)) {
-        if matches!(error, SendError::Closed(_)) || system.state().cell(&actor.pid()).is_none() {
+        if system.state().cell(&actor.pid()).is_none()
+          || (matches!(error, SendError::Closed(_)) && Self::actor_mailbox_closed_or_missing(system, &actor))
+        {
           continue;
         }
         Self::record_first_error(&mut result, StreamError::Failed);
@@ -465,7 +474,9 @@ impl ActorMaterializer {
         continue;
       }
       if let Err(error) = actor.stop() {
-        if matches!(error, SendError::Closed(_)) || system.state().cell(&actor.pid()).is_none() {
+        if system.state().cell(&actor.pid()).is_none()
+          || (matches!(error, SendError::Closed(_)) && Self::actor_mailbox_closed_or_missing(system, actor))
+        {
           continue;
         }
         Self::record_first_error(&mut result, StreamError::Failed);

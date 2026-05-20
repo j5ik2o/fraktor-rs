@@ -532,6 +532,22 @@ fn fixed_rate_runnable_cancelled_while_executing_is_not_rescheduled() {
 }
 
 #[test]
+fn scheduler_cancel_during_execution_defers_active_timer_decrement() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("handle");
+  assert!(handle.entry().try_begin_execute(), "entry should simulate an executing job");
+  assert!(scheduler.remove_job_for_test(&handle), "executing job should already be out of the job map");
+
+  assert!(scheduler.cancel(&handle));
+
+  assert!(handle.is_cancelled());
+  assert_eq!(scheduler.metrics().active_timers(), 1);
+  assert_eq!(scheduler.job_count_for_test(), 0);
+}
+
+#[test]
 fn fixed_rate_runnable_completed_while_executing_is_not_rescheduled() {
   let mut scheduler = build_scheduler();
   let entry_slot: ArcShared<SpinSyncMutex<Option<ArcShared<CancellableEntry>>>> =

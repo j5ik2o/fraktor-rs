@@ -1400,10 +1400,23 @@ fn drive_actor_owned_streams_until_terminal_reports_direct_drain_round_limit() {
 }
 
 #[test]
-fn request_actor_shutdown_ignores_closed_live_actor_mailbox() {
+fn request_actor_shutdown_reports_closed_live_actor_mailbox() {
   let system = build_system_with_rejecting_user_dispatcher("closed-user-shutdown", true);
   let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-user-shutdown");
   let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+
+  let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn request_actor_shutdown_ignores_closed_stopping_actor_mailbox() {
+  let system = build_system_with_rejecting_user_dispatcher("closed-stopping-user-shutdown", true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stopping-user-shutdown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  system.state().cell(&actor.pid()).expect("actor cell should exist").mailbox().become_closed();
 
   let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
 
@@ -1424,11 +1437,28 @@ fn request_actor_shutdown_reports_live_actor_delivery_failure() {
 }
 
 #[test]
-fn finish_resource_teardown_ignores_closed_live_actor_stop() {
+fn finish_resource_teardown_reports_closed_live_actor_stop() {
   let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
   let system = build_system_with_rejecting_stop_dispatcher("closed-stop-teardown", reject_stop.clone(), true);
   let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stop-teardown");
   let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  *reject_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn finish_resource_teardown_ignores_closed_stopping_actor_stop() {
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("closed-stopping-stop-teardown", reject_stop.clone(), true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stopping-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  system.state().cell(&actor.pid()).expect("actor cell should exist").mailbox().become_closed();
   *reject_stop.lock() = true;
 
   let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
