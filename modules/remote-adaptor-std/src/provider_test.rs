@@ -700,6 +700,16 @@ fn path_remote_actor_ref_provider_rejects_unallowed_remote_watch_target() {
 }
 
 #[test]
+fn path_remote_actor_ref_provider_rejects_local_watch_target() {
+  let mut provider = PathRemoteActorRefProvider::default();
+  let local_path = ActorPath::root().child("user").child("worker");
+  let watcher = Pid::new(1, 1);
+
+  assert_eq!(provider.watch(local_path.clone(), watcher).unwrap_err(), ProviderError::UnsupportedScheme);
+  assert_eq!(provider.unwatch(local_path, watcher).unwrap_err(), ProviderError::UnsupportedScheme);
+}
+
+#[test]
 fn path_remote_actor_ref_provider_accepts_allowed_remote_watch_target() {
   let config = RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.99");
   let mut provider = PathRemoteActorRefProvider::new(config);
