@@ -36,7 +36,7 @@ use fraktor_remote_core_rs::{
   envelope::{OutboundEnvelope, OutboundPriority},
   extension::{
     EventPublisher, REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, Remote, RemoteActorRefResolveCacheEvent,
-    RemoteActorRefResolveCacheOutcome, RemoteEvent, RemoteShared,
+    RemoteActorRefResolveCacheOutcome, RemoteEvent, RemoteShared, Remoting,
   },
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::{RemoteTransport, TransportEndpoint, TransportError},
@@ -708,6 +708,28 @@ fn path_remote_actor_ref_provider_accepts_allowed_remote_watch_target() {
 
   provider.watch(remote_path.clone(), watcher).expect("allowed remote watch target should be accepted");
   provider.unwatch(remote_path, watcher).expect("allowed remote unwatch target should be accepted");
+}
+
+#[test]
+fn path_remote_actor_ref_provider_accepts_explicitly_connected_remote_peer() {
+  let harness = EventHarness::new();
+  let serialization_extension = harness.system().extended().register_extension(&default_serialization_extension_id());
+  let remote_address = RemoteCoreAddress::new("remote-sys", "10.0.0.99", 2552);
+  let remote = Remote::new(
+    NoopRemoteTransport::new(vec![RemoteCoreAddress::new("local-sys", "127.0.0.1", 2551)]),
+    RemoteConfig::new("127.0.0.1"),
+    EventPublisher::new(harness.system().downgrade()),
+    serialization_extension,
+  );
+  let remote_shared = RemoteShared::new(remote);
+  remote_shared.start().expect("remote should start before explicit connect");
+  remote_shared.connect_peer(&remote_address).expect("explicit connect should be recorded");
+  let mut provider = PathRemoteActorRefProvider::new_with_remote(RemoteConfig::new("127.0.0.1"), remote_shared);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+
+  let remote_ref = provider.actor_ref(remote_path.clone()).expect("explicitly connected remote peer should resolve");
+
+  assert_eq!(remote_ref.path().to_canonical_uri(), remote_path.to_canonical_uri());
 }
 
 #[test]

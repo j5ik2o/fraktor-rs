@@ -137,6 +137,13 @@ impl RemoteShared {
   pub fn connect_peer(&self, remote: &Address) -> Result<(), RemotingError> {
     self.with_write(|remote_shared| remote_shared.connect_peer(remote))
   }
+
+  /// Returns whether `remote` has been explicitly connected through this shared
+  /// remoting handle.
+  #[must_use]
+  pub fn is_explicit_peer(&self, remote: &Address) -> bool {
+    self.with_read(|remote_shared| remote_shared.is_explicit_peer(remote))
+  }
 }
 
 impl Remoting for RemoteShared {

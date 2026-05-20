@@ -388,10 +388,17 @@ impl Remote {
     }
   }
 
+  /// Returns whether `remote` has been explicitly connected through
+  /// [`Remote::connect_peer`].
+  #[must_use]
+  pub fn is_explicit_peer(&self, remote: &Address) -> bool {
+    self.explicit_peers.iter().any(|peer| peer == remote)
+  }
+
   fn can_use_peer_for_outbound(&self, remote: &Address) -> bool {
     self.config.is_remote_peer_allowed(remote)
       || self.association_index_for_remote(remote).is_some()
-      || self.explicit_peers.iter().any(|peer| peer == remote)
+      || self.is_explicit_peer(remote)
   }
 
   fn association_index_for_authority(&self, authority: &TransportEndpoint) -> Option<usize> {
