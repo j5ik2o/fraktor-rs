@@ -1006,7 +1006,7 @@ fn remote_watch_hook_forwards_watch_command() {
 }
 
 #[test]
-fn remote_watch_hook_treats_full_watcher_queue_as_handled() {
+fn remote_watch_hook_treats_full_watcher_queue_as_consumed() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(905, 0);
   let remote_path = remote_actor_path();
