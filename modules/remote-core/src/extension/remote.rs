@@ -50,6 +50,7 @@ pub struct Remote {
   serialization:        ArcShared<SerializationExtensionShared>,
   instrument:           Box<dyn RemoteInstrument + Send>,
   advertised_addresses: Vec<Address>,
+  explicit_peers:       Vec<Address>,
   associations:         Vec<Association>,
   inbound_envelopes:    Vec<InboundEnvelope>,
   flush_outcomes:       Vec<RemoteFlushOutcome>,
@@ -128,6 +129,7 @@ impl Remote {
       serialization,
       instrument,
       advertised_addresses: Vec::new(),
+      explicit_peers: Vec::new(),
       associations: Vec::new(),
       inbound_envelopes: Vec::new(),
       flush_outcomes: Vec::new(),
@@ -227,7 +229,9 @@ impl Remote {
   /// establish the peer.
   pub fn connect_peer(&mut self, remote: &Address) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
-    self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)
+    self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)?;
+    self.remember_explicit_peer(remote);
+    Ok(())
   }
 
   fn publish_listen_started(&self) {
@@ -293,7 +297,7 @@ impl Remote {
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
     let remote = parse_authority(authority.authority()).ok_or(RemotingError::TransportUnavailable)?;
-    if self.association_index_for_remote(&remote).is_none() && !self.config.is_remote_peer_allowed(&remote) {
+    if !self.can_use_peer_for_outbound(&remote) {
       tracing::warn!(
         remote = %remote,
         "dropping outbound envelope because remote peer is not allowed for automatic dialing"
@@ -328,7 +332,7 @@ impl Remote {
 
   fn handle_outbound_control(&mut self, remote: &Address, pdu: ControlPdu, _now_ms: u64) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
-    if !self.can_automatically_connect_peer(remote) {
+    if !self.can_use_peer_for_outbound(remote) {
       tracing::warn!(
         remote = %remote,
         "dropping outbound control frame because remote peer is not allowed for automatic dialing"
@@ -346,7 +350,7 @@ impl Remote {
     _now_ms: u64,
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
-    if !self.can_automatically_connect_peer(remote) {
+    if !self.can_use_peer_for_outbound(remote) {
       tracing::warn!(
         remote = %remote,
         "dropping outbound deployment frame because remote peer is not allowed for automatic dialing"
@@ -378,8 +382,16 @@ impl Remote {
     self.associations.iter().position(|association| association.remote() == remote)
   }
 
-  fn can_automatically_connect_peer(&self, remote: &Address) -> bool {
-    self.config.is_remote_peer_allowed(remote) || self.association_index_for_remote(remote).is_some()
+  fn remember_explicit_peer(&mut self, remote: &Address) {
+    if !self.explicit_peers.iter().any(|peer| peer == remote) {
+      self.explicit_peers.push(remote.clone());
+    }
+  }
+
+  fn can_use_peer_for_outbound(&self, remote: &Address) -> bool {
+    self.config.is_remote_peer_allowed(remote)
+      || self.association_index_for_remote(remote).is_some()
+      || self.explicit_peers.iter().any(|peer| peer == remote)
   }
 
   fn association_index_for_authority(&self, authority: &TransportEndpoint) -> Option<usize> {

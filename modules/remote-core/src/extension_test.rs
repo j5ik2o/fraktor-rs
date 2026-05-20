@@ -736,6 +736,39 @@ fn outbound_to_unallowed_idle_remote_does_not_connect_peer() {
 }
 
 #[test]
+fn explicit_connect_peer_allows_unlisted_idle_outbound() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should start before explicit connect");
+  remote.connect_peer(&remote_address).expect("explicit connect should succeed");
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    42,
+    })
+    .expect("explicitly connected peer should be allowed to start association");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 2);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(remote.association_count_for_test(), 1);
+}
+
+#[test]
 fn outbound_control_to_unallowed_remote_does_not_connect_peer() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
