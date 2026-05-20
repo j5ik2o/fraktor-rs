@@ -468,6 +468,17 @@ fn wait_for_upstream_cancel_command_count(materializer: &ActorMaterializer, expe
   assert_eq!(upstream_cancel_command_count(materializer), expected);
 }
 
+fn wait_for_upstream_stream_state(materializer: &ActorMaterializer, expected: StreamState) {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if materializer.streams()[0].state() == expected {
+      return;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(materializer.streams()[0].state(), expected);
+}
+
 fn all_streams_share_kill_switch_state(
   materializer: &ActorMaterializer,
   expected_state: &KillSwitchStateHandle,
@@ -1574,7 +1585,7 @@ fn downstream_cancel_sends_cancel_command_to_upstream_island_actor() {
 
   assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
   wait_for_upstream_cancel_command_count(&materializer, 1);
-  assert_eq!(materializer.streams()[0].state(), StreamState::Cancelled);
+  wait_for_upstream_stream_state(&materializer, StreamState::Cancelled);
 }
 
 #[test]

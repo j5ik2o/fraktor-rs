@@ -41,6 +41,7 @@ impl StdRemoteWatchFlushConfig {
   }
 }
 
+/// Remote DeathWatch hook backed by remoting watcher and flush lanes.
 pub(crate) struct StdRemoteWatchHook {
   registry:        SharedLock<RemoteActorPathRegistry>,
   state:           SystemStateShared,
