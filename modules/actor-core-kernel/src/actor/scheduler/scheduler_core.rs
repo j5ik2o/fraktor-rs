@@ -330,6 +330,12 @@ impl Scheduler {
           self.record_fire_event(handle_id, batch);
           executed += 1;
 
+          if cancellable.is_cancelled() {
+            self.registry.remove(handle_id);
+            self.metrics.decrement_active();
+            continue;
+          }
+
           if job.periodic.is_some() {
             if self.reschedule_job(&mut job).is_ok() {
               cancellable.reset_to_scheduled();

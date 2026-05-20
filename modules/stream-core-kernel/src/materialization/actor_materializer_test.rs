@@ -431,6 +431,28 @@ fn wait_for_counter(counter: &ArcShared<SpinSyncMutex<u32>>, expected: u32) {
   assert_eq!(*counter.lock(), expected);
 }
 
+fn wait_for_system_child_count(system: &ActorSystem, expected: usize) {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if system_child_names(system).len() == expected {
+      return;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(system_child_names(system).len(), expected);
+}
+
+fn wait_for_scheduler_job_count(system: &ActorSystem, expected: usize) {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if scheduler_job_count(system) == expected {
+      return;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(scheduler_job_count(system), expected);
+}
+
 fn wait_for_actor_cell_removed(system: &ActorSystem, pid: Pid) {
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
@@ -452,9 +474,9 @@ fn stopped_system_actor(system: &ActorSystem) -> ChildRef {
 }
 
 fn upstream_cancel_command_count(materializer: &ActorMaterializer) -> u32 {
-  let diagnostics: Vec<StreamIslandActorDiagnostic> =
-    materializer.island_actor_diagnostics_for_test().expect("island actor diagnostics should be available");
-  diagnostics.first().expect("upstream island actor should be diagnosable").cancel_command_count()
+  let resources = materializer.materialized.first().expect("materialized resources should be available");
+  let actor = resources.island_actors.first().expect("upstream island actor should be registered");
+  resources.downstream_cancellation_control_plane.with_locked(|plane| plane.cancel_command_count_for_actor(actor.pid()))
 }
 
 fn wait_for_upstream_cancel_command_count(materializer: &ActorMaterializer, expected: u32) {
@@ -916,6 +938,34 @@ fn materialize_registers_one_scheduler_job_per_island_actor() {
   let _materialized = graph.run(&mut materializer).expect("materialize");
 
   assert_eq!(scheduler_job_count(&system), scheduler_jobs_before_start + 2);
+}
+
+#[test]
+fn terminal_async_stream_stops_island_actors_and_cancels_scheduler_jobs() {
+  let system = build_system();
+  let child_count_before_start = system_child_names(&system).len();
+  let scheduler_jobs_before_start = scheduler_job_count(&system);
+  let mut materializer = ActorMaterializer::new(
+    system.clone(),
+    ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)),
+  );
+  materializer.start().expect("start");
+  let graph = Source::single(1_u32).r#async().into_mat(Sink::head(), KeepRight);
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert_eq!(system_child_names(&system).len(), child_count_before_start + 2);
+  assert_eq!(scheduler_job_count(&system), scheduler_jobs_before_start + 2);
+
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if matches!(materialized.materialized().value(), Completion::Ready(_)) {
+      break;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
+  wait_for_system_child_count(&system, child_count_before_start);
+  wait_for_scheduler_job_count(&system, scheduler_jobs_before_start);
 }
 
 #[test]
