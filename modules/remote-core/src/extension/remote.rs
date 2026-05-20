@@ -55,6 +55,22 @@ pub struct Remote {
   flush_outcomes:       Vec<RemoteFlushOutcome>,
 }
 
+fn accept_inbound_handshake_request(
+  association: &mut Association,
+  request: &HandshakeReq,
+  now_ms: u64,
+  instrument: &mut dyn RemoteInstrument,
+  association_index: usize,
+) -> Vec<AssociationEffect> {
+  match association.accept_handshake_request(request, now_ms, instrument) {
+    | Ok(effects) => effects,
+    | Err(error) => {
+      tracing::debug!(?error, association_index, ?request, now_ms, "accept handshake request failed");
+      Default::default()
+    },
+  }
+}
+
 impl Remote {
   /// Creates a new remote lifecycle instance.
   #[must_use]
@@ -447,9 +463,13 @@ impl Remote {
       );
       return Ok(());
     }
-    let effects = self.associations[association_index]
-      .accept_handshake_request(request, now_ms, self.instrument.as_mut())
-      .unwrap_or_default();
+    let effects = accept_inbound_handshake_request(
+      &mut self.associations[association_index],
+      request,
+      now_ms,
+      self.instrument.as_mut(),
+      association_index,
+    );
     self.apply_association_effects(association_index, effects, now_ms)?;
     self.drain_outbound(association_index, now_ms)
   }
