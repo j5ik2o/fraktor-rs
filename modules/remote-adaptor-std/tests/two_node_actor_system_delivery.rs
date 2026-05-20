@@ -4,6 +4,7 @@ use std::{
   any::{Any, TypeId},
   format,
   net::TcpListener,
+  thread,
   time::Duration,
 };
 
@@ -144,7 +145,7 @@ impl AddressTerminatedRecorder {
 impl EventStreamSubscriber for LifecycleRecorder {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::RemotingLifecycle(event) = event {
-      let _ = self.tx.send(event.clone());
+      self.tx.send(event.clone()).expect("lifecycle event channel should be open");
     }
   }
 }
@@ -1063,9 +1064,11 @@ async fn two_node_remote_deployment_spawns_actor_and_delivers_user_message() {
     DeployablePropsMetadata::new("recording-string", AnyMessage::new(String::from("factory-payload"))),
   );
   let system_a = node_a.system.clone();
-  let child = tokio::task::spawn_blocking(move || system_a.actor_of_named(&props, child_name))
+  let join = thread::spawn(move || system_a.actor_of_named(&props, child_name));
+  let child = tokio::task::spawn_blocking(move || join.join())
     .await
-    .expect("blocking spawn should complete")
+    .expect("deployment join task should complete")
+    .expect("remote deployment thread should complete")
     .expect("remote child should spawn");
 
   let created_path = child.actor_ref().canonical_path().expect("deployed child canonical path");

@@ -522,7 +522,7 @@ async fn remote_deployment_hook_current_thread_runtime_fails_without_blocking() 
     outcome,
     RemoteDeploymentOutcome::Failed(reason) if reason.contains("current-thread Tokio runtime")
   ));
-  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundDeployment { .. })));
+  assert!(event_rx.try_recv().is_err());
 }
 
 #[test]
