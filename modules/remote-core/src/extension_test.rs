@@ -1573,6 +1573,45 @@ fn inbound_heartbeat_control_send_failure_does_not_stop_remote() {
 }
 
 #[test]
+fn repeated_inbound_heartbeat_response_failures_keep_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_control_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address, second_remote.clone(), &config));
+  let first_heartbeat = ControlPdu::Heartbeat { authority: first_remote.to_string() };
+  let second_heartbeat = ControlPdu::Heartbeat { authority: second_remote.to_string() };
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(first_heartbeat.clone()),
+      now_ms:    76,
+    },
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Control(first_heartbeat),
+      now_ms:    77,
+    },
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(second_remote.to_string()),
+      frame:     WireFrame::Control(second_heartbeat),
+      now_ms:    78,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("heartbeat response failures should not stop remote");
+
+  assert_eq!(control_calls.load(Ordering::Relaxed), 3);
+}
+
+#[test]
 fn inbound_heartbeat_control_with_mismatched_peer_authority_is_ignored() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
