@@ -440,7 +440,13 @@ fn wait_for_system_child_count(system: &ActorSystem, expected: usize) {
 }
 
 fn wait_for_scheduler_job_count(system: &ActorSystem, expected: usize) {
-  for _ in 0..4096 {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  let mut first_poll = true;
+  while Instant::now() < deadline {
+    if !first_poll && scheduler_job_count(system) == expected {
+      return;
+    }
+    first_poll = false;
     thread::yield_now();
   }
   assert_eq!(scheduler_job_count(system), expected);
@@ -1276,7 +1282,8 @@ fn shutdown_resources_skips_stopped_actor_and_reports_direct_drain_failure() {
   let system = build_system();
   let actor = stopped_system_actor(&system);
   let stream = running_stream_from_graph(
-    Source::<u32, _>::from_logic(StageKind::Custom, CancelFailingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+    Source::<u32, _>::from_logic(StageKind::Custom, DrainOnShutdownCancelFailingPendingSourceLogic)
+      .into_mat(Sink::ignore(), KeepRight),
   );
   let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
   resources.island_actors.push(actor);

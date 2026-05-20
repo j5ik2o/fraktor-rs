@@ -4,6 +4,7 @@ use core::{hint, time::Duration};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     ChildRef,
+    error::SendError,
     messaging::AnyMessage,
     props::Props,
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerRunnable},
@@ -392,8 +393,11 @@ impl ActorMaterializer {
         continue;
       }
       let mut actor = actor.clone();
-      if let Err(error) = Self::send_command(&mut actor, StreamIslandCommand::Shutdown) {
-        Self::record_first_error(&mut result, error);
+      if let Err(error) = actor.try_tell(AnyMessage::new(StreamIslandCommand::Shutdown)) {
+        if matches!(error, SendError::Closed(_)) || system.state().cell(&actor.pid()).is_none() {
+          continue;
+        }
+        Self::record_first_error(&mut result, StreamError::Failed);
       }
     }
     result
