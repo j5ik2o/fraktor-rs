@@ -60,12 +60,6 @@ impl StreamIslandActor {
   }
 
   fn propagate_downstream_cancellation(&self) -> Result<(), ActorError> {
-    // Fast path: skip the inner mutex entirely when no boundary has signalled
-    // a downstream cancel since the previous propagation cycle.
-    if !self.downstream_cancellation_control_plane.take_pending() {
-      return Ok(());
-    }
-
     let targets = self
       .downstream_cancellation_control_plane
       .with_locked(|control_plane| control_plane.reserve_cancellation_targets());
@@ -95,10 +89,9 @@ impl StreamIslandActor {
     if let Some(error) = first_error {
       // A failed delivery aborts the whole graph below, after which every
       // island enters a terminal state and `drive` short-circuits before
-      // ever reaching the propagator again. Re-arming the pending latch is
-      // therefore unnecessary: on success, routes with delivered==true have
-      // their cancel_command_count incremented and become non-reservable,
-      // so the next drive's fast path correctly stays out of the lock.
+      // ever reaching the propagator again. On success, routes with
+      // delivered==true have their cancel_command_count incremented and
+      // become non-reservable on the next propagation cycle.
       self.abort_graph_streams(&error);
       return Err(ActorError::fatal(format!("stream island cancellation propagation failed: {error:?}")));
     }
