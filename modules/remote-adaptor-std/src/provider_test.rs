@@ -690,6 +690,27 @@ fn path_remote_actor_ref_provider_accepts_allowed_remote_peer() {
 }
 
 #[test]
+fn path_remote_actor_ref_provider_rejects_unallowed_remote_watch_target() {
+  let mut provider = PathRemoteActorRefProvider::default();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+  let watcher = Pid::new(1, 1);
+
+  assert_eq!(provider.watch(remote_path.clone(), watcher).unwrap_err(), ProviderError::RemotePeerNotAllowed);
+  assert_eq!(provider.unwatch(remote_path, watcher).unwrap_err(), ProviderError::RemotePeerNotAllowed);
+}
+
+#[test]
+fn path_remote_actor_ref_provider_accepts_allowed_remote_watch_target() {
+  let config = RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.99");
+  let mut provider = PathRemoteActorRefProvider::new(config);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+  let watcher = Pid::new(1, 1);
+
+  provider.watch(remote_path.clone(), watcher).expect("allowed remote watch target should be accepted");
+  provider.unwatch(remote_path, watcher).expect("allowed remote unwatch target should be accepted");
+}
+
+#[test]
 fn local_authority_path_is_normalized_to_local_provider() {
   let mut provider = make_provider();
   // Authority that exactly matches `local_address()`.

@@ -736,6 +736,50 @@ fn outbound_to_unallowed_idle_remote_does_not_connect_peer() {
 }
 
 #[test]
+fn outbound_control_to_unallowed_remote_does_not_connect_peer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should start before outbound control");
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundControl {
+      remote: remote_address.clone(),
+      pdu:    ControlPdu::Shutdown { authority: remote_address.to_string() },
+      now_ms: 42,
+    })
+    .expect("unallowed outbound control should be dropped without failing the loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(control_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn outbound_deployment_to_unallowed_remote_does_not_connect_peer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should start before outbound deployment");
+  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    1,
+    2,
+    RemoteDeploymentFailureCode::SpawnFailed,
+    String::from("unallowed"),
+  ));
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundDeployment { remote: remote_address, pdu, now_ms: 42 })
+    .expect("unallowed outbound deployment should be dropped without failing the loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
 fn remote_new_default_instrument_accepts_event_loop_hooks() {
   let noop_address = Address::new("sys", "127.0.0.1", 2552);
   let mut noop_remote =
