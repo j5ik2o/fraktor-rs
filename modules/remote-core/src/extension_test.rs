@@ -939,6 +939,42 @@ fn inbound_handshake_requests_from_unknown_sources_do_not_create_associations() 
 }
 
 #[test]
+fn inbound_handshake_response_send_failure_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
+  let handshake_calls = transport.handshake_calls.clone();
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address.clone(), second_remote.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(first_remote.clone(), 7), local_address));
+  let heartbeat = ControlPdu::Heartbeat { authority: second_remote.to_string() };
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    },
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(second_remote.to_string()),
+      frame:     WireFrame::Control(heartbeat),
+      now_ms:    76,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("handshake response send failure should not stop remote");
+
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(control_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
 fn inbound_deployment_frame_without_adapter_routing_is_ignored() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);

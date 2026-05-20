@@ -440,8 +440,22 @@ impl Remote {
       return Ok(());
     };
     self.apply_association_effects(association_index, effects, now_ms)?;
-    self.transport.connect_peer(&remote).map_err(|_| RemotingError::TransportUnavailable)?;
-    map_wire_delivery_result(&remote, self.transport.send_handshake(&remote, response))?;
+    if let Err(error) = self.transport.connect_peer(&remote) {
+      tracing::debug!(
+        ?error,
+        remote = %remote,
+        "dropping handshake response because peer writer is unavailable"
+      );
+      return Ok(());
+    }
+    if let Err(error) = self.transport.send_handshake(&remote, response) {
+      tracing::debug!(
+        ?error,
+        remote = %remote,
+        "dropping handshake response because handshake channel is unavailable"
+      );
+      return Ok(());
+    }
     self.drain_outbound(association_index, now_ms)
   }
 
