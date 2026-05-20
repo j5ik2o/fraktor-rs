@@ -966,6 +966,9 @@ fn terminal_async_stream_stops_island_actors_and_cancels_scheduler_jobs() {
   assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
   wait_for_system_child_count(&system, child_count_before_start);
   wait_for_scheduler_job_count(&system, scheduler_jobs_before_start);
+
+  materializer.shutdown().expect("shutdown after terminal cleanup");
+  assert!(materializer.streams().is_empty());
 }
 
 #[test]
@@ -1276,7 +1279,7 @@ fn drive_actor_owned_streams_until_terminal_reports_direct_drain_round_limit() {
 }
 
 #[test]
-fn shutdown_resources_reports_stopped_actor_and_cancel_failure() {
+fn shutdown_resources_skips_stopped_actor_and_reports_direct_drain_failure() {
   let system = build_system();
   let actor = stopped_system_actor(&system);
   let stream = running_stream_from_graph(
@@ -1284,10 +1287,11 @@ fn shutdown_resources_reports_stopped_actor_and_cancel_failure() {
   );
   let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
   resources.island_actors.push(actor);
+  resources.drive_gates.push(StreamIslandDriveGate::new());
 
   let result = ActorMaterializer::shutdown_resources(&system, resources);
 
-  assert_eq!(result, Err(StreamError::Failed));
+  assert!(matches!(result, Err(StreamError::FailedWithContext { .. })));
 }
 
 #[test]

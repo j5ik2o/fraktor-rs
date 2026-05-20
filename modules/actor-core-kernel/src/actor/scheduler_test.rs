@@ -506,6 +506,31 @@ fn fixed_rate_handle_can_be_cancelled_after_multiple_runs() {
 }
 
 #[test]
+fn fixed_rate_runnable_cancelled_while_executing_is_not_rescheduled() {
+  let mut scheduler = build_scheduler();
+  let handle_slot: ArcShared<SpinSyncMutex<Option<SchedulerHandle>>> = ArcShared::new(SpinSyncMutex::new(None));
+  let handle_slot_for_runnable = handle_slot.clone();
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
+    let handle = { handle_slot_for_runnable.lock().as_ref().cloned().expect("handle should be registered") };
+    assert!(handle.cancel(), "executing periodic handle should be cancellable");
+  });
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::RunRunnable {
+      runnable: runnable.clone(),
+    })
+    .expect("handle");
+  *handle_slot.lock() = Some(handle.clone());
+
+  scheduler.run_for_test(1);
+
+  assert!(handle.is_cancelled());
+  assert_eq!(scheduler.job_count_for_test(), 0);
+  assert_eq!(scheduler.metrics().active_timers(), 0);
+  scheduler.run_for_test(1);
+  assert_eq!(scheduler.job_count_for_test(), 0);
+}
+
+#[test]
 fn fixed_rate_policy_enforces_independent_backlog_limit() {
   let rate_policy = FixedRatePolicy::new(nz(1), nz(8));
   let delay_policy = FixedDelayPolicy::new(nz(8), nz(16));

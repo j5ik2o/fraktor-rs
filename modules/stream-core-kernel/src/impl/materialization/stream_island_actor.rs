@@ -46,7 +46,7 @@ impl StreamIslandActor {
     Ok(())
   }
 
-  fn stop_self_after_terminal(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn stop_self_after_terminal(ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if ctx.system().state().cell(&ctx.pid()).is_none() {
       return Ok(());
     }
@@ -57,7 +57,7 @@ impl StreamIslandActor {
 
   fn cleanup_terminal(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.cancel_scheduled_tick()?;
-    self.stop_self_after_terminal(ctx)
+    Self::stop_self_after_terminal(ctx)
   }
 
   fn abort_graph_streams(&self, error: &StreamError) {

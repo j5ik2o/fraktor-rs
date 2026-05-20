@@ -385,9 +385,12 @@ impl ActorMaterializer {
     result
   }
 
-  fn request_actor_shutdown(actors: &[ChildRef]) -> Result<(), StreamError> {
+  fn request_actor_shutdown(system: &ActorSystem, actors: &[ChildRef]) -> Result<(), StreamError> {
     let mut result = Ok(());
     for actor in actors {
+      if system.state().cell(&actor.pid()).is_none() {
+        continue;
+      }
       let mut actor = actor.clone();
       if let Err(error) = Self::send_command(&mut actor, StreamIslandCommand::Shutdown) {
         Self::record_first_error(&mut result, error);
@@ -496,7 +499,7 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     } else {
-      if let Err(error) = Self::request_actor_shutdown(&resources.island_actors) {
+      if let Err(error) = Self::request_actor_shutdown(system, &resources.island_actors) {
         Self::record_first_error(&mut result, error);
       }
       if let Err(error) = Self::request_stream_shutdown(&resources.streams) {

@@ -338,8 +338,14 @@ impl Scheduler {
 
           if job.periodic.is_some() {
             if self.reschedule_job(&mut job).is_ok() {
-              cancellable.reset_to_scheduled();
-              self.jobs.insert(handle_id, job);
+              if cancellable.try_reset_to_scheduled() {
+                self.jobs.insert(handle_id, job);
+              } else {
+                // must-ignore: job is not reinserted, so the wheel entry must only be best-effort removed.
+                let _ = self.wheel.cancel(job.wheel_id);
+                self.registry.remove(handle_id);
+                self.metrics.decrement_active();
+              }
             } else {
               cancellable.mark_completed();
               self.registry.remove(handle_id);

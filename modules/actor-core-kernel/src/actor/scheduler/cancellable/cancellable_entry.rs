@@ -40,8 +40,16 @@ impl CancellableEntry {
   }
 
   /// Transitions back to the scheduled state (used for periodic jobs).
-  pub fn reset_to_scheduled(&self) {
-    self.state.store(CancellableState::Scheduled as u8, Ordering::Release);
+  pub fn try_reset_to_scheduled(&self) -> bool {
+    self
+      .state
+      .compare_exchange(
+        CancellableState::Executing as u8,
+        CancellableState::Scheduled as u8,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+      )
+      .is_ok()
   }
 
   /// Attempts to cancel the entry while it is scheduled or executing.
