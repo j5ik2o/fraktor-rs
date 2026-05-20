@@ -552,14 +552,6 @@ fn wait_for_counter(counter: &ArcShared<SpinSyncMutex<u32>>, expected: u32) {
   assert_eq!(*counter.lock(), expected);
 }
 
-fn wait_for_system_child_count(system: &ActorSystem, expected: usize) {
-  let deadline = Instant::now() + Duration::from_secs(5);
-  while Instant::now() < deadline && system_child_names(system).len() != expected {
-    thread::yield_now();
-  }
-  assert_eq!(system_child_names(system).len(), expected);
-}
-
 fn wait_for_scheduler_job_count(system: &ActorSystem, expected: usize) {
   let mut actual = scheduler_job_count(system);
   let mut first_poll = true;
@@ -1076,6 +1068,8 @@ fn terminal_async_stream_stops_island_actors_and_cancels_scheduler_jobs() {
 
   assert_eq!(system_child_names(&system).len(), child_count_before_start + 2);
   assert_eq!(scheduler_job_count(&system), scheduler_jobs_before_start + 2);
+  let island_pids: Vec<Pid> =
+    materializer.materialized.iter().flat_map(|resources| &resources.island_actors).map(ChildRef::pid).collect();
 
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
@@ -1087,7 +1081,10 @@ fn terminal_async_stream_stops_island_actors_and_cancels_scheduler_jobs() {
   assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
 
   materializer.shutdown().expect("shutdown after terminal cleanup");
-  wait_for_system_child_count(&system, child_count_before_start);
+  for pid in island_pids {
+    wait_for_actor_cell_removed(&system, pid);
+  }
+  assert_eq!(system_child_names(&system).len(), child_count_before_start);
   wait_for_scheduler_job_count(&system, scheduler_jobs_before_start);
   assert!(materializer.streams().is_empty());
 }
@@ -1485,10 +1482,10 @@ fn finish_resource_teardown_ignores_closed_terminal_actor_stop() {
   let system = build_system_with_rejecting_stop_dispatcher("closed-terminal-stop-teardown", reject_stop.clone(), true);
   let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-terminal-stop-teardown");
   let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
-  let stream = running_stream_from_graph(Source::<u32, _>::empty().into_mat(Sink::ignore(), KeepRight));
-  while !stream.state().is_terminal() {
-    let _outcome = stream.drive();
-  }
+  let stream = running_stream_from_graph(Source::single(1_u32).into_mat(Sink::head(), KeepRight));
+  assert!(!stream.state().is_terminal());
+  let _outcome = stream.drive();
+  assert!(stream.state().is_terminal());
   *reject_stop.lock() = true;
 
   let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
