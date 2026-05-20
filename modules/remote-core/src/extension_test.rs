@@ -25,7 +25,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  association::{Association, AssociationEffect, QuarantineReason},
+  association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
@@ -58,6 +58,7 @@ struct RecordingTransport {
   timeout_calls: ArcShared<AtomicUsize>,
   timeout_before_handshake_calls: ArcShared<AtomicUsize>,
   connect_peer_calls: ArcShared<AtomicUsize>,
+  connect_peer_result: Result<(), TransportError>,
 }
 
 struct VecRemoteEventReceiver {
@@ -209,6 +210,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     }
   }
 
@@ -230,6 +232,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     }
   }
 
@@ -255,6 +258,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     })
   }
 
@@ -276,6 +280,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     }
   }
 
@@ -297,6 +302,29 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
+    }
+  }
+
+  fn with_connect_peer_result(addresses: Vec<Address>, connect_peer_result: Result<(), TransportError>) -> Self {
+    Self {
+      addresses,
+      start_result: Ok(()),
+      shutdown_result: Ok(()),
+      send_result: Ok(()),
+      control_result: Ok(()),
+      running: false,
+      shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
+      send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      ack_calls: ArcShared::new(AtomicUsize::new(0)),
+      ack_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result,
     }
   }
 }
@@ -330,7 +358,7 @@ impl RemoteTransport for RecordingTransport {
 
   fn connect_peer(&mut self, _remote: &Address) -> Result<(), TransportError> {
     self.connect_peer_calls.fetch_add(1, Ordering::Relaxed);
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    if self.running { self.connect_peer_result.clone() } else { Err(TransportError::NotStarted) }
   }
 
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
@@ -484,6 +512,14 @@ fn association_with_sent_system_envelope(local: Address, remote: Address, config
   assert!(association.enqueue(envelope, 10, &mut NoopInstrument).is_empty());
   let sent = association.next_outbound(11, &mut NoopInstrument).expect("system envelope should be sent once");
   assert_eq!(sent.redelivery_sequence(), Some(1));
+  association
+}
+
+fn handshaking_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
+  let mut association = Association::from_config(UniqueAddress::new(local, 1), remote.clone(), config);
+  let mut instrument = NoopInstrument;
+  let start_effects = association.associate(TransportEndpoint::new(remote.to_string()), 1, &mut instrument);
+  assert_eq!(start_effects.len(), 1);
   association
 }
 
@@ -936,6 +972,219 @@ fn inbound_handshake_requests_from_unknown_sources_do_not_create_associations() 
   assert_eq!(remote.association_count_for_test(), 0);
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_handshake_request_rejects_idle_association_without_sending_response() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(Association::from_config(
+    UniqueAddress::new(local_address.clone(), 1),
+    remote_address.clone(),
+    &config,
+  ));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    })
+    .expect("idle association should reject inbound handshake without failing the event loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Idle)));
+}
+
+#[test]
+fn inbound_handshake_request_rejects_other_advertised_local_destination_without_sending_response() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let other_local_address = Address::new("sys", "127.0.0.2", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone(), other_local_address.clone()]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(handshaking_association(local_address, remote_address.clone(), &config));
+  let handshake =
+    HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), other_local_address));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    })
+    .expect("wrong local destination should be ignored without failing the event loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Handshaking { .. })));
+}
+
+#[test]
+fn inbound_handshake_response_send_failure_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
+  let handshake_calls = transport.handshake_calls.clone();
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(handshaking_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address.clone(), second_remote.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(first_remote.clone(), 7), local_address));
+  let heartbeat = ControlPdu::Heartbeat { authority: second_remote.to_string() };
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    },
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(second_remote.to_string()),
+      frame:     WireFrame::Control(heartbeat),
+      now_ms:    76,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("handshake response send failure should not stop remote");
+
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(control_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&first_remote), Some(AssociationState::Handshaking { .. })));
+}
+
+#[test]
+fn inbound_handshake_response_send_success_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  remote.insert_association(handshaking_association(local_address.clone(), remote_address.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("successful handshake response should not stop remote");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Active { .. })));
+}
+
+#[test]
+fn inbound_handshake_connect_peer_failure_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_connect_peer_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(handshaking_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address.clone(), second_remote.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(first_remote.clone(), 7), local_address));
+  let heartbeat = ControlPdu::Heartbeat { authority: second_remote.to_string() };
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    },
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(second_remote.to_string()),
+      frame:     WireFrame::Control(heartbeat),
+      now_ms:    76,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("connect peer failure should not stop remote");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(control_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&first_remote), Some(AssociationState::Handshaking { .. })));
+}
+
+#[test]
+fn inbound_handshake_response_systemic_send_failure_returns_transport_unavailable() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::with_send_result(vec![local_address.clone()], Err(TransportError::NotAvailable));
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  remote.insert_association(handshaking_association(local_address.clone(), remote_address.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+  let mut receiver = VecRemoteEventReceiver::new([RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Handshake(handshake),
+    now_ms:    75,
+  }]);
+
+  let error = block_on_ready(remote.run(&mut receiver)).expect_err("systemic send failure should stop remote");
+
+  assert_eq!(error, RemotingError::TransportUnavailable);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Handshaking { .. })));
+}
+
+#[test]
+fn inbound_handshake_connect_peer_systemic_failure_returns_transport_unavailable() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_connect_peer_result(vec![local_address.clone()], Err(TransportError::NotAvailable));
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  remote.insert_association(handshaking_association(local_address.clone(), remote_address.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+  let mut receiver = VecRemoteEventReceiver::new([RemoteEvent::InboundFrameReceived {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    frame:     WireFrame::Handshake(handshake),
+    now_ms:    75,
+  }]);
+
+  let error = block_on_ready(remote.run(&mut receiver)).expect_err("systemic connect failure should stop remote");
+
+  assert_eq!(error, RemotingError::TransportUnavailable);
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Handshaking { .. })));
 }
 
 #[test]

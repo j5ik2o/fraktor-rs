@@ -21,7 +21,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use crate::{
   address::{Address, UniqueAddress},
-  association::{Association, AssociationEffect, QuarantineReason},
+  association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
@@ -53,6 +53,46 @@ pub struct Remote {
   associations:         Vec<Association>,
   inbound_envelopes:    Vec<InboundEnvelope>,
   flush_outcomes:       Vec<RemoteFlushOutcome>,
+}
+
+fn accept_inbound_handshake_request(
+  association: &mut Association,
+  request: &HandshakeReq,
+  now_ms: u64,
+  instrument: &mut dyn RemoteInstrument,
+  association_index: usize,
+) -> Vec<AssociationEffect> {
+  match association.accept_handshake_request(request, now_ms, instrument) {
+    | Ok(effects) => effects,
+    | Err(error) => {
+      tracing::debug!(?error, association_index, ?request, now_ms, "accept handshake request failed");
+      Default::default()
+    },
+  }
+}
+
+fn map_inbound_response_delivery_result(
+  remote: &Address,
+  operation: &'static str,
+  result: Result<(), TransportError>,
+) -> Result<bool, RemotingError> {
+  match result {
+    | Ok(()) => Ok(true),
+    | Err(error @ (TransportError::Backpressure | TransportError::ConnectionClosed)) => {
+      tracing::debug!(?error, remote = %remote, operation, "dropping inbound response because peer writer is unavailable");
+      Ok(false)
+    },
+    | Err(
+      error @ (TransportError::UnsupportedScheme
+      | TransportError::NotAvailable
+      | TransportError::AlreadyRunning
+      | TransportError::NotStarted
+      | TransportError::SendFailed),
+    ) => {
+      tracing::debug!(?error, remote = %remote, operation, "inbound response delivery failed");
+      Err(RemotingError::TransportUnavailable)
+    },
+  }
 }
 
 impl Remote {
@@ -417,31 +457,38 @@ impl Remote {
     let Some(association_index) = self.association_index_for_handshake_request(request) else {
       return Ok(());
     };
-    let accepted = {
-      let association = &mut self.associations[association_index];
-      match association.accept_handshake_request(request, now_ms, self.instrument.as_mut()) {
-        | Ok(effects) => {
-          let remote = association.remote().clone();
-          let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
-          Some((remote, response, effects))
-        },
-        | Err(error) => {
-          tracing::debug!(
-            ?error,
-            association_index,
-            remote = %association.remote(),
-            "accept handshake request failed"
-          );
-          None
-        },
+    let (remote, response) = {
+      let association = &self.associations[association_index];
+      if !matches!(association.state(), AssociationState::Handshaking { .. } | AssociationState::Active { .. }) {
+        tracing::debug!(association_index, remote = %association.remote(), "accept handshake request failed");
+        return Ok(());
       }
+      if association.local().address() != request.to() {
+        tracing::debug!(association_index, remote = %association.remote(), "accept handshake request failed");
+        return Ok(());
+      }
+      let remote = association.remote().clone();
+      let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
+      (remote, response)
     };
-    let Some((remote, response, effects)) = accepted else {
+    if !map_inbound_response_delivery_result(&remote, "connect_peer", self.transport.connect_peer(&remote))? {
       return Ok(());
-    };
+    }
+    if !map_inbound_response_delivery_result(
+      &remote,
+      "send_handshake",
+      self.transport.send_handshake(&remote, response),
+    )? {
+      return Ok(());
+    }
+    let effects = accept_inbound_handshake_request(
+      &mut self.associations[association_index],
+      request,
+      now_ms,
+      self.instrument.as_mut(),
+      association_index,
+    );
     self.apply_association_effects(association_index, effects, now_ms)?;
-    self.transport.connect_peer(&remote).map_err(|_| RemotingError::TransportUnavailable)?;
-    map_wire_delivery_result(&remote, self.transport.send_handshake(&remote, response))?;
     self.drain_outbound(association_index, now_ms)
   }
 
