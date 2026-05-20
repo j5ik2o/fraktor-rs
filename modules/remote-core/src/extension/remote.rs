@@ -21,7 +21,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use crate::{
   address::{Address, UniqueAddress},
-  association::{Association, AssociationEffect, QuarantineReason},
+  association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
@@ -417,29 +417,16 @@ impl Remote {
     let Some(association_index) = self.association_index_for_handshake_request(request) else {
       return Ok(());
     };
-    let accepted = {
-      let association = &mut self.associations[association_index];
-      match association.accept_handshake_request(request, now_ms, self.instrument.as_mut()) {
-        | Ok(effects) => {
-          let remote = association.remote().clone();
-          let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
-          Some((remote, response, effects))
-        },
-        | Err(error) => {
-          tracing::debug!(
-            ?error,
-            association_index,
-            remote = %association.remote(),
-            "accept handshake request failed"
-          );
-          None
-        },
+    let (remote, response) = {
+      let association = &self.associations[association_index];
+      if !matches!(association.state(), AssociationState::Handshaking { .. } | AssociationState::Active { .. }) {
+        tracing::debug!(association_index, remote = %association.remote(), "accept handshake request failed");
+        return Ok(());
       }
+      let remote = association.remote().clone();
+      let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
+      (remote, response)
     };
-    let Some((remote, response, effects)) = accepted else {
-      return Ok(());
-    };
-    self.apply_association_effects(association_index, effects, now_ms)?;
     if let Err(error) = self.transport.connect_peer(&remote) {
       tracing::debug!(
         ?error,
@@ -456,6 +443,10 @@ impl Remote {
       );
       return Ok(());
     }
+    let effects = self.associations[association_index]
+      .accept_handshake_request(request, now_ms, self.instrument.as_mut())
+      .unwrap_or_default();
+    self.apply_association_effects(association_index, effects, now_ms)?;
     self.drain_outbound(association_index, now_ms)
   }
 

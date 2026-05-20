@@ -25,7 +25,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  association::{Association, AssociationEffect, QuarantineReason},
+  association::{Association, AssociationEffect, AssociationState, QuarantineReason},
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
@@ -518,6 +518,14 @@ fn association_with_sent_system_envelope(local: Address, remote: Address, config
   association
 }
 
+fn handshaking_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
+  let mut association = Association::from_config(UniqueAddress::new(local, 1), remote.clone(), config);
+  let mut instrument = NoopInstrument;
+  let start_effects = association.associate(TransportEndpoint::new(remote.to_string()), 1, &mut instrument);
+  assert_eq!(start_effects.len(), 1);
+  association
+}
+
 fn active_association(local: Address, remote: Address, config: &RemoteConfig) -> Association {
   let mut association = Association::from_config(UniqueAddress::new(local, 1), remote.clone(), config);
   let mut instrument = NoopInstrument;
@@ -970,6 +978,36 @@ fn inbound_handshake_requests_from_unknown_sources_do_not_create_associations() 
 }
 
 #[test]
+fn inbound_handshake_request_rejects_idle_association_without_sending_response() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(Association::from_config(
+    UniqueAddress::new(local_address.clone(), 1),
+    remote_address.clone(),
+    &config,
+  ));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    })
+    .expect("idle association should reject inbound handshake without failing the event loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Idle)));
+}
+
+#[test]
 fn inbound_handshake_response_send_failure_keeps_event_loop_alive() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
@@ -981,7 +1019,7 @@ fn inbound_handshake_response_send_failure_keeps_event_loop_alive() {
   let control_calls = transport.control_calls.clone();
   let mut remote = remote_new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before inbound handshakes");
-  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(handshaking_association(local_address.clone(), first_remote.clone(), &config));
   remote.insert_association(active_association(local_address.clone(), second_remote.clone(), &config));
   let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(first_remote.clone(), 7), local_address));
   let heartbeat = ControlPdu::Heartbeat { authority: second_remote.to_string() };
@@ -1003,6 +1041,7 @@ fn inbound_handshake_response_send_failure_keeps_event_loop_alive() {
 
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
   assert_eq!(control_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&first_remote), Some(AssociationState::Handshaking { .. })));
 }
 
 #[test]
@@ -1015,7 +1054,7 @@ fn inbound_handshake_response_send_success_keeps_event_loop_alive() {
   let handshake_calls = transport.handshake_calls.clone();
   let mut remote = remote_new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before inbound handshake");
-  remote.insert_association(active_association(local_address.clone(), remote_address.clone(), &config));
+  remote.insert_association(handshaking_association(local_address.clone(), remote_address.clone(), &config));
   let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
   let mut receiver = VecRemoteEventReceiver::new([
     RemoteEvent::InboundFrameReceived {
@@ -1030,6 +1069,7 @@ fn inbound_handshake_response_send_success_keeps_event_loop_alive() {
 
   assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Active { .. })));
 }
 
 #[test]
@@ -1045,7 +1085,7 @@ fn inbound_handshake_connect_peer_failure_keeps_event_loop_alive() {
   let control_calls = transport.control_calls.clone();
   let mut remote = remote_new(transport, config.clone(), event_publisher());
   remote.start().expect("remote should be running before inbound handshakes");
-  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(handshaking_association(local_address.clone(), first_remote.clone(), &config));
   remote.insert_association(active_association(local_address.clone(), second_remote.clone(), &config));
   let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(first_remote.clone(), 7), local_address));
   let heartbeat = ControlPdu::Heartbeat { authority: second_remote.to_string() };
@@ -1068,6 +1108,7 @@ fn inbound_handshake_connect_peer_failure_keeps_event_loop_alive() {
   assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(control_calls.load(Ordering::Relaxed), 1);
+  assert!(matches!(remote.association_state_for_test(&first_remote), Some(AssociationState::Handshaking { .. })));
 }
 
 #[test]
