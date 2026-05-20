@@ -58,6 +58,7 @@ struct RecordingTransport {
   timeout_calls: ArcShared<AtomicUsize>,
   timeout_before_handshake_calls: ArcShared<AtomicUsize>,
   connect_peer_calls: ArcShared<AtomicUsize>,
+  connect_peer_result: Result<(), TransportError>,
 }
 
 struct VecRemoteEventReceiver {
@@ -209,6 +210,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     }
   }
 
@@ -230,6 +232,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     }
   }
 
@@ -255,6 +258,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     })
   }
 
@@ -276,6 +280,7 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
     }
   }
 
@@ -297,6 +302,29 @@ impl RecordingTransport {
       timeout_calls: ArcShared::new(AtomicUsize::new(0)),
       timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
       connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result: Ok(()),
+    }
+  }
+
+  fn with_connect_peer_result(addresses: Vec<Address>, connect_peer_result: Result<(), TransportError>) -> Self {
+    Self {
+      addresses,
+      start_result: Ok(()),
+      shutdown_result: Ok(()),
+      send_result: Ok(()),
+      control_result: Ok(()),
+      running: false,
+      shutdown_calls: ArcShared::new(AtomicUsize::new(0)),
+      send_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_calls: ArcShared::new(AtomicUsize::new(0)),
+      control_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      ack_calls: ArcShared::new(AtomicUsize::new(0)),
+      ack_frames: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+      handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_calls: ArcShared::new(AtomicUsize::new(0)),
+      timeout_before_handshake_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_calls: ArcShared::new(AtomicUsize::new(0)),
+      connect_peer_result,
     }
   }
 }
@@ -330,7 +358,10 @@ impl RemoteTransport for RecordingTransport {
 
   fn connect_peer(&mut self, _remote: &Address) -> Result<(), TransportError> {
     self.connect_peer_calls.fetch_add(1, Ordering::Relaxed);
-    if self.running { Ok(()) } else { Err(TransportError::NotStarted) }
+    if !self.running {
+      return Err(TransportError::NotStarted);
+    }
+    self.connect_peer_result.clone()
   }
 
   fn send_control(&mut self, remote: &Address, pdu: ControlPdu) -> Result<(), TransportError> {
@@ -971,6 +1002,71 @@ fn inbound_handshake_response_send_failure_keeps_event_loop_alive() {
   block_on_ready(remote.run(&mut receiver)).expect("handshake response send failure should not stop remote");
 
   assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(control_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn inbound_handshake_response_send_success_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshake");
+  remote.insert_association(active_association(local_address.clone(), remote_address.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), local_address));
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("successful handshake response should not stop remote");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn inbound_handshake_connect_peer_failure_keeps_event_loop_alive() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let first_remote = Address::new("first-sys", "10.0.0.1", 2552);
+  let second_remote = Address::new("second-sys", "10.0.0.2", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport =
+    RecordingTransport::with_connect_peer_result(vec![local_address.clone()], Err(TransportError::ConnectionClosed));
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(active_association(local_address.clone(), first_remote.clone(), &config));
+  remote.insert_association(active_association(local_address.clone(), second_remote.clone(), &config));
+  let handshake = HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(first_remote.clone(), 7), local_address));
+  let heartbeat = ControlPdu::Heartbeat { authority: second_remote.to_string() };
+  let mut receiver = VecRemoteEventReceiver::new([
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(first_remote.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    },
+    RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(second_remote.to_string()),
+      frame:     WireFrame::Control(heartbeat),
+      now_ms:    76,
+    },
+    RemoteEvent::TransportShutdown,
+  ]);
+
+  block_on_ready(remote.run(&mut receiver)).expect("connect peer failure should not stop remote");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
   assert_eq!(control_calls.load(Ordering::Relaxed), 1);
 }
 
