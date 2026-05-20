@@ -183,7 +183,7 @@ fn make_transport_with_addresses(addresses: Vec<Address>) -> TcpRemoteTransport 
 }
 
 fn remote_config() -> RemoteConfig {
-  RemoteConfig::new("127.0.0.1")
+  RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.1")
 }
 
 fn custom_serialization_installer() -> (SerializerId, SerializationExtensionInstaller) {

@@ -1,7 +1,10 @@
 extern crate std;
 use core::{num::NonZeroUsize, time::Duration};
 
-use crate::config::{LargeMessageDestinationPattern, LargeMessageDestinations, RemoteCompressionConfig, RemoteConfig};
+use crate::{
+  address::Address,
+  config::{LargeMessageDestinationPattern, LargeMessageDestinations, RemoteCompressionConfig, RemoteConfig},
+};
 
 const DEFAULT_MAXIMUM_FRAME_SIZE: usize = 256 * 1024;
 const DEFAULT_BUFFER_POOL_SIZE: usize = 128;
@@ -74,6 +77,8 @@ fn advanced_artery_settings_use_pekko_compatible_defaults() {
   assert!(!s.log_received_messages());
   assert!(!s.log_sent_messages());
   assert_eq!(s.log_frame_size_exceeding(), None);
+  assert!(s.allowed_remote_peers().is_empty());
+  assert!(s.allowed_remote_hosts().is_empty());
 }
 
 #[test]
@@ -151,6 +156,8 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
     .with_outbound_lanes(2)
     .with_maximum_frame_size(512 * 1024)
     .with_buffer_pool_size(64)
+    .with_allowed_remote_peer(Address::new("remote-sys", "10.0.0.1", 2552))
+    .with_allowed_remote_host("10.0.0.2")
     .with_outbound_message_queue_size(32)
     .with_outbound_control_queue_size(8)
     .with_remote_event_queue_size(64)
@@ -171,6 +178,9 @@ fn advanced_artery_settings_method_chain_applies_all_changes() {
   assert_eq!(s.outbound_lanes(), 2);
   assert_eq!(s.maximum_frame_size(), 512 * 1024);
   assert_eq!(s.buffer_pool_size(), 64);
+  assert!(s.is_remote_peer_allowed(&Address::new("remote-sys", "10.0.0.1", 2552)));
+  assert!(s.is_remote_peer_allowed(&Address::new("other-sys", "10.0.0.2", 9000)));
+  assert!(!s.is_remote_peer_allowed(&Address::new("other-sys", "10.0.0.3", 9000)));
   assert_eq!(s.outbound_message_queue_size(), 32);
   assert_eq!(s.outbound_control_queue_size(), 8);
   assert_eq!(s.remote_event_queue_size(), 64);

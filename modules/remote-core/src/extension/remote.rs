@@ -293,6 +293,14 @@ impl Remote {
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
     let remote = parse_authority(authority.authority()).ok_or(RemotingError::TransportUnavailable)?;
+    if self.association_index_for_remote(&remote).is_none() && !self.config.is_remote_peer_allowed(&remote) {
+      tracing::warn!(
+        remote = %remote,
+        "dropping outbound envelope because remote peer is not allowed for automatic dialing"
+      );
+      self.instrument.record_dropped_envelope(authority, &envelope, now_ms);
+      return Ok(());
+    }
     let association_index = self.ensure_association(remote)?;
     let should_start_handshake = self.associations[association_index].state().is_idle();
     let should_recover_handshake = self.associations[association_index].state().is_gated();
@@ -320,6 +328,13 @@ impl Remote {
 
   fn handle_outbound_control(&mut self, remote: &Address, pdu: ControlPdu, _now_ms: u64) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
+    if !self.can_automatically_connect_peer(remote) {
+      tracing::warn!(
+        remote = %remote,
+        "dropping outbound control frame because remote peer is not allowed for automatic dialing"
+      );
+      return Ok(());
+    }
     self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)?;
     map_wire_delivery_result(remote, self.transport.send_control(remote, pdu))
   }
@@ -331,6 +346,13 @@ impl Remote {
     _now_ms: u64,
   ) -> Result<(), RemotingError> {
     self.lifecycle.ensure_running()?;
+    if !self.can_automatically_connect_peer(remote) {
+      tracing::warn!(
+        remote = %remote,
+        "dropping outbound deployment frame because remote peer is not allowed for automatic dialing"
+      );
+      return Ok(());
+    }
     self.transport.connect_peer(remote).map_err(|_| RemotingError::TransportUnavailable)?;
     map_wire_delivery_result(remote, self.transport.send_deployment(remote, pdu))
   }
@@ -354,6 +376,10 @@ impl Remote {
 
   fn association_index_for_remote(&self, remote: &Address) -> Option<usize> {
     self.associations.iter().position(|association| association.remote() == remote)
+  }
+
+  fn can_automatically_connect_peer(&self, remote: &Address) -> bool {
+    self.config.is_remote_peer_allowed(remote) || self.association_index_for_remote(remote).is_some()
   }
 
   fn association_index_for_authority(&self, authority: &TransportEndpoint) -> Option<usize> {

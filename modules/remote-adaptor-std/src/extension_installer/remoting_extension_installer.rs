@@ -189,6 +189,10 @@ impl RemotingExtensionInstaller {
     Ok((sender, monotonic_epoch))
   }
 
+  pub(crate) const fn config(&self) -> &RemoteConfig {
+    &self.config
+  }
+
   pub(crate) fn remote_event_sender_epoch_and_watcher(
     &self,
   ) -> Result<(Sender<RemoteEvent>, Instant, Sender<WatcherCommand>), RemotingError> {

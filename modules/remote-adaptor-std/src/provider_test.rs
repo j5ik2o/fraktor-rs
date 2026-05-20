@@ -55,6 +55,7 @@ use tokio::{
 
 use super::{
   StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
+  path_remote_actor_ref_provider::PathRemoteActorRefProvider,
   remote_actor_path_registry::RemoteActorPathRegistry,
   remote_deployment_hook::StdRemoteDeploymentHook,
   remote_watch_hook::{StdRemoteWatchFlushConfig, StdRemoteWatchHook},
@@ -667,6 +668,28 @@ fn remote_path_with_non_matching_authority_is_dispatched_to_remote_provider() {
 }
 
 #[test]
+fn default_path_remote_actor_ref_provider_rejects_unallowed_remote_peer() {
+  let mut provider = PathRemoteActorRefProvider::default();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+
+  let err = provider.actor_ref(remote_path).expect_err("unallowed remote peer should be rejected");
+
+  assert_eq!(err, ProviderError::RemotePeerNotAllowed);
+}
+
+#[test]
+fn path_remote_actor_ref_provider_accepts_allowed_remote_peer() {
+  let config =
+    RemoteConfig::new("127.0.0.1").with_allowed_remote_peer(RemoteCoreAddress::new("remote-sys", "10.0.0.99", 2552));
+  let mut provider = PathRemoteActorRefProvider::new(config);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+
+  let remote_ref = provider.actor_ref(remote_path.clone()).expect("allowed remote peer should resolve");
+
+  assert_eq!(remote_ref.path().to_canonical_uri(), remote_path.to_canonical_uri());
+}
+
+#[test]
 fn local_authority_path_is_normalized_to_local_provider() {
   let mut provider = make_provider();
   // Authority that exactly matches `local_address()`.
@@ -857,7 +880,7 @@ fn remote_actor_ref_try_tell_pushes_outbound_enqueued_event() {
 async fn actor_system_config_registered_std_remote_actor_ref_provider_resolves_remote_actor_ref() {
   let remote_installer = ArcShared::new(RemotingExtensionInstaller::new(
     TcpRemoteTransport::new("127.0.0.1:0", vec![local_address().address().clone()]),
-    RemoteConfig::new("127.0.0.1"),
+    RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.1"),
   ));
   let extension_installers = ExtensionInstallers::default().with_shared_extension_installer(remote_installer.clone());
   let installer =

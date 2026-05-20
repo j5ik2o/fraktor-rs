@@ -447,6 +447,7 @@ fn build_node_with_remote_config_and_deployer(
 ) -> RemoteNode {
   let address = Address::new(SYSTEM_NAME, "127.0.0.1", port);
   let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address.clone()]);
+  let remote_config = remote_config.with_allowed_remote_host("127.0.0.1");
   let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, remote_config));
   let extension_installers = ExtensionInstallers::default().with_shared_extension_installer(installer.clone());
   let provider_installer = StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(
@@ -468,7 +469,10 @@ fn build_node_with_remote_config_and_deployer(
 fn build_stream_ref_node(port: u16, uid: u64) -> RemoteNode {
   let address = Address::new(SYSTEM_NAME, "127.0.0.1", port);
   let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address.clone()]);
-  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, RemoteConfig::new("127.0.0.1")));
+  let installer = ArcShared::new(RemotingExtensionInstaller::new(
+    transport,
+    RemoteConfig::new("127.0.0.1").with_allowed_remote_host("127.0.0.1"),
+  ));
   let system_slot = SerializationSystemSlot::new();
   let serialization_installer = stream_ref_serialization_installer(system_slot.clone());
   let extension_installers = ExtensionInstallers::default()

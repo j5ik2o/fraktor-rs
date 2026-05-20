@@ -127,6 +127,7 @@ fn serialization_extension() -> ArcShared<SerializationExtensionShared> {
 
 fn remote_shared(config: RemoteConfig, transport: TestRemoteTransport) -> RemoteShared {
   let system = create_noop_actor_system();
+  let config = config.with_allowed_remote_host("10.0.0.1");
   let remote = Remote::new(transport, config, EventPublisher::new(system.downgrade()), serialization_extension());
   let shared = RemoteShared::new(remote);
   shared.start().expect("remote should start");
@@ -135,6 +136,7 @@ fn remote_shared(config: RemoteConfig, transport: TestRemoteTransport) -> Remote
 
 fn remote_shared_not_started(config: RemoteConfig, transport: TestRemoteTransport) -> RemoteShared {
   let system = create_noop_actor_system();
+  let config = config.with_allowed_remote_host("10.0.0.1");
   RemoteShared::new(Remote::new(transport, config, EventPublisher::new(system.downgrade()), serialization_extension()))
 }
 

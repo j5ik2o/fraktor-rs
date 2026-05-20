@@ -36,7 +36,8 @@ impl StdRemoteActorRefProviderInstaller {
     local_address: UniqueAddress,
     remoting_installer: ArcShared<RemotingExtensionInstaller>,
   ) -> Self {
-    Self { local_address, remote_provider: Mutex::new(Some(Box::new(PathRemoteActorRefProvider))), remoting_installer }
+    let remote_provider = Box::new(PathRemoteActorRefProvider::new(remoting_installer.config().clone()));
+    Self { local_address, remote_provider: Mutex::new(Some(remote_provider)), remoting_installer }
   }
 
   fn event_sender_epoch_watcher_and_flush(&self) -> Result<RemoteProviderFlushHandles, ActorSystemBuildError> {
