@@ -1325,7 +1325,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   }
   assert_eq!(second_value, Some(61_u32));
 
-  for _ in 0..scaled_attempts(16) {
+  for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
     let _ = materialized.stream().drive();
     if materialized.stream().state().is_terminal() {
       break;
