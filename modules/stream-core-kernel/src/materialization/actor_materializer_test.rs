@@ -6,16 +6,19 @@ use std::{boxed::Box, thread, time::Instant};
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Actor, ActorContext, ChildRef, Pid,
-    error::ActorError,
+    Actor, ActorCell, ActorContext, ChildRef, Pid,
+    error::{ActorError, SendError},
     messaging::{AnyMessageView, system_message::SystemMessage},
     props::Props,
     scheduler::{SchedulerConfig, SchedulerHandle},
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{
-    DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared,
-    MessageDispatcherFactory, MessageDispatcherShared, TrampolineState,
+  dispatch::{
+    dispatcher::{
+      DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, DispatcherCore, ExecuteError, Executor,
+      ExecutorShared, MessageDispatcher, MessageDispatcherFactory, MessageDispatcherShared, TrampolineState,
+    },
+    mailbox::{Envelope, Mailbox},
   },
   system::{ActorSystem, remote::RemotingConfig},
 };
@@ -362,6 +365,41 @@ fn inline_executor_shared() -> ExecutorShared {
   ExecutorShared::new(Box::new(InlineExec), TrampolineState::new())
 }
 
+struct ClosedUserDispatcherFactory {
+  id: &'static str,
+}
+
+impl MessageDispatcherFactory for ClosedUserDispatcherFactory {
+  fn dispatcher(&self) -> MessageDispatcherShared {
+    let settings = DispatcherConfig::new(self.id, nz(8), None, Duration::from_secs(1));
+    MessageDispatcherShared::new(Box::new(ClosedUserDispatcher {
+      core: DispatcherCore::new(&settings, inline_executor_shared()),
+    }))
+  }
+}
+
+struct ClosedUserDispatcher {
+  core: DispatcherCore,
+}
+
+impl MessageDispatcher for ClosedUserDispatcher {
+  fn core(&self) -> &DispatcherCore {
+    &self.core
+  }
+
+  fn core_mut(&mut self) -> &mut DispatcherCore {
+    &mut self.core
+  }
+
+  fn dispatch(
+    &mut self,
+    _receiver: &ArcShared<ActorCell>,
+    envelope: Envelope,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    Err(SendError::closed(envelope.into_payload()))
+  }
+}
+
 fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, MessageDispatcherShared) {
   let executor = inline_executor_shared();
   let settings = DispatcherConfig::new(dispatcher_id, nz(8), None, Duration::from_secs(1));
@@ -376,6 +414,17 @@ fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, Me
     .with_scheduler_config(scheduler)
     .with_dispatcher_factory(dispatcher_id, configurator_handle);
   (ActorSystem::create_from_props(&props, config).expect("system should build"), dispatcher)
+}
+
+fn build_system_with_closed_user_dispatcher(dispatcher_id: &'static str) -> ActorSystem {
+  let configurator: Box<dyn MessageDispatcherFactory> = Box::new(ClosedUserDispatcherFactory { id: dispatcher_id });
+  let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
+  let props = Props::from_fn(|| GuardianActor);
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::new(TestTickDriver::default())
+    .with_scheduler_config(scheduler)
+    .with_dispatcher_factory(dispatcher_id, configurator_handle);
+  ActorSystem::create_from_props(&props, config).expect("system should build")
 }
 
 fn system_child_names(system: &ActorSystem) -> Vec<String> {
@@ -441,12 +490,7 @@ fn wait_for_system_child_count(system: &ActorSystem, expected: usize) {
 
 fn wait_for_scheduler_job_count(system: &ActorSystem, expected: usize) {
   let deadline = Instant::now() + Duration::from_secs(5);
-  let mut first_poll = true;
-  while Instant::now() < deadline {
-    if !first_poll && scheduler_job_count(system) == expected {
-      return;
-    }
-    first_poll = false;
+  while Instant::now() < deadline && scheduler_job_count(system) != expected {
     thread::yield_now();
   }
   assert_eq!(scheduler_job_count(system), expected);
@@ -1275,6 +1319,18 @@ fn drive_actor_owned_streams_until_terminal_reports_direct_drain_round_limit() {
   let result = ActorMaterializer::drive_actor_owned_streams_until_terminal(&resources);
 
   assert!(result.is_err());
+}
+
+#[test]
+fn request_actor_shutdown_ignores_closed_live_actor_mailbox() {
+  let system = build_system_with_closed_user_dispatcher("closed-user-shutdown");
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-user-shutdown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+
+  let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
+
+  assert_eq!(result, Ok(()));
+  assert!(system.state().cell(&actor.pid()).is_some());
 }
 
 #[test]
