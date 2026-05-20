@@ -456,10 +456,11 @@ impl ActorMaterializer {
 
   fn finish_resource_teardown(system: &ActorSystem, resources: MaterializedStreamResources) -> Result<(), StreamError> {
     let MaterializedStreamResources { streams, island_actors, .. } = resources;
+    let streams_terminal = !streams.is_empty() && Self::all_streams_terminal(&streams);
     let mut result = Ok(());
     for actor in &island_actors {
       if let Err(error) = actor.stop() {
-        if matches!(error, SendError::Closed(_)) && system.state().cell(&actor.pid()).is_none() {
+        if matches!(error, SendError::Closed(_)) && (streams_terminal || system.state().cell(&actor.pid()).is_none()) {
           continue;
         }
         Self::record_first_error(&mut result, StreamError::Failed);
@@ -500,7 +501,9 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     } else {
-      result = result.and(Self::request_actor_shutdown(system, &resources.island_actors));
+      if !Self::all_streams_terminal(&resources.streams) {
+        result = result.and(Self::request_actor_shutdown(system, &resources.island_actors));
+      }
       if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
         Self::record_first_error(&mut result, error);
       }

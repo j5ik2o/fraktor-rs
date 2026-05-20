@@ -1085,10 +1085,10 @@ fn terminal_async_stream_stops_island_actors_and_cancels_scheduler_jobs() {
     thread::yield_now();
   }
   assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
-  wait_for_system_child_count(&system, child_count_before_start);
-  wait_for_scheduler_job_count(&system, scheduler_jobs_before_start);
 
   materializer.shutdown().expect("shutdown after terminal cleanup");
+  wait_for_system_child_count(&system, child_count_before_start);
+  wait_for_scheduler_job_count(&system, scheduler_jobs_before_start);
   assert!(materializer.streams().is_empty());
 }
 
@@ -1476,6 +1476,26 @@ fn finish_resource_teardown_reports_closed_registered_actor_stop() {
   let result = ActorMaterializer::finish_resource_teardown(&system, resources);
 
   assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn finish_resource_teardown_ignores_closed_terminal_actor_stop() {
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("closed-terminal-stop-teardown", reject_stop.clone(), true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-terminal-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  let stream = running_stream_from_graph(Source::<u32, _>::empty().into_mat(Sink::ignore(), KeepRight));
+  while !stream.state().is_terminal() {
+    let _outcome = stream.drive();
+  }
+  *reject_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Ok(()));
   assert!(system.state().cell(&actor.pid()).is_some());
 }
 
