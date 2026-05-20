@@ -1444,6 +1444,42 @@ fn request_actor_shutdown_reports_live_actor_delivery_failure() {
 }
 
 #[test]
+fn request_non_terminal_actor_shutdown_reports_invalid_resource_shape() {
+  let system = build_system();
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(stopped_system_actor(&system));
+
+  let result = ActorMaterializer::request_non_terminal_actor_shutdown(&system, &resources);
+
+  assert_eq!(result, Err(StreamError::InvalidConnection));
+}
+
+#[test]
+fn shutdown_resources_skips_terminal_actor_shutdown_request_in_mixed_graph() {
+  let system = build_system_with_rejecting_user_dispatcher("closed-terminal-user-shutdown", true);
+  let terminal_props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-terminal-user-shutdown");
+  let terminal_actor = system.extended().spawn_system_actor(&terminal_props).expect("terminal actor should spawn");
+  let live_actor =
+    system.extended().spawn_system_actor(&Props::from_fn(|| GuardianActor)).expect("live actor should spawn");
+  system.state().cell(&terminal_actor.pid()).expect("terminal actor cell should exist").mailbox().become_closed();
+  let terminal_stream = running_stream_from_graph(Source::single(1_u32).into_mat(Sink::head(), KeepRight));
+  let live_stream = running_stream_from_graph(Source::single(2_u32).into_mat(Sink::head(), KeepRight));
+  let _outcome = terminal_stream.drive();
+  assert!(terminal_stream.state().is_terminal());
+  assert!(!live_stream.state().is_terminal());
+
+  let mut resources =
+    MaterializedStreamResources::new(vec![terminal_stream, live_stream], empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(terminal_actor.clone());
+  resources.island_actors.push(live_actor);
+  resources.drive_gates.push(StreamIslandDriveGate::new());
+  resources.drive_gates.push(StreamIslandDriveGate::new());
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert_eq!(result, Ok(()));
+}
+
+#[test]
 fn finish_resource_teardown_reports_closed_live_actor_stop() {
   let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
   let system = build_system_with_rejecting_stop_dispatcher("closed-stop-teardown", reject_stop.clone(), true);

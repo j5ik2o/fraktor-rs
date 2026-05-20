@@ -400,6 +400,23 @@ impl ActorMaterializer {
     result
   }
 
+  fn request_non_terminal_actor_shutdown(
+    system: &ActorSystem,
+    resources: &MaterializedStreamResources,
+  ) -> Result<(), StreamError> {
+    if resources.island_actors.len() != resources.streams.len() {
+      return Err(StreamError::InvalidConnection);
+    }
+
+    let actors: Vec<ChildRef> = resources
+      .island_actors
+      .iter()
+      .zip(&resources.streams)
+      .filter_map(|(actor, stream)| if stream.state().is_terminal() { None } else { Some(actor.clone()) })
+      .collect();
+    Self::request_actor_shutdown(system, &actors)
+  }
+
   fn all_streams_terminal(streams: &[StreamShared]) -> bool {
     streams.iter().all(|stream| stream.state().is_terminal())
   }
@@ -501,9 +518,7 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     } else {
-      if !Self::all_streams_terminal(&resources.streams) {
-        result = result.and(Self::request_actor_shutdown(system, &resources.island_actors));
-      }
+      result = result.and(Self::request_non_terminal_actor_shutdown(system, &resources));
       if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
         Self::record_first_error(&mut result, error);
       }
