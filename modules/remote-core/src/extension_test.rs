@@ -1005,6 +1005,34 @@ fn inbound_handshake_request_rejects_idle_association_without_sending_response()
 }
 
 #[test]
+fn inbound_handshake_request_rejects_other_advertised_local_destination_without_sending_response() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let other_local_address = Address::new("sys", "127.0.0.2", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone(), other_local_address.clone()]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound handshakes");
+  remote.insert_association(handshaking_association(local_address, remote_address.clone(), &config));
+  let handshake =
+    HandshakePdu::Req(HandshakeReq::new(UniqueAddress::new(remote_address.clone(), 7), other_local_address));
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Handshake(handshake),
+      now_ms:    75,
+    })
+    .expect("wrong local destination should be ignored without failing the event loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 0);
+  assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Handshaking { .. })));
+}
+
+#[test]
 fn inbound_handshake_response_send_failure_keeps_event_loop_alive() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let first_remote = Address::new("first-sys", "10.0.0.1", 2552);

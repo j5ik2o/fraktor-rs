@@ -423,6 +423,10 @@ impl Remote {
         tracing::debug!(association_index, remote = %association.remote(), "accept handshake request failed");
         return Ok(());
       }
+      if association.local().address() != request.to() {
+        tracing::debug!(association_index, remote = %association.remote(), "accept handshake request failed");
+        return Ok(());
+      }
       let remote = association.remote().clone();
       let response = HandshakePdu::Rsp(HandshakeRsp::new(association.local().clone()));
       (remote, response)
