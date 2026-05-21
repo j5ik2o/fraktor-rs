@@ -1,5 +1,9 @@
 //! Persistence effector configuration.
 
+#[cfg(test)]
+#[path = "persistence_effector_config_test.rs"]
+mod tests;
+
 use alloc::string::String;
 
 use fraktor_persistence_core_kernel_rs::error::PersistenceError;
@@ -35,7 +39,7 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
       initial_state,
       apply_event: ArcShared::new(apply_event),
       persistence_mode: PersistenceMode::Persisted,
-      stash_capacity: usize::MAX,
+      stash_capacity: 1000,
       snapshot_criteria: SnapshotCriteria::never(),
       retention_criteria: RetentionCriteria::default(),
       backoff_config: BackoffConfig::default(),
