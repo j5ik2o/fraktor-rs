@@ -108,14 +108,20 @@ impl EphemeralPersistenceStore {
   ) -> Result<(Vec<E>, u64), PersistenceError>
   where
     E: Clone + Send + Sync + 'static, {
-    let sequence_nr = self.entries.with_lock(|entries| {
-      let entry = entries.entry(config.persistence_id().as_str().to_string()).or_default();
-      let adapter = config.event_adapters().write_adapter_for::<E>();
-      for event in events.iter() {
-        entry.sequence_nr = entry.sequence_nr.saturating_add(1);
+    let adapter = config.event_adapters().write_adapter_for::<E>();
+    let persisted_events = events
+      .iter()
+      .map(|event| {
         let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(event.clone());
         let manifest = adapter.manifest(payload.deref());
         let payload = adapter.to_journal(payload);
+        (manifest, payload)
+      })
+      .collect::<Vec<_>>();
+    let sequence_nr = self.entries.with_lock(|entries| {
+      let entry = entries.entry(config.persistence_id().as_str().to_string()).or_default();
+      for (manifest, payload) in persisted_events {
+        entry.sequence_nr = entry.sequence_nr.saturating_add(1);
         entry.events.push(EphemeralPersistedEvent { sequence_nr: entry.sequence_nr, manifest, payload });
       }
       entry.sequence_nr
@@ -174,11 +180,12 @@ impl EphemeralPersistenceStore {
         })
         .max_by_key(|snapshot| snapshot.sequence_nr);
       let snapshot_seq = snapshot.map(|snapshot| snapshot.sequence_nr).unwrap_or(0);
+      let replay_max = usize::try_from(recovery.replay_max()).unwrap_or(usize::MAX);
       let events = entry
         .events
         .iter()
         .filter(|event| event.sequence_nr > snapshot_seq && event.sequence_nr <= recovery.to_sequence_nr())
-        .take(recovery.replay_max() as usize)
+        .take(replay_max)
         .map(|event| EphemeralPersistedEvent {
           sequence_nr: event.sequence_nr,
           manifest:    event.manifest.clone(),

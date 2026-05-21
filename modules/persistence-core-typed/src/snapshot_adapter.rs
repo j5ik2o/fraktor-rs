@@ -10,6 +10,8 @@ use core::any::Any;
 use fraktor_utils_core_rs::sync::ArcShared;
 
 /// Converts typed state snapshots to and from snapshot payloads.
+///
+/// Runtime wiring for snapshot adapters is intentionally left to a follow-up change.
 pub trait SnapshotAdapter<S>: Send + Sync + 'static {
   /// Returns the manifest associated with the state snapshot.
   fn manifest(&self, state: &S) -> String;
