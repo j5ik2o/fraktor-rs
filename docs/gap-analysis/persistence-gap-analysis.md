@@ -1,6 +1,6 @@
 # persistence モジュール ギャップ分析
 
-更新日: 2026-05-19 JST (Phase 1 kernel 契約更新後)
+更新日: 2026-05-21 JST (current main 再検証)
 
 ## 比較スコープ定義
 
@@ -37,7 +37,7 @@
 
 Pekko 側の固定スコープ候補ディレクトリを raw 抽出すると、型宣言 352 件、主要 `def` 1405 件が見つかる。これには private / internal / Java DSL / JVM 固有 / scope 外の replication 系 API が含まれるため、parity カバレッジ分母には使わない。
 
-fraktor-rs 側は `modules/persistence-core-kernel/src/` と `modules/persistence-core-typed/src/` の `*_test.rs` を除外して raw 抽出した。raw public type declarations は 69 件（kernel: 55、typed: 14）、raw public method declarations は 230 件（kernel: 179、typed: 51）である。このうち外部到達可能な `pub` type declarations は 61 件（kernel: 51、typed: 10）で、`pub(crate)` の内部型は raw 参考値にのみ含める。
+fraktor-rs 側は `modules/persistence-core-kernel/src/` と `modules/persistence-core-typed/src/` の `*_test.rs` / `lib_test.rs` を除外して raw 抽出した。raw public type declarations は 73 件（kernel: 59、typed: 14）、raw public method declarations は 252 件（kernel: 201、typed: 51）である。このうち外部到達可能な `pub` type declarations は 65 件（kernel: 55、typed: 10）で、`pub(crate)` の内部型は raw 参考値にのみ含める。
 
 ## サマリー
 
@@ -46,8 +46,8 @@ fraktor-rs 側は `modules/persistence-core-kernel/src/` と `modules/persistenc
 | Pekko 固定スコープ対象概念 | 80 |
 | fraktor-rs 固定スコープ対応概念 | 55 |
 | 固定スコープ概念カバレッジ | 55/80 (69%) |
-| raw public type declarations | 69（kernel: 55, typed: 14） |
-| raw public method declarations | 230（kernel: 179, typed: 51） |
+| raw public type declarations | 73（kernel: 59, typed: 14） |
+| raw public method declarations | 252（kernel: 201, typed: 51） |
 | hard / medium / easy / trivial gap | 4 / 10 / 6 / 6 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
@@ -56,7 +56,7 @@ raw declaration count は参考値であり、parity 分母に使わない。
 
 classic write-side persistence は、persistent actor、journal、snapshot、event adapter、at-least-once delivery、durable state store の基本契約が揃っている。typed write-side は Pekko typed `EventSourcedBehavior` / `Effect` の直移植ではなく、`pekko-persistence-effector` と同じく通常の typed `Behavior` を保ったまま hidden child store actor に永続化を委譲する effector-first API として実装されている。
 
-2026-05-19 時点の主要な変化は、現行 crate 境界が `persistence-core-kernel` / `persistence-core-typed` であることを明示し直した点と、typed 側に `BackoffConfig` / `PersistenceEffectorMessageAdapter` / `PersistenceEffectorSignal` がある一方で、Pekko の typed behavior-level `onPersistFailure`、typed adapter、typed durable state はまだ parity ギャップとして残る点である。
+2026-05-21 時点の再検証では、現行 crate 境界が引き続き `persistence-core-kernel` / `persistence-core-typed` であり、`persistence-adaptor-std` は存在しないことを確認した。typed effector は backoff 中の store command stashing と wait-state recovery signal handling が改善されているが、Pekko の typed behavior-level `onPersistFailure`、typed adapter、typed durable state はまだ parity ギャップとして残る。
 
 ## 層別カバレッジ
 
@@ -148,7 +148,7 @@ Pekko persistence の現行推奨 write-side API は typed `EventSourcedBehavior
 | typed `Recovery` / typed `SnapshotSelectionCriteria` | `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/scaladsl/Recovery.scala:24`, `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/SnapshotSelectionCriteria.scala:21` | 部分実装 | typed | easy | recovery は store actor に隠蔽。snapshot 判定は `modules/persistence-core-typed/src/snapshot_criteria.rs:9` として提供 |
 | typed `EventAdapter` / `EventSeq` / `SnapshotAdapter` | `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/EventAdapter.scala:35`, `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/SnapshotAdapter.scala:23` | 未対応 | typed | easy | kernel adapter はあるが、型パラメータ付き typed wrapper がない |
 | `PublishedEvent` / `EventRejectedException` | `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/PublishedEvent.scala:28`, `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/EventRejectedException.scala:19` | 未対応 | typed | medium | event publication と rejection signal / error の公開契約がない |
-| behavior-level `onPersistFailure` | `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/scaladsl/EventSourcedBehavior.scala:230` | 部分実装 | typed | medium | `modules/persistence-core-typed/src/backoff_config.rs:7` と `PersistenceEffectorConfig::with_backoff_config` はあるが、Pekko の behavior supervision hook としては未統合 |
+| behavior-level `onPersistFailure` | `references/pekko/persistence-typed/src/main/scala/org/apache/pekko/persistence/typed/scaladsl/EventSourcedBehavior.scala:230` | 部分実装 | typed | medium | `modules/persistence-core-typed/src/backoff_config.rs:7`、`PersistenceEffectorConfig::with_backoff_config`、hidden store actor の `BackoffSupervisor` wiring はあるが、Pekko の behavior-level supervision hook としては未統合 |
 
 ### 9. Typed DurableStateBehavior　✅ 実装済み 0/3 (0%)
 
