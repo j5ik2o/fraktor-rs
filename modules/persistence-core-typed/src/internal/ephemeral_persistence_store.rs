@@ -184,7 +184,7 @@ impl EphemeralPersistenceStore {
         | 0 => usize::MAX,
         | max => usize::try_from(max).unwrap_or(usize::MAX),
       };
-      let events = entry
+      let events: Vec<_> = entry
         .events
         .iter()
         .filter(|event| event.sequence_nr > snapshot_seq && event.sequence_nr <= recovery.to_sequence_nr())
@@ -195,12 +195,9 @@ impl EphemeralPersistenceStore {
           payload:     event.payload.clone(),
         })
         .collect();
+      let sequence_nr = events.last().map_or(snapshot_seq, |event| event.sequence_nr);
 
-      EphemeralRecovery {
-        sequence_nr: entry.sequence_nr,
-        snapshot: snapshot.map(|snapshot| snapshot.payload.clone()),
-        events,
-      }
+      EphemeralRecovery { sequence_nr, snapshot: snapshot.map(|snapshot| snapshot.payload.clone()), events }
     })
   }
 

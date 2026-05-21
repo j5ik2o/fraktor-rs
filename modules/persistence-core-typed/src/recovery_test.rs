@@ -34,6 +34,7 @@ fn replay_bounds_are_preserved() {
   let recovery = Recovery::new(20, 5);
   let kernel = recovery.to_kernel();
 
+  assert_eq!(kernel.snapshot_criteria().max_sequence_nr(), 20);
   assert_eq!(kernel.to_sequence_nr(), 20);
   assert_eq!(kernel.replay_max(), 5);
 }

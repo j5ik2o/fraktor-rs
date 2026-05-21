@@ -60,8 +60,8 @@ impl Recovery {
   }
 
   /// Converts this typed recovery selection to the kernel recovery contract.
-  pub(crate) const fn to_kernel(&self) -> KernelRecovery {
-    KernelRecovery::from_snapshot(self.from_snapshot.to_kernel())
+  pub(crate) fn to_kernel(&self) -> KernelRecovery {
+    KernelRecovery::from_snapshot(self.from_snapshot.to_kernel().limit(self.to_sequence_nr))
       .with_replay_bounds(self.to_sequence_nr, self.replay_max)
   }
 }

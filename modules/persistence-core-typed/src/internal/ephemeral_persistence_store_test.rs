@@ -73,7 +73,7 @@ fn recovery_bounds_limit_ephemeral_replay_events() {
     store.recover(&config("bounded").with_recovery(Recovery::new(2, 1))).expect("bounded state should recover");
 
   assert_eq!(state, 1);
-  assert_eq!(sequence_nr, 3);
+  assert_eq!(sequence_nr, 1);
 }
 
 #[test]
@@ -86,6 +86,22 @@ fn zero_replay_max_replays_all_matching_ephemeral_events() {
 
   assert_eq!(state, 6);
   assert_eq!(sequence_nr, 3);
+}
+
+#[test]
+fn replay_bound_recovery_ignores_ephemeral_snapshots_past_upper_bound() {
+  let store = EphemeralPersistenceStore::new();
+  store.persist_events(&config("snapshot-upper-bound"), vec![1]).expect("first event should persist");
+  store.persist_snapshot(&config("snapshot-upper-bound"), 100, 1).expect("snapshot should persist");
+  store.persist_events(&config("snapshot-upper-bound"), vec![2, 3]).expect("later events should persist");
+  store.persist_snapshot(&config("snapshot-upper-bound"), 999, 3).expect("newer snapshot should persist");
+
+  let (state, sequence_nr) = store
+    .recover(&config("snapshot-upper-bound").with_recovery(Recovery::new(2, 0)))
+    .expect("bounded state should recover");
+
+  assert_eq!(state, 102);
+  assert_eq!(sequence_nr, 2);
 }
 
 #[test]
