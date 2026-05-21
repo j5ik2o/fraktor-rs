@@ -32,7 +32,7 @@ fn recovery_selection_is_separate_from_snapshot_write_criteria() {
     .with_recovery(Recovery::without_snapshot());
 
   assert!(matches!(config.snapshot_criteria(), SnapshotCriteria::Every { number_of_events: 10 }));
-  assert_eq!(config.recovery().snapshot_selection_criteria().max_sequence_nr(), 0);
+  assert_eq!(config.recovery().snapshot_criteria().max_sequence_nr(), 0);
 }
 
 #[test]

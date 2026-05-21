@@ -43,7 +43,7 @@ impl Recovery {
 
   /// Returns the snapshot selection criteria.
   #[must_use]
-  pub const fn snapshot_selection_criteria(&self) -> &SnapshotSelectionCriteria {
+  pub const fn snapshot_criteria(&self) -> &SnapshotSelectionCriteria {
     &self.from_snapshot
   }
 

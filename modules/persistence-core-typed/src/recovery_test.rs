@@ -5,6 +5,7 @@ fn default_recovery_uses_latest_snapshot_and_unbounded_replay() {
   let recovery = Recovery::default();
   let kernel = recovery.to_kernel();
 
+  assert_eq!(recovery.snapshot_criteria().max_sequence_nr(), u64::MAX);
   assert_eq!(kernel.snapshot_criteria().max_sequence_nr(), u64::MAX);
   assert_eq!(kernel.to_sequence_nr(), u64::MAX);
   assert_eq!(kernel.replay_max(), u64::MAX);

@@ -36,10 +36,7 @@ impl<E> EventSeq<E> {
   pub fn multiple(events: Vec<E>) -> Self {
     match events.len() {
       | 0 => Self::Empty,
-      | 1 => {
-        let mut iter = events.into_iter();
-        if let Some(event) = iter.next() { Self::Single(event) } else { Self::Empty }
-      },
+      | 1 => events.into_iter().next().map_or(Self::Empty, Self::Single),
       | _ => Self::Multiple(events),
     }
   }

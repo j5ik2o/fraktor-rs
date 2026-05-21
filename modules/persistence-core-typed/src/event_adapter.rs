@@ -39,11 +39,18 @@ where
   E: Clone + Send + Sync + 'static,
 {
   fn manifest(&self, event: &(dyn Any + Send + Sync)) -> String {
-    event.downcast_ref::<E>().map_or_else(String::new, |typed_event| self.adapter.manifest(typed_event))
+    let Some(typed_event) = event.downcast_ref::<E>() else {
+      debug_assert!(false, "typed event adapter received an unexpected event type");
+      tracing::warn!("typed event adapter received an unexpected event type while computing manifest");
+      return String::new();
+    };
+    self.adapter.manifest(typed_event)
   }
 
   fn to_journal(&self, event: ArcShared<dyn Any + Send + Sync>) -> ArcShared<dyn Any + Send + Sync> {
     let Some(typed_event) = event.deref().downcast_ref::<E>() else {
+      debug_assert!(false, "typed event adapter received an unexpected event type");
+      tracing::warn!("typed event adapter received an unexpected event type while adapting to journal");
       return event;
     };
     self.adapter.to_journal(typed_event.clone())

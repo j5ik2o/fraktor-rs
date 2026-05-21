@@ -8,8 +8,6 @@ fn latest_selects_unbounded_snapshot_range() {
 
   assert_eq!(criteria.max_sequence_nr(), u64::MAX);
   assert_eq!(criteria.max_timestamp(), u64::MAX);
-  assert_eq!(criteria.min_sequence_nr(), 0);
-  assert_eq!(criteria.min_timestamp(), 0);
 }
 
 #[test]
@@ -18,8 +16,6 @@ fn none_selects_no_snapshots() {
 
   assert_eq!(criteria.max_sequence_nr(), 0);
   assert_eq!(criteria.max_timestamp(), 0);
-  assert_eq!(criteria.min_sequence_nr(), 1);
-  assert_eq!(criteria.min_timestamp(), 1);
 }
 
 #[test]

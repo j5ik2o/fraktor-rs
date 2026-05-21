@@ -14,6 +14,7 @@ extern crate alloc;
 
 mod backoff_config;
 mod durable_state_signal;
+mod durable_state_signal_auth;
 mod event_adapter;
 mod event_seq;
 mod internal;

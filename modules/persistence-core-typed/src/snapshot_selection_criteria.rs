@@ -58,18 +58,6 @@ impl SnapshotSelectionCriteria {
     self.max_timestamp
   }
 
-  /// Returns the minimum sequence number.
-  #[must_use]
-  pub const fn min_sequence_nr(&self) -> u64 {
-    self.min_sequence_nr
-  }
-
-  /// Returns the minimum timestamp.
-  #[must_use]
-  pub const fn min_timestamp(&self) -> u64 {
-    self.min_timestamp
-  }
-
   /// Converts this typed criteria to the kernel snapshot selection contract.
   pub(crate) const fn to_kernel(&self) -> KernelSnapshotSelectionCriteria {
     KernelSnapshotSelectionCriteria::new(

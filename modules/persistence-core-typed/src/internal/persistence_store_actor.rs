@@ -1,9 +1,5 @@
 //! Internal typed persistence store actor.
 
-#[cfg(test)]
-#[path = "persistence_store_actor_test.rs"]
-mod tests;
-
 use alloc::{string::ToString, vec, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::{

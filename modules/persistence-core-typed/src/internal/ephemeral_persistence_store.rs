@@ -1,19 +1,25 @@
 //! Actor-system scoped in-memory persistence store.
 
+#[cfg(test)]
+#[path = "ephemeral_persistence_store_test.rs"]
+mod tests;
+
 use alloc::{
   collections::BTreeMap,
   format,
   string::{String, ToString},
   vec::Vec,
 };
-use core::any::Any;
+use core::{any::Any, ops::Deref};
 
 use fraktor_actor_core_kernel_rs::{
   actor::extension::{Extension, ExtensionId},
   system::ActorSystem,
 };
 use fraktor_actor_core_typed_rs::TypedActorSystem;
-use fraktor_persistence_core_kernel_rs::error::PersistenceError;
+use fraktor_persistence_core_kernel_rs::{
+  error::PersistenceError, persistent::Recovery as KernelRecovery, snapshot::SnapshotMetadata,
+};
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::PersistenceEffectorConfig;
@@ -22,11 +28,13 @@ struct EphemeralPersistenceStoreId;
 
 struct EphemeralPersistedEvent {
   sequence_nr: u64,
+  manifest:    String,
   payload:     ArcShared<dyn Any + Send + Sync>,
 }
 
 struct EphemeralPersistedSnapshot {
   sequence_nr: u64,
+  timestamp:   u64,
   payload:     ArcShared<dyn Any + Send + Sync>,
 }
 
@@ -40,7 +48,7 @@ struct EphemeralPersistenceEntry {
 struct EphemeralRecovery {
   sequence_nr: u64,
   snapshot:    Option<ArcShared<dyn Any + Send + Sync>>,
-  events:      Vec<ArcShared<dyn Any + Send + Sync>>,
+  events:      Vec<EphemeralPersistedEvent>,
 }
 
 /// Stores events and snapshots within one actor system.
@@ -69,7 +77,7 @@ impl EphemeralPersistenceStore {
     S: Clone + Send + Sync + 'static,
     E: Clone + Send + Sync + 'static,
     M: Send + Sync + 'static, {
-    let recovery = self.recovery_payloads(config.persistence_id().as_str());
+    let recovery = self.recovery_payloads(config);
     let mut state = match recovery.snapshot {
       | Some(snapshot) => snapshot
         .downcast_ref::<S>()
@@ -78,11 +86,15 @@ impl EphemeralPersistenceStore {
       | None => config.initial_state().clone(),
     };
 
-    for payload in recovery.events.iter() {
-      let event = payload
-        .downcast_ref::<E>()
-        .ok_or_else(|| Self::recovery_error("event payload type mismatch", config.persistence_id().as_str()))?;
-      state = config.apply_event(&state, event);
+    for replay_event in recovery.events {
+      let events =
+        config.event_adapters().adapt_from_journal::<E>(replay_event.payload, &replay_event.manifest).into_events();
+      for payload in events {
+        let event = payload
+          .downcast_ref::<E>()
+          .ok_or_else(|| Self::recovery_error("event payload type mismatch", config.persistence_id().as_str()))?;
+        state = config.apply_event(&state, event);
+      }
     }
 
     Ok((state, recovery.sequence_nr))
@@ -97,10 +109,13 @@ impl EphemeralPersistenceStore {
     E: Clone + Send + Sync + 'static, {
     let sequence_nr = self.entries.with_lock(|entries| {
       let entry = entries.entry(config.persistence_id().as_str().to_string()).or_default();
+      let adapter = config.event_adapters().write_adapter_for::<E>();
       for event in events.iter() {
         entry.sequence_nr = entry.sequence_nr.saturating_add(1);
         let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(event.clone());
-        entry.events.push(EphemeralPersistedEvent { sequence_nr: entry.sequence_nr, payload });
+        let manifest = adapter.manifest(payload.deref());
+        let payload = adapter.to_journal(payload);
+        entry.events.push(EphemeralPersistedEvent { sequence_nr: entry.sequence_nr, manifest, payload });
       }
       entry.sequence_nr
     });
@@ -118,7 +133,7 @@ impl EphemeralPersistenceStore {
     self.entries.with_lock(|entries| {
       let entry = entries.entry(config.persistence_id().as_str().to_string()).or_default();
       let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(snapshot.clone());
-      entry.snapshots.push(EphemeralPersistedSnapshot { sequence_nr, payload });
+      entry.snapshots.push(EphemeralPersistedSnapshot { sequence_nr, timestamp: 0, payload });
     });
     Ok(snapshot)
   }
@@ -136,19 +151,37 @@ impl EphemeralPersistenceStore {
     Self { entries: SharedLock::new_with_driver::<DefaultMutex<_>>(BTreeMap::new()) }
   }
 
-  fn recovery_payloads(&self, persistence_id: &str) -> EphemeralRecovery {
+  fn recovery_payloads<S, E, M>(&self, config: &PersistenceEffectorConfig<S, E, M>) -> EphemeralRecovery {
     self.entries.with_lock(|entries| {
-      let Some(entry) = entries.get(persistence_id) else {
+      let Some(entry) = entries.get(config.persistence_id().as_str()) else {
         return EphemeralRecovery { sequence_nr: 0, snapshot: None, events: Vec::new() };
       };
 
-      let snapshot = entry.snapshots.iter().max_by_key(|snapshot| snapshot.sequence_nr);
+      let recovery = config.recovery().to_kernel();
+      if recovery == KernelRecovery::none() {
+        return EphemeralRecovery { sequence_nr: entry.sequence_nr, snapshot: None, events: Vec::new() };
+      }
+
+      let snapshot = entry
+        .snapshots
+        .iter()
+        .filter(|snapshot| {
+          let metadata =
+            SnapshotMetadata::new(config.persistence_id().as_str(), snapshot.sequence_nr, snapshot.timestamp);
+          recovery.snapshot_criteria().matches(&metadata)
+        })
+        .max_by_key(|snapshot| snapshot.sequence_nr);
       let snapshot_seq = snapshot.map(|snapshot| snapshot.sequence_nr).unwrap_or(0);
       let events = entry
         .events
         .iter()
-        .filter(|event| event.sequence_nr > snapshot_seq)
-        .map(|event| event.payload.clone())
+        .filter(|event| event.sequence_nr > snapshot_seq && event.sequence_nr <= recovery.to_sequence_nr())
+        .take(recovery.replay_max() as usize)
+        .map(|event| EphemeralPersistedEvent {
+          sequence_nr: event.sequence_nr,
+          manifest:    event.manifest.clone(),
+          payload:     event.payload.clone(),
+        })
         .collect();
 
       EphemeralRecovery {
