@@ -4,7 +4,10 @@ use core::any::Any;
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::EphemeralPersistenceStore;
-use crate::{EventAdapter, EventSeq, PersistenceEffectorConfig, PersistenceId, PersistenceMode, Recovery};
+use crate::{
+  EventAdapter, EventSeq, PersistenceEffectorConfig, PersistenceId, PersistenceMode, Recovery,
+  SnapshotSelectionCriteria,
+};
 
 fn apply_event(state: &u32, event: &u32) -> u32 {
   state + event
@@ -41,6 +44,22 @@ fn recovery_without_snapshot_replays_ephemeral_events_from_initial_state() {
 
   assert_eq!(default_state, 102);
   assert_eq!(default_sequence_nr, 2);
+  assert_eq!(state, 3);
+  assert_eq!(sequence_nr, 2);
+}
+
+#[test]
+fn timestamp_bounded_recovery_ignores_ephemeral_snapshots_outside_criteria() {
+  let store = EphemeralPersistenceStore::new();
+  store.persist_events(&config("timestamp-bounded"), vec![1]).expect("first event should persist");
+  store.persist_snapshot(&config("timestamp-bounded"), 100, 1).expect("snapshot should persist");
+  store.persist_events(&config("timestamp-bounded"), vec![2]).expect("second event should persist");
+  let recovery = Recovery::from_snapshot(SnapshotSelectionCriteria::new(u64::MAX, 0, 0, 0));
+
+  let (state, sequence_nr) = store
+    .recover(&config("timestamp-bounded").with_recovery(recovery))
+    .expect("state should recover without timestamp-excluded snapshot");
+
   assert_eq!(state, 3);
   assert_eq!(sequence_nr, 2);
 }

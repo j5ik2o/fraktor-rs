@@ -37,7 +37,7 @@
 
 Pekko 側の固定スコープ候補ディレクトリを raw 抽出すると、型宣言 352 件、主要 `def` 1405 件が見つかる。これには private / internal / Java DSL / JVM 固有 / scope 外の replication 系 API が含まれるため、parity カバレッジ分母には使わない。
 
-fraktor-rs 側は `modules/persistence-core-kernel/src/` と `modules/persistence-core-typed/src/` の `*_test.rs` / `lib_test.rs` を除外して raw 抽出した。raw public type declarations は 73 件（kernel: 59、typed: 14）、raw public method declarations は 252 件（kernel: 201、typed: 51）である。このうち外部到達可能な `pub` type declarations は 65 件（kernel: 55、typed: 10）で、`pub(crate)` の内部型は raw 参考値にのみ含める。
+fraktor-rs 側は `modules/persistence-core-kernel/src/` と `modules/persistence-core-typed/src/` の `*_test.rs` / `lib_test.rs` を除外して raw 抽出した。raw public type declarations は 79 件（kernel: 59、typed: 20）、raw public method declarations は 277 件（kernel: 202、typed: 75）である。このうち外部到達可能な `pub` type declarations は 65 件（kernel: 55、typed: 10）で、`pub(crate)` の内部型は raw 参考値にのみ含める。
 
 ## サマリー
 
@@ -239,4 +239,4 @@ persistence は classic write-side の基礎部品はかなり揃っている。
 
 Phase 1 の kernel 側低コスト項目は `SnapshotOffer`、`PersistenceSettings`、`NoSnapshotStore`、snapshot retry settings、`MaxUnconfirmedMessagesExceededException` 相当、`GetObjectResult[A]`、`DeleteRevisionException` まで実装済みである。`RecoveryCompleted` の classic 同名公開型と `RuntimePluginConfig` / plugin settings は現設計では non-goal とした。
 
-主要ギャップは、`AtomicWrite`、serialization contract、revision / tag aware durable state update、typed `EventSourcedBehavior` / `EffectBuilder`、typed `DurableStateBehavior` である。typed write-side は effector-first API として前進し、Phase 1 typed parity surface は閉じたが、Pekko parity の観点では behavior-level failure supervision と durable state behavior execution がまだ閉じていない。内部構造比較は、serializer / revision model と typed durable state behavior の実行契約を決めた後に進めるのが妥当である。
+主要ギャップは、`AtomicWrite`、serialization contract、revision / tag-aware durable state update、typed `EventSourcedBehavior` / `EffectBuilder`、typed `DurableStateBehavior` である。typed write-side は effector-first API として前進し、Phase 1 typed parity surface は閉じたが、Pekko parity の観点では behavior-level failure supervision と durable state behavior execution がまだ閉じていない。内部構造比較は、serializer / revision model と typed durable state behavior の実行契約を決めた後に進めるのが妥当である。

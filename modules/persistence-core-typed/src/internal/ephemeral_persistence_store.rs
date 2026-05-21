@@ -40,9 +40,10 @@ struct EphemeralPersistedSnapshot {
 
 #[derive(Default)]
 struct EphemeralPersistenceEntry {
-  sequence_nr: u64,
-  events:      Vec<EphemeralPersistedEvent>,
-  snapshots:   Vec<EphemeralPersistedSnapshot>,
+  sequence_nr:        u64,
+  snapshot_timestamp: u64,
+  events:             Vec<EphemeralPersistedEvent>,
+  snapshots:          Vec<EphemeralPersistedSnapshot>,
 }
 
 struct EphemeralRecovery {
@@ -133,7 +134,8 @@ impl EphemeralPersistenceStore {
     self.entries.with_lock(|entries| {
       let entry = entries.entry(config.persistence_id().as_str().to_string()).or_default();
       let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(snapshot.clone());
-      entry.snapshots.push(EphemeralPersistedSnapshot { sequence_nr, timestamp: 0, payload });
+      entry.snapshot_timestamp = entry.snapshot_timestamp.saturating_add(1);
+      entry.snapshots.push(EphemeralPersistedSnapshot { sequence_nr, timestamp: entry.snapshot_timestamp, payload });
     });
     Ok(snapshot)
   }

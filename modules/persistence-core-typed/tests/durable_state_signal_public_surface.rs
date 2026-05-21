@@ -68,8 +68,8 @@ fn durable_state_persisted_signal_is_separate_from_event_sourced_signal() {
 
 #[test]
 fn durable_state_signal_auth_cannot_be_forged_from_external_crate() {
-  assert_fixture_build_failure_contains("durable-state-signal-auth-forged", FORGED_SIGNAL_SOURCE, "Default");
-  assert_fixture_build_failure_contains("durable-state-signal-auth-reused", REUSED_AUTH_SOURCE, "non-exhaustive");
+  assert_fixture_build_failure_contains("durable-state-signal-auth-forged", FORGED_SIGNAL_SOURCE, "E0277");
+  assert_fixture_build_failure_contains("durable-state-signal-auth-reused", REUSED_AUTH_SOURCE, "E0639");
 }
 
 fn assert_fixture_build_failure_contains(name: &str, source: &str, expected: &str) {
