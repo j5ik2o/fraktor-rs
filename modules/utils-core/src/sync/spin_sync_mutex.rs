@@ -2,7 +2,7 @@
 #[path = "spin_sync_mutex_test.rs"]
 mod tests;
 
-use spin::{Mutex, MutexGuard};
+use spin::{Mutex, Spin, mutex::MutexGuard};
 
 use crate::sync::LockDriver;
 
@@ -49,14 +49,14 @@ impl<T> SpinSyncMutex<T> {
   /// be reintroduced on top of the current `LockDriver` abstraction when the
   /// project needs it again; until then, deadlock symptoms must be diagnosed
   /// via stack traces of the spinning thread.
-  pub fn lock(&self) -> MutexGuard<'_, T> {
+  pub fn lock(&self) -> MutexGuard<'_, T, Spin> {
     self.0.lock()
   }
 }
 
 impl<T> LockDriver<T> for SpinSyncMutex<T> {
   type Guard<'a>
-    = MutexGuard<'a, T>
+    = MutexGuard<'a, T, Spin>
   where
     Self: 'a,
     T: 'a;
