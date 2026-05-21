@@ -1,5 +1,9 @@
 //! Persistence effector configuration.
 
+#[cfg(test)]
+#[path = "persistence_effector_config_test.rs"]
+mod tests;
+
 use alloc::string::String;
 
 use fraktor_persistence_core_kernel_rs::error::PersistenceError;
@@ -184,21 +188,4 @@ where
 
 fn validation_error(message: &str) -> PersistenceError {
   PersistenceError::StateMachine(String::from(message))
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn apply_event(state: &u32, event: &u32) -> u32 {
-    state + event
-  }
-
-  #[test]
-  fn default_stash_capacity_is_bounded() {
-    let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
-
-    assert_eq!(config.stash_capacity(), 1000);
-    assert!(config.validate().is_ok());
-  }
 }
