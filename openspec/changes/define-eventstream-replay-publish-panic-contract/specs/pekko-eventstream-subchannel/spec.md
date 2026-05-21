@@ -32,9 +32,9 @@
 - **WHEN** subscriber callback が event stream の subscribe または unsubscribe を実行する
 - **THEN** その変更は進行中の publish の配送対象集合を変更しない
 
-### Requirement: subscriber panic は subscription lifecycle を自動変更してはならない
+### Requirement: publish 中の subscriber panic は subscription lifecycle を自動変更してはならない
 
-`EventStreamShared` は subscriber callback panic を catch / isolate してはならない（MUST NOT）。panic は `publish()` または replay 中の `subscribe_with_key()` 呼び出し元へ伝播しなければならず（MUST）、panic した subscriber の subscription は自動解除してはならない（MUST NOT）。panic 発生後に、panic した subscriber より後続の subscriber へ同じ event が配送されることは保証しない。
+`EventStreamShared::publish(event)` は subscriber callback panic を catch / isolate してはならない（MUST NOT）。panic は `publish()` 呼び出し元へ伝播しなければならず（MUST）、panic した subscriber の subscription は自動解除してはならない（MUST NOT）。panic 発生後に、panic した subscriber より後続の subscriber へ同じ event が配送されることは保証しない。
 
 #### Scenario: publish 中の subscriber panic は呼び出し元へ伝播する
 

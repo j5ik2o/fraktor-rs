@@ -9,6 +9,8 @@
 - [x] 2.1 `subscribe_with_key` return 後に replay が観測済みであることを確認する test を追加する。
 - [x] 2.2 `publish` return 後に subscriber callback が観測済みであることを確認する test を追加する。
 - [x] 2.3 `publish` 中の subscriber panic が呼び出し元へ伝播し、subscription が自動解除されないことを確認する test を追加する。
+- [x] 2.4 `publish` callback 中の unsubscribe が進行中 publish の配送 snapshot を変更しないことを確認する test を追加する。
+- [x] 2.5 `publish` callback 中の subscribe が進行中 publish の配送 snapshot を変更しないことを確認する test を追加する。
 
 ## 3. 検証
 

@@ -4,7 +4,7 @@
 
 - late subscriber が受ける replay と、同時に別 thread から publish される live event の順序
 - `publish()` が return した時点で subscriber callback が完了済みかどうか
-- subscriber callback が panic した場合に subscription を自動解除するかどうか
+- `publish()` 中の subscriber callback が panic した場合に subscription を自動解除するかどうか
 
 actor-core-kernel は no_std core であり、panic isolation を core contract に入れると `std::panic::catch_unwind` や unwind safety boundary が混入する。現行の `EventStreamSubscriberShared::notify` は subscriber lock の中で callback を直接呼ぶため、panic は呼び出し元に伝播する。
 
@@ -14,7 +14,7 @@ actor-core-kernel は no_std core であり、panic isolation を core contract 
 
 - `subscribe_with_key` return 後には、登録時点で確定した replay snapshot が対象 subscriber へ同期通知済みであることを明文化する。
 - `publish` return 後には、panic が発生しない限り、対象 subscriber callback が同期完了済みであることを明文化する。
-- subscriber callback panic は catch せず、subscription を自動解除しない契約として固定する。
+- `publish()` 中の subscriber callback panic は catch せず、subscription を自動解除しない契約として固定する。
 - 契約を rustdoc と targeted tests で検証可能にする。
 
 **Non-Goals:**
@@ -44,9 +44,9 @@ actor-core-kernel は no_std core であり、panic isolation を core contract 
 
 非同期 flush queue を導入すると publish latency は下がるが、event stream の観測契約が actor mailbox delivery と混ざり、既存 tests と診断 subscriber の扱いが複雑になるため採用しない。
 
-### 決定 4: subscriber panic は呼び出し元へ伝播し subscription lifecycle を変更しない
+### 決定 4: publish 中の subscriber panic は呼び出し元へ伝播し subscription lifecycle を変更しない
 
-core 側で panic を catch しない。panic した callback 以降の subscriber への配送は保証しないが、panic した subscriber の subscription entry は自動削除しない。これは no_std core に std unwind boundary を持ち込まないための最小契約である。
+core 側で panic を catch しない。`publish()` 中に panic した callback 以降の subscriber への配送は保証しないが、panic した subscriber の subscription entry は自動削除しない。これは no_std core に std unwind boundary を持ち込まないための最小契約である。
 
 automatic unsubscribe は callback 実装者にとって便利に見えるが、panic と lifecycle policy を event stream が勝手に結合し、再現性の低い購読喪失を生むため採用しない。
 
