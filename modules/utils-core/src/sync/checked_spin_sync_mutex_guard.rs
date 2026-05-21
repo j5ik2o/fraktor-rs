@@ -5,14 +5,14 @@ use core::{
   ops::{Deref, DerefMut},
 };
 
-use spin::MutexGuard;
+use spin::{Spin, mutex::MutexGuard};
 
 use super::checked_spin_sync_mutex::CheckedSpinSyncMutex;
 
 /// Guard for [`CheckedSpinSyncMutex`].
 pub struct CheckedSpinSyncMutexGuard<'a, T> {
   pub(super) parent: &'a CheckedSpinSyncMutex<T>,
-  pub(super) guard:  ManuallyDrop<MutexGuard<'a, T>>,
+  pub(super) guard:  ManuallyDrop<MutexGuard<'a, T, Spin>>,
 }
 
 impl<T> Deref for CheckedSpinSyncMutexGuard<'_, T> {
