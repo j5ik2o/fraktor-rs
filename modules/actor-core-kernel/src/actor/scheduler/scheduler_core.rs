@@ -239,15 +239,19 @@ impl Scheduler {
       if entry.is_completed() {
         return false;
       }
-      if !entry.try_cancel() && !entry.is_cancelled() {
+      let newly_cancelled = entry.try_cancel();
+      if !newly_cancelled && !entry.is_cancelled() {
         return false;
       }
-      if let Some(job) = self.jobs.remove(&handle.raw()) {
+      let removed_job = self.jobs.remove(&handle.raw());
+      if let Some(job) = removed_job {
         // must-ignore: registry / jobs から削除済みの handle に対する wheel.cancel の bool は参照不要。
         let _ = self.wheel.cancel(job.wheel_id);
+        self.registry.remove(handle.raw());
+        self.metrics.decrement_active();
+      } else if !newly_cancelled {
+        return false;
       }
-      self.registry.remove(handle.raw());
-      self.metrics.decrement_active();
       self.metrics.increment_dropped();
       self.record_cancel_event(handle.raw());
       true
@@ -330,10 +334,22 @@ impl Scheduler {
           self.record_fire_event(handle_id, batch);
           executed += 1;
 
+          if cancellable.is_cancelled() {
+            self.registry.remove(handle_id);
+            self.metrics.decrement_active();
+            continue;
+          }
+
           if job.periodic.is_some() {
             if self.reschedule_job(&mut job).is_ok() {
-              cancellable.reset_to_scheduled();
-              self.jobs.insert(handle_id, job);
+              if cancellable.try_reset_to_scheduled() {
+                self.jobs.insert(handle_id, job);
+              } else {
+                // must-ignore: job is not reinserted, so the wheel entry must only be best-effort removed.
+                let _ = self.wheel.cancel(job.wheel_id);
+                self.registry.remove(handle_id);
+                self.metrics.decrement_active();
+              }
             } else {
               cancellable.mark_completed();
               self.registry.remove(handle_id);

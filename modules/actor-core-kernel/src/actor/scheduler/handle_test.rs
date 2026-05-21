@@ -59,16 +59,16 @@ fn cancel_on_completed_handle_returns_false() {
   assert!(handle.is_completed(), "handle should remain completed");
 }
 
-/// `cancel` on an executing handle returns `false`.
+/// `cancel` on an executing handle succeeds and prevents periodic rescheduling.
 #[test]
-fn cancel_on_executing_handle_returns_false() {
+fn cancel_on_executing_handle_succeeds() {
   let handle = SchedulerHandle::new(5);
   handle.entry().mark_scheduled();
   assert!(handle.entry().try_begin_execute(), "try_begin_execute should succeed from Scheduled state");
 
   let result = handle.cancel();
-  assert!(!result, "cancel should fail on executing handle");
-  assert!(!handle.is_cancelled(), "executing handle should not be marked cancelled");
+  assert!(result, "cancel should succeed on executing handle");
+  assert!(handle.is_cancelled(), "executing handle should be marked cancelled");
 }
 
 /// `is_cancelled` returns `true` after successful `cancel`.

@@ -6,16 +6,20 @@ use std::{boxed::Box, thread, time::Instant};
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Actor, ActorContext, ChildRef, Pid,
-    error::ActorError,
-    messaging::{AnyMessageView, system_message::SystemMessage},
+    Actor, ActorCell, ActorContext, ChildRef, Pid,
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
     props::Props,
     scheduler::{SchedulerConfig, SchedulerHandle},
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{
-    DEFAULT_DISPATCHER_ID, DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared,
-    MessageDispatcherFactory, MessageDispatcherShared, TrampolineState,
+  dispatch::{
+    dispatcher::{
+      DEFAULT_DISPATCHER_ID, DefaultDispatcher, DefaultDispatcherFactory, DispatcherConfig, DispatcherCore,
+      ExecuteError, Executor, ExecutorShared, MessageDispatcher, MessageDispatcherFactory, MessageDispatcherShared,
+      TrampolineState,
+    },
+    mailbox::{Envelope, Mailbox},
   },
   system::{ActorSystem, remote::RemotingConfig},
 };
@@ -362,6 +366,95 @@ fn inline_executor_shared() -> ExecutorShared {
   ExecutorShared::new(Box::new(InlineExec), TrampolineState::new())
 }
 
+struct RejectingUserDispatcherFactory {
+  id:     &'static str,
+  closed: bool,
+}
+
+impl MessageDispatcherFactory for RejectingUserDispatcherFactory {
+  fn dispatcher(&self) -> MessageDispatcherShared {
+    let settings = DispatcherConfig::new(self.id, nz(8), None, Duration::from_secs(1));
+    MessageDispatcherShared::new(Box::new(RejectingUserDispatcher {
+      core:   DispatcherCore::new(&settings, inline_executor_shared()),
+      closed: self.closed,
+    }))
+  }
+}
+
+struct RejectingUserDispatcher {
+  core:   DispatcherCore,
+  closed: bool,
+}
+
+impl MessageDispatcher for RejectingUserDispatcher {
+  fn core(&self) -> &DispatcherCore {
+    &self.core
+  }
+
+  fn core_mut(&mut self) -> &mut DispatcherCore {
+    &mut self.core
+  }
+
+  fn dispatch(
+    &mut self,
+    _receiver: &ArcShared<ActorCell>,
+    envelope: Envelope,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    if self.closed {
+      Err(SendError::closed(envelope.into_payload()))
+    } else {
+      Err(SendError::full(envelope.into_payload()))
+    }
+  }
+}
+
+struct RejectingStopDispatcherFactory {
+  id:          &'static str,
+  reject_stop: ArcShared<SpinSyncMutex<bool>>,
+  closed:      bool,
+}
+
+impl MessageDispatcherFactory for RejectingStopDispatcherFactory {
+  fn dispatcher(&self) -> MessageDispatcherShared {
+    let settings = DispatcherConfig::new(self.id, nz(8), None, Duration::from_secs(1));
+    MessageDispatcherShared::new(Box::new(RejectingStopDispatcher {
+      default:     DefaultDispatcher::new(&settings, inline_executor_shared()),
+      reject_stop: self.reject_stop.clone(),
+      closed:      self.closed,
+    }))
+  }
+}
+
+struct RejectingStopDispatcher {
+  default:     DefaultDispatcher,
+  reject_stop: ArcShared<SpinSyncMutex<bool>>,
+  closed:      bool,
+}
+
+impl MessageDispatcher for RejectingStopDispatcher {
+  fn core(&self) -> &DispatcherCore {
+    self.default.core()
+  }
+
+  fn core_mut(&mut self) -> &mut DispatcherCore {
+    self.default.core_mut()
+  }
+
+  fn system_dispatch(
+    &mut self,
+    receiver: &ArcShared<ActorCell>,
+    message: SystemMessage,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    if matches!(message, SystemMessage::Stop) && *self.reject_stop.lock() {
+      if self.closed {
+        return Err(SendError::closed(AnyMessage::new(message)));
+      }
+      return Err(SendError::full(AnyMessage::new(message)));
+    }
+    self.default.system_dispatch(receiver, message)
+  }
+}
+
 fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, MessageDispatcherShared) {
   let executor = inline_executor_shared();
   let settings = DispatcherConfig::new(dispatcher_id, nz(8), None, Duration::from_secs(1));
@@ -376,6 +469,34 @@ fn build_system_with_dispatcher(dispatcher_id: &'static str) -> (ActorSystem, Me
     .with_scheduler_config(scheduler)
     .with_dispatcher_factory(dispatcher_id, configurator_handle);
   (ActorSystem::create_from_props(&props, config).expect("system should build"), dispatcher)
+}
+
+fn build_system_with_rejecting_user_dispatcher(dispatcher_id: &'static str, closed: bool) -> ActorSystem {
+  let configurator: Box<dyn MessageDispatcherFactory> =
+    Box::new(RejectingUserDispatcherFactory { id: dispatcher_id, closed });
+  let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
+  let props = Props::from_fn(|| GuardianActor);
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::new(TestTickDriver::default())
+    .with_scheduler_config(scheduler)
+    .with_dispatcher_factory(dispatcher_id, configurator_handle);
+  ActorSystem::create_from_props(&props, config).expect("system should build")
+}
+
+fn build_system_with_rejecting_stop_dispatcher(
+  dispatcher_id: &'static str,
+  reject_stop: ArcShared<SpinSyncMutex<bool>>,
+  closed: bool,
+) -> ActorSystem {
+  let configurator: Box<dyn MessageDispatcherFactory> =
+    Box::new(RejectingStopDispatcherFactory { id: dispatcher_id, reject_stop, closed });
+  let configurator_handle: ArcShared<Box<dyn MessageDispatcherFactory>> = ArcShared::new(configurator);
+  let props = Props::from_fn(|| GuardianActor);
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::new(TestTickDriver::default())
+    .with_scheduler_config(scheduler)
+    .with_dispatcher_factory(dispatcher_id, configurator_handle);
+  ActorSystem::create_from_props(&props, config).expect("system should build")
 }
 
 fn system_child_names(system: &ActorSystem) -> Vec<String> {
@@ -431,6 +552,20 @@ fn wait_for_counter(counter: &ArcShared<SpinSyncMutex<u32>>, expected: u32) {
   assert_eq!(*counter.lock(), expected);
 }
 
+fn wait_for_scheduler_job_count(system: &ActorSystem, expected: usize) {
+  let mut actual = scheduler_job_count(system);
+  let mut first_poll = true;
+  for _ in 0..4096 {
+    thread::yield_now();
+    actual = scheduler_job_count(system);
+    if !first_poll && actual == expected {
+      break;
+    }
+    first_poll = false;
+  }
+  assert_eq!(actual, expected);
+}
+
 fn wait_for_actor_cell_removed(system: &ActorSystem, pid: Pid) {
   let deadline = Instant::now() + Duration::from_secs(5);
   while Instant::now() < deadline {
@@ -452,9 +587,9 @@ fn stopped_system_actor(system: &ActorSystem) -> ChildRef {
 }
 
 fn upstream_cancel_command_count(materializer: &ActorMaterializer) -> u32 {
-  let diagnostics: Vec<StreamIslandActorDiagnostic> =
-    materializer.island_actor_diagnostics_for_test().expect("island actor diagnostics should be available");
-  diagnostics.first().expect("upstream island actor should be diagnosable").cancel_command_count()
+  let resources = materializer.materialized.first().expect("materialized resources should be available");
+  let actor = resources.island_actors.first().expect("upstream island actor should be registered");
+  resources.downstream_cancellation_control_plane.with_locked(|plane| plane.cancel_command_count_for_actor(actor.pid()))
 }
 
 fn wait_for_upstream_cancel_command_count(materializer: &ActorMaterializer, expected: u32) {
@@ -919,6 +1054,43 @@ fn materialize_registers_one_scheduler_job_per_island_actor() {
 }
 
 #[test]
+fn terminal_async_stream_stops_island_actors_and_cancels_scheduler_jobs() {
+  let system = build_system();
+  let child_count_before_start = system_child_names(&system).len();
+  let scheduler_jobs_before_start = scheduler_job_count(&system);
+  let mut materializer = ActorMaterializer::new(
+    system.clone(),
+    ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)),
+  );
+  materializer.start().expect("start");
+  let graph = Source::single(1_u32).r#async().into_mat(Sink::head(), KeepRight);
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert_eq!(system_child_names(&system).len(), child_count_before_start + 2);
+  assert_eq!(scheduler_job_count(&system), scheduler_jobs_before_start + 2);
+  let island_pids: Vec<Pid> =
+    materializer.materialized.iter().flat_map(|resources| &resources.island_actors).map(ChildRef::pid).collect();
+
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
+    if matches!(materialized.materialized().value(), Completion::Ready(_)) {
+      break;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(materialized.materialized().value(), Completion::Ready(Ok(1_u32)));
+
+  for pid in island_pids {
+    wait_for_actor_cell_removed(&system, pid);
+  }
+  assert_eq!(system_child_names(&system).len(), child_count_before_start);
+  wait_for_scheduler_job_count(&system, scheduler_jobs_before_start);
+
+  materializer.shutdown().expect("shutdown after terminal cleanup");
+  assert!(materializer.streams().is_empty());
+}
+
+#[test]
 fn send_drive_if_idle_coalesces_while_gate_is_pending() {
   let system = build_system();
   let drives = ArcShared::new(SpinSyncMutex::new(0_u32));
@@ -1226,18 +1398,184 @@ fn drive_actor_owned_streams_until_terminal_reports_direct_drain_round_limit() {
 }
 
 #[test]
-fn shutdown_resources_reports_stopped_actor_and_cancel_failure() {
+fn request_actor_shutdown_reports_closed_live_actor_mailbox() {
+  let system = build_system_with_rejecting_user_dispatcher("closed-user-shutdown", true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-user-shutdown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+
+  let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn request_actor_shutdown_reports_closed_registered_actor_mailbox() {
+  let system = build_system_with_rejecting_user_dispatcher("closed-stopping-user-shutdown", true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stopping-user-shutdown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  system.state().cell(&actor.pid()).expect("actor cell should exist").mailbox().become_closed();
+
+  let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn request_actor_shutdown_ignores_closed_missing_actor_cell() {
+  let system = build_system();
+  let actor = stopped_system_actor(&system);
+
+  let result = ActorMaterializer::request_actor_shutdown(&system, &[actor]);
+
+  assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn request_actor_shutdown_reports_live_actor_delivery_failure() {
+  let system = build_system_with_rejecting_user_dispatcher("full-user-shutdown", false);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("full-user-shutdown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+
+  let result = ActorMaterializer::request_actor_shutdown(&system, &[actor.clone()]);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn request_non_terminal_actor_shutdown_reports_invalid_resource_shape() {
+  let system = build_system();
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(stopped_system_actor(&system));
+
+  let result = ActorMaterializer::request_non_terminal_actor_shutdown(&system, &resources);
+
+  assert_eq!(result, Err(StreamError::InvalidConnection));
+}
+
+#[test]
+fn shutdown_resources_skips_terminal_actor_shutdown_request_in_mixed_graph() {
+  let system = build_system_with_rejecting_user_dispatcher("closed-terminal-user-shutdown", true);
+  let terminal_props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-terminal-user-shutdown");
+  let terminal_actor = system.extended().spawn_system_actor(&terminal_props).expect("terminal actor should spawn");
+  let live_actor =
+    system.extended().spawn_system_actor(&Props::from_fn(|| GuardianActor)).expect("live actor should spawn");
+  system.state().cell(&terminal_actor.pid()).expect("terminal actor cell should exist").mailbox().become_closed();
+  let terminal_stream = running_stream_from_graph(Source::single(1_u32).into_mat(Sink::head(), KeepRight));
+  let live_stream = running_stream_from_graph(Source::single(2_u32).into_mat(Sink::head(), KeepRight));
+  let _outcome = terminal_stream.drive();
+  assert!(terminal_stream.state().is_terminal());
+  assert!(!live_stream.state().is_terminal());
+
+  let mut resources =
+    MaterializedStreamResources::new(vec![terminal_stream, live_stream], empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(terminal_actor.clone());
+  resources.island_actors.push(live_actor);
+  resources.drive_gates.push(StreamIslandDriveGate::new());
+  resources.drive_gates.push(StreamIslandDriveGate::new());
+  let result = ActorMaterializer::shutdown_resources(&system, resources);
+
+  assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn finish_resource_teardown_reports_closed_live_actor_stop() {
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("closed-stop-teardown", reject_stop.clone(), true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  *reject_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn finish_resource_teardown_reports_closed_registered_actor_stop() {
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("closed-stopping-stop-teardown", reject_stop.clone(), true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-stopping-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  system.state().cell(&actor.pid()).expect("actor cell should exist").mailbox().become_closed();
+  *reject_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn finish_resource_teardown_ignores_closed_terminal_actor_stop() {
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("closed-terminal-stop-teardown", reject_stop.clone(), true);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("closed-terminal-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  let stream = running_stream_from_graph(Source::single(1_u32).into_mat(Sink::head(), KeepRight));
+  assert!(!stream.state().is_terminal());
+  let _outcome = stream.drive();
+  assert!(stream.state().is_terminal());
+  *reject_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Ok(()));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn finish_resource_teardown_ignores_closed_missing_actor_cell() {
+  let system = build_system();
+  let actor = stopped_system_actor(&system);
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor);
+
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn finish_resource_teardown_reports_live_actor_stop_failure() {
+  let reject_stop = ArcShared::new(SpinSyncMutex::new(false));
+  let system = build_system_with_rejecting_stop_dispatcher("full-stop-teardown", reject_stop.clone(), false);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_id("full-stop-teardown");
+  let actor = system.extended().spawn_system_actor(&props).expect("actor should spawn");
+  *reject_stop.lock() = true;
+
+  let mut resources = MaterializedStreamResources::new(Vec::new(), empty_downstream_cancellation_control_plane());
+  resources.island_actors.push(actor.clone());
+  let result = ActorMaterializer::finish_resource_teardown(&system, resources);
+
+  assert_eq!(result, Err(StreamError::Failed));
+  assert!(system.state().cell(&actor.pid()).is_some());
+}
+
+#[test]
+fn shutdown_resources_skips_stopped_actor_and_reports_direct_drain_failure() {
   let system = build_system();
   let actor = stopped_system_actor(&system);
   let stream = running_stream_from_graph(
-    Source::<u32, _>::from_logic(StageKind::Custom, CancelFailingSourceLogic).into_mat(Sink::ignore(), KeepRight),
+    Source::<u32, _>::from_logic(StageKind::Custom, DrainOnShutdownCancelFailingPendingSourceLogic)
+      .into_mat(Sink::ignore(), KeepRight),
   );
   let mut resources = MaterializedStreamResources::new(vec![stream], empty_downstream_cancellation_control_plane());
   resources.island_actors.push(actor);
+  resources.drive_gates.push(StreamIslandDriveGate::new());
 
   let result = ActorMaterializer::shutdown_resources(&system, resources);
 
-  assert_eq!(result, Err(StreamError::Failed));
+  assert!(result.is_err());
 }
 
 #[test]

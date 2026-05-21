@@ -13,6 +13,11 @@ impl Scheduler {
     self.jobs.get(&handle.raw()).map(|job| &job.command)
   }
 
+  /// Removes the job entry while leaving the cancellable registry intact.
+  pub fn remove_job_for_test(&mut self, handle: &SchedulerHandle) -> bool {
+    self.jobs.remove(&handle.raw()).is_some()
+  }
+
   /// Advances the scheduler by the requested ticks (testing helper).
   pub fn run_for_test(&mut self, ticks: u64) {
     self.run_for_ticks(ticks);

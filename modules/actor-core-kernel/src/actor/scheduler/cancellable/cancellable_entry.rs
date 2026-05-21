@@ -40,20 +40,27 @@ impl CancellableEntry {
   }
 
   /// Transitions back to the scheduled state (used for periodic jobs).
-  pub fn reset_to_scheduled(&self) {
-    self.state.store(CancellableState::Scheduled as u8, Ordering::Release);
-  }
-
-  /// Attempts to cancel the entry while it is scheduled.
-  pub fn try_cancel(&self) -> bool {
+  pub fn try_reset_to_scheduled(&self) -> bool {
     self
       .state
       .compare_exchange(
+        CancellableState::Executing as u8,
         CancellableState::Scheduled as u8,
-        CancellableState::Cancelled as u8,
         Ordering::AcqRel,
         Ordering::Acquire,
       )
+      .is_ok()
+  }
+
+  /// Attempts to cancel the entry while it is scheduled or executing.
+  pub fn try_cancel(&self) -> bool {
+    self
+      .state
+      .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+        let state = CancellableState::from(current);
+        matches!(state, CancellableState::Scheduled | CancellableState::Executing)
+          .then_some(CancellableState::Cancelled as u8)
+      })
       .is_ok()
   }
 

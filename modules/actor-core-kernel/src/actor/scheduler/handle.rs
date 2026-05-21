@@ -44,16 +44,17 @@ impl SchedulerHandle {
 
   /// Attempts to cancel the scheduled job.
   ///
-  /// Returns `true` only when the entry is in the `Scheduled` state and the
-  /// cancellation transition succeeds. Returns `false` in all other cases:
-  /// `Pending` (not yet scheduled), `Executing` (already running), or when
-  /// already in a terminal state (`Cancelled` or `Completed`).
+  /// Returns `true` when the entry is in the `Scheduled` or `Executing` state
+  /// and the cancellation transition succeeds. Returns `false` in all other
+  /// cases: `Pending` (not yet scheduled), or already terminal
+  /// (`Cancelled` or `Completed`).
   ///
   /// Corresponds to Pekko's `Cancellable.cancel`.
   ///
-  /// Note: this marks the entry as cancelled but does not remove it from the
-  /// scheduler's job queue. The scheduler will skip cancelled entries on the
-  /// next tick.
+  /// Note: this marks the entry as cancelled but does not directly remove it
+  /// from the scheduler's job queue. A scheduled entry is skipped on the next
+  /// tick; an executing periodic entry is not rescheduled after the current
+  /// run returns.
   #[must_use]
   pub fn cancel(&self) -> bool {
     self.entry.try_cancel()

@@ -4,6 +4,7 @@ use core::{hint, time::Duration};
 use fraktor_actor_core_kernel_rs::{
   actor::{
     ChildRef,
+    error::SendError,
     messaging::AnyMessage,
     props::Props,
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerRunnable},
@@ -385,15 +386,35 @@ impl ActorMaterializer {
     result
   }
 
-  fn request_actor_shutdown(actors: &[ChildRef]) -> Result<(), StreamError> {
+  fn request_actor_shutdown(system: &ActorSystem, actors: &[ChildRef]) -> Result<(), StreamError> {
     let mut result = Ok(());
     for actor in actors {
       let mut actor = actor.clone();
-      if let Err(error) = Self::send_command(&mut actor, StreamIslandCommand::Shutdown) {
-        Self::record_first_error(&mut result, error);
+      if let Err(error) = actor.try_tell(AnyMessage::new(StreamIslandCommand::Shutdown)) {
+        if matches!(error, SendError::Closed(_)) && system.state().cell(&actor.pid()).is_none() {
+          continue;
+        }
+        Self::record_first_error(&mut result, StreamError::Failed);
       }
     }
     result
+  }
+
+  fn request_non_terminal_actor_shutdown(
+    system: &ActorSystem,
+    resources: &MaterializedStreamResources,
+  ) -> Result<(), StreamError> {
+    if resources.island_actors.len() != resources.streams.len() {
+      return Err(StreamError::InvalidConnection);
+    }
+
+    let actors: Vec<ChildRef> = resources
+      .island_actors
+      .iter()
+      .zip(&resources.streams)
+      .filter_map(|(actor, stream)| if stream.state().is_terminal() { None } else { Some(actor.clone()) })
+      .collect();
+    Self::request_actor_shutdown(system, &actors)
   }
 
   fn all_streams_terminal(streams: &[StreamShared]) -> bool {
@@ -450,11 +471,15 @@ impl ActorMaterializer {
     result
   }
 
-  fn finish_resource_teardown(resources: MaterializedStreamResources) -> Result<(), StreamError> {
+  fn finish_resource_teardown(system: &ActorSystem, resources: MaterializedStreamResources) -> Result<(), StreamError> {
     let MaterializedStreamResources { streams, island_actors, .. } = resources;
+    let streams_terminal = !streams.is_empty() && Self::all_streams_terminal(&streams);
     let mut result = Ok(());
     for actor in &island_actors {
-      if actor.stop().is_err() {
+      if let Err(error) = actor.stop() {
+        if matches!(error, SendError::Closed(_)) && (streams_terminal || system.state().cell(&actor.pid()).is_none()) {
+          continue;
+        }
         Self::record_first_error(&mut result, StreamError::Failed);
       }
     }
@@ -477,7 +502,7 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     }
-    if let Err(error) = Self::finish_resource_teardown(resources) {
+    if let Err(error) = Self::finish_resource_teardown(system, resources) {
       Self::record_first_error(&mut result, error);
     }
     result
@@ -493,9 +518,7 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     } else {
-      if let Err(error) = Self::request_actor_shutdown(&resources.island_actors) {
-        Self::record_first_error(&mut result, error);
-      }
+      result = result.and(Self::request_non_terminal_actor_shutdown(system, &resources));
       if let Err(error) = Self::request_stream_shutdown(&resources.streams) {
         Self::record_first_error(&mut result, error);
       }
@@ -503,7 +526,7 @@ impl ActorMaterializer {
         Self::record_first_error(&mut result, error);
       }
     }
-    if let Err(error) = Self::finish_resource_teardown(resources) {
+    if let Err(error) = Self::finish_resource_teardown(system, resources) {
       Self::record_first_error(&mut result, error);
     }
     result

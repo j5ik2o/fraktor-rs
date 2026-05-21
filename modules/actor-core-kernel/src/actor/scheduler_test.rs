@@ -24,6 +24,7 @@ use proptest::prelude::*;
 use super::{
   BatchMode, ExecutionBatch, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext,
   SchedulerError, SchedulerMode, SchedulerRunnable, SchedulerRunner, SchedulerWarning,
+  cancellable::CancellableEntry,
   command::SchedulerCommand,
   diagnostics::{DeterministicEvent, SchedulerDiagnosticsEvent},
   handle::SchedulerHandle,
@@ -503,6 +504,76 @@ fn fixed_rate_handle_can_be_cancelled_after_multiple_runs() {
   assert!(!handle.is_completed());
   assert!(scheduler.cancel(&handle));
   assert!(handle.is_cancelled());
+}
+
+#[test]
+fn fixed_rate_runnable_cancelled_while_executing_is_not_rescheduled() {
+  let mut scheduler = build_scheduler();
+  let handle_slot: ArcShared<SpinSyncMutex<Option<SchedulerHandle>>> = ArcShared::new(SpinSyncMutex::new(None));
+  let handle_slot_for_runnable = handle_slot.clone();
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
+    let handle = { handle_slot_for_runnable.lock().as_ref().cloned().expect("handle should be registered") };
+    assert!(handle.cancel(), "executing periodic handle should be cancellable");
+  });
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::RunRunnable {
+      runnable: runnable.clone(),
+    })
+    .expect("handle");
+  *handle_slot.lock() = Some(handle.clone());
+
+  scheduler.run_for_test(1);
+
+  assert!(handle.is_cancelled());
+  assert_eq!(scheduler.job_count_for_test(), 0);
+  assert_eq!(scheduler.metrics().active_timers(), 0);
+  scheduler.run_for_test(1);
+  assert_eq!(scheduler.job_count_for_test(), 0);
+}
+
+#[test]
+fn scheduler_cancel_during_execution_defers_active_timer_decrement() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("handle");
+  assert!(handle.entry().try_begin_execute(), "entry should simulate an executing job");
+  assert!(scheduler.remove_job_for_test(&handle), "executing job should already be out of the job map");
+
+  assert!(scheduler.cancel(&handle));
+
+  assert!(handle.is_cancelled());
+  assert_eq!(scheduler.metrics().active_timers(), 1);
+  assert_eq!(scheduler.metrics().dropped_total(), 1);
+  assert_eq!(scheduler.job_count_for_test(), 0);
+
+  assert!(!scheduler.cancel(&handle));
+  assert_eq!(scheduler.metrics().active_timers(), 1);
+  assert_eq!(scheduler.metrics().dropped_total(), 1);
+}
+
+#[test]
+fn fixed_rate_runnable_completed_while_executing_is_not_rescheduled() {
+  let mut scheduler = build_scheduler();
+  let entry_slot: ArcShared<SpinSyncMutex<Option<ArcShared<CancellableEntry>>>> =
+    ArcShared::new(SpinSyncMutex::new(None));
+  let entry_slot_for_runnable = entry_slot.clone();
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
+    let entry = { entry_slot_for_runnable.lock().as_ref().cloned().expect("entry should be registered") };
+    entry.mark_completed();
+  });
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::RunRunnable {
+      runnable: runnable.clone(),
+    })
+    .expect("handle");
+  *entry_slot.lock() = Some(handle.entry());
+
+  scheduler.run_for_test(1);
+
+  assert!(handle.is_completed());
+  assert_eq!(scheduler.job_count_for_test(), 0);
+  assert_eq!(scheduler.metrics().active_timers(), 0);
 }
 
 #[test]

@@ -34,17 +34,28 @@ impl StreamIslandActor {
     Self { stream, drive_gate, downstream_cancellation_control_plane, graph_streams, tick_handle_slot }
   }
 
-  fn cancel_scheduled_tick(&self, _ctx: &ActorContext<'_>) {
+  fn cancel_scheduled_tick(&self) {
     let handle = self.tick_handle_slot.lock().take();
     let Some(handle) = handle else {
       return;
     };
-    let cancelled = handle.cancel();
-    if !(cancelled || handle.is_cancelled() || handle.is_completed()) {
-      // ベストエフォート: island が terminal に到達する瞬間は scheduler 側の
-      // 遷移と競合し得る。その場合は次に発火した tick が terminal 状態を観測して
-      // no-op になる。
+    // must-ignore: completed/cancelled handles are already terminal, and active
+    // scheduled/executing handles transition to cancelled through the handle.
+    let _cancelled = handle.cancel();
+  }
+
+  fn stop_self_after_terminal(ctx: &mut ActorContext<'_>) {
+    if ctx.system().state().cell(&ctx.pid()).is_none() {
+      return;
     }
+    // must-ignore: materializer shutdown still performs authoritative resource
+    // teardown; normal terminal cleanup should not make later shutdown fail.
+    drop(ctx.stop_self());
+  }
+
+  fn cleanup_terminal(&self, ctx: &mut ActorContext<'_>) {
+    self.cancel_scheduled_tick();
+    Self::stop_self_after_terminal(ctx);
   }
 
   fn abort_graph_streams(&self, error: &StreamError) {
@@ -99,52 +110,56 @@ impl StreamIslandActor {
     Ok(())
   }
 
-  fn drive(&self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
+  fn drive(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if self.stream.state().is_terminal() {
       self.drive_gate.mark_idle();
-      self.cancel_scheduled_tick(ctx);
+      self.cleanup_terminal(ctx);
       return Ok(());
     }
 
     if let Err(error) = self.propagate_downstream_cancellation() {
       self.drive_gate.mark_idle();
-      self.cancel_scheduled_tick(ctx);
+      self.cancel_scheduled_tick();
       return Err(error);
     }
 
     let _outcome = self.stream.drive();
     self.drive_gate.mark_idle();
     if self.stream.state().is_terminal() {
-      self.cancel_scheduled_tick(ctx);
+      self.cleanup_terminal(ctx);
     }
     Ok(())
   }
 
-  fn cancel(&self, ctx: &ActorContext<'_>, cause: Option<&StreamError>) -> Result<(), ActorError> {
+  fn cancel(&self, ctx: &mut ActorContext<'_>, cause: Option<&StreamError>) -> Result<(), ActorError> {
     let result = self.stream.cancel().map_err(|e| match cause {
       | Some(cause) => ActorError::fatal(format!("stream island cancel failed after {cause:?}: {e:?}")),
       | None => ActorError::fatal(format!("stream island cancel failed: {e:?}")),
     });
-    self.cancel_scheduled_tick(ctx);
-    result
-  }
-
-  fn shutdown(&self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
-    let result = self.stream.shutdown().map_err(|e| ActorError::fatal(format!("stream island shutdown failed: {e:?}")));
     if result.is_ok() {
-      let _outcome = self.stream.drive();
-      if self.stream.state().is_terminal() {
-        self.cancel_scheduled_tick(ctx);
-      }
+      self.cleanup_terminal(ctx);
     } else {
-      self.cancel_scheduled_tick(ctx);
+      self.cancel_scheduled_tick();
     }
     result
   }
 
-  fn abort(&self, ctx: &ActorContext<'_>, error: &StreamError) -> Result<(), ActorError> {
+  fn shutdown(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    let result = self.stream.shutdown().map_err(|e| ActorError::fatal(format!("stream island shutdown failed: {e:?}")));
+    if result.is_ok() {
+      let _outcome = self.stream.drive();
+      if self.stream.state().is_terminal() {
+        self.cleanup_terminal(ctx);
+      }
+    } else {
+      self.cancel_scheduled_tick();
+    }
+    result
+  }
+
+  fn abort(&self, error: &StreamError) -> Result<(), ActorError> {
     self.stream.abort(error);
-    self.cancel_scheduled_tick(ctx);
+    self.cancel_scheduled_tick();
     Err(ActorError::fatal(format!("stream island abort requested: {error:?}")))
   }
 }
@@ -163,7 +178,7 @@ impl Actor for StreamIslandActor {
           self.shutdown(ctx)?;
         },
         | StreamIslandCommand::Abort(error) => {
-          self.abort(ctx, error)?;
+          self.abort(error)?;
         },
       }
     }

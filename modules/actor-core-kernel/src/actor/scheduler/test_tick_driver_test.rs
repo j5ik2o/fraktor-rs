@@ -109,18 +109,22 @@ struct TestTickDriverStopper {
   exec_thread: Option<JoinHandle<()>>,
 }
 
+fn join_driver_thread(handle: JoinHandle<()>) {
+  if handle.thread().id() == thread::current().id() {
+    return;
+  }
+  // must-ignore: shutdown is already in progress; a panicked helper thread has no recovery path here.
+  drop(handle.join());
+}
+
 impl TickDriverStopper for TestTickDriverStopper {
   fn stop(mut self: Box<Self>) {
     self.running.store(false, Ordering::Release);
-    if let Some(h) = self.tick_thread.take()
-      && h.join().is_err()
-    {
-      std::eprintln!("warn: test tick driver tick thread panicked during shutdown");
+    if let Some(handle) = self.tick_thread.take() {
+      join_driver_thread(handle);
     }
-    if let Some(h) = self.exec_thread.take()
-      && h.join().is_err()
-    {
-      std::eprintln!("warn: test tick driver executor thread panicked during shutdown");
+    if let Some(handle) = self.exec_thread.take() {
+      join_driver_thread(handle);
     }
   }
 }
