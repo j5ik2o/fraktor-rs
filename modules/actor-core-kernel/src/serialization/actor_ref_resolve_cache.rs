@@ -77,6 +77,15 @@ where
     Some(self.entries[index].value.clone())
   }
 
+  /// Releases one evictable entry when the cache is not empty.
+  pub fn release_evictable(&mut self) -> Option<V> {
+    if self.entries.is_empty() {
+      return None;
+    }
+    let index = self.evictable_index();
+    Some(self.entries.remove(index).value)
+  }
+
   /// Inserts a resolved value for `path` when the path is cacheable.
   pub fn insert_resolved(&mut self, path: &ActorPath, value: V) {
     if is_cacheable_path(path) {

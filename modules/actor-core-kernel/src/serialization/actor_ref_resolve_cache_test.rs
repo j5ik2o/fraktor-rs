@@ -71,6 +71,40 @@ fn resolve_restores_evicted_entry_when_resolver_fails_at_capacity() {
 }
 
 #[test]
+fn release_evictable_releases_existing_entry_before_capacity() {
+  let echo_resolver = |candidate: &ActorPath| -> Result<ActorPath, &'static str> { Ok(candidate.clone()) };
+
+  let mut cache = ActorRefResolveCache::with_limits(2, 2);
+  let path_a = remote_path("a");
+
+  cache.resolve(&path_a, echo_resolver).expect("insert a");
+
+  assert!(cache.release_evictable().is_some());
+  assert!(cache.release_evictable().is_none());
+}
+
+#[test]
+fn release_evictable_drops_existing_entry_for_non_cacheable_insert_target() {
+  let echo_resolver = |candidate: &ActorPath| -> Result<ActorPath, &'static str> { Ok(candidate.clone()) };
+
+  let mut cache = ActorRefResolveCache::with_limits(2, 2);
+  let path_a = remote_path("a");
+  let path_b = remote_path("b");
+  let non_cacheable_path = ActorPath::root().child("user").child("temp").child("reply");
+
+  cache.resolve(&path_a, echo_resolver).expect("insert a");
+  cache.resolve(&path_b, echo_resolver).expect("insert b");
+
+  assert!(cache.release_evictable().is_some());
+  assert!(cache.release_evictable().is_some());
+  assert!(cache.release_evictable().is_none());
+  assert!(matches!(
+    cache.resolve(&non_cacheable_path, echo_resolver).expect("resolve temp path"),
+    ActorRefResolveCacheOutcome::Miss(value) if value == non_cacheable_path
+  ));
+}
+
+#[test]
 fn evict_picks_oldest_stale_entry_when_multiple_candidates_exist() {
   // Vec 挿入順だけで stale entry を選ぶと、 age threshold を辛うじて越えた直近アクセスの
   // entry が、 もっと古い未アクセス entry より先に evict され LRU 意図を崩す。 stale 候補の中で

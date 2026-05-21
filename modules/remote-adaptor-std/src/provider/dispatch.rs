@@ -181,17 +181,17 @@ impl StdRemoteActorRefProvider {
 
     let remote_ref = self.remote_provider.actor_ref(path.clone()).map_err(StdRemoteActorRefProviderError::from)?;
     let remote_path = remote_ref.path().clone();
-    if !self.registry.with_lock(|registry| registry.can_record_path(&remote_path)) {
-      return Err(StdRemoteActorRefProviderError::RemotePathRegistryFull);
+    while !self.registry.with_lock(|registry| registry.reserve_capacity_for_path(&remote_path)) {
+      if self.resolve_cache.release_evictable().is_none() {
+        return Err(StdRemoteActorRefProviderError::RemotePathRegistryFull);
+      }
     }
 
-    let actor_ref = Self::build_remote_actor_ref(
-      &mut self.next_remote_pid,
-      remote_ref,
-      self.event_sender.clone(),
-      &self.registry,
-      self.monotonic_epoch,
-    )?;
+    let next_remote_pid = &mut self.next_remote_pid;
+    let event_sender = self.event_sender.clone();
+    let registry = &self.registry;
+    let actor_ref =
+      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender, registry, self.monotonic_epoch)?;
     self.resolve_cache.insert_resolved(&path, actor_ref.clone());
     Ok(ActorCoreResolveCacheOutcome::Miss(actor_ref))
   }
@@ -208,15 +208,15 @@ impl StdRemoteActorRefProvider {
       ActorRefSenderShared::new(Box::new(RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch)));
     let pid = registry.with_lock(|registry| -> Result<Pid, StdRemoteActorRefProviderError> {
       if let Some(pid) = registry.pid_for_path(&path) {
-        let refreshed = registry.refresh(pid, path.clone());
+        let refreshed = registry.record(pid, path.clone(), &sender);
         debug_assert!(refreshed);
         return Ok(pid);
       }
-      if !registry.can_record_path(&path) {
+      if !registry.reserve_capacity_for_path(&path) {
         return Err(StdRemoteActorRefProviderError::RemotePathRegistryFull);
       }
       let pid = Self::allocate_remote_pid(next_remote_pid)?;
-      let recorded = registry.record(pid, path.clone());
+      let recorded = registry.record(pid, path.clone(), &sender);
       debug_assert!(recorded);
       Ok(pid)
     })?;

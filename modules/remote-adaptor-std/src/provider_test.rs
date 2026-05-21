@@ -12,7 +12,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::{
     Address as ActorAddress, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathScheme},
-    actor_ref::ActorRef,
+    actor_ref::{ActorRef, ActorRefSenderShared, NullSender},
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider, LocalActorRefProviderInstaller,
     },
@@ -306,8 +306,28 @@ fn remote_actor_path() -> ActorPath {
   ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse")
 }
 
-fn record_remote_actor_path(registry: &SharedLock<RemoteActorPathRegistry>, pid: Pid, path: ActorPath) {
-  registry.with_lock(|registry| registry.record(pid, path));
+fn test_actor_ref_sender() -> ActorRefSenderShared {
+  ActorRefSenderShared::new(Box::new(NullSender))
+}
+
+fn record_remote_actor_path(
+  registry: &SharedLock<RemoteActorPathRegistry>,
+  pid: Pid,
+  path: ActorPath,
+) -> ActorRefSenderShared {
+  let sender = test_actor_ref_sender();
+  assert!(registry.with_lock(|registry| registry.record(pid, path, &sender)));
+  sender
+}
+
+fn record_test_remote_actor_path(
+  registry: &mut RemoteActorPathRegistry,
+  pid: Pid,
+  path: ActorPath,
+) -> ActorRefSenderShared {
+  let sender = test_actor_ref_sender();
+  assert!(registry.record(pid, path, &sender));
+  sender
 }
 
 fn noop_transport_envelope(target: &RemoteCoreAddress) -> OutboundEnvelope {
@@ -748,9 +768,11 @@ fn remote_actor_path_registry_replaces_previous_pid_for_same_path() {
   let remote_path = remote_actor_path();
   let first_pid = Pid::new(900, 0);
   let second_pid = Pid::new(901, 0);
+  let first_sender = test_actor_ref_sender();
+  let second_sender = test_actor_ref_sender();
 
-  registry.record(first_pid, remote_path.clone());
-  registry.record(second_pid, remote_path.clone());
+  registry.record(first_pid, remote_path.clone(), &first_sender);
+  registry.record(second_pid, remote_path.clone(), &second_sender);
 
   assert!(registry.path_for_pid(&first_pid).is_none());
   assert_eq!(registry.pid_for_path(&remote_path), Some(second_pid));
@@ -767,9 +789,11 @@ fn remote_actor_path_registry_replaces_previous_path_for_same_pid() {
   let second_path =
     ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/remote-actor-replacement").expect("parse");
   let pid = Pid::new(902, 0);
+  let first_sender = test_actor_ref_sender();
+  let second_sender = test_actor_ref_sender();
 
-  registry.record(pid, first_path.clone());
-  registry.record(pid, second_path.clone());
+  registry.record(pid, first_path.clone(), &first_sender);
+  registry.record(pid, second_path.clone(), &second_sender);
 
   assert!(registry.pid_for_path(&first_path).is_none());
   assert_eq!(registry.pid_for_path(&second_path), Some(pid));
@@ -799,12 +823,13 @@ fn remote_actor_path_registry_keeps_active_mapping_over_capacity() {
   let mut registry = RemoteActorPathRegistry::default();
   let active_path = remote_actor_path();
   let active_pid = Pid::new(903, 0);
-  registry.record(active_pid, active_path.clone());
+  let _active_sender = record_test_remote_actor_path(&mut registry, active_pid, active_path.clone());
 
   for index in 0..1024 {
     let path =
       ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/inactive-{index}")).expect("parse");
-    registry.record(Pid::new(904 + index, 0), path);
+    let sender = test_actor_ref_sender();
+    registry.record(Pid::new(904 + index, 0), path, &sender);
   }
 
   assert_eq!(registry.pid_for_path(&active_path), Some(active_pid));
@@ -817,18 +842,22 @@ fn remote_actor_path_registry_keeps_active_mapping_over_capacity() {
 #[test]
 fn remote_actor_path_registry_rejects_new_mapping_when_all_entries_are_active() {
   let mut registry = RemoteActorPathRegistry::default();
+  let mut senders = Vec::new();
 
   for index in 0..1024 {
     let path =
       ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/active-{index}")).expect("parse");
-    assert!(registry.record(Pid::new(2000 + index, 0), path));
+    let sender = test_actor_ref_sender();
+    assert!(registry.record(Pid::new(2000 + index, 0), path, &sender));
+    senders.push(sender);
   }
 
   let overflow_path =
     ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/active-overflow").expect("parse");
   let overflow_pid = Pid::new(4000, 0);
+  let overflow_sender = test_actor_ref_sender();
 
-  assert!(!registry.record(overflow_pid, overflow_path.clone()));
+  assert!(!registry.record(overflow_pid, overflow_path.clone(), &overflow_sender));
   assert!(registry.pid_for_path(&overflow_path).is_none());
   assert!(registry.path_for_pid(&overflow_pid).is_none());
 }
@@ -838,14 +867,17 @@ fn remote_actor_path_registry_refresh_keeps_existing_mapping_at_capacity() {
   let mut registry = RemoteActorPathRegistry::default();
   let active_path = remote_actor_path();
   let active_pid = Pid::new(2000, 0);
+  let active_sender = test_actor_ref_sender();
+  let refreshed_sender = test_actor_ref_sender();
 
-  registry.record(active_pid, active_path.clone());
-  registry.refresh(active_pid, active_path.clone());
+  registry.record(active_pid, active_path.clone(), &active_sender);
+  registry.record(active_pid, active_path.clone(), &refreshed_sender);
 
   for index in 0..1024 {
     let path = ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/refresh-inactive-{index}"))
       .expect("parse");
-    registry.record(Pid::new(2001 + index, 0), path);
+    let sender = test_actor_ref_sender();
+    registry.record(Pid::new(2001 + index, 0), path, &sender);
   }
 
   assert_eq!(registry.pid_for_path(&active_path), Some(active_pid));
@@ -860,14 +892,18 @@ fn remote_actor_path_registry_refresh_keeps_path_mapping_after_sender_drop() {
   let mut registry = RemoteActorPathRegistry::default();
   let remote_path = remote_actor_path();
   let remote_pid = Pid::new(3025, 0);
+  let old_sender = test_actor_ref_sender();
+  let refreshed_sender = test_actor_ref_sender();
 
-  registry.record(remote_pid, remote_path.clone());
-  registry.refresh(remote_pid, remote_path.clone());
+  registry.record(remote_pid, remote_path.clone(), &old_sender);
+  drop(old_sender);
+  registry.record(remote_pid, remote_path.clone(), &refreshed_sender);
 
   for index in 0..1024 {
     let path = ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/refreshed-active-{index}"))
       .expect("parse");
-    registry.record(Pid::new(3026 + index, 0), path);
+    let sender = test_actor_ref_sender();
+    registry.record(Pid::new(3026 + index, 0), path, &sender);
   }
 
   assert_eq!(registry.pid_for_path(&remote_path), Some(remote_pid));
@@ -883,8 +919,10 @@ fn remote_actor_path_registry_path_lookup_does_not_purge_inactive_mapping() {
   let remote_path = remote_actor_path();
   let other_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/other-lookup").expect("parse");
   let remote_pid = Pid::new(4050, 0);
+  let sender = test_actor_ref_sender();
 
-  registry.record(remote_pid, remote_path.clone());
+  registry.record(remote_pid, remote_path.clone(), &sender);
+  drop(sender);
 
   assert!(registry.pid_for_path(&other_path).is_none());
   assert_eq!(
@@ -908,6 +946,35 @@ fn remote_actor_ref_resolution_reuses_active_pid_at_registry_capacity() {
 
   assert_eq!(resolved_again.pid(), first.pid());
   assert_eq!(fixture.actor_ref_call_count(), 1024);
+}
+
+#[test]
+fn remote_actor_ref_resolution_releases_cached_entry_when_registry_is_full_below_cache_capacity() {
+  let mut fixture = make_provider_fixture();
+  let externally_held_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/externally-held").expect("parse");
+  let externally_held_ref =
+    fixture.provider.actor_ref(externally_held_path.clone()).expect("externally held remote actor ref should resolve");
+  let cached_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/cache-held").expect("parse");
+  let cached_ref = fixture.provider.actor_ref(cached_path.clone()).expect("cache-held remote actor ref should resolve");
+  drop(cached_ref);
+
+  let mut active_temp_refs = Vec::new();
+  for index in 0..1022 {
+    let temp_path =
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/temp/held-{index}")).expect("parse");
+    active_temp_refs.push(fixture.provider.actor_ref(temp_path).expect("active temp actor ref should resolve"));
+  }
+
+  let new_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/after-cache-release").expect("parse");
+  let resolved = fixture.provider.actor_ref(new_path.clone());
+
+  assert_remote_actor_ref_path(resolved, &new_path);
+  assert_eq!(externally_held_ref.canonical_path().as_ref(), Some(&externally_held_path));
+  assert_eq!(active_temp_refs.len(), 1022);
+  assert!(fixture.registry.with_lock(|registry| registry.pid_for_path(&externally_held_path)).is_some());
+  assert_eq!(fixture.registry.with_lock(|registry| registry.pid_for_path(&cached_path)), None);
 }
 
 #[test]
@@ -950,7 +1017,7 @@ fn remote_actor_ref_resolution_rebinds_sender_for_current_provider_when_prior_re
 }
 
 #[test]
-fn remote_actor_ref_resolution_rejects_new_path_without_consuming_pid_when_registry_is_full() {
+fn remote_actor_ref_resolution_reclaims_stale_mapping_when_registry_is_full() {
   let mut fixture = make_provider_fixture();
 
   for index in 0..1024 {
@@ -962,19 +1029,38 @@ fn remote_actor_ref_resolution_rejects_new_path_without_consuming_pid_when_regis
   let new_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/cached-new").expect("parse");
   let resolved = fixture.provider.actor_ref(new_path.clone());
 
-  assert!(matches!(resolved, Err(StdRemoteActorRefProviderError::RemotePathRegistryFull)));
-  assert!(fixture.registry.with_lock(|registry| registry.pid_for_path(&new_path)).is_none());
+  assert_remote_actor_ref_path(resolved, &new_path);
+  assert!(fixture.registry.with_lock(|registry| registry.pid_for_path(&new_path)).is_some());
+  assert_eq!(fixture.actor_ref_call_count(), 1025);
+}
+
+#[test]
+fn remote_actor_ref_resolution_reclaims_cached_mapping_for_non_cacheable_path_when_registry_is_full() {
+  let mut fixture = make_provider_fixture();
+
+  for index in 0..1024 {
+    let path =
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/cached-{index}")).expect("parse");
+    let _cached = fixture.provider.actor_ref(path).expect("cached remote actor ref should resolve");
+  }
+
+  let temp_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/temp/reply").expect("parse");
+  let resolved = fixture.provider.actor_ref(temp_path.clone());
+
+  assert_remote_actor_ref_path(resolved, &temp_path);
+  assert!(fixture.registry.with_lock(|registry| registry.pid_for_path(&temp_path)).is_some());
   assert_eq!(fixture.actor_ref_call_count(), 1025);
 }
 
 #[test]
 fn build_remote_actor_ref_rejects_new_path_without_consuming_pid_when_registry_is_full() {
   let registry = RemoteActorPathRegistry::new_shared();
+  let mut senders = Vec::new();
   registry.with_lock(|registry| {
     for index in 0..1024 {
       let path =
         ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/full-{index}")).expect("parse");
-      assert!(registry.record(Pid::new(6000 + index, 0), path));
+      senders.push(record_test_remote_actor_path(registry, Pid::new(6000 + index, 0), path));
     }
   });
   let remote_path =

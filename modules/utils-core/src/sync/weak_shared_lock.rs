@@ -19,12 +19,6 @@ where
   pub fn upgrade(&self) -> Option<SharedLock<T>> {
     self.inner.upgrade().map(SharedLock::from_inner)
   }
-
-  /// Returns the number of strong references pointing to this allocation.
-  #[must_use]
-  pub fn strong_count(&self) -> usize {
-    self.inner.strong_count()
-  }
 }
 
 impl<T> Clone for WeakSharedLock<T> {
