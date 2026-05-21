@@ -180,7 +180,10 @@ impl EphemeralPersistenceStore {
         })
         .max_by_key(|snapshot| snapshot.sequence_nr);
       let snapshot_seq = snapshot.map(|snapshot| snapshot.sequence_nr).unwrap_or(0);
-      let replay_max = usize::try_from(recovery.replay_max()).unwrap_or(usize::MAX);
+      let replay_max = match recovery.replay_max() {
+        | 0 => usize::MAX,
+        | max => usize::try_from(max).unwrap_or(usize::MAX),
+      };
       let events = entry
         .events
         .iter()

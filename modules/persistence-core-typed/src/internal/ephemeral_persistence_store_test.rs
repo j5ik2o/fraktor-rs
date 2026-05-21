@@ -77,6 +77,18 @@ fn recovery_bounds_limit_ephemeral_replay_events() {
 }
 
 #[test]
+fn zero_replay_max_replays_all_matching_ephemeral_events() {
+  let store = EphemeralPersistenceStore::new();
+  store.persist_events(&config("zero-replay-max"), vec![1, 2, 3]).expect("events should persist");
+
+  let (state, sequence_nr) =
+    store.recover(&config("zero-replay-max").with_recovery(Recovery::new(u64::MAX, 0))).expect("state should recover");
+
+  assert_eq!(state, 6);
+  assert_eq!(sequence_nr, 3);
+}
+
+#[test]
 fn event_adapters_are_applied_to_ephemeral_persistence() {
   let store = EphemeralPersistenceStore::new();
   let write_config = config("adapter").with_event_adapter(AddTenAdapter);
