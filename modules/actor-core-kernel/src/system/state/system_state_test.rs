@@ -36,7 +36,7 @@ use crate::{
   system::{
     RegisterExtraTopLevelError, TerminationSignal,
     guardian::GuardianKind,
-    remote::RemotingConfig,
+    remote::{RemoteWatchHook, RemotingConfig},
     state::{AuthorityState, SystemStateShared, system_state::LogLevel},
   },
 };
@@ -824,19 +824,19 @@ impl RecordingRemoteWatchHook {
   }
 }
 
-impl crate::system::remote::RemoteWatchHook for RecordingRemoteWatchHook {
-  fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
+impl RemoteWatchHook for RecordingRemoteWatchHook {
+  fn handle_watch(&mut self, target: Pid, watcher: Pid) -> Result<bool, SendError> {
     let mut calls = self.calls.lock();
     calls.watch_calls += 1;
     calls.last_watch = Some((target, watcher));
-    self.consume_watch
+    Ok(self.consume_watch)
   }
 
-  fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
+  fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> Result<bool, SendError> {
     let mut calls = self.calls.lock();
     calls.unwatch_calls += 1;
     calls.last_unwatch = Some((target, watcher));
-    self.consume_unwatch
+    Ok(self.consume_unwatch)
   }
 
   fn handle_deathwatch_notification(&mut self, watcher: Pid, terminated: Pid) -> bool {

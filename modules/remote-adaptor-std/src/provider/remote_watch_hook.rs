@@ -6,6 +6,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_path::ActorPath,
+    error::SendError,
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   event::stream::CorrelationId,
@@ -78,16 +79,16 @@ impl StdRemoteWatchHook {
     self.registry.with_read(|registry| registry.path_for_pid(pid))
   }
 
-  fn send_watcher_command(&self, command: WatcherCommand) -> bool {
+  fn send_watcher_command(&self, command: WatcherCommand, overflow_message: SystemMessage) -> Result<bool, SendError> {
     match self.watcher_sender.try_send(command) {
-      | Ok(()) => true,
+      | Ok(()) => Ok(true),
       | Err(TrySendError::Full(command)) => {
         tracing::warn!(?command, "remote watch command queue is full");
-        true
+        Err(SendError::full(AnyMessage::new(overflow_message)))
       },
       | Err(TrySendError::Closed(command)) => {
         tracing::warn!(?command, "remote watch command queue is closed");
-        true
+        Ok(true)
       },
     }
   }
@@ -142,24 +143,26 @@ impl StdRemoteWatchHook {
 }
 
 impl RemoteWatchHook for StdRemoteWatchHook {
-  fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
+  fn handle_watch(&mut self, target: Pid, watcher: Pid) -> Result<bool, SendError> {
+    let watcher_pid = watcher;
     let Some(target) = self.remote_path_for(&target) else {
-      return false;
+      return Ok(false);
     };
     let Some(watcher) = self.state.canonical_actor_path(&watcher) else {
-      return false;
+      return Ok(false);
     };
-    self.send_watcher_command(WatcherCommand::Watch { target, watcher })
+    self.send_watcher_command(WatcherCommand::Watch { target, watcher }, SystemMessage::Watch(watcher_pid))
   }
 
-  fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
+  fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> Result<bool, SendError> {
+    let watcher_pid = watcher;
     let Some(target) = self.remote_path_for(&target) else {
-      return false;
+      return Ok(false);
     };
     let Some(watcher) = self.state.canonical_actor_path(&watcher) else {
-      return false;
+      return Ok(false);
     };
-    self.send_watcher_command(WatcherCommand::Unwatch { target, watcher })
+    self.send_watcher_command(WatcherCommand::Unwatch { target, watcher }, SystemMessage::Unwatch(watcher_pid))
   }
 
   fn handle_deathwatch_notification(&mut self, watcher: Pid, terminated: Pid) -> bool {

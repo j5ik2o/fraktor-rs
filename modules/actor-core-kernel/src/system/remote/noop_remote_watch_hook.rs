@@ -1,7 +1,7 @@
 //! No-op implementation of [`RemoteWatchHook`].
 
 use super::RemoteWatchHook;
-use crate::actor::Pid;
+use crate::actor::{Pid, error::SendError};
 
 /// A no-op implementation of [`RemoteWatchHook`] that always returns `false`.
 ///
@@ -9,12 +9,12 @@ use crate::actor::Pid;
 pub(crate) struct NoopRemoteWatchHook;
 
 impl RemoteWatchHook for NoopRemoteWatchHook {
-  fn handle_watch(&mut self, _target: Pid, _watcher: Pid) -> bool {
-    false
+  fn handle_watch(&mut self, _target: Pid, _watcher: Pid) -> Result<bool, SendError> {
+    Ok(false)
   }
 
-  fn handle_unwatch(&mut self, _target: Pid, _watcher: Pid) -> bool {
-    false
+  fn handle_unwatch(&mut self, _target: Pid, _watcher: Pid) -> Result<bool, SendError> {
+    Ok(false)
   }
 
   fn handle_deathwatch_notification(&mut self, _watcher: Pid, _terminated: Pid) -> bool {

@@ -1070,7 +1070,7 @@ fn remote_watch_hook_forwards_watch_command() {
   let local_pid = Pid::new(901, 0);
   let local_path = register_local_path(harness.system(), local_pid, "watcher");
 
-  assert!(hook.handle_watch(remote_pid, local_pid));
+  assert!(matches!(hook.handle_watch(remote_pid, local_pid), Ok(true)));
 
   let command = watcher_rx.try_recv().expect("watch command should be enqueued");
   assert!(matches!(
@@ -1082,7 +1082,7 @@ fn remote_watch_hook_forwards_watch_command() {
 }
 
 #[test]
-fn remote_watch_hook_returns_true_when_watcher_queue_is_full() {
+fn remote_watch_hook_returns_send_error_when_watcher_queue_is_full() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(905, 0);
   let remote_path = remote_actor_path();
@@ -1092,8 +1092,8 @@ fn remote_watch_hook_returns_true_when_watcher_queue_is_full() {
   let local_pid = Pid::new(906, 0);
   let _local_path = register_local_path(harness.system(), local_pid, "watcher-full");
 
-  assert!(hook.handle_watch(remote_pid, local_pid));
-  assert!(hook.handle_watch(remote_pid, local_pid));
+  assert!(matches!(hook.handle_watch(remote_pid, local_pid), Ok(true)));
+  assert!(matches!(hook.handle_watch(remote_pid, local_pid), Err(SendError::Full(_))));
   assert!(matches!(watcher_rx.try_recv(), Ok(WatcherCommand::Watch { .. })));
   assert!(watcher_rx.try_recv().is_err());
 }
@@ -1109,7 +1109,7 @@ fn remote_watch_hook_returns_true_when_watcher_queue_is_closed() {
   let _local_path = register_local_path(harness.system(), local_pid, "watcher-closed");
   drop(watcher_rx);
 
-  assert!(hook.handle_watch(remote_pid, local_pid));
+  assert!(matches!(hook.handle_watch(remote_pid, local_pid), Ok(true)));
 }
 
 #[test]
@@ -1120,7 +1120,7 @@ fn remote_watch_hook_returns_false_when_watcher_path_is_unresolved() {
   registry.with_lock(|registry| registry.record(remote_pid, remote_path));
   let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
 
-  assert!(!hook.handle_watch(remote_pid, Pid::new(909, 1)));
+  assert!(matches!(hook.handle_watch(remote_pid, Pid::new(909, 1)), Ok(false)));
   assert!(watcher_rx.try_recv().is_err());
 }
 
@@ -1134,7 +1134,7 @@ fn remote_watch_hook_forwards_unwatch_command() {
   let local_pid = Pid::new(911, 0);
   let local_path = register_local_path(harness.system(), local_pid, "watcher");
 
-  assert!(hook.handle_unwatch(remote_pid, local_pid));
+  assert!(matches!(hook.handle_unwatch(remote_pid, local_pid), Ok(true)));
 
   let command = watcher_rx.try_recv().expect("unwatch command should be enqueued");
   assert!(matches!(
@@ -1150,7 +1150,7 @@ fn remote_watch_hook_returns_false_when_mapping_is_unresolved() {
   let registry = RemoteActorPathRegistry::new_shared();
   let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
 
-  assert!(!hook.handle_watch(Pid::new(920, 0), Pid::new(921, 0)));
+  assert!(matches!(hook.handle_watch(Pid::new(920, 0), Pid::new(921, 0)), Ok(false)));
   assert!(watcher_rx.try_recv().is_err());
 }
 
@@ -1159,7 +1159,7 @@ fn remote_watch_hook_returns_false_when_unwatch_mapping_is_unresolved() {
   let registry = RemoteActorPathRegistry::new_shared();
   let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
 
-  assert!(!hook.handle_unwatch(Pid::new(920, 0), Pid::new(921, 0)));
+  assert!(matches!(hook.handle_unwatch(Pid::new(920, 0), Pid::new(921, 0)), Ok(false)));
   assert!(watcher_rx.try_recv().is_err());
 }
 
@@ -1171,7 +1171,7 @@ fn remote_watch_hook_returns_false_when_unwatch_watcher_path_is_unresolved() {
   registry.with_lock(|registry| registry.record(remote_pid, remote_path));
   let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
 
-  assert!(!hook.handle_unwatch(remote_pid, Pid::new(922, 1)));
+  assert!(matches!(hook.handle_unwatch(remote_pid, Pid::new(922, 1)), Ok(false)));
   assert!(watcher_rx.try_recv().is_err());
 }
 

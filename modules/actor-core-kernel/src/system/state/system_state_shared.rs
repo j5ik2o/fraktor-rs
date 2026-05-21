@@ -796,8 +796,10 @@ impl SystemStateShared {
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {
-          if self.remote_watch_hook.handle_watch(pid, watcher) {
-            return Ok(());
+          match self.remote_watch_hook.handle_watch(pid, watcher) {
+            | Ok(true) => return Ok(()),
+            | Ok(false) => {},
+            | Err(error) => return Err(error),
           }
           if let Err(e) = self.send_system_message(watcher, SystemMessage::DeathWatchNotification(pid)) {
             self.record_send_error(Some(watcher), &e);
@@ -805,8 +807,9 @@ impl SystemStateShared {
           Ok(())
         },
         | SystemMessage::Unwatch(watcher) => {
-          if self.remote_watch_hook.handle_unwatch(pid, watcher) {
-            return Ok(());
+          match self.remote_watch_hook.handle_unwatch(pid, watcher) {
+            | Ok(true) | Ok(false) => {},
+            | Err(error) => return Err(error),
           }
           Ok(())
         },
