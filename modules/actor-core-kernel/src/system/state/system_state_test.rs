@@ -700,6 +700,23 @@ fn remote_watch_hook_consumes_unwatch_is_invoked() {
 }
 
 #[test]
+fn remote_watch_hook_unwatch_error_is_propagated() {
+  let state = build_shared_state();
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let calls = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::with_unwatch_error(calls.clone())));
+
+  let result = state.send_system_message(target_pid, SystemMessage::Unwatch(watcher_pid));
+
+  assert!(matches!(result, Err(SendError::Full(_))));
+  let calls = calls.lock();
+  assert_eq!(calls.unwatch_calls, 1);
+  assert_eq!(calls.last_unwatch, Some((target_pid, watcher_pid)));
+}
+
+#[test]
 fn remote_watch_hook_consumes_deathwatch_notification_is_invoked() {
   let state = build_shared_state();
   let watcher_pid = state.allocate_pid();
@@ -807,6 +824,7 @@ struct RecordingRemoteWatchHook {
   consume_watch:        bool,
   consume_unwatch:      bool,
   consume_notification: bool,
+  fail_unwatch:         bool,
 }
 
 impl RecordingRemoteWatchHook {
@@ -820,7 +838,11 @@ impl RecordingRemoteWatchHook {
     consume_unwatch: bool,
     consume_notification: bool,
   ) -> Self {
-    Self { calls, consume_watch, consume_unwatch, consume_notification }
+    Self { calls, consume_watch, consume_unwatch, consume_notification, fail_unwatch: false }
+  }
+
+  fn with_unwatch_error(calls: ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>) -> Self {
+    Self { calls, consume_watch: false, consume_unwatch: false, consume_notification: false, fail_unwatch: true }
   }
 }
 
@@ -836,6 +858,9 @@ impl RemoteWatchHook for RecordingRemoteWatchHook {
     let mut calls = self.calls.lock();
     calls.unwatch_calls += 1;
     calls.last_unwatch = Some((target, watcher));
+    if self.fail_unwatch {
+      return Err(SendError::full(AnyMessage::new(SystemMessage::Unwatch(watcher))));
+    }
     Ok(self.consume_unwatch)
   }
 

@@ -1146,8 +1146,15 @@ fn remote_watch_full_error_rolls_back_watching_entry_to_allow_retry() {
   assert!(matches!(result, Err(WatchRegistrationError::Send(SendError::Full(_)))));
   assert!(!watcher.is_watching(target_pid));
 
+  let mut full_hook = FullRemoteWatchHook;
+  assert!(matches!(full_hook.handle_unwatch(target_pid, watcher_pid), Err(SendError::Full(_))));
+  assert!(!full_hook.handle_deathwatch_notification(watcher_pid, target_pid));
+
   let calls = ArcShared::new(SpinSyncMutex::new(0));
-  system.state().register_remote_watch_hook(Box::new(CountingRemoteWatchHook::new(calls.clone())));
+  let mut counting_hook = CountingRemoteWatchHook::new(calls.clone());
+  assert!(matches!(counting_hook.handle_unwatch(target_pid, watcher_pid), Ok(true)));
+  assert!(!counting_hook.handle_deathwatch_notification(watcher_pid, target_pid));
+  system.state().register_remote_watch_hook(Box::new(counting_hook));
 
   assert!(context.watch(&target).is_ok());
   assert_eq!(*calls.lock(), 1);
