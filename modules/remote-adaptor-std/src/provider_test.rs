@@ -788,7 +788,7 @@ fn remote_actor_ref_sender_drop_keeps_pid_path_mapping_for_remote_deathwatch() {
 }
 
 #[test]
-fn remote_actor_ref_resolution_reuses_recorded_pid_after_cache_eviction() {
+fn remote_actor_ref_resolution_allocates_new_pid_after_registry_eviction() {
   let mut fixture = make_provider_fixture();
   let remote_path = remote_actor_path();
 
@@ -800,7 +800,7 @@ fn remote_actor_ref_resolution_reuses_recorded_pid_after_cache_eviction() {
   }
   let resolved_again = fixture.provider.actor_ref(remote_path).expect("remote actor ref should resolve after eviction");
 
-  assert_eq!(resolved_again.pid(), first.pid());
+  assert_ne!(resolved_again.pid(), first.pid());
   assert_eq!(fixture.actor_ref_call_count(), 1026);
 }
 
