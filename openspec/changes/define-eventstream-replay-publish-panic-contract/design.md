@@ -50,6 +50,8 @@ actor-core-kernel は no_std core であり、panic isolation を core contract 
 
 core 側で panic を catch しない。`publish()` 中に panic した callback 以降の subscriber への配送は保証しないが、panic した subscriber の subscription entry は自動削除しない。これは no_std core に std unwind boundary を持ち込まないための最小契約である。
 
+panic 後も subscription が残る契約は、subscriber lock guard が unwind 経路でも drop される現行 lock backend に依存する。lock poisoning のような std-only policy は本 change では導入しない。
+
 automatic unsubscribe は callback 実装者にとって便利に見えるが、panic と lifecycle policy を event stream が勝手に結合し、再現性の低い購読喪失を生むため採用しない。
 
 ## Risks / Trade-offs

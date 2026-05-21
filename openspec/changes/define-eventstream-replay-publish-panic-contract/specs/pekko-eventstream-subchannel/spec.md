@@ -4,7 +4,7 @@
 
 `EventStreamShared::subscribe_with_key(key, subscriber)` は、登録時点で key にマッチする buffered events の replay snapshot を確定し、`EventStreamSubscription` を返す前に対象 subscriber へ同期通知しなければならない（MUST）。この契約は subscribe 呼び出しと同じ thread の happens-before に限定され、subscribe 実行中に別 thread から実行される `publish()` との厳密な replay/live 順序は保証してはならない（MUST NOT）。
 
-`subscribe_no_replay(subscriber)` は replay snapshot を持たない live-only registration であり、この replay 同期通知契約の対象外である。buffered event の同期観測を必要とする caller は `subscribe_with_key` または `subscribe` を使用する。
+`subscribe_no_replay(subscriber)` は replay snapshot を持たない live-only registration であり、この replay 同期通知契約の対象外である。ただし、`EventStreamSubscription` を返す前に live registration は完了していなければならない（MUST）。buffered event の同期観測を必要とする caller は `subscribe_with_key` または `subscribe` を使用する。
 
 #### Scenario: subscribe return 後は replay が観測済み
 
