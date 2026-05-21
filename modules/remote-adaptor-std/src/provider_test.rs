@@ -36,7 +36,7 @@ use fraktor_remote_core_rs::{
   envelope::{OutboundEnvelope, OutboundPriority},
   extension::{
     EventPublisher, REMOTE_ACTOR_REF_RESOLVE_CACHE_EXTENSION, Remote, RemoteActorRefResolveCacheEvent,
-    RemoteActorRefResolveCacheOutcome, RemoteEvent, RemoteShared,
+    RemoteActorRefResolveCacheOutcome, RemoteEvent, RemoteShared, Remoting,
   },
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::{RemoteTransport, TransportEndpoint, TransportError},
@@ -55,6 +55,7 @@ use tokio::{
 
 use super::{
   StdRemoteActorRefProvider, StdRemoteActorRefProviderError, StdRemoteActorRefProviderInstaller,
+  path_remote_actor_ref_provider::PathRemoteActorRefProvider,
   remote_actor_path_registry::RemoteActorPathRegistry,
   remote_deployment_hook::StdRemoteDeploymentHook,
   remote_watch_hook::{StdRemoteWatchFlushConfig, StdRemoteWatchHook},
@@ -667,6 +668,81 @@ fn remote_path_with_non_matching_authority_is_dispatched_to_remote_provider() {
 }
 
 #[test]
+fn default_path_remote_actor_ref_provider_rejects_unallowed_remote_peer() {
+  let mut provider = PathRemoteActorRefProvider::default();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+
+  let err = provider.actor_ref(remote_path).expect_err("unallowed remote peer should be rejected");
+
+  assert_eq!(err, ProviderError::RemotePeerNotAllowed);
+}
+
+#[test]
+fn path_remote_actor_ref_provider_accepts_allowed_remote_peer() {
+  let config =
+    RemoteConfig::new("127.0.0.1").with_allowed_remote_peer(RemoteCoreAddress::new("remote-sys", "10.0.0.99", 2552));
+  let mut provider = PathRemoteActorRefProvider::new(config);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+
+  let remote_ref = provider.actor_ref(remote_path.clone()).expect("allowed remote peer should resolve");
+
+  assert_eq!(remote_ref.path().to_canonical_uri(), remote_path.to_canonical_uri());
+}
+
+#[test]
+fn path_remote_actor_ref_provider_rejects_unallowed_remote_watch_target() {
+  let mut provider = PathRemoteActorRefProvider::default();
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+  let watcher = Pid::new(1, 1);
+
+  assert_eq!(provider.watch(remote_path.clone(), watcher).unwrap_err(), ProviderError::RemotePeerNotAllowed);
+  assert_eq!(provider.unwatch(remote_path, watcher).unwrap_err(), ProviderError::RemotePeerNotAllowed);
+}
+
+#[test]
+fn path_remote_actor_ref_provider_rejects_local_watch_target() {
+  let mut provider = PathRemoteActorRefProvider::default();
+  let local_path = ActorPath::root().child("user").child("worker");
+  let watcher = Pid::new(1, 1);
+
+  assert_eq!(provider.watch(local_path.clone(), watcher).unwrap_err(), ProviderError::UnsupportedScheme);
+  assert_eq!(provider.unwatch(local_path, watcher).unwrap_err(), ProviderError::UnsupportedScheme);
+}
+
+#[test]
+fn path_remote_actor_ref_provider_accepts_allowed_remote_watch_target() {
+  let config = RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.99");
+  let mut provider = PathRemoteActorRefProvider::new(config);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+  let watcher = Pid::new(1, 1);
+
+  provider.watch(remote_path.clone(), watcher).expect("allowed remote watch target should be accepted");
+  provider.unwatch(remote_path, watcher).expect("allowed remote unwatch target should be accepted");
+}
+
+#[test]
+fn path_remote_actor_ref_provider_accepts_explicitly_connected_remote_peer() {
+  let harness = EventHarness::new();
+  let serialization_extension = harness.system().extended().register_extension(&default_serialization_extension_id());
+  let remote_address = RemoteCoreAddress::new("remote-sys", "10.0.0.99", 2552);
+  let remote = Remote::new(
+    NoopRemoteTransport::new(vec![RemoteCoreAddress::new("local-sys", "127.0.0.1", 2551)]),
+    RemoteConfig::new("127.0.0.1"),
+    EventPublisher::new(harness.system().downgrade()),
+    serialization_extension,
+  );
+  let remote_shared = RemoteShared::new(remote);
+  remote_shared.start().expect("remote should start before explicit connect");
+  remote_shared.connect_peer(&remote_address).expect("explicit connect should be recorded");
+  let mut provider = PathRemoteActorRefProvider::new_with_remote(RemoteConfig::new("127.0.0.1"), remote_shared);
+  let remote_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.99:2552/user/worker").expect("parse");
+
+  let remote_ref = provider.actor_ref(remote_path.clone()).expect("explicitly connected remote peer should resolve");
+
+  assert_eq!(remote_ref.path().to_canonical_uri(), remote_path.to_canonical_uri());
+}
+
+#[test]
 fn local_authority_path_is_normalized_to_local_provider() {
   let mut provider = make_provider();
   // Authority that exactly matches `local_address()`.
@@ -857,7 +933,7 @@ fn remote_actor_ref_try_tell_pushes_outbound_enqueued_event() {
 async fn actor_system_config_registered_std_remote_actor_ref_provider_resolves_remote_actor_ref() {
   let remote_installer = ArcShared::new(RemotingExtensionInstaller::new(
     TcpRemoteTransport::new("127.0.0.1:0", vec![local_address().address().clone()]),
-    RemoteConfig::new("127.0.0.1"),
+    RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.1"),
   ));
   let extension_installers = ExtensionInstallers::default().with_shared_extension_installer(remote_installer.clone());
   let installer =

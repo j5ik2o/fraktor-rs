@@ -699,6 +699,120 @@ fn run_sends_outbound_enqueued_event_and_records_instrument() {
 }
 
 #[test]
+fn outbound_to_unallowed_idle_remote_does_not_connect_peer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let send_calls = transport.send_calls.clone();
+  let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument_handshake_calls = ArcShared::new(AtomicUsize::new(0));
+  let instrument = CountingInstrument::new(instrument_send_calls, instrument_handshake_calls);
+  let dropped_calls = instrument.dropped_calls.clone();
+  let mut remote =
+    remote_with_instrument(transport, RemoteConfig::new("127.0.0.1"), event_publisher(), Box::new(instrument));
+  remote.start().expect("remote should start before outbound delivery");
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+  let event = RemoteEvent::OutboundEnqueued {
+    authority: TransportEndpoint::new(remote_address.to_string()),
+    envelope:  Box::new(envelope),
+    now_ms:    42,
+  };
+
+  remote.handle_remote_event(event).expect("unallowed outbound should be dropped without failing the loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(send_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(dropped_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(remote.association_count_for_test(), 0);
+}
+
+#[test]
+fn explicit_connect_peer_allows_unlisted_idle_outbound() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let handshake_calls = transport.handshake_calls.clone();
+  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should start before explicit connect");
+  remote.connect_peer(&remote_address).expect("explicit connect should succeed");
+  let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
+  let envelope = OutboundEnvelope::new(
+    recipient,
+    None,
+    AnyMessage::new(String::from("payload")),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  );
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundEnqueued {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      envelope:  Box::new(envelope),
+      now_ms:    42,
+    })
+    .expect("explicitly connected peer should be allowed to start association");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 2);
+  assert_eq!(handshake_calls.load(Ordering::Relaxed), 1);
+  assert_eq!(remote.association_count_for_test(), 1);
+}
+
+#[test]
+fn outbound_control_to_unallowed_remote_does_not_connect_peer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let control_calls = transport.control_calls.clone();
+  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should start before outbound control");
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundControl {
+      remote: remote_address.clone(),
+      pdu:    ControlPdu::Shutdown { authority: remote_address.to_string() },
+      now_ms: 42,
+    })
+    .expect("unallowed outbound control should be dropped without failing the loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+  assert_eq!(control_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn outbound_deployment_to_unallowed_remote_does_not_connect_peer() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let transport = RecordingTransport::new(vec![local_address]);
+  let connect_peer_calls = transport.connect_peer_calls.clone();
+  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should start before outbound deployment");
+  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+    1,
+    2,
+    RemoteDeploymentFailureCode::SpawnFailed,
+    String::from("unallowed"),
+  ));
+
+  remote
+    .handle_remote_event(RemoteEvent::OutboundDeployment { remote: remote_address, pdu, now_ms: 42 })
+    .expect("unallowed outbound deployment should be dropped without failing the loop");
+
+  assert_eq!(connect_peer_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
 fn remote_new_default_instrument_accepts_event_loop_hooks() {
   let noop_address = Address::new("sys", "127.0.0.1", 2552);
   let mut noop_remote =
@@ -861,8 +975,8 @@ fn run_does_not_send_outbound_enqueued_event_before_association_is_active() {
   let instrument_send_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument_handshake_calls = ArcShared::new(AtomicUsize::new(0));
   let instrument = CountingInstrument::new(instrument_send_calls.clone(), instrument_handshake_calls.clone());
-  let mut remote =
-    remote_with_instrument(transport, RemoteConfig::new("127.0.0.1"), event_publisher(), Box::new(instrument));
+  let config = RemoteConfig::new("127.0.0.1").with_allowed_remote_peer(remote_address.clone());
+  let mut remote = remote_with_instrument(transport, config, event_publisher(), Box::new(instrument));
   remote.start().expect("remote should start before outbound delivery");
   let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
   let envelope = OutboundEnvelope::new(
@@ -898,7 +1012,8 @@ fn start_handshake_backpressure_keeps_event_loop_alive() {
   let transport = RecordingTransport::with_send_result(vec![local_address], Err(TransportError::Backpressure));
   let handshake_calls = transport.handshake_calls.clone();
   let timeout_calls = transport.timeout_calls.clone();
-  let mut remote = remote_new(transport, RemoteConfig::new("127.0.0.1"), event_publisher());
+  let config = RemoteConfig::new("127.0.0.1").with_allowed_remote_peer(remote_address.clone());
+  let mut remote = remote_new(transport, config, event_publisher());
   remote.start().expect("remote should start before outbound delivery");
   let recipient = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("recipient path");
   let envelope = OutboundEnvelope::new(

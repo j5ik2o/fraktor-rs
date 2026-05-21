@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::{
   Pid,
@@ -161,4 +161,9 @@ fn watch_rejects_local_watchee() {
   let watcher = Pid::new(1, 1);
   assert_eq!(provider.watch(local.clone(), watcher).unwrap_err(), ProviderError::NotRemote);
   assert_eq!(provider.unwatch(local, watcher).unwrap_err(), ProviderError::NotRemote);
+}
+
+#[test]
+fn provider_error_display_mentions_remote_peer_allowlist() {
+  assert_eq!(format!("{}", ProviderError::RemotePeerNotAllowed), "provider: remote peer is not allowed");
 }

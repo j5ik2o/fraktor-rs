@@ -18,6 +18,8 @@ pub enum ProviderError {
   /// The `ActorPath` authority uses a transport scheme the provider does not
   /// understand.
   UnsupportedScheme,
+  /// The remote authority is not allowed for automatic remote peer dialing.
+  RemotePeerNotAllowed,
 }
 
 impl Display for ProviderError {
@@ -27,6 +29,7 @@ impl Display for ProviderError {
       | ProviderError::InvalidPath => f.write_str("provider: invalid actor path"),
       | ProviderError::MissingAuthority => f.write_str("provider: missing authority component"),
       | ProviderError::UnsupportedScheme => f.write_str("provider: unsupported path scheme"),
+      | ProviderError::RemotePeerNotAllowed => f.write_str("provider: remote peer is not allowed"),
     }
   }
 }

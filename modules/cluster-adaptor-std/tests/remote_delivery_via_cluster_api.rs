@@ -132,7 +132,8 @@ fn remote_extension_parts(
 ) -> (ArcShared<RemotingExtensionInstaller>, Address, StdRemoteActorRefProviderInstaller) {
   let address = Address::new(SYSTEM_NAME, "127.0.0.1", port);
   let transport = TcpRemoteTransport::new(format!("127.0.0.1:{port}"), vec![address.clone()]);
-  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, RemoteConfig::new("127.0.0.1")));
+  let config = RemoteConfig::new("127.0.0.1").with_allowed_remote_host("127.0.0.1");
+  let installer = ArcShared::new(RemotingExtensionInstaller::new(transport, config));
   let provider_installer = StdRemoteActorRefProviderInstaller::from_remoting_extension_installer(
     UniqueAddress::new(address.clone(), uid),
     installer.clone(),

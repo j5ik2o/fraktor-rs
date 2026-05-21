@@ -37,7 +37,8 @@ impl StdRemoteActorRefProviderError {
       | StdRemoteActorRefProviderError::LocalProvider(error) => error,
       | StdRemoteActorRefProviderError::CoreProvider(ProviderError::InvalidPath)
       | StdRemoteActorRefProviderError::CoreProvider(ProviderError::MissingAuthority)
-      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::UnsupportedScheme) => {
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::UnsupportedScheme)
+      | StdRemoteActorRefProviderError::CoreProvider(ProviderError::RemotePeerNotAllowed) => {
         ActorError::escalate(format!("{self}"))
       },
       | StdRemoteActorRefProviderError::CoreProvider(ProviderError::NotRemote)

@@ -7,7 +7,7 @@ use fraktor_actor_core_kernel_rs::{
   serialization::default_serialization_extension_id,
   system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_remote_core_rs::{address::UniqueAddress, extension::EventPublisher, provider::RemoteActorRefProvider};
+use fraktor_remote_core_rs::{address::UniqueAddress, extension::EventPublisher};
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{
@@ -25,7 +25,7 @@ const PROVIDER_LOCK_POISONED: &str = "std remote actor-ref provider installer lo
 /// Installs [`StdRemoteActorRefProvider`] through `ActorSystemConfig`.
 pub struct StdRemoteActorRefProviderInstaller {
   local_address:      UniqueAddress,
-  remote_provider:    Mutex<Option<Box<dyn RemoteActorRefProvider + Send + Sync>>>,
+  provider_available: Mutex<bool>,
   remoting_installer: ArcShared<RemotingExtensionInstaller>,
 }
 
@@ -36,7 +36,7 @@ impl StdRemoteActorRefProviderInstaller {
     local_address: UniqueAddress,
     remoting_installer: ArcShared<RemotingExtensionInstaller>,
   ) -> Self {
-    Self { local_address, remote_provider: Mutex::new(Some(Box::new(PathRemoteActorRefProvider))), remoting_installer }
+    Self { local_address, provider_available: Mutex::new(true), remoting_installer }
   }
 
   fn event_sender_epoch_watcher_and_flush(&self) -> Result<RemoteProviderFlushHandles, ActorSystemBuildError> {
@@ -49,13 +49,13 @@ impl StdRemoteActorRefProviderInstaller {
 
 impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    let mut remote_provider = self
-      .remote_provider
+    let mut provider_available = self
+      .provider_available
       .lock()
       .map_err(|_| ActorSystemBuildError::Configuration(String::from(PROVIDER_LOCK_POISONED)))?;
-    let Some(remote_provider) = remote_provider.take() else {
+    if !*provider_available {
       return Err(ActorSystemBuildError::Configuration(String::from(PROVIDER_ALREADY_INSTALLED)));
-    };
+    }
     let RemoteProviderFlushHandles {
       event_sender,
       monotonic_epoch,
@@ -66,6 +66,11 @@ impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
       deployment_response_dispatcher,
       deployment_timeout,
     } = self.event_sender_epoch_watcher_and_flush()?;
+    *provider_available = false;
+    let remote_provider = Box::new(PathRemoteActorRefProvider::new_with_remote(
+      self.remoting_installer.config().clone(),
+      remote_shared.clone(),
+    ));
     let local_provider = ActorRefProviderHandleShared::new(LocalActorRefProvider::new_with_state(&system.state()));
     let registry = RemoteActorPathRegistry::new_shared();
     let provider = StdRemoteActorRefProvider::new_with_registry(

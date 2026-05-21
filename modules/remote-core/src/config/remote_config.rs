@@ -1,9 +1,12 @@
 //! Typed `RemoteConfig` with a `self`-consuming builder API.
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use crate::config::{LargeMessageDestinations, RemoteCompressionConfig};
+use crate::{
+  address::Address,
+  config::{LargeMessageDestinations, RemoteCompressionConfig},
+};
 
 /// Default handshake timeout (20 seconds), matching Pekko Artery advanced defaults.
 pub(crate) const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -140,6 +143,8 @@ pub struct RemoteConfig {
   outbound_lanes: usize,
   maximum_frame_size: usize,
   buffer_pool_size: usize,
+  allowed_remote_peers: Vec<Address>,
+  allowed_remote_hosts: Vec<String>,
   untrusted_mode: bool,
   log_received_messages: bool,
   log_sent_messages: bool,
@@ -186,6 +191,8 @@ impl RemoteConfig {
       outbound_lanes: DEFAULT_OUTBOUND_LANES,
       maximum_frame_size: DEFAULT_MAXIMUM_FRAME_SIZE,
       buffer_pool_size: DEFAULT_BUFFER_POOL_SIZE,
+      allowed_remote_peers: Vec::new(),
+      allowed_remote_hosts: Vec::new(),
       untrusted_mode: false,
       log_received_messages: false,
       log_sent_messages: false,
@@ -528,6 +535,25 @@ impl RemoteConfig {
     self
   }
 
+  /// Returns a copy that permits automatic peer dialing for the exact remote address.
+  #[must_use]
+  pub fn with_allowed_remote_peer(mut self, peer: Address) -> Self {
+    if !self.allowed_remote_peers.iter().any(|allowed| allowed == &peer) {
+      self.allowed_remote_peers.push(peer);
+    }
+    self
+  }
+
+  /// Returns a copy that permits automatic peer dialing for any port on `host`.
+  #[must_use]
+  pub fn with_allowed_remote_host(mut self, host: impl Into<String>) -> Self {
+    let host = host.into();
+    if !self.allowed_remote_hosts.iter().any(|allowed| allowed == &host) {
+      self.allowed_remote_hosts.push(host);
+    }
+    self
+  }
+
   /// Returns a copy with untrusted mode enabled or disabled.
   #[must_use]
   pub const fn with_untrusted_mode(mut self, enabled: bool) -> Self {
@@ -758,6 +784,25 @@ impl RemoteConfig {
   #[must_use]
   pub const fn buffer_pool_size(&self) -> usize {
     self.buffer_pool_size
+  }
+
+  /// Returns the exact remote addresses allowed for automatic peer dialing.
+  #[must_use]
+  pub fn allowed_remote_peers(&self) -> &[Address] {
+    &self.allowed_remote_peers
+  }
+
+  /// Returns the remote hosts allowed for automatic peer dialing.
+  #[must_use]
+  pub fn allowed_remote_hosts(&self) -> &[String] {
+    &self.allowed_remote_hosts
+  }
+
+  /// Returns whether `remote` is allowed for automatic peer dialing.
+  #[must_use]
+  pub fn is_remote_peer_allowed(&self, remote: &Address) -> bool {
+    self.allowed_remote_peers.iter().any(|allowed| allowed == remote)
+      || self.allowed_remote_hosts.iter().any(|allowed| allowed == remote.host())
   }
 
   /// Returns whether untrusted mode is enabled.
