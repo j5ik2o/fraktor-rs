@@ -41,6 +41,9 @@ impl SnapshotSelectionCriteria {
   }
 
   /// Returns criteria bounded by timestamp.
+  ///
+  /// Ephemeral persistence compares against monotonic logical snapshot timestamps per persistence
+  /// id, not wall-clock timestamps.
   #[must_use]
   pub const fn to_timestamp(max_timestamp: u64) -> Self {
     Self { max_sequence_nr: u64::MAX, max_timestamp, min_sequence_nr: 0, min_timestamp: 0 }
