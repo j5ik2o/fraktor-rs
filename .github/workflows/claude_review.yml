@@ -37,4 +37,4 @@ jobs:
             具体的な問題がある場合は、可能な限りインラインコメントで指摘してください。
 
           claude_args: |
-            --model claude-sonnet-4-7 --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --model claude-opus-4-7 --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
