@@ -1,5 +1,9 @@
 //! Internal typed persistence store actor.
 
+#[cfg(test)]
+#[path = "persistence_store_actor_test.rs"]
+mod tests;
+
 use alloc::{string::ToString, vec, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::{
@@ -12,7 +16,9 @@ use fraktor_actor_core_typed_rs::{TypedActorRef, TypedProps};
 use fraktor_persistence_core_kernel_rs::{
   error::PersistenceError,
   journal::JournalError,
-  persistent::{Eventsourced, PersistenceContext, PersistentActor, PersistentRepr, persistent_props},
+  persistent::{
+    Eventsourced, PersistenceContext, PersistentActor, PersistentRepr, Recovery as KernelRecovery, persistent_props,
+  },
   snapshot::{Snapshot, SnapshotError, SnapshotMetadata, SnapshotSelectionCriteria},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
@@ -62,8 +68,10 @@ where
   }
 
   fn new(config: PersistenceEffectorConfig<S, E, M>, recovery_reply_to: ReplyRef<S, E>) -> Self {
+    let mut context = PersistenceContext::new(config.persistence_id().as_str().to_string());
+    *context.event_adapters_mut() = config.event_adapters().clone();
     Self {
-      context: PersistenceContext::new(config.persistence_id().as_str().to_string()),
+      context,
       state: config.initial_state().clone(),
       config,
       recovery_reply_to,
@@ -175,6 +183,10 @@ where
 {
   fn persistence_id(&self) -> &str {
     self.context.persistence_id()
+  }
+
+  fn recovery(&self) -> KernelRecovery {
+    self.config.recovery().to_kernel()
   }
 
   fn receive_recover(&mut self, repr: &PersistentRepr) {

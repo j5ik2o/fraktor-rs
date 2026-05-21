@@ -6,11 +6,12 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_persistence_core_kernel_rs::error::PersistenceError;
+use fraktor_persistence_core_kernel_rs::{error::PersistenceError, journal::EventAdapters};
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  BackoffConfig, PersistenceEffectorMessageAdapter, PersistenceId, PersistenceMode, RetentionCriteria, SnapshotCriteria,
+  BackoffConfig, EventAdapter, PersistenceEffectorMessageAdapter, PersistenceId, PersistenceMode, Recovery,
+  RetentionCriteria, SnapshotCriteria, event_adapter::KernelEventAdapterBridge,
 };
 
 type ApplyEvent<S, E> = dyn Fn(&S, &E) -> S + Send + Sync;
@@ -23,8 +24,10 @@ pub struct PersistenceEffectorConfig<S, E, M> {
   persistence_mode:   PersistenceMode,
   stash_capacity:     usize,
   snapshot_criteria:  SnapshotCriteria<S, E>,
+  recovery:           Recovery,
   retention_criteria: RetentionCriteria,
   backoff_config:     BackoffConfig,
+  event_adapters:     EventAdapters,
   message_adapter:    Option<PersistenceEffectorMessageAdapter<S, E, M>>,
 }
 
@@ -41,8 +44,10 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
       persistence_mode: PersistenceMode::Persisted,
       stash_capacity: 1000,
       snapshot_criteria: SnapshotCriteria::never(),
+      recovery: Recovery::default(),
       retention_criteria: RetentionCriteria::default(),
       backoff_config: BackoffConfig::default(),
+      event_adapters: EventAdapters::new(),
       message_adapter: None,
     }
   }
@@ -83,6 +88,12 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
     &self.snapshot_criteria
   }
 
+  /// Returns the recovery selection.
+  #[must_use]
+  pub const fn recovery(&self) -> &Recovery {
+    &self.recovery
+  }
+
   /// Returns the retention criteria.
   #[must_use]
   pub const fn retention_criteria(&self) -> &RetentionCriteria {
@@ -93,6 +104,12 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
   #[must_use]
   pub const fn backoff_config(&self) -> &BackoffConfig {
     &self.backoff_config
+  }
+
+  /// Returns the event adapter registry.
+  #[must_use]
+  pub const fn event_adapters(&self) -> &EventAdapters {
+    &self.event_adapters
   }
 
   /// Returns the optional message adapter.
@@ -122,6 +139,13 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
     self
   }
 
+  /// Returns a config with the selected recovery.
+  #[must_use]
+  pub const fn with_recovery(mut self, recovery: Recovery) -> Self {
+    self.recovery = recovery;
+    self
+  }
+
   /// Returns a config with the selected retention criteria.
   #[must_use]
   pub const fn with_retention_criteria(mut self, retention_criteria: RetentionCriteria) -> Self {
@@ -133,6 +157,19 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
   #[must_use]
   pub const fn with_backoff_config(mut self, backoff_config: BackoffConfig) -> Self {
     self.backoff_config = backoff_config;
+    self
+  }
+
+  /// Returns a config with a typed event adapter registered for the event type.
+  #[must_use]
+  pub fn with_event_adapter<A>(mut self, adapter: A) -> Self
+  where
+    A: EventAdapter<E>,
+    E: Clone + Send + Sync + 'static, {
+    let adapter: ArcShared<dyn EventAdapter<E>> = ArcShared::new(adapter);
+    let write_adapter = ArcShared::new(KernelEventAdapterBridge::new(adapter.clone()));
+    let read_adapter = ArcShared::new(KernelEventAdapterBridge::new(adapter));
+    self.event_adapters.register::<E>(write_adapter, read_adapter);
     self
   }
 
@@ -179,8 +216,10 @@ where
       persistence_mode:   self.persistence_mode,
       stash_capacity:     self.stash_capacity,
       snapshot_criteria:  self.snapshot_criteria.clone(),
+      recovery:           self.recovery.clone(),
       retention_criteria: self.retention_criteria,
       backoff_config:     self.backoff_config.clone(),
+      event_adapters:     self.event_adapters.clone(),
       message_adapter:    self.message_adapter.clone(),
     }
   }

@@ -1,12 +1,14 @@
-//! Recovery configuration.
+//! Typed recovery selection configuration.
 
 #[cfg(test)]
 #[path = "recovery_test.rs"]
 mod tests;
 
-use crate::snapshot::SnapshotSelectionCriteria;
+use fraktor_persistence_core_kernel_rs::persistent::Recovery as KernelRecovery;
 
-/// Recovery configuration for persistent actors.
+use crate::SnapshotSelectionCriteria;
+
+/// Recovery selection used by typed persistence actors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Recovery {
   from_snapshot:  SnapshotSelectionCriteria,
@@ -15,27 +17,25 @@ pub struct Recovery {
 }
 
 impl Recovery {
-  /// Creates a recovery configuration with explicit limits.
+  /// Creates recovery with explicit replay bounds and latest snapshot selection.
   #[must_use]
   pub const fn new(to_sequence_nr: u64, replay_max: u64) -> Self {
     Self { from_snapshot: SnapshotSelectionCriteria::latest(), to_sequence_nr, replay_max }
   }
 
-  /// Creates a recovery configuration with explicit snapshot criteria.
+  /// Creates recovery from explicit snapshot selection criteria.
   #[must_use]
   pub const fn from_snapshot(criteria: SnapshotSelectionCriteria) -> Self {
     Self { from_snapshot: criteria, to_sequence_nr: u64::MAX, replay_max: u64::MAX }
   }
 
-  /// Returns recovery with explicit replay bounds.
+  /// Creates recovery that replays events without loading snapshots.
   #[must_use]
-  pub const fn with_replay_bounds(mut self, to_sequence_nr: u64, replay_max: u64) -> Self {
-    self.to_sequence_nr = to_sequence_nr;
-    self.replay_max = replay_max;
-    self
+  pub const fn without_snapshot() -> Self {
+    Self { from_snapshot: SnapshotSelectionCriteria::none(), to_sequence_nr: u64::MAX, replay_max: u64::MAX }
   }
 
-  /// Returns a recovery configuration that skips replay.
+  /// Creates recovery that skips both snapshot loading and event replay.
   #[must_use]
   pub const fn none() -> Self {
     Self { from_snapshot: SnapshotSelectionCriteria::none(), to_sequence_nr: 0, replay_max: 0 }
@@ -43,7 +43,7 @@ impl Recovery {
 
   /// Returns the snapshot selection criteria.
   #[must_use]
-  pub const fn snapshot_criteria(&self) -> &SnapshotSelectionCriteria {
+  pub const fn snapshot_selection_criteria(&self) -> &SnapshotSelectionCriteria {
     &self.from_snapshot
   }
 
@@ -57,6 +57,12 @@ impl Recovery {
   #[must_use]
   pub const fn replay_max(&self) -> u64 {
     self.replay_max
+  }
+
+  /// Converts this typed recovery selection to the kernel recovery contract.
+  pub(crate) const fn to_kernel(&self) -> KernelRecovery {
+    KernelRecovery::from_snapshot(self.from_snapshot.to_kernel())
+      .with_replay_bounds(self.to_sequence_nr, self.replay_max)
   }
 }
 
