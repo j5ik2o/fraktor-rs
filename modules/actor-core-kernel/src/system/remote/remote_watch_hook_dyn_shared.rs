@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{RemoteWatchHook, noop_remote_watch_hook::NoopRemoteWatchHook};
-use crate::actor::Pid;
+use crate::actor::{Pid, error::SendError};
 
 /// Shared wrapper that provides thread-safe access to a boxed [`RemoteWatchHook`].
 ///
@@ -47,12 +47,12 @@ impl RemoteWatchHookDynShared {
   }
 
   /// Handles a watch request by delegating to the inner hook.
-  pub(crate) fn handle_watch(&self, target: Pid, watcher: Pid) -> bool {
+  pub(crate) fn handle_watch(&self, target: Pid, watcher: Pid) -> Result<bool, SendError> {
     self.with_write(|inner| inner.handle_watch(target, watcher))
   }
 
   /// Handles an unwatch request by delegating to the inner hook.
-  pub(crate) fn handle_unwatch(&self, target: Pid, watcher: Pid) -> bool {
+  pub(crate) fn handle_unwatch(&self, target: Pid, watcher: Pid) -> Result<bool, SendError> {
     self.with_write(|inner| inner.handle_unwatch(target, watcher))
   }
 

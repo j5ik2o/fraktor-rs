@@ -783,6 +783,14 @@ impl SystemStateShared {
     self.cell(&parent).map_or_else(Vec::new, |cell| cell.children())
   }
 
+  fn normalize_remote_watch_hook_error(error: SendError) -> SendError {
+    match error {
+      // `ActorContext` reserves `Closed` for "target actor is already terminated".
+      | SendError::Closed(message) => SendError::full(message),
+      | error => error,
+    }
+  }
+
   /// Sends a system message to the specified actor.
   ///
   /// # Errors
@@ -796,8 +804,10 @@ impl SystemStateShared {
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {
-          if self.remote_watch_hook.handle_watch(pid, watcher) {
-            return Ok(());
+          match self.remote_watch_hook.handle_watch(pid, watcher) {
+            | Ok(true) => return Ok(()),
+            | Ok(false) => {},
+            | Err(error) => return Err(Self::normalize_remote_watch_hook_error(error)),
           }
           if let Err(e) = self.send_system_message(watcher, SystemMessage::DeathWatchNotification(pid)) {
             self.record_send_error(Some(watcher), &e);
@@ -805,8 +815,9 @@ impl SystemStateShared {
           Ok(())
         },
         | SystemMessage::Unwatch(watcher) => {
-          if self.remote_watch_hook.handle_unwatch(pid, watcher) {
-            return Ok(());
+          match self.remote_watch_hook.handle_unwatch(pid, watcher) {
+            | Ok(true) | Ok(false) => {},
+            | Err(error) => return Err(Self::normalize_remote_watch_hook_error(error)),
           }
           Ok(())
         },

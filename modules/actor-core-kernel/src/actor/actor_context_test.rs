@@ -23,7 +23,7 @@ use crate::{
   },
   event::logging::LogLevel,
   support::futures::{ActorFuture, ActorFutureListener},
-  system::ActorSystem,
+  system::{ActorSystem, remote::RemoteWatchHook},
 };
 
 struct TestActor;
@@ -37,6 +37,47 @@ impl ReceiveTimeoutState {
 impl Actor for TestActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
+  }
+}
+
+struct FullRemoteWatchHook;
+
+impl RemoteWatchHook for FullRemoteWatchHook {
+  fn handle_watch(&mut self, _target: Pid, watcher: Pid) -> Result<bool, SendError> {
+    Err(SendError::full(AnyMessage::new(SystemMessage::Watch(watcher))))
+  }
+
+  fn handle_unwatch(&mut self, _target: Pid, watcher: Pid) -> Result<bool, SendError> {
+    Err(SendError::full(AnyMessage::new(SystemMessage::Unwatch(watcher))))
+  }
+
+  fn handle_deathwatch_notification(&mut self, _watcher: Pid, _terminated: Pid) -> bool {
+    false
+  }
+}
+
+struct CountingRemoteWatchHook {
+  calls: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl CountingRemoteWatchHook {
+  fn new(calls: ArcShared<SpinSyncMutex<usize>>) -> Self {
+    Self { calls }
+  }
+}
+
+impl RemoteWatchHook for CountingRemoteWatchHook {
+  fn handle_watch(&mut self, _target: Pid, _watcher: Pid) -> Result<bool, SendError> {
+    *self.calls.lock() += 1;
+    Ok(true)
+  }
+
+  fn handle_unwatch(&mut self, _target: Pid, _watcher: Pid) -> Result<bool, SendError> {
+    Ok(true)
+  }
+
+  fn handle_deathwatch_notification(&mut self, _watcher: Pid, _terminated: Pid) -> bool {
+    false
   }
 }
 
@@ -1085,6 +1126,38 @@ fn watch_rolls_back_watching_entry_when_dispatch_fails() {
 
   assert!(matches!(result, Err(WatchRegistrationError::Send(_))));
   assert!(!watcher.is_watching(target_pid));
+}
+
+#[test]
+fn remote_watch_full_error_rolls_back_watching_entry_to_allow_retry() {
+  use crate::actor::actor_ref::ActorRef;
+
+  let system = ActorSystem::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let watcher = register_cell(&system, watcher_pid, "remote-full-watcher", &props);
+  let target = ActorRef::new_with_builtin_lock(target_pid, NullSender);
+  system.state().register_remote_watch_hook(Box::new(FullRemoteWatchHook));
+
+  let mut context = ActorContext::new(&system, watcher_pid);
+  let result = context.watch(&target);
+
+  assert!(matches!(result, Err(WatchRegistrationError::Send(SendError::Full(_)))));
+  assert!(!watcher.is_watching(target_pid));
+
+  let mut full_hook = FullRemoteWatchHook;
+  assert!(matches!(full_hook.handle_unwatch(target_pid, watcher_pid), Err(SendError::Full(_))));
+  assert!(!full_hook.handle_deathwatch_notification(watcher_pid, target_pid));
+
+  let calls = ArcShared::new(SpinSyncMutex::new(0));
+  let mut counting_hook = CountingRemoteWatchHook::new(calls.clone());
+  assert!(matches!(counting_hook.handle_unwatch(target_pid, watcher_pid), Ok(true)));
+  assert!(!counting_hook.handle_deathwatch_notification(watcher_pid, target_pid));
+  system.state().register_remote_watch_hook(Box::new(counting_hook));
+
+  assert!(context.watch(&target).is_ok());
+  assert_eq!(*calls.lock(), 1);
 }
 
 #[test]
