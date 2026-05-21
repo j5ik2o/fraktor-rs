@@ -122,6 +122,12 @@ impl ActorRef {
     Self { pid, sender, system: None, explicit_canonical_path: Some(Box::new(canonical_path)) }
   }
 
+  /// Creates an actor reference from a shared sender whose canonical path is already known.
+  #[must_use]
+  pub fn with_canonical_path_shared(pid: Pid, sender: ActorRefSenderShared, canonical_path: ActorPath) -> Self {
+    Self { pid, sender, system: None, explicit_canonical_path: Some(Box::new(canonical_path)) }
+  }
+
   /// Returns the unique process identifier.
   #[must_use]
   pub const fn pid(&self) -> Pid {

@@ -6,7 +6,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock, WeakSharedLock};
 
 use crate::actor::{
   actor_ref::{ActorRefSender, SendOutcome},
@@ -36,6 +36,12 @@ impl ActorRefSenderShared {
   #[must_use]
   pub fn from_shared_lock(inner: SharedLock<Box<dyn ActorRefSender>>) -> Self {
     Self { inner }
+  }
+
+  /// Creates a weak reference to the shared sender.
+  #[must_use]
+  pub fn downgrade(&self) -> WeakSharedLock<Box<dyn ActorRefSender>> {
+    self.inner.downgrade()
   }
 
   /// Sends a message through the wrapped sender.

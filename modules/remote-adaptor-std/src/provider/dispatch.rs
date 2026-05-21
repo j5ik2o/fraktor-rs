@@ -9,7 +9,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::{
     Pid,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRef,
+    actor_ref::{ActorRef, ActorRefSenderShared},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
     error::ActorError,
   },
@@ -175,18 +175,28 @@ impl StdRemoteActorRefProvider {
     &mut self,
     path: ActorPath,
   ) -> Result<ActorCoreResolveCacheOutcome<ActorRef>, StdRemoteActorRefProviderError> {
-    let remote_provider = &mut self.remote_provider;
+    if let Some(actor_ref) = self.resolve_cache.cached(&path) {
+      return Ok(ActorCoreResolveCacheOutcome::Hit(actor_ref));
+    }
+
+    let remote_ref = self.remote_provider.actor_ref(path.clone()).map_err(StdRemoteActorRefProviderError::from)?;
+    let remote_path = remote_ref.path().clone();
+    while !self.registry.with_lock(|registry| registry.reserve_capacity_for_path(&remote_path)) {
+      if self.resolve_cache.release_evictable().is_none() {
+        return Err(StdRemoteActorRefProviderError::RemotePathRegistryFull);
+      }
+    }
+
     let next_remote_pid = &mut self.next_remote_pid;
     let event_sender = self.event_sender.clone();
-    let registry = self.registry.clone();
-    let monotonic_epoch = self.monotonic_epoch;
-    self.resolve_cache.resolve(&path, |candidate| {
-      let remote_ref = remote_provider.actor_ref(candidate.clone()).map_err(StdRemoteActorRefProviderError::from)?;
-      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender.clone(), &registry, monotonic_epoch)
-    })
+    let registry = &self.registry;
+    let actor_ref =
+      Self::build_remote_actor_ref(next_remote_pid, remote_ref, event_sender, registry, self.monotonic_epoch)?;
+    self.resolve_cache.insert_resolved(&path, actor_ref.clone());
+    Ok(ActorCoreResolveCacheOutcome::Miss(actor_ref))
   }
 
-  fn build_remote_actor_ref(
+  pub(super) fn build_remote_actor_ref(
     next_remote_pid: &mut u64,
     remote_ref: RemoteActorRef,
     event_sender: Sender<RemoteEvent>,
@@ -194,16 +204,23 @@ impl StdRemoteActorRefProvider {
     monotonic_epoch: Instant,
   ) -> Result<ActorRef, StdRemoteActorRefProviderError> {
     let path = remote_ref.path().clone();
+    let sender =
+      ActorRefSenderShared::new(Box::new(RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch)));
     let pid = registry.with_lock(|registry| -> Result<Pid, StdRemoteActorRefProviderError> {
       if let Some(pid) = registry.pid_for_path(&path) {
+        let refreshed = registry.record(pid, path.clone(), &sender);
+        debug_assert!(refreshed);
         return Ok(pid);
       }
+      if !registry.reserve_capacity_for_path(&path) {
+        return Err(StdRemoteActorRefProviderError::RemotePathRegistryFull);
+      }
       let pid = Self::allocate_remote_pid(next_remote_pid)?;
-      registry.record(pid, path.clone());
+      let recorded = registry.record(pid, path.clone(), &sender);
+      debug_assert!(recorded);
       Ok(pid)
     })?;
-    let sender = RemoteActorRefSender::new(remote_ref, event_sender, monotonic_epoch);
-    Ok(ActorRef::with_canonical_path(pid, sender, path))
+    Ok(ActorRef::with_canonical_path_shared(pid, sender, path))
   }
 
   fn allocate_remote_pid(next_remote_pid: &mut u64) -> Result<Pid, StdRemoteActorRefProviderError> {

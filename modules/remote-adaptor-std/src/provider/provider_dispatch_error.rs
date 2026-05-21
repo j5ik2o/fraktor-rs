@@ -19,6 +19,8 @@ use fraktor_remote_core_rs::provider::ProviderError;
 ///   was dispatched to it.
 /// - **`RemotePidExhausted`**: the adapter exhausted its synthetic pid space for remote `ActorRef`
 ///   values.
+/// - **`RemotePathRegistryFull`**: the adapter cannot retain another remote path mapping without
+///   dropping active remote refs.
 #[derive(Debug)]
 pub enum StdRemoteActorRefProviderError {
   /// A local actor path was supplied to a remote-only entry point.
@@ -29,6 +31,8 @@ pub enum StdRemoteActorRefProviderError {
   LocalProvider(ActorError),
   /// The adapter exhausted its synthetic pid space for remote actor refs.
   RemotePidExhausted,
+  /// The adapter cannot retain another remote path mapping.
+  RemotePathRegistryFull,
 }
 
 impl StdRemoteActorRefProviderError {
@@ -43,7 +47,8 @@ impl StdRemoteActorRefProviderError {
       },
       | StdRemoteActorRefProviderError::CoreProvider(ProviderError::NotRemote)
       | StdRemoteActorRefProviderError::NotRemote
-      | StdRemoteActorRefProviderError::RemotePidExhausted => ActorError::fatal(format!("{self}")),
+      | StdRemoteActorRefProviderError::RemotePidExhausted
+      | StdRemoteActorRefProviderError::RemotePathRegistryFull => ActorError::fatal(format!("{self}")),
     }
   }
 }
@@ -62,6 +67,9 @@ impl Display for StdRemoteActorRefProviderError {
       },
       | StdRemoteActorRefProviderError::RemotePidExhausted => {
         f.write_str("std remote provider: remote actor ref pid space exhausted")
+      },
+      | StdRemoteActorRefProviderError::RemotePathRegistryFull => {
+        f.write_str("std remote provider: remote actor path registry is full")
       },
     }
   }
