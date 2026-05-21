@@ -35,7 +35,7 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
       initial_state,
       apply_event: ArcShared::new(apply_event),
       persistence_mode: PersistenceMode::Persisted,
-      stash_capacity: usize::MAX,
+      stash_capacity: 1000,
       snapshot_criteria: SnapshotCriteria::never(),
       retention_criteria: RetentionCriteria::default(),
       backoff_config: BackoffConfig::default(),
@@ -184,4 +184,26 @@ where
 
 fn validation_error(message: &str) -> PersistenceError {
   PersistenceError::StateMachine(String::from(message))
+}
+
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn apply_event(state: &u32, event: &u32) -> u32 {
+    state + event
+  }
+
+  #[test]
+  fn default_stash_capacity_is_bounded() {
+    let config = PersistenceEffectorConfig::<u32, u32, ()>::new(
+      PersistenceId::of_unique_id("test"),
+      0,
+      apply_event,
+    );
+
+    assert_eq!(config.stash_capacity(), 1000);
+    assert!(config.validate().is_ok());
+  }
 }
