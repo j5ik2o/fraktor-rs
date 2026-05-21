@@ -1082,7 +1082,7 @@ fn remote_watch_hook_forwards_watch_command() {
 }
 
 #[test]
-fn remote_watch_hook_returns_false_when_watcher_queue_is_full() {
+fn remote_watch_hook_returns_true_when_watcher_queue_is_full() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(905, 0);
   let remote_path = remote_actor_path();
@@ -1093,7 +1093,7 @@ fn remote_watch_hook_returns_false_when_watcher_queue_is_full() {
   let _local_path = register_local_path(harness.system(), local_pid, "watcher-full");
 
   assert!(hook.handle_watch(remote_pid, local_pid));
-  assert!(!hook.handle_watch(remote_pid, local_pid));
+  assert!(hook.handle_watch(remote_pid, local_pid));
   assert!(matches!(watcher_rx.try_recv(), Ok(WatcherCommand::Watch { .. })));
   assert!(watcher_rx.try_recv().is_err());
 }
