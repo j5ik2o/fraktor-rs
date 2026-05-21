@@ -1,6 +1,6 @@
 # remote モジュール ギャップ分析
 
-更新日: 2026-05-16 (20th edition / remote-core・remote-adaptor-std 詳細再検証)
+更新日: 2026-05-21 (21st edition / remote-core・remote-adaptor-std 詳細再検証)
 
 ## 比較スコープ定義
 
@@ -42,7 +42,7 @@ raw declaration count は Scala / Java / JVM 固有 API を含む参考値であ
 
 ### 再検証メモ
 
-2026-05-16 時点の現行ツリーで、`modules/remote-core/src/lib.rs`、`modules/remote-adaptor-std/src/lib.rs`、`references/pekko/remote/src/main/scala/org/apache/pekko/remote/` を再確認した。`remote-core/src/domain/` は引き続き存在せず、`remote-core/src/` 直下の 11 public modules が core 相当境界である。
+2026-05-21 時点の現行ツリーで、`modules/remote-core/src/lib.rs`、`modules/remote-adaptor-std/src/lib.rs`、`references/pekko/remote/src/main/scala/org/apache/pekko/remote/` を再確認した。`remote-core/src/domain/` は引き続き存在せず、`remote-core/src/` 直下の 11 public modules が core 相当境界である。
 
 Pekko 側は `RemoteWatcher` が `AddressTerminatedTopic` へ `AddressTerminated` を publish し、actor-core の `DeathWatch.addressTerminated` が watched actor ごとの `DeathWatchNotification` へ変換する。fraktor-rs 側は `WatcherState::on_tick` が remote node failure から `WatcherEffect::NotifyTerminated` と `WatcherEffect::AddressTerminated` を生成し、std watcher task が local watcher へ `SystemMessage::DeathWatchNotification` を送りつつ、actor-core event stream へ `EventStreamEvent::AddressTerminated(AddressTerminatedEvent)` を publish する。したがって remote DeathWatch notification と node-level AddressTerminated publication の両方が実装済みである。
 
@@ -68,16 +68,17 @@ Pekko 側は `RemoteWatcher` が `AddressTerminatedTopic` へ `AddressTerminated
 
 ## remote-adaptor-std 詳細棚卸し
 
-`remote-adaptor-std` も独立に再確認した。crate root で公開される境界は `extension_installer`、`provider`、`transport` の3 module であり、`association`、`deployment`、`watcher` は std runtime の内部 glue として使われる。Pekko 側の JVM / Akka Streams 実装技術そのものではなく、Artery TCP adaptor が担う runtime responsibility に対応させる。raw pub-visible count は `pub` / `pub(crate)` / `pub(super)` の adapter 内可視宣言を含む参考値である。
+`remote-adaptor-std` も独立に再確認した。crate root で公開される境界は `extension_installer`、`provider`、`transport` の3 module であり、`association`、`deployment`、`watcher`、`tokio_remote_event_receiver` は std runtime の内部 glue として使われる。Pekko 側の JVM / Akka Streams 実装技術そのものではなく、Artery TCP adaptor が担う runtime responsibility に対応させる。raw pub-visible count は `pub` / `pub(crate)` / `pub(super)` の adapter 内可視宣言を含む参考値である。
 
 | remote-adaptor-std module | raw pub-visible types | raw pub-visible fns | Pekko 対応責務 | Pekko 参照 | 評価 |
 |---------------------------|-----------------------|---------------------|----------------|------------|------|
-| `extension_installer` | 6 | 15 | remoting extension install, event loop task, inbound envelope delivery, watcher command forwarding, deployment PDU routing, shutdown flush, DeathWatch 前 flush gate | `Remoting.scala`, `ArteryTransport.scala`, `FlushOnShutdown.scala`, `FlushBeforeDeathWatchNotification.scala`, `InboundQuarantineCheck.scala` | adaptor-owned gap なし |
-| `provider` | 9 | 13 | std actor-ref provider, local/loopback/remote dispatch, synthetic remote pid registry, remote actor-ref sender, resolve-cache event, remote watch hook, remote deployment hook | `RemoteActorRefProvider.scala`, `RemoteActorRef`, `RemoteDeployer.scala`, `RemoteDaemon.scala` | adaptor-owned gap なし |
-| `transport` | 12 | 31 | TCP listener/client, frame codec, inbound/outbound lanes, connection-loss event, handshake/control/ack/deployment send, serializer-backed envelope send, compression advertisement/ack | `artery/tcp/ArteryTcpTransport.scala`, `artery/tcp/TcpFraming.scala`, `artery/compress/CompressionProtocol.scala`, `artery/compress/InboundCompressions.scala` | adaptor-owned gap なし。TLS / Aeron は対象外 |
+| `extension_installer` | 6 | 16 | remoting extension install, event loop task, inbound envelope delivery, watcher command forwarding, deployment PDU routing, shutdown flush, DeathWatch 前 flush gate | `Remoting.scala`, `ArteryTransport.scala`, `FlushOnShutdown.scala`, `FlushBeforeDeathWatchNotification.scala`, `InboundQuarantineCheck.scala` | adaptor-owned gap なし |
+| `provider` | 9 | 15 | std actor-ref provider, local/loopback/remote dispatch, synthetic remote pid registry, remote actor-ref sender, resolve-cache event, remote watch hook, remote deployment hook | `RemoteActorRefProvider.scala`, `RemoteActorRef`, `RemoteDeployer.scala`, `RemoteDaemon.scala` | adaptor-owned gap なし |
+| `transport` | 11 | 36 | TCP listener/client, frame codec, inbound/outbound lanes, connection-loss event, handshake/control/ack/deployment send, serializer-backed envelope send, compression advertisement/ack | `artery/tcp/ArteryTcpTransport.scala`, `artery/tcp/TcpFraming.scala`, `artery/compress/CompressionProtocol.scala`, `artery/compress/InboundCompressions.scala` | adaptor-owned gap なし。TLS / Aeron は対象外 |
 | `association` | 0 | 5 | inbound decoded-frame dispatch, handshake authority extraction, remote authority parsing, monotonic millis conversion | `artery/Association.scala`, `artery/ArteryTransport.scala` | internal glue として実装済み |
-| `deployment` | 3 | 6 | inbound remote deployment daemon, create request handling, deployable payload deserialize, child spawn, success/failure response dispatch, stale response bounding | `RemoteDaemon.scala`, `RemoteDeployer.scala`, `serialization/DaemonMsgCreateSerializer.scala` | adaptor-owned gap なし |
+| `deployment` | 3 | 8 | inbound remote deployment daemon, create request handling, deployable payload deserialize, child spawn, success/failure response dispatch, stale response bounding | `RemoteDaemon.scala`, `RemoteDeployer.scala`, `serialization/DaemonMsgCreateSerializer.scala` | adaptor-owned gap なし |
 | `watcher` | 0 | 2 | watcher command task, heartbeat/control enqueue, watch/unwatch system envelope enqueue, `NotifyTerminated` -> local `DeathWatchNotification` delivery, `AddressTerminated` -> actor-core event stream publication | `RemoteWatcher.scala`, `DeathWatch.scala`, `AddressTerminatedTopic.scala` | adaptor-owned gap なし |
+| `tokio_remote_event_receiver` | 1 | 1 | tokio `mpsc` receiver を core の `RemoteEventReceiver` port へ適合 | `ArteryTransport.scala` の event-loop input 相当 | internal glue として実装済み |
 
 `remote-adaptor-std` production code 上の `todo!()` / `unimplemented!()` / `panic!("not implemented")` は検出されなかった。実装経路としては、outbound user message は `RemoteActorRefSender` -> `RemoteEvent::OutboundEnqueued` -> `TcpRemoteTransport::send` -> actor-core serialization registry -> `EnvelopePdu` へ進み、inbound user message は `TcpServer` / `TcpClient` -> `run_inbound_dispatch` -> `Remote::handle_event` -> `deliver_inbound_envelope` -> local actor mailbox へ進む。
 
@@ -97,7 +98,7 @@ remote DeathWatch の watch / unwatch / notification delivery、node-level `Addr
 | raw Pekko public type declarations | 361（Scala / Java、protobuf 除外） |
 | raw Pekko `def` declarations | 1594 |
 | raw fraktor public type declarations | 115（`remote-core`: 85 / `remote-adaptor-std`: 30、production rs 再計測） |
-| raw fraktor public method declarations | 488（`remote-core`: 406 / `remote-adaptor-std`: 82、production rs 再計測） |
+| raw fraktor public method declarations | 489（`remote-core`: 406 / `remote-adaptor-std`: 83、production rs 再計測） |
 | hard / medium / easy / trivial gap | 0 / 0 / 0 / 0 |
 
 `todo!()` / `unimplemented!()` / `panic!("not implemented")` と production code 上の明示 TODO は remote core / adaptor から検出されない。test helper 上の stub コメントは parity gap から除外する。`modules/remote-core/src/wire/primitives.rs:12` の header placeholder は encode 時の長さ埋め戻しであり、未実装ギャップには分類しない。
