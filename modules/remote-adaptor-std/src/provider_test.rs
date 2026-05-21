@@ -237,13 +237,16 @@ impl ProviderFixture {
 }
 
 fn make_provider_fixture() -> ProviderFixture {
+  make_provider_fixture_with_registry(RemoteActorPathRegistry::new_shared())
+}
+
+fn make_provider_fixture_with_registry(registry: SharedLock<RemoteActorPathRegistry>) -> ProviderFixture {
   let local_actor_ref_provider_handle_shared = ActorRefProviderHandleShared::new(LocalActorRefProvider::new());
   let actor_ref_calls = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
   let remote_provider =
     Box::new(StubRemoteProvider::new(actor_ref_calls.clone())) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let (event_tx, event_rx) = mpsc::channel(8);
   let event_harness = EventHarness::new();
-  let registry = RemoteActorPathRegistry::new_shared();
   let provider = StdRemoteActorRefProvider::new_with_registry(
     local_address(),
     local_actor_ref_provider_handle_shared,
@@ -301,6 +304,10 @@ fn assert_remote_actor_ref_path(result: Result<ActorRef, StdRemoteActorRefProvid
 
 fn remote_actor_path() -> ActorPath {
   ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/worker").expect("parse")
+}
+
+fn record_remote_actor_path(registry: &SharedLock<RemoteActorPathRegistry>, pid: Pid, path: ActorPath) {
+  registry.with_lock(|registry| registry.record(pid, path));
 }
 
 fn noop_transport_envelope(target: &RemoteCoreAddress) -> OutboundEnvelope {
@@ -788,20 +795,232 @@ fn remote_actor_ref_sender_drop_keeps_pid_path_mapping_for_remote_deathwatch() {
 }
 
 #[test]
-fn remote_actor_ref_resolution_allocates_new_pid_after_registry_eviction() {
+fn remote_actor_path_registry_keeps_active_mapping_over_capacity() {
+  let mut registry = RemoteActorPathRegistry::default();
+  let active_path = remote_actor_path();
+  let active_pid = Pid::new(903, 0);
+  registry.record(active_pid, active_path.clone());
+
+  for index in 0..1024 {
+    let path =
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/inactive-{index}")).expect("parse");
+    registry.record(Pid::new(904 + index, 0), path);
+  }
+
+  assert_eq!(registry.pid_for_path(&active_path), Some(active_pid));
+  assert_eq!(
+    registry.path_for_pid(&active_pid).as_ref().map(ActorPath::to_canonical_uri),
+    Some(active_path.to_canonical_uri())
+  );
+}
+
+#[test]
+fn remote_actor_path_registry_rejects_new_mapping_when_all_entries_are_active() {
+  let mut registry = RemoteActorPathRegistry::default();
+
+  for index in 0..1024 {
+    let path =
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/active-{index}")).expect("parse");
+    assert!(registry.record(Pid::new(2000 + index, 0), path));
+  }
+
+  let overflow_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/active-overflow").expect("parse");
+  let overflow_pid = Pid::new(4000, 0);
+
+  assert!(!registry.record(overflow_pid, overflow_path.clone()));
+  assert!(registry.pid_for_path(&overflow_path).is_none());
+  assert!(registry.path_for_pid(&overflow_pid).is_none());
+}
+
+#[test]
+fn remote_actor_path_registry_refresh_keeps_existing_mapping_at_capacity() {
+  let mut registry = RemoteActorPathRegistry::default();
+  let active_path = remote_actor_path();
+  let active_pid = Pid::new(2000, 0);
+
+  registry.record(active_pid, active_path.clone());
+  registry.refresh(active_pid, active_path.clone());
+
+  for index in 0..1024 {
+    let path = ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/refresh-inactive-{index}"))
+      .expect("parse");
+    registry.record(Pid::new(2001 + index, 0), path);
+  }
+
+  assert_eq!(registry.pid_for_path(&active_path), Some(active_pid));
+  assert_eq!(
+    registry.path_for_pid(&active_pid).as_ref().map(ActorPath::to_canonical_uri),
+    Some(active_path.to_canonical_uri())
+  );
+}
+
+#[test]
+fn remote_actor_path_registry_refresh_keeps_path_mapping_after_sender_drop() {
+  let mut registry = RemoteActorPathRegistry::default();
+  let remote_path = remote_actor_path();
+  let remote_pid = Pid::new(3025, 0);
+
+  registry.record(remote_pid, remote_path.clone());
+  registry.refresh(remote_pid, remote_path.clone());
+
+  for index in 0..1024 {
+    let path = ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/refreshed-active-{index}"))
+      .expect("parse");
+    registry.record(Pid::new(3026 + index, 0), path);
+  }
+
+  assert_eq!(registry.pid_for_path(&remote_path), Some(remote_pid));
+  assert_eq!(
+    registry.path_for_pid(&remote_pid).as_ref().map(ActorPath::to_canonical_uri),
+    Some(remote_path.to_canonical_uri())
+  );
+}
+
+#[test]
+fn remote_actor_path_registry_path_lookup_does_not_purge_inactive_mapping() {
+  let mut registry = RemoteActorPathRegistry::default();
+  let remote_path = remote_actor_path();
+  let other_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/other-lookup").expect("parse");
+  let remote_pid = Pid::new(4050, 0);
+
+  registry.record(remote_pid, remote_path.clone());
+
+  assert!(registry.pid_for_path(&other_path).is_none());
+  assert_eq!(
+    registry.path_for_pid(&remote_pid).as_ref().map(ActorPath::to_canonical_uri),
+    Some(remote_path.to_canonical_uri())
+  );
+}
+
+#[test]
+fn remote_actor_ref_resolution_reuses_active_pid_at_registry_capacity() {
   let mut fixture = make_provider_fixture();
   let remote_path = remote_actor_path();
 
   let first = fixture.provider.actor_ref(remote_path.clone()).expect("first remote actor ref should resolve");
-  for index in 0..1024 {
+  for index in 0..1023 {
     let eviction_path =
-      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/evict-{index}")).expect("parse");
-    let _evicted = fixture.provider.actor_ref(eviction_path).expect("evicting remote actor ref should resolve");
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/fill-{index}")).expect("parse");
+    let _filled = fixture.provider.actor_ref(eviction_path).expect("filling remote actor ref should resolve");
   }
-  let resolved_again = fixture.provider.actor_ref(remote_path).expect("remote actor ref should resolve after eviction");
+  let resolved_again = fixture.provider.actor_ref(remote_path).expect("remote actor ref should resolve at capacity");
 
-  assert_ne!(resolved_again.pid(), first.pid());
-  assert_eq!(fixture.actor_ref_call_count(), 1026);
+  assert_eq!(resolved_again.pid(), first.pid());
+  assert_eq!(fixture.actor_ref_call_count(), 1024);
+}
+
+#[test]
+fn remote_actor_ref_resolution_refreshes_inactive_mapping_from_prior_provider() {
+  let mut first_fixture = make_provider_fixture();
+  let registry = first_fixture.registry.clone();
+  let remote_path = remote_actor_path();
+
+  let first = first_fixture.provider.actor_ref(remote_path.clone()).expect("first remote actor ref should resolve");
+  let first_pid = first.pid();
+  drop(first);
+  drop(first_fixture);
+
+  let mut second_fixture = make_provider_fixture_with_registry(registry);
+  let second =
+    second_fixture.provider.actor_ref(remote_path).expect("remote actor ref should refresh inactive mapping");
+
+  assert_eq!(second.pid(), first_pid);
+}
+
+#[test]
+fn remote_actor_ref_resolution_rebinds_sender_for_current_provider_when_prior_ref_is_active() {
+  let mut first_fixture = make_provider_fixture();
+  let registry = first_fixture.registry.clone();
+  let remote_path = remote_actor_path();
+  let _prior_ref =
+    first_fixture.provider.actor_ref(remote_path.clone()).expect("first remote actor ref should resolve");
+
+  let mut second_fixture = make_provider_fixture_with_registry(registry);
+  let mut rebound_ref =
+    second_fixture.provider.actor_ref(remote_path.clone()).expect("second remote actor ref should resolve");
+
+  rebound_ref
+    .try_tell(AnyMessage::new(String::from("remote-payload")))
+    .expect("remote send should use current provider sender");
+
+  let event = second_fixture.event_rx.try_recv().expect("outbound event should use second provider channel");
+  assert_outbound_enqueued_event(event, "remote@10.0.0.1:2552", "remote", &remote_path);
+  assert!(first_fixture.event_rx.try_recv().is_err());
+}
+
+#[test]
+fn remote_actor_ref_resolution_rejects_new_path_without_consuming_pid_when_registry_is_full() {
+  let mut fixture = make_provider_fixture();
+
+  for index in 0..1024 {
+    let path =
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/cached-{index}")).expect("parse");
+    let _cached = fixture.provider.actor_ref(path).expect("cached remote actor ref should resolve");
+  }
+
+  let new_path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/cached-new").expect("parse");
+  let resolved = fixture.provider.actor_ref(new_path.clone());
+
+  assert!(matches!(resolved, Err(StdRemoteActorRefProviderError::RemotePathRegistryFull)));
+  assert!(fixture.registry.with_lock(|registry| registry.pid_for_path(&new_path)).is_none());
+  assert_eq!(fixture.actor_ref_call_count(), 1025);
+}
+
+#[test]
+fn build_remote_actor_ref_rejects_new_path_without_consuming_pid_when_registry_is_full() {
+  let registry = RemoteActorPathRegistry::new_shared();
+  registry.with_lock(|registry| {
+    for index in 0..1024 {
+      let path =
+        ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/full-{index}")).expect("parse");
+      assert!(registry.record(Pid::new(6000 + index, 0), path));
+    }
+  });
+  let remote_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/new-after-full").expect("parse");
+  let remote_node = RemoteNodeId::new("remote", "10.0.0.1", Some(2552), 1);
+  let remote_ref = RemoteActorRef::new(remote_path.clone(), remote_node);
+  let (event_tx, _event_rx) = mpsc::channel(1);
+  let mut next_remote_pid = 7000;
+
+  let result = StdRemoteActorRefProvider::build_remote_actor_ref(
+    &mut next_remote_pid,
+    remote_ref,
+    event_tx,
+    &registry,
+    Instant::now(),
+  );
+
+  assert!(matches!(result, Err(StdRemoteActorRefProviderError::RemotePathRegistryFull)));
+  assert_eq!(next_remote_pid, 7000);
+  assert!(registry.with_lock(|registry| registry.pid_for_path(&remote_path)).is_none());
+}
+
+#[test]
+fn remote_actor_ref_resolution_rejects_new_path_when_registry_is_full_of_active_refs() {
+  let mut fixture = make_provider_fixture();
+  let mut refs = Vec::new();
+
+  for index in 0..1024 {
+    let path =
+      ActorPathParser::parse(&format!("fraktor.tcp://remote-sys@10.0.0.1:2552/user/live-{index}")).expect("parse");
+    refs.push(fixture.provider.actor_ref(path).expect("live remote actor ref should resolve"));
+  }
+
+  let overflow_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/live-overflow").expect("parse");
+  let overflow = fixture.provider.actor_ref(overflow_path);
+
+  assert!(matches!(overflow, Err(StdRemoteActorRefProviderError::RemotePathRegistryFull)));
+}
+
+#[test]
+fn remote_path_registry_full_error_is_fatal() {
+  let error = StdRemoteActorRefProviderError::RemotePathRegistryFull;
+
+  assert_eq!(error.to_string(), "std remote provider: remote actor path registry is full");
+  assert!(matches!(error.into_actor_error(), ActorError::Fatal(_)));
 }
 
 #[test]
@@ -989,7 +1208,7 @@ fn remote_watch_hook_forwards_watch_command() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(900, 0);
   let remote_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_pid, remote_path.clone()));
+  record_remote_actor_path(&registry, remote_pid, remote_path.clone());
   let (mut hook, _event_rx, mut watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
   let local_pid = Pid::new(901, 0);
   let local_path = register_local_path(harness.system(), local_pid, "watcher");
@@ -1010,7 +1229,7 @@ fn remote_watch_hook_treats_full_watcher_queue_as_handled() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(905, 0);
   let remote_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  record_remote_actor_path(&registry, remote_pid, remote_path);
   let (mut hook, _event_rx, mut watcher_rx, harness) =
     make_remote_watch_hook_fixture_with_watcher_capacity(registry, 1);
   let local_pid = Pid::new(906, 0);
@@ -1027,7 +1246,7 @@ fn remote_watch_hook_returns_true_when_watcher_queue_is_closed() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(907, 0);
   let remote_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  record_remote_actor_path(&registry, remote_pid, remote_path);
   let (mut hook, _event_rx, watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
   let local_pid = Pid::new(908, 0);
   let _local_path = register_local_path(harness.system(), local_pid, "watcher-closed");
@@ -1041,7 +1260,7 @@ fn remote_watch_hook_returns_false_when_watcher_path_is_unresolved() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(909, 0);
   let remote_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  record_remote_actor_path(&registry, remote_pid, remote_path);
   let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
 
   assert!(!hook.handle_watch(remote_pid, Pid::new(909, 1)));
@@ -1053,7 +1272,7 @@ fn remote_watch_hook_forwards_unwatch_command() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(910, 0);
   let remote_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_pid, remote_path.clone()));
+  record_remote_actor_path(&registry, remote_pid, remote_path.clone());
   let (mut hook, _event_rx, mut watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
   let local_pid = Pid::new(911, 0);
   let local_path = register_local_path(harness.system(), local_pid, "watcher");
@@ -1092,7 +1311,7 @@ fn remote_watch_hook_returns_false_when_unwatch_watcher_path_is_unresolved() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_pid = Pid::new(922, 0);
   let remote_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_pid, remote_path));
+  record_remote_actor_path(&registry, remote_pid, remote_path);
   let (mut hook, _event_rx, mut watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
 
   assert!(!hook.handle_unwatch(remote_pid, Pid::new(922, 1)));
@@ -1112,7 +1331,7 @@ fn remote_watch_hook_returns_false_when_deathwatch_watcher_mapping_is_unresolved
 fn remote_watch_hook_returns_false_when_notification_recipient_is_not_remote() {
   let registry = RemoteActorPathRegistry::new_shared();
   let watcher_pid = Pid::new(924, 0);
-  registry.with_lock(|registry| registry.record(watcher_pid, ActorPath::root().child("user").child("local")));
+  record_remote_actor_path(&registry, watcher_pid, ActorPath::root().child("user").child("local"));
   let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
   let terminated_pid = Pid::new(924, 1);
   let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-local");
@@ -1126,7 +1345,7 @@ fn remote_watch_hook_forwards_deathwatch_notification_envelope() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_watcher_pid = Pid::new(930, 0);
   let remote_watcher_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path.clone()));
+  record_remote_actor_path(&registry, remote_watcher_pid, remote_watcher_path.clone());
   let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
   let terminated_pid = Pid::new(931, 0);
   let terminated_path = register_local_path(harness.system(), terminated_pid, "terminated");
@@ -1151,7 +1370,7 @@ fn remote_watch_hook_forwards_deathwatch_notification_without_sender_when_termin
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_watcher_pid = Pid::new(932, 0);
   let remote_watcher_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path.clone()));
+  record_remote_actor_path(&registry, remote_watcher_pid, remote_watcher_path.clone());
   let (mut hook, mut event_rx, _watcher_rx, _harness) = make_remote_watch_hook_fixture(registry);
   let terminated_pid = Pid::new(933, 0);
 
@@ -1175,7 +1394,7 @@ async fn remote_watch_hook_defers_notification_when_event_queue_is_full() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_watcher_pid = Pid::new(934, 0);
   let remote_watcher_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path));
+  record_remote_actor_path(&registry, remote_watcher_pid, remote_watcher_path);
   let (mut hook, mut event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture_with_capacities(registry, 1, 8);
   let terminated_pid = Pid::new(935, 0);
   let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-full");
@@ -1196,7 +1415,7 @@ fn remote_watch_hook_returns_true_when_notification_event_queue_is_closed() {
   let registry = RemoteActorPathRegistry::new_shared();
   let remote_watcher_pid = Pid::new(936, 0);
   let remote_watcher_path = remote_actor_path();
-  registry.with_lock(|registry| registry.record(remote_watcher_pid, remote_watcher_path));
+  record_remote_actor_path(&registry, remote_watcher_pid, remote_watcher_path);
   let (mut hook, event_rx, _watcher_rx, harness) = make_remote_watch_hook_fixture(registry);
   let terminated_pid = Pid::new(937, 0);
   let _terminated_path = register_local_path(harness.system(), terminated_pid, "terminated-closed");

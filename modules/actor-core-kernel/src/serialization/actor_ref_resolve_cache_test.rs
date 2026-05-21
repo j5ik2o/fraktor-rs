@@ -50,6 +50,27 @@ fn resolve_keeps_errors_out_of_cache() {
 }
 
 #[test]
+fn resolve_restores_evicted_entry_when_resolver_fails_at_capacity() {
+  let echo_resolver = |candidate: &ActorPath| -> Result<ActorPath, &'static str> { Ok(candidate.clone()) };
+
+  let mut cache = ActorRefResolveCache::with_limits(2, 2);
+  let path_a = remote_path("a");
+  let path_b = remote_path("b");
+  let path_c = remote_path("c");
+
+  cache.resolve(&path_a, echo_resolver).expect("insert a");
+  cache.resolve(&path_b, echo_resolver).expect("insert b");
+  let failed = cache.resolve(&path_c, |_candidate: &ActorPath| Err::<ActorPath, &'static str>("failed"));
+  let resolved_a = cache.resolve(&path_a, echo_resolver).expect("resolve a");
+
+  assert_eq!(failed, Err("failed"));
+  assert!(
+    matches!(resolved_a, ActorRefResolveCacheOutcome::Hit(ref value) if *value == path_a),
+    "failed replacement should leave the evicted entry cached; got {resolved_a:?}",
+  );
+}
+
+#[test]
 fn evict_picks_oldest_stale_entry_when_multiple_candidates_exist() {
   // Vec 挿入順だけで stale entry を選ぶと、 age threshold を辛うじて越えた直近アクセスの
   // entry が、 もっと古い未アクセス entry より先に evict され LRU 意図を崩す。 stale 候補の中で

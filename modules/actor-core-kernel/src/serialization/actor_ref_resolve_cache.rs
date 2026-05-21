@@ -67,6 +67,23 @@ where
     Ok(ActorRefResolveCacheOutcome::Miss(value))
   }
 
+  /// Returns a cached value for `path` and marks the entry as recently used.
+  #[must_use]
+  pub fn cached(&mut self, path: &ActorPath) -> Option<V> {
+    let key = path.to_canonical_uri();
+    self.advance_epoch();
+    let index = self.find_entry(&key)?;
+    self.entries[index].accessed_at = self.epoch;
+    Some(self.entries[index].value.clone())
+  }
+
+  /// Inserts a resolved value for `path` when the path is cacheable.
+  pub fn insert_resolved(&mut self, path: &ActorPath, value: V) {
+    if is_cacheable_path(path) {
+      self.insert(path.to_canonical_uri(), value);
+    }
+  }
+
   const fn advance_epoch(&mut self) {
     self.epoch = self.epoch.saturating_add(1);
   }
