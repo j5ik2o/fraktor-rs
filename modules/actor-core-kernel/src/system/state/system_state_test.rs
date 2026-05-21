@@ -684,6 +684,30 @@ fn remote_watch_hook_non_consuming_watch_runs_fallback() {
 }
 
 #[test]
+fn remote_watch_hook_watch_closed_error_is_normalized() {
+  let state = build_shared_state_with_noop_dispatcher();
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_id("noop");
+  let watcher_cell =
+    ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
+  state.register_cell(watcher_cell);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::with_watch_closed_error(calls.clone())));
+
+  let result = state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid));
+
+  assert!(matches!(result, Err(SendError::Full(_))));
+  let mailbox_snapshot = state.cell(&watcher_pid).expect("watcher cell").mailbox();
+  assert_eq!(mailbox_snapshot.system_len(), 0);
+  let calls = calls.lock();
+  assert_eq!(calls.watch_calls, 1);
+  assert_eq!(calls.last_watch, Some((target_pid, watcher_pid)));
+}
+
+#[test]
 fn remote_watch_hook_consumes_unwatch_is_invoked() {
   let state = build_shared_state();
   let watcher_pid = state.allocate_pid();
@@ -700,13 +724,13 @@ fn remote_watch_hook_consumes_unwatch_is_invoked() {
 }
 
 #[test]
-fn remote_watch_hook_unwatch_error_is_propagated() {
+fn remote_watch_hook_unwatch_closed_error_is_normalized() {
   let state = build_shared_state();
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
 
   let calls = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
-  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::with_unwatch_error(calls.clone())));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::with_unwatch_closed_error(calls.clone())));
 
   let result = state.send_system_message(target_pid, SystemMessage::Unwatch(watcher_pid));
 
@@ -824,7 +848,8 @@ struct RecordingRemoteWatchHook {
   consume_watch:        bool,
   consume_unwatch:      bool,
   consume_notification: bool,
-  fail_unwatch:         bool,
+  close_watch:          bool,
+  close_unwatch:        bool,
 }
 
 impl RecordingRemoteWatchHook {
@@ -838,11 +863,29 @@ impl RecordingRemoteWatchHook {
     consume_unwatch: bool,
     consume_notification: bool,
   ) -> Self {
-    Self { calls, consume_watch, consume_unwatch, consume_notification, fail_unwatch: false }
+    Self { calls, consume_watch, consume_unwatch, consume_notification, close_watch: false, close_unwatch: false }
   }
 
-  fn with_unwatch_error(calls: ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>) -> Self {
-    Self { calls, consume_watch: false, consume_unwatch: false, consume_notification: false, fail_unwatch: true }
+  fn with_watch_closed_error(calls: ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>) -> Self {
+    Self {
+      calls,
+      consume_watch: false,
+      consume_unwatch: false,
+      consume_notification: false,
+      close_watch: true,
+      close_unwatch: false,
+    }
+  }
+
+  fn with_unwatch_closed_error(calls: ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>) -> Self {
+    Self {
+      calls,
+      consume_watch: false,
+      consume_unwatch: false,
+      consume_notification: false,
+      close_watch: false,
+      close_unwatch: true,
+    }
   }
 }
 
@@ -851,6 +894,9 @@ impl RemoteWatchHook for RecordingRemoteWatchHook {
     let mut calls = self.calls.lock();
     calls.watch_calls += 1;
     calls.last_watch = Some((target, watcher));
+    if self.close_watch {
+      return Err(SendError::closed(AnyMessage::new(SystemMessage::Watch(watcher))));
+    }
     Ok(self.consume_watch)
   }
 
@@ -858,8 +904,8 @@ impl RemoteWatchHook for RecordingRemoteWatchHook {
     let mut calls = self.calls.lock();
     calls.unwatch_calls += 1;
     calls.last_unwatch = Some((target, watcher));
-    if self.fail_unwatch {
-      return Err(SendError::full(AnyMessage::new(SystemMessage::Unwatch(watcher))));
+    if self.close_unwatch {
+      return Err(SendError::closed(AnyMessage::new(SystemMessage::Unwatch(watcher))));
     }
     Ok(self.consume_unwatch)
   }
