@@ -30,6 +30,8 @@ actor-core-kernel は no_std core であり、panic isolation を core contract 
 
 `EventStreamShared::subscribe_with_key` は write lock 中に subscriber registration と replay snapshot selection を行い、lock 解放後に snapshot を subscriber へ通知してから `EventStreamSubscription` を返す。このため、単一 thread / happens-before の範囲では、`subscribe_with_key` return 後に buffered replay は観測済みである。
 
+`subscribe_no_replay` は replay snapshot を持たない live-only registration として扱い、本 change の replay 同期通知契約には含めない。既存どおり return 時点で subscription registration は完了しているが、buffered event の同期観測は `subscribe_with_key` / `subscribe` の契約である。
+
 代替案として、登録前に replay を通知してから subscriber を追加する設計も考えられるが、replay と registration の間に publish された live event を落とすため採用しない。
 
 ### 決定 2: subscribe 中の並行 publish との厳密順序は保証しない

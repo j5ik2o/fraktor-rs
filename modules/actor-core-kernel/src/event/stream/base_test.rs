@@ -207,9 +207,9 @@ fn publish_snapshot_is_not_changed_by_unsubscribe_during_callback() {
   let second_subscription = stream.subscribe_with_key(ClassifierKey::Log, &second_subscriber);
   *unsubscribe_target.lock() = Some(second_subscription.id());
 
-  // The first subscriber removes the second while the current publish snapshot
-  // is being consumed. The second subscriber must still receive that snapshot's
-  // event, then stop receiving later publishes.
+  // Registration gives the first subscriber a lower id than the second, so the
+  // current snapshot notifies first before second. The second subscriber must
+  // still receive that snapshot's event, then stop receiving later publishes.
   stream.publish(&EventStreamEvent::Log(log_event("snapshot-fixed", 1)));
   stream.publish(&EventStreamEvent::Log(log_event("after-unsubscribe", 2)));
 
