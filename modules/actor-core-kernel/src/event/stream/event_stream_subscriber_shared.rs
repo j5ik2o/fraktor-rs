@@ -25,6 +25,9 @@ impl EventStreamSubscriberShared {
   }
 
   /// Delivers an event to the wrapped subscriber under the subscriber lock.
+  ///
+  /// Callback panics are not caught here. A panic propagates to the caller and
+  /// does not mutate the subscription lifecycle by itself.
   pub fn notify(&self, event: &EventStreamEvent) {
     self.inner.with_lock(|subscriber| subscriber.on_event(event));
   }

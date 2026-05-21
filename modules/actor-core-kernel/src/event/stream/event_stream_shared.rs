@@ -60,7 +60,10 @@ impl EventStreamShared {
   /// Subscribes with an explicit classifier and replays matching buffered events
   /// to the subscriber.
   ///
-  /// Events are replayed after releasing the lock to prevent deadlocks.
+  /// Matching buffered events are replayed synchronously before this method
+  /// returns. A concurrent publish from another thread may still interleave with
+  /// replay callbacks; strict cross-thread buffered-before-live ordering is not
+  /// part of this contract.
   #[must_use]
   pub fn subscribe_with_key(
     &self,
@@ -101,7 +104,9 @@ impl EventStreamShared {
 
   /// Publishes the provided event to all registered subscribers.
   ///
-  /// Subscribers are notified after releasing the lock to prevent deadlocks.
+  /// Subscribers are notified synchronously after releasing the lock to prevent
+  /// deadlocks. If a subscriber callback panics, the panic propagates to the
+  /// caller and remaining subscribers are not guaranteed to receive this event.
   pub fn publish(&self, event: &EventStreamEvent) {
     // ロック中に配送先を確定してから解放し、通知中の再入や競合で購読者集合がぶれないようにする。
     let subscribers = self.inner.with_write(|guard| guard.publish_prepare(event.clone()));

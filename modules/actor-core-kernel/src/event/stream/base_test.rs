@@ -2,6 +2,7 @@ extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
@@ -35,6 +36,28 @@ impl RecordingSubscriber {
 impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
+  }
+}
+
+struct PanicOnceSubscriber {
+  events:         ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
+  has_panicked:   bool,
+  panic_on_first: bool,
+}
+
+impl PanicOnceSubscriber {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
+    Self { events, has_panicked: false, panic_on_first: true }
+  }
+}
+
+impl EventStreamSubscriber for PanicOnceSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    self.events.lock().push(event.clone());
+    if self.panic_on_first && !self.has_panicked {
+      self.has_panicked = true;
+      panic!("subscriber callback panic");
+    }
   }
 }
 
@@ -83,6 +106,54 @@ fn event_stream_replays_buffer_for_new_subscribers() {
   let events = events.lock().clone();
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::Log(_))));
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::Lifecycle(_))));
+}
+
+#[test]
+fn subscribe_returns_after_matching_replay_is_observed() {
+  let stream = EventStreamShared::default();
+  stream.publish(&EventStreamEvent::Log(log_event("buffered-before-subscribe", 1)));
+
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let _subscription = stream.subscribe_with_key(ClassifierKey::Log, &subscriber);
+
+  let recorded = events.lock().clone();
+  assert_eq!(recorded.len(), 1);
+  assert!(matches!(&recorded[0], EventStreamEvent::Log(event) if event.message() == "buffered-before-subscribe"));
+}
+
+#[test]
+fn publish_returns_after_subscriber_callback_observes_event() {
+  let stream = EventStreamShared::default();
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let _subscription = stream.subscribe_with_key(ClassifierKey::Log, &subscriber);
+
+  stream.publish(&EventStreamEvent::Log(log_event("sync-publish", 1)));
+
+  let recorded = events.lock().clone();
+  assert_eq!(recorded.len(), 1);
+  assert!(matches!(&recorded[0], EventStreamEvent::Log(event) if event.message() == "sync-publish"));
+}
+
+#[test]
+fn subscriber_panic_propagates_without_automatic_unsubscribe() {
+  let stream = EventStreamShared::default();
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(PanicOnceSubscriber::new(events.clone()));
+  let _subscription = stream.subscribe_with_key(ClassifierKey::Log, &subscriber);
+
+  let first_publish = catch_unwind(AssertUnwindSafe(|| {
+    stream.publish(&EventStreamEvent::Log(log_event("panic-on-first", 1)));
+  }));
+  assert!(first_publish.is_err());
+
+  stream.publish(&EventStreamEvent::Log(log_event("still-subscribed", 2)));
+
+  let recorded = events.lock().clone();
+  assert_eq!(recorded.len(), 2);
+  assert!(matches!(&recorded[0], EventStreamEvent::Log(event) if event.message() == "panic-on-first"));
+  assert!(matches!(&recorded[1], EventStreamEvent::Log(event) if event.message() == "still-subscribed"));
 }
 
 #[test]
