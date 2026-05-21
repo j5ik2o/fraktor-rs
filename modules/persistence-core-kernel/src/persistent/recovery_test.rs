@@ -36,3 +36,13 @@ fn recovery_from_snapshot_sets_criteria() {
   assert_eq!(recovery.to_sequence_nr(), u64::MAX);
   assert_eq!(recovery.replay_max(), u64::MAX);
 }
+
+#[test]
+fn recovery_with_replay_bounds_preserves_snapshot_criteria() {
+  let criteria = SnapshotSelectionCriteria::new(5, 100, 0, 0);
+  let recovery = Recovery::from_snapshot(criteria.clone()).with_replay_bounds(10, 3);
+
+  assert_eq!(recovery.snapshot_criteria(), &criteria);
+  assert_eq!(recovery.to_sequence_nr(), 10);
+  assert_eq!(recovery.replay_max(), 3);
+}

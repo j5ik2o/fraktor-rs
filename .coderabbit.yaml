@@ -67,9 +67,9 @@ knowledge_base:
     enabled: true
     filePatterns:
       - "CLAUDE.md"
-      - ".agent/rules/*.md"
-      - ".agent/rules/rust/*.md"
-      - ".agent/skills/*/SKILL.md"
+      - ".agents/rules/*.md"
+      - ".agents/rules/rust/*.md"
+      - ".agents/skills/*/SKILL.md"
 
 chat:
   auto_reply: true
