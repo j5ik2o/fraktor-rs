@@ -107,6 +107,8 @@ impl EventStreamShared {
   /// Subscribers are notified synchronously after releasing the lock to prevent
   /// deadlocks. If a subscriber callback panics, the panic propagates to the
   /// caller and remaining subscribers are not guaranteed to receive this event.
+  /// Panicking subscribers remain subscribed unless the caller explicitly
+  /// unsubscribes them.
   pub fn publish(&self, event: &EventStreamEvent) {
     // ロック中に配送先を確定してから解放し、通知中の再入や競合で購読者集合がぶれないようにする。
     let subscribers = self.inner.with_write(|guard| guard.publish_prepare(event.clone()));
