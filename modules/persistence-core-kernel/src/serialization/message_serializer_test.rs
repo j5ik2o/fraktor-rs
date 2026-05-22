@@ -116,9 +116,86 @@ impl Serializer for HintOnlyI32Serializer {
   }
 }
 
+struct EmptyManifestI32Serializer {
+  id: SerializerId,
+}
+
+impl EmptyManifestI32Serializer {
+  fn new(id: SerializerId) -> Self {
+    Self { id }
+  }
+}
+
+impl Serializer for EmptyManifestI32Serializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn include_manifest(&self) -> bool {
+    true
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let value = message.downcast_ref::<i32>().ok_or(SerializationError::InvalidFormat)?;
+    Ok(value.to_le_bytes().to_vec())
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    if bytes.len() != core::mem::size_of::<i32>() {
+      return Err(SerializationError::InvalidFormat);
+    }
+    let mut array = [0_u8; core::mem::size_of::<i32>()];
+    array.copy_from_slice(bytes);
+    Ok(Box::new(i32::from_le_bytes(array)))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    Some(self)
+  }
+}
+
+impl SerializerWithStringManifest for EmptyManifestI32Serializer {
+  fn manifest(&self, _message: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
+    Cow::Borrowed("")
+  }
+
+  fn from_binary_with_manifest(
+    &self,
+    bytes: &[u8],
+    _manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    self.from_binary(bytes, Some(TypeId::of::<i32>()))
+  }
+}
+
 fn manifest_registry() -> ArcShared<SerializationRegistry> {
   let id = SerializerId::try_from(100).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("i32", id, serializer)
+    .expect("register")
+    .set_fallback("i32")
+    .expect("fallback")
+    .bind::<i32>("i32")
+    .expect("bind")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+  register_persistence_serializers(&registry).expect("persistence serializers");
+  registry
+}
+
+fn empty_manifest_registry() -> ArcShared<SerializationRegistry> {
+  let id = SerializerId::try_from(102).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(EmptyManifestI32Serializer::new(id));
   let setup = SerializationSetupBuilder::new()
     .register_serializer("i32", id, serializer)
     .expect("register")
@@ -219,6 +296,17 @@ fn non_manifest_resolvable_payload_fails_deserialization() {
   let bytes = serializer.to_binary(&repr).expect("serialize");
 
   assert!(serializer.from_binary(&bytes, None).is_err());
+}
+
+#[test]
+fn empty_manifest_payload_fails_deserialization() {
+  let registry = empty_manifest_registry();
+  let serializer = serializer(&registry);
+  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
+
+  let bytes = serializer.to_binary(&repr).expect("serialize");
+
+  assert!(matches!(serializer.from_binary(&bytes, None), Err(SerializationError::InvalidFormat)));
 }
 
 #[test]

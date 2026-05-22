@@ -62,6 +62,12 @@ impl Journal for InMemoryJournal {
     let mut expected = self.expected_sequence_nr(&persistence_id);
 
     for atomic_write in messages {
+      if atomic_write.persistence_id() != persistence_id {
+        return ready(Err(JournalError::MixedPersistenceId {
+          expected: persistence_id,
+          actual:   atomic_write.persistence_id().to_string(),
+        }));
+      }
       for message in atomic_write.payload() {
         if message.sequence_nr() != expected {
           return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));

@@ -241,7 +241,7 @@ impl<A: 'static> PersistenceContext<A> {
     debug_assert!(!messages.is_empty(), "flush_batch requires at least one persistent journal message");
 
     let atomic_write = AtomicWrite::new(messages)
-      .map_err(|error| PersistenceError::Journal(JournalError::WriteFailed(error.to_string())))?;
+      .map_err(|error| PersistenceError::Journal(JournalError::InvalidAtomicWrite(error.to_string())))?;
     let message = JournalMessage::WriteMessages {
       persistence_id: self.persistence_id.clone(),
       to_sequence_nr,

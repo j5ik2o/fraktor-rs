@@ -22,6 +22,17 @@ pub enum SerializationError {
   },
   /// Serializer lookup failed for the provided identifier.
   UnknownSerializer(SerializerId),
+  /// Serializer id is already occupied by another serializer.
+  SerializerIdCollision(SerializerId),
+  /// Type binding is already assigned to another serializer id.
+  SerializerBindingCollision {
+    /// Bound type name.
+    type_name: String,
+    /// Existing serializer id.
+    existing:  SerializerId,
+    /// Requested serializer id.
+    requested: SerializerId,
+  },
   /// Requested type could not be serialized with the available registry configuration.
   NotSerializable(NotSerializableError),
   /// Manifest string was not recognised.
@@ -47,6 +58,22 @@ impl SerializationError {
   #[must_use]
   pub const fn unknown_serializer(id: SerializerId) -> Self {
     Self::UnknownSerializer(id)
+  }
+
+  /// Creates a serializer id collision error.
+  #[must_use]
+  pub const fn serializer_id_collision(id: SerializerId) -> Self {
+    Self::SerializerIdCollision(id)
+  }
+
+  /// Creates a serializer binding collision error.
+  #[must_use]
+  pub fn serializer_binding_collision(
+    type_name: impl Into<String>,
+    existing: SerializerId,
+    requested: SerializerId,
+  ) -> Self {
+    Self::SerializerBindingCollision { type_name: type_name.into(), existing, requested }
   }
 
   /// Creates a not serializable error with the provided details.
@@ -83,6 +110,18 @@ impl SerializationError {
   #[must_use]
   pub const fn is_unknown_serializer(&self) -> bool {
     matches!(self, Self::UnknownSerializer(_))
+  }
+
+  /// Returns `true` if the error is `SerializerIdCollision`.
+  #[must_use]
+  pub const fn is_serializer_id_collision(&self) -> bool {
+    matches!(self, Self::SerializerIdCollision(_))
+  }
+
+  /// Returns `true` if the error is `SerializerBindingCollision`.
+  #[must_use]
+  pub const fn is_serializer_binding_collision(&self) -> bool {
+    matches!(self, Self::SerializerBindingCollision { .. })
   }
 
   /// Returns `true` if the error is `NotSerializable`.

@@ -69,12 +69,13 @@ fn register_serializer(
   serializer: ArcShared<dyn Serializer>,
 ) -> Result<(), SerializationError> {
   if let Some(existing) = registry.registered_serializer(id) {
-    if existing.as_any().type_id() == serializer.as_any().type_id() {
+    if existing.identifier() == serializer.identifier() && existing.as_any().type_id() == serializer.as_any().type_id()
+    {
       return Ok(());
     }
-    return Err(SerializationError::UnknownSerializer(id));
+    return Err(SerializationError::SerializerIdCollision(id));
   }
-  if registry.register_serializer(id, serializer) { Ok(()) } else { Err(SerializationError::UnknownSerializer(id)) }
+  if registry.register_serializer(id, serializer) { Ok(()) } else { Err(SerializationError::SerializerIdCollision(id)) }
 }
 
 fn register_binding<T: 'static>(
@@ -87,7 +88,7 @@ fn register_binding<T: 'static>(
     if existing == serializer_id {
       return Ok(());
     }
-    return Err(SerializationError::UnknownSerializer(existing));
+    return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
   }
   registry.register_binding(type_id, type_name, serializer_id)
 }

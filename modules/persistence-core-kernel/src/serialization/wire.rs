@@ -1,5 +1,9 @@
 //! Internal persistence serialization wire helpers.
 
+#[cfg(test)]
+#[path = "wire_test.rs"]
+mod tests;
+
 use alloc::{
   string::{String, ToString},
   vec::Vec,
@@ -80,11 +84,12 @@ pub(crate) fn read_u64(bytes: &[u8], cursor: &mut usize) -> Result<u64, Serializ
 
 pub(crate) fn read_bytes<'a>(bytes: &'a [u8], cursor: &mut usize) -> Result<&'a [u8], SerializationError> {
   let len = read_u32(bytes, cursor)? as usize;
-  if bytes.len() < cursor.saturating_add(len) {
+  let end = cursor.checked_add(len).ok_or(SerializationError::InvalidFormat)?;
+  if end > bytes.len() {
     return Err(SerializationError::InvalidFormat);
   }
-  let result = &bytes[*cursor..*cursor + len];
-  *cursor = cursor.saturating_add(len);
+  let result = &bytes[*cursor..end];
+  *cursor = end;
   Ok(result)
 }
 

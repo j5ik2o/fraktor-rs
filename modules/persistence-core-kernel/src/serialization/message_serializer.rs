@@ -93,7 +93,7 @@ impl MessageSerializer {
     delegator: &SerializationDelegator<'_>,
     message: &SerializedMessage,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    if message.manifest().is_none() {
+    if message.manifest().is_none_or(str::is_empty) {
       return Err(SerializationError::InvalidFormat);
     }
     delegator.deserialize(message, None)

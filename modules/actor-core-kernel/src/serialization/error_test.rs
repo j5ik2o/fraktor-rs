@@ -47,6 +47,18 @@ fn const_constructors_create_correct_variants() {
   let error = SerializationError::unknown_serializer(SerializerId::try_from(42).unwrap());
   assert!(error.is_unknown_serializer());
 
+  // SerializerIdCollision コンストラクタのテスト
+  let error = SerializationError::serializer_id_collision(SerializerId::try_from(43).unwrap());
+  assert!(error.is_serializer_id_collision());
+
+  // SerializerBindingCollision コンストラクタのテスト
+  let error = SerializationError::serializer_binding_collision(
+    "Example",
+    SerializerId::try_from(44).unwrap(),
+    SerializerId::try_from(45).unwrap(),
+  );
+  assert!(error.is_serializer_binding_collision());
+
   // InvalidFormat コンストラクタのテスト
   let error = SerializationError::invalid_format();
   assert!(error.is_invalid_format());
@@ -68,6 +80,8 @@ fn is_methods_return_correct_values() {
   assert!(uninitialized.is_uninitialized());
   assert!(!uninitialized.is_manifest_missing());
   assert!(!uninitialized.is_unknown_serializer());
+  assert!(!uninitialized.is_serializer_id_collision());
+  assert!(!uninitialized.is_serializer_binding_collision());
   assert!(!uninitialized.is_not_serializable());
   assert!(!uninitialized.is_unknown_manifest());
   assert!(!uninitialized.is_invalid_format());
@@ -81,6 +95,18 @@ fn is_methods_return_correct_values() {
   assert!(!unknown_serializer.is_uninitialized());
   assert!(!unknown_serializer.is_manifest_missing());
   assert!(unknown_serializer.is_unknown_serializer());
+
+  let serializer_id_collision = SerializationError::SerializerIdCollision(SerializerId::try_from(101).unwrap());
+  assert!(serializer_id_collision.is_serializer_id_collision());
+  assert!(!serializer_id_collision.is_unknown_serializer());
+
+  let serializer_binding_collision = SerializationError::SerializerBindingCollision {
+    type_name: String::from("Example"),
+    existing:  SerializerId::try_from(102).unwrap(),
+    requested: SerializerId::try_from(103).unwrap(),
+  };
+  assert!(serializer_binding_collision.is_serializer_binding_collision());
+  assert!(!serializer_binding_collision.is_unknown_serializer());
 
   let invalid_format = SerializationError::InvalidFormat;
   assert!(!invalid_format.is_uninitialized());

@@ -114,6 +114,19 @@ fn in_memory_journal_sequence_mismatch() {
 }
 
 #[test]
+fn in_memory_journal_rejects_mixed_persistence_ids_without_partial_persistence() {
+  let mut journal = InMemoryJournal::new();
+  let first = atomic_write(build_messages("pid-1", 1, 1));
+  let second = atomic_write(build_messages("pid-2", 1, 1));
+
+  let result = poll_ready(journal.write_messages(&[first, second]));
+
+  assert_eq!(result, Err(JournalError::MixedPersistenceId { expected: "pid-1".into(), actual: "pid-2".into() }));
+  assert!(poll_ready(journal.replay_messages("pid-1", 1, 1, 10)).expect("replay pid-1").is_empty());
+  assert!(poll_ready(journal.replay_messages("pid-2", 1, 1, 10)).expect("replay pid-2").is_empty());
+}
+
+#[test]
 fn in_memory_journal_replay_respects_max() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 1, 3);
