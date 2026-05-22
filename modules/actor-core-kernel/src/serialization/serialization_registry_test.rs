@@ -131,6 +131,15 @@ fn register_binding_allows_dynamic_resolution() {
 }
 
 #[test]
+fn binding_names_resolve_back_to_type_ids() {
+  let (registry, _serializer_id) = setup_with_binding();
+
+  assert_eq!(registry.binding_name(TypeId::of::<u32>()), Some(type_name::<u32>().into()));
+  assert_eq!(registry.type_id_for_binding_name(type_name::<u32>()), Some(TypeId::of::<u32>()));
+  assert_eq!(registry.type_id_for_binding_name("missing"), None);
+}
+
+#[test]
 fn manifest_routes_return_serializers_in_priority_order() {
   let alpha_id = SerializerId::try_from(150).expect("alpha");
   let beta_id = SerializerId::try_from(151).expect("beta");

@@ -52,6 +52,9 @@ impl Serializer for SnapshotSerializer {
     let data = payload.data().deref();
     let type_name = registry.binding_name(data.type_id()).unwrap_or_else(|| String::from(type_name_of_val(data)));
     let nested = delegator.serialize(data, &type_name)?;
+    if nested.manifest().is_none_or(str::is_empty) {
+      return Err(SerializationError::InvalidFormat);
+    }
     Ok(nested.encode())
   }
 

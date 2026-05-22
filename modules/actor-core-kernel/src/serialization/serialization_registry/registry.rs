@@ -188,6 +188,14 @@ impl SerializationRegistry {
     self.binding_names.with_read(|binding_names| binding_names.get(&type_id).cloned())
   }
 
+  /// Returns the type identifier recorded for the provided binding name.
+  #[must_use]
+  pub fn type_id_for_binding_name(&self, name: &str) -> Option<TypeId> {
+    self.binding_names.with_read(|binding_names| {
+      binding_names.iter().find_map(|(type_id, binding)| (binding == name).then_some(*type_id))
+    })
+  }
+
   /// Returns the remote manifest registered for the provided type identifier.
   #[must_use]
   pub fn manifest_for(&self, type_id: TypeId) -> Option<&str> {

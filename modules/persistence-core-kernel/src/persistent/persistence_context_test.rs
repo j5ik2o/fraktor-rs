@@ -14,7 +14,9 @@ use fraktor_actor_core_kernel_rs::actor::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
+use super::EventBatchEntry;
 use crate::{
+  error::PersistenceError,
   journal::{
     EventAdapters, EventSeq, JournalError, JournalMessage, JournalResponse, JournalResponseAction, ReadEventAdapter,
     WriteEventAdapter,
@@ -579,6 +581,26 @@ fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion()
   assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
   assert!(context.pending_invocations.is_empty());
   assert!(!context.stash_until_batch_completion);
+}
+
+#[test]
+fn flush_batch_with_only_deferred_entry_rolls_back() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+  let repr = PersistentRepr::new("pid-1", 0, ArcShared::new(1_i32)).with_adapters(EventAdapters::new());
+  let invocation = PendingHandlerInvocation::async_deferred_boxed(repr, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.event_batch.push(EventBatchEntry::Deferred(Box::new(invocation)));
+
+  let result = context.flush_batch(ActorRef::null());
+
+  assert!(matches!(result, Err(PersistenceError::Journal(JournalError::InvalidAtomicWrite(_)))));
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+  assert!(context.pending_invocations.is_empty());
+  assert!(!context.should_stash_commands());
+  assert!(journal_store.lock().is_empty());
 }
 
 #[test]

@@ -238,7 +238,12 @@ impl<A: 'static> PersistenceContext<A> {
     }
     self.stash_until_batch_completion = has_stashing_invocation;
 
-    debug_assert!(!messages.is_empty(), "flush_batch requires at least one persistent journal message");
+    if messages.is_empty() {
+      self.reset_after_write_failure();
+      return Err(PersistenceError::Journal(JournalError::InvalidAtomicWrite(
+        "atomic write payload must not be empty".into(),
+      )));
+    }
 
     let atomic_write = AtomicWrite::new(messages)
       .map_err(|error| PersistenceError::Journal(JournalError::InvalidAtomicWrite(error.to_string())))?;

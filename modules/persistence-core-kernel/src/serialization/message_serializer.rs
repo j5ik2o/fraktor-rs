@@ -47,17 +47,19 @@ impl MessageSerializer {
     let payload = repr.payload().deref();
     let payload_type_name =
       registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from(type_name_of_val(payload)));
-    wire::write_serialized(&mut buffer, &delegator.serialize(payload, &payload_type_name)?)?;
+    wire::write_serialized(&mut buffer, &Self::serialize_nested(&delegator, payload, &payload_type_name)?)?;
     wire::write_string(&mut buffer, repr.manifest())?;
     wire::write_string(&mut buffer, repr.writer_uuid())?;
     wire::write_u64(&mut buffer, repr.timestamp());
     wire::write_bool(&mut buffer, repr.deleted());
+    let adapter_type_name = registry.binding_name(repr.adapter_type_id()).unwrap_or_default();
+    wire::write_string(&mut buffer, &adapter_type_name)?;
     if let Some(metadata) = repr.metadata() {
       wire::write_bool(&mut buffer, true);
       let metadata = metadata.deref();
       let metadata_type_name =
         registry.binding_name(metadata.type_id()).unwrap_or_else(|| String::from(type_name_of_val(metadata)));
-      wire::write_serialized(&mut buffer, &delegator.serialize(metadata, &metadata_type_name)?)?;
+      wire::write_serialized(&mut buffer, &Self::serialize_nested(&delegator, metadata, &metadata_type_name)?)?;
     } else {
       wire::write_bool(&mut buffer, false);
     }
@@ -75,18 +77,36 @@ impl MessageSerializer {
     let writer_uuid = wire::read_string(bytes, &mut cursor)?;
     let timestamp = wire::read_u64(bytes, &mut cursor)?;
     let deleted = wire::read_bool(bytes, &mut cursor)?;
+    let adapter_type_name = wire::read_string(bytes, &mut cursor)?;
     let has_metadata = wire::read_bool(bytes, &mut cursor)?;
     let mut repr = PersistentRepr::new(persistence_id, sequence_nr, ArcShared::from_boxed(payload))
       .with_manifest(manifest)
       .with_writer_uuid(writer_uuid)
       .with_timestamp(timestamp)
       .with_deleted(deleted);
+    if !adapter_type_name.is_empty() {
+      let adapter_type_id =
+        registry.type_id_for_binding_name(&adapter_type_name).ok_or(SerializationError::InvalidFormat)?;
+      repr = repr.with_adapter_type_id(adapter_type_id);
+    }
     if has_metadata {
       let metadata = Self::deserialize_nested(&delegator, &wire::read_serialized(bytes, &mut cursor)?)?;
       repr = repr.with_metadata(ArcShared::from_boxed(metadata));
     }
     wire::ensure_finished(bytes, cursor)?;
     Ok(repr)
+  }
+
+  fn serialize_nested(
+    delegator: &SerializationDelegator<'_>,
+    message: &(dyn Any + Send + Sync),
+    type_name: &str,
+  ) -> Result<SerializedMessage, SerializationError> {
+    let nested = delegator.serialize(message, type_name)?;
+    if nested.manifest().is_none_or(str::is_empty) {
+      return Err(SerializationError::InvalidFormat);
+    }
+    Ok(nested)
   }
 
   fn deserialize_nested(

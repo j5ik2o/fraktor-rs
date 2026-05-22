@@ -22,6 +22,8 @@ use crate::{
 
 const I32_MANIFEST: &str = "test.I32";
 
+struct DomainEvent;
+
 struct ManifestI32Serializer {
   id: SerializerId,
 }
@@ -130,6 +132,8 @@ fn manifest_registry() -> ArcShared<SerializationRegistry> {
     .expect("fallback")
     .bind::<i32>("i32")
     .expect("bind")
+    .bind::<DomainEvent>("i32")
+    .expect("bind domain event")
     .build()
     .expect("setup");
   let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
@@ -170,7 +174,7 @@ fn persistent_repr_round_trip_preserves_durable_metadata() {
     .with_deleted(true)
     .with_sender(Some(Pid::new(1, 1)))
     .with_adapters(EventAdapters::new())
-    .with_adapter_type_id(TypeId::of::<String>());
+    .with_adapter_type_id(TypeId::of::<DomainEvent>());
 
   let bytes = serializer.to_binary(&repr).expect("serialize");
   let restored = serializer.from_binary(&bytes, None).expect("deserialize");
@@ -185,7 +189,7 @@ fn persistent_repr_round_trip_preserves_durable_metadata() {
   assert_eq!(restored.downcast_ref::<i32>(), Some(&11));
   assert_eq!(restored.metadata().and_then(|value| value.downcast_ref::<i32>()), Some(&13));
   assert_eq!(restored.sender(), None);
-  assert_eq!(restored.adapter_type_id(), TypeId::of::<i32>());
+  assert_eq!(restored.adapter_type_id(), TypeId::of::<DomainEvent>());
 }
 
 #[test]
@@ -215,14 +219,12 @@ fn unregistered_payload_fails_serialization() {
 }
 
 #[test]
-fn non_manifest_resolvable_payload_fails_deserialization() {
+fn non_manifest_resolvable_payload_fails_serialization() {
   let registry = hint_only_registry();
   let serializer = serializer(&registry);
   let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
 
-  let bytes = serializer.to_binary(&repr).expect("serialize");
-
-  assert!(serializer.from_binary(&bytes, None).is_err());
+  assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
 }
 
 #[test]
