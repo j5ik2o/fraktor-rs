@@ -115,6 +115,10 @@ impl SerializedMessage {
       return Err(SerializationError::InvalidFormat);
     }
     let payload = bytes[cursor..cursor + payload_len].to_vec();
+    cursor += payload_len;
+    if cursor != bytes.len() {
+      return Err(SerializationError::InvalidFormat);
+    }
     Ok(Self::new(serializer_id, manifest, payload))
   }
 }

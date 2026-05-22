@@ -52,11 +52,11 @@ where
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
+    register_serialization_registry_contributor(system, PersistenceSerializationContributor::new())
+      .map_err(|error| ActorSystemBuildError::Configuration(error.to_string()))?;
     let extension_id =
       PersistenceExtensionId::new_with_settings(self.journal.clone(), self.snapshot_store.clone(), self.settings);
     install_extension_id(system, &extension_id);
-    register_serialization_registry_contributor(system, PersistenceSerializationContributor::new())
-      .map_err(|error| ActorSystemBuildError::Configuration(error.to_string()))?;
     Ok(())
   }
 }

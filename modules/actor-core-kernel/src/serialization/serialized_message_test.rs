@@ -33,3 +33,13 @@ fn rejects_invalid_format() {
   let error = SerializedMessage::decode(&data).expect_err("invalid format");
   assert_eq!(error, SerializationError::InvalidFormat);
 }
+
+#[test]
+fn rejects_trailing_bytes() {
+  let message = SerializedMessage::new(id(100), Some("example.Manifest".into()), vec![1]);
+  let mut encoded = message.encode();
+  encoded.push(2);
+
+  let error = SerializedMessage::decode(&encoded).expect_err("trailing bytes");
+  assert_eq!(error, SerializationError::InvalidFormat);
+}

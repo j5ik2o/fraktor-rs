@@ -205,6 +205,21 @@ fn snapshot_payload_with_empty_manifest_fails_deserialization() {
 }
 
 #[test]
+fn snapshot_payload_with_trailing_nested_bytes_fails_deserialization() {
+  let registry = registry();
+  let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
+  let nested = SerializedMessage::new(
+    SerializerId::try_from(110).expect("serializer id"),
+    Some(I32_MANIFEST.into()),
+    1_i32.to_le_bytes().to_vec(),
+  );
+  let mut bytes = nested.encode();
+  bytes.push(0);
+
+  assert!(matches!(serializer.from_binary(&bytes, None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
 fn snapshot_payload_without_manifest_fails_serialization() {
   let registry = hint_only_registry();
   let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());

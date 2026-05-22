@@ -68,12 +68,12 @@ where
   let contributors_id = SerializationRegistryContributorsId;
   let contributor: ArcShared<dyn SerializationRegistryContributor> = ArcShared::new(contributor);
   let contributors = system.extended().register_extension(&contributors_id);
-  contributors.add(contributor.clone());
   if let Some(serialization) = system.extended().extension_by_type::<SerializationExtensionShared>() {
     serialization
       .with_read(|extension| contributor.contribute(&extension.registry()))
       .map_err(SerializationRegistryContributionError::new)?;
   }
+  contributors.add(contributor);
   Ok(())
 }
 

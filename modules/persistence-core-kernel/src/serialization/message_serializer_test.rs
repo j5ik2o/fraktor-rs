@@ -334,6 +334,34 @@ fn empty_manifest_payload_fails_deserialization() {
 }
 
 #[test]
+fn trailing_nested_payload_bytes_fail_deserialization() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+  let payload = SerializedMessage::new(
+    SerializerId::try_from(100).expect("serializer id"),
+    Some(I32_MANIFEST.into()),
+    1_i32.to_le_bytes().to_vec(),
+  );
+  let mut nested = payload.encode();
+  nested.push(0);
+  let mut repr = Vec::new();
+  wire::write_string(&mut repr, "pid-1").expect("persistence id");
+  wire::write_u64(&mut repr, 1);
+  wire::write_bytes(&mut repr, &nested).expect("payload");
+  wire::write_string(&mut repr, "").expect("manifest");
+  wire::write_string(&mut repr, "").expect("writer uuid");
+  wire::write_u64(&mut repr, 0);
+  wire::write_bool(&mut repr, false);
+  wire::write_string(&mut repr, "").expect("adapter type");
+  wire::write_bool(&mut repr, false);
+  let mut bytes = Vec::new();
+  wire::write_u8(&mut bytes, PERSISTENT_REPR_TAG);
+  wire::write_bytes(&mut bytes, &repr).expect("repr");
+
+  assert!(matches!(serializer.from_binary(&bytes, None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
 fn manifest_validation_rejects_missing_manifest() {
   let payload = SerializedMessage::new(SerializerId::try_from(100).expect("serializer id"), None, vec![]);
 

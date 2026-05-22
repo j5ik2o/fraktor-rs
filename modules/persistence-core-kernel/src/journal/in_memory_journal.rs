@@ -88,7 +88,7 @@ impl Journal for InMemoryJournal {
     for atomic_write in messages {
       entry.extend(atomic_write.payload().iter().cloned());
     }
-    self.highest_sequence_nrs.insert(persistence_id, expected.saturating_sub(1));
+    self.highest_sequence_nrs.insert(persistence_id, expected - 1);
 
     ready(Ok(()))
   }
