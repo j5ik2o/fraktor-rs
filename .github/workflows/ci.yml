@@ -54,6 +54,84 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    name: Detect CI-relevant changes
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    outputs:
+      run_code_checks: ${{ steps.filter.outputs.run_code_checks }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ "${EVENT_NAME}" == "schedule" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            base="${BASE_SHA}"
+            head="${HEAD_SHA}"
+          else
+            base="${BEFORE_SHA}"
+            head="${HEAD_SHA}"
+          fi
+
+          if [[ -z "${base}" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${base}" =~ ^0{40}$ ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          changed_entries="$(git diff --name-status -M "${base}" "${head}")"
+          if [[ -z "${changed_entries}" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          is_docs_only_path() {
+            local path="$1"
+            [[ "${path}" == *.md \
+              || "${path}" == *.rst \
+              || "${path}" == *.txt \
+              || "${path}" == docs/* \
+              || "${path}" == openspec/* \
+              || "${path}" == README* \
+              || "${path}" == CHANGELOG* \
+              || "${path}" == LICENSE* ]]
+          }
+
+          run_code_checks=false
+          while IFS=$'\t' read -r status path_a path_b; do
+            paths=("${path_a}")
+            case "${status}" in
+              R* | C*)
+                paths=("${path_a}" "${path_b}")
+                ;;
+            esac
+
+            for path in "${paths[@]}"; do
+              if ! is_docs_only_path "${path}"; then
+                run_code_checks=true
+                break 2
+              fi
+            done
+          done <<< "${changed_entries}"
+
+          echo "run_code_checks=${run_code_checks}" >> "${GITHUB_OUTPUT}"
+
   # Format check (fastest, prerequisite for other jobs)
   format:
     name: Format Check
@@ -78,7 +156,10 @@ jobs:
   lint:
     name: Lint Check
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
-    needs: format
+    needs:
+      - changes
+      - format
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     strategy:
       matrix:
         check:
@@ -113,7 +194,10 @@ jobs:
   test:
     name: Test (${{ matrix.target.name }})
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
-    needs: format
+    needs:
+      - changes
+      - format
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     env:
       TEST_TIME_FACTOR: "2.0"
     strategy:
@@ -152,7 +236,10 @@ jobs:
   integration-e2e:
     name: Integration / E2E
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
-    needs: test
+    needs:
+      - changes
+      - test
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     env:
       TEST_TIME_FACTOR: "2.0"
       CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
@@ -182,7 +269,10 @@ jobs:
   coverage:
     name: Coverage Report
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
-    needs: integration-e2e
+    needs:
+      - changes
+      - integration-e2e
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -228,8 +318,10 @@ jobs:
   codecov-status:
     name: Codecov Status
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
-    needs: coverage
-    if: always()
+    needs:
+      - changes
+      - coverage
+    if: ${{ always() && needs.changes.result == 'success' && needs.changes.outputs.run_code_checks == 'true' }}
     permissions:
       contents: read
       checks: read
@@ -325,7 +417,10 @@ jobs:
   docs:
     name: Documentation
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
-    needs: format
+    needs:
+      - changes
+      - format
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -347,7 +442,10 @@ jobs:
   examples:
     name: Examples
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
-    needs: format
+    needs:
+      - changes
+      - format
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -370,6 +468,7 @@ jobs:
     name: CI Success
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     needs:
+      - changes
       - format
       - lint
       - test
@@ -381,37 +480,46 @@ jobs:
     if: always()
     steps:
       - name: All checks passed
+        env:
+          RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
         run: |
           if [[ "${{ needs.format.result }}" != "success" ]]; then
             echo "format failed"
             exit 1
           fi
-          if [[ "${{ needs.lint.result }}" != "success" ]]; then
-            echo "lint failed"
+          run_code_checks="${RUN_CODE_CHECKS}"
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "changes failed"
             exit 1
           fi
-          if [[ "${{ needs.test.result }}" != "success" ]]; then
-            echo "test failed"
-            exit 1
-          fi
-          if [[ "${{ needs['integration-e2e'].result }}" != "success" ]]; then
-            echo "integration-e2e failed"
-            exit 1
-          fi
-          if [[ "${{ needs.coverage.result }}" != "success" ]]; then
-            echo "coverage failed"
-            exit 1
-          fi
-          if [[ "${{ needs['codecov-status'].result }}" != "success" ]]; then
-            echo "codecov-status failed"
-            exit 1
-          fi
-          if [[ "${{ needs.docs.result }}" != "success" ]]; then
-            echo "docs failed"
-            exit 1
-          fi
-          if [[ "${{ needs.examples.result }}" != "success" ]]; then
-            echo "examples failed"
-            exit 1
-          fi
+          case "${run_code_checks}" in
+            true)
+              expected_code_job_result="success"
+              ;;
+            false)
+              expected_code_job_result="skipped"
+              ;;
+            *)
+              echo "changes did not report valid run_code_checks: ${run_code_checks}"
+              exit 1
+              ;;
+          esac
+
+          require_result() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "${name} was ${actual}; expected ${expected}"
+              exit 1
+            fi
+          }
+
+          require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
+          require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
+          require_result "integration-e2e" "${{ needs['integration-e2e'].result }}" "${expected_code_job_result}"
+          require_result "coverage" "${{ needs.coverage.result }}" "${expected_code_job_result}"
+          require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
+          require_result "docs" "${{ needs.docs.result }}" "${expected_code_job_result}"
+          require_result "examples" "${{ needs.examples.result }}" "${expected_code_job_result}"
           echo "✅ All CI checks passed successfully"
