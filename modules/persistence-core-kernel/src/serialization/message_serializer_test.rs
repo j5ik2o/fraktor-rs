@@ -323,6 +323,13 @@ fn empty_manifest_payload_fails_deserialization() {
 }
 
 #[test]
+fn manifest_validation_rejects_missing_manifest() {
+  let payload = SerializedMessage::new(SerializerId::try_from(100).expect("serializer id"), None, vec![]);
+
+  assert!(!MessageSerializer::has_valid_manifest(&payload));
+}
+
+#[test]
 fn unknown_adapter_type_binding_fails_deserialization() {
   let registry = manifest_registry();
   let serializer = serializer(&registry);
