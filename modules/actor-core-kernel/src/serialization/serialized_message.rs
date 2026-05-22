@@ -112,8 +112,8 @@ impl SerializedMessage {
     } else {
       return Err(SerializationError::InvalidFormat);
     };
-    let (payload_len, len_end) = Self::read_u32_at(bytes, cursor)?;
-    let payload_len = payload_len as usize;
+    let (payload_len_u32, len_end) = Self::read_u32_at(bytes, cursor)?;
+    let payload_len = payload_len_u32 as usize;
     cursor = len_end;
     let payload_end = Self::end_offset(bytes, cursor, payload_len)?;
     let payload = bytes[cursor..payload_end].to_vec();

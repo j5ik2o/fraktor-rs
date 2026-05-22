@@ -52,7 +52,7 @@ fn atomic_write_consumes_payload() {
 
 #[test]
 fn atomic_write_error_display_messages() {
-  assert_eq!(AtomicWriteError::Empty.to_string(), "atomic write payload must not be empty");
+  assert_eq!(AtomicWriteError::Empty.to_string(), "payload must not be empty");
 
   let error = AtomicWriteError::MixedPersistenceId { expected: "pid-1".into(), actual: "pid-2".into() };
 
