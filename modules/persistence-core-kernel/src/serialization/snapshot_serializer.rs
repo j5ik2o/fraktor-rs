@@ -34,6 +34,10 @@ impl SnapshotSerializer {
   fn registry(&self) -> Result<ArcShared<SerializationRegistry>, SerializationError> {
     self.registry.upgrade().ok_or(SerializationError::Uninitialized)
   }
+
+  fn has_valid_manifest(message: &SerializedMessage) -> bool {
+    matches!(message.manifest(), Some(manifest) if !manifest.is_empty())
+  }
 }
 
 impl Serializer for SnapshotSerializer {
@@ -52,7 +56,7 @@ impl Serializer for SnapshotSerializer {
     let data = payload.data().deref();
     let type_name = registry.binding_name(data.type_id()).unwrap_or_else(|| String::from(type_name_of_val(data)));
     let nested = delegator.serialize(data, &type_name)?;
-    if nested.manifest().is_none_or(str::is_empty) {
+    if !Self::has_valid_manifest(&nested) {
       return Err(SerializationError::InvalidFormat);
     }
     Ok(nested.encode())
@@ -66,7 +70,7 @@ impl Serializer for SnapshotSerializer {
     let registry = self.registry()?;
     let delegator = SerializationDelegator::new(&registry);
     let nested = SerializedMessage::decode(bytes)?;
-    if nested.manifest().is_none() {
+    if !Self::has_valid_manifest(&nested) {
       return Err(SerializationError::InvalidFormat);
     }
     let data = delegator.deserialize(&nested, None)?;

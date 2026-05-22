@@ -560,7 +560,11 @@ impl<A: 'static> PersistenceContext<A> {
   }
 
   fn replayed_from_journal_repr(&self, repr: &PersistentRepr) -> Vec<PersistentRepr> {
-    let adapters = if self.event_adapters.is_empty() { repr.adapters().clone() } else { self.event_adapters.clone() };
+    let adapters = if self.event_adapters.has_read_adapter_for_type_id(repr.adapter_type_id()) {
+      self.event_adapters.clone()
+    } else {
+      repr.adapters().clone()
+    };
     let repr_with_adapters = repr.clone().with_adapters(adapters);
     let payload = repr_with_adapters.payload().clone();
     let adapted = repr_with_adapters

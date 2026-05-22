@@ -388,6 +388,25 @@ fn context_applies_event_adapters_on_persist_and_replay() {
 }
 
 #[test]
+fn replay_prefers_repr_adapters_when_context_lacks_adapter_type() {
+  let write_adapter: ArcShared<dyn WriteEventAdapter> = ArcShared::new(AddTenWriteAdapter);
+  let read_adapter: ArcShared<dyn ReadEventAdapter> = ArcShared::new(SplitReadAdapter);
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.event_adapters_mut().register::<u64>(write_adapter, read_adapter);
+  let replay_repr = replay_persistent_repr(3, 21, SINGLE_MANIFEST);
+
+  let replay_action =
+    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: replay_repr });
+
+  match replay_action {
+    | JournalResponseAction::ReceiveRecover(repr) => {
+      assert_eq!(repr.downcast_ref::<i32>(), Some(&21_i32));
+    },
+    | _ => panic!("expected single replay message"),
+  }
+}
+
+#[test]
 fn replayed_message_returns_receive_recover_for_single_event() {
   let mut context = DummyContext::new("pid-1".to_string());
   let replay_repr = replay_persistent_repr(3, 21, SINGLE_MANIFEST);

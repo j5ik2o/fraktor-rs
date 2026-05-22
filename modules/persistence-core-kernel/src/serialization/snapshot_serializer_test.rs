@@ -1,4 +1,4 @@
-use alloc::{borrow::Cow, boxed::Box, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 use core::any::{Any, TypeId};
 
 use fraktor_actor_core_kernel_rs::serialization::{
@@ -190,6 +190,16 @@ fn snapshot_payload_without_manifest_fails_deserialization() {
   let registry = registry();
   let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
   let nested = SerializedMessage::new(SerializerId::try_from(110).expect("serializer id"), None, Vec::new());
+
+  assert!(matches!(serializer.from_binary(&nested.encode(), None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn snapshot_payload_with_empty_manifest_fails_deserialization() {
+  let registry = registry();
+  let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
+  let nested =
+    SerializedMessage::new(SerializerId::try_from(110).expect("serializer id"), Some(String::new()), Vec::new());
 
   assert!(matches!(serializer.from_binary(&nested.encode(), None), Err(SerializationError::InvalidFormat)));
 }

@@ -144,6 +144,8 @@ fn register_binding_rejects_duplicate_binding_name_for_different_type() {
       requested
     }) if binding_name == type_name::<u32>() && existing == alpha_id && requested == beta_id
   ));
+  assert_eq!(registry.binding_name(TypeId::of::<u64>()), None);
+  assert_eq!(registry.type_id_for_binding_name(type_name::<u32>()), Some(TypeId::of::<u32>()));
 }
 
 #[test]
