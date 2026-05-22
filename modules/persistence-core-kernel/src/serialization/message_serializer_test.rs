@@ -241,6 +241,16 @@ fn unregistered_payload_fails_serialization() {
 }
 
 #[test]
+fn unregistered_metadata_fails_serialization() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+  let repr =
+    PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)).with_metadata(ArcShared::new(String::from("missing")));
+
+  assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
 fn non_manifest_resolvable_payload_fails_serialization() {
   let registry = hint_only_registry();
   let serializer = serializer(&registry);
@@ -358,5 +368,23 @@ fn persistence_serializer_registration_rejects_snapshot_binding_collision() {
       existing,
       requested
     }) if type_name == "SnapshotPayload" && existing == id && requested == SNAPSHOT_SERIALIZER_ID
+  ));
+}
+
+#[test]
+fn persistence_serializer_registration_rejects_snapshot_serializer_id_collision() {
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(SNAPSHOT_SERIALIZER_ID));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("snapshot", SNAPSHOT_SERIALIZER_ID, serializer)
+    .expect("register")
+    .set_fallback("snapshot")
+    .expect("fallback")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+
+  assert!(matches!(
+    register_persistence_serializers(&registry),
+    Err(SerializationError::SerializerIdCollision(id)) if id == SNAPSHOT_SERIALIZER_ID
   ));
 }
