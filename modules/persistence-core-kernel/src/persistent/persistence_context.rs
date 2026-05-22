@@ -238,15 +238,10 @@ impl<A: 'static> PersistenceContext<A> {
     }
     self.stash_until_batch_completion = has_stashing_invocation;
 
-    if messages.is_empty() {
+    let atomic_write = AtomicWrite::new(messages).map_err(|error| {
       self.reset_after_write_failure();
-      return Err(PersistenceError::Journal(JournalError::InvalidAtomicWrite(
-        "atomic write payload must not be empty".into(),
-      )));
-    }
-
-    let atomic_write = AtomicWrite::new(messages)
-      .map_err(|error| PersistenceError::Journal(JournalError::InvalidAtomicWrite(error.to_string())))?;
+      PersistenceError::Journal(JournalError::InvalidAtomicWrite(error.to_string()))
+    })?;
     let message = JournalMessage::WriteMessages {
       persistence_id: self.persistence_id.clone(),
       to_sequence_nr,

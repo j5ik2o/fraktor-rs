@@ -59,7 +59,6 @@ impl Journal for InMemoryJournal {
     };
 
     let persistence_id = first.persistence_id().to_string();
-    let mut expected = self.expected_sequence_nr(&persistence_id);
 
     for atomic_write in messages {
       if atomic_write.persistence_id() != persistence_id {
@@ -69,6 +68,8 @@ impl Journal for InMemoryJournal {
         }));
       }
     }
+
+    let mut expected = self.expected_sequence_nr(&persistence_id);
 
     for atomic_write in messages {
       for message in atomic_write.payload() {
