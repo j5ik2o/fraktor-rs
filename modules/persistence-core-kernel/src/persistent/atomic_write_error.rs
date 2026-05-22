@@ -20,9 +20,9 @@ pub enum AtomicWriteError {
 impl Display for AtomicWriteError {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
     match self {
-      | Self::Empty => write!(formatter, "AtomicWriteError::Empty: payload must not be empty"),
+      | Self::Empty => write!(formatter, "atomic write payload must not be empty"),
       | Self::MixedPersistenceId { expected, actual } => {
-        write!(formatter, "AtomicWriteError::MixedPersistenceId: expected {expected:?}, actual {actual:?}")
+        write!(formatter, "mixed persistence id: expected {expected:?}, actual {actual:?}")
       },
     }
   }

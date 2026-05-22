@@ -151,7 +151,7 @@ fn first_write_message_repr(journal_store: &MessageStore) -> PersistentRepr {
     .find_map(|message| match message {
       | JournalMessage::WriteMessages { messages, .. } => {
         // AtomicWrite::payload() is guaranteed non-empty by AtomicWrite::new.
-        messages.first().and_then(|write| write.payload().first().cloned())
+        messages.first().map(|write| write.payload()[0].clone())
       },
       | _ => None,
     })
