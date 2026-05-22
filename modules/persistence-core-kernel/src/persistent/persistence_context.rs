@@ -232,12 +232,15 @@ impl<A: 'static> PersistenceContext<A> {
     }
     self.stash_until_batch_completion = has_stashing_invocation;
 
-    let atomic_write = AtomicWrite::new(messages).map_err(|error| {
-      let journal_error = Self::journal_error_for_atomic_write(error);
-      // The batch has already been drained into pending invocations above.
-      self.reset_after_write_failure();
-      PersistenceError::Journal(journal_error)
-    })?;
+    let atomic_write = match AtomicWrite::new(messages) {
+      | Ok(write) => write,
+      | Err(error) => {
+        let journal_error = Self::journal_error_for_atomic_write(error);
+        // The batch has already been drained into pending invocations above.
+        self.reset_after_write_failure();
+        return Err(PersistenceError::Journal(journal_error));
+      },
+    };
     let message = JournalMessage::WriteMessages {
       persistence_id: self.persistence_id.clone(),
       to_sequence_nr,

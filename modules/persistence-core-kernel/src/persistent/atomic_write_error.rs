@@ -22,7 +22,7 @@ impl Display for AtomicWriteError {
     match self {
       | Self::Empty => write!(formatter, "payload must not be empty"),
       | Self::MixedPersistenceId { expected, actual } => {
-        write!(formatter, "mixed persistence id: expected {expected:?}, actual {actual:?}")
+        write!(formatter, "mixed persistence id: expected {expected}, actual {actual}")
       },
     }
   }

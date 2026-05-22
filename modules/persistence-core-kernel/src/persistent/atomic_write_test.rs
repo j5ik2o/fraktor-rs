@@ -56,5 +56,5 @@ fn atomic_write_error_display_messages() {
 
   let error = AtomicWriteError::MixedPersistenceId { expected: "pid-1".into(), actual: "pid-2".into() };
 
-  assert_eq!(error.to_string(), "mixed persistence id: expected \"pid-1\", actual \"pid-2\"");
+  assert_eq!(error.to_string(), "mixed persistence id: expected pid-1, actual pid-2");
 }
