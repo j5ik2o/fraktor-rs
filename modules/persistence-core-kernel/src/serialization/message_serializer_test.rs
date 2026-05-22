@@ -161,6 +161,21 @@ fn hint_only_registry() -> ArcShared<SerializationRegistry> {
   registry
 }
 
+fn fallback_registry_without_payload_binding() -> ArcShared<SerializationRegistry> {
+  let id = SerializerId::try_from(100).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("i32", id, serializer)
+    .expect("register")
+    .set_fallback("i32")
+    .expect("fallback")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+  register_persistence_serializers(&registry).expect("persistence serializers");
+  registry
+}
+
 fn serializer(registry: &ArcShared<SerializationRegistry>) -> MessageSerializer {
   MessageSerializer::new(MESSAGE_SERIALIZER_ID, registry.downgrade())
 }
@@ -214,6 +229,20 @@ fn persistent_repr_round_trip_preserves_durable_metadata() {
   assert_eq!(restored.metadata().and_then(|value| value.downcast_ref::<i32>()), Some(&13));
   assert_eq!(restored.sender(), None);
   assert_eq!(restored.adapter_type_id(), TypeId::of::<DomainEvent>());
+}
+
+#[test]
+fn persistent_repr_round_trip_uses_payload_type_when_adapter_binding_is_absent() {
+  let registry = fallback_registry_without_payload_binding();
+  let serializer = serializer(&registry);
+  let repr = PersistentRepr::new("pid-1", 7, ArcShared::new(11_i32));
+
+  let bytes = serializer.to_binary(&repr).expect("serialize");
+  let restored = serializer.from_binary(&bytes, None).expect("deserialize");
+  let restored = restored.downcast_ref::<PersistentRepr>().expect("persistent repr");
+
+  assert_eq!(restored.downcast_ref::<i32>(), Some(&11));
+  assert_eq!(restored.adapter_type_id(), TypeId::of::<i32>());
 }
 
 #[test]

@@ -28,6 +28,32 @@ fn unknown_serializer_display_representation() {
 }
 
 #[test]
+fn serialization_error_display_messages() {
+  let not_serializable = NotSerializableError::new("Example", None, None, None, None);
+
+  assert_eq!(SerializationError::Uninitialized.to_string(), "serialization runtime is uninitialized");
+  assert_eq!(
+    SerializationError::ManifestMissing { scope: SerializationCallScope::Local }.to_string(),
+    "manifest is missing for Local serialization"
+  );
+  assert_eq!(
+    SerializationError::SerializerIdCollision(SerializerId::try_from(101).unwrap()).to_string(),
+    "serializer id 101 is already registered"
+  );
+  assert_eq!(
+    SerializationError::serializer_binding_collision(
+      "Example",
+      SerializerId::try_from(102).unwrap(),
+      SerializerId::try_from(103).unwrap()
+    )
+    .to_string(),
+    "serializer binding collision for Example: existing id 102, requested id 103"
+  );
+  assert_eq!(SerializationError::NotSerializable(not_serializable).to_string(), "type Example is not serializable");
+  assert_eq!(SerializationError::UnknownManifest("old".into()).to_string(), "unknown manifest old");
+}
+
+#[test]
 fn not_serializable_variant_embeds_payload() {
   let payload = NotSerializableError::new(
     "Example",

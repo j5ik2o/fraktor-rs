@@ -88,10 +88,7 @@ impl Journal for InMemoryJournal {
     for atomic_write in messages {
       entry.extend(atomic_write.payload().iter().cloned());
     }
-    let Some(highest_sequence_nr) = expected.checked_sub(1) else {
-      return ready(Err(JournalError::InvalidAtomicWrite(String::from("empty write batch"))));
-    };
-    self.highest_sequence_nrs.insert(persistence_id, highest_sequence_nr);
+    self.highest_sequence_nrs.insert(persistence_id, expected.saturating_sub(1));
 
     ready(Ok(()))
   }
