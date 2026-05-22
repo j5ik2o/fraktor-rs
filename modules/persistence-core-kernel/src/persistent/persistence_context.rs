@@ -4,7 +4,14 @@
 #[path = "persistence_context_test.rs"]
 mod tests;
 
-use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
+use alloc::{
+  boxed::Box,
+  collections::VecDeque,
+  format,
+  string::{String, ToString},
+  vec,
+  vec::Vec,
+};
 use core::{
   any::Any,
   ops::Deref,
@@ -16,8 +23,10 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   error::PersistenceError,
-  journal::{EventAdapters, JournalMessage, JournalResponse, JournalResponseAction},
-  persistent::{PendingHandlerInvocation, PersistentActorState, PersistentEnvelope, PersistentRepr, Recovery},
+  journal::{EventAdapters, JournalError, JournalMessage, JournalResponse, JournalResponseAction},
+  persistent::{
+    AtomicWrite, PendingHandlerInvocation, PersistentActorState, PersistentEnvelope, PersistentRepr, Recovery,
+  },
   snapshot::{SnapshotError, SnapshotMessage, SnapshotResponse, SnapshotResponseAction},
 };
 
@@ -231,10 +240,12 @@ impl<A: 'static> PersistenceContext<A> {
 
     debug_assert!(!messages.is_empty(), "flush_batch requires at least one persistent journal message");
 
+    let atomic_write = AtomicWrite::new(messages)
+      .map_err(|error| PersistenceError::Journal(JournalError::WriteFailed(error.to_string())))?;
     let message = JournalMessage::WriteMessages {
       persistence_id: self.persistence_id.clone(),
       to_sequence_nr,
-      messages,
+      messages: vec![atomic_write],
       sender,
       instance_id: self.instance_id,
     };

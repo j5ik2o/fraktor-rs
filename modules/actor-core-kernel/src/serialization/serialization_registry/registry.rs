@@ -132,6 +132,18 @@ impl SerializationRegistry {
     })
   }
 
+  /// Returns the serializer for an id without converting absence into an error.
+  #[must_use]
+  pub fn registered_serializer(&self, id: SerializerId) -> Option<ArcShared<dyn Serializer>> {
+    self.serializer_by_id_raw(id)
+  }
+
+  /// Returns the serializer id currently bound to the type.
+  #[must_use]
+  pub fn binding_for(&self, type_id: TypeId) -> Option<SerializerId> {
+    self.bindings.with_read(|bindings| bindings.get(&type_id).copied())
+  }
+
   /// Registers a binding at runtime (used by adapters/extensions).
   ///
   /// # Errors

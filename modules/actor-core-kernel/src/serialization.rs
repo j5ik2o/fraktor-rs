@@ -10,6 +10,8 @@ pub mod builtin;
 mod byte_buffer_serializer;
 mod call_scope;
 mod config_adapter;
+/// Runtime serialization registry contributions.
+pub mod contribution;
 mod default_setup;
 mod delegator;
 mod error;

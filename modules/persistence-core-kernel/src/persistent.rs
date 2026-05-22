@@ -1,5 +1,7 @@
 //! Persistent actor package.
 
+mod atomic_write;
+mod atomic_write_error;
 mod eventsourced;
 mod pending_handler_invocation;
 mod persistence_context;
@@ -13,6 +15,8 @@ mod recovery;
 mod recovery_timed_out;
 mod stash_overflow_strategy;
 
+pub use atomic_write::AtomicWrite;
+pub use atomic_write_error::AtomicWriteError;
 pub use eventsourced::Eventsourced;
 pub use pending_handler_invocation::PendingHandlerInvocation;
 pub use persistence_context::PersistenceContext;

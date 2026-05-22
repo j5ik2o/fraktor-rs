@@ -13,7 +13,7 @@ use core::future::{Ready, ready};
 
 use crate::{
   journal::{Journal, JournalError},
-  persistent::PersistentRepr,
+  persistent::{AtomicWrite, PersistentRepr},
 };
 
 /// In-memory journal implementation.
@@ -53,7 +53,7 @@ impl Journal for InMemoryJournal {
   where
     Self: 'a;
 
-  fn write_messages<'a>(&'a mut self, messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
+  fn write_messages<'a>(&'a mut self, messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a> {
     let Some(first) = messages.first() else {
       return ready(Ok(()));
     };
@@ -61,15 +61,19 @@ impl Journal for InMemoryJournal {
     let persistence_id = first.persistence_id().to_string();
     let mut expected = self.expected_sequence_nr(&persistence_id);
 
-    for message in messages {
-      if message.sequence_nr() != expected {
-        return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));
+    for atomic_write in messages {
+      for message in atomic_write.payload() {
+        if message.sequence_nr() != expected {
+          return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));
+        }
+        expected = expected.saturating_add(1);
       }
-      expected = expected.saturating_add(1);
     }
 
     let entry = self.entries.entry(persistence_id.clone()).or_default();
-    entry.extend(messages.iter().cloned());
+    for atomic_write in messages {
+      entry.extend(atomic_write.payload().iter().cloned());
+    }
     self.highest_sequence_nrs.insert(persistence_id, expected.saturating_sub(1));
 
     ready(Ok(()))

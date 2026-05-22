@@ -1,0 +1,10 @@
+//! Runtime serialization registry contribution package.
+
+mod serialization_registry_contribution_error;
+mod serialization_registry_contributor;
+mod serialization_registry_contributors;
+
+pub use serialization_registry_contribution_error::SerializationRegistryContributionError;
+pub use serialization_registry_contributor::SerializationRegistryContributor;
+pub(crate) use serialization_registry_contributors::apply_serialization_registry_contributors;
+pub use serialization_registry_contributors::register_serialization_registry_contributor;

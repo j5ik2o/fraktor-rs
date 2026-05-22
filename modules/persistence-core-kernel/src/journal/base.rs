@@ -3,7 +3,10 @@
 use alloc::vec::Vec;
 use core::future::Future;
 
-use crate::{journal::JournalError, persistent::PersistentRepr};
+use crate::{
+  journal::JournalError,
+  persistent::{AtomicWrite, PersistentRepr},
+};
 
 /// Event journal abstraction using GATs for no_std async.
 pub trait Journal: Send + Sync + 'static {
@@ -27,8 +30,8 @@ pub trait Journal: Send + Sync + 'static {
   where
     Self: 'a;
 
-  /// Writes a batch of messages.
-  fn write_messages<'a>(&'a mut self, messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a>;
+  /// Writes a batch of atomic write units.
+  fn write_messages<'a>(&'a mut self, messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a>;
 
   /// Replays messages in the requested range.
   fn replay_messages<'a>(

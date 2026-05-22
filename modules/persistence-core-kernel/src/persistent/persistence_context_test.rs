@@ -20,7 +20,8 @@ use crate::{
     WriteEventAdapter,
   },
   persistent::{
-    Eventsourced, PendingHandlerInvocation, PersistenceContext, PersistentActorState, PersistentRepr, Recovery,
+    AtomicWrite, Eventsourced, PendingHandlerInvocation, PersistenceContext, PersistentActorState, PersistentRepr,
+    Recovery,
   },
   snapshot::{Snapshot, SnapshotMessage, SnapshotSelectionCriteria},
 };
@@ -137,6 +138,14 @@ fn replay_persistent_repr(sequence_nr: u64, value: i32, manifest: &str) -> Persi
     .with_manifest(manifest)
     .with_adapters(adapters)
     .with_adapter_type_id(TypeId::of::<i32>())
+}
+
+fn first_atomic_payload(messages: &[AtomicWrite]) -> PersistentRepr {
+  messages[0].payload()[0].clone()
+}
+
+fn flatten_atomic_payloads(messages: &[AtomicWrite]) -> Vec<PersistentRepr> {
+  messages.iter().flat_map(AtomicWrite::payload).cloned().collect()
 }
 
 #[test]
@@ -349,7 +358,7 @@ fn context_applies_event_adapters_on_persist_and_replay() {
       | JournalMessage::WriteMessages { messages, instance_id, .. } => {
         assert_eq!(*instance_id, expected_instance_id);
         assert_eq!(messages.len(), 1);
-        messages[0].clone()
+        first_atomic_payload(messages)
       },
       | _ => panic!("unexpected message"),
     }
@@ -438,7 +447,7 @@ fn write_messages_successful_triggers_deferred_handlers() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -506,7 +515,7 @@ fn flush_batch_clears_sender_in_journal_repr_but_keeps_it_for_handler_invocation
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -615,7 +624,7 @@ fn write_message_success_interleaves_defer_between_persisted_handlers() {
     match message {
       | JournalMessage::WriteMessages { to_sequence_nr, messages, .. } => {
         assert_eq!(*to_sequence_nr, 2);
-        messages.clone()
+        flatten_atomic_payloads(messages)
       },
       | _ => panic!("unexpected message"),
     }
@@ -662,7 +671,7 @@ fn write_message_success_with_mismatched_instance_id_is_ignored() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -714,7 +723,7 @@ fn should_stash_commands_when_stashing_defer_waits_for_batch_success() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -743,7 +752,7 @@ fn should_stash_commands_until_write_messages_successful_for_stashing_batch() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -775,7 +784,7 @@ fn should_stash_commands_until_batch_success_when_stashing_defer_is_between_pers
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | JournalMessage::WriteMessages { messages, .. } => flatten_atomic_payloads(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -812,7 +821,7 @@ fn write_message_failure_keeps_context_in_persisting_state() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -852,7 +861,7 @@ fn write_message_failure_with_mismatched_instance_id_is_ignored() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -882,7 +891,7 @@ fn write_message_rejected_returns_to_processing_commands() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -922,7 +931,7 @@ fn write_message_rejected_with_mismatched_instance_id_is_ignored() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1008,7 +1017,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1041,7 +1050,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1066,7 +1075,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1165,7 +1174,7 @@ fn write_message_rejected_keeps_remaining_invocations() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | JournalMessage::WriteMessages { messages, .. } => flatten_atomic_payloads(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1239,7 +1248,7 @@ fn write_message_rejected_for_later_persist_keeps_deferred_invocation() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | JournalMessage::WriteMessages { messages, .. } => flatten_atomic_payloads(messages),
       | _ => panic!("unexpected message"),
     }
   };

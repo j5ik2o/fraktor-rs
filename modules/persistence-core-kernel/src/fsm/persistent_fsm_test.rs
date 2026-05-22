@@ -149,7 +149,9 @@ fn first_write_message_repr(journal_store: &MessageStore) -> PersistentRepr {
     .iter()
     .filter_map(|message| message.payload().downcast_ref::<JournalMessage>())
     .find_map(|message| match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages.first().cloned(),
+      | JournalMessage::WriteMessages { messages, .. } => {
+        messages.first().and_then(|write| write.payload().first().cloned())
+      },
       | _ => None,
     })
     .expect("write message not found")

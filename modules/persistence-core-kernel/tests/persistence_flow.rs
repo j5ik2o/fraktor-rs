@@ -32,7 +32,9 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_persistence_core_kernel_rs::{
   extension::PersistenceExtensionInstaller,
   journal::{InMemoryJournal, Journal},
-  persistent::{Eventsourced, PersistenceContext, PersistentActor, PersistentRepr, persistent_props, spawn_persistent},
+  persistent::{
+    AtomicWrite, Eventsourced, PersistenceContext, PersistentActor, PersistentRepr, persistent_props, spawn_persistent,
+  },
   snapshot::{InMemorySnapshotStore, Snapshot, SnapshotMetadata, SnapshotStore},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
@@ -176,7 +178,8 @@ fn recovery_flow_snapshot_then_replay() {
   let repr1 = PersistentRepr::new("pid-1", 2, ArcShared::new(Event::Incremented(6)));
   let repr2 = PersistentRepr::new("pid-1", 3, ArcShared::new(Event::Incremented(2)));
   let repr3 = PersistentRepr::new("pid-1", 4, ArcShared::new(Event::Incremented(3)));
-  drive_ready(journal.write_messages(&[repr0, repr1, repr2, repr3])).expect("seed journal");
+  let atomic_write = AtomicWrite::new(vec![repr0, repr1, repr2, repr3]).expect("atomic write");
+  drive_ready(journal.write_messages(&[atomic_write])).expect("seed journal");
 
   let mut snapshot_store = InMemorySnapshotStore::new();
   let snapshot_metadata = SnapshotMetadata::new("pid-1", 2, 0);

@@ -4,13 +4,17 @@
 #[path = "persistence_extension_installer_test.rs"]
 mod tests;
 
+use alloc::string::ToString;
+
 use fraktor_actor_core_kernel_rs::{
   actor::extension::{ExtensionInstaller, install_extension_id},
+  serialization::contribution::register_serialization_registry_contributor,
   system::{ActorSystem, ActorSystemBuildError},
 };
 
 use crate::{
-  config::PersistenceSettings, extension::PersistenceExtensionId, journal::Journal, snapshot::SnapshotStore,
+  config::PersistenceSettings, extension::PersistenceExtensionId, journal::Journal,
+  serialization::PersistenceSerializationContributor, snapshot::SnapshotStore,
 };
 
 /// Installs the persistence extension into the actor system.
@@ -51,6 +55,8 @@ where
     let extension_id =
       PersistenceExtensionId::new_with_settings(self.journal.clone(), self.snapshot_store.clone(), self.settings);
     install_extension_id(system, &extension_id);
+    register_serialization_registry_contributor(system, PersistenceSerializationContributor::new())
+      .map_err(|error| ActorSystemBuildError::Configuration(error.to_string()))?;
     Ok(())
   }
 }

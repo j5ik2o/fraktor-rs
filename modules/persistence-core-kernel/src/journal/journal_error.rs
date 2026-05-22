@@ -19,6 +19,11 @@ pub enum JournalError {
   },
   /// Failed to write messages.
   WriteFailed(String),
+  /// Backend cannot guarantee a multi-entry atomic write.
+  UnsupportedAtomicWrite {
+    /// Number of events in the rejected atomic write.
+    size: usize,
+  },
   /// Failed to read messages.
   ReadFailed(String),
   /// Failed to delete messages.
@@ -32,6 +37,9 @@ impl Display for JournalError {
         write!(formatter, "sequence mismatch: expected {}, actual {}", expected, actual)
       },
       | JournalError::WriteFailed(reason) => write!(formatter, "write failed: {}", reason),
+      | JournalError::UnsupportedAtomicWrite { size } => {
+        write!(formatter, "unsupported atomic write size: {}", size)
+      },
       | JournalError::ReadFailed(reason) => write!(formatter, "read failed: {}", reason),
       | JournalError::DeleteFailed(reason) => write!(formatter, "delete failed: {}", reason),
     }

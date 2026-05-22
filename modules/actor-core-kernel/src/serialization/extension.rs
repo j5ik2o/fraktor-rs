@@ -30,6 +30,7 @@ use crate::{
   serialization::{
     builtin,
     call_scope::SerializationCallScope,
+    contribution::apply_serialization_registry_contributors,
     error::SerializationError,
     error_event::SerializationErrorEvent,
     not_serializable_error::NotSerializableError,
@@ -79,6 +80,11 @@ impl SerializationExtension {
         state.emit_log(LogLevel::Error, message, None, None);
         panic!("failed to register builtin serializers: {error:?}");
       }
+    }
+    if let Err(error) = apply_serialization_registry_contributors(system, &registry) {
+      let message = format!("critical: failed to apply serialization registry contributors: {error}");
+      state.emit_log(LogLevel::Error, message, None, None);
+      panic!("failed to apply serialization registry contributors: {error}");
     }
     Self {
       registry,
