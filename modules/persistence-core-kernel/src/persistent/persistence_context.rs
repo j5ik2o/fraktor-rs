@@ -560,11 +560,7 @@ impl<A: 'static> PersistenceContext<A> {
   }
 
   fn replayed_from_journal_repr(&self, repr: &PersistentRepr) -> Vec<PersistentRepr> {
-    let adapters = if self.event_adapters.has_read_adapter_for_type_id(repr.adapter_type_id()) {
-      self.event_adapters.clone()
-    } else {
-      repr.adapters().clone()
-    };
+    let adapters = self.select_adapters_for_replay(repr);
     let repr_with_adapters = repr.clone().with_adapters(adapters);
     let payload = repr_with_adapters.payload().clone();
     let adapted = repr_with_adapters
@@ -576,6 +572,13 @@ impl<A: 'static> PersistenceContext<A> {
       .into_iter()
       .map(|adapted_payload| Self::repr_with_payload(&repr_with_adapters, adapted_payload))
       .collect()
+  }
+
+  fn select_adapters_for_replay(&self, repr: &PersistentRepr) -> EventAdapters {
+    if self.event_adapters.has_read_adapter_for_type_id(repr.adapter_type_id()) {
+      return self.event_adapters.clone();
+    }
+    repr.adapters().clone()
   }
 
   fn repr_with_payload(repr: &PersistentRepr, payload: ArcShared<dyn Any + Send + Sync>) -> PersistentRepr {

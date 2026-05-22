@@ -18,6 +18,14 @@ pub struct SerializedMessage {
 }
 
 impl SerializedMessage {
+  fn end_offset(bytes: &[u8], cursor: usize, len: usize) -> Result<usize, SerializationError> {
+    let end = cursor.checked_add(len).ok_or(SerializationError::InvalidFormat)?;
+    if bytes.len() < end {
+      return Err(SerializationError::InvalidFormat);
+    }
+    Ok(end)
+  }
+
   /// Creates a new serialized message.
   #[must_use]
   pub const fn new(serializer_id: SerializerId, manifest: Option<String>, bytes: Vec<u8>) -> Self {
@@ -86,18 +94,13 @@ impl SerializedMessage {
     let has_manifest = bytes[cursor];
     cursor += 1;
     let manifest = if has_manifest == 1 {
-      if bytes.len() < cursor + 4 {
-        return Err(SerializationError::InvalidFormat);
-      }
+      let len_end = Self::end_offset(bytes, cursor, 4)?;
       let manifest_len =
-        u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().map_err(|_| SerializationError::InvalidFormat)?)
-          as usize;
-      cursor += 4;
-      if bytes.len() < cursor + manifest_len {
-        return Err(SerializationError::InvalidFormat);
-      }
-      let manifest_bytes = &bytes[cursor..cursor + manifest_len];
-      cursor += manifest_len;
+        u32::from_le_bytes(bytes[cursor..len_end].try_into().map_err(|_| SerializationError::InvalidFormat)?) as usize;
+      cursor = len_end;
+      let manifest_end = Self::end_offset(bytes, cursor, manifest_len)?;
+      let manifest_bytes = &bytes[cursor..manifest_end];
+      cursor = manifest_end;
       let manifest_str = core::str::from_utf8(manifest_bytes).map_err(|_| SerializationError::InvalidFormat)?;
       Some(manifest_str.to_owned())
     } else if has_manifest == 0 {
@@ -105,17 +108,13 @@ impl SerializedMessage {
     } else {
       return Err(SerializationError::InvalidFormat);
     };
-    if bytes.len() < cursor + 4 {
-      return Err(SerializationError::InvalidFormat);
-    }
+    let len_end = Self::end_offset(bytes, cursor, 4)?;
     let payload_len =
-      u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().map_err(|_| SerializationError::InvalidFormat)?) as usize;
-    cursor += 4;
-    if bytes.len() < cursor + payload_len {
-      return Err(SerializationError::InvalidFormat);
-    }
-    let payload = bytes[cursor..cursor + payload_len].to_vec();
-    cursor += payload_len;
+      u32::from_le_bytes(bytes[cursor..len_end].try_into().map_err(|_| SerializationError::InvalidFormat)?) as usize;
+    cursor = len_end;
+    let payload_end = Self::end_offset(bytes, cursor, payload_len)?;
+    let payload = bytes[cursor..payload_end].to_vec();
+    cursor = payload_end;
     if cursor != bytes.len() {
       return Err(SerializationError::InvalidFormat);
     }

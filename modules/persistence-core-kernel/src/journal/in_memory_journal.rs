@@ -78,7 +78,7 @@ impl Journal for InMemoryJournal {
           return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));
         }
         let Some(next_expected) = expected.checked_add(1) else {
-          return ready(Err(JournalError::WriteFailed(String::from("sequence number overflow"))));
+          return ready(Err(JournalError::InvalidAtomicWrite(String::from("sequence number overflow"))));
         };
         expected = next_expected;
       }
@@ -88,7 +88,7 @@ impl Journal for InMemoryJournal {
     for atomic_write in messages {
       entry.extend(atomic_write.payload().iter().cloned());
     }
-    self.highest_sequence_nrs.insert(persistence_id, expected - 1);
+    self.highest_sequence_nrs.insert(persistence_id, expected.saturating_sub(1));
 
     ready(Ok(()))
   }
