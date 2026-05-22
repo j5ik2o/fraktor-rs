@@ -170,7 +170,7 @@ impl SerializationRegistry {
       None
     });
     if let Some(existing_type_id) = collision {
-      let existing = self.binding_for(existing_type_id).unwrap_or(serializer_id);
+      let existing = self.binding_for(existing_type_id).ok_or(SerializationError::InvalidFormat)?;
       return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
     }
     self.bindings.with_write(|bindings| {

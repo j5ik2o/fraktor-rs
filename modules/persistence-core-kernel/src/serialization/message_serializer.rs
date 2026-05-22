@@ -54,7 +54,7 @@ impl MessageSerializer {
     wire::write_bool(&mut buffer, repr.deleted());
     let adapter_type_name = if repr.adapter_type_id() == payload.type_id() {
       // Empty adapter key is a wire-level shorthand for "use the decoded payload type".
-      registry.binding_name(repr.adapter_type_id()).unwrap_or_else(String::new)
+      String::new()
     } else {
       registry.binding_name(repr.adapter_type_id()).ok_or(SerializationError::InvalidFormat)?
     };
