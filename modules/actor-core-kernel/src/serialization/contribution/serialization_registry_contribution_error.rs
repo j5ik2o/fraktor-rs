@@ -1,5 +1,9 @@
 //! Serialization registry contribution error.
 
+#[cfg(test)]
+#[path = "serialization_registry_contribution_error_test.rs"]
+mod tests;
+
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::serialization::SerializationError;

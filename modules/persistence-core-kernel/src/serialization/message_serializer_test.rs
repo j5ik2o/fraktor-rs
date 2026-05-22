@@ -15,7 +15,8 @@ use crate::{
   journal::EventAdapters,
   persistent::{AtomicWrite, PersistentRepr},
   serialization::{
-    MESSAGE_SERIALIZER_ID, MessageSerializer, PersistenceSerializationContributor, register_persistence_serializers,
+    MESSAGE_SERIALIZER_ID, MessageSerializer, PersistenceSerializationContributor, SNAPSHOT_SERIALIZER_ID,
+    SnapshotPayload, register_persistence_serializers,
     wire::{self, PERSISTENT_REPR_TAG},
   },
 };
@@ -163,6 +164,27 @@ fn serializer(registry: &ArcShared<SerializationRegistry>) -> MessageSerializer 
 }
 
 #[test]
+fn test_serializers_exercise_trait_methods() {
+  let manifest = ManifestI32Serializer::new(SerializerId::try_from(100).expect("serializer id"));
+  assert!(manifest.include_manifest());
+  assert!(manifest.as_any().downcast_ref::<ManifestI32Serializer>().is_some());
+  assert_eq!(*manifest.from_binary(&1_i32.to_le_bytes(), None).expect("value").downcast_ref::<i32>().unwrap(), 1);
+  assert!(matches!(manifest.from_binary_with_manifest(&[], I32_MANIFEST), Err(SerializationError::InvalidFormat)));
+
+  let hint_only = HintOnlyI32Serializer::new(SerializerId::try_from(101).expect("serializer id"));
+  assert!(hint_only.as_any().downcast_ref::<HintOnlyI32Serializer>().is_some());
+  assert_eq!(
+    *hint_only
+      .from_binary(&1_i32.to_le_bytes(), Some(TypeId::of::<i32>()))
+      .expect("value")
+      .downcast_ref::<i32>()
+      .unwrap(),
+    1
+  );
+  assert!(matches!(hint_only.from_binary(&[], None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
 fn persistent_repr_round_trip_preserves_durable_metadata() {
   let registry = manifest_registry();
   let serializer = serializer(&registry);
@@ -279,6 +301,32 @@ fn empty_manifest_payload_fails_deserialization() {
 }
 
 #[test]
+fn unknown_adapter_type_binding_fails_deserialization() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+  let payload = SerializedMessage::new(
+    SerializerId::try_from(100).expect("serializer id"),
+    Some(I32_MANIFEST.into()),
+    1_i32.to_le_bytes().to_vec(),
+  );
+  let mut repr = Vec::new();
+  wire::write_string(&mut repr, "pid-1").expect("persistence id");
+  wire::write_u64(&mut repr, 1);
+  wire::write_serialized(&mut repr, &payload).expect("payload");
+  wire::write_string(&mut repr, "").expect("manifest");
+  wire::write_string(&mut repr, "").expect("writer uuid");
+  wire::write_u64(&mut repr, 0);
+  wire::write_bool(&mut repr, false);
+  wire::write_string(&mut repr, "missing-adapter").expect("adapter type");
+  wire::write_bool(&mut repr, false);
+  let mut bytes = Vec::new();
+  wire::write_u8(&mut bytes, PERSISTENT_REPR_TAG);
+  wire::write_bytes(&mut bytes, &repr).expect("repr");
+
+  assert!(matches!(serializer.from_binary(&bytes, None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
 fn persistence_serializer_registration_is_idempotent() {
   let registry = manifest_registry();
 
@@ -286,4 +334,29 @@ fn persistence_serializer_registration_is_idempotent() {
 
   register_persistence_serializers(&registry).expect("register twice");
   contributor.contribute(&registry).expect("contribute twice");
+}
+
+#[test]
+fn persistence_serializer_registration_rejects_snapshot_binding_collision() {
+  let id = SerializerId::try_from(100).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("snapshot", id, serializer)
+    .expect("register")
+    .set_fallback("snapshot")
+    .expect("fallback")
+    .bind::<SnapshotPayload>("snapshot")
+    .expect("bind")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+
+  assert!(matches!(
+    register_persistence_serializers(&registry),
+    Err(SerializationError::SerializerBindingCollision {
+      type_name,
+      existing,
+      requested
+    }) if type_name == "SnapshotPayload" && existing == id && requested == SNAPSHOT_SERIALIZER_ID
+  ));
 }

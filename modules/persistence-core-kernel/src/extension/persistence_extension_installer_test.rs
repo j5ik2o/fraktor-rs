@@ -3,10 +3,7 @@ use core::any::{Any, TypeId};
 
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
-  actor::{
-    Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
-    scheduler::SchedulerConfig, setup::ActorSystemConfig,
-  },
+  actor::{extension::ExtensionInstallers, scheduler::SchedulerConfig, setup::ActorSystemConfig},
   serialization::{
     SerializationError, SerializationExtensionInstaller, SerializationExtensionShared, SerializationSetupBuilder,
     Serializer, SerializerId, default_serialization_setup,
@@ -23,14 +20,6 @@ use crate::{
   serialization::{MESSAGE_SERIALIZER_ID, SnapshotPayload},
   snapshot::{InMemorySnapshotStore, SnapshotActorConfig},
 };
-
-struct NoopActor;
-
-impl Actor for NoopActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
 
 struct DummySerializer {
   id: SerializerId,
@@ -73,8 +62,7 @@ fn build_system(installers: ExtensionInstallers) -> ActorSystem {
   let config = ActorSystemConfig::new(TestTickDriver::default())
     .with_scheduler_config(scheduler)
     .with_extension_installers(installers);
-  let props = Props::from_fn(|| NoopActor);
-  ActorSystem::create_from_props(&props, config).expect("system")
+  ActorSystem::create_with_noop_guardian(config).expect("system")
 }
 
 fn assert_persistence_serializers_registered(system: &ActorSystem) {
@@ -86,6 +74,14 @@ fn assert_persistence_serializers_registered(system: &ActorSystem) {
     assert_eq!(registry.binding_for(TypeId::of::<AtomicWrite>()), Some(MESSAGE_SERIALIZER_ID));
     assert!(registry.binding_for(TypeId::of::<SnapshotPayload>()).is_some());
   });
+}
+
+#[test]
+fn dummy_serializer_round_trips_unit_payload() {
+  let serializer = DummySerializer::new(SerializerId::try_from(100).expect("serializer id"));
+
+  assert_eq!(serializer.to_binary(&()).expect("binary"), Vec::<u8>::new());
+  assert!(serializer.from_binary(&[], None).expect("value").downcast_ref::<()>().is_some());
 }
 
 #[test]

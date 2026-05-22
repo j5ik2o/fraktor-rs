@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{
   any::Any,
-  future::{Future, Ready, ready},
+  future::{Future, Ready, pending, ready},
   task::{Context, Poll, Waker},
 };
 
@@ -87,6 +87,12 @@ impl Journal for SingleEntryOnlyJournal {
   fn highest_sequence_nr<'a>(&'a self, _persistence_id: &'a str) -> Self::HighestSeqNrFuture<'a> {
     ready(Ok(0))
   }
+}
+
+#[test]
+#[should_panic(expected = "future was pending")]
+fn poll_ready_panics_when_future_is_pending() {
+  poll_ready(pending::<()>());
 }
 
 #[test]
@@ -196,4 +202,19 @@ fn backend_rejects_unsupported_multi_entry_atomic_write_without_partial_persiste
 
   assert_eq!(result, Err(JournalError::UnsupportedAtomicWrite { size: 2 }));
   assert!(journal.persisted.is_empty());
+}
+
+#[test]
+fn backend_accepts_single_entry_atomic_writes() {
+  let mut journal = SingleEntryOnlyJournal::default();
+  let first = atomic_write(build_messages("pid-1", 1, 1));
+  let second = atomic_write(build_messages("pid-1", 2, 1));
+
+  poll_ready(journal.write_messages(&[first, second])).expect("write failed");
+  let replayed = poll_ready(journal.replay_messages("pid-1", 1, 2, 10)).expect("replay failed");
+  poll_ready(journal.delete_messages_to("pid-1", 2)).expect("delete failed");
+  let highest = poll_ready(journal.highest_sequence_nr("pid-1")).expect("highest failed");
+
+  assert_eq!(replayed.len(), 2);
+  assert_eq!(highest, 0);
 }

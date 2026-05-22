@@ -142,6 +142,26 @@ fn hint_only_registry() -> ArcShared<SerializationRegistry> {
 }
 
 #[test]
+fn test_serializers_exercise_trait_methods() {
+  let manifest = ManifestI32Serializer::new(SerializerId::try_from(110).expect("serializer id"));
+  assert!(manifest.as_any().downcast_ref::<ManifestI32Serializer>().is_some());
+  assert_eq!(*manifest.from_binary(&1_i32.to_le_bytes(), None).expect("value").downcast_ref::<i32>().unwrap(), 1);
+  assert!(matches!(manifest.from_binary_with_manifest(&[], I32_MANIFEST), Err(SerializationError::InvalidFormat)));
+
+  let hint_only = HintOnlyI32Serializer::new(SerializerId::try_from(111).expect("serializer id"));
+  assert!(hint_only.as_any().downcast_ref::<HintOnlyI32Serializer>().is_some());
+  assert_eq!(
+    *hint_only
+      .from_binary(&1_i32.to_le_bytes(), Some(TypeId::of::<i32>()))
+      .expect("value")
+      .downcast_ref::<i32>()
+      .unwrap(),
+    1
+  );
+  assert!(matches!(hint_only.from_binary(&[], None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
 fn snapshot_payload_round_trip_restores_data() {
   let registry = registry();
   let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
