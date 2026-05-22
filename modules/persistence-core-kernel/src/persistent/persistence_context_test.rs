@@ -408,10 +408,9 @@ fn replay_prefers_repr_adapters_when_context_lacks_adapter_type() {
   let replay_action =
     context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: replay_repr });
 
-  assert!(matches!(replay_action, JournalResponseAction::ReceiveRecover(_)));
-  if let JournalResponseAction::ReceiveRecover(repr) = replay_action {
-    assert_eq!(repr.downcast_ref::<i32>(), Some(&21_i32));
-  }
+  let mut actor = DummyActor::default();
+  replay_action.apply(&mut actor);
+  assert_eq!(actor.recovered_values, vec![21_i32]);
 }
 
 #[test]
