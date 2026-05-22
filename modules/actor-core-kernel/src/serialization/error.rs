@@ -5,6 +5,7 @@
 mod tests;
 
 use alloc::string::String;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::{
   call_scope::SerializationCallScope, not_serializable_error::NotSerializableError, serializer_id::SerializerId,
@@ -39,6 +40,27 @@ pub enum SerializationError {
   UnknownManifest(String),
   /// Serialized payload could not be decoded.
   InvalidFormat,
+}
+
+impl Display for SerializationError {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
+    match self {
+      | Self::Uninitialized => write!(formatter, "serialization runtime is uninitialized"),
+      | Self::ManifestMissing { scope } => write!(formatter, "manifest is missing for {:?} serialization", scope),
+      | Self::UnknownSerializer(id) => write!(formatter, "unknown serializer id {}", id.value()),
+      | Self::SerializerIdCollision(id) => write!(formatter, "serializer id {} is already registered", id.value()),
+      | Self::SerializerBindingCollision { type_name, existing, requested } => write!(
+        formatter,
+        "serializer binding collision for {}: existing id {}, requested id {}",
+        type_name,
+        existing.value(),
+        requested.value()
+      ),
+      | Self::NotSerializable(error) => write!(formatter, "type {} is not serializable", error.type_name()),
+      | Self::UnknownManifest(manifest) => write!(formatter, "unknown manifest {}", manifest),
+      | Self::InvalidFormat => write!(formatter, "invalid serialized format"),
+    }
+  }
 }
 
 impl SerializationError {

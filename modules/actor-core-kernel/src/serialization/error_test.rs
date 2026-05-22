@@ -14,6 +14,20 @@ fn invalid_format_debug_representation() {
 }
 
 #[test]
+fn invalid_format_display_representation() {
+  let error = SerializationError::InvalidFormat;
+
+  assert_eq!(error.to_string(), "invalid serialized format");
+}
+
+#[test]
+fn unknown_serializer_display_representation() {
+  let error = SerializationError::UnknownSerializer(SerializerId::try_from(100).unwrap());
+
+  assert_eq!(error.to_string(), "unknown serializer id 100");
+}
+
+#[test]
 fn not_serializable_variant_embeds_payload() {
   let payload = NotSerializableError::new(
     "Example",

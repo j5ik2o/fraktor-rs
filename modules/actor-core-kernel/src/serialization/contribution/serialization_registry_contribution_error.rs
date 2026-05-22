@@ -30,6 +30,6 @@ impl SerializationRegistryContributionError {
 
 impl Display for SerializationRegistryContributionError {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-    write!(formatter, "serialization registry contribution failed: {:?}", self.message)
+    write!(formatter, "serialization registry contribution failed: {}", self.message)
   }
 }
