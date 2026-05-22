@@ -44,8 +44,8 @@ fraktor-rs 側は `modules/persistence-core-kernel/src/` と `modules/persistenc
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象概念 | 80 |
-| fraktor-rs 固定スコープ対応概念 | 58 |
-| 固定スコープ概念カバレッジ | 58/80 (73%) |
+| fraktor-rs 固定スコープ対応概念 | 61 |
+| 固定スコープ概念カバレッジ | 61/80 (76%) |
 | raw public type declarations | 79（kernel: 59, typed: 20） |
 | raw public method declarations | 277（kernel: 202, typed: 75） |
 | hard / medium / easy / trivial gap | 4 / 10 / 3 / 6 |

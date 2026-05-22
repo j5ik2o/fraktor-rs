@@ -448,8 +448,9 @@ fn journal_actor_retry_max_exceeded_on_errors() {
       assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
       failures += 1;
     }
-    if let JournalResponse::WriteMessagesFailed { cause, instance_id, .. } = response {
+    if let JournalResponse::WriteMessagesFailed { cause, write_count, instance_id } = response {
       assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
+      assert_eq!(*write_count, 0);
       assert_eq!(*instance_id, 1);
       batch_failures += 1;
     }

@@ -110,6 +110,19 @@ impl ReadEventAdapter for SplitReadAdapter {
   }
 }
 
+struct AddHundredReadAdapter;
+
+impl ReadEventAdapter for AddHundredReadAdapter {
+  fn adapt_from_journal(&self, event: ArcShared<dyn Any + Send + Sync>, manifest: &str) -> EventSeq {
+    if manifest != SINGLE_MANIFEST {
+      return EventSeq::single(event);
+    }
+    let value = event.downcast_ref::<String>().expect("expected string event");
+    let value = value.parse::<i32>().expect("expected numeric string");
+    EventSeq::single(ArcShared::new(value + 100))
+  }
+}
+
 impl Eventsourced for DummyActor {
   fn persistence_id(&self) -> &str {
     "pid-1"
@@ -411,6 +424,22 @@ fn replay_prefers_repr_adapters_when_context_lacks_adapter_type() {
   let mut actor = DummyActor::default();
   replay_action.apply(&mut actor);
   assert_eq!(actor.recovered_values, vec![21_i32]);
+}
+
+#[test]
+fn replay_prefers_context_adapters_when_context_has_adapter_type() {
+  let write_adapter: ArcShared<dyn WriteEventAdapter> = ArcShared::new(AddTenWriteAdapter);
+  let read_adapter: ArcShared<dyn ReadEventAdapter> = ArcShared::new(AddHundredReadAdapter);
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.event_adapters_mut().register::<i32>(write_adapter, read_adapter);
+  let replay_repr = replay_persistent_repr(3, 21, SINGLE_MANIFEST);
+
+  let replay_action =
+    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: replay_repr });
+
+  let mut actor = DummyActor::default();
+  replay_action.apply(&mut actor);
+  assert_eq!(actor.recovered_values, vec![121_i32]);
 }
 
 #[test]
