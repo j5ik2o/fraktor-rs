@@ -165,6 +165,16 @@ fn split_read_adapter_returns_original_event_for_unknown_manifest() {
   assert_eq!(events[0].downcast_ref::<i32>(), Some(&31_i32));
 }
 
+#[test]
+fn add_hundred_read_adapter_returns_original_event_for_non_single_manifest() {
+  let event: ArcShared<dyn Any + Send + Sync> = ArcShared::new(31_i32);
+  let sequence = AddHundredReadAdapter.adapt_from_journal(event, "unknown-manifest");
+  let events = sequence.into_events();
+
+  assert_eq!(events.len(), 1);
+  assert_eq!(events[0].downcast_ref::<i32>(), Some(&31_i32));
+}
+
 fn first_atomic_payload(messages: &[AtomicWrite]) -> PersistentRepr {
   messages[0].payload()[0].clone()
 }
