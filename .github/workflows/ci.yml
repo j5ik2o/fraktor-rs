@@ -85,7 +85,12 @@ jobs:
             head="${HEAD_SHA}"
           fi
 
-          if [[ -z "${base}" || "${base}" =~ ^0+$ ]]; then
+          if [[ -z "${base}" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${base}" =~ ^0+$ ]]; then
             echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
@@ -97,14 +102,15 @@ jobs:
           fi
 
           is_docs_only_path() {
-            case "$1" in
-              *.md | *.rst | *.txt | docs/* | openspec/* | README* | CHANGELOG* | LICENSE*)
-                return 0
-                ;;
-              *)
-                return 1
-                ;;
-            esac
+            local path="$1"
+            [[ "${path}" == *.md \
+              || "${path}" == *.rst \
+              || "${path}" == *.txt \
+              || "${path}" == docs/* \
+              || "${path}" == openspec/* \
+              || "${path}" == README* \
+              || "${path}" == CHANGELOG* \
+              || "${path}" == LICENSE* ]]
           }
 
           run_code_checks=false
@@ -474,12 +480,14 @@ jobs:
     if: always()
     steps:
       - name: All checks passed
+        env:
+          RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
         run: |
           if [[ "${{ needs.format.result }}" != "success" ]]; then
             echo "format failed"
             exit 1
           fi
-          run_code_checks="${{ needs.changes.outputs.run_code_checks }}"
+          run_code_checks="${RUN_CODE_CHECKS}"
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
             echo "changes failed"
             exit 1
