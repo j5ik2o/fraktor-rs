@@ -90,23 +90,39 @@ jobs:
             exit 0
           fi
 
-          changed_paths="$(git diff --name-only "${base}" "${head}")"
-          if [[ -z "${changed_paths}" ]]; then
+          changed_entries="$(git diff --name-status -M "${base}" "${head}")"
+          if [[ -z "${changed_entries}" ]]; then
             echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
-          run_code_checks=false
-          while IFS= read -r path; do
-            case "${path}" in
-              *.md | openspec/*)
+          is_docs_only_path() {
+            case "$1" in
+              *.md | *.rst | *.txt | docs/* | openspec/* | README* | CHANGELOG* | LICENSE*)
+                return 0
                 ;;
               *)
-                run_code_checks=true
-                break
+                return 1
                 ;;
             esac
-          done <<< "${changed_paths}"
+          }
+
+          run_code_checks=false
+          while IFS=$'\t' read -r status path_a path_b; do
+            paths=("${path_a}")
+            case "${status}" in
+              R* | C*)
+                paths=("${path_a}" "${path_b}")
+                ;;
+            esac
+
+            for path in "${paths[@]}"; do
+              if ! is_docs_only_path "${path}"; then
+                run_code_checks=true
+                break 2
+              fi
+            done
+          done <<< "${changed_entries}"
 
           echo "run_code_checks=${run_code_checks}" >> "${GITHUB_OUTPUT}"
 
@@ -468,8 +484,12 @@ jobs:
             echo "changes failed"
             exit 1
           fi
-          if [[ "${run_code_checks}" != "true" && "${run_code_checks}" != "false" ]]; then
+          if [[ -z "${run_code_checks}" ]]; then
             echo "changes did not report run_code_checks"
+            exit 1
+          fi
+          if [[ "${run_code_checks}" != "true" && "${run_code_checks}" != "false" ]]; then
+            echo "changes reported invalid run_code_checks: ${run_code_checks}"
             exit 1
           fi
 
