@@ -233,6 +233,7 @@ impl<A: 'static> PersistenceContext<A> {
     self.stash_until_batch_completion = has_stashing_invocation;
 
     let atomic_write = AtomicWrite::new(messages).map_err(|error| {
+      // The batch has already been drained into pending invocations above.
       self.reset_after_write_failure();
       PersistenceError::Journal(Self::journal_error_for_atomic_write(error))
     })?;

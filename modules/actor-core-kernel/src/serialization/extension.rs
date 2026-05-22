@@ -83,8 +83,8 @@ impl SerializationExtension {
     }
     if let Err(error) = apply_serialization_registry_contributors(system, &registry) {
       let message = format!("critical: failed to apply serialization registry contributors: {error}");
-      state.emit_log(LogLevel::Error, message, None, None);
-      panic!("failed to apply serialization registry contributors: {error}");
+      state.emit_log(LogLevel::Error, message.clone(), None, None);
+      panic!("{message}");
     }
     Self {
       registry,
