@@ -60,6 +60,7 @@ impl Journal for InMemoryJournal {
 
     let persistence_id = first.persistence_id().to_string();
 
+    // AtomicWrite validates each unit; the journal still validates the batch boundary.
     for atomic_write in messages {
       if atomic_write.persistence_id() != persistence_id {
         return ready(Err(JournalError::MixedPersistenceId {

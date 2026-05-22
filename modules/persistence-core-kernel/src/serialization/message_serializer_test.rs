@@ -25,6 +25,8 @@ const I32_MANIFEST: &str = "test.I32";
 
 struct DomainEvent;
 
+struct UnboundDomainEvent;
+
 struct ManifestI32Serializer {
   id: SerializerId,
 }
@@ -255,6 +257,16 @@ fn non_manifest_resolvable_payload_fails_serialization() {
   let registry = hint_only_registry();
   let serializer = serializer(&registry);
   let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
+
+  assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn unbound_adapter_type_fails_serialization() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+  let repr =
+    PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)).with_adapter_type_id(TypeId::of::<UnboundDomainEvent>());
 
   assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
 }

@@ -131,6 +131,22 @@ fn register_binding_allows_dynamic_resolution() {
 }
 
 #[test]
+fn register_binding_rejects_duplicate_binding_name_for_different_type() {
+  let (registry, alpha_id, beta_id) = setup_with_two_serializers();
+
+  let result = registry.register_binding(TypeId::of::<u64>(), type_name::<u32>(), beta_id);
+
+  assert!(matches!(
+    result,
+    Err(SerializationError::SerializerBindingCollision {
+      type_name: binding_name,
+      existing,
+      requested
+    }) if binding_name == type_name::<u32>() && existing == alpha_id && requested == beta_id
+  ));
+}
+
+#[test]
 fn binding_names_resolve_back_to_type_ids() {
   let (registry, _serializer_id) = setup_with_binding();
 

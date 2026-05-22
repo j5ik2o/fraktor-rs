@@ -52,7 +52,11 @@ impl MessageSerializer {
     wire::write_string(&mut buffer, repr.writer_uuid())?;
     wire::write_u64(&mut buffer, repr.timestamp());
     wire::write_bool(&mut buffer, repr.deleted());
-    let adapter_type_name = registry.binding_name(repr.adapter_type_id()).unwrap_or_default();
+    let adapter_type_name = if repr.adapter_type_id() == payload.type_id() {
+      registry.binding_name(repr.adapter_type_id()).unwrap_or_default()
+    } else {
+      registry.binding_name(repr.adapter_type_id()).ok_or(SerializationError::InvalidFormat)?
+    };
     wire::write_string(&mut buffer, &adapter_type_name)?;
     if let Some(metadata) = repr.metadata() {
       wire::write_bool(&mut buffer, true);
@@ -110,7 +114,7 @@ impl MessageSerializer {
   }
 
   fn has_valid_manifest(message: &SerializedMessage) -> bool {
-    message.manifest().is_some_and(|manifest| !manifest.is_empty())
+    matches!(message.manifest(), Some(manifest) if !manifest.is_empty())
   }
 
   fn deserialize_nested(

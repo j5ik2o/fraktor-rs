@@ -159,11 +159,20 @@ impl SerializationRegistry {
     if self.serializer_by_id_raw(serializer_id).is_none() {
       return Err(SerializationError::UnknownSerializer(serializer_id));
     }
+    let type_name = type_name.into();
+    if let Some(existing_type_id) = self.binding_names.with_read(|binding_names| {
+      binding_names.iter().find_map(|(existing_type_id, existing_name)| {
+        (*existing_type_id != type_id && existing_name == &type_name).then_some(*existing_type_id)
+      })
+    }) {
+      let existing = self.binding_for(existing_type_id).unwrap_or(serializer_id);
+      return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
+    }
     self.bindings.with_write(|bindings| {
       bindings.insert(type_id, serializer_id);
     });
     self.binding_names.with_write(|binding_names| {
-      binding_names.insert(type_id, type_name.into());
+      binding_names.insert(type_id, type_name);
     });
     self.cache_remove(type_id);
     Ok(())
