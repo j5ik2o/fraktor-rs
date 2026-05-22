@@ -568,10 +568,8 @@ impl<A: 'static> PersistenceContext<A> {
     let adapters = self.select_adapters_for_replay(repr);
     let repr_with_adapters = repr.clone().with_adapters(adapters);
     let payload = repr_with_adapters.payload().clone();
-    let adapted = repr_with_adapters
-      .adapters()
-      .read_adapter_for_type_id(repr_with_adapters.adapter_type_id())
-      .adapt_from_journal(payload, repr_with_adapters.manifest());
+    let read_adapter = repr_with_adapters.adapters().read_adapter_for_type_id(repr_with_adapters.adapter_type_id());
+    let adapted = read_adapter.adapt_from_journal(payload, repr_with_adapters.manifest());
     adapted
       .into_events()
       .into_iter()

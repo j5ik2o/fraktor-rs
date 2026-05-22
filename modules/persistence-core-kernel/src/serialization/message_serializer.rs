@@ -47,7 +47,8 @@ impl MessageSerializer {
     let payload = repr.payload().deref();
     let payload_type_name =
       registry.binding_name(payload.type_id()).unwrap_or_else(|| String::from(type_name_of_val(payload)));
-    wire::write_serialized(&mut buffer, &Self::serialize_nested(&delegator, payload, &payload_type_name)?)?;
+    let serialized_payload = Self::serialize_nested(&delegator, payload, &payload_type_name)?;
+    wire::write_serialized(&mut buffer, &serialized_payload)?;
     wire::write_string(&mut buffer, repr.manifest())?;
     wire::write_string(&mut buffer, repr.writer_uuid())?;
     wire::write_u64(&mut buffer, repr.timestamp());
