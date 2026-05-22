@@ -5,7 +5,6 @@
 mod tests;
 
 use alloc::{borrow::ToOwned, string::String, vec::Vec};
-use core::convert::TryInto;
 
 use super::{error::SerializationError, serializer_id::SerializerId};
 
@@ -24,6 +23,13 @@ impl SerializedMessage {
       return Err(SerializationError::InvalidFormat);
     }
     Ok(end)
+  }
+
+  fn read_u32_at(bytes: &[u8], cursor: usize) -> Result<(u32, usize), SerializationError> {
+    let end = Self::end_offset(bytes, cursor, 4)?;
+    let mut raw = [0_u8; 4];
+    raw.copy_from_slice(&bytes[cursor..end]);
+    Ok((u32::from_le_bytes(raw), end))
   }
 
   /// Creates a new serialized message.
@@ -87,16 +93,14 @@ impl SerializedMessage {
     if bytes.len() < 5 {
       return Err(SerializationError::InvalidFormat);
     }
-    let serializer_raw =
-      u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().map_err(|_| SerializationError::InvalidFormat)?);
-    cursor += 4;
+    let (serializer_raw, serializer_end) = Self::read_u32_at(bytes, cursor)?;
+    cursor = serializer_end;
     let serializer_id = SerializerId::from_raw(serializer_raw);
     let has_manifest = bytes[cursor];
     cursor += 1;
     let manifest = if has_manifest == 1 {
-      let len_end = Self::end_offset(bytes, cursor, 4)?;
-      let manifest_len =
-        u32::from_le_bytes(bytes[cursor..len_end].try_into().map_err(|_| SerializationError::InvalidFormat)?) as usize;
+      let (manifest_len, len_end) = Self::read_u32_at(bytes, cursor)?;
+      let manifest_len = manifest_len as usize;
       cursor = len_end;
       let manifest_end = Self::end_offset(bytes, cursor, manifest_len)?;
       let manifest_bytes = &bytes[cursor..manifest_end];
@@ -108,9 +112,8 @@ impl SerializedMessage {
     } else {
       return Err(SerializationError::InvalidFormat);
     };
-    let len_end = Self::end_offset(bytes, cursor, 4)?;
-    let payload_len =
-      u32::from_le_bytes(bytes[cursor..len_end].try_into().map_err(|_| SerializationError::InvalidFormat)?) as usize;
+    let (payload_len, len_end) = Self::read_u32_at(bytes, cursor)?;
+    let payload_len = payload_len as usize;
     cursor = len_end;
     let payload_end = Self::end_offset(bytes, cursor, payload_len)?;
     let payload = bytes[cursor..payload_end].to_vec();
