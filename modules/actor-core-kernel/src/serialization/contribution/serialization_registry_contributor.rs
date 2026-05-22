@@ -8,6 +8,8 @@ use crate::serialization::{SerializationError, serialization_registry::Serializa
 pub trait SerializationRegistryContributor: Send + Sync {
   /// Applies this contribution to the registry.
   ///
+  /// The registry accepts live serializer and binding updates through interior mutability.
+  ///
   /// # Errors
   ///
   /// Returns [`SerializationError`] when serializer or binding registration fails.
