@@ -1,5 +1,7 @@
 # fraktor-rs Mutex 抽象レイヤの問題分析 — 別 AI 説明用サマリ
 
+この文書を同期プリミティブ抽象層の問題分析の正本とする。旧入口の `docs/plan/utils-plan-0.md` は、OpenSpec archive からの履歴リンクを壊さないための互換メモとしてだけ残す。
+
 ## プロジェクト前提
 
 - **対象**: `fraktor-rs` (Rust アクターフレームワーク, Apache Pekko / protoactor-go を参照実装)
