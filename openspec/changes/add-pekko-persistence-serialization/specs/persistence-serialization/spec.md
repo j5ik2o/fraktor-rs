@@ -16,7 +16,7 @@ The persistence kernel SHALL expose an `AtomicWrite` type that represents one al
 - **THEN** creation fails without producing an atomic write
 
 ### Requirement: Journal writes use atomic writes
-The journal write contract SHALL accept batches of `AtomicWrite` units, and each `AtomicWrite` SHALL be persisted atomically by a journal implementation.
+The journal write contract SHALL accept batches of `AtomicWrite` units, and each `AtomicWrite` SHALL be persisted atomically by a journal implementation or rejected without partial persistence when the backend cannot guarantee atomicity.
 
 #### Scenario: Journal actor writes atomic batches
 - **WHEN** `JournalMessage::WriteMessages` is handled by `JournalActor`
@@ -26,16 +26,20 @@ The journal write contract SHALL accept batches of `AtomicWrite` units, and each
 - **WHEN** `InMemoryJournal` stores a batch of atomic writes
 - **THEN** replay returns the contained `PersistentRepr` entries in sequence order for the matching persistence id
 
+#### Scenario: Unsupported multi-event atomic write rejected
+- **WHEN** a journal backend receives a multi-entry `AtomicWrite` but cannot guarantee all-or-none persistence for that backend
+- **THEN** the journal returns a deterministic unsupported-operation error without persisting a prefix of the atomic write
+
 ### Requirement: Message serializer delegates persistent payloads
 The persistence kernel SHALL provide a `MessageSerializer` that serializes and deserializes `PersistentRepr` and `AtomicWrite` while delegating each persistent payload and metadata value to the actor serialization registry and preserving durable persistent representation metadata.
 
 #### Scenario: Persistent representation round trip
 - **WHEN** `MessageSerializer` serializes a `PersistentRepr` whose payload and metadata serializers can deserialize from serializer id plus encoded manifest
-- **THEN** deserializing the bytes restores the persistence id, sequence number, manifest, writer uuid, timestamp, deleted flag, sender, adapter type id, payload, and metadata values
+- **THEN** deserializing the bytes restores the persistence id, sequence number, manifest, writer uuid, timestamp, deleted flag, payload, and metadata values
 
-#### Scenario: Runtime event adapter registry is not durable data
-- **WHEN** `MessageSerializer` serializes a `PersistentRepr` with a configured `EventAdapters` runtime registry
-- **THEN** deserializing the bytes preserves the adapter type id needed for replay adapter resolution without encoding the runtime registry internals
+#### Scenario: Runtime replay context is not durable data
+- **WHEN** `MessageSerializer` serializes a journal `PersistentRepr` that was created from actor runtime context
+- **THEN** deserializing the bytes does not restore sender, the `EventAdapters` runtime registry, or a Rust `TypeId` adapter key from durable bytes
 
 #### Scenario: Atomic write round trip
 - **WHEN** `MessageSerializer` serializes an `AtomicWrite`
@@ -70,6 +74,10 @@ The persistence extension installer SHALL automatically register persistence ser
 #### Scenario: Persistence serializer id collision rejected
 - **WHEN** persistence serializer registration finds a serializer id already occupied by a different serializer
 - **THEN** actor system bootstrap fails before binding persistence types to the occupied serializer id
+
+#### Scenario: Persistence type binding collision rejected
+- **WHEN** persistence serializer registration finds `PersistentRepr`, `AtomicWrite`, or snapshot payload wrapper already bound to a different serializer id
+- **THEN** actor system bootstrap fails before overwriting the existing type binding
 
 #### Scenario: Persistent messages serialize after persistence install
 - **WHEN** the persistence extension has been installed

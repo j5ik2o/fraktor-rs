@@ -26,6 +26,8 @@ Pekko keeps the plugin API typed around `PersistentRepr`, `AtomicWrite`, `Snapsh
 
    `AtomicWrite` SHALL contain a non-empty `Vec<PersistentRepr>` and SHALL validate that all entries use the same persistence id. It exposes `persistence_id`, `lowest_sequence_nr`, `highest_sequence_nr`, `size`, and `payload` accessors. This follows Pekko `AtomicWrite` and makes `persist_all` all-or-none semantics explicit. The alternative, keeping `Vec<PersistentRepr>`, leaves the atomicity boundary implicit and makes a Pekko-compatible `MessageSerializer` incomplete.
 
+   Journal implementations SHALL either persist each `AtomicWrite` atomically or reject it before any partial write when the backend cannot guarantee atomicity. This follows Pekko's plugin contract, where unsupported multi-event atomic writes are rejected instead of silently degrading to non-atomic behavior.
+
 2. Change journal write contracts to `AtomicWrite`.
 
    `Journal::write_messages` SHALL receive `&[AtomicWrite]`, and `JournalMessage::WriteMessages` SHALL carry `Vec<AtomicWrite>`. `JournalActor` responses can still emit per-`PersistentRepr` success/failure messages by iterating atomic writes. This is intentionally breaking because the project is pre-release and the old contract hides a domain invariant.
@@ -44,7 +46,7 @@ Pekko keeps the plugin API typed around `PersistentRepr`, `AtomicWrite`, `Snapsh
 
 6. Fail fast on persistence serializer registration collisions.
 
-   Persistence serializer IDs are runtime contracts. If an ID required by `MessageSerializer` or `SnapshotSerializer` is already occupied by a different serializer, bootstrap SHALL fail before binding persistence types. Re-registering the same persistence serializer set is idempotent. Silent skip is not allowed because it can bind `PersistentRepr`, `AtomicWrite`, or snapshot wrappers to an unintended serializer.
+   Persistence serializer IDs and persistence type bindings are runtime contracts. If an ID required by `MessageSerializer` or `SnapshotSerializer` is already occupied by a different serializer, or if a persistence type is already bound to a different serializer ID, bootstrap SHALL fail before binding persistence types. Re-registering the same persistence serializer set is idempotent. Silent skip or overwrite is not allowed because it can bind `PersistentRepr`, `AtomicWrite`, or snapshot wrappers to an unintended serializer.
 
 7. Use fraktor internal wire structures.
 
@@ -54,17 +56,18 @@ Pekko keeps the plugin API typed around `PersistentRepr`, `AtomicWrite`, `Snapsh
 
    `MessageSerializer` and `SnapshotSerializer` deserialize nested objects from durable `SerializedMessage` data, not from the caller's concrete Rust type hint. A nested serializer is eligible for the round-trip guarantee only when it can reconstruct the object from serializer id plus encoded manifest. Serializers that require an external type hint must fail with a serialization error instead of producing a partially typed or erased value.
 
-9. Keep runtime event adapter registries out of the durable wire format.
+9. Keep runtime replay context out of the durable wire format.
 
-   `PersistentRepr` contains an `EventAdapters` registry for runtime adaptation and an `adapter_type_id` for adapter resolution. The serializer SHALL preserve durable replay metadata, including `sender` and `adapter_type_id`, but SHALL NOT encode the `EventAdapters` registry internals because it contains runtime trait objects and configuration. Replay paths that require non-identity adapters must reattach the configured runtime registry around deserialized representations before adaptation.
+   `PersistentRepr` contains runtime-only replay context such as `sender`, an `EventAdapters` registry, and an `adapter_type_id` based on Rust `TypeId`. Journal serialization SHALL NOT encode those values as durable bytes. `sender` is ephemeral routing state and is cleared before journal writes. `EventAdapters` contains runtime trait objects and configuration. Rust `TypeId` is not stable across builds or deployments, so it cannot be a durable adapter lookup key. Replay paths that require non-identity adapters must resolve them from runtime configuration and stable payload metadata, or a future change must introduce an explicit stable adapter manifest before persisting adapter selection.
 
 ## Risks / Trade-offs
 
 - Breaking journal API changes → Update all in-tree `Journal` implementations, tests, and examples in the same change.
-- Serializer registration collisions → Use fixed runtime serializer IDs outside existing built-in IDs, make duplicate persistence registration idempotent, and fail fast when a different serializer occupies the required ID.
+- Backends without multi-entry atomic writes → Return an unsupported-operation journal error before writing any part of the `AtomicWrite`.
+- Serializer registration collisions → Use fixed runtime serializer IDs outside existing built-in IDs, make duplicate persistence registration idempotent, and fail fast when a different serializer occupies the required ID or a persistence type binding points elsewhere.
 - Installer ordering → Compose persistence serializer setup with custom serialization setup before extension instantiation so persistence does not accidentally install the default serialization extension first.
 - Nested payloads without registered serializers → Surface `SerializationError::NotSerializable` during persistence serialization; do not silently store erased payloads.
 - Nested payloads without manifest-resolvable deserialization → Surface a serialization error; do not overpromise round-trip for serializers that require a concrete type hint during decode.
-- Event adapter registry is runtime state → Preserve the adapter type id in bytes, and test that deserialization does not pretend to reconstruct the runtime adapter registry from durable data.
+- Runtime replay context is not durable state → Do not serialize sender, `EventAdapters`, or Rust `TypeId`; document any future stable adapter manifest separately before using it in durable bytes.
 - Snapshot naming collision with existing `snapshot::Snapshot` → Keep the existing public snapshot container and add a clearly scoped serialization wrapper type in a `serialization` module if a separate wrapper is required.
 - Byte-level incompatibility with Pekko → Document as a non-goal and keep field semantics close enough that a future protobuf-compatible serializer can be added without changing journal contracts again.
