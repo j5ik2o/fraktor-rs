@@ -30,7 +30,7 @@ The journal write contract SHALL accept batches of `AtomicWrite` units, and each
 The persistence kernel SHALL provide a `MessageSerializer` that serializes and deserializes `PersistentRepr` and `AtomicWrite` while delegating each persistent payload and metadata value to the actor serialization registry and preserving durable persistent representation metadata.
 
 #### Scenario: Persistent representation round trip
-- **WHEN** `MessageSerializer` serializes a `PersistentRepr` whose payload serializer is registered
+- **WHEN** `MessageSerializer` serializes a `PersistentRepr` whose payload and metadata serializers can deserialize from serializer id plus encoded manifest
 - **THEN** deserializing the bytes restores the persistence id, sequence number, manifest, writer uuid, timestamp, deleted flag, sender, adapter type id, payload, and metadata values
 
 #### Scenario: Runtime event adapter registry is not durable data
@@ -49,7 +49,7 @@ The persistence kernel SHALL provide a `MessageSerializer` that serializes and d
 The persistence kernel SHALL provide a `SnapshotSerializer` that serializes and deserializes snapshot payload wrappers while delegating snapshot data to the actor serialization registry.
 
 #### Scenario: Snapshot payload round trip
-- **WHEN** `SnapshotSerializer` serializes a snapshot payload wrapper whose data serializer is registered
+- **WHEN** `SnapshotSerializer` serializes a snapshot payload wrapper whose data serializer can deserialize from serializer id plus encoded manifest
 - **THEN** deserializing the bytes restores the wrapped snapshot data
 
 #### Scenario: Snapshot data serializer id is retained
@@ -57,15 +57,19 @@ The persistence kernel SHALL provide a `SnapshotSerializer` that serializes and 
 - **THEN** the encoded snapshot record contains the nested serializer id and manifest needed to deserialize through the actor serialization registry
 
 ### Requirement: Persistence installer registers serializers
-The persistence extension installer SHALL automatically register persistence serializers and type bindings with the actor serialization extension during actor system bootstrap.
+The persistence extension installer SHALL automatically register persistence serializers and type bindings with the actor serialization extension during actor system bootstrap without making custom serialization setup depend on installer insertion order.
 
 #### Scenario: Default serialization extension registration
-- **WHEN** a system installs `PersistenceExtensionInstaller` without a preinstalled serialization extension
-- **THEN** the installer registers the default serialization extension and then registers persistence serializers on it
+- **WHEN** a system installs `PersistenceExtensionInstaller` without custom serialization setup
+- **THEN** actor system bootstrap creates a serialization extension containing default actor serializers and persistence serializers
 
-#### Scenario: Existing serialization extension augmented
-- **WHEN** a system installs a custom serialization extension before `PersistenceExtensionInstaller`
-- **THEN** the persistence installer augments the existing serialization registry instead of replacing it
+#### Scenario: Custom serialization setup is order independent
+- **WHEN** a system installs both custom serialization setup and `PersistenceExtensionInstaller` in either insertion order
+- **THEN** actor system bootstrap creates one serialization extension containing the custom serializers, default actor serializers, and persistence serializers
+
+#### Scenario: Persistence serializer id collision rejected
+- **WHEN** persistence serializer registration finds a serializer id already occupied by a different serializer
+- **THEN** actor system bootstrap fails before binding persistence types to the occupied serializer id
 
 #### Scenario: Persistent messages serialize after persistence install
 - **WHEN** the persistence extension has been installed

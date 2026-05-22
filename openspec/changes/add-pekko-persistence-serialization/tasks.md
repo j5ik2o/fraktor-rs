@@ -13,14 +13,15 @@
 - [ ] 2.3 Implement internal no_std encoding/decoding helpers for nested `SerializedMessage` records and persistence metadata fields.
 - [ ] 2.4 Implement `MessageSerializer` for `PersistentRepr` and `AtomicWrite`, delegating payload and metadata through `SerializationDelegator` while preserving durable metadata including sender and adapter type id.
 - [ ] 2.5 Implement `SnapshotSerializer` for snapshot payload wrappers, delegating data through `SerializationDelegator`.
-- [ ] 2.6 Add serializer round-trip tests for `PersistentRepr`, `AtomicWrite`, snapshot data, metadata, sender, adapter type id, runtime event adapter registry behavior, and unregistered payload failure.
+- [ ] 2.6 Add serializer round-trip tests for `PersistentRepr`, `AtomicWrite`, snapshot data, metadata, sender, adapter type id, runtime event adapter registry behavior, unregistered payload failure, and non-manifest-resolvable payload failure.
 
 ## 3. Automatic Registration
 
 - [ ] 3.1 Add persistence serializer ids and a registration helper that registers serializers and type bindings against `SerializationRegistry`.
-- [ ] 3.2 Expose the minimal actor serialization extension API needed to register serializer instances at runtime, following existing collision behavior.
-- [ ] 3.3 Update `PersistenceExtensionInstaller` to ensure the actor serialization extension exists and register persistence serializers before installing persistence actors.
-- [ ] 3.4 Add installer tests for default serialization extension creation and augmentation of an existing custom serialization extension.
+- [ ] 3.2 Define fail-fast collision handling for occupied persistence serializer ids and conflicting persistence type bindings.
+- [ ] 3.3 Expose the minimal actor serialization bootstrap API needed to compose persistence serializers with default and custom serialization setup before `SerializationExtension` instantiation.
+- [ ] 3.4 Update `PersistenceExtensionInstaller` to contribute persistence serializers without installing a default serialization extension that can shadow later custom setup.
+- [ ] 3.5 Add installer tests for default serialization extension creation, custom setup installed before persistence, custom setup installed after persistence, and serializer id collision failure.
 
 ## 4. Documentation and Validation
 
