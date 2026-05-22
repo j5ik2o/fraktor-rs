@@ -142,6 +142,16 @@ fn replay_persistent_repr(sequence_nr: u64, value: i32, manifest: &str) -> Persi
     .with_adapter_type_id(TypeId::of::<i32>())
 }
 
+#[test]
+fn split_read_adapter_returns_original_event_for_unknown_manifest() {
+  let event: ArcShared<dyn Any + Send + Sync> = ArcShared::new(31_i32);
+  let sequence = SplitReadAdapter.adapt_from_journal(event, "unknown-manifest");
+  let events = sequence.into_events();
+
+  assert_eq!(events.len(), 1);
+  assert_eq!(events[0].downcast_ref::<i32>(), Some(&31_i32));
+}
+
 fn first_atomic_payload(messages: &[AtomicWrite]) -> PersistentRepr {
   messages[0].payload()[0].clone()
 }

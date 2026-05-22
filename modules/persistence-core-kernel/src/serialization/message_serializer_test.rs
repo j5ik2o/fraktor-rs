@@ -17,7 +17,7 @@ use crate::{
   serialization::{
     MESSAGE_SERIALIZER_ID, MessageSerializer, PersistenceSerializationContributor, SNAPSHOT_SERIALIZER_ID,
     SnapshotPayload, register_persistence_serializers,
-    wire::{self, PERSISTENT_REPR_TAG},
+    wire::{self, ATOMIC_WRITE_TAG, PERSISTENT_REPR_TAG},
   },
 };
 
@@ -298,6 +298,17 @@ fn unknown_wire_tag_fails_deserialization() {
   let serializer = serializer(&registry);
 
   assert!(matches!(serializer.from_binary(&[u8::MAX], None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn empty_atomic_write_payload_fails_deserialization() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+  let mut bytes = Vec::new();
+  wire::write_u8(&mut bytes, ATOMIC_WRITE_TAG);
+  wire::write_u32(&mut bytes, 0);
+
+  assert!(matches!(serializer.from_binary(&bytes, None), Err(SerializationError::InvalidFormat)));
 }
 
 #[test]
