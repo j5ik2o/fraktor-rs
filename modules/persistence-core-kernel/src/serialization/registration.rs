@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Serializer id for persistence journal messages.
-pub const MESSAGE_SERIALIZER_ID: SerializerId = SerializerId::from_raw(41);
+pub const MESSAGE_SERIALIZER_ID: SerializerId = SerializerId::from_raw(43);
 
 /// Serializer id for persistence snapshot payloads.
 pub const SNAPSHOT_SERIALIZER_ID: SerializerId = SerializerId::from_raw(42);

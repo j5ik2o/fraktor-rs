@@ -312,7 +312,7 @@ impl<A: 'static> PersistenceContext<A> {
       },
       | JournalResponse::ReplayedMessage { persistent_repr } => {
         self.current_sequence_nr = persistent_repr.sequence_nr();
-        let mut replayed_reprs = Self::from_journal_repr(persistent_repr);
+        let mut replayed_reprs = self.replayed_from_journal_repr(persistent_repr);
         match replayed_reprs.len() {
           | 0 => JournalResponseAction::None,
           | 1 => {
@@ -570,11 +570,13 @@ impl<A: 'static> PersistenceContext<A> {
     Self::repr_with_payload(repr, adapted_payload).with_manifest(manifest).with_sender(None)
   }
 
-  fn from_journal_repr(repr: &PersistentRepr) -> Vec<PersistentRepr> {
+  fn replayed_from_journal_repr(&self, repr: &PersistentRepr) -> Vec<PersistentRepr> {
+    let adapters = if self.event_adapters.is_empty() { repr.adapters().clone() } else { self.event_adapters.clone() };
+    let repr = repr.clone().with_adapters(adapters);
     let payload = repr.payload().clone();
     let adapted =
       repr.adapters().read_adapter_for_type_id(repr.adapter_type_id()).adapt_from_journal(payload, repr.manifest());
-    adapted.into_events().into_iter().map(|adapted_payload| Self::repr_with_payload(repr, adapted_payload)).collect()
+    adapted.into_events().into_iter().map(|adapted_payload| Self::repr_with_payload(&repr, adapted_payload)).collect()
   }
 
   fn repr_with_payload(repr: &PersistentRepr, payload: ArcShared<dyn Any + Send + Sync>) -> PersistentRepr {

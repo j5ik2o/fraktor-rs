@@ -68,6 +68,9 @@ impl Journal for InMemoryJournal {
           actual:   atomic_write.persistence_id().to_string(),
         }));
       }
+    }
+
+    for atomic_write in messages {
       for message in atomic_write.payload() {
         if message.sequence_nr() != expected {
           return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));

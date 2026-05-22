@@ -379,8 +379,9 @@ fn context_applies_event_adapters_on_persist_and_replay() {
   }
   assert_eq!(actor.handled_values, vec![5_i32]);
 
+  let serialized_journal_repr = persisted_repr.clone().with_adapters(EventAdapters::new());
   let replay_action =
-    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: persisted_repr.clone() });
+    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: serialized_journal_repr });
   let mut recovering_actor = DummyActor::default();
   replay_action.apply(&mut recovering_actor);
   assert_eq!(recovering_actor.recovered_values, vec![15_i32, 16_i32]);

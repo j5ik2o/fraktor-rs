@@ -103,17 +103,21 @@ impl MessageSerializer {
     type_name: &str,
   ) -> Result<SerializedMessage, SerializationError> {
     let nested = delegator.serialize(message, type_name)?;
-    if nested.manifest().is_none_or(str::is_empty) {
+    if !Self::has_valid_manifest(&nested) {
       return Err(SerializationError::InvalidFormat);
     }
     Ok(nested)
+  }
+
+  fn has_valid_manifest(message: &SerializedMessage) -> bool {
+    message.manifest().is_some_and(|manifest| !manifest.is_empty())
   }
 
   fn deserialize_nested(
     delegator: &SerializationDelegator<'_>,
     message: &SerializedMessage,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    if message.manifest().is_none_or(str::is_empty) {
+    if !Self::has_valid_manifest(message) {
       return Err(SerializationError::InvalidFormat);
     }
     delegator.deserialize(message, None)
