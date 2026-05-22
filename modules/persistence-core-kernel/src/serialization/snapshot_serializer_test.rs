@@ -2,8 +2,8 @@ use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
 use fraktor_actor_core_kernel_rs::serialization::{
-  SerializationError, SerializationSetupBuilder, Serializer, SerializerId, SerializerWithStringManifest,
-  serialization_registry::SerializationRegistry,
+  SerializationError, SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId,
+  SerializerWithStringManifest, serialization_registry::SerializationRegistry,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -97,4 +97,24 @@ fn snapshot_payload_round_trip_restores_data() {
   let restored = restored.downcast_ref::<SnapshotPayload>().expect("snapshot payload");
 
   assert_eq!(restored.downcast_ref::<i32>(), Some(&99));
+}
+
+#[test]
+fn snapshot_serializer_reports_manifest_and_rejects_unknown_message_type() {
+  let registry = registry();
+  let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
+
+  assert_eq!(serializer.identifier(), SNAPSHOT_SERIALIZER_ID);
+  assert!(serializer.include_manifest());
+  assert!(serializer.as_any().downcast_ref::<SnapshotSerializer>().is_some());
+  assert!(matches!(serializer.to_binary(&"unsupported"), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn snapshot_payload_without_manifest_fails_deserialization() {
+  let registry = registry();
+  let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
+  let nested = SerializedMessage::new(SerializerId::try_from(110).expect("serializer id"), None, Vec::new());
+
+  assert!(matches!(serializer.from_binary(&nested.encode(), None), Err(SerializationError::InvalidFormat)));
 }

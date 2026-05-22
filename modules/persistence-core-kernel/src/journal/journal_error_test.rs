@@ -31,6 +31,13 @@ fn journal_error_display_mixed_persistence_id() {
 }
 
 #[test]
+fn journal_error_display_unsupported_atomic_write() {
+  let error = JournalError::UnsupportedAtomicWrite { size: 2 };
+
+  assert_eq!(error.to_string(), "unsupported atomic write size: 2");
+}
+
+#[test]
 fn journal_error_display_read_failed() {
   let error = JournalError::ReadFailed("decode error".into());
 

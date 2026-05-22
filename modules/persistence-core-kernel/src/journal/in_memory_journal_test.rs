@@ -105,6 +105,16 @@ fn in_memory_journal_write_and_replay() {
 }
 
 #[test]
+fn in_memory_journal_empty_batch_is_noop() {
+  let mut journal = InMemoryJournal::new();
+
+  let result = poll_ready(journal.write_messages(&[]));
+
+  assert!(result.is_ok());
+  assert_eq!(poll_ready(journal.highest_sequence_nr("pid-1")).expect("highest failed"), 0);
+}
+
+#[test]
 fn in_memory_journal_sequence_mismatch() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 2, 1);

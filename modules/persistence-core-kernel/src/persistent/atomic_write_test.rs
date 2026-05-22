@@ -1,3 +1,5 @@
+use alloc::string::ToString;
+
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::persistent::{AtomicWrite, AtomicWriteError, PersistentRepr};
@@ -12,6 +14,7 @@ fn atomic_write_accepts_non_empty_payload_for_one_persistence_id() {
 
   assert_eq!(write.persistence_id(), "pid-1");
   assert_eq!(write.size(), 2);
+  assert!(!write.is_empty());
   assert_eq!(write.payload().len(), 2);
 }
 
@@ -35,4 +38,23 @@ fn atomic_write_exposes_sequence_number_bounds() {
 
   assert_eq!(write.lowest_sequence_nr(), 1);
   assert_eq!(write.highest_sequence_nr(), 3);
+}
+
+#[test]
+fn atomic_write_consumes_payload() {
+  let write = AtomicWrite::new(vec![repr("pid-1", 1)]).expect("atomic write");
+
+  let payload = write.into_payload();
+
+  assert_eq!(payload.len(), 1);
+  assert_eq!(payload[0].persistence_id(), "pid-1");
+}
+
+#[test]
+fn atomic_write_error_display_messages() {
+  assert_eq!(AtomicWriteError::Empty.to_string(), "atomic write payload must not be empty");
+
+  let error = AtomicWriteError::MixedPersistenceId { expected: "pid-1".into(), actual: "pid-2".into() };
+
+  assert_eq!(error.to_string(), "atomic write persistence id mismatch: expected pid-1, actual pid-2");
 }

@@ -4,8 +4,9 @@ use core::any::{Any, TypeId};
 use fraktor_actor_core_kernel_rs::{
   actor::Pid,
   serialization::{
-    SerializationDelegator, SerializationError, SerializationSetupBuilder, Serializer, SerializerId,
-    SerializerWithStringManifest, serialization_registry::SerializationRegistry,
+    SerializationDelegator, SerializationError, SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId,
+    SerializerWithStringManifest, contribution::SerializationRegistryContributor,
+    serialization_registry::SerializationRegistry,
   },
 };
 use fraktor_utils_core_rs::sync::ArcShared;
@@ -13,7 +14,10 @@ use fraktor_utils_core_rs::sync::ArcShared;
 use crate::{
   journal::EventAdapters,
   persistent::{AtomicWrite, PersistentRepr},
-  serialization::{MESSAGE_SERIALIZER_ID, MessageSerializer, register_persistence_serializers},
+  serialization::{
+    MESSAGE_SERIALIZER_ID, MessageSerializer, PersistenceSerializationContributor, register_persistence_serializers,
+    wire::{self, PERSISTENT_REPR_TAG},
+  },
 };
 
 const I32_MANIFEST: &str = "test.I32";
@@ -116,86 +120,9 @@ impl Serializer for HintOnlyI32Serializer {
   }
 }
 
-struct EmptyManifestI32Serializer {
-  id: SerializerId,
-}
-
-impl EmptyManifestI32Serializer {
-  fn new(id: SerializerId) -> Self {
-    Self { id }
-  }
-}
-
-impl Serializer for EmptyManifestI32Serializer {
-  fn identifier(&self) -> SerializerId {
-    self.id
-  }
-
-  fn include_manifest(&self) -> bool {
-    true
-  }
-
-  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
-    let value = message.downcast_ref::<i32>().ok_or(SerializationError::InvalidFormat)?;
-    Ok(value.to_le_bytes().to_vec())
-  }
-
-  fn from_binary(
-    &self,
-    bytes: &[u8],
-    _type_hint: Option<TypeId>,
-  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    if bytes.len() != core::mem::size_of::<i32>() {
-      return Err(SerializationError::InvalidFormat);
-    }
-    let mut array = [0_u8; core::mem::size_of::<i32>()];
-    array.copy_from_slice(bytes);
-    Ok(Box::new(i32::from_le_bytes(array)))
-  }
-
-  fn as_any(&self) -> &(dyn Any + Send + Sync) {
-    self
-  }
-
-  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
-    Some(self)
-  }
-}
-
-impl SerializerWithStringManifest for EmptyManifestI32Serializer {
-  fn manifest(&self, _message: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
-    Cow::Borrowed("")
-  }
-
-  fn from_binary_with_manifest(
-    &self,
-    bytes: &[u8],
-    _manifest: &str,
-  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    self.from_binary(bytes, Some(TypeId::of::<i32>()))
-  }
-}
-
 fn manifest_registry() -> ArcShared<SerializationRegistry> {
   let id = SerializerId::try_from(100).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(id));
-  let setup = SerializationSetupBuilder::new()
-    .register_serializer("i32", id, serializer)
-    .expect("register")
-    .set_fallback("i32")
-    .expect("fallback")
-    .bind::<i32>("i32")
-    .expect("bind")
-    .build()
-    .expect("setup");
-  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
-  register_persistence_serializers(&registry).expect("persistence serializers");
-  registry
-}
-
-fn empty_manifest_registry() -> ArcShared<SerializationRegistry> {
-  let id = SerializerId::try_from(102).expect("serializer id");
-  let serializer: ArcShared<dyn Serializer> = ArcShared::new(EmptyManifestI32Serializer::new(id));
   let setup = SerializationSetupBuilder::new()
     .register_serializer("i32", id, serializer)
     .expect("register")
@@ -299,17 +226,6 @@ fn non_manifest_resolvable_payload_fails_deserialization() {
 }
 
 #[test]
-fn empty_manifest_payload_fails_deserialization() {
-  let registry = empty_manifest_registry();
-  let serializer = serializer(&registry);
-  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
-
-  let bytes = serializer.to_binary(&repr).expect("serialize");
-
-  assert!(matches!(serializer.from_binary(&bytes, None), Err(SerializationError::InvalidFormat)));
-}
-
-#[test]
 fn registry_resolves_persistence_message_serializer() {
   let registry = manifest_registry();
   let delegator = SerializationDelegator::new(&registry);
@@ -318,4 +234,54 @@ fn registry_resolves_persistence_message_serializer() {
   let serialized = delegator.serialize(&repr, "PersistentRepr").expect("serialize");
 
   assert_eq!(serialized.serializer_id(), MESSAGE_SERIALIZER_ID);
+}
+
+#[test]
+fn serializer_reports_manifest_and_rejects_unknown_message_type() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+
+  assert!(serializer.include_manifest());
+  assert!(serializer.as_any().downcast_ref::<MessageSerializer>().is_some());
+  assert!(matches!(serializer.to_binary(&"unsupported"), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn unknown_wire_tag_fails_deserialization() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+
+  assert!(matches!(serializer.from_binary(&[u8::MAX], None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn empty_manifest_payload_fails_deserialization() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+  let payload =
+    SerializedMessage::new(SerializerId::try_from(100).expect("serializer id"), Some(String::new()), vec![]);
+  let mut repr = Vec::new();
+  wire::write_string(&mut repr, "pid-1").expect("persistence id");
+  wire::write_u64(&mut repr, 1);
+  wire::write_serialized(&mut repr, &payload).expect("payload");
+  wire::write_string(&mut repr, "").expect("manifest");
+  wire::write_string(&mut repr, "").expect("writer uuid");
+  wire::write_u64(&mut repr, 0);
+  wire::write_bool(&mut repr, false);
+  wire::write_bool(&mut repr, false);
+  let mut bytes = Vec::new();
+  wire::write_u8(&mut bytes, PERSISTENT_REPR_TAG);
+  wire::write_bytes(&mut bytes, &repr).expect("repr");
+
+  assert!(matches!(serializer.from_binary(&bytes, None), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn persistence_serializer_registration_is_idempotent() {
+  let registry = manifest_registry();
+
+  let contributor = PersistenceSerializationContributor::default();
+
+  register_persistence_serializers(&registry).expect("register twice");
+  contributor.contribute(&registry).expect("contribute twice");
 }

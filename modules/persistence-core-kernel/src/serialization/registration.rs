@@ -44,6 +44,10 @@ impl SerializationRegistryContributor for PersistenceSerializationContributor {
 
 /// Registers persistence serializers and type bindings.
 ///
+/// Re-registering the same persistence serializers is idempotent. Occupied ids or bindings that
+/// point to different serializers are reported as collision errors so actor-system setup can fail
+/// fast instead of silently replacing user configuration.
+///
 /// # Errors
 ///
 /// Returns [`SerializationError`] when an id or binding collision is detected.
