@@ -73,7 +73,7 @@ The persistence extension installer SHALL automatically register persistence ser
 
 #### Scenario: Persistence serializer id collision rejected
 - **WHEN** persistence serializer registration finds a serializer id already occupied by a different serializer
-- **THEN** actor system bootstrap fails before binding persistence types to the occupied serializer id
+- **THEN** actor system bootstrap fails before registering persistence bindings that would resolve through the occupied serializer id
 
 #### Scenario: Persistence type binding collision rejected
 - **WHEN** persistence serializer registration finds `PersistentRepr`, `AtomicWrite`, or snapshot payload wrapper already bound to a different serializer id
