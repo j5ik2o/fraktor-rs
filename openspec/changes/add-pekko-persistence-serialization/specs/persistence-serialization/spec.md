@@ -27,11 +27,15 @@ The journal write contract SHALL accept batches of `AtomicWrite` units, and each
 - **THEN** replay returns the contained `PersistentRepr` entries in sequence order for the matching persistence id
 
 ### Requirement: Message serializer delegates persistent payloads
-The persistence kernel SHALL provide a `MessageSerializer` that serializes and deserializes `PersistentRepr` and `AtomicWrite` while delegating each persistent payload and metadata value to the actor serialization registry.
+The persistence kernel SHALL provide a `MessageSerializer` that serializes and deserializes `PersistentRepr` and `AtomicWrite` while delegating each persistent payload and metadata value to the actor serialization registry and preserving durable persistent representation metadata.
 
 #### Scenario: Persistent representation round trip
 - **WHEN** `MessageSerializer` serializes a `PersistentRepr` whose payload serializer is registered
-- **THEN** deserializing the bytes restores the persistence id, sequence number, manifest, writer uuid, timestamp, deleted flag, payload, and metadata values
+- **THEN** deserializing the bytes restores the persistence id, sequence number, manifest, writer uuid, timestamp, deleted flag, sender, adapter type id, payload, and metadata values
+
+#### Scenario: Runtime event adapter registry is not durable data
+- **WHEN** `MessageSerializer` serializes a `PersistentRepr` with a configured `EventAdapters` runtime registry
+- **THEN** deserializing the bytes preserves the adapter type id needed for replay adapter resolution without encoding the runtime registry internals
 
 #### Scenario: Atomic write round trip
 - **WHEN** `MessageSerializer` serializes an `AtomicWrite`

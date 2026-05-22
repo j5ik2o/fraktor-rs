@@ -46,10 +46,15 @@ Pekko keeps the plugin API typed around `PersistentRepr`, `AtomicWrite`, `Snapsh
 
    The persistence serializers SHALL encode enough metadata to round-trip `PersistentRepr`, `AtomicWrite`, and snapshot payload wrappers inside fraktor-rs. They do not need to match Pekko protobuf bytes. The nested payload representation SHOULD use existing `SerializedMessage` data (`serializer_id`, optional manifest, bytes) so all domain object evolution remains owned by the actor serialization registry.
 
+7. Keep runtime event adapter registries out of the durable wire format.
+
+   `PersistentRepr` contains an `EventAdapters` registry for runtime adaptation and an `adapter_type_id` for adapter resolution. The serializer SHALL preserve durable replay metadata, including `sender` and `adapter_type_id`, but SHALL NOT encode the `EventAdapters` registry internals because it contains runtime trait objects and configuration. Replay paths that require non-identity adapters must reattach the configured runtime registry around deserialized representations before adaptation.
+
 ## Risks / Trade-offs
 
 - Breaking journal API changes → Update all in-tree `Journal` implementations, tests, and examples in the same change.
 - Serializer registration collisions → Use fixed runtime serializer IDs outside existing built-in IDs and make registration idempotent with collision reporting consistent with existing built-ins.
 - Nested payloads without registered serializers → Surface `SerializationError::NotSerializable` during persistence serialization; do not silently store erased payloads.
+- Event adapter registry is runtime state → Preserve the adapter type id in bytes, and test that deserialization does not pretend to reconstruct the runtime adapter registry from durable data.
 - Snapshot naming collision with existing `snapshot::Snapshot` → Keep the existing public snapshot container and add a clearly scoped serialization wrapper type in a `serialization` module if a separate wrapper is required.
 - Byte-level incompatibility with Pekko → Document as a non-goal and keep field semantics close enough that a future protobuf-compatible serializer can be added without changing journal contracts again.

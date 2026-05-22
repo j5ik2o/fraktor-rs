@@ -11,9 +11,9 @@
 - [ ] 2.1 Add a `serialization` module under `persistence-core-kernel` with public `MessageSerializer` and `SnapshotSerializer` exports.
 - [ ] 2.2 Add any required persistence serialization wrapper type for snapshot data without conflicting with the existing `snapshot::Snapshot` container.
 - [ ] 2.3 Implement internal no_std encoding/decoding helpers for nested `SerializedMessage` records and persistence metadata fields.
-- [ ] 2.4 Implement `MessageSerializer` for `PersistentRepr` and `AtomicWrite`, delegating payload and metadata through `SerializationDelegator`.
+- [ ] 2.4 Implement `MessageSerializer` for `PersistentRepr` and `AtomicWrite`, delegating payload and metadata through `SerializationDelegator` while preserving durable metadata including sender and adapter type id.
 - [ ] 2.5 Implement `SnapshotSerializer` for snapshot payload wrappers, delegating data through `SerializationDelegator`.
-- [ ] 2.6 Add serializer round-trip tests for `PersistentRepr`, `AtomicWrite`, snapshot data, metadata, and unregistered payload failure.
+- [ ] 2.6 Add serializer round-trip tests for `PersistentRepr`, `AtomicWrite`, snapshot data, metadata, sender, adapter type id, runtime event adapter registry behavior, and unregistered payload failure.
 
 ## 3. Automatic Registration
 
