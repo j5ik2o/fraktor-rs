@@ -77,7 +77,10 @@ impl Journal for InMemoryJournal {
         if message.sequence_nr() != expected {
           return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));
         }
-        expected = expected.saturating_add(1);
+        let Some(next_expected) = expected.checked_add(1) else {
+          return ready(Err(JournalError::WriteFailed(String::from("sequence number overflow"))));
+        };
+        expected = next_expected;
       }
     }
 

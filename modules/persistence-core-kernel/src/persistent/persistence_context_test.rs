@@ -22,8 +22,8 @@ use crate::{
     WriteEventAdapter,
   },
   persistent::{
-    AtomicWrite, Eventsourced, PendingHandlerInvocation, PersistenceContext, PersistentActorState, PersistentRepr,
-    Recovery,
+    AtomicWrite, AtomicWriteError, Eventsourced, PendingHandlerInvocation, PersistenceContext, PersistentActorState,
+    PersistentRepr, Recovery,
   },
   snapshot::{Snapshot, SnapshotMessage, SnapshotSelectionCriteria},
 };
@@ -602,6 +602,23 @@ fn flush_batch_with_only_deferred_entry_rolls_back() {
   assert!(context.pending_invocations.is_empty());
   assert!(!context.should_stash_commands());
   assert!(journal_store.lock().is_empty());
+}
+
+#[test]
+fn atomic_write_mixed_persistence_id_maps_to_journal_error() {
+  let error = PersistenceContext::<DummyActor>::journal_error_for_atomic_write(AtomicWriteError::MixedPersistenceId {
+    expected: "pid-1".into(),
+    actual:   "pid-2".into(),
+  });
+
+  assert_eq!(error, JournalError::MixedPersistenceId { expected: "pid-1".into(), actual: "pid-2".into() });
+}
+
+#[test]
+fn atomic_write_empty_maps_to_invalid_atomic_write() {
+  let error = PersistenceContext::<DummyActor>::journal_error_for_atomic_write(AtomicWriteError::Empty);
+
+  assert_eq!(error, JournalError::InvalidAtomicWrite("empty payload".into()));
 }
 
 #[test]

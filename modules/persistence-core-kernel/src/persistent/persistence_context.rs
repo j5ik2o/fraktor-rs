@@ -4,14 +4,7 @@
 #[path = "persistence_context_test.rs"]
 mod tests;
 
-use alloc::{
-  boxed::Box,
-  collections::VecDeque,
-  format,
-  string::{String, ToString},
-  vec,
-  vec::Vec,
-};
+use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec, vec::Vec};
 use core::{
   any::Any,
   ops::Deref,
@@ -25,7 +18,8 @@ use crate::{
   error::PersistenceError,
   journal::{EventAdapters, JournalError, JournalMessage, JournalResponse, JournalResponseAction},
   persistent::{
-    AtomicWrite, PendingHandlerInvocation, PersistentActorState, PersistentEnvelope, PersistentRepr, Recovery,
+    AtomicWrite, AtomicWriteError, PendingHandlerInvocation, PersistentActorState, PersistentEnvelope, PersistentRepr,
+    Recovery,
   },
   snapshot::{SnapshotError, SnapshotMessage, SnapshotResponse, SnapshotResponseAction},
 };
@@ -240,7 +234,7 @@ impl<A: 'static> PersistenceContext<A> {
 
     let atomic_write = AtomicWrite::new(messages).map_err(|error| {
       self.reset_after_write_failure();
-      PersistenceError::Journal(JournalError::InvalidAtomicWrite(error.to_string()))
+      PersistenceError::Journal(Self::journal_error_for_atomic_write(error))
     })?;
     let message = JournalMessage::WriteMessages {
       persistence_id: self.persistence_id.clone(),
@@ -612,5 +606,14 @@ impl<A: 'static> PersistenceContext<A> {
 
   fn is_null_ref(actor_ref: &ActorRef) -> bool {
     actor_ref.pid() == Pid::new(0, 0)
+  }
+
+  fn journal_error_for_atomic_write(error: AtomicWriteError) -> JournalError {
+    match error {
+      | AtomicWriteError::Empty => JournalError::InvalidAtomicWrite(String::from("empty payload")),
+      | AtomicWriteError::MixedPersistenceId { expected, actual } => {
+        JournalError::MixedPersistenceId { expected, actual }
+      },
+    }
   }
 }

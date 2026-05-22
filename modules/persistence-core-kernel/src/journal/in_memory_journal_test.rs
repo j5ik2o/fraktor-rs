@@ -130,6 +130,18 @@ fn in_memory_journal_sequence_mismatch() {
 }
 
 #[test]
+fn in_memory_journal_rejects_sequence_overflow_without_partial_persistence() {
+  let mut journal = InMemoryJournal::new();
+  journal.highest_sequence_nrs.insert("pid-1".into(), u64::MAX - 1);
+  let messages = build_messages("pid-1", u64::MAX, 1);
+
+  let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
+
+  assert_eq!(result, Err(JournalError::WriteFailed("sequence number overflow".into())));
+  assert!(poll_ready(journal.replay_messages("pid-1", u64::MAX, u64::MAX, 10)).expect("replay pid-1").is_empty());
+}
+
+#[test]
 fn in_memory_journal_rejects_mixed_persistence_ids_without_partial_persistence() {
   let mut journal = InMemoryJournal::new();
   let first = atomic_write(build_messages("pid-1", 1, 1));
