@@ -90,13 +90,23 @@ jobs:
             exit 0
           fi
 
+          changed_paths="$(git diff --name-only "${base}" "${head}")"
+          if [[ -z "${changed_paths}" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
           run_code_checks=false
           while IFS= read -r path; do
-            if [[ "${path}" != *.md && "${path}" != openspec/* ]]; then
-              run_code_checks=true
-              break
-            fi
-          done < <(git diff --name-only "${base}" "${head}")
+            case "${path}" in
+              *.md | openspec/*)
+                ;;
+              *)
+                run_code_checks=true
+                break
+                ;;
+            esac
+          done <<< "${changed_paths}"
 
           echo "run_code_checks=${run_code_checks}" >> "${GITHUB_OUTPUT}"
 
@@ -289,7 +299,7 @@ jobs:
     needs:
       - changes
       - coverage
-    if: ${{ always() && needs.changes.outputs.run_code_checks == 'true' }}
+    if: ${{ always() && needs.changes.result == 'success' && needs.changes.outputs.run_code_checks == 'true' }}
     permissions:
       contents: read
       checks: read
@@ -454,32 +464,35 @@ jobs:
             exit 1
           fi
           run_code_checks="${{ needs.changes.outputs.run_code_checks }}"
-          if [[ "${run_code_checks}" == "true" && "${{ needs.lint.result }}" != "success" ]]; then
-            echo "lint failed"
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "changes failed"
             exit 1
           fi
-          if [[ "${run_code_checks}" == "true" && "${{ needs.test.result }}" != "success" ]]; then
-            echo "test failed"
+          if [[ "${run_code_checks}" != "true" && "${run_code_checks}" != "false" ]]; then
+            echo "changes did not report run_code_checks"
             exit 1
           fi
-          if [[ "${run_code_checks}" == "true" && "${{ needs['integration-e2e'].result }}" != "success" ]]; then
-            echo "integration-e2e failed"
-            exit 1
+
+          expected_code_job_result="skipped"
+          if [[ "${run_code_checks}" == "true" ]]; then
+            expected_code_job_result="success"
           fi
-          if [[ "${run_code_checks}" == "true" && "${{ needs.coverage.result }}" != "success" ]]; then
-            echo "coverage failed"
-            exit 1
-          fi
-          if [[ "${run_code_checks}" == "true" && "${{ needs['codecov-status'].result }}" != "success" ]]; then
-            echo "codecov-status failed"
-            exit 1
-          fi
-          if [[ "${run_code_checks}" == "true" && "${{ needs.docs.result }}" != "success" ]]; then
-            echo "docs failed"
-            exit 1
-          fi
-          if [[ "${run_code_checks}" == "true" && "${{ needs.examples.result }}" != "success" ]]; then
-            echo "examples failed"
-            exit 1
-          fi
+
+          require_result() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "${name} was ${actual}; expected ${expected}"
+              exit 1
+            fi
+          }
+
+          require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
+          require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
+          require_result "integration-e2e" "${{ needs['integration-e2e'].result }}" "${expected_code_job_result}"
+          require_result "coverage" "${{ needs.coverage.result }}" "${expected_code_job_result}"
+          require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
+          require_result "docs" "${{ needs.docs.result }}" "${expected_code_job_result}"
+          require_result "examples" "${{ needs.examples.result }}" "${expected_code_job_result}"
           echo "✅ All CI checks passed successfully"
