@@ -26,8 +26,8 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.event_name }}
-  cancel-in-progress: true
+  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
 
 jobs:
   unresolved-comments:
@@ -576,14 +576,27 @@ jobs:
           )
 
           refresh_all_open_prs() {
-            mapfile -t pr_numbers < <(
+            local pr_list_response
+            local listed_pr_number
+            pr_list_response="$(
               gh pr list \
                 --repo "$OWNER/$REPO" \
                 --base main \
                 --state open \
+                --limit 1000 \
                 --json number \
                 --jq '.[].number'
-            )
+            )" || {
+              echo "::error::Failed to list open PRs targeting main."
+              return 1
+            }
+
+            pr_numbers=()
+            while IFS= read -r listed_pr_number; do
+              if [[ -n "$listed_pr_number" ]]; then
+                pr_numbers+=("$listed_pr_number")
+              fi
+            done <<< "$pr_list_response"
 
             if [[ "${#pr_numbers[@]}" -eq 0 ]]; then
               echo "No open PRs targeting main."
@@ -615,6 +628,10 @@ jobs:
 
           if [[ -z "${PR_NUMBER:-}" ]]; then
             echo "::error::PR number is required for $EVENT_NAME."
+            exit 1
+          fi
+          if [[ ! "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "::error::PR number must be numeric: ${PR_NUMBER}"
             exit 1
           fi
 
