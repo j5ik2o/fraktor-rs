@@ -32,7 +32,7 @@ fn build_messages(persistence_id: &str, start: u64, count: u64) -> Vec<Persisten
 }
 
 fn atomic_write(payload: Vec<PersistentRepr>) -> AtomicWrite {
-  AtomicWrite::new(payload).expect("atomic write")
+  AtomicWrite::new(payload).expect("atomic write creation failed")
 }
 
 #[derive(Default)]
