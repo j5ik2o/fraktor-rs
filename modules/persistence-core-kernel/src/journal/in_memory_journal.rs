@@ -80,9 +80,7 @@ impl Journal for InMemoryJournal {
         expected = match expected.checked_add(1) {
           | Some(next_expected) => next_expected,
           | None => {
-            return ready(Err(JournalError::InvalidAtomicWrite(String::from(
-              "sequence number overflow in atomic write batch",
-            ))));
+            return ready(Err(JournalError::InvalidAtomicWrite(String::from("sequence number overflow"))));
           },
         };
       }
