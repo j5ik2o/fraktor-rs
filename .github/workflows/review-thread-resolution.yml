@@ -41,6 +41,7 @@ jobs:
                   repository(owner: $owner, name: $name) {
                     pullRequest(number: $number) {
                       author {
+                        __typename
                         login
                       }
                       baseRefName
@@ -65,6 +66,7 @@ jobs:
           fi
 
           pr_author="$(jq -r '.data.repository.pullRequest.author.login' <<< "$pr_response")"
+          pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
           base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
 
           if [[ "$base_ref" != "main" ]]; then
@@ -222,7 +224,7 @@ jobs:
           done
 
           unacknowledged_top_level="$(
-            jq -c --arg pr_author "$pr_author" '
+            jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
               . as $comments
               | [
                   $comments[]
@@ -232,9 +234,14 @@ jobs:
                       $comments[]
                       | select(
                           (.author.login // "") == $pr_author
-                          or .authorAssociation == "OWNER"
-                          or .authorAssociation == "MEMBER"
-                          or .authorAssociation == "COLLABORATOR"
+                          or (
+                            $pr_author_type == "Bot"
+                            and (
+                              .authorAssociation == "OWNER"
+                              or .authorAssociation == "MEMBER"
+                              or .authorAssociation == "COLLABORATOR"
+                            )
+                          )
                         )
                       | select(.createdAt > $comment.createdAt)
                     ] | length == 0)
