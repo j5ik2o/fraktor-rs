@@ -236,8 +236,7 @@ impl<A: 'static> PersistenceContext<A> {
       | Ok(write) => write,
       | Err(error) => {
         let journal_error = Self::journal_error_for_atomic_write(error);
-        // AtomicWrite rejected the batch before it reached the journal, so drop pending handlers for this
-        // batch.
+        // AtomicWrite がジャーナル到達前にバッチを拒否したため、このバッチの保留ハンドラを破棄する。
         self.reset_after_write_failure();
         return Err(PersistenceError::Journal(journal_error));
       },
