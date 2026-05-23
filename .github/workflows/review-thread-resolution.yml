@@ -98,7 +98,7 @@ jobs:
             fi
 
             if [[ "$head_repository" != "$OWNER/$REPO" ]]; then
-              echo "::warning::Skipping synthetic check-run publication for cross-repository PR head $head_repository."
+              echo "::notice::Skipping synthetic check-run publication for fork PR head ($head_repository)."
               return 1
             fi
 
@@ -125,6 +125,9 @@ jobs:
             if (( ${#check_summary} > max_summary_chars )); then
               truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
               available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
+              if (( available_chars < 1 )); then
+                available_chars=1
+              fi
               check_summary="${check_summary:0:available_chars}${truncation_suffix}"
             fi
 
@@ -163,6 +166,9 @@ jobs:
               cat "$check_run_error" >&2
               rm -f "$check_run_error"
               return 1
+            fi
+            if [[ -s "$check_run_error" ]]; then
+              cat "$check_run_error" >&2
             fi
             rm -f "$check_run_error"
 
