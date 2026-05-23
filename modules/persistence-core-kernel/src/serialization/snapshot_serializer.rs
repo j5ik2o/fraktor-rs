@@ -39,6 +39,14 @@ impl SnapshotSerializer {
     self.registry.upgrade().ok_or(SerializationError::Uninitialized)
   }
 
+  fn validate_nested_manifest(message: &SerializedMessage, has_binding_name: bool) -> Result<(), SerializationError> {
+    match message.manifest() {
+      | Some("") => Err(SerializationError::InvalidFormat),
+      | None if !has_binding_name => Err(SerializationError::InvalidFormat),
+      | _ => Ok(()),
+    }
+  }
+
   fn has_valid_manifest(message: &SerializedMessage) -> bool {
     match message.manifest() {
       | Some(manifest) => !manifest.is_empty(),
@@ -65,12 +73,7 @@ impl Serializer for SnapshotSerializer {
     let type_name = binding_name.as_deref().unwrap_or("");
     let serializer_hint = binding_name.as_deref().unwrap_or("SnapshotPayload data");
     let nested = delegator.serialize(data, serializer_hint)?;
-    if !Self::has_valid_manifest(&nested) {
-      return Err(SerializationError::InvalidFormat);
-    }
-    if binding_name.is_none() && nested.manifest().is_none() {
-      return Err(SerializationError::InvalidFormat);
-    }
+    Self::validate_nested_manifest(&nested, binding_name.is_some())?;
     let mut buffer = Vec::new();
     wire::write_string(&mut buffer, type_name)?;
     wire::write_serialized(&mut buffer, &nested)?;

@@ -128,13 +128,16 @@ impl MessageSerializer {
     has_binding_name: bool,
   ) -> Result<SerializedMessage, SerializationError> {
     let nested = delegator.serialize(message, type_name)?;
-    if !Self::has_valid_manifest(&nested) {
-      return Err(SerializationError::InvalidFormat);
-    }
-    if !has_binding_name && nested.manifest().is_none() {
-      return Err(SerializationError::InvalidFormat);
-    }
+    Self::validate_nested_manifest(&nested, has_binding_name)?;
     Ok(nested)
+  }
+
+  fn validate_nested_manifest(message: &SerializedMessage, has_binding_name: bool) -> Result<(), SerializationError> {
+    match message.manifest() {
+      | Some("") => Err(SerializationError::InvalidFormat),
+      | None if !has_binding_name => Err(SerializationError::InvalidFormat),
+      | _ => Ok(()),
+    }
   }
 
   fn has_valid_manifest(message: &SerializedMessage) -> bool {

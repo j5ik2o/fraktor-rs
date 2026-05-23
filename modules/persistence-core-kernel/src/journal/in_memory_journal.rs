@@ -80,7 +80,7 @@ impl Journal for InMemoryJournal {
         expected = match expected.checked_add(1) {
           | Some(next_expected) => next_expected,
           | None => {
-            return ready(Err(JournalError::WriteFailed(String::from("sequence number exhausted"))));
+            return ready(Err(JournalError::WriteFailed(String::from("sequence number overflow in write batch"))));
           },
         };
       }
