@@ -242,6 +242,11 @@ fn test_serializers_exercise_trait_methods() {
     1
   );
   assert!(matches!(hint_only.from_binary(&[], None), Err(SerializationError::InvalidFormat)));
+
+  let empty_manifest = EmptyManifestI32Serializer::new(SerializerId::try_from(112).expect("serializer id"));
+  assert!(empty_manifest.as_any().downcast_ref::<EmptyManifestI32Serializer>().is_some());
+  assert!(matches!(empty_manifest.from_binary(&[], None), Err(SerializationError::InvalidFormat)));
+  assert!(matches!(empty_manifest.from_binary_with_manifest(&[], ""), Err(SerializationError::InvalidFormat)));
 }
 
 #[test]
