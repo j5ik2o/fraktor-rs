@@ -116,6 +116,12 @@ jobs:
                   --input -
             )"
 
+            if ! jq -e '.id and .html_url' <<< "$check_run_response" > /dev/null; then
+              echo "::error::GitHub API response did not include check-run metadata."
+              jq -c '.' <<< "$check_run_response" >&2
+              return 1
+            fi
+
             check_run_url="$(jq -r '.html_url // .url // "unknown"' <<< "$check_run_response")"
             echo "Published check run: $check_run_url"
           }
