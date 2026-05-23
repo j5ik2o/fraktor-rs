@@ -238,6 +238,7 @@ jobs:
                           nodes {
                             url
                             createdAt
+                            updatedAt
                             authorAssociation
                             author {
                               login
@@ -298,7 +299,7 @@ jobs:
                             )
                           )
                         )
-                      | select(.createdAt > $comment.createdAt)
+                      | select(.createdAt > ($comment.updatedAt // $comment.createdAt))
                     ] | length == 0)
                 ]
             ' <<< "$top_level_comments"
@@ -320,7 +321,7 @@ jobs:
             if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
               echo "### Unacknowledged top-level PR comments"
               echo
-              jq -r '.[] | "- by \(.author.login // "unknown") at \(.createdAt): \(.url // "no comment URL")"' \
+              jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
                 <<< "$unacknowledged_top_level"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
