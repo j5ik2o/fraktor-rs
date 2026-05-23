@@ -284,15 +284,20 @@ where
 }
 
 fn send_write_failure(sender: &mut ActorRef, messages: &[AtomicWrite], instance_id: u32, error: JournalError) {
+  let write_count = atomic_write_payload_count(messages);
   for repr in atomic_write_payloads(messages) {
     tell_response(sender, JournalResponse::WriteMessageFailure { repr, cause: error.clone(), instance_id });
   }
-  tell_response(sender, JournalResponse::WriteMessagesFailed { cause: error, write_count: 0, instance_id });
+  tell_response(sender, JournalResponse::WriteMessagesFailed { cause: error, write_count, instance_id });
 }
 
 fn atomic_write_payloads(messages: &[AtomicWrite]) -> impl Iterator<Item = PersistentRepr> + '_ {
   // ジャーナル応答は借用中のバッチより長く残るため、各応答は PersistentRepr を所有する。
   messages.iter().flat_map(AtomicWrite::payload).cloned()
+}
+
+fn atomic_write_payload_count(messages: &[AtomicWrite]) -> u64 {
+  messages.iter().map(AtomicWrite::size).sum::<usize>() as u64
 }
 
 fn poll_replay_entry<J: Journal>(
