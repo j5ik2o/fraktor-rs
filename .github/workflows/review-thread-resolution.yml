@@ -88,7 +88,7 @@ jobs:
           pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
 
           should_publish_head_check() {
-            if [[ "$EVENT_NAME" != "issue_comment" ]]; then
+            if [[ "$EVENT_NAME" != "issue_comment" && "$EVENT_NAME" != "pull_request" ]]; then
               return 1
             fi
 
@@ -460,6 +460,13 @@ jobs:
                 (.body // "") | test("(?i)^\\s*(acknowledged|addressed|確認しました|承知しました|了解しました|対応済み|対応しました|対処しました)");
               def is_trusted_acknowledgement:
                 is_trusted_acknowledger and is_acknowledgement_text;
+              def is_automated_status_comment:
+                ((.author.login // "") == "coderabbitai"
+                  and ((.body // "") | startswith("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->")))
+                or ((.author.login // "") == "codecov"
+                  and ((.body // "") | startswith("## [Codecov](")))
+                or ((.author.login // "") == "renovate"
+                  and ((.body // "") | startswith("### Edited/Blocked Notification")));
               def is_maintainer:
                 .authorAssociation == "OWNER"
                 or .authorAssociation == "MEMBER"
@@ -470,7 +477,9 @@ jobs:
                 or ($pr_author_type == "Bot" and is_maintainer);
               def requires_acknowledgement:
                 (.author.login // "") != $pr_author
-                and (is_trusted_acknowledgement | not);
+                and (is_trusted_acknowledgement | not)
+                and (is_automated_status_comment | not)
+                and ($pr_author_type != "Bot" or (is_maintainer | not));
               . as $comments
               | [
                   $comments[]
