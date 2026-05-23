@@ -90,8 +90,19 @@ jobs:
           while [[ "$attempt" -lt "$max_attempts" ]]; do
             attempt=$((attempt + 1))
             status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
-              echo "::error::Failed to fetch PR status on attempt $attempt."
-              exit 1
+              if [[ "$attempt" -eq "$max_attempts" ]]; then
+                echo "::error::Failed to fetch PR status after $max_attempts attempts."
+                exit 1
+              fi
+              echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+              sleep "$sleep_seconds"
+              if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
+                sleep_seconds=$((sleep_seconds * 2))
+                if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
+                  sleep_seconds="$max_sleep_seconds"
+                fi
+              fi
+              continue
             }
             current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
             if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
@@ -302,6 +313,8 @@ jobs:
                   | . as $comment
                   | select([
                       $comments[]
+                      # Human-authored PRs require the PR author to acknowledge.
+                      # Bot-authored PRs allow maintainers to acknowledge on behalf of the bot.
                       | select(
                           (.author.login // "") == $pr_author
                           or (
