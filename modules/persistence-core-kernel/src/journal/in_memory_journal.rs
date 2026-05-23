@@ -91,7 +91,7 @@ impl Journal for InMemoryJournal {
       entry.extend(atomic_write.payload().iter().cloned());
     }
     // expected_sequence_nr starts at >= 1 and only increases via checked_add.
-    self.highest_sequence_nrs.insert(persistence_id, expected.saturating_sub(1));
+    self.highest_sequence_nrs.insert(persistence_id, expected - 1);
 
     ready(Ok(()))
   }

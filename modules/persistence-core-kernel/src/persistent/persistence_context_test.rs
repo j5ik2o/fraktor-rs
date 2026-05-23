@@ -1437,6 +1437,47 @@ fn write_messages_failed_with_zero_write_count_returns_to_processing_commands() 
 }
 
 #[test]
+fn write_messages_failed_realigns_current_sequence_nr_to_last_sequence_nr() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.flush_batch(ActorRef::null()).expect("flush batch");
+  assert_eq!(context.current_sequence_nr(), 1);
+  assert_eq!(context.last_sequence_nr(), 0);
+
+  let action = context.handle_journal_response(&JournalResponse::WriteMessagesFailed {
+    cause:       JournalError::WriteFailed("batch write failed".to_string()),
+    write_count: 0,
+    instance_id: context.instance_id(),
+  });
+
+  assert!(matches!(action, JournalResponseAction::None));
+  assert_eq!(context.current_sequence_nr(), 0);
+  assert_eq!(context.last_sequence_nr(), 0);
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+
+  journal_store.lock().clear();
+  context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.flush_batch(ActorRef::null()).expect("flush batch after write messages failed");
+
+  let persisted_repr = {
+    let journal_messages = journal_store.lock();
+    assert_eq!(journal_messages.len(), 1);
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
+    match message {
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
+      | _ => panic!("unexpected message"),
+    }
+  };
+  assert_eq!(persisted_repr.sequence_nr(), 1);
+  assert_eq!(context.current_sequence_nr(), 1);
+}
+
+#[test]
 fn write_messages_successful_is_ignored_during_recovery() {
   let mut context = DummyContext::new("pid-1".to_string());
   context.state = PersistentActorState::Recovering;

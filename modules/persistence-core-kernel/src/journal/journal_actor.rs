@@ -295,6 +295,7 @@ fn send_write_failure(sender: &mut ActorRef, messages: &[AtomicWrite], instance_
 }
 
 fn atomic_write_payloads(messages: &[AtomicWrite]) -> impl Iterator<Item = PersistentRepr> + '_ {
+  // Journal responses outlive this borrowed batch, so each response owns its PersistentRepr.
   messages.iter().flat_map(AtomicWrite::payload).cloned()
 }
 

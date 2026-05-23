@@ -484,6 +484,7 @@ impl<A: 'static> PersistenceContext<A> {
   fn reset_after_write_failure(&mut self) {
     self.stash_until_batch_completion = false;
     self.pending_invocations.clear();
+    self.current_sequence_nr = self.last_sequence_nr;
     self.transition_to_processing_commands_if_no_pending();
   }
 
