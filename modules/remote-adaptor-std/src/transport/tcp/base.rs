@@ -444,7 +444,7 @@ impl RemoteTransport for TcpRemoteTransport {
       return Err(TransportError::NotStarted);
     }
     self.server.shutdown();
-    for (_peer, client) in self.clients.iter_mut() {
+    for client in self.clients.values_mut() {
       client.shutdown();
     }
     for handle in self.inbound_workers.drain(..) {

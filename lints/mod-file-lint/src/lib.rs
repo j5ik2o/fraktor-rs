@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_span;
 
@@ -15,8 +19,6 @@ use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_span::{
   source_map::SourceMap,
   BytePos,
-  FileName,
-  RealFileName,
   SourceFile,
   Span,
 };
@@ -55,14 +57,14 @@ impl<'tcx> LateLintPass<'tcx> for NoModRs {
     let span = first_line_span(&source_file);
     let display_path = path.display().to_string();
 
-    cx.span_lint(NO_MOD_RS, span, |diag| {
+    cx.emit_span_lint(NO_MOD_RS, span, DiagDecorator(|diag| {
       diag.primary_message("mod.rs は Cellex のコーディング規約で使用禁止です");
       diag.note(format!("対象ファイル: {}", display_path));
       diag.help("ファイルを `<module>.rs` にリネームし、必要なら同ディレクトリに `<module>/` を作成してサブモジュールを移動してください");
       diag.note(
         "AI向けアドバイス: 1. `git mv foo/mod.rs foo.rs` 2. 親モジュールの `mod foo;` はそのまま利用 3. サブモジュールは foo.rs 内で `mod sub;` として再宣言しましょう。",
       );
-    });
+    }));
   }
 }
 
@@ -74,15 +76,11 @@ fn is_mod_rs(path: &Path) -> bool {
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }
 
 fn load_source_file(sm: &SourceMap, path: &Path) -> Option<Arc<SourceFile>> {
-  let filename = FileName::Real(RealFileName::LocalPath(path.to_path_buf()));
-  sm.get_source_file(&filename).or_else(|| sm.load_file(path).ok())
+  sm.load_file(path).ok()
 }
 
 fn first_line_span(file: &SourceFile) -> Span {

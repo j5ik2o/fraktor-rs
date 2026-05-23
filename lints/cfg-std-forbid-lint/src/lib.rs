@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_span;
 
@@ -12,7 +16,7 @@ use std::{
 use proc_macro2::{LineColumn, Span as ProcSpan};
 use rustc_hir::Item as HirItem;
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_span::{source_map::SourceMap, BytePos, FileName, RealFileName, SourceFile, Span};
+use rustc_span::{source_map::SourceMap, BytePos, SourceFile, Span};
 use syn::{
   punctuated::Punctuated,
   spanned::Spanned,
@@ -77,20 +81,20 @@ fn analyze_file(cx: &LateContext<'_>, path: &Path) {
     match violation.kind {
       | ViolationKind::CfgStd(attr_span) => {
         if let Some(rustc_span) = span_for_attribute(&source_file, &line_starts, attr_span) {
-          cx.span_lint(CFG_STD_FORBID, rustc_span, |diag| {
+          cx.emit_span_lint(CFG_STD_FORBID, rustc_span, DiagDecorator(|diag| {
             diag.primary_message("`#[cfg(feature = \"std\")]` の使用が検出されました");
             diag.help("std 依存コードは std 対応クレートへ移動するか、必要な範囲で `#![allow(cfg_std_forbid)]` を付与してください");
             diag.note("AI向けアドバイス: std が不可欠なロジックは別モジュールへ切り離し、lint の適用境界を明確にしましょう。");
-          });
+          }));
         }
       },
       | ViolationKind::UseStd(use_span) => {
         if let Some(rustc_span) = span_for_attribute(&source_file, &line_starts, use_span) {
-          cx.span_lint(CFG_STD_FORBID, rustc_span, |diag| {
+          cx.emit_span_lint(CFG_STD_FORBID, rustc_span, DiagDecorator(|diag| {
             diag.primary_message("`use std::...` の使用が検出されました");
             diag.help("std 名前空間のアイテムは std 対応クレートへ移動するか、該当箇所で `#![allow(cfg_std_forbid)]` を付与してください");
             diag.note("AI向けアドバイス: core/embedded コードでは `std` 依存を避け、必要に応じて `alloc` など代替を検討しましょう。");
-          });
+          }));
         }
       },
     }
@@ -288,15 +292,11 @@ fn parse_meta_arguments(list: &MetaList) -> Vec<Meta> {
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }
 
 fn load_source_file(sm: &SourceMap, path: &Path) -> Option<std::sync::Arc<SourceFile>> {
-  let filename = FileName::Real(RealFileName::LocalPath(path.to_path_buf()));
-  sm.get_source_file(&filename).or_else(|| sm.load_file(path).ok())
+  sm.load_file(path).ok()
 }
 
 fn compute_line_starts(src: &str) -> Vec<usize> {

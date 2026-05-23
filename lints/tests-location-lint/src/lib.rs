@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_span;
 
@@ -13,7 +17,7 @@ use std::{
 
 use rustc_hir::Item;
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_span::{source_map::SourceMap, BytePos, FileName, RealFileName, SourceFile, Span};
+use rustc_span::{source_map::SourceMap, BytePos, SourceFile, Span};
 
 dylint_linting::impl_late_lint! {
   pub SEPARATE_TESTS,
@@ -59,33 +63,33 @@ fn analyze_source_file(cx: &LateContext<'_>, path: &Path) {
 
   for range in find_inline_test_modules(&source) {
     if let Some(span) = span_for_range(&source_file, range) {
-      cx.span_lint(SEPARATE_TESTS, span, |diag| {
+      cx.emit_span_lint(SEPARATE_TESTS, span, DiagDecorator(|diag| {
         diag.primary_message("`mod tests { ... }` must reside in a sibling `_test.rs` file");
         diag.help("move the test module into `<module>_test.rs` and keep only `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;`");
         diag.note("AI向けアドバイス: `<module>_test.rs` を作成し、このインラインモジュールを丸ごと移動。親ファイルには `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` だけを残し、モジュール階層が正しいか確認してください。");
-      });
+      }));
     }
   }
 
   for range in find_cfg_test_items(&source) {
     if let Some(span) = span_for_range(&source_file, range) {
-      cx.span_lint(SEPARATE_TESTS, span, |diag| {
+      cx.emit_span_lint(SEPARATE_TESTS, span, DiagDecorator(|diag| {
         diag.primary_message("`#[cfg(test)]` items are not allowed in production modules");
         diag.help("extract the item into `<module>_test.rs` and gate it via `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;`");
         diag.note(
           "AI向けアドバイス: テスト専用コードは `<module>_test.rs` に移動し、親には `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` を追加。構造体メソッドなら tests 側で `impl 型名 { #[cfg(test)] fn ... }` を定義し、`use super::*;` で型やフィールドへアクセスしてください。"
         );
-      });
+      }));
     }
   }
 
   for range in find_direct_test_attributes(&source) {
     if let Some(span) = span_for_range(&source_file, range) {
-      cx.span_lint(SEPARATE_TESTS, span, |diag| {
+      cx.emit_span_lint(SEPARATE_TESTS, span, DiagDecorator(|diag| {
         diag.primary_message("test functions must be moved into a dedicated `_test.rs` file");
         diag.help("place this test under `<module>_test.rs` ensuring the parent declares `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;`");
         diag.note("AI向けアドバイス: このテスト関数と依存するヘルパーを `<module>_test.rs` に移動し、必要なら `use super::*;` などを追加してビルドが通るようにしてください。");
-      });
+      }));
     }
   }
 }
@@ -102,20 +106,17 @@ fn analyze_tests_file(cx: &LateContext<'_>, path: &Path) {
 
   for range in find_inner_cfg_test_attributes(&source) {
     if let Some(span) = span_for_range(&source_file, range) {
-      cx.span_lint(SEPARATE_TESTS, span, |diag| {
+      cx.emit_span_lint(SEPARATE_TESTS, span, DiagDecorator(|diag| {
         diag.primary_message("test file 内で `#![cfg(test)]` は使用できません");
         diag.help("親ファイルに `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` を記述してテスト用モジュールを有効化してください");
         diag.note("AI向けアドバイス: test file から `#![cfg(test)]` を削除し、親モジュール側で `#[cfg(test)] #[path = \"<module>_test.rs\"] mod tests;` を宣言してテスト専用モジュールを有効化してください。");
-      });
+      }));
     }
   }
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }
 
 fn is_tests_path(path: &Path) -> bool {
@@ -131,8 +132,7 @@ fn is_tests_path(path: &Path) -> bool {
 }
 
 fn load_source_file(sm: &SourceMap, path: &Path) -> Option<Arc<SourceFile>> {
-  let filename = FileName::Real(RealFileName::LocalPath(path.to_path_buf()));
-  sm.get_source_file(&filename).or_else(|| sm.load_file(path).ok())
+  sm.load_file(path).ok()
 }
 
 fn span_for_range(file: &SourceFile, range: Range<usize>) -> Option<Span> {

@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_span;
 
@@ -15,8 +19,6 @@ use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_span::{
   source_map::SourceMap,
   BytePos,
-  FileName,
-  RealFileName,
   SourceFile,
   Span,
 };
@@ -102,11 +104,11 @@ fn analyze_doc_block(
         | FenceState::Outside => {
           if fence_has_ignore(rest) {
             if let Some(span) = segment_span(segment, source_file, line_starts) {
-              cx.span_lint(RUSTDOC_LINT, span, |diag| {
+              cx.emit_span_lint(RUSTDOC_LINT, span, DiagDecorator(|diag| {
                 diag.primary_message("rustdoc のコードフェンスでは `ignore` を使用できません");
                 diag.help("サンプルコードは ` ```rust ` としてコンパイル可能な形で記述してください");
                 diag.note("AI向けアドバイス: 実行不能なコードは避け、最小限の `rust` サンプルを提示しましょう。");
-              });
+              }));
             }
           }
           fence_state = FenceState::Inside;
@@ -121,11 +123,11 @@ fn analyze_doc_block(
     if matches!(fence_state, FenceState::Outside) && !emitted_non_english {
       if let Some((offset, ch_len)) = first_japanese_offset(&segment.text) {
         if let Some(span) = segment_char_span(segment, source_file, line_starts, offset, ch_len) {
-          cx.span_lint(RUSTDOC_LINT, span, |diag| {
+          cx.emit_span_lint(RUSTDOC_LINT, span, DiagDecorator(|diag| {
             diag.primary_message("rustdoc は英語で記述してください");
             diag.help("日本語などの全角文字はドキュメントコメントでは使わず、別資料に移動してください");
             diag.note("AI向けアドバイス: ドキュメント生成時には英語の説明文と `rust` のコード例を組み合わせて出力してください。");
-          });
+          }));
         }
         emitted_non_english = true;
       }
@@ -296,13 +298,9 @@ fn compute_line_starts(src: &str) -> Vec<usize> {
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }
 
 fn load_source_file(sm: &SourceMap, path: &Path) -> Option<std::sync::Arc<SourceFile>> {
-  let filename = FileName::Real(RealFileName::LocalPath(path.to_path_buf()));
-  sm.get_source_file(&filename).or_else(|| sm.load_file(path).ok())
+  sm.load_file(path).ok()
 }

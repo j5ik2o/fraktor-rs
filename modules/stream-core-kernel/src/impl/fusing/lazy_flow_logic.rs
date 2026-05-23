@@ -87,7 +87,11 @@ where
 
   fn take_shutdown_request(&mut self) -> bool {
     // any() の短絡評価を避け、全 inner logic のフラグを一括クリアする
-    self.inner_logics.iter_mut().fold(false, |acc, l| l.take_shutdown_request() || acc)
+    let mut requested = false;
+    for logic in &mut self.inner_logics {
+      requested = logic.take_shutdown_request() || requested;
+    }
+    requested
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {

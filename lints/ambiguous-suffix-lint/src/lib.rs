@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
@@ -14,7 +18,7 @@ use rustc_hir::{
   TraitItem, TraitItemKind, Ty, TyKind, Variant,
 };
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_span::{source_map::SourceMap, FileName, RealFileName, Span};
+use rustc_span::{source_map::SourceMap, Span};
 
 dylint_linting::impl_late_lint! {
   pub AMBIGUOUS_SUFFIX,
@@ -177,7 +181,7 @@ fn item_name_check(kind: &ItemKind<'_>) -> Option<(rustc_span::symbol::Ident, &'
     | ItemKind::Enum(ident, ..) => Some((*ident, "enum", NameStyle::Camel)),
     | ItemKind::Struct(ident, ..) => Some((*ident, "struct", NameStyle::Camel)),
     | ItemKind::Union(ident, ..) => Some((*ident, "union", NameStyle::Camel)),
-    | ItemKind::Trait(_, _, _, ident, ..) => Some((*ident, "trait", NameStyle::Camel)),
+    | ItemKind::Trait { ident, .. } => Some((*ident, "trait", NameStyle::Camel)),
     | ItemKind::TraitAlias(_, ident, ..) => Some((*ident, "trait alias", NameStyle::Camel)),
     | ItemKind::ExternCrate(..)
     | ItemKind::Use(..)
@@ -207,7 +211,7 @@ fn check_ident(cx: &LateContext<'_>, ident: rustc_span::symbol::Ident, kind_labe
 }
 
 fn emit_warning(cx: &LateContext<'_>, span: Span, name: &str, kind_label: &str, suffix: &str, alternatives: &str) {
-  cx.span_lint(AMBIGUOUS_SUFFIX, span, |diag| {
+  cx.emit_span_lint(AMBIGUOUS_SUFFIX, span, DiagDecorator(|diag| {
     diag.primary_message(format!(
       "`{}` ({}) は曖昧なサフィックス `{}` を含んでいます",
       name, kind_label, suffix
@@ -223,7 +227,7 @@ fn emit_warning(cx: &LateContext<'_>, span: Span, name: &str, kind_label: &str, 
       "AI向けアドバイス: 1. `{}` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: {}） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する",
       name, alternatives
     ));
-  });
+  }));
 }
 
 fn should_ignore(path: &Path) -> bool {
@@ -280,8 +284,5 @@ fn snake_name_has_forbidden_suffix(name: &str, suffix: &str) -> bool {
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }
