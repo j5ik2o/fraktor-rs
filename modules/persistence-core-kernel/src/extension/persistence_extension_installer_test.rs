@@ -3,7 +3,11 @@ use core::any::{Any, TypeId};
 
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
-  actor::{extension::ExtensionInstallers, scheduler::SchedulerConfig, setup::ActorSystemConfig},
+  actor::{
+    extension::{ExtensionInstaller, ExtensionInstallers},
+    scheduler::SchedulerConfig,
+    setup::ActorSystemConfig,
+  },
   serialization::{
     SerializationError, SerializationExtensionInstaller, SerializationExtensionShared, SerializationSetupBuilder,
     Serializer, SerializerId, default_serialization_setup,
@@ -152,6 +156,24 @@ fn installer_rejects_persistence_serializer_id_collision() {
     .with_extension_installer(serialization);
 
   let _system = build_system(installers);
+}
+
+#[test]
+fn installer_reports_persistence_serializer_registration_error() {
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(DummySerializer::new(MESSAGE_SERIALIZER_ID));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("dummy", MESSAGE_SERIALIZER_ID, serializer)
+    .expect("register")
+    .set_fallback("dummy")
+    .expect("fallback")
+    .build()
+    .expect("setup");
+  let serialization = SerializationExtensionInstaller::new(setup);
+  let system = build_system(ExtensionInstallers::default().with_extension_installer(serialization));
+
+  let result = persistence_installer().install(&system);
+
+  assert!(matches!(result, Err(error) if error.to_string().contains("persistence serialization registration failed")));
 }
 
 #[test]

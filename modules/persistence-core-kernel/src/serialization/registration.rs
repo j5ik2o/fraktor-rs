@@ -113,10 +113,8 @@ fn register_serializer<F>(
 where
   F: FnOnce(&dyn Serializer) -> bool, {
   if let Some(existing) = registry.registered_serializer(id) {
-    if is_same_registration(&*existing) {
-      return Ok(());
-    }
-    return Err(SerializationError::SerializerIdCollision(id));
+    debug_assert!(is_same_registration(&*existing));
+    return Ok(());
   }
   if registry.register_serializer(id, serializer) { Ok(()) } else { Err(SerializationError::SerializerIdCollision(id)) }
 }
@@ -147,12 +145,5 @@ fn register_binding<T: 'static>(
   type_name: &'static str,
   serializer_id: SerializerId,
 ) -> Result<(), SerializationError> {
-  let type_id = TypeId::of::<T>();
-  if let Some(existing) = registry.binding_for(type_id) {
-    if existing == serializer_id {
-      return Ok(());
-    }
-    return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
-  }
-  registry.register_binding(type_id, type_name, serializer_id)
+  registry.register_binding(TypeId::of::<T>(), type_name, serializer_id)
 }
