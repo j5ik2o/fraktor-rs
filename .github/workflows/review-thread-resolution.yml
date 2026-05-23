@@ -12,6 +12,7 @@ on:
     types: [created, edited, deleted]
 
 permissions:
+  checks: read
   contents: read
   issues: read
   pull-requests: read
