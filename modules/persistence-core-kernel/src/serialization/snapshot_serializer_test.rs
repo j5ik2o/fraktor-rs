@@ -192,6 +192,21 @@ fn hint_only_registry() -> ArcShared<SerializationRegistry> {
   registry
 }
 
+fn hint_only_registry_without_payload_binding() -> ArcShared<SerializationRegistry> {
+  let id = SerializerId::try_from(111).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(HintOnlyI32Serializer::new(id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("i32", id, serializer)
+    .expect("register")
+    .set_fallback("i32")
+    .expect("fallback")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+  register_persistence_serializers(&registry).expect("persistence serializers");
+  registry
+}
+
 fn empty_manifest_registry() -> ArcShared<SerializationRegistry> {
   let id = SerializerId::try_from(112).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(EmptyManifestI32Serializer::new(id));
@@ -318,6 +333,15 @@ fn snapshot_payload_without_manifest_serializes_with_serializer_id() {
   let restored = serializer.from_binary(&bytes, None).expect("deserialize");
   let restored = restored.downcast_ref::<SnapshotPayload>().expect("snapshot payload");
   assert_eq!(restored.downcast_ref::<i32>(), Some(&99));
+}
+
+#[test]
+fn non_manifest_unbound_snapshot_payload_fails_serialization() {
+  let registry = hint_only_registry_without_payload_binding();
+  let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
+  let payload = SnapshotPayload::new(ArcShared::new(99_i32));
+
+  assert!(matches!(serializer.to_binary(&payload), Err(SerializationError::InvalidFormat)));
 }
 
 #[test]

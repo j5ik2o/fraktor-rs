@@ -50,10 +50,11 @@ impl MessageSerializer {
     wire::write_u64(&mut buffer, repr.sequence_nr());
     let payload = repr.payload().deref();
     let payload_type_id = payload.type_id();
-    let payload_type_name =
-      registry.binding_name(payload_type_id).unwrap_or_else(|| String::from("PersistentRepr payload"));
-    let serialized_payload = Self::serialize_nested(&delegator, payload, &payload_type_name)?;
-    wire::write_string(&mut buffer, &payload_type_name)?;
+    let payload_binding_name = registry.binding_name(payload_type_id);
+    let payload_type_name = payload_binding_name.as_deref().unwrap_or("PersistentRepr payload");
+    let serialized_payload =
+      Self::serialize_nested(&delegator, payload, payload_type_name, payload_binding_name.is_some())?;
+    wire::write_string(&mut buffer, payload_type_name)?;
     wire::write_serialized(&mut buffer, &serialized_payload)?;
     wire::write_string(&mut buffer, repr.manifest())?;
     wire::write_string(&mut buffer, repr.writer_uuid())?;
@@ -70,10 +71,11 @@ impl MessageSerializer {
     if let Some(metadata) = repr.metadata() {
       wire::write_bool(&mut buffer, true);
       let metadata = metadata.deref();
-      let metadata_type_name =
-        registry.binding_name(metadata.type_id()).unwrap_or_else(|| String::from("PersistentRepr metadata"));
-      let serialized_metadata = Self::serialize_nested(&delegator, metadata, &metadata_type_name)?;
-      wire::write_string(&mut buffer, &metadata_type_name)?;
+      let metadata_binding_name = registry.binding_name(metadata.type_id());
+      let metadata_type_name = metadata_binding_name.as_deref().unwrap_or("PersistentRepr metadata");
+      let serialized_metadata =
+        Self::serialize_nested(&delegator, metadata, metadata_type_name, metadata_binding_name.is_some())?;
+      wire::write_string(&mut buffer, metadata_type_name)?;
       wire::write_serialized(&mut buffer, &serialized_metadata)?;
     } else {
       wire::write_bool(&mut buffer, false);
@@ -121,9 +123,13 @@ impl MessageSerializer {
     delegator: &SerializationDelegator<'_>,
     message: &(dyn Any + Send + Sync),
     type_name: &str,
+    has_binding_name: bool,
   ) -> Result<SerializedMessage, SerializationError> {
     let nested = delegator.serialize(message, type_name)?;
     if !Self::has_valid_manifest(&nested) {
+      return Err(SerializationError::InvalidFormat);
+    }
+    if !has_binding_name && nested.manifest().is_none() {
       return Err(SerializationError::InvalidFormat);
     }
     Ok(nested)

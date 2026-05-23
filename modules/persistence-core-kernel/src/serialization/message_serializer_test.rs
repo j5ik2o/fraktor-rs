@@ -27,6 +27,8 @@ struct DomainEvent;
 
 struct UnboundDomainEvent;
 
+struct UnboundMetadata(i32);
+
 struct ManifestI32Serializer {
   id: SerializerId,
 }
@@ -103,8 +105,13 @@ impl Serializer for HintOnlyI32Serializer {
   }
 
   fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
-    let value = message.downcast_ref::<i32>().ok_or(SerializationError::InvalidFormat)?;
-    Ok(value.to_le_bytes().to_vec())
+    if let Some(value) = message.downcast_ref::<i32>() {
+      return Ok(value.to_le_bytes().to_vec());
+    }
+    if let Some(value) = message.downcast_ref::<UnboundMetadata>() {
+      return Ok(value.0.to_le_bytes().to_vec());
+    }
+    Err(SerializationError::InvalidFormat)
   }
 
   fn from_binary(
@@ -112,12 +119,19 @@ impl Serializer for HintOnlyI32Serializer {
     bytes: &[u8],
     type_hint: Option<TypeId>,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
-    if type_hint != Some(TypeId::of::<i32>()) || bytes.len() != core::mem::size_of::<i32>() {
+    if bytes.len() != core::mem::size_of::<i32>() {
       return Err(SerializationError::InvalidFormat);
     }
     let mut array = [0_u8; core::mem::size_of::<i32>()];
     array.copy_from_slice(bytes);
-    Ok(Box::new(i32::from_le_bytes(array)))
+    let value = i32::from_le_bytes(array);
+    if type_hint == Some(TypeId::of::<i32>()) {
+      return Ok(Box::new(value));
+    }
+    if type_hint == Some(TypeId::of::<UnboundMetadata>()) {
+      return Ok(Box::new(UnboundMetadata(value)));
+    }
+    Err(SerializationError::InvalidFormat)
   }
 
   fn as_any(&self) -> &(dyn Any + Send + Sync) {
@@ -154,6 +168,21 @@ fn hint_only_registry() -> ArcShared<SerializationRegistry> {
     .expect("fallback")
     .bind::<i32>("i32")
     .expect("bind")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+  register_persistence_serializers(&registry).expect("persistence serializers");
+  registry
+}
+
+fn hint_only_registry_without_payload_binding() -> ArcShared<SerializationRegistry> {
+  let id = SerializerId::try_from(101).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(HintOnlyI32Serializer::new(id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("i32", id, serializer)
+    .expect("register")
+    .set_fallback("i32")
+    .expect("fallback")
     .build()
     .expect("setup");
   let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
@@ -277,6 +306,24 @@ fn unregistered_metadata_fails_serialization() {
   let serializer = serializer(&registry);
   let repr =
     PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)).with_metadata(ArcShared::new(String::from("missing")));
+
+  assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn non_manifest_unbound_payload_fails_serialization() {
+  let registry = hint_only_registry_without_payload_binding();
+  let serializer = serializer(&registry);
+  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
+
+  assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
+}
+
+#[test]
+fn non_manifest_unbound_metadata_fails_serialization() {
+  let registry = hint_only_registry();
+  let serializer = serializer(&registry);
+  let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)).with_metadata(ArcShared::new(UnboundMetadata(2)));
 
   assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
 }
@@ -500,6 +547,28 @@ fn persistence_serializer_registration_rejects_stale_message_serializer_registra
     .expect("setup");
   let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
 
+  assert!(matches!(
+    register_persistence_serializers(&registry),
+    Err(SerializationError::SerializerIdCollision(id)) if id == MESSAGE_SERIALIZER_ID
+  ));
+}
+
+#[test]
+fn persistence_serializer_registration_rejects_message_serializer_with_wrong_internal_id() {
+  let fallback_id = SerializerId::try_from(100).expect("serializer id");
+  let fallback: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(fallback_id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("fallback", fallback_id, fallback)
+    .expect("register")
+    .set_fallback("fallback")
+    .expect("fallback")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+  let wrong_id = SerializerId::try_from(999).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(MessageSerializer::new(wrong_id, registry.downgrade()));
+
+  assert!(registry.register_serializer(MESSAGE_SERIALIZER_ID, serializer));
   assert!(matches!(
     register_persistence_serializers(&registry),
     Err(SerializationError::SerializerIdCollision(id)) if id == MESSAGE_SERIALIZER_ID

@@ -4,7 +4,7 @@
 #[path = "snapshot_serializer_test.rs"]
 mod tests;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 use core::{
   any::{Any, TypeId},
   ops::Deref,
@@ -58,13 +58,17 @@ impl Serializer for SnapshotSerializer {
     let registry = self.registry()?;
     let delegator = SerializationDelegator::new(&registry);
     let data = payload.data().deref();
-    let type_name = registry.binding_name(data.type_id()).unwrap_or_else(|| String::from("SnapshotPayload data"));
-    let nested = delegator.serialize(data, &type_name)?;
+    let binding_name = registry.binding_name(data.type_id());
+    let type_name = binding_name.as_deref().unwrap_or("SnapshotPayload data");
+    let nested = delegator.serialize(data, type_name)?;
     if !Self::has_valid_manifest(&nested) {
       return Err(SerializationError::InvalidFormat);
     }
+    if binding_name.is_none() && nested.manifest().is_none() {
+      return Err(SerializationError::InvalidFormat);
+    }
     let mut buffer = Vec::new();
-    wire::write_string(&mut buffer, &type_name)?;
+    wire::write_string(&mut buffer, type_name)?;
     wire::write_serialized(&mut buffer, &nested)?;
     Ok(buffer)
   }

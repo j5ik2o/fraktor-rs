@@ -80,7 +80,7 @@ fn validate_serializer<F>(
 where
   F: FnOnce(&dyn Serializer) -> bool, {
   if let Some(existing) = registry.registered_serializer(id) {
-    if is_same_registration(&*existing) {
+    if existing.identifier() == id && is_same_registration(&*existing) {
       return Ok(());
     }
     return Err(SerializationError::SerializerIdCollision(id));
@@ -113,7 +113,7 @@ fn register_serializer<F>(
 where
   F: FnOnce(&dyn Serializer) -> bool, {
   if let Some(existing) = registry.registered_serializer(id) {
-    if is_same_registration(&*existing) {
+    if existing.identifier() == id && is_same_registration(&*existing) {
       return Ok(());
     }
     return Err(SerializationError::SerializerIdCollision(id));
