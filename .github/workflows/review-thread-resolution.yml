@@ -12,8 +12,8 @@ on:
     types: [created, edited, deleted]
 
 permissions:
-  checks: read
   contents: read
+  checks: write
   issues: read
   pull-requests: read
 
@@ -34,6 +34,8 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -52,6 +54,7 @@ jobs:
                       }
                       baseRefName
                       headRefOid
+                      url
                     }
                   }
                 }
@@ -65,7 +68,9 @@ jobs:
           fi
 
           if ! jq -e '.data.repository.pullRequest.author.login
-            and .data.repository.pullRequest.baseRefName' \
+            and .data.repository.pullRequest.baseRefName
+            and .data.repository.pullRequest.headRefOid
+            and .data.repository.pullRequest.url' \
             <<< "$pr_response" > /dev/null; then
             echo "::error::GitHub GraphQL response did not include PR metadata."
             jq -c '.' <<< "$pr_response" >&2
@@ -76,6 +81,37 @@ jobs:
           pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
           base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
           head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
+          pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
+
+          publish_head_check() {
+            local conclusion="$1"
+            local summary="$2"
+
+            jq -n \
+              --arg name "Check unresolved comments" \
+              --arg head_sha "$head_ref_oid" \
+              --arg conclusion "$conclusion" \
+              --arg details_url "$RUN_URL" \
+              --arg title "Review Thread Resolution" \
+              --arg summary "$summary" \
+              '{
+                name: $name,
+                head_sha: $head_sha,
+                status: "completed",
+                conclusion: $conclusion,
+                details_url: $details_url,
+                output: {
+                  title: $title,
+                  summary: $summary
+                }
+              }' \
+              | gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "repos/$OWNER/$REPO/check-runs" \
+                --input - > /dev/null
+          }
 
           if [[ "$base_ref" != "main" ]]; then
             echo "Skipping PR #$PR_NUMBER because base branch is $base_ref, not main."
@@ -337,6 +373,28 @@ jobs:
             echo "No unacknowledged top-level PR comments."
           fi
 
+          summary="$(
+            {
+              echo "PR: $pr_url"
+              echo
+              echo "$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain."
+              echo
+              if [[ "$unresolved_count" -gt 0 ]]; then
+                echo "### Unresolved PR review threads"
+                echo
+                jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
+                  <<< "$unresolved"
+                echo
+              fi
+              if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
+                echo "### Unacknowledged top-level PR comments"
+                echo
+                jq -r '.[] | "- by \(.author.login // "unknown") at \(.createdAt): \(.url // "no comment URL")"' \
+                  <<< "$unacknowledged_top_level"
+              fi
+            }
+          )"
+
           {
             if [[ "$unresolved_count" -gt 0 ]]; then
               echo "### Unresolved PR review threads"
@@ -354,7 +412,14 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
+            if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+              publish_head_check "success" "$summary"
+            fi
             exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+            publish_head_check "failure" "$summary"
           fi
 
           echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain. Resolve or acknowledge all review conversations before merging."
