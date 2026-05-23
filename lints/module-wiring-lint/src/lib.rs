@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_data_structures;
 extern crate rustc_hir;
 extern crate rustc_middle;
@@ -17,7 +21,7 @@ use rustc_hir::{
 use rustc_hir::attrs::AttributeKind;
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_middle::ty::Visibility;
-use rustc_span::{symbol::Symbol, BytePos, FileName, RealFileName, Span};
+use rustc_span::{symbol::Symbol, BytePos, Span};
 
 dylint_linting::impl_late_lint! {
   pub NO_PARENT_REEXPORT,
@@ -55,12 +59,13 @@ impl NoParentReexport {
     let attrs = cx.tcx.hir_attrs(item.hir_id());
     let mut allowed_test_path_attr = false;
     for attr in attrs {
-      if let Attribute::Parsed(AttributeKind::Path(_, span)) = attr {
-        if is_allowed_sibling_test_path_attr(cx, item, module_name, *span) {
+      if let Attribute::Parsed(AttributeKind::Path(path)) = attr {
+        let path_span = path_attribute_span(cx, item.span).unwrap_or(item.span);
+        if is_allowed_sibling_test_path_attr(cx, item, module_name, *path, path_span) {
           allowed_test_path_attr = true;
           continue;
         }
-        self.emit_path_attribute_violation(cx, *span);
+        self.emit_path_attribute_violation(cx, path_span);
         return;
       }
     }
@@ -226,23 +231,23 @@ impl NoParentReexport {
   }
 
   fn emit_violation(&self, cx: &LateContext<'_>, span: Span, label: RuleLabel, detail: &str, help: Option<&'static str>) {
-    cx.span_lint(NO_PARENT_REEXPORT, span, |diag| {
+    cx.emit_span_lint(NO_PARENT_REEXPORT, span, DiagDecorator(|diag| {
       diag.primary_message("再エクスポートは末端モジュールの直属親以外では禁止です");
       diag.note(label.message());
       diag.note(format!("詳細: {}", detail));
       if let Some(help_msg) = help {
         diag.help(help_msg);
       }
-    });
+    }));
   }
 
   fn emit_leaf_mod_visibility_violation(&self, cx: &LateContext<'_>, span: Span, detail: &str) {
-    cx.span_lint(NO_PARENT_REEXPORT, span, |diag| {
+    cx.emit_span_lint(NO_PARENT_REEXPORT, span, DiagDecorator(|diag| {
       diag.primary_message("末端モジュールの宣言では `mod` のみを使用してください");
       diag.note("ルール: 末端モジュールを公開したい場合は親で `mod` のみ宣言し、`pub use` で公開します");
       diag.note(format!("詳細: {}", detail));
       diag.help("宣言から可視性修飾子を削除し、公開が必要なシンボルは末端モジュール内で `pub` を付けてください");
-    });
+    }));
   }
 
   fn emit_path_attribute_violation(&self, cx: &LateContext<'_>, span: Span) {
@@ -252,23 +257,23 @@ impl NoParentReexport {
       | Err(_) => "属性 `#[path = ...]` が設定されています".to_string(),
     };
 
-    cx.span_lint(NO_PARENT_REEXPORT, span, |diag| {
+    cx.emit_span_lint(NO_PARENT_REEXPORT, span, DiagDecorator(|diag| {
       diag.primary_message("モジュール宣言で `#[path = \"...\"]` 属性は禁止されています");
       diag.note("ルール: 原則ルール: モジュールはファイル配置と `mod` 宣言だけで結線してください");
       diag.note(format!("詳細: {}", detail));
       diag.help("モジュールファイルを規約どおりの場所に配置し、`mod foo;` として宣言してください");
-    });
+    }));
   }
 
   fn emit_include_macro_violation(&self, cx: &LateContext<'_>, span: Span) {
     let sm = cx.tcx.sess.source_map();
     let detail = sm.span_to_snippet(span).unwrap_or_else(|_| "include!".to_string());
-    cx.span_lint(NO_PARENT_REEXPORT, span, |diag| {
+    cx.emit_span_lint(NO_PARENT_REEXPORT, span, DiagDecorator(|diag| {
       diag.primary_message("モジュール内で `include!` マクロを用いた結線は禁止されています");
       diag.note("ルール: 原則ルール: モジュールはファイル配置と `mod` 宣言だけで結線してください");
       diag.note(format!("詳細: マクロ `{}` によって外部ファイルを結線しようとしています", detail));
       diag.help("対象ファイルを所定のパスに配置し、`mod child;` でモジュールを宣言してください");
-    });
+    }));
   }
 }
 
@@ -296,18 +301,18 @@ fn is_prelude_module(cx: &LateContext<'_>, def_id: DefId) -> bool {
   path.split("::").last() == Some("prelude")
 }
 
-fn is_allowed_sibling_test_path_attr(cx: &LateContext<'_>, item: &Item<'_>, module_name: Symbol, attr_span: Span) -> bool {
+fn is_allowed_sibling_test_path_attr(
+  cx: &LateContext<'_>,
+  item: &Item<'_>,
+  module_name: Symbol,
+  path: Symbol,
+  attr_span: Span,
+) -> bool {
   if module_name.as_str() != "tests" || !has_cfg_test_attr_before_path(cx, attr_span) {
     return false;
   }
 
-  let sm = cx.tcx.sess.source_map();
-  let Ok(snippet) = sm.span_to_snippet(attr_span) else {
-    return false;
-  };
-  let Some(path) = extract_path_literal(&snippet) else {
-    return false;
-  };
+  let path = path.as_str();
   if path.contains('/') || path.contains('\\') {
     return false;
   }
@@ -317,6 +322,21 @@ fn is_allowed_sibling_test_path_attr(cx: &LateContext<'_>, item: &Item<'_>, modu
   };
 
   path == format!("{stem}_test.rs")
+}
+
+fn path_attribute_span(cx: &LateContext<'_>, item_span: Span) -> Option<Span> {
+  let source_before_item = cx.tcx.sess.source_map().span_to_prev_source(item_span).ok()?;
+  let attr_start = source_before_item.rfind("#[path")?;
+  let attr_end = source_before_item[attr_start..]
+    .find('\n')
+    .map(|offset| attr_start + offset)
+    .unwrap_or(source_before_item.len());
+
+  let bytes_from_attr_start_to_item = u32::try_from(source_before_item.len() - attr_start).ok()?;
+  let bytes_from_attr_end_to_item = u32::try_from(source_before_item.len() - attr_end).ok()?;
+  let lo = item_span.lo() - BytePos(bytes_from_attr_start_to_item);
+  let hi = item_span.lo() - BytePos(bytes_from_attr_end_to_item);
+  Some(Span::with_root_ctxt(lo, hi))
 }
 
 fn has_cfg_test_attr_before_path(cx: &LateContext<'_>, path_attr_span: Span) -> bool {
@@ -393,18 +413,14 @@ fn split_top_level_cfg_args(expr: &str) -> Vec<&str> {
   args
 }
 
-fn extract_path_literal(snippet: &str) -> Option<&str> {
-  let start = snippet.find('"')?;
-  let rest = &snippet[start + 1..];
-  let end = rest.find('"')?;
-  Some(&rest[..end])
-}
-
 fn declaring_file_stem(cx: &LateContext<'_>, span: Span) -> Option<String> {
-  match cx.tcx.sess.source_map().span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => path.file_stem().and_then(|stem| stem.to_str()).map(str::to_owned),
-    | _ => None,
-  }
+  cx
+    .tcx
+    .sess
+    .source_map()
+    .span_to_filename(span)
+    .into_local_path()
+    .and_then(|path| path.file_stem().and_then(|stem| stem.to_str()).map(str::to_owned))
 }
 
 fn has_allow_comment(cx: &LateContext<'_>, span: Span) -> bool {

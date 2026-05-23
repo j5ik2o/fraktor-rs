@@ -104,10 +104,7 @@ impl FlowLogic for DelimiterFramingLogic {
     let chunk = downcast_value::<Vec<u8>>(input)?;
     self.buffer.extend_from_slice(&chunk);
     let mut frames: Vec<DynValue> = Vec::new();
-    loop {
-      let Some(pos) = find_delimiter(&self.buffer, &self.delimiter) else {
-        break;
-      };
+    while let Some(pos) = find_delimiter(&self.buffer, &self.delimiter) {
       let frame: Vec<u8> = self.buffer[..pos].to_vec();
       let new_start = pos + self.delimiter.len();
       self.buffer = self.buffer[new_start..].to_vec();

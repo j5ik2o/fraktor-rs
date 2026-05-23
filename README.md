@@ -30,7 +30,7 @@ Runtime APIs live in the workspace crates under [`modules/`](modules), and the f
 ### Requirements
 
 - `rustup`
-- Rust toolchain `nightly-2025-12-01` (pinned by [`rust-toolchain.toml`](rust-toolchain.toml))
+- Rust toolchain `nightly-2026-05-22` (pinned by [`rust-toolchain.toml`](rust-toolchain.toml))
 - `cargo-dylint`, `rustc-dev`, and `llvm-tools-preview` for the full local check suite
 
 ### Install
@@ -38,13 +38,13 @@ Runtime APIs live in the workspace crates under [`modules/`](modules), and the f
 ```bash
 git clone git@github.com:j5ik2o/fraktor-rs.git
 cd fraktor-rs
-rustup toolchain install nightly-2025-12-01 --component rustfmt --component clippy
+rustup toolchain install nightly-2026-05-22 --component rustfmt --component clippy
 ```
 
 For full dylint-backed verification:
 
 ```bash
-rustup component add rustc-dev llvm-tools-preview --toolchain nightly-2025-12-01
+rustup component add rustc-dev llvm-tools-preview --toolchain nightly-2026-05-22
 cargo install cargo-dylint dylint-link
 ```
 

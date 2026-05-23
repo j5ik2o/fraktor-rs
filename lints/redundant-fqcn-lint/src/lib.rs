@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_span;
 
@@ -12,7 +16,7 @@ use std::{
 
 use proc_macro2::{LineColumn, Span as ProcSpan};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_span::{source_map::SourceMap, BytePos, FileName, RealFileName, SourceFile, Span};
+use rustc_span::{source_map::SourceMap, BytePos, SourceFile, Span};
 use syn::{
   spanned::Spanned,
   visit::{self, Visit},
@@ -124,7 +128,7 @@ fn emit_warning(cx: &LateContext<'_>, span: Span, occurrence: &PathOccurrence) {
     "このパスと同じモジュールスコープの `use` ブロック"
   };
 
-  cx.span_lint(REDUNDANT_FQCN, span, |diag| {
+  cx.emit_span_lint(REDUNDANT_FQCN, span, DiagDecorator(|diag| {
     diag.primary_message(format!(
       "`{}` は `use` 以外で不要な FQCN です",
       occurrence.display_path
@@ -137,7 +141,7 @@ fn emit_warning(cx: &LateContext<'_>, span: Span, occurrence: &PathOccurrence) {
       "AI向けアドバイス: 1. {}に `use {};` を追加する 2. この箇所の `{}` を `{}` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない",
       import_scope_help, occurrence.import_path, occurrence.display_path, occurrence.short_path
     ));
-  });
+  }));
 }
 
 #[derive(Clone)]
@@ -451,13 +455,9 @@ fn line_col_to_offset(line_starts: &[usize], lc: LineColumn) -> Option<usize> {
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }
 
 fn load_source_file(sm: &SourceMap, path: &Path) -> Option<std::sync::Arc<SourceFile>> {
-  let filename = FileName::Real(RealFileName::LocalPath(path.to_path_buf()));
-  sm.get_source_file(&filename).or_else(|| sm.load_file(path).ok())
+  sm.load_file(path).ok()
 }

@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_span;
 extern crate rustc_middle;
@@ -13,7 +17,7 @@ use heck::ToSnakeCase;
 
 use rustc_hir::{Item, ItemKind};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_span::{source_map::SourceMap, FileName, RealFileName, Span};
+use rustc_span::{source_map::SourceMap, Span};
 
 mod state;
 
@@ -38,7 +42,7 @@ impl Default for MultipleTypeDefinitions {
 
 impl<'tcx> LateLintPass<'tcx> for MultipleTypeDefinitions {
   fn check_item(&mut self, cx: &LateContext<'tcx>, item: &Item<'tcx>) {
-    if !matches!(item.kind, ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Trait(..)) {
+    if !matches!(item.kind, ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Trait { .. }) {
       return;
     }
 
@@ -94,7 +98,7 @@ impl<'tcx> LateLintPass<'tcx> for MultipleTypeDefinitions {
           module_ident
         );
 
-        cx.span_lint(MULTIPLE_TYPE_DEFINITIONS, item.span, |diag| {
+        cx.emit_span_lint(MULTIPLE_TYPE_DEFINITIONS, item.span, DiagDecorator(|diag| {
           diag.primary_message("構造体・列挙型・トレイトはファイルごとに1つまでにしてください");
           if let Some((span, existing_name, existing_kind)) = &first_detail {
             diag.span_note(
@@ -106,7 +110,7 @@ impl<'tcx> LateLintPass<'tcx> for MultipleTypeDefinitions {
           diag.note(format!("検出された型一覧: {}", type_list));
           diag.help("型ごとに別ファイルを作成し、親モジュールで `mod` 宣言を更新してください");
           diag.note(ai_note);
-        });
+        }));
 
         records.push(TypeRecord::new(name, kind_label, item.span));
       },
@@ -146,14 +150,11 @@ fn describe_kind(kind: &ItemKind<'_>) -> &'static str {
   match kind {
     | ItemKind::Struct(..) => "struct",
     | ItemKind::Enum(..) => "enum",
-    | ItemKind::Trait(..) => "trait",
+    | ItemKind::Trait { .. } => "trait",
     | _ => "unknown",
   }
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }

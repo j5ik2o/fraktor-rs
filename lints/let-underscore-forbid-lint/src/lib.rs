@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+extern crate rustc_errors;
+
+use rustc_errors::DiagDecorator;
+
 extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
@@ -8,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use rustc_hir::{ExprKind, LetStmt, PatKind, Stmt, StmtKind};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_span::{FileName, RealFileName, Span, source_map::SourceMap, sym};
+use rustc_span::{source_map::SourceMap, sym, Span};
 
 dylint_linting::impl_late_lint! {
   pub LET_UNDERSCORE_FORBID,
@@ -93,7 +97,7 @@ impl<'tcx> LateLintPass<'tcx> for LetUnderscoreForbid {
 }
 
 fn emit_let_underscore(cx: &LateContext<'_>, span: Span) {
-  cx.span_lint(LET_UNDERSCORE_FORBID, span, |diag| {
+  cx.emit_span_lint(LET_UNDERSCORE_FORBID, span, DiagDecorator(|diag| {
     diag.primary_message("`let _ = ...;` による戻り値の握りつぶしは禁止です");
     diag.note(
       ".agents/rules/ignored-return-values.md の MUST NOT に違反します。`Result` は `?` / \
@@ -104,11 +108,11 @@ fn emit_let_underscore(cx: &LateContext<'_>, span: Span) {
       "例外を許容する場合は、違反行の直前行（空行を挟まない）に `{ALLOW_PREFIX} <理由>` を付与してください。\
        Drop / shutdown best-effort / メトリクス補助 / `Vec::pop` 相当 / 低レベル所有権操作のみ例外として許容されます。"
     ));
-  });
+  }));
 }
 
 fn emit_ok_discard(cx: &LateContext<'_>, span: Span) {
-  cx.span_lint(LET_UNDERSCORE_FORBID, span, |diag| {
+  cx.emit_span_lint(LET_UNDERSCORE_FORBID, span, DiagDecorator(|diag| {
     diag.primary_message("`Result::ok();` でのエラー握りつぶしは禁止です");
     diag.note(
       ".agents/rules/ignored-return-values.md の MUST NOT に違反します。`.ok()` は `Result` から `Option` \
@@ -118,7 +122,7 @@ fn emit_ok_discard(cx: &LateContext<'_>, span: Span) {
       "失敗を伝播する (`?`)、ログ出力する (`if let Err(e) = ...`)、メトリクスに記録するなどで\
        失敗を可視化してください。例外を許容する場合は、違反行の直前行に `{ALLOW_PREFIX} <理由>` を付与してください。"
     ));
-  });
+  }));
 }
 
 /// 違反行の直前行に `// must-ignore: <reason>` が存在するか判定する。
@@ -177,8 +181,5 @@ fn should_ignore(path: &Path) -> bool {
 }
 
 fn file_path_from_span(sm: &SourceMap, span: Span) -> Option<PathBuf> {
-  match sm.span_to_filename(span) {
-    | FileName::Real(RealFileName::LocalPath(path)) => Some(path.to_path_buf()),
-    | _ => None,
-  }
+  sm.span_to_filename(span).into_local_path()
 }
