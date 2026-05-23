@@ -82,7 +82,9 @@ jobs:
           fi
 
           max_attempts=60
-          sleep_seconds=30
+          initial_sleep_seconds=5
+          max_sleep_seconds=30
+          sleep_seconds="$initial_sleep_seconds"
           for attempt in $(seq 1 "$max_attempts"); do
             status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
               echo "::error::Failed to fetch PR status on attempt $attempt."
@@ -130,6 +132,12 @@ jobs:
             echo "Waiting for other PR checks to finish before evaluating review comments:"
             echo "$pending_checks"
             sleep "$sleep_seconds"
+            if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
+              sleep_seconds=$((sleep_seconds * 2))
+              if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
+                sleep_seconds="$max_sleep_seconds"
+              fi
+            fi
           done
 
           unresolved='[]'
