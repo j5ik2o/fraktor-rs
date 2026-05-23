@@ -4,7 +4,7 @@
 #[path = "persistence_context_test.rs"]
 mod tests;
 
-use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec, vec::Vec};
 use core::{
   any::Any,
   ops::Deref,
@@ -16,8 +16,11 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   error::PersistenceError,
-  journal::{EventAdapters, JournalMessage, JournalResponse, JournalResponseAction},
-  persistent::{PendingHandlerInvocation, PersistentActorState, PersistentEnvelope, PersistentRepr, Recovery},
+  journal::{EventAdapters, JournalError, JournalMessage, JournalResponse, JournalResponseAction},
+  persistent::{
+    AtomicWrite, AtomicWriteError, PendingHandlerInvocation, PersistentActorState, PersistentEnvelope, PersistentRepr,
+    Recovery,
+  },
   snapshot::{SnapshotError, SnapshotMessage, SnapshotResponse, SnapshotResponseAction},
 };
 
@@ -229,12 +232,19 @@ impl<A: 'static> PersistenceContext<A> {
     }
     self.stash_until_batch_completion = has_stashing_invocation;
 
-    debug_assert!(!messages.is_empty(), "flush_batch requires at least one persistent journal message");
-
+    let atomic_write = match AtomicWrite::new(messages) {
+      | Ok(write) => write,
+      | Err(error) => {
+        let journal_error = Self::journal_error_for_atomic_write(error);
+        // AtomicWrite がジャーナル到達前にバッチを拒否したため、このバッチの保留ハンドラを破棄する。
+        self.reset_after_write_failure();
+        return Err(PersistenceError::Journal(journal_error));
+      },
+    };
     let message = JournalMessage::WriteMessages {
       persistence_id: self.persistence_id.clone(),
       to_sequence_nr,
-      messages,
+      messages: vec![atomic_write],
       sender,
       instance_id: self.instance_id,
     };
@@ -276,13 +286,11 @@ impl<A: 'static> PersistenceContext<A> {
         self.advance_after_write_rejected(repr);
         JournalResponseAction::PersistRejected { cause: cause.clone(), repr: repr.clone() }
       },
-      | JournalResponse::WriteMessagesFailed { write_count, instance_id, .. } => {
+      | JournalResponse::WriteMessagesFailed { instance_id, .. } => {
         if self.state != PersistentActorState::PersistingEvents || !self.matches_instance_id(*instance_id) {
           return JournalResponseAction::None;
         }
-        if *write_count == 0 {
-          self.reset_after_write_failure();
-        }
+        self.reset_after_write_failure();
         JournalResponseAction::None
       },
       | JournalResponse::WriteMessagesSuccessful { instance_id } => {
@@ -296,7 +304,7 @@ impl<A: 'static> PersistenceContext<A> {
       },
       | JournalResponse::ReplayedMessage { persistent_repr } => {
         self.current_sequence_nr = persistent_repr.sequence_nr();
-        let mut replayed_reprs = Self::from_journal_repr(persistent_repr);
+        let mut replayed_reprs = self.replayed_from_journal_repr(persistent_repr);
         match replayed_reprs.len() {
           | 0 => JournalResponseAction::None,
           | 1 => {
@@ -475,6 +483,7 @@ impl<A: 'static> PersistenceContext<A> {
   fn reset_after_write_failure(&mut self) {
     self.stash_until_batch_completion = false;
     self.pending_invocations.clear();
+    self.current_sequence_nr = self.last_sequence_nr;
     self.transition_to_processing_commands_if_no_pending();
   }
 
@@ -554,11 +563,27 @@ impl<A: 'static> PersistenceContext<A> {
     Self::repr_with_payload(repr, adapted_payload).with_manifest(manifest).with_sender(None)
   }
 
-  fn from_journal_repr(repr: &PersistentRepr) -> Vec<PersistentRepr> {
-    let payload = repr.payload().clone();
-    let adapted =
-      repr.adapters().read_adapter_for_type_id(repr.adapter_type_id()).adapt_from_journal(payload, repr.manifest());
-    adapted.into_events().into_iter().map(|adapted_payload| Self::repr_with_payload(repr, adapted_payload)).collect()
+  fn replayed_from_journal_repr(&self, repr: &PersistentRepr) -> Vec<PersistentRepr> {
+    let adapters = self.select_adapters_for_replay(repr);
+    let repr_with_adapters = repr.clone().with_adapters(adapters);
+    let adapter_type_id = repr_with_adapters.adapter_type_id();
+    let payload = repr_with_adapters.payload().clone();
+    let read_adapter = repr_with_adapters.adapters().read_adapter_for_type_id(adapter_type_id);
+    let adapted = read_adapter.adapt_from_journal(payload, repr_with_adapters.manifest());
+    adapted
+      .into_events()
+      .into_iter()
+      .map(|adapted_payload| Self::repr_with_payload(&repr_with_adapters, adapted_payload))
+      .collect()
+  }
+
+  fn select_adapters_for_replay(&self, repr: &PersistentRepr) -> EventAdapters {
+    let adapters = if self.event_adapters.has_read_adapter_for_type_id(repr.adapter_type_id()) {
+      &self.event_adapters
+    } else {
+      repr.adapters()
+    };
+    adapters.clone()
   }
 
   fn repr_with_payload(repr: &PersistentRepr, payload: ArcShared<dyn Any + Send + Sync>) -> PersistentRepr {
@@ -593,5 +618,14 @@ impl<A: 'static> PersistenceContext<A> {
 
   fn is_null_ref(actor_ref: &ActorRef) -> bool {
     actor_ref.pid() == Pid::new(0, 0)
+  }
+
+  fn journal_error_for_atomic_write(error: AtomicWriteError) -> JournalError {
+    match error {
+      | AtomicWriteError::Empty => JournalError::InvalidAtomicWrite(String::from("empty payload")),
+      | AtomicWriteError::MixedPersistenceId { expected, actual } => {
+        JournalError::MixedPersistenceId { expected, actual }
+      },
+    }
   }
 }

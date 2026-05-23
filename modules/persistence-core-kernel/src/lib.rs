@@ -64,5 +64,6 @@ pub mod extension;
 pub mod fsm;
 pub mod journal;
 pub mod persistent;
+pub mod serialization;
 pub mod snapshot;
 pub mod state;

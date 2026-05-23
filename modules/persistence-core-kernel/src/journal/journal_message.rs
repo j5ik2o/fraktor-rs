@@ -8,7 +8,7 @@ use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 
-use crate::persistent::PersistentRepr;
+use crate::persistent::AtomicWrite;
 
 /// Messages sent to the journal actor.
 #[derive(Clone, Debug)]
@@ -19,8 +19,8 @@ pub enum JournalMessage {
     persistence_id: String,
     /// Max sequence number within the batch.
     to_sequence_nr: u64,
-    /// Events to persist.
-    messages:       Vec<PersistentRepr>,
+    /// Atomic write units to persist.
+    messages:       Vec<AtomicWrite>,
     /// Request sender.
     sender:         ActorRef,
     /// Instance id for correlation.

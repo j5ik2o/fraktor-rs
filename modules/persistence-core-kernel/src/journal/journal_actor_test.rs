@@ -20,7 +20,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 use super::JournalPoll;
 use crate::{
   journal::{InMemoryJournal, JournalActor, JournalActorConfig, JournalError, JournalMessage, JournalResponse},
-  persistent::PersistentRepr,
+  persistent::{AtomicWrite, PersistentRepr},
 };
 
 type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
@@ -51,6 +51,10 @@ fn create_sender() -> (ActorRef, MessageStore) {
 
 fn test_actor_pid() -> Pid {
   Pid::new(10_000, 1)
+}
+
+fn atomic_write(payload: Vec<PersistentRepr>) -> AtomicWrite {
+  AtomicWrite::new(payload).expect("atomic write")
 }
 
 fn new_test_system() -> ActorSystem {
@@ -93,7 +97,7 @@ impl crate::journal::Journal for PendingJournal {
   where
     Self: 'a;
 
-  fn write_messages<'a>(&'a mut self, _messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
+  fn write_messages<'a>(&'a mut self, _messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a> {
     pending()
   }
 
@@ -144,7 +148,7 @@ impl crate::journal::Journal for RetryJournal {
   where
     Self: 'a;
 
-  fn write_messages<'a>(&'a mut self, _messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
+  fn write_messages<'a>(&'a mut self, _messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a> {
     if self.failures_left > 0 {
       self.failures_left -= 1;
       ready(Err(JournalError::WriteFailed("boom".into())))
@@ -212,7 +216,7 @@ impl crate::journal::Journal for ScriptedJournal {
   where
     Self: 'a;
 
-  fn write_messages<'a>(&'a mut self, _messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
+  fn write_messages<'a>(&'a mut self, _messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a> {
     ready(Ok(()))
   }
 
@@ -260,7 +264,7 @@ fn scripted_journal_success_paths_are_exercised() {
   let write = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
-    messages:       vec![repr],
+    messages:       vec![atomic_write(vec![repr])],
     sender:         sender.clone(),
     instance_id:    7,
   };
@@ -308,7 +312,7 @@ fn journal_actor_write_messages_sends_responses() {
   let message = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 2,
-    messages: vec![repr1, repr2],
+    messages: vec![atomic_write(vec![repr1, repr2])],
     sender,
     instance_id: 9,
   };
@@ -361,7 +365,7 @@ fn journal_actor_pending_does_not_emit_failure() {
   let message = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
-    messages: vec![repr],
+    messages: vec![atomic_write(vec![repr])],
     sender,
     instance_id: 1,
   };
@@ -421,7 +425,7 @@ fn journal_actor_retry_max_exceeded_on_errors() {
   let message = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
-    messages: vec![repr],
+    messages: vec![atomic_write(vec![repr])],
     sender,
     instance_id: 1,
   };
@@ -444,8 +448,9 @@ fn journal_actor_retry_max_exceeded_on_errors() {
       assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
       failures += 1;
     }
-    if let JournalResponse::WriteMessagesFailed { cause, instance_id, .. } = response {
+    if let JournalResponse::WriteMessagesFailed { cause, write_count, instance_id } = response {
       assert_eq!(cause, &JournalError::WriteFailed("boom".into()));
+      assert_eq!(*write_count, 1);
       assert_eq!(*instance_id, 1);
       batch_failures += 1;
     }
@@ -497,7 +502,7 @@ fn journal_actor_delete_and_highest_success_responses() {
   let write = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
-    messages:       vec![repr],
+    messages:       vec![atomic_write(vec![repr])],
     sender:         sender.clone(),
     instance_id:    7,
   };
@@ -596,7 +601,7 @@ fn journal_actor_replay_filters_deleted_messages() {
   let write = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 3,
-    messages:       vec![repr1, repr2, repr3],
+    messages:       vec![atomic_write(vec![repr1, repr2, repr3])],
     sender:         sender.clone(),
     instance_id:    10,
   };
@@ -641,7 +646,7 @@ fn journal_actor_success_responses_to_null_sender_do_not_fail() {
   let write = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
-    messages:       vec![repr],
+    messages:       vec![atomic_write(vec![repr])],
     sender:         ActorRef::null(),
     instance_id:    7,
   };
@@ -684,7 +689,7 @@ fn journal_actor_failure_responses_to_null_sender_do_not_fail() {
   let write = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
-    messages:       vec![repr],
+    messages:       vec![atomic_write(vec![repr])],
     sender:         ActorRef::null(),
     instance_id:    7,
   };

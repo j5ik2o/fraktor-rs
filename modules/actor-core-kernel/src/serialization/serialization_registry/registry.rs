@@ -132,6 +132,18 @@ impl SerializationRegistry {
     })
   }
 
+  /// Returns the serializer for an id without converting absence into an error.
+  #[must_use]
+  pub fn registered_serializer(&self, id: SerializerId) -> Option<ArcShared<dyn Serializer>> {
+    self.serializer_by_id_raw(id)
+  }
+
+  /// Returns the serializer id currently bound to the type.
+  #[must_use]
+  pub fn binding_for(&self, type_id: TypeId) -> Option<SerializerId> {
+    self.bindings.with_read(|bindings| bindings.get(&type_id).copied())
+  }
+
   /// Registers a binding at runtime (used by adapters/extensions).
   ///
   /// # Errors
@@ -147,12 +159,22 @@ impl SerializationRegistry {
     if self.serializer_by_id_raw(serializer_id).is_none() {
       return Err(SerializationError::UnknownSerializer(serializer_id));
     }
-    self.bindings.with_write(|bindings| {
+    let type_name = type_name.into();
+    let result: Result<(), SerializationError> = self.bindings.with_write(|bindings| {
+      self.binding_names.with_write(|binding_names| {
+        if let Some(existing_type_id) = binding_names.iter().find_map(|(existing_type_id, existing_name)| {
+          (*existing_type_id != type_id && existing_name == &type_name).then_some(*existing_type_id)
+        }) {
+          let existing = bindings.get(&existing_type_id).copied().ok_or(SerializationError::InvalidFormat)?;
+          return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
+        }
+        binding_names.insert(type_id, type_name);
+        Ok(())
+      })?;
       bindings.insert(type_id, serializer_id);
+      Ok(())
     });
-    self.binding_names.with_write(|binding_names| {
-      binding_names.insert(type_id, type_name.into());
-    });
+    result?;
     self.cache_remove(type_id);
     Ok(())
   }
@@ -174,6 +196,14 @@ impl SerializationRegistry {
   #[must_use]
   pub fn binding_name(&self, type_id: TypeId) -> Option<String> {
     self.binding_names.with_read(|binding_names| binding_names.get(&type_id).cloned())
+  }
+
+  /// Returns the type identifier recorded for the provided binding name.
+  #[must_use]
+  pub fn type_id_for_binding_name(&self, name: &str) -> Option<TypeId> {
+    self.binding_names.with_read(|binding_names| {
+      binding_names.iter().find_map(|(type_id, binding)| (binding == name).then_some(*type_id))
+    })
   }
 
   /// Returns the remote manifest registered for the provided type identifier.

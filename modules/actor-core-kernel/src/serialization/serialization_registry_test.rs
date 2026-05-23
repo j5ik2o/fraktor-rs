@@ -131,6 +131,33 @@ fn register_binding_allows_dynamic_resolution() {
 }
 
 #[test]
+fn register_binding_rejects_duplicate_binding_name_for_different_type() {
+  let (registry, alpha_id, beta_id) = setup_with_two_serializers();
+
+  let result = registry.register_binding(TypeId::of::<u64>(), type_name::<u32>(), beta_id);
+
+  assert!(matches!(
+    result,
+    Err(SerializationError::SerializerBindingCollision {
+      type_name: binding_name,
+      existing,
+      requested
+    }) if binding_name == type_name::<u32>() && existing == alpha_id && requested == beta_id
+  ));
+  assert_eq!(registry.binding_name(TypeId::of::<u64>()), None);
+  assert_eq!(registry.type_id_for_binding_name(type_name::<u32>()), Some(TypeId::of::<u32>()));
+}
+
+#[test]
+fn binding_names_resolve_back_to_type_ids() {
+  let (registry, _serializer_id) = setup_with_binding();
+
+  assert_eq!(registry.binding_name(TypeId::of::<u32>()), Some(type_name::<u32>().into()));
+  assert_eq!(registry.type_id_for_binding_name(type_name::<u32>()), Some(TypeId::of::<u32>()));
+  assert_eq!(registry.type_id_for_binding_name("missing"), None);
+}
+
+#[test]
 fn manifest_routes_return_serializers_in_priority_order() {
   let alpha_id = SerializerId::try_from(150).expect("alpha");
   let beta_id = SerializerId::try_from(151).expect("beta");

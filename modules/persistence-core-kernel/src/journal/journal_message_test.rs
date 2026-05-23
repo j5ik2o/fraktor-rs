@@ -4,7 +4,10 @@ use core::any::Any;
 use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use crate::{journal::JournalMessage, persistent::PersistentRepr};
+use crate::{
+  journal::JournalMessage,
+  persistent::{AtomicWrite, PersistentRepr},
+};
 
 #[test]
 fn journal_message_write_messages_fields() {
@@ -15,7 +18,7 @@ fn journal_message_write_messages_fields() {
   let message = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
-    messages:       vec![repr.clone()],
+    messages:       vec![AtomicWrite::new(vec![repr.clone()]).expect("atomic write")],
     sender:         sender.clone(),
     instance_id:    7,
   };
@@ -25,7 +28,7 @@ fn journal_message_write_messages_fields() {
       assert_eq!(persistence_id, "pid-1");
       assert_eq!(to_sequence_nr, 1);
       assert_eq!(messages.len(), 1);
-      assert_eq!(messages[0].sequence_nr(), repr.sequence_nr());
+      assert_eq!(messages[0].payload()[0].sequence_nr(), repr.sequence_nr());
       assert_eq!(instance_id, 7);
     },
     | _ => panic!("unexpected variant"),

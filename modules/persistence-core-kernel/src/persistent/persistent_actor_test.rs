@@ -223,8 +223,11 @@ fn persistent_actor_clears_sender_in_journal_representations() {
     .expect("write messages not found");
   match message {
     | JournalMessage::WriteMessages { messages, .. } => {
-      assert_eq!(messages.len(), 6);
-      for repr in messages {
+      assert_eq!(messages.iter().map(|write| write.payload().len()).sum::<usize>(), 6);
+      for repr in messages.iter().flat_map(|write| {
+        // AtomicWrite::payload() is guaranteed non-empty by AtomicWrite::new.
+        write.payload().iter()
+      }) {
         assert_eq!(repr.sender(), None);
       }
     },
@@ -343,7 +346,9 @@ fn persistent_actor_defer_runs_after_write_messages_successful() {
     let maybe_repr =
       messages.iter().filter_map(|message| message.payload().downcast_ref::<JournalMessage>()).find_map(|message| {
         match message {
-          | JournalMessage::WriteMessages { messages, .. } => messages.first().cloned(),
+          | JournalMessage::WriteMessages { messages, .. } => {
+            messages.first().and_then(|write| write.payload().first().cloned())
+          },
           | _ => None,
         }
       });

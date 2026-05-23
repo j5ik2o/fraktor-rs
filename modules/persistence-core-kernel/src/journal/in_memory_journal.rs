@@ -13,7 +13,7 @@ use core::future::{Ready, ready};
 
 use crate::{
   journal::{Journal, JournalError},
-  persistent::PersistentRepr,
+  persistent::{AtomicWrite, PersistentRepr},
 };
 
 /// In-memory journal implementation.
@@ -53,24 +53,44 @@ impl Journal for InMemoryJournal {
   where
     Self: 'a;
 
-  fn write_messages<'a>(&'a mut self, messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
+  fn write_messages<'a>(&'a mut self, messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a> {
     let Some(first) = messages.first() else {
       return ready(Ok(()));
     };
 
     let persistence_id = first.persistence_id().to_string();
+
+    if let Some(atomic_write) =
+      messages.iter().skip(1).find(|atomic_write| atomic_write.persistence_id() != persistence_id)
+    {
+      return ready(Err(JournalError::MixedPersistenceId {
+        expected: persistence_id,
+        actual:   atomic_write.persistence_id().to_string(),
+      }));
+    }
+
     let mut expected = self.expected_sequence_nr(&persistence_id);
 
-    for message in messages {
-      if message.sequence_nr() != expected {
-        return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));
+    for atomic_write in messages {
+      for message in atomic_write.payload() {
+        if message.sequence_nr() != expected {
+          return ready(Err(JournalError::SequenceMismatch { expected, actual: message.sequence_nr() }));
+        }
+        expected = match expected.checked_add(1) {
+          | Some(next_expected) => next_expected,
+          | None => {
+            return ready(Err(JournalError::WriteFailed(String::from("sequence number overflow in write batch"))));
+          },
+        };
       }
-      expected = expected.saturating_add(1);
     }
 
     let entry = self.entries.entry(persistence_id.clone()).or_default();
-    entry.extend(messages.iter().cloned());
-    self.highest_sequence_nrs.insert(persistence_id, expected.saturating_sub(1));
+    for atomic_write in messages {
+      entry.extend(atomic_write.payload().iter().cloned());
+    }
+    // At this point, expected >= 1 and was only incremented via checked_add, so subtraction is safe.
+    self.highest_sequence_nrs.insert(persistence_id, expected - 1);
 
     ready(Ok(()))
   }

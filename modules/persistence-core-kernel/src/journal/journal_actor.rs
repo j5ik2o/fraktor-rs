@@ -20,7 +20,7 @@ use fraktor_actor_core_kernel_rs::actor::{
 
 use crate::{
   journal::{Journal, JournalActorConfig, JournalError, JournalMessage, JournalResponse},
-  persistent::PersistentRepr,
+  persistent::{AtomicWrite, PersistentRepr},
 };
 
 struct JournalPoll;
@@ -45,7 +45,7 @@ struct JournalReplayRequest {
 enum JournalInFlight {
   Write {
     future:      JournalWriteFuture,
-    messages:    Vec<PersistentRepr>,
+    messages:    Vec<AtomicWrite>,
     sender:      ActorRef,
     instance_id: u32,
     retry_count: u32,
@@ -237,7 +237,7 @@ fn poll_write_entry<J: Journal>(
   poll_context: &mut JournalPollContext<'_, J>,
   cx: &mut Context<'_>,
   future: &mut JournalWriteFuture,
-  messages: &[PersistentRepr],
+  messages: &[AtomicWrite],
   sender: &mut ActorRef,
   instance_id: u32,
   retry_count: &mut u32,
@@ -256,8 +256,8 @@ where
   }
 }
 
-fn send_write_success(sender: &mut ActorRef, messages: &[PersistentRepr], instance_id: u32) {
-  for repr in messages.iter().cloned() {
+fn send_write_success(sender: &mut ActorRef, messages: &[AtomicWrite], instance_id: u32) {
+  for repr in atomic_write_payloads(messages) {
     tell_response(sender, JournalResponse::WriteMessageSuccess { repr, instance_id });
   }
   tell_response(sender, JournalResponse::WriteMessagesSuccessful { instance_id });
@@ -266,7 +266,7 @@ fn send_write_success(sender: &mut ActorRef, messages: &[PersistentRepr], instan
 fn retry_or_fail_write<J: Journal>(
   poll_context: &mut JournalPollContext<'_, J>,
   future: &mut JournalWriteFuture,
-  messages: &[PersistentRepr],
+  messages: &[AtomicWrite],
   sender: &mut ActorRef,
   instance_id: u32,
   retry_count: &mut u32,
@@ -283,15 +283,21 @@ where
   false
 }
 
-fn send_write_failure(sender: &mut ActorRef, messages: &[PersistentRepr], instance_id: u32, error: JournalError) {
-  for repr in messages.iter().cloned() {
+fn send_write_failure(sender: &mut ActorRef, messages: &[AtomicWrite], instance_id: u32, error: JournalError) {
+  let write_count = atomic_write_payload_count(messages);
+  for repr in atomic_write_payloads(messages) {
     tell_response(sender, JournalResponse::WriteMessageFailure { repr, cause: error.clone(), instance_id });
   }
-  tell_response(sender, JournalResponse::WriteMessagesFailed {
-    cause: error,
-    write_count: messages.len() as u64,
-    instance_id,
-  });
+  tell_response(sender, JournalResponse::WriteMessagesFailed { cause: error, write_count, instance_id });
+}
+
+fn atomic_write_payloads(messages: &[AtomicWrite]) -> impl Iterator<Item = PersistentRepr> + '_ {
+  // ジャーナル応答は借用中のバッチより長く残るため、各応答は PersistentRepr を所有する。
+  messages.iter().flat_map(AtomicWrite::payload).cloned()
+}
+
+fn atomic_write_payload_count(messages: &[AtomicWrite]) -> u64 {
+  messages.iter().map(AtomicWrite::size).sum::<usize>() as u64
 }
 
 fn poll_replay_entry<J: Journal>(

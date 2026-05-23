@@ -108,6 +108,12 @@ impl EventAdapters {
     self.read_adapters.get(&type_id).cloned().unwrap_or_else(|| self.identity.clone())
   }
 
+  /// Returns whether a read adapter is explicitly registered for the specified type identifier.
+  #[must_use]
+  pub fn has_read_adapter_for_type_id(&self, type_id: TypeId) -> bool {
+    self.read_adapters.contains_key(&type_id)
+  }
+
   /// Converts an event to journal representation using the registered write adapter.
   #[must_use]
   pub fn to_journal<E>(&self, event: ArcShared<dyn Any + Send + Sync>) -> ArcShared<dyn Any + Send + Sync>

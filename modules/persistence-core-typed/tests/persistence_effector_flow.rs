@@ -27,7 +27,7 @@ use fraktor_actor_core_typed_rs::{
 use fraktor_persistence_core_kernel_rs::{
   extension::PersistenceExtensionInstaller,
   journal::{InMemoryJournal, Journal},
-  persistent::PersistentRepr,
+  persistent::{AtomicWrite, PersistentRepr},
   snapshot::{InMemorySnapshotStore, SnapshotMetadata, SnapshotStore},
 };
 use fraktor_persistence_core_typed_rs::{
@@ -277,7 +277,8 @@ fn persisted_mode_recovers_snapshot_replays_events_and_persists_new_events() {
   let repr0 = PersistentRepr::new(PERSISTENCE_ID, 1, ArcShared::new(CounterEvent::Added(4)));
   let repr1 = PersistentRepr::new(PERSISTENCE_ID, 2, ArcShared::new(CounterEvent::Added(6)));
   let repr2 = PersistentRepr::new(PERSISTENCE_ID, 3, ArcShared::new(CounterEvent::Added(2)));
-  drive_ready(journal.write_messages(&[repr0, repr1, repr2])).expect("seed journal");
+  let atomic_write = AtomicWrite::new(vec![repr0, repr1, repr2]).expect("atomic write");
+  drive_ready(journal.write_messages(&[atomic_write])).expect("seed journal");
 
   let mut snapshot_store = InMemorySnapshotStore::new();
   let snapshot_metadata = SnapshotMetadata::new(PERSISTENCE_ID, 2, 0);
@@ -313,7 +314,8 @@ fn persisted_mode_runs_recovery_and_on_ready_during_startup() {
 
   let mut journal = InMemoryJournal::new();
   let repr = PersistentRepr::new(PERSISTENCE_ID, 1, ArcShared::new(CounterEvent::Added(3)));
-  drive_ready(journal.write_messages(&[repr])).expect("seed journal");
+  let atomic_write = AtomicWrite::new(vec![repr]).expect("atomic write");
+  drive_ready(journal.write_messages(&[atomic_write])).expect("seed journal");
 
   let snapshot_store = InMemorySnapshotStore::new();
   let command_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));

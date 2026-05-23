@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{
   any::Any,
-  future::Future,
+  future::{Future, Ready, ready},
   task::{Context, Poll, Waker},
 };
 
@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   journal::{InMemoryJournal, Journal, JournalError},
-  persistent::PersistentRepr,
+  persistent::{AtomicWrite, PersistentRepr},
 };
 
 fn poll_ready<F: Future>(future: F) -> F::Output {
@@ -31,12 +31,70 @@ fn build_messages(persistence_id: &str, start: u64, count: u64) -> Vec<Persisten
     .collect()
 }
 
+fn atomic_write(payload: Vec<PersistentRepr>) -> AtomicWrite {
+  AtomicWrite::new(payload).expect("atomic write creation failed")
+}
+
+#[derive(Default)]
+struct SingleEntryOnlyJournal {
+  persisted: Vec<PersistentRepr>,
+}
+
+impl Journal for SingleEntryOnlyJournal {
+  type DeleteFuture<'a>
+    = Ready<Result<(), JournalError>>
+  where
+    Self: 'a;
+  type HighestSeqNrFuture<'a>
+    = Ready<Result<u64, JournalError>>
+  where
+    Self: 'a;
+  type ReplayFuture<'a>
+    = Ready<Result<Vec<PersistentRepr>, JournalError>>
+  where
+    Self: 'a;
+  type WriteFuture<'a>
+    = Ready<Result<(), JournalError>>
+  where
+    Self: 'a;
+
+  fn write_messages<'a>(&'a mut self, messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a> {
+    for message in messages {
+      if message.size() > 1 {
+        return ready(Err(JournalError::UnsupportedAtomicWrite { size: message.size() }));
+      }
+    }
+    for message in messages {
+      self.persisted.extend(message.payload().iter().cloned());
+    }
+    ready(Ok(()))
+  }
+
+  fn replay_messages<'a>(
+    &'a self,
+    _persistence_id: &'a str,
+    _from_sequence_nr: u64,
+    _to_sequence_nr: u64,
+    _max: u64,
+  ) -> Self::ReplayFuture<'a> {
+    ready(Ok(self.persisted.clone()))
+  }
+
+  fn delete_messages_to<'a>(&'a mut self, _persistence_id: &'a str, _to_sequence_nr: u64) -> Self::DeleteFuture<'a> {
+    ready(Ok(()))
+  }
+
+  fn highest_sequence_nr<'a>(&'a self, _persistence_id: &'a str) -> Self::HighestSeqNrFuture<'a> {
+    ready(Ok(0))
+  }
+}
+
 #[test]
 fn in_memory_journal_write_and_replay() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 1, 3);
 
-  let result = poll_ready(journal.write_messages(&messages));
+  let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
   assert!(result.is_ok());
 
   let replayed = poll_ready(journal.replay_messages("pid-1", 1, 3, 10)).expect("replay failed");
@@ -47,19 +105,55 @@ fn in_memory_journal_write_and_replay() {
 }
 
 #[test]
+fn in_memory_journal_empty_batch_is_noop() {
+  let mut journal = InMemoryJournal::new();
+
+  let result = poll_ready(journal.write_messages(&[]));
+
+  assert!(result.is_ok());
+  assert_eq!(poll_ready(journal.highest_sequence_nr("pid-1")).expect("highest failed"), 0);
+}
+
+#[test]
 fn in_memory_journal_sequence_mismatch() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 2, 1);
 
-  let result = poll_ready(journal.write_messages(&messages));
+  let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
   assert_eq!(result, Err(JournalError::SequenceMismatch { expected: 1, actual: 2 }));
+  assert!(poll_ready(journal.replay_messages("pid-1", 1, 1, 10)).expect("replay failed").is_empty());
+}
+
+#[test]
+fn in_memory_journal_rejects_sequence_overflow_without_partial_persistence() {
+  let mut journal = InMemoryJournal::new();
+  journal.highest_sequence_nrs.insert("pid-1".into(), u64::MAX - 1);
+  let messages = build_messages("pid-1", u64::MAX, 1);
+
+  let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
+
+  assert_eq!(result, Err(JournalError::WriteFailed("sequence number overflow in write batch".into())));
+  assert!(poll_ready(journal.replay_messages("pid-1", u64::MAX, u64::MAX, 10)).expect("replay pid-1").is_empty());
+}
+
+#[test]
+fn in_memory_journal_rejects_mixed_persistence_ids_without_partial_persistence() {
+  let mut journal = InMemoryJournal::new();
+  let first = atomic_write(build_messages("pid-1", 1, 1));
+  let second = atomic_write(build_messages("pid-2", 1, 1));
+
+  let result = poll_ready(journal.write_messages(&[first, second]));
+
+  assert_eq!(result, Err(JournalError::MixedPersistenceId { expected: "pid-1".into(), actual: "pid-2".into() }));
+  assert!(poll_ready(journal.replay_messages("pid-1", 1, 1, 10)).expect("replay pid-1").is_empty());
+  assert!(poll_ready(journal.replay_messages("pid-2", 1, 1, 10)).expect("replay pid-2").is_empty());
 }
 
 #[test]
 fn in_memory_journal_replay_respects_max() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 1, 3);
-  poll_ready(journal.write_messages(&messages)).expect("write failed");
+  poll_ready(journal.write_messages(&[atomic_write(messages)])).expect("write failed");
 
   let replayed = poll_ready(journal.replay_messages("pid-1", 1, 3, 1)).expect("replay failed");
   assert_eq!(replayed.len(), 1);
@@ -70,7 +164,7 @@ fn in_memory_journal_replay_respects_max() {
 fn in_memory_journal_delete_messages_to() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 1, 3);
-  poll_ready(journal.write_messages(&messages)).expect("write failed");
+  poll_ready(journal.write_messages(&[atomic_write(messages)])).expect("write failed");
 
   poll_ready(journal.delete_messages_to("pid-1", 2)).expect("delete failed");
 
@@ -83,7 +177,7 @@ fn in_memory_journal_delete_messages_to() {
 fn in_memory_journal_delete_keeps_highest_sequence_nr() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 1, 3);
-  poll_ready(journal.write_messages(&messages)).expect("write failed");
+  poll_ready(journal.write_messages(&[atomic_write(messages)])).expect("write failed");
 
   poll_ready(journal.delete_messages_to("pid-1", 3)).expect("delete failed");
 
@@ -91,11 +185,11 @@ fn in_memory_journal_delete_keeps_highest_sequence_nr() {
   assert_eq!(highest, 3);
 
   let mismatch = build_messages("pid-1", 1, 1);
-  let result = poll_ready(journal.write_messages(&mismatch));
+  let result = poll_ready(journal.write_messages(&[atomic_write(mismatch)]));
   assert_eq!(result, Err(JournalError::SequenceMismatch { expected: 4, actual: 1 }));
 
   let next = build_messages("pid-1", 4, 1);
-  poll_ready(journal.write_messages(&next)).expect("write failed");
+  poll_ready(journal.write_messages(&[atomic_write(next)])).expect("write failed");
 }
 
 #[test]
@@ -103,5 +197,31 @@ fn in_memory_journal_highest_sequence_nr_defaults_to_zero() {
   let journal = InMemoryJournal::new();
 
   let highest = poll_ready(journal.highest_sequence_nr("missing")).expect("highest failed");
+  assert_eq!(highest, 0);
+}
+
+#[test]
+fn backend_rejects_unsupported_multi_entry_atomic_write_without_partial_persistence() {
+  let mut journal = SingleEntryOnlyJournal::default();
+  let multi_entry = atomic_write(build_messages("pid-1", 1, 2));
+
+  let result = poll_ready(journal.write_messages(&[multi_entry]));
+
+  assert_eq!(result, Err(JournalError::UnsupportedAtomicWrite { size: 2 }));
+  assert!(journal.persisted.is_empty());
+}
+
+#[test]
+fn backend_accepts_single_entry_atomic_writes() {
+  let mut journal = SingleEntryOnlyJournal::default();
+  let first = atomic_write(build_messages("pid-1", 1, 1));
+  let second = atomic_write(build_messages("pid-1", 2, 1));
+
+  poll_ready(journal.write_messages(&[first, second])).expect("write failed");
+  let replayed = poll_ready(journal.replay_messages("pid-1", 1, 2, 10)).expect("replay failed");
+  poll_ready(journal.delete_messages_to("pid-1", 2)).expect("delete failed");
+  let highest = poll_ready(journal.highest_sequence_nr("pid-1")).expect("highest failed");
+
+  assert_eq!(replayed.len(), 2);
   assert_eq!(highest, 0);
 }

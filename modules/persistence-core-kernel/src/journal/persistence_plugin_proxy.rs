@@ -10,7 +10,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   journal::Journal,
-  persistent::PersistentRepr,
+  persistent::AtomicWrite,
   snapshot::{SnapshotMetadata, SnapshotSelectionCriteria, SnapshotStore},
 };
 
@@ -57,7 +57,7 @@ where
   where
     Self: 'a;
 
-  fn write_messages<'a>(&'a mut self, messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
+  fn write_messages<'a>(&'a mut self, messages: &'a [AtomicWrite]) -> Self::WriteFuture<'a> {
     self.journal.write_messages(messages)
   }
 

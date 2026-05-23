@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   journal::{InMemoryJournal, Journal, PersistencePluginProxy},
-  persistent::PersistentRepr,
+  persistent::{AtomicWrite, PersistentRepr},
   snapshot::{InMemorySnapshotStore, SnapshotMetadata, SnapshotSelectionCriteria, SnapshotStore},
 };
 
@@ -32,6 +32,10 @@ fn build_messages(persistence_id: &str, start: u64, count: u64) -> Vec<Persisten
     .collect()
 }
 
+fn atomic_write(payload: Vec<PersistentRepr>) -> AtomicWrite {
+  AtomicWrite::new(payload).expect("atomic write")
+}
+
 fn payload(value: i32) -> ArcShared<dyn Any + Send + Sync> {
   ArcShared::new(value)
 }
@@ -41,7 +45,7 @@ fn plugin_proxy_forwards_journal_operations() {
   let mut proxy = PersistencePluginProxy::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
   let messages = build_messages("pid-1", 1, 2);
 
-  poll_ready(Journal::write_messages(&mut proxy, &messages)).expect("write failed");
+  poll_ready(Journal::write_messages(&mut proxy, &[atomic_write(messages)])).expect("write failed");
   let replayed = poll_ready(Journal::replay_messages(&proxy, "pid-1", 1, 10, 10)).expect("replay failed");
   let highest = poll_ready(Journal::highest_sequence_nr(&proxy, "pid-1")).expect("highest failed");
 
@@ -66,7 +70,7 @@ fn plugin_proxy_forwards_snapshot_operations() {
 fn plugin_proxy_set_target_replaces_plugins() {
   let mut proxy = PersistencePluginProxy::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
   let messages = build_messages("pid-1", 1, 1);
-  poll_ready(Journal::write_messages(&mut proxy, &messages)).expect("write failed");
+  poll_ready(Journal::write_messages(&mut proxy, &[atomic_write(messages)])).expect("write failed");
 
   proxy.set_target(InMemoryJournal::new(), InMemorySnapshotStore::new());
 

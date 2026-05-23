@@ -14,13 +14,16 @@ use fraktor_actor_core_kernel_rs::actor::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
+use super::EventBatchEntry;
 use crate::{
+  error::PersistenceError,
   journal::{
     EventAdapters, EventSeq, JournalError, JournalMessage, JournalResponse, JournalResponseAction, ReadEventAdapter,
     WriteEventAdapter,
   },
   persistent::{
-    Eventsourced, PendingHandlerInvocation, PersistenceContext, PersistentActorState, PersistentRepr, Recovery,
+    AtomicWrite, AtomicWriteError, Eventsourced, PendingHandlerInvocation, PersistenceContext, PersistentActorState,
+    PersistentRepr, Recovery,
   },
   snapshot::{Snapshot, SnapshotMessage, SnapshotSelectionCriteria},
 };
@@ -107,6 +110,19 @@ impl ReadEventAdapter for SplitReadAdapter {
   }
 }
 
+struct AddHundredReadAdapter;
+
+impl ReadEventAdapter for AddHundredReadAdapter {
+  fn adapt_from_journal(&self, event: ArcShared<dyn Any + Send + Sync>, manifest: &str) -> EventSeq {
+    if manifest != SINGLE_MANIFEST {
+      return EventSeq::single(event);
+    }
+    let value = event.downcast_ref::<String>().expect("expected string event");
+    let value = value.parse::<i32>().expect("expected numeric string");
+    EventSeq::single(ArcShared::new(value + 100))
+  }
+}
+
 impl Eventsourced for DummyActor {
   fn persistence_id(&self) -> &str {
     "pid-1"
@@ -137,6 +153,34 @@ fn replay_persistent_repr(sequence_nr: u64, value: i32, manifest: &str) -> Persi
     .with_manifest(manifest)
     .with_adapters(adapters)
     .with_adapter_type_id(TypeId::of::<i32>())
+}
+
+#[test]
+fn split_read_adapter_returns_original_event_for_unknown_manifest() {
+  let event: ArcShared<dyn Any + Send + Sync> = ArcShared::new(31_i32);
+  let sequence = SplitReadAdapter.adapt_from_journal(event, "unknown-manifest");
+  let events = sequence.into_events();
+
+  assert_eq!(events.len(), 1);
+  assert_eq!(events[0].downcast_ref::<i32>(), Some(&31_i32));
+}
+
+#[test]
+fn add_hundred_read_adapter_returns_original_event_for_non_single_manifest() {
+  let event: ArcShared<dyn Any + Send + Sync> = ArcShared::new(31_i32);
+  let sequence = AddHundredReadAdapter.adapt_from_journal(event, "unknown-manifest");
+  let events = sequence.into_events();
+
+  assert_eq!(events.len(), 1);
+  assert_eq!(events[0].downcast_ref::<i32>(), Some(&31_i32));
+}
+
+fn first_atomic_payload(messages: &[AtomicWrite]) -> PersistentRepr {
+  messages[0].payload()[0].clone()
+}
+
+fn flatten_atomic_payloads(messages: &[AtomicWrite]) -> Vec<PersistentRepr> {
+  messages.iter().flat_map(AtomicWrite::payload).cloned().collect()
 }
 
 #[test]
@@ -349,7 +393,7 @@ fn context_applies_event_adapters_on_persist_and_replay() {
       | JournalMessage::WriteMessages { messages, instance_id, .. } => {
         assert_eq!(*instance_id, expected_instance_id);
         assert_eq!(messages.len(), 1);
-        messages[0].clone()
+        first_atomic_payload(messages)
       },
       | _ => panic!("unexpected message"),
     }
@@ -368,11 +412,44 @@ fn context_applies_event_adapters_on_persist_and_replay() {
   }
   assert_eq!(actor.handled_values, vec![5_i32]);
 
+  let serialized_journal_repr = persisted_repr.clone().with_adapters(EventAdapters::new());
   let replay_action =
-    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: persisted_repr.clone() });
+    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: serialized_journal_repr });
   let mut recovering_actor = DummyActor::default();
   replay_action.apply(&mut recovering_actor);
   assert_eq!(recovering_actor.recovered_values, vec![15_i32, 16_i32]);
+}
+
+#[test]
+fn replay_prefers_repr_adapters_when_context_lacks_adapter_type() {
+  let write_adapter: ArcShared<dyn WriteEventAdapter> = ArcShared::new(AddTenWriteAdapter);
+  let read_adapter: ArcShared<dyn ReadEventAdapter> = ArcShared::new(SplitReadAdapter);
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.event_adapters_mut().register::<u64>(write_adapter, read_adapter);
+  let replay_repr = replay_persistent_repr(3, 21, SINGLE_MANIFEST);
+
+  let replay_action =
+    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: replay_repr });
+
+  let mut actor = DummyActor::default();
+  replay_action.apply(&mut actor);
+  assert_eq!(actor.recovered_values, vec![21_i32]);
+}
+
+#[test]
+fn replay_prefers_context_adapters_when_context_has_adapter_type() {
+  let write_adapter: ArcShared<dyn WriteEventAdapter> = ArcShared::new(AddTenWriteAdapter);
+  let read_adapter: ArcShared<dyn ReadEventAdapter> = ArcShared::new(AddHundredReadAdapter);
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.event_adapters_mut().register::<i32>(write_adapter, read_adapter);
+  let replay_repr = replay_persistent_repr(3, 21, SINGLE_MANIFEST);
+
+  let replay_action =
+    context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: replay_repr });
+
+  let mut actor = DummyActor::default();
+  replay_action.apply(&mut actor);
+  assert_eq!(actor.recovered_values, vec![121_i32]);
 }
 
 #[test]
@@ -438,7 +515,7 @@ fn write_messages_successful_triggers_deferred_handlers() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -506,7 +583,7 @@ fn flush_batch_clears_sender_in_journal_repr_but_keeps_it_for_handler_invocation
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -573,6 +650,43 @@ fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion()
 }
 
 #[test]
+fn flush_batch_with_only_deferred_entry_rolls_back() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+  let repr = PersistentRepr::new("pid-1", 0, ArcShared::new(1_i32)).with_adapters(EventAdapters::new());
+  let invocation = PendingHandlerInvocation::async_deferred_boxed(repr, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.event_batch.push(EventBatchEntry::Deferred(Box::new(invocation)));
+
+  let result = context.flush_batch(ActorRef::null());
+
+  assert!(matches!(result, Err(PersistenceError::Journal(JournalError::InvalidAtomicWrite(_)))));
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+  assert!(context.pending_invocations.is_empty());
+  assert!(!context.should_stash_commands());
+  assert!(journal_store.lock().is_empty());
+}
+
+#[test]
+fn atomic_write_mixed_persistence_id_maps_to_journal_error() {
+  let error = PersistenceContext::<DummyActor>::journal_error_for_atomic_write(AtomicWriteError::MixedPersistenceId {
+    expected: "pid-1".into(),
+    actual:   "pid-2".into(),
+  });
+
+  assert_eq!(error, JournalError::MixedPersistenceId { expected: "pid-1".into(), actual: "pid-2".into() });
+}
+
+#[test]
+fn atomic_write_empty_maps_to_invalid_atomic_write() {
+  let error = PersistenceContext::<DummyActor>::journal_error_for_atomic_write(AtomicWriteError::Empty);
+
+  assert_eq!(error, JournalError::InvalidAtomicWrite("empty payload".into()));
+}
+
+#[test]
 fn write_message_success_interleaves_defer_between_persisted_handlers() {
   let (journal_ref, journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
@@ -615,7 +729,7 @@ fn write_message_success_interleaves_defer_between_persisted_handlers() {
     match message {
       | JournalMessage::WriteMessages { to_sequence_nr, messages, .. } => {
         assert_eq!(*to_sequence_nr, 2);
-        messages.clone()
+        flatten_atomic_payloads(messages)
       },
       | _ => panic!("unexpected message"),
     }
@@ -662,7 +776,7 @@ fn write_message_success_with_mismatched_instance_id_is_ignored() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -714,7 +828,7 @@ fn should_stash_commands_when_stashing_defer_waits_for_batch_success() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -743,7 +857,7 @@ fn should_stash_commands_until_write_messages_successful_for_stashing_batch() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -775,7 +889,7 @@ fn should_stash_commands_until_batch_success_when_stashing_defer_is_between_pers
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | JournalMessage::WriteMessages { messages, .. } => flatten_atomic_payloads(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -812,7 +926,7 @@ fn write_message_failure_keeps_context_in_persisting_state() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -852,7 +966,7 @@ fn write_message_failure_with_mismatched_instance_id_is_ignored() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -882,7 +996,7 @@ fn write_message_rejected_returns_to_processing_commands() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -922,7 +1036,7 @@ fn write_message_rejected_with_mismatched_instance_id_is_ignored() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1008,7 +1122,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1041,7 +1155,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1066,7 +1180,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1165,7 +1279,7 @@ fn write_message_rejected_keeps_remaining_invocations() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | JournalMessage::WriteMessages { messages, .. } => flatten_atomic_payloads(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1239,7 +1353,7 @@ fn write_message_rejected_for_later_persist_keeps_deferred_invocation() {
     let journal_messages = journal_store.lock();
     let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
-      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | JournalMessage::WriteMessages { messages, .. } => flatten_atomic_payloads(messages),
       | _ => panic!("unexpected message"),
     }
   };
@@ -1273,7 +1387,7 @@ fn write_message_rejected_for_later_persist_keeps_deferred_invocation() {
 }
 
 #[test]
-fn write_messages_failed_with_positive_write_count_keeps_persisting_state() {
+fn write_messages_failed_with_positive_write_count_returns_to_processing_commands() {
   let (journal_ref, _journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -1290,11 +1404,11 @@ fn write_messages_failed_with_positive_write_count_keeps_persisting_state() {
     instance_id: context.instance_id(),
   });
   assert!(matches!(action, JournalResponseAction::None));
-  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
 
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  let result = context.flush_batch(ActorRef::null());
-  assert!(result.is_err());
+  context.flush_batch(ActorRef::null()).expect("flush batch after write messages failed");
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 }
 
 #[test]
@@ -1320,6 +1434,38 @@ fn write_messages_failed_with_zero_write_count_returns_to_processing_commands() 
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
   context.flush_batch(ActorRef::null()).expect("flush batch after write messages failed");
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+}
+
+#[test]
+fn write_messages_failed_realigns_current_sequence_nr_to_last_sequence_nr() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.flush_batch(ActorRef::null()).expect("flush batch");
+  assert_eq!(context.current_sequence_nr(), 1);
+  assert_eq!(context.last_sequence_nr(), 0);
+
+  let action = context.handle_journal_response(&JournalResponse::WriteMessagesFailed {
+    cause:       JournalError::WriteFailed("batch write failed".to_string()),
+    write_count: 0,
+    instance_id: context.instance_id(),
+  });
+
+  assert!(matches!(action, JournalResponseAction::None));
+  assert_eq!(context.current_sequence_nr(), 0);
+  assert_eq!(context.last_sequence_nr(), 0);
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+
+  journal_store.lock().clear();
+  context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.flush_batch(ActorRef::null()).expect("flush batch after write messages failed");
+
+  assert_eq!(journal_store.lock().len(), 1);
+  assert_eq!(context.current_sequence_nr(), 1);
 }
 
 #[test]

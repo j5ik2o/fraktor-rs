@@ -14,6 +14,46 @@ fn invalid_format_debug_representation() {
 }
 
 #[test]
+fn invalid_format_display_representation() {
+  let error = SerializationError::InvalidFormat;
+
+  assert_eq!(error.to_string(), "invalid serialized format");
+}
+
+#[test]
+fn unknown_serializer_display_representation() {
+  let error = SerializationError::UnknownSerializer(SerializerId::try_from(100).unwrap());
+
+  assert_eq!(error.to_string(), "unknown serializer id 100");
+}
+
+#[test]
+fn serialization_error_display_messages() {
+  let not_serializable = NotSerializableError::new("Example", None, None, None, None);
+
+  assert_eq!(SerializationError::Uninitialized.to_string(), "serialization runtime is uninitialized");
+  assert_eq!(
+    SerializationError::ManifestMissing { scope: SerializationCallScope::Local }.to_string(),
+    "manifest is missing for Local serialization"
+  );
+  assert_eq!(
+    SerializationError::SerializerIdCollision(SerializerId::try_from(101).unwrap()).to_string(),
+    "serializer id 101 is already registered"
+  );
+  assert_eq!(
+    SerializationError::serializer_binding_collision(
+      "Example",
+      SerializerId::try_from(102).unwrap(),
+      SerializerId::try_from(103).unwrap()
+    )
+    .to_string(),
+    "serializer binding collision for Example: existing id 102, requested id 103"
+  );
+  assert_eq!(SerializationError::NotSerializable(not_serializable).to_string(), "type Example is not serializable");
+  assert_eq!(SerializationError::UnknownManifest("old".into()).to_string(), "unknown manifest old");
+}
+
+#[test]
 fn not_serializable_variant_embeds_payload() {
   let payload = NotSerializableError::new(
     "Example",
@@ -47,6 +87,18 @@ fn const_constructors_create_correct_variants() {
   let error = SerializationError::unknown_serializer(SerializerId::try_from(42).unwrap());
   assert!(error.is_unknown_serializer());
 
+  // SerializerIdCollision コンストラクタのテスト
+  let error = SerializationError::serializer_id_collision(SerializerId::try_from(43).unwrap());
+  assert!(error.is_serializer_id_collision());
+
+  // SerializerBindingCollision コンストラクタのテスト
+  let error = SerializationError::serializer_binding_collision(
+    "Example",
+    SerializerId::try_from(44).unwrap(),
+    SerializerId::try_from(45).unwrap(),
+  );
+  assert!(error.is_serializer_binding_collision());
+
   // InvalidFormat コンストラクタのテスト
   let error = SerializationError::invalid_format();
   assert!(error.is_invalid_format());
@@ -68,6 +120,8 @@ fn is_methods_return_correct_values() {
   assert!(uninitialized.is_uninitialized());
   assert!(!uninitialized.is_manifest_missing());
   assert!(!uninitialized.is_unknown_serializer());
+  assert!(!uninitialized.is_serializer_id_collision());
+  assert!(!uninitialized.is_serializer_binding_collision());
   assert!(!uninitialized.is_not_serializable());
   assert!(!uninitialized.is_unknown_manifest());
   assert!(!uninitialized.is_invalid_format());
@@ -81,6 +135,18 @@ fn is_methods_return_correct_values() {
   assert!(!unknown_serializer.is_uninitialized());
   assert!(!unknown_serializer.is_manifest_missing());
   assert!(unknown_serializer.is_unknown_serializer());
+
+  let serializer_id_collision = SerializationError::SerializerIdCollision(SerializerId::try_from(101).unwrap());
+  assert!(serializer_id_collision.is_serializer_id_collision());
+  assert!(!serializer_id_collision.is_unknown_serializer());
+
+  let serializer_binding_collision = SerializationError::SerializerBindingCollision {
+    type_name: String::from("Example"),
+    existing:  SerializerId::try_from(102).unwrap(),
+    requested: SerializerId::try_from(103).unwrap(),
+  };
+  assert!(serializer_binding_collision.is_serializer_binding_collision());
+  assert!(!serializer_binding_collision.is_unknown_serializer());
 
   let invalid_format = SerializationError::InvalidFormat;
   assert!(!invalid_format.is_uninitialized());
