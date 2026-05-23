@@ -138,7 +138,7 @@ fn in_memory_journal_rejects_sequence_overflow_without_partial_persistence() {
 
   let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
 
-  assert_eq!(result, Err(JournalError::InvalidAtomicWrite("sequence number overflow".into())));
+  assert_eq!(result, Err(JournalError::InvalidAtomicWrite("sequence number exhausted".into())));
   assert!(poll_ready(journal.replay_messages("pid-1", u64::MAX, u64::MAX, 10)).expect("replay pid-1").is_empty());
 }
 
