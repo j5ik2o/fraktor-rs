@@ -86,31 +86,60 @@ jobs:
           publish_head_check() {
             local conclusion="$1"
             local summary="$2"
+            local check_run_response
+            local check_run_url
 
-            jq -n \
-              --arg name "Check unresolved comments" \
-              --arg head_sha "$head_ref_oid" \
-              --arg conclusion "$conclusion" \
-              --arg details_url "$RUN_URL" \
-              --arg title "Review Thread Resolution" \
-              --arg summary "$summary" \
-              '{
-                name: $name,
-                head_sha: $head_sha,
-                status: "completed",
-                conclusion: $conclusion,
-                details_url: $details_url,
-                output: {
-                  title: $title,
-                  summary: $summary
-                }
-              }' \
-              | gh api \
-                --method POST \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "repos/$OWNER/$REPO/check-runs" \
-                --input - > /dev/null
+            check_run_response="$(
+              jq -n \
+                --arg name "Check unresolved comments" \
+                --arg head_sha "$head_ref_oid" \
+                --arg conclusion "$conclusion" \
+                --arg details_url "$RUN_URL" \
+                --arg title "Review Thread Resolution" \
+                --arg summary "$summary" \
+                '{
+                  name: $name,
+                  head_sha: $head_sha,
+                  status: "completed",
+                  conclusion: $conclusion,
+                  details_url: $details_url,
+                  output: {
+                    title: $title,
+                    summary: $summary
+                  }
+                }' \
+                | gh api \
+                  --method POST \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "repos/$OWNER/$REPO/check-runs" \
+                  --input -
+            )"
+
+            check_run_url="$(jq -r '.html_url // .url // "unknown"' <<< "$check_run_response")"
+            echo "Published check run: $check_run_url"
+          }
+
+          build_summary() {
+            {
+              echo "PR: $pr_url"
+              echo
+              echo "$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain."
+              echo
+              if [[ "$unresolved_count" -gt 0 ]]; then
+                echo "### Unresolved PR review threads"
+                echo
+                jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
+                  <<< "$unresolved"
+                echo
+              fi
+              if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
+                echo "### Unacknowledged top-level PR comments"
+                echo
+                jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
+                  <<< "$unacknowledged_top_level"
+              fi
+            }
           }
 
           if [[ "$base_ref" != "main" ]]; then
@@ -373,43 +402,8 @@ jobs:
             echo "No unacknowledged top-level PR comments."
           fi
 
-          summary="$(
-            {
-              echo "PR: $pr_url"
-              echo
-              echo "$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain."
-              echo
-              if [[ "$unresolved_count" -gt 0 ]]; then
-                echo "### Unresolved PR review threads"
-                echo
-                jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
-                  <<< "$unresolved"
-                echo
-              fi
-              if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
-                echo "### Unacknowledged top-level PR comments"
-                echo
-                jq -r '.[] | "- by \(.author.login // "unknown") at \(.createdAt): \(.url // "no comment URL")"' \
-                  <<< "$unacknowledged_top_level"
-              fi
-            }
-          )"
-
-          {
-            if [[ "$unresolved_count" -gt 0 ]]; then
-              echo "### Unresolved PR review threads"
-              echo
-              jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
-                <<< "$unresolved"
-              echo
-            fi
-            if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
-              echo "### Unacknowledged top-level PR comments"
-              echo
-              jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
-                <<< "$unacknowledged_top_level"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          summary="$(build_summary)"
+          printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
             if [[ "$EVENT_NAME" == "issue_comment" ]]; then
