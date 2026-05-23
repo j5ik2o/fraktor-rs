@@ -1,5 +1,9 @@
 //! Persistence serializer registration.
 
+#[cfg(test)]
+#[path = "registration_test.rs"]
+mod tests;
+
 use core::any::TypeId;
 
 use fraktor_actor_core_kernel_rs::serialization::{
@@ -113,8 +117,10 @@ fn register_serializer<F>(
 where
   F: FnOnce(&dyn Serializer) -> bool, {
   if let Some(existing) = registry.registered_serializer(id) {
-    debug_assert!(is_same_registration(&*existing));
-    return Ok(());
+    if is_same_registration(&*existing) {
+      return Ok(());
+    }
+    return Err(SerializationError::SerializerIdCollision(id));
   }
   if registry.register_serializer(id, serializer) { Ok(()) } else { Err(SerializationError::SerializerIdCollision(id)) }
 }

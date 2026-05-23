@@ -175,6 +175,21 @@ fn registry() -> ArcShared<SerializationRegistry> {
   registry
 }
 
+fn manifest_registry_without_payload_binding() -> ArcShared<SerializationRegistry> {
+  let id = SerializerId::try_from(110).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("i32", id, serializer)
+    .expect("register")
+    .set_fallback("i32")
+    .expect("fallback")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+  register_persistence_serializers(&registry).expect("persistence serializers");
+  registry
+}
+
 fn hint_only_registry() -> ArcShared<SerializationRegistry> {
   let id = SerializerId::try_from(111).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(HintOnlyI32Serializer::new(id));
@@ -334,6 +349,21 @@ fn snapshot_payload_without_manifest_serializes_with_serializer_id() {
   assert_eq!(payload_type_name, "i32");
   assert_eq!(nested.serializer_id(), SerializerId::try_from(111).expect("serializer id"));
   assert_eq!(nested.manifest(), None);
+
+  let restored = serializer.from_binary(&bytes, None).expect("deserialize");
+  let restored = restored.downcast_ref::<SnapshotPayload>().expect("snapshot payload");
+  assert_eq!(restored.downcast_ref::<i32>(), Some(&99));
+}
+
+#[test]
+fn manifest_backed_unbound_snapshot_payload_round_trips_without_type_hint() {
+  let registry = manifest_registry_without_payload_binding();
+  let serializer = SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade());
+  let payload = SnapshotPayload::new(ArcShared::new(99_i32));
+
+  let bytes = serializer.to_binary(&payload).expect("serialize");
+  let mut cursor = 0;
+  assert_eq!(wire::read_string(&bytes, &mut cursor).expect("payload type"), "");
 
   let restored = serializer.from_binary(&bytes, None).expect("deserialize");
   let restored = restored.downcast_ref::<SnapshotPayload>().expect("snapshot payload");

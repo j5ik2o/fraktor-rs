@@ -51,9 +51,10 @@ impl MessageSerializer {
     let payload = repr.payload().deref();
     let payload_type_id = payload.type_id();
     let payload_binding_name = registry.binding_name(payload_type_id);
-    let payload_type_name = payload_binding_name.as_deref().unwrap_or("PersistentRepr payload");
+    let payload_type_name = payload_binding_name.as_deref().unwrap_or("");
+    let payload_serializer_hint = payload_binding_name.as_deref().unwrap_or("PersistentRepr payload");
     let serialized_payload =
-      Self::serialize_nested(&delegator, payload, payload_type_name, payload_binding_name.is_some())?;
+      Self::serialize_nested(&delegator, payload, payload_serializer_hint, payload_binding_name.is_some())?;
     wire::write_string(&mut buffer, payload_type_name)?;
     wire::write_serialized(&mut buffer, &serialized_payload)?;
     wire::write_string(&mut buffer, repr.manifest())?;
@@ -72,9 +73,10 @@ impl MessageSerializer {
       wire::write_bool(&mut buffer, true);
       let metadata = metadata.deref();
       let metadata_binding_name = registry.binding_name(metadata.type_id());
-      let metadata_type_name = metadata_binding_name.as_deref().unwrap_or("PersistentRepr metadata");
+      let metadata_type_name = metadata_binding_name.as_deref().unwrap_or("");
+      let metadata_serializer_hint = metadata_binding_name.as_deref().unwrap_or("PersistentRepr metadata");
       let serialized_metadata =
-        Self::serialize_nested(&delegator, metadata, metadata_type_name, metadata_binding_name.is_some())?;
+        Self::serialize_nested(&delegator, metadata, metadata_serializer_hint, metadata_binding_name.is_some())?;
       wire::write_string(&mut buffer, metadata_type_name)?;
       wire::write_serialized(&mut buffer, &serialized_metadata)?;
     } else {
@@ -90,7 +92,7 @@ impl MessageSerializer {
     let persistence_id = wire::read_string(bytes, &mut cursor)?;
     let sequence_nr = wire::read_u64(bytes, &mut cursor)?;
     let payload_type_name = wire::read_string(bytes, &mut cursor)?;
-    let payload_type_hint = registry.type_id_for_binding_name(&payload_type_name);
+    let payload_type_hint = Self::type_hint_for_wire_name(&registry, &payload_type_name);
     let payload = Self::deserialize_nested(&delegator, &wire::read_serialized(bytes, &mut cursor)?, payload_type_hint)?;
     let manifest = wire::read_string(bytes, &mut cursor)?;
     let writer_uuid = wire::read_string(bytes, &mut cursor)?;
@@ -110,7 +112,7 @@ impl MessageSerializer {
     }
     if has_metadata {
       let metadata_type_name = wire::read_string(bytes, &mut cursor)?;
-      let metadata_type_hint = registry.type_id_for_binding_name(&metadata_type_name);
+      let metadata_type_hint = Self::type_hint_for_wire_name(&registry, &metadata_type_name);
       let metadata =
         Self::deserialize_nested(&delegator, &wire::read_serialized(bytes, &mut cursor)?, metadata_type_hint)?;
       repr = repr.with_metadata(ArcShared::from_boxed(metadata));
@@ -137,6 +139,10 @@ impl MessageSerializer {
 
   fn has_valid_manifest(message: &SerializedMessage) -> bool {
     !matches!(message.manifest(), Some(manifest) if manifest.is_empty())
+  }
+
+  fn type_hint_for_wire_name(registry: &SerializationRegistry, type_name: &str) -> Option<TypeId> {
+    if type_name.is_empty() { None } else { registry.type_id_for_binding_name(type_name) }
   }
 
   fn deserialize_nested(

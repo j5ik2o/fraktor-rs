@@ -59,8 +59,9 @@ impl Serializer for SnapshotSerializer {
     let delegator = SerializationDelegator::new(&registry);
     let data = payload.data().deref();
     let binding_name = registry.binding_name(data.type_id());
-    let type_name = binding_name.as_deref().unwrap_or("SnapshotPayload data");
-    let nested = delegator.serialize(data, type_name)?;
+    let type_name = binding_name.as_deref().unwrap_or("");
+    let serializer_hint = binding_name.as_deref().unwrap_or("SnapshotPayload data");
+    let nested = delegator.serialize(data, serializer_hint)?;
     if !Self::has_valid_manifest(&nested) {
       return Err(SerializationError::InvalidFormat);
     }
@@ -82,7 +83,7 @@ impl Serializer for SnapshotSerializer {
     let delegator = SerializationDelegator::new(&registry);
     let mut cursor = 0;
     let type_name = wire::read_string(bytes, &mut cursor)?;
-    let type_hint = registry.type_id_for_binding_name(&type_name);
+    let type_hint = if type_name.is_empty() { None } else { registry.type_id_for_binding_name(&type_name) };
     let nested = wire::read_serialized(bytes, &mut cursor)?;
     wire::ensure_finished(bytes, cursor)?;
     if !Self::has_valid_manifest(&nested) {

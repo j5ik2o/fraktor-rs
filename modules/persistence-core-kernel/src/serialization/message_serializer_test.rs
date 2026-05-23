@@ -275,6 +275,14 @@ fn persistent_repr_round_trip_uses_payload_type_when_adapter_binding_is_absent()
   let repr = PersistentRepr::new("pid-1", 7, ArcShared::new(11_i32));
 
   let bytes = serializer.to_binary(&repr).expect("serialize");
+  let mut cursor = 0;
+  assert_eq!(wire::read_u8(&bytes, &mut cursor).expect("tag"), PERSISTENT_REPR_TAG);
+  let repr_bytes = wire::read_bytes(&bytes, &mut cursor).expect("repr");
+  let mut repr_cursor = 0;
+  let _persistence_id = wire::read_string(repr_bytes, &mut repr_cursor).expect("persistence id");
+  let _sequence_nr = wire::read_u64(repr_bytes, &mut repr_cursor).expect("sequence nr");
+  assert_eq!(wire::read_string(repr_bytes, &mut repr_cursor).expect("payload type"), "");
+
   let restored = serializer.from_binary(&bytes, None).expect("deserialize");
   let restored = restored.downcast_ref::<PersistentRepr>().expect("persistent repr");
 
