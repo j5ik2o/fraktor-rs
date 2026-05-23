@@ -177,7 +177,7 @@ jobs:
               return 1
             fi
 
-            check_run_url="$(jq -r '.html_url // .url // "unknown"' <<< "$check_run_response")"
+            check_run_url="$(jq -r '.html_url // .url' <<< "$check_run_response")"
             echo "Published check run: $check_run_url"
           }
 
