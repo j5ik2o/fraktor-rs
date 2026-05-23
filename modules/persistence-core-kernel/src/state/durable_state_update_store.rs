@@ -1,15 +1,15 @@
 //! Durable state update store abstraction.
 
-use crate::state::{DurableStateStore, DurableStateStoreFuture};
+use crate::state::{DurableStateChange, DurableStateStore, DurableStateStoreFuture};
 
 /// Durable state store extension that exposes update notifications.
 pub trait DurableStateUpdateStore<A: Send>: DurableStateStore<A> {
-  /// Loads the next update after `from_offset` for the persistence identifier.
+  /// Loads the next tagged update after `from_offset`.
   ///
-  /// Returns `Some((next_offset, value))` when a new update exists, otherwise `None`.
+  /// Returns `Some(change)` when a new tagged update exists, otherwise `None`.
   fn changes<'a>(
     &'a self,
-    persistence_id: &'a str,
+    tag: &'a str,
     from_offset: usize,
-  ) -> DurableStateStoreFuture<'a, Option<(usize, A)>>;
+  ) -> DurableStateStoreFuture<'a, Option<DurableStateChange<A>>>;
 }

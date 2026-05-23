@@ -14,6 +14,15 @@ pub enum DurableStateError {
   GetObjectFailed(String),
   /// Failed to persist a durable state object.
   UpsertObjectFailed(String),
+  /// Failed to persist a durable state object because the revision did not match.
+  UpsertRevision {
+    /// Persistence identifier for the object.
+    persistence_id:    String,
+    /// Revision requested by the caller.
+    expected_revision: u64,
+    /// Revision stored by the durable state backend.
+    actual_revision:   u64,
+  },
   /// Failed to delete a durable state object.
   DeleteObjectFailed(String),
   /// Failed to delete a durable state object because the revision did not match.
@@ -51,6 +60,12 @@ impl DurableStateError {
   pub fn delete_revision(persistence_id: impl Into<String>, expected_revision: u64, actual_revision: u64) -> Self {
     Self::DeleteRevision { persistence_id: persistence_id.into(), expected_revision, actual_revision }
   }
+
+  /// Creates an upsert revision mismatch error.
+  #[must_use]
+  pub fn upsert_revision(persistence_id: impl Into<String>, expected_revision: u64, actual_revision: u64) -> Self {
+    Self::UpsertRevision { persistence_id: persistence_id.into(), expected_revision, actual_revision }
+  }
 }
 
 impl Display for DurableStateError {
@@ -58,6 +73,11 @@ impl Display for DurableStateError {
     match self {
       | Self::GetObjectFailed(reason) => write!(formatter, "get durable state object failed: {}", reason),
       | Self::UpsertObjectFailed(reason) => write!(formatter, "upsert durable state object failed: {}", reason),
+      | Self::UpsertRevision { persistence_id, expected_revision, actual_revision } => write!(
+        formatter,
+        "upsert durable state object failed for '{}': expected revision {}, actual revision {}",
+        persistence_id, expected_revision, actual_revision
+      ),
       | Self::DeleteObjectFailed(reason) => write!(formatter, "delete durable state object failed: {}", reason),
       | Self::DeleteRevision { persistence_id, expected_revision, actual_revision } => write!(
         formatter,

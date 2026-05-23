@@ -13,8 +13,8 @@ use core::{
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::state::{
-  DurableStateError, DurableStateStore, DurableStateStoreProvider, DurableStateStoreRegistry, DurableStateUpdateStore,
-  GetObjectResult,
+  DurableStateChange, DurableStateError, DurableStateStore, DurableStateStoreProvider, DurableStateStoreRegistry,
+  DurableStateUpdateStore, GetObjectResult,
 };
 
 const TEST_PROVIDER_ID: &str = "in-memory";
@@ -27,7 +27,7 @@ type DurableStateFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, DurableSt
 struct TestDurableStateStore {
   objects:   BTreeMap<String, i32>,
   revisions: BTreeMap<String, u64>,
-  updates:   BTreeMap<String, Vec<i32>>,
+  updates:   BTreeMap<String, Vec<DurableStateChange<i32>>>,
 }
 
 impl TestDurableStateStore {
@@ -45,15 +45,45 @@ impl DurableStateStore<i32> for TestDurableStateStore {
     Box::pin(ready(Ok(result)))
   }
 
-  fn upsert_object<'a>(&'a mut self, persistence_id: &'a str, object: i32) -> DurableStateFuture<'a, ()> {
+  fn upsert_object<'a>(
+    &'a mut self,
+    persistence_id: &'a str,
+    expected_revision: u64,
+    object: i32,
+    tag: Option<&'a str>,
+  ) -> DurableStateFuture<'a, ()> {
+    let actual_revision = self.revisions.get(persistence_id).copied().unwrap_or(0);
+    if actual_revision != expected_revision {
+      return Box::pin(ready(Err(DurableStateError::upsert_revision(
+        persistence_id,
+        expected_revision,
+        actual_revision,
+      ))));
+    }
+
     self.objects.insert(persistence_id.to_string(), object);
-    let revision = self.revisions.get(persistence_id).copied().unwrap_or(0).saturating_add(1);
+    let revision = actual_revision.saturating_add(1);
     self.revisions.insert(persistence_id.to_string(), revision);
-    self.updates.entry(persistence_id.to_string()).or_default().push(object);
+
+    if let Some(tag) = tag {
+      let updates = self.updates.entry(tag.to_string()).or_default();
+      let offset = updates.len().saturating_add(1);
+      updates.push(DurableStateChange::new(offset, persistence_id.to_string(), revision, tag.to_string(), object));
+    }
+
     Box::pin(ready(Ok(())))
   }
 
-  fn delete_object<'a>(&'a mut self, persistence_id: &'a str) -> DurableStateFuture<'a, ()> {
+  fn delete_object<'a>(&'a mut self, persistence_id: &'a str, expected_revision: u64) -> DurableStateFuture<'a, ()> {
+    let actual_revision = self.revisions.get(persistence_id).copied().unwrap_or(0);
+    if actual_revision != expected_revision {
+      return Box::pin(ready(Err(DurableStateError::delete_revision(
+        persistence_id,
+        expected_revision,
+        actual_revision,
+      ))));
+    }
+
     self.objects.remove(persistence_id);
     self.revisions.remove(persistence_id);
     Box::pin(ready(Ok(())))
@@ -63,15 +93,10 @@ impl DurableStateStore<i32> for TestDurableStateStore {
 impl DurableStateUpdateStore<i32> for TestDurableStateStore {
   fn changes<'a>(
     &'a self,
-    persistence_id: &'a str,
+    tag: &'a str,
     from_offset: usize,
-  ) -> DurableStateFuture<'a, Option<(usize, i32)>> {
-    let next_change = self
-      .updates
-      .get(persistence_id)
-      .and_then(|updates| updates.get(from_offset))
-      .copied()
-      .map(|state| (from_offset.saturating_add(1), state));
+  ) -> DurableStateFuture<'a, Option<DurableStateChange<i32>>> {
+    let next_change = self.updates.get(tag).and_then(|updates| updates.get(from_offset)).cloned();
     Box::pin(ready(Ok(next_change)))
   }
 }
@@ -108,15 +133,49 @@ fn register_and_resolve_provider_for_crud_operations() {
 
   let mut store = registry.resolve(TEST_PROVIDER_ID).expect("resolve provider");
 
-  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 42)).expect("upsert durable state");
+  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 0, 42, None)).expect("upsert durable state");
   let loaded = poll_ready(store.get_object(TEST_PERSISTENCE_ID)).expect("get durable state");
   assert_eq!(loaded.value(), Some(&42));
   assert_eq!(loaded.revision(), 1);
 
-  poll_ready(store.delete_object(TEST_PERSISTENCE_ID)).expect("delete durable state");
+  poll_ready(store.delete_object(TEST_PERSISTENCE_ID, 1)).expect("delete durable state");
   let loaded_after_delete = poll_ready(store.get_object(TEST_PERSISTENCE_ID)).expect("get durable state after delete");
   assert!(loaded_after_delete.is_empty());
   assert_eq!(loaded_after_delete.revision(), 0);
+}
+
+#[test]
+fn revision_mismatch_rejects_upsert_without_mutation() {
+  let mut store = TestDurableStateStore::new();
+
+  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 0, 10, Some("orders"))).expect("upsert initial state");
+
+  let result = poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 0, 20, Some("orders")));
+  assert_eq!(result, Err(DurableStateError::upsert_revision(TEST_PERSISTENCE_ID, 0, 1)));
+
+  let loaded = poll_ready(store.get_object(TEST_PERSISTENCE_ID)).expect("get durable state after failed upsert");
+  assert_eq!(loaded.value(), Some(&10));
+  assert_eq!(loaded.revision(), 1);
+
+  let first_change = poll_ready(store.changes("orders", 0)).expect("load first change");
+  assert_eq!(first_change.map(|change| (change.offset(), *change.value())), Some((1, 10)));
+
+  let no_second_change = poll_ready(store.changes("orders", 1)).expect("load missing second change");
+  assert_eq!(no_second_change, None);
+}
+
+#[test]
+fn revision_mismatch_rejects_delete_without_mutation() {
+  let mut store = TestDurableStateStore::new();
+
+  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 0, 10, None)).expect("upsert initial state");
+
+  let result = poll_ready(store.delete_object(TEST_PERSISTENCE_ID, 0));
+  assert_eq!(result, Err(DurableStateError::delete_revision(TEST_PERSISTENCE_ID, 0, 1)));
+
+  let loaded = poll_ready(store.get_object(TEST_PERSISTENCE_ID)).expect("get durable state after failed delete");
+  assert_eq!(loaded.value(), Some(&10));
+  assert_eq!(loaded.revision(), 1);
 }
 
 #[test]
@@ -142,25 +201,70 @@ fn resolve_unknown_provider_fails() {
 fn durable_state_update_store_reports_changes() {
   let mut store = TestDurableStateStore::new();
 
-  // changes(id, seq) は指定 seq より大きいシーケンス番号の変更を返す
-  let no_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 0)).expect("load changes before first upsert");
+  // changes(tag, offset) は指定 offset より大きい tagged change を返す
+  let no_change = poll_ready(store.changes("orders", 0)).expect("load changes before first upsert");
   assert_eq!(no_change, None);
 
-  // 最初の upsert → seq=1, value=10
-  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 10)).expect("upsert first state");
-  let first_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 0)).expect("load first change");
-  assert_eq!(first_change, Some((1, 10)));
+  // 最初の tagged upsert -> offset=1, revision=1, value=10
+  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 0, 10, Some("orders"))).expect("upsert first state");
+  let first_change = poll_ready(store.changes("orders", 0)).expect("load first change");
+  assert_eq!(
+    first_change.as_ref().map(|change| (
+      change.offset(),
+      change.persistence_id(),
+      change.revision(),
+      change.tag(),
+      *change.value()
+    )),
+    Some((1, TEST_PERSISTENCE_ID, 1, "orders", 10))
+  );
 
-  // seq=1 以降は未更新なので None
-  let no_second_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 1)).expect("load second change before upsert");
+  // offset=1 以降は未更新なので None
+  let no_second_change = poll_ready(store.changes("orders", 1)).expect("load second change before upsert");
   assert_eq!(no_second_change, None);
 
-  // 2回目の upsert → seq=2, value=20
-  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 20)).expect("upsert second state");
-  let second_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 1)).expect("load second change");
-  assert_eq!(second_change, Some((2, 20)));
+  // 2回目の tagged upsert -> offset=2, revision=2, value=20
+  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 1, 20, Some("orders"))).expect("upsert second state");
+  let second_change = poll_ready(store.changes("orders", 1)).expect("load second change");
+  assert_eq!(
+    second_change.as_ref().map(|change| (change.offset(), change.revision(), change.tag(), *change.value())),
+    Some((2, 2, "orders", 20))
+  );
 
-  // seq=2 以降は未更新なので None
-  let no_third_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 2)).expect("load third change");
+  // offset=2 以降は未更新なので None
+  let no_third_change = poll_ready(store.changes("orders", 2)).expect("load third change");
   assert_eq!(no_third_change, None);
+}
+
+#[test]
+fn untagged_update_is_not_returned_by_tag_query() {
+  let mut store = TestDurableStateStore::new();
+
+  poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 0, 10, None)).expect("upsert untagged state");
+
+  let no_change = poll_ready(store.changes("orders", 0)).expect("load tagged changes");
+  assert_eq!(no_change, None);
+}
+
+#[test]
+fn durable_state_update_store_isolates_tags() {
+  let mut store = TestDurableStateStore::new();
+
+  poll_ready(store.upsert_object("order-1", 0, 10, Some("orders"))).expect("upsert order state");
+  poll_ready(store.upsert_object("payment-1", 0, 20, Some("payments"))).expect("upsert payment state");
+
+  let order_change = poll_ready(store.changes("orders", 0)).expect("load order change");
+  assert_eq!(
+    order_change.as_ref().map(|change| (
+      change.offset(),
+      change.persistence_id(),
+      change.revision(),
+      change.tag(),
+      *change.value()
+    )),
+    Some((1, "order-1", 1, "orders", 10))
+  );
+
+  let no_second_order_change = poll_ready(store.changes("orders", 1)).expect("load missing order change");
+  assert_eq!(no_second_order_change, None);
 }

@@ -34,6 +34,16 @@ fn durable_state_error_display_delete_revision() {
 }
 
 #[test]
+fn durable_state_error_display_upsert_revision() {
+  let error = DurableStateError::upsert_revision("pid-1", 3, 2);
+
+  assert_eq!(
+    error.to_string(),
+    "upsert durable state object failed for 'pid-1': expected revision 3, actual revision 2"
+  );
+}
+
+#[test]
 fn durable_state_error_display_changes_failed() {
   let error = DurableStateError::ChangesFailed("stream closed".into());
 
