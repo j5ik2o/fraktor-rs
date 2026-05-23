@@ -72,7 +72,6 @@ jobs:
 
           if ! jq -e '.data.repository.pullRequest.author.login
             and .data.repository.pullRequest.baseRefName
-            and .data.repository.pullRequest.headRepository.nameWithOwner
             and .data.repository.pullRequest.headRefOid
             and .data.repository.pullRequest.url' \
             <<< "$pr_response" > /dev/null; then
@@ -84,12 +83,17 @@ jobs:
           pr_author="$(jq -r '.data.repository.pullRequest.author.login' <<< "$pr_response")"
           pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
           base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
-          head_repository="$(jq -r '.data.repository.pullRequest.headRepository.nameWithOwner' <<< "$pr_response")"
+          head_repository="$(jq -r '.data.repository.pullRequest.headRepository.nameWithOwner // ""' <<< "$pr_response")"
           head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
           pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
 
           should_publish_head_check() {
             if [[ "$EVENT_NAME" != "issue_comment" ]]; then
+              return 1
+            fi
+
+            if [[ -z "$head_repository" ]]; then
+              echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable."
               return 1
             fi
 
@@ -111,12 +115,17 @@ jobs:
             local summary="$2"
             local check_summary="$summary"
             local max_summary_chars=60000
+            local truncation_suffix
+            local available_chars
             local request_payload
             local check_run_response
+            local check_run_error
             local check_run_url
 
             if (( ${#check_summary} > max_summary_chars )); then
-              check_summary="${check_summary:0:max_summary_chars}"$'\n\n... truncated for GitHub Checks API summary limit ...'
+              truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
+              available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
+              check_summary="${check_summary:0:available_chars}${truncation_suffix}"
             fi
 
             request_payload="$(
@@ -140,17 +149,22 @@ jobs:
                 }'
             )"
 
+            check_run_error="$(mktemp)"
             if ! check_run_response="$(
               gh api \
                 --method POST \
                 -H "Accept: application/vnd.github+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 "repos/$OWNER/$REPO/check-runs" \
-                --input - <<< "$request_payload"
+                --input - \
+                2> "$check_run_error" <<< "$request_payload"
             )"; then
               echo "::error::Failed to create check run via GitHub API."
+              cat "$check_run_error" >&2
+              rm -f "$check_run_error"
               return 1
             fi
+            rm -f "$check_run_error"
 
             if ! jq -e '.id and .html_url' <<< "$check_run_response" > /dev/null; then
               echo "::error::GitHub API response did not include check-run metadata."
