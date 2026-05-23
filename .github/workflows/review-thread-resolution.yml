@@ -407,6 +407,7 @@ jobs:
                             url
                             createdAt
                             updatedAt
+                            body
                             authorAssociation
                             author {
                               login
@@ -448,27 +449,39 @@ jobs:
           done
 
           unacknowledged_top_level="$(
-            jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
+            jq -c \
+              --arg pr_author "$pr_author" \
+              --arg pr_author_type "$pr_author_type" \
+              --argjson trusted_acknowledger_logins '["chatgpt-codex-connector", "chatgpt-codex-connector[bot]"]' '
+              def is_trusted_acknowledger:
+                (.author.login // "") as $login
+                | ($trusted_acknowledger_logins | index($login)) != null;
+              def is_acknowledgement_text:
+                (.body // "") | test("(?i)^\\s*(acknowledged|addressed|確認しました|承知しました|了解しました|対応済み|対応しました|対処しました)");
+              def is_trusted_acknowledgement:
+                is_trusted_acknowledger and is_acknowledgement_text;
+              def is_maintainer:
+                .authorAssociation == "OWNER"
+                or .authorAssociation == "MEMBER"
+                or .authorAssociation == "COLLABORATOR";
+              def is_acknowledger:
+                (.author.login // "") == $pr_author
+                or is_trusted_acknowledgement
+                or ($pr_author_type == "Bot" and is_maintainer);
+              def requires_acknowledgement:
+                (.author.login // "") != $pr_author
+                and (is_trusted_acknowledgement | not);
               . as $comments
               | [
                   $comments[]
-                  | select((.author.login // "") != $pr_author)
+                  | select(requires_acknowledgement)
                   | . as $comment
                   | select([
                       $comments[]
                       # Human-authored PRs require the PR author to acknowledge.
                       # Bot-authored PRs allow maintainers to acknowledge on behalf of the bot.
-                      | select(
-                          (.author.login // "") == $pr_author
-                          or (
-                            $pr_author_type == "Bot"
-                            and (
-                              .authorAssociation == "OWNER"
-                              or .authorAssociation == "MEMBER"
-                              or .authorAssociation == "COLLABORATOR"
-                            )
-                          )
-                        )
+                      # Explicit Codex connector acknowledgement comments can also acknowledge on behalf of the PR author.
+                      | select(is_acknowledger)
                       | select(.createdAt > ($comment.updatedAt // $comment.createdAt))
                     ] | length == 0)
                 ]
