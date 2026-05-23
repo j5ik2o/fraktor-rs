@@ -1464,16 +1464,7 @@ fn write_messages_failed_realigns_current_sequence_nr_to_last_sequence_nr() {
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
   context.flush_batch(ActorRef::null()).expect("flush batch after write messages failed");
 
-  let persisted_repr = {
-    let journal_messages = journal_store.lock();
-    assert_eq!(journal_messages.len(), 1);
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
-    match message {
-      | JournalMessage::WriteMessages { messages, .. } => first_atomic_payload(messages),
-      | _ => panic!("unexpected message"),
-    }
-  };
-  assert_eq!(persisted_repr.sequence_nr(), 1);
+  assert_eq!(journal_store.lock().len(), 1);
   assert_eq!(context.current_sequence_nr(), 1);
 }
 

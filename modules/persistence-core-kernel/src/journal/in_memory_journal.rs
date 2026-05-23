@@ -60,14 +60,13 @@ impl Journal for InMemoryJournal {
 
     let persistence_id = first.persistence_id().to_string();
 
-    // AtomicWrite validates each unit; the journal still validates the batch boundary.
-    for atomic_write in messages.iter().skip(1) {
-      if atomic_write.persistence_id() != persistence_id {
-        return ready(Err(JournalError::MixedPersistenceId {
-          expected: persistence_id,
-          actual:   atomic_write.persistence_id().to_string(),
-        }));
-      }
+    if let Some(atomic_write) =
+      messages.iter().skip(1).find(|atomic_write| atomic_write.persistence_id() != persistence_id)
+    {
+      return ready(Err(JournalError::MixedPersistenceId {
+        expected: persistence_id,
+        actual:   atomic_write.persistence_id().to_string(),
+      }));
     }
 
     let mut expected = self.expected_sequence_nr(&persistence_id);
