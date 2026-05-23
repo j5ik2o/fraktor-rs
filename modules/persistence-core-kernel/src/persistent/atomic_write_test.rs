@@ -14,7 +14,6 @@ fn atomic_write_accepts_non_empty_payload_for_one_persistence_id() {
 
   assert_eq!(write.persistence_id(), "pid-1");
   assert_eq!(write.size(), 2);
-  assert!(!write.is_empty());
   assert_eq!(write.payload().len(), 2);
 }
 

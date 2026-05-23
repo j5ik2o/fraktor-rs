@@ -718,7 +718,7 @@ fn adapter_unstash_all_on_write_message_rejected() {
 }
 
 #[test]
-fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
+fn adapter_unstash_all_on_write_messages_failed_with_positive_write_count() {
   let system = new_test_system();
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -736,8 +736,9 @@ fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
-  assert!(result.is_ok());
-  assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
+  assert!(
+    matches!(result, Err(ActorError::Recoverable(reason)) if reason.as_str() == "actor cell unavailable during unstash")
+  );
 }
 
 #[test]

@@ -52,34 +52,94 @@ impl SerializationRegistryContributor for PersistenceSerializationContributor {
 ///
 /// Returns [`SerializationError`] when an id or binding collision is detected.
 pub fn register_persistence_serializers(registry: &ArcShared<SerializationRegistry>) -> Result<(), SerializationError> {
-  register_serializer(
-    registry,
-    MESSAGE_SERIALIZER_ID,
-    ArcShared::new(MessageSerializer::new(MESSAGE_SERIALIZER_ID, registry.downgrade())),
-  )?;
-  register_serializer(
-    registry,
-    SNAPSHOT_SERIALIZER_ID,
-    ArcShared::new(SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade())),
-  )?;
+  validate_persistence_registration(registry)?;
+  register_message_serializer(registry)?;
+  register_snapshot_serializer(registry)?;
   register_binding::<PersistentRepr>(registry, "PersistentRepr", MESSAGE_SERIALIZER_ID)?;
   register_binding::<AtomicWrite>(registry, "AtomicWrite", MESSAGE_SERIALIZER_ID)?;
   register_binding::<SnapshotPayload>(registry, "SnapshotPayload", SNAPSHOT_SERIALIZER_ID)
 }
 
-fn register_serializer(
+fn validate_persistence_registration(registry: &ArcShared<SerializationRegistry>) -> Result<(), SerializationError> {
+  validate_serializer(registry, MESSAGE_SERIALIZER_ID, |existing| {
+    existing.as_any().downcast_ref::<MessageSerializer>().is_some_and(|serializer| serializer.uses_registry(registry))
+  })?;
+  validate_serializer(registry, SNAPSHOT_SERIALIZER_ID, |existing| {
+    existing.as_any().downcast_ref::<SnapshotSerializer>().is_some_and(|serializer| serializer.uses_registry(registry))
+  })?;
+  validate_binding::<PersistentRepr>(registry, "PersistentRepr", MESSAGE_SERIALIZER_ID)?;
+  validate_binding::<AtomicWrite>(registry, "AtomicWrite", MESSAGE_SERIALIZER_ID)?;
+  validate_binding::<SnapshotPayload>(registry, "SnapshotPayload", SNAPSHOT_SERIALIZER_ID)
+}
+
+fn validate_serializer<F>(
+  registry: &SerializationRegistry,
+  id: SerializerId,
+  is_same_registration: F,
+) -> Result<(), SerializationError>
+where
+  F: FnOnce(&dyn Serializer) -> bool, {
+  if let Some(existing) = registry.registered_serializer(id) {
+    if is_same_registration(&*existing) {
+      return Ok(());
+    }
+    return Err(SerializationError::SerializerIdCollision(id));
+  }
+  Ok(())
+}
+
+fn register_message_serializer(registry: &ArcShared<SerializationRegistry>) -> Result<(), SerializationError> {
+  let serializer: ArcShared<dyn Serializer> =
+    ArcShared::new(MessageSerializer::new(MESSAGE_SERIALIZER_ID, registry.downgrade()));
+  register_serializer(registry, MESSAGE_SERIALIZER_ID, serializer, |existing| {
+    existing.as_any().downcast_ref::<MessageSerializer>().is_some_and(|serializer| serializer.uses_registry(registry))
+  })
+}
+
+fn register_snapshot_serializer(registry: &ArcShared<SerializationRegistry>) -> Result<(), SerializationError> {
+  let serializer: ArcShared<dyn Serializer> =
+    ArcShared::new(SnapshotSerializer::new(SNAPSHOT_SERIALIZER_ID, registry.downgrade()));
+  register_serializer(registry, SNAPSHOT_SERIALIZER_ID, serializer, |existing| {
+    existing.as_any().downcast_ref::<SnapshotSerializer>().is_some_and(|serializer| serializer.uses_registry(registry))
+  })
+}
+
+fn register_serializer<F>(
   registry: &SerializationRegistry,
   id: SerializerId,
   serializer: ArcShared<dyn Serializer>,
-) -> Result<(), SerializationError> {
+  is_same_registration: F,
+) -> Result<(), SerializationError>
+where
+  F: FnOnce(&dyn Serializer) -> bool, {
   if let Some(existing) = registry.registered_serializer(id) {
-    if existing.identifier() == serializer.identifier() && existing.as_any().type_id() == serializer.as_any().type_id()
-    {
+    if is_same_registration(&*existing) {
       return Ok(());
     }
     return Err(SerializationError::SerializerIdCollision(id));
   }
   if registry.register_serializer(id, serializer) { Ok(()) } else { Err(SerializationError::SerializerIdCollision(id)) }
+}
+
+fn validate_binding<T: 'static>(
+  registry: &SerializationRegistry,
+  type_name: &'static str,
+  serializer_id: SerializerId,
+) -> Result<(), SerializationError> {
+  let type_id = TypeId::of::<T>();
+  if let Some(existing) = registry.binding_for(type_id) {
+    if existing == serializer_id {
+      return Ok(());
+    }
+    return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
+  }
+  if let Some(existing_type_id) = registry.type_id_for_binding_name(type_name)
+    && existing_type_id != type_id
+  {
+    let existing = registry.binding_for(existing_type_id).ok_or(SerializationError::InvalidFormat)?;
+    return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
+  }
+  Ok(())
 }
 
 fn register_binding<T: 'static>(

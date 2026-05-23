@@ -9,7 +9,7 @@ use fraktor_actor_core_kernel_rs::{
     serialization_registry::SerializationRegistry,
   },
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::{ArcShared, WeakShared};
 
 use crate::{
   journal::EventAdapters,
@@ -282,12 +282,28 @@ fn unregistered_metadata_fails_serialization() {
 }
 
 #[test]
-fn non_manifest_resolvable_payload_fails_serialization() {
+fn non_manifest_resolvable_payload_serializes_with_serializer_id() {
   let registry = hint_only_registry();
   let serializer = serializer(&registry);
   let repr = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));
 
-  assert!(matches!(serializer.to_binary(&repr), Err(SerializationError::InvalidFormat)));
+  let bytes = serializer.to_binary(&repr).expect("serialize");
+  let mut cursor = 0;
+  assert_eq!(wire::read_u8(&bytes, &mut cursor).expect("tag"), PERSISTENT_REPR_TAG);
+  let repr_bytes = wire::read_bytes(&bytes, &mut cursor).expect("repr");
+  let mut repr_cursor = 0;
+  let _persistence_id = wire::read_string(repr_bytes, &mut repr_cursor).expect("persistence id");
+  let _sequence_nr = wire::read_u64(repr_bytes, &mut repr_cursor).expect("sequence nr");
+  let payload_type_name = wire::read_string(repr_bytes, &mut repr_cursor).expect("payload type");
+  let nested = wire::read_serialized(repr_bytes, &mut repr_cursor).expect("payload");
+
+  assert_eq!(payload_type_name, "i32");
+  assert_eq!(nested.serializer_id(), SerializerId::try_from(101).expect("serializer id"));
+  assert_eq!(nested.manifest(), None);
+
+  let restored = serializer.from_binary(&bytes, None).expect("deserialize");
+  let restored = restored.downcast_ref::<PersistentRepr>().expect("persistent repr");
+  assert_eq!(restored.downcast_ref::<i32>(), Some(&1));
 }
 
 #[test]
@@ -349,6 +365,7 @@ fn empty_manifest_payload_fails_deserialization() {
   let mut repr = Vec::new();
   wire::write_string(&mut repr, "pid-1").expect("persistence id");
   wire::write_u64(&mut repr, 1);
+  wire::write_string(&mut repr, "i32").expect("payload type");
   wire::write_serialized(&mut repr, &payload).expect("payload");
   wire::write_string(&mut repr, "").expect("manifest");
   wire::write_string(&mut repr, "").expect("writer uuid");
@@ -376,6 +393,7 @@ fn trailing_nested_payload_bytes_fail_deserialization() {
   let mut repr = Vec::new();
   wire::write_string(&mut repr, "pid-1").expect("persistence id");
   wire::write_u64(&mut repr, 1);
+  wire::write_string(&mut repr, "i32").expect("payload type");
   wire::write_bytes(&mut repr, &nested).expect("payload");
   wire::write_string(&mut repr, "").expect("manifest");
   wire::write_string(&mut repr, "").expect("writer uuid");
@@ -391,10 +409,45 @@ fn trailing_nested_payload_bytes_fail_deserialization() {
 }
 
 #[test]
-fn manifest_validation_rejects_missing_manifest() {
+fn manifest_validation_accepts_missing_manifest() {
   let payload = SerializedMessage::new(SerializerId::try_from(100).expect("serializer id"), None, vec![]);
 
+  assert!(MessageSerializer::has_valid_manifest(&payload));
+}
+
+#[test]
+fn manifest_validation_rejects_empty_manifest() {
+  let payload =
+    SerializedMessage::new(SerializerId::try_from(100).expect("serializer id"), Some(String::new()), vec![]);
+
   assert!(!MessageSerializer::has_valid_manifest(&payload));
+}
+
+#[test]
+fn persistent_repr_without_nested_manifest_deserializes_by_serializer_id() {
+  let registry = manifest_registry();
+  let serializer = serializer(&registry);
+  let payload =
+    SerializedMessage::new(SerializerId::try_from(100).expect("serializer id"), None, 1_i32.to_le_bytes().to_vec());
+  let mut repr = Vec::new();
+  wire::write_string(&mut repr, "pid-1").expect("persistence id");
+  wire::write_u64(&mut repr, 1);
+  wire::write_string(&mut repr, "i32").expect("payload type");
+  wire::write_serialized(&mut repr, &payload).expect("payload");
+  wire::write_string(&mut repr, "").expect("manifest");
+  wire::write_string(&mut repr, "").expect("writer uuid");
+  wire::write_u64(&mut repr, 0);
+  wire::write_bool(&mut repr, false);
+  wire::write_string(&mut repr, "").expect("adapter type");
+  wire::write_bool(&mut repr, false);
+  let mut bytes = Vec::new();
+  wire::write_u8(&mut bytes, PERSISTENT_REPR_TAG);
+  wire::write_bytes(&mut bytes, &repr).expect("repr");
+
+  let restored = serializer.from_binary(&bytes, None).expect("deserialize");
+  let restored = restored.downcast_ref::<PersistentRepr>().expect("persistent repr");
+
+  assert_eq!(restored.downcast_ref::<i32>(), Some(&1));
 }
 
 #[test]
@@ -409,6 +462,7 @@ fn unknown_adapter_type_binding_fails_deserialization() {
   let mut repr = Vec::new();
   wire::write_string(&mut repr, "pid-1").expect("persistence id");
   wire::write_u64(&mut repr, 1);
+  wire::write_string(&mut repr, "i32").expect("payload type");
   wire::write_serialized(&mut repr, &payload).expect("payload");
   wire::write_string(&mut repr, "").expect("manifest");
   wire::write_string(&mut repr, "").expect("writer uuid");
@@ -434,6 +488,25 @@ fn persistence_serializer_registration_is_idempotent() {
 }
 
 #[test]
+fn persistence_serializer_registration_rejects_stale_message_serializer_registration() {
+  let stale_serializer: ArcShared<dyn Serializer> =
+    ArcShared::new(MessageSerializer::new(MESSAGE_SERIALIZER_ID, WeakShared::<SerializationRegistry>::new()));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("persistence-message", MESSAGE_SERIALIZER_ID, stale_serializer)
+    .expect("register")
+    .set_fallback("persistence-message")
+    .expect("fallback")
+    .build()
+    .expect("setup");
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
+
+  assert!(matches!(
+    register_persistence_serializers(&registry),
+    Err(SerializationError::SerializerIdCollision(id)) if id == MESSAGE_SERIALIZER_ID
+  ));
+}
+
+#[test]
 fn persistence_serializer_registration_rejects_snapshot_binding_collision() {
   let id = SerializerId::try_from(100).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestI32Serializer::new(id));
@@ -456,6 +529,9 @@ fn persistence_serializer_registration_rejects_snapshot_binding_collision() {
       requested
     }) if type_name == "SnapshotPayload" && existing == id && requested == SNAPSHOT_SERIALIZER_ID
   ));
+  assert!(registry.registered_serializer(MESSAGE_SERIALIZER_ID).is_none());
+  assert!(registry.binding_for(TypeId::of::<PersistentRepr>()).is_none());
+  assert!(registry.binding_for(TypeId::of::<AtomicWrite>()).is_none());
 }
 
 #[test]

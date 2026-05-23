@@ -29,6 +29,18 @@ fn primitive_reads_reject_truncated_input() {
 }
 
 #[test]
+fn primitive_reads_reject_cursor_overflow() {
+  let mut cursor = usize::MAX;
+  assert_eq!(read_u8(&[1], &mut cursor), Err(SerializationError::InvalidFormat));
+
+  let mut cursor = usize::MAX;
+  assert_eq!(read_u32(&[1, 2, 3, 4], &mut cursor), Err(SerializationError::InvalidFormat));
+
+  let mut cursor = usize::MAX;
+  assert_eq!(read_u64(&[1, 2, 3, 4, 5, 6, 7, 8], &mut cursor), Err(SerializationError::InvalidFormat));
+}
+
+#[test]
 fn read_bool_rejects_unknown_discriminant() {
   let mut cursor = 0;
 

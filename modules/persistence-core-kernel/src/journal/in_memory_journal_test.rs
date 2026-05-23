@@ -91,7 +91,7 @@ impl Journal for SingleEntryOnlyJournal {
 
 #[test]
 #[should_panic(expected = "future was pending")]
-fn poll_ready_panics_when_future_is_pending() {
+fn poll_ready_helper_panics_on_pending_future() {
   poll_ready(pending::<()>());
 }
 
@@ -127,6 +127,7 @@ fn in_memory_journal_sequence_mismatch() {
 
   let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
   assert_eq!(result, Err(JournalError::SequenceMismatch { expected: 1, actual: 2 }));
+  assert!(poll_ready(journal.replay_messages("pid-1", 1, 1, 10)).expect("replay failed").is_empty());
 }
 
 #[test]
@@ -137,7 +138,7 @@ fn in_memory_journal_rejects_sequence_overflow_without_partial_persistence() {
 
   let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
 
-  assert_eq!(result, Err(JournalError::InvalidAtomicWrite("sequence number overflow".into())));
+  assert_eq!(result, Err(JournalError::InvalidAtomicWrite("sequence number overflow in atomic write batch".into())));
   assert!(poll_ready(journal.replay_messages("pid-1", u64::MAX, u64::MAX, 10)).expect("replay pid-1").is_empty());
 }
 

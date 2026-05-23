@@ -61,7 +61,7 @@ impl Journal for InMemoryJournal {
     let persistence_id = first.persistence_id().to_string();
 
     // AtomicWrite validates each unit; the journal still validates the batch boundary.
-    for atomic_write in messages {
+    for atomic_write in messages.iter().skip(1) {
       if atomic_write.persistence_id() != persistence_id {
         return ready(Err(JournalError::MixedPersistenceId {
           expected: persistence_id,
@@ -79,7 +79,11 @@ impl Journal for InMemoryJournal {
         }
         expected = match expected.checked_add(1) {
           | Some(next_expected) => next_expected,
-          | None => return ready(Err(JournalError::InvalidAtomicWrite(String::from("sequence number overflow")))),
+          | None => {
+            return ready(Err(JournalError::InvalidAtomicWrite(String::from(
+              "sequence number overflow in atomic write batch",
+            ))));
+          },
         };
       }
     }
@@ -88,7 +92,8 @@ impl Journal for InMemoryJournal {
     for atomic_write in messages {
       entry.extend(atomic_write.payload().iter().cloned());
     }
-    self.highest_sequence_nrs.insert(persistence_id, expected.saturating_sub(1));
+    // expected_sequence_nr starts at >= 1 and only increases via checked_add.
+    self.highest_sequence_nrs.insert(persistence_id, expected - 1);
 
     ready(Ok(()))
   }

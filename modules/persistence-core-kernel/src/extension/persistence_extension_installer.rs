@@ -4,7 +4,7 @@
 #[path = "persistence_extension_installer_test.rs"]
 mod tests;
 
-use alloc::string::ToString;
+use alloc::format;
 
 use fraktor_actor_core_kernel_rs::{
   actor::extension::{ExtensionInstaller, install_extension_id},
@@ -52,8 +52,9 @@ where
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    register_serialization_registry_contributor(system, PersistenceSerializationContributor::new())
-      .map_err(|error| ActorSystemBuildError::Configuration(error.to_string()))?;
+    register_serialization_registry_contributor(system, PersistenceSerializationContributor::new()).map_err(
+      |error| ActorSystemBuildError::Configuration(format!("persistence serialization registration failed: {error}")),
+    )?;
     let extension_id =
       PersistenceExtensionId::new_with_settings(self.journal.clone(), self.snapshot_store.clone(), self.settings);
     install_extension_id(system, &extension_id);

@@ -226,7 +226,7 @@ fn persistent_actor_clears_sender_in_journal_representations() {
       assert_eq!(messages.iter().map(|write| write.payload().len()).sum::<usize>(), 6);
       for repr in messages.iter().flat_map(|write| {
         // AtomicWrite::payload() is guaranteed non-empty by AtomicWrite::new.
-        write.payload()
+        write.payload().iter()
       }) {
         assert_eq!(repr.sender(), None);
       }

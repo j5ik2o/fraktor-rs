@@ -46,25 +46,21 @@ impl AtomicWrite {
   /// Returns the lowest sequence number in the payload.
   #[must_use]
   pub fn lowest_sequence_nr(&self) -> u64 {
-    self.payload.iter().map(PersistentRepr::sequence_nr).min().unwrap_or(0)
+    let first = self.payload[0].sequence_nr();
+    self.payload.iter().skip(1).fold(first, |lowest, repr| lowest.min(repr.sequence_nr()))
   }
 
   /// Returns the highest sequence number in the payload.
   #[must_use]
   pub fn highest_sequence_nr(&self) -> u64 {
-    self.payload.iter().map(PersistentRepr::sequence_nr).max().unwrap_or(0)
+    let first = self.payload[0].sequence_nr();
+    self.payload.iter().skip(1).fold(first, |highest, repr| highest.max(repr.sequence_nr()))
   }
 
   /// Returns the number of persistent representations in the atomic write.
   #[must_use]
   pub const fn size(&self) -> usize {
     self.payload.len()
-  }
-
-  /// Returns `true` when the atomic write contains no payload entries.
-  #[must_use]
-  pub const fn is_empty(&self) -> bool {
-    self.payload.is_empty()
   }
 
   /// Returns the contained persistent representations.

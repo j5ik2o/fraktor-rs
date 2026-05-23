@@ -1387,7 +1387,7 @@ fn write_message_rejected_for_later_persist_keeps_deferred_invocation() {
 }
 
 #[test]
-fn write_messages_failed_with_positive_write_count_keeps_persisting_state() {
+fn write_messages_failed_with_positive_write_count_returns_to_processing_commands() {
   let (journal_ref, _journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -1404,11 +1404,11 @@ fn write_messages_failed_with_positive_write_count_keeps_persisting_state() {
     instance_id: context.instance_id(),
   });
   assert!(matches!(action, JournalResponseAction::None));
-  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
 
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  let result = context.flush_batch(ActorRef::null());
-  assert!(result.is_err());
+  context.flush_batch(ActorRef::null()).expect("flush batch after write messages failed");
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 }
 
 #[test]

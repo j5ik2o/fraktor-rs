@@ -160,22 +160,21 @@ impl SerializationRegistry {
       return Err(SerializationError::UnknownSerializer(serializer_id));
     }
     let type_name = type_name.into();
-    let collision = self.binding_names.with_write(|binding_names| {
-      if let Some(existing_type_id) = binding_names.iter().find_map(|(existing_type_id, existing_name)| {
-        (*existing_type_id != type_id && existing_name == &type_name).then_some(*existing_type_id)
-      }) {
-        return Some(existing_type_id);
-      }
-      binding_names.insert(type_id, type_name.clone());
-      None
-    });
-    if let Some(existing_type_id) = collision {
-      let existing = self.binding_for(existing_type_id).ok_or(SerializationError::InvalidFormat)?;
-      return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
-    }
-    self.bindings.with_write(|bindings| {
+    let result: Result<(), SerializationError> = self.bindings.with_write(|bindings| {
+      self.binding_names.with_write(|binding_names| {
+        if let Some(existing_type_id) = binding_names.iter().find_map(|(existing_type_id, existing_name)| {
+          (*existing_type_id != type_id && existing_name == &type_name).then_some(*existing_type_id)
+        }) {
+          let existing = bindings.get(&existing_type_id).copied().ok_or(SerializationError::InvalidFormat)?;
+          return Err(SerializationError::serializer_binding_collision(type_name, existing, serializer_id));
+        }
+        binding_names.insert(type_id, type_name);
+        Ok(())
+      })?;
       bindings.insert(type_id, serializer_id);
+      Ok(())
     });
+    result?;
     self.cache_remove(type_id);
     Ok(())
   }

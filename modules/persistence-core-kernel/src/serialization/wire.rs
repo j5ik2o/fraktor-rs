@@ -46,11 +46,12 @@ pub(crate) fn write_serialized(buffer: &mut Vec<u8>, value: &SerializedMessage) 
 }
 
 pub(crate) fn read_u8(bytes: &[u8], cursor: &mut usize) -> Result<u8, SerializationError> {
-  if bytes.len() < cursor.saturating_add(1) {
+  let end = cursor.checked_add(1).ok_or(SerializationError::InvalidFormat)?;
+  if bytes.len() < end {
     return Err(SerializationError::InvalidFormat);
   }
   let value = bytes[*cursor];
-  *cursor = cursor.saturating_add(1);
+  *cursor = end;
   Ok(value)
 }
 
@@ -63,22 +64,24 @@ pub(crate) fn read_bool(bytes: &[u8], cursor: &mut usize) -> Result<bool, Serial
 }
 
 pub(crate) fn read_u32(bytes: &[u8], cursor: &mut usize) -> Result<u32, SerializationError> {
-  if bytes.len() < cursor.saturating_add(4) {
+  let end = cursor.checked_add(4).ok_or(SerializationError::InvalidFormat)?;
+  if bytes.len() < end {
     return Err(SerializationError::InvalidFormat);
   }
   let mut array = [0_u8; 4];
-  array.copy_from_slice(&bytes[*cursor..*cursor + 4]);
-  *cursor = cursor.saturating_add(4);
+  array.copy_from_slice(&bytes[*cursor..end]);
+  *cursor = end;
   Ok(u32::from_le_bytes(array))
 }
 
 pub(crate) fn read_u64(bytes: &[u8], cursor: &mut usize) -> Result<u64, SerializationError> {
-  if bytes.len() < cursor.saturating_add(8) {
+  let end = cursor.checked_add(8).ok_or(SerializationError::InvalidFormat)?;
+  if bytes.len() < end {
     return Err(SerializationError::InvalidFormat);
   }
   let mut array = [0_u8; 8];
-  array.copy_from_slice(&bytes[*cursor..*cursor + 8]);
-  *cursor = cursor.saturating_add(8);
+  array.copy_from_slice(&bytes[*cursor..end]);
+  *cursor = end;
   Ok(u64::from_le_bytes(array))
 }
 

@@ -236,7 +236,8 @@ impl<A: 'static> PersistenceContext<A> {
       | Ok(write) => write,
       | Err(error) => {
         let journal_error = Self::journal_error_for_atomic_write(error);
-        // The batch has already been drained into pending invocations above.
+        // AtomicWrite rejected the batch before it reached the journal, so drop pending handlers for this
+        // batch.
         self.reset_after_write_failure();
         return Err(PersistenceError::Journal(journal_error));
       },
@@ -286,13 +287,11 @@ impl<A: 'static> PersistenceContext<A> {
         self.advance_after_write_rejected(repr);
         JournalResponseAction::PersistRejected { cause: cause.clone(), repr: repr.clone() }
       },
-      | JournalResponse::WriteMessagesFailed { write_count, instance_id, .. } => {
+      | JournalResponse::WriteMessagesFailed { instance_id, .. } => {
         if self.state != PersistentActorState::PersistingEvents || !self.matches_instance_id(*instance_id) {
           return JournalResponseAction::None;
         }
-        if *write_count == 0 {
-          self.reset_after_write_failure();
-        }
+        self.reset_after_write_failure();
         JournalResponseAction::None
       },
       | JournalResponse::WriteMessagesSuccessful { instance_id } => {
@@ -567,8 +566,9 @@ impl<A: 'static> PersistenceContext<A> {
   fn replayed_from_journal_repr(&self, repr: &PersistentRepr) -> Vec<PersistentRepr> {
     let adapters = self.select_adapters_for_replay(repr);
     let repr_with_adapters = repr.clone().with_adapters(adapters);
+    let adapter_type_id = repr_with_adapters.adapter_type_id();
     let payload = repr_with_adapters.payload().clone();
-    let read_adapter = repr_with_adapters.adapters().read_adapter_for_type_id(repr_with_adapters.adapter_type_id());
+    let read_adapter = repr_with_adapters.adapters().read_adapter_for_type_id(adapter_type_id);
     let adapted = read_adapter.adapt_from_journal(payload, repr_with_adapters.manifest());
     adapted
       .into_events()
@@ -578,10 +578,12 @@ impl<A: 'static> PersistenceContext<A> {
   }
 
   fn select_adapters_for_replay(&self, repr: &PersistentRepr) -> EventAdapters {
-    if self.event_adapters.has_read_adapter_for_type_id(repr.adapter_type_id()) {
-      return self.event_adapters.clone();
-    }
-    repr.adapters().clone()
+    let adapters = if self.event_adapters.has_read_adapter_for_type_id(repr.adapter_type_id()) {
+      &self.event_adapters
+    } else {
+      repr.adapters()
+    };
+    adapters.clone()
   }
 
   fn repr_with_payload(repr: &PersistentRepr, payload: ArcShared<dyn Any + Send + Sync>) -> PersistentRepr {
