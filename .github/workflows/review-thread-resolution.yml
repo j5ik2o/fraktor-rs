@@ -186,10 +186,10 @@ jobs:
             local unacknowledged_top_level_count="$2"
             local unresolved="$3"
             local unacknowledged_top_level="$4"
-            local pr_url="$5"
+            local summary_pr_url="$5"
 
             {
-              echo "PR: $pr_url"
+              echo "PR: $summary_pr_url"
               echo
               echo "$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain."
               echo
