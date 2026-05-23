@@ -181,6 +181,7 @@ jobs:
                           nodes {
                             url
                             createdAt
+                            authorAssociation
                             author {
                               login
                             }
@@ -229,7 +230,12 @@ jobs:
                   | . as $comment
                   | select([
                       $comments[]
-                      | select((.author.login // "") == $pr_author)
+                      | select(
+                          (.author.login // "") == $pr_author
+                          or .authorAssociation == "OWNER"
+                          or .authorAssociation == "MEMBER"
+                          or .authorAssociation == "COLLABORATOR"
+                        )
                       | select(.createdAt > $comment.createdAt)
                     ] | length == 0)
                 ]
