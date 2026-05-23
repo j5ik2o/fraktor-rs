@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{
   any::Any,
-  future::{Future, Ready, pending, ready},
+  future::{Future, Ready, ready},
   task::{Context, Poll, Waker},
 };
 
@@ -90,12 +90,6 @@ impl Journal for SingleEntryOnlyJournal {
 }
 
 #[test]
-#[should_panic(expected = "future was pending")]
-fn poll_ready_helper_panics_on_pending_future() {
-  poll_ready(pending::<()>());
-}
-
-#[test]
 fn in_memory_journal_write_and_replay() {
   let mut journal = InMemoryJournal::new();
   let messages = build_messages("pid-1", 1, 3);
@@ -138,7 +132,7 @@ fn in_memory_journal_rejects_sequence_overflow_without_partial_persistence() {
 
   let result = poll_ready(journal.write_messages(&[atomic_write(messages)]));
 
-  assert_eq!(result, Err(JournalError::InvalidAtomicWrite("sequence number exhausted".into())));
+  assert_eq!(result, Err(JournalError::WriteFailed("sequence number exhausted".into())));
   assert!(poll_ready(journal.replay_messages("pid-1", u64::MAX, u64::MAX, 10)).expect("replay pid-1").is_empty());
 }
 

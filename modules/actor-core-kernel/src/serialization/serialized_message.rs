@@ -87,7 +87,7 @@ impl SerializedMessage {
   /// # Errors
   ///
   /// Returns [`SerializationError::InvalidFormat`] when the bytes do not follow the expected
-  /// layout.
+  /// layout. The decoder consumes exactly one framed message and rejects trailing bytes.
   pub fn decode(bytes: &[u8]) -> Result<Self, SerializationError> {
     let mut cursor = 0;
     if bytes.len() < 5 {

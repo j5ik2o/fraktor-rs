@@ -40,7 +40,10 @@ impl SnapshotSerializer {
   }
 
   fn has_valid_manifest(message: &SerializedMessage) -> bool {
-    !matches!(message.manifest(), Some(manifest) if manifest.is_empty())
+    match message.manifest() {
+      | Some(manifest) => !manifest.is_empty(),
+      | None => true,
+    }
   }
 }
 
