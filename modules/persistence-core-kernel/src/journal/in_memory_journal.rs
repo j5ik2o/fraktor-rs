@@ -90,7 +90,7 @@ impl Journal for InMemoryJournal {
     for atomic_write in messages {
       entry.extend(atomic_write.payload().iter().cloned());
     }
-    // expected_sequence_nr starts at >= 1 and only increases via checked_add.
+    // At this point, expected >= 1 and was only incremented via checked_add, so subtraction is safe.
     self.highest_sequence_nrs.insert(persistence_id, expected - 1);
 
     ready(Ok(()))
