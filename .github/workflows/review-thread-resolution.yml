@@ -93,17 +93,17 @@ jobs:
             fi
 
             if [[ -z "$head_repository" ]]; then
-              echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable."
+              echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
               return 1
             fi
 
             if [[ "$head_repository" != "$OWNER/$REPO" ]]; then
-              echo "::notice::Skipping synthetic check-run publication for fork PR head ($head_repository)."
+              echo "::notice::Skipping synthetic check-run publication for fork PR head ($head_repository)." >&2
               return 1
             fi
 
             if [[ "$pr_author" == "dependabot[bot]" ]]; then
-              echo "::warning::Skipping synthetic check-run publication for Dependabot PR author."
+              echo "::warning::Skipping synthetic check-run publication for Dependabot PR author." >&2
               return 1
             fi
 
@@ -153,6 +153,7 @@ jobs:
             )"
 
             check_run_error="$(mktemp)"
+            trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
             if ! check_run_response="$(
               gh api \
                 --method POST \
@@ -164,15 +165,13 @@ jobs:
             )"; then
               echo "::error::Failed to create check run via GitHub API."
               cat "$check_run_error" >&2
-              rm -f "$check_run_error"
               return 1
             fi
             if [[ -s "$check_run_error" ]]; then
               cat "$check_run_error" >&2
             fi
-            rm -f "$check_run_error"
 
-            if ! jq -e '.id and .html_url' <<< "$check_run_response" > /dev/null; then
+            if ! jq -e '.id and (.html_url // .url)' <<< "$check_run_response" > /dev/null; then
               echo "::error::GitHub API response did not include check-run metadata."
               jq -c '.' <<< "$check_run_response" >&2
               return 1
