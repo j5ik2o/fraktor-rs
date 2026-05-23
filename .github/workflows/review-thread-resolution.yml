@@ -84,7 +84,10 @@ jobs:
           max_attempts=60
           sleep_seconds=30
           for attempt in $(seq 1 "$max_attempts"); do
-            status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)"
+            status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
+              echo "::error::Failed to fetch PR status on attempt $attempt."
+              exit 1
+            }
             current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
             if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
               echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
@@ -106,9 +109,9 @@ jobs:
                     end
                   )
                 | if .__typename == "CheckRun" then
-                    "\(.workflowName // "unknown") / \(.name)"
+                    "\(.workflowName // "unknown") / \(.name // "unknown")"
                   else
-                    "\(.context)"
+                    "\(.context // "unknown")"
                   end
               ' <<< "$status_response"
             )"
