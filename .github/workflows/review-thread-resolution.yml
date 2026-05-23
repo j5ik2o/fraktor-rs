@@ -16,11 +16,16 @@ permissions:
   issues: read
   pull-requests: read
 
+concurrency:
+  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
 jobs:
   unresolved-comments:
     name: Check unresolved comments
     if: ${{ github.event.pull_request != null || github.event.issue.pull_request != null }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Check unresolved comments
         env:
@@ -45,6 +50,7 @@ jobs:
                         login
                       }
                       baseRefName
+                      headRefOid
                     }
                   }
                 }
@@ -68,11 +74,60 @@ jobs:
           pr_author="$(jq -r '.data.repository.pullRequest.author.login' <<< "$pr_response")"
           pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
           base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
+          head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
 
           if [[ "$base_ref" != "main" ]]; then
             echo "Skipping PR #$PR_NUMBER because base branch is $base_ref, not main."
             exit 0
           fi
+
+          max_attempts=60
+          sleep_seconds=30
+          for attempt in $(seq 1 "$max_attempts"); do
+            status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)"
+            current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
+            if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
+              echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
+              exit 1
+            fi
+
+            pending_checks="$(
+              jq -r '
+                .statusCheckRollup[]
+                | select(
+                    if .__typename == "CheckRun" then
+                      (.name != "Check unresolved comments"
+                        and .workflowName != "Review Thread Resolution"
+                        and (.status != "COMPLETED"))
+                    elif .__typename == "StatusContext" then
+                      (.state == "PENDING" or .state == "EXPECTED")
+                    else
+                      false
+                    end
+                  )
+                | if .__typename == "CheckRun" then
+                    "\(.workflowName // "unknown") / \(.name)"
+                  else
+                    "\(.context)"
+                  end
+              ' <<< "$status_response"
+            )"
+
+            if [[ -z "$pending_checks" ]]; then
+              echo "All other PR checks have reached a terminal state."
+              break
+            fi
+
+            if [[ "$attempt" -eq "$max_attempts" ]]; then
+              echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
+              echo "$pending_checks" >&2
+              exit 1
+            fi
+
+            echo "Waiting for other PR checks to finish before evaluating review comments:"
+            echo "$pending_checks"
+            sleep "$sleep_seconds"
+          done
 
           unresolved='[]'
           cursor=''
