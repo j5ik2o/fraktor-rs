@@ -85,7 +85,9 @@ jobs:
           initial_sleep_seconds=5
           max_sleep_seconds=30
           sleep_seconds="$initial_sleep_seconds"
-          for attempt in $(seq 1 "$max_attempts"); do
+          attempt=0
+          while [[ "$attempt" -lt "$max_attempts" ]]; do
+            attempt=$((attempt + 1))
             status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
               echo "::error::Failed to fetch PR status on attempt $attempt."
               exit 1
