@@ -126,9 +126,10 @@ jobs:
               truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
               available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
               if (( available_chars < 1 )); then
-                available_chars=1
+                check_summary="${truncation_suffix:0:max_summary_chars}"
+              else
+                check_summary="${check_summary:0:available_chars}${truncation_suffix}"
               fi
-              check_summary="${check_summary:0:available_chars}${truncation_suffix}"
             fi
 
             request_payload="$(
@@ -171,6 +172,16 @@ jobs:
               cat "$check_run_error" >&2
             fi
 
+            if jq -e '(.errors? // []) | length > 0' <<< "$check_run_response" > /dev/null; then
+              echo "::error::GitHub API returned errors while creating check run."
+              jq -r '.errors[]?.message // empty' <<< "$check_run_response" >&2
+              return 1
+            fi
+            if jq -e '.message? // empty' <<< "$check_run_response" > /dev/null; then
+              echo "::error::GitHub API returned an error message while creating check run."
+              jq -r '.message' <<< "$check_run_response" >&2
+              return 1
+            fi
             if ! jq -e '.id and (.html_url // .url)' <<< "$check_run_response" > /dev/null; then
               echo "::error::GitHub API response did not include check-run metadata."
               jq -c '.' <<< "$check_run_response" >&2
