@@ -281,11 +281,9 @@ impl Remote {
     now_ms: u64,
   ) -> Result<(), RemotingError> {
     let Some(remote) = deployment_response_remote(authority, request) else {
-      tracing::warn!(
-        authority = authority.authority(),
-        origin_node = request.origin_node(),
-        "remote deployment request rejection response address is invalid"
-      );
+      let authority = authority.authority();
+      let origin_node = request.origin_node();
+      tracing::warn!(authority, origin_node, "remote deployment request rejection response address is invalid");
       return Ok(());
     };
     let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
@@ -764,13 +762,10 @@ impl Remote {
         self.handle_inbound_heartbeat_control(peer_authority, authority, now_ms);
         Ok(())
       },
-      | ControlPdu::HeartbeatResponse { authority, .. } => {
+      | ControlPdu::HeartbeatResponse { authority, uid } => {
         if let Some(index) = self.verified_control_association_index(peer_authority, authority) {
           self.associations[index].record_handshake_activity(now_ms);
           let remote = self.associations[index].remote().clone();
-          let ControlPdu::HeartbeatResponse { uid, .. } = pdu else {
-            return Ok(());
-          };
           self.apply_watcher_command(WatcherCommand::HeartbeatResponseReceived {
             from: remote,
             uid:  *uid,
@@ -795,12 +790,8 @@ impl Remote {
   fn handle_inbound_deployment_pdu(&mut self, authority: &TransportEndpoint, pdu: RemoteDeploymentPdu, now_ms: u64) {
     match pdu {
       | RemoteDeploymentPdu::CreateRequest(request) => {
-        if !deployment_request_matches_authority(authority, &request) {
+        let Some(response_remote) = deployment_request_response_remote(authority, &request) else {
           tracing::warn!("dropping remote deployment request with mismatched origin authority");
-          return;
-        }
-        let Some(response_remote) = parse_authority(authority.authority()) else {
-          tracing::warn!(authority = authority.authority(), "remote deployment request authority is invalid");
           return;
         };
         self.deployment_outcomes.push(RemoteDeploymentOutcome::CreateRequested {
@@ -923,10 +914,8 @@ impl Remote {
       self.deployment_stale.pop_front();
     }
     self.deployment_stale.push_back(response);
-    tracing::warn!(
-      stale_responses = self.deployment_stale.len(),
-      "remote deployment response did not match a pending request"
-    );
+    let stale_responses = self.deployment_stale.len();
+    tracing::warn!(stale_responses, "remote deployment response did not match a pending request");
   }
 
   fn handle_inbound_ack_pdu(
@@ -1241,13 +1230,15 @@ fn parse_authority(authority: &str) -> Option<Address> {
   Some(Address::new(system, host, port))
 }
 
-fn deployment_request_matches_authority(
+fn deployment_request_response_remote(
   authority: &TransportEndpoint,
   request: &RemoteDeploymentCreateRequest,
-) -> bool {
-  match (parse_authority(authority.authority()), parse_authority(request.origin_node())) {
-    | (Some(authority), Some(origin)) => authority == origin,
-    | _ => false,
+) -> Option<Address> {
+  let authority = parse_authority(authority.authority());
+  let origin = parse_authority(request.origin_node());
+  match (authority, origin) {
+    | (Some(authority), Some(origin)) if authority == origin => Some(authority),
+    | _ => None,
   }
 }
 
@@ -1261,9 +1252,11 @@ fn deployment_response_remote(
   match (authority, origin) {
     | (Some(authority), Some(origin)) => {
       if authority != origin {
+        let authority = authority.to_string();
+        let origin_node = origin.to_string();
         tracing::warn!(
-          authority = authority.to_string(),
-          origin_node = origin.to_string(),
+          authority,
+          origin_node,
           "remote deployment origin node differs from inbound authority; replying to inbound authority"
         );
       }
@@ -1271,9 +1264,11 @@ fn deployment_response_remote(
     },
     | (Some(authority), None) => Some(authority),
     | (None, Some(origin)) => {
+      let authority = raw_authority;
+      let origin_node = origin.to_string();
       tracing::warn!(
-        authority = raw_authority,
-        origin_node = origin.to_string(),
+        authority,
+        origin_node,
         "remote deployment inbound authority is invalid; falling back to origin node"
       );
       Some(origin)

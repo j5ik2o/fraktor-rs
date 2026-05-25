@@ -693,12 +693,8 @@ async fn run_remote_with_delivery(
       | None => return Err(RemotingError::EventReceiverClosed),
     };
     let (should_stop, watcher_effects) = remote.handle_event_and_drain_watcher_effects(event)?;
-    apply_deployment_outcomes(
-      remote,
-      remote.drain_deployment_outcomes(),
-      deployment_sender,
-      &deployment_response_dispatcher,
-    )?;
+    let deployment_outcomes = remote.drain_deployment_outcomes();
+    apply_deployment_outcomes(remote, deployment_outcomes, deployment_sender, &deployment_response_dispatcher)?;
     let now_ms = std_instant_elapsed_millis(monotonic_epoch);
     try_apply_watcher_effects(watcher_effects, event_sender, system, local_address, monotonic_epoch, now_ms);
     flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);

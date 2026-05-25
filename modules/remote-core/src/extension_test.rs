@@ -1378,6 +1378,26 @@ fn inbound_deployment_create_request_with_mismatched_authority_is_ignored() {
 }
 
 #[test]
+fn inbound_deployment_create_request_with_invalid_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+  let request = test_deployment_create_request(&remote_address, 1, 2);
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new("not-an-authority"),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateRequest(request)),
+      now_ms:    42,
+    })
+    .expect("invalid deployment authority should not fail the event loop");
+
+  assert!(remote.drain_deployment_outcomes().is_empty());
+}
+
+#[test]
 fn inbound_deployment_response_completes_matching_pending_request() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1408,6 +1428,109 @@ fn inbound_deployment_response_completes_matching_pending_request() {
 }
 
 #[test]
+fn inbound_deployment_failure_completes_matching_pending_request() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+  remote.register_deployment_request(9, 10, remote_address.clone(), 10);
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+        9,
+        10,
+        RemoteDeploymentFailureCode::SpawnFailed,
+        String::from("failed"),
+      ))),
+      now_ms:    42,
+    })
+    .expect("matching deployment failure should not fail the event loop");
+
+  let outcomes = remote.drain_deployment_outcomes();
+  assert!(matches!(
+    outcomes.as_slice(),
+    [RemoteDeploymentOutcome::ResponseCompleted {
+      response: RemoteDeploymentResponse::Failure(failure),
+    }] if failure.correlation_hi() == 9 && failure.correlation_lo() == 10
+  ));
+}
+
+#[test]
+fn inbound_deployment_response_with_invalid_authority_records_stale_response() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new("not-an-authority"),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateSuccess(RemoteDeploymentCreateSuccess::new(
+        1,
+        2,
+        String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/child"),
+      ))),
+      now_ms:    42,
+    })
+    .expect("stale deployment response should not fail the event loop");
+
+  assert!(remote.drain_deployment_outcomes().is_empty());
+}
+
+#[test]
+fn inbound_deployment_response_from_unexpected_authority_records_stale_response() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let expected_remote = Address::new("expected-sys", "10.0.0.1", 2552);
+  let actual_remote = Address::new("actual-sys", "10.0.0.2", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+  remote.register_deployment_request(3, 4, expected_remote, 10);
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(actual_remote.to_string()),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateSuccess(RemoteDeploymentCreateSuccess::new(
+        3,
+        4,
+        String::from("fraktor.tcp://actual-sys@10.0.0.2:2552/user/child"),
+      ))),
+      now_ms:    42,
+    })
+    .expect("mismatched deployment response should not fail the event loop");
+
+  assert!(remote.drain_deployment_outcomes().is_empty());
+}
+
+#[test]
+fn stale_deployment_response_buffer_drops_oldest_response_when_full() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+
+  for correlation_hi in 0..=128 {
+    remote
+      .handle_remote_event(RemoteEvent::InboundFrameReceived {
+        authority: TransportEndpoint::new(remote_address.to_string()),
+        frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateSuccess(RemoteDeploymentCreateSuccess::new(
+          correlation_hi,
+          1,
+          String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/child"),
+        ))),
+        now_ms:    42,
+      })
+      .expect("stale deployment response should be retained within bounded buffer");
+  }
+
+  assert!(remote.drain_deployment_outcomes().is_empty());
+}
+
+#[test]
 fn deployment_address_termination_completes_matching_pending_request() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
@@ -1424,6 +1547,82 @@ fn deployment_address_termination_completes_matching_pending_request() {
       && failure.code() == RemoteDeploymentFailureCode::AddressTerminated
   ));
   assert!(remote.drain_deployment_outcomes().is_empty());
+}
+
+#[test]
+fn deployment_address_termination_with_invalid_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.register_deployment_request(7, 8, remote_address, 10);
+
+  let responses = remote.fail_deployment_requests_for_terminated_authority("not-an-authority", "down", 20);
+
+  assert!(responses.is_empty());
+  assert!(remote.drain_deployment_outcomes().is_empty());
+}
+
+#[test]
+fn reject_deployment_create_request_chooses_reply_authority_fallbacks() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let other_remote = Address::new("other-sys", "10.0.0.2", 2552);
+  let mut remote = remote_new(
+    RecordingTransport::new(vec![local_address]),
+    RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.1"),
+    event_publisher(),
+  );
+  remote.start().expect("remote should be running before rejecting deployment");
+  let invalid_origin_request = RemoteDeploymentCreateRequest::new(
+    1,
+    2,
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user"),
+    String::from("child"),
+    String::from("factory"),
+    String::from("not-an-origin"),
+    1,
+    None,
+    Bytes::from_static(b"payload"),
+  );
+
+  assert_eq!(
+    remote.reject_deployment_create_request(
+      &TransportEndpoint::new(remote_address.to_string()),
+      &test_deployment_create_request(&other_remote, 1, 2),
+      String::from("daemon full"),
+      42,
+    ),
+    Err(RemotingError::TransportUnavailable)
+  );
+  assert_eq!(
+    remote.reject_deployment_create_request(
+      &TransportEndpoint::new(remote_address.to_string()),
+      &invalid_origin_request,
+      String::from("daemon full"),
+      42,
+    ),
+    Err(RemotingError::TransportUnavailable)
+  );
+  assert_eq!(
+    remote.reject_deployment_create_request(
+      &TransportEndpoint::new("not-an-authority"),
+      &test_deployment_create_request(&remote_address, 1, 2),
+      String::from("daemon full"),
+      42,
+    ),
+    Err(RemotingError::TransportUnavailable)
+  );
+  assert!(
+    remote
+      .reject_deployment_create_request(
+        &TransportEndpoint::new("not-an-authority"),
+        &invalid_origin_request,
+        String::from("daemon full"),
+        42,
+      )
+      .is_ok()
+  );
 }
 
 #[test]
@@ -2957,6 +3156,77 @@ fn remote_shared_handle_event_delegates_and_returns_stop_query() {
   let should_stop = shared.handle_event(RemoteEvent::TransportShutdown).expect("transport shutdown should be handled");
 
   assert!(should_stop);
+}
+
+#[test]
+fn remote_shared_handle_event_and_drain_watcher_effects_consumes_event_effects() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let mut remote = remote_new(RecordingTransport::new(vec![local_address.clone()]), config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let shared = RemoteShared::new(remote);
+  let target =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/target").expect("target path should parse");
+  let watcher =
+    ActorPathParser::parse("fraktor.tcp://sys@127.0.0.1:2552/user/watcher").expect("watcher path should parse");
+  let initial_effects = shared.handle_watcher_command_and_drain_effects(WatcherCommand::Watch {
+    target:  target.clone(),
+    watcher: watcher.clone(),
+  });
+  assert!(!initial_effects.is_empty());
+
+  let (should_stop, effects) = shared
+    .handle_event_and_drain_watcher_effects(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::HeartbeatResponse {
+        authority: remote_address.to_string(),
+        uid:       2,
+      }),
+      now_ms:    80,
+    })
+    .expect("heartbeat response should be handled");
+
+  assert!(!should_stop);
+  assert!(matches!(
+    effects.as_slice(),
+    [WatcherEffect::RewatchRemoteTargets { node, watches }]
+      if node == &remote_address && watches.as_slice() == [(target, watcher)].as_slice()
+  ));
+  assert!(shared.drain_watcher_effects().is_empty());
+}
+
+#[test]
+fn remote_shared_reject_deployment_create_request_delegates_to_remote() {
+  let address = Address::new("sys", "127.0.0.1", 2552);
+  let shared = RemoteShared::new(remote_new(
+    RecordingTransport::new(vec![address]),
+    RemoteConfig::new("127.0.0.1"),
+    event_publisher(),
+  ));
+  let request = RemoteDeploymentCreateRequest::new(
+    1,
+    2,
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user"),
+    String::from("child"),
+    String::from("factory"),
+    String::from("not-an-origin"),
+    1,
+    None,
+    Bytes::from_static(b"payload"),
+  );
+
+  assert!(
+    shared
+      .reject_deployment_create_request(
+        &TransportEndpoint::new("not-an-authority"),
+        &request,
+        String::from("failed"),
+        42
+      )
+      .is_ok()
+  );
 }
 
 #[test]

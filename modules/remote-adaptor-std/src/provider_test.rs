@@ -41,7 +41,10 @@ use fraktor_remote_core_rs::{
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
   transport::{RemoteTransport, TransportEndpoint, TransportError},
   watcher::WatcherCommand,
-  wire::{AckPdu, ControlPdu, HandshakePdu, HandshakeRsp, RemoteDeploymentCreateSuccess, RemoteDeploymentPdu},
+  wire::{
+    AckPdu, ControlPdu, HandshakePdu, HandshakeRsp, RemoteDeploymentCreateRequest, RemoteDeploymentCreateSuccess,
+    RemoteDeploymentPdu,
+  },
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 use tokio::{
@@ -404,6 +407,15 @@ fn deployment_request(
   )
 }
 
+fn expect_deployment_create_request(event: RemoteEvent) -> (RemoteCoreAddress, RemoteDeploymentCreateRequest) {
+  match event {
+    | RemoteEvent::OutboundDeployment { remote, pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
+      (remote, request)
+    },
+    | other => panic!("expected deployment create request, got {other:?}"),
+  }
+}
+
 fn deployable_metadata() -> DeployablePropsMetadata {
   DeployablePropsMetadata::new("echo", AnyMessage::new(String::from("payload")))
 }
@@ -482,6 +494,45 @@ fn remote_deployment_hook_rejects_non_deployable_props_without_enqueue() {
   assert!(event_rx.try_recv().is_err());
 }
 
+#[test]
+fn remote_deployment_hook_full_event_queue_cancels_pending_request() {
+  let system = create_noop_actor_system_with(|config| {
+    config.with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default())
+  });
+  let serialization = system.extended().register_extension(&default_serialization_extension_id());
+  let (event_sender, mut event_rx) = mpsc::channel(1);
+  event_sender.try_send(RemoteEvent::TransportShutdown).expect("seed event should fill the queue");
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let remote_shared = RemoteShared::new(Remote::new(
+    NoopRemoteTransport::new(vec![local_address().address().clone()]),
+    RemoteConfig::new("127.0.0.1").with_allowed_remote_host("10.0.0.1"),
+    EventPublisher::new(system.downgrade()),
+    serialization.clone(),
+  ));
+  let hook = StdRemoteDeploymentHook::new(local_address(), StdRemoteDeploymentHookDeps {
+    system,
+    sender: event_sender,
+    remote: remote_shared,
+    epoch: Instant::now(),
+    serializers: serialization,
+    dispatcher,
+    timeout: Duration::from_millis(50),
+  });
+  let request = deployment_request(
+    "full-queue-deploy",
+    ActorAddress::remote("remote-sys", "10.0.0.1", 2552),
+    Some(deployable_metadata()),
+  );
+
+  let outcome = hook.deploy_child(request);
+
+  assert!(matches!(
+    outcome,
+    RemoteDeploymentOutcome::Failed(reason) if reason.contains("remote deployment request enqueue failed")
+  ));
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() {
   let (hook, mut event_rx, dispatcher, system) = remote_deployment_hook_fixture(Duration::from_secs(1));
@@ -494,17 +545,13 @@ async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() 
   let join = spawn_blocking(move || hook.deploy_child(request));
 
   let event = event_rx.recv().await.expect("deployment request should be enqueued");
-  let (correlation_hi, correlation_lo) = match event {
-    | RemoteEvent::OutboundDeployment { remote, pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
-      assert_eq!(remote, RemoteCoreAddress::new("remote-sys", "10.0.0.1", 2552));
-      assert_eq!(request.target_parent_path(), "fraktor.tcp://remote-sys@10.0.0.1:2552/user");
-      assert_eq!(request.child_name(), "remote-deploy");
-      assert_eq!(request.factory_id(), "echo");
-      assert_eq!(request.origin_node(), "local-sys@127.0.0.1:2551");
-      (request.correlation_hi(), request.correlation_lo())
-    },
-    | other => panic!("expected deployment create request, got {other:?}"),
-  };
+  let (remote, request) = expect_deployment_create_request(event);
+  assert_eq!(remote, RemoteCoreAddress::new("remote-sys", "10.0.0.1", 2552));
+  assert_eq!(request.target_parent_path(), "fraktor.tcp://remote-sys@10.0.0.1:2552/user");
+  assert_eq!(request.child_name(), "remote-deploy");
+  assert_eq!(request.factory_id(), "echo");
+  assert_eq!(request.origin_node(), "local-sys@127.0.0.1:2551");
+  let (correlation_hi, correlation_lo) = (request.correlation_hi(), request.correlation_lo());
   dispatcher.complete(RemoteDeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
     correlation_hi,
     correlation_lo,
@@ -520,6 +567,12 @@ async fn remote_deployment_hook_enqueues_create_and_resolves_matching_success() 
 }
 
 #[test]
+#[should_panic(expected = "expected deployment create request")]
+fn expect_deployment_create_request_rejects_other_event() {
+  expect_deployment_create_request(RemoteEvent::TransportShutdown);
+}
+
+#[test]
 fn remote_deployment_hook_address_termination_completes_pending_request() {
   let (hook, mut event_rx, dispatcher, system, remote) =
     remote_deployment_hook_fixture_with_remote(Duration::from_secs(1));
@@ -532,12 +585,13 @@ fn remote_deployment_hook_address_termination_completes_pending_request() {
   let join = thread::spawn(move || hook.deploy_child(request));
 
   let event = event_rx.blocking_recv().expect("deployment request should be enqueued");
-  match event {
-    | RemoteEvent::OutboundDeployment { pdu: RemoteDeploymentPdu::CreateRequest(request), .. } => {
-      assert_eq!(request.child_name(), "remote-deploy");
-    },
-    | other => panic!("expected deployment create request, got {other:?}"),
-  }
+  assert!(matches!(
+    event,
+    RemoteEvent::OutboundDeployment {
+      pdu: RemoteDeploymentPdu::CreateRequest(request),
+      ..
+    } if request.child_name() == "remote-deploy"
+  ));
   system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
     "remote-sys@10.0.0.1:2552",
     "deemed unreachable",

@@ -22,7 +22,10 @@ use fraktor_remote_core_rs::{
   association::QuarantineReason,
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{TransportEndpoint, TransportError},
-  wire::{AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeRsp, WireFrame},
+  wire::{
+    AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeRsp,
+    RemoteDeploymentCreateRequest, WireFrame,
+  },
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{
@@ -155,6 +158,69 @@ fn activate_association(remote: &RemoteShared, target: &Address) {
       now_ms:    2,
     })
     .expect("handshake response should activate association");
+}
+
+#[test]
+fn apply_deployment_outcomes_rejects_create_request_when_daemon_queue_is_full() {
+  let remote = remote_shared(RemoteConfig::new("127.0.0.1"), TestRemoteTransport::new(vec![local_address()]));
+  let target = remote_address();
+  let authority = TransportEndpoint::new(target.to_string());
+  let request = RemoteDeploymentCreateRequest::new(
+    1,
+    2,
+    String::from("fraktor.tcp://local-sys@127.0.0.1:2551/user"),
+    String::from("child"),
+    String::from("factory"),
+    target.to_string(),
+    1,
+    None,
+    Bytes::from_static(b"payload"),
+  );
+  let (sender, _receiver) = mpsc::channel(1);
+  sender
+    .try_send(DeploymentDaemonCommand::create(target.clone(), authority.clone(), request.clone()))
+    .expect("seed command should fill daemon queue");
+
+  let result = apply_deployment_outcomes(
+    &remote,
+    vec![RemoteDeploymentOutcome::CreateRequested {
+      response_remote: target,
+      authority,
+      request: Box::new(request),
+      now_ms: 10,
+    }],
+    &sender,
+    &DeploymentResponseDispatcher::default(),
+  );
+
+  assert_eq!(result, Err(RemotingError::TransportUnavailable));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn run_remote_with_delivery_applies_outcomes_before_transport_shutdown() {
+  let local = local_address();
+  let remote = remote_shared(RemoteConfig::new("127.0.0.1"), TestRemoteTransport::new(vec![local.clone()]));
+  let system = create_noop_actor_system();
+  let (event_sender, event_receiver) = mpsc::channel(8);
+  let mut receiver = TokioMpscRemoteEventReceiver::new(event_receiver);
+  let (deployment_sender, _deployment_receiver) = mpsc::channel(8);
+  event_sender.send(RemoteEvent::TransportShutdown).await.expect("shutdown event should be enqueued");
+
+  run_remote_with_delivery(
+    &remote,
+    &mut receiver,
+    &system,
+    &local,
+    Instant::now(),
+    &deployment_sender,
+    DeploymentResponseDispatcher::default(),
+    &event_sender,
+    &StdFlushGate::default(),
+  )
+  .await
+  .expect("transport shutdown should stop the run loop");
+
+  assert!(remote.should_stop_event_loop());
 }
 
 fn test_user_envelope(target: &Address) -> OutboundEnvelope {
