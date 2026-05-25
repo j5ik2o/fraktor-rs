@@ -8,6 +8,8 @@
 extern crate alloc;
 
 #[cfg(feature = "aws-ecs")]
+mod aws_ecs_cluster_extension_installer_ext;
+#[cfg(feature = "aws-ecs")]
 mod aws_ecs_cluster_provider;
 mod cluster_api;
 mod gossip_wire_delta_v1;
@@ -22,6 +24,8 @@ mod tokio_gossip_transport_config;
 mod tokio_gossiper;
 mod tokio_gossiper_config;
 
+#[cfg(feature = "aws-ecs")]
+pub use aws_ecs_cluster_extension_installer_ext::AwsEcsClusterExtensionInstallerExt;
 #[cfg(feature = "aws-ecs")]
 pub use aws_ecs_cluster_provider::{AwsEcsClusterProvider, EcsClusterConfig, EcsPollerError};
 pub use cluster_api::ClusterApi;
