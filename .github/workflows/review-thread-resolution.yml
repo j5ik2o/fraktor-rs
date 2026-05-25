@@ -18,6 +18,22 @@ on:
         description: PR number to refresh. Leave empty to refresh all open main PRs.
         required: false
         type: string
+      wait_for_other_checks:
+        description: Wait for other PR checks before evaluating review threads.
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      pr_number:
+        description: PR number to refresh.
+        required: true
+        type: string
+      wait_for_other_checks:
+        description: Wait for other PR checks before evaluating review threads.
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -32,7 +48,7 @@ concurrency:
 jobs:
   unresolved-comments:
     name: Evaluate unresolved comments
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request != null || github.event.issue.pull_request != null }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request != null || github.event.issue.pull_request != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -43,6 +59,7 @@ jobs:
           REPO: ${{ github.event.repository.name }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
           EVENT_NAME: ${{ github.event_name }}
+          WAIT_FOR_OTHER_CHECKS: ${{ inputs.wait_for_other_checks == false && '0' || '1' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -258,23 +275,82 @@ jobs:
               exit 0
             fi
 
-            if [[ "${REFRESH_OPEN_PRS:-0}" == "1" ]]; then
-              max_attempts=1
+            if [[ "${WAIT_FOR_OTHER_CHECKS}" == "0" ]]; then
+              echo "Skipping other-check wait because the caller already ordered this gate after CI jobs."
             else
-              max_attempts=60
-            fi
-            initial_sleep_seconds=5
-            max_sleep_seconds=30
-            sleep_seconds="$initial_sleep_seconds"
-            attempt=0
-            while [[ "$attempt" -lt "$max_attempts" ]]; do
-              attempt=$((attempt + 1))
-              status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
-                if [[ "$attempt" -eq "$max_attempts" ]]; then
-                  echo "::error::Failed to fetch PR status after $max_attempts attempts."
+              if [[ "${REFRESH_OPEN_PRS:-0}" == "1" ]]; then
+                max_attempts=1
+              else
+                max_attempts=60
+              fi
+              initial_sleep_seconds=5
+              max_sleep_seconds=30
+              sleep_seconds="$initial_sleep_seconds"
+              attempt=0
+              while [[ "$attempt" -lt "$max_attempts" ]]; do
+                attempt=$((attempt + 1))
+                status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
+                  if [[ "$attempt" -eq "$max_attempts" ]]; then
+                    echo "::error::Failed to fetch PR status after $max_attempts attempts."
+                    exit 1
+                  fi
+                  echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+                  sleep "$sleep_seconds"
+                  if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
+                    sleep_seconds=$((sleep_seconds * 2))
+                    if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
+                      sleep_seconds="$max_sleep_seconds"
+                    fi
+                  fi
+                  continue
+                }
+                current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
+                if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
+                  echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
                   exit 1
                 fi
-                echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+
+                pending_checks="$(
+                  jq -r '
+                    .statusCheckRollup[]
+                    | select(
+                        if .__typename == "CheckRun" then
+                          (.name != "Check unresolved comments"
+                            and .workflowName != "Review Thread Resolution"
+                            and (.status != "COMPLETED"))
+                        elif .__typename == "StatusContext" then
+                          (.state == "PENDING" or .state == "EXPECTED")
+                        else
+                          false
+                        end
+                      )
+                    | if .__typename == "CheckRun" then
+                        "\(.workflowName // "unknown") / \(.name // "unknown")"
+                      else
+                        "\(.context // "unknown")"
+                      end
+                  ' <<< "$status_response"
+                )"
+
+                if [[ -z "$pending_checks" ]]; then
+                  echo "All other PR checks have reached a terminal state."
+                  break
+                fi
+
+                if [[ "${REFRESH_OPEN_PRS:-0}" == "1" && "$attempt" -eq "$max_attempts" ]]; then
+                  echo "::notice::Skipping PR #$PR_NUMBER because other checks are still pending."
+                  echo "$pending_checks"
+                  exit 0
+                fi
+
+                if [[ "$attempt" -eq "$max_attempts" ]]; then
+                  echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
+                  echo "$pending_checks" >&2
+                  exit 1
+                fi
+
+                echo "Waiting for other PR checks to finish before evaluating review comments:"
+                echo "$pending_checks"
                 sleep "$sleep_seconds"
                 if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
                   sleep_seconds=$((sleep_seconds * 2))
@@ -282,63 +358,8 @@ jobs:
                     sleep_seconds="$max_sleep_seconds"
                   fi
                 fi
-                continue
-              }
-              current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
-              if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
-                echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
-                exit 1
-              fi
-
-              pending_checks="$(
-                jq -r '
-                  .statusCheckRollup[]
-                  | select(
-                      if .__typename == "CheckRun" then
-                        (.name != "Check unresolved comments"
-                          and .workflowName != "Review Thread Resolution"
-                          and (.status != "COMPLETED"))
-                      elif .__typename == "StatusContext" then
-                        (.state == "PENDING" or .state == "EXPECTED")
-                      else
-                        false
-                      end
-                    )
-                  | if .__typename == "CheckRun" then
-                      "\(.workflowName // "unknown") / \(.name // "unknown")"
-                    else
-                      "\(.context // "unknown")"
-                    end
-                ' <<< "$status_response"
-              )"
-
-              if [[ -z "$pending_checks" ]]; then
-                echo "All other PR checks have reached a terminal state."
-                break
-              fi
-
-              if [[ "${REFRESH_OPEN_PRS:-0}" == "1" && "$attempt" -eq "$max_attempts" ]]; then
-                echo "::notice::Skipping PR #$PR_NUMBER because other checks are still pending."
-                echo "$pending_checks"
-                exit 0
-              fi
-
-              if [[ "$attempt" -eq "$max_attempts" ]]; then
-                echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
-                echo "$pending_checks" >&2
-                exit 1
-              fi
-
-              echo "Waiting for other PR checks to finish before evaluating review comments:"
-              echo "$pending_checks"
-              sleep "$sleep_seconds"
-              if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
-                sleep_seconds=$((sleep_seconds * 2))
-                if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
-                  sleep_seconds="$max_sleep_seconds"
-                fi
-              fi
-            done
+              done
+            fi
 
             unresolved='[]'
             cursor=''

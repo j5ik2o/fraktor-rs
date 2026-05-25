@@ -466,6 +466,29 @@ jobs:
       - name: Build examples
         run: ./scripts/ci-check.sh examples
 
+  review-thread-resolution:
+    name: Review Thread Resolution
+    needs:
+      - changes
+      - format
+      - lint
+      - test
+      - integration-e2e
+      - coverage
+      - codecov-status
+      - docs
+      - examples
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      checks: write
+      issues: read
+      pull-requests: read
+    uses: ./.github/workflows/review-thread-resolution.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      wait_for_other_checks: false
+
   # All jobs completion check
   ci-success:
     name: CI Success
@@ -480,11 +503,13 @@ jobs:
       - codecov-status
       - docs
       - examples
+      - review-thread-resolution
     if: always()
     steps:
       - name: All checks passed
         env:
           RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           if [[ "${{ needs.format.result }}" != "success" ]]; then
             echo "format failed"
@@ -525,4 +550,10 @@ jobs:
           require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
           require_result "docs" "${{ needs.docs.result }}" "${expected_code_job_result}"
           require_result "examples" "${{ needs.examples.result }}" "${expected_code_job_result}"
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            expected_review_thread_result="success"
+          else
+            expected_review_thread_result="skipped"
+          fi
+          require_result "review-thread-resolution" "${{ needs['review-thread-resolution'].result }}" "${expected_review_thread_result}"
           echo "✅ All CI checks passed successfully"
