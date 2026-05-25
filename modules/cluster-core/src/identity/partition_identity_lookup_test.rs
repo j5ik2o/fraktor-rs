@@ -1,5 +1,8 @@
 //! Unit tests for partition identity lookup.
 
+#[path = "grain_runtime_operational_contract_test.rs"]
+mod grain_runtime_operational_contract_tests;
+
 use alloc::{string::ToString, vec};
 
 use crate::{
