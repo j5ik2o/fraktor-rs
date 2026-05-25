@@ -77,8 +77,8 @@ fn complete_pending_activation(
   owner: &str,
   pid: &str,
 ) -> PlacementResolution {
-  // Keep the protocol steps expanded so the contract names each emitted command
-  // transition instead of hiding the placement flow behind a loop table.
+  // protocol の各 step を展開しておくことで、placement の流れを loop table に
+  // 隠さず、契約として emitted command transition を明示する。
   let lease =
     PlacementLease { key: key.clone(), owner: owner.to_string(), expires_at: FAR_FUTURE_LEASE_EXPIRES_AT };
 
@@ -237,8 +237,8 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
   lookup.set_distributed_activation(true);
   let key = grain_key("user/member-left");
   let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
-  // The PID string is intentionally unrelated to the authority. Member-left
-  // invalidation must be driven by the lease owner, not by parsing the PID.
+  // PID 文字列は authority と意図的に無関係にする。member-left invalidation は
+  // PID の parse ではなく、lease owner によって駆動される必要がある。
   let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-member-left-pid");
   clear_observed_events(&mut lookup);
 
@@ -325,7 +325,6 @@ fn rolling_update_prevents_stale_authority_reuse_without_rebalance_guarantees() 
   assert_eq!(updated.decision.authority, "new-node:4051");
   assert_ne!(updated.decision.authority, old.decision.authority);
   assert_ne!(updated.pid, old.pid);
-  // This contract is intentionally bounded to stale authority invalidation and
-  // re-resolution. Rebalance, remembered entity recovery, and request draining
-  // belong to later changes.
+  // この contract は stale authority invalidation と re-resolution に意図的に限定する。
+  // rebalance、remembered entity recovery、request draining は後続 change で扱う。
 }
