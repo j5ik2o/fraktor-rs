@@ -25,7 +25,7 @@ fn has_cache_drop_event(events: &[PidCacheEvent], key: &GrainKey) -> bool {
   events.iter().any(|event| matches!(event, PidCacheEvent::Dropped { key: event_key, .. } if event_key == key))
 }
 
-const FAR_FUTURE_LEASE_EXPIRES_AT: u64 = 1300;
+const FAR_FUTURE_LEASE_EXPIRES_AT: u64 = u64::MAX;
 
 fn clear_observed_events(lookup: &mut PartitionIdentityLookup) {
   drop(lookup.drain_events());
@@ -47,16 +47,20 @@ fn only_command<'a>(commands: &'a [PlacementCommand], label: &str) -> &'a Placem
   &commands[0]
 }
 
-fn begin_pending_activation(lookup: &mut PartitionIdentityLookup, key: &GrainKey, now: u64) -> PlacementRequestId {
+fn begin_pending_activation(
+  lookup: &mut PartitionIdentityLookup,
+  key: &GrainKey,
+  now: u64,
+) -> (PlacementRequestId, String) {
   let outcome = lookup.resolve_outcome(key, now).expect("pending activation should resolve to command outcome");
   assert!(outcome.resolution.is_none(), "distributed activation should be pending until commands complete");
   let command = only_command(&outcome.commands, "try-acquire command");
-  let PlacementCommand::TryAcquire { request_id, key: command_key, now: command_now, .. } = command else {
+  let PlacementCommand::TryAcquire { request_id, key: command_key, owner, now: command_now } = command else {
     panic!("expected TryAcquire for pending activation, got {command:?}");
   };
   assert_eq!(command_key, key);
   assert_eq!(*command_now, now);
-  *request_id
+  (*request_id, owner.clone())
 }
 
 /// Completes a pending activation after the caller has driven `resolve`.
@@ -68,15 +72,13 @@ fn complete_pending_activation(
   lookup: &mut PartitionIdentityLookup,
   request_id: PlacementRequestId,
   key: &GrainKey,
+  owner: &str,
   pid: &str,
 ) -> PlacementResolution {
   // Keep the protocol steps expanded so the contract names each emitted command
   // transition instead of hiding the placement flow behind a loop table.
-  let lease = PlacementLease {
-    key:        key.clone(),
-    owner:      "node-a:4050".to_string(),
-    expires_at: FAR_FUTURE_LEASE_EXPIRES_AT,
-  };
+  let lease =
+    PlacementLease { key: key.clone(), owner: owner.to_string(), expires_at: FAR_FUTURE_LEASE_EXPIRES_AT };
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
@@ -162,8 +164,8 @@ fn active_pid_is_reused_until_cache_or_passivation_invalidates_it() {
   lookup.set_distributed_activation(true);
   let key = grain_key("user/cache-hit");
 
-  let request_id = begin_pending_activation(&mut lookup, &key, 1000);
-  let first = complete_pending_activation(&mut lookup, request_id, &key, "custom-cache-hit-pid");
+  let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
+  let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-cache-hit-pid");
   clear_observed_events(&mut lookup);
   let second = lookup.resolve(&key, 1001).expect("second resolution");
 
@@ -180,9 +182,9 @@ fn distributed_activation_reports_pending_then_completes_after_command_results()
   lookup.set_distributed_activation(true);
   let key = grain_key("user/pending");
 
-  let request_id = begin_pending_activation(&mut lookup, &key, 1000);
+  let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
   let pid = "custom-pending-pid";
-  let resolution = complete_pending_activation(&mut lookup, request_id, &key, pid);
+  let resolution = complete_pending_activation(&mut lookup, request_id, &key, &owner, pid);
   assert_eq!(resolution.pid, pid);
   assert_eq!(resolution.locality, PlacementLocality::Local);
 
@@ -218,10 +220,10 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
   lookup.set_local_authority("node-a:4050");
   lookup.set_distributed_activation(true);
   let key = grain_key("user/member-left");
-  let request_id = begin_pending_activation(&mut lookup, &key, 1000);
+  let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
   // The PID string is intentionally unrelated to the authority. Member-left
   // invalidation must be driven by the lease owner, not by parsing the PID.
-  let first = complete_pending_activation(&mut lookup, request_id, &key, "custom-member-left-pid");
+  let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-member-left-pid");
   clear_observed_events(&mut lookup);
 
   lookup.on_member_left("node-z:4099");
@@ -254,11 +256,12 @@ fn passivation_removes_idle_activation_but_keeps_recent_activation() {
   lookup.set_distributed_activation(true);
   let recent_key = grain_key("user/recent");
   let idle_key = grain_key("user/idle");
-  let idle_request_id = begin_pending_activation(&mut lookup, &idle_key, IDLE_ACTIVATED_AT);
-  let _idle = complete_pending_activation(&mut lookup, idle_request_id, &idle_key, "custom-idle-pid");
+  let (idle_request_id, idle_owner) = begin_pending_activation(&mut lookup, &idle_key, IDLE_ACTIVATED_AT);
+  let _idle = complete_pending_activation(&mut lookup, idle_request_id, &idle_key, &idle_owner, "custom-idle-pid");
   clear_observed_events(&mut lookup);
-  let recent_request_id = begin_pending_activation(&mut lookup, &recent_key, RECENT_ACTIVATED_AT);
-  let recent = complete_pending_activation(&mut lookup, recent_request_id, &recent_key, "custom-recent-pid");
+  let (recent_request_id, recent_owner) = begin_pending_activation(&mut lookup, &recent_key, RECENT_ACTIVATED_AT);
+  let recent =
+    complete_pending_activation(&mut lookup, recent_request_id, &recent_key, &recent_owner, "custom-recent-pid");
   clear_observed_events(&mut lookup);
 
   lookup.passivate_idle(PASSIVATION_NOW, IDLE_TTL);
