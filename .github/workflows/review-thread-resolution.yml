@@ -1,4 +1,4 @@
-name: Review Thread Resolution
+name: Review Thread Refresh
 
 on:
   pull_request_review:
@@ -44,7 +44,7 @@ concurrency:
 
 jobs:
   unresolved-comments:
-    name: Evaluate unresolved comments
+    name: ${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'Evaluate CI review-thread gate' || 'Refresh review-thread state' }}
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request != null || github.event.issue.pull_request != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -142,7 +142,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs" \
-              -f check_name="Check unresolved comments" \
+              -f check_name="Review Thread Refresh" \
               -f filter=latest \
               --jq '.check_runs | sort_by(.started_at // .created_at // "") | reverse | .[0].conclusion // ""' \
               2> /dev/null || true
@@ -181,11 +181,11 @@ jobs:
 
               request_payload="$(
                 jq -n \
-                  --arg name "Check unresolved comments" \
+                  --arg name "Review Thread Refresh" \
                   --arg head_sha "$head_ref_oid" \
                   --arg conclusion "$conclusion" \
                   --arg details_url "$RUN_URL" \
-                  --arg title "Review Thread Resolution" \
+                  --arg title "Review Thread Refresh" \
                   --arg summary "$check_summary" \
                   '{
                     name: $name,
@@ -312,8 +312,8 @@ jobs:
                     .statusCheckRollup[]
                     | select(
                         if .__typename == "CheckRun" then
-                          (.name != "Check unresolved comments"
-                            and .workflowName != "Review Thread Resolution"
+                        (.name != "Review Thread Refresh"
+                          and .workflowName != "Review Thread Refresh"
                             and (.status != "COMPLETED"))
                         elif .__typename == "StatusContext" then
                           (.state == "PENDING" or .state == "EXPECTED")

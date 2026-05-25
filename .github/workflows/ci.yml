@@ -467,7 +467,7 @@ jobs:
         run: ./scripts/ci-check.sh examples
 
   review-thread-resolution:
-    name: Review Thread Resolution
+    name: CI Review Thread Gate
     needs:
       - changes
       - format
