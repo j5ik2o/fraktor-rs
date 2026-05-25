@@ -216,9 +216,16 @@ fn spawn_gather_coordinator<'a, M, R>(
 
   let coord_props = TypedProps::<R>::from_behavior_factory(move || -> Behavior<R> {
     let rt = reply_to.clone();
-    Behaviors::receive_message(move |_ctx, msg: &R| {
+    Behaviors::receive_message(move |ctx, msg: &R| {
       let mut reply_to = rt.clone();
-      if let Err(_error) = reply_to.try_tell(msg.clone()) {}
+      if let Err(error) = reply_to.try_tell(msg.clone()) {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!("scatter-gather coordinator failed to forward reply: {:?}", error),
+          Some(ctx.pid()),
+          None,
+        );
+      }
       Ok(Behaviors::stopped())
     })
   });
@@ -255,7 +262,14 @@ fn spawn_gather_coordinator<'a, M, R>(
       let msg = alloc::format!("scatter-gather coordinator spawn failed: {:?}", e);
       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
       // caller が無応答にならないよう timeout_reply を即時返却する
-      if let Err(_error) = fallback_reply_to.try_tell(fallback_timeout_reply) {}
+      if let Err(error) = fallback_reply_to.try_tell(fallback_timeout_reply) {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!("scatter-gather coordinator failed to deliver spawn-failure timeout reply: {:?}", error),
+          Some(ctx.pid()),
+          None,
+        );
+      }
     },
   }
 }
