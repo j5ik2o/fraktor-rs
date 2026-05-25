@@ -165,6 +165,7 @@ fn topology_replacement_invalidates_absent_authority_cache_and_reresolves() {
   let updated = lookup.resolve(&key, 1001).expect("updated resolution");
   assert_eq!(updated.decision.authority, "node-b:4051");
   assert_ne!(updated.decision.authority, original.decision.authority);
+  assert_ne!(updated.pid, original.pid);
 }
 
 #[test]
@@ -192,6 +193,9 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
 
   assert!(has_passivated_event(&placement_events, &key));
   assert!(has_cache_drop_event(&cache_events, &key));
+
+  let after_departure = lookup.resolve(&key, 1002);
+  assert!(!matches!(after_departure, Ok(resolution) if resolution.pid == first.pid));
 }
 
 #[test]
@@ -244,6 +248,7 @@ fn rolling_update_prevents_stale_authority_reuse_without_rebalance_guarantees() 
   let updated = lookup.resolve(&key, 1001).expect("updated resolution");
   assert_eq!(updated.decision.authority, "new-node:4051");
   assert_ne!(updated.decision.authority, old.decision.authority);
+  assert_ne!(updated.pid, old.pid);
   // This contract is intentionally bounded to stale authority invalidation and
   // re-resolution. Rebalance, remembered entity recovery, and request draining
   // belong to later changes.
