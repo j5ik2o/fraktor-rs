@@ -3159,7 +3159,7 @@ fn remote_shared_handle_event_delegates_and_returns_stop_query() {
 }
 
 #[test]
-fn remote_shared_handle_event_and_drain_watcher_effects_consumes_event_effects() {
+fn remote_shared_handle_event_and_drain_effects_consumes_watcher_effects() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let config = RemoteConfig::new("127.0.0.1");
@@ -3177,8 +3177,8 @@ fn remote_shared_handle_event_and_drain_watcher_effects_consumes_event_effects()
   });
   assert!(!initial_effects.is_empty());
 
-  let (should_stop, effects) = shared
-    .handle_event_and_drain_watcher_effects(RemoteEvent::InboundFrameReceived {
+  let (should_stop, effects, deployment_outcomes) = shared
+    .handle_event_and_drain_effects(RemoteEvent::InboundFrameReceived {
       authority: TransportEndpoint::new(remote_address.to_string()),
       frame:     WireFrame::Control(ControlPdu::HeartbeatResponse {
         authority: remote_address.to_string(),
@@ -3192,9 +3192,43 @@ fn remote_shared_handle_event_and_drain_watcher_effects_consumes_event_effects()
   assert!(matches!(
     effects.as_slice(),
     [WatcherEffect::RewatchRemoteTargets { node, watches }]
-      if node == &remote_address && watches.as_slice() == [(target, watcher)].as_slice()
+      if *node == remote_address && watches.as_slice() == [(target, watcher)].as_slice()
   ));
   assert!(shared.drain_watcher_effects().is_empty());
+  assert!(deployment_outcomes.is_empty());
+}
+
+#[test]
+fn remote_shared_handle_event_and_drain_effects_consumes_deployment_outcomes() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  let shared = RemoteShared::new(remote);
+  shared.start().expect("remote should be running before inbound deployment");
+  shared.register_deployment_request(5, 6, remote_address.clone(), 10);
+
+  let (should_stop, watcher_effects, deployment_outcomes) = shared
+    .handle_event_and_drain_effects(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateSuccess(RemoteDeploymentCreateSuccess::new(
+        5,
+        6,
+        String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/child"),
+      ))),
+      now_ms:    42,
+    })
+    .expect("matching deployment response should not fail the event loop");
+
+  assert!(!should_stop);
+  assert!(watcher_effects.is_empty());
+  assert!(matches!(
+    deployment_outcomes.as_slice(),
+    [RemoteDeploymentOutcome::ResponseCompleted {
+      response: RemoteDeploymentResponse::Success(success),
+    }] if success.correlation_hi() == 5 && success.correlation_lo() == 6
+  ));
+  assert!(shared.drain_deployment_outcomes().is_empty());
 }
 
 #[test]
