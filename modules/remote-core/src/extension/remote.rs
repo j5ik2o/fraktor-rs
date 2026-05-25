@@ -6,6 +6,7 @@ mod tests;
 
 use alloc::{
   boxed::Box,
+  collections::{BTreeMap, VecDeque},
   format,
   string::{String, ToString},
   vec::Vec,
@@ -25,16 +26,28 @@ use crate::{
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
-    EventPublisher, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteFlushTimer, RemoteRunFuture,
-    RemotingError, RemotingLifecycleState,
+    EventPublisher, RemoteDeploymentOutcome, RemoteDeploymentResponse, RemoteEvent, RemoteEventReceiver,
+    RemoteFlushOutcome, RemoteFlushTimer, RemoteRunFuture, RemotingError, RemotingLifecycleState,
   },
   instrument::{NoopInstrument, RemoteInstrument},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
+  watcher::{WatcherCommand, WatcherEffect, WatcherState},
   wire::{
-    AckPdu, ControlPdu, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp, RemoteDeploymentPdu,
+    AckPdu, ControlPdu, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq, HandshakeRsp,
+    RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentFailureCode, RemoteDeploymentPdu,
     WireFrame,
   },
 };
+
+const MAX_STALE_DEPLOYMENT_RESPONSES: usize = 128;
+
+type DeploymentCorrelation = (u64, u32);
+type PendingDeploymentResponses = BTreeMap<DeploymentCorrelation, PendingDeploymentResponse>;
+
+struct PendingDeploymentResponse {
+  authority:         Address,
+  started_at_millis: u64,
+}
 
 /// Core remoting lifecycle implementation backed by a transport port.
 ///
@@ -53,6 +66,11 @@ pub struct Remote {
   explicit_peers:       Vec<Address>,
   associations:         Vec<Association>,
   inbound_envelopes:    Vec<InboundEnvelope>,
+  watcher_state:        WatcherState,
+  watcher_effects:      Vec<WatcherEffect>,
+  deployment_pending:   PendingDeploymentResponses,
+  deployment_stale:     VecDeque<RemoteDeploymentResponse>,
+  deployment_outcomes:  Vec<RemoteDeploymentOutcome>,
   flush_outcomes:       Vec<RemoteFlushOutcome>,
 }
 
@@ -132,6 +150,11 @@ impl Remote {
       explicit_peers: Vec::new(),
       associations: Vec::new(),
       inbound_envelopes: Vec::new(),
+      watcher_state: WatcherState::default(),
+      watcher_effects: Vec::new(),
+      deployment_pending: PendingDeploymentResponses::new(),
+      deployment_stale: VecDeque::new(),
+      deployment_outcomes: Vec::new(),
       flush_outcomes: Vec::new(),
     }
   }
@@ -179,6 +202,103 @@ impl Remote {
   #[must_use]
   pub fn drain_flush_outcomes(&mut self) -> Vec<RemoteFlushOutcome> {
     mem::take(&mut self.flush_outcomes)
+  }
+
+  /// Applies a watcher command to the core-owned watcher state.
+  pub fn handle_watcher_command(&mut self, command: WatcherCommand) {
+    self.apply_watcher_command(command);
+  }
+
+  /// Consumes watcher effects emitted by the core watcher state.
+  #[must_use]
+  pub fn drain_watcher_effects(&mut self) -> Vec<WatcherEffect> {
+    mem::take(&mut self.watcher_effects)
+  }
+
+  /// Registers an origin-side deployment request as pending.
+  pub fn register_deployment_request(
+    &mut self,
+    correlation_hi: u64,
+    correlation_lo: u32,
+    authority: Address,
+    started_at_millis: u64,
+  ) {
+    self
+      .deployment_pending
+      .insert((correlation_hi, correlation_lo), PendingDeploymentResponse { authority, started_at_millis });
+  }
+
+  /// Cancels an origin-side deployment request without completing it.
+  pub fn cancel_deployment_request(&mut self, correlation_hi: u64, correlation_lo: u32) {
+    self.deployment_pending.remove(&(correlation_hi, correlation_lo));
+  }
+
+  /// Fails pending deployment requests for a terminated remote authority.
+  pub fn fail_deployment_requests_for_terminated_authority(
+    &mut self,
+    authority: &str,
+    reason: &str,
+    observed_at_millis: u64,
+  ) -> Vec<RemoteDeploymentResponse> {
+    let Some(remote) = parse_authority(authority) else {
+      tracing::warn!(authority, "remote deployment address termination authority is invalid");
+      return Vec::new();
+    };
+    let keys = self
+      .deployment_pending
+      .iter()
+      .filter_map(|(key, pending)| {
+        let matches_authority = pending.authority == remote;
+        let not_replayed_old_event = observed_at_millis >= pending.started_at_millis;
+        if matches_authority && not_replayed_old_event { Some(*key) } else { None }
+      })
+      .collect::<Vec<_>>();
+    let mut responses = Vec::with_capacity(keys.len());
+    for (correlation_hi, correlation_lo) in keys {
+      self.deployment_pending.remove(&(correlation_hi, correlation_lo));
+      let failure = RemoteDeploymentCreateFailure::new(
+        correlation_hi,
+        correlation_lo,
+        RemoteDeploymentFailureCode::AddressTerminated,
+        deployment_address_terminated_failure_reason(authority, reason),
+      );
+      responses.push(RemoteDeploymentResponse::Failure(failure));
+    }
+    responses
+  }
+
+  /// Sends a create failure response for an adapter-side request delivery failure.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::TransportUnavailable`] when the failure response
+  /// cannot be delivered through the configured transport.
+  pub fn reject_deployment_create_request(
+    &mut self,
+    authority: &TransportEndpoint,
+    request: &RemoteDeploymentCreateRequest,
+    reason: String,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    let Some(remote) = deployment_response_remote(authority, request) else {
+      let authority = authority.authority();
+      let origin_node = request.origin_node();
+      tracing::warn!(authority, origin_node, "remote deployment request rejection response address is invalid");
+      return Ok(());
+    };
+    let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
+      request.correlation_hi(),
+      request.correlation_lo(),
+      RemoteDeploymentFailureCode::SpawnFailed,
+      reason,
+    ));
+    self.handle_outbound_deployment(&remote, pdu, now_ms)
+  }
+
+  /// Consumes deployment outcomes emitted by core protocol handling.
+  #[must_use]
+  pub fn drain_deployment_outcomes(&mut self) -> Vec<RemoteDeploymentOutcome> {
+    mem::take(&mut self.deployment_outcomes)
   }
 
   /// Starts a flush session for active associations.
@@ -485,7 +605,7 @@ impl Remote {
       | WireFrame::Control(pdu) => self.handle_inbound_control_pdu(authority, &pdu, now_ms),
       | WireFrame::Ack(pdu) => self.handle_inbound_ack_pdu(authority, &pdu, now_ms),
       | WireFrame::Deployment(pdu) => {
-        tracing::warn!(?pdu, "deployment frame reached remote core without adapter routing");
+        self.handle_inbound_deployment_pdu(authority, pdu, now_ms);
         Ok(())
       },
     }
@@ -642,9 +762,15 @@ impl Remote {
         self.handle_inbound_heartbeat_control(peer_authority, authority, now_ms);
         Ok(())
       },
-      | ControlPdu::HeartbeatResponse { authority, .. } => {
+      | ControlPdu::HeartbeatResponse { authority, uid } => {
         if let Some(index) = self.verified_control_association_index(peer_authority, authority) {
           self.associations[index].record_handshake_activity(now_ms);
+          let remote = self.associations[index].remote().clone();
+          self.apply_watcher_command(WatcherCommand::HeartbeatResponseReceived {
+            from: remote,
+            uid:  *uid,
+            now:  now_ms,
+          });
         }
         Ok(())
       },
@@ -661,12 +787,36 @@ impl Remote {
     }
   }
 
+  fn handle_inbound_deployment_pdu(&mut self, authority: &TransportEndpoint, pdu: RemoteDeploymentPdu, now_ms: u64) {
+    match pdu {
+      | RemoteDeploymentPdu::CreateRequest(request) => {
+        let Some(response_remote) = deployment_request_response_remote(authority, &request) else {
+          tracing::warn!("dropping remote deployment request with mismatched origin authority");
+          return;
+        };
+        self.deployment_outcomes.push(RemoteDeploymentOutcome::CreateRequested {
+          response_remote,
+          authority: authority.clone(),
+          request: Box::new(request),
+          now_ms,
+        });
+      },
+      | RemoteDeploymentPdu::CreateSuccess(success) => {
+        self.match_deployment_response(authority, RemoteDeploymentResponse::Success(success));
+      },
+      | RemoteDeploymentPdu::CreateFailure(failure) => {
+        self.match_deployment_response(authority, RemoteDeploymentResponse::Failure(failure));
+      },
+    }
+  }
+
   fn handle_inbound_heartbeat_control(&mut self, peer_authority: &TransportEndpoint, authority: &str, now_ms: u64) {
     let Some(index) = self.verified_control_association_index(peer_authority, authority) else {
       return;
     };
     self.associations[index].record_handshake_activity(now_ms);
     let remote = self.associations[index].remote().clone();
+    self.apply_watcher_command(WatcherCommand::HeartbeatReceived { from: remote.clone(), now: now_ms });
     let local = self.associations[index].local().clone();
     let response = ControlPdu::HeartbeatResponse { authority: local.address().to_string(), uid: local.uid() };
     if let Err(error) = self.transport.send_control(&remote, response) {
@@ -731,6 +881,41 @@ impl Remote {
       return None;
     }
     Some(index)
+  }
+
+  fn apply_watcher_command(&mut self, command: WatcherCommand) {
+    self.watcher_effects.extend(self.watcher_state.handle(command));
+  }
+
+  fn match_deployment_response(&mut self, authority: &TransportEndpoint, response: RemoteDeploymentResponse) {
+    let Some(remote) = parse_authority(authority.authority()) else {
+      self.record_stale_deployment_response(response);
+      return;
+    };
+    let key = (response.correlation_hi(), response.correlation_lo());
+    let Some(pending) = self.deployment_pending.get(&key) else {
+      self.record_stale_deployment_response(response);
+      return;
+    };
+    if pending.authority != remote {
+      self.record_stale_deployment_response(response);
+      return;
+    }
+    self.deployment_pending.remove(&key);
+    self.complete_deployment_response(response);
+  }
+
+  fn complete_deployment_response(&mut self, response: RemoteDeploymentResponse) {
+    self.deployment_outcomes.push(RemoteDeploymentOutcome::ResponseCompleted { response });
+  }
+
+  fn record_stale_deployment_response(&mut self, response: RemoteDeploymentResponse) {
+    if self.deployment_stale.len() >= MAX_STALE_DEPLOYMENT_RESPONSES {
+      self.deployment_stale.pop_front();
+    }
+    self.deployment_stale.push_back(response);
+    let stale_responses = self.deployment_stale.len();
+    tracing::warn!(stale_responses, "remote deployment response did not match a pending request");
   }
 
   fn handle_inbound_ack_pdu(
@@ -1043,6 +1228,57 @@ fn parse_authority(authority: &str) -> Option<Address> {
   let (system, endpoint) = authority.split_once('@')?;
   let (host, port) = parse_endpoint(endpoint)?;
   Some(Address::new(system, host, port))
+}
+
+fn deployment_request_response_remote(
+  authority: &TransportEndpoint,
+  request: &RemoteDeploymentCreateRequest,
+) -> Option<Address> {
+  let authority = parse_authority(authority.authority());
+  let origin = parse_authority(request.origin_node());
+  match (authority, origin) {
+    | (Some(authority), Some(origin)) if authority == origin => Some(authority),
+    | _ => None,
+  }
+}
+
+fn deployment_response_remote(
+  authority: &TransportEndpoint,
+  request: &RemoteDeploymentCreateRequest,
+) -> Option<Address> {
+  let raw_authority = authority.authority();
+  let authority = parse_authority(authority.authority());
+  let origin = parse_authority(request.origin_node());
+  match (authority, origin) {
+    | (Some(authority), Some(origin)) => {
+      if authority != origin {
+        let authority = authority.to_string();
+        let origin_node = origin.to_string();
+        tracing::warn!(
+          authority,
+          origin_node,
+          "remote deployment origin node differs from inbound authority; replying to inbound authority"
+        );
+      }
+      Some(authority)
+    },
+    | (Some(authority), None) => Some(authority),
+    | (None, Some(origin)) => {
+      let authority = raw_authority;
+      let origin_node = origin.to_string();
+      tracing::warn!(
+        authority,
+        origin_node,
+        "remote deployment inbound authority is invalid; falling back to origin node"
+      );
+      Some(origin)
+    },
+    | (None, None) => None,
+  }
+}
+
+fn deployment_address_terminated_failure_reason(authority: &str, reason: &str) -> String {
+  format!("remote deployment target address terminated: authority={authority}, reason={reason}")
 }
 
 fn parse_endpoint(endpoint: &str) -> Option<(&str, u16)> {

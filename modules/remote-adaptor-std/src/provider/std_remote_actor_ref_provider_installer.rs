@@ -14,7 +14,7 @@ use super::{
   StdRemoteActorRefProvider,
   path_remote_actor_ref_provider::PathRemoteActorRefProvider,
   remote_actor_path_registry::RemoteActorPathRegistry,
-  remote_deployment_hook::StdRemoteDeploymentHook,
+  remote_deployment_hook::{StdRemoteDeploymentHook, StdRemoteDeploymentHookDeps},
   remote_watch_hook::{StdRemoteWatchFlushConfig, StdRemoteWatchHook},
 };
 use crate::extension_installer::{RemoteProviderFlushHandles, RemotingExtensionInstaller};
@@ -90,17 +90,20 @@ impl ActorRefProviderInstaller for StdRemoteActorRefProviderInstaller {
       event_sender.clone(),
       watcher_sender,
       monotonic_epoch,
-      StdRemoteWatchFlushConfig::new(remote_shared, flush_gate, flush_lane_ids),
+      StdRemoteWatchFlushConfig::new(remote_shared.clone(), flush_gate, flush_lane_ids),
     ));
     let serialization_extension = system.extended().register_extension(&default_serialization_extension_id());
     system.extended().register_remote_deployment_hook(StdRemoteDeploymentHook::new(
       self.local_address.clone(),
-      system.clone(),
-      event_sender,
-      monotonic_epoch,
-      serialization_extension,
-      deployment_response_dispatcher,
-      deployment_timeout,
+      StdRemoteDeploymentHookDeps {
+        system:      system.clone(),
+        sender:      event_sender,
+        remote:      remote_shared,
+        epoch:       monotonic_epoch,
+        serializers: serialization_extension,
+        dispatcher:  deployment_response_dispatcher,
+        timeout:     deployment_timeout,
+      },
     ));
     Ok(())
   }
