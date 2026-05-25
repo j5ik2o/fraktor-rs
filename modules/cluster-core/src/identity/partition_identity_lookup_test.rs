@@ -1,5 +1,10 @@
 //! Unit tests for partition identity lookup.
 
+// 対応する production sibling を持たない運用 contract test だが、production module に
+// 複数の `#[cfg(test)]` item を置けないため、この test module 配下に集約する。
+#[path = "grain_runtime_operational_contract_test.rs"]
+mod grain_runtime_operational_contract_tests;
+
 use alloc::{string::ToString, vec};
 
 use crate::{
