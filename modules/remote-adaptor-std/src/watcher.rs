@@ -14,26 +14,25 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId},
   envelope::{OutboundEnvelope, OutboundPriority},
-  extension::RemoteEvent,
-  failure_detector::PhiAccrualFailureDetector,
+  extension::{RemoteEvent, RemoteShared},
   provider::resolve_remote_address,
   transport::TransportEndpoint,
-  watcher::{WatcherCommand, WatcherEffect, WatcherState},
+  watcher::{WatcherCommand, WatcherEffect},
   wire::ControlPdu,
 };
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, error::TrySendError};
 
 use crate::association::std_instant_elapsed_millis;
 
 pub(crate) async fn run_watcher_task(
   mut commands: Receiver<WatcherCommand>,
+  remote: RemoteShared,
   event_sender: Sender<RemoteEvent>,
   system: ActorSystem,
   local_address: Address,
   monotonic_epoch: Instant,
   tick_interval: Duration,
 ) {
-  let mut state = WatcherState::new(default_detector_factory);
   let mut ticker = tokio::time::interval(tick_interval);
   loop {
     tokio::select! {
@@ -42,12 +41,14 @@ pub(crate) async fn run_watcher_task(
           return;
         };
         let now_ms = std_instant_elapsed_millis(monotonic_epoch);
-        apply_effects(state.handle(command), &event_sender, &system, &local_address, monotonic_epoch, now_ms).await;
+        let effects = remote.handle_watcher_command_and_drain_effects(command);
+        apply_effects(effects, &event_sender, &system, &local_address, monotonic_epoch, now_ms).await;
       },
       _ = ticker.tick() => {
         let now_ms = std_instant_elapsed_millis(monotonic_epoch);
+        let effects = remote.handle_watcher_command_and_drain_effects(WatcherCommand::HeartbeatTick { now: now_ms });
         apply_effects(
-          state.handle(WatcherCommand::HeartbeatTick { now: now_ms }),
+          effects,
           &event_sender,
           &system,
           &local_address,
@@ -116,6 +117,80 @@ pub(crate) async fn apply_effects(
   }
 }
 
+pub(crate) fn try_apply_effects(
+  effects: Vec<WatcherEffect>,
+  event_sender: &Sender<RemoteEvent>,
+  system: &ActorSystem,
+  local_address: &Address,
+  monotonic_epoch: Instant,
+  now_ms: u64,
+) -> Vec<WatcherEffect> {
+  let mut retry_effects = Vec::new();
+  for effect in effects {
+    match effect {
+      | WatcherEffect::SendWatch { target, watcher } => {
+        let outcome = try_send_system_envelope(
+          event_sender,
+          target.clone(),
+          Some(watcher.clone()),
+          SystemMessage::Watch(Pid::new(0, 0)),
+          monotonic_epoch,
+        );
+        if matches!(outcome, TryEnqueueOutcome::Retry) {
+          retry_effects.push(WatcherEffect::SendWatch { target, watcher });
+        }
+      },
+      | WatcherEffect::SendUnwatch { target, watcher } => {
+        let outcome = try_send_system_envelope(
+          event_sender,
+          target.clone(),
+          Some(watcher.clone()),
+          SystemMessage::Unwatch(Pid::new(0, 0)),
+          monotonic_epoch,
+        );
+        if matches!(outcome, TryEnqueueOutcome::Retry) {
+          retry_effects.push(WatcherEffect::SendUnwatch { target, watcher });
+        }
+      },
+      | WatcherEffect::SendHeartbeat { to } => {
+        try_send_heartbeat(event_sender, local_address, to.clone(), now_ms);
+        try_send_redelivery_tick(event_sender, to, now_ms);
+      },
+      | WatcherEffect::NotifyTerminated { target, watchers } => notify_local_watchers(system, target, watchers),
+      | WatcherEffect::AddressTerminated { node, reason, observed_at_millis } => {
+        publish_address_terminated(system, node, reason, observed_at_millis);
+      },
+      | WatcherEffect::NotifyQuarantined { node } => {
+        tracing::warn!(remote = %node, "remote watcher marked node quarantined");
+      },
+      | WatcherEffect::RewatchRemoteTargets { node, watches } => {
+        let mut retry_watches = Vec::new();
+        for (target, watcher) in watches {
+          let outcome = try_send_system_envelope(
+            event_sender,
+            target.clone(),
+            Some(watcher.clone()),
+            SystemMessage::Watch(Pid::new(0, 0)),
+            monotonic_epoch,
+          );
+          if matches!(outcome, TryEnqueueOutcome::Retry) {
+            retry_watches.push((target, watcher));
+          }
+        }
+        if !retry_watches.is_empty() {
+          retry_effects.push(WatcherEffect::RewatchRemoteTargets { node, watches: retry_watches });
+        }
+      },
+    }
+  }
+  retry_effects
+}
+
+enum TryEnqueueOutcome {
+  Done,
+  Retry,
+}
+
 fn publish_address_terminated(system: &ActorSystem, node: Address, reason: String, observed_at_millis: u64) {
   let event = AddressTerminatedEvent::new(node.to_string(), reason, observed_at_millis);
   system.event_stream().publish(&EventStreamEvent::AddressTerminated(event));
@@ -146,21 +221,39 @@ fn notify_local_watchers(system: &ActorSystem, target: ActorPath, watchers: Vec<
 }
 
 async fn send_heartbeat(event_sender: &Sender<RemoteEvent>, local_address: &Address, remote: Address, now_ms: u64) {
-  let event = RemoteEvent::OutboundControl {
-    remote,
-    pdu: ControlPdu::Heartbeat { authority: local_address.to_string() },
-    now_ms,
-  };
+  let event = heartbeat_event(local_address, remote, now_ms);
   if let Err(error) = event_sender.send(event).await {
     tracing::warn!(?error, "remote watcher heartbeat enqueue failed");
   }
 }
 
+fn try_send_heartbeat(event_sender: &Sender<RemoteEvent>, local_address: &Address, remote: Address, now_ms: u64) {
+  let event = heartbeat_event(local_address, remote, now_ms);
+  if let Err(error) = event_sender.try_send(event) {
+    tracing::warn!(?error, "remote watcher heartbeat enqueue failed");
+  }
+}
+
+fn heartbeat_event(local_address: &Address, remote: Address, now_ms: u64) -> RemoteEvent {
+  RemoteEvent::OutboundControl { remote, pdu: ControlPdu::Heartbeat { authority: local_address.to_string() }, now_ms }
+}
+
 async fn send_redelivery_tick(event_sender: &Sender<RemoteEvent>, remote: Address, now_ms: u64) {
-  let event = RemoteEvent::RedeliveryTimerFired { authority: TransportEndpoint::new(remote.to_string()), now_ms };
+  let event = redelivery_tick_event(remote, now_ms);
   if let Err(error) = event_sender.send(event).await {
     tracing::warn!(?error, "remote watcher redelivery tick enqueue failed");
   }
+}
+
+fn try_send_redelivery_tick(event_sender: &Sender<RemoteEvent>, remote: Address, now_ms: u64) {
+  let event = redelivery_tick_event(remote, now_ms);
+  if let Err(error) = event_sender.try_send(event) {
+    tracing::warn!(?error, "remote watcher redelivery tick enqueue failed");
+  }
+}
+
+fn redelivery_tick_event(remote: Address, now_ms: u64) -> RemoteEvent {
+  RemoteEvent::RedeliveryTimerFired { authority: TransportEndpoint::new(remote.to_string()), now_ms }
 }
 
 async fn send_system_envelope(
@@ -170,9 +263,46 @@ async fn send_system_envelope(
   message: SystemMessage,
   monotonic_epoch: Instant,
 ) {
+  let Some(event) = system_envelope_event(recipient, sender, message, monotonic_epoch) else {
+    return;
+  };
+  if let Err(error) = event_sender.send(event).await {
+    tracing::warn!(?error, "remote watcher system envelope enqueue failed");
+  }
+}
+
+fn try_send_system_envelope(
+  event_sender: &Sender<RemoteEvent>,
+  recipient: ActorPath,
+  sender: Option<ActorPath>,
+  message: SystemMessage,
+  monotonic_epoch: Instant,
+) -> TryEnqueueOutcome {
+  let Some(event) = system_envelope_event(recipient, sender, message, monotonic_epoch) else {
+    return TryEnqueueOutcome::Done;
+  };
+  match event_sender.try_send(event) {
+    | Ok(()) => TryEnqueueOutcome::Done,
+    | Err(TrySendError::Full(error)) => {
+      tracing::warn!(?error, "remote watcher system envelope enqueue failed");
+      TryEnqueueOutcome::Retry
+    },
+    | Err(TrySendError::Closed(error)) => {
+      tracing::warn!(?error, "remote watcher system envelope enqueue failed");
+      TryEnqueueOutcome::Done
+    },
+  }
+}
+
+fn system_envelope_event(
+  recipient: ActorPath,
+  sender: Option<ActorPath>,
+  message: SystemMessage,
+  monotonic_epoch: Instant,
+) -> Option<RemoteEvent> {
   let Some(unique_address) = resolve_remote_address(&recipient) else {
     tracing::warn!(recipient = %recipient, "remote watcher system envelope recipient is not remote");
-    return;
+    return None;
   };
   let address = unique_address.address().clone();
   let remote_node = RemoteNodeId::new(
@@ -181,7 +311,7 @@ async fn send_system_envelope(
     Some(address.port()),
     unique_address.uid(),
   );
-  let event = RemoteEvent::OutboundEnqueued {
+  Some(RemoteEvent::OutboundEnqueued {
     authority: TransportEndpoint::new(address.to_string()),
     envelope:  Box::new(OutboundEnvelope::new(
       recipient,
@@ -192,12 +322,5 @@ async fn send_system_envelope(
       CorrelationId::nil(),
     )),
     now_ms:    std_instant_elapsed_millis(monotonic_epoch),
-  };
-  if let Err(error) = event_sender.send(event).await {
-    tracing::warn!(?error, "remote watcher system envelope enqueue failed");
-  }
-}
-
-fn default_detector_factory(address: &Address) -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(address.clone(), 5.0, 100, 10, 0, 100)
+  })
 }
