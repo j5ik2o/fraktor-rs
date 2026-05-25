@@ -16,6 +16,24 @@ pub trait AwsEcsClusterExtensionInstallerExt {
   ///
   /// This is a convenience constructor for AWS ECS environments where task discovery
   /// is performed via the ECS API (ListTasks + DescribeTasks).
+  ///
+  /// # Example
+  ///
+  /// ```ignore
+  /// use std::time::Duration;
+  ///
+  /// use fraktor_cluster_core_rs::{ClusterExtensionConfig, ClusterExtensionInstaller};
+  /// use fraktor_cluster_adaptor_std_rs::{AwsEcsClusterExtensionInstallerExt, EcsClusterConfig};
+  ///
+  /// let config = ClusterExtensionConfig::default()
+  ///     .with_advertised_address("10.0.0.1:8080");
+  /// let ecs_config = EcsClusterConfig::new()
+  ///     .with_cluster_name("my-cluster")
+  ///     .with_service_name("my-service")
+  ///     .with_poll_interval(Duration::from_secs(10));
+  ///
+  /// let installer = ClusterExtensionInstaller::new_with_ecs(config, ecs_config);
+  /// ```
   #[must_use]
   fn new_with_ecs(config: ClusterExtensionConfig, ecs_config: EcsClusterConfig) -> ClusterExtensionInstaller;
 }

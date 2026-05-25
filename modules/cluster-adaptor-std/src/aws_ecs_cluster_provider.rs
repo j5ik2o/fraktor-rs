@@ -23,8 +23,13 @@
 //! # Example
 //!
 //! ```ignore
-//! use fraktor_cluster_core_rs::ClusterExtensionInstaller;
+//! use std::time::Duration;
+//!
+//! use fraktor_cluster_core_rs::{ClusterExtensionConfig, ClusterExtensionInstaller};
 //! use fraktor_cluster_adaptor_std_rs::{AwsEcsClusterExtensionInstallerExt, EcsClusterConfig};
+//!
+//! let config = ClusterExtensionConfig::default()
+//!     .with_advertised_address("10.0.0.1:8080");
 //!
 //! let ecs_config = EcsClusterConfig::new()
 //!     .with_cluster_name("my-cluster")
@@ -44,7 +49,8 @@ use std::{
   time::Duration,
 };
 
-use aws_sdk_ecs::Client as EcsClient;
+use aws_config::{BehaviorVersion, defaults};
+use aws_sdk_ecs::{Client as EcsClient, config::Region};
 use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
@@ -256,14 +262,11 @@ impl AwsEcsClusterProvider {
 
     let handle = tokio::spawn(async move {
       // AWS SDK クライアントを初期化
-      let aws_config = if let Some(ref region) = config.region {
-        aws_config::defaults(aws_config::BehaviorVersion::latest())
-          .region(aws_sdk_ecs::config::Region::new(region.clone()))
-          .load()
-          .await
-      } else {
-        aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await
-      };
+      let mut aws_config_builder = defaults(BehaviorVersion::latest());
+      if let Some(ref region) = config.region {
+        aws_config_builder = aws_config_builder.region(Region::new(region.clone()));
+      }
+      let aws_config = aws_config_builder.load().await;
       let ecs_client = EcsClient::new(&aws_config);
 
       let mut current_members: Vec<String> = if add_self { vec![advertised_address.clone()] } else { Vec::new() };
