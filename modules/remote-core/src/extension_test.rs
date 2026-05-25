@@ -1890,7 +1890,10 @@ fn inbound_heartbeat_response_drives_core_watcher_state() {
   let watcher =
     ActorPathParser::parse("fraktor.tcp://sys@127.0.0.1:2552/user/watcher").expect("watcher path should parse");
   remote.handle_watcher_command(WatcherCommand::Watch { target: target.clone(), watcher: watcher.clone() });
-  let _ = remote.drain_watcher_effects();
+  assert!(
+    !remote.drain_watcher_effects().is_empty(),
+    "initial watch should emit watcher effects before heartbeat response"
+  );
 
   remote
     .handle_remote_event(RemoteEvent::InboundFrameReceived {
