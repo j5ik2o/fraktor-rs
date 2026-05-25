@@ -26,12 +26,15 @@ fn has_cache_drop_event(events: &[PidCacheEvent], key: &GrainKey) -> bool {
 }
 
 const FAR_FUTURE_LEASE_EXPIRES_AT: u64 = 1300;
+// `PartitionIdentityLookup::resolve` hides the emitted pending command and only
+// returns `LookupError::Pending`, so these constants intentionally mirror the
+// coordinator's current first/second request ids for isolated test lookups.
 const FIRST_PENDING_REQUEST_ID: PlacementRequestId = PlacementRequestId(1);
 const SECOND_PENDING_REQUEST_ID: PlacementRequestId = PlacementRequestId(2);
 
 fn clear_observed_events(lookup: &mut PartitionIdentityLookup) {
-  let _placement_events = lookup.drain_events();
-  let _cache_events = lookup.drain_cache_events();
+  drop(lookup.drain_events());
+  drop(lookup.drain_cache_events());
 }
 
 const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
@@ -45,14 +48,15 @@ const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
 }
 
 fn only_command<'a>(commands: &'a [PlacementCommand], label: &str) -> &'a PlacementCommand {
-  assert_eq!(commands.len(), 1, "{label} should emit exactly one command");
-  commands.first().expect(label)
+  assert_eq!(commands.len(), 1, "{label} should emit exactly one command, got {commands:?}");
+  &commands[0]
 }
 
-/// Completes the first pending activation created by `PartitionIdentityLookup::resolve`.
+/// Completes a pending activation after the caller has driven `resolve`.
 ///
-/// `PartitionIdentityLookup` currently reports only `LookupError::Pending`, so
-/// the initial `request_id` is the coordinator's first issued request id.
+/// The caller must pass the request id that the coordinator emitted for that
+/// pending activation. Once the first command result is accepted, this helper
+/// propagates request ids from each emitted command into the next result.
 fn complete_pending_activation(
   lookup: &mut PartitionIdentityLookup,
   request_id: PlacementRequestId,
@@ -67,36 +71,48 @@ fn complete_pending_activation(
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
-    .expect("lock acquired");
+    .unwrap_or_else(|err| panic!("LockAcquired for {request_id:?} should produce LoadActivation: {err:?}"));
   let command = only_command(&outcome.commands, "load command");
-  assert!(matches!(command, PlacementCommand::LoadActivation { .. }));
+  assert!(
+    matches!(command, PlacementCommand::LoadActivation { .. }),
+    "expected LoadActivation after LockAcquired, got {command:?}"
+  );
   let request_id = command_request_id(command);
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::ActivationLoaded { request_id, result: Ok(None) })
-    .expect("activation loaded");
+    .unwrap_or_else(|err| panic!("ActivationLoaded for {request_id:?} should produce EnsureActivation: {err:?}"));
   let command = only_command(&outcome.commands, "ensure command");
-  assert!(matches!(command, PlacementCommand::EnsureActivation { .. }));
+  assert!(
+    matches!(command, PlacementCommand::EnsureActivation { .. }),
+    "expected EnsureActivation after ActivationLoaded, got {command:?}",
+  );
   let request_id = command_request_id(command);
 
   let record = ActivationRecord::new(pid.to_string(), None, 0);
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::ActivationEnsured { request_id, result: Ok(record.clone()) })
-    .expect("activation ensured");
+    .unwrap_or_else(|err| panic!("ActivationEnsured for {request_id:?} should produce StoreActivation: {err:?}"));
   let command = only_command(&outcome.commands, "store command");
-  assert!(matches!(command, PlacementCommand::StoreActivation { .. }));
+  assert!(
+    matches!(command, PlacementCommand::StoreActivation { .. }),
+    "expected StoreActivation after ActivationEnsured, got {command:?}",
+  );
   let request_id = command_request_id(command);
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::ActivationStored { request_id, result: Ok(()) })
-    .expect("activation stored");
+    .unwrap_or_else(|err| panic!("ActivationStored for {request_id:?} should produce Release: {err:?}"));
   let command = only_command(&outcome.commands, "release command");
-  assert!(matches!(command, PlacementCommand::Release { .. }));
+  assert!(
+    matches!(command, PlacementCommand::Release { .. }),
+    "expected Release after ActivationStored, got {command:?}"
+  );
   let request_id = command_request_id(command);
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::LockReleased { request_id, result: Ok(()) })
-    .expect("lock released");
+    .unwrap_or_else(|err| panic!("LockReleased for {request_id:?} should complete activation: {err:?}"));
   outcome.resolution.expect("completed resolution")
 }
 
@@ -159,7 +175,7 @@ fn distributed_activation_reports_pending_then_completes_after_command_results()
   let pending = lookup.resolve(&key, 1000);
   assert!(matches!(pending, Err(LookupError::Pending)));
 
-  let pid = "node-a:4050::user/pending";
+  let pid = "custom-pending-pid";
   let resolution = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &key, pid);
   assert_eq!(resolution.pid, pid);
   assert_eq!(resolution.locality, PlacementLocality::Local);
