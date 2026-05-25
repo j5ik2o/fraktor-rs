@@ -1,25 +1,25 @@
-## 1. Core Materialization Surface
+## 1. Core Materialization 公開面
 
-- [ ] 1.1 Add `SystemMaterializer` under `modules/stream-core-kernel/src/materialization/`, replacing `std::vec::Vec` with `alloc::vec::Vec`.
-- [ ] 1.2 Add `SystemMaterializerId` under `modules/stream-core-kernel/src/materialization/`, preserving the actor-core `ExtensionId` contract.
-- [ ] 1.3 Export both types from `stream-core-kernel::materialization`.
-- [ ] 1.4 Update rustdoc links to point at the core materialization path.
+- [ ] 1.1 `SystemMaterializer` を `modules/stream-core-kernel/src/materialization/` 配下に追加し、`std::vec::Vec` を `alloc::vec::Vec` に置き換える。
+- [ ] 1.2 `SystemMaterializerId` を `modules/stream-core-kernel/src/materialization/` 配下に追加し、actor-core の `ExtensionId` contract を維持する。
+- [ ] 1.3 両方の型を `stream-core-kernel::materialization` から公開する。
+- [ ] 1.4 rustdoc link を core materialization path に更新する。
 
-## 2. Std Adapter Boundary
+## 2. Std アダプタ境界
 
-- [ ] 2.1 Remove the `stream-adaptor-std` materializer module and the old `SystemMaterializer` / `SystemMaterializerId` definitions.
-- [ ] 2.2 Keep `stream-adaptor-std` IO adapters (`FileIO`, `StreamConverters`, `StreamInputStream`, `StreamOutputStream`, `SourceFactory`) unchanged except for import fallout.
-- [ ] 2.3 Do not add compatibility re-exports from `stream-adaptor-std`.
+- [ ] 2.1 `stream-adaptor-std` の materializer module と、旧 `SystemMaterializer` / `SystemMaterializerId` 定義を削除する。
+- [ ] 2.2 `stream-adaptor-std` の IO アダプタ（`FileIO`、`StreamConverters`、`StreamInputStream`、`StreamOutputStream`、`SourceFactory`）は import 影響以外を変更しない。
+- [ ] 2.3 `stream-adaptor-std` からの互換 re-export は追加しない。
 
-## 3. Tests
+## 3. テスト
 
-- [ ] 3.1 Move the existing `SystemMaterializer` behavior tests into `stream-core-kernel` as sibling `*_test.rs` tests.
-- [ ] 3.2 Add or update a core public API test for `fraktor_stream_core_kernel_rs::materialization::{SystemMaterializer, SystemMaterializerId}`.
-- [ ] 3.3 Update `stream-adaptor-std` package-boundary tests so they assert only std adapter exports.
+- [ ] 3.1 既存の `SystemMaterializer` 振る舞い test を、sibling `*_test.rs` test として `stream-core-kernel` へ移す。
+- [ ] 3.2 `fraktor_stream_core_kernel_rs::materialization::{SystemMaterializer, SystemMaterializerId}` の core 公開 API test を追加または更新する。
+- [ ] 3.3 `stream-adaptor-std` package-boundary test を更新し、std アダプタ export だけを確認する。
 
-## 4. Verification
+## 4. 検証
 
-- [ ] 4.1 Run `cargo test -p fraktor-stream-core-kernel-rs system_materializer`.
-- [ ] 4.2 Run `cargo test -p fraktor-stream-adaptor-std-rs package_boundaries`.
-- [ ] 4.3 Run `cargo check -p fraktor-stream-core-kernel-rs --no-default-features`.
-- [ ] 4.4 Run `cargo fmt --check --all`.
+- [ ] 4.1 `cargo test -p fraktor-stream-core-kernel-rs system_materializer` を実行する。
+- [ ] 4.2 `cargo test -p fraktor-stream-adaptor-std-rs package_boundaries` を実行する。
+- [ ] 4.3 `cargo check -p fraktor-stream-core-kernel-rs --no-default-features` を実行する。
+- [ ] 4.4 `cargo fmt --check --all` を実行する。

@@ -1,55 +1,55 @@
-## Context
+## 背景
 
-`stream-core-kernel` is the no_std stream runtime crate. It owns materialization contracts such as `ActorMaterializer`, `ActorMaterializerConfig`, `Materializer`, and snapshot support.
+`stream-core-kernel` は no_std の stream runtime crate である。`ActorMaterializer`、`ActorMaterializerConfig`、`Materializer`、snapshot support などの materialization contract を所有している。
 
-`stream-adaptor-std` is the std adapter crate. Its current IO surface (`FileIO`, `StreamConverters`, `StreamInputStream`, `StreamOutputStream`) depends on `std::fs`, `std::io`, and std channels. `SystemMaterializer` is different: it wraps an `ActorMaterializer` and implements the actor-core extension contract. Its current std dependency is only `std::vec::Vec`, which can be replaced by `alloc::vec::Vec`.
+`stream-adaptor-std` は std adapter crate である。現在の IO surface である `FileIO`、`StreamConverters`、`StreamInputStream`、`StreamOutputStream` は `std::fs`、`std::io`、std channel に依存している。一方で `SystemMaterializer` は `ActorMaterializer` を wrap し、actor-core の extension contract を実装する型であり、性質が異なる。現在の std 依存は `std::vec::Vec` だけであり、これは `alloc::vec::Vec` に置き換えられる。
 
-## Goals / Non-Goals
+## 目標 / 対象外
 
-**Goals:**
+**目標:**
 
-- Make `SystemMaterializer` and `SystemMaterializerId` core materialization APIs.
-- Keep the crate dependency direction as `stream-adaptor-std -> stream-core-kernel`.
-- Align the runtime meaning with DIP: core logic depends on core contracts; std adapter crates provide platform-specific implementations.
-- Remove the misleading std materializer public module.
-- Preserve no_std compatibility for `stream-core-kernel`.
+- `SystemMaterializer` と `SystemMaterializerId` を core materialization API にする。
+- crate 依存方向は `stream-adaptor-std -> stream-core-kernel` のまま維持する。
+- 実行時の意味論を DIP に合わせる。core logic は core contract に依存し、std adapter crate はプラットフォーム依存実装を提供する。
+- 誤解を招く std materializer public module を削除する。
+- `stream-core-kernel` の no_std 互換性を維持する。
 
-**Non-Goals:**
+**対象外:**
 
-- Do not add a new materializer port trait in this change.
-- Do not redesign `ActorMaterializer`, actor-system extension storage, scheduler, or tick driver APIs.
-- Do not keep a compatibility re-export from `stream-adaptor-std`.
-- Do not move `FileIO` or `StreamConverters` out of the std adapter crate.
+- この change では新しい materializer port trait を追加しない。
+- `ActorMaterializer`、actor-system extension storage、scheduler、tick driver API は再設計しない。
+- `stream-adaptor-std` に互換 re-export を残さない。
+- `FileIO` や `StreamConverters` を std adapter crate の外へ移動しない。
 
-## Decisions
+## 判断
 
-### Decision 1: Move the types to `stream-core-kernel::materialization`
+### 判断 1: 型を `stream-core-kernel::materialization` へ移す
 
-`SystemMaterializer` and `SystemMaterializerId` will live beside `ActorMaterializer` because they are part of the materialization runtime contract, not a host adapter. This keeps the public path aligned with the concept:
+`SystemMaterializer` と `SystemMaterializerId` は host adapter ではなく materialization runtime contract の一部なので、`ActorMaterializer` と同じ場所に置く。これにより公開パスと概念が一致する。
 
 ```text
 fraktor_stream_core_kernel_rs::materialization::{SystemMaterializer, SystemMaterializerId}
 ```
 
-Alternative considered: keep a re-export in `stream-adaptor-std`. This is rejected because the project is pre-release and favors clean contracts over compatibility shims.
+代替案として `stream-adaptor-std` に re-export を残す案もあるが、採用しない。この project は pre-release であり、互換 shim より clean contract を優先する。
 
-### Decision 2: Keep platform-dependent pieces outside this move
+### 判断 2: プラットフォーム依存部分はこの移設に含めない
 
-The existing `SystemMaterializerId::create_extension` constructs `ActorMaterializer` from the already-created `ActorSystem`. It does not own std execution. Platform-specific scheduler/tick behavior remains attached to the actor system configuration and std driver implementations.
+既存の `SystemMaterializerId::create_extension` は、すでに作成済みの `ActorSystem` から `ActorMaterializer` を構築する。これは std 実行を所有しない。プラットフォーム固有の scheduler / tick の振る舞いは、actor system configuration と std driver 実装に紐づいたままにする。
 
-Alternative considered: introduce a new materializer port trait now. This is rejected because no separate std-only implementation point is needed for the current type; adding a port would be speculative.
+代替案として新しい materializer port trait を今追加する案もあるが、採用しない。現時点の `SystemMaterializer` には分離すべき std-only implementation point がなく、port 追加は投機的になる。
 
-### Decision 3: Use `alloc`, not `std`, in core
+### 判断 3: core では `std` ではなく `alloc` を使う
 
-`SystemMaterializer::stream_snapshots` returns `Vec<StreamSnapshot>`. In core this must be `alloc::vec::Vec`. The implementation must not import `std::*`, must not add a default feature, and must continue to satisfy `cfg_std_forbid`.
+`SystemMaterializer::stream_snapshots` は `Vec<StreamSnapshot>` を返す。core ではこれを `alloc::vec::Vec` として扱う。実装は `std::*` を import してはならず、default feature を追加してはならず、`cfg_std_forbid` を満たし続けなければならない。
 
-### Decision 4: Tests define both behavior and package boundary
+### 判断 4: test で振る舞いと package 境界の両方を固定する
 
-The existing behavior tests move with the type into `stream-core-kernel`. A public API test must confirm the new external import path. The std package-boundary test must stop importing materializer types and continue to assert only std adapter exports.
+既存の振る舞い test は型と一緒に `stream-core-kernel` へ移す。公開 API test は新しい外部 import path を確認する。std package-boundary test は materializer 型の import をやめ、std adapter export だけを確認する。
 
-## Risks / Trade-offs
+## リスク / トレードオフ
 
-- **Breaking import paths** → Accept the break and document it in the proposal; no compatibility shim is allowed.
-- **Core accidentally gains std imports** → Use `alloc::vec::Vec` and verify with no-default-features check plus existing cfg-std-forbid lint coverage.
-- **Spec drift from older stream package wording** → Modify the existing `stream-package-structure` requirement so archive will replace the old std materializer contract.
-- **Tests may rely on std-only test helpers** → Keep those dependencies as dev-dependencies of `stream-core-kernel`; production code remains no_std.
+- **import path が破壊的に変わる** → この破壊的変更を受け入れ、proposal に明記する。互換 shim は置かない。
+- **core に std import が混入する** → `alloc::vec::Vec` を使い、no-default-features check と既存の cfg-std-forbid lint coverage で確認する。
+- **古い stream package wording と spec がずれる** → 既存の `stream-package-structure` requirement を変更し、archive 時に古い std materializer contract が置き換わるようにする。
+- **test が std-only test helper に依存する** → その依存は `stream-core-kernel` の dev-dependencies に閉じ込め、production code は no_std のまま維持する。
