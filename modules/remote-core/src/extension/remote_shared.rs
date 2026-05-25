@@ -16,8 +16,8 @@ use crate::{
   association::QuarantineReason,
   envelope::InboundEnvelope,
   extension::{
-    Remote, RemoteDeploymentOutcome, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteFlushTimer,
-    RemoteSharedRunFuture, Remoting, RemotingError,
+    Remote, RemoteDeploymentOutcome, RemoteDeploymentResponse, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome,
+    RemoteFlushTimer, RemoteSharedRunFuture, Remoting, RemotingError,
   },
   transport::TransportEndpoint,
   watcher::{WatcherCommand, WatcherEffect},
@@ -160,15 +160,16 @@ impl RemoteShared {
   }
 
   /// Fails pending deployment requests for a terminated remote authority.
+  #[must_use]
   pub fn fail_deployment_requests_for_terminated_authority(
     &self,
     authority: &str,
     reason: &str,
     observed_at_millis: u64,
-  ) {
+  ) -> Vec<RemoteDeploymentResponse> {
     self.with_write(|remote| {
-      remote.fail_deployment_requests_for_terminated_authority(authority, reason, observed_at_millis);
-    });
+      remote.fail_deployment_requests_for_terminated_authority(authority, reason, observed_at_millis)
+    })
   }
 
   /// Sends a create failure response for an adapter-side request delivery failure.

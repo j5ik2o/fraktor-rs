@@ -239,10 +239,10 @@ impl Remote {
     authority: &str,
     reason: &str,
     observed_at_millis: u64,
-  ) {
+  ) -> Vec<RemoteDeploymentResponse> {
     let Some(remote) = parse_authority(authority) else {
       tracing::warn!(authority, "remote deployment address termination authority is invalid");
-      return;
+      return Vec::new();
     };
     let keys = self
       .deployment_pending
@@ -253,6 +253,7 @@ impl Remote {
         if matches_authority && not_replayed_old_event { Some(*key) } else { None }
       })
       .collect::<Vec<_>>();
+    let mut responses = Vec::with_capacity(keys.len());
     for (correlation_hi, correlation_lo) in keys {
       self.deployment_pending.remove(&(correlation_hi, correlation_lo));
       let failure = RemoteDeploymentCreateFailure::new(
@@ -261,8 +262,9 @@ impl Remote {
         RemoteDeploymentFailureCode::AddressTerminated,
         deployment_address_terminated_failure_reason(authority, reason),
       );
-      self.complete_deployment_response(RemoteDeploymentResponse::Failure(failure));
+      responses.push(RemoteDeploymentResponse::Failure(failure));
     }
+    responses
   }
 
   /// Sends a create failure response for an adapter-side request delivery failure.

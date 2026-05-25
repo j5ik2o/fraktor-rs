@@ -23,11 +23,13 @@ use fraktor_remote_core_rs::{
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::OutboundEnvelope,
-  extension::{EventPublisher, Remote, RemoteDeploymentResponse, RemoteShared},
+  extension::{
+    EventPublisher, Remote, RemoteDeploymentOutcome, RemoteDeploymentResponse, RemoteEvent, RemoteShared, Remoting,
+  },
   transport::{RemoteTransport, TransportEndpoint, TransportError},
   wire::{
     AckPdu, ControlPdu, HandshakePdu, RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest,
-    RemoteDeploymentCreateSuccess, RemoteDeploymentFailureCode, RemoteDeploymentPdu,
+    RemoteDeploymentCreateSuccess, RemoteDeploymentFailureCode, RemoteDeploymentPdu, WireFrame,
   },
 };
 
@@ -311,6 +313,57 @@ fn address_terminated_subscription_fails_matching_pending_deployment() {
       ),
     ))
   );
+}
+
+#[test]
+fn address_terminated_subscription_preserves_pending_create_request_outcomes() {
+  let system = system_with_factory();
+  let remote = remote_shared_for_system(&system);
+  remote.start().expect("remote should start");
+  let dispatcher = DeploymentResponseDispatcher::default();
+  let target = Address::new("remote-sys", "10.0.0.1", 2552);
+  let _subscription = subscribe_address_terminated(&system, remote.clone(), dispatcher.clone());
+  remote.register_deployment_request(1, 2, target.clone(), 10);
+  let receiver = dispatcher.register(1, 2);
+  let request = RemoteDeploymentCreateRequest::new(
+    9,
+    10,
+    String::from("fraktor.tcp://local-sys@127.0.0.1:2551/user"),
+    String::from("worker"),
+    String::from("echo"),
+    target.to_string(),
+    STRING_ID.value(),
+    None,
+    Bytes::from_static(b"payload"),
+  );
+  remote
+    .handle_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(target.to_string()),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateRequest(request)),
+      now_ms:    15,
+    })
+    .expect("create request should produce an outcome");
+
+  system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
+    "remote-sys@10.0.0.1:2552",
+    "Deemed unreachable by remote failure detector",
+    20,
+  )));
+
+  let response = receiver.recv_timeout(Duration::from_secs(1)).expect("pending deployment should fail");
+  assert!(matches!(
+    response,
+    RemoteDeploymentResponse::Failure(failure)
+      if failure.correlation_hi() == 1
+        && failure.correlation_lo() == 2
+        && failure.code() == RemoteDeploymentFailureCode::AddressTerminated
+  ));
+  let outcomes = remote.drain_deployment_outcomes();
+  assert!(matches!(
+    outcomes.as_slice(),
+    [RemoteDeploymentOutcome::CreateRequested { request, .. }]
+      if request.correlation_hi() == 9 && request.correlation_lo() == 10
+  ));
 }
 
 #[test]

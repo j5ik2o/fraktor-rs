@@ -1415,17 +1415,15 @@ fn deployment_address_termination_completes_matching_pending_request() {
     remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   remote.register_deployment_request(7, 8, remote_address.clone(), 10);
 
-  remote.fail_deployment_requests_for_terminated_authority(&remote_address.to_string(), "down", 20);
+  let responses = remote.fail_deployment_requests_for_terminated_authority(&remote_address.to_string(), "down", 20);
 
-  let outcomes = remote.drain_deployment_outcomes();
   assert!(matches!(
-    outcomes.as_slice(),
-    [RemoteDeploymentOutcome::ResponseCompleted {
-      response: RemoteDeploymentResponse::Failure(failure),
-    }] if failure.correlation_hi() == 7
+    responses.as_slice(),
+    [RemoteDeploymentResponse::Failure(failure)] if failure.correlation_hi() == 7
       && failure.correlation_lo() == 8
       && failure.code() == RemoteDeploymentFailureCode::AddressTerminated
   ));
+  assert!(remote.drain_deployment_outcomes().is_empty());
 }
 
 #[test]

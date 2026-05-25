@@ -19,7 +19,7 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_remote_core_rs::{
   address::Address,
-  extension::{RemoteDeploymentOutcome, RemoteDeploymentResponse, RemoteEvent, RemoteShared},
+  extension::{RemoteDeploymentResponse, RemoteEvent, RemoteShared},
   transport::TransportEndpoint,
   wire::{
     RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentCreateSuccess,
@@ -58,12 +58,12 @@ impl AddressTerminatedDeploymentSubscriber {
 impl EventStreamSubscriber for AddressTerminatedDeploymentSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::AddressTerminated(event) = event {
-      self.remote.fail_deployment_requests_for_terminated_authority(
+      let responses = self.remote.fail_deployment_requests_for_terminated_authority(
         event.authority(),
         event.reason(),
         event.observed_at_millis(),
       );
-      complete_deployment_response_outcomes(self.remote.drain_deployment_outcomes(), &self.dispatcher);
+      complete_deployment_responses(responses, &self.dispatcher);
     }
   }
 }
@@ -129,17 +129,9 @@ pub(crate) fn subscribe_address_terminated(
   system.event_stream().subscribe_with_key(ClassifierKey::AddressTerminated, &subscriber)
 }
 
-pub(crate) fn complete_deployment_response_outcomes(
-  outcomes: Vec<RemoteDeploymentOutcome>,
-  dispatcher: &DeploymentResponseDispatcher,
-) {
-  for outcome in outcomes {
-    match outcome {
-      | RemoteDeploymentOutcome::ResponseCompleted { response } => dispatcher.complete(response),
-      | RemoteDeploymentOutcome::CreateRequested { .. } => {
-        tracing::warn!("remote deployment create request outcome reached response completion bridge");
-      },
-    }
+fn complete_deployment_responses(responses: Vec<RemoteDeploymentResponse>, dispatcher: &DeploymentResponseDispatcher) {
+  for response in responses {
+    dispatcher.complete(response);
   }
 }
 
