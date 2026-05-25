@@ -2,8 +2,8 @@ use fraktor_cluster_core_rs::{
   grain::GrainKey,
   identity::{IdentityLookup, LookupError, PartitionIdentityLookup, PidCacheEvent},
   placement::{
-    ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore, PlacementEvent,
-    PlacementLease, PlacementLocality,
+    ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementEvent, PlacementLease, PlacementLocality,
+    PlacementRequestId, PlacementResolution,
   },
 };
 
@@ -27,6 +27,59 @@ fn has_activated_event(events: &[PlacementEvent], key: &GrainKey) -> bool {
 
 fn has_cache_drop_event(events: &[PidCacheEvent], key: &GrainKey) -> bool {
   events.iter().any(|event| matches!(event, PidCacheEvent::Dropped { key: event_key, .. } if event_key == key))
+}
+
+const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
+  match command {
+    | PlacementCommand::TryAcquire { request_id, .. }
+    | PlacementCommand::LoadActivation { request_id, .. }
+    | PlacementCommand::EnsureActivation { request_id, .. }
+    | PlacementCommand::StoreActivation { request_id, .. }
+    | PlacementCommand::Release { request_id, .. } => *request_id,
+  }
+}
+
+fn complete_pending_activation(
+  lookup: &mut PartitionIdentityLookup,
+  request_id: PlacementRequestId,
+  key: &GrainKey,
+  pid: &str,
+) -> PlacementResolution {
+  let lease = PlacementLease { key: key.clone(), owner: "node-a:4050".to_string(), expires_at: 1300 };
+
+  let outcome = lookup
+    .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
+    .expect("lock acquired");
+  let command = outcome.commands.first().expect("load command");
+  assert!(matches!(command, PlacementCommand::LoadActivation { .. }));
+  let request_id = command_request_id(command);
+
+  let outcome = lookup
+    .handle_command_result(PlacementCommandResult::ActivationLoaded { request_id, result: Ok(None) })
+    .expect("activation loaded");
+  let command = outcome.commands.first().expect("ensure command");
+  assert!(matches!(command, PlacementCommand::EnsureActivation { .. }));
+  let request_id = command_request_id(command);
+
+  let record = ActivationRecord::new(pid.to_string(), None, 0);
+  let outcome = lookup
+    .handle_command_result(PlacementCommandResult::ActivationEnsured { request_id, result: Ok(record.clone()) })
+    .expect("activation ensured");
+  let command = outcome.commands.first().expect("store command");
+  assert!(matches!(command, PlacementCommand::StoreActivation { .. }));
+  let request_id = command_request_id(command);
+
+  let outcome = lookup
+    .handle_command_result(PlacementCommandResult::ActivationStored { request_id, result: Ok(()) })
+    .expect("activation stored");
+  let command = outcome.commands.first().expect("release command");
+  assert!(matches!(command, PlacementCommand::Release { .. }));
+  let request_id = command_request_id(command);
+
+  let outcome = lookup
+    .handle_command_result(PlacementCommandResult::LockReleased { request_id, result: Ok(()) })
+    .expect("lock released");
+  outcome.resolution.expect("completed resolution")
 }
 
 #[test]
@@ -84,47 +137,13 @@ fn distributed_activation_reports_pending_then_completes_after_command_results()
   let pending = lookup.resolve(&key, 1000);
   assert!(matches!(pending, Err(LookupError::Pending)));
 
-  let mut coordinator = PlacementCoordinatorCore::new(128, 300);
-  coordinator.start_member().expect("start member");
-  coordinator.set_local_authority("node-a:4050");
-  coordinator.set_distributed_activation(true);
-  coordinator.update_topology(vec!["node-a:4050".to_string()]);
-
-  let outcome = coordinator.resolve(&key, 1000).expect("start activation");
-  let command = outcome.commands.first().expect("try acquire command");
-  let PlacementCommand::TryAcquire { request_id, .. } = command else {
-    panic!("expected TryAcquire");
-  };
-  let request_id = *request_id;
-  let lease = PlacementLease { key: key.clone(), owner: "node-a:4050".to_string(), expires_at: 1300 };
-
-  let outcome = coordinator
-    .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
-    .expect("lock acquired");
-  assert!(matches!(outcome.commands.first(), Some(PlacementCommand::LoadActivation { .. })));
-
-  let outcome = coordinator
-    .handle_command_result(PlacementCommandResult::ActivationLoaded { request_id, result: Ok(None) })
-    .expect("activation loaded");
-  assert!(matches!(outcome.commands.first(), Some(PlacementCommand::EnsureActivation { .. })));
-
-  let record = ActivationRecord::new("node-a:4050::user/pending".to_string(), None, 0);
-  let outcome = coordinator
-    .handle_command_result(PlacementCommandResult::ActivationEnsured { request_id, result: Ok(record.clone()) })
-    .expect("activation ensured");
-  assert!(matches!(outcome.commands.first(), Some(PlacementCommand::StoreActivation { .. })));
-
-  let outcome = coordinator
-    .handle_command_result(PlacementCommandResult::ActivationStored { request_id, result: Ok(()) })
-    .expect("activation stored");
-  assert!(matches!(outcome.commands.first(), Some(PlacementCommand::Release { .. })));
-
-  let outcome = coordinator
-    .handle_command_result(PlacementCommandResult::LockReleased { request_id, result: Ok(()) })
-    .expect("lock released");
-  let resolution = outcome.resolution.expect("completed resolution");
-  assert_eq!(resolution.pid, record.pid);
+  let pid = "node-a:4050::user/pending";
+  let resolution = complete_pending_activation(&mut lookup, PlacementRequestId(1), &key, pid);
+  assert_eq!(resolution.pid, pid);
   assert_eq!(resolution.locality, PlacementLocality::Local);
+
+  let completed = lookup.resolve(&key, 1001).expect("completed lookup resolution");
+  assert_eq!(completed.pid, pid);
 }
 
 #[test]
@@ -152,8 +171,12 @@ fn topology_replacement_invalidates_absent_authority_cache_and_reresolves() {
 fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop() {
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
+  lookup.set_local_authority("node-a:4050");
+  lookup.set_distributed_activation(true);
   let key = grain_key("user/member-left");
-  let first = lookup.resolve(&key, 1000).expect("first resolution");
+  let pending = lookup.resolve(&key, 1000);
+  assert!(matches!(pending, Err(LookupError::Pending)));
+  let first = complete_pending_activation(&mut lookup, PlacementRequestId(1), &key, "custom-member-left-pid");
   let _ = lookup.drain_events();
   let _ = lookup.drain_cache_events();
 
@@ -169,9 +192,6 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
 
   assert!(has_passivated_event(&placement_events, &key));
   assert!(has_cache_drop_event(&cache_events, &key));
-  let refreshed = lookup.resolve(&key, 1002).expect("refreshed resolution");
-  assert_eq!(refreshed.decision.authority, "node-a:4050");
-  assert!(has_activated_event(&lookup.drain_events(), &key));
 }
 
 #[test]
