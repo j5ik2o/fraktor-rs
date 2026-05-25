@@ -4,10 +4,16 @@ use crate::{
   grain::GrainKey,
   identity::{IdentityLookup, LookupError, PartitionIdentityLookup, PidCacheEvent},
   placement::{
-    ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementEvent, PlacementLease, PlacementLocality,
-    PlacementRequestId, PlacementResolution,
+    ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementCoordinatorOutcome, PlacementEvent,
+    PlacementLease, PlacementLocality, PlacementRequestId, PlacementResolution,
   },
 };
+
+impl PartitionIdentityLookup {
+  fn resolve_outcome(&mut self, key: &GrainKey, now: u64) -> Result<PlacementCoordinatorOutcome, LookupError> {
+    self.coordinator.resolve(key, now)
+  }
+}
 
 fn member_lookup() -> PartitionIdentityLookup {
   let mut lookup = PartitionIdentityLookup::with_defaults();
@@ -173,7 +179,7 @@ fn same_key_and_topology_resolve_to_the_same_authority() {
 }
 
 #[test]
-fn active_pid_is_reused_until_cache_or_passivation_invalidates_it() {
+fn active_pid_is_reused_on_repeated_resolve() {
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
   lookup.set_local_authority("node-a:4050");

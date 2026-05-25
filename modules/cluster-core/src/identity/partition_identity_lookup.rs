@@ -88,10 +88,6 @@ impl PartitionIdentityLookup {
     self.coordinator.handle_command_result(result)
   }
 
-  fn resolve_outcome(&mut self, key: &GrainKey, now: u64) -> Result<PlacementCoordinatorOutcome, LookupError> {
-    self.coordinator.resolve(key, now)
-  }
-
   /// Returns the registered member kinds.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]
@@ -121,7 +117,7 @@ impl IdentityLookup for PartitionIdentityLookup {
   }
 
   fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
-    let outcome = self.resolve_outcome(key, now)?;
+    let outcome = self.coordinator.resolve(key, now)?;
     if let Some(resolution) = outcome.resolution {
       return Ok(resolution);
     }
