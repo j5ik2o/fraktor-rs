@@ -21,15 +21,18 @@ fn has_passivated_event(events: &[PlacementEvent], key: &GrainKey) -> bool {
   events.iter().any(|event| matches!(event, PlacementEvent::Passivated { key: event_key, .. } if event_key == key))
 }
 
-fn has_activated_event(events: &[PlacementEvent], key: &GrainKey) -> bool {
-  events.iter().any(|event| matches!(event, PlacementEvent::Activated { key: event_key, .. } if event_key == key))
-}
-
 fn has_cache_drop_event(events: &[PidCacheEvent], key: &GrainKey) -> bool {
   events.iter().any(|event| matches!(event, PidCacheEvent::Dropped { key: event_key, .. } if event_key == key))
 }
 
 const FAR_FUTURE_LEASE_EXPIRES_AT: u64 = 1300;
+const FIRST_PENDING_REQUEST_ID: PlacementRequestId = PlacementRequestId(1);
+const SECOND_PENDING_REQUEST_ID: PlacementRequestId = PlacementRequestId(2);
+
+fn clear_observed_events(lookup: &mut PartitionIdentityLookup) {
+  let _placement_events = lookup.drain_events();
+  let _cache_events = lookup.drain_cache_events();
+}
 
 const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
   match command {
@@ -39,6 +42,11 @@ const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
     | PlacementCommand::StoreActivation { request_id, .. }
     | PlacementCommand::Release { request_id, .. } => *request_id,
   }
+}
+
+fn only_command<'a>(commands: &'a [PlacementCommand], label: &str) -> &'a PlacementCommand {
+  assert_eq!(commands.len(), 1, "{label} should emit exactly one command");
+  commands.first().expect(label)
 }
 
 /// Completes the first pending activation created by `PartitionIdentityLookup::resolve`.
@@ -60,14 +68,14 @@ fn complete_pending_activation(
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
     .expect("lock acquired");
-  let command = outcome.commands.first().expect("load command");
+  let command = only_command(&outcome.commands, "load command");
   assert!(matches!(command, PlacementCommand::LoadActivation { .. }));
   let request_id = command_request_id(command);
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::ActivationLoaded { request_id, result: Ok(None) })
     .expect("activation loaded");
-  let command = outcome.commands.first().expect("ensure command");
+  let command = only_command(&outcome.commands, "ensure command");
   assert!(matches!(command, PlacementCommand::EnsureActivation { .. }));
   let request_id = command_request_id(command);
 
@@ -75,14 +83,14 @@ fn complete_pending_activation(
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::ActivationEnsured { request_id, result: Ok(record.clone()) })
     .expect("activation ensured");
-  let command = outcome.commands.first().expect("store command");
+  let command = only_command(&outcome.commands, "store command");
   assert!(matches!(command, PlacementCommand::StoreActivation { .. }));
   let request_id = command_request_id(command);
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::ActivationStored { request_id, result: Ok(()) })
     .expect("activation stored");
-  let command = outcome.commands.first().expect("release command");
+  let command = only_command(&outcome.commands, "release command");
   assert!(matches!(command, PlacementCommand::Release { .. }));
   let request_id = command_request_id(command);
 
@@ -125,10 +133,14 @@ fn same_key_and_topology_resolve_to_the_same_authority() {
 fn active_pid_is_reused_until_cache_or_passivation_invalidates_it() {
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
+  lookup.set_local_authority("node-a:4050");
+  lookup.set_distributed_activation(true);
   let key = grain_key("user/cache-hit");
 
-  let first = lookup.resolve(&key, 1000).expect("first resolution");
-  let _ = lookup.drain_events();
+  let pending = lookup.resolve(&key, 1000);
+  assert!(matches!(pending, Err(LookupError::Pending)));
+  let first = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &key, "custom-cache-hit-pid");
+  clear_observed_events(&mut lookup);
   let second = lookup.resolve(&key, 1001).expect("second resolution");
 
   assert_eq!(first.pid, second.pid);
@@ -148,7 +160,7 @@ fn distributed_activation_reports_pending_then_completes_after_command_results()
   assert!(matches!(pending, Err(LookupError::Pending)));
 
   let pid = "node-a:4050::user/pending";
-  let resolution = complete_pending_activation(&mut lookup, PlacementRequestId(1), &key, pid);
+  let resolution = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &key, pid);
   assert_eq!(resolution.pid, pid);
   assert_eq!(resolution.locality, PlacementLocality::Local);
 
@@ -162,8 +174,7 @@ fn topology_replacement_invalidates_absent_authority_cache_and_reresolves() {
   lookup.update_topology(vec!["node-a:4050".to_string()]);
   let key = grain_key("user/topology-replacement");
   let original = lookup.resolve(&key, 1000).expect("original resolution");
-  let _ = lookup.drain_events();
-  let _ = lookup.drain_cache_events();
+  clear_observed_events(&mut lookup);
 
   lookup.update_topology(vec!["node-b:4051".to_string()]);
 
@@ -189,9 +200,8 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
   assert!(matches!(pending, Err(LookupError::Pending)));
   // The PID string is intentionally unrelated to the authority. Member-left
   // invalidation must be driven by the lease owner, not by parsing the PID.
-  let first = complete_pending_activation(&mut lookup, PlacementRequestId(1), &key, "custom-member-left-pid");
-  let _ = lookup.drain_events();
-  let _ = lookup.drain_cache_events();
+  let first = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &key, "custom-member-left-pid");
+  clear_observed_events(&mut lookup);
 
   lookup.on_member_left("node-z:4099");
   assert!(lookup.drain_events().is_empty());
@@ -207,21 +217,25 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
   assert!(has_cache_drop_event(&cache_events, &key));
 
   let after_departure = lookup.resolve(&key, 1002);
-  assert!(!matches!(after_departure, Ok(resolution) if resolution.pid == first.pid));
+  assert!(matches!(after_departure, Err(LookupError::Pending)));
 }
 
 #[test]
 fn passivation_removes_idle_activation_but_keeps_recent_activation() {
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
+  lookup.set_local_authority("node-a:4050");
+  lookup.set_distributed_activation(true);
   let recent_key = grain_key("user/recent");
   let idle_key = grain_key("user/idle");
-  let idle = lookup.resolve(&idle_key, 1000).expect("idle resolution");
-  let _ = lookup.drain_events();
-  let _ = lookup.drain_cache_events();
-  let recent = lookup.resolve(&recent_key, 1150).expect("recent resolution");
-  let _ = lookup.drain_events();
-  let _ = lookup.drain_cache_events();
+  let idle_pending = lookup.resolve(&idle_key, 1000);
+  assert!(matches!(idle_pending, Err(LookupError::Pending)));
+  let _idle = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &idle_key, "custom-idle-pid");
+  clear_observed_events(&mut lookup);
+  let recent_pending = lookup.resolve(&recent_key, 1150);
+  assert!(matches!(recent_pending, Err(LookupError::Pending)));
+  let recent = complete_pending_activation(&mut lookup, SECOND_PENDING_REQUEST_ID, &recent_key, "custom-recent-pid");
+  clear_observed_events(&mut lookup);
 
   lookup.passivate_idle(1200, 100);
   let placement_events = lookup.drain_events();
@@ -234,9 +248,8 @@ fn passivation_removes_idle_activation_but_keeps_recent_activation() {
   let recent_again = lookup.resolve(&recent_key, 1201).expect("recent cached");
   assert_eq!(recent_again.pid, recent.pid);
 
-  let idle_again = lookup.resolve(&idle_key, 1201).expect("idle reactivated");
-  assert_eq!(idle_again.decision.authority, idle.decision.authority);
-  assert!(has_activated_event(&lookup.drain_events(), &idle_key));
+  let idle_after_passivation = lookup.resolve(&idle_key, 1201);
+  assert!(matches!(idle_after_passivation, Err(LookupError::Pending)));
 }
 
 #[test]
@@ -245,8 +258,7 @@ fn rolling_update_prevents_stale_authority_reuse_without_rebalance_guarantees() 
   lookup.update_topology(vec!["old-node:4050".to_string()]);
   let key = grain_key("user/rolling-update");
   let old = lookup.resolve(&key, 1000).expect("old resolution");
-  let _ = lookup.drain_events();
-  let _ = lookup.drain_cache_events();
+  clear_observed_events(&mut lookup);
 
   lookup.update_topology(vec!["old-node:4050".to_string(), "new-node:4051".to_string()]);
   lookup.on_member_left("old-node:4050");
