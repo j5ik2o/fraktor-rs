@@ -296,14 +296,6 @@ impl WorkPullingProducerController {
 
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();
-      if producer_controller_settings.chunk_large_messages_bytes() > 0 {
-        let message = alloc::format!(
-          "WorkPullingProducerController does not support chunk_large_messages_bytes={}",
-          producer_controller_settings.chunk_large_messages_bytes()
-        );
-        ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
-        return Behaviors::stopped();
-      }
 
       // メッセージアダプタを作成: A → WorkPullingProducerControllerCommand::Msg
       let send_adapter = match ctx.message_adapter(|a: A| Ok(WorkPullingProducerControllerCommand::msg(a))) {
@@ -598,7 +590,7 @@ fn collect_wppc_deferred_for_command<A>(
       );
     },
     | WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } => {
-      collect_on_replayed_message(state, sent.clone(), deferred);
+      collect_on_replayed_message(state, sent.clone(), deferred, stop_self);
     },
   }
 }
@@ -845,6 +837,7 @@ fn collect_on_replayed_message<A>(
   state: &mut WorkPullingState<A>,
   sent: MessageSent<A>,
   deferred: &mut Vec<WppcDeferredAction<A>>,
+  stop_self: &mut Option<String>,
 ) where
   A: Clone + Send + Sync + 'static, {
   let work = BufferedWork::Replay(sent);
@@ -852,6 +845,11 @@ fn collect_on_replayed_message<A>(
     collect_send_to_worker(state, worker_key, work, deferred);
   } else if (state.buffered.len() as u32) < state.buffer_size {
     state.buffered.push_back(work);
+  } else {
+    *stop_self = Some(alloc::format!(
+      "WorkPullingProducerController replay backlog exceeded buffer_size {}; durable messages remain unconfirmed",
+      state.buffer_size
+    ));
   }
 
   collect_maybe_request_next(state, deferred);

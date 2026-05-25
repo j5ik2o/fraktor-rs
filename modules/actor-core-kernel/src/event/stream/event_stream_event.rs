@@ -13,10 +13,7 @@ use super::{
   unhandled_message_event::UnhandledMessageEvent,
 };
 use crate::{
-  actor::{
-    actor_ref::dead_letter::DeadLetterEntry, lifecycle::LifecycleEvent, messaging::AnyMessage,
-    scheduler::tick_driver::SchedulerTickMetrics,
-  },
+  actor::{actor_ref::dead_letter::DeadLetterEntry, lifecycle::LifecycleEvent, messaging::AnyMessage},
   dispatch::mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   event::logging::LogEvent,
   serialization::SerializationErrorEvent,
@@ -49,8 +46,6 @@ pub enum EventStreamEvent {
   RemotingLifecycle(RemotingLifecycleEvent),
   /// Remote node-level address termination notification.
   AddressTerminated(AddressTerminatedEvent),
-  /// Scheduler tick metrics snapshot.
-  SchedulerTick(SchedulerTickMetrics),
   /// Tick driver activation snapshot.
   TickDriver(TickDriverSnapshot),
   /// Extension-provided event namespaced by extension identifier.
@@ -77,7 +72,6 @@ impl Clone for EventStreamEvent {
       | Self::RemotingBackpressure(event) => Self::RemotingBackpressure(event.clone()),
       | Self::RemotingLifecycle(event) => Self::RemotingLifecycle(event.clone()),
       | Self::AddressTerminated(event) => Self::AddressTerminated(event.clone()),
-      | Self::SchedulerTick(event) => Self::SchedulerTick(event.clone()),
       | Self::TickDriver(event) => Self::TickDriver(event.clone()),
       | Self::Extension { name, payload } => Self::Extension { name: name.clone(), payload: payload.clone() },
     }

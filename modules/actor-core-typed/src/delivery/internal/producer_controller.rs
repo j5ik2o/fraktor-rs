@@ -188,14 +188,6 @@ impl ProducerController {
 
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();
-      if settings.chunk_large_messages_bytes() > 0 {
-        let message = alloc::format!(
-          "ProducerController does not support chunk_large_messages_bytes={}",
-          settings.chunk_large_messages_bytes()
-        );
-        ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
-        return Behaviors::stopped();
-      }
 
       // メッセージアダプタを作成: A → ProducerControllerCommand::Msg
       let send_adapter = match ctx.message_adapter(|a: A| Ok(ProducerControllerCommand::msg(a))) {

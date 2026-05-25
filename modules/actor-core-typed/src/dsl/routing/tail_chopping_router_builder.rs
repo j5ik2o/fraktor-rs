@@ -236,7 +236,14 @@ where
       let msg = alloc::format!("tail-chopping coordinator spawn failed: {:?}", e);
       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
       // caller が無応答にならないよう timeout_reply を即時返却する。
-      if let Err(_error) = fallback_reply_to.try_tell(fallback_timeout_reply) {}
+      if let Err(error) = fallback_reply_to.try_tell(fallback_timeout_reply) {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!("tail-chopping coordinator failed to deliver spawn-failure timeout reply: {:?}", error),
+          Some(ctx.pid()),
+          None,
+        );
+      }
     },
   }
 }
@@ -313,7 +320,14 @@ where
       Behaviors::receive_message(move |ctx, cmd: &ChopCommand<R>| match cmd {
         | ChopCommand::Reply(r) => {
           let mut target = (*reply_to).clone();
-          if let Err(_error) = target.try_tell(r.clone()) {}
+          if let Err(error) = target.try_tell(r.clone()) {
+            ctx.system().emit_log(
+              LogLevel::Warn,
+              alloc::format!("tail-chopping coordinator failed to forward reply: {:?}", error),
+              Some(ctx.pid()),
+              None,
+            );
+          }
           Ok(Behaviors::stopped())
         },
         | ChopCommand::SendNext => {
@@ -345,7 +359,14 @@ where
         },
         | ChopCommand::FinalTimeout => {
           let mut target = (*reply_to).clone();
-          if let Err(_error) = target.try_tell((*timeout_reply).clone()) {}
+          if let Err(error) = target.try_tell((*timeout_reply).clone()) {
+            ctx.system().emit_log(
+              LogLevel::Warn,
+              alloc::format!("tail-chopping coordinator failed to deliver timeout reply: {:?}", error),
+              Some(ctx.pid()),
+              None,
+            );
+          }
           Ok(Behaviors::stopped())
         },
       })

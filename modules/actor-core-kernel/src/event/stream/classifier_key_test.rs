@@ -12,9 +12,7 @@ use crate::{
     actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
     lifecycle::{LifecycleEvent, LifecycleStage},
     messaging::AnyMessage,
-    scheduler::tick_driver::{
-      AutoDriverMetadata, AutoProfileKind, SchedulerTickMetrics, TickDriverId, TickDriverKind, TickDriverMetadata,
-    },
+    scheduler::tick_driver::{AutoDriverMetadata, AutoProfileKind, TickDriverId, TickDriverKind, TickDriverMetadata},
   },
   dispatch::mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   event::{
@@ -118,10 +116,6 @@ fn classifier_key_for_event_maps_all_variants() {
     11,
   ));
   assert_eq!(ClassifierKey::for_event(&address_terminated), ClassifierKey::AddressTerminated);
-
-  let scheduler_tick =
-    EventStreamEvent::SchedulerTick(SchedulerTickMetrics::new(TickDriverKind::Manual, 10, None, 32, 1));
-  assert_eq!(ClassifierKey::for_event(&scheduler_tick), ClassifierKey::SchedulerTick);
 
   let metadata = TickDriverMetadata::new(TickDriverId::new(42), TimerInstant::from_ticks(1, Duration::from_millis(10)));
   let auto = AutoDriverMetadata {
