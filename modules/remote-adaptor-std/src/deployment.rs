@@ -58,12 +58,12 @@ impl AddressTerminatedDeploymentSubscriber {
 impl EventStreamSubscriber for AddressTerminatedDeploymentSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::AddressTerminated(event) = event {
-      let responses = self.remote.fail_deployment_requests_for_terminated_authority(
+      self.dispatcher.fail_remote_requests_for_terminated_authority(
+        &self.remote,
         event.authority(),
         event.reason(),
         event.observed_at_millis(),
       );
-      complete_deployment_responses(responses, &self.dispatcher);
     }
   }
 }
@@ -81,19 +81,28 @@ impl Default for DeploymentResponseDispatcher {
 }
 
 impl DeploymentResponseDispatcher {
-  /// Registers a pending request.
-  pub(crate) fn register(&self, correlation_hi: u64, correlation_lo: u32) -> mpsc::Receiver<RemoteDeploymentResponse> {
+  /// Registers a pending request in the dispatcher and core under one adapter-side gate.
+  pub(crate) fn register_remote_request(
+    &self,
+    remote: &RemoteShared,
+    correlation_hi: u64,
+    correlation_lo: u32,
+    authority: Address,
+    started_at_millis: u64,
+  ) -> mpsc::Receiver<RemoteDeploymentResponse> {
     let (sender, receiver) = mpsc::channel();
     self.state.with_lock(|state| {
       state.pending.insert((correlation_hi, correlation_lo), sender);
+      remote.register_deployment_request(correlation_hi, correlation_lo, authority, started_at_millis);
     });
     receiver
   }
 
-  /// Removes a pending request without completing it.
-  pub(crate) fn cancel(&self, correlation_hi: u64, correlation_lo: u32) {
+  /// Removes a pending request from both the dispatcher and core.
+  pub(crate) fn cancel_remote_request(&self, remote: &RemoteShared, correlation_hi: u64, correlation_lo: u32) {
     self.state.with_lock(|state| {
       state.pending.remove(&(correlation_hi, correlation_lo));
+      remote.cancel_deployment_request(correlation_hi, correlation_lo);
     });
   }
 
@@ -112,6 +121,34 @@ impl DeploymentResponseDispatcher {
       tracing::warn!(?error, "remote deployment response bridge receiver is closed");
     }
   }
+
+  fn fail_remote_requests_for_terminated_authority(
+    &self,
+    remote: &RemoteShared,
+    authority: &str,
+    reason: &str,
+    observed_at_millis: u64,
+  ) {
+    let responses = self.state.with_lock(|state| {
+      remote
+        .fail_deployment_requests_for_terminated_authority(authority, reason, observed_at_millis)
+        .into_iter()
+        .filter_map(|response| {
+          let key = (response.correlation_hi(), response.correlation_lo());
+          match state.pending.remove(&key) {
+            | Some(sender) => Some((sender, response)),
+            | None => {
+              tracing::warn!("remote deployment response bridge has no pending receiver");
+              None
+            },
+          }
+        })
+        .collect::<Vec<_>>()
+    });
+    for (sender, response) in responses {
+      self.send_response(sender, response);
+    }
+  }
 }
 
 impl DeploymentResponseDispatcher {
@@ -127,12 +164,6 @@ pub(crate) fn subscribe_address_terminated(
 ) -> EventStreamSubscription {
   let subscriber = subscriber_handle(AddressTerminatedDeploymentSubscriber::new(remote, dispatcher));
   system.event_stream().subscribe_with_key(ClassifierKey::AddressTerminated, &subscriber)
-}
-
-fn complete_deployment_responses(responses: Vec<RemoteDeploymentResponse>, dispatcher: &DeploymentResponseDispatcher) {
-  for response in responses {
-    dispatcher.complete(response);
-  }
 }
 
 /// Command consumed by the deployment daemon.

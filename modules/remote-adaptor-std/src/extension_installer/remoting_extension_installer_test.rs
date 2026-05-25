@@ -298,8 +298,7 @@ async fn shutdown_remote_and_join_drops_deployment_address_terminated_subscripti
   let system = create_noop_actor_system();
   let dispatcher = DeploymentResponseDispatcher::default();
   let subscription = subscribe_address_terminated(&system, remote.clone(), dispatcher.clone());
-  remote.register_deployment_request(1, 2, target.clone(), 1);
-  let receiver = dispatcher.register(1, 2);
+  let receiver = dispatcher.register_remote_request(&remote, 1, 2, target.clone(), 1);
   let run_state = Arc::new(Mutex::new(RemotingRunState {
     receiver: None,
     handle: None,
@@ -335,8 +334,7 @@ fn rollback_started_remote_drops_deployment_address_terminated_subscription() {
   let system = create_noop_actor_system();
   let dispatcher = DeploymentResponseDispatcher::default();
   let subscription = subscribe_address_terminated(&system, remote.clone(), dispatcher.clone());
-  remote.register_deployment_request(3, 4, target.clone(), 1);
-  let receiver = dispatcher.register(3, 4);
+  let receiver = dispatcher.register_remote_request(&remote, 3, 4, target.clone(), 1);
   let run_state = Arc::new(Mutex::new(RemotingRunState {
     receiver: None,
     handle: None,

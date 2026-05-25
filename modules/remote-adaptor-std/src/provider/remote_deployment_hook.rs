@@ -108,8 +108,13 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
     let now_ms = std_instant_elapsed_millis(self.monotonic_epoch);
-    self.remote_shared.register_deployment_request(correlation_hi, correlation_lo, target.clone(), now_ms);
-    let receiver = self.dispatcher.register(correlation_hi, correlation_lo);
+    let receiver = self.dispatcher.register_remote_request(
+      &self.remote_shared,
+      correlation_hi,
+      correlation_lo,
+      target.clone(),
+      now_ms,
+    );
     if let Err(error) = self.event_sender.try_send(RemoteEvent::OutboundDeployment {
       remote: target,
       pdu: RemoteDeploymentPdu::CreateRequest(create_request),
@@ -179,8 +184,7 @@ fn recv_timeout(
 
 impl StdRemoteDeploymentHook {
   fn cancel_deployment_request(&self, correlation_hi: u64, correlation_lo: u32) {
-    self.dispatcher.cancel(correlation_hi, correlation_lo);
-    self.remote_shared.cancel_deployment_request(correlation_hi, correlation_lo);
+    self.dispatcher.cancel_remote_request(&self.remote_shared, correlation_hi, correlation_lo);
   }
 
   fn create_request(

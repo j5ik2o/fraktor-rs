@@ -248,8 +248,11 @@ fn unexpected_payload_returns_factory_rejected_failure() {
 
 #[test]
 fn deployment_response_dispatcher_tolerates_dropped_receiver() {
+  let system = system_with_factory();
+  let remote = remote_shared_for_system(&system);
   let dispatcher = DeploymentResponseDispatcher::default();
-  let receiver = dispatcher.register(11, 12);
+  let target = Address::new("remote-sys", "10.0.0.1", 2552);
+  let receiver = dispatcher.register_remote_request(&remote, 11, 12, target, 10);
   drop(receiver);
 
   dispatcher.complete(RemoteDeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
@@ -262,8 +265,11 @@ fn deployment_response_dispatcher_tolerates_dropped_receiver() {
 
 #[test]
 fn deployment_response_dispatcher_completes_registered_success() {
+  let system = system_with_factory();
+  let remote = remote_shared_for_system(&system);
   let dispatcher = DeploymentResponseDispatcher::default();
-  let receiver = dispatcher.register(7, 8);
+  let target = Address::new("remote-sys", "10.0.0.1", 2552);
+  let receiver = dispatcher.register_remote_request(&remote, 7, 8, target, 10);
 
   dispatcher.complete(RemoteDeploymentResponse::Success(RemoteDeploymentCreateSuccess::new(
     7,
@@ -277,10 +283,13 @@ fn deployment_response_dispatcher_completes_registered_success() {
 
 #[test]
 fn deployment_response_dispatcher_cancel_disconnects_receiver() {
+  let system = system_with_factory();
+  let remote = remote_shared_for_system(&system);
   let dispatcher = DeploymentResponseDispatcher::default();
-  let receiver = dispatcher.register(13, 14);
+  let target = Address::new("remote-sys", "10.0.0.1", 2552);
+  let receiver = dispatcher.register_remote_request(&remote, 13, 14, target, 10);
 
-  dispatcher.cancel(13, 14);
+  dispatcher.cancel_remote_request(&remote, 13, 14);
 
   assert!(receiver.recv_timeout(Duration::from_millis(10)).is_err());
 }
@@ -292,8 +301,7 @@ fn address_terminated_subscription_fails_matching_pending_deployment() {
   let dispatcher = DeploymentResponseDispatcher::default();
   let target = Address::new("remote-sys", "10.0.0.1", 2552);
   let _subscription = subscribe_address_terminated(&system, remote.clone(), dispatcher.clone());
-  remote.register_deployment_request(1, 2, target, 10);
-  let receiver = dispatcher.register(1, 2);
+  let receiver = dispatcher.register_remote_request(&remote, 1, 2, target, 10);
 
   system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
     "remote-sys@10.0.0.1:2552",
@@ -323,8 +331,7 @@ fn address_terminated_subscription_preserves_pending_create_request_outcomes() {
   let dispatcher = DeploymentResponseDispatcher::default();
   let target = Address::new("remote-sys", "10.0.0.1", 2552);
   let _subscription = subscribe_address_terminated(&system, remote.clone(), dispatcher.clone());
-  remote.register_deployment_request(1, 2, target.clone(), 10);
-  let receiver = dispatcher.register(1, 2);
+  let receiver = dispatcher.register_remote_request(&remote, 1, 2, target.clone(), 10);
   let request = RemoteDeploymentCreateRequest::new(
     9,
     10,
@@ -373,8 +380,7 @@ fn replayed_old_address_termination_is_ignored_for_new_pending_deployment() {
   let dispatcher = DeploymentResponseDispatcher::default();
   let target = Address::new("remote-sys", "10.0.0.1", 2552);
   let _subscription = subscribe_address_terminated(&system, remote.clone(), dispatcher.clone());
-  remote.register_deployment_request(3, 4, target, 50);
-  let receiver = dispatcher.register(3, 4);
+  let receiver = dispatcher.register_remote_request(&remote, 3, 4, target, 50);
 
   system.event_stream().publish(&EventStreamEvent::AddressTerminated(AddressTerminatedEvent::new(
     "remote-sys@10.0.0.1:2552",
@@ -383,5 +389,5 @@ fn replayed_old_address_termination_is_ignored_for_new_pending_deployment() {
   )));
 
   assert!(receiver.try_recv().is_err());
-  dispatcher.cancel(3, 4);
+  dispatcher.cancel_remote_request(&remote, 3, 4);
 }
