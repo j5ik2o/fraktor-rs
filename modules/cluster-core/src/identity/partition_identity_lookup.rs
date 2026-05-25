@@ -88,14 +88,15 @@ impl PartitionIdentityLookup {
     self.coordinator.handle_command_result(result)
   }
 
-  /// Resolves placement and returns the full coordinator outcome.
+  /// Resolves placement and returns the raw coordinator outcome.
   ///
-  /// This lower-level entry point is useful for drivers that execute emitted
-  /// placement commands before a final resolution is available.
+  /// This low-level entry point exposes emitted commands for integration
+  /// contract tests that need to drive pending placement flows explicitly.
   ///
   /// # Errors
   ///
   /// Returns an error when placement cannot be resolved.
+  #[doc(hidden)]
   pub fn resolve_outcome(&mut self, key: &GrainKey, now: u64) -> Result<PlacementCoordinatorOutcome, LookupError> {
     self.coordinator.resolve(key, now)
   }

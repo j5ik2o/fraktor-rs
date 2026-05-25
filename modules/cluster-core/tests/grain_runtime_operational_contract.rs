@@ -70,7 +70,7 @@ fn begin_pending_activation(
 /// propagates request ids from each emitted command into the next result.
 fn complete_pending_activation(
   lookup: &mut PartitionIdentityLookup,
-  request_id: PlacementRequestId,
+  try_acquire_request_id: PlacementRequestId,
   key: &GrainKey,
   owner: &str,
   pid: &str,
@@ -81,49 +81,63 @@ fn complete_pending_activation(
     PlacementLease { key: key.clone(), owner: owner.to_string(), expires_at: FAR_FUTURE_LEASE_EXPIRES_AT };
 
   let outcome = lookup
-    .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
-    .unwrap_or_else(|err| panic!("LockAcquired for {request_id:?} should produce LoadActivation: {err:?}"));
+    .handle_command_result(PlacementCommandResult::LockAcquired {
+      request_id: try_acquire_request_id,
+      result:     Ok(lease),
+    })
+    .unwrap_or_else(|err| panic!("LockAcquired for {try_acquire_request_id:?} should produce LoadActivation: {err:?}"));
   let command = only_command(&outcome.commands, "load command");
   assert!(
     matches!(command, PlacementCommand::LoadActivation { .. }),
     "expected LoadActivation after LockAcquired, got {command:?}"
   );
-  let request_id = command_request_id(command);
+  let load_request_id = command_request_id(command);
 
   let outcome = lookup
-    .handle_command_result(PlacementCommandResult::ActivationLoaded { request_id, result: Ok(None) })
-    .unwrap_or_else(|err| panic!("ActivationLoaded for {request_id:?} should produce EnsureActivation: {err:?}"));
+    .handle_command_result(PlacementCommandResult::ActivationLoaded {
+      request_id: load_request_id,
+      result:     Ok(None),
+    })
+    .unwrap_or_else(|err| panic!("ActivationLoaded for {load_request_id:?} should produce EnsureActivation: {err:?}"));
   let command = only_command(&outcome.commands, "ensure command");
   assert!(
     matches!(command, PlacementCommand::EnsureActivation { .. }),
     "expected EnsureActivation after ActivationLoaded, got {command:?}",
   );
-  let request_id = command_request_id(command);
+  let ensure_request_id = command_request_id(command);
 
   let record = ActivationRecord::new(pid.to_string(), None, 0);
   let outcome = lookup
-    .handle_command_result(PlacementCommandResult::ActivationEnsured { request_id, result: Ok(record.clone()) })
-    .unwrap_or_else(|err| panic!("ActivationEnsured for {request_id:?} should produce StoreActivation: {err:?}"));
+    .handle_command_result(PlacementCommandResult::ActivationEnsured {
+      request_id: ensure_request_id,
+      result:     Ok(record.clone()),
+    })
+    .unwrap_or_else(|err| {
+      panic!("ActivationEnsured for {ensure_request_id:?} should produce StoreActivation: {err:?}")
+    });
   let command = only_command(&outcome.commands, "store command");
   assert!(
     matches!(command, PlacementCommand::StoreActivation { .. }),
     "expected StoreActivation after ActivationEnsured, got {command:?}",
   );
-  let request_id = command_request_id(command);
+  let store_request_id = command_request_id(command);
 
   let outcome = lookup
-    .handle_command_result(PlacementCommandResult::ActivationStored { request_id, result: Ok(()) })
-    .unwrap_or_else(|err| panic!("ActivationStored for {request_id:?} should produce Release: {err:?}"));
+    .handle_command_result(PlacementCommandResult::ActivationStored {
+      request_id: store_request_id,
+      result:     Ok(()),
+    })
+    .unwrap_or_else(|err| panic!("ActivationStored for {store_request_id:?} should produce Release: {err:?}"));
   let command = only_command(&outcome.commands, "release command");
   assert!(
     matches!(command, PlacementCommand::Release { .. }),
     "expected Release after ActivationStored, got {command:?}"
   );
-  let request_id = command_request_id(command);
+  let release_request_id = command_request_id(command);
 
   let outcome = lookup
-    .handle_command_result(PlacementCommandResult::LockReleased { request_id, result: Ok(()) })
-    .unwrap_or_else(|err| panic!("LockReleased for {request_id:?} should complete activation: {err:?}"));
+    .handle_command_result(PlacementCommandResult::LockReleased { request_id: release_request_id, result: Ok(()) })
+    .unwrap_or_else(|err| panic!("LockReleased for {release_request_id:?} should complete activation: {err:?}"));
   outcome.resolution.expect("completed resolution")
 }
 
