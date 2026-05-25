@@ -50,7 +50,7 @@ use crate::{
   extension_installer::flush_gate::{StdFlushGate, schedule_flush_timers},
   tokio_remote_event_receiver::TokioMpscRemoteEventReceiver,
   transport::tcp::TcpRemoteTransport,
-  watcher::{apply_effects as apply_watcher_effects, run_watcher_task},
+  watcher::{run_watcher_task, try_apply_effects as try_apply_watcher_effects},
 };
 
 const ALREADY_INSTALLED: &str = "remote extension is already installed";
@@ -692,7 +692,7 @@ async fn run_remote_with_delivery(
       | Some(event) => event,
       | None => return Err(RemotingError::EventReceiverClosed),
     };
-    let should_stop = remote.handle_event(event)?;
+    let (should_stop, watcher_effects) = remote.handle_event_and_drain_watcher_effects(event)?;
     apply_deployment_outcomes(
       remote,
       remote.drain_deployment_outcomes(),
@@ -700,8 +700,7 @@ async fn run_remote_with_delivery(
       &deployment_response_dispatcher,
     )?;
     let now_ms = std_instant_elapsed_millis(monotonic_epoch);
-    apply_watcher_effects(remote.drain_watcher_effects(), event_sender, system, local_address, monotonic_epoch, now_ms)
-      .await;
+    try_apply_watcher_effects(watcher_effects, event_sender, system, local_address, monotonic_epoch, now_ms);
     flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);
     deliver_inbound_envelopes(remote, system);
     if should_stop {

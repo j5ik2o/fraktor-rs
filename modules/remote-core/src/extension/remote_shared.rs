@@ -85,6 +85,30 @@ impl RemoteShared {
     })
   }
 
+  /// Handles one remote event and consumes watcher effects produced by it.
+  ///
+  /// This keeps event handling and watcher effect draining in one write-lock
+  /// operation so the std watcher task cannot consume effects produced for the
+  /// remoting event loop.
+  ///
+  /// # Errors
+  ///
+  /// Returns the same error as [`Remote::handle_remote_event`] when core event
+  /// processing fails.
+  pub fn handle_event_and_drain_watcher_effects(
+    &self,
+    event: RemoteEvent,
+  ) -> Result<(bool, Vec<WatcherEffect>), RemotingError> {
+    self.with_write(|remote| {
+      if remote.should_stop_event_loop() {
+        return Ok((true, Vec::new()));
+      }
+      remote.handle_remote_event(event)?;
+      let watcher_effects = remote.drain_watcher_effects();
+      Ok((remote.should_stop_event_loop(), watcher_effects))
+    })
+  }
+
   /// Drains buffered inbound envelopes observed by the shared core event loop.
   ///
   /// This is a mutating consume operation, not a pure query. The `&self`
