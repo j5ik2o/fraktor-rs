@@ -129,22 +129,28 @@ pub(crate) fn try_apply_effects(
   for effect in effects {
     match effect {
       | WatcherEffect::SendWatch { target, watcher } => {
-        try_send_system_envelope(
+        let outcome = try_send_system_envelope(
           event_sender,
-          target,
-          Some(watcher),
+          target.clone(),
+          Some(watcher.clone()),
           SystemMessage::Watch(Pid::new(0, 0)),
           monotonic_epoch,
         );
+        if matches!(outcome, TryEnqueueOutcome::Retry) {
+          retry_effects.push(WatcherEffect::SendWatch { target, watcher });
+        }
       },
       | WatcherEffect::SendUnwatch { target, watcher } => {
-        try_send_system_envelope(
+        let outcome = try_send_system_envelope(
           event_sender,
-          target,
-          Some(watcher),
+          target.clone(),
+          Some(watcher.clone()),
           SystemMessage::Unwatch(Pid::new(0, 0)),
           monotonic_epoch,
         );
+        if matches!(outcome, TryEnqueueOutcome::Retry) {
+          retry_effects.push(WatcherEffect::SendUnwatch { target, watcher });
+        }
       },
       | WatcherEffect::SendHeartbeat { to } => {
         try_send_heartbeat(event_sender, local_address, to.clone(), now_ms);

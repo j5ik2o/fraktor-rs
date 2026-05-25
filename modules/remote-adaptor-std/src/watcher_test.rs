@@ -346,12 +346,16 @@ fn try_apply_effects_emits_remote_events_without_awaiting() {
 fn try_apply_effects_logs_and_returns_when_event_queue_is_full_or_recipient_is_local() {
   let (event_tx, mut event_rx) = mpsc::channel(1);
   let system = local_actor_system();
+  let remote_watch_target = remote_path("full-watch");
+  let remote_unwatch_target = remote_path("full-unwatch");
+  let local_watcher = local_path("watcher");
   event_tx.try_send(RemoteEvent::TransportShutdown).expect("queue should be full after seed event");
 
   let retry_effects = try_apply_effects(
     alloc::vec![
       WatcherEffect::SendHeartbeat { to: remote_address() },
-      WatcherEffect::SendWatch { target: remote_path("full"), watcher: local_path("watcher") },
+      WatcherEffect::SendWatch { target: remote_watch_target.clone(), watcher: local_watcher.clone() },
+      WatcherEffect::SendUnwatch { target: remote_unwatch_target.clone(), watcher: local_watcher.clone() },
       WatcherEffect::SendUnwatch { target: local_path("not-remote"), watcher: local_path("watcher") },
     ],
     &event_tx,
@@ -363,7 +367,16 @@ fn try_apply_effects_logs_and_returns_when_event_queue_is_full_or_recipient_is_l
 
   assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
   assert!(event_rx.try_recv().is_err());
-  assert!(retry_effects.is_empty());
+  assert!(matches!(
+    retry_effects.as_slice(),
+    [
+      WatcherEffect::SendWatch { target: watch_target, watcher: watch_watcher },
+      WatcherEffect::SendUnwatch { target: unwatch_target, watcher: unwatch_watcher }
+    ] if watch_target == &remote_watch_target
+      && watch_watcher == &local_watcher
+      && unwatch_target == &remote_unwatch_target
+      && unwatch_watcher == &local_watcher
+  ));
 }
 
 #[test]
