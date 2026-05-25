@@ -29,6 +29,8 @@ fn has_cache_drop_event(events: &[PidCacheEvent], key: &GrainKey) -> bool {
   events.iter().any(|event| matches!(event, PidCacheEvent::Dropped { key: event_key, .. } if event_key == key))
 }
 
+const FAR_FUTURE_LEASE_EXPIRES_AT: u64 = 1300;
+
 const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
   match command {
     | PlacementCommand::TryAcquire { request_id, .. }
@@ -39,13 +41,21 @@ const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
   }
 }
 
+/// Completes the first pending activation created by `PartitionIdentityLookup::resolve`.
+///
+/// `PartitionIdentityLookup` currently reports only `LookupError::Pending`, so
+/// the initial `request_id` is the coordinator's first issued request id.
 fn complete_pending_activation(
   lookup: &mut PartitionIdentityLookup,
   request_id: PlacementRequestId,
   key: &GrainKey,
   pid: &str,
 ) -> PlacementResolution {
-  let lease = PlacementLease { key: key.clone(), owner: "node-a:4050".to_string(), expires_at: 1300 };
+  let lease = PlacementLease {
+    key:        key.clone(),
+    owner:      "node-a:4050".to_string(),
+    expires_at: FAR_FUTURE_LEASE_EXPIRES_AT,
+  };
 
   let outcome = lookup
     .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
@@ -177,6 +187,8 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
   let key = grain_key("user/member-left");
   let pending = lookup.resolve(&key, 1000);
   assert!(matches!(pending, Err(LookupError::Pending)));
+  // The PID string is intentionally unrelated to the authority. Member-left
+  // invalidation must be driven by the lease owner, not by parsing the PID.
   let first = complete_pending_activation(&mut lookup, PlacementRequestId(1), &key, "custom-member-left-pid");
   let _ = lookup.drain_events();
   let _ = lookup.drain_cache_events();
