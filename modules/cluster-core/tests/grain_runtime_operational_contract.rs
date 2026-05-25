@@ -70,6 +70,8 @@ fn complete_pending_activation(
   key: &GrainKey,
   pid: &str,
 ) -> PlacementResolution {
+  // Keep the protocol steps expanded so the contract names each emitted command
+  // transition instead of hiding the placement flow behind a loop table.
   let lease = PlacementLease {
     key:        key.clone(),
     owner:      "node-a:4050".to_string(),
@@ -241,20 +243,25 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
 
 #[test]
 fn passivation_removes_idle_activation_but_keeps_recent_activation() {
+  const IDLE_ACTIVATED_AT: u64 = 1000;
+  const RECENT_ACTIVATED_AT: u64 = 1150;
+  const PASSIVATION_NOW: u64 = 1200;
+  const IDLE_TTL: u64 = 100;
+
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
   lookup.set_local_authority("node-a:4050");
   lookup.set_distributed_activation(true);
   let recent_key = grain_key("user/recent");
   let idle_key = grain_key("user/idle");
-  let idle_request_id = begin_pending_activation(&mut lookup, &idle_key, 1000);
+  let idle_request_id = begin_pending_activation(&mut lookup, &idle_key, IDLE_ACTIVATED_AT);
   let _idle = complete_pending_activation(&mut lookup, idle_request_id, &idle_key, "custom-idle-pid");
   clear_observed_events(&mut lookup);
-  let recent_request_id = begin_pending_activation(&mut lookup, &recent_key, 1150);
+  let recent_request_id = begin_pending_activation(&mut lookup, &recent_key, RECENT_ACTIVATED_AT);
   let recent = complete_pending_activation(&mut lookup, recent_request_id, &recent_key, "custom-recent-pid");
   clear_observed_events(&mut lookup);
 
-  lookup.passivate_idle(1200, 100);
+  lookup.passivate_idle(PASSIVATION_NOW, IDLE_TTL);
   let placement_events = lookup.drain_events();
   let cache_events = lookup.drain_cache_events();
   assert!(has_passivated_event(&placement_events, &idle_key));
@@ -262,10 +269,10 @@ fn passivation_removes_idle_activation_but_keeps_recent_activation() {
   assert!(has_cache_drop_event(&cache_events, &idle_key));
   assert!(!has_cache_drop_event(&cache_events, &recent_key));
 
-  let recent_again = lookup.resolve(&recent_key, 1201).expect("recent cached");
+  let recent_again = lookup.resolve(&recent_key, PASSIVATION_NOW + 1).expect("recent cached");
   assert_eq!(recent_again.pid, recent.pid);
 
-  let idle_after_passivation = lookup.resolve(&idle_key, 1201);
+  let idle_after_passivation = lookup.resolve(&idle_key, PASSIVATION_NOW + 1);
   assert!(matches!(idle_after_passivation, Err(LookupError::Pending)));
 }
 
@@ -278,13 +285,22 @@ fn rolling_update_prevents_stale_authority_reuse_without_rebalance_guarantees() 
   clear_observed_events(&mut lookup);
 
   lookup.update_topology(vec!["old-node:4050".to_string(), "new-node:4051".to_string()]);
-  lookup.on_member_left("old-node:4050");
-  lookup.update_topology(vec!["new-node:4051".to_string()]);
+  let mixed_placement_events = lookup.drain_events();
+  let mixed_cache_events = lookup.drain_cache_events();
+  assert!(!has_passivated_event(&mixed_placement_events, &key));
+  assert!(!has_cache_drop_event(&mixed_cache_events, &key));
 
-  let placement_events = lookup.drain_events();
-  let cache_events = lookup.drain_cache_events();
-  assert!(has_passivated_event(&placement_events, &key));
-  assert!(has_cache_drop_event(&cache_events, &key));
+  lookup.on_member_left("old-node:4050");
+  let left_placement_events = lookup.drain_events();
+  let left_cache_events = lookup.drain_cache_events();
+  assert!(has_passivated_event(&left_placement_events, &key));
+  assert!(has_cache_drop_event(&left_cache_events, &key));
+
+  lookup.update_topology(vec!["new-node:4051".to_string()]);
+  let final_placement_events = lookup.drain_events();
+  let final_cache_events = lookup.drain_cache_events();
+  assert!(!has_passivated_event(&final_placement_events, &key));
+  assert!(!has_cache_drop_event(&final_cache_events, &key));
 
   let updated = lookup.resolve(&key, 1001).expect("updated resolution");
   assert_eq!(updated.decision.authority, "new-node:4051");
