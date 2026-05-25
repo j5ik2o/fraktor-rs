@@ -9,8 +9,6 @@ extern crate std;
 
 /// Public std-backed I/O adapter surface.
 pub mod io;
-/// Public std-backed materializer adapter surface.
-pub mod materializer;
 
 use std::io::Error;
 
