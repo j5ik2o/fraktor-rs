@@ -32,10 +32,7 @@ use fraktor_remote_core_rs::{
   association::QuarantineReason,
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundPriority},
-  extension::{Remote, RemoteEvent, RemoteShared, RemotingError},
-  transport::{TransportEndpoint, TransportError},
-  watcher::WatcherCommand,
-  wire::{ControlPdu, WireFrame},
+  extension::{Remote, RemoteShared, RemotingError},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use tokio::{
@@ -46,7 +43,7 @@ use tokio::{
 
 use crate::{
   extension_installer::remoting_extension_installer::{
-    RemotingExtensionInstaller, RemotingRunState, deliver_inbound_envelope, forward_watcher_command_for_event,
+    RemotingExtensionInstaller, RemotingRunState, WatcherTaskContext, deliver_inbound_envelope,
     rollback_started_remote, spawn_watcher_task_with_state,
   },
   provider::StdRemoteActorRefProviderInstaller,
@@ -429,51 +426,23 @@ async fn extension_installer_reuses_preinstalled_custom_serialization_extension(
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn forward_watcher_command_logs_when_queue_is_full() {
-  let (watcher_tx, mut watcher_rx) = tokio_mpsc::channel(1);
-  watcher_tx
-    .try_send(WatcherCommand::HeartbeatReceived { from: Address::new("queued", "127.0.0.1", 2551), now: 1 })
-    .expect("watcher queue should accept first command");
-  let event = RemoteEvent::InboundFrameReceived {
-    authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
-    frame:     WireFrame::Control(ControlPdu::Heartbeat { authority: String::from("remote-sys@10.0.0.1:2552") }),
-    now_ms:    2,
-  };
-
-  forward_watcher_command_for_event(&event, &watcher_tx);
-
-  assert!(matches!(watcher_rx.try_recv(), Ok(WatcherCommand::HeartbeatReceived { now: 1, .. })));
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
-async fn forward_watcher_command_does_not_forward_connection_lost() {
-  let (watcher_tx, mut watcher_rx) = tokio_mpsc::channel(1);
-  let event = RemoteEvent::ConnectionLost {
-    authority: TransportEndpoint::new("remote-sys@10.0.0.1:2552"),
-    cause:     TransportError::ConnectionClosed,
-    now_ms:    77,
-  };
-
-  forward_watcher_command_for_event(&event, &watcher_tx);
-
-  assert!(watcher_rx.try_recv().is_err(), "connection lost should not enqueue watcher command");
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = false)]
 async fn spawn_watcher_task_rejects_duplicate_handle() {
   let mut run_state = RemotingRunState::new();
   let (_command_tx, command_rx) = tokio_mpsc::channel(1);
   let (event_tx, _event_rx) = tokio_mpsc::channel(1);
-  let system = ActorSystem::create_with_noop_guardian(std_actor_system_config(TestTickDriver::default()))
-    .expect("actor system should build");
+  let (remote, harness) = make_remote(make_transport());
+  let remote = RemoteShared::new(remote);
   spawn_watcher_task_with_state(
     &mut run_state,
     command_rx,
-    event_tx.clone(),
-    system.clone(),
-    Address::new("local-sys", "127.0.0.1", 2551),
-    Instant::now(),
-    Duration::from_millis(50),
+    WatcherTaskContext::new(
+      remote.clone(),
+      event_tx.clone(),
+      harness.system().clone(),
+      Address::new("local-sys", "127.0.0.1", 2551),
+      Instant::now(),
+      Duration::from_millis(50),
+    ),
   )
   .expect("first watcher task should spawn");
   let (_second_command_tx, second_command_rx) = tokio_mpsc::channel(1);
@@ -481,11 +450,14 @@ async fn spawn_watcher_task_rejects_duplicate_handle() {
   let error = spawn_watcher_task_with_state(
     &mut run_state,
     second_command_rx,
-    event_tx,
-    system,
-    Address::new("local-sys", "127.0.0.1", 2551),
-    Instant::now(),
-    Duration::from_millis(50),
+    WatcherTaskContext::new(
+      remote,
+      event_tx,
+      harness.system().clone(),
+      Address::new("local-sys", "127.0.0.1", 2551),
+      Instant::now(),
+      Duration::from_millis(50),
+    ),
   )
   .expect_err("second watcher task should be rejected");
 
@@ -501,27 +473,35 @@ async fn rollback_started_remote_aborts_watcher_task() {
   spawn_watcher_task_with_state(
     &mut run_state,
     command_rx,
-    event_tx.clone(),
-    harness.system().clone(),
-    Address::new("local-sys", "127.0.0.1", 2551),
-    Instant::now(),
-    Duration::from_millis(50),
+    WatcherTaskContext::new(
+      RemoteShared::new(remote),
+      event_tx.clone(),
+      harness.system().clone(),
+      Address::new("local-sys", "127.0.0.1", 2551),
+      Instant::now(),
+      Duration::from_millis(50),
+    ),
   )
   .expect("watcher task should spawn before rollback");
   let run_state = Arc::new(Mutex::new(run_state));
-  let remote = RemoteShared::new(remote);
+  let (rollback_remote, _rollback_harness) = make_remote(make_transport());
+  let rollback_remote = RemoteShared::new(rollback_remote);
 
-  rollback_started_remote(&remote, &event_tx, &run_state);
+  rollback_started_remote(&rollback_remote, &event_tx, &run_state);
 
   let (_second_command_tx, second_command_rx) = tokio_mpsc::channel(1);
+  let (second_remote, _second_harness) = make_remote(make_transport());
   spawn_watcher_task_with_state(
     &mut run_state.lock().expect("run state should lock after rollback"),
     second_command_rx,
-    event_tx,
-    harness.system().clone(),
-    Address::new("local-sys", "127.0.0.1", 2551),
-    Instant::now(),
-    Duration::from_millis(50),
+    WatcherTaskContext::new(
+      RemoteShared::new(second_remote),
+      event_tx,
+      harness.system().clone(),
+      Address::new("local-sys", "127.0.0.1", 2551),
+      Instant::now(),
+      Duration::from_millis(50),
+    ),
   )
   .expect("rollback should clear the watcher handle");
 }

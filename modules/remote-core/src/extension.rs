@@ -30,6 +30,8 @@ mod remote;
 mod remote_actor_ref_resolve_cache_event;
 mod remote_actor_ref_resolve_cache_outcome;
 mod remote_authority_snapshot;
+mod remote_deployment_outcome;
+mod remote_deployment_response;
 mod remote_event;
 mod remote_event_receiver;
 mod remote_flush_outcome;
@@ -48,6 +50,8 @@ pub use remote_actor_ref_resolve_cache_event::{
 };
 pub use remote_actor_ref_resolve_cache_outcome::RemoteActorRefResolveCacheOutcome;
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
+pub use remote_deployment_outcome::RemoteDeploymentOutcome;
+pub use remote_deployment_response::RemoteDeploymentResponse;
 pub use remote_event::RemoteEvent;
 pub use remote_event_receiver::RemoteEventReceiver;
 pub use remote_flush_outcome::RemoteFlushOutcome;

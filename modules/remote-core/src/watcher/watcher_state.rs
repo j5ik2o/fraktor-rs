@@ -33,6 +33,10 @@ type DetectorRegistry = DefaultFailureDetectorRegistry<Address, PhiAccrualFailur
 
 const ADDRESS_TERMINATED_REASON: &str = "Deemed unreachable by remote failure detector";
 
+fn default_detector_factory(address: &Address) -> PhiAccrualFailureDetector {
+  PhiAccrualFailureDetector::new(address.clone(), 5.0, 100, 10, 0, 100)
+}
+
 /// Pure state portion of the remote watcher.
 ///
 /// `WatcherState` tracks which local actors are watching which remote actors
@@ -243,6 +247,12 @@ impl WatcherState {
     effects.push(WatcherEffect::AddressTerminated { node: node.clone(), reason, observed_at_millis: now });
     effects.push(WatcherEffect::NotifyQuarantined { node: node.clone() });
     effects
+  }
+}
+
+impl Default for WatcherState {
+  fn default() -> Self {
+    Self::new(default_detector_factory)
   }
 }
 

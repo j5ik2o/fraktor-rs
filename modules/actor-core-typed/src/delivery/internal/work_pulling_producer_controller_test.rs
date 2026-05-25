@@ -193,6 +193,37 @@ fn direct_worker_delivery_tracks_worker_ack_timeout() {
 }
 
 #[test]
+fn replayed_messages_fail_fast_when_buffer_quota_is_full() {
+  let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 1);
+  let mut deferred = Vec::new();
+  let mut stop_self = None;
+
+  collect_on_replayed_message(
+    &mut state,
+    MessageSent::new(11_u64, 41_u32, false, "test-producer-worker-10".to_string(), 0),
+    &mut deferred,
+    &mut stop_self,
+  );
+  collect_on_replayed_message(
+    &mut state,
+    MessageSent::new(12_u64, 42_u32, false, "test-producer-worker-10".to_string(), 0),
+    &mut deferred,
+    &mut stop_self,
+  );
+
+  assert_eq!(state.buffered.len(), 1);
+  assert!(matches!(
+    state.buffered.front(),
+    Some(BufferedWork::Replay(sent)) if sent.seq_nr() == 11 && sent.message() == &41_u32
+  ));
+  assert!(matches!(
+    stop_self.as_deref(),
+    Some(message) if message.contains("replay backlog exceeded buffer_size 1")
+  ));
+  assert!(deferred.is_empty());
+}
+
+#[test]
 fn internal_demand_confirm_updates_durable_queue() {
   let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
   state.durable_queue = Some(make_typed_ref::<DurableProducerQueueCommand<u32>>());
