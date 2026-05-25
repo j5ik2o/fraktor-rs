@@ -229,8 +229,7 @@ fn topology_replacement_invalidates_absent_authority_cache_and_reresolves() {
   assert_ne!(updated.pid, original.pid);
 }
 
-#[test]
-fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop() {
+fn member_left_lookup_with_active_entry() -> (PartitionIdentityLookup, GrainKey, PlacementResolution) {
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
   lookup.set_local_authority("node-a:4050");
@@ -241,12 +240,23 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
   // PID の parse ではなく、lease owner によって駆動される必要がある。
   let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-member-left-pid");
   clear_observed_events(&mut lookup);
+  (lookup, key, first)
+}
+
+#[test]
+fn member_departure_with_unknown_authority_is_noop_for_active_entries() {
+  let (mut lookup, key, first) = member_left_lookup_with_active_entry();
 
   lookup.on_member_left("node-z:4099");
   assert!(lookup.drain_events().is_empty());
   assert!(lookup.drain_cache_events().is_empty());
   let still_cached = lookup.resolve(&key, 1001).expect("cached after unknown departure");
   assert_eq!(still_cached.pid, first.pid);
+}
+
+#[test]
+fn member_departure_with_matching_authority_invalidates_active_entries_and_blocks_stale_pid_reuse() {
+  let (mut lookup, key, _first) = member_left_lookup_with_active_entry();
 
   lookup.on_member_left("node-a:4050");
   let placement_events = lookup.drain_events();
