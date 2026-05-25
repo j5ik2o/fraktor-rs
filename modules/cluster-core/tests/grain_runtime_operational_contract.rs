@@ -26,11 +26,6 @@ fn has_cache_drop_event(events: &[PidCacheEvent], key: &GrainKey) -> bool {
 }
 
 const FAR_FUTURE_LEASE_EXPIRES_AT: u64 = 1300;
-// `PartitionIdentityLookup::resolve` hides the emitted pending command and only
-// returns `LookupError::Pending`, so these constants intentionally mirror the
-// coordinator's current first/second request ids for isolated test lookups.
-const FIRST_PENDING_REQUEST_ID: PlacementRequestId = PlacementRequestId(1);
-const SECOND_PENDING_REQUEST_ID: PlacementRequestId = PlacementRequestId(2);
 
 fn clear_observed_events(lookup: &mut PartitionIdentityLookup) {
   drop(lookup.drain_events());
@@ -50,6 +45,18 @@ const fn command_request_id(command: &PlacementCommand) -> PlacementRequestId {
 fn only_command<'a>(commands: &'a [PlacementCommand], label: &str) -> &'a PlacementCommand {
   assert_eq!(commands.len(), 1, "{label} should emit exactly one command, got {commands:?}");
   &commands[0]
+}
+
+fn begin_pending_activation(lookup: &mut PartitionIdentityLookup, key: &GrainKey, now: u64) -> PlacementRequestId {
+  let outcome = lookup.resolve_outcome(key, now).expect("pending activation should resolve to command outcome");
+  assert!(outcome.resolution.is_none(), "distributed activation should be pending until commands complete");
+  let command = only_command(&outcome.commands, "try-acquire command");
+  let PlacementCommand::TryAcquire { request_id, key: command_key, now: command_now, .. } = command else {
+    panic!("expected TryAcquire for pending activation, got {command:?}");
+  };
+  assert_eq!(command_key, key);
+  assert_eq!(*command_now, now);
+  *request_id
 }
 
 /// Completes a pending activation after the caller has driven `resolve`.
@@ -153,9 +160,8 @@ fn active_pid_is_reused_until_cache_or_passivation_invalidates_it() {
   lookup.set_distributed_activation(true);
   let key = grain_key("user/cache-hit");
 
-  let pending = lookup.resolve(&key, 1000);
-  assert!(matches!(pending, Err(LookupError::Pending)));
-  let first = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &key, "custom-cache-hit-pid");
+  let request_id = begin_pending_activation(&mut lookup, &key, 1000);
+  let first = complete_pending_activation(&mut lookup, request_id, &key, "custom-cache-hit-pid");
   clear_observed_events(&mut lookup);
   let second = lookup.resolve(&key, 1001).expect("second resolution");
 
@@ -172,11 +178,9 @@ fn distributed_activation_reports_pending_then_completes_after_command_results()
   lookup.set_distributed_activation(true);
   let key = grain_key("user/pending");
 
-  let pending = lookup.resolve(&key, 1000);
-  assert!(matches!(pending, Err(LookupError::Pending)));
-
+  let request_id = begin_pending_activation(&mut lookup, &key, 1000);
   let pid = "custom-pending-pid";
-  let resolution = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &key, pid);
+  let resolution = complete_pending_activation(&mut lookup, request_id, &key, pid);
   assert_eq!(resolution.pid, pid);
   assert_eq!(resolution.locality, PlacementLocality::Local);
 
@@ -212,11 +216,10 @@ fn member_departure_invalidates_matching_authority_but_unknown_departure_is_noop
   lookup.set_local_authority("node-a:4050");
   lookup.set_distributed_activation(true);
   let key = grain_key("user/member-left");
-  let pending = lookup.resolve(&key, 1000);
-  assert!(matches!(pending, Err(LookupError::Pending)));
+  let request_id = begin_pending_activation(&mut lookup, &key, 1000);
   // The PID string is intentionally unrelated to the authority. Member-left
   // invalidation must be driven by the lease owner, not by parsing the PID.
-  let first = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &key, "custom-member-left-pid");
+  let first = complete_pending_activation(&mut lookup, request_id, &key, "custom-member-left-pid");
   clear_observed_events(&mut lookup);
 
   lookup.on_member_left("node-z:4099");
@@ -244,13 +247,11 @@ fn passivation_removes_idle_activation_but_keeps_recent_activation() {
   lookup.set_distributed_activation(true);
   let recent_key = grain_key("user/recent");
   let idle_key = grain_key("user/idle");
-  let idle_pending = lookup.resolve(&idle_key, 1000);
-  assert!(matches!(idle_pending, Err(LookupError::Pending)));
-  let _idle = complete_pending_activation(&mut lookup, FIRST_PENDING_REQUEST_ID, &idle_key, "custom-idle-pid");
+  let idle_request_id = begin_pending_activation(&mut lookup, &idle_key, 1000);
+  let _idle = complete_pending_activation(&mut lookup, idle_request_id, &idle_key, "custom-idle-pid");
   clear_observed_events(&mut lookup);
-  let recent_pending = lookup.resolve(&recent_key, 1150);
-  assert!(matches!(recent_pending, Err(LookupError::Pending)));
-  let recent = complete_pending_activation(&mut lookup, SECOND_PENDING_REQUEST_ID, &recent_key, "custom-recent-pid");
+  let recent_request_id = begin_pending_activation(&mut lookup, &recent_key, 1150);
+  let recent = complete_pending_activation(&mut lookup, recent_request_id, &recent_key, "custom-recent-pid");
   clear_observed_events(&mut lookup);
 
   lookup.passivate_idle(1200, 100);

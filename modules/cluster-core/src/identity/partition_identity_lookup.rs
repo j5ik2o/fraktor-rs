@@ -88,6 +88,18 @@ impl PartitionIdentityLookup {
     self.coordinator.handle_command_result(result)
   }
 
+  /// Resolves placement and returns the full coordinator outcome.
+  ///
+  /// This lower-level entry point is useful for drivers that execute emitted
+  /// placement commands before a final resolution is available.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when placement cannot be resolved.
+  pub fn resolve_outcome(&mut self, key: &GrainKey, now: u64) -> Result<PlacementCoordinatorOutcome, LookupError> {
+    self.coordinator.resolve(key, now)
+  }
+
   /// Returns the registered member kinds.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]
@@ -117,7 +129,7 @@ impl IdentityLookup for PartitionIdentityLookup {
   }
 
   fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
-    let outcome = self.coordinator.resolve(key, now)?;
+    let outcome = self.resolve_outcome(key, now)?;
     if let Some(resolution) = outcome.resolution {
       return Ok(resolution);
     }
