@@ -101,8 +101,10 @@ Cons:
 ### 3. Provider boundary hardening
 
 - local / static / AWS ECS provider がどこまで membership を供給し、どこから cluster core が扱うかを文書化する。
-- seed / discovery / lifecycle bridge の責務境界を明確にする。
-- std adaptor で保持すべき subscription / driver lifetime を確認する。
+- seed / discovery / lifecycle adapter の責務境界を明確にする。
+- std adapter 実装で保持すべき subscription / driver lifetime を確認する。
+
+作業メモ: [2026-05-26_cluster-provider-boundary.md](2026-05-26_cluster-provider-boundary.md) で、DIP と port-and-adapter の向きを `cluster-core` が policy / port を所有し std が adapter 実装に留まる形として整理する。
 
 ### 4. Failure detector and downing minimum
 

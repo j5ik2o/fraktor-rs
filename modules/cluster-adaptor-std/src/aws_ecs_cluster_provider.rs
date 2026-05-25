@@ -23,8 +23,13 @@
 //! # Example
 //!
 //! ```ignore
-//! use fraktor_cluster_core_rs::std::EcsClusterConfig;
-//! use fraktor_cluster_core_rs::ClusterExtensionInstaller;
+//! use std::time::Duration;
+//!
+//! use fraktor_cluster_core_rs::{ClusterExtensionConfig, ClusterExtensionInstaller};
+//! use fraktor_cluster_adaptor_std_rs::{AwsEcsClusterExtensionInstallerExt, EcsClusterConfig};
+//!
+//! let config = ClusterExtensionConfig::default()
+//!     .with_advertised_address("10.0.0.1:8080");
 //!
 //! let ecs_config = EcsClusterConfig::new()
 //!     .with_cluster_name("my-cluster")
@@ -44,14 +49,15 @@ use std::{
   time::Duration,
 };
 
-use aws_sdk_ecs::Client as EcsClient;
+use aws_config::{BehaviorVersion, defaults};
+use aws_sdk_ecs::{Client as EcsClient, config::Region};
 use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
 };
 use fraktor_cluster_core_rs::{
-  BlockListProvider, ClusterEvent, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterProviderError,
-  ClusterTopology, StartupMode, TopologyUpdate, cluster_provider::ClusterProvider,
+  BlockListProvider, ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate,
+  cluster_provider::ClusterProvider,
 };
 use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 use tokio::task::JoinHandle;
@@ -148,43 +154,6 @@ impl EcsClusterConfig {
   #[must_use]
   pub fn region(&self) -> Option<&str> {
     self.region.as_deref()
-  }
-}
-
-#[cfg(feature = "aws-ecs")]
-impl ClusterExtensionInstaller {
-  /// Creates a new installer with `AwsEcsClusterProvider`.
-  ///
-  /// This is a convenience constructor for AWS ECS environments where task discovery
-  /// is performed via the ECS API (ListTasks + DescribeTasks).
-  ///
-  /// Requires the `aws-ecs` feature to be enabled.
-  ///
-  /// # Example
-  ///
-  /// ```text
-  /// use fraktor_cluster_core_rs::{ClusterExtensionConfig, ClusterExtensionInstaller};
-  /// use fraktor_cluster_core_rs::std::EcsClusterConfig;
-  /// use std::time::Duration;
-  ///
-  /// let ecs_config = EcsClusterConfig::new()
-  ///     .with_cluster_name("my-cluster")
-  ///     .with_service_name("my-service")
-  ///     .with_poll_interval(Duration::from_secs(10));
-  ///
-  /// let installer = ClusterExtensionInstaller::new_with_ecs(
-  ///     ClusterExtensionConfig::default().with_advertised_address("10.0.0.1:8080"),
-  ///     ecs_config,
-  /// );
-  /// ```
-  #[must_use]
-  pub fn new_with_ecs(config: ClusterExtensionConfig, ecs_config: EcsClusterConfig) -> ClusterExtensionInstaller {
-    ClusterExtensionInstaller::new(config, move |event_stream, block_list_provider, advertised_address| {
-      Box::new(
-        AwsEcsClusterProvider::new(event_stream, block_list_provider, advertised_address)
-          .with_ecs_config(ecs_config.clone()),
-      )
-    })
   }
 }
 
@@ -293,11 +262,11 @@ impl AwsEcsClusterProvider {
 
     let handle = tokio::spawn(async move {
       // AWS SDK クライアントを初期化
-      let aws_config = if let Some(ref region) = config.region {
-        aws_config::from_env().region(aws_sdk_ecs::config::Region::new(region.clone())).load().await
-      } else {
-        aws_config::load_from_env().await
-      };
+      let mut aws_config_builder = defaults(BehaviorVersion::latest());
+      if let Some(ref region) = config.region {
+        aws_config_builder = aws_config_builder.region(Region::new(region.clone()));
+      }
+      let aws_config = aws_config_builder.load().await;
       let ecs_client = EcsClient::new(&aws_config);
 
       let mut current_members: Vec<String> = if add_self { vec![advertised_address.clone()] } else { Vec::new() };
@@ -393,7 +362,7 @@ async fn poll_ecs_tasks(client: &EcsClient, config: &EcsClusterConfig) -> Result
     .tasks()
     .iter()
     .filter(|task| task.last_status() == Some("RUNNING"))
-    .filter_map(|task| extract_private_ip(task))
+    .filter_map(extract_private_ip)
     .collect();
 
   Ok(private_ips)

@@ -36,12 +36,11 @@ impl RecordingClusterEvents {
 
 impl EventStreamSubscriber for RecordingClusterEvents {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    if let EventStreamEvent::Extension { name, payload } = event {
-      if name == "cluster" {
-        if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
-          self.events.lock().unwrap().push(cluster_event.clone());
-        }
-      }
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == "cluster"
+      && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
+    {
+      self.events.lock().unwrap().push(cluster_event.clone());
     }
   }
 }
@@ -135,7 +134,7 @@ async fn start_member_publishes_startup_event() {
     assert_eq!(*mode, StartupMode::Member);
   }
 
-  let _ = provider.shutdown(true);
+  assert!(provider.shutdown(true).is_ok());
 }
 
 #[tokio::test]
@@ -162,7 +161,7 @@ async fn start_client_publishes_startup_event() {
     assert_eq!(*mode, StartupMode::Client);
   }
 
-  let _ = provider.shutdown(true);
+  assert!(provider.shutdown(true).is_ok());
 }
 
 #[tokio::test]
@@ -174,7 +173,7 @@ async fn shutdown_publishes_shutdown_event() {
 
   let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
-  let _ = provider.start_member();
+  assert!(provider.start_member().is_ok());
   let result = provider.shutdown(true);
 
   assert!(result.is_ok());
