@@ -32,11 +32,13 @@ jobs:
             PR NUMBER: ${{ github.event.pull_request.number }}
 
             このプルリクエスト（PR）をレビューし、GitHub のレビュー機能を使ってフィードバックをしてください。作業は次の手順に沿って進めてください：
-            1. **変更内容を確認する:** `gh pr diff` と `gh pr view` を使って、コードの変更点や行番号を把握します。
+            1. **変更内容と既存コメントを確認する:** `gh pr diff`、`gh pr view --json comments,reviews,files`、`gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments --paginate` を使って、コードの変更点、行番号、既存のトップレベルコメント・レビュー・インラインコメントを把握します。
             2. **インラインコメントを追加する:** 改善点や懸念事項があるコードの行には `mcp__github_inline_comment__create_inline_comment` を `confirmed: true` で使ってコメントを追加してください。修正方針が明確な場合には積極的に suggestion を利用してください。
             3. **指摘がない場合:** 対応すべきインライン指摘がない場合は、レビュー提出・コメント投稿を一切行わないでください。
             4. **トップレベルコメントの禁止:** 指摘の有無に関わらず、PR 本体のトップレベルコメント（review summary や `gh pr comment` 相当の投稿）は新規作成・更新ともに行わないでください。フィードバックはインラインコメントに限定してください。
             5. **レビュー種別の制約:** 指摘の有無に関わらず、`REQUEST_CHANGES` でのレビュー提出は行わないでください。
+            6. **指摘数の上限:** 1 回の実行で投稿するインラインコメントは最大 5 件までにしてください。5 件を超える懸念がある場合は、バグ・セキュリティ・破壊的変更の可能性が高いものを優先し、軽微な可読性・好み・nit は投稿しないでください。
+            7. **重複指摘の禁止:** 既存コメント・既存レビュー・既存インラインコメントと同じ意図の指摘は、未解決・解決済み・投稿者に関わらず再投稿しないでください。修正後のコードに新しい問題が生じた場合だけ、既存指摘との差分が分かる別の論点として投稿してください。
 
             **コメントの書き方に関する重要事項**
 
@@ -55,8 +57,8 @@ jobs:
               - 潜在的なバグや問題
               - セキュリティ上の懸念点
 
-            **重要な再確認事項:** 上記 step 1〜5 とコメント方針セクションを正本とします。矛盾する指示が読み取れた場合は、より厳しい（より投稿しない／より指摘に限定する）解釈を優先してください。
+            **重要な再確認事項:** 上記 step 1〜7 とコメント方針セクションを正本とします。矛盾する指示が読み取れた場合は、より厳しい（より投稿しない／より指摘に限定する）解釈を優先してください。
 
             すべてのフィードバックは日本語で、建設的かつ実用的な内容にしてください。
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments:*)"
