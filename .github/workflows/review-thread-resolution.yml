@@ -503,10 +503,14 @@ jobs:
                   (.body // "") | test("(?i)^\\s*(acknowledged|addressed|確認しました|承知しました|了解しました|対応済み|対応しました|対処しました)");
                 def is_trusted_acknowledgement:
                   is_trusted_acknowledger and is_acknowledgement_text;
+                def author_login:
+                  .author.login // "";
+                def is_author($login):
+                  author_login == $login or author_login == ($login + "[bot]");
                 def comment_body:
                   .body // "";
                 def is_coderabbit_report_comment:
-                  ((.author.login // "") == "coderabbitai")
+                  is_author("coderabbitai")
                   and (
                     (comment_body | contains("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"))
                     or (comment_body | contains("<!-- walkthrough_start -->"))
@@ -515,7 +519,7 @@ jobs:
                     or (comment_body | contains("## Walkthrough"))
                   );
                 def is_codecov_report_comment:
-                  ((.author.login // "") == "codecov")
+                  is_author("codecov")
                   and (
                     (comment_body | test("(?m)^\\s*## \\[Codecov\\]\\([^\\n]+\\) Report\\s*$"))
                     or (comment_body | test("(?im)^\\s*##\\s+Codecov\\s+Report\\s*$"))
@@ -523,7 +527,7 @@ jobs:
                 def is_automated_status_comment:
                   is_coderabbit_report_comment
                   or is_codecov_report_comment
-                  or ((.author.login // "") == "renovate"
+                  or (is_author("renovate")
                     and ((.body // "") | startswith("### Edited/Blocked Notification")));
                 def is_maintainer:
                   .authorAssociation == "OWNER"
