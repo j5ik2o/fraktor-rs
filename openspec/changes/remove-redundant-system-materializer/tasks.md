@@ -21,7 +21,7 @@
 ## 4. 検証
 
 - [ ] 4.1 `rg -n "SystemMaterializer|SystemMaterializerId" modules/stream-core-kernel modules/stream-adaptor-std` を実行し、実装側の残存参照がないことを確認する。
-- [ ] 4.2 `cargo test -p fraktor-stream-adaptor-std-rs package_boundaries` を実行する。
-- [ ] 4.3 `cargo test -p fraktor-stream-core-kernel-rs actor_materializer` を実行する。
+- [ ] 4.2 `cargo test -p fraktor-stream-adaptor-std-rs --test package_boundaries` を実行する。
+- [ ] 4.3 `cargo test -p fraktor-stream-core-kernel-rs --lib` を実行する。
 - [ ] 4.4 `cargo check -p fraktor-stream-core-kernel-rs --no-default-features` を実行する。
 - [ ] 4.5 `cargo fmt --check --all` を実行する。
