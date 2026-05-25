@@ -10,6 +10,8 @@ use crate::{
 };
 
 impl PartitionIdentityLookup {
+  // contract test が pending placement flow を駆動できるように、テスト内だけで
+  // coordinator の raw outcome を観測する。
   fn resolve_outcome(&mut self, key: &GrainKey, now: u64) -> Result<PlacementCoordinatorOutcome, LookupError> {
     self.coordinator.resolve(key, now)
   }
