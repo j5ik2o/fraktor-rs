@@ -25,14 +25,14 @@ use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId},
   config::RemoteConfig,
   envelope::{InboundEnvelope, OutboundPriority},
-  extension::{EventPublisher, Remote, RemoteEvent, RemoteEventReceiver, RemoteShared, Remoting, RemotingError},
+  extension::{
+    EventPublisher, Remote, RemoteDeploymentOutcome, RemoteEvent, RemoteEventReceiver, RemoteShared, Remoting,
+    RemotingError,
+  },
   instrument::RemotingFlightRecorder,
   transport::RemoteTransport,
   watcher::WatcherCommand,
-  wire::{
-    ControlPdu, FlushScope, RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentFailureCode,
-    RemoteDeploymentPdu, WireFrame,
-  },
+  wire::FlushScope,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use futures::future::poll_fn;
@@ -43,15 +43,14 @@ use tokio::{
 };
 
 use crate::{
-  association::{parse_remote_authority, std_instant_elapsed_millis},
+  association::std_instant_elapsed_millis,
   deployment::{
-    DeploymentDaemonCommand, DeploymentResponse, DeploymentResponseDispatcher, spawn_deployment_daemon,
-    subscribe_address_terminated,
+    DeploymentDaemonCommand, DeploymentResponseDispatcher, spawn_deployment_daemon, subscribe_address_terminated,
   },
   extension_installer::flush_gate::{StdFlushGate, schedule_flush_timers},
   tokio_remote_event_receiver::TokioMpscRemoteEventReceiver,
   transport::tcp::TcpRemoteTransport,
-  watcher::run_watcher_task,
+  watcher::{apply_effects as apply_watcher_effects, run_watcher_task},
 };
 
 const ALREADY_INSTALLED: &str = "remote extension is already installed";
@@ -122,6 +121,29 @@ struct ShutdownFlushContext {
   config:          RemoteConfig,
   monotonic_epoch: Instant,
   flush_gate:      StdFlushGate,
+}
+
+#[derive(Clone)]
+pub(super) struct WatcherTaskContext {
+  remote:          RemoteShared,
+  event_sender:    Sender<RemoteEvent>,
+  system:          ActorSystem,
+  local_address:   Address,
+  monotonic_epoch: Instant,
+  tick_interval:   Duration,
+}
+
+impl WatcherTaskContext {
+  pub(super) fn new(
+    remote: RemoteShared,
+    event_sender: Sender<RemoteEvent>,
+    system: ActorSystem,
+    local_address: Address,
+    monotonic_epoch: Instant,
+    tick_interval: Duration,
+  ) -> Self {
+    Self { remote, event_sender, system, local_address, monotonic_epoch, tick_interval }
+  }
 }
 
 impl RemotingRunState {
@@ -313,7 +335,8 @@ impl RemotingExtensionInstaller {
       &mut run_state,
       remote.clone(),
       system.clone(),
-      watcher_sender.clone(),
+      local_address.clone(),
+      monotonic_epoch,
       deployment_sender,
       self.deployment_response_dispatcher.clone(),
       event_sender.clone(),
@@ -323,11 +346,14 @@ impl RemotingExtensionInstaller {
     spawn_watcher_task_with_state(
       &mut run_state,
       watcher_receiver,
-      event_sender.clone(),
-      system.clone(),
-      local_address,
-      monotonic_epoch,
-      self.config.system_message_resend_interval(),
+      WatcherTaskContext::new(
+        remote.clone(),
+        event_sender.clone(),
+        system.clone(),
+        local_address,
+        monotonic_epoch,
+        self.config.system_message_resend_interval(),
+      ),
     )
     .map_err(remoting_build_error)?;
     spawn_deployment_daemon_with_state(
@@ -342,6 +368,7 @@ impl RemotingExtensionInstaller {
     install_deployment_address_terminated_subscription_with_state(
       &mut run_state,
       system,
+      remote.clone(),
       self.deployment_response_dispatcher.clone(),
     )
     .map_err(remoting_build_error)?;
@@ -447,7 +474,8 @@ fn spawn_run_task_with_state(
   run_state: &mut RemotingRunState,
   remote: RemoteShared,
   system: ActorSystem,
-  watcher_sender: Sender<WatcherCommand>,
+  local_address: Address,
+  monotonic_epoch: Instant,
   deployment_sender: Sender<DeploymentDaemonCommand>,
   deployment_response_dispatcher: DeploymentResponseDispatcher,
   event_sender: Sender<RemoteEvent>,
@@ -465,7 +493,8 @@ fn spawn_run_task_with_state(
       &remote,
       &mut receiver,
       &system,
-      &watcher_sender,
+      &local_address,
+      monotonic_epoch,
       &deployment_sender,
       deployment_response_dispatcher,
       &event_sender,
@@ -497,24 +526,21 @@ fn spawn_deployment_daemon_with_state(
 fn install_deployment_address_terminated_subscription_with_state(
   run_state: &mut RemotingRunState,
   system: &ActorSystem,
+  remote: RemoteShared,
   deployment_response_dispatcher: DeploymentResponseDispatcher,
 ) -> Result<(), RemotingError> {
   if run_state.deployment_address_terminated_subscription.is_some() {
     return Err(RemotingError::AlreadyRunning);
   }
   run_state.deployment_address_terminated_subscription =
-    Some(subscribe_address_terminated(system, deployment_response_dispatcher));
+    Some(subscribe_address_terminated(system, remote, deployment_response_dispatcher));
   Ok(())
 }
 
 pub(super) fn spawn_watcher_task_with_state(
   run_state: &mut RemotingRunState,
   watcher_receiver: Receiver<WatcherCommand>,
-  event_sender: Sender<RemoteEvent>,
-  system: ActorSystem,
-  local_address: Address,
-  monotonic_epoch: Instant,
-  tick_interval: Duration,
+  context: WatcherTaskContext,
 ) -> Result<(), RemotingError> {
   if run_state.watcher_handle.is_some() {
     return Err(RemotingError::AlreadyRunning);
@@ -522,11 +548,12 @@ pub(super) fn spawn_watcher_task_with_state(
   let handle = Handle::try_current().map_err(|_| RemotingError::TransportUnavailable)?;
   let handle = handle.spawn(run_watcher_task(
     watcher_receiver,
-    event_sender,
-    system,
-    local_address,
-    monotonic_epoch,
-    tick_interval,
+    context.remote,
+    context.event_sender,
+    context.system,
+    context.local_address,
+    context.monotonic_epoch,
+    context.tick_interval,
   ));
   run_state.watcher_handle = Some(handle);
   Ok(())
@@ -650,7 +677,8 @@ async fn run_remote_with_delivery(
   remote: &RemoteShared,
   receiver: &mut TokioMpscRemoteEventReceiver,
   system: &ActorSystem,
-  watcher_sender: &Sender<WatcherCommand>,
+  local_address: &Address,
+  monotonic_epoch: Instant,
   deployment_sender: &Sender<DeploymentDaemonCommand>,
   deployment_response_dispatcher: DeploymentResponseDispatcher,
   event_sender: &Sender<RemoteEvent>,
@@ -664,11 +692,16 @@ async fn run_remote_with_delivery(
       | Some(event) => event,
       | None => return Err(RemotingError::EventReceiverClosed),
     };
-    let Some(event) = route_deployment_event(event, deployment_sender, &deployment_response_dispatcher) else {
-      continue;
-    };
-    forward_watcher_command_for_event(&event, watcher_sender);
     let should_stop = remote.handle_event(event)?;
+    apply_deployment_outcomes(
+      remote,
+      remote.drain_deployment_outcomes(),
+      deployment_sender,
+      &deployment_response_dispatcher,
+    )?;
+    let now_ms = std_instant_elapsed_millis(monotonic_epoch);
+    apply_watcher_effects(remote.drain_watcher_effects(), event_sender, system, local_address, monotonic_epoch, now_ms)
+      .await;
     flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);
     deliver_inbound_envelopes(remote, system);
     if should_stop {
@@ -677,97 +710,29 @@ async fn run_remote_with_delivery(
   }
 }
 
-fn route_deployment_event(
-  event: RemoteEvent,
+fn apply_deployment_outcomes(
+  remote: &RemoteShared,
+  outcomes: Vec<RemoteDeploymentOutcome>,
   deployment_sender: &Sender<DeploymentDaemonCommand>,
   deployment_response_dispatcher: &DeploymentResponseDispatcher,
-) -> Option<RemoteEvent> {
-  let RemoteEvent::InboundFrameReceived { authority, frame: WireFrame::Deployment(pdu), now_ms } = event else {
-    return Some(event);
-  };
-  match pdu {
-    | RemoteDeploymentPdu::CreateRequest(request) => {
-      if authority.authority() != request.origin_node() {
-        tracing::warn!("dropping remote deployment request with mismatched origin authority");
-        return None;
-      }
-      let command = DeploymentDaemonCommand::create(authority, request);
-      if let Err(error) = deployment_sender.try_send(command) {
-        let reason = error.to_string();
-        let command = error.into_inner();
-        tracing::warn!(?reason, "remote deployment request enqueue failed");
-        let Some(remote) = parse_remote_authority(command.authority.authority())
-          .or_else(|| parse_remote_authority(command.request.origin_node()))
-        else {
-          tracing::warn!(
-            authority = command.authority.authority(),
-            origin_node = command.request.origin_node(),
-            "remote deployment request enqueue failure response address is invalid"
-          );
-          return None;
-        };
-        return Some(RemoteEvent::OutboundDeployment {
-          remote,
-          pdu: deployment_enqueue_failure(&command.request, reason),
-          now_ms,
-        });
-      }
-    },
-    | RemoteDeploymentPdu::CreateSuccess(success) => {
-      deployment_response_dispatcher.complete(authority.authority(), DeploymentResponse::Success(success));
-    },
-    | RemoteDeploymentPdu::CreateFailure(failure) => {
-      deployment_response_dispatcher.complete(authority.authority(), DeploymentResponse::Failure(failure));
-    },
-  }
-  None
-}
-
-fn deployment_enqueue_failure(request: &RemoteDeploymentCreateRequest, reason: String) -> RemoteDeploymentPdu {
-  RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
-    request.correlation_hi(),
-    request.correlation_lo(),
-    RemoteDeploymentFailureCode::SpawnFailed,
-    reason,
-  ))
-}
-
-pub(super) fn forward_watcher_command_for_event(event: &RemoteEvent, watcher_sender: &Sender<WatcherCommand>) {
-  let command = match event {
-    | RemoteEvent::InboundFrameReceived { frame, now_ms, .. } => match frame {
-      | WireFrame::Control(ControlPdu::Heartbeat { authority }) => {
-        parse_remote_authority(authority).map(|from| WatcherCommand::HeartbeatReceived { from, now: *now_ms })
+) -> Result<(), RemotingError> {
+  for outcome in outcomes {
+    match outcome {
+      | RemoteDeploymentOutcome::CreateRequested { response_remote, authority, request, now_ms } => {
+        let command = DeploymentDaemonCommand::create(response_remote, authority, *request);
+        if let Err(error) = deployment_sender.try_send(command) {
+          let reason = error.to_string();
+          let command = error.into_inner();
+          tracing::warn!(?reason, "remote deployment request enqueue failed");
+          remote.reject_deployment_create_request(&command.authority, &command.request, reason, now_ms)?;
+        }
       },
-      | WireFrame::Control(ControlPdu::HeartbeatResponse { authority, uid }) => parse_remote_authority(authority)
-        .map(|from| WatcherCommand::HeartbeatResponseReceived { from, uid: *uid, now: *now_ms }),
-      | WireFrame::Control(
-        ControlPdu::Quarantine { .. }
-        | ControlPdu::Shutdown { .. }
-        | ControlPdu::FlushRequest { .. }
-        | ControlPdu::FlushAck { .. }
-        | ControlPdu::CompressionAdvertisement { .. }
-        | ControlPdu::CompressionAck { .. },
-      )
-      | WireFrame::Envelope(_)
-      | WireFrame::Handshake(_)
-      | WireFrame::Ack(_)
-      | WireFrame::Deployment(_) => None,
-    },
-    | RemoteEvent::ConnectionLost { .. } => None,
-    | RemoteEvent::TransportShutdown
-    | RemoteEvent::OutboundEnqueued { .. }
-    | RemoteEvent::OutboundControl { .. }
-    | RemoteEvent::OutboundDeployment { .. }
-    | RemoteEvent::RedeliveryTimerFired { .. }
-    | RemoteEvent::HandshakeTimerFired { .. }
-    | RemoteEvent::FlushTimerFired { .. } => None,
-  };
-  let Some(command) = command else {
-    return;
-  };
-  if let Err(error) = watcher_sender.try_send(command) {
-    tracing::warn!(?error, "remote watcher inbound command enqueue failed");
+      | RemoteDeploymentOutcome::ResponseCompleted { response } => {
+        deployment_response_dispatcher.complete(response);
+      },
+    }
   }
+  Ok(())
 }
 
 fn deliver_inbound_envelopes(remote: &RemoteShared, system: &ActorSystem) {

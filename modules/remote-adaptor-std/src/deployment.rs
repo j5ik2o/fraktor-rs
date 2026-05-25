@@ -5,7 +5,7 @@
 mod tests;
 
 use std::{
-  collections::{BTreeMap, VecDeque},
+  collections::BTreeMap,
   string::{String, ToString},
   sync::mpsc,
   time::Instant,
@@ -13,16 +13,13 @@ use std::{
 
 use fraktor_actor_core_kernel_rs::{
   actor::{actor_path::ActorPathParser, messaging::AnyMessage, props::DeployableFactoryLookupError, spawn::SpawnError},
-  event::stream::{
-    AddressTerminatedEvent, ClassifierKey, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription,
-    subscriber_handle,
-  },
+  event::stream::{ClassifierKey, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
   serialization::{SerializationExtensionShared, SerializedMessage, SerializerId},
   system::ActorSystem,
 };
 use fraktor_remote_core_rs::{
   address::Address,
-  extension::RemoteEvent,
+  extension::{RemoteDeploymentOutcome, RemoteDeploymentResponse, RemoteEvent, RemoteShared},
   transport::TransportEndpoint,
   wire::{
     RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentCreateSuccess,
@@ -35,53 +32,40 @@ use tokio::{
   task::JoinHandle,
 };
 
-use crate::association::{parse_remote_authority, std_instant_elapsed_millis};
+use crate::association::std_instant_elapsed_millis;
 
 const PARENT_PATH_INVALID: &str = "target parent path is invalid";
-const MAX_STALE_DEPLOYMENT_RESPONSES: usize = 128;
 
 type DeploymentCorrelation = (u64, u32);
-type PendingDeploymentResponses = BTreeMap<DeploymentCorrelation, PendingDeploymentResponse>;
-type RemoteCreatedDeployments = BTreeMap<String, usize>;
-
-struct PendingDeploymentResponse {
-  authority:         String,
-  started_at_millis: u64,
-  sender:            mpsc::Sender<DeploymentResponse>,
-}
+type PendingDeploymentResponses = BTreeMap<DeploymentCorrelation, mpsc::Sender<RemoteDeploymentResponse>>;
 
 #[derive(Default)]
 struct DeploymentResponseState {
-  pending:        PendingDeploymentResponses,
-  remote_created: RemoteCreatedDeployments,
-  stale:          VecDeque<DeploymentResponse>,
+  pending: PendingDeploymentResponses,
 }
 
 struct AddressTerminatedDeploymentSubscriber {
+  remote:     RemoteShared,
   dispatcher: DeploymentResponseDispatcher,
 }
 
 impl AddressTerminatedDeploymentSubscriber {
-  fn new(dispatcher: DeploymentResponseDispatcher) -> Self {
-    Self { dispatcher }
+  fn new(remote: RemoteShared, dispatcher: DeploymentResponseDispatcher) -> Self {
+    Self { remote, dispatcher }
   }
 }
 
 impl EventStreamSubscriber for AddressTerminatedDeploymentSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::AddressTerminated(event) = event {
-      self.dispatcher.fail_address_terminated(event);
+      self.remote.fail_deployment_requests_for_terminated_authority(
+        event.authority(),
+        event.reason(),
+        event.observed_at_millis(),
+      );
+      complete_deployment_response_outcomes(self.remote.drain_deployment_outcomes(), &self.dispatcher);
     }
   }
-}
-
-/// Origin-side deployment response.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DeploymentResponse {
-  /// Create success response.
-  Success(RemoteDeploymentCreateSuccess),
-  /// Create failure response.
-  Failure(RemoteDeploymentCreateFailure),
 }
 
 /// Dispatches deployment responses to pending origin-side requests.
@@ -98,20 +82,10 @@ impl Default for DeploymentResponseDispatcher {
 
 impl DeploymentResponseDispatcher {
   /// Registers a pending request.
-  pub(crate) fn register(
-    &self,
-    correlation_hi: u64,
-    correlation_lo: u32,
-    authority: impl Into<String>,
-    started_at_millis: u64,
-  ) -> mpsc::Receiver<DeploymentResponse> {
+  pub(crate) fn register(&self, correlation_hi: u64, correlation_lo: u32) -> mpsc::Receiver<RemoteDeploymentResponse> {
     let (sender, receiver) = mpsc::channel();
     self.state.with_lock(|state| {
-      state.pending.insert((correlation_hi, correlation_lo), PendingDeploymentResponse {
-        authority: authority.into(),
-        started_at_millis,
-        sender,
-      });
+      state.pending.insert((correlation_hi, correlation_lo), sender);
     });
     receiver
   }
@@ -123,95 +97,20 @@ impl DeploymentResponseDispatcher {
     });
   }
 
-  /// Completes a pending request or records the stale response.
-  pub(crate) fn complete(&self, authority: &str, response: DeploymentResponse) {
-    let normalized_authority = normalize_authority(authority);
-    let key = match &response {
-      | DeploymentResponse::Success(success) => (success.correlation_hi(), success.correlation_lo()),
-      | DeploymentResponse::Failure(failure) => (failure.correlation_hi(), failure.correlation_lo()),
-    };
-    let pending = self.state.with_lock(|state| {
-      let expected = state.pending.get(&key)?;
-      let matches_exact = expected.authority == authority;
-      let matches_normalized =
-        normalized_authority.as_deref().is_some_and(|normalized| normalized == expected.authority.as_str());
-      if !matches_exact && !matches_normalized {
-        return None;
-      }
-      let pending = state.pending.remove(&key);
-      if let Some(pending) = pending.as_ref()
-        && let DeploymentResponse::Success(_) = &response
-      {
-        let count = state.remote_created.entry(pending.authority.clone()).or_insert(0);
-        *count = count.saturating_add(1);
-      }
-      pending
-    });
-    match pending {
-      | Some(pending) => self.send_or_record_stale(pending.sender, response),
-      | None => self.record_stale(response),
+  /// Completes a pending request that core has already matched.
+  pub(crate) fn complete(&self, response: RemoteDeploymentResponse) {
+    let key = (response.correlation_hi(), response.correlation_lo());
+    let sender = self.state.with_lock(|state| state.pending.remove(&key));
+    match sender {
+      | Some(sender) => self.send_response(sender, response),
+      | None => tracing::warn!("remote deployment response bridge has no pending receiver"),
     }
   }
 
-  fn fail_address_terminated(&self, event: &AddressTerminatedEvent) {
-    let pending = self.remove_address_terminated_deployments(event);
-    for (correlation_hi, correlation_lo, sender) in pending {
-      self.send_or_record_stale(
-        sender,
-        DeploymentResponse::Failure(RemoteDeploymentCreateFailure::new(
-          correlation_hi,
-          correlation_lo,
-          RemoteDeploymentFailureCode::AddressTerminated,
-          address_terminated_failure_reason(event),
-        )),
-      );
-    }
-  }
-
-  fn remove_address_terminated_deployments(
-    &self,
-    event: &AddressTerminatedEvent,
-  ) -> Vec<(u64, u32, mpsc::Sender<DeploymentResponse>)> {
-    self.state.with_lock(|state| {
-      state.remote_created.remove(event.authority());
-      let keys = state
-        .pending
-        .iter()
-        .filter_map(|(key, pending)| {
-          let matches_authority = pending.authority == event.authority();
-          let not_replayed_old_event = event.observed_at_millis() >= pending.started_at_millis;
-          if matches_authority && not_replayed_old_event { Some(*key) } else { None }
-        })
-        .collect::<Vec<_>>();
-      let mut pending = Vec::new();
-      for (correlation_hi, correlation_lo) in keys {
-        if let Some(entry) = state.pending.remove(&(correlation_hi, correlation_lo)) {
-          pending.push((correlation_hi, correlation_lo, entry.sender));
-        }
-      }
-      pending
-    })
-  }
-
-  fn send_or_record_stale(&self, sender: mpsc::Sender<DeploymentResponse>, response: DeploymentResponse) {
+  fn send_response(&self, sender: mpsc::Sender<RemoteDeploymentResponse>, response: RemoteDeploymentResponse) {
     if let Err(error) = sender.send(response) {
-      self.record_stale(error.0);
+      tracing::warn!(?error, "remote deployment response bridge receiver is closed");
     }
-  }
-
-  fn record_stale(&self, response: DeploymentResponse) {
-    self.state.with_lock(|state| {
-      if state.stale.len() >= MAX_STALE_DEPLOYMENT_RESPONSES {
-        state.stale.pop_front();
-      }
-      state.stale.push_back(response);
-    });
-    tracing::warn!(stale_responses = self.stale_len(), "remote deployment response did not match a pending request");
-  }
-
-  /// Records a stale response for tests and diagnostics.
-  pub(crate) fn stale_len(&self) -> usize {
-    self.state.with_lock(|state| state.stale.len())
   }
 }
 
@@ -223,23 +122,43 @@ impl DeploymentResponseDispatcher {
 
 pub(crate) fn subscribe_address_terminated(
   system: &ActorSystem,
+  remote: RemoteShared,
   dispatcher: DeploymentResponseDispatcher,
 ) -> EventStreamSubscription {
-  let subscriber = subscriber_handle(AddressTerminatedDeploymentSubscriber::new(dispatcher));
+  let subscriber = subscriber_handle(AddressTerminatedDeploymentSubscriber::new(remote, dispatcher));
   system.event_stream().subscribe_with_key(ClassifierKey::AddressTerminated, &subscriber)
+}
+
+pub(crate) fn complete_deployment_response_outcomes(
+  outcomes: Vec<RemoteDeploymentOutcome>,
+  dispatcher: &DeploymentResponseDispatcher,
+) {
+  for outcome in outcomes {
+    match outcome {
+      | RemoteDeploymentOutcome::ResponseCompleted { response } => dispatcher.complete(response),
+      | RemoteDeploymentOutcome::CreateRequested { .. } => {
+        tracing::warn!("remote deployment create request outcome reached response completion bridge");
+      },
+    }
+  }
 }
 
 /// Command consumed by the deployment daemon.
 pub(crate) struct DeploymentDaemonCommand {
-  pub(crate) authority: TransportEndpoint,
-  pub(crate) request:   RemoteDeploymentCreateRequest,
+  pub(crate) response_remote: Address,
+  pub(crate) authority:       TransportEndpoint,
+  pub(crate) request:         RemoteDeploymentCreateRequest,
 }
 
 impl DeploymentDaemonCommand {
   /// Creates a daemon command from an inbound deployment request.
   #[must_use]
-  pub(crate) const fn create(authority: TransportEndpoint, request: RemoteDeploymentCreateRequest) -> Self {
-    Self { authority, request }
+  pub(crate) const fn create(
+    response_remote: Address,
+    authority: TransportEndpoint,
+    request: RemoteDeploymentCreateRequest,
+  ) -> Self {
+    Self { response_remote, authority, request }
   }
 }
 
@@ -262,17 +181,7 @@ async fn run_deployment_daemon(
   monotonic_epoch: Instant,
 ) {
   while let Some(command) = receiver.recv().await {
-    let remote = match response_remote_for_command(&command) {
-      | Some(remote) => remote,
-      | None => {
-        tracing::warn!(
-          authority = command.authority.authority(),
-          origin_node = command.request.origin_node(),
-          "remote deployment response address is invalid"
-        );
-        continue;
-      },
-    };
+    let remote = command.response_remote;
     let pdu = handle_create_request(&system, &serialization, command.request);
     let now_ms = std_instant_elapsed_millis(monotonic_epoch);
     if let Err(error) = event_sender.send(RemoteEvent::OutboundDeployment { remote, pdu, now_ms }).await {
@@ -348,43 +257,5 @@ fn spawn_error(error: SpawnError) -> (RemoteDeploymentFailureCode, String) {
     | SpawnError::NameConflict(name) => (RemoteDeploymentFailureCode::DuplicateChildName, name),
     | SpawnError::InvalidProps(reason) => (RemoteDeploymentFailureCode::InvalidRequest, reason),
     | other => (RemoteDeploymentFailureCode::SpawnFailed, format!("{other:?}")),
-  }
-}
-
-fn address_terminated_failure_reason(event: &AddressTerminatedEvent) -> String {
-  format!("remote deployment target address terminated: authority={}, reason={}", event.authority(), event.reason())
-}
-
-fn normalize_authority(raw: &str) -> Option<String> {
-  if let Some((_, stripped)) = raw.split_once("://") {
-    return parse_remote_authority(stripped).map(|value| value.to_string());
-  }
-  parse_remote_authority(raw).map(|value| value.to_string())
-}
-
-fn response_remote_for_command(command: &DeploymentDaemonCommand) -> Option<Address> {
-  let authority = parse_remote_authority(command.authority.authority());
-  let origin = parse_remote_authority(command.request.origin_node());
-  match (authority, origin) {
-    | (Some(authority), Some(origin)) => {
-      if authority != origin {
-        tracing::warn!(
-          authority = command.authority.authority(),
-          origin_node = command.request.origin_node(),
-          "remote deployment origin node differs from inbound authority; replying to inbound authority"
-        );
-      }
-      Some(authority)
-    },
-    | (Some(authority), None) => Some(authority),
-    | (None, Some(origin)) => {
-      tracing::warn!(
-        authority = command.authority.authority(),
-        origin_node = command.request.origin_node(),
-        "remote deployment inbound authority is invalid; falling back to origin node"
-      );
-      Some(origin)
-    },
-    | (None, None) => None,
   }
 }

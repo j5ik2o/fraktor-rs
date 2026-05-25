@@ -7,7 +7,7 @@
 //! This differs from exclusive [`crate::extension::RemoteRunFuture`],
 //! which checks termination at the head of its loop whenever it is polled.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
@@ -16,11 +16,12 @@ use crate::{
   association::QuarantineReason,
   envelope::InboundEnvelope,
   extension::{
-    Remote, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteFlushTimer, RemoteSharedRunFuture, Remoting,
-    RemotingError,
+    Remote, RemoteDeploymentOutcome, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteFlushTimer,
+    RemoteSharedRunFuture, Remoting, RemotingError,
   },
   transport::TransportEndpoint,
-  wire::FlushScope,
+  watcher::{WatcherCommand, WatcherEffect},
+  wire::{FlushScope, RemoteDeploymentCreateRequest},
 };
 
 /// Shared wrapper for driving remoting through interior locking.
@@ -121,6 +122,75 @@ impl RemoteShared {
   #[must_use]
   pub fn drain_flush_outcomes(&self) -> Vec<RemoteFlushOutcome> {
     self.with_write(Remote::drain_flush_outcomes)
+  }
+
+  /// Applies a watcher command and drains the resulting watcher effects.
+  #[must_use]
+  pub fn handle_watcher_command_and_drain_effects(&self, command: WatcherCommand) -> Vec<WatcherEffect> {
+    self.with_write(|remote| {
+      remote.handle_watcher_command(command);
+      remote.drain_watcher_effects()
+    })
+  }
+
+  /// Drains watcher effects observed by the shared core event loop.
+  #[must_use]
+  pub fn drain_watcher_effects(&self) -> Vec<WatcherEffect> {
+    self.with_write(Remote::drain_watcher_effects)
+  }
+
+  /// Registers an origin-side deployment request as pending.
+  pub fn register_deployment_request(
+    &self,
+    correlation_hi: u64,
+    correlation_lo: u32,
+    authority: Address,
+    started_at_millis: u64,
+  ) {
+    self.with_write(|remote| {
+      remote.register_deployment_request(correlation_hi, correlation_lo, authority, started_at_millis);
+    });
+  }
+
+  /// Cancels an origin-side deployment request without completing it.
+  pub fn cancel_deployment_request(&self, correlation_hi: u64, correlation_lo: u32) {
+    self.with_write(|remote| {
+      remote.cancel_deployment_request(correlation_hi, correlation_lo);
+    });
+  }
+
+  /// Fails pending deployment requests for a terminated remote authority.
+  pub fn fail_deployment_requests_for_terminated_authority(
+    &self,
+    authority: &str,
+    reason: &str,
+    observed_at_millis: u64,
+  ) {
+    self.with_write(|remote| {
+      remote.fail_deployment_requests_for_terminated_authority(authority, reason, observed_at_millis);
+    });
+  }
+
+  /// Sends a create failure response for an adapter-side request delivery failure.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::TransportUnavailable`] when the failure response
+  /// cannot be delivered through the configured transport.
+  pub fn reject_deployment_create_request(
+    &self,
+    authority: &TransportEndpoint,
+    request: &RemoteDeploymentCreateRequest,
+    reason: String,
+    now_ms: u64,
+  ) -> Result<(), RemotingError> {
+    self.with_write(|remote| remote.reject_deployment_create_request(authority, request, reason, now_ms))
+  }
+
+  /// Drains deployment outcomes observed by the shared core event loop.
+  #[must_use]
+  pub fn drain_deployment_outcomes(&self) -> Vec<RemoteDeploymentOutcome> {
+    self.with_write(Remote::drain_deployment_outcomes)
   }
 
   /// Establishes a transport peer writer for `remote`.

@@ -22,7 +22,7 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_remote_core_rs::{
   address::{Address, UniqueAddress},
-  extension::RemoteEvent,
+  extension::{RemoteDeploymentResponse, RemoteEvent, RemoteShared},
   wire::{RemoteDeploymentCreateRequest, RemoteDeploymentPdu},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
@@ -31,10 +31,7 @@ use tokio::{
   sync::mpsc::Sender,
 };
 
-use crate::{
-  association::std_instant_elapsed_millis,
-  deployment::{DeploymentResponse, DeploymentResponseDispatcher},
-};
+use crate::{association::std_instant_elapsed_millis, deployment::DeploymentResponseDispatcher};
 
 const DEPLOYABLE_METADATA_REQUIRED: &str = "remote deployment requires deployable props metadata";
 const TARGET_HOST_REQUIRED: &str = "remote deployment target host is missing";
@@ -43,11 +40,23 @@ const TARGET_PARENT_REQUIRED: &str = "remote deployment target parent path is mi
 const CURRENT_THREAD_DEPLOYMENT_WAIT_REJECTED: &str =
   "remote deployment cannot wait synchronously on a current-thread Tokio runtime";
 
+/// Dependencies used by [`StdRemoteDeploymentHook`].
+pub(crate) struct StdRemoteDeploymentHookDeps {
+  pub(crate) system:      ActorSystem,
+  pub(crate) sender:      Sender<RemoteEvent>,
+  pub(crate) remote:      RemoteShared,
+  pub(crate) epoch:       Instant,
+  pub(crate) serializers: ArcShared<SerializationExtensionShared>,
+  pub(crate) dispatcher:  DeploymentResponseDispatcher,
+  pub(crate) timeout:     Duration,
+}
+
 /// Std adapter hook that turns actor-core remote deployment requests into wire create requests.
 pub(crate) struct StdRemoteDeploymentHook {
   local_address:         UniqueAddress,
   system:                ActorSystem,
   event_sender:          Sender<RemoteEvent>,
+  remote_shared:         RemoteShared,
   monotonic_epoch:       Instant,
   serialization:         ArcShared<SerializationExtensionShared>,
   dispatcher:            DeploymentResponseDispatcher,
@@ -59,27 +68,20 @@ pub(crate) struct StdRemoteDeploymentHook {
 
 impl StdRemoteDeploymentHook {
   /// Creates a std remote deployment hook.
-  pub(crate) fn new(
-    local_address: UniqueAddress,
-    system: ActorSystem,
-    event_sender: Sender<RemoteEvent>,
-    monotonic_epoch: Instant,
-    serialization: ArcShared<SerializationExtensionShared>,
-    dispatcher: DeploymentResponseDispatcher,
-    timeout: Duration,
-  ) -> Self {
+  pub(crate) fn new(local_address: UniqueAddress, deps: StdRemoteDeploymentHookDeps) -> Self {
     let current_thread_driver = match Handle::try_current() {
       | Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::CurrentThread => Some(thread::current().id()),
       | _ => None,
     };
     Self {
       local_address,
-      system,
-      event_sender,
-      monotonic_epoch,
-      serialization,
-      dispatcher,
-      timeout,
+      system: deps.system,
+      event_sender: deps.sender,
+      remote_shared: deps.remote,
+      monotonic_epoch: deps.epoch,
+      serialization: deps.serializers,
+      dispatcher: deps.dispatcher,
+      timeout: deps.timeout,
       current_thread_driver,
       next_correlation: AtomicU64::new(1),
     }
@@ -105,28 +107,28 @@ impl RemoteDeploymentHook for StdRemoteDeploymentHook {
     };
     let correlation_hi = create_request.correlation_hi();
     let correlation_lo = create_request.correlation_lo();
-    let expected_authority = target.to_string();
     let now_ms = std_instant_elapsed_millis(self.monotonic_epoch);
-    let receiver = self.dispatcher.register(correlation_hi, correlation_lo, expected_authority, now_ms);
+    self.remote_shared.register_deployment_request(correlation_hi, correlation_lo, target.clone(), now_ms);
+    let receiver = self.dispatcher.register(correlation_hi, correlation_lo);
     if let Err(error) = self.event_sender.try_send(RemoteEvent::OutboundDeployment {
       remote: target,
       pdu: RemoteDeploymentPdu::CreateRequest(create_request),
       now_ms,
     }) {
-      self.dispatcher.cancel(correlation_hi, correlation_lo);
+      self.cancel_deployment_request(correlation_hi, correlation_lo);
       return RemoteDeploymentOutcome::Failed(format!("remote deployment request enqueue failed: {error:?}"));
     }
     match recv_deployment_response(&receiver, self.timeout, wait_mode) {
-      | Ok(DeploymentResponse::Success(success)) => self.resolve_remote_actor(success.actor_path()),
-      | Ok(DeploymentResponse::Failure(failure)) => {
+      | Ok(RemoteDeploymentResponse::Success(success)) => self.resolve_remote_actor(success.actor_path()),
+      | Ok(RemoteDeploymentResponse::Failure(failure)) => {
         RemoteDeploymentOutcome::Failed(format!("{:?}: {}", failure.code(), failure.reason()))
       },
       | Err(DeploymentResponseWaitError::RecvTimeout) => {
-        self.dispatcher.cancel(correlation_hi, correlation_lo);
+        self.cancel_deployment_request(correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment timed out"))
       },
       | Err(DeploymentResponseWaitError::RecvDisconnected) => {
-        self.dispatcher.cancel(correlation_hi, correlation_lo);
+        self.cancel_deployment_request(correlation_hi, correlation_lo);
         RemoteDeploymentOutcome::Failed(String::from("remote deployment response channel closed"))
       },
     }
@@ -155,10 +157,10 @@ fn current_runtime_wait_mode(current_thread_driver: Option<ThreadId>) -> Option<
 }
 
 fn recv_deployment_response(
-  receiver: &Receiver<DeploymentResponse>,
+  receiver: &Receiver<RemoteDeploymentResponse>,
   timeout: Duration,
   wait_mode: DeploymentWaitMode,
-) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
+) -> Result<RemoteDeploymentResponse, DeploymentResponseWaitError> {
   match wait_mode {
     | DeploymentWaitMode::BlockInPlace => tokio::task::block_in_place(|| recv_timeout(receiver, timeout)),
     | DeploymentWaitMode::DirectRecv => recv_timeout(receiver, timeout),
@@ -166,9 +168,9 @@ fn recv_deployment_response(
 }
 
 fn recv_timeout(
-  receiver: &Receiver<DeploymentResponse>,
+  receiver: &Receiver<RemoteDeploymentResponse>,
   timeout: Duration,
-) -> Result<DeploymentResponse, DeploymentResponseWaitError> {
+) -> Result<RemoteDeploymentResponse, DeploymentResponseWaitError> {
   receiver.recv_timeout(timeout).map_err(|error| match error {
     | RecvTimeoutError::Timeout => DeploymentResponseWaitError::RecvTimeout,
     | RecvTimeoutError::Disconnected => DeploymentResponseWaitError::RecvDisconnected,
@@ -176,6 +178,11 @@ fn recv_timeout(
 }
 
 impl StdRemoteDeploymentHook {
+  fn cancel_deployment_request(&self, correlation_hi: u64, correlation_lo: u32) {
+    self.dispatcher.cancel(correlation_hi, correlation_lo);
+    self.remote_shared.cancel_deployment_request(correlation_hi, correlation_lo);
+  }
+
   fn create_request(
     &self,
     request: &RemoteDeploymentRequest,

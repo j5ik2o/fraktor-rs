@@ -14,11 +14,10 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId},
   envelope::{OutboundEnvelope, OutboundPriority},
-  extension::RemoteEvent,
-  failure_detector::PhiAccrualFailureDetector,
+  extension::{RemoteEvent, RemoteShared},
   provider::resolve_remote_address,
   transport::TransportEndpoint,
-  watcher::{WatcherCommand, WatcherEffect, WatcherState},
+  watcher::{WatcherCommand, WatcherEffect},
   wire::ControlPdu,
 };
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -27,13 +26,13 @@ use crate::association::std_instant_elapsed_millis;
 
 pub(crate) async fn run_watcher_task(
   mut commands: Receiver<WatcherCommand>,
+  remote: RemoteShared,
   event_sender: Sender<RemoteEvent>,
   system: ActorSystem,
   local_address: Address,
   monotonic_epoch: Instant,
   tick_interval: Duration,
 ) {
-  let mut state = WatcherState::new(default_detector_factory);
   let mut ticker = tokio::time::interval(tick_interval);
   loop {
     tokio::select! {
@@ -42,12 +41,14 @@ pub(crate) async fn run_watcher_task(
           return;
         };
         let now_ms = std_instant_elapsed_millis(monotonic_epoch);
-        apply_effects(state.handle(command), &event_sender, &system, &local_address, monotonic_epoch, now_ms).await;
+        let effects = remote.handle_watcher_command_and_drain_effects(command);
+        apply_effects(effects, &event_sender, &system, &local_address, monotonic_epoch, now_ms).await;
       },
       _ = ticker.tick() => {
         let now_ms = std_instant_elapsed_millis(monotonic_epoch);
+        let effects = remote.handle_watcher_command_and_drain_effects(WatcherCommand::HeartbeatTick { now: now_ms });
         apply_effects(
-          state.handle(WatcherCommand::HeartbeatTick { now: now_ms }),
+          effects,
           &event_sender,
           &system,
           &local_address,
@@ -196,8 +197,4 @@ async fn send_system_envelope(
   if let Err(error) = event_sender.send(event).await {
     tracing::warn!(?error, "remote watcher system envelope enqueue failed");
   }
-}
-
-fn default_detector_factory(address: &Address) -> PhiAccrualFailureDetector {
-  PhiAccrualFailureDetector::new(address.clone(), 5.0, 100, 10, 0, 100)
 }

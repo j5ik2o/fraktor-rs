@@ -30,14 +30,16 @@ use crate::{
   envelope::{InboundEnvelope, OutboundEnvelope, OutboundPriority},
   extension::{
     EventPublisher, Remote, RemoteActorRefResolveCacheEvent, RemoteActorRefResolveCacheOutcome,
-    RemoteAuthoritySnapshot, RemoteEvent, RemoteEventReceiver, RemoteFlushOutcome, RemoteShared, Remoting,
-    RemotingError, RemotingLifecycleState,
+    RemoteAuthoritySnapshot, RemoteDeploymentOutcome, RemoteDeploymentResponse, RemoteEvent, RemoteEventReceiver,
+    RemoteFlushOutcome, RemoteShared, Remoting, RemotingError, RemotingLifecycleState,
   },
   instrument::{FlightRecorderEvent, HandshakePhase, NoopInstrument, RemoteInstrument, RemotingFlightRecorder},
   transport::{BackpressureSignal, RemoteTransport, TransportEndpoint, TransportError},
+  watcher::{WatcherCommand, WatcherEffect},
   wire::{
     AckPdu, CompressionTableKind, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeReq,
-    HandshakeRsp, RemoteDeploymentCreateFailure, RemoteDeploymentFailureCode, RemoteDeploymentPdu, WireFrame,
+    HandshakeRsp, RemoteDeploymentCreateFailure, RemoteDeploymentCreateRequest, RemoteDeploymentCreateSuccess,
+    RemoteDeploymentFailureCode, RemoteDeploymentPdu, WireFrame,
   },
 };
 
@@ -1302,27 +1304,128 @@ fn inbound_handshake_connect_peer_systemic_failure_returns_transport_unavailable
   assert!(matches!(remote.association_state_for_test(&remote_address), Some(AssociationState::Handshaking { .. })));
 }
 
+fn test_deployment_create_request(
+  origin: &Address,
+  correlation_hi: u64,
+  correlation_lo: u32,
+) -> RemoteDeploymentCreateRequest {
+  RemoteDeploymentCreateRequest::new(
+    correlation_hi,
+    correlation_lo,
+    String::from("fraktor.tcp://sys@127.0.0.1:2552/user"),
+    String::from("child"),
+    String::from("factory"),
+    origin.to_string(),
+    1,
+    None,
+    Bytes::from_static(b"payload"),
+  )
+}
+
 #[test]
-fn inbound_deployment_frame_without_adapter_routing_is_ignored() {
+fn inbound_deployment_create_request_emits_core_outcome() {
   let local_address = Address::new("sys", "127.0.0.1", 2552);
   let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
   let mut remote =
     remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
   remote.start().expect("remote should be running before inbound deployment");
-  let pdu = RemoteDeploymentPdu::CreateFailure(RemoteDeploymentCreateFailure::new(
-    1,
-    2,
-    RemoteDeploymentFailureCode::SpawnFailed,
-    String::from("unrouted"),
+  let request = test_deployment_create_request(&remote_address, 1, 2);
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateRequest(request)),
+      now_ms:    42,
+    })
+    .expect("deployment create request should be interpreted by core");
+
+  let outcomes = remote.drain_deployment_outcomes();
+  assert_eq!(outcomes.len(), 1);
+  assert!(matches!(
+    &outcomes[0],
+    RemoteDeploymentOutcome::CreateRequested {
+      response_remote,
+      authority,
+      request,
+      now_ms,
+    } if response_remote == &remote_address
+      && authority.authority() == remote_address.to_string()
+      && request.correlation_hi() == 1
+      && request.correlation_lo() == 2
+      && *now_ms == 42
   ));
+}
 
-  let result = remote.handle_remote_event(RemoteEvent::InboundFrameReceived {
-    authority: TransportEndpoint::new(remote_address.to_string()),
-    frame:     WireFrame::Deployment(pdu),
-    now_ms:    42,
-  });
+#[test]
+fn inbound_deployment_create_request_with_mismatched_authority_is_ignored() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let spoofed_address = Address::new("spoofed-sys", "10.0.0.2", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+  let request = test_deployment_create_request(&remote_address, 1, 2);
 
-  result.expect("unrouted deployment frame should not fail the event loop");
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(spoofed_address.to_string()),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateRequest(request)),
+      now_ms:    42,
+    })
+    .expect("mismatched deployment request should not fail the event loop");
+
+  assert!(remote.drain_deployment_outcomes().is_empty());
+}
+
+#[test]
+fn inbound_deployment_response_completes_matching_pending_request() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.start().expect("remote should be running before inbound deployment");
+  remote.register_deployment_request(5, 6, remote_address.clone(), 10);
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Deployment(RemoteDeploymentPdu::CreateSuccess(RemoteDeploymentCreateSuccess::new(
+        5,
+        6,
+        String::from("fraktor.tcp://remote-sys@10.0.0.1:2552/user/child"),
+      ))),
+      now_ms:    42,
+    })
+    .expect("matching deployment response should not fail the event loop");
+
+  let outcomes = remote.drain_deployment_outcomes();
+  assert!(matches!(
+    outcomes.as_slice(),
+    [RemoteDeploymentOutcome::ResponseCompleted {
+      response: RemoteDeploymentResponse::Success(success),
+    }] if success.correlation_hi() == 5 && success.correlation_lo() == 6
+  ));
+}
+
+#[test]
+fn deployment_address_termination_completes_matching_pending_request() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let mut remote =
+    remote_new(RecordingTransport::new(vec![local_address]), RemoteConfig::new("127.0.0.1"), event_publisher());
+  remote.register_deployment_request(7, 8, remote_address.clone(), 10);
+
+  remote.fail_deployment_requests_for_terminated_authority(&remote_address.to_string(), "down", 20);
+
+  let outcomes = remote.drain_deployment_outcomes();
+  assert!(matches!(
+    outcomes.as_slice(),
+    [RemoteDeploymentOutcome::ResponseCompleted {
+      response: RemoteDeploymentResponse::Failure(failure),
+    }] if failure.correlation_hi() == 7
+      && failure.correlation_lo() == 8
+      && failure.code() == RemoteDeploymentFailureCode::AddressTerminated
+  ));
 }
 
 #[test]
@@ -1773,6 +1876,41 @@ fn inbound_heartbeat_response_from_matching_peer_is_accepted() {
     .expect("matching heartbeat response should be accepted");
 
   assert_eq!(control_calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn inbound_heartbeat_response_drives_core_watcher_state() {
+  let local_address = Address::new("sys", "127.0.0.1", 2552);
+  let remote_address = Address::new("remote-sys", "10.0.0.1", 2552);
+  let config = RemoteConfig::new("127.0.0.1");
+  let transport = RecordingTransport::new(vec![local_address.clone()]);
+  let mut remote = remote_new(transport, config.clone(), event_publisher());
+  remote.start().expect("remote should be running before inbound control");
+  remote.insert_association(active_association(local_address, remote_address.clone(), &config));
+  let target =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/target").expect("target path should parse");
+  let watcher =
+    ActorPathParser::parse("fraktor.tcp://sys@127.0.0.1:2552/user/watcher").expect("watcher path should parse");
+  remote.handle_watcher_command(WatcherCommand::Watch { target: target.clone(), watcher: watcher.clone() });
+  let _ = remote.drain_watcher_effects();
+
+  remote
+    .handle_remote_event(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(remote_address.to_string()),
+      frame:     WireFrame::Control(ControlPdu::HeartbeatResponse {
+        authority: remote_address.to_string(),
+        uid:       2,
+      }),
+      now_ms:    80,
+    })
+    .expect("matching heartbeat response should be accepted");
+
+  let effects = remote.drain_watcher_effects();
+  assert!(matches!(
+    effects.as_slice(),
+    [WatcherEffect::RewatchRemoteTargets { node, watches }]
+      if node == &remote_address && watches.as_slice() == [(target, watcher)].as_slice()
+  ));
 }
 
 #[test]

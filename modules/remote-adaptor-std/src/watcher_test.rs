@@ -13,18 +13,101 @@ use fraktor_actor_core_kernel_rs::{
     messaging::system_message::SystemMessage,
   },
   event::stream::{ClassifierKey, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  serialization::default_serialization_extension_id,
   system::ActorSystem,
 };
-use fraktor_remote_core_rs::{address::Address, extension::RemoteEvent, watcher::WatcherEffect, wire::ControlPdu};
+use fraktor_remote_core_rs::{
+  address::Address,
+  association::QuarantineReason,
+  config::RemoteConfig,
+  envelope::OutboundEnvelope,
+  extension::{EventPublisher, Remote, RemoteEvent, RemoteShared},
+  transport::{RemoteTransport, TransportEndpoint, TransportError},
+  watcher::WatcherEffect,
+  wire::{AckPdu, ControlPdu, HandshakePdu},
+};
 use tokio::{
   sync::mpsc::{self, UnboundedSender},
   time::timeout,
 };
 
 use super::{
-  apply_effects, default_detector_factory, notify_local_watchers, run_watcher_task, send_heartbeat,
-  send_redelivery_tick, send_system_envelope,
+  apply_effects, notify_local_watchers, run_watcher_task, send_heartbeat, send_redelivery_tick, send_system_envelope,
 };
+
+struct NoopRemoteTransport {
+  addresses: Vec<Address>,
+}
+
+impl NoopRemoteTransport {
+  fn new(addresses: Vec<Address>) -> Self {
+    Self { addresses }
+  }
+}
+
+impl RemoteTransport for NoopRemoteTransport {
+  fn start(&mut self) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn connect_peer(&mut self, _remote: &Address) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send(&mut self, _envelope: OutboundEnvelope) -> Result<(), (TransportError, Box<OutboundEnvelope>)> {
+    Ok(())
+  }
+
+  fn send_control(&mut self, _remote: &Address, _pdu: ControlPdu) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send_flush_request(&mut self, _remote: &Address, _pdu: ControlPdu, _lane_id: u32) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send_ack(&mut self, _remote: &Address, _pdu: AckPdu) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn send_handshake(&mut self, _remote: &Address, _pdu: HandshakePdu) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn schedule_handshake_timeout(
+    &mut self,
+    _authority: &TransportEndpoint,
+    _timeout: Duration,
+    _generation: u64,
+  ) -> Result<(), TransportError> {
+    Ok(())
+  }
+
+  fn addresses(&self) -> &[Address] {
+    &self.addresses
+  }
+
+  fn default_address(&self) -> Option<&Address> {
+    self.addresses.first()
+  }
+
+  fn local_address_for_remote(&self, _remote: &Address) -> Option<&Address> {
+    self.default_address()
+  }
+
+  fn quarantine(
+    &mut self,
+    _address: &Address,
+    _uid: Option<u64>,
+    _reason: QuarantineReason,
+  ) -> Result<(), TransportError> {
+    Ok(())
+  }
+}
 
 struct RecordingEventSubscriber {
   sender: UnboundedSender<EventStreamEvent>,
@@ -64,6 +147,16 @@ fn local_actor_system() -> ActorSystem {
   ActorSystem::create_with_noop_guardian(config).expect("actor system should build")
 }
 
+fn remote_shared() -> RemoteShared {
+  let system = create_noop_actor_system();
+  RemoteShared::new(Remote::new(
+    NoopRemoteTransport::new(vec![local_address()]),
+    RemoteConfig::new("127.0.0.1"),
+    EventPublisher::new(system.downgrade()),
+    system.extended().register_extension(&default_serialization_extension_id()),
+  ))
+}
+
 fn user_guardian_path(system: &ActorSystem) -> ActorPath {
   system.user_guardian_ref().path().expect("user guardian path")
 }
@@ -78,6 +171,7 @@ async fn run_watcher_task_returns_when_command_channel_closes() {
     Duration::from_secs(1),
     run_watcher_task(
       command_rx,
+      remote_shared(),
       event_tx,
       create_noop_actor_system(),
       local_address(),
@@ -210,11 +304,4 @@ async fn send_system_envelope_does_not_enqueue_event_for_local_recipient() {
   .await;
 
   assert!(event_rx.try_recv().is_err());
-}
-
-#[test]
-fn default_detector_factory_creates_available_detector() {
-  let detector = default_detector_factory(&remote_address());
-
-  assert!(detector.is_available(0));
 }
