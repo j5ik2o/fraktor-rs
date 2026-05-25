@@ -303,7 +303,7 @@ fn try_apply_effects_emits_remote_events_without_awaiting() {
   let local_target_path = user_guardian_path(&system);
   let local_watcher_path = local_target_path.clone();
 
-  try_apply_effects(
+  let retry_effects = try_apply_effects(
     alloc::vec![
       WatcherEffect::SendWatch { target: target.clone(), watcher: watcher.clone() },
       WatcherEffect::SendUnwatch { target: target.clone(), watcher: watcher.clone() },
@@ -323,6 +323,7 @@ fn try_apply_effects_emits_remote_events_without_awaiting() {
     Instant::now(),
     42,
   );
+  assert!(retry_effects.is_empty());
 
   let mut events = alloc::vec![];
   while let Ok(event) = event_rx.try_recv() {
@@ -347,7 +348,7 @@ fn try_apply_effects_logs_and_returns_when_event_queue_is_full_or_recipient_is_l
   let system = local_actor_system();
   event_tx.try_send(RemoteEvent::TransportShutdown).expect("queue should be full after seed event");
 
-  try_apply_effects(
+  let retry_effects = try_apply_effects(
     alloc::vec![
       WatcherEffect::SendHeartbeat { to: remote_address() },
       WatcherEffect::SendWatch { target: remote_path("full"), watcher: local_path("watcher") },
@@ -362,6 +363,62 @@ fn try_apply_effects_logs_and_returns_when_event_queue_is_full_or_recipient_is_l
 
   assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
   assert!(event_rx.try_recv().is_err());
+  assert!(retry_effects.is_empty());
+}
+
+#[test]
+fn try_apply_effects_retries_rewatch_remote_targets_when_event_queue_is_full() {
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let system = local_actor_system();
+  let remote = remote_address();
+  let target = remote_path("rewatch");
+  let watcher = local_path("watcher");
+  event_tx.try_send(RemoteEvent::TransportShutdown).expect("queue should be full after seed event");
+
+  let retry_effects = try_apply_effects(
+    alloc::vec![WatcherEffect::RewatchRemoteTargets {
+      node:    remote.clone(),
+      watches: alloc::vec![(target.clone(), watcher.clone())],
+    }],
+    &event_tx,
+    &system,
+    &local_address(),
+    Instant::now(),
+    42,
+  );
+
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::TransportShutdown)));
+  assert!(matches!(
+    retry_effects.as_slice(),
+    [WatcherEffect::RewatchRemoteTargets { node, watches }]
+      if node == &remote && watches == &alloc::vec![(target.clone(), watcher.clone())]
+  ));
+
+  let retry_effects = try_apply_effects(retry_effects, &event_tx, &system, &local_address(), Instant::now(), 42);
+
+  assert!(retry_effects.is_empty());
+  assert!(matches!(event_rx.try_recv(), Ok(RemoteEvent::OutboundEnqueued { .. })));
+}
+
+#[test]
+fn try_apply_effects_does_not_retry_rewatch_remote_targets_when_event_queue_is_closed() {
+  let (event_tx, event_rx) = mpsc::channel(1);
+  let system = local_actor_system();
+  drop(event_rx);
+
+  let retry_effects = try_apply_effects(
+    alloc::vec![WatcherEffect::RewatchRemoteTargets {
+      node:    remote_address(),
+      watches: alloc::vec![(remote_path("rewatch"), local_path("watcher"))],
+    }],
+    &event_tx,
+    &system,
+    &local_address(),
+    Instant::now(),
+    42,
+  );
+
+  assert!(retry_effects.is_empty());
 }
 
 #[test]

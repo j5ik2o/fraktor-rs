@@ -20,7 +20,7 @@ use fraktor_remote_core_rs::{
   watcher::{WatcherCommand, WatcherEffect},
   wire::ControlPdu,
 };
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, error::TrySendError};
 
 use crate::association::std_instant_elapsed_millis;
 
@@ -124,7 +124,8 @@ pub(crate) fn try_apply_effects(
   local_address: &Address,
   monotonic_epoch: Instant,
   now_ms: u64,
-) {
+) -> Vec<WatcherEffect> {
+  let mut retry_effects = Vec::new();
   for effect in effects {
     match effect {
       | WatcherEffect::SendWatch { target, watcher } => {
@@ -156,19 +157,32 @@ pub(crate) fn try_apply_effects(
       | WatcherEffect::NotifyQuarantined { node } => {
         tracing::warn!(remote = %node, "remote watcher marked node quarantined");
       },
-      | WatcherEffect::RewatchRemoteTargets { watches, .. } => {
+      | WatcherEffect::RewatchRemoteTargets { node, watches } => {
+        let mut retry_watches = Vec::new();
         for (target, watcher) in watches {
-          try_send_system_envelope(
+          let outcome = try_send_system_envelope(
             event_sender,
-            target,
-            Some(watcher),
+            target.clone(),
+            Some(watcher.clone()),
             SystemMessage::Watch(Pid::new(0, 0)),
             monotonic_epoch,
           );
+          if matches!(outcome, TryEnqueueOutcome::Retry) {
+            retry_watches.push((target, watcher));
+          }
+        }
+        if !retry_watches.is_empty() {
+          retry_effects.push(WatcherEffect::RewatchRemoteTargets { node, watches: retry_watches });
         }
       },
     }
   }
+  retry_effects
+}
+
+enum TryEnqueueOutcome {
+  Done,
+  Retry,
 }
 
 fn publish_address_terminated(system: &ActorSystem, node: Address, reason: String, observed_at_millis: u64) {
@@ -257,12 +271,20 @@ fn try_send_system_envelope(
   sender: Option<ActorPath>,
   message: SystemMessage,
   monotonic_epoch: Instant,
-) {
+) -> TryEnqueueOutcome {
   let Some(event) = system_envelope_event(recipient, sender, message, monotonic_epoch) else {
-    return;
+    return TryEnqueueOutcome::Done;
   };
-  if let Err(error) = event_sender.try_send(event) {
-    tracing::warn!(?error, "remote watcher system envelope enqueue failed");
+  match event_sender.try_send(event) {
+    | Ok(()) => TryEnqueueOutcome::Done,
+    | Err(TrySendError::Full(error)) => {
+      tracing::warn!(?error, "remote watcher system envelope enqueue failed");
+      TryEnqueueOutcome::Retry
+    },
+    | Err(TrySendError::Closed(error)) => {
+      tracing::warn!(?error, "remote watcher system envelope enqueue failed");
+      TryEnqueueOutcome::Done
+    },
   }
 }
 

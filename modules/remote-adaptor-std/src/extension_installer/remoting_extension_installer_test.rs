@@ -22,6 +22,7 @@ use fraktor_remote_core_rs::{
   association::QuarantineReason,
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::{TransportEndpoint, TransportError},
+  watcher::WatcherCommand,
   wire::{
     AckPdu, ControlPdu, EnvelopePayload, EnvelopePdu, FlushScope, HandshakePdu, HandshakeRsp,
     RemoteDeploymentCreateRequest, WireFrame,
@@ -221,6 +222,57 @@ async fn run_remote_with_delivery_applies_outcomes_before_transport_shutdown() {
   .expect("transport shutdown should stop the run loop");
 
   assert!(remote.should_stop_event_loop());
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = false)]
+async fn run_remote_with_delivery_retries_rewatch_effects_after_full_event_queue() {
+  let local = local_address();
+  let target = remote_address();
+  let remote = remote_shared(RemoteConfig::new("127.0.0.1"), TestRemoteTransport::new(vec![local.clone()]));
+  activate_association(&remote, &target);
+  let target_path =
+    ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/target").expect("remote target path");
+  let watcher_path =
+    ActorPathParser::parse("fraktor.tcp://local-sys@127.0.0.1:2551/user/watcher").expect("local watcher path");
+  let initial_effects = remote
+    .handle_watcher_command_and_drain_effects(WatcherCommand::Watch { target: target_path, watcher: watcher_path });
+  assert!(!initial_effects.is_empty());
+  let system = create_noop_actor_system();
+  let (input_sender, input_receiver) = mpsc::channel(8);
+  let mut receiver = TokioMpscRemoteEventReceiver::new(input_receiver);
+  let (event_sender, mut event_receiver) = mpsc::channel(1);
+  event_sender.try_send(RemoteEvent::TransportShutdown).expect("output queue should be full");
+  let (deployment_sender, _deployment_receiver) = mpsc::channel(8);
+  input_sender
+    .send(RemoteEvent::InboundFrameReceived {
+      authority: TransportEndpoint::new(target.to_string()),
+      frame:     WireFrame::Control(ControlPdu::HeartbeatResponse { authority: target.to_string(), uid: 2 }),
+      now_ms:    80,
+    })
+    .await
+    .expect("heartbeat response event should be enqueued");
+  let flush_gate = StdFlushGate::default();
+
+  let run_future = run_remote_with_delivery(
+    &remote,
+    &mut receiver,
+    &system,
+    &local,
+    Instant::now(),
+    &deployment_sender,
+    DeploymentResponseDispatcher::default(),
+    &event_sender,
+    &flush_gate,
+  );
+  let driver = async {
+    sleep(Duration::from_millis(10)).await;
+    assert!(matches!(event_receiver.try_recv(), Ok(RemoteEvent::TransportShutdown)));
+    input_sender.send(RemoteEvent::TransportShutdown).await.expect("shutdown event should be enqueued");
+  };
+  let (run_result, ()) = tokio::join!(run_future, driver);
+
+  run_result.expect("retryable rewatch effect should not fail the run loop");
+  assert!(matches!(event_receiver.try_recv(), Ok(RemoteEvent::OutboundEnqueued { .. })));
 }
 
 fn test_user_envelope(target: &Address) -> OutboundEnvelope {

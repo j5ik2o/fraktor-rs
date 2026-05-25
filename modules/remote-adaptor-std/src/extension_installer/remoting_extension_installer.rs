@@ -684,6 +684,7 @@ async fn run_remote_with_delivery(
   event_sender: &Sender<RemoteEvent>,
   flush_gate: &StdFlushGate,
 ) -> Result<(), RemotingError> {
+  let mut retry_watcher_effects = Vec::new();
   loop {
     if remote.should_stop_event_loop() {
       return Ok(());
@@ -696,7 +697,13 @@ async fn run_remote_with_delivery(
     let deployment_outcomes = remote.drain_deployment_outcomes();
     apply_deployment_outcomes(remote, deployment_outcomes, deployment_sender, &deployment_response_dispatcher)?;
     let now_ms = std_instant_elapsed_millis(monotonic_epoch);
-    try_apply_watcher_effects(watcher_effects, event_sender, system, local_address, monotonic_epoch, now_ms);
+    let mut watcher_effects = watcher_effects;
+    if !retry_watcher_effects.is_empty() {
+      retry_watcher_effects.append(&mut watcher_effects);
+      watcher_effects = core::mem::take(&mut retry_watcher_effects);
+    }
+    retry_watcher_effects =
+      try_apply_watcher_effects(watcher_effects, event_sender, system, local_address, monotonic_epoch, now_ms);
     flush_gate.observe_outcomes(remote.drain_flush_outcomes(), event_sender);
     deliver_inbound_envelopes(remote, system);
     if should_stop {
