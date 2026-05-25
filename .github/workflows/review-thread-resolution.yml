@@ -39,13 +39,13 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
+  group: review-thread-resolution-${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'ci-' || 'event-' }}${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && toJSON(inputs.wait_for_other_checks) != 'false' && inputs.wait_for_other_checks != 'false' }}
 
 jobs:
   unresolved-comments:
     name: Evaluate unresolved comments
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request != null || github.event.issue.pull_request != null }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request != null || github.event.issue.pull_request != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -56,7 +56,7 @@ jobs:
           REPO: ${{ github.event.repository.name }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
           EVENT_NAME: ${{ github.event_name }}
-          WAIT_FOR_OTHER_CHECKS: ${{ inputs.wait_for_other_checks == false && '0' || '1' }}
+          WAIT_FOR_OTHER_CHECKS: ${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && '0' || '1' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail

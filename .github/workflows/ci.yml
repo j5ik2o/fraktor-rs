@@ -486,7 +486,7 @@ jobs:
       pull-requests: read
     uses: ./.github/workflows/review-thread-resolution.yml
     with:
-      pr_number: ${{ github.event.pull_request.number }}
+      pr_number: ${{ format('{0}', github.event.pull_request.number) }}
       wait_for_other_checks: false
 
   # All jobs completion check
