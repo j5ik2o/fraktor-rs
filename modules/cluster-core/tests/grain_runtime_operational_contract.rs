@@ -200,22 +200,23 @@ fn passivation_removes_idle_activation_but_keeps_recent_activation() {
   lookup.update_topology(vec!["node-a:4050".to_string()]);
   let recent_key = grain_key("user/recent");
   let idle_key = grain_key("user/idle");
-  let recent = lookup.resolve(&recent_key, 1000).expect("recent resolution");
   let idle = lookup.resolve(&idle_key, 1000).expect("idle resolution");
   let _ = lookup.drain_events();
   let _ = lookup.drain_cache_events();
-
-  lookup.passivate_idle(1050, 100);
-  assert!(lookup.drain_events().is_empty());
-  assert!(lookup.drain_cache_events().is_empty());
-  let recent_again = lookup.resolve(&recent_key, 1051).expect("recent cached");
-  assert_eq!(recent_again.pid, recent.pid);
+  let recent = lookup.resolve(&recent_key, 1150).expect("recent resolution");
+  let _ = lookup.drain_events();
+  let _ = lookup.drain_cache_events();
 
   lookup.passivate_idle(1200, 100);
   let placement_events = lookup.drain_events();
   let cache_events = lookup.drain_cache_events();
   assert!(has_passivated_event(&placement_events, &idle_key));
+  assert!(!has_passivated_event(&placement_events, &recent_key));
   assert!(has_cache_drop_event(&cache_events, &idle_key));
+  assert!(!has_cache_drop_event(&cache_events, &recent_key));
+
+  let recent_again = lookup.resolve(&recent_key, 1201).expect("recent cached");
+  assert_eq!(recent_again.pid, recent.pid);
 
   let idle_again = lookup.resolve(&idle_key, 1201).expect("idle reactivated");
   assert_eq!(idle_again.decision.authority, idle.decision.authority);
