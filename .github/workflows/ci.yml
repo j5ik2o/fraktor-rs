@@ -110,7 +110,6 @@ jobs:
               || "${path}" == *.rst \
               || "${path}" == *.txt \
               || "${path}" == docs/* \
-              || "${path}" == openspec/* \
               || "${path}" == README* \
               || "${path}" == CHANGELOG* \
               || "${path}" == LICENSE* ]]
