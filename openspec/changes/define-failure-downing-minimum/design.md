@@ -1,56 +1,56 @@
-## Context
+## 背景
 
-`cluster-core` already has `FailureDetector`, `FailureDetectorRegistry`, `MembershipCoordinator`, `MembershipEvent::MarkedSuspect`, `CurrentClusterState::unreachable`, and a `DowningProvider` hook used by explicit `down` commands. The provider boundary change fixed the input side: providers produce topology or departure input, while Grain runtime consumes provider-neutral state.
+`cluster-core` にはすでに `FailureDetector`、`FailureDetectorRegistry`、`MembershipCoordinator`、`MembershipEvent::MarkedSuspect`、`CurrentClusterState::unreachable`、explicit `down` command で使われる `DowningProvider` hook がある。provider boundary change では、provider が topology または departure input を供給し、Grain runtime が provider-neutral な状態を消費する境界を固定した。
 
-The missing boundary is the step between failure observation and member departure. Today `suspect_timeout` can drive membership transitions, but the decision model is not documented as a standalone contract. Without that boundary, future SBR, reachability matrix, or rebalance work can leak into provider and Grain runtime semantics.
+未整理なのは、failure observation から member departure へ進む間の責務境界である。現状の `suspect_timeout` は membership transition を進められるが、downing decision model として独立した contract にはなっていない。この境界が曖昧なままだと、後続の SBR、reachability matrix、rebalance の作業が provider や Grain runtime の semantics へ漏れやすい。
 
-## Goals / Non-Goals
+## 目的 / 対象外
 
-**Goals:**
+**目的:**
 
-- Define the minimum failure observation contract for suspect / reachable / unreachable state.
-- Define where downing decisions are made and how they become member departure input.
-- Keep `cluster-core` as the owner of the decision port and membership state semantics.
-- Keep std adapters limited to detector implementations, timers, networking, and runtime execution.
-- Map the contract to existing membership / failure detector / downing tests, adding small targeted tests only where a gap is found.
+- suspect / reachable / unreachable state に関する最小の failure observation contract を定義する。
+- downing decision がどこで作られ、どのように member departure input になるかを定義する。
+- `cluster-core` が decision port と membership state semantics を所有する形を維持する。
+- std adapter は detector implementation、timer、networking、runtime execution の供給に留める。
+- 既存の membership / failure detector / downing tests と contract を対応づけ、不足があれば小さい targeted test だけを追加する。
 
-**Non-Goals:**
+**対象外:**
 
-- Implement Split Brain Resolver behavior.
-- Introduce a reachability matrix or full gossip reachability semantics.
-- Implement rebalance, remembered entities, in-flight drain, or recovery behavior.
-- Add provider-specific failure policy to local / static / AWS ECS providers.
-- Define Pekko public API parity for cluster downing.
+- Split Brain Resolver behavior の実装。
+- reachability matrix または full gossip reachability semantics の導入。
+- rebalance、remembered entities、in-flight drain、recovery behavior の実装。
+- local / static / AWS ECS provider への provider-specific failure policy 追加。
+- Pekko public API parity としての cluster downing 定義。
 
-## Decisions
+## 決定事項
 
-### Decision 1: failure-downing-minimum is a new capability
+### Decision 1: failure-downing-minimum は新 capability として切る
 
-The provider boundary spec deliberately leaves downing policy outside its scope. A separate `failure-downing-minimum` capability keeps the next contract focused on failure observation and decision flow without mixing it with provider discovery or Grain placement.
+Provider boundary spec は downing policy を明示的に対象外にしている。`failure-downing-minimum` capability を分けることで、provider discovery や Grain placement と混ぜずに failure observation と decision flow へ焦点を絞る。
 
-Alternative: add downing requirements to `cluster-provider-boundary`. This would blur provider input with failure policy and make providers appear responsible for downing decisions.
+代替案: `cluster-provider-boundary` に downing requirement を追加する。この場合、provider input と failure policy が混ざり、provider が downing decision を所有しているように見えやすい。
 
-### Decision 2: suspect / unreachable is observation, not departure
+### Decision 2: suspect / unreachable は observation であり departure ではない
 
-Failure detectors and membership coordination can mark a member as suspect or unreachable, but that observation is not the same as a member departure. Departure input begins only when an explicit down command or downing decision removes the authority from active topology.
+Failure detector と membership coordination は member を suspect または unreachable として扱えるが、その observation は member departure と同義ではない。Departure input は、explicit down command または downing decision が active topology から authority を外す段階で始まる。
 
-Alternative: treat suspect timeout as implicit downing everywhere. This is simpler but hides the policy boundary and makes SBR or manual downing hard to introduce later.
+代替案: suspect timeout を常に implicit downing として扱う。これは単純だが、policy boundary を隠し、後続の SBR や manual downing を導入しづらくする。
 
-### Decision 3: DowningProvider is the decision boundary
+### Decision 3: DowningProvider は decision boundary である
 
-`DowningProvider` should remain the core-owned port for downing behavior. The change should evaluate whether the port needs to grow from explicit `down(authority)` into a decision contract that can consume failure observation and return a down / keep / defer decision.
+`DowningProvider` は core-owned な downing behavior port として扱う。この change では、現行の explicit `down(authority)` hook で十分か、failure observation を受け取り down / keep / defer 相当の decision を返せる contract へ広げる必要があるかを確認する。
 
-Alternative: make `MembershipCoordinator` own downing decisions directly. This reduces indirection but couples failure detection, policy, and topology mutation too tightly.
+代替案: `MembershipCoordinator` が downing decision を直接所有する。これは indirection を減らすが、failure detection、policy、topology mutation の結合が強くなりすぎる。
 
-### Decision 4: Grain runtime only consumes member departure input
+### Decision 4: Grain runtime は member departure input だけを消費する
 
-Identity lookup, placement, activation, and PID cache invalidation should continue to observe provider-neutral topology and departure input. They should not inspect phi values, suspect timers, SBR choices, or detector-specific state.
+Identity lookup、placement、activation、PID cache invalidation は provider-neutral topology と departure input を観測し続ける。phi value、suspect timer、SBR choice、detector-specific state は inspect しない。
 
-Alternative: let Grain runtime inspect unreachable state directly. This would make placement policy depend on failure detector details and duplicate membership semantics.
+代替案: Grain runtime が unreachable state を直接 inspect する。この場合、placement policy が failure detector details に依存し、membership semantics と重複する。
 
-## Risks / Trade-offs
+## リスク / トレードオフ
 
-- [Risk] The minimal contract may be too weak for future SBR. -> Mitigation: explicitly leave SBR as a future capability and keep this change to port shape and state transitions.
-- [Risk] `DowningProvider` changes could be premature. -> Mitigation: start from current tests and add only the smallest API needed to represent decision output.
-- [Risk] Suspect timeout behavior may already imply a policy. -> Mitigation: document whether current timeout is the default downing strategy or only a coordinator transition before changing code.
-- [Risk] Provider boundary and downing boundary may overlap. -> Mitigation: provider specs own discovery/topology input; this capability owns failure observation and decision semantics only.
+- [リスク] 最小 contract が将来の SBR には弱すぎる。 -> 緩和策: SBR は将来 capability として明示的に分離し、この change は port shape と state transition に留める。
+- [リスク] `DowningProvider` 変更が早すぎる可能性がある。 -> 緩和策: 既存 tests との照合から始め、decision output を表現するために必要な最小 API だけを追加する。
+- [リスク] suspect timeout behavior がすでに policy を含んでいる可能性がある。 -> 緩和策: code change の前に、現行 timeout が default downing strategy なのか coordinator transition なのかを文書化する。
+- [リスク] provider boundary と downing boundary が重なる。 -> 緩和策: provider specs は discovery / topology input を所有し、この capability は failure observation と decision semantics だけを所有する。
