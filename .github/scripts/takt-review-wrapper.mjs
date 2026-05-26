@@ -175,7 +175,7 @@ function buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComm
     .slice(-80)
     .map((comment) => `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${sanitizePromptText(firstLine(comment.body), 180)}`)
     .join("\n");
-  const fileList = changedFiles.map((file) => `- ${file.filename}`).join("\n");
+  const fileList = changedFiles.map((file) => `- ${sanitizePromptText(file.filename, 240)}`).join("\n");
 
   return `Review PR #${prNumber}: ${sanitizePromptText(pr.title, 200)}
 
