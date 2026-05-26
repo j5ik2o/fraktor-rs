@@ -25,7 +25,7 @@ use fraktor_utils_core_rs::{
 use crate::{
   BlockListProvider, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
   ClusterProviderError, ClusterProviderShared, MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
-  downing_provider::DowningProvider,
+  downing_provider::{DowningDecision, DowningInput, DowningProvider},
   grain::{GrainKey, KindRegistry},
   identity::{IdentityLookupShared, IdentitySetupError, LookupError, PidCache},
   membership::{CurrentClusterState, GossiperShared, MembershipVersion, NodeRecord, NodeStatus},
@@ -366,14 +366,26 @@ impl ClusterCore {
   ///
   /// # Errors
   ///
-  /// Returns an error if the cluster has not been started, downing strategy rejects the command,
-  /// or provider-side down processing fails.
+  /// Returns an error if the cluster has not been started, strategy evaluation fails, the strategy
+  /// does not return [`DowningDecision::Down`] for the explicit command, or provider-side down
+  /// processing fails after a [`DowningDecision::Down`] decision.
   pub fn down(&mut self, authority: &str) -> Result<(), ClusterError> {
     if self.mode.is_none() {
       return Err(ClusterError::from(ClusterProviderError::down("cluster is not started")));
     }
-    self.downing_provider.with_lock(|downing_provider| downing_provider.down(authority)).map_err(ClusterError::from)?;
-    self.provider.with_write(|provider| provider.down(authority)).map_err(ClusterError::from)
+    let input = DowningInput::explicit_down(authority);
+    let decision = self
+      .downing_provider
+      .with_lock(|downing_provider| downing_provider.decide(&input))
+      .map_err(ClusterError::from)?;
+    match decision {
+      | DowningDecision::Down => {
+        self.provider.with_write(|provider| provider.down(authority)).map_err(ClusterError::from)
+      },
+      | DowningDecision::Keep | DowningDecision::Defer => {
+        Err(ClusterError::DowningRejected { authority: String::from(authority), decision })
+      },
+    }
   }
 
   /// Requests a member join for the provided authority.

@@ -209,7 +209,7 @@ fn assert_status_eventually(
 }
 
 #[test]
-fn node_down_is_marked_dead_after_failure_detection() {
+fn failure_detection_keeps_suspect_until_downing_decision() {
   let bus = Arc::new(Mutex::new(InMemoryBus::new()));
   let event_stream = EventStreamShared::default();
   let mut node_a = DemoNode::new("node-a", config(), bus.clone(), event_stream.clone());
@@ -261,19 +261,12 @@ fn node_down_is_marked_dead_after_failure_detection() {
     node_b.status_of("node-c")
   });
 
-  let mut tick = 7_u64;
-  assert_status_eventually("node-c", NodeStatus::Dead, 4, || {
+  for tick in 7..=10 {
     node_a.poll(now(tick));
     node_b.poll_gossip(now(tick));
-    tick += 1;
-    node_a.status_of("node-c")
-  });
-  assert_status_eventually("node-c", NodeStatus::Dead, 4, || {
-    node_a.poll(now(tick));
-    node_b.poll_gossip(now(tick));
-    tick += 1;
-    node_b.status_of("node-c")
-  });
+  }
+  assert_status(&node_a, "node-c", NodeStatus::Suspect);
+  assert_status(&node_b, "node-c", NodeStatus::Suspect);
 }
 
 #[test]
