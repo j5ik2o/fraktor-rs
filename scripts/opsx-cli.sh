@@ -283,7 +283,7 @@ cmd_instructions() {
   local cdir
   cdir=$(change_dir "$name")
 
-  if [[ ! -d "$cdir" ]]; then
+  if [[ ! -d "$cdir" ]] || [[ ! -f "${cdir}/.openspec.yaml" ]]; then
     die "Change '${name}' not found at ${cdir}"
   fi
 
@@ -438,8 +438,10 @@ cmd_instructions_apply() {
     idx=$(get_artifact_index "$req")
     if [[ "$idx" != "-1" ]]; then
       local cf="${cdir}/${ARTIFACT_FILES[$idx]}"
+      local cf_esc
+      cf_esc=$(json_escape "$cf")
       if [[ "$cf_first" != "true" ]]; then context_files_json="${context_files_json},"; fi
-      context_files_json="${context_files_json}\"${cf}\""
+      context_files_json="${context_files_json}\"${cf_esc}\""
       cf_first=false
     fi
   done
@@ -449,10 +451,12 @@ cmd_instructions_apply() {
     idx=$(get_artifact_index "$aid")
     if [[ "$idx" != "-1" ]]; then
       local cf="${cdir}/${ARTIFACT_FILES[$idx]}"
+      local cf_esc
+      cf_esc=$(json_escape "$cf")
       # Avoid duplicates
-      if [[ "$context_files_json" != *"\"${cf}\""* ]]; then
+      if [[ "$context_files_json" != *"\"${cf_esc}\""* ]]; then
         if [[ "$cf_first" != "true" ]]; then context_files_json="${context_files_json},"; fi
-        context_files_json="${context_files_json}\"${cf}\""
+        context_files_json="${context_files_json}\"${cf_esc}\""
         cf_first=false
       fi
     fi
@@ -463,10 +467,12 @@ cmd_instructions_apply() {
   instruction=$(get_instruction "apply")
 
   if [[ "$json_mode" == "true" ]]; then
-    local i_esc
+    local name_esc tasks_file_esc i_esc
+    name_esc=$(json_escape "$name")
+    tasks_file_esc=$(json_escape "$tasks_file")
     i_esc=$(json_escape "$instruction")
     printf '{"state":"%s","changeName":"%s","tasksFile":"%s","contextFiles":%s,"progress":{"total":%d,"complete":%d,"remaining":%d},"tasks":%s,"instruction":"%s"}\n' \
-      "$state" "$name" "$tasks_file" "$context_files_json" "$total" "$complete" "$((total - complete))" "$task_list_json" "$i_esc"
+      "$state" "$name_esc" "$tasks_file_esc" "$context_files_json" "$total" "$complete" "$((total - complete))" "$task_list_json" "$i_esc"
   else
     echo "Apply Status for: ${name}"
     echo "State: ${state}"
