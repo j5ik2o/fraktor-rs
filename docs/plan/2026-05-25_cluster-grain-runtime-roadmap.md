@@ -86,39 +86,45 @@ Cons:
 
 ## Task slices
 
-### 1. Documentation alignment
+進捗の読み方:
 
-- `cluster-gap-analysis.md` を Pekko comparison として位置づけ直す。
-- README / docs で `cluster-*` の主語を Grain runtime として説明する。
-- Pekko parity ではなく参照実装としての扱いを明記する。
+- `~~取消線~~` は OpenSpec archive / current code / tests で完了確認できる項目。
+- 取消線なしは未完了または別 change として継続中の項目。
+
+### ~~1. Documentation alignment~~
+
+- ~~`cluster-gap-analysis.md` を Pekko comparison として位置づけ直す。~~
+- ~~README / docs で `cluster-*` の主語を Grain runtime として説明する。~~
+- ~~Pekko parity ではなく参照実装としての扱いを明記する。~~
 
 ### 2. Operational contract tests
 
-- identity lookup の成功 / pending / no authority を contract test として固定する。
-- topology update 後に absent authority の activation / cache が無効化されることを固定する。
-- leave / down / passivation と `GrainRef` 解決の関係を固定する。
+- ~~identity lookup の成功 / no authority を contract test として固定する。~~
+- pending activation の public `IdentityLookup::resolve` contract は `test-grain-pending-activation-contract` で継続中。
+- ~~topology update 後に absent authority の activation / cache が無効化されることを固定する。~~
+- ~~leave / down / passivation と `GrainRef` 解決の関係を固定する。~~
 
-### 3. Provider boundary hardening
+### ~~3. Provider boundary hardening~~
 
-- local / static / AWS ECS provider がどこまで membership を供給し、どこから cluster core が扱うかを文書化する。
-- seed / discovery / lifecycle adapter の責務境界を明確にする。
-- std adapter 実装で保持すべき subscription / driver lifetime を確認する。
+- ~~local / static / AWS ECS provider がどこまで membership を供給し、どこから cluster core が扱うかを文書化する。~~
+- ~~seed / discovery / lifecycle adapter の責務境界を明確にする。~~
+- ~~std adapter 実装で保持すべき subscription / driver lifetime を確認する。~~
 
 作業メモ: [2026-05-26_cluster-provider-boundary.md](2026-05-26_cluster-provider-boundary.md) で、DIP と port-and-adapter の向きを `cluster-core` が policy / port を所有し std が adapter 実装に留まる形として整理する。
 
-### 4. Failure detector and downing minimum
+### ~~4. Failure detector and downing minimum~~
 
-- `DowningProvider` を単なる explicit down hook から、failure observation に対する判断 contract へ拡張するか検討する。
-- SBR 全面実装ではなく、最小 downing decision model を先に切る。
-- Reachability matrix を入れるか、現在の suspect / unreachable event model を強化するかを比較する。
+- ~~`DowningProvider` を単なる explicit down hook から、failure observation に対する判断 contract へ拡張するか検討する。~~
+- ~~SBR 全面実装ではなく、最小 downing decision model を先に切る。~~
+- ~~Reachability matrix を入れるか、現在の suspect / unreachable event model を強化するかを比較する。~~
 
 作業メモ: [2026-05-26_failure-downing-boundary.md](2026-05-26_failure-downing-boundary.md) で、failure observation と member departure input を分離し、`DowningProvider` を decision port として扱う最小 contract を整理する。
 
 ### 5. Placement scalability
 
 - Rendezvous hashing のまま伸ばす範囲を明確にする。
-- rebalance を即実装する前に、join / leave / rolling update 時の movement と cache invalidation の期待値を固定する。
-- remembered entities は persistence integration の要求が明確になるまで deferred とする。
+- ~~rebalance を即実装する前に、join / leave / rolling update 時の movement と cache invalidation の期待値を固定する。~~
+- ~~remembered entities は persistence integration の要求が明確になるまで deferred とする。~~
 
 ## Deferred scope
 
