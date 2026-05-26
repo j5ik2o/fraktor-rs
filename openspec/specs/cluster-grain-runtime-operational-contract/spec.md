@@ -9,6 +9,8 @@ Grain identity lookup SHALL resolve a `GrainKey` from the current authority topo
 
 Rendezvous hashing SHALL provide deterministic owner selection for the same `GrainKey` and same authority topology. New placement decisions MUST use the active authority topology. Existing active activations MUST NOT move only because a new authority joined.
 
+This requirement SHALL be treated as the bounded Placement scalability contract for the current Grain runtime roadmap slice. It MUST NOT imply least-shard rebalance, minimum movement guarantees, remembered entity recovery, persistence-backed activation recovery, or in-flight request draining.
+
 #### Scenario: no authority is reported explicitly
 
 - **WHEN** member-mode identity lookup resolves a `GrainKey` before any authority is present
