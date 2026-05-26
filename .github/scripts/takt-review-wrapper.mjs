@@ -261,22 +261,28 @@ function collectReviewableLinesFromDiff(diffText) {
 function parseDiffFileHeader(line) {
   const plain = /^\+\+\+ b\/(.+)$/.exec(line);
   if (plain) {
-    return plain[1];
+    return normalizeDiffPath(plain[1]);
   }
 
   const quoted = /^\+\+\+ "b\/(.+)"$/.exec(line);
   if (quoted) {
-    return unescapeQuotedDiffPath(quoted[1]);
+    return normalizeDiffPath(unescapeQuotedDiffPath(quoted[1]));
   }
   return undefined;
 }
 
 function unescapeQuotedDiffPath(path) {
-  return path
+  const decoded = path
+    .replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(Number.parseInt(octal, 8)))
     .replace(/\\"/g, '"')
     .replace(/\\\\/g, "\\")
     .replace(/\\t/g, "\t")
     .replace(/\\n/g, "\n");
+  return Buffer.from(decoded, "binary").toString("utf8");
+}
+
+function normalizeDiffPath(path) {
+  return path.trimEnd();
 }
 
 function readLatestReport(runStartedAt) {
@@ -452,12 +458,30 @@ function isSeparatorLine(line) {
 }
 
 function splitTableLine(line) {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => stripMarkdown(cell.trim()));
+  const cells = [];
+  let cell = "";
+  let escaped = false;
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  for (const char of trimmed) {
+    if (escaped) {
+      cell += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      cell += char;
+      escaped = true;
+      continue;
+    }
+    if (char === "|") {
+      cells.push(stripMarkdown(cell.trim()));
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+  cells.push(stripMarkdown(cell.trim()));
+  return cells;
 }
 
 function normalizeHeader(header) {
@@ -512,9 +536,11 @@ function isPlaceholder(value) {
 }
 
 function sanitizePromptText(value, maxLength) {
-  return stripMarkdown(String(value || ""))
+  return stripMarkdown(
+    String(value || "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/```[\s\S]*?```/g, "[code block omitted]")
     .replace(/\b(ignore|disregard|forget|override)\b/gi, "[$1]")
+  )
     .slice(0, maxLength);
 }
