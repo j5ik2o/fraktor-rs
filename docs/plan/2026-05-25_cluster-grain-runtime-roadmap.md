@@ -100,7 +100,7 @@ Cons:
 ### 2. Operational contract tests
 
 - ~~identity lookup の成功 / no authority を contract test として固定する。~~
-- pending activation の public `IdentityLookup::resolve` contract は `test-grain-pending-activation-contract` で継続中。
+- ~~pending activation の public `IdentityLookup::resolve` contract を固定する。~~
 - ~~topology update 後に absent authority の activation / cache が無効化されることを固定する。~~
 - ~~leave / down / passivation と `GrainRef` 解決の関係を固定する。~~
 
@@ -120,11 +120,13 @@ Cons:
 
 作業メモ: [2026-05-26_failure-downing-boundary.md](2026-05-26_failure-downing-boundary.md) で、failure observation と member departure input を分離し、`DowningProvider` を decision port として扱う最小 contract を整理する。
 
-### 5. Placement scalability
+### ~~5. Placement scalability~~
 
-- Rendezvous hashing のまま伸ばす範囲を明確にする。
+- ~~Rendezvous hashing のまま伸ばす範囲を明確にする。~~
 - ~~rebalance を即実装する前に、join / leave / rolling update 時の movement と cache invalidation の期待値を固定する。~~
 - ~~remembered entities は persistence integration の要求が明確になるまで deferred とする。~~
+
+作業メモ: `define-placement-movement-contract` と `test-grain-pending-activation-contract` により、現行の bounded Placement scalability contract は `cluster-grain-runtime-operational-contract` に集約済み。今後の rebalance / remembered entities / recovery / drain は別 change として扱う。
 
 ## Deferred scope
 
@@ -137,6 +139,9 @@ Cons:
 - sharding delivery controllers
 - replicated sharding / direct replication
 - Pekko serializer binary compatibility
+- least-shard rebalance / minimum movement guarantee
+- remembered entities / persistence-backed activation recovery
+- in-flight request draining
 
 ## OpenSpec 境界
 
