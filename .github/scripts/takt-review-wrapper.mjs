@@ -23,7 +23,7 @@ if (!anthropicApiKey) {
   throw new Error("ANTHROPIC_API_KEY or TAKT_ANTHROPIC_API_KEY is required");
 }
 
-if (env.GITHUB_EVENT_NAME === "issue_comment" && env.COMMENT_BODY && !/^@takt(?:\s|$)/.test(env.COMMENT_BODY)) {
+if (env.GITHUB_EVENT_NAME === "issue_comment" && env.COMMENT_BODY && !/^@takt(?:\s|$|[^A-Za-z0-9_-])/.test(env.COMMENT_BODY)) {
   console.log("Comment does not contain an @takt command. Skipping.");
   process.exit(0);
 }
