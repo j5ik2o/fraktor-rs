@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 10
-initial_movement: generate-tasks
+max_steps: 10
+initial_step: generate-tasks
 
 policies:
   cc-sdd-tasks: ../facets/policies/cc-sdd-tasks.md
@@ -18,7 +18,7 @@ instructions:
 report_formats:
   cc-sdd-tasks: ../facets/output-contracts/cc-sdd-tasks.md
 
-movements:
+steps:
   - name: generate-tasks
     edit: true
     persona: planner

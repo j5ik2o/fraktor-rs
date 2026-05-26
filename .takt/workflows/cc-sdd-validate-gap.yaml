@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 10
-initial_movement: validate-gap
+max_steps: 10
+initial_step: validate-gap
 
 policies:
   cc-sdd-gap-analysis: ../facets/policies/cc-sdd-gap-analysis.md
@@ -18,7 +18,7 @@ instructions:
 report_formats:
   cc-sdd-gap-analysis: ../facets/output-contracts/cc-sdd-gap-analysis.md
 
-movements:
+steps:
   - name: validate-gap
     edit: true
     persona: planner

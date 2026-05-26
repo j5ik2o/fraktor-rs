@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 15
-initial_movement: validate-design
+max_steps: 15
+initial_step: validate-design
 
 policies:
   cc-sdd-design-review: ../facets/policies/cc-sdd-design-review.md
@@ -39,7 +39,7 @@ loop_monitors:
         - condition: 非生産的（改善なし）
           next: ABORT
 
-movements:
+steps:
   - name: validate-design
     edit: false
     persona: architecture-reviewer
