@@ -75,7 +75,7 @@ jobs:
             echo "same_repo=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: steps.pr.outputs.same_repo == 'true'
         with:
           ref: ${{ steps.pr.outputs.ref }}
