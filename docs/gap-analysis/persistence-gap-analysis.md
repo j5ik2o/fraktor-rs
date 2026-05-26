@@ -1,6 +1,6 @@
 # persistence モジュール ギャップ分析
 
-更新日: 2026-05-24 JST
+更新日: 2026-05-27 JST
 
 ## 比較スコープ定義
 
@@ -54,7 +54,7 @@ raw declaration count は参考値であり、parity 分母に使わない。
 
 classic write-side persistence は、persistent actor、journal、snapshot、event adapter、at-least-once delivery、durable state store の基本契約が揃っている。typed write-side は Pekko typed `EventSourcedBehavior` / `Effect` の直移植ではなく、通常の typed `Behavior` を保ったまま hidden child store actor に永続化を委譲する effector-first API として実装されている。
 
-2026-05-24 の再検証では、現行 crate 境界が `persistence-core-kernel` / `persistence-core-typed` であり、`persistence-adaptor-std` は存在しないことを確認した。前回「部分実装」として残っていた adapter manifest と serializer manifest の接続は、`PersistenceContext::to_journal_repr`、`PersistentRepr::adapter_type_id`、`MessageSerializer` の wire encoding で接続済みと判定する。
+2026-05-27 の再検証では、現行 crate 境界が `persistence-core-kernel` / `persistence-core-typed` であり、`persistence-adaptor-std` は存在しないことを確認した。Pekko 側 raw extraction と fraktor-rs 側 raw / externally reachable extraction の件数は 2026-05-24 版から変化していない。前回「部分実装」として残っていた adapter manifest と serializer manifest の接続は、`PersistenceContext::to_journal_repr`、`PersistentRepr::adapter_type_id`、`MessageSerializer` の wire encoding で接続済みと判定する。
 
 ## 層別カバレッジ
 
