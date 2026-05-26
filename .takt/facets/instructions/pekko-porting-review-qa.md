@@ -11,25 +11,25 @@
 ### モジュール構成（クレート分離）
 
 - fraktor-rs はドメインごとに別クレートへ分離されている
-  - コアクレート: `modules/{domain}-core/`（原則 `no_std` + Sans I/O、純粋ロジック層）
-    - 中身は `src/core/` に配置（untyped kernel / typed ラッパー）
+  - コアクレート: `modules/*-core*`（原則 `no_std` + Sans I/O、純粋ロジック層）
+    - 例: `modules/utils-core/`, `modules/actor-core-kernel/`, `modules/actor-core-typed/`, `modules/stream-core-kernel/`, `modules/stream-core-actor-typed/`
     - **AI は std 依存の例外を追加してはならない**（例外の導入は **人間の明示指示** がある場合のみ）
     - **テストコードは std 依存 OK**（`tests.rs` / `tests/` は Sans I/O 制約の対象外）
-  - std アダプタクレート: `modules/{domain}-adaptor-std/`（std / tokio 依存）
-    - 中身は `src/std/` に配置
-  - embedded アダプタクレート: `modules/{domain}-adaptor-embedded/`（存在する場合のみ）
-- 各クレートは独立した `Cargo.toml` を持ち、`{domain}-core` は他アダプタに依存しない
+  - std アダプタクレート: `modules/*-adaptor-std/`（std / tokio 依存）
+    - 例: `modules/utils-adaptor-std/`, `modules/actor-adaptor-std/`, `modules/remote-adaptor-std/`, `modules/cluster-adaptor-std/`, `modules/stream-adaptor-std/`
+  - embassy アダプタクレート: `modules/actor-adaptor-embassy/`（存在する場合のみ）
+- 各クレートは独立した `Cargo.toml` を持ち、`*-core*` は他アダプタに依存しない
 
 たとえば、
 
-- 本来 core クレート（`modules/{domain}-core/`）に実装できるロジックが `-adaptor-std` クレートに置かれていないか？
+- 本来 core クレート（`modules/*-core*`）に実装できるロジックが `*-adaptor-std` クレートに置かれていないか？
 - std/embedded 依存の無いポート定義（trait）が core クレート側に正しく配置されているか？
 - core クレートのプロダクトコードに std 依存が AI の独断で新規追加されていないか？（人間の指示なしの新規 std 依存は REJECT）
 
 ### showcasesの網羅性
 
 - `showcases`の網羅性は十分か、利用者の視点で考える
-- `modules/{domain}-core/src/**/*.rs` や `modules/{domain}-adaptor-std/src/**/*.rs` に対応する `showcases/std/**/*.rs` が存在すること
+- `modules/*-core*/src/**/*.rs` や `modules/*-adaptor-std/src/**/*.rs` に対応する `showcases/std/**/*.rs` が存在すること
 - `showcases`のコードを書いてみて、複雑で長いコードを書かざるを得ない場合は、プロダクトコードのインターフェイスや設計が不十分である可能性が高いため、コードを簡潔にできるように設計を見直さなければならない
 
 ### 公開APIの最小化
@@ -40,8 +40,8 @@
 
 ### Dylint lint準拠
 
-- 8つのカスタムlint がパスしているか
-  - mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
+- 10本のカスタムlint がパスしているか
+  - mod-file, module-examples, module-wiring, type-per-file, tests-location, use-placement, redundant-fqcn, rustdoc, cfg-std-forbid, ambiguous-suffix
 - `#[allow]` による lint 回避が人間の許可なく行われていないか
 
 ### rustdocの存在と言語
@@ -58,7 +58,7 @@
 ### feature flagの整合性
 
 - `std` / `no_std` の feature flag 設定が正しいか
-- コアクレート `modules/{domain}-core/` のプロダクトコードに、AI の独断で新たな `std` 依存が持ち込まれていないか（人間の指示がない例外追加は REJECT）
+- コアクレート `modules/*-core*` のプロダクトコードに、AI の独断で新たな `std` 依存が持ち込まれていないか（人間の指示がない例外追加は REJECT）
 - `cfg-std-forbid` lint と合わせて、feature gate の漏れがないか
 - テストコードでの std 依存は許容（Sans I/O 制約はプロダクトコードのみに適用）
 
@@ -66,7 +66,7 @@
 
 - 不要な外部クレート依存が追加されていないか
 - 既存の依存で代替できる機能に対して新規クレートが追加されていないか
-- `no_std` 互換でないクレートがコアクレート `modules/{domain}-core/` の **プロダクト依存**（`[dependencies]`）に AI の独断で追加されていないか（人間の指示なしの追加は REJECT）
+- `no_std` 互換でないクレートがコアクレート `modules/*-core*` の **プロダクト依存**（`[dependencies]`）に AI の独断で追加されていないか（人間の指示なしの追加は REJECT）
 - テスト用 `[dev-dependencies]` に std 依存クレートが含まれるのは許容
 
 ※これら以外にレビューに使えるスキルがあれば探して発動させること
