@@ -1,0 +1,94 @@
+name: TAKT Review (Claude)
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: takt-review-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  takt-review:
+    name: TAKT Review (Claude)
+    if: >
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.draft == false &&
+        github.event.sender.type != 'Bot'
+      ) ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        github.event.issue.state == 'open' &&
+        github.event.sender.type != 'Bot' &&
+        startsWith(github.event.comment.body, '@takt') &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Resolve PR checkout
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PULL_REQUEST_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            head_sha="$PULL_REQUEST_HEAD_SHA"
+            head_repo="$PULL_REQUEST_HEAD_REPO"
+          else
+            pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+            head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+            head_repo="$(jq -r '.head.repo.full_name' <<< "$pr_json")"
+            is_draft="$(jq -r '.draft' <<< "$pr_json")"
+            if [[ "$is_draft" == "true" ]]; then
+              echo "::notice::Skipping TAKT review for draft PR #$PR_NUMBER"
+              echo "same_repo=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "ref=$head_sha" >> "$GITHUB_OUTPUT"
+          if [[ "$head_repo" == "$REPOSITORY" ]]; then
+            echo "same_repo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping TAKT review for fork PR head: $head_repo"
+            echo "same_repo=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.pr.outputs.same_repo == 'true'
+        with:
+          ref: ${{ steps.pr.outputs.ref }}
+          persist-credentials: false
+      - name: Run TAKT review wrapper
+        if: steps.pr.outputs.same_repo == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          PR_HEAD_SHA: ${{ steps.pr.outputs.ref }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          TAKT_WORKFLOW: review-default
+          TAKT_PROVIDER: claude-sdk
+          TAKT_MODEL: claude-sonnet-4-5-20250929
+        run: node .github/scripts/takt-review-wrapper.mjs
