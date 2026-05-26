@@ -131,7 +131,7 @@ if (!reportSearch.report) {
 const report = reportSearch.report;
 
 const parsedFindings = parseFindings(report.content);
-console.log(`Parsed ${parsedFindings.length} TAKT finding candidate(s) from ${report.relativePath}.`);
+console.log(`Parsed ${parsedFindings.length} TAKT finding candidate(s) from ${formatLogValue(report.relativePath)}.`);
 const latestPr = ghJson(["pr", "view", prNumber, "-R", repo, "--json", "headRefOid"]);
 if (latestPr.headRefOid !== pr.headRefOid) {
   completeSkipped("stale_head_after_review", {
@@ -233,6 +233,13 @@ function formatLogValue(value) {
   return JSON.stringify(String(value ?? ""));
 }
 
+function formatWorkflowCommandValue(value) {
+  return String(value ?? "")
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+}
+
 function shellQuote(value) {
   const text = String(value);
   if (/^[A-Za-z0-9_./:=@+-]+$/.test(text)) {
@@ -254,9 +261,9 @@ function logProcessResult(result, runStartedAt) {
 function completeSkipped(reason, details, annotation = "notice") {
   const lines = [`TAKT Review (Claude) skipped: ${reason}`];
   for (const [key, value] of Object.entries(details)) {
-    lines.push(`${key}=${value}`);
+    lines.push(`${key}=${formatLogValue(value)}`);
   }
-  console.log(`::${annotation}::${lines.join("; ")}`);
+  console.log(`::${annotation}::${formatWorkflowCommandValue(lines.join("; "))}`);
   writeStepSummary("TAKT Review (Claude)", {
     status: "skipped",
     review_executed: "false",
@@ -485,20 +492,20 @@ function readLatestReport(runStartedAt) {
 
 function logReportSearch(search) {
   console.log("::group::TAKT report search");
-  console.log(`runs_dir=${search.runsDir}`);
+  console.log(`runs_dir=${formatLogValue(search.runsDir)}`);
   console.log(`runs_dir_exists=${search.exists}`);
   console.log(`candidate_run_dirs=${search.candidates.length}`);
   for (const candidate of search.candidates.slice(0, 20)) {
-    console.log(`candidate=${candidate.path}`);
+    console.log(`candidate=${formatLogValue(candidate.path)}`);
   }
   if (search.candidates.length > 20) {
     console.log(`candidate=... ${search.candidates.length - 20} more`);
   }
   console.log(`searched_report_paths=${search.reportPaths.length}`);
   for (const path of search.reportPaths.slice(0, 20)) {
-    console.log(`report_path=${path}`);
+    console.log(`report_path=${formatLogValue(path)}`);
   }
-  console.log(`report_found=${search.report ? search.report.relativePath : "(none)"}`);
+  console.log(`report_found=${formatLogValue(search.report ? search.report.relativePath : "(none)")}`);
   console.log("::endgroup::");
 }
 
