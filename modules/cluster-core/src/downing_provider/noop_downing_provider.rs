@@ -4,10 +4,10 @@
 #[path = "noop_downing_provider_test.rs"]
 mod tests;
 
-use super::DowningProvider;
+use super::{DowningDecision, DowningInput, DowningProvider, FailureObservationKind};
 use crate::ClusterProviderError;
 
-/// Downing strategy that accepts all down commands without side effects.
+/// Downing strategy that accepts all explicit down commands without side effects.
 #[derive(Default)]
 pub struct NoopDowningProvider;
 
@@ -20,7 +20,13 @@ impl NoopDowningProvider {
 }
 
 impl DowningProvider for NoopDowningProvider {
-  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
-    Ok(())
+  fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
+    match input {
+      | DowningInput::ExplicitDown { .. } => Ok(DowningDecision::Down),
+      | DowningInput::FailureObservation(observation) => match observation.kind() {
+        | FailureObservationKind::Suspect | FailureObservationKind::Unreachable => Ok(DowningDecision::Defer),
+        | FailureObservationKind::Recovered => Ok(DowningDecision::Keep),
+      },
+    }
   }
 }

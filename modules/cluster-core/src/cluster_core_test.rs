@@ -18,7 +18,7 @@ use crate::{
   BlockListProvider, ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology, MetricsError,
   StartupMode, TopologyUpdate,
   cluster_provider::ClusterProvider,
-  downing_provider::{DowningProvider, NoopDowningProvider},
+  downing_provider::{DowningDecision, DowningInput, DowningProvider, NoopDowningProvider},
   grain::{GrainKey, KindRegistry, TOPIC_ACTOR_KIND},
   identity::{IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PidCacheEvent},
   membership::{Gossiper, GossiperShared},
@@ -1082,9 +1082,11 @@ fn down_invokes_strategy_before_provider_down() {
   }
 
   impl DowningProvider for RecordingDowningProvider {
-    fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
-      self.calls.lock().push(format!("strategy:{authority}"));
-      Ok(())
+    fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
+      if let DowningInput::ExplicitDown { authority } = input {
+        self.calls.lock().push(format!("strategy:{authority}"));
+      }
+      Ok(DowningDecision::Down)
     }
   }
 
@@ -1112,6 +1114,152 @@ fn down_invokes_strategy_before_provider_down() {
   core.down("node-b:2552").unwrap();
 
   assert_eq!(calls.lock().clone(), vec![String::from("strategy:node-b:2552"), String::from("provider:node-b:2552"),]);
+}
+
+#[test]
+fn down_keep_decision_returns_error_without_provider_down() {
+  #[derive(Clone)]
+  struct RecordingProvider {
+    calls: ArcShared<SpinSyncMutex<Vec<String>>>,
+  }
+
+  impl ClusterProvider for RecordingProvider {
+    fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+      self.calls.lock().push(String::from(authority));
+      Ok(())
+    }
+
+    fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+  }
+
+  struct KeepDowningProvider;
+
+  impl DowningProvider for KeepDowningProvider {
+    fn decide(&mut self, _input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
+      Ok(DowningDecision::Keep)
+    }
+  }
+
+  let calls: ArcShared<SpinSyncMutex<Vec<String>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let provider = wrap_provider(RecordingProvider { calls: calls.clone() });
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = EventStreamShared::default();
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
+  let gossiper = wrap_gossiper(StubGossiper::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new(),
+    provider,
+    block_list_provider,
+    event_stream,
+    wrap_downing_provider(KeepDowningProvider),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+  core.start_member().unwrap();
+
+  let result = core.down("node-b:2552");
+
+  assert!(matches!(
+    result,
+    Err(crate::ClusterError::DowningRejected { authority, decision: DowningDecision::Keep })
+    if authority == "node-b:2552"
+  ));
+  assert!(calls.lock().is_empty());
+}
+
+#[test]
+fn down_defer_decision_returns_error_without_provider_down() {
+  #[derive(Clone)]
+  struct RecordingProvider {
+    calls: ArcShared<SpinSyncMutex<Vec<String>>>,
+  }
+
+  impl ClusterProvider for RecordingProvider {
+    fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+      self.calls.lock().push(String::from(authority));
+      Ok(())
+    }
+
+    fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+  }
+
+  struct DeferDowningProvider;
+
+  impl DowningProvider for DeferDowningProvider {
+    fn decide(&mut self, _input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
+      Ok(DowningDecision::Defer)
+    }
+  }
+
+  let calls: ArcShared<SpinSyncMutex<Vec<String>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let provider = wrap_provider(RecordingProvider { calls: calls.clone() });
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = EventStreamShared::default();
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
+  let gossiper = wrap_gossiper(StubGossiper::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new(),
+    provider,
+    block_list_provider,
+    event_stream,
+    wrap_downing_provider(DeferDowningProvider),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+  core.start_member().unwrap();
+
+  let result = core.down("node-b:2552");
+
+  assert!(matches!(
+    result,
+    Err(crate::ClusterError::DowningRejected { authority, decision: DowningDecision::Defer })
+    if authority == "node-b:2552"
+  ));
+  assert!(calls.lock().is_empty());
 }
 
 #[test]

@@ -1,12 +1,25 @@
 //! Consolidated cluster errors.
 
-use crate::{ClusterProviderError, identity::IdentitySetupError, pub_sub::PubSubError};
+extern crate alloc;
+
+use alloc::string::String;
+
+use crate::{
+  ClusterProviderError, downing_provider::DowningDecision, identity::IdentitySetupError, pub_sub::PubSubError,
+};
 
 /// Error type returned by cluster lifecycle operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClusterError {
   /// Provider-related failure.
   Provider(ClusterProviderError),
+  /// Downing strategy did not allow an explicit down command.
+  DowningRejected {
+    /// Authority that was requested to be downed.
+    authority: String,
+    /// Decision returned by the downing strategy.
+    decision:  DowningDecision,
+  },
   /// Identity lookup setup failure.
   Identity(IdentitySetupError),
   /// Gossip start/stop failure.

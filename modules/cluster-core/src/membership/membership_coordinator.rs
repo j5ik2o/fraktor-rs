@@ -167,6 +167,7 @@ impl MembershipCoordinator {
     let mut outcome = MembershipCoordinatorOutcome { membership_events, ..Default::default() };
 
     if changed {
+      self.update_suspect_tracking(&authority, NodeStatus::Joining, now);
       self.topology_accumulator.joined.insert(authority.clone());
       self.refresh_peers();
       if self.config.gossip_enabled {
@@ -216,6 +217,9 @@ impl MembershipCoordinator {
     let mut outcome = MembershipCoordinatorOutcome { membership_events, ..Default::default() };
     if self.gossip.table().record(authority).map(|record| record.status) == Some(NodeStatus::Removed) {
       self.topology_accumulator.left.insert(authority.to_string());
+    }
+    if let Some(status) = self.gossip.table().record(authority).map(|record| record.status) {
+      self.update_suspect_tracking(authority, status, now);
     }
     self.refresh_peers();
 
@@ -367,8 +371,6 @@ impl MembershipCoordinator {
 
     self.detect_suspects(now_ms, now, &mut outcome)?;
 
-    self.handle_suspect_timeouts(now, &mut outcome)?;
-
     let cleared = self.quarantine.poll_expired(now);
     for event in cleared.into_iter() {
       outcome.quarantine_events.push(event);
@@ -484,39 +486,6 @@ impl MembershipCoordinator {
     self.gossip.set_peers(peers);
   }
 
-  fn handle_suspect_timeouts(
-    &mut self,
-    now: TimerInstant,
-    outcome: &mut MembershipCoordinatorOutcome,
-  ) -> Result<(), MembershipCoordinatorError> {
-    let timeout = self.config.suspect_timeout;
-    let expired = self
-      .suspect_since
-      .iter()
-      .filter(|(_, since)| is_expired(**since, now, timeout))
-      .map(|(authority, _)| authority.clone())
-      .collect::<Vec<_>>();
-    for authority in expired {
-      self.suspect_since.remove(&authority);
-      if let Some(delta) =
-        self.gossip.table_mut().mark_dead(&authority).map_err(MembershipCoordinatorError::Membership)?
-      {
-        self.topology_accumulator.dead.insert(authority.clone());
-        if self.config.gossip_enabled {
-          outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
-        }
-        if let Some(record) = self.gossip.table().record(&authority) {
-          self.emit_status_change(&authority, NodeStatus::Suspect, record.status, now, outcome);
-        }
-        let reason = "suspect timeout".to_string();
-        let event = self.quarantine.quarantine(authority.clone(), reason.clone(), now, self.config.quarantine_ttl);
-        outcome.quarantine_events.push(event);
-        outcome.member_events.push(ClusterEvent::MemberQuarantined { authority, reason, observed_at: now });
-      }
-    }
-    Ok(())
-  }
-
   fn register_membership_change(
     &mut self,
     record: &NodeRecord,
@@ -525,6 +494,7 @@ impl MembershipCoordinator {
     outcome: &mut MembershipCoordinatorOutcome,
   ) {
     let status = record.status;
+    self.update_suspect_tracking(record.authority.as_str(), status, now);
     match status {
       | NodeStatus::Joining | NodeStatus::Up | NodeStatus::Suspect => {
         if before.is_none() || matches!(before, Some(NodeStatus::Removed | NodeStatus::Dead)) {
@@ -565,6 +535,14 @@ impl MembershipCoordinator {
       } else if from == NodeStatus::Suspect && status == NodeStatus::Up {
         Self::emit_reachable_event(record, now, outcome);
       }
+    }
+  }
+
+  fn update_suspect_tracking(&mut self, authority: &str, status: NodeStatus, now: TimerInstant) {
+    if status == NodeStatus::Suspect {
+      self.suspect_since.entry(authority.to_string()).or_insert(now);
+    } else {
+      self.suspect_since.remove(authority);
     }
   }
 
@@ -770,11 +748,6 @@ fn to_millis(now: TimerInstant) -> u64 {
   let resolution_ns = now.resolution().as_nanos().max(1);
   let ticks = now.ticks().saturating_mul(u64::try_from(resolution_ns).unwrap_or(u64::MAX));
   ticks / 1_000_000
-}
-
-fn is_expired(since: TimerInstant, now: TimerInstant, timeout: Duration) -> bool {
-  let deadline = add_duration(since, timeout);
-  now >= deadline
 }
 
 fn add_duration(now: TimerInstant, duration: Duration) -> TimerInstant {
