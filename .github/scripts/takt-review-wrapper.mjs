@@ -34,10 +34,8 @@ if (expectedHeadSha && pr.headRefOid !== expectedHeadSha) {
   process.exit(0);
 }
 
-const diff = readPrDiff();
 const changedFiles = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/files`);
 const initialComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
-const allowedLines = collectReviewableLinesFromDiff(diff);
 
 const task = buildTask({ repo, prNumber, pr, changedFiles, existingComments: initialComments, maxComments });
 
@@ -98,6 +96,7 @@ if (latestPr.headRefOid !== pr.headRefOid) {
   console.log(`PR head moved during review: reviewed ${pr.headRefOid}, current ${latestPr.headRefOid}. Skipping.`);
   process.exit(0);
 }
+const allowedLines = collectReviewableLinesFromDiff(readPrDiff());
 const latestComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
 
 const reviewComments = parsedFindings
@@ -170,7 +169,7 @@ function ghPaginatedJson(endpoint) {
 function buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComments }) {
   const existing = existingComments
     .slice(-80)
-    .map((comment) => `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${firstLine(comment.body)}`)
+    .map((comment) => `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${firstLine(sanitizePromptText(comment.body, 180))}`)
     .join("\n");
   const fileList = changedFiles.map((file) => `- ${file.filename}`).join("\n");
 
@@ -290,17 +289,14 @@ function readLatestReport(runStartedAt) {
     })
     .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
 
-  const runDir = runDirs[0];
-  if (!runDir) {
-    return undefined;
-  }
-
-  const summary = join(runDir, "reports", "review-summary.md");
-  if (existsSync(summary)) {
-    return {
-      content: readFileSync(summary, "utf8"),
-      relativePath: summary,
-    };
+  for (const runDir of runDirs) {
+    const summary = join(runDir, "reports", "review-summary.md");
+    if (existsSync(summary)) {
+      return {
+        content: readFileSync(summary, "utf8"),
+        relativePath: summary,
+      };
+    }
   }
   return undefined;
 }
