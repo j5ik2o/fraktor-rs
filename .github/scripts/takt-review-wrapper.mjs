@@ -169,7 +169,7 @@ function ghPaginatedJson(endpoint) {
 function buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComments }) {
   const existing = existingComments
     .slice(-80)
-    .map((comment) => `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${firstLine(sanitizePromptText(comment.body, 180))}`)
+    .map((comment) => `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${sanitizePromptText(firstLine(comment.body), 180)}`)
     .join("\n");
   const fileList = changedFiles.map((file) => `- ${file.filename}`).join("\n");
 
@@ -355,7 +355,12 @@ function toReviewComment(finding, allowedLines, existingComments) {
   const body = formatCommentBody(finding);
   const duplicate = existingComments.some((comment) => {
     const commentLine = comment.line || comment.original_line;
-    return comment.path === path && commentLine === line && normalizeBody(comment.body).includes(normalizeBody(finding.issue).slice(0, 80));
+    return (
+      comment.path === path &&
+      commentLine === line &&
+      comment.body.includes("<!-- takt-review-wrapper -->") &&
+      normalizeBody(comment.body).includes(normalizeBody(finding.issue).slice(0, 80))
+    );
   });
   if (duplicate) {
     console.log(`Skipping duplicate finding: ${path}:${line}`);
@@ -494,7 +499,8 @@ function normalizeBody(value) {
 }
 
 function isPlaceholder(value) {
-  return /^{.*}$/.test(value.trim()) || value.includes("Description") || value.includes("file:line");
+  const normalized = stripMarkdown(value || "");
+  return /^\{[^}]+\}$/.test(normalized) || /^file:line$/i.test(normalized);
 }
 
 function sanitizePromptText(value, maxLength) {
