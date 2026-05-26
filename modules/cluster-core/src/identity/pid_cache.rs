@@ -44,10 +44,15 @@ impl PidCache {
 
   /// Fetches a PID if not expired.
   pub fn get(&mut self, key: &GrainKey, now: u64) -> Option<String> {
+    self.get_with_authority(key, now).map(|(pid, _)| pid)
+  }
+
+  /// Fetches a PID and its owner authority if not expired.
+  pub fn get_with_authority(&mut self, key: &GrainKey, now: u64) -> Option<(String, String)> {
     if let Some(entry) = self.entries.get(key)
       && entry.expires_at > now
     {
-      return Some(entry.pid.clone());
+      return Some((entry.pid.clone(), entry.authority.clone()));
     }
 
     if let Some(entry) = self.entries.remove(key) {
