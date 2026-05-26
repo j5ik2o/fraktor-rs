@@ -133,12 +133,6 @@ During rolling update, Grain runtime SHALL prevent stale placement reuse for dep
 - **THEN** Grain runtime guarantees stale authority invalidation and re-resolution
 - **AND** Grain runtime does not guarantee minimum movement, remembered activation recovery, or automatic shard draining in this capability
 
-#### Scenario: rolling update is stale-placement prevention only
-
-- **WHEN** rolling update changes the authority topology
-- **THEN** Grain runtime prevents reuse of activations owned by departed authorities
-- **AND** Grain runtime does not guarantee automatic shard rebalance, remembered entity recovery, or request draining
-
 ### Requirement: Provider and downing integration remains an input boundary
 
 Cluster providers, failure detectors, and downing strategies SHALL feed topology update or member departure signals into the Grain runtime contract. This capability MUST NOT require a specific discovery backend, Split Brain Resolver, or reachability matrix implementation.
