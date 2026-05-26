@@ -230,7 +230,7 @@ function collectReviewableLinesFromDiff(diffText) {
       continue;
     }
 
-    if (!currentPath || !inHunk || rawLine.startsWith("--- ")) {
+    if (!currentPath || !inHunk || rawLine.startsWith("--- ") || rawLine.startsWith("\\")) {
       continue;
     }
 
@@ -271,18 +271,6 @@ function readLatestReport(runStartedAt) {
       content: readFileSync(summary, "utf8"),
       relativePath: summary,
     };
-  }
-
-  const reportsDir = join(runDir, "reports");
-  if (!existsSync(reportsDir)) {
-    return undefined;
-  }
-  const reports = readdirSync(reportsDir)
-    .filter((name) => name.endsWith(".md"))
-    .map((name) => join(reportsDir, name));
-  if (reports.length > 0) {
-    const content = reports.map((path) => readFileSync(path, "utf8")).join("\n\n");
-    return { content, relativePath: reportsDir };
   }
   return undefined;
 }
