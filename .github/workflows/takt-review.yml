@@ -29,7 +29,7 @@ jobs:
         github.event.issue.pull_request != null &&
         github.event.issue.state == 'open' &&
         github.event.sender.type != 'Bot' &&
-        (github.event.comment.body == '@takt' || startsWith(github.event.comment.body, '@takt ')) &&
+        startsWith(github.event.comment.body, '@takt') &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
@@ -73,10 +73,13 @@ jobs:
         with:
           ref: ${{ steps.pr.outputs.ref }}
           persist-credentials: false
-      - uses: nrslib/takt-action@cf9980f1278732df29992180e24d661d4abb7cb5 # v0.3.0
+      - name: Run TAKT review
         if: steps.pr.outputs.same_repo == 'true'
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: review-default
-          provider: claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          TAKT_WORKFLOW: review-default
+          TAKT_PROVIDER: claude-sdk
+        run: node .github/scripts/takt-review-wrapper.mjs
