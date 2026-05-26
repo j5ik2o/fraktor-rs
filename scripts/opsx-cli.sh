@@ -409,7 +409,9 @@ cmd_instructions_apply() {
     complete=$(grep -c '^\- \[[xX]\]' "$tasks_file" 2>/dev/null || true)
     local remaining=$((total - complete))
 
-    if [[ "$remaining" -eq 0 ]] && [[ "$total" -gt 0 ]]; then
+    if [[ "$total" -eq 0 ]]; then
+      state="blocked"
+    elif [[ "$remaining" -eq 0 ]]; then
       state="all_done"
     else
       state="in_progress"
