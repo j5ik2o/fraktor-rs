@@ -81,6 +81,10 @@ if (result.stderr) {
   console.error(maskSecrets(result.stderr));
 }
 if (result.status !== 0) {
+  if (isProviderCapacityFailure(`${result.stdout || ""}\n${result.stderr || ""}`)) {
+    console.log("::warning::TAKT Review (Claude) skipped because the Anthropic account cannot run the model right now.");
+    process.exit(0);
+  }
   throw new Error(`takt exited with code ${result.status}`);
 }
 
@@ -429,6 +433,10 @@ function maskSecrets(value) {
     .replace(/(authorization:\s*bearer\s+)[^\s]+/gi, "$1***")
     .replace(new RegExp(escapeRegExp(token), "g"), "***")
     .replace(new RegExp(escapeRegExp(anthropicApiKey), "g"), "***");
+}
+
+function isProviderCapacityFailure(output) {
+  return /Credit balance is too low/i.test(output);
 }
 
 function escapeRegExp(value) {
