@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 100
-initial_movement: propose
+max_steps: 100
+initial_step: propose
 
 # --- カスタムファセットセクションマップ ---
 personas:
@@ -71,7 +71,7 @@ loop_monitors:
           next: supervise
 
 # --- ムーブメント定義 ---
-movements:
+steps:
   # ===== フェーズ1: 提案 =====
   - name: propose
     edit: true

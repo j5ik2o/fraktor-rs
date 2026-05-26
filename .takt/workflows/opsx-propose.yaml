@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 10
-initial_movement: propose
+max_steps: 10
+initial_step: propose
 
 personas:
   opsx-proposer: ../facets/personas/opsx-proposer.md
@@ -18,7 +18,7 @@ instructions:
 report_formats:
   opsx-propose-summary: ../facets/output-contracts/opsx-propose-summary.md
 
-movements:
+steps:
   - name: propose
     edit: true
     persona: opsx-proposer

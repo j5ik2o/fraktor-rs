@@ -1,7 +1,7 @@
 name: cc-sdd-steering-custom
 description: カスタムcc-sdd-steeringドキュメントを作成する（API標準、テスト戦略、セキュリティ等）
-max_movements: 10
-initial_movement: detect
+max_steps: 10
+initial_step: detect
 
 # --- カスタムファセット セクションマップ ---
 personas:
@@ -20,8 +20,8 @@ knowledge:
 report_formats:
   cc-sdd-steering-custom: ../facets/output-contracts/cc-sdd-steering-custom.md
 
-# --- Movement定義 ---
-movements:
+# --- Step定義 ---
+steps:
   # ===== 対象検出 =====
   - name: detect
     edit: false

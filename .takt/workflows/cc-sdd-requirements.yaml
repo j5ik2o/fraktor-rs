@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 10
-initial_movement: generate-requirements
+max_steps: 10
+initial_step: generate-requirements
 
 personas:
   cc-sdd-requirements-analyst: ../facets/personas/cc-sdd-requirements-analyst.md
@@ -21,7 +21,7 @@ instructions:
 report_formats:
   cc-sdd-requirements: ../facets/output-contracts/cc-sdd-requirements.md
 
-movements:
+steps:
   - name: generate-requirements
     edit: true
     persona: cc-sdd-requirements-analyst
