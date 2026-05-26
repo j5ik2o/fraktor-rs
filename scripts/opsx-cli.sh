@@ -225,6 +225,8 @@ cmd_status() {
       local status
       status=$(get_artifact_status "$cdir" "$i")
       local output_path="${cdir}/${file}"
+      local output_path_esc
+      output_path_esc=$(json_escape "$output_path")
 
       if [[ -n "$artifacts_json" ]]; then
         artifacts_json="${artifacts_json},"
@@ -242,7 +244,7 @@ cmd_status() {
         deps_json="${deps_json}]"
       fi
 
-      artifacts_json="${artifacts_json}{\"id\":\"${id}\",\"file\":\"${file}\",\"outputPath\":\"${output_path}\",\"status\":\"${status}\",\"dependencies\":${deps_json}}"
+      artifacts_json="${artifacts_json}{\"id\":\"${id}\",\"file\":\"${file}\",\"outputPath\":\"${output_path_esc}\",\"status\":\"${status}\",\"dependencies\":${deps_json}}"
     done
 
     # applyRequires JSON
@@ -335,8 +337,10 @@ cmd_instructions() {
       dep_idx=$(get_artifact_index "$dep")
       if [[ "$dep_idx" != "-1" ]]; then
         local dep_file="${cdir}/${ARTIFACT_FILES[$dep_idx]}"
+        local dep_file_esc
+        dep_file_esc=$(json_escape "$dep_file")
         if [[ "$first" != "true" ]]; then deps_json="${deps_json},"; fi
-        deps_json="${deps_json}\"${dep_file}\""
+        deps_json="${deps_json}\"${dep_file_esc}\""
         first=false
       fi
     done
@@ -344,6 +348,8 @@ cmd_instructions() {
   fi
 
   if [[ "$json_mode" == "true" ]]; then
+    local output_path_esc
+    output_path_esc=$(json_escape "$output_path")
     local t_esc
     t_esc=$(json_escape "$template")
     local i_esc
@@ -354,7 +360,7 @@ cmd_instructions() {
     r_esc=$(json_escape "$artifact_rules")
 
     printf '{"artifactId":"%s","status":"%s","outputPath":"%s","template":"%s","instruction":"%s","context":"%s","rules":"%s","dependencies":%s}\n' \
-      "$artifact_id" "$status" "$output_path" "$t_esc" "$i_esc" "$c_esc" "$r_esc" "$deps_json"
+      "$artifact_id" "$status" "$output_path_esc" "$t_esc" "$i_esc" "$c_esc" "$r_esc" "$deps_json"
   else
     echo "Artifact: ${artifact_id}"
     echo "Status:   ${status}"

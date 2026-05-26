@@ -23,6 +23,7 @@ instructions:
   ai-review-fix-loop-judge: ../facets/instructions/ai-review-fix-loop-judge.md
   opsx-review-fix-loop-judge: ../facets/instructions/opsx-review-fix-loop-judge.md
   validate-impl: ../facets/instructions/opsx-apply-validate-impl.md
+  final-ci: ../facets/instructions/opsx-apply-final-ci.md
 
 report_formats:
   opsx-propose-summary: ../facets/output-contracts/opsx-propose-summary.md
@@ -382,9 +383,32 @@ steps:
           use_judge: false
     rules:
       - condition: すべて問題なし
-        next: archive
+        next: final-ci
       - condition: 要求未達成、テスト失敗、ビルドエラー
         next: plan
+
+  # ===== 最終CI =====
+  - name: final-ci
+    edit: false
+    persona: coder
+    policy:
+      - coding
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+    pass_previous_response: false
+    instruction: final-ci
+    rules:
+      - condition: ci-check.sh ai all が成功
+        next: archive
+      - condition: ci-check.sh ai all が失敗
+        next: fix
+      - condition: 判断できない、情報不足
+        next: fix
 
   # ===== フェーズ3: アーカイブ =====
   - name: archive
