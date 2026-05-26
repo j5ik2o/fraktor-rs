@@ -12,8 +12,8 @@ permissions:
   issues: write
 
 concurrency:
-  group: takt-review-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
-  cancel-in-progress: true
+  group: takt-review-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   takt:
@@ -22,11 +22,12 @@ jobs:
         github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.event.pull_request.draft == false &&
-        github.actor != 'dependabot[bot]'
+        github.event.sender.type != 'Bot'
       ) ||
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request != null &&
+        github.event.issue.state == 'open' &&
         (github.event.comment.body == '@takt' || startsWith(github.event.comment.body, '@takt ')) &&
         (
           github.event.comment.author_association == 'OWNER' ||
@@ -62,14 +63,16 @@ jobs:
           if [[ "$head_repo" == "$REPOSITORY" ]]; then
             echo "same_repo=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::TAKT review is not supported for fork PR heads: $head_repo"
-            exit 1
+            echo "::notice::Skipping TAKT review for fork PR head: $head_repo"
+            echo "same_repo=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v4
+        if: steps.pr.outputs.same_repo == 'true'
         with:
           ref: ${{ steps.pr.outputs.ref }}
       - uses: nrslib/takt-action@cf9980f1278732df29992180e24d661d4abb7cb5 # v0.3.0
+        if: steps.pr.outputs.same_repo == 'true'
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
