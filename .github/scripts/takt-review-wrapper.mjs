@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const env = process.env;
@@ -24,14 +24,19 @@ if (!anthropicApiKey) {
 }
 
 if (env.GITHUB_EVENT_NAME === "issue_comment" && env.COMMENT_BODY && !/^@takt(?:\s|$|[^A-Za-z0-9_-])/.test(env.COMMENT_BODY)) {
-  console.log("Comment does not contain an @takt command. Skipping.");
-  process.exit(0);
+  completeSkipped("ignored_comment", {
+    event: env.GITHUB_EVENT_NAME,
+    reason: "Comment does not contain an @takt command.",
+  });
 }
 
 const pr = ghJson(["pr", "view", prNumber, "-R", repo, "--json", "title,body,headRefOid,baseRefName,headRefName,url"]);
 if (expectedHeadSha && pr.headRefOid !== expectedHeadSha) {
-  console.log(`PR head moved before review started: expected ${expectedHeadSha}, current ${pr.headRefOid}. Skipping.`);
-  process.exit(0);
+  completeSkipped("stale_head_before_start", {
+    pr: `#${prNumber}`,
+    expected_head_sha: expectedHeadSha,
+    current_head_sha: pr.headRefOid,
+  });
 }
 
 const changedFiles = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/files`);
@@ -65,6 +70,7 @@ if (model) {
   args.push("--model", model);
 }
 
+logRunContext({ pr, changedFiles, initialComments, args });
 console.log(`Running TAKT workflow "${workflow}" with provider "${provider}" for PR #${prNumber}`);
 const runStartedAt = Date.now();
 const result = spawnSync("npx", args, {
@@ -80,32 +86,60 @@ if (result.stdout) {
 if (result.stderr) {
   console.error(maskSecrets(result.stderr));
 }
+logProcessResult(result, runStartedAt);
 if (result.signal) {
   if (isCancellationSignal(result.signal)) {
-    console.log(`::notice::TAKT Review (Claude) stopped by ${result.signal}; skipping because this run was likely superseded.`);
-    process.exit(0);
+    completeSkipped("superseded", {
+      pr: `#${prNumber}`,
+      signal: result.signal,
+      reason: "TAKT process was stopped by a cancellation signal, likely because a newer run superseded it.",
+      duration_seconds: elapsedSeconds(runStartedAt),
+    });
   }
   throw new Error(`takt terminated by signal ${result.signal}`);
 }
 if (result.status !== 0) {
-  if (isProviderCapacityFailure(`${result.stdout || ""}\n${result.stderr || ""}`)) {
-    console.log("::warning::TAKT Review (Claude) skipped because the Anthropic account cannot run the model right now.");
-    process.exit(0);
+  const capacityReason = providerCapacityFailureReason(`${result.stdout || ""}\n${result.stderr || ""}`);
+  if (capacityReason) {
+    completeSkipped(
+      "provider_capacity",
+      {
+        pr: `#${prNumber}`,
+        provider,
+        model: model || "(provider default)",
+        exit_status: result.status,
+        reason: capacityReason,
+        duration_seconds: elapsedSeconds(runStartedAt),
+      },
+      "warning",
+    );
   }
   throw new Error(`takt exited with code ${result.status}`);
 }
 
-const report = readLatestReport(runStartedAt);
-if (!report) {
-  console.log("No TAKT report found; no review comments will be posted.");
-  process.exit(0);
+const reportSearch = readLatestReport(runStartedAt);
+logReportSearch(reportSearch);
+if (!reportSearch.report) {
+  completeSkipped("no_report_found", {
+    pr: `#${prNumber}`,
+    reason: "TAKT completed but no review report was found for this run.",
+    searched_runs_dir: reportSearch.runsDir,
+    candidate_run_dirs: reportSearch.candidates.length,
+    duration_seconds: elapsedSeconds(runStartedAt),
+  });
 }
+const report = reportSearch.report;
 
 const parsedFindings = parseFindings(report.content);
+console.log(`Parsed ${parsedFindings.length} TAKT finding candidate(s) from ${formatLogValue(report.relativePath)}.`);
 const latestPr = ghJson(["pr", "view", prNumber, "-R", repo, "--json", "headRefOid"]);
 if (latestPr.headRefOid !== pr.headRefOid) {
-  console.log(`PR head moved during review: reviewed ${pr.headRefOid}, current ${latestPr.headRefOid}. Skipping.`);
-  process.exit(0);
+  completeSkipped("stale_head_after_review", {
+    pr: `#${prNumber}`,
+    reviewed_head_sha: pr.headRefOid,
+    current_head_sha: latestPr.headRefOid,
+    report: report.relativePath,
+  });
 }
 const allowedLines = collectReviewableLinesFromDiff(readPrDiff());
 const latestComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
@@ -118,6 +152,14 @@ const reviewComments = parsedFindings
 
 if (reviewComments.length === 0) {
   console.log("TAKT produced no actionable inline findings on changed lines.");
+  writeStepSummary("TAKT Review (Claude)", {
+    status: "completed",
+    review_executed: "true",
+    posted_comments: "0",
+    parsed_findings: parsedFindings.length,
+    report: report.relativePath,
+    head_sha: pr.headRefOid,
+  });
   process.exit(0);
 }
 
@@ -129,6 +171,14 @@ await postReview({
 });
 
 console.log(`Posted ${reviewComments.length} TAKT inline review comment(s).`);
+writeStepSummary("TAKT Review (Claude)", {
+  status: "completed",
+  review_executed: "true",
+  posted_comments: reviewComments.length,
+  parsed_findings: parsedFindings.length,
+  report: report.relativePath,
+  head_sha: pr.headRefOid,
+});
 
 function requiredEnv(name) {
   const value = env[name];
@@ -144,6 +194,111 @@ function parseMaxComments(value) {
     throw new Error(`Invalid TAKT_MAX_COMMENTS: ${value}`);
   }
   return parsed;
+}
+
+function logRunContext({ pr, changedFiles, initialComments, args }) {
+  console.log("::group::TAKT review context");
+  console.log(`repository=${formatLogValue(repo)}`);
+  console.log(`event=${formatLogValue(env.GITHUB_EVENT_NAME || "(unknown)")}`);
+  console.log(`pr=#${prNumber}`);
+  console.log(`pr_url=${formatLogValue(pr.url)}`);
+  console.log(`base_ref=${formatLogValue(pr.baseRefName)}`);
+  console.log(`head_ref=${formatLogValue(pr.headRefName)}`);
+  console.log(`head_sha=${pr.headRefOid}`);
+  console.log(`expected_head_sha=${expectedHeadSha || "(none)"}`);
+  console.log(`workflow=${formatLogValue(workflow)}`);
+  console.log(`provider=${formatLogValue(provider)}`);
+  console.log(`model=${formatLogValue(model || "(provider default)")}`);
+  console.log(`max_comments=${maxComments}`);
+  console.log(`changed_files=${changedFiles.length}`);
+  console.log(`existing_inline_comments=${initialComments.length}`);
+  console.log(`command=${formatCommand(args)}`);
+  if (changedFiles.length > 0) {
+    console.log("changed_file_list=");
+    for (const file of changedFiles.slice(0, 50)) {
+      console.log(`- ${formatLogValue(file.filename)}`);
+    }
+    if (changedFiles.length > 50) {
+      console.log(`- ... ${changedFiles.length - 50} more file(s)`);
+    }
+  }
+  console.log("::endgroup::");
+}
+
+function formatCommand(args) {
+  return ["npx", ...args].map((arg) => (arg === task ? `<review task omitted: ${task.length} chars>` : shellQuote(arg))).join(" ");
+}
+
+function formatLogValue(value) {
+  return JSON.stringify(String(value ?? ""));
+}
+
+function formatWorkflowCommandValue(value) {
+  return String(value ?? "")
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+}
+
+function shellQuote(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:=@+-]+$/.test(text)) {
+    return text;
+  }
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
+
+function logProcessResult(result, runStartedAt) {
+  console.log("::group::TAKT process result");
+  console.log(`status=${result.status === null ? "(null)" : result.status}`);
+  console.log(`signal=${result.signal || "(none)"}`);
+  console.log(`duration_seconds=${elapsedSeconds(runStartedAt)}`);
+  console.log(`stdout_bytes=${Buffer.byteLength(result.stdout || "", "utf8")}`);
+  console.log(`stderr_bytes=${Buffer.byteLength(result.stderr || "", "utf8")}`);
+  console.log("::endgroup::");
+}
+
+function completeSkipped(reason, details, annotation = "notice") {
+  const lines = [`TAKT Review (Claude) skipped: ${reason}`];
+  for (const [key, value] of Object.entries(details)) {
+    lines.push(`${key}=${formatLogValue(value)}`);
+  }
+  console.log(`::${annotation}::${formatWorkflowCommandValue(lines.join("; "))}`);
+  writeStepSummary("TAKT Review (Claude)", {
+    status: "skipped",
+    review_executed: "false",
+    skip_reason: reason,
+    ...details,
+  });
+  process.exit(0);
+}
+
+function writeStepSummary(title, rows) {
+  const summaryPath = env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) {
+    return;
+  }
+
+  const body = [
+    `## ${title}`,
+    "",
+    "| Key | Value |",
+    "| --- | --- |",
+    ...Object.entries(rows).map(([key, value]) => `| ${escapeMarkdownTableCell(key)} | ${escapeMarkdownTableCell(value)} |`),
+    "",
+  ].join("\n");
+
+  appendFileSync(summaryPath, `${body}\n`, "utf8");
+}
+
+function escapeMarkdownTableCell(value) {
+  return String(value ?? "")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, "<br>");
+}
+
+function elapsedSeconds(startedAt) {
+  return ((Date.now() - startedAt) / 1000).toFixed(1);
 }
 
 function ghJson(args) {
@@ -294,28 +449,64 @@ function normalizeDiffPath(path) {
 
 function readLatestReport(runStartedAt) {
   const runsDir = ".takt/runs";
+  const diagnostics = {
+    runsDir,
+    exists: existsSync(runsDir),
+    candidates: [],
+    skipped: [],
+    reportPaths: [],
+    report: undefined,
+  };
+
   if (!existsSync(runsDir)) {
-    return undefined;
+    return diagnostics;
   }
 
   const runDirs = readdirSync(runsDir)
     .map((name) => join(runsDir, name))
     .filter((path) => {
       const stat = statSync(path);
-      return stat.isDirectory() && stat.mtimeMs >= runStartedAt - 5000;
+      const isCandidate = stat.isDirectory() && stat.mtimeMs >= runStartedAt - 5000;
+      if (isCandidate) {
+        diagnostics.candidates.push({ path, mtimeMs: stat.mtimeMs });
+      } else if (stat.isDirectory()) {
+        diagnostics.skipped.push({ path, mtimeMs: stat.mtimeMs });
+      }
+      return isCandidate;
     })
     .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
 
   for (const runDir of runDirs) {
     const summary = join(runDir, "reports", "review-summary.md");
+    diagnostics.reportPaths.push(summary);
     if (existsSync(summary)) {
-      return {
+      diagnostics.report = {
         content: readFileSync(summary, "utf8"),
         relativePath: summary,
       };
+      return diagnostics;
     }
   }
-  return undefined;
+  return diagnostics;
+}
+
+function logReportSearch(search) {
+  console.log("::group::TAKT report search");
+  console.log(`runs_dir=${formatLogValue(search.runsDir)}`);
+  console.log(`runs_dir_exists=${search.exists}`);
+  console.log(`candidate_run_dirs=${search.candidates.length}`);
+  for (const candidate of search.candidates.slice(0, 20)) {
+    console.log(`candidate=${formatLogValue(candidate.path)}`);
+  }
+  if (search.candidates.length > 20) {
+    console.log(`candidate=... ${search.candidates.length - 20} more`);
+  }
+  console.log(`searched_report_paths=${search.reportPaths.length}`);
+  for (const path of search.reportPaths.slice(0, 20)) {
+    console.log(`report_path=${formatLogValue(path)}`);
+  }
+  console.log(`report_found=${formatLogValue(search.report ? search.report.relativePath : "(none)")}`);
+  console.log("::endgroup::");
 }
 
 function parseFindings(markdown) {
@@ -447,8 +638,11 @@ function maskSecrets(value) {
     .replace(new RegExp(escapeRegExp(anthropicApiKey), "g"), "***");
 }
 
-function isProviderCapacityFailure(output) {
-  return /Credit balance is too low/i.test(output);
+function providerCapacityFailureReason(output) {
+  if (/Credit balance is too low/i.test(output)) {
+    return "Credit balance is too low";
+  }
+  return undefined;
 }
 
 function isCancellationSignal(signal) {
