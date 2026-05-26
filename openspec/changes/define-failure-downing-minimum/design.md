@@ -38,9 +38,9 @@ Failure detector と membership coordination は member を suspect または un
 
 ### Decision 3: DowningProvider は decision boundary である
 
-`DowningProvider` は core-owned な downing behavior port として扱う。この change では、現行の explicit `down(authority)` hook で十分か、failure observation を受け取り down / keep / defer 相当の decision を返せる contract へ広げる必要があるかを確認する。
+`DowningProvider` は core-owned な downing behavior port として扱う。この change では、現行の explicit `down(authority)` hook だけでは不十分と判断し、failure observation も受け取って down / keep / defer 相当の decision を返せる contract へ拡張する。
 
-代替案: `MembershipCoordinator` が downing decision を直接所有する。これは indirection を減らすが、failure detection、policy、topology mutation の結合が強くなりすぎる。
+代替案: 現行の explicit `down(authority)` hook だけを維持する。これは変更量を抑えられるが、failure observation から departure input へ進む policy boundary を表現できない。もう一つの代替案として `MembershipCoordinator` が downing decision を直接所有する案もあるが、failure detection、policy、topology mutation の結合が強くなりすぎる。
 
 ### Decision 4: Grain runtime は member departure input だけを消費する
 
