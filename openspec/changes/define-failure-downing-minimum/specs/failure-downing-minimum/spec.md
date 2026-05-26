@@ -13,12 +13,20 @@ Failure detector と membership coordination は remote member の availability 
 #### Scenario: recovered observation は active member を復帰させる
 
 - **WHEN** suspect または unreachable として観測された member から heartbeat または availability signal が戻る
+- **AND** その member に対する downing decision が未発行である
 - **THEN** membership coordination はその member を reachable member として扱う
-- **AND** downing decision が出ていない限り member departure input を生成しない
+- **AND** member departure input を生成しない
+
+#### Scenario: down decision 後の recover signal は departure を取り消さない
+
+- **WHEN** downing strategy が authority を down する decision を返す
+- **AND** その後に同じ authority から heartbeat または availability signal が戻る
+- **THEN** cluster core は既出の down decision を維持する
+- **AND** recover signal は member departure input を取り消さない
 
 ### Requirement: Downing decision は core-defined port で表現される
 
-Cluster core は failure observation から member を down するかどうかを決める decision boundary を定義する SHALL。Downing strategy は explicit down command と failure observation に対して down / keep / defer 相当の decision を返せる MUST。Std adapter は detector implementation や runtime scheduling を供給しても、Grain runtime policy を所有しない MUST。
+Cluster core は failure observation から member を down するかどうかを決める decision boundary を定義する SHALL。Downing strategy は explicit down command と failure observation に対して `DowningDecision::Down` / `DowningDecision::Keep` / `DowningDecision::Defer` を返せる MUST。Std adapter は detector implementation や runtime scheduling を供給しても、Grain runtime policy を所有しない MUST。
 
 #### Scenario: explicit down は decision boundary を通る
 

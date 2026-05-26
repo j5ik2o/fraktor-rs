@@ -40,6 +40,13 @@ Failure detector と membership coordination は member を suspect または un
 
 `DowningProvider` は core-owned な downing behavior port として扱う。この change では、現行の explicit `down(authority)` hook だけでは不十分と判断し、failure observation も受け取って down / keep / defer 相当の decision を返せる contract へ拡張する。
 
+最小 API shape は次の形にする。
+
+- `DowningDecision` enum を `cluster-core` の `downing_provider` 配下に追加し、variant は `Down` / `Keep` / `Defer` に絞る。
+- `FailureObservation` 型を `downing_provider` 配下に追加し、authority、observation kind、観測時刻など、既存 `MembershipEvent::MarkedSuspect` と `CurrentClusterState::unreachable` から構成できる最小情報だけを持たせる。
+- `DowningProvider` trait に `decide(&mut self, observation: &FailureObservation) -> Result<DowningDecision, ClusterProviderError>` 相当の method を追加する。
+- 既存の explicit `down(authority)` hook は explicit down command 用の入力として残し、内部的には `DowningDecision::Down` を許可する経路へ統合できるようにする。
+
 代替案: 現行の explicit `down(authority)` hook だけを維持する。これは変更量を抑えられるが、failure observation から departure input へ進む policy boundary を表現できない。もう一つの代替案として `MembershipCoordinator` が downing decision を直接所有する案もあるが、failure detection、policy、topology mutation の結合が強くなりすぎる。
 
 ### Decision 4: Grain runtime は member departure input だけを消費する
