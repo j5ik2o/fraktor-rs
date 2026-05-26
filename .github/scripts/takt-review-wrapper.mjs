@@ -14,6 +14,7 @@ const workflow = env.TAKT_WORKFLOW || "review-default";
 const provider = env.TAKT_PROVIDER || "claude-sdk";
 const model = env.TAKT_MODEL || "";
 const maxComments = Number.parseInt(env.TAKT_MAX_COMMENTS || "5", 10);
+const expectedHeadSha = env.PR_HEAD_SHA || "";
 const [owner, repoName] = repo.split("/");
 
 if (!owner || !repoName) {
@@ -26,12 +27,16 @@ if (env.GITHUB_EVENT_NAME === "issue_comment" && env.COMMENT_BODY && !/^@takt(?:
 }
 
 const pr = ghJson(["pr", "view", prNumber, "--json", "title,body,headRefOid,baseRefName,headRefName,url"]);
-const diff = ghText(["pr", "diff", prNumber]);
+if (expectedHeadSha && pr.headRefOid !== expectedHeadSha) {
+  console.log(`PR head moved before review started: expected ${expectedHeadSha}, current ${pr.headRefOid}. Skipping.`);
+  process.exit(0);
+}
+
 const changedFiles = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/files`);
 const existingComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
 const allowedLines = collectReviewableLines(changedFiles);
 
-const task = buildTask({ repo, prNumber, pr, diff, changedFiles, existingComments, maxComments });
+const task = buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComments });
 const taskFile = join(mkdtempSync(join(tmpdir(), "takt-review-")), "task.md");
 writeFileSync(taskFile, task, "utf8");
 
@@ -85,6 +90,12 @@ if (!report) {
 }
 
 const parsedFindings = parseFindings(report.content);
+const latestPr = ghJson(["pr", "view", prNumber, "--json", "headRefOid"]);
+if (latestPr.headRefOid !== pr.headRefOid) {
+  console.log(`PR head moved during review: reviewed ${pr.headRefOid}, current ${latestPr.headRefOid}. Skipping.`);
+  process.exit(0);
+}
+
 const reviewComments = parsedFindings
   .map((finding) => toReviewComment(finding, allowedLines, existingComments))
   .filter(Boolean)
@@ -129,7 +140,7 @@ function ghPaginatedJson(endpoint) {
   return pages.flatMap((page) => (Array.isArray(page) ? page : [page]));
 }
 
-function buildTask({ repo, prNumber, pr, diff, changedFiles, existingComments, maxComments }) {
+function buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComments }) {
   const existing = existingComments
     .slice(-80)
     .map((comment) => `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${firstLine(comment.body)}`)
@@ -144,7 +155,7 @@ Base branch: ${pr.baseRefName}
 Head branch: ${pr.headRefName}
 Head SHA: ${pr.headRefOid}
 
-Use the PR diff below as the authoritative review target. Review only changed behavior.
+Use the GitHub PR diff as the authoritative review target. Review only changed behavior.
 Do not run builds or tests. Do not modify files. Do not create commits.
 Postable findings must be concrete bugs, security issues, behavioral regressions, or maintainability problems that justify an inline PR comment.
 Do not report style-only nits or duplicate the existing comments listed below.
@@ -162,10 +173,9 @@ ${fileList || "- none"}
 PR body:
 ${pr.body || "(empty)"}
 
-PR diff:
-\`\`\`diff
-${diff}
-\`\`\`
+Review target:
+Use \`gh pr diff ${prNumber}\`, \`gh pr view ${prNumber} --json comments,reviews,files\`, and
+\`gh api repos/${repo}/pulls/${prNumber}/comments --paginate\` when you need the diff or existing comments.
 `;
 }
 
@@ -337,7 +347,23 @@ function splitTableLine(line) {
 }
 
 function normalizeHeader(header) {
-  return header.toLowerCase().replace(/[^a-z]/g, "");
+  const value = header.toLowerCase().replace(/\s+/g, "");
+  if (/^(場所|位置|対象|location|loc)$/.test(value)) {
+    return "location";
+  }
+  if (/^(問題|課題|内容|issue|finding)$/.test(value)) {
+    return "issue";
+  }
+  if (/^(重要度|重大度|severity|priority)$/.test(value)) {
+    return "severity";
+  }
+  if (/^(観点|種別|source|review)$/.test(value)) {
+    return "source";
+  }
+  if (/^(修正案|提案|対応|fixsuggestion|suggestion|fix)$/.test(value)) {
+    return "suggestion";
+  }
+  return value.replace(/[^a-z]/g, "");
 }
 
 function stripMarkdown(value) {
