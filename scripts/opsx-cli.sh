@@ -14,7 +14,7 @@ SCHEMA_NAME="spec-driven"
 ARTIFACT_IDS=("proposal" "design" "tasks")
 ARTIFACT_FILES=("proposal.md" "design.md" "tasks.md")
 ARTIFACT_DEPS=("" "proposal" "design")
-APPLY_REQUIRES=("tasks")
+APPLY_REQUIRES=("proposal" "design" "tasks")
 
 # ──────────────────────────────────────────────
 # Built-in templates
@@ -71,9 +71,14 @@ json_escape() {
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
   s="${s//$'\t'/\\t}"
+  s="${s//$'\r'/\\r}"
   # Replace newlines with \n
   s="${s//$'\n'/\\n}"
   printf '%s' "$s"
+}
+
+yaml_single_quote_escape() {
+  printf '%s' "$1" | sed "s/'/''/g"
 }
 
 die() {
@@ -81,8 +86,17 @@ die() {
   exit 1
 }
 
+validate_change_name() {
+  local name="$1"
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || \
+    die "Invalid change name: '${name}' (must be kebab-case: lowercase letters, digits, hyphens)"
+  [[ "$name" != "archive" ]] || \
+    die "Invalid change name: '${name}' ('archive' is reserved)"
+}
+
 change_dir() {
   local name="$1"
+  validate_change_name "$name"
   echo "${OPENSPEC_DIR}/changes/${name}"
 }
 
@@ -179,10 +193,13 @@ cmd_new_change() {
   mkdir -p "$cdir"
 
   # Write .openspec.yaml
+  local schema_yaml name_yaml
+  schema_yaml=$(yaml_single_quote_escape "$SCHEMA_NAME")
+  name_yaml=$(yaml_single_quote_escape "$name")
   cat > "${cdir}/.openspec.yaml" <<YAML
-schema: ${SCHEMA_NAME}
-name: ${name}
-createdAt: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+schema: '${schema_yaml}'
+name: '${name_yaml}'
+createdAt: '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
 YAML
 
   echo "Created change '${name}' at ${cdir}/"
@@ -194,7 +211,7 @@ cmd_status() {
   local cdir
   cdir=$(change_dir "$name")
 
-  if [[ ! -d "$cdir" ]]; then
+  if [[ ! -d "$cdir" ]] || [[ ! -f "${cdir}/.openspec.yaml" ]]; then
     die "Change '${name}' not found at ${cdir}"
   fi
 
@@ -238,8 +255,11 @@ cmd_status() {
     done
     apply_req_json="${apply_req_json}]"
 
+    local name_esc cdir_esc
+    name_esc=$(json_escape "$name")
+    cdir_esc=$(json_escape "$cdir")
     printf '{"schemaName":"%s","changeName":"%s","changePath":"%s","applyRequires":%s,"artifacts":[%s]}\n' \
-      "$SCHEMA_NAME" "$name" "$cdir" "$apply_req_json" "$artifacts_json"
+      "$SCHEMA_NAME" "$name_esc" "$cdir_esc" "$apply_req_json" "$artifacts_json"
   else
     # Human-readable
     echo "Change: ${name}"
@@ -395,7 +415,7 @@ cmd_instructions_apply() {
       local first=true
       while IFS= read -r line; do
         local task_status="pending"
-        if [[ "$line" == *"[x]"* ]]; then
+        if [[ "$line" == "- [x]"* ]]; then
           task_status="done"
         fi
         local task_text
@@ -529,7 +549,9 @@ main() {
       local name="" json_mode="false"
       while [[ $# -gt 0 ]]; do
         case "$1" in
-          --change) name="$2"; shift 2 ;;
+          --change)
+            [[ $# -ge 2 ]] && [[ "${2:-}" != --* ]] || die "--change requires a value"
+            name="$2"; shift 2 ;;
           --json) json_mode="true"; shift ;;
           *) die "Unknown option: $1" ;;
         esac
@@ -548,7 +570,9 @@ main() {
       fi
       while [[ $# -gt 0 ]]; do
         case "$1" in
-          --change) name="$2"; shift 2 ;;
+          --change)
+            [[ $# -ge 2 ]] && [[ "${2:-}" != --* ]] || die "--change requires a value"
+            name="$2"; shift 2 ;;
           --json) json_mode="true"; shift ;;
           *) die "Unknown option: $1" ;;
         esac
