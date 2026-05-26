@@ -20,7 +20,8 @@ jobs:
     if: >
       (
         github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.actor != 'dependabot[bot]'
       ) ||
       (
         github.event_name == 'issue_comment' &&
@@ -36,7 +37,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: nrslib/takt-action@v0.3.0
+      - uses: nrslib/takt-action@cf9980f1278732df29992180e24d661d4abb7cb5 # v0.3.0
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
