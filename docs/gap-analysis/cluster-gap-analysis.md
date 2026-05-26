@@ -8,7 +8,9 @@
 
 実装ロードマップは [2026-05-25_cluster-grain-runtime-roadmap.md](../plan/2026-05-25_cluster-grain-runtime-roadmap.md) を正とする。この gap analysis に列挙された typed Cluster API、Cluster Singleton、Cluster Client、Distributed Data、Pekko Sharding public API などは、未実装であること自体を直近の実装優先度とはみなさない。
 
-現在の実装優先度は、Grain identity lookup、placement resolution、activation / passivation、membership topology update、cluster provider boundary、failure observation、downing decision contract を固めることにある。詳細な Pekko gap table は、これらの運用 contract を設計するときの比較材料であり、raw API parity の backlog ではない。
+現在の実装優先度は、Grain identity lookup、placement resolution、activation / passivation、membership topology update、cluster provider boundary、failure observation、downing decision contract を固めることにある。
+
+詳細な Pekko gap table は、これらの運用 contract を設計するときの比較材料であり、raw API parity の backlog ではない。
 
 ### Deferred Pekko concepts
 
