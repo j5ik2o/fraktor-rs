@@ -198,17 +198,17 @@ function parseMaxComments(value) {
 
 function logRunContext({ pr, changedFiles, initialComments, args }) {
   console.log("::group::TAKT review context");
-  console.log(`repository=${repo}`);
-  console.log(`event=${env.GITHUB_EVENT_NAME || "(unknown)"}`);
+  console.log(`repository=${formatLogValue(repo)}`);
+  console.log(`event=${formatLogValue(env.GITHUB_EVENT_NAME || "(unknown)")}`);
   console.log(`pr=#${prNumber}`);
-  console.log(`pr_url=${pr.url}`);
-  console.log(`base_ref=${pr.baseRefName}`);
-  console.log(`head_ref=${pr.headRefName}`);
+  console.log(`pr_url=${formatLogValue(pr.url)}`);
+  console.log(`base_ref=${formatLogValue(pr.baseRefName)}`);
+  console.log(`head_ref=${formatLogValue(pr.headRefName)}`);
   console.log(`head_sha=${pr.headRefOid}`);
   console.log(`expected_head_sha=${expectedHeadSha || "(none)"}`);
-  console.log(`workflow=${workflow}`);
-  console.log(`provider=${provider}`);
-  console.log(`model=${model || "(provider default)"}`);
+  console.log(`workflow=${formatLogValue(workflow)}`);
+  console.log(`provider=${formatLogValue(provider)}`);
+  console.log(`model=${formatLogValue(model || "(provider default)")}`);
   console.log(`max_comments=${maxComments}`);
   console.log(`changed_files=${changedFiles.length}`);
   console.log(`existing_inline_comments=${initialComments.length}`);
@@ -216,7 +216,7 @@ function logRunContext({ pr, changedFiles, initialComments, args }) {
   if (changedFiles.length > 0) {
     console.log("changed_file_list=");
     for (const file of changedFiles.slice(0, 50)) {
-      console.log(`- ${file.filename}`);
+      console.log(`- ${formatLogValue(file.filename)}`);
     }
     if (changedFiles.length > 50) {
       console.log(`- ... ${changedFiles.length - 50} more file(s)`);
@@ -227,6 +227,10 @@ function logRunContext({ pr, changedFiles, initialComments, args }) {
 
 function formatCommand(args) {
   return ["npx", ...args].map((arg) => (arg === task ? `<review task omitted: ${task.length} chars>` : shellQuote(arg))).join(" ");
+}
+
+function formatLogValue(value) {
+  return JSON.stringify(String(value ?? ""));
 }
 
 function shellQuote(value) {
