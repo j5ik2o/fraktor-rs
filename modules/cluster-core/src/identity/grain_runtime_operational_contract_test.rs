@@ -289,6 +289,32 @@ fn distributed_activation_reports_pending_then_completes_after_command_results()
 }
 
 #[test]
+fn public_resolve_stays_pending_until_distributed_activation_completes() {
+  let mut lookup = member_lookup();
+  lookup.update_topology(vec!["node-a:4050".to_string()]);
+  lookup.set_local_authority("node-a:4050");
+  lookup.set_distributed_activation(true);
+  let key = grain_key("user/public-pending");
+
+  let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
+
+  let first = lookup.resolve(&key, 1001);
+  assert!(matches!(first, Err(LookupError::Pending)));
+
+  let repeated = lookup.resolve(&key, 1002);
+  assert!(matches!(repeated, Err(LookupError::Pending)));
+
+  let pid = "custom-public-pending-pid";
+  let completed = complete_pending_activation(&mut lookup, request_id, &key, &owner, pid);
+  assert_eq!(completed.pid, pid);
+  assert_eq!(completed.decision.authority, owner);
+
+  let cached = lookup.resolve(&key, 1003).expect("completed public resolution");
+  assert_eq!(cached.pid, pid);
+  assert_eq!(cached.decision.authority, owner);
+}
+
+#[test]
 fn topology_replacement_invalidates_absent_authority_cache_and_reresolves() {
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
