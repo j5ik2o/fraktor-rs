@@ -5,9 +5,9 @@
 - レポート・分析・コメントはすべて日本語で記述すること
 - rustdoc（`///`, `//!`）のみ英語
 
-## Dylint リント（8つ、機械的強制）
+## Dylint リント（10本、機械的強制）
 
-mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
+mod-file, module-examples, module-wiring, type-per-file, tests-location, use-placement, redundant-fqcn, rustdoc, cfg-std-forbid, ambiguous-suffix
 
 編集前に対象範囲のlintを実行すること。実行コマンドは各ワークフローの instruction 指示を優先する。
 

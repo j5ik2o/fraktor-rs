@@ -43,8 +43,8 @@ Pekko の契約意図が実現されているかを最終判定すること。
 
 | # | 要件（タスク指示書から抽出） | 充足 | 根拠（ファイル:行） |
 |---|---------------------------|------|-------------------|
-| 1 | {要件1} | ✅/❌ | `src/file.ts:42` |
-| 2 | {要件2} | ✅/❌ | `src/file.ts:55` |
+| 1 | {要件1} | ✅/❌ | `modules/.../src/file.rs:42` |
+| 2 | {要件2} | ✅/❌ | `modules/.../src/file.rs:55` |
 
 - ❌ が1件でもある場合は REJECT 必須
 - 根拠なしの ✅ は無効（実コードで確認すること）
@@ -53,9 +53,9 @@ Pekko の契約意図が実現されているかを最終判定すること。
 ## 検証サマリー
 | 項目 | 状態 | 確認方法 |
 |------|------|---------|
-| テスト | ✅ | `npm test` (N passed) |
-| ビルド | ✅ | `npm run build` 成功 |
-| 動作確認 | ✅ | 主要フロー確認 |
+| テスト | ✅ | `./scripts/ci-check.sh ai unit-test` または対象テスト |
+| lint | ✅ | `./scripts/ci-check.sh ai dylint -m <module>` または対象 lint |
+| ビルド | ✅ | 対象範囲の `cargo check` / `./scripts/ci-check.sh` 成功 |
 
 ## 成果物
 - 作成: {作成したファイル}
@@ -84,7 +84,7 @@ Pekko の契約意図が実現されているかを最終判定すること。
 
 ## 確認コマンド
 ```bash
-npm test
-npm run build
+./scripts/ci-check.sh ai unit-test
+./scripts/ci-check.sh ai dylint -m <module>
 ```
 ```

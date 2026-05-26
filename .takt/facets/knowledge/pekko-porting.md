@@ -15,19 +15,28 @@
 
 ```text
 modules/
-├── utils/       # fraktor-utils-rs: 共有ユーティリティ
-├── actor/       # fraktor-actor-core-rs: アクターシステムコア
-├── remote/      # fraktor-remote-rs: リモーティング
-├── cluster/     # fraktor-cluster-core-rs: クラスタリング
-└── streams/     # fraktor-stream-core-rs: ストリーム処理
+├── utils-core/                 # no_std 共有ユーティリティ
+├── utils-adaptor-std/          # std 向けユーティリティアダプタ
+├── actor-core-kernel/          # actor core kernel
+├── actor-core-typed/           # typed actor core
+├── actor-adaptor-std/          # std 向け actor アダプタ
+├── actor-adaptor-embassy/      # embassy 向け actor アダプタ
+├── remote-core/                # remote core
+├── remote-adaptor-std/         # std 向け remote アダプタ
+├── cluster-core/               # cluster core
+├── cluster-adaptor-std/        # std 向け cluster アダプタ
+├── persistence-core-kernel/    # persistence core kernel
+├── persistence-core-typed/     # typed persistence core
+├── stream-core-kernel/         # stream core kernel
+├── stream-core-actor-typed/    # typed actor stream core
+└── stream-adaptor-std/         # std 向け stream アダプタ
 ```
 
-各モジュールの内部構造:
+core / adaptor の責務分離:
 
 ```text
-modules/{name}/src/
-├── core/     # no_std 実装（ヒープのみ、OS非依存）
-└── std/      # std 依存の拡張（Tokio等）
+modules/*-core*/        # no_std / alloc ベースの契約・ポリシー・ドメイン実装
+modules/*-adaptor-std/  # Tokio、std::time、std::net など std 環境固有の実装
 ```
 
 ## Scala → Rust 変換ルール
@@ -78,14 +87,14 @@ modules/{name}/src/
 
 ### no_std / std 分離
 
-`core/` と `std/` のディレクトリ分離により、no_std と std の両方をサポートする。
+`*-core*` と `*-adaptor-std` の crate 分離により、no_std と std の両方をサポートする。
 以前存在した `RuntimeToolbox` (TB) パターンは廃止済み。型は TB パラメータを持たない。
 
 ```rust
-// core/ — no_std 対応
+// modules/*-core*/ — no_std 対応
 pub struct Xyz { /* ... */ }
 
-// std/ — std 依存の拡張（Tokio等）がある場合のみ別定義
+// modules/*-adaptor-std/ — std 依存の拡張（Tokio等）がある場合のみ別定義
 pub struct Xyz { /* std固有の追加フィールド */ }
 ```
 
@@ -126,9 +135,9 @@ pub struct XyzShared {
 ## 実装時の手順
 
 1. Pekko参照実装（`references/pekko/`）の該当ソースを読む
-2. 対応するfraktor-rsモジュール（`modules/{name}/`）の現状を確認
+2. 対応するfraktor-rs crate（`modules/*-core*` / `modules/*-adaptor-std`）の現状を確認
 3. Scala → Rust変換ルールに従ってAPIを設計
-4. `core/` に no_std 実装を配置
-5. 必要に応じて `std/` に具象型エイリアスを追加
+4. `*-core*` crate に no_std 実装を配置
+5. 必要に応じて `*-adaptor-std` crate に std 環境向け実装を追加
 6. テストを `{type}/tests.rs` に作成
 7. `./scripts/ci-check.sh ai dylint -m <module>` で lint チェック
