@@ -6,6 +6,7 @@
 - **ワークスペース**: `modules/{utils,actor,persistence,remote,cluster,stream}-{core,adaptor-std}` の 6 ドメイン × 2 層構成 + `showcases/std`（実行可能サンプル）+ `tests/e2e`
 - **`*-core` クレート**: `#![cfg_attr(not(test), no_std)]` + `#![deny(cfg_std_forbid)]` で std 直接依存を禁止。`extern crate alloc` で `alloc` を取り込む。`utils-core` / `actor-core` / `persistence-core` / `remote-core` / `cluster-core` / `stream-core` の 6 本
 - **`*-adaptor-std` クレート**: std 環境固有のアダプタ実装（Tokio executor、std::time、std::net 等）を集約。`*-core` の trait をホストランタイム向けに具象化
+- **DIP / ポートアンドアダプタの向き**: `*-core` が port / policy を定義し、`*-adaptor-std` がその port を実装する。std が core を駆動するのではなく、core の契約が std 実装を差し込ませる依存方向を維持する
 - **参照実装**: `references/protoactor-go/`（Go）、`references/pekko/`（Scala）。新機能設計開始時 / 命名で迷ったとき / 過剰設計が疑われるときに必ず参照する
 - **集約 crate**: ルートの `fraktor-rs` は `modules/*` を再エクスポートする publish 用ファサード（`Cargo.toml` の `[package]` に `fraktor-rs` 自身が定義されている）
 

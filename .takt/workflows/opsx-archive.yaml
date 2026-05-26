@@ -18,7 +18,7 @@ instructions:
 report_formats:
   opsx-archive-summary: ../facets/output-contracts/opsx-archive-summary.md
 
-movements:
+steps:
   - name: archive
     edit: true
     persona: opsx-archiver

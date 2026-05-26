@@ -1,7 +1,7 @@
 name: cc-sdd-steering
 description: .kiro/steering/ をプロジェクトメモリとして管理する（ブートストラップ＆同期）
-max_movements: 10
-initial_movement: detect
+max_steps: 10
+initial_step: detect
 
 # --- カスタムファセット セクションマップ ---
 personas:
@@ -22,8 +22,8 @@ report_formats:
   cc-sdd-steering-bootstrap: ../facets/output-contracts/cc-sdd-steering-bootstrap.md
   cc-sdd-steering-sync: ../facets/output-contracts/cc-sdd-steering-sync.md
 
-# --- Movement定義 ---
-movements:
+# --- Step定義 ---
+steps:
   # ===== シナリオ検出 =====
   - name: detect
     edit: false
