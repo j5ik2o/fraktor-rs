@@ -1,12 +1,27 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-04-24 (固定スコープ版)
+更新日: 2026-05-26 (Grain runtime alignment)
 
 ## 位置づけ
 
 この文書は、`cluster-*` を Apache Pekko Cluster / Cluster Sharding 互換ロードマップとして扱うためのものではない。fraktor-rs の `cluster-*` は、Proto.Actor-Go 型の Virtual Actor / Grain runtime を主軸にする。Pekko は parity target ではなく、大規模運用で必要になる membership、reachability、downing、placement、rebalance などの失敗ケースと設計論点を確認する参照実装として扱う。
 
 実装ロードマップは [2026-05-25_cluster-grain-runtime-roadmap.md](../plan/2026-05-25_cluster-grain-runtime-roadmap.md) を正とする。この gap analysis に列挙された typed Cluster API、Cluster Singleton、Cluster Client、Distributed Data、Pekko Sharding public API などは、未実装であること自体を直近の実装優先度とはみなさない。
+
+現在の実装優先度は、Grain identity lookup、placement resolution、activation / passivation、membership topology update、cluster provider boundary、failure observation、downing decision contract を固めることにある。詳細な Pekko gap table は、これらの運用 contract を設計するときの比較材料であり、raw API parity の backlog ではない。
+
+### Deferred Pekko concepts
+
+以下の Pekko 概念は、将来個別の OpenSpec change が採用するまで deferred とする。詳細表に出てくる場合も、現時点では比較 evidence として読む。
+
+- typed Cluster API wrapper
+- Cluster Singleton / ShardCoordinator parity
+- Cluster Client / Receptionist
+- Distributed Data / CRDT Replicator
+- sharding delivery controllers
+- replicated sharding / direct replication
+- broad Pekko public API compatibility
+- Pekko serializer binary compatibility
 
 ## 比較スコープ定義
 
@@ -55,9 +70,9 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 187 件 (core: 174,
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 1 件 |
 
-cluster は、membership table、gossip dissemination、failure detector registry、Grain/Placement/Identity、PubSub broker、UDP gossip transport などの基礎部品はかなり揃っている。一方で固定スコープ全体で見ると、typed cluster API、Split Brain Resolver、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
+cluster は、membership table、gossip dissemination、failure detector registry、Grain/Placement/Identity、PubSub broker、UDP gossip transport などの基礎部品はかなり揃っている。一方で Pekko comparison の範囲で見ると、typed cluster API、Split Brain Resolver、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
 
-旧版は raw Scala 宣言数をサマリーに置きつつ、`cluster-metrics` を混ぜ、`ShardedDaemonProcess` や typed API を YAGNI で n/a にしていた。固定スコープ版では、JVM 固有以外の public runtime contract は parity ギャップとして扱う。
+旧版は raw Scala 宣言数をサマリーに置きつつ、`cluster-metrics` を混ぜ、`ShardedDaemonProcess` や typed API を YAGNI で n/a にしていた。固定スコープ版では、JVM 固有以外の public runtime contract を comparison gap として保持する。ただし、直近の implementation backlog は cluster Grain runtime roadmap 側で管理する。
 
 ## 層別カバレッジ
 
@@ -227,7 +242,9 @@ cluster は、membership table、gossip dissemination、failure detector registr
 |------|------|------|
 | `modules/cluster-core/src/cluster_extension_config.rs:134` | TODO | join config compatibility が pubsub 設定だけで、gossip_config / app_version / roles の検査が未実装 |
 
-## 実装優先度
+## Pekko comparison gap の優先度メモ
+
+この section は、Pekko 側の概念を将来採用する場合の難易度メモであり、現在の cluster roadmap ではない。直近の作業順は [cluster Grain runtime roadmap](../plan/2026-05-25_cluster-grain-runtime-roadmap.md) と個別の OpenSpec change を正とする。
 
 ### Phase 1: trivial / easy
 
@@ -309,7 +326,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。固定スコープ概念カバレッジは約 37% で、hard / medium gap も多いため、責務分割の細部比較より先に公開契約と end-to-end runtime を閉じる段階である。
+今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 37% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
 
 次版で構造分析へ進む場合の観点は以下になる。
 
@@ -323,8 +340,8 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 ## まとめ
 
-cluster は membership、gossip delta、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko cluster 固定スコープ全体としては typed cluster API、SBR、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点のカバレッジは中程度より低い。
+cluster は membership、gossip delta、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては typed cluster API、SBR、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度より低い。
 
-低コストで parity を前進できるのは、typed cluster の薄い command/event wrapper、SBR 設定型、router role/max-per-node 設定、基本 CRDT、std `ClusterApi` wrapper の再公開、join config compatibility の拡張である。
+Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、typed cluster の薄い command/event wrapper、SBR 設定型、router role/max-per-node 設定、基本 CRDT、std `ClusterApi` wrapper の再公開、join config compatibility の拡張である。ただし、これらの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 
-主要ギャップは、Split Brain Resolver、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、cluster/sharding/pubsub serializer contract である。内部構造比較は、これらの API / 実動作ギャップを閉じた後に進めるのが妥当である。
+主要な comparison gap は、Split Brain Resolver、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、cluster/sharding/pubsub serializer contract である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。

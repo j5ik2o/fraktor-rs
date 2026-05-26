@@ -21,7 +21,8 @@ Runtime APIs live in the workspace crates under [`modules/`](modules), and the f
 
 - Portable `no_std` core crates for actor kernel, typed actors, persistence, remote, cluster, streams, and shared utilities.
 - `std` adaptor crates isolate host-specific concerns such as Tokio executors, TCP transport, std locks, materializers, and cluster delivery helpers.
-- Pekko / Proto.Actor-inspired semantics for actor systems, supervision, death watch, routing, dispatchers, mailboxes, event streams, serialization, remoting, clustering, persistence, and stream processing.
+- Pekko / Proto.Actor-inspired semantics for actor systems, supervision, death watch, routing, dispatchers, mailboxes, event streams, serialization, remoting, Grain-oriented clustering, persistence, and stream processing.
+- `cluster-*` currently focuses on Virtual Actor / Grain runtime infrastructure: identity lookup, placement resolution, activation/passivation, topology input, provider boundaries, and failure/downing contracts.
 - Runnable std showcases cover legacy typed flows, Pekko classic/kernel examples, typed examples, stream examples, and advanced remote/persistence scenarios.
 - OpenSpec artifacts, repository rules, custom dylint checks, and CI scripts keep design intent, module boundaries, and implementation checks aligned.
 
@@ -108,8 +109,8 @@ See [`showcases/std/README.md`](showcases/std/README.md) for the full example li
 | [`modules/persistence-core-typed`](modules/persistence-core-typed) | Persistence effector API, snapshot criteria, and retention criteria for typed actors |
 | [`modules/remote-core`](modules/remote-core) | `no_std` remote address, association, envelope, provider, transport port, watcher, wire, and failure-detector state machines |
 | [`modules/remote-adaptor-std`](modules/remote-adaptor-std) | Std remote extension installers, providers, Tokio TCP transport, and I/O workers |
-| [`modules/cluster-core`](modules/cluster-core) | Cluster membership, identity, placement, pub-sub, grains, failure detection, topology, metrics, and routing |
-| [`modules/cluster-adaptor-std`](modules/cluster-adaptor-std) | Std cluster API, local provider wrapping, Tokio gossip transport, pub-sub delivery, and optional AWS ECS provider |
+| [`modules/cluster-core`](modules/cluster-core) | Grain runtime core for membership, identity lookup, placement resolution, pub-sub, grains, failure detection, topology, metrics, and routing |
+| [`modules/cluster-adaptor-std`](modules/cluster-adaptor-std) | Std Grain runtime adapters for local provider wrapping, Tokio gossip transport, pub-sub delivery, and optional AWS ECS provider |
 | [`modules/stream-core-kernel`](modules/stream-core-kernel) | `no_std` stream DSL, stages, materialization contracts, graph shapes, stream refs, queues, kill switches, and supervision |
 | [`modules/stream-core-actor-typed`](modules/stream-core-actor-typed) | Typed actor integrations for stream DSLs |
 | [`modules/stream-adaptor-std`](modules/stream-adaptor-std) | Std stream I/O and materializer adapters |
@@ -125,11 +126,11 @@ See [`showcases/std/README.md`](showcases/std/README.md) for the full example li
 - Repository rules: [AGENTS.md](AGENTS.md), [`.agents/rules/project.md`](.agents/rules/project.md)
 - OpenSpec configuration: [`openspec/config.yaml`](openspec/config.yaml)
 - Lock-free design notes: [`docs/guides/lock_free_design.md`](docs/guides/lock_free_design.md)
-- Current gap reports:
+- Current gap reports and roadmaps:
   - [Actor](docs/gap-analysis/actor-gap-analysis.md)
   - [Actor mailbox](docs/gap-analysis/actor-mailbox-gap-analysis.md)
   - [Remote](docs/gap-analysis/remote-gap-analysis.md)
-  - [Cluster](docs/gap-analysis/cluster-gap-analysis.md)
+  - [Cluster](docs/gap-analysis/cluster-gap-analysis.md) (Pekko comparison context; current priority is the [cluster Grain runtime roadmap](docs/plan/2026-05-25_cluster-grain-runtime-roadmap.md))
   - [Persistence](docs/gap-analysis/persistence-gap-analysis.md)
   - [Stream](docs/gap-analysis/stream-gap-analysis.md)
 - Reference implementations:
