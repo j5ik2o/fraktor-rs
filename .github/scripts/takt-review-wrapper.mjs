@@ -111,7 +111,7 @@ if (reviewComments.length === 0) {
 await postReview({
   commit_id: pr.headRefOid,
   event: "COMMENT",
-  body: `TAKT review posted ${reviewComments.length} inline finding(s).\n\nSource report: ${report.relativePath}`,
+  body: `TAKT Review (Claude) posted ${reviewComments.length} inline finding(s).\n\nSource report: ${report.relativePath}`,
   comments: reviewComments,
 });
 
@@ -397,7 +397,7 @@ function firstLine(value) {
 }
 
 function formatCommentBody(finding) {
-  const parts = [];
+  const parts = ["**TAKT Review (Claude)**"];
   const prefix = [finding.severity, finding.source].filter(Boolean).join(" / ");
   if (prefix) {
     parts.push(`**${prefix}**`);

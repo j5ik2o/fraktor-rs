@@ -1,4 +1,4 @@
-name: TAKT
+name: TAKT Review (Claude)
 
 on:
   pull_request:
@@ -16,7 +16,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  takt:
+  takt-review:
+    name: TAKT Review (Claude)
     if: >
       (
         github.event_name == 'pull_request' &&
@@ -73,7 +74,7 @@ jobs:
         with:
           ref: ${{ steps.pr.outputs.ref }}
           persist-credentials: false
-      - name: Run TAKT review
+      - name: Run TAKT review wrapper
         if: steps.pr.outputs.same_repo == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
