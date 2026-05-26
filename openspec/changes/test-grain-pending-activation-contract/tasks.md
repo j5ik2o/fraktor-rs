@@ -15,5 +15,5 @@
 
 - [ ] 3.1 Run the focused `cluster-core` identity operational contract test.
 - [ ] 3.2 Run the relevant `cluster-core` test package target if available.
-- [ ] 3.3 Run `openspec validate test-grain-pending-activation-contract --strict`.
+- [ ] 3.3 Run `MISE_TRUSTED_CONFIG_PATHS=$PWD/mise.toml mise exec -- openspec validate test-grain-pending-activation-contract --strict`.
 - [ ] 3.4 Run `git diff --check`.
