@@ -22,8 +22,79 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Check Claude API capacity
+        id: claude-api
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -u
+
+          skip_claude_review() {
+            echo "::warning title=Claude Code Review skipped::$1"
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          }
+
+          fail_claude_review() {
+            echo "$1"
+            exit 1
+          }
+
+          handle_api_error() {
+            local status="$1"
+            local body="$2"
+            local context="$3"
+
+            if grep -qi "Credit balance is too low" <<< "${body}"; then
+              skip_claude_review "Anthropic account credit balance is too low."
+            fi
+            if [[ "${status}" == "401" || "${status}" == "403" ]]; then
+              fail_claude_review "${body}"
+            fi
+            if [[ "${status}" == "429" || "${status}" =~ ^5[0-9][0-9]$ || "${status}" == "000" ]]; then
+              skip_claude_review "Claude API is temporarily unavailable during ${context} check (status=${status})."
+            fi
+
+            fail_claude_review "${body}"
+          }
+
+          models_response="$(
+            curl -sS --connect-timeout 5 --max-time 20 -w '\n%{http_code}' https://api.anthropic.com/v1/models \
+              -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" || true
+          )"
+          models_status="${models_response##*$'\n'}"
+          models_body="${models_response%$'\n'*}"
+
+          if [[ ! "${models_status}" =~ ^2[0-9][0-9]$ ]]; then
+            handle_api_error "${models_status}" "${models_body}" "model list"
+          fi
+
+          model_id="$(jq -r '.data[]?.id | select(startswith("claude-"))' <<< "${models_body}" | head -n 1)"
+          if [[ -z "${model_id}" ]]; then
+            skip_claude_review "Claude API returned no available Claude models."
+          fi
+
+          response="$(
+            curl -sS --connect-timeout 5 --max-time 20 -w '\n%{http_code}' https://api.anthropic.com/v1/messages \
+              -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" \
+              -d "$(jq -nc --arg model "${model_id}" '{model:$model,max_tokens:1,messages:[{role:"user",content:"ping"}]}')" || true
+          )"
+          status="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+
+          if [[ "${status}" =~ ^2[0-9][0-9]$ ]]; then
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          handle_api_error "${status}" "${body}" "message"
+
       - name: Run Claude Code Review
-        continue-on-error: true
+        if: ${{ steps.claude-api.outputs.available == 'true' }}
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

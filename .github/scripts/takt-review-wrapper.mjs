@@ -80,6 +80,13 @@ if (result.stdout) {
 if (result.stderr) {
   console.error(maskSecrets(result.stderr));
 }
+if (result.signal) {
+  if (isCancellationSignal(result.signal)) {
+    console.log(`::notice::TAKT Review (Claude) stopped by ${result.signal}; skipping because this run was likely superseded.`);
+    process.exit(0);
+  }
+  throw new Error(`takt terminated by signal ${result.signal}`);
+}
 if (result.status !== 0) {
   if (isProviderCapacityFailure(`${result.stdout || ""}\n${result.stderr || ""}`)) {
     console.log("::warning::TAKT Review (Claude) skipped because the Anthropic account cannot run the model right now.");
@@ -364,10 +371,9 @@ function toReviewComment(finding, allowedLines, existingComments) {
 
   const body = formatCommentBody(finding);
   const duplicate = existingComments.some((comment) => {
-    const commentLine = comment.line || comment.original_line;
     return (
       comment.path === path &&
-      commentLine === line &&
+      comment.line === line &&
       comment.body.includes("<!-- takt-review-wrapper -->") &&
       normalizeBody(comment.body).includes(normalizeBody(finding.issue).slice(0, 80))
     );
@@ -445,12 +451,16 @@ function isProviderCapacityFailure(output) {
   return /Credit balance is too low/i.test(output);
 }
 
+function isCancellationSignal(signal) {
+  return signal === "SIGTERM" || signal === "SIGINT" || signal === "SIGHUP";
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isTableLine(line) {
-  return /^\s*\|.*\|\s*$/.test(line);
+  return line.trim().includes("|");
 }
 
 function isSeparatorLine(line) {
