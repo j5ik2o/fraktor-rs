@@ -1,13 +1,13 @@
 name: cc-sdd-full
-description: Spec-Driven Development（フルオート）- 要件→設計→タスク→テスト先行実装→検証を自動遷移で実行する
+description: Spec-Driven Development（フルオート）- 要件→設計→タスク→実装→検証を自動遷移で実行する
 workflow_config:
   provider_options:
     codex:
       network_access: true
     opencode:
       network_access: true
-max_movements: 80
-initial_movement: generate-requirements
+max_steps: 80
+initial_step: generate-requirements
 
 # --- カスタムファセット セクションマップ ---
 personas:
@@ -50,7 +50,6 @@ report_formats:
 loop_monitors:
   - cycle:
       - plan
-      - write_tests
       - implement
     threshold: 5
     judge:
@@ -88,8 +87,8 @@ loop_monitors:
         - condition: 非生産的（改善なし）
           next: supervise
 
-# --- Movement定義 ---
-movements:
+# --- Step定義 ---
+steps:
   # ===== Phase 1: 要件生成 =====
   - name: generate-requirements
     edit: true
@@ -254,62 +253,20 @@ movements:
           format: plan
     rules:
       - condition: 未着手の逐次タスクあり
-        next: write_tests
+        next: implement
       - condition: 全タスク完了
         next: ai_review
       - condition: tasks.mdが存在しない、または空
         next: ABORT
         appendix: |
           tasks.md が見つからないか空です。
-          cc-sdd-tasks ピースを先に実行してください。
+          cc-sdd-tasks ワークフローを先に実行してください。
       - condition: 要件が不明確、情報不足
         next: ABORT
         appendix: |
           確認事項:
           - {質問1}
           - {質問2}
-
-  # テスト先行: バッチ内タスクのテストを先に作成
-  - name: write_tests
-    edit: true
-    persona: coder
-    policy:
-      - coding
-      - testing
-    knowledge:
-      - architecture
-      - unit-testing
-      - e2e-testing
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - Edit
-          - Write
-          - Bash
-          - WebSearch
-          - WebFetch
-    required_permission_mode: edit
-    instruction: write-tests-first
-    output_contracts:
-      report:
-        - name: test-scope.md
-          format: coder-scope
-        - name: test-decisions.md
-          format: coder-decisions
-    rules:
-      - condition: テスト作成が完了した
-        next: implement
-      - condition: テスト対象が未実装のためテスト作成をスキップする
-        next: implement
-      - condition: テスト作成を進行できない
-        next: plan
-      - condition: ユーザーへの確認事項があるためユーザー入力が必要
-        next: write_tests
-        requires_user_input: true
-        interactive_only: true
 
   # 逐次実装: バッチ内タスクのみ実装
   - name: implement
@@ -320,6 +277,7 @@ movements:
       - testing
     session: refresh
     knowledge:
+      - backend
       - architecture
     provider_options:
       claude:
@@ -381,6 +339,7 @@ movements:
       - testing
     session: refresh
     knowledge:
+      - backend
       - architecture
     provider_options:
       claude:
@@ -435,6 +394,7 @@ movements:
       - testing
     session: refresh
     knowledge:
+      - backend
       - architecture
     provider_options:
       claude:

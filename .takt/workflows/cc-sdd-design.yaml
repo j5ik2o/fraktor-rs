@@ -6,8 +6,8 @@ workflow_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 15
-initial_movement: generate-design
+max_steps: 15
+initial_step: generate-design
 
 policies:
   cc-sdd-design: ../facets/policies/cc-sdd-design.md
@@ -22,7 +22,7 @@ report_formats:
   cc-sdd-design: ../facets/output-contracts/cc-sdd-design.md
   cc-sdd-research: ../facets/output-contracts/cc-sdd-research.md
 
-movements:
+steps:
   - name: generate-design
     edit: true
     persona: planner

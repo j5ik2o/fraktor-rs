@@ -77,6 +77,10 @@ json_escape() {
   printf '%s' "$s"
 }
 
+yaml_single_quote_escape() {
+  printf '%s' "$1" | sed "s/'/''/g"
+}
+
 die() {
   echo "Error: $*" >&2
   exit 1
@@ -189,10 +193,13 @@ cmd_new_change() {
   mkdir -p "$cdir"
 
   # Write .openspec.yaml
+  local schema_yaml name_yaml
+  schema_yaml=$(yaml_single_quote_escape "$SCHEMA_NAME")
+  name_yaml=$(yaml_single_quote_escape "$name")
   cat > "${cdir}/.openspec.yaml" <<YAML
-schema: "${SCHEMA_NAME}"
-name: "${name}"
-createdAt: "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+schema: '${schema_yaml}'
+name: '${name_yaml}'
+createdAt: '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
 YAML
 
   echo "Created change '${name}' at ${cdir}/"
@@ -218,6 +225,8 @@ cmd_status() {
       local status
       status=$(get_artifact_status "$cdir" "$i")
       local output_path="${cdir}/${file}"
+      local output_path_esc
+      output_path_esc=$(json_escape "$output_path")
 
       if [[ -n "$artifacts_json" ]]; then
         artifacts_json="${artifacts_json},"
@@ -235,7 +244,7 @@ cmd_status() {
         deps_json="${deps_json}]"
       fi
 
-      artifacts_json="${artifacts_json}{\"id\":\"${id}\",\"file\":\"${file}\",\"outputPath\":\"${output_path}\",\"status\":\"${status}\",\"dependencies\":${deps_json}}"
+      artifacts_json="${artifacts_json}{\"id\":\"${id}\",\"file\":\"${file}\",\"outputPath\":\"${output_path_esc}\",\"status\":\"${status}\",\"dependencies\":${deps_json}}"
     done
 
     # applyRequires JSON
@@ -328,8 +337,10 @@ cmd_instructions() {
       dep_idx=$(get_artifact_index "$dep")
       if [[ "$dep_idx" != "-1" ]]; then
         local dep_file="${cdir}/${ARTIFACT_FILES[$dep_idx]}"
+        local dep_file_esc
+        dep_file_esc=$(json_escape "$dep_file")
         if [[ "$first" != "true" ]]; then deps_json="${deps_json},"; fi
-        deps_json="${deps_json}\"${dep_file}\""
+        deps_json="${deps_json}\"${dep_file_esc}\""
         first=false
       fi
     done
@@ -337,6 +348,8 @@ cmd_instructions() {
   fi
 
   if [[ "$json_mode" == "true" ]]; then
+    local output_path_esc
+    output_path_esc=$(json_escape "$output_path")
     local t_esc
     t_esc=$(json_escape "$template")
     local i_esc
@@ -347,7 +360,7 @@ cmd_instructions() {
     r_esc=$(json_escape "$artifact_rules")
 
     printf '{"artifactId":"%s","status":"%s","outputPath":"%s","template":"%s","instruction":"%s","context":"%s","rules":"%s","dependencies":%s}\n' \
-      "$artifact_id" "$status" "$output_path" "$t_esc" "$i_esc" "$c_esc" "$r_esc" "$deps_json"
+      "$artifact_id" "$status" "$output_path_esc" "$t_esc" "$i_esc" "$c_esc" "$r_esc" "$deps_json"
   else
     echo "Artifact: ${artifact_id}"
     echo "Status:   ${status}"
@@ -392,11 +405,13 @@ cmd_instructions_apply() {
     state="blocked"
   else
     # Count tasks
-    total=$(grep -c '^\- \[[ x]\]' "$tasks_file" 2>/dev/null || true)
-    complete=$(grep -c '^\- \[x\]' "$tasks_file" 2>/dev/null || true)
+    total=$(grep -c '^\- \[[ xX]\]' "$tasks_file" 2>/dev/null || true)
+    complete=$(grep -c '^\- \[[xX]\]' "$tasks_file" 2>/dev/null || true)
     local remaining=$((total - complete))
 
-    if [[ "$remaining" -eq 0 ]] && [[ "$total" -gt 0 ]]; then
+    if [[ "$total" -eq 0 ]]; then
+      state="blocked"
+    elif [[ "$remaining" -eq 0 ]]; then
       state="all_done"
     else
       state="in_progress"
@@ -408,18 +423,17 @@ cmd_instructions_apply() {
       local first=true
       while IFS= read -r line; do
         local task_status="pending"
-        if [[ "$line" == "- [x]"* ]]; then
+        if [[ "$line" == "- [x]"* ]] || [[ "$line" == "- [X]"* ]]; then
           task_status="done"
         fi
         local task_text
-        task_text="${line#- \[ \] }"
-        task_text="${task_text#- \[x\] }"
+        task_text=$(echo "$line" | sed 's/^- \[[ xX]\] //')
         local t_esc
         t_esc=$(json_escape "$task_text")
         if [[ "$first" != "true" ]]; then task_list_json="${task_list_json},"; fi
         task_list_json="${task_list_json}{\"text\":\"${t_esc}\",\"status\":\"${task_status}\"}"
         first=false
-      done < <(grep '^\- \[[ x]\]' "$tasks_file" 2>/dev/null || true)
+      done < <(grep '^\- \[[ xX]\]' "$tasks_file" 2>/dev/null || true)
       task_list_json="${task_list_json}]"
     fi
   fi
@@ -432,8 +446,10 @@ cmd_instructions_apply() {
     idx=$(get_artifact_index "$req")
     if [[ "$idx" != "-1" ]]; then
       local cf="${cdir}/${ARTIFACT_FILES[$idx]}"
+      local cf_esc
+      cf_esc=$(json_escape "$cf")
       if [[ "$cf_first" != "true" ]]; then context_files_json="${context_files_json},"; fi
-      context_files_json="${context_files_json}\"${cf}\""
+      context_files_json="${context_files_json}\"${cf_esc}\""
       cf_first=false
     fi
   done
@@ -443,10 +459,12 @@ cmd_instructions_apply() {
     idx=$(get_artifact_index "$aid")
     if [[ "$idx" != "-1" ]]; then
       local cf="${cdir}/${ARTIFACT_FILES[$idx]}"
+      local cf_esc
+      cf_esc=$(json_escape "$cf")
       # Avoid duplicates
-      if [[ "$context_files_json" != *"\"${cf}\""* ]]; then
+      if [[ "$context_files_json" != *"\"${cf_esc}\""* ]]; then
         if [[ "$cf_first" != "true" ]]; then context_files_json="${context_files_json},"; fi
-        context_files_json="${context_files_json}\"${cf}\""
+        context_files_json="${context_files_json}\"${cf_esc}\""
         cf_first=false
       fi
     fi
@@ -457,10 +475,12 @@ cmd_instructions_apply() {
   instruction=$(get_instruction "apply")
 
   if [[ "$json_mode" == "true" ]]; then
-    local i_esc
+    local name_esc tasks_file_esc i_esc
+    name_esc=$(json_escape "$name")
+    tasks_file_esc=$(json_escape "$tasks_file")
     i_esc=$(json_escape "$instruction")
     printf '{"state":"%s","changeName":"%s","tasksFile":"%s","contextFiles":%s,"progress":{"total":%d,"complete":%d,"remaining":%d},"tasks":%s,"instruction":"%s"}\n' \
-      "$state" "$name" "$tasks_file" "$context_files_json" "$total" "$complete" "$((total - complete))" "$task_list_json" "$i_esc"
+      "$state" "$name_esc" "$tasks_file_esc" "$context_files_json" "$total" "$complete" "$((total - complete))" "$task_list_json" "$i_esc"
   else
     echo "Apply Status for: ${name}"
     echo "State: ${state}"
@@ -544,7 +564,7 @@ main() {
       while [[ $# -gt 0 ]]; do
         case "$1" in
           --change)
-            [[ $# -ge 2 ]] || die "--change requires a value"
+            [[ $# -ge 2 ]] && [[ "${2:-}" != --* ]] || die "--change requires a value"
             name="$2"; shift 2 ;;
           --json) json_mode="true"; shift ;;
           *) die "Unknown option: $1" ;;
@@ -565,7 +585,7 @@ main() {
       while [[ $# -gt 0 ]]; do
         case "$1" in
           --change)
-            [[ $# -ge 2 ]] || die "--change requires a value"
+            [[ $# -ge 2 ]] && [[ "${2:-}" != --* ]] || die "--change requires a value"
             name="$2"; shift 2 ;;
           --json) json_mode="true"; shift ;;
           *) die "Unknown option: $1" ;;
