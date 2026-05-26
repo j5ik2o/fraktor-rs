@@ -7,10 +7,11 @@
 ## 2. Core contract
 
 - [ ] 2.1 `DowningDecision::{Down, Keep, Defer}` を `downing_provider` 配下に追加する。
-- [ ] 2.2 explicit down command が downing decision boundary を通ってから departure input になることを固定する。
-- [ ] 2.3 `FailureObservation` を `downing_provider` 配下に追加し、`DowningProvider::decide` へ渡せる入力として最小表現する。
-- [ ] 2.4 `DowningProvider` trait に `decide` 相当の method を追加する。
-- [ ] 2.5 keep / defer 相当の decision が active topology を削除しないことを固定する。
+- [ ] 2.2 `DowningInput::{ExplicitDown, FailureObservation}` を `downing_provider` 配下に追加する。
+- [ ] 2.3 explicit down command が `DowningInput::ExplicitDown` として downing decision boundary を通ってから departure input になることを固定する。
+- [ ] 2.4 `FailureObservation` を `DowningInput::FailureObservation` へ渡せる入力として最小表現する。
+- [ ] 2.5 `DowningProvider` trait に `decide(&mut self, input: &DowningInput)` 相当の method を追加する。
+- [ ] 2.6 keep / defer 相当の decision が active topology を削除しないことを固定する。
 
 ## 3. 契約カバレッジ
 

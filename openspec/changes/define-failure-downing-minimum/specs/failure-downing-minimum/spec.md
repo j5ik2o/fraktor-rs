@@ -26,12 +26,12 @@ Failure detector と membership coordination は remote member の availability 
 
 ### Requirement: Downing decision は core-defined port で表現される
 
-Cluster core は failure observation から member を down するかどうかを決める decision boundary を定義する SHALL。Downing strategy は explicit down command と failure observation に対して `DowningDecision::Down` / `DowningDecision::Keep` / `DowningDecision::Defer` を返せる MUST。Std adapter は detector implementation や runtime scheduling を供給しても、Grain runtime policy を所有しない MUST。
+Cluster core は explicit down command または failure observation から member を down するかどうかを決める decision boundary を定義する SHALL。Downing strategy は `DowningInput::ExplicitDown` と `DowningInput::FailureObservation` に対して `DowningDecision::Down` / `DowningDecision::Keep` / `DowningDecision::Defer` を返せる MUST。Std adapter は detector implementation や runtime scheduling を供給しても、Grain runtime policy を所有しない MUST。
 
 #### Scenario: explicit down は decision boundary を通る
 
 - **WHEN** caller が authority に対して explicit down command を実行する
-- **THEN** cluster core は core-defined downing decision boundary を呼び出す
+- **THEN** cluster core は `DowningInput::ExplicitDown` で core-defined downing decision boundary を呼び出す
 - **AND** decision が down を許可した場合だけ member departure input を provider-neutral に生成する
 
 #### Scenario: failure observation は strategy decision へ渡される
