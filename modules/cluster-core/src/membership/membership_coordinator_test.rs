@@ -10,7 +10,7 @@ use crate::{
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
     MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
-    MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeStatus, QuarantineEvent,
+    MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEvent,
   },
   pub_sub::PubSubConfig,
 };
@@ -209,7 +209,7 @@ fn quarantine_rejects_join_and_expires() {
 }
 
 #[test]
-fn suspect_timeout_marks_dead_and_quarantines() {
+fn suspect_timeout_keeps_observation_without_departure() {
   let table = MembershipTable::new(3);
   let mut config = base_config();
   config.suspect_timeout = Duration::from_secs(1);
@@ -232,12 +232,65 @@ fn suspect_timeout_marks_dead_and_quarantines() {
 
   let outcome = coordinator.poll(now(7)).unwrap();
   assert!(
-    outcome
+    !outcome
       .member_events
       .iter()
       .any(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::Dead, .. }))
   );
-  assert!(outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::MemberQuarantined { .. })));
+  assert!(!outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::MemberQuarantined { .. })));
+  assert!(coordinator.quarantine_snapshot().is_empty());
+  let snapshot = coordinator.snapshot();
+  assert!(
+    snapshot.entries.iter().any(|record| { record.authority == "node-a" && record.status == NodeStatus::Suspect })
+  );
+}
+
+#[test]
+fn non_suspect_gossip_status_clears_suspect_tracking() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(1);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  let _ = coordinator.poll(now(5)).unwrap();
+  assert!(coordinator.suspect_since.contains_key("node-a"));
+
+  let dead_version = MembershipVersion::new(100);
+  let dead_record = NodeRecord::new(
+    "node-1".to_string(),
+    "node-a".to_string(),
+    NodeStatus::Dead,
+    dead_version,
+    "1.1.0".to_string(),
+    vec![String::from("frontend")],
+  );
+  let dead_delta = MembershipDelta::new(MembershipVersion::new(99), dead_version, vec![dead_record]);
+  let _ = coordinator.handle_gossip_delta("node-b", &dead_delta, now(6)).unwrap();
+  assert!(!coordinator.suspect_since.contains_key("node-a"));
+}
+
+#[test]
+fn local_leave_clears_suspect_tracking() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(1);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  let _ = coordinator.poll(now(5)).unwrap();
+  assert!(coordinator.suspect_since.contains_key("node-a"));
+
+  let _ = coordinator.handle_leave("node-a", now(6)).unwrap();
+  assert!(!coordinator.suspect_since.contains_key("node-a"));
 }
 
 #[test]

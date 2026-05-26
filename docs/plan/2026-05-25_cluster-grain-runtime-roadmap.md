@@ -112,6 +112,8 @@ Cons:
 - SBR 全面実装ではなく、最小 downing decision model を先に切る。
 - Reachability matrix を入れるか、現在の suspect / unreachable event model を強化するかを比較する。
 
+作業メモ: [2026-05-26_failure-downing-boundary.md](2026-05-26_failure-downing-boundary.md) で、failure observation と member departure input を分離し、`DowningProvider` を decision port として扱う最小 contract を整理する。
+
 ### 5. Placement scalability
 
 - Rendezvous hashing のまま伸ばす範囲を明確にする。

@@ -31,7 +31,7 @@ use crate::{
   ClusterExtensionInstaller, ClusterProviderError, ClusterRequestError, ClusterResolveError,
   ClusterSubscriptionInitialStateMode, ClusterTopology, MetricsError, TopologyUpdate,
   cluster_provider::{ClusterProvider, NoopClusterProvider},
-  downing_provider::DowningProvider,
+  downing_provider::{DowningDecision, DowningInput, DowningProvider},
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
   identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup},
   placement::{ActivatedKind, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution},
@@ -738,9 +738,11 @@ struct RecordingDowningProvider {
 }
 
 impl DowningProvider for RecordingDowningProvider {
-  fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
-    self.downed.lock().push(String::from(authority));
-    Ok(())
+  fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
+    if let DowningInput::ExplicitDown { authority } = input {
+      self.downed.lock().push(authority.clone());
+    }
+    Ok(DowningDecision::Down)
   }
 }
 
