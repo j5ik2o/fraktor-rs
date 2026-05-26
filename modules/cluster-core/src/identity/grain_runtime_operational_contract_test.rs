@@ -235,6 +235,27 @@ fn join_does_not_move_existing_active_activation_when_rendezvous_owner_changes()
 }
 
 #[test]
+fn cached_remote_authority_is_not_reported_as_local_after_local_authority_changes() {
+  let expanded_topology = vec!["node-a:4050".to_string(), "node-b:4051".to_string()];
+  let key = key_owned_by(&expanded_topology, "node-a:4050", "user/remote-cache");
+  let mut lookup = member_lookup();
+  lookup.update_topology(vec!["node-a:4050".to_string()]);
+  lookup.set_local_authority("node-a:4050");
+
+  let original = lookup.resolve(&key, 1000).expect("original local resolution");
+  assert_eq!(original.decision.authority, "node-a:4050");
+  assert_eq!(original.locality, PlacementLocality::Local);
+  clear_observed_events(&mut lookup);
+
+  lookup.update_topology(expanded_topology);
+  lookup.set_local_authority("node-b:4051");
+
+  let after_local_change = lookup.resolve(&key, 1001).expect("remote resolution after local change");
+  assert_eq!(after_local_change.decision.authority, "node-a:4050");
+  assert_eq!(after_local_change.locality, PlacementLocality::Remote);
+}
+
+#[test]
 fn new_resolution_after_join_uses_expanded_topology_candidates() {
   let expanded_topology = vec!["node-a:4050".to_string(), "node-b:4051".to_string()];
   let key = key_owned_by(&expanded_topology, "node-b:4051", "user/join-new-resolution");

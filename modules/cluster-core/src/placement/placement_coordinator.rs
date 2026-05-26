@@ -173,6 +173,7 @@ impl PlacementCoordinatorCore {
 
     if let Some((pid, cached_authority)) = self.registry.cached_pid_with_authority(key, now)
       && self.authorities.contains(&cached_authority)
+      && !self.is_remote(&cached_authority)
     {
       let decision =
         PlacementDecision { key: key.clone(), authority: cached_authority.clone(), observed_at: now };
