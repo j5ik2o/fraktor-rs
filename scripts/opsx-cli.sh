@@ -399,8 +399,8 @@ cmd_instructions_apply() {
     state="blocked"
   else
     # Count tasks
-    total=$(grep -c '^\- \[[ x]\]' "$tasks_file" 2>/dev/null || true)
-    complete=$(grep -c '^\- \[x\]' "$tasks_file" 2>/dev/null || true)
+    total=$(grep -c '^\- \[[ xX]\]' "$tasks_file" 2>/dev/null || true)
+    complete=$(grep -c '^\- \[[xX]\]' "$tasks_file" 2>/dev/null || true)
     local remaining=$((total - complete))
 
     if [[ "$remaining" -eq 0 ]] && [[ "$total" -gt 0 ]]; then
@@ -415,17 +415,17 @@ cmd_instructions_apply() {
       local first=true
       while IFS= read -r line; do
         local task_status="pending"
-        if [[ "$line" == "- [x]"* ]]; then
+        if [[ "$line" == "- [x]"* ]] || [[ "$line" == "- [X]"* ]]; then
           task_status="done"
         fi
         local task_text
-        task_text=$(echo "$line" | sed 's/^- \[[ x]\] //')
+        task_text=$(echo "$line" | sed 's/^- \[[ xX]\] //')
         local t_esc
         t_esc=$(json_escape "$task_text")
         if [[ "$first" != "true" ]]; then task_list_json="${task_list_json},"; fi
         task_list_json="${task_list_json}{\"text\":\"${t_esc}\",\"status\":\"${task_status}\"}"
         first=false
-      done < <(grep '^\- \[[ x]\]' "$tasks_file" 2>/dev/null || true)
+      done < <(grep '^\- \[[ xX]\]' "$tasks_file" 2>/dev/null || true)
       task_list_json="${task_list_json}]"
     fi
   fi
