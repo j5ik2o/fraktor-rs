@@ -1,8 +1,8 @@
-use alloc::string::ToString;
+use alloc::{format, string::ToString};
 
 use crate::{
   grain::GrainKey,
-  identity::{IdentityLookup, LookupError, PartitionIdentityLookup, PidCacheEvent},
+  identity::{IdentityLookup, LookupError, PartitionIdentityLookup, PidCacheEvent, RendezvousHasher},
   placement::{
     ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementCoordinatorOutcome, PlacementEvent,
     PlacementLease, PlacementLocality, PlacementRequestId, PlacementResolution,
@@ -25,6 +25,18 @@ fn member_lookup() -> PartitionIdentityLookup {
 
 fn grain_key(value: &str) -> GrainKey {
   GrainKey::new(value.to_string())
+}
+
+fn key_owned_by(authorities: &[String], owner: &str, prefix: &str) -> GrainKey {
+  for index in 0..10_000 {
+    let key = grain_key(&format!("{prefix}/{index}"));
+    if let Some(selected) = RendezvousHasher::select(authorities, &key)
+      && selected == owner
+    {
+      return key;
+    }
+  }
+  panic!("no key owned by {owner} found for {prefix}");
 }
 
 fn has_passivated_event(events: &[PlacementEvent], key: &GrainKey) -> bool {
@@ -199,6 +211,45 @@ fn active_pid_is_reused_on_repeated_resolve() {
 }
 
 #[test]
+fn join_does_not_move_existing_active_activation_when_rendezvous_owner_changes() {
+  let original_topology = vec!["node-a:4050".to_string()];
+  let expanded_topology = vec!["node-a:4050".to_string(), "node-b:4051".to_string()];
+  let key = key_owned_by(&expanded_topology, "node-b:4051", "user/join-no-move");
+  let mut lookup = member_lookup();
+  lookup.update_topology(original_topology);
+
+  let original = lookup.resolve(&key, 1000).expect("original resolution");
+  assert_eq!(original.decision.authority, "node-a:4050");
+  clear_observed_events(&mut lookup);
+
+  lookup.update_topology(expanded_topology);
+  let join_events = lookup.drain_events();
+  let join_cache_events = lookup.drain_cache_events();
+  assert!(!has_passivated_event(&join_events, &key));
+  assert!(!has_cache_drop_event(&join_cache_events, &key));
+
+  let after_join = lookup.resolve(&key, 1001).expect("cached resolution after join");
+  assert_eq!(after_join.pid, original.pid);
+  assert_eq!(after_join.decision.authority, original.decision.authority);
+  assert!(lookup.drain_cache_events().is_empty());
+}
+
+#[test]
+fn new_resolution_after_join_uses_expanded_topology_candidates() {
+  let expanded_topology = vec!["node-a:4050".to_string(), "node-b:4051".to_string()];
+  let key = key_owned_by(&expanded_topology, "node-b:4051", "user/join-new-resolution");
+  let mut lookup = member_lookup();
+  lookup.update_topology(vec!["node-a:4050".to_string()]);
+
+  lookup.update_topology(expanded_topology);
+  clear_observed_events(&mut lookup);
+
+  let resolution = lookup.resolve(&key, 1000).expect("resolution after join");
+  assert_eq!(resolution.decision.authority, "node-b:4051");
+  assert!(lookup.authorities().iter().any(|authority| authority == &resolution.decision.authority));
+}
+
+#[test]
 fn distributed_activation_reports_pending_then_completes_after_command_results() {
   let mut lookup = member_lookup();
   lookup.update_topology(vec!["node-a:4050".to_string()]);
@@ -275,6 +326,33 @@ fn member_departure_with_matching_authority_invalidates_active_entries_and_block
 
   let after_departure = lookup.resolve(&key, 1002);
   assert!(matches!(after_departure, Err(LookupError::Pending)));
+}
+
+#[test]
+fn member_departure_invalidates_only_matching_authority_entries() {
+  let authorities = vec!["node-a:4050".to_string(), "node-b:4051".to_string()];
+  let node_a_key = key_owned_by(&authorities, "node-a:4050", "user/leave-node-a");
+  let node_b_key = key_owned_by(&authorities, "node-b:4051", "user/leave-node-b");
+  let mut lookup = member_lookup();
+  lookup.update_topology(authorities);
+
+  let node_a = lookup.resolve(&node_a_key, 1000).expect("node-a resolution");
+  let node_b = lookup.resolve(&node_b_key, 1000).expect("node-b resolution");
+  assert_eq!(node_a.decision.authority, "node-a:4050");
+  assert_eq!(node_b.decision.authority, "node-b:4051");
+  clear_observed_events(&mut lookup);
+
+  lookup.on_member_left("node-a:4050");
+  let placement_events = lookup.drain_events();
+  let cache_events = lookup.drain_cache_events();
+  assert!(has_passivated_event(&placement_events, &node_a_key));
+  assert!(!has_passivated_event(&placement_events, &node_b_key));
+  assert!(has_cache_drop_event(&cache_events, &node_a_key));
+  assert!(!has_cache_drop_event(&cache_events, &node_b_key));
+
+  let node_b_after_departure = lookup.resolve(&node_b_key, 1001).expect("remaining cached resolution");
+  assert_eq!(node_b_after_departure.pid, node_b.pid);
+  assert_eq!(node_b_after_departure.decision.authority, node_b.decision.authority);
 }
 
 #[test]

@@ -171,13 +171,23 @@ impl PlacementCoordinatorCore {
       return Err(LookupError::NoAuthority);
     };
 
-    let decision = PlacementDecision { key: key.clone(), authority: owner.clone(), observed_at: now };
-    let mut events = Vec::new();
-    events.push(PlacementEvent::Resolved { key: key.clone(), authority: owner.clone(), observed_at: now });
-
-    if self.is_remote(&owner) {
-      let pid = format!("{}::{}", owner, key.value());
-      let resolution = PlacementResolution { decision, locality: PlacementLocality::Remote, pid };
+    if let Some((pid, cached_authority)) = self.registry.cached_pid_with_authority(key, now)
+      && self.authorities.contains(&cached_authority)
+    {
+      let decision =
+        PlacementDecision { key: key.clone(), authority: cached_authority.clone(), observed_at: now };
+      let resolution = PlacementResolution { decision, locality: PlacementLocality::Local, pid };
+      let mut events = Vec::new();
+      events.push(PlacementEvent::Resolved {
+        key:         key.clone(),
+        authority:   cached_authority,
+        observed_at: now,
+      });
+      events.push(PlacementEvent::Activated {
+        key:         key.clone(),
+        pid:         resolution.pid.clone(),
+        observed_at: now,
+      });
       self.events.extend(events);
       return Ok(PlacementCoordinatorOutcome {
         resolution: Some(resolution),
@@ -186,13 +196,13 @@ impl PlacementCoordinatorCore {
       });
     }
 
-    if let Some(pid) = self.registry.cached_pid(key, now) {
-      let resolution = PlacementResolution { decision, locality: PlacementLocality::Local, pid };
-      events.push(PlacementEvent::Activated {
-        key:         key.clone(),
-        pid:         resolution.pid.clone(),
-        observed_at: now,
-      });
+    let decision = PlacementDecision { key: key.clone(), authority: owner.clone(), observed_at: now };
+    let mut events = Vec::new();
+    events.push(PlacementEvent::Resolved { key: key.clone(), authority: owner.clone(), observed_at: now });
+
+    if self.is_remote(&owner) {
+      let pid = format!("{}::{}", owner, key.value());
+      let resolution = PlacementResolution { decision, locality: PlacementLocality::Remote, pid };
       self.events.extend(events);
       return Ok(PlacementCoordinatorOutcome {
         resolution: Some(resolution),

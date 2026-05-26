@@ -98,6 +98,11 @@ impl VirtualActorRegistry {
     self.pid_cache.get(key, now)
   }
 
+  /// Returns PID and owner authority from cache if present and not expired.
+  pub fn cached_pid_with_authority(&mut self, key: &GrainKey, now: u64) -> Option<(String, String)> {
+    self.pid_cache.get_with_authority(key, now)
+  }
+
   /// Invalidates all activations and cache entries for an authority (e.g., quarantine).
   pub fn invalidate_authority(&mut self, authority: &str) {
     self.pid_cache.invalidate_authority(authority);
