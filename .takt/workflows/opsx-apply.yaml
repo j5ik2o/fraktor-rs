@@ -21,7 +21,7 @@ instructions:
 
 report_formats:
   opsx-apply-summary: ../facets/output-contracts/opsx-apply-summary.md
-  opsx-apply-impl-validation: ../facets/output-contracts/cc-sdd-impl-validation.md
+  opsx-apply-impl-validation: ../facets/output-contracts/opsx-apply-impl-validation.md
 
 # --- ループ監視 ---
 loop_monitors:
