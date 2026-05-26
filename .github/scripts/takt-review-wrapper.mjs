@@ -11,7 +11,7 @@ const prNumber = requiredEnv("PR_NUMBER");
 const workflow = env.TAKT_WORKFLOW || "review-default";
 const provider = env.TAKT_PROVIDER || "claude-sdk";
 const model = env.TAKT_MODEL || "";
-const maxComments = Number.parseInt(env.TAKT_MAX_COMMENTS || "5", 10);
+const maxComments = parseMaxComments(env.TAKT_MAX_COMMENTS);
 const expectedHeadSha = env.PR_HEAD_SHA || "";
 const [owner, repoName] = repo.split("/");
 const anthropicApiKey = env.ANTHROPIC_API_KEY || env.TAKT_ANTHROPIC_API_KEY;
@@ -36,10 +36,10 @@ if (expectedHeadSha && pr.headRefOid !== expectedHeadSha) {
 
 const diff = readPrDiff();
 const changedFiles = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/files`);
-const existingComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
+const initialComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
 const allowedLines = collectReviewableLinesFromDiff(diff);
 
-const task = buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComments });
+const task = buildTask({ repo, prNumber, pr, changedFiles, existingComments: initialComments, maxComments });
 
 const runEnv = {
   ...env,
@@ -98,9 +98,10 @@ if (latestPr.headRefOid !== pr.headRefOid) {
   console.log(`PR head moved during review: reviewed ${pr.headRefOid}, current ${latestPr.headRefOid}. Skipping.`);
   process.exit(0);
 }
+const latestComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
 
 const reviewComments = parsedFindings
-  .map((finding) => toReviewComment(finding, allowedLines, existingComments))
+  .map((finding) => toReviewComment(finding, allowedLines, latestComments))
   .filter(Boolean)
   .reduce(mergeSameLineComments, [])
   .slice(0, maxComments);
@@ -125,6 +126,14 @@ function requiredEnv(name) {
     throw new Error(`${name} is required`);
   }
   return value;
+}
+
+function parseMaxComments(value) {
+  const parsed = Number.parseInt(value || "5", 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`Invalid TAKT_MAX_COMMENTS: ${value}`);
+  }
+  return parsed;
 }
 
 function ghJson(args) {
@@ -213,9 +222,9 @@ function collectReviewableLinesFromDiff(diffText) {
       continue;
     }
 
-    const fileHeader = /^\+\+\+ b\/(.+)$/.exec(rawLine);
+    const fileHeader = parseDiffFileHeader(rawLine);
     if (fileHeader) {
-      currentPath = fileHeader[1];
+      currentPath = fileHeader;
       inHunk = false;
       if (!byPath.has(currentPath)) {
         byPath.set(currentPath, new Set());
@@ -244,6 +253,27 @@ function collectReviewableLinesFromDiff(diffText) {
   }
 
   return byPath;
+}
+
+function parseDiffFileHeader(line) {
+  const plain = /^\+\+\+ b\/(.+)$/.exec(line);
+  if (plain) {
+    return plain[1];
+  }
+
+  const quoted = /^\+\+\+ "b\/(.+)"$/.exec(line);
+  if (quoted) {
+    return unescapeQuotedDiffPath(quoted[1]);
+  }
+  return undefined;
+}
+
+function unescapeQuotedDiffPath(path) {
+  return path
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\")
+    .replace(/\\t/g, "\t")
+    .replace(/\\n/g, "\n");
 }
 
 function readLatestReport(runStartedAt) {
