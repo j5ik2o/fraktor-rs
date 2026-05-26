@@ -71,6 +71,7 @@ jobs:
         if: steps.pr.outputs.same_repo == 'true'
         with:
           ref: ${{ steps.pr.outputs.ref }}
+          persist-credentials: false
       - uses: nrslib/takt-action@cf9980f1278732df29992180e24d661d4abb7cb5 # v0.3.0
         if: steps.pr.outputs.same_repo == 'true'
         with:
