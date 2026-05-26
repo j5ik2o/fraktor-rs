@@ -82,4 +82,5 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
           TAKT_WORKFLOW: review-default
           TAKT_PROVIDER: claude-sdk
+          TAKT_MODEL: claude-sonnet-4-5-20250929
         run: node .github/scripts/takt-review-wrapper.mjs
