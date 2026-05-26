@@ -32,9 +32,10 @@ if (expectedHeadSha && pr.headRefOid !== expectedHeadSha) {
   process.exit(0);
 }
 
+const diff = ghText(["pr", "diff", prNumber]);
 const changedFiles = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/files`);
 const existingComments = ghPaginatedJson(`repos/${repo}/pulls/${prNumber}/comments`);
-const allowedLines = collectReviewableLines(changedFiles);
+const allowedLines = collectReviewableLinesFromDiff(diff);
 
 const task = buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComments });
 const taskFile = join(mkdtempSync(join(tmpdir(), "takt-review-")), "task.md");
@@ -99,6 +100,7 @@ if (latestPr.headRefOid !== pr.headRefOid) {
 const reviewComments = parsedFindings
   .map((finding) => toReviewComment(finding, allowedLines, existingComments))
   .filter(Boolean)
+  .reduce(mergeSameLineComments, [])
   .slice(0, maxComments);
 
 if (reviewComments.length === 0) {
@@ -179,31 +181,40 @@ Use \`gh pr diff ${prNumber}\`, \`gh pr view ${prNumber} --json comments,reviews
 `;
 }
 
-function collectReviewableLines(files) {
+function collectReviewableLinesFromDiff(diffText) {
   const byPath = new Map();
-  for (const file of files) {
-    const lines = new Set();
-    const patch = file.patch || "";
-    let newLine = 0;
-    for (const rawLine of patch.split("\n")) {
-      const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
-      if (hunk) {
-        newLine = Number.parseInt(hunk[1], 10);
-        continue;
+  let currentPath = "";
+  let newLine = 0;
+
+  for (const rawLine of diffText.split("\n")) {
+    const fileHeader = /^\+\+\+ b\/(.+)$/.exec(rawLine);
+    if (fileHeader) {
+      currentPath = fileHeader[1];
+      if (!byPath.has(currentPath)) {
+        byPath.set(currentPath, new Set());
       }
-      if (!rawLine) {
-        continue;
-      }
-      if (rawLine.startsWith("+") && !rawLine.startsWith("+++")) {
-        lines.add(newLine);
-        newLine += 1;
-      } else if (!rawLine.startsWith("-")) {
-        lines.add(newLine);
-        newLine += 1;
-      }
+      continue;
     }
-    byPath.set(file.filename, lines);
+
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
+    if (hunk) {
+      newLine = Number.parseInt(hunk[1], 10);
+      continue;
+    }
+
+    if (!currentPath || rawLine.startsWith("diff --git") || rawLine.startsWith("--- ")) {
+      continue;
+    }
+
+    if (rawLine.startsWith("+") && !rawLine.startsWith("+++")) {
+      byPath.get(currentPath).add(newLine);
+      newLine += 1;
+    } else if (!rawLine.startsWith("-")) {
+      byPath.get(currentPath).add(newLine);
+      newLine += 1;
+    }
   }
+
   return byPath;
 }
 
@@ -306,6 +317,17 @@ function toReviewComment(finding, allowedLines, existingComments) {
   }
 
   return { path, line, side: "RIGHT", body };
+}
+
+function mergeSameLineComments(comments, comment) {
+  const existing = comments.find((item) => item.path === comment.path && item.line === comment.line);
+  if (!existing) {
+    comments.push(comment);
+    return comments;
+  }
+
+  existing.body = `${existing.body.replace(/\n<!-- takt-review-wrapper -->$/, "")}\n\n---\n\n${comment.body}`;
+  return comments;
 }
 
 async function postReview(payload) {
