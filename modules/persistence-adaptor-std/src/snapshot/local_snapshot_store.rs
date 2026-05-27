@@ -9,6 +9,8 @@ use core::{
   future::{Ready, ready},
   ops::Deref,
 };
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
 use std::{
   ffi::OsStr,
   fs::{self, File},
@@ -89,13 +91,8 @@ impl LocalSnapshotStore {
       .sync_all()
       .map_err(|error| SnapshotError::SaveFailed(format!("sync temp snapshot {}: {error}", temp_path.display())))?;
     drop(file);
+    self.save_snapshot_metadata(metadata, &path)?;
     Self::replace_temp_file(&temp_path, &path, "snapshot")?;
-    if let Err(error) = self.save_snapshot_metadata(metadata, &path) {
-      match fs::remove_file(&path) {
-        | Ok(()) | Err(_) => (),
-      }
-      return Err(error);
-    }
     #[cfg(not(windows))]
     File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
       SnapshotError::SaveFailed(format!("sync snapshot directory {}: {error}", self.directory.display()))
@@ -256,16 +253,40 @@ impl LocalSnapshotStore {
 
   fn replace_temp_file(temp_path: &Path, path: &Path, label: &str) -> Result<(), SnapshotError> {
     #[cfg(windows)]
-    match fs::remove_file(path) {
-      | Ok(()) => (),
-      | Err(error) if error.kind() == ErrorKind::NotFound => (),
-      | Err(error) => {
-        return Err(SnapshotError::SaveFailed(format!("remove existing {label} {}: {error}", path.display())));
-      },
-    }
+    return Self::replace_temp_file_windows(temp_path, path, label);
+    #[cfg(not(windows))]
     fs::rename(temp_path, path).map_err(|error| {
       SnapshotError::SaveFailed(format!("rename temp {label} {} to {}: {error}", temp_path.display(), path.display()))
     })
+  }
+
+  #[cfg(windows)]
+  fn replace_temp_file_windows(temp_path: &Path, path: &Path, label: &str) -> Result<(), SnapshotError> {
+    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
+    const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+
+    unsafe extern "system" {
+      fn MoveFileExW(existing_file_name: *const u16, new_file_name: *const u16, flags: u32) -> i32;
+    }
+
+    let existing_file_name: Vec<u16> = temp_path.as_os_str().encode_wide().chain(core::iter::once(0)).collect();
+    let new_file_name: Vec<u16> = path.as_os_str().encode_wide().chain(core::iter::once(0)).collect();
+    let replaced = unsafe {
+      MoveFileExW(
+        existing_file_name.as_ptr(),
+        new_file_name.as_ptr(),
+        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+      )
+    };
+    if replaced == 0 {
+      let error = Error::last_os_error();
+      return Err(SnapshotError::SaveFailed(format!(
+        "replace temp {label} {} to {}: {error}",
+        temp_path.display(),
+        path.display()
+      )));
+    }
+    Ok(())
   }
 
   fn remove_stale_snapshot_metadata(metadata_path: &Path) -> Result<(), SnapshotError> {
