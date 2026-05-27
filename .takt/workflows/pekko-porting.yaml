@@ -266,7 +266,7 @@ steps:
     instruction: ai-review
     output_contracts:
       report:
-        - name: 04-ai-review.md
+        - name: ai-antipattern-review.md
           format: ai-review
     rules:
       - condition: AI特有の問題なし
