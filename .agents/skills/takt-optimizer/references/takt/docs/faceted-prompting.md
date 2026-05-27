@@ -327,14 +327,14 @@ Key properties:
 
 ### Implementation Example: TAKT
 
-[TAKT](https://github.com/nrslib/takt) implements Faceted Prompting using YAML-based workflow definitions called "pieces." Builtin facets can be referenced directly by bare name in each step (called "movement" in TAKT). Section maps are optional and only needed for custom aliases (name differs from file name):
+[TAKT](https://github.com/nrslib/takt) implements Faceted Prompting using YAML-based workflow definitions. Builtin facets can be referenced directly by bare name in each step. Section maps are optional and only needed for custom aliases (name differs from file name):
 
 ```yaml
 name: my-workflow
-max_movements: 10
-initial_movement: plan
+max_steps: 10
+initial_step: plan
 
-movements:
+steps:
   - name: implement
     persona: coder            # WHO — builtins/{lang}/personas/coder.md
     policy: coding            # RULES — builtins/{lang}/policies/coding.md

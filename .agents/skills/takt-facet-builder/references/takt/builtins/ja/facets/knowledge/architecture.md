@@ -7,9 +7,11 @@
 | 基準           | 判定 |
 |--------------|------|
 | 1ファイル200行超   | 分割を検討 |
-| 1ファイル300行超   | REJECT |
+| 1ファイル300行超   | Warning。分割を提案 |
 | 1ファイルに複数の責務  | REJECT |
 | 関連性の低いコードが同居 | REJECT |
+
+行数は設計レビューや doctor で扱う警告観点であり、unit test や snapshot test の pass/fail 条件にしない。
 
 **モジュール構成**
 
@@ -104,6 +106,99 @@ Vertical Slice の判定基準:
 - エラーハンドリングが一元化されているか（各所でtry-catch禁止）
 - ビジネスロジックがController/Viewに漏れていないか
 
+## 境界での解決
+
+設定、Option、provider、権限、パスのような値は、境界で解決してから内部へ渡す。メイン処理は「何が解決済みか」を前提に組み立て、各所で設定ソースを問い合わせない。
+
+| 基準 | 判定 |
+|------|------|
+| 入口で `ExecutionContext` や `ResolvedOptions` のような解決済みオブジェクトを作る | OK |
+| オーケストレーション層が解決済みの値だけを扱う | OK |
+| 下位層が global/project/env を再読込して同じ値を再解決する | REJECT |
+| 表示用と実行用で別々の解決関数を持つ | REJECT |
+| 未解決の options を深い層まで運び、先で `??` 解決する | REJECT |
+
+```typescript
+// REJECT - 実行層が設定ソースを直接知っている
+async function executeWorkflow(options) {
+  const engine = new WorkflowEngine({
+    provider: options.provider ?? globalConfig.provider,
+  });
+}
+
+class AgentRunner {
+  run(step, options) {
+    const provider = options.provider ?? resolveProviderFromConfig();
+    return getProvider(provider).call();
+  }
+}
+
+// OK - 境界で解決し、内部は解決済み値を使う
+async function executeWorkflow(options) {
+  const context = resolveExecutionContext(options);
+  const engine = new WorkflowEngine(context);
+}
+
+class AgentRunner {
+  run(step, options) {
+    return getProvider(options.resolvedProvider).call();
+  }
+}
+```
+
+### Tell, Don't Ask
+
+下位層に設定ソースを問い合わせさせるのではなく、上位層が「これを使え」と解決済みの値を渡す。値の選択責務と実行責務を分離する。
+
+| パターン | 判定 |
+|---------|------|
+| 上位層が `resolvedProvider` のような値を渡す | OK |
+| 下位層が `options` を覗いて自前で解決する | REJECT |
+| 実行オブジェクトが `setup(config)` 後は `run()` だけ公開する | OK |
+| 実行中に `getGlobalConfig()` を呼んで分岐する | REJECT |
+
+### 腐敗防止層
+
+優先順位解決や外部設定形式の吸収は、境界の専用層に閉じ込める。内部モデルへは正規化済みの値だけを渡す。
+
+| パターン | 判定 |
+|---------|------|
+| YAML/env/CLI 差分を resolver/adapter に閉じ込める | OK |
+| ドメイン層が env 名や設定キー文字列を直接扱う | REJECT |
+| 外部形式から内部形式への変換が1箇所に集約されている | OK |
+| 同じ正規化ロジックが複数箇所にコピーされている | REJECT |
+
+### フェーズ分離
+
+入力、解釈、実行、出力を段階で分ける。反復処理は、できる限り「解釈済みの入力をまとめて受け取り、実行だけを繰り返す」構造にする。
+
+| 基準 | 判定 |
+|------|------|
+| 入口で raw input を `Resolved*` 型へ変換してから本処理に渡す | OK |
+| ループ本体が解決済みデータに対する実行だけを担う | OK |
+| ループ内で毎回 config/env/option を解釈する | REJECT |
+| 反復ごとに「入力取得→解釈→実行→出力」を1関数に詰め込む | REJECT |
+| 最適化で逐次処理が必要でも、解釈フェーズを専用メソッドに隔離している | OK |
+
+```typescript
+// REJECT - 各反復が入力解釈まで担う
+for (const item of items) {
+  const resolved = resolveItem(item, rawOptions, config);
+  const result = execute(resolved);
+  output(result);
+}
+
+// OK - 先に解釈し、反復は実行だけ
+const resolvedItems = items.map((item) => resolveItem(item, rawOptions, config));
+
+for (const item of resolvedItems) {
+  const result = execute(item);
+  output(result);
+}
+```
+
+逐次解釈が必要なケースでも、`nextRawInput()` と `resolveInput()` と `executeResolved()` の責務は分ける。性能要件でフェーズを近づけても、責務まで混ぜない。
+
 ## コード品質の検出手法
 
 **説明コメント（What/How）の検出基準**
@@ -135,7 +230,7 @@ for (const transition of step.transitions) {
 export function matchesCondition(status: Status, condition: TransitionCondition): boolean {
 
 // OK - 設計判断の理由（Why）
-// ユーザー中断はピース定義のトランジションより優先する
+// ユーザー中断はワークフロー定義のトランジションより優先する
 if (status === 'interrupted') {
   return ABORT_STEP;
 }
@@ -279,14 +374,14 @@ function createUser(data: UserData) {
 | エラー握りつぶし | 空の `catch {}`、`rescue nil` |
 | マジックナンバー | 説明なしの `if (status == 3)` |
 
-## TODOコメントの厳格な禁止
+## 未完成コードの検出
 
-「将来やる」は決してやらない。今やらないことは永遠にやらない。
+未完成コードの判定基準はコーディングポリシーに従う。アーキテクチャレビューでは、TODO/FIXME、空実装、スタブが設計上必要な境界・認可・バリデーション・契約更新の代替になっていないかを見る。
 
-TODOコメントは即REJECT。
+Issue番号・外部制約・除去条件のない TODO/FIXME は REJECT。
 
 ```kotlin
-// REJECT - 将来を見越したTODO
+// REJECT - 認可チェックをTODOで先送り
 // TODO: 施設IDによる認可チェックを追加
 fun deleteCustomHoliday(@PathVariable id: String) {
     deleteCustomHolidayInputPort.execute(input)
@@ -303,12 +398,12 @@ fun deleteCustomHoliday(@PathVariable id: String) {
 }
 ```
 
-TODOが許容される唯一のケース:
+TODO/FIXMEが許容されるケース:
 
 | 条件 | 例 | 判定 |
 |------|-----|------|
-| 外部依存で今は実装不可 + Issue化済み | `// TODO(#123): APIキー取得後に実装` | 許容 |
-| 技術的制約で回避不可 + Issue化済み | `// TODO(#456): ライブラリバグ修正待ち` | 許容 |
+| 外部依存で今は実装不可 + Issue化済み + 除去条件あり | `// TODO(#123): APIキー取得後に実装` | 許容 |
+| 技術的制約で回避不可 + Issue化済み + 除去条件あり | `// TODO(#456): ライブラリバグ修正待ち` | 許容 |
 | 「将来実装」「後で追加」 | `// TODO: バリデーション追加` | REJECT |
 | 「時間がないので」 | `// TODO: リファクタリング` | REJECT |
 
@@ -334,7 +429,7 @@ DRY にしないケース:
 
 ## 仕様準拠の検証
 
-変更が、プロジェクトの文書化された仕様に準拠しているか検証する。
+契約変更の整合性はコーディングポリシーに従う。アーキテクチャレビューでは、変更が文書化された仕様、型、スキーマ、設定形式と矛盾していないかを見る。
 
 検証対象:
 
@@ -365,10 +460,10 @@ DRY にしないケース:
 
 ## 呼び出しチェーン検証
 
-新しいパラメータ・フィールドが追加された場合、変更ファイル内だけでなく呼び出し元も検証する。
+契約変更の配線漏れはコーディングポリシーに従う。アーキテクチャレビューでは、新しいパラメータ・フィールドが変更ファイル内だけで完結しておらず、実際の呼び出し元・生成元・読み取り側まで届いているかを見る。
 
 検証手順:
-1. 新しいオプショナルパラメータや interface フィールドを見つけたら、`Grep` で全呼び出し元を検索
+1. 新しいオプショナルパラメータや interface フィールドを見つけたら、全呼び出し元を検索
 2. 全呼び出し元が新しいパラメータを渡しているか確認
 3. フォールバック値（`?? default`）がある場合、フォールバックが使われるケースが意図通りか確認
 
@@ -376,19 +471,19 @@ DRY にしないケース:
 
 | パターン | 問題 | 検出方法 |
 |---------|------|---------|
-| `options.xxx ?? fallback` で全呼び出し元が `xxx` を省略 | 機能が実装されているのに常にフォールバック | grep で呼び出し元を確認 |
+| `options.xxx ?? fallback` で全呼び出し元が `xxx` を省略 | 機能が実装されているのに常にフォールバック | 呼び出し元を確認 |
 | テストがモックで直接値をセット | 実際の呼び出しチェーンを経由しない | テストの構築方法を確認 |
 | `executeXxx()` が内部で使う `options` を引数で受け取らない | 上位から値を渡す口がない | 関数シグネチャを確認 |
 
 ```typescript
 // 配線漏れ: projectCwd を受け取る口がない
-export async function executePiece(config, cwd, task) {
-  const engine = new PieceEngine(config, cwd, task);  // options なし
+export async function executeWorkflow(config, cwd, task) {
+  const engine = new WorkflowEngine(config, cwd, task);  // options なし
 }
 
 // 配線済み: projectCwd を渡せる
-export async function executePiece(config, cwd, task, options?) {
-  const engine = new PieceEngine(config, cwd, task, options);
+export async function executeWorkflow(config, cwd, task, options?) {
+  const engine = new WorkflowEngine(config, cwd, task, options);
 }
 ```
 
@@ -398,12 +493,12 @@ export async function executePiece(config, cwd, task, options?) {
 
 | パターン | 問題 | 検出方法 |
 |---------|------|---------|
-| 呼び出し元がTTY必須なのに関数内でTTYチェック | 到達しない分岐が残る | grep で全呼び出し元の前提条件を確認 |
+| 呼び出し元がTTY必須なのに関数内でTTYチェック | 到達しない分岐が残る | 全呼び出し元の前提条件を確認 |
 | 呼び出し元がnullチェック済みなのに再度nullガード | 冗長な防御 | 呼び出し元の制約を追跡 |
 | 呼び出し元が型で制約しているのにランタイムチェック | 型安全を信頼していない | TypeScriptの型制約を確認 |
 
 検証手順:
-1. 防御的な条件分岐（TTYチェック、nullガード等）を見つけたら、grep で全呼び出し元を確認
+1. 防御的な条件分岐（TTYチェック、nullガード等）を見つけたら、全呼び出し元を確認
 2. 全呼び出し元がその条件を既に保証しているなら、防御は不要 → REJECT
 3. 一部の呼び出し元が保証していない場合は、防御を残す
 
