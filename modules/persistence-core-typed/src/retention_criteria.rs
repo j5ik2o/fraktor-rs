@@ -43,4 +43,23 @@ impl RetentionCriteria {
     self.delete_events_on_snapshot = true;
     self
   }
+
+  pub(crate) fn delete_to_sequence_nr(&self, sequence_nr: u64) -> Option<u64> {
+    let snapshot_every = self.snapshot_every_interval()?;
+    let keep_snapshots = self.keep_snapshots()?;
+    if snapshot_every == 0 || keep_snapshots == 0 {
+      return None;
+    }
+    let latest_snapshot_sequence_nr = sequence_nr.checked_sub(sequence_nr % snapshot_every)?;
+    if latest_snapshot_sequence_nr < snapshot_every {
+      return None;
+    }
+    let kept_snapshot_span = snapshot_every.checked_mul(keep_snapshots.saturating_sub(1))?;
+    let oldest_kept_snapshot = latest_snapshot_sequence_nr.checked_sub(kept_snapshot_span)?;
+    if oldest_kept_snapshot == 0 {
+      return None;
+    }
+    let max_sequence_nr_to_delete = oldest_kept_snapshot.checked_sub(snapshot_every)?;
+    (max_sequence_nr_to_delete > 0).then_some(max_sequence_nr_to_delete)
+  }
 }

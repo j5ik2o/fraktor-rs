@@ -22,7 +22,7 @@ use fraktor_persistence_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
-use crate::{PersistenceEffectorConfig, RetentionCriteria};
+use crate::PersistenceEffectorConfig;
 
 struct EphemeralPersistenceStoreId;
 
@@ -143,7 +143,7 @@ impl EphemeralPersistenceStore {
       entry.snapshot_timestamp = entry.snapshot_timestamp.saturating_add(1);
       entry.snapshots.push(EphemeralPersistedSnapshot { sequence_nr, timestamp: entry.snapshot_timestamp, payload });
       if config.retention_criteria().delete_events_on_snapshot()
-        && let Some(to_sequence_nr) = Self::retention_delete_to(*config.retention_criteria(), sequence_nr)
+        && let Some(to_sequence_nr) = config.retention_criteria().delete_to_sequence_nr(sequence_nr)
       {
         entry.events.retain(|event| event.sequence_nr > to_sequence_nr);
       }
@@ -208,24 +208,6 @@ impl EphemeralPersistenceStore {
 
   fn recovery_error(reason: &str, persistence_id: &str) -> PersistenceError {
     PersistenceError::Recovery(format!("{reason}: {persistence_id}"))
-  }
-
-  fn retention_delete_to(retention_criteria: RetentionCriteria, sequence_nr: u64) -> Option<u64> {
-    let snapshot_every = retention_criteria.snapshot_every_interval()?;
-    let keep_snapshots = retention_criteria.keep_snapshots()?;
-    if snapshot_every == 0 || keep_snapshots == 0 {
-      return None;
-    }
-    let latest_snapshot_sequence_nr = sequence_nr.checked_sub(sequence_nr % snapshot_every)?;
-    if latest_snapshot_sequence_nr < snapshot_every {
-      return None;
-    }
-    let kept_snapshot_span = snapshot_every.checked_mul(keep_snapshots.saturating_sub(1))?;
-    let oldest_kept_snapshot = latest_snapshot_sequence_nr.checked_sub(kept_snapshot_span)?;
-    if oldest_kept_snapshot == 0 {
-      return None;
-    }
-    oldest_kept_snapshot.checked_sub(snapshot_every)
   }
 }
 
