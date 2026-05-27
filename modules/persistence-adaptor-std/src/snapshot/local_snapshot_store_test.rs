@@ -168,6 +168,20 @@ fn local_snapshot_store_overwrite_without_metadata_removes_stale_sidecar() {
 }
 
 #[test]
+fn local_snapshot_store_overwrite_with_metadata_replaces_existing_snapshot_and_sidecar() {
+  let directory = unique_snapshot_dir("metadata-overwrite-some");
+  let mut store = open_store(&directory, 3);
+  save_snapshot(&mut store, SnapshotMetadata::new("pid-1", 1, 10).with_metadata("old"), 1);
+  save_snapshot(&mut store, SnapshotMetadata::new("pid-1", 1, 10).with_metadata("new"), 2);
+
+  let loaded = load_latest(&store, "pid-1").expect("snapshot should be loaded");
+
+  assert_eq!(loaded.metadata().metadata(), Some("new"));
+  assert_snapshot(&loaded, 1, 2);
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
 fn local_snapshot_store_load_latest_selects_highest_sequence_number() {
   let directory = unique_snapshot_dir("latest");
   let mut store = open_store(&directory, 3);

@@ -88,9 +88,7 @@ impl LocalSnapshotStore {
       .sync_all()
       .map_err(|error| SnapshotError::SaveFailed(format!("sync temp snapshot {}: {error}", temp_path.display())))?;
     drop(file);
-    fs::rename(&temp_path, &path).map_err(|error| {
-      SnapshotError::SaveFailed(format!("rename temp snapshot {} to {}: {error}", temp_path.display(), path.display()))
-    })?;
+    Self::replace_temp_file(&temp_path, &path, "snapshot")?;
     self.save_snapshot_metadata(metadata, &path)?;
     #[cfg(not(windows))]
     File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
@@ -234,14 +232,22 @@ impl LocalSnapshotStore {
     fs::write(&temp_metadata_path, metadata.as_bytes()).map_err(|error| {
       SnapshotError::SaveFailed(format!("write temp snapshot metadata {}: {error}", temp_metadata_path.display()))
     })?;
-    fs::rename(&temp_metadata_path, &metadata_path).map_err(|error| {
-      SnapshotError::SaveFailed(format!(
-        "rename temp snapshot metadata {} to {}: {error}",
-        temp_metadata_path.display(),
-        metadata_path.display()
-      ))
-    })?;
+    Self::replace_temp_file(&temp_metadata_path, &metadata_path, "snapshot metadata")?;
     Ok(())
+  }
+
+  fn replace_temp_file(temp_path: &Path, path: &Path, label: &str) -> Result<(), SnapshotError> {
+    #[cfg(windows)]
+    match fs::remove_file(path) {
+      | Ok(()) => (),
+      | Err(error) if error.kind() == ErrorKind::NotFound => (),
+      | Err(error) => {
+        return Err(SnapshotError::SaveFailed(format!("remove existing {label} {}: {error}", path.display())));
+      },
+    }
+    fs::rename(temp_path, path).map_err(|error| {
+      SnapshotError::SaveFailed(format!("rename temp {label} {} to {}: {error}", temp_path.display(), path.display()))
+    })
   }
 
   fn remove_stale_snapshot_metadata(metadata_path: &Path) -> Result<(), SnapshotError> {
