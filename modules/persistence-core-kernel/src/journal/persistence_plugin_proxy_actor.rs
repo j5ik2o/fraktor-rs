@@ -182,9 +182,13 @@ fn atomic_write_payload_count(messages: &[AtomicWrite]) -> u64 {
 }
 
 fn tell_journal_response(sender: &mut ActorRef, response: JournalResponse) {
-  if sender.try_tell(AnyMessage::new(response)).is_err() {}
+  if sender.try_tell(AnyMessage::new(response)).is_err() {
+    // The proxy has no retry target once the original requester is unavailable.
+  }
 }
 
 fn tell_snapshot_response(sender: &mut ActorRef, response: SnapshotResponse) {
-  if sender.try_tell(AnyMessage::new(response)).is_err() {}
+  if sender.try_tell(AnyMessage::new(response)).is_err() {
+    // The proxy has no retry target once the original requester is unavailable.
+  }
 }

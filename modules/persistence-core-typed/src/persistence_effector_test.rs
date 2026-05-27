@@ -14,7 +14,7 @@ use fraktor_persistence_core_kernel_rs::{
   error::PersistenceError, extension::PersistenceExtensionInstaller, journal::InMemoryJournal,
   snapshot::InMemorySnapshotStore,
 };
-use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use crate::{
   EventRejectedError, EventSourcedSignal, PersistenceEffector, PersistenceEffectorConfig,
@@ -22,8 +22,8 @@ use crate::{
   RetentionCriteria, persistence_effector_signal_auth::PersistenceEffectorSignalAuth,
 };
 
-type RecordedEvents = ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>;
-type PersistedEvents = ArcShared<SpinSyncMutex<Vec<u32>>>;
+type RecordedEvents = SharedLock<Vec<EventStreamEvent>>;
+type PersistedEvents = SharedLock<Vec<u32>>;
 
 #[test]
 fn retention_delete_to_returns_none_for_zero_snapshot_interval() {
@@ -247,23 +247,23 @@ fn assert_never_for(duration: Duration, mut condition: impl FnMut() -> bool) {
 }
 
 fn new_recorded_events() -> RecordedEvents {
-  ArcShared::new(SpinSyncMutex::new(Vec::new()))
+  SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new())
 }
 
 fn new_persisted_events() -> PersistedEvents {
-  ArcShared::new(SpinSyncMutex::new(Vec::new()))
+  SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new())
 }
 
 fn record_event(recorded_events: &RecordedEvents, event: &EventStreamEvent) {
-  recorded_events.lock().push(event.clone());
+  recorded_events.with_write(|events| events.push(event.clone()));
 }
 
 fn record_persisted_event(persisted_events: &PersistedEvents, event: u32) {
-  persisted_events.lock().push(event);
+  persisted_events.with_write(|events| events.push(event));
 }
 
 fn wait_for_persisted_events(persisted_events: &PersistedEvents, expected: &[u32]) {
-  wait_until(|| persisted_events.lock().as_slice() == expected);
+  wait_until(|| persisted_events.with_read(|events| events.as_slice() == expected));
 }
 
 fn contains_published_event(
@@ -272,16 +272,18 @@ fn contains_published_event(
   sequence_nr: u64,
   event: u32,
 ) -> bool {
-  recorded_events.lock().iter().any(|stream_event| {
-    let EventStreamEvent::Extension { name, payload } = stream_event else {
-      return false;
-    };
-    name == "persistence"
-      && payload.downcast_ref::<PublishedEvent<u32>>().is_some_and(|published| {
-        published.persistence_id().as_str() == persistence_id
-          && published.sequence_nr() == sequence_nr
-          && *published.event() == event
-          && published.tags() == &BTreeSet::new()
-      })
+  recorded_events.with_read(|events| {
+    events.iter().any(|stream_event| {
+      let EventStreamEvent::Extension { name, payload } = stream_event else {
+        return false;
+      };
+      name == "persistence"
+        && payload.downcast_ref::<PublishedEvent<u32>>().is_some_and(|published| {
+          published.persistence_id().as_str() == persistence_id
+            && published.sequence_nr() == sequence_nr
+            && *published.event() == event
+            && published.tags() == &BTreeSet::new()
+        })
+    })
   })
 }

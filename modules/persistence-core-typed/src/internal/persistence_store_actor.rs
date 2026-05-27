@@ -4,7 +4,7 @@
 #[path = "persistence_store_actor_test.rs"]
 mod tests;
 
-use alloc::{boxed::Box, format, string::ToString, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::ToString, vec, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::{
   ActorContext,
@@ -125,7 +125,7 @@ where
     }
 
     let event_count = events.len();
-    let persisted_events = Arc::new(events.clone());
+    let persisted_events = ArcShared::new(events.clone());
     let published_events = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
     let completion_count = SharedLock::new_with_driver::<DefaultMutex<_>>(0usize);
     self.pending_persist_reply = Some(reply_to.clone());
@@ -156,7 +156,7 @@ where
           let mut published_events = published_events.with_lock(|events| events.clone());
           published_events.sort_by_key(PublishedEvent::sequence_nr);
           Self::reply(&reply_to, PersistenceStoreReply::PersistedEvents {
-            events: persisted_events.as_ref().clone(),
+            events: (*persisted_events).clone(),
             published_events,
             sequence_nr,
           });
