@@ -429,6 +429,19 @@ fn should_observe_snapshot_completion_response_in_plugin_handler_when_save_finis
 }
 
 #[test]
+fn observe_snapshot_responses_without_plugin_handler_is_noop() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = SnapshotActor::<InMemorySnapshotStore>::new(InMemorySnapshotStore::new());
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10);
+
+  actor
+    .observe_snapshot_responses(&mut ctx, vec![SnapshotResponse::SaveSnapshotSuccess { metadata }])
+    .expect("observe failed");
+}
+
+#[test]
 fn should_delegate_unknown_message_to_snapshot_plugin_handler_when_message_is_not_protocol_message() {
   let system = new_test_system();
   let pid = test_actor_pid();
