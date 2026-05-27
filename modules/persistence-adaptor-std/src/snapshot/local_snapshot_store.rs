@@ -45,6 +45,30 @@ struct SnapshotCandidate {
   path:     PathBuf,
 }
 
+enum StagedSnapshotMetadata {
+  Remove { path: PathBuf },
+  Replace { temp_path: PathBuf, path: PathBuf },
+}
+
+impl StagedSnapshotMetadata {
+  fn commit(self) -> Result<(), SnapshotError> {
+    match self {
+      | Self::Remove { path } => LocalSnapshotStore::remove_stale_snapshot_metadata(&path),
+      | Self::Replace { temp_path, path } => {
+        LocalSnapshotStore::replace_temp_file(&temp_path, &path, "snapshot metadata")
+      },
+    }
+  }
+
+  fn discard(&self) {
+    if let Self::Replace { temp_path, .. } = self {
+      match fs::remove_file(temp_path) {
+        | Ok(()) | Err(_) => (),
+      }
+    }
+  }
+}
+
 /// Filesystem-backed snapshot store compatible with the kernel [`SnapshotStore`] trait.
 #[derive(Clone)]
 pub struct LocalSnapshotStore {
@@ -91,8 +115,12 @@ impl LocalSnapshotStore {
       .sync_all()
       .map_err(|error| SnapshotError::SaveFailed(format!("sync temp snapshot {}: {error}", temp_path.display())))?;
     drop(file);
-    self.save_snapshot_metadata(metadata, &path)?;
-    Self::replace_temp_file(&temp_path, &path, "snapshot")?;
+    let staged_metadata = Self::stage_snapshot_metadata(metadata, &path)?;
+    if let Err(error) = Self::replace_temp_file(&temp_path, &path, "snapshot") {
+      staged_metadata.discard();
+      return Err(error);
+    }
+    staged_metadata.commit()?;
     #[cfg(not(windows))]
     File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
       SnapshotError::SaveFailed(format!("sync snapshot directory {}: {error}", self.directory.display()))
@@ -231,10 +259,13 @@ impl LocalSnapshotStore {
     }
   }
 
-  fn save_snapshot_metadata(&self, metadata: &SnapshotMetadata, path: &Path) -> Result<(), SnapshotError> {
+  fn stage_snapshot_metadata(
+    metadata: &SnapshotMetadata,
+    path: &Path,
+  ) -> Result<StagedSnapshotMetadata, SnapshotError> {
     let metadata_path = Self::snapshot_metadata_path(path);
     let Some(metadata) = metadata.metadata() else {
-      return Self::remove_stale_snapshot_metadata(&metadata_path);
+      return Ok(StagedSnapshotMetadata::Remove { path: metadata_path });
     };
     let temp_metadata_path = Self::temp_snapshot_path(&metadata_path);
     let mut file = File::create(&temp_metadata_path).map_err(|error| {
@@ -247,8 +278,7 @@ impl LocalSnapshotStore {
       SnapshotError::SaveFailed(format!("sync temp snapshot metadata {}: {error}", temp_metadata_path.display()))
     })?;
     drop(file);
-    Self::replace_temp_file(&temp_metadata_path, &metadata_path, "snapshot metadata")?;
-    Ok(())
+    Ok(StagedSnapshotMetadata::Replace { temp_path: temp_metadata_path, path: metadata_path })
   }
 
   fn replace_temp_file(temp_path: &Path, path: &Path, label: &str) -> Result<(), SnapshotError> {
