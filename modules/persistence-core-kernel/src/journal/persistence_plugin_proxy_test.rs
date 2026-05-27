@@ -229,6 +229,69 @@ fn should_reply_with_journal_failure_when_journal_target_is_not_set() {
 }
 
 #[test]
+fn should_reply_with_journal_failures_for_each_message_kind_when_journal_target_is_not_set() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut proxy = PersistencePluginProxyActor::new();
+  let (sender, responses) = create_sender(Pid::new(20_010, 1));
+  let messages = build_messages("pid-1", 1, 2);
+  let write_message = JournalMessage::WriteMessages {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 2,
+    messages:       vec![atomic_write(messages)],
+    sender:         sender.clone(),
+    instance_id:    42,
+  };
+  let replay_message = JournalMessage::ReplayMessages {
+    persistence_id:   "pid-1".into(),
+    from_sequence_nr: 1,
+    to_sequence_nr:   2,
+    max:              10,
+    sender:           sender.clone(),
+  };
+  let delete_message = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 3,
+    sender:         sender.clone(),
+  };
+  let highest_message =
+    JournalMessage::GetHighestSequenceNr { persistence_id: "pid-1".into(), from_sequence_nr: 0, sender };
+
+  for message in [write_message, replay_message, delete_message, highest_message] {
+    let any_message = AnyMessage::new(message);
+    proxy.receive(&mut ctx, any_message.as_view()).expect("journal failure response failed");
+  }
+
+  let responses = responses.lock();
+  assert_eq!(responses.len(), 6);
+  assert!(matches!(
+    responses[0].payload().downcast_ref::<JournalResponse>().expect("first write failure"),
+    JournalResponse::WriteMessageFailure { instance_id, .. } if *instance_id == 42
+  ));
+  assert!(matches!(
+    responses[1].payload().downcast_ref::<JournalResponse>().expect("second write failure"),
+    JournalResponse::WriteMessageFailure { instance_id, .. } if *instance_id == 42
+  ));
+  assert!(matches!(
+    responses[2].payload().downcast_ref::<JournalResponse>().expect("batch write failure"),
+    JournalResponse::WriteMessagesFailed { write_count, instance_id, .. } if *write_count == 2 && *instance_id == 42
+  ));
+  assert!(matches!(
+    responses[3].payload().downcast_ref::<JournalResponse>().expect("replay failure"),
+    JournalResponse::ReplayMessagesFailure { .. }
+  ));
+  assert!(matches!(
+    responses[4].payload().downcast_ref::<JournalResponse>().expect("delete failure"),
+    JournalResponse::DeleteMessagesFailure { to_sequence_nr, .. } if *to_sequence_nr == 3
+  ));
+  assert!(matches!(
+    responses[5].payload().downcast_ref::<JournalResponse>().expect("highest failure"),
+    JournalResponse::HighestSequenceNrFailure { persistence_id, .. } if persistence_id == "pid-1"
+  ));
+}
+
+#[test]
 fn should_reply_with_journal_failure_when_journal_target_forwarding_fails() {
   let system = new_test_system();
   let pid = test_actor_pid();
@@ -271,6 +334,51 @@ fn should_reply_with_snapshot_failure_when_snapshot_target_is_not_set() {
 }
 
 #[test]
+fn should_reply_with_snapshot_failures_for_each_message_kind_when_snapshot_target_is_not_set() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut proxy = PersistencePluginProxyActor::new();
+  let (sender, responses) = create_sender(Pid::new(20_011, 1));
+  let metadata = SnapshotMetadata::new("pid-1", 8, 21);
+  let criteria = SnapshotSelectionCriteria::new(8, u64::MAX, 1, 0);
+  let save_message =
+    SnapshotMessage::SaveSnapshot { metadata: metadata.clone(), snapshot: payload(7), sender: sender.clone() };
+  let load_message = SnapshotMessage::LoadSnapshot {
+    persistence_id: "pid-1".into(),
+    criteria:       criteria.clone(),
+    sender:         sender.clone(),
+  };
+  let delete_message = SnapshotMessage::DeleteSnapshot { metadata: metadata.clone(), sender: sender.clone() };
+  let delete_many_message =
+    SnapshotMessage::DeleteSnapshots { persistence_id: "pid-1".into(), criteria: criteria.clone(), sender };
+
+  for message in [save_message, load_message, delete_message, delete_many_message] {
+    let any_message = AnyMessage::new(message);
+    proxy.receive(&mut ctx, any_message.as_view()).expect("snapshot failure response failed");
+  }
+
+  let responses = responses.lock();
+  assert_eq!(responses.len(), 4);
+  assert!(matches!(
+    responses[0].payload().downcast_ref::<SnapshotResponse>().expect("save failure"),
+    SnapshotResponse::SaveSnapshotFailure { metadata: response_metadata, .. } if response_metadata == &metadata
+  ));
+  assert!(matches!(
+    responses[1].payload().downcast_ref::<SnapshotResponse>().expect("load failure"),
+    SnapshotResponse::LoadSnapshotFailed { .. }
+  ));
+  assert!(matches!(
+    responses[2].payload().downcast_ref::<SnapshotResponse>().expect("delete failure"),
+    SnapshotResponse::DeleteSnapshotFailure { metadata: response_metadata, .. } if response_metadata == &metadata
+  ));
+  assert!(matches!(
+    responses[3].payload().downcast_ref::<SnapshotResponse>().expect("delete many failure"),
+    SnapshotResponse::DeleteSnapshotsFailure { criteria: response_criteria, .. } if response_criteria == &criteria
+  ));
+}
+
+#[test]
 fn should_reply_with_snapshot_failure_when_snapshot_target_forwarding_fails() {
   let system = new_test_system();
   let pid = test_actor_pid();
@@ -292,4 +400,26 @@ fn should_reply_with_snapshot_failure_when_snapshot_target_forwarding_fails() {
   let response = responses[0].payload().downcast_ref::<SnapshotResponse>().expect("unexpected payload");
   assert!(matches!(response, SnapshotResponse::DeleteSnapshotFailure { metadata: response_metadata, .. }
       if response_metadata == &metadata));
+}
+
+#[test]
+fn should_ignore_failure_reply_delivery_errors() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut proxy = PersistencePluginProxyActor::new();
+  let journal_sender = create_failing_sender(Pid::new(20_012, 1));
+  let snapshot_sender = create_failing_sender(Pid::new(20_013, 1));
+  let metadata = SnapshotMetadata::new("pid-1", 13, 34);
+  let journal_message = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".into(),
+    to_sequence_nr: 13,
+    sender:         journal_sender,
+  };
+  let snapshot_message = SnapshotMessage::DeleteSnapshot { metadata, sender: snapshot_sender };
+
+  let any_message = AnyMessage::new(journal_message);
+  proxy.receive(&mut ctx, any_message.as_view()).expect("journal delivery failure should be ignored");
+  let any_message = AnyMessage::new(snapshot_message);
+  proxy.receive(&mut ctx, any_message.as_view()).expect("snapshot delivery failure should be ignored");
 }
