@@ -25,7 +25,7 @@ use fraktor_persistence_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use super::LocalSnapshotStoreConfig;
+use crate::snapshot::LocalSnapshotStoreConfig;
 
 const SNAPSHOT_FILE_PREFIX: &str = "snapshot-";
 const SNAPSHOT_FILE_SEPARATOR: char = '-';
@@ -89,6 +89,9 @@ impl LocalSnapshotStore {
     drop(file);
     fs::rename(&temp_path, &path).map_err(|error| {
       SnapshotError::SaveFailed(format!("rename temp snapshot {} to {}: {error}", temp_path.display(), path.display()))
+    })?;
+    File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
+      SnapshotError::SaveFailed(format!("sync snapshot directory {}: {error}", self.directory.display()))
     })?;
     Ok(())
   }

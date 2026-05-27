@@ -4,9 +4,10 @@ use core::{
   task::{Context, Poll, Waker},
 };
 use std::{
-  fs,
+  env, fs,
   io::ErrorKind,
   path::{Path, PathBuf},
+  process,
   time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -48,7 +49,7 @@ fn unique_snapshot_dir(name: &str) -> PathBuf {
     | Ok(duration) => duration.as_nanos(),
     | Err(error) => panic!("system clock should be after unix epoch: {error}"),
   };
-  std::env::temp_dir().join(format!("fraktor-local-snapshot-store-flow-{name}-{}-{timestamp}", std::process::id()))
+  env::temp_dir().join(format!("fraktor-local-snapshot-store-flow-{name}-{}-{timestamp}", process::id()))
 }
 
 fn remove_dir_if_exists(path: &Path) {

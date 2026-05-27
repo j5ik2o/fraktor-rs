@@ -4,7 +4,7 @@
 #[path = "persistence_store_actor_test.rs"]
 mod tests;
 
-use alloc::{boxed::Box, format, string::ToString, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::ToString, sync::Arc, vec, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::actor::{
   ActorContext,
@@ -93,6 +93,7 @@ where
     self.pending_persist_reply = Some(reply_to.clone());
     let handler = Box::new(move |actor: &mut Self, repr: &PersistentRepr| {
       let Some(persisted_event) = repr.downcast_ref::<E>() else {
+        actor.reply_persist_type_mismatch(repr);
         return;
       };
       actor.state = actor.config.apply_event(&actor.state, persisted_event);
@@ -124,7 +125,7 @@ where
     }
 
     let event_count = events.len();
-    let persisted_events = events.clone();
+    let persisted_events = Arc::new(events.clone());
     let published_events = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
     let completion_count = SharedLock::new_with_driver::<DefaultMutex<_>>(0usize);
     self.pending_persist_reply = Some(reply_to.clone());
@@ -135,6 +136,7 @@ where
       let reply_to = reply_to.clone();
       let handler = Box::new(move |actor: &mut Self, repr: &PersistentRepr| {
         let Some(persisted_event) = repr.downcast_ref::<E>() else {
+          actor.reply_persist_type_mismatch(repr);
           return;
         };
         actor.state = actor.config.apply_event(&actor.state, persisted_event);
@@ -151,7 +153,7 @@ where
           let mut published_events = published_events.with_lock(|events| events.clone());
           published_events.sort_by_key(PublishedEvent::sequence_nr);
           Self::reply(&reply_to, PersistenceStoreReply::PersistedEvents {
-            events: persisted_events.clone(),
+            events: persisted_events.as_ref().clone(),
             published_events,
             sequence_nr,
           });
@@ -190,7 +192,11 @@ where
     reply_to: ReplyRef<S, E>,
   ) -> Result<(), ActorError> {
     self.pending_delete_events = Some((to_sequence_nr, reply_to));
-    PersistentActor::delete_messages(self, ctx, to_sequence_nr)
+    if let Err(error) = PersistentActor::delete_messages(self, ctx, to_sequence_nr) {
+      self.pending_delete_events = None;
+      return Err(error);
+    }
+    Ok(())
   }
 
   fn reply(reply_to: &ReplyRef<S, E>, reply: PersistenceStoreReply<S, E>) {
@@ -216,6 +222,18 @@ where
       repr.timestamp(),
       tags,
     )
+  }
+
+  fn reply_persist_type_mismatch(&mut self, repr: &PersistentRepr) {
+    if let Some(reply_to) = self.pending_persist_reply.take() {
+      Self::reply_event_sourced(&reply_to, EventSourcedSignal::JournalPersistFailed {
+        error: PersistenceError::StateMachine(format!(
+          "persisted event payload type mismatch for persistence id {} sequence number {}",
+          repr.persistence_id(),
+          repr.sequence_nr()
+        )),
+      });
+    }
   }
 
   fn stash_if_waiting_for_snapshot_result(&self, ctx: &mut ActorContext<'_>) -> Result<bool, ActorError> {

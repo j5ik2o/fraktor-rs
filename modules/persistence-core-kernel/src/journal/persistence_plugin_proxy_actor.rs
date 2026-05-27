@@ -52,9 +52,15 @@ impl PersistencePluginProxyActor {
     match &mut self.journal_target {
       | Some(target) => match ctx.try_forward(target, AnyMessage::new(message.clone())) {
         | Ok(()) => Ok(()),
-        | Err(_) => reply_journal_failure(message, JOURNAL_TARGET_FORWARD_FAILED),
+        | Err(_) => {
+          reply_journal_failure(message, JOURNAL_TARGET_FORWARD_FAILED);
+          Ok(())
+        },
       },
-      | None => reply_journal_failure(message, JOURNAL_TARGET_NOT_SET),
+      | None => {
+        reply_journal_failure(message, JOURNAL_TARGET_NOT_SET);
+        Ok(())
+      },
     }
   }
 
@@ -66,9 +72,15 @@ impl PersistencePluginProxyActor {
     match &mut self.snapshot_target {
       | Some(target) => match ctx.try_forward(target, AnyMessage::new(message.clone())) {
         | Ok(()) => Ok(()),
-        | Err(_) => reply_snapshot_failure(message, SNAPSHOT_TARGET_FORWARD_FAILED),
+        | Err(_) => {
+          reply_snapshot_failure(message, SNAPSHOT_TARGET_FORWARD_FAILED);
+          Ok(())
+        },
       },
-      | None => reply_snapshot_failure(message, SNAPSHOT_TARGET_NOT_SET),
+      | None => {
+        reply_snapshot_failure(message, SNAPSHOT_TARGET_NOT_SET);
+        Ok(())
+      },
     }
   }
 }
@@ -98,7 +110,7 @@ impl Actor for PersistencePluginProxyActor {
   }
 }
 
-fn reply_journal_failure(message: &JournalMessage, cause_message: &str) -> Result<(), ActorError> {
+fn reply_journal_failure(message: &JournalMessage, cause_message: &str) {
   match message {
     | JournalMessage::WriteMessages { messages, sender, instance_id, .. } => {
       let mut sender = sender.clone();
@@ -108,69 +120,67 @@ fn reply_journal_failure(message: &JournalMessage, cause_message: &str) -> Resul
           repr,
           cause: cause.clone(),
           instance_id: *instance_id,
-        })?;
+        });
       }
       tell_journal_response(&mut sender, JournalResponse::WriteMessagesFailed {
         cause,
         write_count: atomic_write_payload_count(messages),
         instance_id: *instance_id,
-      })?;
+      });
     },
     | JournalMessage::ReplayMessages { sender, .. } => {
       let mut sender = sender.clone();
       tell_journal_response(&mut sender, JournalResponse::ReplayMessagesFailure {
         cause: JournalError::ReadFailed(String::from(cause_message)),
-      })?;
+      });
     },
     | JournalMessage::DeleteMessagesTo { to_sequence_nr, sender, .. } => {
       let mut sender = sender.clone();
       tell_journal_response(&mut sender, JournalResponse::DeleteMessagesFailure {
         cause:          JournalError::DeleteFailed(String::from(cause_message)),
         to_sequence_nr: *to_sequence_nr,
-      })?;
+      });
     },
     | JournalMessage::GetHighestSequenceNr { persistence_id, sender, .. } => {
       let mut sender = sender.clone();
       tell_journal_response(&mut sender, JournalResponse::HighestSequenceNrFailure {
         persistence_id: persistence_id.clone(),
         cause:          JournalError::ReadFailed(String::from(cause_message)),
-      })?;
+      });
     },
   }
-  Ok(())
 }
 
-fn reply_snapshot_failure(message: &SnapshotMessage, cause_message: &str) -> Result<(), ActorError> {
+fn reply_snapshot_failure(message: &SnapshotMessage, cause_message: &str) {
   match message {
     | SnapshotMessage::SaveSnapshot { metadata, sender, .. } => {
       let mut sender = sender.clone();
       tell_snapshot_response(&mut sender, SnapshotResponse::SaveSnapshotFailure {
         metadata: metadata.clone(),
         error:    SnapshotError::SaveFailed(String::from(cause_message)),
-      })?;
+      });
     },
     | SnapshotMessage::LoadSnapshot { sender, .. } => {
       let mut sender = sender.clone();
       tell_snapshot_response(&mut sender, SnapshotResponse::LoadSnapshotFailed {
         error: SnapshotError::LoadFailed(String::from(cause_message)),
-      })?;
+      });
     },
     | SnapshotMessage::DeleteSnapshot { metadata, sender } => {
       let mut sender = sender.clone();
       tell_snapshot_response(&mut sender, SnapshotResponse::DeleteSnapshotFailure {
         metadata: metadata.clone(),
         error:    SnapshotError::DeleteFailed(String::from(cause_message)),
-      })?;
+      });
     },
     | SnapshotMessage::DeleteSnapshots { criteria, sender, .. } => {
       let mut sender = sender.clone();
       tell_snapshot_response(&mut sender, SnapshotResponse::DeleteSnapshotsFailure {
         criteria: criteria.clone(),
         error:    SnapshotError::DeleteFailed(String::from(cause_message)),
-      })?;
+      });
     },
   }
-  Ok(())
 }
 
 fn atomic_write_payloads(messages: &[AtomicWrite]) -> impl Iterator<Item = PersistentRepr> + '_ {
@@ -181,10 +191,10 @@ fn atomic_write_payload_count(messages: &[AtomicWrite]) -> u64 {
   messages.iter().map(AtomicWrite::size).sum::<usize>() as u64
 }
 
-fn tell_journal_response(sender: &mut ActorRef, response: JournalResponse) -> Result<(), ActorError> {
-  sender.try_tell(AnyMessage::new(response)).map_err(|error| ActorError::from_send_error(&error))
+fn tell_journal_response(sender: &mut ActorRef, response: JournalResponse) {
+  let _ = sender.try_tell(AnyMessage::new(response));
 }
 
-fn tell_snapshot_response(sender: &mut ActorRef, response: SnapshotResponse) -> Result<(), ActorError> {
-  sender.try_tell(AnyMessage::new(response)).map_err(|error| ActorError::from_send_error(&error))
+fn tell_snapshot_response(sender: &mut ActorRef, response: SnapshotResponse) {
+  let _ = sender.try_tell(AnyMessage::new(response));
 }

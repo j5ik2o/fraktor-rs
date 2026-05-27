@@ -16,7 +16,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::{ActorSystem, state::SystemStateShared},
 };
-use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
   journal::{
@@ -30,7 +30,7 @@ use crate::{
   },
 };
 
-type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
+type MessageStore = ArcShared<DefaultMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
@@ -53,13 +53,13 @@ impl ActorRefSender for FailingSender {
 
 fn actor_ref_with_sender(pid: Pid, sender: impl ActorRefSender + 'static) -> ActorRef {
   let sender = ActorRefSenderShared::from_shared_lock(SharedLock::new_with_driver::<
-    SpinSyncMutex<Box<dyn ActorRefSender>>,
+    DefaultMutex<Box<dyn ActorRefSender>>,
   >(Box::new(sender)));
   ActorRef::new(pid, sender)
 }
 
 fn create_sender(pid: Pid) -> (ActorRef, MessageStore) {
-  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let messages = ArcShared::new(DefaultMutex::new(Vec::new()));
   let sender = actor_ref_with_sender(pid, TestSender { messages: messages.clone() });
   (sender, messages)
 }

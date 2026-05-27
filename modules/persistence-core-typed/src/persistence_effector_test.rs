@@ -19,7 +19,11 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 use crate::{
   EventRejectedError, EventSourcedSignal, PersistenceEffector, PersistenceEffectorConfig,
   PersistenceEffectorMessageAdapter, PersistenceEffectorSignal, PersistenceId, PublishedEvent, RetentionCriteria,
+  persistence_effector_signal_auth::PersistenceEffectorSignalAuth,
 };
+
+type RecordedEvents = ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>;
+type PersistedEvents = ArcShared<SpinSyncMutex<Vec<u32>>>;
 
 #[test]
 fn retention_delete_to_returns_none_for_zero_snapshot_interval() {
@@ -50,32 +54,34 @@ fn retention_delete_to_returns_none_before_first_snapshot_interval() {
 
 #[test]
 fn event_publishing_enabled_publishes_persisted_event_to_system_event_stream() {
-  let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let persisted_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let recorded_events = new_recorded_events();
+  let persisted_events = new_persisted_events();
   let props = aggregate_props("published-event", persisted_events.clone(), true);
   let system = typed_persistence_system(&props);
   let subscriber = subscriber_handle(RecordingSubscriber::new(recorded_events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
   let mut guardian = system.user_guardian_ref();
   guardian.try_tell(AggregateCommand::Add(7)).expect("persist command should be accepted");
-  wait_until(|| persisted_events.lock().as_slice() == [7]);
-  assert!(contains_published_event(&recorded_events, "published-event", 1, 7));
+  wait_for_persisted_events(&persisted_events, &[7]);
+  wait_until(|| contains_published_event(&recorded_events, "published-event", 1, 7));
 
   system.terminate().expect("terminate");
 }
 
 #[test]
 fn event_publishing_disabled_does_not_publish_persisted_event_to_system_event_stream() {
-  let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let persisted_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let recorded_events = new_recorded_events();
+  let persisted_events = new_persisted_events();
   let props = aggregate_props("unpublished-event", persisted_events.clone(), false);
   let system = typed_persistence_system(&props);
   let subscriber = subscriber_handle(RecordingSubscriber::new(recorded_events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
   let mut guardian = system.user_guardian_ref();
   guardian.try_tell(AggregateCommand::Add(9)).expect("persist command should be accepted");
-  wait_until(|| persisted_events.lock().as_slice() == [9]);
-  assert!(!contains_published_event(&recorded_events, "unpublished-event", 1, 9));
+  wait_for_persisted_events(&persisted_events, &[9]);
+  assert_never_for(Duration::from_millis(200), || {
+    contains_published_event(&recorded_events, "unpublished-event", 1, 9)
+  });
 
   system.terminate().expect("terminate");
 }
@@ -88,12 +94,14 @@ fn journal_rejection_is_exposed_as_distinct_event_sourced_signal() {
     PersistenceError::StateMachine("journal rejected".into()),
   );
   let signal = PersistenceEffectorSignal::<u32, u32>::EventSourced {
+    auth:   PersistenceEffectorSignalAuth::new(),
     signal: EventSourcedSignal::JournalPersistRejected { error: error.clone() },
   };
   assert!(
     matches!(
       signal,
       PersistenceEffectorSignal::EventSourced {
+        auth: _,
         signal: EventSourcedSignal::JournalPersistRejected { error: actual }
       } if actual == error
     ),
@@ -128,24 +136,24 @@ enum AggregateCommand {
 }
 
 struct RecordingSubscriber {
-  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
+  events: RecordedEvents,
 }
 
 impl RecordingSubscriber {
-  const fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
+  const fn new(events: RecordedEvents) -> Self {
     Self { events }
   }
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.lock().push(event.clone());
+    record_event(&self.events, event);
   }
 }
 
 fn aggregate_props(
   persistence_id: &str,
-  persisted_events: ArcShared<SpinSyncMutex<Vec<u32>>>,
+  persisted_events: PersistedEvents,
   event_publishing: bool,
 ) -> TypedProps<AggregateCommand> {
   let config = PersistenceEffectorConfig::new(PersistenceId::of_unique_id(persistence_id), 0_u32, apply_event)
@@ -157,13 +165,13 @@ fn aggregate_props(
 
 fn aggregate_behavior(
   effector: PersistenceEffector<u32, u32, AggregateCommand>,
-  persisted_events: ArcShared<SpinSyncMutex<Vec<u32>>>,
+  persisted_events: PersistedEvents,
 ) -> Behavior<AggregateCommand> {
   Behaviors::receive_message(move |ctx, message| match message {
     | AggregateCommand::Add(value) => {
       let persisted_events = persisted_events.clone();
       effector.persist_event(ctx, *value, move |event| {
-        persisted_events.lock().push(*event);
+        record_persisted_event(&persisted_events, *event);
         Ok(Behaviors::same())
       })
     },
@@ -203,8 +211,36 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
   assert!(condition(), "timed out waiting for persistence effector test condition");
 }
 
+fn assert_never_for(duration: Duration, mut condition: impl FnMut() -> bool) {
+  let deadline = Instant::now() + duration;
+  while Instant::now() < deadline {
+    assert!(!condition(), "unexpected event publication observed");
+    thread::yield_now();
+  }
+}
+
+fn new_recorded_events() -> RecordedEvents {
+  ArcShared::new(SpinSyncMutex::new(Vec::new()))
+}
+
+fn new_persisted_events() -> PersistedEvents {
+  ArcShared::new(SpinSyncMutex::new(Vec::new()))
+}
+
+fn record_event(recorded_events: &RecordedEvents, event: &EventStreamEvent) {
+  recorded_events.lock().push(event.clone());
+}
+
+fn record_persisted_event(persisted_events: &PersistedEvents, event: u32) {
+  persisted_events.lock().push(event);
+}
+
+fn wait_for_persisted_events(persisted_events: &PersistedEvents, expected: &[u32]) {
+  wait_until(|| persisted_events.lock().as_slice() == expected);
+}
+
 fn contains_published_event(
-  recorded_events: &ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
+  recorded_events: &RecordedEvents,
   persistence_id: &str,
   sequence_nr: u64,
   event: u32,

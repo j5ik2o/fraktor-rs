@@ -126,6 +126,7 @@ where
     let waker = Waker::noop();
     let mut cx = Context::from_waker(waker);
     let mut pending = Vec::new();
+    let mut observed_batches = Vec::new();
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
     for entry in in_flight {
@@ -133,9 +134,12 @@ where
       if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max, &mut observed_responses) {
         pending.push(entry);
       }
-      self.observe_snapshot_responses(ctx, observed_responses)?;
+      observed_batches.push(observed_responses);
     }
     self.in_flight = pending;
+    for observed_responses in observed_batches {
+      self.observe_snapshot_responses(ctx, observed_responses)?;
+    }
     self.schedule_poll(ctx)
   }
 

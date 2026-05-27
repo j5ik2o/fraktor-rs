@@ -4,7 +4,7 @@ use core::{
   task::{Context, Poll, Waker},
 };
 use std::{
-  fs,
+  env, fs,
   path::{Path, PathBuf},
   time::{SystemTime, UNIX_EPOCH},
 };
@@ -53,7 +53,7 @@ fn serialization_registry() -> ArcShared<SerializationRegistry> {
 fn snapshot_directory() -> PathBuf {
   let timestamp =
     SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock should be after unix epoch").as_nanos();
-  std::env::temp_dir().join(format!("fraktor-local-snapshot-store-showcase-{timestamp}"))
+  env::temp_dir().join(format!("fraktor-local-snapshot-store-showcase-{timestamp}"))
 }
 
 fn poll_ready<F: Future>(future: F) -> F::Output {

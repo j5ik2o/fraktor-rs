@@ -184,7 +184,7 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => {
+            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -435,7 +435,7 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => {
+            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -503,7 +503,7 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => {
+            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -578,7 +578,7 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => {
+            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -605,6 +605,7 @@ where
         return match signal {
           | PersistenceEffectorSignal::EventSourced {
             signal: EventSourcedSignal::DeleteEventsCompleted { to_sequence_nr: deleted_to_sequence_nr },
+            ..
           } if *deleted_to_sequence_nr == to_sequence_nr => {
             let mut store_ref = store_ref.clone();
             store_ref
@@ -619,11 +620,12 @@ where
               persist_failure_backoff_enabled,
             ))
           },
-          | PersistenceEffectorSignal::EventSourced { signal: EventSourcedSignal::DeleteEventsCompleted { .. } } => {
-            Err(ActorError::fatal("unexpected event deletion acknowledgement"))
-          },
+          | PersistenceEffectorSignal::EventSourced {
+            signal: EventSourcedSignal::DeleteEventsCompleted { .. },
+            ..
+          } => Err(ActorError::fatal("unexpected event deletion acknowledgement")),
           | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-          | PersistenceEffectorSignal::EventSourced { signal } => {
+          | PersistenceEffectorSignal::EventSourced { signal, .. } => {
             Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
           },
           | _ => Ok(Behaviors::unhandled()),
@@ -662,7 +664,7 @@ where
             Err(ActorError::fatal("unexpected snapshot deletion acknowledgement"))
           },
           | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-          | PersistenceEffectorSignal::EventSourced { signal } => {
+          | PersistenceEffectorSignal::EventSourced { signal, .. } => {
             Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
           },
           | _ => Ok(Behaviors::unhandled()),

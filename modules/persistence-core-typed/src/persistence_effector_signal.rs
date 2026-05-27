@@ -58,7 +58,10 @@ pub enum PersistenceEffectorSignal<S, E> {
     error: PersistenceError,
   },
   /// Event-sourced behavior signal.
+  #[non_exhaustive]
   EventSourced {
+    #[doc(hidden)]
+    auth:   PersistenceEffectorSignalAuth,
     /// Event-sourced signal payload.
     signal: EventSourcedSignal,
   },

@@ -31,7 +31,9 @@ impl<S, E> From<PersistenceStoreReply<S, E>> for PersistenceEffectorSignal<S, E>
       | PersistenceStoreReply::DeletedSnapshots { to_sequence_nr } => {
         Self::DeletedSnapshots { auth: PersistenceEffectorSignalAuth::new(), to_sequence_nr }
       },
-      | PersistenceStoreReply::EventSourced { signal } => Self::EventSourced { signal },
+      | PersistenceStoreReply::EventSourced { signal } => {
+        Self::EventSourced { auth: PersistenceEffectorSignalAuth::new(), signal }
+      },
     }
   }
 }
