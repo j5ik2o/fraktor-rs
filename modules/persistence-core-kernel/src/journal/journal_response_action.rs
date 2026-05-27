@@ -28,6 +28,10 @@ pub(crate) enum JournalResponseAction<A> {
   RecoveryCompleted,
   /// Notify recovery failure.
   RecoveryFailure(PersistenceError),
+  /// Notify event deletion completion.
+  DeleteMessagesSuccess(u64),
+  /// Notify event deletion failure.
+  DeleteMessagesFailure { cause: JournalError, to_sequence_nr: u64 },
 }
 
 impl<A> JournalResponseAction<A> {
@@ -52,6 +56,10 @@ impl<A> JournalResponseAction<A> {
       },
       | JournalResponseAction::RecoveryCompleted => actor.on_recovery_completed(),
       | JournalResponseAction::RecoveryFailure(error) => actor.on_recovery_failure(&error),
+      | JournalResponseAction::DeleteMessagesSuccess(to_sequence_nr) => actor.on_events_deleted(to_sequence_nr),
+      | JournalResponseAction::DeleteMessagesFailure { cause, to_sequence_nr } => {
+        actor.on_events_delete_failure(&cause, to_sequence_nr);
+      },
     }
   }
 }

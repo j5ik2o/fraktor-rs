@@ -58,6 +58,17 @@ pub trait Eventsourced: Send {
   /// Called when persisting fails.
   fn on_persist_failure(&mut self, _cause: &JournalError, _repr: &PersistentRepr) {}
 
+  /// Returns the actor failure raised after a persist failure callback.
+  #[must_use]
+  fn persist_failure_error(&self, cause: &JournalError, repr: &PersistentRepr) -> ActorError {
+    ActorError::fatal(alloc::format!(
+      "persistent actor stopped after write failure for persistence id {} sequence number {}: {:?}",
+      repr.persistence_id(),
+      repr.sequence_nr(),
+      cause
+    ))
+  }
+
   /// Called when persisting is rejected.
   fn on_persist_rejected(&mut self, _cause: &JournalError, _repr: &PersistentRepr) {}
 
@@ -75,6 +86,12 @@ pub trait Eventsourced: Send {
 
   /// Called when criteria-based snapshot deletion succeeds.
   fn on_snapshots_deleted(&mut self, _criteria: &SnapshotSelectionCriteria) {}
+
+  /// Called when event deletion succeeds.
+  fn on_events_deleted(&mut self, _to_sequence_nr: u64) {}
+
+  /// Called when event deletion fails.
+  fn on_events_delete_failure(&mut self, _cause: &JournalError, _to_sequence_nr: u64) {}
 
   /// Returns the current sequence number.
   fn last_sequence_nr(&self) -> u64;

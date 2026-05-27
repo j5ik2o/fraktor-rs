@@ -4,7 +4,7 @@
 #[path = "persistence_effector_config_test.rs"]
 mod tests;
 
-use alloc::string::String;
+use alloc::{collections::BTreeSet, string::String};
 
 use fraktor_persistence_core_kernel_rs::{error::PersistenceError, journal::EventAdapters};
 use fraktor_utils_core_rs::sync::ArcShared;
@@ -15,20 +15,24 @@ use crate::{
 };
 
 type ApplyEvent<S, E> = dyn Fn(&S, &E) -> S + Send + Sync;
+type EventTagger<E> = dyn Fn(&E) -> BTreeSet<String> + Send + Sync;
 
 /// Configuration used to build a typed persistence effector.
 pub struct PersistenceEffectorConfig<S, E, M> {
-  persistence_id:     PersistenceId,
-  initial_state:      S,
-  apply_event:        ArcShared<ApplyEvent<S, E>>,
-  persistence_mode:   PersistenceMode,
-  stash_capacity:     usize,
-  snapshot_criteria:  SnapshotCriteria<S, E>,
-  recovery:           Recovery,
-  retention_criteria: RetentionCriteria,
-  backoff_config:     BackoffConfig,
-  event_adapters:     EventAdapters,
-  message_adapter:    Option<PersistenceEffectorMessageAdapter<S, E, M>>,
+  persistence_id:          PersistenceId,
+  initial_state:           S,
+  apply_event:             ArcShared<ApplyEvent<S, E>>,
+  persistence_mode:        PersistenceMode,
+  stash_capacity:          usize,
+  snapshot_criteria:       SnapshotCriteria<S, E>,
+  recovery:                Recovery,
+  retention_criteria:      RetentionCriteria,
+  backoff_config:          BackoffConfig,
+  persist_failure_backoff: bool,
+  event_adapters:          EventAdapters,
+  event_publishing:        bool,
+  event_tagger:            ArcShared<EventTagger<E>>,
+  message_adapter:         Option<PersistenceEffectorMessageAdapter<S, E, M>>,
 }
 
 impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
@@ -47,7 +51,10 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
       recovery: Recovery::default(),
       retention_criteria: RetentionCriteria::default(),
       backoff_config: BackoffConfig::default(),
+      persist_failure_backoff: false,
       event_adapters: EventAdapters::new(),
+      event_publishing: true,
+      event_tagger: ArcShared::new(|_event: &E| BTreeSet::new()),
       message_adapter: None,
     }
   }
@@ -106,10 +113,28 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
     &self.backoff_config
   }
 
+  /// Returns whether persist failures restart the hidden store actor with backoff.
+  #[must_use]
+  pub const fn persist_failure_backoff_enabled(&self) -> bool {
+    self.persist_failure_backoff
+  }
+
   /// Returns the event adapter registry.
   #[must_use]
   pub const fn event_adapters(&self) -> &EventAdapters {
     &self.event_adapters
+  }
+
+  /// Returns whether persisted events are published to the actor system event stream.
+  #[must_use]
+  pub const fn event_publishing_enabled(&self) -> bool {
+    self.event_publishing
+  }
+
+  /// Returns the tags selected for an event.
+  #[must_use]
+  pub fn event_tags(&self, event: &E) -> BTreeSet<String> {
+    (self.event_tagger)(event)
   }
 
   /// Returns the optional message adapter.
@@ -160,6 +185,14 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
     self
   }
 
+  /// Returns a config that restarts the hidden store actor with backoff after persist failure.
+  #[must_use]
+  pub const fn on_persist_failure(mut self, backoff_config: BackoffConfig) -> Self {
+    self.backoff_config = backoff_config;
+    self.persist_failure_backoff = true;
+    self
+  }
+
   /// Returns a config with a typed event adapter registered for the event type.
   #[must_use]
   pub fn with_event_adapter<A>(mut self, adapter: A) -> Self
@@ -170,6 +203,22 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
     let write_adapter = ArcShared::new(KernelEventAdapterBridge::new(adapter.clone()));
     let read_adapter = ArcShared::new(KernelEventAdapterBridge::new(adapter));
     self.event_adapters.register::<E>(write_adapter, read_adapter);
+    self
+  }
+
+  /// Returns a config with the selected event publication flag.
+  #[must_use]
+  pub const fn with_event_publishing(mut self, event_publishing: bool) -> Self {
+    self.event_publishing = event_publishing;
+    self
+  }
+
+  /// Returns a config with the selected event tagger.
+  #[must_use]
+  pub fn with_tagger<F>(mut self, tagger: F) -> Self
+  where
+    F: Fn(&E) -> BTreeSet<String> + Send + Sync + 'static, {
+    self.event_tagger = ArcShared::new(tagger);
     self
   }
 
@@ -210,17 +259,20 @@ where
 {
   fn clone(&self) -> Self {
     Self {
-      persistence_id:     self.persistence_id.clone(),
-      initial_state:      self.initial_state.clone(),
-      apply_event:        self.apply_event.clone(),
-      persistence_mode:   self.persistence_mode,
-      stash_capacity:     self.stash_capacity,
-      snapshot_criteria:  self.snapshot_criteria.clone(),
-      recovery:           self.recovery.clone(),
-      retention_criteria: self.retention_criteria,
-      backoff_config:     self.backoff_config.clone(),
-      event_adapters:     self.event_adapters.clone(),
-      message_adapter:    self.message_adapter.clone(),
+      persistence_id:          self.persistence_id.clone(),
+      initial_state:           self.initial_state.clone(),
+      apply_event:             self.apply_event.clone(),
+      persistence_mode:        self.persistence_mode,
+      stash_capacity:          self.stash_capacity,
+      snapshot_criteria:       self.snapshot_criteria.clone(),
+      recovery:                self.recovery.clone(),
+      retention_criteria:      self.retention_criteria,
+      backoff_config:          self.backoff_config.clone(),
+      persist_failure_backoff: self.persist_failure_backoff,
+      event_adapters:          self.event_adapters.clone(),
+      event_publishing:        self.event_publishing,
+      event_tagger:            self.event_tagger.clone(),
+      message_adapter:         self.message_adapter.clone(),
     }
   }
 }

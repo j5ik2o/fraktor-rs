@@ -4,8 +4,12 @@ mod persistence_extension;
 mod persistence_extension_id;
 mod persistence_extension_installer;
 mod persistence_extension_shared;
+mod persistence_plugin_proxy_extension_id;
+mod persistence_plugin_proxy_extension_installer;
 
 pub use persistence_extension::PersistenceExtension;
 pub use persistence_extension_id::PersistenceExtensionId;
 pub use persistence_extension_installer::PersistenceExtensionInstaller;
 pub use persistence_extension_shared::PersistenceExtensionShared;
+pub use persistence_plugin_proxy_extension_id::PersistencePluginProxyExtensionId;
+pub use persistence_plugin_proxy_extension_installer::PersistencePluginProxyExtensionInstaller;

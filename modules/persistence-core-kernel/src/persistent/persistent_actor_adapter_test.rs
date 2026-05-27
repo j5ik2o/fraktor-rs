@@ -766,6 +766,49 @@ fn adapter_unstash_all_on_write_messages_failed_with_zero_write_count() {
 }
 
 #[test]
+fn adapter_unstash_all_on_delete_messages_success() {
+  let system = new_test_system();
+  let mut ctx = build_context(&system);
+  let actor = DummyPersistentActor::new();
+  let mut adapter = PersistentActorAdapter::new(actor);
+  prepare_processing_commands(&mut adapter, &mut ctx);
+  let pipeline = noop_pipeline();
+  let command = AnyMessage::new(795_i32);
+  pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
+  ctx.system().state().remove_cell(&ctx.pid());
+  let message = AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr: 10 });
+
+  let result = adapter.receive(&mut ctx, message.as_view());
+
+  assert!(
+    matches!(result, Err(ActorError::Recoverable(reason)) if reason.as_str() == "actor cell unavailable during unstash")
+  );
+}
+
+#[test]
+fn adapter_unstash_all_on_delete_messages_failure() {
+  let system = new_test_system();
+  let mut ctx = build_context(&system);
+  let actor = DummyPersistentActor::new();
+  let mut adapter = PersistentActorAdapter::new(actor);
+  prepare_processing_commands(&mut adapter, &mut ctx);
+  let pipeline = noop_pipeline();
+  let command = AnyMessage::new(796_i32);
+  pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
+  ctx.system().state().remove_cell(&ctx.pid());
+  let message = AnyMessage::new(JournalResponse::DeleteMessagesFailure {
+    cause:          JournalError::DeleteFailed("delete failed".to_string()),
+    to_sequence_nr: 10,
+  });
+
+  let result = adapter.receive(&mut ctx, message.as_view());
+
+  assert!(
+    matches!(result, Err(ActorError::Recoverable(reason)) if reason.as_str() == "actor cell unavailable during unstash")
+  );
+}
+
+#[test]
 fn adapter_ignores_write_messages_successful_when_instance_id_mismatches() {
   let system = new_test_system();
   let mut ctx = build_context(&system);

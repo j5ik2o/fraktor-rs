@@ -19,7 +19,8 @@ use fraktor_actor_core_kernel_rs::actor::{
 };
 
 use crate::{
-  journal::{Journal, JournalActorConfig, JournalError, JournalMessage, JournalResponse},
+  PluginMessageHandling,
+  journal::{Journal, JournalActorConfig, JournalError, JournalMessage, JournalPluginMessageHandler, JournalResponse},
   persistent::{AtomicWrite, PersistentRepr},
 };
 
@@ -80,6 +81,7 @@ pub struct JournalActor<J: Journal> {
   in_flight:      Vec<JournalInFlight>,
   poll_scheduled: bool,
   config:         JournalActorConfig,
+  plugin_handler: Option<Box<dyn JournalPluginMessageHandler>>,
 }
 
 impl<J: Journal> JournalActor<J>
@@ -98,7 +100,19 @@ where
   /// Creates a new journal actor with configuration.
   #[must_use]
   pub const fn new_with_config(journal: J, config: JournalActorConfig) -> Self {
-    Self { journal, in_flight: Vec::new(), poll_scheduled: false, config }
+    Self { journal, in_flight: Vec::new(), poll_scheduled: false, config, plugin_handler: None }
+  }
+
+  /// Creates a new journal actor with a plugin message handler.
+  #[must_use]
+  pub fn new_with_plugin_handler(journal: J, plugin_handler: impl JournalPluginMessageHandler + 'static) -> Self {
+    Self {
+      journal,
+      in_flight: Vec::new(),
+      poll_scheduled: false,
+      config: JournalActorConfig::default_config(),
+      plugin_handler: Some(Box::new(plugin_handler)),
+    }
   }
 
   fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
@@ -123,6 +137,19 @@ where
     }
     self.in_flight = pending;
     self.schedule_poll(ctx)
+  }
+
+  fn receive_plugin_message(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
+  ) -> Result<(), ActorError> {
+    if let Some(plugin_handler) = self.plugin_handler.as_mut() {
+      match plugin_handler.handle_journal_plugin_message(ctx, message)? {
+        | PluginMessageHandling::Handled | PluginMessageHandling::Unhandled => {},
+      }
+    }
+    Ok(())
   }
 }
 
@@ -184,8 +211,9 @@ where
         },
       }
       self.poll_in_flight(ctx)?;
+      return Ok(());
     }
-    Ok(())
+    self.receive_plugin_message(ctx, message)
   }
 }
 
