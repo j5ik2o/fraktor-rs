@@ -276,16 +276,17 @@ fn local_snapshot_store_delete_snapshots_removes_only_criteria_matches() {
 }
 
 #[test]
-fn local_snapshot_store_delete_snapshot_with_zero_timestamp_matches_sequence() {
-  let directory = unique_snapshot_dir("delete-zero-timestamp");
+fn local_snapshot_store_delete_snapshot_matches_exact_timestamp() {
+  let directory = unique_snapshot_dir("delete-exact-timestamp");
   let mut store = open_store(&directory, 3);
+  save_snapshot(&mut store, SnapshotMetadata::new("pid-1", 7, 0), 70);
   save_snapshot(&mut store, SnapshotMetadata::new("pid-1", 7, 1234), 7);
 
   let delete_metadata = SnapshotMetadata::new("pid-1", 7, 0);
-  poll_ready(store.delete_snapshot(&delete_metadata)).expect("delete snapshot by sequence");
+  poll_ready(store.delete_snapshot(&delete_metadata)).expect("delete exact snapshot");
 
-  let loaded = load_latest(&store, "pid-1");
-  assert!(loaded.is_none());
+  let loaded = load_latest(&store, "pid-1").expect("timestamped snapshot should remain");
+  assert_snapshot(&loaded, 7, 7);
   remove_dir_if_exists(&directory);
 }
 

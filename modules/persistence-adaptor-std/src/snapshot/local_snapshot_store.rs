@@ -90,7 +90,12 @@ impl LocalSnapshotStore {
       .map_err(|error| SnapshotError::SaveFailed(format!("sync temp snapshot {}: {error}", temp_path.display())))?;
     drop(file);
     Self::replace_temp_file(&temp_path, &path, "snapshot")?;
-    self.save_snapshot_metadata(metadata, &path)?;
+    if let Err(error) = self.save_snapshot_metadata(metadata, &path) {
+      match fs::remove_file(&path) {
+        | Ok(()) | Err(_) => (),
+      }
+      return Err(error);
+    }
     #[cfg(not(windows))]
     File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
       SnapshotError::SaveFailed(format!("sync snapshot directory {}: {error}", self.directory.display()))
@@ -130,9 +135,10 @@ impl LocalSnapshotStore {
         SnapshotError::DeleteFailed(format!("list snapshot directory {}: {error}", self.directory.display()))
       })?;
     for candidate in candidates {
-      if candidate.metadata.sequence_nr() == metadata.sequence_nr()
-        && (metadata.timestamp() == 0 || candidate.metadata.timestamp() == metadata.timestamp())
-      {
+      let candidate_metadata = self.snapshot_candidate_metadata(&candidate).map_err(|error| {
+        SnapshotError::DeleteFailed(format!("read snapshot metadata {}: {error}", candidate.path.display()))
+      })?;
+      if &candidate_metadata == metadata {
         self.remove_snapshot_file(&candidate.path)?;
       }
     }
@@ -165,11 +171,15 @@ impl LocalSnapshotStore {
     let payload = payload.downcast::<SnapshotPayload>().map_err(|_| {
       SnapshotError::LoadFailed(format!("deserialize snapshot {}: payload type mismatch", candidate.path.display()))
     })?;
-    let metadata = match self.load_snapshot_metadata(&candidate.path)? {
-      | Some(metadata) => candidate.metadata.clone().with_metadata(metadata),
-      | None => candidate.metadata.clone(),
-    };
+    let metadata = self.snapshot_candidate_metadata(candidate)?;
     Ok(Snapshot::new(metadata, payload.data().clone()))
+  }
+
+  fn snapshot_candidate_metadata(&self, candidate: &SnapshotCandidate) -> Result<SnapshotMetadata, SnapshotError> {
+    match self.load_snapshot_metadata(&candidate.path)? {
+      | Some(metadata) => Ok(candidate.metadata.clone().with_metadata(metadata)),
+      | None => Ok(candidate.metadata.clone()),
+    }
   }
 
   fn snapshot_candidates(
@@ -230,9 +240,16 @@ impl LocalSnapshotStore {
       return Self::remove_stale_snapshot_metadata(&metadata_path);
     };
     let temp_metadata_path = Self::temp_snapshot_path(&metadata_path);
-    fs::write(&temp_metadata_path, metadata.as_bytes()).map_err(|error| {
+    let mut file = File::create(&temp_metadata_path).map_err(|error| {
+      SnapshotError::SaveFailed(format!("create temp snapshot metadata {}: {error}", temp_metadata_path.display()))
+    })?;
+    file.write_all(metadata.as_bytes()).map_err(|error| {
       SnapshotError::SaveFailed(format!("write temp snapshot metadata {}: {error}", temp_metadata_path.display()))
     })?;
+    file.sync_all().map_err(|error| {
+      SnapshotError::SaveFailed(format!("sync temp snapshot metadata {}: {error}", temp_metadata_path.display()))
+    })?;
+    drop(file);
     Self::replace_temp_file(&temp_metadata_path, &metadata_path, "snapshot metadata")?;
     Ok(())
   }
