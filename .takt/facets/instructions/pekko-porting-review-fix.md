@@ -9,6 +9,10 @@ Report Directory内の `coder-decisions.md` または直前のイテレーショ
 **clippy エラー・テスト失敗・ビルドエラーを直接修正すること**。
 レビュー指摘がないからといって「修正不要」と判断してはならない。
 
+final-ci 失敗からの差し戻しで reviewer finding が存在しない場合は、本家 `fix` の
+`new / reopened` finding 修正、`family_tag` 単位の再発防止テスト追加、複数レビュアー指摘の統合条件は適用しない。
+この場合は CI 失敗を直接修正し、対象範囲の lint / 型チェック / テストを再実行できれば完了としてよい。
+
 ### 対象レビューレポート
 
 - QAレビュー由来の指摘: `06-qa-review.md`

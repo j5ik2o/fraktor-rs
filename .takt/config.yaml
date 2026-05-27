@@ -1,4 +1,5 @@
 provider: codex
+language: ja
 model: gpt-5.5
 concurrency: 1
 base_branch: main
