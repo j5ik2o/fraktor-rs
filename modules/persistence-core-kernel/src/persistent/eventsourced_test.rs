@@ -68,12 +68,15 @@ fn eventsourced_default_hooks_do_not_panic() {
   dummy.on_recovery_completed();
   dummy.on_recovery_timed_out(&RecoveryTimedOut::new("pid-1"));
   dummy.on_persist_failure(&journal_error, &repr);
+  assert!(matches!(dummy.persist_failure_error(&journal_error, &repr), ActorError::Fatal(_)));
   dummy.on_persist_rejected(&journal_error, &repr);
   dummy.on_recovery_failure(&persistence_error);
   dummy.on_snapshot_failure(&snapshot_error);
   dummy.on_snapshot_saved(&metadata);
   dummy.on_snapshot_deleted(&metadata);
   dummy.on_snapshots_deleted(&criteria);
+  dummy.on_events_deleted(10);
+  dummy.on_events_delete_failure(&journal_error, 10);
 }
 
 #[test]

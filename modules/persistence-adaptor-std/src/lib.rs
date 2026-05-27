@@ -1,14 +1,13 @@
 #![deny(missing_docs)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::redundant_clone))]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types))]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(clippy::missing_errors_doc)]
 #![deny(clippy::missing_panics_doc)]
 #![deny(clippy::missing_safety_doc)]
-#![cfg_attr(not(test), deny(clippy::redundant_clone))]
+#![deny(clippy::redundant_clone)]
 #![deny(clippy::redundant_field_names)]
 #![deny(clippy::redundant_pattern)]
-#![deny(clippy::redundant_static_lifetimes)]
 #![deny(clippy::unnecessary_to_owned)]
 #![deny(clippy::unnecessary_struct_initialization)]
 #![deny(clippy::needless_borrow)]
@@ -16,9 +15,7 @@
 #![deny(clippy::manual_ok_or)]
 #![deny(clippy::manual_map)]
 #![deny(clippy::manual_let_else)]
-#![deny(clippy::manual_strip)]
 #![deny(clippy::unused_async)]
-#![deny(clippy::unused_self)]
 #![deny(clippy::unnecessary_wraps)]
 #![deny(clippy::unreachable)]
 #![deny(clippy::empty_enums)]
@@ -44,29 +41,10 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::naive_bytecount)]
 #![deny(clippy::if_same_then_else)]
-#![deny(clippy::cmp_null)]
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
-#![deny(cfg_std_forbid)]
-#![cfg_attr(not(test), no_std)]
 
-//! Persistence support for the fraktor actor runtime.
-//!
-//! This crate provides event journal, snapshot, persistent actor, durable state,
-//! delivery, FSM, and extension packages.
+//! Standard persistence adaptors.
 
-extern crate alloc;
-
-pub mod config;
-pub mod delivery;
-pub mod error;
-pub mod extension;
-pub mod fsm;
-pub mod journal;
-pub mod persistent;
-mod plugin_message_handling;
-pub mod serialization;
+/// Filesystem-backed snapshot adaptors.
 pub mod snapshot;
-pub mod state;
-
-pub use plugin_message_handling::PluginMessageHandling;

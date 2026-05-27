@@ -8,7 +8,11 @@ use alloc::format;
 
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    Actor, ActorContext, actor_ref::ActorRef, error::ActorError, extension::Extension, messaging::AnyMessageView,
+    Actor, ActorContext,
+    actor_ref::ActorRef,
+    error::ActorError,
+    extension::Extension,
+    messaging::{AnyMessage, AnyMessageView},
     props::Props,
   },
   system::ActorSystem,
@@ -18,9 +22,14 @@ use fraktor_utils_core_rs::sync::{DefaultMutex, SharedLock};
 use crate::{
   config::PersistenceSettings,
   error::PersistenceError,
-  journal::{Journal, JournalActor, JournalActorConfig},
+  journal::{Journal, JournalActor, JournalActorConfig, PersistencePluginProxyActor, PersistencePluginProxyCommand},
   snapshot::{SnapshotActor, SnapshotActorConfig, SnapshotStore},
 };
+
+const JOURNAL_ACTOR_NAME: &str = "journal";
+const SNAPSHOT_ACTOR_NAME: &str = "snapshot";
+const SET_JOURNAL_PLUGIN_TARGET_FAILED: &str = "set journal plugin target failed";
+const SET_SNAPSHOT_PLUGIN_TARGET_FAILED: &str = "set snapshot plugin target failed";
 
 /// Extension providing access to journal and snapshot actors.
 #[derive(Clone)]
@@ -75,13 +84,58 @@ impl PersistenceExtension {
     for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
     let journal_config = settings.journal_actor_config();
     let snapshot_config = settings.snapshot_actor_config();
-    let journal_actor = spawn_system_actor(system, "journal", move || {
+    let journal_actor = spawn_system_actor(system, JOURNAL_ACTOR_NAME, move || {
       JournalActorWrapper::<J>::new_with_config(journal.clone(), journal_config)
     })?;
-    let snapshot_actor = spawn_system_actor(system, "snapshot", move || {
+    let snapshot_actor = spawn_system_actor(system, SNAPSHOT_ACTOR_NAME, move || {
       SnapshotActorWrapper::<S>::new_with_config(snapshot_store.clone(), snapshot_config)
     })?;
     Ok(Self { journal_actor, snapshot_actor, settings })
+  }
+
+  /// Creates a persistence extension backed by proxy actors.
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError::MessagePassing` when proxy actor creation fails.
+  pub fn new_proxy(system: &ActorSystem) -> Result<Self, PersistenceError> {
+    Self::new_proxy_with_settings(system, PersistenceSettings::default())
+  }
+
+  /// Creates a persistence extension backed by proxy actors and explicit settings.
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError::MessagePassing` when proxy actor creation fails.
+  pub fn new_proxy_with_settings(
+    system: &ActorSystem,
+    settings: PersistenceSettings,
+  ) -> Result<Self, PersistenceError> {
+    let journal_actor = spawn_system_actor(system, JOURNAL_ACTOR_NAME, PersistencePluginProxyActor::new)?;
+    let snapshot_actor = spawn_system_actor(system, SNAPSHOT_ACTOR_NAME, PersistencePluginProxyActor::new)?;
+    Ok(Self { journal_actor, snapshot_actor, settings })
+  }
+
+  /// Updates proxy target actors for journal and snapshot persistence messages.
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError::MessagePassing` when either proxy actor rejects
+  /// the target-location command.
+  pub fn set_plugin_target_location(
+    &mut self,
+    journal_target: ActorRef,
+    snapshot_target: ActorRef,
+  ) -> Result<(), PersistenceError> {
+    self
+      .journal_actor
+      .try_tell(AnyMessage::new(PersistencePluginProxyCommand::SetJournalTarget { target: journal_target }))
+      .map_err(|error| PersistenceError::MessagePassing(format!("{SET_JOURNAL_PLUGIN_TARGET_FAILED}: {error:?}")))?;
+    self
+      .snapshot_actor
+      .try_tell(AnyMessage::new(PersistencePluginProxyCommand::SetSnapshotTarget { target: snapshot_target }))
+      .map_err(|error| PersistenceError::MessagePassing(format!("{SET_SNAPSHOT_PLUGIN_TARGET_FAILED}: {error:?}")))?;
+    Ok(())
   }
 
   /// Returns the journal actor reference.

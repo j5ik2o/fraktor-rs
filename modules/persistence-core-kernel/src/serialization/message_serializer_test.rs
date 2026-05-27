@@ -553,7 +553,7 @@ fn unknown_adapter_type_binding_fails_deserialization() {
 fn persistence_serializer_registration_is_idempotent() {
   let registry = manifest_registry();
 
-  let contributor = PersistenceSerializationContributor::default();
+  let contributor = PersistenceSerializationContributor;
 
   register_persistence_serializers(&registry).expect("register twice");
   contributor.contribute(&registry).expect("contribute twice");

@@ -1,9 +1,14 @@
-use alloc::string::{String, ToString};
-use core::any::Any;
+use alloc::{
+  collections::BTreeSet,
+  string::{String, ToString},
+};
+use core::{any::Any, time::Duration};
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use crate::{EventAdapter, EventSeq, PersistenceEffectorConfig, PersistenceId, Recovery, SnapshotCriteria};
+use crate::{
+  BackoffConfig, EventAdapter, EventSeq, PersistenceEffectorConfig, PersistenceId, Recovery, SnapshotCriteria,
+};
 
 fn apply_event(state: &u32, event: &u32) -> u32 {
   state + event
@@ -23,6 +28,61 @@ fn default_recovery_is_unbounded() {
 
   assert_eq!(config.recovery().to_sequence_nr(), u64::MAX);
   assert_eq!(config.recovery().replay_max(), u64::MAX);
+}
+
+#[test]
+fn event_publishing_is_enabled_by_default() {
+  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+
+  assert!(config.event_publishing_enabled());
+}
+
+#[test]
+fn persist_failure_backoff_is_disabled_by_default() {
+  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+
+  assert!(!config.persist_failure_backoff_enabled());
+}
+
+#[test]
+fn on_persist_failure_enables_hidden_store_backoff_config() {
+  let backoff_config = BackoffConfig::new(Duration::from_millis(10), Duration::from_secs(1), 0.0);
+  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+
+  let configured = config.on_persist_failure(backoff_config.clone());
+
+  assert!(configured.persist_failure_backoff_enabled());
+  assert_eq!(configured.backoff_config(), &backoff_config);
+}
+
+#[test]
+fn with_backoff_config_keeps_persist_failure_backoff_disabled() {
+  let backoff_config = BackoffConfig::new(Duration::from_millis(20), Duration::from_secs(2), 0.1);
+  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+
+  let configured = config.with_backoff_config(backoff_config.clone());
+
+  assert!(!configured.persist_failure_backoff_enabled());
+  assert_eq!(configured.backoff_config(), &backoff_config);
+}
+
+#[test]
+fn with_event_publishing_enables_and_disables_event_stream_publication() {
+  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+
+  let disabled = config.clone().with_event_publishing(false);
+  let enabled = disabled.clone().with_event_publishing(true);
+
+  assert!(enabled.event_publishing_enabled());
+  assert!(!disabled.event_publishing_enabled());
+}
+
+#[test]
+fn with_tagger_selects_tags_for_published_events() {
+  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event)
+    .with_tagger(|event| BTreeSet::from([format!("event-{event}")]));
+
+  assert_eq!(config.event_tags(&7), BTreeSet::from([String::from("event-7")]));
 }
 
 #[test]

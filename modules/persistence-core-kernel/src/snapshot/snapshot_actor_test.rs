@@ -18,9 +18,12 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::SnapshotPoll;
-use crate::snapshot::{
-  InMemorySnapshotStore, Snapshot, SnapshotActor, SnapshotActorConfig, SnapshotError, SnapshotMessage,
-  SnapshotMetadata, SnapshotResponse, SnapshotSelectionCriteria,
+use crate::{
+  PluginMessageHandling,
+  snapshot::{
+    InMemorySnapshotStore, Snapshot, SnapshotActor, SnapshotActorConfig, SnapshotError, SnapshotMessage,
+    SnapshotMetadata, SnapshotPluginMessageHandler, SnapshotResponse, SnapshotSelectionCriteria,
+  },
 };
 
 type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
@@ -263,6 +266,43 @@ impl crate::snapshot::SnapshotStore for ScriptedSnapshotStore {
   }
 }
 
+struct RecordingSnapshotPluginHandler {
+  responses: ArcShared<SpinSyncMutex<Vec<SnapshotResponse>>>,
+  markers:   ArcShared<SpinSyncMutex<Vec<u32>>>,
+}
+
+impl RecordingSnapshotPluginHandler {
+  fn new(responses: ArcShared<SpinSyncMutex<Vec<SnapshotResponse>>>) -> Self {
+    Self { responses, markers: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
+  }
+
+  fn with_markers(markers: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
+    Self { responses: ArcShared::new(SpinSyncMutex::new(Vec::new())), markers }
+  }
+}
+
+impl SnapshotPluginMessageHandler for RecordingSnapshotPluginHandler {
+  fn handle_snapshot_plugin_message(
+    &mut self,
+    _ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
+  ) -> Result<PluginMessageHandling, ActorError> {
+    if let Some(response) = message.downcast_ref::<SnapshotResponse>() {
+      self.responses.lock().push(response.clone());
+      return Ok(PluginMessageHandling::Handled);
+    }
+    if let Some(command) = message.downcast_ref::<SnapshotPluginCommand>() {
+      self.markers.lock().push(command.marker);
+      return Ok(PluginMessageHandling::Handled);
+    }
+    Ok(PluginMessageHandling::Unhandled)
+  }
+}
+
+struct SnapshotPluginCommand {
+  marker: u32,
+}
+
 #[test]
 fn scripted_snapshot_store_success_paths_are_exercised() {
   let system = new_test_system();
@@ -364,6 +404,64 @@ fn snapshot_actor_ignores_unrelated_messages() {
 }
 
 #[test]
+fn should_observe_snapshot_completion_response_in_plugin_handler_when_save_finishes() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let responses = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let handler = RecordingSnapshotPluginHandler::new(responses.clone());
+  let mut actor =
+    SnapshotActor::<InMemorySnapshotStore>::new_with_plugin_handler(InMemorySnapshotStore::new(), handler);
+  let (sender, _store) = create_sender();
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10);
+
+  let save = SnapshotMessage::SaveSnapshot { metadata: metadata.clone(), snapshot: ArcShared::new(1_i32), sender };
+  let any_message = AnyMessage::new(save);
+  actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
+
+  let observed = responses.lock();
+  assert_eq!(observed.len(), 1);
+  assert!(matches!(
+    &observed[0],
+    SnapshotResponse::SaveSnapshotSuccess { metadata: response_metadata }
+      if response_metadata == &metadata
+  ));
+}
+
+#[test]
+fn observe_snapshot_responses_without_plugin_handler_is_noop() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = SnapshotActor::<InMemorySnapshotStore>::new(InMemorySnapshotStore::new());
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10);
+
+  actor
+    .observe_snapshot_responses(&mut ctx, vec![SnapshotResponse::SaveSnapshotSuccess { metadata }])
+    .expect("observe failed");
+}
+
+#[test]
+fn should_delegate_unknown_message_to_snapshot_plugin_handler_when_message_is_not_protocol_message() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let markers = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let handler = RecordingSnapshotPluginHandler::with_markers(markers.clone());
+  let mut actor =
+    SnapshotActor::<InMemorySnapshotStore>::new_with_plugin_handler(InMemorySnapshotStore::new(), handler);
+
+  let any_message = AnyMessage::new(SnapshotPluginCommand { marker: 42 });
+  actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
+  let any_message = AnyMessage::new(());
+  actor.receive(&mut ctx, any_message.as_view()).expect("unhandled plugin message failed");
+
+  let observed = markers.lock();
+  assert_eq!(observed.len(), 1);
+  assert_eq!(observed[0], 42);
+}
+
+#[test]
 fn snapshot_actor_pending_does_not_emit_failure() {
   let system = new_test_system();
   let pid = test_actor_pid();
@@ -415,6 +513,27 @@ fn snapshot_actor_pending_save_delete_one_and_delete_many_do_not_emit_failure() 
   actor.receive(&mut ctx, any_message.as_view()).expect("delete many receive failed");
 
   assert!(store.lock().is_empty());
+}
+
+#[test]
+fn snapshot_actor_with_plugin_handler_retains_pending_entries() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let responses = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let handler = RecordingSnapshotPluginHandler::new(responses.clone());
+  let mut actor = SnapshotActor::<PendingSnapshotStore>::new_with_plugin_handler(PendingSnapshotStore, handler);
+  let (sender, store) = create_sender();
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10);
+
+  let save = SnapshotMessage::SaveSnapshot { metadata, snapshot: ArcShared::new(1_i32), sender };
+  let any_message = AnyMessage::new(save);
+  actor.receive(&mut ctx, any_message.as_view()).expect("save receive failed");
+  let poll = AnyMessage::new(SnapshotPoll);
+  actor.receive(&mut ctx, poll.as_view()).expect("poll receive failed");
+
+  assert!(store.lock().is_empty());
+  assert!(responses.lock().is_empty());
 }
 
 #[test]

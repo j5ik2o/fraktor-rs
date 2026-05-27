@@ -142,6 +142,11 @@ impl EphemeralPersistenceStore {
       let payload: ArcShared<dyn Any + Send + Sync> = ArcShared::new(snapshot.clone());
       entry.snapshot_timestamp = entry.snapshot_timestamp.saturating_add(1);
       entry.snapshots.push(EphemeralPersistedSnapshot { sequence_nr, timestamp: entry.snapshot_timestamp, payload });
+      if config.retention_criteria().delete_events_on_snapshot()
+        && let Some(to_sequence_nr) = config.retention_criteria().delete_to_sequence_nr(sequence_nr)
+      {
+        entry.events.retain(|event| event.sequence_nr > to_sequence_nr);
+      }
     });
     Ok(snapshot)
   }
