@@ -2,8 +2,6 @@
 
 use alloc::vec::Vec;
 
-use fraktor_persistence_core_kernel_rs::error::PersistenceError;
-
 use crate::{EventSourcedSignal, PublishedEvent, persistence_effector_signal_auth::PersistenceEffectorSignalAuth};
 
 /// Stable signal delivered to the aggregate actor through its private message type.
@@ -48,14 +46,6 @@ pub enum PersistenceEffectorSignal<S, E> {
     auth:           PersistenceEffectorSignalAuth,
     /// Inclusive upper sequence number for deletion.
     to_sequence_nr: u64,
-  },
-  /// Persistence failed.
-  #[non_exhaustive]
-  Failed {
-    #[doc(hidden)]
-    auth:  PersistenceEffectorSignalAuth,
-    /// Persistence kernel error.
-    error: PersistenceError,
   },
   /// Event-sourced behavior signal.
   #[non_exhaustive]
