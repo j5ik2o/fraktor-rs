@@ -37,7 +37,7 @@ type SnapshotDeleteFuture = Pin<Box<dyn Future<Output = Result<(), SnapshotError
 struct SnapshotPollContext<'a, S: SnapshotStore> {
   snapshot_store:     &'a mut S,
   retry_max:          u32,
-  observed_responses: &'a mut Vec<SnapshotResponse>,
+  observed_responses: Option<&'a mut Vec<SnapshotResponse>>,
 }
 
 enum SnapshotInFlight {
@@ -127,18 +127,29 @@ where
     let mut cx = Context::from_waker(waker);
     let mut pending = Vec::new();
     let mut observed_batches = Vec::new();
+    let should_observe_responses = self.plugin_handler.is_some();
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
     for entry in in_flight {
-      let mut observed_responses = Vec::new();
-      if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max, &mut observed_responses) {
-        pending.push(entry);
+      if should_observe_responses {
+        let mut observed_responses = Vec::new();
+        if let Some(entry) =
+          poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max, Some(&mut observed_responses))
+        {
+          pending.push(entry);
+        }
+        observed_batches.push(observed_responses);
+      } else {
+        if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max, None) {
+          pending.push(entry);
+        }
       }
-      observed_batches.push(observed_responses);
     }
     self.in_flight = pending;
-    for observed_responses in observed_batches {
-      self.observe_snapshot_responses(ctx, observed_responses)?;
+    if should_observe_responses {
+      for observed_responses in observed_batches {
+        self.observe_snapshot_responses(ctx, observed_responses)?;
+      }
     }
     self.schedule_poll(ctx)
   }
@@ -241,7 +252,7 @@ fn poll_entry<S: SnapshotStore>(
   mut entry: SnapshotInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
-  observed_responses: &mut Vec<SnapshotResponse>,
+  observed_responses: Option<&mut Vec<SnapshotResponse>>,
 ) -> Option<SnapshotInFlight>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
@@ -298,7 +309,7 @@ fn send_save_success<S: SnapshotStore>(
   tell_response(
     sender,
     SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() },
-    poll_context.observed_responses,
+    &mut poll_context.observed_responses,
   );
 }
 
@@ -321,7 +332,7 @@ where
   tell_response(
     sender,
     SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error },
-    poll_context.observed_responses,
+    &mut poll_context.observed_responses,
   );
   false
 }
@@ -358,7 +369,7 @@ fn send_load_success<S: SnapshotStore>(
   tell_response(
     sender,
     SnapshotResponse::LoadSnapshotResult { snapshot, to_sequence_nr },
-    poll_context.observed_responses,
+    &mut poll_context.observed_responses,
   );
 }
 
@@ -378,7 +389,7 @@ where
     *future = Box::pin(poll_context.snapshot_store.load_snapshot(persistence_id, criteria.clone()));
     return true;
   }
-  tell_response(sender, SnapshotResponse::LoadSnapshotFailed { error }, poll_context.observed_responses);
+  tell_response(sender, SnapshotResponse::LoadSnapshotFailed { error }, &mut poll_context.observed_responses);
   false
 }
 
@@ -410,7 +421,7 @@ fn send_delete_one_success<S: SnapshotStore>(
   tell_response(
     sender,
     SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() },
-    poll_context.observed_responses,
+    &mut poll_context.observed_responses,
   );
 }
 
@@ -432,7 +443,7 @@ where
   tell_response(
     sender,
     SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error },
-    poll_context.observed_responses,
+    &mut poll_context.observed_responses,
   );
   false
 }
@@ -468,7 +479,7 @@ fn send_delete_many_success<S: SnapshotStore>(
   tell_response(
     sender,
     SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() },
-    poll_context.observed_responses,
+    &mut poll_context.observed_responses,
   );
 }
 
@@ -491,13 +502,19 @@ where
   tell_response(
     sender,
     SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error },
-    poll_context.observed_responses,
+    &mut poll_context.observed_responses,
   );
   false
 }
 
-fn tell_response(sender: &mut ActorRef, response: SnapshotResponse, observed_responses: &mut Vec<SnapshotResponse>) {
-  observed_responses.push(response.clone());
+fn tell_response(
+  sender: &mut ActorRef,
+  response: SnapshotResponse,
+  observed_responses: &mut Option<&mut Vec<SnapshotResponse>>,
+) {
+  if let Some(observed_responses) = observed_responses.as_deref_mut() {
+    observed_responses.push(response.clone());
+  }
   // 返信先の閉鎖は要求元側の状態なので、snapshot actor 自身の失敗にはしない。
   sender.tell(AnyMessage::new(response));
 }

@@ -324,10 +324,45 @@ fn persisted_event_reply_includes_tags_selected_by_config_tagger() {
 }
 
 #[test]
-fn journal_delete_messages_response_emits_delete_events_signal_through_store_response_path() {
+fn batch_persist_type_mismatch_stops_remaining_state_mutation() {
   let mut actor = store_actor(config());
   let (journal_ref, journal_messages) = actor_ref(Pid::new(207, 1));
   let (snapshot_ref, _snapshot_messages) = actor_ref(Pid::new(208, 1));
+  let mut ctx = build_context();
+  bind_store_refs(&mut actor, &mut ctx, journal_ref, snapshot_ref);
+  journal_messages.lock().clear();
+  let (reply_to, messages) = reply_ref();
+  actor.persist_events(&mut ctx, Vec::from([7, 8]), reply_to).expect("persist events should send write request");
+  let (first_repr, second_repr, instance_id) = {
+    let messages = journal_messages.lock();
+    let message = messages.last().expect("journal write request");
+    let request = message.payload().downcast_ref::<JournalMessage>().expect("journal message");
+    let JournalMessage::WriteMessages { messages, instance_id, .. } = request else {
+      panic!("expected write messages request");
+    };
+    (messages[0].payload()[0].clone(), messages[0].payload()[1].clone(), *instance_id)
+  };
+  let bad_repr =
+    PersistentRepr::new(first_repr.persistence_id(), first_repr.sequence_nr(), ArcShared::new(String::from("not-u32")));
+
+  actor.reply_persist_type_mismatch(&bad_repr);
+  actor.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: first_repr, instance_id });
+  actor.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: second_repr, instance_id });
+
+  assert_eq!(actor.state, 0);
+  let messages = messages.lock();
+  assert_eq!(messages.len(), 1);
+  let reply = messages[0].payload().downcast_ref::<TestReply>().expect("failure reply");
+  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+    signal: EventSourcedSignal::JournalPersistFailed { .. },
+  }));
+}
+
+#[test]
+fn journal_delete_messages_response_emits_delete_events_signal_through_store_response_path() {
+  let mut actor = store_actor(config());
+  let (journal_ref, journal_messages) = actor_ref(Pid::new(209, 1));
+  let (snapshot_ref, _snapshot_messages) = actor_ref(Pid::new(210, 1));
   let mut ctx = build_context();
   bind_store_refs(&mut actor, &mut ctx, journal_ref, snapshot_ref);
   journal_messages.lock().clear();

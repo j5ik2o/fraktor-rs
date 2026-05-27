@@ -135,6 +135,9 @@ where
       let published_events = published_events.clone();
       let reply_to = reply_to.clone();
       let handler = Box::new(move |actor: &mut Self, repr: &PersistentRepr| {
+        if actor.pending_persist_reply.is_none() {
+          return;
+        }
         let Some(persisted_event) = repr.downcast_ref::<E>() else {
           actor.reply_persist_type_mismatch(repr);
           return;
