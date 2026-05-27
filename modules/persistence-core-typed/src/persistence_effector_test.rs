@@ -6,7 +6,7 @@ use std::{
 
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
-  actor::{extension::ExtensionInstallers, scheduler::SchedulerConfig, setup::ActorSystemConfig},
+  actor::{error::ActorError, extension::ExtensionInstallers, scheduler::SchedulerConfig, setup::ActorSystemConfig},
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
 };
 use fraktor_actor_core_typed_rs::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors};
@@ -99,6 +99,26 @@ fn journal_rejection_is_exposed_as_distinct_event_sourced_signal() {
     ),
     "journal rejection must not be collapsed into generic Failed",
   );
+}
+
+#[test]
+fn journal_persist_failure_is_recoverable_when_backoff_is_enabled() {
+  let signal =
+    EventSourcedSignal::JournalPersistFailed { error: PersistenceError::StateMachine(String::from("journal failed")) };
+
+  let actual = PersistenceEffector::<(), (), ()>::event_sourced_signal_behavior(&signal, true);
+
+  assert!(matches!(actual, Err(ActorError::Recoverable(_))));
+}
+
+#[test]
+fn journal_persist_failure_is_fatal_when_backoff_is_disabled() {
+  let signal =
+    EventSourcedSignal::JournalPersistFailed { error: PersistenceError::StateMachine(String::from("journal failed")) };
+
+  let actual = PersistenceEffector::<(), (), ()>::event_sourced_signal_behavior(&signal, false);
+
+  assert!(matches!(actual, Err(ActorError::Fatal(_))));
 }
 
 #[derive(Clone, Debug)]

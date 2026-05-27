@@ -18,9 +18,12 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::SnapshotPoll;
-use crate::snapshot::{
-  InMemorySnapshotStore, PluginMessageHandling, Snapshot, SnapshotActor, SnapshotActorConfig, SnapshotError,
-  SnapshotMessage, SnapshotMetadata, SnapshotPluginMessageHandler, SnapshotResponse, SnapshotSelectionCriteria,
+use crate::{
+  PluginMessageHandling,
+  snapshot::{
+    InMemorySnapshotStore, Snapshot, SnapshotActor, SnapshotActorConfig, SnapshotError, SnapshotMessage,
+    SnapshotMetadata, SnapshotPluginMessageHandler, SnapshotResponse, SnapshotSelectionCriteria,
+  },
 };
 
 type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;

@@ -64,6 +64,9 @@ pub mod extension;
 pub mod fsm;
 pub mod journal;
 pub mod persistent;
+mod plugin_message_handling;
 pub mod serialization;
 pub mod snapshot;
 pub mod state;
+
+pub use plugin_message_handling::PluginMessageHandling;

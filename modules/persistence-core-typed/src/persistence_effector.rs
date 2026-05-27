@@ -167,6 +167,7 @@ where
       | Some(adapter) => adapter,
       | None => return fatal_behavior("persistence message adapter is not configured"),
     };
+    let persist_failure_backoff_enabled = config.persist_failure_backoff_enabled();
     Behaviors::with_stash(config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let config = config.clone();
@@ -183,7 +184,9 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
+            | PersistenceEffectorSignal::EventSourced { signal } => {
+              Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
+            },
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -412,6 +415,7 @@ where
     let callback = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(callback));
     let sequence_nr_cell = self.sequence_nr.clone();
     let event_publishing = self.config.event_publishing_enabled();
+    let persist_failure_backoff_enabled = self.config.persist_failure_backoff_enabled();
     Behaviors::with_stash(self.config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let callback = callback.clone();
@@ -431,7 +435,9 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
+            | PersistenceEffectorSignal::EventSourced { signal } => {
+              Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
+            },
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -456,6 +462,7 @@ where
     let sequence_nr_cell = self.sequence_nr.clone();
     let snapshot_criteria = self.config.snapshot_criteria().clone();
     let event_publishing = self.config.event_publishing_enabled();
+    let persist_failure_backoff_enabled = self.config.persist_failure_backoff_enabled();
     Behaviors::with_stash(self.config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let callback = callback.clone();
@@ -496,7 +503,9 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
+            | PersistenceEffectorSignal::EventSourced { signal } => {
+              Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
+            },
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -516,6 +525,7 @@ where
     let store_ref = self.store_ref.clone();
     let reply_to = self.reply_to.clone();
     let retention_criteria = *self.config.retention_criteria();
+    let persist_failure_backoff_enabled = self.config.persist_failure_backoff_enabled();
     Behaviors::with_stash(self.config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let callback = callback.clone();
@@ -546,6 +556,7 @@ where
                     stash,
                     store_ref,
                     reply_to,
+                    persist_failure_backoff_enabled,
                   ));
                 }
                 store_ref
@@ -557,6 +568,7 @@ where
                   snapshot.clone(),
                   to_sequence_nr,
                   stash,
+                  persist_failure_backoff_enabled,
                 ));
               }
               let next = callback.with_lock(|slot| {
@@ -566,7 +578,9 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
+            | PersistenceEffectorSignal::EventSourced { signal } => {
+              Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
+            },
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -584,6 +598,7 @@ where
     stash: StashBuffer<M>,
     store_ref: TypedActorRef<PersistenceStoreCommand<S, E>>,
     reply_to: TypedActorRef<PersistenceStoreReply<S, E>>,
+    persist_failure_backoff_enabled: bool,
   ) -> Behavior<M> {
     Behaviors::receive_message(move |ctx, message| {
       if let Some(signal) = adapter.unwrap_signal(message) {
@@ -601,13 +616,16 @@ where
               snapshot.clone(),
               to_sequence_nr,
               stash,
+              persist_failure_backoff_enabled,
             ))
           },
           | PersistenceEffectorSignal::EventSourced { signal: EventSourcedSignal::DeleteEventsCompleted { .. } } => {
             Err(ActorError::fatal("unexpected event deletion acknowledgement"))
           },
           | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-          | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
+          | PersistenceEffectorSignal::EventSourced { signal } => {
+            Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
+          },
           | _ => Ok(Behaviors::unhandled()),
         };
       }
@@ -622,6 +640,7 @@ where
     snapshot: S,
     to_sequence_nr: u64,
     stash: StashBuffer<M>,
+    persist_failure_backoff_enabled: bool,
   ) -> Behavior<M> {
     let snapshot = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(snapshot));
     Behaviors::receive_message(move |ctx, message| {
@@ -643,7 +662,9 @@ where
             Err(ActorError::fatal("unexpected snapshot deletion acknowledgement"))
           },
           | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
-          | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
+          | PersistenceEffectorSignal::EventSourced { signal } => {
+            Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
+          },
           | _ => Ok(Behaviors::unhandled()),
         };
       }
@@ -689,11 +710,18 @@ where
     Ok(())
   }
 
-  fn event_sourced_signal_behavior(signal: &EventSourcedSignal) -> Result<Behavior<M>, ActorError> {
+  fn event_sourced_signal_behavior(
+    signal: &EventSourcedSignal,
+    persist_failure_backoff_enabled: bool,
+  ) -> Result<Behavior<M>, ActorError> {
     if Self::is_event_sourced_success_signal(signal) {
       return Ok(Behaviors::same());
     }
-    Err(ActorError::fatal(Self::event_sourced_signal_error(signal)))
+    let error = Self::event_sourced_signal_error(signal);
+    if persist_failure_backoff_enabled && matches!(signal, EventSourcedSignal::JournalPersistFailed { .. }) {
+      return Err(ActorError::recoverable(error));
+    }
+    Err(ActorError::fatal(error))
   }
 
   const fn is_event_sourced_success_signal(signal: &EventSourcedSignal) -> bool {

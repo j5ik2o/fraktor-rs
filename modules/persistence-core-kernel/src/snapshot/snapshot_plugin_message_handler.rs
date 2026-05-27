@@ -2,7 +2,7 @@
 
 use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
 
-use crate::snapshot::PluginMessageHandling;
+use crate::PluginMessageHandling;
 
 /// Handles snapshot plugin specific messages.
 pub trait SnapshotPluginMessageHandler: Send {

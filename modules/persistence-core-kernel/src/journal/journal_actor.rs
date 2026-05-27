@@ -19,10 +19,8 @@ use fraktor_actor_core_kernel_rs::actor::{
 };
 
 use crate::{
-  journal::{
-    Journal, JournalActorConfig, JournalError, JournalMessage, JournalPluginMessageHandler, JournalResponse,
-    PluginMessageHandling,
-  },
+  PluginMessageHandling,
+  journal::{Journal, JournalActorConfig, JournalError, JournalMessage, JournalPluginMessageHandler, JournalResponse},
   persistent::{AtomicWrite, PersistentRepr},
 };
 

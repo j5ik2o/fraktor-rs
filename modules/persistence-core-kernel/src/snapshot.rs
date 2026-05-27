@@ -3,7 +3,6 @@
 mod base;
 mod in_memory_snapshot_store;
 mod no_snapshot_store;
-mod plugin_message_handling;
 mod snapshot_actor;
 mod snapshot_actor_config;
 mod snapshot_error;
@@ -19,7 +18,6 @@ mod snapshot_store;
 pub use base::Snapshot;
 pub use in_memory_snapshot_store::InMemorySnapshotStore;
 pub use no_snapshot_store::NoSnapshotStore;
-pub use plugin_message_handling::PluginMessageHandling;
 pub use snapshot_actor::SnapshotActor;
 pub use snapshot_actor_config::SnapshotActorConfig;
 pub use snapshot_error::SnapshotError;

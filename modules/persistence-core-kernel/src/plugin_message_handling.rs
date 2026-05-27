@@ -1,6 +1,6 @@
-//! Result of journal plugin message handling.
+//! Result of persistence plugin message handling.
 
-/// Indicates whether a journal plugin consumed a message.
+/// Indicates whether a persistence plugin consumed a message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginMessageHandling {
   /// The plugin consumed the message.

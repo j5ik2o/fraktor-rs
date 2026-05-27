@@ -20,9 +20,12 @@ use fraktor_actor_core_kernel_rs::actor::{
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use crate::snapshot::{
-  PluginMessageHandling, Snapshot, SnapshotActorConfig, SnapshotError, SnapshotMessage, SnapshotMetadata,
-  SnapshotPluginMessageHandler, SnapshotResponse, SnapshotSelectionCriteria, SnapshotStore,
+use crate::{
+  PluginMessageHandling,
+  snapshot::{
+    Snapshot, SnapshotActorConfig, SnapshotError, SnapshotMessage, SnapshotMetadata, SnapshotPluginMessageHandler,
+    SnapshotResponse, SnapshotSelectionCriteria, SnapshotStore,
+  },
 };
 
 struct SnapshotPoll;

@@ -19,9 +19,10 @@ use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::JournalPoll;
 use crate::{
+  PluginMessageHandling,
   journal::{
     InMemoryJournal, JournalActor, JournalActorConfig, JournalError, JournalMessage, JournalPluginMessageHandler,
-    JournalResponse, PluginMessageHandling,
+    JournalResponse,
   },
   persistent::{AtomicWrite, PersistentRepr},
 };

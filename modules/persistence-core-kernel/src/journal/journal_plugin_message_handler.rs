@@ -2,7 +2,7 @@
 
 use fraktor_actor_core_kernel_rs::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
 
-use crate::journal::PluginMessageHandling;
+use crate::PluginMessageHandling;
 
 /// Handles journal plugin specific messages.
 pub trait JournalPluginMessageHandler: Send {
