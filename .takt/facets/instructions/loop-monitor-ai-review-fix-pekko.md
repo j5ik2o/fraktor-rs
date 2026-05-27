@@ -1,12 +1,7 @@
-ai_review と ai_fix のループが {cycle_count} 回繰り返されました。
+{extends:loop-monitor-ai-antipattern-fix}
 
-各サイクルのレポートを確認し、このループが健全（進捗がある）か、
-非生産的（同じ問題を繰り返している）かを判断してください。
+## Pekko porting 固有の読み替え
 
-**参照するレポート:**
-- AIレビュー結果: {report:04-ai-review.md}
-
-**判断基準:**
-- 各サイクルで新しい問題が発見・修正されているか
-- 同じ指摘が繰り返されていないか
-- 修正が実際に反映されているか
+- 本家の `ai-antipattern-review-1st` は、この workflow では `ai_review` と読み替える。
+- 本家の `ai-antipattern-fix` は、この workflow では `ai_fix` と読み替える。
+- 本家の `ai-antipattern-review.md` は、この workflow では `04-ai-review.md` と読み替える。

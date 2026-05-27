@@ -1,15 +1,7 @@
-reviewers と review-fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
+{extends:loop-monitor-reviewers-fix}
 
-各サイクルのレポートを確認し、このループが健全（進捗がある）か、
-非生産的（同じ問題を繰り返している）かを判断してください。
+## Pekko porting 追加レポート
 
-**参照するレポート:**
 - QAレビュー: {report:06-qa-review.md}
 - Pekko互換性レビュー: {report:05-pekko-compat-review.md}
 - テストレビュー: {report:07-test-review.md}
-
-**判断基準:**
-- 各サイクルで修正対象が収束しているか
-- 同じ指摘が繰り返されていないか
-- 反映履歴から改善進捗が確認できるか
-- 修正が実際に反映されているか

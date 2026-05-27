@@ -32,7 +32,6 @@ instructions:
   pekko-porting-review-qa: ../facets/instructions/pekko-porting-review-qa.md
   review-test: ../facets/instructions/review-test.md
   ai-review: ../facets/instructions/ai-review.md
-  ai-fix: ../facets/instructions/ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
   loop-monitor-plan-implement: ../facets/instructions/loop-monitor-plan-implement.md
   loop-monitor-ai-review-fix-pekko: ../facets/instructions/loop-monitor-ai-review-fix-pekko.md

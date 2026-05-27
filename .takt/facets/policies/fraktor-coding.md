@@ -1,3 +1,5 @@
+{extends:coding}
+
 # fraktor-rs コーディングポリシー
 
 ## 言語
