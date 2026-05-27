@@ -51,11 +51,11 @@ enum StagedSnapshotMetadata {
 }
 
 impl StagedSnapshotMetadata {
-  fn commit(self) -> Result<(), SnapshotError> {
+  fn commit(&self) -> Result<(), SnapshotError> {
     match self {
-      | Self::Remove { path } => LocalSnapshotStore::remove_stale_snapshot_metadata(&path),
+      | Self::Remove { path } => LocalSnapshotStore::remove_stale_snapshot_metadata(path),
       | Self::Replace { temp_path, path } => {
-        LocalSnapshotStore::replace_temp_file(&temp_path, &path, "snapshot metadata")
+        LocalSnapshotStore::replace_temp_file(temp_path, path, "snapshot metadata")
       },
     }
   }
@@ -116,11 +116,23 @@ impl LocalSnapshotStore {
       .map_err(|error| SnapshotError::SaveFailed(format!("sync temp snapshot {}: {error}", temp_path.display())))?;
     drop(file);
     let staged_metadata = Self::stage_snapshot_metadata(metadata, &path)?;
+    let rollback_path = Self::rollback_snapshot_path(&path);
+    let rollback_staged = Self::stage_snapshot_payload_rollback(&path, &rollback_path)?;
     if let Err(error) = Self::replace_temp_file(&temp_path, &path, "snapshot") {
       staged_metadata.discard();
+      Self::discard_snapshot_payload_rollback(&rollback_path, rollback_staged);
       return Err(error);
     }
-    staged_metadata.commit()?;
+    if let Err(error) = staged_metadata.commit() {
+      staged_metadata.discard();
+      if let Err(rollback_error) = Self::restore_snapshot_payload_rollback(&path, &rollback_path, rollback_staged) {
+        return Err(SnapshotError::SaveFailed(format!(
+          "commit snapshot metadata failed: {error}; rollback snapshot payload failed: {rollback_error}"
+        )));
+      }
+      return Err(error);
+    }
+    Self::discard_snapshot_payload_rollback(&rollback_path, rollback_staged);
     #[cfg(not(windows))]
     File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
       SnapshotError::SaveFailed(format!("sync snapshot directory {}: {error}", self.directory.display()))
@@ -281,6 +293,49 @@ impl LocalSnapshotStore {
     Ok(StagedSnapshotMetadata::Replace { temp_path: temp_metadata_path, path: metadata_path })
   }
 
+  fn stage_snapshot_payload_rollback(path: &Path, rollback_path: &Path) -> Result<bool, SnapshotError> {
+    match fs::metadata(path) {
+      | Ok(metadata) if metadata.is_file() => {
+        fs::copy(path, rollback_path).map_err(|error| {
+          SnapshotError::SaveFailed(format!(
+            "stage rollback snapshot {} to {}: {error}",
+            path.display(),
+            rollback_path.display()
+          ))
+        })?;
+        Ok(true)
+      },
+      | Ok(_) => Ok(false),
+      | Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+      | Err(error) => {
+        Err(SnapshotError::SaveFailed(format!("inspect snapshot rollback source {}: {error}", path.display())))
+      },
+    }
+  }
+
+  fn restore_snapshot_payload_rollback(
+    path: &Path,
+    rollback_path: &Path,
+    rollback_staged: bool,
+  ) -> Result<(), SnapshotError> {
+    if rollback_staged {
+      return Self::replace_temp_file(rollback_path, path, "snapshot rollback");
+    }
+    match fs::remove_file(path) {
+      | Ok(()) => Ok(()),
+      | Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+      | Err(error) => Err(SnapshotError::SaveFailed(format!("delete failed snapshot {}: {error}", path.display()))),
+    }
+  }
+
+  fn discard_snapshot_payload_rollback(rollback_path: &Path, rollback_staged: bool) {
+    if rollback_staged {
+      match fs::remove_file(rollback_path) {
+        | Ok(()) | Err(_) => (),
+      }
+    }
+  }
+
   fn replace_temp_file(temp_path: &Path, path: &Path, label: &str) -> Result<(), SnapshotError> {
     #[cfg(windows)]
     return Self::replace_temp_file_windows(temp_path, path, label);
@@ -355,6 +410,13 @@ impl LocalSnapshotStore {
     match path.file_name().and_then(OsStr::to_str) {
       | Some(file_name) => path.with_file_name(format!("{file_name}.{SNAPSHOT_TEMP_EXTENSION}")),
       | None => path.with_extension(SNAPSHOT_TEMP_EXTENSION),
+    }
+  }
+
+  fn rollback_snapshot_path(path: &Path) -> PathBuf {
+    match path.file_name().and_then(OsStr::to_str) {
+      | Some(file_name) => path.with_file_name(format!("{file_name}.rollback.{SNAPSHOT_TEMP_EXTENSION}")),
+      | None => path.with_extension(format!("rollback.{SNAPSHOT_TEMP_EXTENSION}")),
     }
   }
 

@@ -212,6 +212,23 @@ fn local_snapshot_store_does_not_commit_staged_metadata_when_payload_replace_fai
 }
 
 #[test]
+fn local_snapshot_store_rolls_back_payload_when_metadata_commit_fails() {
+  let directory = unique_snapshot_dir("metadata-commit-fail");
+  let mut store = open_store(&directory, 3);
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10).with_metadata("new");
+  let path = store.snapshot_path(&metadata);
+  let metadata_path = LocalSnapshotStore::snapshot_metadata_path(&path);
+  fs::create_dir(&metadata_path).expect("create directory at metadata path");
+
+  let result = poll_ready(store.save_snapshot(metadata, payload(1)));
+
+  assert!(result.is_err());
+  assert!(!path.exists());
+  assert!(!LocalSnapshotStore::temp_snapshot_path(&metadata_path).exists());
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
 fn local_snapshot_store_load_latest_selects_highest_sequence_number() {
   let directory = unique_snapshot_dir("latest");
   let mut store = open_store(&directory, 3);
