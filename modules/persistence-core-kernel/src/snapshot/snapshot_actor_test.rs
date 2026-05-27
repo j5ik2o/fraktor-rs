@@ -501,6 +501,25 @@ fn snapshot_actor_pending_save_delete_one_and_delete_many_do_not_emit_failure() 
 }
 
 #[test]
+fn snapshot_actor_with_plugin_handler_retains_pending_entries() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let responses = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let handler = RecordingSnapshotPluginHandler::new(responses.clone());
+  let mut actor = SnapshotActor::<PendingSnapshotStore>::new_with_plugin_handler(PendingSnapshotStore, handler);
+  let (sender, store) = create_sender();
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10);
+
+  let save = SnapshotMessage::SaveSnapshot { metadata, snapshot: ArcShared::new(1_i32), sender };
+  let any_message = AnyMessage::new(save);
+  actor.receive(&mut ctx, any_message.as_view()).expect("save receive failed");
+
+  assert!(store.lock().is_empty());
+  assert!(responses.lock().is_empty());
+}
+
+#[test]
 fn snapshot_actor_retry_max_exceeded_on_errors() {
   let system = new_test_system();
   let pid = test_actor_pid();

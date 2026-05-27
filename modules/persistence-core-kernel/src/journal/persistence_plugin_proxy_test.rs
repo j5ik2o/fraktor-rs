@@ -211,6 +211,17 @@ fn should_forward_snapshot_message_to_configured_target_when_snapshot_target_is_
 }
 
 #[test]
+fn should_ignore_unrelated_messages() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut proxy = PersistencePluginProxyActor::default();
+
+  let any_message = AnyMessage::new(());
+  proxy.receive(&mut ctx, any_message.as_view()).expect("unrelated message should be ignored");
+}
+
+#[test]
 fn should_reply_with_journal_failure_when_journal_target_is_not_set() {
   let system = new_test_system();
   let pid = test_actor_pid();
