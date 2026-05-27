@@ -108,6 +108,19 @@ fn local_snapshot_store_open_creates_directory() {
 }
 
 #[test]
+fn local_snapshot_store_clone_uses_same_directory() {
+  let directory = unique_snapshot_dir("clone");
+  let store = open_store(&directory, 3);
+  let mut cloned = store.clone();
+
+  save_snapshot(&mut cloned, SnapshotMetadata::new("pid-1", 1, 10), 1);
+  let loaded = load_latest(&store, "pid-1").expect("snapshot should be loaded through original clone source");
+
+  assert_snapshot(&loaded, 1, 1);
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
 fn local_snapshot_store_save_then_load_round_trips_payload() {
   let directory = unique_snapshot_dir("round-trip");
   let mut store = open_store(&directory, 3);

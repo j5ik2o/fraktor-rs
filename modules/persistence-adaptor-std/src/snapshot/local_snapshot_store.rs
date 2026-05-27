@@ -44,6 +44,7 @@ struct SnapshotCandidate {
 }
 
 /// Filesystem-backed snapshot store compatible with the kernel [`SnapshotStore`] trait.
+#[derive(Clone)]
 pub struct LocalSnapshotStore {
   directory:         PathBuf,
   serialization:     ArcShared<SerializationRegistry>,
