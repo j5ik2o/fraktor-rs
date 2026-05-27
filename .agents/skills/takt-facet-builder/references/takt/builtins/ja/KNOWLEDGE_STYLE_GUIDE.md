@@ -2,13 +2,13 @@
 
 このガイドは `knowledge/` のファイルを作成・編集する際のルールを定義する。
 
-## テンプレート
+## 参照元
 
-`templates/knowledge/` にテンプレートファイルを用意している。新規作成時はコピーして使う。
+`facets/knowledge/` を参照元として使う。新規作成時は既存ファイルをコピーして使う。
 
-| テンプレート | 用途 | 使用例 |
+| 参照ファイル | 用途 | 使用例 |
 |------------|------|--------|
-| `knowledge.md` | ドメイン知識 | frontend, backend, security |
+| `takt.md` | ドメイン知識 | frontend, backend, security |
 
 ---
 
@@ -30,7 +30,7 @@
 ```
 User Message (Phase 1):
   [実行コンテキスト]
-  [Piece Context]
+  [Workflow Context]
   [User Request]
   [Previous Response]
   [Instructions]
@@ -114,9 +114,11 @@ forceExit: true
 | 基準 | 判定 |
 |------|------|
 | 1コンポーネント200行超 | 分割を検討 |
-| 1コンポーネント300行超 | REJECT |
+| 1コンポーネント300行超 | Warning。分割を提案 |
 | 複数の責務を持つコンポーネント | REJECT |
 ```
+
+行数のような設計ヒントは doctor / review の warning として扱い、unit test の失敗条件として固定しない。
 
 ### コード例（推奨）
 
@@ -197,7 +199,7 @@ const ChildGood = ({ value, onChange }) => {
 
 1. **横断的な行動規範**: DRY、Fail Fast 等の全エージェント共通ルール → ポリシー
 2. **実行手順**: どのファイルを読め、何を実行しろ等 → インストラクション
-3. **ピース固有の概念**: ムーブメント名、レポートファイル名
+3. **workflow固有の概念**: step名、レポートファイル名
 4. **ツール固有のパス**: `.takt/runs/` 等の具体的なディレクトリパス
 
 ### 例外: ドメイン固有の評価基準

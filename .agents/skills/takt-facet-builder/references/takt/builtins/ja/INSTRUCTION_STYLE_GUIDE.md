@@ -2,18 +2,17 @@
 
 このガイドは `instructions/` のファイルを作成・編集する際のルールを定義する。
 
-## テンプレート
+## 参照元
 
-`templates/instructions/` にテンプレートファイルを用意している。新規作成時は参照して使う。
+`facets/instructions/` を参照元として使う。新規作成時は既存ファイルを参照して使う。
 
-| テンプレート | 用途 |
+| 参照ファイル | 用途 |
 |------------|------|
 | `plan.md` | 計画（タスク分析・要件整理） |
 | `architect.md` | 設計（アーキテクチャ設計） |
 | `implement.md` | 実装（コーディング + レポート埋め込み） |
-| `review.md` | レビュー（parallel sub-step 汎用） |
-| `ai-review-standalone.md` | AIレビュー（standalone、iteration tracking） |
-| `ai-fix.md` | AI指摘修正（全ピース共通） |
+| `review-ai.md` | AIレビュー（parallel sub-step 汎用） |
+| `ai-fix.md` | AI指摘修正（全ワークフロー共通） |
 | `fix.md` | レビュー指摘修正（汎用 fix / supervise fix） |
 | `arbitrate.md` | 裁定（レビュアー vs コーダー） |
 | `supervise.md` | 最終検証（レポート埋め込み） |
@@ -22,14 +21,14 @@
 
 ## インストラクションとは
 
-ピースのムーブメントで実行する具体的な手順。`instruction_template` フィールドに直接記述するか、ファイル参照で使用する。
+ワークフローのステップで実行する具体的な手順。`instruction` フィールドでファイル参照するか、インラインで直接記述する。
 
 | 項目 | 内容 |
 |------|------|
-| 目的 | ムーブメントの実行手順と出力要件の定義 |
+| 目的 | ステップの実行手順と出力要件の定義 |
 | 配置 | Phase 1 メッセージの `## Instructions`（`{{instructions}}`） |
-| 対象 | 1つのムーブメント |
-| 判断基準 | 「この手順は特定のムーブメント/ピースに固有か？」→ YES |
+| 対象 | 1つのステップ |
+| 判断基準 | 「この手順は特定のステップ/ワークフローに固有か？」→ YES |
 
 ### 実際の配置先
 
@@ -38,7 +37,7 @@
 ```
 ## 実行コンテキスト（作業ディレクトリ）
 ## 実行ルール（git commit禁止、cd禁止、edit権限）
-## Piece Context（ピース名、Iteration、Movement Iteration、Report Directory）
+## Workflow Context（ワークフロー名、Iteration、Step Iteration、Report Directory）
 ## User Request（自動注入）
 ## Previous Response（自動注入、pass_previous_response: true 時）
 ## Additional User Inputs（自動注入）
@@ -46,7 +45,7 @@
 {{instructions}}  ← ★ インストラクションがここに展開される
 ```
 
-インストラクションの前に実行コンテキスト、ピース情報、ユーザーリクエスト、前回レスポンス等が既に提供されている。これらを再記述する必要はない。
+インストラクションの前に実行コンテキスト、ワークフロー情報、ユーザーリクエスト、前回レスポンス等が既に提供されている。これらを再記述する必要はない。
 
 ### ペルソナ・ポリシーとの分離
 
@@ -54,7 +53,7 @@
 この内容は…
 ├── エージェントの identity・専門知識 → ペルソナ
 ├── 複数エージェントの共有ルール → ポリシー
-└── ムーブメント固有の手順・出力形式 → インストラクション
+└── ステップ固有の手順・出力形式 → インストラクション
 ```
 
 ---
@@ -65,25 +64,25 @@
 
 ### セクション注入（`## Instructions` の前に別セクションとして挿入）
 
-`perform_phase1_message.md` のテンプレート側で処理される。instruction_template の外に配置される。
+`perform_phase1_message.md` 側で処理される。`instruction` の外に配置される。
 
 | セクション | 内容 | デフォルト |
 |-----------|------|-----------|
 | `## User Request` | ユーザーの元リクエスト | **常に表示** |
-| `## Previous Response` | 前ムーブメントの出力 | **初回以外は常に表示**（`pass_previous_response` デフォルト: `true`） |
+| `## Previous Response` | 前ステップの出力 | **初回以外は常に表示**（`pass_previous_response` デフォルト: `true`） |
 | `## Additional User Inputs` | 蓄積されたユーザー入力 | **常に表示** |
 
-抑制したい場合は instruction_template 内にプレースホルダー（`{task}`, `{previous_response}`, `{user_inputs}`）を含めるか、`pass_previous_response: false` を設定する。通常は不要。
+抑制したい場合は `instruction` 内にプレースホルダー（`{task}`, `{previous_response}`, `{user_inputs}`）を含めるか、`pass_previous_response: false` を設定する。通常は不要。
 
-### テンプレート変数展開（instruction_template 内のプレースホルダーを置換）
+### テンプレート変数展開（`instruction` 内のプレースホルダーを置換）
 
-InstructionBuilder が instruction_template 内の `{変数名}` を展開する。インストラクション内で使用可能。
+InstructionBuilder が `instruction` 内の `{変数名}` を展開する。インストラクション内で使用可能。
 
 | 変数 | 内容 |
 |------|------|
-| `{iteration}` | ピース全体のイテレーション数 |
-| `{max_movements}` | 最大イテレーション数 |
-| `{movement_iteration}` | ムーブメント単位のイテレーション数 |
+| `{iteration}` | ワークフロー全体のイテレーション数 |
+| `{max_steps}` | 最大イテレーション数 |
+| `{step_iteration}` | step 単位のイテレーション数 |
 | `{report_dir}` | レポートディレクトリ名（`.takt/runs/{slug}/reports`） |
 | `{report:filename}` | 指定レポートの内容展開（ファイルが存在する場合） |
 | `{cycle_count}` | ループモニターで検出されたサイクル回数（`loop_monitors` 専用） |
@@ -116,10 +115,10 @@ InstructionBuilder が instruction_template 内の `{変数名}` を展開する
 タスクを分析し、実装方針を立ててください。
 
 # 良い例
-テスト実行、ビルド確認、最終承認を行ってください。
+実行済みの証跡を確認し、最終承認を行ってください。
 
 # 悪い例
-このムーブメントではタスクの分析を行います。  ← 説明文になっている
+このステップではタスクの分析を行います。  ← 説明文になっている
 ```
 
 ### 注意事項・条件
@@ -133,7 +132,7 @@ InstructionBuilder が instruction_template 内の `{変数名}` を展開する
 その内容を踏まえて計画を見直してください（replan）。
 
 # 良い例（イテレーション追跡）
-**これは {movement_iteration} 回目の AI Review です。**
+**これは {step_iteration} 回目の AI Review です。**
 2回目以降は、前回の修正が実際には行われていなかったということです。
 ```
 
@@ -198,7 +197,7 @@ InstructionBuilder が instruction_template 内の `{変数名}` を展開する
 | テンプレート変数を正しく使う | 自動注入される変数を手動で書く |
 | 出力契約は```markdownで囲む | プレーンテキストで出力契約を書く |
 | 必須出力の見出しを `##` で指定 | 出力形式を指定しない |
-| そのムーブメントの手順に集中 | ペルソナ（専門知識）の内容を混ぜる |
+| そのステップの手順に集中 | ペルソナ（専門知識）の内容を混ぜる |
 | `{report:filename}` でレポートを参照 | ファイルパスをハードコードする |
 
 ---
@@ -207,22 +206,57 @@ InstructionBuilder が instruction_template 内の `{変数名}` を展開する
 
 1. **ペルソナの内容**: エージェントの専門知識、検出手法、行動姿勢
 2. **ポリシーの内容**: DRY、Fail Fast 等の共有コーディング原則
-3. **自動注入される内容**: `{task}`, `{previous_response}` のプレースホルダーを明示的に書かない（エンジンが自動付加する）
-4. **他のムーブメント名の直接参照**: 「implement ムーブメントに戻る」等（ルーティングはルール定義の責務）
-5. **ピース固有のルーティング**: 「APPROVE なら次へ」等（ルール条件の責務）
+3. **ナレッジの判定基準・パターン**: 観点リスト、判定基準テーブル、コード例
+4. **自動注入される内容**: `{task}`, `{previous_response}` のプレースホルダーを明示的に書かない（エンジンが自動付加する）
+5. **他のステップ名の直接参照**: 「implement ステップに戻る」等（ルーティングはルール定義の責務）
+6. **ワークフロー固有のルーティング**: 「APPROVE なら次へ」等（ルール条件の責務）
+
+### レビュー系インストラクションでの観点列挙の禁止
+
+レビュー系（review-*, ai-antipattern-review, audit-*-review）の instruction で「**レビュー観点:**」「**チェック項目:**」のような観点リストを列挙してはならない。
+
+理由:
+- 観点・判定基準は対応する Knowledge / Policy に既に揃っている
+- instruction に観点を抜粋すると、policy / knowledge に章を追加しても instruction に反映されず drift する
+- AI が観点リストを「許可リスト」として扱い、Knowledge / Policy 全章の他観点を見落とす
+
+正しい書き方:
+
+```markdown
+# 良い例（フォーカス領域を 1 行で示し、判定基準は policy / knowledge に丸投げ）
+**アーキテクチャと設計**のレビューに集中してください。
+Knowledge と Policy の判定基準・検出パターン全章にしたがって変更差分をレビューしてください。
+Knowledge / Policy はトリミングされる場合があります。Source Path から元ファイルの全章を確認した上で照合してください。
+```
+
+```markdown
+# 悪い例（観点を列挙して許可リスト化）
+**レビュー観点:**
+- 構造・設計の妥当性
+- モジュール化（高凝集・低結合・循環依存）
+- コード品質
+- デッドコード
+- ...
+```
+
+並列レビューで複数の reviewer を差別化するための「フォーカス領域」は 1 行のヒントに留める。詳細な観点・基準は Knowledge / Policy に置く。
+
+### 共通手順の重複禁止
+
+複数の instruction に同一の手順ブロック（「前回指摘の追跡」「設計判断の参照」など）が転記されている場合は、共有 policy か共通ペルソナの「やること」へ集約する。同じ文言を 2 箇所以上に書かない。
 
 ### 例外: レポート参照
 
-`{report:filename}` を使ったレポート内容の展開は許容する。これはピース固有の概念だが、インストラクションの中核機能。
+`{report:filename}` を使ったレポート内容の展開は許容する。これはワークフロー固有の概念だが、インストラクションの中核機能。
 
 ```markdown
 # 許容
 **参照するレポート:**
-- AIレビュー結果: {report:ai-review.md}
+- AIレビュー結果: {report:ai-antipattern-review.md}
 
 # 非許容
 **参照するレポート:**
-- .takt/runs/20250101-task/reports/ai-review.md  ← パスのハードコード
+- .takt/runs/20250101-task/reports/ai-antipattern-review.md  ← パスのハードコード
 ```
 
 ---
@@ -302,4 +336,4 @@ InstructionBuilder が instruction_template 内の `{変数名}` を展開する
 - [ ] 出力契約埋め込みが```markdownで囲まれているか
 - [ ] 必須出力の見出しが `##` で指定されているか
 - [ ] ファイルパスがハードコードされていないか（`{report:filename}` を使う）
-- [ ] そのムーブメントの手順に集中しているか（ルーティング指示なし）
+- [ ] そのステップの手順に集中しているか（ルーティング指示なし）
