@@ -440,6 +440,8 @@ fn should_delegate_unknown_message_to_snapshot_plugin_handler_when_message_is_no
 
   let any_message = AnyMessage::new(SnapshotPluginCommand { marker: 42 });
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
+  let any_message = AnyMessage::new(());
+  actor.receive(&mut ctx, any_message.as_view()).expect("unhandled plugin message failed");
 
   let observed = markers.lock();
   assert_eq!(observed.len(), 1);
@@ -514,6 +516,8 @@ fn snapshot_actor_with_plugin_handler_retains_pending_entries() {
   let save = SnapshotMessage::SaveSnapshot { metadata, snapshot: ArcShared::new(1_i32), sender };
   let any_message = AnyMessage::new(save);
   actor.receive(&mut ctx, any_message.as_view()).expect("save receive failed");
+  let poll = AnyMessage::new(SnapshotPoll);
+  actor.receive(&mut ctx, poll.as_view()).expect("poll receive failed");
 
   assert!(store.lock().is_empty());
   assert!(responses.lock().is_empty());

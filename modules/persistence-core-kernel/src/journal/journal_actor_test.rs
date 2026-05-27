@@ -394,6 +394,8 @@ fn should_delegate_unknown_message_to_journal_plugin_handler_when_message_is_not
 
   let any_message = AnyMessage::new(JournalPluginCommand { marker: 42 });
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
+  let any_message = AnyMessage::new(());
+  actor.receive(&mut ctx, any_message.as_view()).expect("unhandled plugin message failed");
 
   let observed = markers.lock();
   assert_eq!(observed.len(), 1);

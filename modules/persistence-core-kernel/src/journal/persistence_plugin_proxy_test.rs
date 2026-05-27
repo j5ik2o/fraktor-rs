@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{
   any::Any,
-  future::Future,
+  future::{Future, pending},
   task::{Context, Poll, Waker},
 };
 
@@ -100,6 +100,12 @@ fn poll_ready<F: Future>(future: F) -> F::Output {
     | Poll::Ready(output) => output,
     | Poll::Pending => panic!("future was pending"),
   }
+}
+
+#[test]
+#[should_panic(expected = "future was pending")]
+fn poll_ready_panics_when_future_is_pending() {
+  poll_ready(pending::<()>());
 }
 
 fn build_messages(persistence_id: &str, start: u64, count: u64) -> Vec<PersistentRepr> {
@@ -216,8 +222,10 @@ fn should_ignore_unrelated_messages() {
   let pid = test_actor_pid();
   let mut ctx = ActorContext::new(&system, pid);
   let mut proxy = PersistencePluginProxyActor::default();
+  let mut dummy = DummyActor;
 
   let any_message = AnyMessage::new(());
+  dummy.receive(&mut ctx, any_message.as_view()).expect("dummy actor should ignore message");
   proxy.receive(&mut ctx, any_message.as_view()).expect("unrelated message should be ignored");
 }
 
