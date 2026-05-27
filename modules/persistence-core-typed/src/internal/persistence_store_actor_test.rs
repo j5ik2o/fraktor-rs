@@ -324,6 +324,36 @@ fn persisted_event_reply_includes_tags_selected_by_config_tagger() {
 }
 
 #[test]
+fn event_publishing_disabled_does_not_run_tagger_for_persisted_reply() {
+  let tagger_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let observed_tagger_calls = tagger_calls.clone();
+  let config = config().with_event_publishing(false).with_tagger(move |_event| {
+    *tagger_calls.lock() += 1;
+    BTreeSet::from([String::from("should-not-run")])
+  });
+  let mut actor = store_actor(config);
+  let (journal_ref, journal_messages) = actor_ref(Pid::new(211, 1));
+  let (snapshot_ref, _snapshot_messages) = actor_ref(Pid::new(212, 1));
+  let mut ctx = build_context();
+  bind_store_refs(&mut actor, &mut ctx, journal_ref, snapshot_ref);
+  journal_messages.lock().clear();
+  let (reply_to, messages) = reply_ref();
+  actor.persist_event(&mut ctx, 7, reply_to).expect("persist event should send write request");
+  let (repr, instance_id) = capture_write_request(&journal_messages);
+
+  actor.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr, instance_id });
+
+  assert_eq!(*observed_tagger_calls.lock(), 0);
+  let messages = messages.lock();
+  assert_eq!(messages.len(), 1);
+  let reply = messages[0].payload().downcast_ref::<TestReply>().expect("persisted reply");
+  let PersistenceStoreReply::PersistedEvents { published_events, .. } = reply else {
+    panic!("unexpected store reply");
+  };
+  assert!(published_events.is_empty());
+}
+
+#[test]
 fn batch_persist_type_mismatch_stops_remaining_state_mutation() {
   let mut actor = store_actor(config());
   let (journal_ref, journal_messages) = actor_ref(Pid::new(207, 1));

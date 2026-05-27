@@ -135,6 +135,39 @@ fn local_snapshot_store_save_then_load_preserves_snapshot_metadata() {
 }
 
 #[test]
+fn local_snapshot_store_metadata_sidecar_uses_full_snapshot_file_name() {
+  let directory = unique_snapshot_dir("metadata-dotted-pid");
+  let mut store = open_store(&directory, 3);
+  let persistence_id = "user.1";
+  save_snapshot(&mut store, SnapshotMetadata::new(persistence_id, 1, 10).with_metadata("seq=1"), 1);
+  save_snapshot(&mut store, SnapshotMetadata::new(persistence_id, 2, 20).with_metadata("seq=2"), 2);
+
+  let criteria = SnapshotSelectionCriteria::new(1, u64::MAX, 1, 0);
+  let loaded = poll_ready(store.load_snapshot(persistence_id, criteria))
+    .expect("load first snapshot")
+    .expect("first snapshot should exist");
+
+  assert_eq!(loaded.metadata().metadata(), Some("seq=1"));
+  assert_snapshot(&loaded, 1, 1);
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
+fn local_snapshot_store_overwrite_without_metadata_removes_stale_sidecar() {
+  let directory = unique_snapshot_dir("metadata-overwrite-none");
+  let mut store = open_store(&directory, 3);
+  let metadata_with_sidecar = SnapshotMetadata::new("pid-1", 1, 10).with_metadata("stale");
+  save_snapshot(&mut store, metadata_with_sidecar, 1);
+  save_snapshot(&mut store, SnapshotMetadata::new("pid-1", 1, 10), 2);
+
+  let loaded = load_latest(&store, "pid-1").expect("snapshot should be loaded");
+
+  assert_eq!(loaded.metadata().metadata(), None);
+  assert_snapshot(&loaded, 1, 2);
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
 fn local_snapshot_store_load_latest_selects_highest_sequence_number() {
   let directory = unique_snapshot_dir("latest");
   let mut store = open_store(&directory, 3);

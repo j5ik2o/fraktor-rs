@@ -101,7 +101,7 @@ where
       actor.pending_persist_reply = None;
       Self::reply(&reply_to, PersistenceStoreReply::PersistedEvents {
         events: vec![persisted_event.clone()],
-        published_events: vec![actor.published_event(repr, persisted_event.clone())],
+        published_events: actor.published_events(repr, persisted_event.clone()),
         sequence_nr,
       });
     });
@@ -143,9 +143,11 @@ where
           return;
         };
         actor.state = actor.config.apply_event(&actor.state, persisted_event);
-        published_events.with_lock(|events| {
-          events.push(actor.published_event(repr, persisted_event.clone()));
-        });
+        if let Some(published_event) = actor.published_event(repr, persisted_event.clone()) {
+          published_events.with_lock(|events| {
+            events.push(published_event);
+          });
+        }
         let completed = completion_count.with_lock(|count| {
           *count += 1;
           *count == event_count
@@ -216,15 +218,22 @@ where
     self.context.add_to_event_batch(event, true, sender, handler);
   }
 
-  fn published_event(&self, repr: &PersistentRepr, event: E) -> PublishedEvent<E> {
+  fn published_events(&self, repr: &PersistentRepr, event: E) -> Vec<PublishedEvent<E>> {
+    self.published_event(repr, event).map_or_else(Vec::new, |published_event| vec![published_event])
+  }
+
+  fn published_event(&self, repr: &PersistentRepr, event: E) -> Option<PublishedEvent<E>> {
+    if !self.config.event_publishing_enabled() {
+      return None;
+    }
     let tags = self.config.event_tags(&event);
-    PublishedEvent::new(
+    Some(PublishedEvent::new(
       PersistenceId::of_unique_id(repr.persistence_id()),
       repr.sequence_nr(),
       event,
       repr.timestamp(),
       tags,
-    )
+    ))
   }
 
   fn reply_persist_type_mismatch(&mut self, repr: &PersistentRepr) {

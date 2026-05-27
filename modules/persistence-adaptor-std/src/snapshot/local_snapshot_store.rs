@@ -92,6 +92,7 @@ impl LocalSnapshotStore {
       SnapshotError::SaveFailed(format!("rename temp snapshot {} to {}: {error}", temp_path.display(), path.display()))
     })?;
     self.save_snapshot_metadata(metadata, &path)?;
+    #[cfg(not(windows))]
     File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
       SnapshotError::SaveFailed(format!("sync snapshot directory {}: {error}", self.directory.display()))
     })?;
@@ -225,10 +226,10 @@ impl LocalSnapshotStore {
   }
 
   fn save_snapshot_metadata(&self, metadata: &SnapshotMetadata, path: &Path) -> Result<(), SnapshotError> {
-    let Some(metadata) = metadata.metadata() else {
-      return Ok(());
-    };
     let metadata_path = Self::snapshot_metadata_path(path);
+    let Some(metadata) = metadata.metadata() else {
+      return Self::remove_stale_snapshot_metadata(&metadata_path);
+    };
     let temp_metadata_path = Self::temp_snapshot_path(&metadata_path);
     fs::write(&temp_metadata_path, metadata.as_bytes()).map_err(|error| {
       SnapshotError::SaveFailed(format!("write temp snapshot metadata {}: {error}", temp_metadata_path.display()))
@@ -243,6 +244,16 @@ impl LocalSnapshotStore {
     Ok(())
   }
 
+  fn remove_stale_snapshot_metadata(metadata_path: &Path) -> Result<(), SnapshotError> {
+    match fs::remove_file(metadata_path) {
+      | Ok(()) => Ok(()),
+      | Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+      | Err(error) => {
+        Err(SnapshotError::SaveFailed(format!("delete snapshot metadata {}: {error}", metadata_path.display())))
+      },
+    }
+  }
+
   fn load_snapshot_metadata(&self, path: &Path) -> Result<Option<String>, SnapshotError> {
     let metadata_path = Self::snapshot_metadata_path(path);
     match fs::read_to_string(&metadata_path) {
@@ -255,7 +266,10 @@ impl LocalSnapshotStore {
   }
 
   fn snapshot_metadata_path(path: &Path) -> PathBuf {
-    path.with_extension(SNAPSHOT_METADATA_EXTENSION)
+    match path.file_name().and_then(OsStr::to_str) {
+      | Some(file_name) => path.with_file_name(format!("{file_name}.{SNAPSHOT_METADATA_EXTENSION}")),
+      | None => path.with_extension(SNAPSHOT_METADATA_EXTENSION),
+    }
   }
 
   fn snapshot_path(&self, metadata: &SnapshotMetadata) -> PathBuf {
