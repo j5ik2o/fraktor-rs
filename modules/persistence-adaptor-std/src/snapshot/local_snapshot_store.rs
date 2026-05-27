@@ -360,7 +360,7 @@ impl LocalSnapshotStore {
   }
 
   const fn is_form_urlencoded_safe(byte: u8) -> bool {
-    matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.')
+    matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.')
   }
 
   const fn decode_hex(byte: u8) -> Option<u8> {

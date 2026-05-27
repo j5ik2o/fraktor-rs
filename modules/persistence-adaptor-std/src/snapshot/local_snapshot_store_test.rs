@@ -325,6 +325,22 @@ fn local_snapshot_store_percent_encodes_asterisk_in_persistence_id_file_name() {
 }
 
 #[test]
+fn local_snapshot_store_percent_encodes_dash_in_persistence_id_file_name() {
+  let directory = unique_snapshot_dir("encoded-dash-pid");
+  let mut store = open_store(&directory, 3);
+  let persistence_id = "order-42";
+
+  save_snapshot(&mut store, SnapshotMetadata::new(persistence_id, 1, 10), 99);
+  let loaded = load_latest(&store, persistence_id).expect("snapshot with escaped persistence id should load");
+
+  assert_snapshot(&loaded, 1, 99);
+  let file_name =
+    snapshot_file_for_sequence(&directory, 1).file_name().expect("file name").to_string_lossy().into_owned();
+  assert!(file_name.contains("order%2D42"));
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
 fn local_snapshot_store_loads_pekko_form_urlencoded_snapshot_file_name() {
   let directory = unique_snapshot_dir("pekko-encoded-pid");
   let mut store = open_store(&directory, 3);
