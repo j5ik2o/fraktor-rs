@@ -35,6 +35,7 @@ type OnReady<S, E, M> = dyn Fn(S, PersistenceEffector<S, E, M>) -> Result<Behavi
 type EventCallback<E, M> = Box<dyn FnOnce(&E) -> Result<Behavior<M>, ActorError> + Send>;
 type EventsCallback<E, M> = Box<dyn FnOnce(&[E]) -> Result<Behavior<M>, ActorError> + Send>;
 type SnapshotCallback<S, M> = Box<dyn FnOnce(&S) -> Result<Behavior<M>, ActorError> + Send>;
+type StoreRefs<S, E> = (TypedActorRef<PersistenceStoreCommand<S, E>>, TypedActorRef<PersistenceStoreReply<S, E>>);
 
 /// Starts persistence side effects for a typed aggregate actor.
 pub struct PersistenceEffector<S, E, M>
@@ -554,8 +555,7 @@ where
                     snapshot.clone(),
                     to_sequence_nr,
                     stash,
-                    store_ref,
-                    reply_to,
+                    (store_ref, reply_to),
                     persist_failure_backoff_enabled,
                   ));
                 }
@@ -596,10 +596,10 @@ where
     snapshot: S,
     to_sequence_nr: u64,
     stash: StashBuffer<M>,
-    store_ref: TypedActorRef<PersistenceStoreCommand<S, E>>,
-    reply_to: TypedActorRef<PersistenceStoreReply<S, E>>,
+    store_refs: StoreRefs<S, E>,
     persist_failure_backoff_enabled: bool,
   ) -> Behavior<M> {
+    let (store_ref, reply_to) = store_refs;
     Behaviors::receive_message(move |ctx, message| {
       if let Some(signal) = adapter.unwrap_signal(message) {
         return match signal {

@@ -44,42 +44,30 @@ impl PersistencePluginProxyActor {
     }
   }
 
-  fn forward_journal_message(
-    &mut self,
-    ctx: &mut ActorContext<'_>,
-    message: &JournalMessage,
-  ) -> Result<(), ActorError> {
+  fn forward_journal_message(&mut self, ctx: &mut ActorContext<'_>, message: &JournalMessage) {
     match &mut self.journal_target {
       | Some(target) => match ctx.try_forward(target, AnyMessage::new(message.clone())) {
-        | Ok(()) => Ok(()),
+        | Ok(()) => {},
         | Err(_) => {
           reply_journal_failure(message, JOURNAL_TARGET_FORWARD_FAILED);
-          Ok(())
         },
       },
       | None => {
         reply_journal_failure(message, JOURNAL_TARGET_NOT_SET);
-        Ok(())
       },
     }
   }
 
-  fn forward_snapshot_message(
-    &mut self,
-    ctx: &mut ActorContext<'_>,
-    message: &SnapshotMessage,
-  ) -> Result<(), ActorError> {
+  fn forward_snapshot_message(&mut self, ctx: &mut ActorContext<'_>, message: &SnapshotMessage) {
     match &mut self.snapshot_target {
       | Some(target) => match ctx.try_forward(target, AnyMessage::new(message.clone())) {
-        | Ok(()) => Ok(()),
+        | Ok(()) => {},
         | Err(_) => {
           reply_snapshot_failure(message, SNAPSHOT_TARGET_FORWARD_FAILED);
-          Ok(())
         },
       },
       | None => {
         reply_snapshot_failure(message, SNAPSHOT_TARGET_NOT_SET);
-        Ok(())
       },
     }
   }
@@ -99,11 +87,13 @@ impl Actor for PersistencePluginProxyActor {
     }
 
     if let Some(journal_message) = message.downcast_ref::<JournalMessage>() {
-      return self.forward_journal_message(ctx, journal_message);
+      self.forward_journal_message(ctx, journal_message);
+      return Ok(());
     }
 
     if let Some(snapshot_message) = message.downcast_ref::<SnapshotMessage>() {
-      return self.forward_snapshot_message(ctx, snapshot_message);
+      self.forward_snapshot_message(ctx, snapshot_message);
+      return Ok(());
     }
 
     Ok(())
@@ -192,9 +182,9 @@ fn atomic_write_payload_count(messages: &[AtomicWrite]) -> u64 {
 }
 
 fn tell_journal_response(sender: &mut ActorRef, response: JournalResponse) {
-  let _ = sender.try_tell(AnyMessage::new(response));
+  if sender.try_tell(AnyMessage::new(response)).is_err() {}
 }
 
 fn tell_snapshot_response(sender: &mut ActorRef, response: SnapshotResponse) {
-  let _ = sender.try_tell(AnyMessage::new(response));
+  if sender.try_tell(AnyMessage::new(response)).is_err() {}
 }
