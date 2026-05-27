@@ -18,8 +18,8 @@ use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{
   EventRejectedError, EventSourcedSignal, PersistenceEffector, PersistenceEffectorConfig,
-  PersistenceEffectorMessageAdapter, PersistenceEffectorSignal, PersistenceId, PublishedEvent, RetentionCriteria,
-  persistence_effector_signal_auth::PersistenceEffectorSignalAuth,
+  PersistenceEffectorMessageAdapter, PersistenceEffectorSignal, PersistenceId, PersistenceMode, PublishedEvent,
+  RetentionCriteria, persistence_effector_signal_auth::PersistenceEffectorSignalAuth,
 };
 
 type RecordedEvents = ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>;
@@ -64,6 +64,23 @@ fn event_publishing_enabled_publishes_persisted_event_to_system_event_stream() {
   guardian.try_tell(AggregateCommand::Add(7)).expect("persist command should be accepted");
   wait_for_persisted_events(&persisted_events, &[7]);
   wait_until(|| contains_published_event(&recorded_events, "published-event", 1, 7));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn event_publishing_enabled_publishes_ephemeral_event_to_system_event_stream() {
+  let recorded_events = new_recorded_events();
+  let persisted_events = new_persisted_events();
+  let props =
+    aggregate_props_with_mode("ephemeral-published-event", persisted_events.clone(), true, PersistenceMode::Ephemeral);
+  let system = typed_persistence_system(&props);
+  let subscriber = subscriber_handle(RecordingSubscriber::new(recorded_events.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+  let mut guardian = system.user_guardian_ref();
+  guardian.try_tell(AggregateCommand::Add(11)).expect("persist command should be accepted");
+  wait_for_persisted_events(&persisted_events, &[11]);
+  wait_until(|| contains_published_event(&recorded_events, "ephemeral-published-event", 1, 11));
 
   system.terminate().expect("terminate");
 }
@@ -156,9 +173,19 @@ fn aggregate_props(
   persisted_events: PersistedEvents,
   event_publishing: bool,
 ) -> TypedProps<AggregateCommand> {
+  aggregate_props_with_mode(persistence_id, persisted_events, event_publishing, PersistenceMode::Persisted)
+}
+
+fn aggregate_props_with_mode(
+  persistence_id: &str,
+  persisted_events: PersistedEvents,
+  event_publishing: bool,
+  persistence_mode: PersistenceMode,
+) -> TypedProps<AggregateCommand> {
   let config = PersistenceEffectorConfig::new(PersistenceId::of_unique_id(persistence_id), 0_u32, apply_event)
     .with_message_adapter(message_adapter())
-    .with_event_publishing(event_publishing);
+    .with_event_publishing(event_publishing)
+    .with_persistence_mode(persistence_mode);
 
   PersistenceEffector::props(config, move |_state, effector| Ok(aggregate_behavior(effector, persisted_events.clone())))
 }

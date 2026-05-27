@@ -30,6 +30,7 @@ use crate::snapshot::LocalSnapshotStoreConfig;
 const SNAPSHOT_FILE_PREFIX: &str = "snapshot-";
 const SNAPSHOT_FILE_SEPARATOR: char = '-';
 const SNAPSHOT_TEMP_EXTENSION: &str = "tmp";
+const SNAPSHOT_METADATA_EXTENSION: &str = "meta";
 const SNAPSHOT_PAYLOAD_TYPE_NAME: &str = "SnapshotPayload";
 const PERCENT_ENCODING_MARKER: char = '%';
 const SPACE_BYTE: u8 = b' ';
@@ -90,6 +91,7 @@ impl LocalSnapshotStore {
     fs::rename(&temp_path, &path).map_err(|error| {
       SnapshotError::SaveFailed(format!("rename temp snapshot {} to {}: {error}", temp_path.display(), path.display()))
     })?;
+    self.save_snapshot_metadata(metadata, &path)?;
     File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(|error| {
       SnapshotError::SaveFailed(format!("sync snapshot directory {}: {error}", self.directory.display()))
     })?;
@@ -163,7 +165,11 @@ impl LocalSnapshotStore {
     let payload = payload.downcast::<SnapshotPayload>().map_err(|_| {
       SnapshotError::LoadFailed(format!("deserialize snapshot {}: payload type mismatch", candidate.path.display()))
     })?;
-    Ok(Snapshot::new(candidate.metadata.clone(), payload.data().clone()))
+    let metadata = match self.load_snapshot_metadata(&candidate.path)? {
+      | Some(metadata) => candidate.metadata.clone().with_metadata(metadata),
+      | None => candidate.metadata.clone(),
+    };
+    Ok(Snapshot::new(metadata, payload.data().clone()))
   }
 
   fn snapshot_candidates(
@@ -175,7 +181,11 @@ impl LocalSnapshotStore {
     for entry in fs::read_dir(&self.directory)? {
       let entry = entry?;
       let path = entry.path();
-      if path.extension() == Some(OsStr::new(SNAPSHOT_TEMP_EXTENSION)) {
+      if matches!(
+        path.extension(),
+        Some(extension)
+          if extension == OsStr::new(SNAPSHOT_TEMP_EXTENSION) || extension == OsStr::new(SNAPSHOT_METADATA_EXTENSION)
+      ) {
         continue;
       }
       let Some(file_name) = path.file_name().and_then(OsStr::to_str) else {
@@ -203,7 +213,49 @@ impl LocalSnapshotStore {
       | Ok(()) => Ok(()),
       | Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
       | Err(error) => Err(SnapshotError::DeleteFailed(format!("delete snapshot {}: {error}", path.display()))),
+    }?;
+    let metadata_path = Self::snapshot_metadata_path(path);
+    match fs::remove_file(&metadata_path) {
+      | Ok(()) => Ok(()),
+      | Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+      | Err(error) => {
+        Err(SnapshotError::DeleteFailed(format!("delete snapshot metadata {}: {error}", metadata_path.display())))
+      },
     }
+  }
+
+  fn save_snapshot_metadata(&self, metadata: &SnapshotMetadata, path: &Path) -> Result<(), SnapshotError> {
+    let Some(metadata) = metadata.metadata() else {
+      return Ok(());
+    };
+    let metadata_path = Self::snapshot_metadata_path(path);
+    let temp_metadata_path = Self::temp_snapshot_path(&metadata_path);
+    fs::write(&temp_metadata_path, metadata.as_bytes()).map_err(|error| {
+      SnapshotError::SaveFailed(format!("write temp snapshot metadata {}: {error}", temp_metadata_path.display()))
+    })?;
+    fs::rename(&temp_metadata_path, &metadata_path).map_err(|error| {
+      SnapshotError::SaveFailed(format!(
+        "rename temp snapshot metadata {} to {}: {error}",
+        temp_metadata_path.display(),
+        metadata_path.display()
+      ))
+    })?;
+    Ok(())
+  }
+
+  fn load_snapshot_metadata(&self, path: &Path) -> Result<Option<String>, SnapshotError> {
+    let metadata_path = Self::snapshot_metadata_path(path);
+    match fs::read_to_string(&metadata_path) {
+      | Ok(metadata) => Ok(Some(metadata)),
+      | Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+      | Err(error) => {
+        Err(SnapshotError::LoadFailed(format!("read snapshot metadata {}: {error}", metadata_path.display())))
+      },
+    }
+  }
+
+  fn snapshot_metadata_path(path: &Path) -> PathBuf {
+    path.with_extension(SNAPSHOT_METADATA_EXTENSION)
   }
 
   fn snapshot_path(&self, metadata: &SnapshotMetadata) -> PathBuf {
@@ -270,7 +322,7 @@ impl LocalSnapshotStore {
   }
 
   const fn is_form_urlencoded_safe(byte: u8) -> bool {
-    matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'*')
+    matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.')
   }
 
   const fn decode_hex(byte: u8) -> Option<u8> {

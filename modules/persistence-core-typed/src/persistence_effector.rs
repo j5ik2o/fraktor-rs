@@ -212,7 +212,7 @@ where
   /// Persists one event and runs a one-shot callback after success.
   pub fn persist_event<F>(
     &self,
-    _ctx: &mut TypedActorContext<'_, M>,
+    ctx: &mut TypedActorContext<'_, M>,
     event: E,
     on_persisted: F,
   ) -> Result<Behavior<M>, ActorError>
@@ -224,6 +224,8 @@ where
     if self.config.persistence_mode() == PersistenceMode::Ephemeral {
       let (events, sequence_nr) = self.persist_ephemeral_events(vec![event])?;
       self.update_sequence_nr(sequence_nr);
+      let published_events = self.published_ephemeral_events(&events, sequence_nr);
+      Self::publish_events(ctx, self.config.event_publishing_enabled(), &published_events)?;
       return match events.first() {
         | Some(event) => on_persisted(event),
         | None => Ok(Behaviors::same()),
@@ -240,7 +242,7 @@ where
   /// Persists multiple events as one batch and runs a one-shot callback after success.
   pub fn persist_events<F>(
     &self,
-    _ctx: &mut TypedActorContext<'_, M>,
+    ctx: &mut TypedActorContext<'_, M>,
     events: Vec<E>,
     on_persisted: F,
   ) -> Result<Behavior<M>, ActorError>
@@ -252,6 +254,8 @@ where
     if self.config.persistence_mode() == PersistenceMode::Ephemeral {
       let (events, sequence_nr) = self.persist_ephemeral_events(events)?;
       self.update_sequence_nr(sequence_nr);
+      let published_events = self.published_ephemeral_events(&events, sequence_nr);
+      Self::publish_events(ctx, self.config.event_publishing_enabled(), &published_events)?;
       return on_persisted(events.as_slice());
     }
     let mut store_ref = self.store_ref()?;
@@ -294,7 +298,7 @@ where
   /// Persists one event and evaluates snapshot criteria with the supplied snapshot.
   pub fn persist_event_with_snapshot<F>(
     &self,
-    _ctx: &mut TypedActorContext<'_, M>,
+    ctx: &mut TypedActorContext<'_, M>,
     event: E,
     snapshot: S,
     force_snapshot: bool,
@@ -308,6 +312,8 @@ where
     if self.config.persistence_mode() == PersistenceMode::Ephemeral {
       let (events, sequence_nr) = self.persist_ephemeral_events(vec![event])?;
       self.update_sequence_nr(sequence_nr);
+      let published_events = self.published_ephemeral_events(&events, sequence_nr);
+      Self::publish_events(ctx, self.config.event_publishing_enabled(), &published_events)?;
       if self.should_save_snapshot(events.last(), &snapshot, sequence_nr, force_snapshot) {
         self.persist_ephemeral_snapshot(snapshot, sequence_nr)?;
       }
@@ -334,7 +340,7 @@ where
   /// Persists event batch and evaluates snapshot criteria with the supplied snapshot.
   pub fn persist_events_with_snapshot<F>(
     &self,
-    _ctx: &mut TypedActorContext<'_, M>,
+    ctx: &mut TypedActorContext<'_, M>,
     events: Vec<E>,
     snapshot: S,
     force_snapshot: bool,
@@ -348,6 +354,8 @@ where
     if self.config.persistence_mode() == PersistenceMode::Ephemeral {
       let (events, sequence_nr) = self.persist_ephemeral_events(events)?;
       self.update_sequence_nr(sequence_nr);
+      let published_events = self.published_ephemeral_events(&events, sequence_nr);
+      Self::publish_events(ctx, self.config.event_publishing_enabled(), &published_events)?;
       if self.should_save_snapshot(events.last(), &snapshot, sequence_nr, force_snapshot) {
         self.persist_ephemeral_snapshot(snapshot, sequence_nr)?;
       }
@@ -375,6 +383,25 @@ where
 
   fn persist_ephemeral_events(&self, events: Vec<E>) -> Result<(Vec<E>, u64), ActorError> {
     self.ephemeral_store()?.persist_events(&self.config, events).map_err(map_persistence_error)
+  }
+
+  fn published_ephemeral_events(&self, events: &[E], sequence_nr: u64) -> Vec<PublishedEvent<E>> {
+    let event_count = u64::try_from(events.len()).unwrap_or(u64::MAX);
+    let first_sequence_nr = sequence_nr.saturating_sub(event_count.saturating_sub(1));
+    events
+      .iter()
+      .enumerate()
+      .map(|(index, event)| {
+        let sequence_nr = first_sequence_nr.saturating_add(u64::try_from(index).unwrap_or(u64::MAX));
+        PublishedEvent::new(
+          self.config.persistence_id().clone(),
+          sequence_nr,
+          event.clone(),
+          0,
+          self.config.event_tags(event),
+        )
+      })
+      .collect()
   }
 
   fn persist_ephemeral_snapshot(&self, snapshot: S, sequence_nr: u64) -> Result<S, ActorError> {

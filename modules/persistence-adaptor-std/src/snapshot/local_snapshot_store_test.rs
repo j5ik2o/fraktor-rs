@@ -121,6 +121,20 @@ fn local_snapshot_store_save_then_load_round_trips_payload() {
 }
 
 #[test]
+fn local_snapshot_store_save_then_load_preserves_snapshot_metadata() {
+  let directory = unique_snapshot_dir("metadata-round-trip");
+  let mut store = open_store(&directory, 3);
+  let metadata = SnapshotMetadata::new("pid-1", 1, 10).with_metadata("region=ap-northeast-1");
+
+  save_snapshot(&mut store, metadata, 42);
+  let loaded = load_latest(&store, "pid-1").expect("snapshot should be loaded");
+
+  assert_eq!(loaded.metadata().metadata(), Some("region=ap-northeast-1"));
+  assert_snapshot(&loaded, 1, 42);
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
 fn local_snapshot_store_load_latest_selects_highest_sequence_number() {
   let directory = unique_snapshot_dir("latest");
   let mut store = open_store(&directory, 3);
@@ -229,6 +243,23 @@ fn local_snapshot_store_encodes_persistence_id_before_using_it_in_file_name() {
     snapshot_file_for_sequence(&directory, 1).file_name().expect("file name").to_string_lossy().into_owned();
   assert!(!file_name.contains('/'));
   assert!(file_name.contains("entity%2Ftype+1"));
+  remove_dir_if_exists(&directory);
+}
+
+#[test]
+fn local_snapshot_store_percent_encodes_asterisk_in_persistence_id_file_name() {
+  let directory = unique_snapshot_dir("encoded-asterisk-pid");
+  let mut store = open_store(&directory, 3);
+  let persistence_id = "order*42";
+
+  save_snapshot(&mut store, SnapshotMetadata::new(persistence_id, 1, 10), 99);
+  let loaded = load_latest(&store, persistence_id).expect("snapshot with escaped persistence id should load");
+
+  assert_snapshot(&loaded, 1, 99);
+  let file_name =
+    snapshot_file_for_sequence(&directory, 1).file_name().expect("file name").to_string_lossy().into_owned();
+  assert!(!file_name.contains('*'));
+  assert!(file_name.contains("order%2A42"));
   remove_dir_if_exists(&directory);
 }
 
