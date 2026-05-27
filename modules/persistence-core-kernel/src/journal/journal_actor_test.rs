@@ -19,7 +19,10 @@ use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::JournalPoll;
 use crate::{
-  journal::{InMemoryJournal, JournalActor, JournalActorConfig, JournalError, JournalMessage, JournalResponse},
+  journal::{
+    InMemoryJournal, JournalActor, JournalActorConfig, JournalError, JournalMessage, JournalPluginMessageHandler,
+    JournalResponse, PluginMessageHandling,
+  },
   persistent::{AtomicWrite, PersistentRepr},
 };
 
@@ -251,6 +254,34 @@ impl crate::journal::Journal for ScriptedJournal {
   }
 }
 
+struct JournalPluginCommand {
+  marker: u32,
+}
+
+struct RecordingJournalPluginHandler {
+  markers: ArcShared<SpinSyncMutex<Vec<u32>>>,
+}
+
+impl RecordingJournalPluginHandler {
+  fn new(markers: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
+    Self { markers }
+  }
+}
+
+impl JournalPluginMessageHandler for RecordingJournalPluginHandler {
+  fn handle_journal_plugin_message(
+    &mut self,
+    _ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
+  ) -> Result<PluginMessageHandling, ActorError> {
+    if let Some(command) = message.downcast_ref::<JournalPluginCommand>() {
+      self.markers.lock().push(command.marker);
+      return Ok(PluginMessageHandling::Handled);
+    }
+    Ok(PluginMessageHandling::Unhandled)
+  }
+}
+
 #[test]
 fn scripted_journal_success_paths_are_exercised() {
   let system = new_test_system();
@@ -349,6 +380,23 @@ fn journal_actor_ignores_unrelated_messages() {
 
   let any_message = AnyMessage::new(());
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
+}
+
+#[test]
+fn should_delegate_unknown_message_to_journal_plugin_handler_when_message_is_not_protocol_message() {
+  let system = new_test_system();
+  let pid = test_actor_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let markers = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let handler = RecordingJournalPluginHandler::new(markers.clone());
+  let mut actor = JournalActor::<InMemoryJournal>::new_with_plugin_handler(InMemoryJournal::new(), handler);
+
+  let any_message = AnyMessage::new(JournalPluginCommand { marker: 42 });
+  actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
+
+  let observed = markers.lock();
+  assert_eq!(observed.len(), 1);
+  assert_eq!(observed[0], 42);
 }
 
 #[test]

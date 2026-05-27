@@ -1,0 +1,27 @@
+[package]
+name = "fraktor-persistence-adaptor-std-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor standard adaptor bindings for persistence runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "persistence", "adaptor", "std"]
+categories = ["concurrency"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-persistence-adaptor-std-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+
+[dependencies]
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-persistence-core-kernel-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize", "std-locks"] }
+
+[dev-dependencies]
+critical-section = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

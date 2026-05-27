@@ -4,10 +4,19 @@
 #[path = "persistence_effector_test.rs"]
 mod tests;
 
-use alloc::{boxed::Box, format, string::ToString, vec, vec::Vec};
+use alloc::{
+  boxed::Box,
+  format,
+  string::{String, ToString},
+  vec,
+  vec::Vec,
+};
 use core::marker::PhantomData;
 
-use fraktor_actor_core_kernel_rs::actor::error::ActorError;
+use fraktor_actor_core_kernel_rs::{
+  actor::{error::ActorError, messaging::AnyMessage},
+  event::stream::EventStreamEvent,
+};
 use fraktor_actor_core_typed_rs::{
   Behavior, TypedActorRef, TypedProps,
   actor::TypedActorContext,
@@ -17,8 +26,8 @@ use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
-  PersistenceEffectorConfig, PersistenceEffectorMessageAdapter, PersistenceEffectorSignal, PersistenceMode,
-  RetentionCriteria,
+  EventSourcedSignal, PersistenceEffectorConfig, PersistenceEffectorMessageAdapter, PersistenceEffectorSignal,
+  PersistenceMode, PublishedEvent, RetentionCriteria,
   internal::{EphemeralPersistenceStore, PersistenceStoreActor, PersistenceStoreCommand, PersistenceStoreReply},
 };
 
@@ -174,6 +183,7 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -401,6 +411,7 @@ where
     };
     let callback = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(callback));
     let sequence_nr_cell = self.sequence_nr.clone();
+    let event_publishing = self.config.event_publishing_enabled();
     Behaviors::with_stash(self.config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let callback = callback.clone();
@@ -408,10 +419,11 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedEvents { events, sequence_nr, .. } => {
+            | PersistenceEffectorSignal::PersistedEvents { events, published_events, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
+              Self::publish_events(ctx, event_publishing, published_events)?;
               let next = callback.with_lock(|slot| {
                 slot.take().map(|callback| callback(events.as_slice())).unwrap_or_else(|| Ok(Behaviors::same()))
               })?;
@@ -419,6 +431,7 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -442,6 +455,7 @@ where
     let effector = self.clone();
     let sequence_nr_cell = self.sequence_nr.clone();
     let snapshot_criteria = self.config.snapshot_criteria().clone();
+    let event_publishing = self.config.event_publishing_enabled();
     Behaviors::with_stash(self.config.stash_capacity(), move |stash| {
       let adapter = adapter.clone();
       let callback = callback.clone();
@@ -452,10 +466,11 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedEvents { events, sequence_nr, .. } => {
+            | PersistenceEffectorSignal::PersistedEvents { events, published_events, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
+              Self::publish_events(ctx, event_publishing, published_events)?;
               let should_snapshot =
                 force_snapshot || snapshot_criteria.should_take_snapshot(events.last(), &snapshot, *sequence_nr);
               if should_snapshot {
@@ -481,6 +496,7 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
@@ -518,6 +534,20 @@ where
                   store_ref.clone().ok_or_else(|| ActorError::fatal("persistence store is not available"))?;
                 let reply_to =
                   reply_to.clone().ok_or_else(|| ActorError::fatal("persistence reply adapter is not available"))?;
+                if retention_criteria.delete_events_on_snapshot() {
+                  store_ref
+                    .try_tell(PersistenceStoreCommand::DeleteEvents { to_sequence_nr, reply_to: reply_to.clone() })
+                    .map_err(|error| ActorError::fatal(format!("delete events send failed: {error:?}")))?;
+                  return Ok(Self::wait_for_deleted_events_then_snapshots(
+                    adapter.clone(),
+                    callback.clone(),
+                    snapshot.clone(),
+                    to_sequence_nr,
+                    stash,
+                    store_ref,
+                    reply_to,
+                  ));
+                }
                 store_ref
                   .try_tell(PersistenceStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to })
                   .map_err(|error| ActorError::fatal(format!("delete snapshots send failed: {error:?}")))?;
@@ -536,12 +566,53 @@ where
               Ok(next)
             },
             | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
+            | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
             | _ => Ok(Behaviors::unhandled()),
           };
         }
         stash.stash(ctx)?;
         Ok(Behaviors::same())
       })
+    })
+  }
+
+  fn wait_for_deleted_events_then_snapshots(
+    adapter: PersistenceEffectorMessageAdapter<S, E, M>,
+    callback: SharedLock<Option<SnapshotCallback<S, M>>>,
+    snapshot: S,
+    to_sequence_nr: u64,
+    stash: StashBuffer<M>,
+    store_ref: TypedActorRef<PersistenceStoreCommand<S, E>>,
+    reply_to: TypedActorRef<PersistenceStoreReply<S, E>>,
+  ) -> Behavior<M> {
+    Behaviors::receive_message(move |ctx, message| {
+      if let Some(signal) = adapter.unwrap_signal(message) {
+        return match signal {
+          | PersistenceEffectorSignal::EventSourced {
+            signal: EventSourcedSignal::DeleteEventsCompleted { to_sequence_nr: deleted_to_sequence_nr },
+          } if *deleted_to_sequence_nr == to_sequence_nr => {
+            let mut store_ref = store_ref.clone();
+            store_ref
+              .try_tell(PersistenceStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to: reply_to.clone() })
+              .map_err(|error| ActorError::fatal(format!("delete snapshots send failed: {error:?}")))?;
+            Ok(Self::wait_for_deleted_snapshots(
+              adapter.clone(),
+              callback.clone(),
+              snapshot.clone(),
+              to_sequence_nr,
+              stash,
+            ))
+          },
+          | PersistenceEffectorSignal::EventSourced { signal: EventSourcedSignal::DeleteEventsCompleted { .. } } => {
+            Err(ActorError::fatal("unexpected event deletion acknowledgement"))
+          },
+          | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
+          | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
+          | _ => Ok(Behaviors::unhandled()),
+        };
+      }
+      stash.stash(ctx)?;
+      Ok(Behaviors::same())
     })
   }
 
@@ -572,6 +643,7 @@ where
             Err(ActorError::fatal("unexpected snapshot deletion acknowledgement"))
           },
           | PersistenceEffectorSignal::Failed { error, .. } => Err(ActorError::fatal(error.to_string())),
+          | PersistenceEffectorSignal::EventSourced { signal } => Self::event_sourced_signal_behavior(signal),
           | _ => Ok(Behaviors::unhandled()),
         };
       }
@@ -597,6 +669,58 @@ where
     }
     let max_sequence_nr_to_delete = oldest_kept_snapshot.checked_sub(snapshot_every)?;
     (max_sequence_nr_to_delete > 0).then_some(max_sequence_nr_to_delete)
+  }
+
+  fn publish_events(
+    ctx: &TypedActorContext<'_, M>,
+    event_publishing: bool,
+    published_events: &[PublishedEvent<E>],
+  ) -> Result<(), ActorError> {
+    if !event_publishing {
+      return Ok(());
+    }
+    for published_event in published_events {
+      let stream_event = EventStreamEvent::Extension {
+        name:    String::from("persistence"),
+        payload: AnyMessage::new(published_event.clone()),
+      };
+      ctx.system().publish_event(&stream_event);
+    }
+    Ok(())
+  }
+
+  fn event_sourced_signal_behavior(signal: &EventSourcedSignal) -> Result<Behavior<M>, ActorError> {
+    if Self::is_event_sourced_success_signal(signal) {
+      return Ok(Behaviors::same());
+    }
+    Err(ActorError::fatal(Self::event_sourced_signal_error(signal)))
+  }
+
+  const fn is_event_sourced_success_signal(signal: &EventSourcedSignal) -> bool {
+    matches!(
+      signal,
+      EventSourcedSignal::RecoveryCompleted
+        | EventSourcedSignal::SnapshotCompleted { .. }
+        | EventSourcedSignal::DeleteSnapshotsCompleted { .. }
+        | EventSourcedSignal::DeleteEventsCompleted { .. }
+    )
+  }
+
+  fn event_sourced_signal_error(signal: &EventSourcedSignal) -> String {
+    match signal {
+      | EventSourcedSignal::RecoveryCompleted => String::from("unexpected recovery completed signal"),
+      | EventSourcedSignal::RecoveryFailed { error } => error.to_string(),
+      | EventSourcedSignal::JournalPersistFailed { error } => error.to_string(),
+      | EventSourcedSignal::JournalPersistRejected { error } => error.to_string(),
+      | EventSourcedSignal::SnapshotCompleted { .. } => String::from("unexpected snapshot completed signal"),
+      | EventSourcedSignal::SnapshotFailed { error, .. } => error.to_string(),
+      | EventSourcedSignal::DeleteSnapshotsCompleted { .. } => {
+        String::from("unexpected delete snapshots completed signal")
+      },
+      | EventSourcedSignal::DeleteSnapshotsFailed { error, .. } => error.to_string(),
+      | EventSourcedSignal::DeleteEventsCompleted { .. } => String::from("unexpected delete events completed signal"),
+      | EventSourcedSignal::DeleteEventsFailed { error, .. } => error.to_string(),
+    }
   }
 }
 

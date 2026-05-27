@@ -14,4 +14,5 @@ where
   PersistEvents { events: Vec<E>, reply_to: TypedActorRef<PersistenceStoreReply<S, E>> },
   PersistSnapshot { snapshot: S, reply_to: TypedActorRef<PersistenceStoreReply<S, E>> },
   DeleteSnapshots { to_sequence_nr: u64, reply_to: TypedActorRef<PersistenceStoreReply<S, E>> },
+  DeleteEvents { to_sequence_nr: u64, reply_to: TypedActorRef<PersistenceStoreReply<S, E>> },
 }

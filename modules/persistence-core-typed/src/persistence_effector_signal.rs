@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 
-use crate::persistence_effector_signal_auth::PersistenceEffectorSignalAuth;
+use crate::{EventSourcedSignal, PublishedEvent, persistence_effector_signal_auth::PersistenceEffectorSignalAuth};
 
 /// Stable signal delivered to the aggregate actor through its private message type.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,11 +23,13 @@ pub enum PersistenceEffectorSignal<S, E> {
   #[non_exhaustive]
   PersistedEvents {
     #[doc(hidden)]
-    auth:        PersistenceEffectorSignalAuth,
+    auth:             PersistenceEffectorSignalAuth,
     /// Persisted events.
-    events:      Vec<E>,
+    events:           Vec<E>,
+    #[doc(hidden)]
+    published_events: Vec<PublishedEvent<E>>,
     /// Latest sequence number after the batch.
-    sequence_nr: u64,
+    sequence_nr:      u64,
   },
   /// A snapshot was persisted.
   #[non_exhaustive]
@@ -54,5 +56,10 @@ pub enum PersistenceEffectorSignal<S, E> {
     auth:  PersistenceEffectorSignalAuth,
     /// Persistence kernel error.
     error: PersistenceError,
+  },
+  /// Event-sourced behavior signal.
+  EventSourced {
+    /// Event-sourced signal payload.
+    signal: EventSourcedSignal,
   },
 }

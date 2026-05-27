@@ -21,8 +21,8 @@ use fraktor_actor_core_kernel_rs::actor::{
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::snapshot::{
-  Snapshot, SnapshotActorConfig, SnapshotError, SnapshotMessage, SnapshotMetadata, SnapshotResponse,
-  SnapshotSelectionCriteria, SnapshotStore,
+  PluginMessageHandling, Snapshot, SnapshotActorConfig, SnapshotError, SnapshotMessage, SnapshotMetadata,
+  SnapshotPluginMessageHandler, SnapshotResponse, SnapshotSelectionCriteria, SnapshotStore,
 };
 
 struct SnapshotPoll;
@@ -32,8 +32,9 @@ type SnapshotLoadFuture = Pin<Box<dyn Future<Output = Result<Option<Snapshot>, S
 type SnapshotDeleteFuture = Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>;
 
 struct SnapshotPollContext<'a, S: SnapshotStore> {
-  snapshot_store: &'a mut S,
-  retry_max:      u32,
+  snapshot_store:     &'a mut S,
+  retry_max:          u32,
+  observed_responses: &'a mut Vec<SnapshotResponse>,
 }
 
 enum SnapshotInFlight {
@@ -72,6 +73,7 @@ pub struct SnapshotActor<S: SnapshotStore> {
   in_flight:      Vec<SnapshotInFlight>,
   poll_scheduled: bool,
   config:         SnapshotActorConfig,
+  plugin_handler: Option<Box<dyn SnapshotPluginMessageHandler>>,
 }
 
 impl<S: SnapshotStore> SnapshotActor<S>
@@ -90,7 +92,22 @@ where
   /// Creates a new snapshot actor with configuration.
   #[must_use]
   pub const fn new_with_config(snapshot_store: S, config: SnapshotActorConfig) -> Self {
-    Self { snapshot_store, in_flight: Vec::new(), poll_scheduled: false, config }
+    Self { snapshot_store, in_flight: Vec::new(), poll_scheduled: false, config, plugin_handler: None }
+  }
+
+  /// Creates a new snapshot actor with a plugin message handler.
+  #[must_use]
+  pub fn new_with_plugin_handler(
+    snapshot_store: S,
+    plugin_handler: impl SnapshotPluginMessageHandler + 'static,
+  ) -> Self {
+    Self {
+      snapshot_store,
+      in_flight: Vec::new(),
+      poll_scheduled: false,
+      config: SnapshotActorConfig::default_config(),
+      plugin_handler: Some(Box::new(plugin_handler)),
+    }
   }
 
   fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
@@ -109,12 +126,43 @@ where
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
     for entry in in_flight {
-      if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max) {
+      let mut observed_responses = Vec::new();
+      if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max, &mut observed_responses) {
         pending.push(entry);
       }
+      self.observe_snapshot_responses(ctx, observed_responses)?;
     }
     self.in_flight = pending;
     self.schedule_poll(ctx)
+  }
+
+  fn receive_plugin_message(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
+  ) -> Result<(), ActorError> {
+    if let Some(plugin_handler) = self.plugin_handler.as_mut() {
+      match plugin_handler.handle_snapshot_plugin_message(ctx, message)? {
+        | PluginMessageHandling::Handled | PluginMessageHandling::Unhandled => {},
+      }
+    }
+    Ok(())
+  }
+
+  fn observe_snapshot_responses(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    responses: Vec<SnapshotResponse>,
+  ) -> Result<(), ActorError> {
+    if let Some(plugin_handler) = self.plugin_handler.as_mut() {
+      for response in responses {
+        let message = AnyMessage::new(response);
+        match plugin_handler.handle_snapshot_plugin_message(ctx, message.as_view())? {
+          | PluginMessageHandling::Handled | PluginMessageHandling::Unhandled => {},
+        }
+      }
+    }
+    Ok(())
   }
 }
 
@@ -174,8 +222,9 @@ where
         },
       }
       self.poll_in_flight(ctx)?;
+      return Ok(());
     }
-    Ok(())
+    self.receive_plugin_message(ctx, message)
   }
 }
 
@@ -185,13 +234,14 @@ fn poll_entry<S: SnapshotStore>(
   mut entry: SnapshotInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
+  observed_responses: &mut Vec<SnapshotResponse>,
 ) -> Option<SnapshotInFlight>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-  let mut poll_context = SnapshotPollContext { snapshot_store, retry_max };
+  let mut poll_context = SnapshotPollContext { snapshot_store, retry_max, observed_responses };
   let keep_pending = match &mut entry {
     | SnapshotInFlight::Save { future, metadata, snapshot, sender, retry_count } => {
       poll_save_entry(&mut poll_context, cx, future, metadata, snapshot, sender, retry_count)
@@ -223,7 +273,7 @@ where
   for<'a> S::SaveFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(())) => {
-      send_save_success(sender, metadata);
+      send_save_success(poll_context, sender, metadata);
       false
     },
     | Poll::Ready(Err(error)) => {
@@ -233,8 +283,16 @@ where
   }
 }
 
-fn send_save_success(sender: &mut ActorRef, metadata: &SnapshotMetadata) {
-  tell_response(sender, SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() });
+fn send_save_success<S: SnapshotStore>(
+  poll_context: &mut SnapshotPollContext<'_, S>,
+  sender: &mut ActorRef,
+  metadata: &SnapshotMetadata,
+) {
+  tell_response(
+    sender,
+    SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() },
+    poll_context.observed_responses,
+  );
 }
 
 fn retry_or_fail_save<S: SnapshotStore>(
@@ -253,7 +311,11 @@ where
     *future = Box::pin(poll_context.snapshot_store.save_snapshot(metadata.clone(), snapshot.clone()));
     return true;
   }
-  tell_response(sender, SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error });
+  tell_response(
+    sender,
+    SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error },
+    poll_context.observed_responses,
+  );
   false
 }
 
@@ -270,7 +332,7 @@ where
   for<'a> S::LoadFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(snapshot)) => {
-      send_load_success(sender, snapshot, criteria.max_sequence_nr());
+      send_load_success(poll_context, sender, snapshot, criteria.max_sequence_nr());
       false
     },
     | Poll::Ready(Err(error)) => {
@@ -280,8 +342,17 @@ where
   }
 }
 
-fn send_load_success(sender: &mut ActorRef, snapshot: Option<Snapshot>, to_sequence_nr: u64) {
-  tell_response(sender, SnapshotResponse::LoadSnapshotResult { snapshot, to_sequence_nr });
+fn send_load_success<S: SnapshotStore>(
+  poll_context: &mut SnapshotPollContext<'_, S>,
+  sender: &mut ActorRef,
+  snapshot: Option<Snapshot>,
+  to_sequence_nr: u64,
+) {
+  tell_response(
+    sender,
+    SnapshotResponse::LoadSnapshotResult { snapshot, to_sequence_nr },
+    poll_context.observed_responses,
+  );
 }
 
 fn retry_or_fail_load<S: SnapshotStore>(
@@ -300,7 +371,7 @@ where
     *future = Box::pin(poll_context.snapshot_store.load_snapshot(persistence_id, criteria.clone()));
     return true;
   }
-  tell_response(sender, SnapshotResponse::LoadSnapshotFailed { error });
+  tell_response(sender, SnapshotResponse::LoadSnapshotFailed { error }, poll_context.observed_responses);
   false
 }
 
@@ -316,7 +387,7 @@ where
   for<'a> S::DeleteOneFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(())) => {
-      send_delete_one_success(sender, metadata);
+      send_delete_one_success(poll_context, sender, metadata);
       false
     },
     | Poll::Ready(Err(error)) => retry_or_fail_delete_one(poll_context, future, metadata, sender, retry_count, error),
@@ -324,8 +395,16 @@ where
   }
 }
 
-fn send_delete_one_success(sender: &mut ActorRef, metadata: &SnapshotMetadata) {
-  tell_response(sender, SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() });
+fn send_delete_one_success<S: SnapshotStore>(
+  poll_context: &mut SnapshotPollContext<'_, S>,
+  sender: &mut ActorRef,
+  metadata: &SnapshotMetadata,
+) {
+  tell_response(
+    sender,
+    SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() },
+    poll_context.observed_responses,
+  );
 }
 
 fn retry_or_fail_delete_one<S: SnapshotStore>(
@@ -343,7 +422,11 @@ where
     *future = Box::pin(poll_context.snapshot_store.delete_snapshot(metadata));
     return true;
   }
-  tell_response(sender, SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error });
+  tell_response(
+    sender,
+    SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error },
+    poll_context.observed_responses,
+  );
   false
 }
 
@@ -360,7 +443,7 @@ where
   for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
   match Future::poll(future.as_mut(), cx) {
     | Poll::Ready(Ok(())) => {
-      send_delete_many_success(sender, criteria);
+      send_delete_many_success(poll_context, sender, criteria);
       false
     },
     | Poll::Ready(Err(error)) => {
@@ -370,8 +453,16 @@ where
   }
 }
 
-fn send_delete_many_success(sender: &mut ActorRef, criteria: &SnapshotSelectionCriteria) {
-  tell_response(sender, SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() });
+fn send_delete_many_success<S: SnapshotStore>(
+  poll_context: &mut SnapshotPollContext<'_, S>,
+  sender: &mut ActorRef,
+  criteria: &SnapshotSelectionCriteria,
+) {
+  tell_response(
+    sender,
+    SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() },
+    poll_context.observed_responses,
+  );
 }
 
 fn retry_or_fail_delete_many<S: SnapshotStore>(
@@ -390,11 +481,16 @@ where
     *future = Box::pin(poll_context.snapshot_store.delete_snapshots(persistence_id, criteria.clone()));
     return true;
   }
-  tell_response(sender, SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error });
+  tell_response(
+    sender,
+    SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error },
+    poll_context.observed_responses,
+  );
   false
 }
 
-fn tell_response(sender: &mut ActorRef, response: SnapshotResponse) {
+fn tell_response(sender: &mut ActorRef, response: SnapshotResponse, observed_responses: &mut Vec<SnapshotResponse>) {
+  observed_responses.push(response.clone());
   // 返信先の閉鎖は要求元側の状態なので、snapshot actor 自身の失敗にはしない。
   sender.tell(AnyMessage::new(response));
 }

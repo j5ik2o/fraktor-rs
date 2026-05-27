@@ -221,7 +221,7 @@ where
     if recovery_running {
       self.fail_on_recovery_journal_failure(response)?;
     }
-    Self::fail_on_current_write_failure(response, current_instance_id)?;
+    self.fail_on_current_write_failure(response, current_instance_id)?;
     if self.should_unstash_after_journal_response(response, current_instance_id) {
       // unstash_all は Result<usize, ActorError>。`?` でエラーを伝播したうえで
       // 件数 usize は分岐に不要なため捨てる (式文扱い)。
@@ -245,16 +245,15 @@ where
     }
   }
 
-  fn fail_on_current_write_failure(response: &JournalResponse, current_instance_id: u32) -> Result<(), ActorError> {
+  fn fail_on_current_write_failure(
+    &self,
+    response: &JournalResponse,
+    current_instance_id: u32,
+  ) -> Result<(), ActorError> {
     if let JournalResponse::WriteMessageFailure { repr, cause, instance_id } = response
       && *instance_id == current_instance_id
     {
-      return Err(ActorError::fatal(format!(
-        "persistent actor stopped after write failure for persistence id {} sequence number {}: {:?}",
-        repr.persistence_id(),
-        repr.sequence_nr(),
-        cause
-      )));
+      return Err(self.actor.persist_failure_error(cause, repr));
     }
     Ok(())
   }

@@ -340,10 +340,12 @@ impl<A: 'static> PersistenceContext<A> {
       | JournalResponse::ReplayMessagesFailure { cause } => {
         JournalResponseAction::RecoveryFailure(PersistenceError::from(cause.clone()))
       },
-      | JournalResponse::DeleteMessagesFailure { cause, .. } => {
-        JournalResponseAction::RecoveryFailure(PersistenceError::from(cause.clone()))
+      | JournalResponse::DeleteMessagesSuccess { to_sequence_nr } => {
+        JournalResponseAction::DeleteMessagesSuccess(*to_sequence_nr)
       },
-      | _ => JournalResponseAction::None,
+      | JournalResponse::DeleteMessagesFailure { cause, to_sequence_nr } => {
+        JournalResponseAction::DeleteMessagesFailure { cause: cause.clone(), to_sequence_nr: *to_sequence_nr }
+      },
     }
   }
 
