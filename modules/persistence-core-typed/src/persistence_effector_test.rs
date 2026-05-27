@@ -86,6 +86,37 @@ fn event_publishing_enabled_publishes_ephemeral_event_to_system_event_stream() {
 }
 
 #[test]
+fn event_publishing_disabled_does_not_run_tagger_in_ephemeral_mode() {
+  let persisted_events = new_persisted_events();
+  let observed_persisted_events = persisted_events.clone();
+  let tagger_calls = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
+  let observed_tagger_calls = tagger_calls.clone();
+  let config = PersistenceEffectorConfig::new(
+    PersistenceId::of_unique_id("ephemeral-unpublished-tagged-event"),
+    0_u32,
+    apply_event,
+  )
+  .with_message_adapter(message_adapter())
+  .with_event_publishing(false)
+  .with_persistence_mode(PersistenceMode::Ephemeral)
+  .with_tagger(move |_event| {
+    tagger_calls.with_write(|calls| *calls += 1);
+    BTreeSet::new()
+  });
+  let props = PersistenceEffector::props(config, move |_state, effector| {
+    Ok(aggregate_behavior(effector, persisted_events.clone()))
+  });
+  let system = typed_persistence_system(&props);
+  let mut guardian = system.user_guardian_ref();
+  guardian.try_tell(AggregateCommand::Add(13)).expect("persist command should be accepted");
+
+  wait_for_persisted_events(&observed_persisted_events, &[13]);
+  assert_eq!(observed_tagger_calls.with_read(|calls| *calls), 0);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
 fn event_publishing_disabled_does_not_publish_persisted_event_to_system_event_stream() {
   let recorded_events = new_recorded_events();
   let persisted_events = new_persisted_events();

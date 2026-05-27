@@ -386,6 +386,9 @@ where
   }
 
   fn published_ephemeral_events(&self, events: &[E], sequence_nr: u64) -> Vec<PublishedEvent<E>> {
+    if !self.config.event_publishing_enabled() {
+      return Vec::new();
+    }
     let event_count = u64::try_from(events.len()).unwrap_or(u64::MAX);
     let first_sequence_nr = sequence_nr.saturating_sub(event_count.saturating_sub(1));
     events
