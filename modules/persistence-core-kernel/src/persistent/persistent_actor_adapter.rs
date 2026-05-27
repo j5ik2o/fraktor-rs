@@ -205,6 +205,8 @@ where
           | JournalResponse::WriteMessagesFailed { .. }
           | JournalResponse::RecoverySuccess { .. }
           | JournalResponse::HighestSequenceNr { .. }
+          | JournalResponse::DeleteMessagesSuccess { .. }
+          | JournalResponse::DeleteMessagesFailure { .. }
       )
       && self.actor.persistence_context().state() == PersistentActorState::ProcessingCommands
   }
