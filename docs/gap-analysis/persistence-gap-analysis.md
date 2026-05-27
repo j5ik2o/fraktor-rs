@@ -171,7 +171,7 @@ Durable state store contract は kernel に存在するが、Pekko typed の wri
 
 ### Phase 2: medium
 
-現時点で未実装の medium gap はない。前回 Phase 2 に置いていた `LocalSnapshotStore`、advanced plugin message hook、plugin proxy extension semantics、`EventSourcedSignal` family、`PublishedEvent` / `EventRejectedException`、behavior-level `onPersistFailure` は実装済みに移動した。
+現時点で未実装の medium gap はない。前回 Phase 2 に置いていた `LocalSnapshotStore`、advanced plugin message hook、plugin proxy extension semantics、`EventSourcedSignal` family、`PublishedEvent` / `EventRejectedError`、behavior-level `onPersistFailure` は実装済みに移動した。
 
 ### Phase 3: hard
 
