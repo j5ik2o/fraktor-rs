@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  firstLine,
   firstMeaningfulLine,
   isDuplicateComment,
   isReviewMetadataLine,
@@ -10,7 +11,20 @@ import {
   isTaktWrapperComment,
   normalizeBody,
   sourceLabelSummary,
+  stripMarkdown,
 } from "./takt-review-wrapper-helpers.mjs";
+
+test("stripMarkdown removes simple markdown markers and handles empty values", () => {
+  assert.equal(stripMarkdown("**bold** `code`"), "bold code");
+  assert.equal(stripMarkdown(null), "");
+  assert.equal(stripMarkdown(undefined), "");
+  assert.equal(stripMarkdown(""), "");
+});
+
+test("firstLine returns the first stripped line with a 180 character limit", () => {
+  assert.equal(firstLine("**first**\nsecond"), "first");
+  assert.equal(firstLine("a".repeat(200)), "a".repeat(180));
+});
 
 test("firstMeaningfulLine skips TAKT metadata and returns the finding text", () => {
   const body = ["**TAKT Review (Claude)**", "", "**medium / security**", "", "Actual finding text"].join("\n");
