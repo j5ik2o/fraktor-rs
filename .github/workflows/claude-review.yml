@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   claude-review:
