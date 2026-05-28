@@ -8,7 +8,7 @@ use alloc::{boxed::Box, format, string::ToString};
 use core::marker::PhantomData;
 
 use fraktor_actor_core_kernel_rs::actor::error::ActorError;
-use fraktor_actor_core_typed_rs::{Behavior, TypedActorRef, TypedProps, dsl::Behaviors};
+use fraktor_actor_core_typed_rs::{Behavior, TypedActorRef, TypedProps, actor::TypedActorContext, dsl::Behaviors};
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
@@ -148,7 +148,16 @@ where
   }
 
   /// Persists one durable state object and runs a one-shot callback after success.
-  pub fn persist_state<F>(&self, state: S, on_persisted: F) -> Result<Behavior<M>, ActorError>
+  ///
+  /// The context parameter is reserved for state-side effects that need actor
+  /// system access, keeping this API aligned with event-sourced persistence
+  /// operations.
+  pub fn persist_state<F>(
+    &self,
+    _ctx: &mut TypedActorContext<'_, M>,
+    state: S,
+    on_persisted: F,
+  ) -> Result<Behavior<M>, ActorError>
   where
     F: FnOnce(&S, u64) -> Result<Behavior<M>, ActorError> + Send + 'static, {
     let mut store_ref = self.store_ref.clone();
@@ -160,7 +169,11 @@ where
   }
 
   /// Deletes the durable state object and runs a one-shot callback after success.
-  pub fn delete_state<F>(&self, on_deleted: F) -> Result<Behavior<M>, ActorError>
+  ///
+  /// The context parameter is reserved for state-side effects that need actor
+  /// system access, keeping this API aligned with event-sourced persistence
+  /// operations.
+  pub fn delete_state<F>(&self, _ctx: &mut TypedActorContext<'_, M>, on_deleted: F) -> Result<Behavior<M>, ActorError>
   where
     F: FnOnce(u64) -> Result<Behavior<M>, ActorError> + Send + 'static, {
     let mut store_ref = self.store_ref.clone();
