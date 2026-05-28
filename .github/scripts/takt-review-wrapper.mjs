@@ -14,6 +14,9 @@ const model = env.TAKT_MODEL || "";
 const commentHeader = env.TAKT_COMMENT_HEADER || "TAKT Review (Claude)";
 const maxComments = parseMaxComments(env.TAKT_MAX_COMMENTS);
 const expectedHeadSha = env.PR_HEAD_SHA || "";
+const minIssueLengthForDuplicateMatch = 40;
+const minIssueLengthForPartialDuplicateMatch = 120;
+const taktWrapperPartialDuplicatePrefixLength = 80;
 const [owner, repoName] = repo.split("/");
 const anthropicApiKey = env.ANTHROPIC_API_KEY || env.TAKT_ANTHROPIC_API_KEY;
 
@@ -718,6 +721,10 @@ function firstLine(value) {
 function firstMeaningfulLine(value) {
   for (const line of stripMarkdown(value || "").split(/\r?\n/)) {
     const trimmed = line.trim();
+    const sourceLabelText = sourceLabelSummary(trimmed);
+    if (sourceLabelText) {
+      return sourceLabelText.slice(0, 180);
+    }
     if (trimmed && !isReviewMetadataLine(trimmed)) {
       return trimmed.slice(0, 180);
     }
@@ -726,15 +733,34 @@ function firstMeaningfulLine(value) {
 }
 
 function isReviewMetadataLine(value) {
-  return isSourceLabelLine(value) || isSeveritySourceLine(value);
+  return sourceLabelSummary(value) !== undefined || isSeveritySourceLine(value);
 }
 
-function isSourceLabelLine(value) {
-  return /^(Claude Code Review|TAKT Review(?: \([^)]+\))?)(?:\s*:)?$/i.test(value.trim());
+function sourceLabelSummary(value) {
+  const trimmed = value.trim();
+  const labels = new Set([commentHeader, "Claude Code Review"].filter(Boolean));
+  for (const label of labels) {
+    const labelPrefix = `${label}:`;
+    if (trimmed.toLowerCase() === label.toLowerCase() || trimmed.toLowerCase() === labelPrefix.toLowerCase()) {
+      return "";
+    }
+    if (trimmed.toLowerCase().startsWith(labelPrefix.toLowerCase())) {
+      return trimmed.slice(labelPrefix.length).trim();
+    }
+  }
+
+  const match = /^(Claude Code Review|TAKT Review(?: \([^)]+\))?)\s*:\s*(.*)$/i.exec(trimmed);
+  if (match) {
+    return match[2].trim();
+  }
+  if (/^(Claude Code Review|TAKT Review(?: \([^)]+\))?)$/i.test(trimmed)) {
+    return "";
+  }
+  return undefined;
 }
 
 function isSeveritySourceLine(value) {
-  return /^(p[0-3]|critical|blocker|high|medium|low|info|warning|error|major|minor|nit|suggestion)(\s*\/\s*[\p{L}\p{N}_ -]+){0,3}$/iu.test(
+  return /^(p[0-3]|critical|blocker|high|medium|low|info|warning|error|major|minor|nit|suggestion)(\s*\/\s*[\p{L}\p{N}_ -]+){1,3}$/iu.test(
     value.trim(),
   );
 }
@@ -745,18 +771,21 @@ function isDuplicateComment(comment, path, line, normalizedIssue) {
   }
 
   const normalizedBody = normalizeBody(comment.body);
-  if (normalizedIssue.length >= 40 && normalizedBody.includes(normalizedIssue)) {
+  if (normalizedIssue.length >= minIssueLengthForDuplicateMatch && normalizedBody.includes(normalizedIssue)) {
     return true;
   }
 
-  if (normalizedIssue.length >= 120 && normalizedBody.includes(normalizedIssue.slice(0, 120))) {
+  if (
+    normalizedIssue.length >= minIssueLengthForPartialDuplicateMatch &&
+    normalizedBody.includes(normalizedIssue.slice(0, minIssueLengthForPartialDuplicateMatch))
+  ) {
     return true;
   }
 
   return (
     isTaktWrapperComment(comment.body) &&
-    normalizedIssue.length >= 40 &&
-    normalizedBody.includes(normalizedIssue.slice(0, 80))
+    normalizedIssue.length >= minIssueLengthForDuplicateMatch &&
+    normalizedBody.includes(normalizedIssue.slice(0, taktWrapperPartialDuplicatePrefixLength))
   );
 }
 
