@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
 
 use fraktor_cluster_core_rs::{
+  activation::{IdentityLookup, PartitionIdentityLookup, PlacementLocality},
   grain::GrainKey,
-  identity::{IdentityLookup, PartitionIdentityLookup},
-  placement::PlacementLocality,
 };
 
 #[test]

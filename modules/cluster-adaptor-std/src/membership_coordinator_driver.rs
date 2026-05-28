@@ -7,10 +7,11 @@ use fraktor_actor_core_kernel_rs::{
   event::stream::{EventStreamEvent, EventStreamShared},
 };
 use fraktor_cluster_core_rs::{
-  ClusterEvent, ClusterExtensionConfig,
+  extension::ClusterExtensionConfig,
   membership::{
     GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorShared,
   },
+  topology::ClusterEvent,
 };
 use fraktor_utils_core_rs::{sync::SharedAccess, time::TimerInstant};
 

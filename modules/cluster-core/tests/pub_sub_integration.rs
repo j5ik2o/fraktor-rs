@@ -13,11 +13,11 @@ use fraktor_actor_core_kernel_rs::{
   },
 };
 use fraktor_cluster_core_rs::{
-  BlockListProvider, ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
+  activation::{ClusterIdentity, IdentityLookupShared, NoopIdentityLookup},
   cluster_provider::NoopClusterProvider,
   downing_provider::NoopDowningProvider,
+  extension::{ClusterCore, ClusterExtensionConfig, ClusterProviderShared},
   grain::KindRegistry,
-  identity::{ClusterIdentity, IdentityLookupShared, NoopIdentityLookup},
   membership::{GossiperShared, NoopGossiper},
   pub_sub::{
     ClusterPubSubShared, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointShared, DeliveryReport, DeliveryStatus,
@@ -25,6 +25,7 @@ use fraktor_cluster_core_rs::{
     PublishRequest, SubscriberDeliveryReport,
     cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
   },
+  topology::{BlockListProvider, ClusterTopology, TopologyUpdate},
 };
 use fraktor_utils_core_rs::{
   sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},

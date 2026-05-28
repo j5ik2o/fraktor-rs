@@ -25,7 +25,7 @@
 //! ```ignore
 //! use std::time::Duration;
 //!
-//! use fraktor_cluster_core_rs::{ClusterExtensionConfig, ClusterExtensionInstaller};
+//! use fraktor_cluster_core_rs::extension::{ClusterExtensionConfig, ClusterExtensionInstaller};
 //! use fraktor_cluster_adaptor_std_rs::{AwsEcsClusterExtensionInstallerExt, EcsClusterConfig};
 //!
 //! let config = ClusterExtensionConfig::default()
@@ -56,8 +56,9 @@ use fraktor_actor_core_kernel_rs::{
   event::stream::{EventStreamEvent, EventStreamShared},
 };
 use fraktor_cluster_core_rs::{
-  BlockListProvider, ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate,
   cluster_provider::ClusterProvider,
+  extension::{ClusterProviderError, StartupMode},
+  topology::{BlockListProvider, ClusterEvent, ClusterTopology, TopologyUpdate},
 };
 use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 use tokio::task::JoinHandle;

@@ -21,7 +21,7 @@ use super::{
   GRAIN_EVENT_STREAM_NAME, GrainCallError, GrainCallOptions, GrainCodec, GrainEvent, GrainMetrics, GrainMetricsShared,
   GrainResolvedRef,
 };
-use crate::{ClusterApi, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity};
+use crate::{ClusterApi, ClusterRequestError, ClusterResolveError, activation::ClusterIdentity};
 
 #[cfg(test)]
 #[path = "grain_ref_test.rs"]

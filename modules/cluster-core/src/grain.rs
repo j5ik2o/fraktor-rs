@@ -23,8 +23,6 @@ mod rpc_event;
 mod schema_negotiator;
 mod serialization_grain_codec;
 mod serialized_message;
-mod virtual_actor_event;
-mod virtual_actor_registry;
 
 pub use grain_call_error::GrainCallError;
 pub use grain_call_options::GrainCallOptions;
@@ -49,5 +47,3 @@ pub use rpc_event::RpcEvent;
 pub use schema_negotiator::SchemaNegotiator;
 pub use serialization_grain_codec::SerializationGrainCodec;
 pub use serialized_message::SerializedMessage;
-pub use virtual_actor_event::VirtualActorEvent;
-pub use virtual_actor_registry::VirtualActorRegistry;

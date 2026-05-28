@@ -10,7 +10,7 @@ use alloc::{
   vec::Vec,
 };
 
-use crate::placement::ActivatedKind;
+use crate::activation::ActivatedKind;
 
 /// Default topic actor kind name, aligned with protoactor-go.
 pub const TOPIC_ACTOR_KIND: &str = "prototopic";

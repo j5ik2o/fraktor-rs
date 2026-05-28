@@ -1,5 +1,5 @@
 use crate::{
-  identity::ClusterIdentity,
+  activation::ClusterIdentity,
   pub_sub::{
     DeliveryPolicy, PartitionBehavior, PubSubBroker, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions,
     PublishRejectReason,

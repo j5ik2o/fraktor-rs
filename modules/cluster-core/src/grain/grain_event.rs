@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 use super::GrainKey;
-use crate::identity::ClusterIdentity;
+use crate::activation::ClusterIdentity;
 
 /// EventStream extension name used for grain events.
 pub const GRAIN_EVENT_STREAM_NAME: &str = "cluster-grain";
