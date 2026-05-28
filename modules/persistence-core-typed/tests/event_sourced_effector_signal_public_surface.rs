@@ -7,69 +7,48 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
-use fraktor_persistence_core_typed_rs::{DurableStateSignal, PersistenceEffectorSignal};
-
 const FORGED_SIGNAL_SOURCE: &str = r#"
-use fraktor_persistence_core_typed_rs::DurableStateSignal;
+use fraktor_persistence_core_typed_rs::EventSourcedEffectorSignal;
 
 fn main() {
-  let _signal: DurableStateSignal<u64> = DurableStateSignal::RecoveryCompleted {
+  let _signal: EventSourcedEffectorSignal<u64, u64> = EventSourcedEffectorSignal::RecoveryCompleted {
     auth: Default::default(),
-    state: None,
-    revision: 0,
+    state: 0,
+    sequence_nr: 0,
   };
 }
 "#;
 
 const REUSED_AUTH_SOURCE: &str = r#"
-use fraktor_persistence_core_typed_rs::DurableStateSignal;
+use fraktor_persistence_core_typed_rs::EventSourcedEffectorSignal;
 
-fn forge(signal: DurableStateSignal<u64>) -> DurableStateSignal<u64> {
+fn forge(signal: EventSourcedEffectorSignal<u64, u64>) -> EventSourcedEffectorSignal<u64, u64> {
   let auth = match signal {
-    | DurableStateSignal::RecoveryCompleted { auth, .. }
-    | DurableStateSignal::RecoveryFailed { auth, .. }
-    | DurableStateSignal::StatePersisted { auth, .. }
-    | DurableStateSignal::StateDeleted { auth, .. }
-    | DurableStateSignal::PersistenceFailed { auth, .. } => auth,
+    | EventSourcedEffectorSignal::RecoveryCompleted { auth, .. }
+    | EventSourcedEffectorSignal::PersistedEvents { auth, .. }
+    | EventSourcedEffectorSignal::PersistedSnapshot { auth, .. }
+    | EventSourcedEffectorSignal::DeletedSnapshots { auth, .. }
+    | EventSourcedEffectorSignal::EventSourced { auth, .. } => auth,
   };
 
-  DurableStateSignal::RecoveryCompleted {
+  EventSourcedEffectorSignal::RecoveryCompleted {
     auth,
-    state: Some(999),
-    revision: 999,
+    state: 999,
+    sequence_nr: 999,
   }
 }
 
 fn main() {}
 "#;
 
-#[derive(Clone, Debug)]
-enum PrivateMessage {
-  Durable(Option<DurableStateSignal<u32>>),
-}
-
 #[test]
-fn durable_state_signal_can_be_wrapped_by_user_private_message() {
-  let message = PrivateMessage::Durable(None);
-
-  match message {
-    | PrivateMessage::Durable(signal) => assert!(signal.is_none()),
-  }
-}
-
-#[test]
-fn durable_state_persisted_signal_is_separate_from_event_sourced_signal() {
-  let durable: Option<DurableStateSignal<u32>> = None;
-  let event_sourced: Option<PersistenceEffectorSignal<u32, u32>> = None;
-
-  assert!(durable.is_none());
-  assert!(event_sourced.is_none());
-}
-
-#[test]
-fn durable_state_signal_auth_cannot_be_forged_from_external_crate() {
-  assert_fixture_build_failure_contains("durable-state-signal-auth-forged", FORGED_SIGNAL_SOURCE, "E0277");
-  assert_fixture_build_failure_contains("durable-state-signal-auth-reused", REUSED_AUTH_SOURCE, "E0639");
+fn event_sourced_effector_signal_auth_cannot_be_forged_from_external_crate() {
+  assert_fixture_build_failure_contains("event-sourced-effector-signal-auth-forged", FORGED_SIGNAL_SOURCE, "Default");
+  assert_fixture_build_failure_contains(
+    "event-sourced-effector-signal-auth-reused",
+    REUSED_AUTH_SOURCE,
+    "non-exhaustive",
+  );
 }
 
 fn assert_fixture_build_failure_contains(name: &str, source: &str, expected: &str) {

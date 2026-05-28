@@ -7,48 +7,60 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
+use fraktor_persistence_core_typed_rs::StateSourcedEffectorSignal;
+
 const FORGED_SIGNAL_SOURCE: &str = r#"
-use fraktor_persistence_core_typed_rs::PersistenceEffectorSignal;
+use fraktor_persistence_core_typed_rs::StateSourcedEffectorSignal;
 
 fn main() {
-  let _signal: PersistenceEffectorSignal<u64, u64> = PersistenceEffectorSignal::RecoveryCompleted {
+  let _signal: StateSourcedEffectorSignal<u64> = StateSourcedEffectorSignal::StatePersisted {
     auth: Default::default(),
     state: 0,
-    sequence_nr: 0,
+    revision: 0,
   };
 }
 "#;
 
 const REUSED_AUTH_SOURCE: &str = r#"
-use fraktor_persistence_core_typed_rs::PersistenceEffectorSignal;
+use fraktor_persistence_core_typed_rs::StateSourcedEffectorSignal;
 
-fn forge(signal: PersistenceEffectorSignal<u64, u64>) -> PersistenceEffectorSignal<u64, u64> {
+fn forge(signal: StateSourcedEffectorSignal<u64>) -> StateSourcedEffectorSignal<u64> {
   let auth = match signal {
-    | PersistenceEffectorSignal::RecoveryCompleted { auth, .. }
-    | PersistenceEffectorSignal::PersistedEvents { auth, .. }
-    | PersistenceEffectorSignal::PersistedSnapshot { auth, .. }
-    | PersistenceEffectorSignal::DeletedSnapshots { auth, .. }
-    | PersistenceEffectorSignal::Failed { auth, .. } => auth,
+    | StateSourcedEffectorSignal::RecoveryCompleted { auth, .. }
+    | StateSourcedEffectorSignal::RecoveryFailed { auth, .. }
+    | StateSourcedEffectorSignal::StatePersisted { auth, .. }
+    | StateSourcedEffectorSignal::StateDeleted { auth, .. }
+    | StateSourcedEffectorSignal::PersistenceFailed { auth, .. } => auth,
   };
 
-  PersistenceEffectorSignal::RecoveryCompleted {
+  StateSourcedEffectorSignal::StatePersisted {
     auth,
     state: 999,
-    sequence_nr: 999,
+    revision: 999,
   }
 }
 
 fn main() {}
 "#;
 
+#[derive(Clone, Debug)]
+enum PrivateMessage {
+  StateSourced(Option<StateSourcedEffectorSignal<u32>>),
+}
+
 #[test]
-fn persistence_effector_signal_auth_cannot_be_forged_from_external_crate() {
-  assert_fixture_build_failure_contains("persistence-effector-signal-auth-forged", FORGED_SIGNAL_SOURCE, "Default");
-  assert_fixture_build_failure_contains(
-    "persistence-effector-signal-auth-reused",
-    REUSED_AUTH_SOURCE,
-    "non-exhaustive",
-  );
+fn state_sourced_effector_signal_can_be_wrapped_by_user_private_message() {
+  let message = PrivateMessage::StateSourced(None);
+
+  match message {
+    | PrivateMessage::StateSourced(signal) => assert!(signal.is_none()),
+  }
+}
+
+#[test]
+fn state_sourced_effector_signal_auth_cannot_be_forged_from_external_crate() {
+  assert_fixture_build_failure_contains("state-sourced-effector-signal-auth-forged", FORGED_SIGNAL_SOURCE, "E0277");
+  assert_fixture_build_failure_contains("state-sourced-effector-signal-auth-reused", REUSED_AUTH_SOURCE, "E0639");
 }
 
 fn assert_fixture_build_failure_contains(name: &str, source: &str, expected: &str) {
