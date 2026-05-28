@@ -323,12 +323,12 @@ fn counter_behavior(
   effector: StateSourcedEffector<CounterState, CounterCommand>,
   probe: CounterProbe,
 ) -> Behavior<CounterCommand> {
-  Behaviors::receive_message(move |ctx, message| match message {
+  Behaviors::receive_message(move |_ctx, message| match message {
     | CounterCommand::Set(value) => {
       let next_state = CounterState { value: *value };
       let next_effector = effector.clone();
       let next_probe = probe.clone();
-      effector.persist_state(ctx, next_state, move |persisted_state, revision| {
+      effector.persist_state(next_state, move |persisted_state, revision| {
         next_probe.persisted_revisions.lock().push(revision);
         Ok(counter_behavior(Some(persisted_state.clone()), next_effector, next_probe))
       })
@@ -336,7 +336,7 @@ fn counter_behavior(
     | CounterCommand::Delete => {
       let next_effector = effector.clone();
       let next_probe = probe.clone();
-      effector.delete_state(ctx, move |revision| {
+      effector.delete_state(move |revision| {
         next_probe.deleted_revisions.lock().push(revision);
         Ok(counter_behavior(None, next_effector, next_probe))
       })
