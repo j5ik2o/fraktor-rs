@@ -6,8 +6,11 @@ use core::{
 
 use fraktor_persistence_core_kernel_rs::state::{DurableStateError, DurableStateStore, GetObjectResult};
 
-use super::{super::state_sourced_store_command::StateSourcedStore, StateSourcedStoreActor};
-use crate::{PersistenceId, StateSourcedEffectorConfig, internal::StateSourcedStoreCommand};
+use super::{StateSourcedStoreActor, restore_store};
+use crate::{
+  PersistenceId, StateSourcedEffectorConfig,
+  internal::{StateSourcedStoreCommand, state_sourced_store_command::StateSourcedStore},
+};
 
 type StoreFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, DurableStateError>> + Send + 'a>>;
 
@@ -59,7 +62,7 @@ fn take_store_marks_actor_as_waiting_until_store_is_restored() {
   assert!(!actor.store_available());
   assert!(second_take.is_err());
 
-  StateSourcedStoreActor::<u32, StateSourcedStoreCommand<u32>>::restore_store(&actor.store, store);
+  restore_store(&actor.store, store);
 
   assert!(actor.store_available());
 }

@@ -54,7 +54,7 @@ enum CounterCommand {
 }
 
 #[derive(Clone)]
-enum ManagerCommand {
+enum CoordinatorCommand {
   Spawn { reply_to: TypedActorRef<TypedActorRef<CounterCommand>> },
 }
 
@@ -253,25 +253,25 @@ impl CounterProbe {
   }
 }
 
-struct CounterManager {
+struct CounterCoordinator {
   config: StateSourcedEffectorConfig<CounterState, CounterCommand>,
   probe:  CounterProbe,
 }
 
-impl CounterManager {
+impl CounterCoordinator {
   fn new(config: StateSourcedEffectorConfig<CounterState, CounterCommand>, probe: CounterProbe) -> Self {
     Self { config, probe }
   }
 }
 
-impl TypedActor<ManagerCommand> for CounterManager {
+impl TypedActor<CoordinatorCommand> for CounterCoordinator {
   fn receive(
     &mut self,
-    ctx: &mut TypedActorContext<'_, ManagerCommand>,
-    message: &ManagerCommand,
+    ctx: &mut TypedActorContext<'_, CoordinatorCommand>,
+    message: &CoordinatorCommand,
   ) -> Result<(), ActorError> {
     match message {
-      | ManagerCommand::Spawn { reply_to } => {
+      | CoordinatorCommand::Spawn { reply_to } => {
         let props = counter_props(self.config.clone(), self.probe.clone());
         let child = ctx
           .spawn_child_watched(&props)
@@ -285,7 +285,7 @@ impl TypedActor<ManagerCommand> for CounterManager {
 
   fn on_child_failed(
     &mut self,
-    _ctx: &mut TypedActorContext<'_, ManagerCommand>,
+    _ctx: &mut TypedActorContext<'_, CoordinatorCommand>,
     child: Pid,
     _error: &ActorError,
   ) -> Result<(), ActorError> {
@@ -394,8 +394,8 @@ fn ask_revision(actor: &mut TypedActorRef<CounterCommand>) -> u64 {
   future.try_take().expect("revision reply").expect("revision payload")
 }
 
-fn ask_spawn(manager: &mut TypedActorRef<ManagerCommand>) -> TypedActorRef<CounterCommand> {
-  let response = manager.ask::<TypedActorRef<CounterCommand>, _>(|reply_to| ManagerCommand::Spawn { reply_to });
+fn ask_spawn(coordinator: &mut TypedActorRef<CoordinatorCommand>) -> TypedActorRef<CounterCommand> {
+  let response = coordinator.ask::<TypedActorRef<CounterCommand>, _>(|reply_to| CoordinatorCommand::Spawn { reply_to });
   let mut future = response.future().clone();
   assert!(wait_until(5000, || future.is_ready()));
   future.try_take().expect("spawn reply").expect("spawn payload")
@@ -468,11 +468,11 @@ fn recovered_state_can_be_persisted_and_deleted() {
   let probe = CounterProbe::new();
   let assertion_probe = probe.clone();
   let config = counter_config(PERSISTENCE_ID, store_provider(record.clone()));
-  let manager_props = TypedProps::new(move || CounterManager::new(config.clone(), probe.clone()));
-  let system =
-    TypedActorSystem::<ManagerCommand>::create_from_props(&manager_props, actor_system_config()).expect("system");
-  let mut manager = system.user_guardian_ref();
-  let mut actor = ask_spawn(&mut manager);
+  let coordinator_props = TypedProps::new(move || CounterCoordinator::new(config.clone(), probe.clone()));
+  let system = TypedActorSystem::<CoordinatorCommand>::create_from_props(&coordinator_props, actor_system_config())
+    .expect("system");
+  let mut coordinator = system.user_guardian_ref();
+  let mut actor = ask_spawn(&mut coordinator);
 
   assert_eq!(ask_state(&mut actor), Some(CounterState { value: 10 }));
   assert_eq!(ask_revision(&mut actor), 3);
@@ -623,14 +623,14 @@ fn revision_mismatch_failure_stops_child_without_running_success_callback() {
   let record = store_record(Some(CounterState { value: 10 }), 3);
   let probe = CounterProbe::new();
   let config = counter_config("typed-state-sourced-revision-mismatch-counter", store_provider(record.clone()));
-  let manager_props = TypedProps::new({
+  let coordinator_props = TypedProps::new({
     let probe = probe.clone();
-    move || CounterManager::new(config.clone(), probe.clone())
+    move || CounterCoordinator::new(config.clone(), probe.clone())
   });
-  let system =
-    TypedActorSystem::<ManagerCommand>::create_from_props(&manager_props, actor_system_config()).expect("system");
-  let mut manager = system.user_guardian_ref();
-  let mut actor = ask_spawn(&mut manager);
+  let system = TypedActorSystem::<CoordinatorCommand>::create_from_props(&coordinator_props, actor_system_config())
+    .expect("system");
+  let mut coordinator = system.user_guardian_ref();
+  let mut actor = ask_spawn(&mut coordinator);
 
   assert_eq!(ask_state(&mut actor), Some(CounterState { value: 10 }));
   record.lock().revision = 4;
@@ -651,14 +651,14 @@ fn delete_revision_mismatch_failure_stops_child_without_running_success_callback
   let record = store_record(Some(CounterState { value: 10 }), 4);
   let probe = CounterProbe::new();
   let config = counter_config("typed-state-sourced-delete-revision-mismatch-counter", store_provider(record.clone()));
-  let manager_props = TypedProps::new({
+  let coordinator_props = TypedProps::new({
     let probe = probe.clone();
-    move || CounterManager::new(config.clone(), probe.clone())
+    move || CounterCoordinator::new(config.clone(), probe.clone())
   });
-  let system =
-    TypedActorSystem::<ManagerCommand>::create_from_props(&manager_props, actor_system_config()).expect("system");
-  let mut manager = system.user_guardian_ref();
-  let mut actor = ask_spawn(&mut manager);
+  let system = TypedActorSystem::<CoordinatorCommand>::create_from_props(&coordinator_props, actor_system_config())
+    .expect("system");
+  let mut coordinator = system.user_guardian_ref();
+  let mut actor = ask_spawn(&mut coordinator);
 
   assert_eq!(ask_state(&mut actor), Some(CounterState { value: 10 }));
   assert_eq!(ask_revision(&mut actor), 4);

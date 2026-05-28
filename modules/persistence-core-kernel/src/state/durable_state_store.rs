@@ -23,6 +23,10 @@ pub trait DurableStateStore<A: Send>: Send + Sync + 'static {
   ) -> DurableStateStoreFuture<'a, ()>;
 
   /// Deletes the durable state object for the persistence identifier.
+  ///
+  /// A successful delete removes the object and resets the stored revision to
+  /// `0`, so the next upsert for the same persistence identifier uses expected
+  /// revision `0`.
   fn delete_object<'a>(
     &'a mut self,
     persistence_id: &'a str,

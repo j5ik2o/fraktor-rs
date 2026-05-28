@@ -107,7 +107,7 @@ where
       });
     });
     self.add_event_to_batch(ctx, event, handler);
-    self.flush_batch(ctx)
+    self.flush_batch_or_clear_persist_reply(ctx)
   }
 
   fn persist_events(
@@ -167,7 +167,7 @@ where
       });
       self.add_event_to_batch(ctx, event, handler);
     }
-    self.flush_batch(ctx)
+    self.flush_batch_or_clear_persist_reply(ctx)
   }
 
   fn persist_snapshot(
@@ -177,7 +177,11 @@ where
     reply_to: ReplyRef<S, E>,
   ) -> Result<(), ActorError> {
     self.pending_snapshot = Some((snapshot.clone(), reply_to));
-    self.save_snapshot(ctx, ArcShared::new(snapshot))
+    if let Err(error) = self.save_snapshot(ctx, ArcShared::new(snapshot)) {
+      self.pending_snapshot = None;
+      return Err(error);
+    }
+    Ok(())
   }
 
   fn delete_snapshots_to(
@@ -188,7 +192,11 @@ where
   ) -> Result<(), ActorError> {
     self.pending_delete_snapshots = Some((to_sequence_nr, reply_to));
     let criteria = SnapshotSelectionCriteria::new(to_sequence_nr, u64::MAX, 0, 0);
-    PersistentActor::delete_snapshots(self, ctx, criteria)
+    if let Err(error) = PersistentActor::delete_snapshots(self, ctx, criteria) {
+      self.pending_delete_snapshots = None;
+      return Err(error);
+    }
+    Ok(())
   }
 
   fn delete_events_to(
@@ -200,6 +208,14 @@ where
     self.pending_delete_events = Some((to_sequence_nr, reply_to));
     if let Err(error) = PersistentActor::delete_messages(self, ctx, to_sequence_nr) {
       self.pending_delete_events = None;
+      return Err(error);
+    }
+    Ok(())
+  }
+
+  fn flush_batch_or_clear_persist_reply(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    if let Err(error) = self.flush_batch(ctx) {
+      self.pending_persist_reply = None;
       return Err(error);
     }
     Ok(())

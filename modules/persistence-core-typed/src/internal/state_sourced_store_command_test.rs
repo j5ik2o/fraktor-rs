@@ -13,12 +13,8 @@ fn reply_ref() -> TypedActorRef<StateSourcedStoreReply<u32>> {
 #[test]
 fn user_facing_store_commands_are_not_completions() {
   let recover = TestCommand::Recover { reply_to: reply_ref() };
-  let persist = TestCommand::PersistState {
-    state:             42,
-    expected_revision: 1,
-    tag:               None,
-    reply_to:          reply_ref(),
-  };
+  let persist =
+    TestCommand::PersistState { state: 42, expected_revision: 1, reply_to: reply_ref() };
   let delete = TestCommand::DeleteState { expected_revision: 2, reply_to: reply_ref() };
 
   assert!(!recover.is_completion());
@@ -35,11 +31,7 @@ fn store_completion_commands_are_completions() {
     result:            Ok(()),
     reply_to:          reply_ref(),
   };
-  let delete = TestCommand::DeleteStateFinished {
-    expected_revision: 2,
-    result:            Ok(()),
-    reply_to:          reply_ref(),
-  };
+  let delete = TestCommand::DeleteStateFinished { result: Ok(()), reply_to: reply_ref() };
 
   assert!(recovery.is_completion());
   assert!(persist.is_completion());

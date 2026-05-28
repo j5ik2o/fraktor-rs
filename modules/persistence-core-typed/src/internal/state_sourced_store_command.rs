@@ -4,12 +4,12 @@
 #[path = "state_sourced_store_command_test.rs"]
 mod tests;
 
-use alloc::{boxed::Box, string::String};
+use alloc::boxed::Box;
 
 use fraktor_actor_core_typed_rs::TypedActorRef;
 use fraktor_persistence_core_kernel_rs::state::{DurableStateError, DurableStateStore, GetObjectResult};
 
-use super::StateSourcedStoreReply;
+use crate::internal::StateSourcedStoreReply;
 
 pub(crate) type StateSourcedStoreResult<T> = Result<T, DurableStateError>;
 pub(crate) type StateSourcedStore<S> = Box<dyn DurableStateStore<S>>;
@@ -27,7 +27,6 @@ where
   PersistState {
     state:             S,
     expected_revision: u64,
-    tag:               Option<String>,
     reply_to:          TypedActorRef<StateSourcedStoreReply<S>>,
   },
   PersistStateFinished {
@@ -41,9 +40,8 @@ where
     reply_to:          TypedActorRef<StateSourcedStoreReply<S>>,
   },
   DeleteStateFinished {
-    expected_revision: u64,
-    result:            StateSourcedStoreResult<()>,
-    reply_to:          TypedActorRef<StateSourcedStoreReply<S>>,
+    result:   StateSourcedStoreResult<()>,
+    reply_to: TypedActorRef<StateSourcedStoreReply<S>>,
   },
 }
 

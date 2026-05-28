@@ -159,12 +159,7 @@ where
     let mut store_ref = self.store_ref.clone();
     let expected_revision = self.revision();
     store_ref
-      .try_tell(StateSourcedStoreCommand::PersistState {
-        state,
-        expected_revision,
-        tag: None,
-        reply_to: self.reply_to.clone(),
-      })
+      .try_tell(StateSourcedStoreCommand::PersistState { state, expected_revision, reply_to: self.reply_to.clone() })
       .map_err(|error| ActorError::fatal(format!("persist state send failed: {error:?}")))?;
     Ok(self.wait_for_persisted_state(Box::new(on_persisted)))
   }

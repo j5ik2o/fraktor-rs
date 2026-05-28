@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use fraktor_actor_core_typed_rs::TypedActorRef;
 
-use super::EventSourcedStoreReply;
+use crate::internal::EventSourcedStoreReply;
 
 pub(crate) enum EventSourcedStoreCommand<S, E>
 where
