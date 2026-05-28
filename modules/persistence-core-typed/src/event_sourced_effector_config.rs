@@ -1,7 +1,7 @@
-//! Persistence effector configuration.
+//! Event-sourced effector configuration.
 
 #[cfg(test)]
-#[path = "persistence_effector_config_test.rs"]
+#[path = "event_sourced_effector_config_test.rs"]
 mod tests;
 
 use alloc::{collections::BTreeSet, string::String};
@@ -10,15 +10,15 @@ use fraktor_persistence_core_kernel_rs::{error::PersistenceError, journal::Event
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  BackoffConfig, EventAdapter, PersistenceEffectorMessageAdapter, PersistenceId, PersistenceMode, Recovery,
+  BackoffConfig, EventAdapter, EventSourcedEffectorMessageAdapter, PersistenceId, PersistenceMode, Recovery,
   RetentionCriteria, SnapshotCriteria, event_adapter::KernelEventAdapterBridge,
 };
 
 type ApplyEvent<S, E> = dyn Fn(&S, &E) -> S + Send + Sync;
 type EventTagger<E> = dyn Fn(&E) -> BTreeSet<String> + Send + Sync;
 
-/// Configuration used to build a typed persistence effector.
-pub struct PersistenceEffectorConfig<S, E, M> {
+/// Configuration used to build a typed event-sourced effector.
+pub struct EventSourcedEffectorConfig<S, E, M> {
   persistence_id:          PersistenceId,
   initial_state:           S,
   apply_event:             ArcShared<ApplyEvent<S, E>>,
@@ -32,10 +32,10 @@ pub struct PersistenceEffectorConfig<S, E, M> {
   event_adapters:          EventAdapters,
   event_publishing:        bool,
   event_tagger:            ArcShared<EventTagger<E>>,
-  message_adapter:         Option<PersistenceEffectorMessageAdapter<S, E, M>>,
+  message_adapter:         Option<EventSourcedEffectorMessageAdapter<S, E, M>>,
 }
 
-impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
+impl<S, E, M> EventSourcedEffectorConfig<S, E, M> {
   /// Creates a configuration with persisted mode and no automatic snapshots.
   #[must_use]
   pub fn new<F>(persistence_id: PersistenceId, initial_state: S, apply_event: F) -> Self
@@ -139,7 +139,7 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
 
   /// Returns the optional message adapter.
   #[must_use]
-  pub const fn message_adapter(&self) -> Option<&PersistenceEffectorMessageAdapter<S, E, M>> {
+  pub const fn message_adapter(&self) -> Option<&EventSourcedEffectorMessageAdapter<S, E, M>> {
     self.message_adapter.as_ref()
   }
 
@@ -224,7 +224,7 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
 
   /// Returns a config with the selected message adapter.
   #[must_use]
-  pub fn with_message_adapter(mut self, message_adapter: PersistenceEffectorMessageAdapter<S, E, M>) -> Self {
+  pub fn with_message_adapter(mut self, message_adapter: EventSourcedEffectorMessageAdapter<S, E, M>) -> Self {
     self.message_adapter = Some(message_adapter);
     self
   }
@@ -253,7 +253,7 @@ impl<S, E, M> PersistenceEffectorConfig<S, E, M> {
   }
 }
 
-impl<S, E, M> Clone for PersistenceEffectorConfig<S, E, M>
+impl<S, E, M> Clone for EventSourcedEffectorConfig<S, E, M>
 where
   S: Clone,
 {

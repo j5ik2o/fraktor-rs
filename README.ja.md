@@ -93,10 +93,10 @@ cargo run -p fraktor-showcases-std --example typed_actor_lifecycle
 cargo run -p fraktor-showcases-std --example stream_graphs
 ```
 
-typed persistence effector は、通常の typed `Behavior` を維持したまま hidden child store actor に永続化を委譲します。最小形は次のように `PersistenceEffector::props` で aggregate actor を作ります。
+typed event-sourced effector は、通常の typed `Behavior` を維持したまま hidden child store actor に永続化を委譲します。最小形は次のように `EventSourcedEffector::props` で aggregate actor を作ります。
 
 ```rust
-let props = PersistenceEffector::props(config, |state, effector| {
+let props = EventSourcedEffector::props(config, |state, effector| {
   Ok(account_behavior(state, effector))
 });
 ```

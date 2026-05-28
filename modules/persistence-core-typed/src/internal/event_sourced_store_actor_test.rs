@@ -21,13 +21,13 @@ use fraktor_persistence_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
-use super::PersistenceStoreActor;
+use super::EventSourcedStoreActor;
 use crate::{
-  BackoffConfig, EventSourcedSignal, PersistenceEffectorConfig, PersistenceId, internal::PersistenceStoreReply,
+  BackoffConfig, EventSourcedEffectorConfig, EventSourcedSignal, PersistenceId, internal::EventSourcedStoreReply,
 };
 
 type ReplyMessages = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
-type TestReply = PersistenceStoreReply<u32, u32>;
+type TestReply = EventSourcedStoreReply<u32, u32>;
 
 struct RecordingSender {
   messages: ReplyMessages,
@@ -53,16 +53,16 @@ fn actor_ref(pid: Pid) -> (ActorRef, ReplyMessages) {
   (ActorRef::new(pid, sender), messages)
 }
 
-fn store_actor(config: PersistenceEffectorConfig<u32, u32, ()>) -> PersistenceStoreActor<u32, u32, ()> {
+fn store_actor(config: EventSourcedEffectorConfig<u32, u32, ()>) -> EventSourcedStoreActor<u32, u32, ()> {
   let (reply_to, _messages) = reply_ref();
-  PersistenceStoreActor::new(config, reply_to)
+  EventSourcedStoreActor::new(config, reply_to)
 }
 
-fn config() -> PersistenceEffectorConfig<u32, u32, ()> {
-  PersistenceEffectorConfig::new(PersistenceId::of_unique_id("typed-store-test"), 0_u32, |state, event| state + event)
+fn config() -> EventSourcedEffectorConfig<u32, u32, ()> {
+  EventSourcedEffectorConfig::new(PersistenceId::of_unique_id("typed-store-test"), 0_u32, |state, event| state + event)
 }
 
-fn tagged_config() -> PersistenceEffectorConfig<u32, u32, ()> {
+fn tagged_config() -> EventSourcedEffectorConfig<u32, u32, ()> {
   config().with_tagger(|event| BTreeSet::from([format!("event-{event}")]))
 }
 
@@ -90,7 +90,7 @@ fn build_context() -> ActorContext<'static> {
 }
 
 fn bind_store_refs(
-  actor: &mut PersistenceStoreActor<u32, u32, ()>,
+  actor: &mut EventSourcedStoreActor<u32, u32, ()>,
   ctx: &mut ActorContext<'_>,
   journal_ref: ActorRef,
   snapshot_ref: ActorRef,
@@ -140,7 +140,7 @@ fn persist_failure_callback_emits_event_sourced_signal_and_defaults_to_fatal() {
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("store reply");
-  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+  assert!(matches!(reply, EventSourcedStoreReply::EventSourced {
     signal: EventSourcedSignal::JournalPersistFailed { error }
   } if *error == PersistenceError::from(cause)));
 }
@@ -171,10 +171,10 @@ fn persist_rejection_callback_emits_rejected_signal_with_identity_and_cause() {
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("store reply");
-  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+  assert!(matches!(reply, EventSourcedStoreReply::EventSourced {
     signal: EventSourcedSignal::JournalPersistRejected { .. },
   }));
-  let PersistenceStoreReply::EventSourced { signal: EventSourcedSignal::JournalPersistRejected { error } } = reply
+  let EventSourcedStoreReply::EventSourced { signal: EventSourcedSignal::JournalPersistRejected { error } } = reply
   else {
     panic!("unexpected store reply");
   };
@@ -186,16 +186,16 @@ fn persist_rejection_callback_emits_rejected_signal_with_identity_and_cause() {
 #[test]
 fn recovery_completion_emits_event_sourced_signal_before_ready_reply() {
   let (reply_to, messages) = reply_ref();
-  let mut actor = PersistenceStoreActor::new(config(), reply_to);
+  let mut actor = EventSourcedStoreActor::new(config(), reply_to);
 
   actor.on_recovery_completed();
 
   let messages = messages.lock();
   assert_eq!(messages.len(), 2);
   let first = messages[0].payload().downcast_ref::<TestReply>().expect("first reply");
-  assert!(matches!(first, PersistenceStoreReply::EventSourced { signal: EventSourcedSignal::RecoveryCompleted }));
+  assert!(matches!(first, EventSourcedStoreReply::EventSourced { signal: EventSourcedSignal::RecoveryCompleted }));
   let second = messages[1].payload().downcast_ref::<TestReply>().expect("second reply");
-  assert!(matches!(second, PersistenceStoreReply::RecoveryCompleted { state: 0, sequence_nr: 0 }));
+  assert!(matches!(second, EventSourcedStoreReply::RecoveryCompleted { state: 0, sequence_nr: 0 }));
 }
 
 #[test]
@@ -210,11 +210,11 @@ fn snapshot_success_and_delete_success_emit_public_event_sourced_signals() {
   let messages = snapshot_messages.lock();
   assert_eq!(messages.len(), 2);
   let first = messages[0].payload().downcast_ref::<TestReply>().expect("snapshot signal");
-  assert!(matches!(first, PersistenceStoreReply::EventSourced {
+  assert!(matches!(first, EventSourcedStoreReply::EventSourced {
       signal: EventSourcedSignal::SnapshotCompleted { metadata }
     } if metadata == &snapshot_metadata));
   let second = messages[1].payload().downcast_ref::<TestReply>().expect("snapshot reply");
-  assert!(matches!(second, PersistenceStoreReply::PersistedSnapshot { snapshot: 99, .. }));
+  assert!(matches!(second, EventSourcedStoreReply::PersistedSnapshot { snapshot: 99, .. }));
   drop(messages);
 
   let (delete_reply_to, delete_messages) = reply_ref();
@@ -226,11 +226,11 @@ fn snapshot_success_and_delete_success_emit_public_event_sourced_signals() {
   let messages = delete_messages.lock();
   assert_eq!(messages.len(), 2);
   let first = messages[0].payload().downcast_ref::<TestReply>().expect("delete signal");
-  assert!(matches!(first, PersistenceStoreReply::EventSourced {
+  assert!(matches!(first, EventSourcedStoreReply::EventSourced {
       signal: EventSourcedSignal::DeleteSnapshotsCompleted { criteria: actual }
     } if actual == &criteria));
   let second = messages[1].payload().downcast_ref::<TestReply>().expect("delete reply");
-  assert!(matches!(second, PersistenceStoreReply::DeletedSnapshots { to_sequence_nr: 7 }));
+  assert!(matches!(second, EventSourcedStoreReply::DeletedSnapshots { to_sequence_nr: 7 }));
 }
 
 #[test]
@@ -245,7 +245,7 @@ fn snapshot_failure_emits_public_event_sourced_failure_signal() {
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("snapshot failure reply");
-  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+  assert!(matches!(reply, EventSourcedStoreReply::EventSourced {
       signal: EventSourcedSignal::SnapshotFailed { metadata: Some(metadata), error }
     } if metadata.persistence_id() == "typed-store-test" && *error == PersistenceError::from(cause)));
 }
@@ -268,7 +268,7 @@ fn journal_write_failure_response_emits_failure_signal_through_store_response_pa
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("failure reply");
-  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+  assert!(matches!(reply, EventSourcedStoreReply::EventSourced {
     signal: EventSourcedSignal::JournalPersistFailed { error }
   } if *error == PersistenceError::from(cause)));
 }
@@ -291,7 +291,7 @@ fn journal_rejection_response_emits_rejection_signal_through_store_response_path
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("rejection reply");
-  let PersistenceStoreReply::EventSourced { signal: EventSourcedSignal::JournalPersistRejected { error } } = reply
+  let EventSourcedStoreReply::EventSourced { signal: EventSourcedSignal::JournalPersistRejected { error } } = reply
   else {
     panic!("unexpected store reply");
   };
@@ -317,7 +317,7 @@ fn persisted_event_reply_includes_tags_selected_by_config_tagger() {
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("persisted reply");
-  let PersistenceStoreReply::PersistedEvents { published_events, .. } = reply else {
+  let EventSourcedStoreReply::PersistedEvents { published_events, .. } = reply else {
     panic!("unexpected store reply");
   };
   assert_eq!(published_events[0].tags(), &BTreeSet::from([String::from("event-7")]));
@@ -347,7 +347,7 @@ fn event_publishing_disabled_does_not_run_tagger_for_persisted_reply() {
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("persisted reply");
-  let PersistenceStoreReply::PersistedEvents { published_events, .. } = reply else {
+  let EventSourcedStoreReply::PersistedEvents { published_events, .. } = reply else {
     panic!("unexpected store reply");
   };
   assert!(published_events.is_empty());
@@ -383,7 +383,7 @@ fn batch_persist_type_mismatch_stops_remaining_state_mutation() {
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("failure reply");
-  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+  assert!(matches!(reply, EventSourcedStoreReply::EventSourced {
     signal: EventSourcedSignal::JournalPersistFailed { .. },
   }));
 }
@@ -405,7 +405,7 @@ fn journal_delete_messages_response_emits_delete_events_signal_through_store_res
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("delete events reply");
-  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+  assert!(matches!(reply, EventSourcedStoreReply::EventSourced {
     signal: EventSourcedSignal::DeleteEventsCompleted { to_sequence_nr: 9 },
   }));
 }
@@ -428,7 +428,7 @@ fn journal_delete_messages_failure_emits_delete_events_failed_signal_through_sto
   let messages = messages.lock();
   assert_eq!(messages.len(), 1);
   let reply = messages[0].payload().downcast_ref::<TestReply>().expect("delete events failure reply");
-  assert!(matches!(reply, PersistenceStoreReply::EventSourced {
+  assert!(matches!(reply, EventSourcedStoreReply::EventSourced {
     signal: EventSourcedSignal::DeleteEventsFailed { to_sequence_nr: 10, error }
   } if *error == PersistenceError::from(cause)));
 }

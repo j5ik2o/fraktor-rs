@@ -1,21 +1,21 @@
-//! Typed durable state lifecycle signals.
+//! Public state-sourced effector signals.
+
+#[cfg(test)]
+#[path = "state_sourced_effector_signal_test.rs"]
+mod tests;
 
 use fraktor_persistence_core_kernel_rs::state::DurableStateError;
 
-use crate::durable_state_signal_auth::DurableStateSignalAuth;
+use crate::state_sourced_effector_signal_auth::StateSourcedEffectorSignalAuth;
 
-/// Signals emitted by future typed durable state behavior integration.
-///
-/// Durable state signals are produced by the persistence runtime and delivered
-/// through user private message types. External crates can wrap a received
-/// signal, but cannot construct trusted signals directly.
+/// Stable signal delivered to the aggregate actor through its private message type.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DurableStateSignal<S> {
+pub enum StateSourcedEffectorSignal<S> {
   /// Durable state recovery completed.
   #[non_exhaustive]
   RecoveryCompleted {
     #[doc(hidden)]
-    auth:     DurableStateSignalAuth,
+    auth:     StateSourcedEffectorSignalAuth,
     /// Recovered state, when the durable state store had one.
     state:    Option<S>,
     /// Recovered revision.
@@ -25,7 +25,7 @@ pub enum DurableStateSignal<S> {
   #[non_exhaustive]
   RecoveryFailed {
     #[doc(hidden)]
-    auth:  DurableStateSignalAuth,
+    auth:  StateSourcedEffectorSignalAuth,
     /// Durable state error reported by the persistence kernel.
     error: DurableStateError,
   },
@@ -33,7 +33,7 @@ pub enum DurableStateSignal<S> {
   #[non_exhaustive]
   StatePersisted {
     #[doc(hidden)]
-    auth:     DurableStateSignalAuth,
+    auth:     StateSourcedEffectorSignalAuth,
     /// Persisted state.
     state:    S,
     /// Persisted revision.
@@ -43,7 +43,7 @@ pub enum DurableStateSignal<S> {
   #[non_exhaustive]
   StateDeleted {
     #[doc(hidden)]
-    auth:     DurableStateSignalAuth,
+    auth:     StateSourcedEffectorSignalAuth,
     /// Deleted revision.
     revision: u64,
   },
@@ -51,7 +51,7 @@ pub enum DurableStateSignal<S> {
   #[non_exhaustive]
   PersistenceFailed {
     #[doc(hidden)]
-    auth:  DurableStateSignalAuth,
+    auth:  StateSourcedEffectorSignalAuth,
     /// Durable state error reported by the persistence kernel.
     error: DurableStateError,
   },

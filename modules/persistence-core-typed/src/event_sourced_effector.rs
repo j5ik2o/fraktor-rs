@@ -1,7 +1,7 @@
-//! Persistence effector handle.
+//! Event-sourced effector handle.
 
 #[cfg(test)]
-#[path = "persistence_effector_test.rs"]
+#[path = "event_sourced_effector_test.rs"]
 mod tests;
 
 use alloc::{
@@ -26,32 +26,32 @@ use fraktor_persistence_core_kernel_rs::error::PersistenceError;
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
-  EventSourcedSignal, PersistenceEffectorConfig, PersistenceEffectorMessageAdapter, PersistenceEffectorSignal,
+  EventSourcedEffectorConfig, EventSourcedEffectorMessageAdapter, EventSourcedEffectorSignal, EventSourcedSignal,
   PersistenceMode, PublishedEvent, RetentionCriteria,
-  internal::{EphemeralPersistenceStore, PersistenceStoreActor, PersistenceStoreCommand, PersistenceStoreReply},
+  internal::{EphemeralPersistenceStore, EventSourcedStoreActor, EventSourcedStoreCommand, EventSourcedStoreReply},
 };
 
-type OnReady<S, E, M> = dyn Fn(S, PersistenceEffector<S, E, M>) -> Result<Behavior<M>, ActorError> + Send + Sync;
+type OnReady<S, E, M> = dyn Fn(S, EventSourcedEffector<S, E, M>) -> Result<Behavior<M>, ActorError> + Send + Sync;
 type EventCallback<E, M> = Box<dyn FnOnce(&E) -> Result<Behavior<M>, ActorError> + Send>;
 type EventsCallback<E, M> = Box<dyn FnOnce(&[E]) -> Result<Behavior<M>, ActorError> + Send>;
 type SnapshotCallback<S, M> = Box<dyn FnOnce(&S) -> Result<Behavior<M>, ActorError> + Send>;
-type StoreRefs<S, E> = (TypedActorRef<PersistenceStoreCommand<S, E>>, TypedActorRef<PersistenceStoreReply<S, E>>);
+type StoreRefs<S, E> = (TypedActorRef<EventSourcedStoreCommand<S, E>>, TypedActorRef<EventSourcedStoreReply<S, E>>);
 
 /// Starts persistence side effects for a typed aggregate actor.
-pub struct PersistenceEffector<S, E, M>
+pub struct EventSourcedEffector<S, E, M>
 where
   S: Send + Sync + 'static,
   E: Send + Sync + 'static,
   M: Send + Sync + 'static, {
-  config:          PersistenceEffectorConfig<S, E, M>,
-  store_ref:       Option<TypedActorRef<PersistenceStoreCommand<S, E>>>,
-  reply_to:        Option<TypedActorRef<PersistenceStoreReply<S, E>>>,
+  config:          EventSourcedEffectorConfig<S, E, M>,
+  store_ref:       Option<TypedActorRef<EventSourcedStoreCommand<S, E>>>,
+  reply_to:        Option<TypedActorRef<EventSourcedStoreReply<S, E>>>,
   ephemeral_store: Option<ArcShared<EphemeralPersistenceStore>>,
   sequence_nr:     SharedLock<u64>,
   _message:        PhantomData<fn() -> M>,
 }
 
-impl<S, E, M> PersistenceEffector<S, E, M>
+impl<S, E, M> EventSourcedEffector<S, E, M>
 where
   S: Clone + Send + Sync + 'static,
   E: Clone + Send + Sync + 'static,
@@ -59,9 +59,9 @@ where
 {
   /// Builds typed props that configure a stash-capable mailbox.
   #[must_use]
-  pub fn props<F>(config: PersistenceEffectorConfig<S, E, M>, on_ready: F) -> TypedProps<M>
+  pub fn props<F>(config: EventSourcedEffectorConfig<S, E, M>, on_ready: F) -> TypedProps<M>
   where
-    F: Fn(S, PersistenceEffector<S, E, M>) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+    F: Fn(S, EventSourcedEffector<S, E, M>) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     let on_ready = ArcShared::new(on_ready);
     TypedProps::from_behavior_factory(move || Self::from_config_with_shared(config.clone(), on_ready.clone()))
       .with_stash_mailbox()
@@ -72,14 +72,14 @@ where
   /// Callers using this lower-level API must pair the returned behavior with
   /// `TypedProps::with_stash_mailbox()`.
   #[must_use]
-  pub fn from_config<F>(config: PersistenceEffectorConfig<S, E, M>, on_ready: F) -> Behavior<M>
+  pub fn from_config<F>(config: EventSourcedEffectorConfig<S, E, M>, on_ready: F) -> Behavior<M>
   where
-    F: Fn(S, PersistenceEffector<S, E, M>) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+    F: Fn(S, EventSourcedEffector<S, E, M>) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     Self::from_config_with_shared(config, ArcShared::new(on_ready))
   }
 
   fn from_config_with_shared(
-    config: PersistenceEffectorConfig<S, E, M>,
+    config: EventSourcedEffectorConfig<S, E, M>,
     on_ready: ArcShared<OnReady<S, E, M>>,
   ) -> Behavior<M> {
     Behaviors::setup_result(move |ctx| {
@@ -104,11 +104,11 @@ where
         .cloned()
         .ok_or_else(|| ActorError::fatal("persistence message adapter is not configured"))?;
       let reply_to = ctx
-        .message_adapter(move |reply: PersistenceStoreReply<S, E>| {
-          Ok(message_adapter.wrap_signal(PersistenceEffectorSignal::from(reply)))
+        .message_adapter(move |reply: EventSourcedStoreReply<S, E>| {
+          Ok(message_adapter.wrap_signal(EventSourcedEffectorSignal::from(reply)))
         })
         .map_err(|error| ActorError::fatal(format!("persistence reply adapter registration failed: {error:?}")))?;
-      let store_props = PersistenceStoreActor::<S, E, M>::props(config.clone(), reply_to.clone());
+      let store_props = EventSourcedStoreActor::<S, E, M>::props(config.clone(), reply_to.clone());
       let store_child = ctx
         .spawn_child(&store_props)
         .map_err(|error| ActorError::fatal(format!("persistence store spawn failed: {error:?}")))?;
@@ -116,7 +116,7 @@ where
     })
   }
 
-  fn deferred(config: PersistenceEffectorConfig<S, E, M>) -> Self {
+  fn deferred(config: EventSourcedEffectorConfig<S, E, M>) -> Self {
     Self {
       config,
       store_ref: None,
@@ -128,7 +128,7 @@ where
   }
 
   fn ephemeral(
-    config: PersistenceEffectorConfig<S, E, M>,
+    config: EventSourcedEffectorConfig<S, E, M>,
     store: ArcShared<EphemeralPersistenceStore>,
     sequence_nr: u64,
   ) -> Self {
@@ -143,9 +143,9 @@ where
   }
 
   fn active(
-    config: PersistenceEffectorConfig<S, E, M>,
-    store_ref: TypedActorRef<PersistenceStoreCommand<S, E>>,
-    reply_to: TypedActorRef<PersistenceStoreReply<S, E>>,
+    config: EventSourcedEffectorConfig<S, E, M>,
+    store_ref: TypedActorRef<EventSourcedStoreCommand<S, E>>,
+    reply_to: TypedActorRef<EventSourcedStoreReply<S, E>>,
     sequence_nr: u64,
   ) -> Self {
     Self {
@@ -159,9 +159,9 @@ where
   }
 
   fn await_recovery(
-    config: PersistenceEffectorConfig<S, E, M>,
-    store_ref: TypedActorRef<PersistenceStoreCommand<S, E>>,
-    reply_to: TypedActorRef<PersistenceStoreReply<S, E>>,
+    config: EventSourcedEffectorConfig<S, E, M>,
+    store_ref: TypedActorRef<EventSourcedStoreCommand<S, E>>,
+    reply_to: TypedActorRef<EventSourcedStoreReply<S, E>>,
     on_ready: ArcShared<OnReady<S, E, M>>,
   ) -> Behavior<M> {
     let adapter = match config.message_adapter().cloned() {
@@ -178,13 +178,13 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
+            | EventSourcedEffectorSignal::RecoveryCompleted { state, sequence_nr, .. } => {
               let effector = Self::active(config.clone(), store_ref.clone(), reply_to.clone(), *sequence_nr);
               let next = on_ready(state.clone(), effector)?;
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
+            | EventSourcedEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -233,7 +233,7 @@ where
     let mut store_ref = self.store_ref()?;
     let reply_to = self.reply_to()?;
     store_ref
-      .try_tell(PersistenceStoreCommand::PersistEvent { event, reply_to })
+      .try_tell(EventSourcedStoreCommand::PersistEvent { event, reply_to })
       .map_err(|error| ActorError::fatal(format!("persist event send failed: {error:?}")))?;
     Ok(self.wait_for_event(Box::new(on_persisted)))
   }
@@ -260,7 +260,7 @@ where
     let mut store_ref = self.store_ref()?;
     let reply_to = self.reply_to()?;
     store_ref
-      .try_tell(PersistenceStoreCommand::PersistEvents { events, reply_to })
+      .try_tell(EventSourcedStoreCommand::PersistEvents { events, reply_to })
       .map_err(|error| ActorError::fatal(format!("persist events send failed: {error:?}")))?;
     Ok(self.wait_for_events(Box::new(on_persisted)))
   }
@@ -289,7 +289,7 @@ where
     let mut store_ref = self.store_ref()?;
     let reply_to = self.reply_to()?;
     store_ref
-      .try_tell(PersistenceStoreCommand::PersistSnapshot { snapshot, reply_to })
+      .try_tell(EventSourcedStoreCommand::PersistSnapshot { snapshot, reply_to })
       .map_err(|error| ActorError::fatal(format!("persist snapshot send failed: {error:?}")))?;
     Ok(self.wait_for_snapshot(Box::new(on_persisted)))
   }
@@ -324,7 +324,7 @@ where
     let mut store_ref = self.store_ref()?;
     let reply_to = self.reply_to()?;
     store_ref
-      .try_tell(PersistenceStoreCommand::PersistEvent { event, reply_to })
+      .try_tell(EventSourcedStoreCommand::PersistEvent { event, reply_to })
       .map_err(|error| ActorError::fatal(format!("persist event send failed: {error:?}")))?;
     Ok(self.wait_for_events_then_snapshot(
       Box::new(move |events| match events.first() {
@@ -363,16 +363,16 @@ where
     let mut store_ref = self.store_ref()?;
     let reply_to = self.reply_to()?;
     store_ref
-      .try_tell(PersistenceStoreCommand::PersistEvents { events, reply_to })
+      .try_tell(EventSourcedStoreCommand::PersistEvents { events, reply_to })
       .map_err(|error| ActorError::fatal(format!("persist events send failed: {error:?}")))?;
     Ok(self.wait_for_events_then_snapshot(Box::new(on_persisted), snapshot, force_snapshot))
   }
 
-  fn store_ref(&self) -> Result<TypedActorRef<PersistenceStoreCommand<S, E>>, ActorError> {
+  fn store_ref(&self) -> Result<TypedActorRef<EventSourcedStoreCommand<S, E>>, ActorError> {
     self.store_ref.clone().ok_or_else(|| ActorError::fatal("persistence store is not available"))
   }
 
-  fn reply_to(&self) -> Result<TypedActorRef<PersistenceStoreReply<S, E>>, ActorError> {
+  fn reply_to(&self) -> Result<TypedActorRef<EventSourcedStoreReply<S, E>>, ActorError> {
     self.reply_to.clone().ok_or_else(|| ActorError::fatal("persistence reply adapter is not available"))
   }
 
@@ -453,7 +453,7 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedEvents { events, published_events, sequence_nr, .. } => {
+            | EventSourcedEffectorSignal::PersistedEvents { events, published_events, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
@@ -464,7 +464,7 @@ where
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
+            | EventSourcedEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -502,7 +502,7 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedEvents { events, published_events, sequence_nr, .. } => {
+            | EventSourcedEffectorSignal::PersistedEvents { events, published_events, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
@@ -513,7 +513,7 @@ where
                 let mut store_ref = effector.store_ref()?;
                 let reply_to = effector.reply_to()?;
                 store_ref
-                  .try_tell(PersistenceStoreCommand::PersistSnapshot { snapshot: snapshot.clone(), reply_to })
+                  .try_tell(EventSourcedStoreCommand::PersistSnapshot { snapshot: snapshot.clone(), reply_to })
                   .map_err(|error| ActorError::fatal(format!("persist snapshot send failed: {error:?}")))?;
                 let persisted_events = events.clone();
                 let callback = callback.with_lock(Option::take);
@@ -531,7 +531,7 @@ where
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
+            | EventSourcedEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -563,7 +563,7 @@ where
       Behaviors::receive_message(move |ctx, message| {
         if let Some(signal) = adapter.unwrap_signal(message) {
           return match signal {
-            | PersistenceEffectorSignal::PersistedSnapshot { snapshot, sequence_nr, .. } => {
+            | EventSourcedEffectorSignal::PersistedSnapshot { snapshot, sequence_nr, .. } => {
               sequence_nr_cell.with_lock(|stored_sequence_nr| {
                 *stored_sequence_nr = *sequence_nr;
               });
@@ -574,7 +574,7 @@ where
                   reply_to.clone().ok_or_else(|| ActorError::fatal("persistence reply adapter is not available"))?;
                 if retention_criteria.delete_events_on_snapshot() {
                   store_ref
-                    .try_tell(PersistenceStoreCommand::DeleteEvents { to_sequence_nr, reply_to: reply_to.clone() })
+                    .try_tell(EventSourcedStoreCommand::DeleteEvents { to_sequence_nr, reply_to: reply_to.clone() })
                     .map_err(|error| ActorError::fatal(format!("delete events send failed: {error:?}")))?;
                   return Ok(Self::wait_for_deleted_events_then_snapshots(
                     adapter.clone(),
@@ -587,7 +587,7 @@ where
                   ));
                 }
                 store_ref
-                  .try_tell(PersistenceStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to })
+                  .try_tell(EventSourcedStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to })
                   .map_err(|error| ActorError::fatal(format!("delete snapshots send failed: {error:?}")))?;
                 return Ok(Self::wait_for_deleted_snapshots(
                   adapter.clone(),
@@ -604,7 +604,7 @@ where
               stash.unstash_all(ctx)?;
               Ok(next)
             },
-            | PersistenceEffectorSignal::EventSourced { signal, .. } => {
+            | EventSourcedEffectorSignal::EventSourced { signal, .. } => {
               Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
             },
             | _ => Ok(Behaviors::unhandled()),
@@ -617,7 +617,7 @@ where
   }
 
   fn wait_for_deleted_events_then_snapshots(
-    adapter: PersistenceEffectorMessageAdapter<S, E, M>,
+    adapter: EventSourcedEffectorMessageAdapter<S, E, M>,
     callback: SharedLock<Option<SnapshotCallback<S, M>>>,
     snapshot: S,
     to_sequence_nr: u64,
@@ -629,13 +629,13 @@ where
     Behaviors::receive_message(move |ctx, message| {
       if let Some(signal) = adapter.unwrap_signal(message) {
         return match signal {
-          | PersistenceEffectorSignal::EventSourced {
+          | EventSourcedEffectorSignal::EventSourced {
             signal: EventSourcedSignal::DeleteEventsCompleted { to_sequence_nr: deleted_to_sequence_nr },
             ..
           } if *deleted_to_sequence_nr == to_sequence_nr => {
             let mut store_ref = store_ref.clone();
             store_ref
-              .try_tell(PersistenceStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to: reply_to.clone() })
+              .try_tell(EventSourcedStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to: reply_to.clone() })
               .map_err(|error| ActorError::fatal(format!("delete snapshots send failed: {error:?}")))?;
             Ok(Self::wait_for_deleted_snapshots(
               adapter.clone(),
@@ -646,11 +646,11 @@ where
               persist_failure_backoff_enabled,
             ))
           },
-          | PersistenceEffectorSignal::EventSourced {
+          | EventSourcedEffectorSignal::EventSourced {
             signal: EventSourcedSignal::DeleteEventsCompleted { .. },
             ..
           } => Err(ActorError::fatal("unexpected event deletion acknowledgement")),
-          | PersistenceEffectorSignal::EventSourced { signal, .. } => {
+          | EventSourcedEffectorSignal::EventSourced { signal, .. } => {
             Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
           },
           | _ => Ok(Behaviors::unhandled()),
@@ -662,7 +662,7 @@ where
   }
 
   fn wait_for_deleted_snapshots(
-    adapter: PersistenceEffectorMessageAdapter<S, E, M>,
+    adapter: EventSourcedEffectorMessageAdapter<S, E, M>,
     callback: SharedLock<Option<SnapshotCallback<S, M>>>,
     snapshot: S,
     to_sequence_nr: u64,
@@ -673,7 +673,7 @@ where
     Behaviors::receive_message(move |ctx, message| {
       if let Some(signal) = adapter.unwrap_signal(message) {
         return match signal {
-          | PersistenceEffectorSignal::DeletedSnapshots { to_sequence_nr: deleted_to_sequence_nr, .. }
+          | EventSourcedEffectorSignal::DeletedSnapshots { to_sequence_nr: deleted_to_sequence_nr, .. }
             if *deleted_to_sequence_nr == to_sequence_nr =>
           {
             let next = snapshot.with_lock(|snapshot_slot| {
@@ -685,10 +685,10 @@ where
             stash.unstash_all(ctx)?;
             Ok(next)
           },
-          | PersistenceEffectorSignal::DeletedSnapshots { .. } => {
+          | EventSourcedEffectorSignal::DeletedSnapshots { .. } => {
             Err(ActorError::fatal("unexpected snapshot deletion acknowledgement"))
           },
-          | PersistenceEffectorSignal::EventSourced { signal, .. } => {
+          | EventSourcedEffectorSignal::EventSourced { signal, .. } => {
             Self::event_sourced_signal_behavior(signal, persist_failure_backoff_enabled)
           },
           | _ => Ok(Behaviors::unhandled()),
@@ -763,7 +763,7 @@ where
   }
 }
 
-impl<S, E, M> Clone for PersistenceEffector<S, E, M>
+impl<S, E, M> Clone for EventSourcedEffector<S, E, M>
 where
   S: Clone + Send + Sync + 'static,
   E: Clone + Send + Sync + 'static,

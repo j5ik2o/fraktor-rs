@@ -22,7 +22,7 @@ use fraktor_persistence_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
-use crate::PersistenceEffectorConfig;
+use crate::EventSourcedEffectorConfig;
 
 struct EphemeralPersistenceStoreId;
 
@@ -72,7 +72,7 @@ impl EphemeralPersistenceStore {
 
   pub(crate) fn recover<S, E, M>(
     &self,
-    config: &PersistenceEffectorConfig<S, E, M>,
+    config: &EventSourcedEffectorConfig<S, E, M>,
   ) -> Result<(S, u64), PersistenceError>
   where
     S: Clone + Send + Sync + 'static,
@@ -103,7 +103,7 @@ impl EphemeralPersistenceStore {
 
   pub(crate) fn persist_events<S, E, M>(
     &self,
-    config: &PersistenceEffectorConfig<S, E, M>,
+    config: &EventSourcedEffectorConfig<S, E, M>,
     events: Vec<E>,
   ) -> Result<(Vec<E>, u64), PersistenceError>
   where
@@ -131,7 +131,7 @@ impl EphemeralPersistenceStore {
 
   pub(crate) fn persist_snapshot<S, E, M>(
     &self,
-    config: &PersistenceEffectorConfig<S, E, M>,
+    config: &EventSourcedEffectorConfig<S, E, M>,
     snapshot: S,
     sequence_nr: u64,
   ) -> Result<S, PersistenceError>
@@ -164,7 +164,7 @@ impl EphemeralPersistenceStore {
     Self { entries: SharedLock::new_with_driver::<DefaultMutex<_>>(BTreeMap::new()) }
   }
 
-  fn recovery_payloads<S, E, M>(&self, config: &PersistenceEffectorConfig<S, E, M>) -> EphemeralRecovery {
+  fn recovery_payloads<S, E, M>(&self, config: &EventSourcedEffectorConfig<S, E, M>) -> EphemeralRecovery {
     self.entries.with_lock(|entries| {
       let Some(entry) = entries.get(config.persistence_id().as_str()) else {
         return EphemeralRecovery { sequence_nr: 0, snapshot: None, events: Vec::new() };

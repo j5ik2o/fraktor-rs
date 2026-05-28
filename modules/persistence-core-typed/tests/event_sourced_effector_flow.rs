@@ -31,7 +31,7 @@ use fraktor_persistence_core_kernel_rs::{
   snapshot::{InMemorySnapshotStore, SnapshotMetadata, SnapshotStore},
 };
 use fraktor_persistence_core_typed_rs::{
-  PersistenceEffector, PersistenceEffectorConfig, PersistenceEffectorMessageAdapter, PersistenceEffectorSignal,
+  EventSourcedEffector, EventSourcedEffectorConfig, EventSourcedEffectorMessageAdapter, EventSourcedEffectorSignal,
   PersistenceId, PersistenceMode, RetentionCriteria, SnapshotCriteria,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
@@ -56,7 +56,7 @@ enum CounterCommand {
   Reject { reply_to: TypedActorRef<String> },
   ReadValue { reply_to: TypedActorRef<i32> },
   ReadSequence { reply_to: TypedActorRef<u64> },
-  Persistence(PersistenceEffectorSignal<CounterState, CounterEvent>),
+  Persistence(EventSourcedEffectorSignal<CounterState, CounterEvent>),
 }
 
 #[derive(Clone)]
@@ -66,7 +66,7 @@ enum ManagerCommand {
 }
 
 struct CounterManager {
-  config:       PersistenceEffectorConfig<CounterState, CounterEvent, CounterCommand>,
+  config:       EventSourcedEffectorConfig<CounterState, CounterEvent, CounterCommand>,
   command_log:  SharedValues,
   ready_values: SharedValues,
   child:        Option<TypedChildRef<CounterCommand>>,
@@ -74,7 +74,7 @@ struct CounterManager {
 
 impl CounterManager {
   fn new(
-    config: PersistenceEffectorConfig<CounterState, CounterEvent, CounterCommand>,
+    config: EventSourcedEffectorConfig<CounterState, CounterEvent, CounterCommand>,
     command_log: SharedValues,
     ready_values: SharedValues,
   ) -> Self {
@@ -116,12 +116,12 @@ fn apply_counter_event(state: &CounterState, event: &CounterEvent) -> CounterSta
 fn counter_config(
   mode: PersistenceMode,
   persistence_id: &str,
-) -> PersistenceEffectorConfig<CounterState, CounterEvent, CounterCommand> {
-  let message_adapter = PersistenceEffectorMessageAdapter::new(CounterCommand::Persistence, |message| match message {
+) -> EventSourcedEffectorConfig<CounterState, CounterEvent, CounterCommand> {
+  let message_adapter = EventSourcedEffectorMessageAdapter::new(CounterCommand::Persistence, |message| match message {
     | CounterCommand::Persistence(signal) => Some(signal),
     | _ => None,
   });
-  PersistenceEffectorConfig::new(
+  EventSourcedEffectorConfig::new(
     PersistenceId::of_unique_id(persistence_id.to_string()),
     CounterState { value: 0 },
     apply_counter_event,
@@ -131,11 +131,11 @@ fn counter_config(
 }
 
 fn counter_props(
-  config: PersistenceEffectorConfig<CounterState, CounterEvent, CounterCommand>,
+  config: EventSourcedEffectorConfig<CounterState, CounterEvent, CounterCommand>,
   command_log: SharedValues,
   ready_values: SharedValues,
 ) -> TypedProps<CounterCommand> {
-  PersistenceEffector::props(config, move |state, effector| {
+  EventSourcedEffector::props(config, move |state, effector| {
     ready_values.lock().push(state.value);
     Ok(counter_behavior(state, effector, command_log.clone()))
   })
@@ -143,7 +143,7 @@ fn counter_props(
 
 fn counter_behavior(
   state: CounterState,
-  effector: PersistenceEffector<CounterState, CounterEvent, CounterCommand>,
+  effector: EventSourcedEffector<CounterState, CounterEvent, CounterCommand>,
   command_log: SharedValues,
 ) -> Behavior<CounterCommand> {
   Behaviors::receive_message(move |ctx, message| match message {

@@ -1,7 +1,7 @@
-//! Internal typed persistence store actor.
+//! Internal typed event-sourced store actor.
 
 #[cfg(test)]
-#[path = "persistence_store_actor_test.rs"]
+#[path = "event_sourced_store_actor_test.rs"]
 mod tests;
 
 use alloc::{boxed::Box, format, string::ToString, vec, vec::Vec};
@@ -24,19 +24,20 @@ use fraktor_persistence_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedLock};
 
 use crate::{
-  EventRejectedError, EventSourcedSignal, PersistenceEffectorConfig, PersistenceId, PublishedEvent,
-  internal::{PersistenceStoreCommand, PersistenceStoreReply},
+  EventRejectedError, EventSourcedEffectorConfig, EventSourcedSignal, PersistenceId, PublishedEvent,
+  internal::{EventSourcedStoreCommand, EventSourcedStoreReply},
 };
 
-type ReplyRef<S, E> = TypedActorRef<PersistenceStoreReply<S, E>>;
-type StorePersistHandler<S, E, M> = Box<dyn FnOnce(&mut PersistenceStoreActor<S, E, M>, &PersistentRepr) + Send + Sync>;
+type ReplyRef<S, E> = TypedActorRef<EventSourcedStoreReply<S, E>>;
+type StorePersistHandler<S, E, M> =
+  Box<dyn FnOnce(&mut EventSourcedStoreActor<S, E, M>, &PersistentRepr) + Send + Sync>;
 
-pub(crate) struct PersistenceStoreActor<S, E, M>
+pub(crate) struct EventSourcedStoreActor<S, E, M>
 where
   S: Clone + Send + Sync + 'static,
   E: Clone + Send + Sync + 'static,
   M: Send + Sync + 'static, {
-  config:                   PersistenceEffectorConfig<S, E, M>,
+  config:                   EventSourcedEffectorConfig<S, E, M>,
   context:                  PersistenceContext<Self>,
   state:                    S,
   recovery_reply_to:        ReplyRef<S, E>,
@@ -46,16 +47,16 @@ where
   pending_delete_events:    Option<(u64, ReplyRef<S, E>)>,
 }
 
-impl<S, E, M> PersistenceStoreActor<S, E, M>
+impl<S, E, M> EventSourcedStoreActor<S, E, M>
 where
   S: Clone + Send + Sync + 'static,
   E: Clone + Send + Sync + 'static,
   M: Send + Sync + 'static,
 {
   pub(crate) fn props(
-    config: PersistenceEffectorConfig<S, E, M>,
+    config: EventSourcedEffectorConfig<S, E, M>,
     recovery_reply_to: ReplyRef<S, E>,
-  ) -> TypedProps<PersistenceStoreCommand<S, E>> {
+  ) -> TypedProps<EventSourcedStoreCommand<S, E>> {
     let backoff_config = config.backoff_config().clone();
     let stash_capacity = config.stash_capacity();
     let child_props = persistent_props(move || Self::new(config.clone(), recovery_reply_to.clone()));
@@ -69,7 +70,7 @@ where
     TypedProps::from_props(BackoffSupervisor::props_on_failure(options))
   }
 
-  fn new(config: PersistenceEffectorConfig<S, E, M>, recovery_reply_to: ReplyRef<S, E>) -> Self {
+  fn new(config: EventSourcedEffectorConfig<S, E, M>, recovery_reply_to: ReplyRef<S, E>) -> Self {
     let mut context = PersistenceContext::new(config.persistence_id().as_str().to_string());
     *context.event_adapters_mut() = config.event_adapters().clone();
     Self {
@@ -99,14 +100,14 @@ where
       actor.state = actor.config.apply_event(&actor.state, persisted_event);
       let sequence_nr = actor.context.last_sequence_nr();
       actor.pending_persist_reply = None;
-      Self::reply(&reply_to, PersistenceStoreReply::PersistedEvents {
+      Self::reply(&reply_to, EventSourcedStoreReply::PersistedEvents {
         events: vec![persisted_event.clone()],
         published_events: actor.published_events(repr, persisted_event.clone()),
         sequence_nr,
       });
     });
     self.add_event_to_batch(ctx, event, handler);
-    self.flush_batch(ctx)
+    self.flush_batch_or_clear_persist_reply(ctx)
   }
 
   fn persist_events(
@@ -116,7 +117,7 @@ where
     reply_to: ReplyRef<S, E>,
   ) -> Result<(), ActorError> {
     if events.is_empty() {
-      Self::reply(&reply_to, PersistenceStoreReply::PersistedEvents {
+      Self::reply(&reply_to, EventSourcedStoreReply::PersistedEvents {
         events,
         published_events: Vec::new(),
         sequence_nr: self.context.last_sequence_nr(),
@@ -157,7 +158,7 @@ where
           actor.pending_persist_reply = None;
           let mut published_events = published_events.with_lock(|events| events.clone());
           published_events.sort_by_key(PublishedEvent::sequence_nr);
-          Self::reply(&reply_to, PersistenceStoreReply::PersistedEvents {
+          Self::reply(&reply_to, EventSourcedStoreReply::PersistedEvents {
             events: (*persisted_events).clone(),
             published_events,
             sequence_nr,
@@ -166,7 +167,7 @@ where
       });
       self.add_event_to_batch(ctx, event, handler);
     }
-    self.flush_batch(ctx)
+    self.flush_batch_or_clear_persist_reply(ctx)
   }
 
   fn persist_snapshot(
@@ -176,7 +177,11 @@ where
     reply_to: ReplyRef<S, E>,
   ) -> Result<(), ActorError> {
     self.pending_snapshot = Some((snapshot.clone(), reply_to));
-    self.save_snapshot(ctx, ArcShared::new(snapshot))
+    if let Err(error) = self.save_snapshot(ctx, ArcShared::new(snapshot)) {
+      self.pending_snapshot = None;
+      return Err(error);
+    }
+    Ok(())
   }
 
   fn delete_snapshots_to(
@@ -187,7 +192,11 @@ where
   ) -> Result<(), ActorError> {
     self.pending_delete_snapshots = Some((to_sequence_nr, reply_to));
     let criteria = SnapshotSelectionCriteria::new(to_sequence_nr, u64::MAX, 0, 0);
-    PersistentActor::delete_snapshots(self, ctx, criteria)
+    if let Err(error) = PersistentActor::delete_snapshots(self, ctx, criteria) {
+      self.pending_delete_snapshots = None;
+      return Err(error);
+    }
+    Ok(())
   }
 
   fn delete_events_to(
@@ -204,13 +213,21 @@ where
     Ok(())
   }
 
-  fn reply(reply_to: &ReplyRef<S, E>, reply: PersistenceStoreReply<S, E>) {
+  fn flush_batch_or_clear_persist_reply(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    if let Err(error) = self.flush_batch(ctx) {
+      self.pending_persist_reply = None;
+      return Err(error);
+    }
+    Ok(())
+  }
+
+  fn reply(reply_to: &ReplyRef<S, E>, reply: EventSourcedStoreReply<S, E>) {
     let mut reply_to = reply_to.clone();
     reply_to.tell(reply);
   }
 
   fn reply_event_sourced(reply_to: &ReplyRef<S, E>, signal: EventSourcedSignal) {
-    Self::reply(reply_to, PersistenceStoreReply::EventSourced { signal });
+    Self::reply(reply_to, EventSourcedStoreReply::EventSourced { signal });
   }
 
   fn add_event_to_batch(&mut self, ctx: &mut ActorContext<'_>, event: E, handler: StorePersistHandler<S, E, M>) {
@@ -260,7 +277,7 @@ where
   }
 }
 
-impl<S, E, M> Eventsourced for PersistenceStoreActor<S, E, M>
+impl<S, E, M> Eventsourced for EventSourcedStoreActor<S, E, M>
 where
   S: Clone + Send + Sync + 'static,
   E: Clone + Send + Sync + 'static,
@@ -290,21 +307,21 @@ where
     if self.stash_if_waiting_for_snapshot_result(ctx)? {
       return Ok(());
     }
-    if let Some(command) = message.downcast_ref::<PersistenceStoreCommand<S, E>>() {
+    if let Some(command) = message.downcast_ref::<EventSourcedStoreCommand<S, E>>() {
       match command {
-        | PersistenceStoreCommand::PersistEvent { event, reply_to } => {
+        | EventSourcedStoreCommand::PersistEvent { event, reply_to } => {
           self.persist_event(ctx, event.clone(), reply_to.clone())?;
         },
-        | PersistenceStoreCommand::PersistEvents { events, reply_to } => {
+        | EventSourcedStoreCommand::PersistEvents { events, reply_to } => {
           self.persist_events(ctx, events.clone(), reply_to.clone())?;
         },
-        | PersistenceStoreCommand::PersistSnapshot { snapshot, reply_to } => {
+        | EventSourcedStoreCommand::PersistSnapshot { snapshot, reply_to } => {
           self.persist_snapshot(ctx, snapshot.clone(), reply_to.clone())?;
         },
-        | PersistenceStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to } => {
+        | EventSourcedStoreCommand::DeleteSnapshots { to_sequence_nr, reply_to } => {
           self.delete_snapshots_to(ctx, *to_sequence_nr, reply_to.clone())?;
         },
-        | PersistenceStoreCommand::DeleteEvents { to_sequence_nr, reply_to } => {
+        | EventSourcedStoreCommand::DeleteEvents { to_sequence_nr, reply_to } => {
           self.delete_events_to(ctx, *to_sequence_nr, reply_to.clone())?;
         },
       }
@@ -314,7 +331,7 @@ where
 
   fn on_recovery_completed(&mut self) {
     Self::reply_event_sourced(&self.recovery_reply_to, EventSourcedSignal::RecoveryCompleted);
-    Self::reply(&self.recovery_reply_to, PersistenceStoreReply::RecoveryCompleted {
+    Self::reply(&self.recovery_reply_to, EventSourcedStoreReply::RecoveryCompleted {
       state:       self.state.clone(),
       sequence_nr: self.context.last_sequence_nr(),
     });
@@ -382,7 +399,7 @@ where
   fn on_snapshot_saved(&mut self, metadata: &SnapshotMetadata) {
     if let Some((snapshot, reply_to)) = self.pending_snapshot.take() {
       Self::reply_event_sourced(&reply_to, EventSourcedSignal::SnapshotCompleted { metadata: metadata.clone() });
-      Self::reply(&reply_to, PersistenceStoreReply::PersistedSnapshot {
+      Self::reply(&reply_to, EventSourcedStoreReply::PersistedSnapshot {
         snapshot,
         sequence_nr: self.context.last_sequence_nr(),
       });
@@ -392,7 +409,7 @@ where
   fn on_snapshots_deleted(&mut self, criteria: &SnapshotSelectionCriteria) {
     if let Some((to_sequence_nr, reply_to)) = self.pending_delete_snapshots.take() {
       Self::reply_event_sourced(&reply_to, EventSourcedSignal::DeleteSnapshotsCompleted { criteria: criteria.clone() });
-      Self::reply(&reply_to, PersistenceStoreReply::DeletedSnapshots { to_sequence_nr });
+      Self::reply(&reply_to, EventSourcedStoreReply::DeletedSnapshots { to_sequence_nr });
     }
   }
 
@@ -416,7 +433,7 @@ where
   }
 }
 
-impl<S, E, M> PersistenceStoreActor<S, E, M>
+impl<S, E, M> EventSourcedStoreActor<S, E, M>
 where
   S: Clone + Send + Sync + 'static,
   E: Clone + Send + Sync + 'static,
@@ -431,7 +448,7 @@ where
   }
 }
 
-impl<S, E, M> PersistentActor for PersistenceStoreActor<S, E, M>
+impl<S, E, M> PersistentActor for EventSourcedStoreActor<S, E, M>
 where
   S: Clone + Send + Sync + 'static,
   E: Clone + Send + Sync + 'static,
