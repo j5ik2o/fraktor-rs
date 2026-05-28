@@ -3,6 +3,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { firstMeaningfulLine, isDuplicateComment, normalizeBody, stripMarkdown } from "./takt-review-wrapper-helpers.mjs";
 
 const env = process.env;
 const repo = requiredEnv("GITHUB_REPOSITORY");
@@ -11,6 +12,7 @@ const prNumber = requiredEnv("PR_NUMBER");
 const workflow = env.TAKT_WORKFLOW || "review-default";
 const provider = env.TAKT_PROVIDER || "claude-sdk";
 const model = env.TAKT_MODEL || "";
+const commentHeader = env.TAKT_COMMENT_HEADER || "TAKT Review (Claude)";
 const maxComments = parseMaxComments(env.TAKT_MAX_COMMENTS);
 const expectedHeadSha = env.PR_HEAD_SHA || "";
 const [owner, repoName] = repo.split("/");
@@ -152,7 +154,7 @@ const reviewComments = parsedFindings
 
 if (reviewComments.length === 0) {
   console.log("TAKT produced no actionable inline findings on changed lines.");
-  writeStepSummary("TAKT Review (Claude)", {
+  writeStepSummary(commentHeader, {
     status: "completed",
     review_executed: "true",
     posted_comments: "0",
@@ -166,12 +168,12 @@ if (reviewComments.length === 0) {
 await postReview({
   commit_id: pr.headRefOid,
   event: "COMMENT",
-  body: `TAKT Review (Claude) posted ${reviewComments.length} inline finding(s).\n\nSource report: ${report.relativePath}`,
+  body: `${commentHeader} posted ${reviewComments.length} inline finding(s).\n\nSource report: ${report.relativePath}`,
   comments: reviewComments,
 });
 
 console.log(`Posted ${reviewComments.length} TAKT inline review comment(s).`);
-writeStepSummary("TAKT Review (Claude)", {
+writeStepSummary(commentHeader, {
   status: "completed",
   review_executed: "true",
   posted_comments: reviewComments.length,
@@ -259,12 +261,12 @@ function logProcessResult(result, runStartedAt) {
 }
 
 function completeSkipped(reason, details, annotation = "notice") {
-  const lines = [`TAKT Review (Claude) skipped: ${reason}`];
+  const lines = [`${commentHeader} skipped: ${reason}`];
   for (const [key, value] of Object.entries(details)) {
     lines.push(`${key}=${formatLogValue(value)}`);
   }
   console.log(`::${annotation}::${formatWorkflowCommandValue(lines.join("; "))}`);
-  writeStepSummary("TAKT Review (Claude)", {
+  writeStepSummary(commentHeader, {
     status: "skipped",
     review_executed: "false",
     skip_reason: reason,
@@ -335,11 +337,21 @@ function ghPaginatedJson(endpoint) {
 function buildTask({ repo, prNumber, pr, changedFiles, existingComments, maxComments }) {
   const existingInline = existingComments
     .slice(-80)
-    .map((comment) => `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${sanitizePromptText(firstLine(comment.body), 180)}`)
+    .map(
+      (comment) =>
+        `- ${comment.path}:${comment.line || comment.original_line || "?"}: ${sanitizePromptText(firstMeaningfulLine(comment.body, commentHeader), 180)}`,
+    )
     .join("\n");
   const existingConversation = [
-    ...(pr.comments || []).slice(-40).map((comment) => `- top-level comment by ${commentAuthor(comment)}: ${sanitizePromptText(firstLine(comment.body), 180)}`),
-    ...(pr.reviews || []).slice(-40).map((review) => `- review ${review.state || "UNKNOWN"} by ${commentAuthor(review)}: ${sanitizePromptText(firstLine(review.body), 180)}`),
+    ...(pr.comments || [])
+      .slice(-40)
+      .map((comment) => `- top-level comment by ${commentAuthor(comment)}: ${sanitizePromptText(firstMeaningfulLine(comment.body, commentHeader), 180)}`),
+    ...(pr.reviews || [])
+      .slice(-40)
+      .map(
+        (review) =>
+          `- review ${review.state || "UNKNOWN"} by ${commentAuthor(review)}: ${sanitizePromptText(firstMeaningfulLine(review.body, commentHeader), 180)}`,
+      ),
   ].join("\n");
   const fileList = changedFiles.map((file) => `- ${sanitizePromptText(file.filename, 240)}`).join("\n");
 
@@ -358,7 +370,7 @@ Review procedure:
 2. GitHub PR diff を正本とし、変更された挙動だけをレビューしてください。diff にない行や変更前から存在する問題は、今回の変更で悪化していない限り指摘しないでください。
 3. Postable findings は、インライン PR コメントとして扱う価値がある具体的なバグ、セキュリティ問題、挙動の回帰、破壊的変更、保守性の問題に限定してください。
 4. 指摘がない場合は APPROVE with no findings を返し、finding table を出力しないでください。肯定的コメントやサマリーコメントは不要です。
-5. style-only nit、好み、軽微な可読性だけの指摘、既存コメント・既存レビュー・既存インラインコメントと同じ意図の重複指摘は出さないでください。
+5. style-only nit、好み、軽微な可読性だけの指摘、既存コメント・既存レビュー・既存インラインコメントと同じ意図の重複指摘は出さないでください。Claude Code Review、TAKT Review、CodeRabbit、Cursor、Codex など別 review workflow の既存指摘とも重複させないでください。
 6. ${maxComments} 件を超える懸念がある場合は、バグ・セキュリティ・破壊的変更の可能性が高いものを優先してください。
 7. 修正方針が明確な場合は、具体的な suggestion を含めてください。
 
@@ -394,9 +406,14 @@ PR body:
 ${sanitizePromptText(pr.body || "(empty)", 1000)}
 
 Review target:
-Use \`gh pr diff ${prNumber} -R ${repo}\`, \`gh pr view ${prNumber} -R ${repo} --json comments,reviews,files\`, and
-\`gh api repos/${repo}/pulls/${prNumber}/comments --paginate\` when you need the diff or existing comments.
+The wrapper has already supplied changed files and existing inline comments above. Use the available GitHub access in the runtime when you need the full diff or a fresh comment snapshot.
+If command-line GitHub access is available, \`gh pr diff ${prNumber} -R ${repo}\`, \`gh pr view ${prNumber} -R ${repo} --json comments,reviews,files\`, and
+\`gh api repos/${repo}/pulls/${prNumber}/comments --paginate\` are valid ways to refresh that context.
 If GitHub cannot render the PR diff, return APPROVE with no findings.
+
+TAKT workflow routing:
+When the gather step has enough information to review this PR, include the exact status phrase \`レビュー対象の情報収集完了\`.
+If the review target cannot be identified or required context is missing, include the exact status phrase \`レビュー対象を特定できない、情報不足\`.
 `;
 }
 
@@ -592,14 +609,8 @@ function toReviewComment(finding, allowedLines, existingComments) {
   }
 
   const body = formatCommentBody(finding);
-  const duplicate = existingComments.some((comment) => {
-    return (
-      comment.path === path &&
-      comment.line === line &&
-      comment.body.includes("<!-- takt-review-wrapper -->") &&
-      normalizeBody(comment.body).includes(normalizeBody(finding.issue).slice(0, 80))
-    );
-  });
+  const normalizedIssue = normalizeBody(finding.issue);
+  const duplicate = existingComments.some((comment) => isDuplicateComment(comment, path, line, normalizedIssue));
   if (duplicate) {
     console.log(`Skipping duplicate finding: ${path}:${line}`);
     return undefined;
@@ -739,16 +750,8 @@ function normalizeHeader(header) {
   return value.replace(/[^a-z]/g, "");
 }
 
-function stripMarkdown(value) {
-  return value.replace(/`/g, "").replace(/\*\*/g, "").trim();
-}
-
-function firstLine(value) {
-  return stripMarkdown(value || "").split(/\r?\n/)[0].slice(0, 180);
-}
-
 function formatCommentBody(finding) {
-  const parts = ["**TAKT Review (Claude)**"];
+  const parts = [`**${commentHeader}**`];
   const prefix = [finding.severity, finding.source].filter(Boolean).join(" / ");
   if (prefix) {
     parts.push(`**${prefix}**`);
@@ -759,10 +762,6 @@ function formatCommentBody(finding) {
   }
   parts.push("\n<!-- takt-review-wrapper -->");
   return parts.join("\n\n");
-}
-
-function normalizeBody(value) {
-  return stripMarkdown(value || "").replace(/\s+/g, " ").trim();
 }
 
 function isPlaceholder(value) {
