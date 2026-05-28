@@ -5,7 +5,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::EphemeralPersistenceStore;
 use crate::{
-  EventAdapter, EventSeq, PersistenceEffectorConfig, PersistenceId, PersistenceMode, Recovery,
+  EventAdapter, EventSeq, EventSourcedEffectorConfig, PersistenceId, PersistenceMode, Recovery,
   SnapshotSelectionCriteria,
 };
 
@@ -13,8 +13,8 @@ fn apply_event(state: &u32, event: &u32) -> u32 {
   state + event
 }
 
-fn config(persistence_id: &str) -> PersistenceEffectorConfig<u32, u32, ()> {
-  PersistenceEffectorConfig::new(PersistenceId::of_unique_id(persistence_id), 0, apply_event)
+fn config(persistence_id: &str) -> EventSourcedEffectorConfig<u32, u32, ()> {
+  EventSourcedEffectorConfig::new(PersistenceId::of_unique_id(persistence_id), 0, apply_event)
     .with_persistence_mode(PersistenceMode::Ephemeral)
 }
 

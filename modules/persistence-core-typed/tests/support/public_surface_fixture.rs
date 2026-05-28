@@ -1,5 +1,3 @@
-#![cfg(not(target_os = "none"))]
-
 use std::{
   env, fs,
   path::{Path, PathBuf},
@@ -7,56 +5,14 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
-const FORGED_SIGNAL_SOURCE: &str = r#"
-use fraktor_persistence_core_typed_rs::PersistenceEffectorSignal;
-
-fn main() {
-  let _signal: PersistenceEffectorSignal<u64, u64> = PersistenceEffectorSignal::RecoveryCompleted {
-    auth: Default::default(),
-    state: 0,
-    sequence_nr: 0,
-  };
-}
-"#;
-
-const REUSED_AUTH_SOURCE: &str = r#"
-use fraktor_persistence_core_typed_rs::PersistenceEffectorSignal;
-
-fn forge(signal: PersistenceEffectorSignal<u64, u64>) -> PersistenceEffectorSignal<u64, u64> {
-  let auth = match signal {
-    | PersistenceEffectorSignal::RecoveryCompleted { auth, .. }
-    | PersistenceEffectorSignal::PersistedEvents { auth, .. }
-    | PersistenceEffectorSignal::PersistedSnapshot { auth, .. }
-    | PersistenceEffectorSignal::DeletedSnapshots { auth, .. }
-    | PersistenceEffectorSignal::Failed { auth, .. } => auth,
-  };
-
-  PersistenceEffectorSignal::RecoveryCompleted {
-    auth,
-    state: 999,
-    sequence_nr: 999,
-  }
-}
-
-fn main() {}
-"#;
-
-#[test]
-fn persistence_effector_signal_auth_cannot_be_forged_from_external_crate() {
-  assert_fixture_build_failure_contains("persistence-effector-signal-auth-forged", FORGED_SIGNAL_SOURCE, "Default");
-  assert_fixture_build_failure_contains(
-    "persistence-effector-signal-auth-reused",
-    REUSED_AUTH_SOURCE,
-    "non-exhaustive",
-  );
-}
-
-fn assert_fixture_build_failure_contains(name: &str, source: &str, expected: &str) {
+pub(crate) fn assert_fixture_build_failure_contains(name: &str, source: &str, expected: &str) {
   let crate_dir = unique_crate_dir(name);
   write_fixture_crate(&crate_dir, name, source);
+  copy_workspace_cargo_context(&crate_dir);
 
   let output = match Command::new("cargo")
     .arg("check")
+    .arg("--offline")
     .arg("--quiet")
     .env("CARGO_TARGET_DIR", crate_dir.join("target"))
     .current_dir(&crate_dir)
@@ -87,6 +43,35 @@ fn write_fixture_crate(crate_dir: &Path, name: &str, source: &str) {
   }
   if let Err(error) = fs::write(src_dir.join("main.rs"), source) {
     panic!("fixture main source should be written: {error}");
+  }
+}
+
+fn copy_workspace_cargo_context(crate_dir: &Path) {
+  let workspace_root = workspace_root();
+  copy_required_file(&workspace_root.join("Cargo.lock"), &crate_dir.join("Cargo.lock"));
+  copy_required_file(&workspace_root.join("rust-toolchain.toml"), &crate_dir.join("rust-toolchain.toml"));
+
+  let workspace_cargo_config = workspace_root.join(".cargo").join("config.toml");
+  if workspace_cargo_config.exists() {
+    let fixture_cargo_dir = crate_dir.join(".cargo");
+    if let Err(error) = fs::create_dir_all(&fixture_cargo_dir) {
+      panic!("fixture .cargo directory should be created: {error}");
+    }
+    copy_required_file(&workspace_cargo_config, &fixture_cargo_dir.join("config.toml"));
+  }
+}
+
+fn workspace_root() -> PathBuf {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  match manifest_dir.ancestors().find(|path| path.join("Cargo.lock").is_file()) {
+    | Some(path) => path.to_path_buf(),
+    | None => panic!("workspace root with Cargo.lock should be discoverable from {}", manifest_dir.display()),
+  }
+}
+
+fn copy_required_file(from: &Path, to: &Path) {
+  if let Err(error) = fs::copy(from, to) {
+    panic!("{} should be copied to {}: {error}", from.display(), to.display());
   }
 }
 

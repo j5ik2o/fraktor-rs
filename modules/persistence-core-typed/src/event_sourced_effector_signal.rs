@@ -1,17 +1,17 @@
-//! Public persistence effector signals.
+//! Public event-sourced effector signals.
 
 use alloc::vec::Vec;
 
-use crate::{EventSourcedSignal, PublishedEvent, persistence_effector_signal_auth::PersistenceEffectorSignalAuth};
+use crate::{EventSourcedSignal, PublishedEvent, event_sourced_effector_signal_auth::EventSourcedEffectorSignalAuth};
 
 /// Stable signal delivered to the aggregate actor through its private message type.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PersistenceEffectorSignal<S, E> {
+pub enum EventSourcedEffectorSignal<S, E> {
   /// Recovery completed with the recovered state and latest sequence number.
   #[non_exhaustive]
   RecoveryCompleted {
     #[doc(hidden)]
-    auth:        PersistenceEffectorSignalAuth,
+    auth:        EventSourcedEffectorSignalAuth,
     /// Recovered state.
     state:       S,
     /// Latest recovered sequence number.
@@ -21,7 +21,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   #[non_exhaustive]
   PersistedEvents {
     #[doc(hidden)]
-    auth:             PersistenceEffectorSignalAuth,
+    auth:             EventSourcedEffectorSignalAuth,
     /// Persisted events.
     events:           Vec<E>,
     #[doc(hidden)]
@@ -33,7 +33,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   #[non_exhaustive]
   PersistedSnapshot {
     #[doc(hidden)]
-    auth:        PersistenceEffectorSignalAuth,
+    auth:        EventSourcedEffectorSignalAuth,
     /// Persisted snapshot state.
     snapshot:    S,
     /// Snapshot sequence number.
@@ -43,7 +43,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   #[non_exhaustive]
   DeletedSnapshots {
     #[doc(hidden)]
-    auth:           PersistenceEffectorSignalAuth,
+    auth:           EventSourcedEffectorSignalAuth,
     /// Inclusive upper sequence number for deletion.
     to_sequence_nr: u64,
   },
@@ -51,7 +51,7 @@ pub enum PersistenceEffectorSignal<S, E> {
   #[non_exhaustive]
   EventSourced {
     #[doc(hidden)]
-    auth:   PersistenceEffectorSignalAuth,
+    auth:   EventSourcedEffectorSignalAuth,
     /// Event-sourced signal payload.
     signal: EventSourcedSignal,
   },

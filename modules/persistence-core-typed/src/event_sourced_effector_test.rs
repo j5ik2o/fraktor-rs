@@ -17,9 +17,9 @@ use fraktor_persistence_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use crate::{
-  EventRejectedError, EventSourcedSignal, PersistenceEffector, PersistenceEffectorConfig,
-  PersistenceEffectorMessageAdapter, PersistenceEffectorSignal, PersistenceId, PersistenceMode, PublishedEvent,
-  RetentionCriteria, persistence_effector_signal_auth::PersistenceEffectorSignalAuth,
+  EventRejectedError, EventSourcedEffector, EventSourcedEffectorConfig, EventSourcedEffectorMessageAdapter,
+  EventSourcedEffectorSignal, EventSourcedSignal, PersistenceId, PersistenceMode, PublishedEvent, RetentionCriteria,
+  event_sourced_effector_signal_auth::EventSourcedEffectorSignalAuth,
 };
 
 type RecordedEvents = SharedLock<Vec<EventStreamEvent>>;
@@ -29,7 +29,7 @@ type PersistedEvents = SharedLock<Vec<u32>>;
 fn retention_delete_to_returns_none_for_zero_snapshot_interval() {
   let retention_criteria = RetentionCriteria::snapshot_every(0, 1);
 
-  let actual = PersistenceEffector::<(), (), ()>::retention_delete_to(retention_criteria, 10);
+  let actual = EventSourcedEffector::<(), (), ()>::retention_delete_to(retention_criteria, 10);
 
   assert_eq!(actual, None);
 }
@@ -38,7 +38,7 @@ fn retention_delete_to_returns_none_for_zero_snapshot_interval() {
 fn retention_delete_to_returns_none_for_zero_keep_snapshots() {
   let retention_criteria = RetentionCriteria::snapshot_every(2, 0);
 
-  let actual = PersistenceEffector::<(), (), ()>::retention_delete_to(retention_criteria, 10);
+  let actual = EventSourcedEffector::<(), (), ()>::retention_delete_to(retention_criteria, 10);
 
   assert_eq!(actual, None);
 }
@@ -47,7 +47,7 @@ fn retention_delete_to_returns_none_for_zero_keep_snapshots() {
 fn retention_delete_to_returns_none_before_first_snapshot_interval() {
   let retention_criteria = RetentionCriteria::snapshot_every(5, 1);
 
-  let actual = PersistenceEffector::<(), (), ()>::retention_delete_to(retention_criteria, 3);
+  let actual = EventSourcedEffector::<(), (), ()>::retention_delete_to(retention_criteria, 3);
 
   assert_eq!(actual, None);
 }
@@ -91,7 +91,7 @@ fn event_publishing_disabled_does_not_run_tagger_in_ephemeral_mode() {
   let observed_persisted_events = persisted_events.clone();
   let tagger_calls = SharedLock::new_with_driver::<DefaultMutex<_>>(0_u32);
   let observed_tagger_calls = tagger_calls.clone();
-  let config = PersistenceEffectorConfig::new(
+  let config = EventSourcedEffectorConfig::new(
     PersistenceId::of_unique_id("ephemeral-unpublished-tagged-event"),
     0_u32,
     apply_event,
@@ -103,7 +103,7 @@ fn event_publishing_disabled_does_not_run_tagger_in_ephemeral_mode() {
     tagger_calls.with_write(|calls| *calls += 1);
     BTreeSet::new()
   });
-  let props = PersistenceEffector::props(config, move |_state, effector| {
+  let props = EventSourcedEffector::props(config, move |_state, effector| {
     Ok(aggregate_behavior(effector, persisted_events.clone()))
   });
   let system = typed_persistence_system(&props);
@@ -141,14 +141,14 @@ fn journal_rejection_is_exposed_as_distinct_event_sourced_signal() {
     3,
     PersistenceError::StateMachine("journal rejected".into()),
   );
-  let signal = PersistenceEffectorSignal::<u32, u32>::EventSourced {
-    auth:   PersistenceEffectorSignalAuth::new(),
+  let signal = EventSourcedEffectorSignal::<u32, u32>::EventSourced {
+    auth:   EventSourcedEffectorSignalAuth::new(),
     signal: EventSourcedSignal::JournalPersistRejected { error: error.clone() },
   };
   assert!(
     matches!(
       signal,
-      PersistenceEffectorSignal::EventSourced {
+      EventSourcedEffectorSignal::EventSourced {
         auth: _,
         signal: EventSourcedSignal::JournalPersistRejected { error: actual }
       } if actual == error
@@ -162,7 +162,7 @@ fn journal_persist_failure_is_recoverable_when_backoff_is_enabled() {
   let signal =
     EventSourcedSignal::JournalPersistFailed { error: PersistenceError::StateMachine(String::from("journal failed")) };
 
-  let actual = PersistenceEffector::<(), (), ()>::event_sourced_signal_behavior(&signal, true);
+  let actual = EventSourcedEffector::<(), (), ()>::event_sourced_signal_behavior(&signal, true);
 
   assert!(matches!(actual, Err(ActorError::Recoverable(_))));
 }
@@ -172,7 +172,7 @@ fn journal_persist_failure_is_fatal_when_backoff_is_disabled() {
   let signal =
     EventSourcedSignal::JournalPersistFailed { error: PersistenceError::StateMachine(String::from("journal failed")) };
 
-  let actual = PersistenceEffector::<(), (), ()>::event_sourced_signal_behavior(&signal, false);
+  let actual = EventSourcedEffector::<(), (), ()>::event_sourced_signal_behavior(&signal, false);
 
   assert!(matches!(actual, Err(ActorError::Fatal(_))));
 }
@@ -180,7 +180,7 @@ fn journal_persist_failure_is_fatal_when_backoff_is_disabled() {
 #[derive(Clone, Debug)]
 enum AggregateCommand {
   Add(u32),
-  Signal(PersistenceEffectorSignal<u32, u32>),
+  Signal(EventSourcedEffectorSignal<u32, u32>),
 }
 
 struct RecordingSubscriber {
@@ -213,16 +213,18 @@ fn aggregate_props_with_mode(
   event_publishing: bool,
   persistence_mode: PersistenceMode,
 ) -> TypedProps<AggregateCommand> {
-  let config = PersistenceEffectorConfig::new(PersistenceId::of_unique_id(persistence_id), 0_u32, apply_event)
+  let config = EventSourcedEffectorConfig::new(PersistenceId::of_unique_id(persistence_id), 0_u32, apply_event)
     .with_message_adapter(message_adapter())
     .with_event_publishing(event_publishing)
     .with_persistence_mode(persistence_mode);
 
-  PersistenceEffector::props(config, move |_state, effector| Ok(aggregate_behavior(effector, persisted_events.clone())))
+  EventSourcedEffector::props(config, move |_state, effector| {
+    Ok(aggregate_behavior(effector, persisted_events.clone()))
+  })
 }
 
 fn aggregate_behavior(
-  effector: PersistenceEffector<u32, u32, AggregateCommand>,
+  effector: EventSourcedEffector<u32, u32, AggregateCommand>,
   persisted_events: PersistedEvents,
 ) -> Behavior<AggregateCommand> {
   Behaviors::receive_message(move |ctx, message| match message {
@@ -241,8 +243,8 @@ fn apply_event(state: &u32, event: &u32) -> u32 {
   state + event
 }
 
-fn message_adapter() -> PersistenceEffectorMessageAdapter<u32, u32, AggregateCommand> {
-  PersistenceEffectorMessageAdapter::new(AggregateCommand::Signal, |message| match message {
+fn message_adapter() -> EventSourcedEffectorMessageAdapter<u32, u32, AggregateCommand> {
+  EventSourcedEffectorMessageAdapter::new(AggregateCommand::Signal, |message| match message {
     | AggregateCommand::Signal(signal) => Some(signal),
     | AggregateCommand::Add(_) => None,
   })
@@ -266,7 +268,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
     }
     thread::yield_now();
   }
-  assert!(condition(), "timed out waiting for persistence effector test condition");
+  assert!(condition(), "timed out waiting for event-sourced effector test condition");
 }
 
 fn assert_never_for(duration: Duration, mut condition: impl FnMut() -> bool) {

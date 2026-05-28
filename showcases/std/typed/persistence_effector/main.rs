@@ -10,7 +10,7 @@ use fraktor_persistence_core_kernel_rs::{
   extension::PersistenceExtensionInstaller, journal::InMemoryJournal, snapshot::InMemorySnapshotStore,
 };
 use fraktor_persistence_core_typed_rs::{
-  PersistenceEffector, PersistenceEffectorConfig, PersistenceEffectorMessageAdapter, PersistenceEffectorSignal,
+  EventSourcedEffector, EventSourcedEffectorConfig, EventSourcedEffectorMessageAdapter, EventSourcedEffectorSignal,
   PersistenceId, PersistenceMode, RetentionCriteria, SnapshotCriteria,
 };
 
@@ -36,7 +36,7 @@ enum AccountCommand {
   Open { initial_balance: i64, reply_to: TypedActorRef<String> },
   Deposit { amount: i64, reply_to: TypedActorRef<String> },
   GetBalance { reply_to: TypedActorRef<i64> },
-  Persistence(PersistenceEffectorSignal<AccountState, AccountEvent>),
+  Persistence(EventSourcedEffectorSignal<AccountState, AccountEvent>),
 }
 
 impl BankAccount {
@@ -66,12 +66,12 @@ fn apply_event(state: &AccountState, event: &AccountEvent) -> AccountState {
   }
 }
 
-fn account_config() -> PersistenceEffectorConfig<AccountState, AccountEvent, AccountCommand> {
-  let message_adapter = PersistenceEffectorMessageAdapter::new(AccountCommand::Persistence, |message| match message {
+fn account_config() -> EventSourcedEffectorConfig<AccountState, AccountEvent, AccountCommand> {
+  let message_adapter = EventSourcedEffectorMessageAdapter::new(AccountCommand::Persistence, |message| match message {
     | AccountCommand::Persistence(signal) => Some(signal),
     | _ => None,
   });
-  PersistenceEffectorConfig::new(
+  EventSourcedEffectorConfig::new(
     PersistenceId::of_unique_id("typed-bank-account-1"),
     AccountState::NotCreated,
     apply_event,
@@ -84,7 +84,7 @@ fn account_config() -> PersistenceEffectorConfig<AccountState, AccountEvent, Acc
 
 fn account_behavior(
   state: AccountState,
-  effector: PersistenceEffector<AccountState, AccountEvent, AccountCommand>,
+  effector: EventSourcedEffector<AccountState, AccountEvent, AccountCommand>,
 ) -> Behavior<AccountCommand> {
   match state {
     | AccountState::NotCreated => not_created(effector),
@@ -92,7 +92,7 @@ fn account_behavior(
   }
 }
 
-fn not_created(effector: PersistenceEffector<AccountState, AccountEvent, AccountCommand>) -> Behavior<AccountCommand> {
+fn not_created(effector: EventSourcedEffector<AccountState, AccountEvent, AccountCommand>) -> Behavior<AccountCommand> {
   Behaviors::receive_message(move |ctx, message| match message {
     | AccountCommand::Open { initial_balance, reply_to } => match BankAccount::open(*initial_balance) {
       | Ok((account, event)) => {
@@ -126,7 +126,7 @@ fn not_created(effector: PersistenceEffector<AccountState, AccountEvent, Account
 
 fn created(
   account: BankAccount,
-  effector: PersistenceEffector<AccountState, AccountEvent, AccountCommand>,
+  effector: EventSourcedEffector<AccountState, AccountEvent, AccountCommand>,
 ) -> Behavior<AccountCommand> {
   Behaviors::receive_message(move |ctx, message| match message {
     | AccountCommand::Open { reply_to, .. } => {
@@ -169,7 +169,7 @@ fn system_config() -> ActorSystemConfig {
 }
 
 fn main() {
-  let props = PersistenceEffector::props(account_config(), |state, effector| Ok(account_behavior(state, effector)));
+  let props = EventSourcedEffector::props(account_config(), |state, effector| Ok(account_behavior(state, effector)));
   let system = TypedActorSystem::<AccountCommand>::create_from_props(&props, system_config()).expect("system");
   let termination = system.when_terminated();
   let mut account = system.user_guardian_ref();

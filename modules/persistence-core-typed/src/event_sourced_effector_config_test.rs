@@ -7,7 +7,7 @@ use core::{any::Any, time::Duration};
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  BackoffConfig, EventAdapter, EventSeq, PersistenceEffectorConfig, PersistenceId, Recovery, SnapshotCriteria,
+  BackoffConfig, EventAdapter, EventSeq, EventSourcedEffectorConfig, PersistenceId, Recovery, SnapshotCriteria,
 };
 
 fn apply_event(state: &u32, event: &u32) -> u32 {
@@ -16,7 +16,7 @@ fn apply_event(state: &u32, event: &u32) -> u32 {
 
 #[test]
 fn default_stash_capacity_is_bounded() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
 
   assert_eq!(config.stash_capacity(), 1000);
   assert!(config.validate().is_ok());
@@ -24,7 +24,7 @@ fn default_stash_capacity_is_bounded() {
 
 #[test]
 fn default_recovery_is_unbounded() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
 
   assert_eq!(config.recovery().to_sequence_nr(), u64::MAX);
   assert_eq!(config.recovery().replay_max(), u64::MAX);
@@ -32,14 +32,14 @@ fn default_recovery_is_unbounded() {
 
 #[test]
 fn event_publishing_is_enabled_by_default() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
 
   assert!(config.event_publishing_enabled());
 }
 
 #[test]
 fn persist_failure_backoff_is_disabled_by_default() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
 
   assert!(!config.persist_failure_backoff_enabled());
 }
@@ -47,7 +47,7 @@ fn persist_failure_backoff_is_disabled_by_default() {
 #[test]
 fn on_persist_failure_enables_hidden_store_backoff_config() {
   let backoff_config = BackoffConfig::new(Duration::from_millis(10), Duration::from_secs(1), 0.0);
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
 
   let configured = config.on_persist_failure(backoff_config.clone());
 
@@ -58,7 +58,7 @@ fn on_persist_failure_enables_hidden_store_backoff_config() {
 #[test]
 fn with_backoff_config_keeps_persist_failure_backoff_disabled() {
   let backoff_config = BackoffConfig::new(Duration::from_millis(20), Duration::from_secs(2), 0.1);
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
 
   let configured = config.with_backoff_config(backoff_config.clone());
 
@@ -68,7 +68,7 @@ fn with_backoff_config_keeps_persist_failure_backoff_disabled() {
 
 #[test]
 fn with_event_publishing_enables_and_disables_event_stream_publication() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event);
 
   let disabled = config.clone().with_event_publishing(false);
   let enabled = disabled.clone().with_event_publishing(true);
@@ -79,7 +79,7 @@ fn with_event_publishing_enables_and_disables_event_stream_publication() {
 
 #[test]
 fn with_tagger_selects_tags_for_published_events() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event)
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event)
     .with_tagger(|event| BTreeSet::from([format!("event-{event}")]));
 
   assert_eq!(config.event_tags(&7), BTreeSet::from([String::from("event-7")]));
@@ -87,7 +87,7 @@ fn with_tagger_selects_tags_for_published_events() {
 
 #[test]
 fn recovery_selection_is_separate_from_snapshot_write_criteria() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event)
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event)
     .with_snapshot_criteria(SnapshotCriteria::Every { number_of_events: 10 })
     .with_recovery(Recovery::without_snapshot());
 
@@ -97,7 +97,7 @@ fn recovery_selection_is_separate_from_snapshot_write_criteria() {
 
 #[test]
 fn event_adapter_registration_updates_kernel_registry() {
-  let config = PersistenceEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event)
+  let config = EventSourcedEffectorConfig::<u32, u32, ()>::new(PersistenceId::of_unique_id("test"), 0, apply_event)
     .with_event_adapter(AddTenAdapter);
 
   assert_eq!(config.event_adapters().len(), 1);
