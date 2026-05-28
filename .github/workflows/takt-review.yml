@@ -88,7 +88,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           PR_HEAD_SHA: ${{ steps.pr.outputs.ref }}
           COMMENT_BODY: ${{ github.event.comment.body }}
-          TAKT_COMMENT_HEADER: TAKT Review (Claude)
           TAKT_WORKFLOW: review-default
           TAKT_PROVIDER: claude-sdk
           TAKT_MODEL: claude-sonnet-4-5-20250929

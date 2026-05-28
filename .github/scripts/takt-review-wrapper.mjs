@@ -566,15 +566,8 @@ function toReviewComment(finding, allowedLines, existingComments) {
   }
 
   const body = formatCommentBody(finding);
-  const normalizedIssue = normalizeBody(finding.issue).slice(0, 80);
-  const duplicate = existingComments.some((comment) => {
-    return (
-      comment.path === path &&
-      comment.line === line &&
-      normalizedIssue.length > 0 &&
-      normalizeBody(comment.body).includes(normalizedIssue)
-    );
-  });
+  const normalizedIssue = normalizeBody(finding.issue);
+  const duplicate = existingComments.some((comment) => isDuplicateComment(comment, path, line, normalizedIssue));
   if (duplicate) {
     console.log(`Skipping duplicate finding: ${path}:${line}`);
     return undefined;
@@ -725,15 +718,50 @@ function firstLine(value) {
 function firstMeaningfulLine(value) {
   for (const line of stripMarkdown(value || "").split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (trimmed && !isSourceLabelLine(trimmed)) {
+    if (trimmed && !isReviewMetadataLine(trimmed)) {
       return trimmed.slice(0, 180);
     }
   }
   return firstLine(value);
 }
 
+function isReviewMetadataLine(value) {
+  return isSourceLabelLine(value) || isSeveritySourceLine(value);
+}
+
 function isSourceLabelLine(value) {
   return /^(Claude Code Review|TAKT Review(?: \([^)]+\))?)(?:\s*:)?$/i.test(value.trim());
+}
+
+function isSeveritySourceLine(value) {
+  return /^(p[0-3]|critical|blocker|high|medium|low|info|warning|error|major|minor|nit|suggestion)(\s*\/\s*[\p{L}\p{N}_ -]+){0,3}$/iu.test(
+    value.trim(),
+  );
+}
+
+function isDuplicateComment(comment, path, line, normalizedIssue) {
+  if (comment.path !== path || comment.line !== line || normalizedIssue.length === 0) {
+    return false;
+  }
+
+  const normalizedBody = normalizeBody(comment.body);
+  if (normalizedIssue.length >= 40 && normalizedBody.includes(normalizedIssue)) {
+    return true;
+  }
+
+  if (normalizedIssue.length >= 120 && normalizedBody.includes(normalizedIssue.slice(0, 120))) {
+    return true;
+  }
+
+  return (
+    isTaktWrapperComment(comment.body) &&
+    normalizedIssue.length >= 40 &&
+    normalizedBody.includes(normalizedIssue.slice(0, 80))
+  );
+}
+
+function isTaktWrapperComment(value) {
+  return String(value || "").includes("<!-- takt-review-wrapper -->");
 }
 
 function formatCommentBody(finding) {
