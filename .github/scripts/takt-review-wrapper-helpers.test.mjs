@@ -5,6 +5,7 @@ import {
   firstMeaningfulLine,
   isDuplicateComment,
   isReviewMetadataLine,
+  isSeverityOnlyLine,
   isSeveritySourceLine,
   isTaktWrapperComment,
   normalizeBody,
@@ -15,6 +16,16 @@ test("firstMeaningfulLine skips TAKT metadata and returns the finding text", () 
   const body = ["**TAKT Review (Claude)**", "", "**medium / security**", "", "Actual finding text"].join("\n");
 
   assert.equal(firstMeaningfulLine(body), "Actual finding text");
+});
+
+test("firstMeaningfulLine skips severity-only TAKT metadata after the source label", () => {
+  const body = ["**TAKT Review (Claude)**", "", "**High**", "", "Actual finding text"].join("\n");
+
+  assert.equal(firstMeaningfulLine(body), "Actual finding text");
+});
+
+test("firstMeaningfulLine does not skip severity-like words outside TAKT metadata context", () => {
+  assert.equal(firstMeaningfulLine("medium\n\nActual finding text"), "medium");
 });
 
 test("firstMeaningfulLine keeps the summary from a Claude label line", () => {
@@ -44,6 +55,12 @@ test("isSeveritySourceLine requires a slash-separated source token", () => {
   assert.equal(isSeveritySourceLine("High / セキュリティ"), true);
   assert.equal(isSeveritySourceLine("medium"), false);
   assert.equal(isSeveritySourceLine("suggestion"), false);
+});
+
+test("isSeverityOnlyLine detects standalone severity metadata", () => {
+  assert.equal(isSeverityOnlyLine("High"), true);
+  assert.equal(isSeverityOnlyLine("medium"), true);
+  assert.equal(isSeverityOnlyLine("Actual finding text"), false);
 });
 
 test("isDuplicateComment ignores short generic issue text", () => {

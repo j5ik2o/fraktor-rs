@@ -14,11 +14,19 @@ export function firstLine(value) {
 }
 
 export function firstMeaningfulLine(value, commentHeader = "TAKT Review (Claude)") {
+  let sawSourceLabel = false;
   for (const line of stripMarkdown(value || "").split(/\r?\n/)) {
     const trimmed = line.trim();
     const sourceLabelText = sourceLabelSummary(trimmed, commentHeader);
     if (sourceLabelText) {
       return sourceLabelText.slice(0, 180);
+    }
+    if (sourceLabelText === "") {
+      sawSourceLabel = true;
+      continue;
+    }
+    if (sawSourceLabel && isSeverityOnlyLine(trimmed)) {
+      continue;
     }
     if (trimmed && !isReviewMetadataLine(trimmed, commentHeader)) {
       return trimmed.slice(0, 180);
@@ -56,6 +64,12 @@ export function sourceLabelSummary(value, commentHeader = "TAKT Review (Claude)"
 
 export function isSeveritySourceLine(value) {
   return /^(p[0-3]|critical|blocker|high|medium|low|info|warning|error|major|minor|nit|suggestion)(\s*\/\s*[\p{L}\p{N}_ -]+){1,3}$/iu.test(
+    String(value || "").trim(),
+  );
+}
+
+export function isSeverityOnlyLine(value) {
+  return /^(p[0-3]|critical|blocker|high|medium|low|info|warning|error|major|minor|nit|suggestion)$/iu.test(
     String(value || "").trim(),
   );
 }
