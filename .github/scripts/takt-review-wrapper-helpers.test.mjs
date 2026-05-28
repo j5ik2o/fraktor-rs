@@ -81,12 +81,12 @@ test("isDuplicateComment matches full issue text at the same location", () => {
 
 test("isDuplicateComment uses long prefixes only for long issue text", () => {
   const issue119 = "a".repeat(119);
-  const issue120 = "b".repeat(120);
+  const issue121 = "b".repeat(121);
   const comment119 = { path: "file.js", line: 10, body: issue119.slice(0, 118) };
-  const comment120 = { path: "file.js", line: 10, body: issue120.slice(0, 120) };
+  const comment121 = { path: "file.js", line: 10, body: issue121.slice(0, 120) };
 
   assert.equal(isDuplicateComment(comment119, "file.js", 10, issue119), false);
-  assert.equal(isDuplicateComment(comment120, "file.js", 10, issue120), true);
+  assert.equal(isDuplicateComment(comment121, "file.js", 10, issue121), true);
 });
 
 test("isDuplicateComment allows shorter prefixes only for wrapper comments", () => {
