@@ -11,6 +11,7 @@ const prNumber = requiredEnv("PR_NUMBER");
 const workflow = env.TAKT_WORKFLOW || "review-default";
 const provider = env.TAKT_PROVIDER || "claude-sdk";
 const model = env.TAKT_MODEL || "";
+const commentHeader = env.TAKT_COMMENT_HEADER || "TAKT Review (Claude)";
 const maxComments = parseMaxComments(env.TAKT_MAX_COMMENTS);
 const expectedHeadSha = env.PR_HEAD_SHA || "";
 const [owner, repoName] = repo.split("/");
@@ -166,7 +167,7 @@ if (reviewComments.length === 0) {
 await postReview({
   commit_id: pr.headRefOid,
   event: "COMMENT",
-  body: `TAKT Review (Claude) posted ${reviewComments.length} inline finding(s).\n\nSource report: ${report.relativePath}`,
+  body: `${commentHeader} posted ${reviewComments.length} inline finding(s).\n\nSource report: ${report.relativePath}`,
   comments: reviewComments,
 });
 
@@ -717,7 +718,7 @@ function firstLine(value) {
 }
 
 function formatCommentBody(finding) {
-  const parts = ["**TAKT Review (Claude)**"];
+  const parts = [`**${commentHeader}**`];
   const prefix = [finding.severity, finding.source].filter(Boolean).join(" / ");
   if (prefix) {
     parts.push(`**${prefix}**`);
