@@ -146,7 +146,7 @@ jobs:
             PR NUMBER: ${{ steps.pr.outputs.number }}
 
             このプルリクエスト（PR）をレビューし、GitHub のレビュー機能を使ってフィードバックをしてください。作業は次の手順に沿って進めてください：
-            1. **変更内容と既存コメントを確認する:** `gh pr diff`、`gh pr view --json comments,reviews,files`、`gh api repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}/comments --paginate` を使って、コードの変更点、行番号、既存のトップレベルコメント・レビュー・インラインコメントを把握します。
+            1. **変更内容と既存コメントを確認する:** `gh pr diff ${{ steps.pr.outputs.number }} -R ${{ github.repository }}`、`gh pr view ${{ steps.pr.outputs.number }} -R ${{ github.repository }} --json comments,reviews,files`、`gh api repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}/comments --paginate` を使って、コードの変更点、行番号、既存のトップレベルコメント・レビュー・インラインコメントを把握します。
             2. **インラインコメントを追加する:** 改善点や懸念事項があるコードの行には `mcp__github_inline_comment__create_inline_comment` を `confirmed: true` で使ってコメントを追加してください。修正方針が明確な場合には積極的に suggestion を利用してください。
             3. **指摘がない場合:** 対応すべきインライン指摘がない場合は、レビュー提出・コメント投稿を一切行わないでください。
             4. **トップレベルコメントの禁止:** 指摘の有無に関わらず、PR 本体のトップレベルコメント（review summary や `gh pr comment` 相当の投稿）は新規作成・更新ともに行わないでください。フィードバックはインラインコメントに限定してください。
