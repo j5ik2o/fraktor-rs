@@ -1,28 +1,70 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: read
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.issue.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   claude-review:
-    if: ${{ github.event.pull_request.draft == false && github.event.sender.type != 'Bot' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: >
+      github.event.issue.pull_request != null &&
+      github.event.issue.state == 'open' &&
+      github.event.sender.type != 'Bot' &&
+      startsWith(github.event.comment.body, '@review-claude') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve PR checkout
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+          head_repo="$(jq -r '.head.repo.full_name' <<< "$pr_json")"
+          is_draft="$(jq -r '.draft' <<< "$pr_json")"
+
+          if [[ "$is_draft" == "true" ]]; then
+            echo "::notice::Skipping Claude Code Review for draft PR #$PR_NUMBER"
+            echo "same_repo=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "ref=$head_sha" >> "$GITHUB_OUTPUT"
+          if [[ "$head_repo" == "$REPOSITORY" ]]; then
+            echo "same_repo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping Claude Code Review for fork PR head: $head_repo"
+            echo "same_repo=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
+        if: steps.pr.outputs.same_repo == 'true'
         uses: actions/checkout@v6
         with:
+          ref: ${{ steps.pr.outputs.ref }}
           fetch-depth: 1
 
       - name: Check Claude API capacity
+        if: steps.pr.outputs.same_repo == 'true'
         id: claude-api
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -94,17 +136,17 @@ jobs:
           handle_api_error "${status}" "${body}" "message"
 
       - name: Run Claude Code Review
-        if: ${{ steps.claude-api.outputs.available == 'true' }}
+        if: ${{ steps.pr.outputs.same_repo == 'true' && steps.claude-api.outputs.available == 'true' }}
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
 
             このプルリクエスト（PR）をレビューし、GitHub のレビュー機能を使ってフィードバックをしてください。作業は次の手順に沿って進めてください：
-            1. **変更内容と既存コメントを確認する:** `gh pr diff`、`gh pr view --json comments,reviews,files`、`gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments --paginate` を使って、コードの変更点、行番号、既存のトップレベルコメント・レビュー・インラインコメントを把握します。
+            1. **変更内容と既存コメントを確認する:** `gh pr diff ${{ steps.pr.outputs.number }} -R ${{ github.repository }}`、`gh pr view ${{ steps.pr.outputs.number }} -R ${{ github.repository }} --json comments,reviews,files`、`gh api repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}/comments --paginate` を使って、コードの変更点、行番号、既存のトップレベルコメント・レビュー・インラインコメントを把握します。
             2. **インラインコメントを追加する:** 改善点や懸念事項があるコードの行には `mcp__github_inline_comment__create_inline_comment` を `confirmed: true` で使ってコメントを追加してください。修正方針が明確な場合には積極的に suggestion を利用してください。
             3. **指摘がない場合:** 対応すべきインライン指摘がない場合は、レビュー提出・コメント投稿を一切行わないでください。
             4. **トップレベルコメントの禁止:** 指摘の有無に関わらず、PR 本体のトップレベルコメント（review summary や `gh pr comment` 相当の投稿）は新規作成・更新ともに行わないでください。フィードバックはインラインコメントに限定してください。
@@ -139,4 +181,4 @@ jobs:
 
             すべてのフィードバックは日本語で、建設的かつ実用的な内容にしてください。
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}/comments:*)"
