@@ -14,6 +14,10 @@ pub trait DurableStateStore<A: Send>: Send + Sync + 'static {
   fn get_object<'a>(&'a self, persistence_id: &'a str) -> DurableStateStoreFuture<'a, GetObjectResult<A>>;
 
   /// Inserts or updates the durable state object for the persistence identifier.
+  ///
+  /// A successful upsert advances the stored revision to
+  /// `expected_revision.saturating_add(1)`. When `expected_revision` is
+  /// `u64::MAX`, the stored revision remains `u64::MAX`.
   fn upsert_object<'a>(
     &'a mut self,
     persistence_id: &'a str,
