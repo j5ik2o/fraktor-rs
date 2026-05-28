@@ -19,7 +19,7 @@ jobs:
       github.event.issue.pull_request != null &&
       github.event.issue.state == 'open' &&
       github.event.sender.type != 'Bot' &&
-      startsWith(github.event.comment.body, '@claude-review') &&
+      startsWith(github.event.comment.body, '@review-claude') &&
       (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
