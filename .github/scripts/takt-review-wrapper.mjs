@@ -376,6 +376,10 @@ The wrapper has already supplied changed files and existing inline comments abov
 If command-line GitHub access is available, \`gh pr diff ${prNumber} -R ${repo}\`, \`gh pr view ${prNumber} -R ${repo} --json comments,reviews,files\`, and
 \`gh api repos/${repo}/pulls/${prNumber}/comments --paginate\` are valid ways to refresh that context.
 If GitHub cannot render the PR diff, return APPROVE with no findings.
+
+TAKT workflow routing:
+When the gather step has enough information to review this PR, include the exact status phrase \`レビュー対象の情報収集完了\`.
+If the review target cannot be identified or required context is missing, include the exact status phrase \`レビュー対象を特定できない、情報不足\`.
 `;
 }
 
