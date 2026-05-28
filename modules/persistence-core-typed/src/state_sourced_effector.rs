@@ -149,9 +149,9 @@ where
 
   /// Persists one durable state object and runs a one-shot callback after success.
   ///
-  /// The context parameter is reserved for state-side effects that need actor
-  /// system access, keeping this API aligned with event-sourced persistence
-  /// operations.
+  /// The context parameter is reserved for future state-side effects that need
+  /// actor system access, such as durable-state change publication. Keeping it
+  /// here preserves API compatibility with event-sourced persistence operations.
   pub fn persist_state<F>(
     &self,
     _ctx: &mut TypedActorContext<'_, M>,
@@ -170,9 +170,9 @@ where
 
   /// Deletes the durable state object and runs a one-shot callback after success.
   ///
-  /// The context parameter is reserved for state-side effects that need actor
-  /// system access, keeping this API aligned with event-sourced persistence
-  /// operations.
+  /// The context parameter is reserved for future state-side effects that need
+  /// actor system access, such as durable-state change publication. Keeping it
+  /// here preserves API compatibility with event-sourced persistence operations.
   pub fn delete_state<F>(&self, _ctx: &mut TypedActorContext<'_, M>, on_deleted: F) -> Result<Behavior<M>, ActorError>
   where
     F: FnOnce(u64) -> Result<Behavior<M>, ActorError> + Send + 'static, {
