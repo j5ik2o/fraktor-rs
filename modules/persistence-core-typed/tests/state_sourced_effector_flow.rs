@@ -619,6 +619,117 @@ fn user_command_sent_during_delete_is_stashed_until_delete_completes() {
 }
 
 #[test]
+fn recovery_store_failure_stops_child_without_ready_callback() {
+  let control = manual_store_control();
+  let probe = CounterProbe::new();
+  let config = counter_config("typed-state-sourced-recovery-failure-counter", manual_store_provider(control.clone()));
+  let coordinator_props = TypedProps::new({
+    let probe = probe.clone();
+    move || CounterCoordinator::new(config.clone(), probe.clone())
+  });
+  let system = TypedActorSystem::<CoordinatorCommand>::create_from_props(&coordinator_props, actor_system_config())
+    .expect("system");
+  let mut coordinator = system.user_guardian_ref();
+  let mut actor = ask_spawn(&mut coordinator);
+  let recovery = wait_for_recovery(&control);
+
+  complete_manual_result(&recovery, Err(DurableStateError::GetObjectFailed("store unavailable".to_string())));
+
+  assert!(wait_until(5000, || !probe.child_failures.lock().is_empty()));
+  assert_eq!(*probe.ready_states.lock(), Vec::<Option<i32>>::new());
+  assert_eq!(*probe.ready_revisions.lock(), Vec::<u64>::new());
+  assert!(matches!(ask_state_result(&mut actor), Err(TypedAskError::AskFailed(_))));
+
+  terminate_system(system);
+}
+
+#[test]
+fn persist_store_failure_stops_child_without_running_success_callback() {
+  let control = manual_store_control();
+  let probe = CounterProbe::new();
+  let config = counter_config("typed-state-sourced-persist-failure-counter", manual_store_provider(control.clone()));
+  let coordinator_props = TypedProps::new({
+    let probe = probe.clone();
+    move || CounterCoordinator::new(config.clone(), probe.clone())
+  });
+  let system = TypedActorSystem::<CoordinatorCommand>::create_from_props(&coordinator_props, actor_system_config())
+    .expect("system");
+  let mut coordinator = system.user_guardian_ref();
+  let mut actor = ask_spawn(&mut coordinator);
+  let recovery = wait_for_recovery(&control);
+  complete_manual_result(&recovery, Ok(GetObjectResult::new(Some(CounterState { value: 10 }), 3)));
+  assert_eq!(ask_state(&mut actor), Some(CounterState { value: 10 }));
+
+  actor.tell(CounterCommand::Set(40));
+  let upsert = wait_for_upsert(&control, 0);
+  assert_eq!(upsert.expected_revision, 3);
+  assert_eq!(upsert.state, CounterState { value: 40 });
+
+  complete_manual_result(&upsert.result, Err(DurableStateError::UpsertObjectFailed("write failed".to_string())));
+
+  assert!(wait_until(5000, || !probe.child_failures.lock().is_empty()));
+  assert_eq!(control.lock().upserts.len(), 1);
+  assert_eq!(*probe.persisted_revisions.lock(), Vec::<u64>::new());
+  assert!(matches!(ask_state_result(&mut actor), Err(TypedAskError::AskFailed(_))));
+
+  terminate_system(system);
+}
+
+#[test]
+fn delete_store_failure_stops_child_without_running_success_callback() {
+  let control = manual_store_control();
+  let probe = CounterProbe::new();
+  let config = counter_config("typed-state-sourced-delete-failure-counter", manual_store_provider(control.clone()));
+  let coordinator_props = TypedProps::new({
+    let probe = probe.clone();
+    move || CounterCoordinator::new(config.clone(), probe.clone())
+  });
+  let system = TypedActorSystem::<CoordinatorCommand>::create_from_props(&coordinator_props, actor_system_config())
+    .expect("system");
+  let mut coordinator = system.user_guardian_ref();
+  let mut actor = ask_spawn(&mut coordinator);
+  let recovery = wait_for_recovery(&control);
+  complete_manual_result(&recovery, Ok(GetObjectResult::new(Some(CounterState { value: 10 }), 3)));
+  assert_eq!(ask_state(&mut actor), Some(CounterState { value: 10 }));
+
+  actor.tell(CounterCommand::Delete);
+  let delete = wait_for_delete(&control, 0);
+  assert_eq!(delete.expected_revision, 3);
+
+  complete_manual_result(&delete.result, Err(DurableStateError::DeleteObjectFailed("delete failed".to_string())));
+
+  assert!(wait_until(5000, || !probe.child_failures.lock().is_empty()));
+  assert_eq!(control.lock().deletes.len(), 1);
+  assert_eq!(*probe.deleted_revisions.lock(), Vec::<u64>::new());
+  assert!(matches!(ask_state_result(&mut actor), Err(TypedAskError::AskFailed(_))));
+
+  terminate_system(system);
+}
+
+#[test]
+fn max_revision_persist_flow_keeps_saturated_revision() {
+  let record = store_record(Some(CounterState { value: 10 }), u64::MAX);
+  let probe = CounterProbe::new();
+  let config = counter_config("typed-state-sourced-max-revision-counter", store_provider(record.clone()));
+  let props = counter_props(config, probe.clone());
+  let system = TypedActorSystem::<CounterCommand>::create_from_props(&props, actor_system_config()).expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  assert_eq!(ask_state(&mut actor), Some(CounterState { value: 10 }));
+  assert_eq!(ask_revision(&mut actor), u64::MAX);
+
+  actor.tell(CounterCommand::Set(50));
+
+  assert_eq!(ask_state(&mut actor), Some(CounterState { value: 50 }));
+  assert_eq!(ask_revision(&mut actor), u64::MAX);
+  assert_eq!(*probe.persisted_revisions.lock(), vec![u64::MAX]);
+  assert_eq!(record.lock().state, Some(CounterState { value: 50 }));
+  assert_eq!(record.lock().revision, u64::MAX);
+
+  terminate_system(system);
+}
+
+#[test]
 fn revision_mismatch_failure_stops_child_without_running_success_callback() {
   let record = store_record(Some(CounterState { value: 10 }), 3);
   let probe = CounterProbe::new();

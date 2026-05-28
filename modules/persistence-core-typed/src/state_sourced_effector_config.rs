@@ -1,4 +1,9 @@
 //! State-sourced effector configuration.
+//!
+//! Store recovery, upsert, and delete failures are fatal for the current
+//! state-sourced effector behavior. This configuration intentionally does not
+//! expose a retry or backoff policy until state-store retry semantics are
+//! modeled explicitly.
 
 #[cfg(test)]
 #[path = "state_sourced_effector_config_test.rs"]
