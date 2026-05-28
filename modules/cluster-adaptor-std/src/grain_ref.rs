@@ -5,8 +5,8 @@ use fraktor_actor_core_kernel_rs::actor::{
   messaging::{AnyMessage, AskResponse},
 };
 use fraktor_cluster_core_rs::{
+  activation::ClusterIdentity,
   grain::{GrainCallError, GrainCallOptions, GrainCodec, GrainRef as CoreGrainRef},
-  identity::ClusterIdentity,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 

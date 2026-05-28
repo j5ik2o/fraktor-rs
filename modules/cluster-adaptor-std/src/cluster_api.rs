@@ -11,8 +11,8 @@ use fraktor_actor_core_kernel_rs::{
   system::ActorSystem,
 };
 use fraktor_cluster_core_rs::{
-  ClusterApi as CoreClusterApi, ClusterApiError, ClusterError, ClusterRequestError, ClusterResolveError,
-  identity::ClusterIdentity,
+  activation::ClusterIdentity,
+  extension::{ClusterApi as CoreClusterApi, ClusterApiError, ClusterError, ClusterRequestError, ClusterResolveError},
 };
 
 /// Cluster API facade bound to a std actor system.

@@ -19,11 +19,13 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_cluster_adaptor_std_rs::ClusterApi;
 use fraktor_cluster_core_rs::{
-  ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller,
+  activation::{
+    ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,
+    PlacementLocality, PlacementResolution,
+  },
   cluster_provider::NoopClusterProvider,
+  extension::{ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller},
   grain::GrainKey,
-  identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
-  placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
 };
 use fraktor_remote_adaptor_std_rs::{
   extension_installer::RemotingExtensionInstaller, provider::StdRemoteActorRefProviderInstaller,

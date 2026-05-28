@@ -8,7 +8,7 @@ use fraktor_actor_core_kernel_rs::{
   serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };
 use fraktor_cluster_core_rs::{
-  ClusterApi,
+  extension::ClusterApi,
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubBatch,
     PubSubConfig, PubSubError, PubSubSubscriber, SubscriberDeliveryReport,

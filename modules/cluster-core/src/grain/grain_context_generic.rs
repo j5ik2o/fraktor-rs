@@ -5,7 +5,7 @@
 mod tests;
 
 use super::GrainContext;
-use crate::{ClusterApi, identity::ClusterIdentity};
+use crate::{ClusterApi, activation::ClusterIdentity};
 
 /// Default grain execution context.
 pub struct GrainContextImpl {

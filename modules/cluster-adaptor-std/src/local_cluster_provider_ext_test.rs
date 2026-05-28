@@ -5,8 +5,8 @@ use fraktor_actor_core_kernel_rs::event::stream::{
   EventStreamSubscription, RemotingLifecycleEvent, subscriber_handle,
 };
 use fraktor_cluster_core_rs::{
-  BlockListProvider, ClusterEvent,
   cluster_provider::{ClusterProvider, LocalClusterProvider},
+  topology::{BlockListProvider, ClusterEvent},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 

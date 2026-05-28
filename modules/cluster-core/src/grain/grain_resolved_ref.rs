@@ -2,7 +2,7 @@
 
 use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 
-use crate::identity::ClusterIdentity;
+use crate::activation::ClusterIdentity;
 
 /// Resolved grain reference with identity metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]

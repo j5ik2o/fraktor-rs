@@ -6,7 +6,11 @@ use std::sync::Mutex;
 use fraktor_actor_core_kernel_rs::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
 };
-use fraktor_cluster_core_rs::{BlockListProvider, ClusterEvent, StartupMode, cluster_provider::ClusterProvider};
+use fraktor_cluster_core_rs::{
+  cluster_provider::ClusterProvider,
+  extension::{ClusterProviderError, StartupMode},
+  topology::{BlockListProvider, ClusterEvent},
+};
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::{AwsEcsClusterProvider, EcsClusterConfig};
@@ -196,9 +200,7 @@ fn down_rejects_self_authority() {
 
   let result = provider.down("127.0.0.1:8080");
 
-  assert!(
-    matches!(result, Err(fraktor_cluster_core_rs::ClusterProviderError::DownFailed(reason)) if reason == "cannot down self authority")
-  );
+  assert!(matches!(result, Err(ClusterProviderError::DownFailed(reason)) if reason == "cannot down self authority"));
 }
 
 #[test]
@@ -244,7 +246,7 @@ fn join_is_explicitly_unsupported() {
   let result = provider.join("127.0.0.1:9090");
 
   assert!(
-    matches!(result, Err(fraktor_cluster_core_rs::ClusterProviderError::JoinFailed(reason)) if reason == "join is not supported by aws ecs provider")
+    matches!(result, Err(ClusterProviderError::JoinFailed(reason)) if reason == "join is not supported by aws ecs provider")
   );
 }
 
@@ -257,6 +259,6 @@ fn leave_is_explicitly_unsupported() {
   let result = provider.leave("127.0.0.1:9090");
 
   assert!(
-    matches!(result, Err(fraktor_cluster_core_rs::ClusterProviderError::LeaveFailed(reason)) if reason == "leave is not supported by aws ecs provider")
+    matches!(result, Err(ClusterProviderError::LeaveFailed(reason)) if reason == "leave is not supported by aws ecs provider")
   );
 }

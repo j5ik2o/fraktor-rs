@@ -8,7 +8,7 @@ use core::{
 
 use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 
-use crate::identity::ClusterIdentity;
+use crate::activation::ClusterIdentity;
 
 /// Subscriber target for pub/sub delivery.
 #[derive(Debug)]

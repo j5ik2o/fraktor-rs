@@ -1,7 +1,7 @@
 use alloc::string::String;
 
 use super::{KindRegistry, TOPIC_ACTOR_KIND};
-use crate::placement::ActivatedKind;
+use crate::activation::ActivatedKind;
 
 #[test]
 fn auto_registers_topic_kind_when_missing() {

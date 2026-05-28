@@ -8,12 +8,13 @@ use fraktor_cluster_adaptor_std_rs::{
   TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig,
 };
 use fraktor_cluster_core_rs::{
-  ClusterEvent, ClusterExtensionConfig,
+  extension::ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
     GossipOutbound, GossipTransport, Gossiper, MembershipCoordinator, MembershipCoordinatorConfig,
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
+  topology::ClusterEvent,
 };
 use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
 use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};

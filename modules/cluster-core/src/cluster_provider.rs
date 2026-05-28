@@ -3,7 +3,7 @@
 //! Mirrors protoactor-go's `cluster.ClusterProvider`. Defined in core so that
 //! no_std logic can depend on it; std adapters provide concrete transport.
 
-use crate::cluster_provider_error::ClusterProviderError;
+use crate::extension::ClusterProviderError;
 
 /// Local cluster provider for membership-aware scenarios.
 mod local_cluster_provider_generic;

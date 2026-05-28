@@ -28,10 +28,12 @@ use fraktor_utils_core_rs::{
 
 use crate::{
   ClusterApi, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller,
+  activation::{
+    ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,
+    PlacementLocality, PlacementResolution,
+  },
   cluster_provider::NoopClusterProvider,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainCallOptions, GrainEvent, GrainKey, GrainRef, GrainRetryPolicy},
-  identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
-  placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
 };
 
 #[test]

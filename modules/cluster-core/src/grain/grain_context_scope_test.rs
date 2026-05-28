@@ -20,10 +20,12 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   ClusterApi, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller,
+  activation::{
+    ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,
+    PlacementLocality, PlacementResolution,
+  },
   cluster_provider::NoopClusterProvider,
   grain::{GrainContextImpl, GrainContextScope, GrainKey},
-  identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
-  placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
 };
 
 #[test]

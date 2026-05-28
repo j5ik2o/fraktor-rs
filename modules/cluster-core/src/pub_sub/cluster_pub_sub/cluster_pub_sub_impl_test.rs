@@ -16,8 +16,8 @@ use fraktor_utils_core_rs::{
 use super::ClusterPubSubImpl;
 use crate::{
   ClusterEvent, ClusterTopology, TopologyUpdate,
+  activation::ClusterIdentity,
   grain::KindRegistry,
-  identity::ClusterIdentity,
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointShared, DeliveryReport, DeliveryStatus, PubSubBatch,
     PubSubConfig, PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PublishAck, PublishOptions,
