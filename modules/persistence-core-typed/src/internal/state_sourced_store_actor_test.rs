@@ -45,24 +45,30 @@ fn actor() -> StateSourcedStoreActor<u32, StateSourcedStoreCommand<u32>> {
   StateSourcedStoreActor::new(config, store())
 }
 
+fn store_slot_available(actor: &StateSourcedStoreActor<u32, StateSourcedStoreCommand<u32>>) -> bool {
+  actor.store.with_lock(|store| store.is_some())
+}
+
 #[test]
 fn new_actor_owns_durable_state_store() {
   let actor = actor();
 
-  assert!(actor.store_available());
+  assert!(store_slot_available(&actor));
+  assert!(!actor.in_flight);
 }
 
 #[test]
-fn take_store_marks_actor_as_waiting_until_store_is_restored() {
+fn take_store_removes_store_until_restored() {
   let mut actor = actor();
 
   let store = actor.take_store().expect("store should be available");
   let second_take = actor.take_store();
 
-  assert!(!actor.store_available());
+  assert!(!store_slot_available(&actor));
   assert!(second_take.is_err());
 
   restore_store(&actor.store, store);
 
-  assert!(actor.store_available());
+  assert!(store_slot_available(&actor));
+  assert!(!actor.in_flight);
 }

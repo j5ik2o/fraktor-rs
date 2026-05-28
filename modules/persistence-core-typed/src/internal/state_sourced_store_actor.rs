@@ -78,9 +78,10 @@ pub(crate) struct StateSourcedStoreActor<S, M>
 where
   S: Clone + Send + Sync + 'static,
   M: Send + Sync + 'static, {
-  config:   StateSourcedEffectorConfig<S, M>,
-  store:    StoreSlot<S>,
-  _message: PhantomData<fn() -> M>,
+  config:    StateSourcedEffectorConfig<S, M>,
+  store:     StoreSlot<S>,
+  in_flight: bool,
+  _message:  PhantomData<fn() -> M>,
 }
 
 impl<S, M> StateSourcedStoreActor<S, M>
@@ -96,7 +97,12 @@ where
   }
 
   fn new(config: StateSourcedEffectorConfig<S, M>, store: StateSourcedStore<S>) -> Self {
-    Self { config, store: SharedLock::new_with_driver::<DefaultMutex<_>>(Some(store)), _message: PhantomData }
+    Self {
+      config,
+      store: SharedLock::new_with_driver::<DefaultMutex<_>>(Some(store)),
+      in_flight: false,
+      _message: PhantomData,
+    }
   }
 
   fn persistence_id(&self) -> String {
@@ -108,10 +114,6 @@ where
       .store
       .with_lock(Option::take)
       .ok_or_else(|| ActorError::recoverable("state-sourced store operation is already in flight"))
-  }
-
-  fn store_available(&self) -> bool {
-    self.store.with_lock(|store| store.is_some())
   }
 
   fn recover(
@@ -127,7 +129,9 @@ where
       store_lease.restore();
       StateSourcedStoreCommand::RecoveryFinished { result, reply_to }
     };
-    Self::pipe_to_self(ctx, future)
+    Self::pipe_to_self(ctx, future)?;
+    self.in_flight = true;
+    Ok(())
   }
 
   fn persist_state(
@@ -147,7 +151,9 @@ where
       store_lease.restore();
       StateSourcedStoreCommand::PersistStateFinished { state, expected_revision, result, reply_to }
     };
-    Self::pipe_to_self(ctx, future)
+    Self::pipe_to_self(ctx, future)?;
+    self.in_flight = true;
+    Ok(())
   }
 
   fn delete_state(
@@ -164,7 +170,9 @@ where
       store_lease.restore();
       StateSourcedStoreCommand::DeleteStateFinished { result, reply_to }
     };
-    Self::pipe_to_self(ctx, future)
+    Self::pipe_to_self(ctx, future)?;
+    self.in_flight = true;
+    Ok(())
   }
 
   fn complete_recovery(
@@ -180,6 +188,7 @@ where
       },
       | Err(error) => Self::reply(&reply_to, StateSourcedStoreReply::RecoveryFailed { error }),
     }
+    self.in_flight = false;
     Self::unstash_all(ctx)
   }
 
@@ -198,6 +207,7 @@ where
       }),
       | Err(error) => Self::reply(&reply_to, StateSourcedStoreReply::PersistenceFailed { error }),
     }
+    self.in_flight = false;
     Self::unstash_all(ctx)
   }
 
@@ -215,6 +225,7 @@ where
       },
       | Err(error) => Self::reply(&reply_to, StateSourcedStoreReply::PersistenceFailed { error }),
     }
+    self.in_flight = false;
     Self::unstash_all(ctx)
   }
 
@@ -248,7 +259,7 @@ where
     ctx: &mut TypedActorContext<'_, StateSourcedStoreCommand<S>>,
     message: &StateSourcedStoreCommand<S>,
   ) -> Result<(), ActorError> {
-    if !self.store_available() && !message.is_completion() {
+    if self.in_flight && !message.is_completion() {
       return ctx.stash_with_limit(self.config.stash_capacity());
     }
     match message {
