@@ -188,6 +188,19 @@ jobs:
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
+  takt-review-wrapper-tests:
+    name: TAKT Review Wrapper Tests
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    needs:
+      - changes
+      - format
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Run TAKT review wrapper helper tests
+        run: node --test --test-reporter=spec .github/scripts/*.test.mjs
+
   # ビルドと単体テスト
   #
   # 実行頻度の方針:
@@ -472,6 +485,7 @@ jobs:
       - changes
       - format
       - lint
+      - takt-review-wrapper-tests
       - test
       - integration-e2e
       - coverage
@@ -497,6 +511,7 @@ jobs:
       - changes
       - format
       - lint
+      - takt-review-wrapper-tests
       - test
       - integration-e2e
       - coverage
@@ -544,6 +559,7 @@ jobs:
           }
 
           require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
+          require_result "takt-review-wrapper-tests" "${{ needs['takt-review-wrapper-tests'].result }}" "${expected_code_job_result}"
           require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
           require_result "integration-e2e" "${{ needs['integration-e2e'].result }}" "${expected_code_job_result}"
           require_result "coverage" "${{ needs.coverage.result }}" "${expected_code_job_result}"
