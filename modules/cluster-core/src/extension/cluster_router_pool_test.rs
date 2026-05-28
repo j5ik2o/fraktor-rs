@@ -1,6 +1,6 @@
 use alloc::{string::String, vec};
 
-use crate::{ClusterRouterPool, ClusterRouterPoolConfig};
+use crate::extension::{ClusterRouterPool, ClusterRouterPoolConfig};
 
 #[test]
 fn next_routee_uses_round_robin() {

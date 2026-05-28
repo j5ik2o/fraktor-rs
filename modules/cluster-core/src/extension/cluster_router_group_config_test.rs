@@ -1,6 +1,6 @@
 use alloc::{string::String, vec};
 
-use crate::{ClusterRouterGroup, ClusterRouterGroupConfig};
+use crate::extension::{ClusterRouterGroup, ClusterRouterGroupConfig};
 
 #[test]
 fn group_settings_store_values() {

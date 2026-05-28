@@ -75,14 +75,14 @@ pub mod pub_sub;
 /// Observed cluster topology and topology-change contracts.
 pub mod topology;
 
-use extension::{
-  ClusterApi, ClusterApiError, ClusterCore, ClusterError, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
-  ClusterProviderError, ClusterProviderShared, ClusterRequestError, ClusterResolveError, ClusterRouterGroupConfig,
-  ClusterRouterPoolConfig, ClusterSubscriptionInitialStateMode, MetricsError, StartupMode,
-};
-#[cfg(test)]
-use extension::{ClusterExtensionInstaller, ClusterRouterGroup, ClusterRouterPool};
-use topology::{
-  BlockListProvider, ClusterEvent, ClusterEventType, ClusterMetrics, ClusterMetricsSnapshot, ClusterTopology,
-  ConfigValidation, JoinConfigCompatChecker, TopologyApplyError, TopologyUpdate,
+use crate::{
+  extension::{
+    ClusterApi, ClusterApiError, ClusterCore, ClusterError, ClusterExtension, ClusterExtensionConfig,
+    ClusterExtensionId, ClusterProviderError, ClusterProviderShared, ClusterRequestError, ClusterResolveError,
+    ClusterRouterGroupConfig, ClusterRouterPoolConfig, ClusterSubscriptionInitialStateMode, MetricsError, StartupMode,
+  },
+  topology::{
+    BlockListProvider, ClusterEvent, ClusterEventType, ClusterMetrics, ClusterMetricsSnapshot, ClusterTopology,
+    ConfigValidation, JoinConfigCompatChecker, TopologyApplyError, TopologyUpdate,
+  },
 };

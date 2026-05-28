@@ -28,14 +28,15 @@ use fraktor_utils_core_rs::{
 
 use crate::{
   ClusterApi, ClusterApiError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterExtensionConfig,
-  ClusterExtensionInstaller, ClusterProviderError, ClusterRequestError, ClusterResolveError,
-  ClusterSubscriptionInitialStateMode, ClusterTopology, MetricsError, TopologyUpdate,
+  ClusterProviderError, ClusterRequestError, ClusterResolveError, ClusterSubscriptionInitialStateMode, ClusterTopology,
+  MetricsError, TopologyUpdate,
   activation::{
     ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup,
     PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution,
   },
   cluster_provider::{ClusterProvider, NoopClusterProvider},
   downing_provider::{DowningDecision, DowningInput, DowningProvider},
+  extension::ClusterExtensionInstaller,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
 };
 

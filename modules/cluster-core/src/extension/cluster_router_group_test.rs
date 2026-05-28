@@ -1,6 +1,6 @@
 use alloc::{string::String, vec};
 
-use crate::{ClusterRouterGroup, ClusterRouterGroupConfig};
+use crate::extension::{ClusterRouterGroup, ClusterRouterGroupConfig};
 
 #[test]
 fn routee_for_key_maps_consistently() {
