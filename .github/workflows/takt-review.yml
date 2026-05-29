@@ -42,18 +42,90 @@ jobs:
           github.event.comment.author_association == 'COLLABORATOR'
         )
       )
-    uses: j5ik2o/ci/.github/workflows/takt-review.yml@4ae09411283b73d83426ef3bb64fb734f91bba09
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    with:
-      pr_number: ${{ github.event.pull_request.number || github.event.issue.number }}
-      comment_body: ${{ github.event.comment.body }}
-      workflow: review-takt-default
-      provider: claude-sdk
-      model: claude-sonnet-4-5-20250929
-      wrapper_script: .github/scripts/takt-review-wrapper.mjs
-      ci_ref: 4ae09411283b73d83426ef3bb64fb734f91bba09
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve PR checkout
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+          head_repo="$(jq -r '.head.repo.full_name' <<< "$pr_json")"
+          head_ref="$(jq -r '.head.ref' <<< "$pr_json")"
+          is_draft="$(jq -r '.draft' <<< "$pr_json")"
+          author="$(jq -r '.user.login' <<< "$pr_json")"
+
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "ref=$head_sha" >> "$GITHUB_OUTPUT"
+
+          if [[ "$EVENT_NAME" == "pull_request" && "$head_sha" != "$PULL_REQUEST_HEAD_SHA" ]]; then
+            echo "::notice::Skipping stale TAKT review for PR #$PR_NUMBER because head changed from $PULL_REQUEST_HEAD_SHA to $head_sha"
+            echo "reviewable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$is_draft" == "true" ]]; then
+            echo "::notice::Skipping TAKT review for draft PR #$PR_NUMBER"
+            echo "reviewable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$head_repo" != "$REPOSITORY" ]]; then
+            echo "::notice::Skipping TAKT review for fork PR head: $head_repo"
+            echo "reviewable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$author" == "app/renovate" || "$author" == "renovate[bot]" || "$head_ref" == renovate/* ]]; then
+            echo "::notice::Skipping TAKT review for Renovate PR #$PR_NUMBER"
+            echo "reviewable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "reviewable=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout caller repository
+        if: steps.pr.outputs.reviewable == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.ref }}
+          persist-credentials: false
+
+      - name: Checkout shared CI actions
+        if: steps.pr.outputs.reviewable == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: j5ik2o/ci
+          ref: 4ae09411283b73d83426ef3bb64fb734f91bba09
+          path: .shared-ci
+          persist-credentials: false
+
+      - name: Run TAKT review wrapper
+        id: takt
+        if: steps.pr.outputs.reviewable == 'true'
+        continue-on-error: true
+        uses: ./.shared-ci/actions/takt-review-wrapper
+        with:
+          wrapper_script: .github/scripts/takt-review-wrapper.mjs
+          pr_number: ${{ steps.pr.outputs.number }}
+          pr_head_sha: ${{ steps.pr.outputs.ref }}
+          comment_body: ${{ github.event.comment.body }}
+          workflow: review-takt-default
+          provider: claude-sdk
+          model: claude-sonnet-4-5-20250929
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Report non-blocking TAKT review failure
+        if: steps.takt.outcome == 'failure'
+        run: |
+          echo "::warning::TAKT review failed, likely due to model provider capacity or credits. Continuing so CI and merge readiness are not blocked."
