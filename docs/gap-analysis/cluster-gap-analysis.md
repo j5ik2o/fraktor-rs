@@ -54,9 +54,9 @@
 
 ### raw 抽出値の扱い
 
-固定スコープ対象ディレクトリを `src/main` ベースで raw 抽出すると、Pekko 側は型宣言 857 件、主要 `def` 3027 件が見つかる。これには private / internal / JVM 固有 / DSL wrapper / serializer 実装が含まれるため、parity カバレッジ分母には使わない。
+固定スコープ対象ディレクトリを `src/main` ベースで raw 抽出すると、Pekko 側は型宣言 857 件、主要 `def` 3027 件が見つかる。Pekko submodule は `2dc8960074bfe269da1686609eb88663cb50ad8b` を参照した。これには private / internal / JVM 固有 / DSL wrapper / serializer 実装が含まれるため、parity カバレッジ分母には使わない。
 
-fraktor-rs 側はスキル指定の `pub` 系抽出で、型 193 件 (core: 179, std: 14)、公開メソッド 443 件 (core: 389, std: 54)。ただし、この数には `pub(crate)` の wire helper も含まれる。
+fraktor-rs 側はスキル指定の `pub` 系抽出で、型 193 件 (core: 179, std: 14)、公開メソッド 445 件 (core: 389, std: 56)。ただし、この数には `pub(crate)` の wire helper も含まれる。
 
 ## サマリー
 
@@ -66,7 +66,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 193 件 (core: 179,
 | fraktor-rs 固定スコープ対応概念 | 約 46 |
 | 固定スコープ概念カバレッジ | 約 46/121 (38%) |
 | raw public type declarations | 193 (core: 179, std: 14) |
-| raw public method declarations | 443 (core: 389, std: 54) |
+| raw public method declarations | 445 (core: 389, std: 56) |
 | hard gap | 18 |
 | medium gap | 26 |
 | easy gap | 20 |
