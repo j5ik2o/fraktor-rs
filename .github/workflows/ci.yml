@@ -499,14 +499,14 @@ jobs:
       statuses: write
       issues: read
       pull-requests: read
-    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@4f2c77eaa870ff1b04bfb9deeed45b18934d274f
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@416d4b0d37fec6ba7b867f95ce704dce0181a3eb
     with:
       base_branch: main
       required_context: Check unresolved comments
       wait_for_other_checks: "false"
       publish_status: "true"
       skip_status_for_dependabot: "true"
-      ci_ref: 4f2c77eaa870ff1b04bfb9deeed45b18934d274f
+      ci_ref: 416d4b0d37fec6ba7b867f95ce704dce0181a3eb
 
   # All jobs completion check
   ci-success:
