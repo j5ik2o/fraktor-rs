@@ -921,6 +921,7 @@ run_dylint() {
     "rustdoc-lint:lints/rustdoc-lint"
     "cfg-std-forbid-lint:lints/cfg-std-forbid-lint"
     "ambiguous-suffix-lint:lints/ambiguous-suffix-lint"
+    "port-adaptor-boundary-lint:lints/port-adaptor-boundary-lint"
   )
 
   local -a selected=()

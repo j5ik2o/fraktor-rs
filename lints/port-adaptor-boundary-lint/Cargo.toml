@@ -1,5 +1,5 @@
 [package]
-name = "tests-location-lint"
+name = "port-adaptor-boundary-lint"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,8 +10,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 dylint_linting = "6"
-quote = "1"
-syn = { version = "2", features = ["full", "parsing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+syn = { version = "2", features = ["full", "parsing", "visit"] }
 
 [dev-dependencies]
 dylint_testing = "6"

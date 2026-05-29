@@ -5,7 +5,6 @@ use std::{
 };
 
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
-use fraktor_cluster_adaptor_std_rs::membership::MembershipCoordinatorDriver;
 use fraktor_cluster_core_kernel_rs::{
   extension::ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
@@ -16,6 +15,36 @@ use fraktor_cluster_core_kernel_rs::{
 };
 use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
 use fraktor_utils_core_rs::{sync::SharedAccess, time::TimerInstant};
+
+use super::MembershipCoordinatorDriver;
+
+impl<TTransport: GossipTransport> MembershipCoordinatorDriver<TTransport> {
+  const fn coordinator(&self) -> &MembershipCoordinatorShared {
+    &self.coordinator
+  }
+
+  fn handle_join(
+    &mut self,
+    node_id: impl Into<String>,
+    authority: impl Into<String>,
+    joining_config: &ClusterExtensionConfig,
+    now: TimerInstant,
+  ) {
+    let outcome = self
+      .coordinator
+      .with_write(|coordinator| coordinator.handle_join(node_id.into(), authority.into(), joining_config, now))
+      .expect("handle_join");
+    self.apply_outcome(outcome).expect("apply handle_join outcome");
+  }
+
+  fn handle_heartbeat(&mut self, authority: &str, now: TimerInstant) {
+    let outcome = self
+      .coordinator
+      .with_write(|coordinator| coordinator.handle_heartbeat(authority, now))
+      .expect("handle_heartbeat");
+    self.apply_outcome(outcome).expect("apply handle_heartbeat outcome");
+  }
+}
 
 /// Test-only adapter that bridges the remote-core detector to the
 /// cluster-core `FailureDetector` trait.
@@ -127,11 +156,11 @@ impl DemoNode {
       .with_advertised_address(authority)
       .with_app_version("1.0.0")
       .with_roles(vec![String::from("member")]);
-    self.driver.handle_join(node_id, authority, &joining_config, now).expect("handle_join");
+    self.driver.handle_join(node_id, authority, &joining_config, now);
   }
 
   fn handle_heartbeat(&mut self, authority: &str, now: TimerInstant) {
-    self.driver.handle_heartbeat(authority, now).expect("handle_heartbeat");
+    self.driver.handle_heartbeat(authority, now);
   }
 
   fn poll(&mut self, now: TimerInstant) {

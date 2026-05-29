@@ -32,6 +32,7 @@ use crate::{
   ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterRequestError,
   ClusterResolveError, ClusterSubscriptionInitialStateMode,
   activation::{ClusterIdentity, LookupError, PlacementEvent},
+  extension::ClusterIdentityResolver,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsShared},
 };
 
@@ -311,6 +312,12 @@ impl ClusterApi {
         | _ => {},
       }
     }
+  }
+}
+
+impl ClusterIdentityResolver for ClusterApi {
+  fn resolve(&self, identity: &ClusterIdentity) -> Result<ActorRef, ClusterResolveError> {
+    self.get(identity)
   }
 }
 

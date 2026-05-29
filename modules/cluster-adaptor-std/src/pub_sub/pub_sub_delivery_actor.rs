@@ -8,7 +8,7 @@ use fraktor_actor_core_kernel_rs::{
   serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };
 use fraktor_cluster_core_kernel_rs::{
-  extension::ClusterApi,
+  extension::ClusterIdentityResolver,
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubBatch,
     PubSubConfig, PubSubError, PubSubSubscriber, SubscriberDeliveryReport,
@@ -18,16 +18,20 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 /// Delivery endpoint that resolves cluster identities and sends batches.
 pub struct PubSubDeliveryActor {
-  cluster_api: ClusterApi,
-  registry:    ArcShared<SerializationRegistry>,
-  _config:     PubSubConfig,
+  identity_resolver: Box<dyn ClusterIdentityResolver>,
+  registry:          ArcShared<SerializationRegistry>,
+  _config:           PubSubConfig,
 }
 
 impl PubSubDeliveryActor {
   /// Creates a new delivery actor.
   #[must_use]
-  pub const fn new(cluster_api: ClusterApi, registry: ArcShared<SerializationRegistry>, config: PubSubConfig) -> Self {
-    Self { cluster_api, registry, _config: config }
+  pub fn new(
+    identity_resolver: Box<dyn ClusterIdentityResolver>,
+    registry: ArcShared<SerializationRegistry>,
+    config: PubSubConfig,
+  ) -> Self {
+    Self { identity_resolver, registry, _config: config }
   }
 }
 
@@ -48,7 +52,7 @@ impl DeliveryEndpoint for PubSubDeliveryActor {
             });
           }
         },
-        | PubSubSubscriber::ClusterIdentity(identity) => match self.cluster_api.get(&identity) {
+        | PubSubSubscriber::ClusterIdentity(identity) => match self.identity_resolver.resolve(&identity) {
           | Ok(mut actor_ref) => {
             if actor_ref.try_tell(payload.clone()).is_err() {
               failed.push(SubscriberDeliveryReport {
