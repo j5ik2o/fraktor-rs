@@ -11,34 +11,10 @@ permissions:
   pull-requests: write
   issues: write
 
-concurrency:
-  group: takt-review-trigger-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) && github.event.issue.number) || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) }}
-
 jobs:
   takt-review:
     name: TAKT Review (Claude)
-    if: >
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.draft == false &&
-        github.event.pull_request.user.login != 'app/renovate' &&
-        github.event.pull_request.user.login != 'renovate[bot]' &&
-        !startsWith(github.event.pull_request.head.ref, 'renovate/') &&
-        github.event.sender.type != 'Bot'
-      ) ||
-      (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request != null &&
-        github.event.issue.state == 'open' &&
-        github.event.issue.user.login != 'app/renovate' &&
-        github.event.issue.user.login != 'renovate[bot]' &&
-        github.event.sender.type != 'Bot' &&
-        startsWith(github.event.comment.body, '@takt') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
-      )
-    uses: j5ik2o/ci/.github/workflows/takt-review.yml@7c4c238c96c80502ea35bac7fca3f57a65a3193a
+    uses: j5ik2o/ci/.github/workflows/takt-review.yml@a672e3d9fca1de4b7b6b648c08c9ad263267dff6
     permissions:
       contents: read
       pull-requests: write
@@ -46,12 +22,9 @@ jobs:
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     with:
-      pr_number: ${{ format('{0}', github.event.pull_request.number || github.event.issue.number) }}
-      event_head_sha: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || '' }}
-      comment_body: ${{ (github.event_name == 'issue_comment' && github.event.comment.body) || '' }}
       workflow: review-takt-default
       provider: claude-sdk
       model: claude-sonnet-4-5-20250929
       wrapper_script: .github/scripts/takt-review-wrapper.mjs
       non_blocking: "true"
-      ci_ref: 7c4c238c96c80502ea35bac7fca3f57a65a3193a
+      ci_ref: a672e3d9fca1de4b7b6b648c08c9ad263267dff6

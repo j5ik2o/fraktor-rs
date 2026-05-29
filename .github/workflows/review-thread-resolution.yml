@@ -27,15 +27,10 @@ permissions:
   issues: read
   pull-requests: read
 
-concurrency:
-  group: review-thread-resolution-trigger-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
-
 jobs:
   refresh:
     name: Refresh review-thread state
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.pr_number != '' || github.event.pull_request != null || github.event.issue.pull_request != null }}
-    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@7c4c238c96c80502ea35bac7fca3f57a65a3193a
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@a672e3d9fca1de4b7b6b648c08c9ad263267dff6
     permissions:
       contents: read
       checks: write
@@ -43,10 +38,6 @@ jobs:
       issues: read
       pull-requests: read
     with:
-      pr_number: ${{ format('{0}', inputs.pr_number || github.event.pull_request.number || github.event.issue.number || '') }}
-      base_branch: main
-      required_context: Check unresolved comments
-      wait_for_other_checks: ${{ contains(fromJSON('["false","\"false\""]'), toJSON(inputs.wait_for_other_checks)) && 'false' || 'true' }}
-      publish_status: "true"
-      skip_status_for_dependabot: "true"
-      ci_ref: 7c4c238c96c80502ea35bac7fca3f57a65a3193a
+      pr_number: ${{ inputs.pr_number }}
+      wait_for_other_checks: ${{ inputs.wait_for_other_checks }}
+      ci_ref: a672e3d9fca1de4b7b6b648c08c9ad263267dff6
