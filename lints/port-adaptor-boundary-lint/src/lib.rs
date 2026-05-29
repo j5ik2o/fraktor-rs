@@ -21,7 +21,7 @@ use syn::{
   punctuated::Punctuated,
   spanned::Spanned,
   visit::{self, Visit},
-  Attribute, Fields, File as SynFile, Item, ItemStruct, Meta, MetaList, Path as SynPath, Token, Type, TypePath, UseTree,
+  Attribute, Field, Fields, File as SynFile, Item, ItemStruct, Meta, MetaList, Path as SynPath, Token, Type, TypePath, UseTree,
   Visibility,
 };
 
@@ -102,22 +102,39 @@ fn collect_violations(file: &SynFile) -> Vec<Violation> {
 fn violations_for_struct(item_struct: &ItemStruct, imports: &HashMap<String, CoreImport>) -> Vec<Violation> {
   let struct_name = item_struct.ident.to_string();
   let mut violations = Vec::new();
-  let Fields::Named(fields) = &item_struct.fields else {
-    return violations;
-  };
 
-  for field in &fields.named {
-    if field.attrs.iter().any(attr_allows_lint) {
-      continue;
-    }
-
-    let field_name = field.ident.as_ref().map(ToString::to_string);
-    let Some(usage) = core_concrete_usage(&field.ty, imports, &struct_name, field_name.as_deref()) else {
-      continue;
-    };
-    violations.push(Violation { span: field.span(), usage });
+  match &item_struct.fields {
+    | Fields::Named(fields) => {
+      for field in &fields.named {
+        let field_name = field.ident.as_ref().map(ToString::to_string);
+        if let Some(violation) = violation_for_field(field, imports, &struct_name, field_name.as_deref()) {
+          violations.push(violation);
+        }
+      }
+    },
+    | Fields::Unnamed(fields) => {
+      for field in &fields.unnamed {
+        if let Some(violation) = violation_for_field(field, imports, &struct_name, None) {
+          violations.push(violation);
+        }
+      }
+    },
+    | Fields::Unit => {},
   }
   violations
+}
+
+fn violation_for_field(
+  field: &Field,
+  imports: &HashMap<String, CoreImport>,
+  struct_name: &str,
+  field_name: Option<&str>,
+) -> Option<Violation> {
+  if field.attrs.iter().any(attr_allows_lint) {
+    return None;
+  }
+
+  core_concrete_usage(&field.ty, imports, struct_name, field_name).map(|usage| Violation { span: field.span(), usage })
 }
 
 fn core_concrete_usage(
@@ -162,6 +179,9 @@ fn classify_type_path(
   let last = path.segments.last()?.ident.to_string();
 
   if path_is_external_core(path) {
+    if field_name == Some("inner") && last == struct_name {
+      return Some(CoreConcreteUsage::SameNameWrapper { type_name: last });
+    }
     if last.ends_with("Api") {
       return Some(CoreConcreteUsage::CoreApi { type_name: last });
     }
@@ -173,13 +193,15 @@ fn classify_type_path(
   }
 
   let import = imports.get(&last)?;
-  if import.original.ends_with("Api") {
-    return Some(CoreConcreteUsage::CoreApi { type_name: import.original.clone() });
+  let same_name_core_alias = field_name == Some("inner")
+    && last == format!("Core{struct_name}")
+    && (import.original == struct_name || import.original.trim_end_matches("Api") == struct_name);
+  if same_name_core_alias {
+    return Some(CoreConcreteUsage::SameNameWrapper { type_name: import.original.clone() });
   }
 
-  let same_name_core_alias = import.original == struct_name && last == format!("Core{struct_name}");
-  if field_name == Some("inner") && same_name_core_alias {
-    return Some(CoreConcreteUsage::SameNameWrapper { type_name: import.original.clone() });
+  if import.original.ends_with("Api") {
+    return Some(CoreConcreteUsage::CoreApi { type_name: import.original.clone() });
   }
 
   None
