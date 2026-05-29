@@ -38,7 +38,7 @@ jobs:
         startsWith(github.event.comment.body, '@takt') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       )
-    uses: j5ik2o/ci/.github/workflows/takt-review.yml@416d4b0d37fec6ba7b867f95ce704dce0181a3eb
+    uses: j5ik2o/ci/.github/workflows/takt-review.yml@bed5b2218bf24bfc2c6dd1117639809fdbeaf097
     permissions:
       contents: read
       pull-requests: write
@@ -54,4 +54,4 @@ jobs:
       model: claude-sonnet-4-5-20250929
       wrapper_script: .github/scripts/takt-review-wrapper.mjs
       non_blocking: "true"
-      ci_ref: 416d4b0d37fec6ba7b867f95ce704dce0181a3eb
+      ci_ref: bed5b2218bf24bfc2c6dd1117639809fdbeaf097
