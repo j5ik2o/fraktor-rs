@@ -47,7 +47,7 @@ jobs:
   refresh:
     name: Refresh review-thread state
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request != null || github.event.issue.pull_request != null }}
-    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@4f2c77eaa870ff1b04bfb9deeed45b18934d274f
     permissions:
       contents: read
       checks: write
@@ -61,4 +61,4 @@ jobs:
       wait_for_other_checks: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && format('{0}', inputs.wait_for_other_checks) || 'true' }}
       publish_status: "true"
       skip_status_for_dependabot: "true"
-      ci_ref: fa840a0ee2eaf371533d7da4b2e77fde8cd90014
+      ci_ref: 4f2c77eaa870ff1b04bfb9deeed45b18934d274f
