@@ -499,14 +499,14 @@ jobs:
       statuses: write
       issues: read
       pull-requests: read
-    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@691d151cbacbdff01ee506bbf65edeb0e8019409
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
     with:
-      pr_number: ${{ format('{0}', github.event.pull_request.number) }}
       base_branch: main
       required_context: Check unresolved comments
       wait_for_other_checks: false
-      publish_status: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
-      ci_ref: 691d151cbacbdff01ee506bbf65edeb0e8019409
+      publish_status: "true"
+      skip_status_for_dependabot: "true"
+      ci_ref: fa840a0ee2eaf371533d7da4b2e77fde8cd90014
 
   # All jobs completion check
   ci-success:

@@ -12,120 +12,23 @@ permissions:
   issues: write
 
 concurrency:
-  group: takt-review-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '@takt') && github.event.issue.number) || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '@takt')) }}
+  group: takt-review-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   takt-review:
     name: TAKT Review (Claude)
-    if: >
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.draft == false &&
-        github.event.pull_request.user.login != 'app/renovate' &&
-        github.event.pull_request.user.login != 'renovate[bot]' &&
-        !startsWith(github.event.pull_request.head.ref, 'renovate/') &&
-        github.event.sender.type != 'Bot'
-      ) ||
-      (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request != null &&
-        github.event.issue.state == 'open' &&
-        github.event.issue.user.login != 'app/renovate' &&
-        github.event.issue.user.login != 'renovate[bot]' &&
-        github.event.sender.type != 'Bot' &&
-        startsWith(github.event.comment.body, '@takt') &&
-        (
-          github.event.comment.author_association == 'OWNER' ||
-          github.event.comment.author_association == 'MEMBER' ||
-          github.event.comment.author_association == 'COLLABORATOR'
-        )
-      )
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Resolve PR checkout
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-          head_repo="$(jq -r '.head.repo.full_name' <<< "$pr_json")"
-          head_ref="$(jq -r '.head.ref' <<< "$pr_json")"
-          is_draft="$(jq -r '.draft' <<< "$pr_json")"
-          author="$(jq -r '.user.login' <<< "$pr_json")"
-
-          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "ref=$head_sha" >> "$GITHUB_OUTPUT"
-
-          if [[ "$EVENT_NAME" == "pull_request" && "$head_sha" != "$PULL_REQUEST_HEAD_SHA" ]]; then
-            echo "::notice::Skipping stale TAKT review for PR #$PR_NUMBER because head changed from $PULL_REQUEST_HEAD_SHA to $head_sha"
-            echo "reviewable=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "$is_draft" == "true" ]]; then
-            echo "::notice::Skipping TAKT review for draft PR #$PR_NUMBER"
-            echo "reviewable=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "$head_repo" != "$REPOSITORY" ]]; then
-            echo "::notice::Skipping TAKT review for fork PR head: $head_repo"
-            echo "reviewable=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "$author" == "app/renovate" || "$author" == "renovate[bot]" || "$head_ref" == renovate/* ]]; then
-            echo "::notice::Skipping TAKT review for Renovate PR #$PR_NUMBER"
-            echo "reviewable=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "reviewable=true" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout caller repository
-        if: steps.pr.outputs.reviewable == 'true'
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ steps.pr.outputs.ref }}
-          persist-credentials: false
-
-      - name: Checkout shared CI actions
-        if: steps.pr.outputs.reviewable == 'true'
-        uses: actions/checkout@v6
-        with:
-          repository: j5ik2o/ci
-          ref: 691d151cbacbdff01ee506bbf65edeb0e8019409
-          path: .shared-ci
-          persist-credentials: false
-
-      - name: Run TAKT review wrapper
-        id: takt
-        if: steps.pr.outputs.reviewable == 'true'
-        continue-on-error: true
-        uses: ./.shared-ci/actions/takt-review-wrapper
-        with:
-          wrapper_script: .github/scripts/takt-review-wrapper.mjs
-          pr_number: ${{ steps.pr.outputs.number }}
-          pr_head_sha: ${{ steps.pr.outputs.ref }}
-          comment_body: ${{ github.event.comment.body }}
-          workflow: review-takt-default
-          provider: claude-sdk
-          model: claude-sonnet-4-5-20250929
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Report non-blocking TAKT review failure
-        if: steps.takt.outcome == 'failure'
-        run: |
-          echo "::warning::TAKT review failed, likely due to model provider capacity or credits. Continuing so CI and merge readiness are not blocked."
+    uses: j5ik2o/ci/.github/workflows/takt-review.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      workflow: review-takt-default
+      provider: claude-sdk
+      model: claude-sonnet-4-5-20250929
+      wrapper_script: .github/scripts/takt-review-wrapper.mjs
+      non_blocking: "true"
+      ci_ref: fa840a0ee2eaf371533d7da4b2e77fde8cd90014

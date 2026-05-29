@@ -24,13 +24,14 @@ on:
     inputs:
       pr_number:
         description: PR number to refresh.
-        required: true
+        required: false
         type: string
+        default: ""
       wait_for_other_checks:
         description: Wait for other PR checks before evaluating review threads.
         required: false
-        default: true
-        type: boolean
+        default: "true"
+        type: string
 
 permissions:
   contents: read
@@ -40,92 +41,24 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: review-thread-resolution-${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'ci-' || 'event-' }}${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && toJSON(inputs.wait_for_other_checks) != 'false' && inputs.wait_for_other_checks != 'false' }}
+  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
 
 jobs:
   refresh:
     name: Refresh review-thread state
-    if: ${{ github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.pr_number == '') && (github.event_name != 'issue_comment' || github.event.issue.pull_request != null) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
     permissions:
       contents: read
       checks: write
       statuses: write
       issues: read
       pull-requests: read
-    steps:
-      - name: Resolve PR number
-        id: pr
-        shell: bash
-        env:
-          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
-        run: |
-          set -euo pipefail
-          pr_number="${INPUT_PR_NUMBER:-}"
-          if [[ -z "${pr_number}" || "${pr_number}" == "null" ]]; then
-            pr_number="$(jq -r '
-              .pull_request.number //
-              .issue.number //
-              (.review.pull_request_url // .comment.pull_request_url // "" | split("/")[-1]) //
-              empty
-            ' "${GITHUB_EVENT_PATH}")"
-          fi
-          if [[ -z "${pr_number}" || "${pr_number}" == "null" ]]; then
-            echo "Unable to resolve PR number from ${GITHUB_EVENT_NAME}" >&2
-            exit 1
-          fi
-          echo "pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
-      - name: Checkout shared CI actions
-        uses: actions/checkout@v6
-        with:
-          repository: j5ik2o/ci
-          ref: 691d151cbacbdff01ee506bbf65edeb0e8019409
-          path: .shared-ci
-          persist-credentials: false
-      - name: Refresh review-thread state
-        uses: ./.shared-ci/actions/review-thread-resolution
-        with:
-          repository: ${{ github.repository }}
-          pr_number: ${{ steps.pr.outputs.pr_number }}
-          base_branch: main
-          required_context: Check unresolved comments
-          wait_for_other_checks: ${{ !(toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'true' || 'false' }}
-          publish_status: "true"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
-
-  refresh-open-prs:
-    name: Refresh open PR review-thread state
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.pr_number == '') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      checks: write
-      statuses: write
-      issues: read
-      pull-requests: read
-    steps:
-      - name: Checkout shared CI actions
-        uses: actions/checkout@v6
-        with:
-          repository: j5ik2o/ci
-          ref: 691d151cbacbdff01ee506bbf65edeb0e8019409
-          path: .shared-ci
-          persist-credentials: false
-      - name: Refresh open PR review-thread state
-        uses: ./.shared-ci/actions/review-thread-resolution
-        continue-on-error: true
-        with:
-          repository: ${{ github.repository }}
-          pr_number: ""
-          base_branch: main
-          required_context: Check unresolved comments
-          wait_for_other_checks: ${{ !(toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'true' || 'false' }}
-          publish_status: "true"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      base_branch: main
+      required_context: Check unresolved comments
+      wait_for_other_checks: ${{ inputs.wait_for_other_checks }}
+      publish_status: "true"
+      skip_status_for_dependabot: "true"
+      ci_ref: fa840a0ee2eaf371533d7da4b2e77fde8cd90014
