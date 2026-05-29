@@ -82,10 +82,10 @@ impl TokioGossipTransport {
         if !allowed_peers.contains(&addr) {
           continue;
         }
-        if let Ok(delta) = decode_delta(bytes) {
-          if let Err(err) = inbound_tx.try_send((addr.to_string(), delta)) {
-            tracing::warn!(from = %addr, "failed to enqueue inbound gossip delta: {err}");
-          }
+        if let Ok(delta) = decode_delta(bytes)
+          && let Err(err) = inbound_tx.try_send((addr.to_string(), delta))
+        {
+          tracing::warn!(from = %addr, "failed to enqueue inbound gossip delta: {err}");
         }
       }
     });

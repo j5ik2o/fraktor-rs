@@ -5,8 +5,8 @@ use fraktor_actor_adaptor_std_rs::{system::create_noop_actor_system, tick_driver
 use fraktor_actor_core_kernel_rs::{
   actor::{
     Actor, ActorContext, Pid,
-    actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_path::{ActorPath, ActorPathParser, ActorPathScheme, ActorUid},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
@@ -35,7 +35,7 @@ use crate::{
     PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution,
   },
   cluster_provider::{ClusterProvider, NoopClusterProvider},
-  downing_provider::{DowningDecision, DowningInput, DowningProvider},
+  downing_provider::{DowningDecision, DowningInput, DowningProvider, DowningProviderCompatibility},
   extension::ClusterExtensionInstaller,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
 };
@@ -123,6 +123,44 @@ fn get_resolves_actor_ref_for_registered_kind() {
 
   let actor_ref = api.get(&identity).expect("resolved actor ref");
   assert_eq!(actor_ref.pid(), Pid::new(1, 0));
+}
+
+#[test]
+fn remote_path_of_uses_cluster_advertised_authority_for_local_ref() {
+  let (system, _ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let local_path = ActorPath::root().child("worker").with_uid(ActorUid::new(42));
+  let actor_ref = ActorRef::with_canonical_path(Pid::new(10, 0), TestSender, local_path);
+
+  let remote_path = api.remote_path_of(&actor_ref).expect("remote path");
+
+  assert_eq!(remote_path.to_canonical_uri(), "fraktor.tcp://cellactor@node1:8080/user/worker#42");
+  assert_eq!(remote_path.uid().map(|uid| uid.value()), Some(42));
+}
+
+#[test]
+fn remote_path_of_preserves_existing_remote_authority() {
+  let (system, _ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let remote_path =
+    ActorPathParser::parse("fraktor.tcp://cellactor@node2:8080/user/worker").expect("remote path parses");
+  let actor_ref = ActorRef::with_canonical_path(Pid::new(11, 0), TestSender, remote_path.clone());
+
+  let resolved = api.remote_path_of(&actor_ref).expect("remote path");
+
+  assert_eq!(resolved.to_canonical_uri(), remote_path.to_canonical_uri());
+}
+
+#[test]
+fn remote_path_of_reports_invalid_pid_format_when_canonical_path_is_unavailable() {
+  let (system, _ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let sender = ActorRefSenderShared::new(Box::new(TestSender));
+  let actor_ref = ActorRef::new(Pid::new(12, 0), sender);
+
+  let err = api.remote_path_of(&actor_ref).expect_err("canonical path is required");
+
+  assert!(matches!(err, ClusterResolveError::InvalidPidFormat { .. }));
 }
 
 #[test]
@@ -214,7 +252,9 @@ fn down_delegates_to_cluster_provider() {
     ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
       Box::new(RecordingDownProvider { downed: downed_for_provider.clone() })
     })
-    .with_downing_provider_factory(move || Box::new(RecordingDowningProvider { downed: downed_for_strategy.clone() }))
+    .with_downing_provider_factory(DowningProviderCompatibility::new("recording-downing-provider"), move || {
+      Box::new(RecordingDowningProvider { downed: downed_for_strategy.clone() })
+    })
     .with_identity_lookup_factory(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
   let config = ActorSystemConfig::new(TestTickDriver::default())
@@ -391,6 +431,26 @@ fn subscribe_snapshot_mode_keeps_current_cluster_state_first_when_topology_updat
 }
 
 #[test]
+fn current_state_returns_current_cluster_state_snapshot() {
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_member().expect("start member");
+
+  let first = build_topology_update(7, vec![String::from("node2:8080")], Vec::new());
+  extension.on_topology(&first);
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let state = api.current_state();
+
+  assert_eq!(state.members.iter().map(|record| record.authority.as_str()).collect::<Vec<_>>(), vec![
+    "node1:8080",
+    "node2:8080"
+  ]);
+  assert!(state.unreachable.is_empty());
+  assert!(state.seen_by.is_empty());
+  assert_eq!(state.leader.as_deref(), Some("node1:8080"));
+}
+
+#[test]
 fn subscribe_no_replay_skips_buffered_cluster_events() {
   let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   extension.start_member().expect("start member");
@@ -422,7 +482,7 @@ fn subscribe_panics_when_event_type_filter_is_empty() {
   let recorder = RecordingClusterEvents::new();
   let subscriber = test_subscriber_handle(recorder);
 
-  let _ = api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[]);
+  drop(api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[]));
 }
 
 fn run_scheduler(system: &ActorSystem, duration: Duration) {
