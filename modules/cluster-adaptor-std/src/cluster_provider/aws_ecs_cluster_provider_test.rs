@@ -13,7 +13,8 @@ use fraktor_cluster_core_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
-use super::{AwsEcsClusterProvider, EcsClusterConfig};
+use super::AwsEcsClusterProvider;
+use crate::cluster_provider::EcsClusterConfig;
 
 struct EmptyBlockList;
 

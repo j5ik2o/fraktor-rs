@@ -19,26 +19,6 @@
 //!   "Resource": "*"
 //! }
 //! ```
-//!
-//! # Example
-//!
-//! ```ignore
-//! use std::time::Duration;
-//!
-//! use fraktor_cluster_core_rs::extension::{ClusterExtensionConfig, ClusterExtensionInstaller};
-//! use fraktor_cluster_adaptor_std_rs::{AwsEcsClusterExtensionInstallerExt, EcsClusterConfig};
-//!
-//! let config = ClusterExtensionConfig::default()
-//!     .with_advertised_address("10.0.0.1:8080");
-//!
-//! let ecs_config = EcsClusterConfig::new()
-//!     .with_cluster_name("my-cluster")
-//!     .with_service_name("my-service")
-//!     .with_poll_interval(Duration::from_secs(10));
-//!
-//! let installer = ClusterExtensionInstaller::new_with_ecs(config, ecs_config);
-//! ```
-
 #[cfg(test)]
 #[path = "aws_ecs_cluster_provider_test.rs"]
 mod tests;
@@ -49,8 +29,6 @@ use std::{
   time::Duration,
 };
 
-use aws_config::{BehaviorVersion, defaults};
-use aws_sdk_ecs::{Client as EcsClient, config::Region};
 use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
@@ -63,100 +41,7 @@ use fraktor_cluster_core_rs::{
 use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 use tokio::task::JoinHandle;
 
-/// Configuration for AWS ECS cluster provider.
-#[derive(Clone, Debug)]
-pub struct EcsClusterConfig {
-  cluster_name:  String,
-  service_name:  Option<String>,
-  poll_interval: Duration,
-  port:          u16,
-  region:        Option<String>,
-}
-
-impl Default for EcsClusterConfig {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
-impl EcsClusterConfig {
-  /// Creates a new ECS cluster configuration with default values.
-  #[must_use]
-  pub fn new() -> Self {
-    Self {
-      cluster_name:  String::new(),
-      service_name:  None,
-      poll_interval: Duration::from_secs(30),
-      port:          8080,
-      region:        None,
-    }
-  }
-
-  /// Sets the ECS cluster name.
-  #[must_use]
-  pub fn with_cluster_name(mut self, name: impl Into<String>) -> Self {
-    self.cluster_name = name.into();
-    self
-  }
-
-  /// Sets the ECS service name for filtering tasks.
-  #[must_use]
-  pub fn with_service_name(mut self, name: impl Into<String>) -> Self {
-    self.service_name = Some(name.into());
-    self
-  }
-
-  /// Sets the polling interval for task discovery.
-  #[must_use]
-  pub const fn with_poll_interval(mut self, interval: Duration) -> Self {
-    self.poll_interval = interval;
-    self
-  }
-
-  /// Sets the port used for cluster communication.
-  #[must_use]
-  pub const fn with_port(mut self, port: u16) -> Self {
-    self.port = port;
-    self
-  }
-
-  /// Sets the AWS region.
-  #[must_use]
-  pub fn with_region(mut self, region: impl Into<String>) -> Self {
-    self.region = Some(region.into());
-    self
-  }
-
-  /// Returns the cluster name.
-  #[must_use]
-  pub fn cluster_name(&self) -> &str {
-    &self.cluster_name
-  }
-
-  /// Returns the service name.
-  #[must_use]
-  pub fn service_name(&self) -> Option<&str> {
-    self.service_name.as_deref()
-  }
-
-  /// Returns the polling interval.
-  #[must_use]
-  pub const fn poll_interval(&self) -> Duration {
-    self.poll_interval
-  }
-
-  /// Returns the port.
-  #[must_use]
-  pub const fn port(&self) -> u16 {
-    self.port
-  }
-
-  /// Returns the region.
-  #[must_use]
-  pub fn region(&self) -> Option<&str> {
-    self.region.as_deref()
-  }
-}
+use super::{EcsClusterConfig, ecs_task_discovery::poll_ecs_tasks};
 
 /// AWS ECS cluster provider that discovers tasks via ECS API.
 ///
@@ -262,13 +147,7 @@ impl AwsEcsClusterProvider {
     let advertised_address = self.advertised_address.clone();
 
     let handle = tokio::spawn(async move {
-      // AWS SDK クライアントを初期化
-      let mut aws_config_builder = defaults(BehaviorVersion::latest());
-      if let Some(ref region) = config.region {
-        aws_config_builder = aws_config_builder.region(Region::new(region.clone()));
-      }
-      let aws_config = aws_config_builder.load().await;
-      let ecs_client = EcsClient::new(&aws_config);
+      let ecs_client = config.create_client().await;
 
       let mut current_members: Vec<String> = if add_self { vec![advertised_address.clone()] } else { Vec::new() };
       let mut version: u64 = 0;
@@ -282,7 +161,7 @@ impl AwsEcsClusterProvider {
         match poll_ecs_tasks(&ecs_client, &config).await {
           | Ok(discovered_ips) => {
             // 新しいメンバーリストを構築（自分自身を含める場合）
-            let port = config.port;
+            let port = config.port();
             let mut new_members: Vec<String> =
               discovered_ips.into_iter().map(|ip| format!("{}:{}", ip, port)).collect();
 
@@ -318,69 +197,19 @@ impl AwsEcsClusterProvider {
           },
           | Err(error) => {
             tracing::warn!(
-              cluster = %config.cluster_name,
-              service = ?config.service_name,
+              cluster = %config.cluster_name(),
+              service = ?config.service_name(),
               "ECS polling failed: {error:?}"
             );
           },
         }
 
-        tokio::time::sleep(config.poll_interval).await;
+        tokio::time::sleep(config.poll_interval()).await;
       }
     });
 
     self.poller_handle = Some(handle);
   }
-}
-
-/// Polls ECS tasks and returns their private IPs.
-async fn poll_ecs_tasks(client: &EcsClient, config: &EcsClusterConfig) -> Result<Vec<String>, EcsPollerError> {
-  // ListTasks API 呼び出し
-  let mut list_tasks_req = client.list_tasks().cluster(&config.cluster_name);
-
-  if let Some(ref service_name) = config.service_name {
-    list_tasks_req = list_tasks_req.service_name(service_name);
-  }
-
-  let list_tasks_resp = list_tasks_req.send().await.map_err(|e| EcsPollerError::ApiCall(e.to_string()))?;
-
-  let task_arns = list_tasks_resp.task_arns();
-  if task_arns.is_empty() {
-    return Ok(Vec::new());
-  }
-
-  // DescribeTasks API 呼び出し（最大100タスク/リクエスト）
-  let describe_tasks_resp = client
-    .describe_tasks()
-    .cluster(&config.cluster_name)
-    .set_tasks(Some(task_arns.to_vec()))
-    .send()
-    .await
-    .map_err(|e| EcsPollerError::ApiCall(e.to_string()))?;
-
-  // RUNNING タスクからプライベート IP を抽出
-  let private_ips: Vec<String> = describe_tasks_resp
-    .tasks()
-    .iter()
-    .filter(|task| task.last_status() == Some("RUNNING"))
-    .filter_map(extract_private_ip)
-    .collect();
-
-  Ok(private_ips)
-}
-
-/// Extracts the private IP address from an ECS task's awsvpc attachment.
-fn extract_private_ip(task: &aws_sdk_ecs::types::Task) -> Option<String> {
-  task.attachments().iter().find(|a| a.r#type() == Some("ElasticNetworkInterface")).and_then(|eni| {
-    eni.details().iter().find(|d| d.name() == Some("privateIPv4Address")).and_then(|d| d.value().map(String::from))
-  })
-}
-
-/// Error type for ECS polling operations.
-#[derive(Debug)]
-pub enum EcsPollerError {
-  /// API call failed.
-  ApiCall(String),
 }
 
 impl ClusterProvider for AwsEcsClusterProvider {

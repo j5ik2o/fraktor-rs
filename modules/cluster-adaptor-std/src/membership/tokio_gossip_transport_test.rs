@@ -5,7 +5,7 @@ use fraktor_cluster_core_rs::membership::{
 };
 use tokio::{net::UdpSocket, runtime::Handle};
 
-use crate::{TokioGossipTransport, TokioGossipTransportConfig};
+use crate::membership::{TokioGossipTransport, TokioGossipTransportConfig};
 
 fn sample_delta() -> MembershipDelta {
   let record = NodeRecord::new(

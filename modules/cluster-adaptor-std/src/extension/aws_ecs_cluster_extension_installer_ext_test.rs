@@ -2,7 +2,7 @@ use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system_with;
 use fraktor_actor_core_kernel_rs::actor::extension::ExtensionInstallers;
 use fraktor_cluster_core_rs::extension::{ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller};
 
-use crate::{AwsEcsClusterExtensionInstallerExt, EcsClusterConfig};
+use crate::{cluster_provider::EcsClusterConfig, extension::AwsEcsClusterExtensionInstallerExt};
 
 #[test]
 fn new_with_ecs_builds_installer_through_extension_trait() {

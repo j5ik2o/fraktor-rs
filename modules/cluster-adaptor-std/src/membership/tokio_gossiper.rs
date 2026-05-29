@@ -11,7 +11,7 @@ use tokio::{
   task::JoinHandle,
 };
 
-use crate::{
+use super::{
   membership_coordinator_driver::MembershipCoordinatorDriver, tokio_gossip_transport::TokioGossipTransport,
   tokio_gossiper_config::TokioGossiperConfig,
 };
