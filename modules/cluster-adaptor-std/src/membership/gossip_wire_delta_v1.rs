@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use fraktor_cluster_core_rs::membership::{MembershipDelta, MembershipVersion};
 use serde::{Deserialize, Serialize};
 
-use crate::gossip_wire_node_record::GossipWireNodeRecord;
+use super::gossip_wire_node_record::GossipWireNodeRecord;
 
 /// Wire representation of a membership delta.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

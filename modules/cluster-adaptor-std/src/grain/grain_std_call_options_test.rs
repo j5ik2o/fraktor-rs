@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use fraktor_cluster_core_rs::grain::{GrainCallOptions, GrainRetryPolicy};
 
-use crate::{call_options_with_retry, call_options_with_timeout, default_grain_call_options};
+use crate::grain::{call_options_with_retry, call_options_with_timeout, default_grain_call_options};
 
 #[test]
 fn default_grain_call_options_matches_core_default() {

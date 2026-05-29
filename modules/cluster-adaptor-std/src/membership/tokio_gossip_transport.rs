@@ -15,7 +15,7 @@ use tokio::{
   task::JoinHandle,
 };
 
-use crate::{gossip_wire_delta_v1::GossipWireDeltaV1, tokio_gossip_transport_config::TokioGossipTransportConfig};
+use super::{gossip_wire_delta_v1::GossipWireDeltaV1, tokio_gossip_transport_config::TokioGossipTransportConfig};
 
 #[cfg(test)]
 #[path = "tokio_gossip_transport_test.rs"]

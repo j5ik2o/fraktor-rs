@@ -8,7 +8,7 @@ use alloc::boxed::Box;
 
 use fraktor_cluster_core_rs::extension::{ClusterExtensionConfig, ClusterExtensionInstaller};
 
-use crate::{AwsEcsClusterProvider, EcsClusterConfig};
+use crate::cluster_provider::{AwsEcsClusterProvider, EcsClusterConfig};
 
 /// Extension methods for creating cluster installers backed by AWS ECS discovery.
 pub trait AwsEcsClusterExtensionInstallerExt {
@@ -19,18 +19,19 @@ pub trait AwsEcsClusterExtensionInstallerExt {
   ///
   /// # Example
   ///
-  /// ```ignore
+  /// ```rust
   /// use std::time::Duration;
   ///
+  /// use fraktor_cluster_adaptor_std_rs::{
+  ///   cluster_provider::EcsClusterConfig, extension::AwsEcsClusterExtensionInstallerExt,
+  /// };
   /// use fraktor_cluster_core_rs::extension::{ClusterExtensionConfig, ClusterExtensionInstaller};
-  /// use fraktor_cluster_adaptor_std_rs::{AwsEcsClusterExtensionInstallerExt, EcsClusterConfig};
   ///
-  /// let config = ClusterExtensionConfig::default()
-  ///     .with_advertised_address("10.0.0.1:8080");
+  /// let config = ClusterExtensionConfig::default().with_advertised_address("10.0.0.1:8080");
   /// let ecs_config = EcsClusterConfig::new()
-  ///     .with_cluster_name("my-cluster")
-  ///     .with_service_name("my-service")
-  ///     .with_poll_interval(Duration::from_secs(10));
+  ///   .with_cluster_name("my-cluster")
+  ///   .with_service_name("my-service")
+  ///   .with_poll_interval(Duration::from_secs(10));
   ///
   /// let installer = ClusterExtensionInstaller::new_with_ecs(config, ecs_config);
   /// ```

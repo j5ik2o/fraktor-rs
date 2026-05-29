@@ -17,7 +17,7 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_cluster_adaptor_std_rs::ClusterApi;
+use fraktor_cluster_adaptor_std_rs::extension::ClusterApi;
 use fraktor_cluster_core_rs::{
   activation::{
     ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,

@@ -11,7 +11,7 @@ use fraktor_cluster_core_rs::{
 use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
 use tokio::runtime::Handle;
 
-use crate::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig};
+use crate::membership::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig};
 
 /// Test-only adapter that bridges the remote-core detector to the
 /// cluster-core `FailureDetector` trait.

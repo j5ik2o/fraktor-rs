@@ -10,7 +10,7 @@ use fraktor_cluster_core_rs::{
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use crate::ClusterApi;
+use crate::extension::ClusterApi;
 
 /// Grain reference bound to the standard toolbox.
 pub struct GrainRef {

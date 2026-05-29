@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use fraktor_actor_core_kernel_rs::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
 };
-use fraktor_cluster_adaptor_std_rs::{
+use fraktor_cluster_adaptor_std_rs::membership::{
   TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig,
 };
 use fraktor_cluster_core_rs::{
