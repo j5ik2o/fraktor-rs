@@ -100,5 +100,5 @@ async fn start_twice_returns_err() {
   let mut gossiper = TokioGossiper::new(config, coordinator, transport, event_stream, Handle::current());
   assert!(gossiper.start().is_ok());
   assert!(gossiper.start().is_err());
-  let _ = gossiper.stop();
+  assert!(gossiper.stop().is_ok());
 }

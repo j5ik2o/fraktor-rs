@@ -11,6 +11,22 @@
 
 extern crate alloc;
 
+mod cluster;
+mod cluster_command;
+mod cluster_event_subscription;
 mod cluster_identity;
+mod cluster_setup;
+mod cluster_state_subscription;
+mod cluster_state_subscription_result;
+mod self_removed;
+mod self_up;
 
+pub use cluster::Cluster;
+pub use cluster_command::ClusterCommand;
+pub use cluster_event_subscription::ClusterEventSubscription;
 pub use cluster_identity::ClusterIdentity;
+pub use cluster_setup::ClusterSetup;
+pub use cluster_state_subscription::ClusterStateSubscription;
+pub use cluster_state_subscription_result::ClusterStateSubscriptionResult;
+pub use self_removed::SelfRemoved;
+pub use self_up::SelfUp;

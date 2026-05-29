@@ -2,15 +2,21 @@
 
 mod downing_decision;
 mod downing_input;
+mod downing_provider_compatibility;
 mod failure_observation;
 mod failure_observation_kind;
 mod noop_downing_provider;
+mod split_brain_resolver_settings;
+mod split_brain_resolver_strategy;
 
 pub use downing_decision::DowningDecision;
 pub use downing_input::DowningInput;
+pub use downing_provider_compatibility::DowningProviderCompatibility;
 pub use failure_observation::FailureObservation;
 pub use failure_observation_kind::FailureObservationKind;
 pub use noop_downing_provider::NoopDowningProvider;
+pub use split_brain_resolver_settings::SplitBrainResolverSettings;
+pub use split_brain_resolver_strategy::SplitBrainResolverStrategy;
 
 use crate::ClusterProviderError;
 

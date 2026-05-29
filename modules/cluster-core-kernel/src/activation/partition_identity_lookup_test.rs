@@ -16,7 +16,7 @@ use crate::{
 };
 
 fn setup_member_mode(lookup: &mut PartitionIdentityLookup) {
-  let _ = lookup.setup_member(&[]);
+  drop(lookup.setup_member(&[]));
 }
 
 // ============================================================================
@@ -154,11 +154,11 @@ fn test_setup_member_overwrites_previous_kinds() {
   let mut lookup = PartitionIdentityLookup::with_defaults();
 
   let kinds1 = vec![ActivatedKind::new("user".to_string())];
-  let _ = lookup.setup_member(&kinds1);
+  drop(lookup.setup_member(&kinds1));
   assert_eq!(lookup.member_kinds().len(), 1);
 
   let kinds2 = vec![ActivatedKind::new("order".to_string()), ActivatedKind::new("device".to_string())];
-  let _ = lookup.setup_member(&kinds2);
+  drop(lookup.setup_member(&kinds2));
   assert_eq!(lookup.member_kinds().len(), 2);
   assert_eq!(lookup.member_kinds()[0].name(), "order");
 }
@@ -298,7 +298,7 @@ fn test_resolve_generates_activated_event_on_first_call() {
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
-  let _ = lookup.resolve(&key, now);
+  drop(lookup.resolve(&key, now));
   let events = lookup.drain_events();
 
   assert!(!events.is_empty());
@@ -317,14 +317,14 @@ fn test_resolve_generates_activated_event_on_subsequent_calls() {
   let now = 1000;
 
   // 初回: Activated イベント
-  let _ = lookup.resolve(&key, now);
-  let _ = lookup.drain_events();
+  drop(lookup.resolve(&key, now));
+  drop(lookup.drain_events());
 
   // キャッシュを無効化して ensure_activation を再度通過させる
   // （通常は TTL 経過後や topology 変更時に発生）
   // ここではキャッシュを手動で無効化できないため、新しいキーでテスト
   let key2 = GrainKey::new("user/456".to_string());
-  let _ = lookup.resolve(&key2, now);
+  drop(lookup.resolve(&key2, now));
   let events = lookup.drain_events();
 
   assert!(!events.is_empty());
@@ -382,15 +382,15 @@ fn test_remove_pid_invalidates_cache() {
   let now = 1000;
 
   // アクティベーションを作成
-  let _ = lookup.resolve(&key, now);
-  let _ = lookup.drain_events();
+  drop(lookup.resolve(&key, now));
+  drop(lookup.drain_events());
 
   // 削除
   lookup.remove_pid(&key);
-  let _ = lookup.drain_events();
+  drop(lookup.drain_events());
 
   // 再度 get を呼ぶと新しいアクティベーションが作成される
-  let _ = lookup.resolve(&key, now);
+  drop(lookup.resolve(&key, now));
   let events = lookup.drain_events();
 
   // 新しい Activated イベントが生成されるはず
@@ -435,8 +435,8 @@ fn test_update_topology_invalidates_absent_authorities() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
-  let _ = lookup.drain_events();
+  drop(lookup.resolve(&key, now));
+  drop(lookup.drain_events());
 
   // node1 を含まない新しいトポロジに更新
   lookup.update_topology(vec!["node2:8080".to_string()]);
@@ -459,8 +459,8 @@ fn test_on_member_left_invalidates_authority_entries() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
-  let _ = lookup.drain_events();
+  drop(lookup.resolve(&key, now));
+  drop(lookup.drain_events());
 
   // node1 が離脱
   lookup.on_member_left("node1:8080");
@@ -479,8 +479,8 @@ fn test_on_member_left_with_unknown_authority_does_nothing() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
-  let _ = lookup.drain_events();
+  drop(lookup.resolve(&key, now));
+  drop(lookup.drain_events());
 
   // 存在しない node2 が離脱
   lookup.on_member_left("node2:8080");
@@ -503,8 +503,8 @@ fn test_passivate_idle_removes_expired_activations() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
-  let _ = lookup.drain_events();
+  drop(lookup.resolve(&key, now));
+  drop(lookup.drain_events());
 
   // idle_ttl を超えた時間でパッシベーション
   let later = now + 4000; // 4000秒後（idle_ttl=3600 を超過）
@@ -524,8 +524,8 @@ fn test_passivate_idle_keeps_recent_activations() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
-  let _ = lookup.drain_events();
+  drop(lookup.resolve(&key, now));
+  drop(lookup.drain_events());
 
   // idle_ttl 未満の時間でパッシベーション
   let later = now + 100; // 100秒後（idle_ttl=3600 未満）
@@ -549,7 +549,7 @@ fn test_drain_events_returns_and_clears_events() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
+  drop(lookup.resolve(&key, now));
 
   // 1回目: イベントを取得
   let events1 = lookup.drain_events();
@@ -569,7 +569,7 @@ fn test_drain_cache_events_returns_cache_events_on_invalidation() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
+  drop(lookup.resolve(&key, now));
 
   // キャッシュを無効化（remove_pid 経由で PidCache::invalidate_key が呼ばれる）
   lookup.remove_pid(&key);
@@ -588,7 +588,7 @@ fn test_drain_cache_events_clears_after_drain() {
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.resolve(&key, now);
+  drop(lookup.resolve(&key, now));
 
   // キャッシュを無効化してイベントを生成
   lookup.remove_pid(&key);

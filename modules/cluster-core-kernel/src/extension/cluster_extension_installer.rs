@@ -1,5 +1,9 @@
 //! Installs the cluster extension into an actor system.
 
+#[cfg(test)]
+#[path = "cluster_extension_installer_test.rs"]
+mod tests;
+
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::{
@@ -13,7 +17,7 @@ use crate::{
   BlockListProvider, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
   activation::{IdentityLookup, NoopIdentityLookup},
   cluster_provider::{ClusterProvider, LocalClusterProvider},
-  downing_provider::{DowningProvider, NoopDowningProvider},
+  downing_provider::{DowningProvider, DowningProviderCompatibility, NoopDowningProvider},
   membership::{Gossiper, NoopGossiper},
   pub_sub::{NoopClusterPubSub, cluster_pub_sub::ClusterPubSub},
 };
@@ -178,9 +182,10 @@ impl ClusterExtensionInstaller {
   ///
   /// The factory is called during installation to create a fresh `DowningProvider` instance.
   #[must_use]
-  pub fn with_downing_provider_factory<F>(mut self, factory: F) -> Self
+  pub fn with_downing_provider_factory<F>(mut self, compatibility: DowningProviderCompatibility, factory: F) -> Self
   where
     F: Fn() -> Box<dyn DowningProvider> + Send + Sync + 'static, {
+    self.config = self.config.with_downing_provider_compatibility(compatibility);
     self.downing_provider_f = Some(ArcShared::new(factory));
     self
   }

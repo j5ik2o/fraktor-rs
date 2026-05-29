@@ -159,7 +159,7 @@ fn metrics_snapshot_is_emitted_and_counters_reset() {
 
   broker.mark_partitioned(&PubSubTopic::from("news"), true).expect("partition flag update should succeed");
   let options = broker.topic_options(&PubSubTopic::from("news")).expect("topic options");
-  let _ = broker.publish_targets(&PubSubTopic::from("news"), options);
+  drop(broker.publish_targets(&PubSubTopic::from("news"), options));
 
   let snapshot = broker.drain_metrics();
   assert_eq!(snapshot.delayed_messages, 0);

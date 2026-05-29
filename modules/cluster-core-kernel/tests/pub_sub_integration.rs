@@ -114,7 +114,7 @@ impl BlockListProvider for EmptyBlockListProvider {
 fn make_registry() -> ArcShared<SerializationRegistry> {
   let setup = default_serialization_setup();
   let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
-  let _ = register_defaults(&registry, |_name, _id| {});
+  drop(register_defaults(&registry, |_name, _id| {}));
   registry
 }
 
