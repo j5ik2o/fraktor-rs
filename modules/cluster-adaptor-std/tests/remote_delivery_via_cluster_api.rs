@@ -74,6 +74,7 @@ impl LifecycleRecorder {
 impl EventStreamSubscriber for LifecycleRecorder {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::RemotingLifecycle(event) = event {
+      // テスト用レコーダなので、受信側が破棄済みの場合の送信失敗は無視してよい。
       drop(self.tx.send(event.clone()));
     }
   }

@@ -1,10 +1,10 @@
 # port-adaptor-boundary-lint
 
-## Rule
+## ルール
 
-In `modules/*-adaptor-std/src`, public structs must not:
+`modules/*-adaptor-std/src` の public struct は、以下をしてはいけません。
 
-- store core concrete API facades such as `ClusterApi`;
-- wrap a core type with the same public name via aliases such as `CoreClusterApi`.
+- `ClusterApi` のような core concrete API facade を保持する。
+- `CoreClusterApi` のような alias 経由で、core 型を同じ public name の wrapper として保持する。
 
-Adapters may still implement core-defined ports and may use core value types, errors, config types, and port trait types in signatures.
+adapter は引き続き core-defined port を実装できます。また、signature では core の value type、error、config type、port trait type を利用できます。
