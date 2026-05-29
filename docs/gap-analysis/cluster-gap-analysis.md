@@ -33,10 +33,10 @@
 
 | 領域 | fraktor-rs | Pekko 参照 |
 |------|------------|------------|
-| cluster core | `modules/cluster-core/src/` (`activation`, `membership`, `extension`, `pub_sub`, `topology`) | `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/` |
+| cluster core | `modules/cluster-core-kernel/src/` (`activation`, `membership`, `extension`, `pub_sub`, `topology`) | `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/` |
 | typed cluster contract | 対応する `core/typed` は現状なし | `references/pekko/cluster-typed/src/main/scala/` |
-| sharding / virtual actor | `modules/cluster-core/src/grain/`, `modules/cluster-core/src/activation/` | `references/pekko/cluster-sharding/`, `references/pekko/cluster-sharding-typed/` |
-| cluster tools | `modules/cluster-core/src/pub_sub/` | `references/pekko/cluster-tools/src/main/scala/org/apache/pekko/cluster/pubsub/`, `singleton/`, `client/` |
+| sharding / virtual actor | `modules/cluster-core-kernel/src/grain/`, `modules/cluster-core-kernel/src/activation/` | `references/pekko/cluster-sharding/`, `references/pekko/cluster-sharding-typed/` |
+| cluster tools | `modules/cluster-core-kernel/src/pub_sub/` | `references/pekko/cluster-tools/src/main/scala/org/apache/pekko/cluster/pubsub/`, `singleton/`, `client/` |
 | distributed data | 対応モジュールなし | `references/pekko/distributed-data/src/main/scala/org/apache/pekko/cluster/ddata/` |
 | std adapter | `modules/cluster-adaptor-std/src/` | gossip transport / provider / discovery adapter として Rust で再現可能な契約 |
 
@@ -145,7 +145,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| typed `Cluster` extension | `cluster-typed/Cluster.scala:186`, `cluster-typed/Cluster.scala:202` | 未対応 | core/typed | medium | `modules/cluster-core/src/typed/` が存在しない |
+| typed `Cluster` extension | `cluster-typed/Cluster.scala:186`, `cluster-typed/Cluster.scala:202` | 未対応 | core/typed | medium | `modules/cluster-core-kernel/src/typed/` が存在しない |
 | `ClusterCommand` | `cluster-typed/Cluster.scala:82` | 未対応 | core/typed | easy | Join / JoinSeedNodes / Leave / Down / shutdown command enum 相当 |
 | `ClusterStateSubscription` | `cluster-typed/Cluster.scala:34`, `cluster-typed/Cluster.scala:45` | 未対応 | core/typed | easy | typed actor ref subscriber wrapper がない |
 | `SelfUp` | `cluster-typed/Cluster.scala:65` | 未対応 | core/typed | trivial | `MemberStatusChanged` から導出可能 |
@@ -244,7 +244,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 | 箇所 | 種別 | 備考 |
 |------|------|------|
-| `modules/cluster-core/src/extension/cluster_extension_config.rs:133` | TODO | join config compatibility が pubsub 設定だけで、gossip_config / app_version / roles の検査が未実装 |
+| `modules/cluster-core-kernel/src/extension/cluster_extension_config.rs:133` | TODO | join config compatibility が pubsub 設定だけで、gossip_config / app_version / roles の検査が未実装 |
 
 ## Pekko comparison gap の優先度メモ
 

@@ -2,7 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_cluster_core_rs::membership::{MembershipVersion, NodeRecord, NodeStatus};
+use fraktor_cluster_core_kernel_rs::membership::{MembershipVersion, NodeRecord, NodeStatus};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]

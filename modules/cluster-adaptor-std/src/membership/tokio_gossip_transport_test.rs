@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_cluster_core_rs::membership::{
+use fraktor_cluster_core_kernel_rs::membership::{
   GossipOutbound, GossipTransport, MembershipDelta, MembershipVersion, NodeRecord, NodeStatus,
 };
 use tokio::{net::UdpSocket, runtime::Handle};

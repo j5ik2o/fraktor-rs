@@ -7,7 +7,7 @@ use fraktor_actor_core_kernel_rs::event::stream::{
 use fraktor_cluster_adaptor_std_rs::membership::{
   TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig,
 };
-use fraktor_cluster_core_rs::{
+use fraktor_cluster_core_kernel_rs::{
   extension::ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{

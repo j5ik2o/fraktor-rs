@@ -10,7 +10,7 @@ use fraktor_actor_core_kernel_rs::{
   support::futures::ActorFutureShared,
   system::ActorSystem,
 };
-use fraktor_cluster_core_rs::{
+use fraktor_cluster_core_kernel_rs::{
   activation::ClusterIdentity,
   extension::{ClusterApi as CoreClusterApi, ClusterApiError, ClusterError, ClusterRequestError, ClusterResolveError},
 };

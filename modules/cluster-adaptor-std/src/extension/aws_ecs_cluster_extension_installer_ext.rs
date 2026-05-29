@@ -6,7 +6,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_cluster_core_rs::extension::{ClusterExtensionConfig, ClusterExtensionInstaller};
+use fraktor_cluster_core_kernel_rs::extension::{ClusterExtensionConfig, ClusterExtensionInstaller};
 
 use crate::cluster_provider::{AwsEcsClusterProvider, EcsClusterConfig};
 
@@ -25,7 +25,9 @@ pub trait AwsEcsClusterExtensionInstallerExt {
   /// use fraktor_cluster_adaptor_std_rs::{
   ///   cluster_provider::EcsClusterConfig, extension::AwsEcsClusterExtensionInstallerExt,
   /// };
-  /// use fraktor_cluster_core_rs::extension::{ClusterExtensionConfig, ClusterExtensionInstaller};
+  /// use fraktor_cluster_core_kernel_rs::extension::{
+  ///   ClusterExtensionConfig, ClusterExtensionInstaller,
+  /// };
   ///
   /// let config = ClusterExtensionConfig::default().with_advertised_address("10.0.0.1:8080");
   /// let ecs_config = EcsClusterConfig::new()

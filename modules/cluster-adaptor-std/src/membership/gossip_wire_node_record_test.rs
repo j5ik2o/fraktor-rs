@@ -1,6 +1,6 @@
 use alloc::{string::String, vec};
 
-use fraktor_cluster_core_rs::membership::{MembershipVersion, NodeRecord, NodeStatus};
+use fraktor_cluster_core_kernel_rs::membership::{MembershipVersion, NodeRecord, NodeStatus};
 
 use super::GossipWireNodeRecord;
 

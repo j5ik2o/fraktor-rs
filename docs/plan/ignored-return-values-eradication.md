@@ -70,17 +70,17 @@ let_underscore_must_use = "deny"
   - `modules/cluster-adaptor-std/src/std/tokio_gossiper.rs:97,99,100`（`oneshot::Sender::send`, `runtime.spawn`, `JoinHandle.await`）
   - `modules/actor-adaptor-std/src/std/tick_driver/tokio_tick_driver.rs:119-122`
   - `modules/actor-core/src/core/kernel/actor/scheduler/scheduler_core.rs:242,351,445`
-  - `modules/cluster-core/src/core/pub_sub/batching_producer_generic.rs:158,162`
-  - `modules/cluster-core/src/core/pub_sub/cluster_pub_sub/cluster_pub_sub_impl.rs:172,333`
-  - `modules/cluster-core/src/core/cluster_core.rs:455`
-  - `modules/cluster-core/src/core/pub_sub/pub_sub_broker.rs:145`
+  - `modules/cluster-core-kernel/src/core/pub_sub/batching_producer_generic.rs:158,162`
+  - `modules/cluster-core-kernel/src/core/pub_sub/cluster_pub_sub/cluster_pub_sub_impl.rs:172,333`
+  - `modules/cluster-core-kernel/src/core/cluster_core.rs:455`
+  - `modules/cluster-core-kernel/src/core/pub_sub/pub_sub_broker.rs:145`
   - `modules/remote-core/src/association/base.rs:216`
   - `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_queue_state.rs:64,68`
   - `modules/actor-core/tests/system_events.rs:49`
   - `modules/actor-core/tests/death_watch.rs:37,197`
-  - `modules/cluster-core/src/core/cluster_core/tests.rs:1056`
+  - `modules/cluster-core-kernel/src/core/cluster_core/tests.rs:1056`
 - **B（trait default impl の引数破棄）**:
-  - `modules/cluster-core/src/core/identity/identity_lookup.rs:49,59,71,82,92`
+  - `modules/cluster-core-kernel/src/core/identity/identity_lookup.rs:49,59,71,82,92`
   - `modules/actor-core/src/core/kernel/dispatch/dispatcher/message_dispatcher.rs:122,132,177,182`
 - **C（ライフタイム延長 / 明示 drop）**:
   - `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_instrumentation/tests.rs:21,30,31`

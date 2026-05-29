@@ -241,7 +241,7 @@ inner に ArcShared<SpinSyncMutex<A>> を保持する AShared 構造体を新設
 - `modules/utils/src/core/sync/runtime_lock_alias.rs`
 - `modules/utils/src/core/sync/sync_mutex_like.rs`
 - `modules/utils/src/core/collections/queue.rs` (デッドコード起点)
-- `modules/utils/clippy.toml` / `modules/actor-core/clippy.toml` / `modules/cluster-core/clippy.toml`
+- `modules/utils/clippy.toml` / `modules/actor-core/clippy.toml` / `modules/cluster-core-kernel/clippy.toml`
 - `modules/stream-core/src/core/**/*.rs` の `SpinSyncMutex` 使用箇所
 - `modules/actor-core/src/core/kernel/dispatch/mailbox/*.rs` (`RuntimeMutex` を使っているがキュー抽象は独自)
 

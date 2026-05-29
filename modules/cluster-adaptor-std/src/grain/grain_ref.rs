@@ -4,7 +4,7 @@ use fraktor_actor_core_kernel_rs::actor::{
   actor_ref::ActorRef,
   messaging::{AnyMessage, AskResponse},
 };
-use fraktor_cluster_core_rs::{
+use fraktor_cluster_core_kernel_rs::{
   activation::ClusterIdentity,
   grain::{GrainCallError, GrainCallOptions, GrainCodec, GrainRef as CoreGrainRef},
 };
