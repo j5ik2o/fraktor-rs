@@ -1,0 +1,40 @@
+warning: std adapter の public struct が core concrete `GrainRef` を同名 wrapper として保持しています
+  --> $DIR/auxiliary/modules/cluster-adaptor-std/src/same_name_wrapper.rs:5:3
+   |
+LL |   inner: CoreGrainRef,
+   |   ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: 修正手順: 1. core 側に必要最小の port trait を定義する 2. core concrete API はその port を実装する 3. std adapter は concrete API ではなく port trait に依存する
+   = note: コンテキスト: std adapter は core を wrap/drive せず、core が port 経由で adapter を駆動する構造にしてください。
+   = note: スコープ: 指摘された public struct と、その生成元/呼び出し元の依存型だけを変更してください。
+   = note: 理由: DIP と Port & Adapter 境界を保ち、std が core concrete API の facade にならないようにするためです。
+note: the lint level is defined here
+  --> $DIR/same_name_wrapper.rs:4:9
+   |
+LL | #![warn(port_adaptor_boundary)]
+   |         ^^^^^^^^^^^^^^^^^^^^^
+
+warning: std adapter の public struct が core concrete `ClusterApi` を同名 wrapper として保持しています
+  --> $DIR/auxiliary/modules/cluster-adaptor-std/src/same_name_wrapper.rs:9:3
+   |
+LL |   inner: CoreClusterApi,
+   |   ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: 修正手順: 1. core 側に必要最小の port trait を定義する 2. core concrete API はその port を実装する 3. std adapter は concrete API ではなく port trait に依存する
+   = note: コンテキスト: std adapter は core を wrap/drive せず、core が port 経由で adapter を駆動する構造にしてください。
+   = note: スコープ: 指摘された public struct と、その生成元/呼び出し元の依存型だけを変更してください。
+   = note: 理由: DIP と Port & Adapter 境界を保ち、std が core concrete API の facade にならないようにするためです。
+
+warning: std adapter の public struct が core concrete `FullyQualifiedGrainRef` を同名 wrapper として保持しています
+  --> $DIR/auxiliary/modules/cluster-adaptor-std/src/same_name_wrapper.rs:13:3
+   |
+LL |   inner: fraktor_cluster_core_kernel_rs::grain::FullyQualifiedGrainRef,
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: 修正手順: 1. core 側に必要最小の port trait を定義する 2. core concrete API はその port を実装する 3. std adapter は concrete API ではなく port trait に依存する
+   = note: コンテキスト: std adapter は core を wrap/drive せず、core が port 経由で adapter を駆動する構造にしてください。
+   = note: スコープ: 指摘された public struct と、その生成元/呼び出し元の依存型だけを変更してください。
+   = note: 理由: DIP と Port & Adapter 境界を保ち、std が core concrete API の facade にならないようにするためです。
+
+warning: 3 warnings emitted
+

@@ -9,7 +9,8 @@ extern crate alloc;
 
 /// Cluster provider adaptors for std runtimes.
 pub mod cluster_provider;
-/// ActorSystem integration and cluster entrypoints for std runtimes.
+/// ActorSystem integration for AWS ECS cluster extensions.
+#[cfg(feature = "aws-ecs")]
 pub mod extension;
 /// Std helpers for virtual actor grain APIs.
 pub mod grain;

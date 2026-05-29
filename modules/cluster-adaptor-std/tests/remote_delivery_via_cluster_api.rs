@@ -17,14 +17,13 @@ use fraktor_actor_core_kernel_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_cluster_adaptor_std_rs::extension::ClusterApi;
 use fraktor_cluster_core_kernel_rs::{
   activation::{
     ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,
     PlacementLocality, PlacementResolution,
   },
   cluster_provider::NoopClusterProvider,
-  extension::{ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller},
+  extension::{ClusterApi, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller},
   grain::GrainKey,
 };
 use fraktor_remote_adaptor_std_rs::{
@@ -38,7 +37,7 @@ use fraktor_remote_core_rs::{
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::{
   sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
-  time::{Instant, sleep, timeout},
+  time::{Instant, timeout},
 };
 
 const SYSTEM_NAME: &str = "cluster-e2e";
@@ -75,7 +74,8 @@ impl LifecycleRecorder {
 impl EventStreamSubscriber for LifecycleRecorder {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::RemotingLifecycle(event) = event {
-      let _ = self.tx.send(event.clone());
+      // テスト用レコーダなので、受信側が破棄済みの場合の送信失敗は無視してよい。
+      drop(self.tx.send(event.clone()));
     }
   }
 }
@@ -237,7 +237,7 @@ async fn cluster_api_get_delivers_supported_vec_u8_payload_to_remote_actor() {
   let remote_node = build_remote_node(remote_port, 2);
   let (mut lifecycle_cluster, _subscription_cluster) = subscribe_lifecycle(&cluster_node.system);
   let (mut lifecycle_remote, _subscription_remote) = subscribe_lifecycle(&remote_node.system);
-  let (_rx_cluster, path_cluster) = spawn_recording_actor(&cluster_node.system, "receiver-a");
+  let (mut rx_cluster, path_cluster) = spawn_recording_actor(&cluster_node.system, "receiver-a");
   let (mut rx_remote, _path_remote) = spawn_recording_actor(&remote_node.system, "receiver-b");
 
   cluster_ext.start_member().expect("cluster member should start");
@@ -251,8 +251,9 @@ async fn cluster_api_get_delivers_supported_vec_u8_payload_to_remote_actor() {
     .expect("remote node should resolve cluster node actor through configured provider");
 
   cluster_resolved_ref.try_tell(AnyMessage::new(Vec::from(&b"warm-cluster-to-remote"[..]))).expect("warm cluster send");
-  sleep(Duration::from_millis(100)).await;
   ref_to_cluster.try_tell(AnyMessage::new(Vec::from(&b"warm-remote-to-cluster"[..]))).expect("warm reverse send");
+  let _ = recv_until(&mut rx_remote, Vec::from(&b"warm-cluster-to-remote"[..])).await;
+  let _ = recv_until(&mut rx_cluster, Vec::from(&b"warm-remote-to-cluster"[..])).await;
   wait_until_connected(&mut lifecycle_cluster, &remote_node.address.to_string()).await;
   wait_until_connected(&mut lifecycle_remote, &cluster_node.address.to_string()).await;
 

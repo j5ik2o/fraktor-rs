@@ -8,7 +8,6 @@ mod tokio_gossip_transport_config;
 mod tokio_gossiper;
 mod tokio_gossiper_config;
 
-pub use membership_coordinator_driver::MembershipCoordinatorDriver;
 pub use tokio_gossip_transport::TokioGossipTransport;
 pub use tokio_gossip_transport_config::TokioGossipTransportConfig;
 pub use tokio_gossiper::TokioGossiper;
