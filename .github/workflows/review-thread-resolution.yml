@@ -36,6 +36,7 @@ on:
 permissions:
   contents: read
   checks: write
+  statuses: write
   issues: read
   pull-requests: read
 
@@ -46,7 +47,7 @@ concurrency:
 jobs:
   refresh:
     name: Refresh review-thread state
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request != null || github.event.issue.pull_request != null }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.pr_number != '' || github.event.pull_request != null || github.event.issue.pull_request != null }}
     uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@4f2c77eaa870ff1b04bfb9deeed45b18934d274f
     permissions:
       contents: read
@@ -58,7 +59,7 @@ jobs:
       pr_number: ${{ format('{0}', inputs.pr_number || github.event.pull_request.number || github.event.issue.number || '') }}
       base_branch: main
       required_context: Check unresolved comments
-      wait_for_other_checks: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && format('{0}', inputs.wait_for_other_checks) || 'true' }}
+      wait_for_other_checks: ${{ contains(fromJSON('["false","\"false\""]'), toJSON(inputs.wait_for_other_checks)) && 'false' || 'true' }}
       publish_status: "true"
       skip_status_for_dependabot: "true"
       ci_ref: 4f2c77eaa870ff1b04bfb9deeed45b18934d274f
