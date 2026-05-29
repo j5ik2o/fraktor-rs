@@ -20,19 +20,6 @@ on:
         required: false
         default: true
         type: boolean
-  workflow_call:
-    inputs:
-      pr_number:
-        description: PR number to refresh.
-        required: false
-        type: string
-        default: ""
-      wait_for_other_checks:
-        description: Wait for other PR checks before evaluating review threads.
-        required: false
-        default: "true"
-        type: string
-
 permissions:
   contents: read
   checks: write
