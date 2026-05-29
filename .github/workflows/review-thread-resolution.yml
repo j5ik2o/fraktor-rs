@@ -36,7 +36,6 @@ on:
 permissions:
   contents: read
   checks: write
-  statuses: write
   issues: read
   pull-requests: read
 
@@ -56,10 +55,10 @@ jobs:
       issues: read
       pull-requests: read
     with:
-      pr_number: ${{ inputs.pr_number }}
+      pr_number: ${{ format('{0}', inputs.pr_number || github.event.pull_request.number || github.event.issue.number || '') }}
       base_branch: main
       required_context: Check unresolved comments
-      wait_for_other_checks: ${{ inputs.wait_for_other_checks }}
+      wait_for_other_checks: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && format('{0}', inputs.wait_for_other_checks) || 'true' }}
       publish_status: "true"
       skip_status_for_dependabot: "true"
       ci_ref: fa840a0ee2eaf371533d7da4b2e77fde8cd90014

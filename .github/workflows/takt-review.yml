@@ -12,13 +12,13 @@ permissions:
   issues: write
 
 concurrency:
-  group: takt-review-trigger-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '@takt') && github.event.issue.number) || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '@takt')) }}
+  group: takt-review-trigger-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) && github.event.issue.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) }}
 
 jobs:
   takt-review:
     name: TAKT Review (Claude)
-    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt')) }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) }}
     uses: j5ik2o/ci/.github/workflows/takt-review.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
     permissions:
       contents: read
