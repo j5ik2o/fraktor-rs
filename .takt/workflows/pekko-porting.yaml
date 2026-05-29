@@ -44,6 +44,7 @@ report_formats:
   pekko-porting-qa-review: ../facets/output-contracts/pekko-porting-qa-review.md
   pekko-compat-review: ../facets/output-contracts/pekko-compat-review.md
   testing-review: ../facets/output-contracts/testing-review.md
+  final-ci-result: ../facets/output-contracts/final-ci-result.md
 
 loop_monitors:
   - cycle:
@@ -269,9 +270,9 @@ steps:
         - name: ai-antipattern-review.md
           format: ai-review
     rules:
-      - condition: AI特有の問題なし
+      - condition: APPROVE
         next: reviewers
-      - condition: AI特有の問題あり
+      - condition: REJECT
         next: ai_fix
 
   - name: ai_fix
@@ -347,8 +348,8 @@ steps:
             - name: 06-qa-review.md
               format: pekko-porting-qa-review
         rules:
-          - condition: approved
-          - condition: needs_fix
+          - condition: APPROVE
+          - condition: REJECT
       - name: pekko-compat-review
         persona: pekko-porting-compat-reviewer
         policy:
@@ -372,8 +373,8 @@ steps:
             - name: 05-pekko-compat-review.md
               format: pekko-compat-review
         rules:
-          - condition: approved
-          - condition: needs_fix
+          - condition: APPROVE
+          - condition: REJECT
       - name: test-review
         persona: testing-reviewer
         policy:
@@ -392,12 +393,12 @@ steps:
             - name: 07-test-review.md
               format: testing-review
         rules:
-          - condition: approved
-          - condition: needs_fix
+          - condition: APPROVE
+          - condition: REJECT
     rules:
-      - condition: all("approved")
+      - condition: all("APPROVE")
         next: supervise
-      - condition: any("needs_fix")
+      - condition: any("REJECT")
         next: review-fix
 
   - name: review-fix
@@ -481,6 +482,11 @@ steps:
           - Bash
     pass_previous_response: false
     instruction: pekko-porting-final-ci
+    output_contracts:
+      report:
+        - name: final-ci-result.md
+          format: final-ci-result
+          use_judge: false
     rules:
       - condition: ci-check.sh ai all が成功
         next: COMPLETE
