@@ -40,13 +40,13 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: review-thread-resolution-${{ inputs.wait_for_other_checks == false && 'ci-' || 'event-' }}${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && inputs.wait_for_other_checks != false }}
+  group: review-thread-resolution-${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'ci-' || 'event-' }}${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && toJSON(inputs.wait_for_other_checks) != 'false' && inputs.wait_for_other_checks != 'false' }}
 
 jobs:
   refresh:
     name: Refresh review-thread state
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.pr_number != '' || github.event.pull_request != null || github.event.issue.pull_request != null }}
+    if: ${{ github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.pr_number == '') && (github.event_name == 'workflow_dispatch' || inputs.pr_number != '' || github.event.pull_request != null || github.event.issue.pull_request != null) }}
     uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@4ae09411283b73d83426ef3bb64fb734f91bba09
     permissions:
       contents: read
@@ -58,5 +58,38 @@ jobs:
       pr_number: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
       base_branch: main
       required_context: Check unresolved comments
-      wait_for_other_checks: ${{ inputs.wait_for_other_checks != false }}
+      wait_for_other_checks: ${{ !(toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') }}
       ci_ref: 4ae09411283b73d83426ef3bb64fb734f91bba09
+
+  refresh-open-prs:
+    name: Refresh open PR review-thread state
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.pr_number == '') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Checkout shared CI actions
+        uses: actions/checkout@v6
+        with:
+          repository: j5ik2o/ci
+          ref: 4ae09411283b73d83426ef3bb64fb734f91bba09
+          path: .shared-ci
+          persist-credentials: false
+      - name: Refresh open PR review-thread state
+        uses: ./.shared-ci/actions/review-thread-resolution
+        continue-on-error: true
+        with:
+          repository: ${{ github.repository }}
+          pr_number: ""
+          base_branch: main
+          required_context: Check unresolved comments
+          wait_for_other_checks: ${{ !(toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'true' || 'false' }}
+          publish_status: "true"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}

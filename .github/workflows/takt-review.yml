@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: takt-review-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   takt-review:

@@ -505,6 +505,7 @@ jobs:
       base_branch: main
       required_context: Check unresolved comments
       wait_for_other_checks: false
+      publish_status: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
       ci_ref: 4ae09411283b73d83426ef3bb64fb734f91bba09
 
   # All jobs completion check
