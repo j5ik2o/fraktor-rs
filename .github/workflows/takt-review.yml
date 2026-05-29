@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: j5ik2o/ci
-          ref: 4ae09411283b73d83426ef3bb64fb734f91bba09
+          ref: 691d151cbacbdff01ee506bbf65edeb0e8019409
           path: .shared-ci
           persist-credentials: false
 
