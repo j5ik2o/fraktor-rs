@@ -18,7 +18,26 @@ concurrency:
 jobs:
   takt-review:
     name: TAKT Review (Claude)
-    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) }}
+    if: >
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.user.login != 'app/renovate' &&
+        github.event.pull_request.user.login != 'renovate[bot]' &&
+        !startsWith(github.event.pull_request.head.ref, 'renovate/') &&
+        github.event.sender.type != 'Bot'
+      ) ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        github.event.issue.state == 'open' &&
+        github.event.issue.user.login != 'app/renovate' &&
+        github.event.issue.user.login != 'renovate[bot]' &&
+        github.event.sender.type != 'Bot' &&
+        startsWith(github.event.comment.body, '@takt') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      )
     uses: j5ik2o/ci/.github/workflows/takt-review.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
     permissions:
       contents: read
