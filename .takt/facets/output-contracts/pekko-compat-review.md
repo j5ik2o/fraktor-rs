@@ -34,6 +34,7 @@
 - テスト: {確認対象・確認内容・結果。未確認ならその旨}
 
 ## 出力ルール
-- APPROVE → サマリーとPekko API対応状況のみ。REJECT → 該当指摘テーブルのみ
+- APPROVE → サマリー、Pekko API対応状況、検証証跡を記載
+- REJECT → 該当指摘テーブル、Pekko API対応状況、検証証跡を記載
 - `new`、`persists`、または `reopened` が1件以上 → REJECT。`finding_id` なしの指摘は無効
 ```
