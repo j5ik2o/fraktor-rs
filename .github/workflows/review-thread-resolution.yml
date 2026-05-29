@@ -48,7 +48,7 @@ jobs:
     name: Refresh review-thread state
     if: ${{ github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.pr_number == '') && (github.event_name != 'issue_comment' || github.event.issue.pull_request != null) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     permissions:
       contents: read
       checks: write
