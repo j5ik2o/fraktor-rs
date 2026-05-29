@@ -47,6 +47,7 @@ concurrency:
 jobs:
   refresh:
     name: Refresh review-thread state
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request != null || github.event.issue.pull_request != null }}
     uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
     permissions:
       contents: read
