@@ -15,3 +15,4 @@ LL | #![warn(port_adaptor_boundary)]
    |         ^^^^^^^^^^^^^^^^^^^^^
 
 warning: 1 warning emitted
+
