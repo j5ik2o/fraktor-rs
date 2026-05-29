@@ -18,8 +18,11 @@ on:
       wait_for_other_checks:
         description: Wait for other PR checks before evaluating review threads.
         required: false
-        default: true
-        type: boolean
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 permissions:
   contents: read
   checks: write
