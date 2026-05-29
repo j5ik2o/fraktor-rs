@@ -1,6 +1,6 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-05-26 (Grain runtime alignment)
+更新日: 2026-05-29 (current checkout reconfirmed)
 
 ## 位置づけ
 
@@ -33,9 +33,9 @@
 
 | 領域 | fraktor-rs | Pekko 参照 |
 |------|------------|------------|
-| cluster core | `modules/cluster-core/src/` | `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/` |
+| cluster core | `modules/cluster-core/src/` (`activation`, `membership`, `extension`, `pub_sub`, `topology`) | `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/` |
 | typed cluster contract | 対応する `core/typed` は現状なし | `references/pekko/cluster-typed/src/main/scala/` |
-| sharding / virtual actor | `modules/cluster-core/src/grain/`, `identity/`, `placement/` | `references/pekko/cluster-sharding/`, `references/pekko/cluster-sharding-typed/` |
+| sharding / virtual actor | `modules/cluster-core/src/grain/`, `modules/cluster-core/src/activation/` | `references/pekko/cluster-sharding/`, `references/pekko/cluster-sharding-typed/` |
 | cluster tools | `modules/cluster-core/src/pub_sub/` | `references/pekko/cluster-tools/src/main/scala/org/apache/pekko/cluster/pubsub/`, `singleton/`, `client/` |
 | distributed data | 対応モジュールなし | `references/pekko/distributed-data/src/main/scala/org/apache/pekko/cluster/ddata/` |
 | std adapter | `modules/cluster-adaptor-std/src/` | gossip transport / provider / discovery adapter として Rust で再現可能な契約 |
@@ -54,17 +54,19 @@
 
 ### raw 抽出値の扱い
 
-固定スコープ対象ディレクトリを raw 抽出すると、Pekko 側は型宣言 844 件、主要 `def` 2995 件が見つかる。これには private / internal / JVM 固有 / DSL wrapper / serializer 実装が含まれるため、parity カバレッジ分母には使わない。
+固定スコープ対象ディレクトリを `src/main` ベースで raw 抽出すると、Pekko 側は型宣言 857 件、主要 `def` 3027 件が見つかる。これには private / internal / JVM 固有 / DSL wrapper / serializer 実装が含まれるため、parity カバレッジ分母には使わない。
 
-fraktor-rs 側はスキル指定の `pub` 系抽出で、型 187 件 (core: 174, std: 13)、公開メソッド 434 件 (core: 380, std: 54)。ただし、この数には `pub(crate)` の wire helper も含まれる。
+fraktor-rs 側はスキル指定の `pub` 系抽出で、型 193 件 (core: 179, std: 14)、公開メソッド 443 件 (core: 389, std: 54)。ただし、この数には `pub(crate)` の wire helper も含まれる。
 
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象概念 | 約 121 |
-| fraktor-rs 固定スコープ対応概念 | 約 45 |
-| 固定スコープ概念カバレッジ | 約 45/121 (37%) |
+| fraktor-rs 固定スコープ対応概念 | 約 46 |
+| 固定スコープ概念カバレッジ | 約 46/121 (38%) |
+| raw public type declarations | 193 (core: 179, std: 14) |
+| raw public method declarations | 443 (core: 389, std: 54) |
 | hard gap | 18 |
 | medium gap | 26 |
 | easy gap | 20 |
@@ -72,7 +74,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 187 件 (core: 174,
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 1 件 |
 
-cluster は、membership table、gossip dissemination、failure detector registry、Grain/Placement/Identity、PubSub broker、UDP gossip transport などの基礎部品はかなり揃っている。一方で Pekko comparison の範囲で見ると、typed cluster API、Split Brain Resolver、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
+cluster は、membership table、gossip dissemination、failure detector registry、downing provider boundary、Grain/Placement/Identity、PubSub broker、UDP gossip transport などの基礎部品はかなり揃っている。一方で Pekko comparison の範囲で見ると、typed cluster API、Split Brain Resolver、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
 
 旧版は raw Scala 宣言数をサマリーに置きつつ、`cluster-metrics` を混ぜ、`ShardedDaemonProcess` や typed API を YAGNI で n/a にしていた。固定スコープ版では、JVM 固有以外の public runtime contract を comparison gap として保持する。ただし、直近の implementation backlog は cluster Grain runtime roadmap 側で管理する。
 
@@ -81,7 +83,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 | 層 | Pekko 対応範囲 | fraktor-rs 現状 | 評価 |
 |----|----------------|-----------------|------|
 | core / membership | `Cluster`, `Member`, `MemberStatus`, `CurrentClusterState`, `ClusterEvent`, `Gossip`, `Reachability` | `ClusterExtension`, `ClusterApi`, `NodeRecord`, `NodeStatus`, `CurrentClusterState`, `MembershipCoordinator`, `GossipDisseminationCoordinator` | 基本契約はあるが data center、weakly-up、reachability matrix、seed process が不足 |
-| core / downing | `DowningProvider`, `NoDowning`, SBR | `DowningProvider`, `NoopDowningProvider` | Noop と明示 down hook だけ。SBR は未実装 |
+| core / downing | `DowningProvider`, `NoDowning`, SBR | `DowningProvider`, `DowningInput`, `DowningDecision`, `FailureObservation`, `NoopDowningProvider` | downing decision boundary はあるが SBR / strategy 実装は未実装 |
 | core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `core/typed` なし | 未実装 |
 | core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup` | protoactor-go style の同等機能は強いが Pekko public API と remember/rebalance が不足 |
 | core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | なし | 未実装 |
@@ -116,18 +118,18 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 実装済みとして扱うもの: `MembershipTable`、`MembershipDelta`、`MembershipVersion`、`VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、`TokioGossipTransport`。
 
-### 3. Downing / Split Brain Resolver　✅ 実装済み 2/8 (25%)
+### 3. Downing / Split Brain Resolver　✅ 実装済み 3/8 (38%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
 | `SplitBrainResolver` | `SplitBrainResolver.scala:50`, `SplitBrainResolver.scala:160` | 未対応 | core + std | hard | stable-after、責任ノード、reachability 変化監視、down 実行がない |
-| `DowningStrategy` / decision model | `DowningStrategy.scala:28`, `DowningStrategy.scala:342` | 未対応 | core/downing_provider | hard | KeepMajority / StaticQuorum / KeepOldest / LeaseMajority の判定モデルがない |
+| `DowningStrategy` / decision model | `DowningStrategy.scala:34`, `DowningStrategy.scala:70` | 部分実装 | core/downing_provider | hard | `DowningInput` / `DowningDecision` / `FailureObservation` はあるが、KeepMajority / StaticQuorum / KeepOldest / LeaseMajority の判定モデルがない |
 | `SplitBrainResolverSettings` | `SplitBrainResolverSettings.scala:39` | 未対応 | core/config | easy | SBR 設定型がない |
 | `SplitBrainResolverProvider` | `SplitBrainResolverProvider.scala` | 未対応 | std/provider | easy | provider factory がない |
 | lease-based majority | `DowningStrategy.scala:602` | 未対応 | core + std | hard | lease abstraction / coordination integration がない |
 | indirect connection handling | `DowningStrategy.scala:245` | 未対応 | core/membership | medium | reachability matrix 不足の影響で判定不能 |
 
-実装済みとして扱うもの: `DowningProvider` trait、`NoopDowningProvider`、明示 `ClusterApi::down` hook。
+実装済みとして扱うもの: `DowningProvider` trait、`DowningInput` / `DowningDecision` / `FailureObservation`、`NoopDowningProvider`、明示 `ClusterApi::down` hook。
 
 ### 4. Cluster router pool / group　✅ 実装済み 3/6 (50%)
 
@@ -238,11 +240,11 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 ## スタブ / placeholder
 
-`todo!()` / `unimplemented!()` / `panic!("not implemented")` は検出されなかった。
+`todo!()` / `unimplemented!()` / `panic!("not implemented")` は実装本体から検出されなかった。`ClusterProviderShared` の rustdoc 例に `todo!()` があるが、これは使用例のプレースホルダーであり実行スタブではない。
 
 | 箇所 | 種別 | 備考 |
 |------|------|------|
-| `modules/cluster-core/src/cluster_extension_config.rs:134` | TODO | join config compatibility が pubsub 設定だけで、gossip_config / app_version / roles の検査が未実装 |
+| `modules/cluster-core/src/extension/cluster_extension_config.rs:133` | TODO | join config compatibility が pubsub 設定だけで、gossip_config / app_version / roles の検査が未実装 |
 
 ## Pekko comparison gap の優先度メモ
 
@@ -328,7 +330,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 37% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
+今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 38% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
 
 次版で構造分析へ進む場合の観点は以下になる。
 
@@ -342,7 +344,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 ## まとめ
 
-cluster は membership、gossip delta、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては typed cluster API、SBR、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度より低い。
+cluster は membership、gossip delta、downing provider boundary、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては typed cluster API、SBR、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度より低い。
 
 Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、typed cluster の薄い command/event wrapper、SBR 設定型、router role/max-per-node 設定、基本 CRDT、std `ClusterApi` wrapper の再公開、join config compatibility の拡張である。ただし、これらの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 
