@@ -12,8 +12,8 @@ permissions:
   issues: write
 
 concurrency:
-  group: takt-review-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
-  cancel-in-progress: true
+  group: takt-review-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '@takt') && github.event.issue.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '@takt')) }}
 
 jobs:
   takt-review:
