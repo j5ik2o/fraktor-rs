@@ -61,11 +61,10 @@ impl SelfUpSubscriber {
 
   fn deliver(&mut self, cluster_event: &ClusterEvent) {
     let current_state = self.cluster.current_state();
-    if let Some(self_up) = SelfUp::try_from_cluster_event(cluster_event, &self.self_authority, current_state) {
-      if self.subscriber.try_tell(self_up).is_err() {
-        record_failed_delivery(&self.failed_deliveries);
-      }
-      complete_self_event_subscription(&self.cluster, &self.state);
+    if let Some(self_up) = SelfUp::try_from_cluster_event(cluster_event, &self.self_authority, current_state)
+      && self.subscriber.try_tell(self_up).is_err()
+    {
+      record_failed_delivery(&self.failed_deliveries);
     }
   }
 }
@@ -76,13 +75,13 @@ impl EventStreamSubscriber for SelfUpSubscriber {
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
       && let Some(seen_state) = update_seen_state(cluster_event, &self.self_authority)
     {
-      let should_deliver = self.state.with_write(|state| {
+      self.state.with_write(|state| {
         state.seen_state = seen_state.clone();
-        !state.replaying && !state.completed && seen_state == SelfMemberSeenState::Up
       });
-      if should_deliver {
+      if let Some(subscription_id) = claim_self_up_delivery(&self.state) {
+        unsubscribe_completed_subscription(&self.cluster, subscription_id);
         self.deliver(cluster_event);
-      } else if !is_replaying_or_completed(&self.state) && matches!(seen_state, SelfMemberSeenState::Removed(_)) {
+      } else if matches!(seen_state, SelfMemberSeenState::Removed(_)) {
         complete_self_event_subscription(&self.cluster, &self.state);
       }
     }
@@ -109,11 +108,10 @@ impl SelfRemovedSubscriber {
   }
 
   fn deliver(&mut self, cluster_event: &ClusterEvent) {
-    if let Some(self_removed) = SelfRemoved::try_from_cluster_event(cluster_event, &self.self_authority) {
-      if self.subscriber.try_tell(self_removed).is_err() {
-        record_failed_delivery(&self.failed_deliveries);
-      }
-      complete_self_event_subscription(&self.cluster, &self.state);
+    if let Some(self_removed) = SelfRemoved::try_from_cluster_event(cluster_event, &self.self_authority)
+      && self.subscriber.try_tell(self_removed).is_err()
+    {
+      record_failed_delivery(&self.failed_deliveries);
     }
   }
 }
@@ -124,11 +122,11 @@ impl EventStreamSubscriber for SelfRemovedSubscriber {
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
       && let Some(seen_state) = update_seen_state(cluster_event, &self.self_authority)
     {
-      let should_deliver = self.state.with_write(|state| {
+      self.state.with_write(|state| {
         state.seen_state = seen_state.clone();
-        !state.replaying && !state.completed && matches!(seen_state, SelfMemberSeenState::Removed(_))
       });
-      if should_deliver {
+      if let Some((subscription_id, _self_removed)) = claim_self_removed_delivery(&self.state) {
+        unsubscribe_completed_subscription(&self.cluster, subscription_id);
         self.deliver(cluster_event);
       }
     }
@@ -204,15 +202,39 @@ fn set_subscription_id(state: &SharedLock<SelfEventSubscriberState>, subscriptio
   })
 }
 
-fn is_replaying_or_completed(state: &SharedLock<SelfEventSubscriberState>) -> bool {
-  state.with_read(|state| state.replaying || state.completed)
+fn claim_self_up_delivery(state: &SharedLock<SelfEventSubscriberState>) -> Option<Option<u64>> {
+  state.with_write(|state| {
+    if !state.replaying && !state.completed && state.seen_state == SelfMemberSeenState::Up {
+      state.completed = true;
+      Some(state.subscription_id)
+    } else {
+      None
+    }
+  })
+}
+
+fn claim_self_removed_delivery(state: &SharedLock<SelfEventSubscriberState>) -> Option<(Option<u64>, SelfRemoved)> {
+  state.with_write(|state| match &state.seen_state {
+    | SelfMemberSeenState::Removed(self_removed) if !state.replaying && !state.completed => {
+      state.completed = true;
+      Some((state.subscription_id, self_removed.clone()))
+    },
+    | SelfMemberSeenState::BeforeUp | SelfMemberSeenState::Up | SelfMemberSeenState::Removed(_) => None,
+  })
 }
 
 fn complete_self_event_subscription(cluster: &ClusterApi, state: &SharedLock<SelfEventSubscriberState>) {
   let subscription_id = state.with_write(|state| {
+    if state.replaying || state.completed {
+      return None;
+    }
     state.completed = true;
     state.subscription_id
   });
+  unsubscribe_completed_subscription(cluster, subscription_id);
+}
+
+fn unsubscribe_completed_subscription(cluster: &ClusterApi, subscription_id: Option<u64>) {
   if let Some(subscription_id) = subscription_id {
     cluster.unsubscribe(subscription_id);
   }
@@ -293,13 +315,13 @@ impl Cluster {
     if completed {
       self.inner.unsubscribe(subscription.id());
     }
-    let should_deliver_immediately =
-      state.with_read(|state| !state.completed && state.seen_state == SelfMemberSeenState::Up);
-    if should_deliver_immediately && let Some(self_up) = self_up_from_current_state(&self_authority, current_state) {
+    if let Some(self_up) = self_up_from_current_state(&self_authority, current_state)
+      && let Some(subscription_id) = claim_self_up_delivery(&state)
+    {
+      unsubscribe_completed_subscription(&self.inner, subscription_id);
       if typed_subscriber.try_tell(self_up).is_err() {
         record_failed_delivery(&failed_deliveries);
       }
-      complete_self_event_subscription(&self.inner, &state);
     }
     ClusterEventSubscription::new(subscription, failed_deliveries)
   }
@@ -325,16 +347,12 @@ impl Cluster {
     if completed {
       self.inner.unsubscribe(subscription.id());
     }
-    let immediate_removed = state.with_read(|state| match &state.seen_state {
-      | SelfMemberSeenState::Removed(self_removed) if !state.completed => Some(self_removed.clone()),
-      | SelfMemberSeenState::BeforeUp | SelfMemberSeenState::Up | SelfMemberSeenState::Removed(_) => None,
-    });
-    if let Some(self_removed) = immediate_removed {
+    if let Some((subscription_id, self_removed)) = claim_self_removed_delivery(&state) {
+      unsubscribe_completed_subscription(&self.inner, subscription_id);
       let mut typed_subscriber = typed_subscriber;
       if typed_subscriber.try_tell(self_removed).is_err() {
         record_failed_delivery(&failed_deliveries);
       }
-      complete_self_event_subscription(&self.inner, &state);
     }
     ClusterEventSubscription::new(subscription, failed_deliveries)
   }
