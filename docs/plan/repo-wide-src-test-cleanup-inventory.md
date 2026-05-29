@@ -58,7 +58,7 @@
 
 ## 検証
 
-- `cargo test -p fraktor-cluster-core-rs --test cluster_identity`
+- `cargo test -p fraktor-cluster-core-kernel-rs --test cluster_identity`
 - `cargo test -p fraktor-actor-core-rs --test byte_string`
 - `cargo test -p fraktor-actor-core-rs --features test-support --test typed_scheduler`
 - `cargo test -p fraktor-stream-core-rs --test retry_flow`

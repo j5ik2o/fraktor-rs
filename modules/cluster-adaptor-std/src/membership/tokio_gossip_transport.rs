@@ -7,7 +7,9 @@ use alloc::{
 use core::net::SocketAddr;
 use std::sync::Arc;
 
-use fraktor_cluster_core_rs::membership::{GossipOutbound, GossipTransport, GossipTransportError, MembershipDelta};
+use fraktor_cluster_core_kernel_rs::membership::{
+  GossipOutbound, GossipTransport, GossipTransportError, MembershipDelta,
+};
 use tokio::{
   net::UdpSocket,
   runtime::Handle,

@@ -6,7 +6,7 @@ use std::{
 
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
 use fraktor_cluster_adaptor_std_rs::membership::MembershipCoordinatorDriver;
-use fraktor_cluster_core_rs::{
+use fraktor_cluster_core_kernel_rs::{
   extension::ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{

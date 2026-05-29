@@ -80,7 +80,7 @@ Until the root facade exposes consolidated runtime modules, use the crate that o
 | Actor runtime | [`fraktor-actor-core-kernel-rs`](modules/actor-core-kernel), [`fraktor-actor-core-typed-rs`](modules/actor-core-typed), [`fraktor-actor-adaptor-std-rs`](modules/actor-adaptor-std) |
 | Persistence | [`fraktor-persistence-core-kernel-rs`](modules/persistence-core-kernel), [`fraktor-persistence-core-typed-rs`](modules/persistence-core-typed) |
 | Remote | [`fraktor-remote-core-rs`](modules/remote-core), [`fraktor-remote-adaptor-std-rs`](modules/remote-adaptor-std) |
-| Cluster | [`fraktor-cluster-core-rs`](modules/cluster-core), [`fraktor-cluster-adaptor-std-rs`](modules/cluster-adaptor-std) |
+| Cluster | [`fraktor-cluster-core-kernel-rs`](modules/cluster-core-kernel), [`fraktor-cluster-core-typed-rs`](modules/cluster-core-typed), [`fraktor-cluster-adaptor-std-rs`](modules/cluster-adaptor-std) |
 | Streams | [`fraktor-stream-core-kernel-rs`](modules/stream-core-kernel), [`fraktor-stream-core-actor-typed-rs`](modules/stream-core-actor-typed), [`fraktor-stream-adaptor-std-rs`](modules/stream-adaptor-std) |
 
 The showcase crate is the current usage index for executable flows:
@@ -109,7 +109,8 @@ See [`showcases/std/README.md`](showcases/std/README.md) for the full example li
 | [`modules/persistence-core-typed`](modules/persistence-core-typed) | Persistence effector API, snapshot criteria, and retention criteria for typed actors |
 | [`modules/remote-core`](modules/remote-core) | `no_std` remote address, association, envelope, provider, transport port, watcher, wire, and failure-detector state machines |
 | [`modules/remote-adaptor-std`](modules/remote-adaptor-std) | Std remote extension installers, providers, Tokio TCP transport, and I/O workers |
-| [`modules/cluster-core`](modules/cluster-core) | Grain runtime core for membership, identity lookup, placement resolution, pub-sub, grains, failure detection, topology, metrics, and routing |
+| [`modules/cluster-core-kernel`](modules/cluster-core-kernel) | Grain runtime core for membership, identity lookup, placement resolution, pub-sub, grains, failure detection, topology, metrics, and routing |
+| [`modules/cluster-core-typed`](modules/cluster-core-typed) | Typed wrappers over cluster kernel contracts |
 | [`modules/cluster-adaptor-std`](modules/cluster-adaptor-std) | Std Grain runtime adaptors for local provider wrapping, Tokio gossip transport, pub-sub delivery, and optional AWS ECS provider |
 | [`modules/stream-core-kernel`](modules/stream-core-kernel) | `no_std` stream DSL, stages, materialization contracts, graph shapes, stream refs, queues, kill switches, and supervision |
 | [`modules/stream-core-actor-typed`](modules/stream-core-actor-typed) | Typed actor integrations for stream DSLs |

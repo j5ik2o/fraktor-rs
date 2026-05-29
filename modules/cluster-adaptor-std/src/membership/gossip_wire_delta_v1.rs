@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_cluster_core_rs::membership::{MembershipDelta, MembershipVersion};
+use fraktor_cluster_core_kernel_rs::membership::{MembershipDelta, MembershipVersion};
 use serde::{Deserialize, Serialize};
 
 use super::gossip_wire_node_record::GossipWireNodeRecord;

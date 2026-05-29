@@ -6,7 +6,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
 };
-use fraktor_cluster_core_rs::{
+use fraktor_cluster_core_kernel_rs::{
   extension::ClusterExtensionConfig,
   membership::{
     GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorShared,

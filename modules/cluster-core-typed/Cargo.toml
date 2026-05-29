@@ -1,0 +1,22 @@
+[package]
+name = "fraktor-cluster-core-typed-rs"
+version = "0.2.11"
+edition = "2024"
+description = "Typed wrappers for fraktor cluster kernel"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "cluster", "typed", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-cluster-core-typed-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+
+[dependencies]
+fraktor-cluster-core-kernel-rs = { workspace = true }
+
+[lints]
+workspace = true

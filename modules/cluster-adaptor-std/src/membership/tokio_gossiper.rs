@@ -3,7 +3,7 @@
 use core::time::Duration;
 
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
-use fraktor_cluster_core_rs::membership::{Gossiper, MembershipCoordinatorShared};
+use fraktor_cluster_core_kernel_rs::membership::{Gossiper, MembershipCoordinatorShared};
 use fraktor_utils_core_rs::time::TimerInstant;
 use tokio::{
   runtime::Handle,

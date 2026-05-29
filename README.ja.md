@@ -81,7 +81,7 @@ cargo test -p fraktor-rs
 | Actor runtime | [`fraktor-actor-core-kernel-rs`](modules/actor-core-kernel), [`fraktor-actor-core-typed-rs`](modules/actor-core-typed), [`fraktor-actor-adaptor-std-rs`](modules/actor-adaptor-std) |
 | Persistence | [`fraktor-persistence-core-kernel-rs`](modules/persistence-core-kernel), [`fraktor-persistence-core-typed-rs`](modules/persistence-core-typed) |
 | Remote | [`fraktor-remote-core-rs`](modules/remote-core), [`fraktor-remote-adaptor-std-rs`](modules/remote-adaptor-std) |
-| Cluster | [`fraktor-cluster-core-rs`](modules/cluster-core), [`fraktor-cluster-adaptor-std-rs`](modules/cluster-adaptor-std) |
+| Cluster | [`fraktor-cluster-core-kernel-rs`](modules/cluster-core-kernel), [`fraktor-cluster-core-typed-rs`](modules/cluster-core-typed), [`fraktor-cluster-adaptor-std-rs`](modules/cluster-adaptor-std) |
 | Streams | [`fraktor-stream-core-kernel-rs`](modules/stream-core-kernel), [`fraktor-stream-core-actor-typed-rs`](modules/stream-core-actor-typed), [`fraktor-stream-adaptor-std-rs`](modules/stream-adaptor-std) |
 
 showcase クレートは、実行可能な flow の現時点の利用インデックスです。
@@ -117,7 +117,8 @@ example の一覧と必要な feature は [`showcases/std/README.md`](showcases/
 | [`modules/persistence-core-typed`](modules/persistence-core-typed) | typed actor 向け persistence effector API、snapshot criteria、retention criteria |
 | [`modules/remote-core`](modules/remote-core) | `no_std` の remote address、association、envelope、provider、transport port、watcher、wire、failure-detector state machine |
 | [`modules/remote-adaptor-std`](modules/remote-adaptor-std) | Std remote extension installer、provider、Tokio TCP transport、I/O worker |
-| [`modules/cluster-core`](modules/cluster-core) | Cluster membership、identity、placement、pub-sub、grain、failure detection、topology、metrics、routing |
+| [`modules/cluster-core-kernel`](modules/cluster-core-kernel) | Cluster membership、identity、placement、pub-sub、grain、failure detection、topology、metrics、routing |
+| [`modules/cluster-core-typed`](modules/cluster-core-typed) | cluster kernel contract の typed wrapper |
 | [`modules/cluster-adaptor-std`](modules/cluster-adaptor-std) | Std cluster API、local provider wrapping、Tokio gossip transport、pub-sub delivery、optional AWS ECS provider |
 | [`modules/stream-core-kernel`](modules/stream-core-kernel) | `no_std` の stream DSL、stage、materialization contract、graph shape、stream ref、queue、kill switch、supervision |
 | [`modules/stream-core-actor-typed`](modules/stream-core-actor-typed) | stream DSL 向け typed actor integration |

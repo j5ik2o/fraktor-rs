@@ -7,7 +7,7 @@ use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
   serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };
-use fraktor_cluster_core_rs::{
+use fraktor_cluster_core_kernel_rs::{
   extension::ClusterApi,
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubBatch,

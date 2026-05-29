@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use fraktor_actor_core_kernel_rs::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
 };
-use fraktor_cluster_core_rs::{
+use fraktor_cluster_core_kernel_rs::{
   cluster_provider::ClusterProvider,
   extension::{ClusterProviderError, StartupMode},
   topology::{BlockListProvider, ClusterEvent},

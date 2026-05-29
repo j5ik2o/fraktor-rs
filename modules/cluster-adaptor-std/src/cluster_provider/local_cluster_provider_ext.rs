@@ -7,7 +7,7 @@ use fraktor_actor_core_kernel_rs::event::stream::{
   ClassifierKey, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
   RemotingLifecycleEvent, subscriber_handle,
 };
-use fraktor_cluster_core_rs::cluster_provider::{
+use fraktor_cluster_core_kernel_rs::cluster_provider::{
   LocalClusterProvider, LocalClusterProviderShared, LocalClusterProviderWeak,
 };
 use fraktor_utils_core_rs::sync::SharedAccess;

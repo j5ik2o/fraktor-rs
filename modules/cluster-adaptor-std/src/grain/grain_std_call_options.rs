@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_cluster_core_rs::grain::{GrainCallOptions, GrainRetryPolicy};
+use fraktor_cluster_core_kernel_rs::grain::{GrainCallOptions, GrainRetryPolicy};
 
 #[cfg(test)]
 #[path = "grain_std_call_options_test.rs"]
