@@ -28,7 +28,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: review-thread-resolution-trigger-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}
+  group: review-thread-resolution-trigger-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
   cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
 
 jobs:
