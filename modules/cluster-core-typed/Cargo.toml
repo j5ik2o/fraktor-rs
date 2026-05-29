@@ -16,7 +16,13 @@ autoexamples = false
 default = []
 
 [dependencies]
+fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-actor-core-typed-rs = { workspace = true }
 fraktor-cluster-core-kernel-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true }
+
+[dev-dependencies]
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

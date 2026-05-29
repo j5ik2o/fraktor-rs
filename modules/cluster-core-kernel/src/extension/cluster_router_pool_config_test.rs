@@ -10,5 +10,5 @@ fn pool_settings_store_values() {
 #[test]
 #[should_panic(expected = "total instances must be > 0")]
 fn pool_settings_reject_zero_instances() {
-  let _ = ClusterRouterPoolConfig::new(0);
+  drop(ClusterRouterPoolConfig::new(0));
 }

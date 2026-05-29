@@ -14,7 +14,7 @@ use core::time::Duration;
 
 use fraktor_actor_core_kernel_rs::{
   actor::{
-    actor_path::ActorPathParser,
+    actor_path::{ActorPath, ActorPathParser},
     actor_ref::ActorRef,
     messaging::{AnyMessage, AskError, AskResponse, AskResult},
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
@@ -34,9 +34,12 @@ use crate::{
   activation::{ClusterIdentity, LookupError, PlacementEvent},
   extension::ClusterIdentityResolver,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsShared},
+  membership::CurrentClusterState,
 };
 
 const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
+const REMOTE_ACTOR_PATH_SCHEME: &str = "fraktor.tcp";
+const CANONICAL_PATH_UNAVAILABLE_REASON: &str = "canonical path is unavailable";
 
 struct ClusterEventFilterSubscriber {
   subscriber:  EventStreamSubscriberShared,
@@ -68,6 +71,7 @@ impl EventStreamSubscriber for ClusterEventFilterSubscriber {
 }
 
 /// Cluster API facade bound to an actor system.
+#[derive(Clone)]
 pub struct ClusterApi {
   system:    ActorSystem,
   extension: ArcShared<ClusterExtension>,
@@ -165,6 +169,48 @@ impl ClusterApi {
   /// Returns an error when the cluster is not started or leave processing fails.
   pub fn leave(&self, authority: &str) -> Result<(), ClusterError> {
     self.extension.leave(authority)
+  }
+
+  /// Returns the remote canonical path for an actor reference.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor reference has no canonical path or the
+  /// cluster advertised address cannot be formatted as an actor path authority.
+  pub fn remote_path_of(&self, actor_ref: &ActorRef) -> Result<ActorPath, ClusterResolveError> {
+    let canonical_path = actor_ref.canonical_path().ok_or_else(|| ClusterResolveError::InvalidPidFormat {
+      pid:    actor_ref.pid().to_string(),
+      reason: CANONICAL_PATH_UNAVAILABLE_REASON.into(),
+    })?;
+    if canonical_path.parts().authority_endpoint().is_some() {
+      return Ok(canonical_path);
+    }
+
+    let system_name = canonical_path.parts().system();
+    let authority = self.extension.core_shared().with_lock(|core| core.startup_address());
+    let canonical =
+      format!("{REMOTE_ACTOR_PATH_SCHEME}://{system_name}@{authority}{}", canonical_path.to_relative_string());
+    let mut remote_path = ActorPathParser::parse(&canonical).map_err(|error| {
+      ClusterResolveError::InvalidPidFormat { pid: actor_ref.pid().to_string(), reason: error.to_string() }
+    })?;
+    if let Some(uid) = canonical_path.uid() {
+      remote_path = remote_path.with_uid(uid);
+    }
+    Ok(remote_path)
+  }
+
+  /// Returns the current cluster-state snapshot.
+  #[must_use]
+  pub fn current_state(&self) -> CurrentClusterState {
+    let core = self.extension.core_shared();
+    let (state, _) = core.with_lock(|core| core.current_cluster_state_snapshot());
+    state
+  }
+
+  /// Returns the authority advertised by the local cluster member.
+  #[must_use]
+  pub fn self_authority(&self) -> String {
+    self.extension.core_shared().with_lock(|core| core.startup_address())
   }
 
   /// Subscribes to cluster events with explicit initial-state mode and event filters.
