@@ -5,7 +5,7 @@
 ### CI失敗からの差し戻し対応（最優先）
 
 `final-ci` ステップから差し戻された場合（= レビューレポートに指摘がないのにこのステップが実行された場合）、
-Report Directory内の `coder-decisions.md` または直前のイテレーションログから CI 失敗の詳細を確認し、
+Report Directory内の `final-ci-result.md`、`coder-decisions.md`、または直前のイテレーションログから CI 失敗の詳細を確認し、
 **clippy エラー・テスト失敗・ビルドエラーを直接修正すること**。
 レビュー指摘がないからといって「修正不要」と判断してはならない。
 

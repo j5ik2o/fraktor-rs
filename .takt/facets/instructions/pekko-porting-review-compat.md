@@ -34,14 +34,14 @@ AI特有の問題はレビューしないでください（ai_reviewステップ
 
 **前回指摘の追跡（必須）:**
 - まず「Previous Response」から前回の open findings を抽出する
-- 各 finding に `finding_id` を付け、今回の状態を `new / persists / resolved` で判定する
-- `persists` と判定する場合は、未解決である根拠（ファイル/行）を必ず示す
+- 各 finding に `finding_id` を付け、今回の状態を `new / persists / resolved / reopened` で判定する
+- `persists` または `reopened` と判定する場合は、未解決または再発の根拠（ファイル/行）を必ず示す
 
 ## 判定手順
 
-1. まず前回open findingsを抽出し、`new / persists / resolved` を仮判定する
+1. まず前回open findingsを抽出し、`new / persists / resolved / reopened` を仮判定する
 2. Pekko参照実装を読み、実装されたAPIとの対応関係を確認する
 3. 変換パターンの正確性を検証する（ナレッジの変換ルール表を参照）
 4. fake parity（見た目だけ互換）に該当しないか確認する
 5. fraktor-rs固有の制約（Dylint lint、CQS、命名規約）への準拠を確認する
-6. ブロッキング問題（`new` または `persists`）が1件でもあればREJECTと判定する
+6. ブロッキング問題（`new`、`persists`、または `reopened`）が1件でもあればREJECTと判定する
