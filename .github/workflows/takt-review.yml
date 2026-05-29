@@ -27,7 +27,7 @@ jobs:
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     with:
-      pr_number: ${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.issue.number }}
+      pr_number: ${{ format('{0}', github.event.pull_request.number || github.event.issue.number) }}
       event_head_sha: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || '' }}
       comment_body: ${{ (github.event_name == 'issue_comment' && github.event.comment.body) || '' }}
       workflow: review-takt-default
