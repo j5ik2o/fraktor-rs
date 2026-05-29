@@ -18,6 +18,7 @@ concurrency:
 jobs:
   takt-review:
     name: TAKT Review (Claude)
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '@takt')) }}
     uses: j5ik2o/ci/.github/workflows/takt-review.yml@fa840a0ee2eaf371533d7da4b2e77fde8cd90014
     permissions:
       contents: read
@@ -26,9 +27,9 @@ jobs:
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     with:
-      pr_number: ${{ github.event.pull_request.number || github.event.issue.number }}
-      event_head_sha: ${{ github.event.pull_request.head.sha }}
-      comment_body: ${{ github.event.comment.body }}
+      pr_number: ${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.issue.number }}
+      event_head_sha: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || '' }}
+      comment_body: ${{ (github.event_name == 'issue_comment' && github.event.comment.body) || '' }}
       workflow: review-takt-default
       provider: claude-sdk
       model: claude-sonnet-4-5-20250929
