@@ -26,6 +26,9 @@ jobs:
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     with:
+      pr_number: ${{ github.event.pull_request.number || github.event.issue.number }}
+      event_head_sha: ${{ github.event.pull_request.head.sha }}
+      comment_body: ${{ github.event.comment.body }}
       workflow: review-takt-default
       provider: claude-sdk
       model: claude-sonnet-4-5-20250929
