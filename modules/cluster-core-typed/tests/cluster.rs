@@ -379,6 +379,51 @@ fn cluster_state_subscription_replies_to_late_self_removed_subscriber_from_seen_
 }
 
 #[test]
+fn cluster_state_subscription_completes_late_self_up_subscriber_from_seen_removed_state() {
+  let system = typed_system_with_recording_provider(
+    ArcShared::new(SpinSyncMutex::new(Vec::new())),
+    ArcShared::new(SpinSyncMutex::new(Vec::new())),
+    ArcShared::new(SpinSyncMutex::new(Vec::new())),
+  );
+  let extension = installed_cluster_extension(&system);
+  extension.start_member().expect("start member");
+  let cluster = Cluster::get(&system).expect("cluster");
+  publish_cluster_event(
+    system.as_untyped().event_stream(),
+    member_status_changed(
+      "node1:8080",
+      NodeStatus::Exiting,
+      NodeStatus::Removed,
+      TimerInstant::from_ticks(26, Duration::from_secs(1)),
+    ),
+  );
+  let self_up_events = ArcShared::new(SpinSyncMutex::new(Vec::<SelfUp>::new()));
+
+  let subscription =
+    match (ClusterStateSubscription::SubscribeSelfUp { subscriber: typed_self_up_ref(self_up_events.clone()) })
+      .apply_to(&cluster)
+      .expect("subscribe self up")
+    {
+      | ClusterStateSubscriptionResult::Subscribed(subscription) => subscription,
+      | ClusterStateSubscriptionResult::CurrentState(_) | ClusterStateSubscriptionResult::Unsubscribed => {
+        panic!("expected subscription")
+      },
+    };
+  publish_cluster_event(
+    system.as_untyped().event_stream(),
+    member_status_changed(
+      "node1:8080",
+      NodeStatus::Joining,
+      NodeStatus::Up,
+      TimerInstant::from_ticks(27, Duration::from_secs(1)),
+    ),
+  );
+
+  assert!(self_up_events.lock().is_empty());
+  assert_eq!(subscription.failed_delivery_count(), 0);
+}
+
+#[test]
 fn cluster_state_subscription_replies_to_late_self_up_subscriber_from_current_state() {
   let system = typed_system_with_recording_provider(
     ArcShared::new(SpinSyncMutex::new(Vec::new())),

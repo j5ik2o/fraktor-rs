@@ -225,7 +225,7 @@ fn claim_self_removed_delivery(state: &SharedLock<SelfEventSubscriberState>) -> 
 
 fn complete_self_event_subscription(cluster: &ClusterApi, state: &SharedLock<SelfEventSubscriberState>) {
   let subscription_id = state.with_write(|state| {
-    if state.replaying || state.completed {
+    if state.completed {
       return None;
     }
     state.completed = true;
