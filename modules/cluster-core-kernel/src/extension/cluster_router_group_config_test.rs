@@ -5,9 +5,11 @@ use crate::extension::{ClusterRouterGroup, ClusterRouterGroupConfig};
 #[test]
 fn group_settings_store_values() {
   let settings = ClusterRouterGroupConfig::new(vec![String::from("/user/a"), String::from("/user/b")])
-    .with_allow_local_routees(false);
+    .with_allow_local_routees(false)
+    .with_use_roles(vec![String::from("frontend"), String::from("backend"), String::from("backend")]);
   assert_eq!(settings.routee_paths(), &[String::from("/user/a"), String::from("/user/b")]);
   assert!(!settings.allow_local_routees());
+  assert_eq!(settings.use_roles(), &[String::from("backend"), String::from("frontend")]);
 }
 
 #[test]

@@ -63,13 +63,13 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象概念 | 約 121 |
-| fraktor-rs 固定スコープ対応概念 | 約 54 |
-| 固定スコープ概念カバレッジ | 約 54/121 (45%) |
+| fraktor-rs 固定スコープ対応概念 | 約 56 |
+| 固定スコープ概念カバレッジ | 約 56/121 (46%) |
 | raw public type declarations | 204 (core-kernel: 183, core-typed: 9, std: 12) |
-| raw public method declarations | 474 (core-kernel: 404, core-typed: 32, std: 38) |
+| raw public method declarations | 481 (core-kernel: 411, core-typed: 32, std: 38) |
 | hard gap | 18 |
 | medium gap | 25 |
-| easy gap | 16 |
+| easy gap | 14 |
 | trivial gap | 2 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
@@ -130,15 +130,15 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 実装済みとして扱うもの: `DowningProvider` trait、`DowningInput` / `DowningDecision` / `FailureObservation`、`NoopDowningProvider`、`SplitBrainResolverSettings`、`SplitBrainResolverStrategy`、明示 `ClusterApi::down` hook、downing provider / SBR settings の join compatibility。
 
-### 4. Cluster router pool / group　✅ 実装済み 3/6 (50%)
+### 4. Cluster router pool / group　✅ 実装済み 5/6 (83%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| role-filtered routee selection | `ClusterRouterConfig.scala:80`, `ClusterRouterConfig.scala:190` | 部分実装 | core/router | easy | config に `useRoles` 相当がない |
-| max instances per node | `ClusterRouterConfig.scala:190` | 未対応 | core/router | easy | pool config は total_instances だけ |
+| role-filtered routee selection | `ClusterRouterConfig.scala:80`, `ClusterRouterConfig.scala:190` | 実装済み | core/router | easy | `ClusterRouterPoolConfig` / `ClusterRouterGroupConfig` が `use_roles` を持ち、pool は membership record から role-filtered routee を再構築できる |
+| max instances per node | `ClusterRouterConfig.scala:190` | 実装済み | core/router | easy | pool config が `max_instances_per_node` を持ち、membership-derived routee allocation に反映する |
 | membership-driven routee add/remove | `ClusterRouterConfig.scala:586`, `ClusterRouterConfig.scala:591` | 部分実装 | core/router + event integration | medium | routee selection type はあるが ClusterEvent 連携で自動更新する runtime がない |
 
-実装済みとして扱うもの: `ClusterRouterPool`、`ClusterRouterGroup`、pool/group settings の分離。
+実装済みとして扱うもの: `ClusterRouterPool`、`ClusterRouterGroup`、pool/group settings の分離、role-filtered routee selection、max-per-node routee allocation。
 
 ### 5. Cluster Typed API　✅ 実装済み 6/7 (86%)
 
@@ -246,8 +246,8 @@ cluster は、membership table、gossip dissemination、failure detector registr
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
 | `SplitBrainResolverProvider` | std/provider | カテゴリ3 |
-| role-filtered router config | core/router | カテゴリ4 |
-| max instances per node | core/router | カテゴリ4 |
+| ~~role-filtered router config~~ | core/router | カテゴリ4。2026-05-30 に `use_roles` と membership-derived routee filtering を実装済み |
+| ~~max instances per node~~ | core/router | カテゴリ4。2026-05-30 に pool routee allocation cap として実装済み |
 | `Flag` CRDT | core/ddata | カテゴリ9 |
 | `Key[T]` / consistency levels | core/ddata | カテゴリ9 |
 | `GCounter` / `PNCounter` / `PNCounterMap` | core/ddata | カテゴリ9 |
@@ -331,6 +331,6 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 cluster は membership、gossip delta、downing provider boundary、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR 実行ロジック、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度より低い。
 
-Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、router role/max-per-node 設定、基本 CRDT、std `ClusterApi` wrapper の再公開、join config compatibility の checker composition である。ただし、これらの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
+Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、基本 CRDT、std `ClusterApi` wrapper の再公開、join config compatibility の checker composition である。router role/max-per-node 設定は、Pekko public API parity ではなく現行 router contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 
 主要な comparison gap は、Split Brain Resolver、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、cluster/sharding/pubsub serializer contract である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
