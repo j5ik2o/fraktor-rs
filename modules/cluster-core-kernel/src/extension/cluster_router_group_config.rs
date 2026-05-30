@@ -16,6 +16,8 @@ pub struct ClusterRouterGroupConfig {
 
 impl ClusterRouterGroupConfig {
   /// Creates config with explicit routee paths.
+  ///
+  /// Defaults to no role restriction.
   #[must_use]
   pub const fn new(routee_paths: Vec<String>) -> Self {
     Self { routee_paths, allow_local_routees: true, use_roles: Vec::new() }
@@ -28,10 +30,10 @@ impl ClusterRouterGroupConfig {
     self
   }
 
-  /// Restricts routee selection to members with any of the supplied roles.
+  /// Restricts routee selection to nodes that carry all of the given roles.
   #[must_use]
-  pub fn with_use_roles(mut self, roles: Vec<String>) -> Self {
-    self.use_roles = normalize_roles(roles);
+  pub fn with_use_roles(mut self, use_roles: Vec<String>) -> Self {
+    self.use_roles = use_roles;
     self
   }
 
@@ -47,15 +49,18 @@ impl ClusterRouterGroupConfig {
     self.allow_local_routees
   }
 
-  /// Returns role constraints for routee selection.
+  /// Returns the roles a node must carry to host routees.
   #[must_use]
   pub fn use_roles(&self) -> &[String] {
     &self.use_roles
   }
-}
 
-fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {
-  roles.sort();
-  roles.dedup();
-  roles
+  /// Returns whether a node carrying `member_roles` is allowed to host routees.
+  ///
+  /// A node qualifies when it carries every configured role; an empty role
+  /// requirement matches every node.
+  #[must_use]
+  pub fn satisfies_roles(&self, member_roles: &[String]) -> bool {
+    self.use_roles.iter().all(|role| member_roles.contains(role))
+  }
 }

@@ -31,6 +31,14 @@
 | `Iterator::next` | プロトコル上 `&mut self` + `Option<T>` が必要 |
 | Builder パターン | メソッドチェーンのため `&mut self` を返す |
 
+> **補足: 読み取り意図でも状態前進が不可避なら `&mut self` が正解。**
+> 上記ケース（`Vec::pop` / `Iterator::next` 相当、round-robin カーソル前進など）は
+> 「`&mut self` で書くのが正しい設計」であって、CQS 違反を消す目的で `&self` + 内部可変性
+> （`AtomicUsize` / `Cell` / `RefCell` / ロック等）へ書き換えてはならない。
+> それは下記「禁止パターン」の「`&self` への偽装」に該当し、借用チェッカの保護を失わせる。
+> 共有が必要で状態変更を伴う場合に限り `*Shared`（`SharedLock` / `SharedRwLock`）を使う
+> （`immutability-policy.md` を参照）。
+
 ## コード例
 
 ```rust
