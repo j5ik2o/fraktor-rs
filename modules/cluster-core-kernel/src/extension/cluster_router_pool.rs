@@ -4,7 +4,7 @@
 #[path = "cluster_router_pool_test.rs"]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
 use crate::ClusterRouterPoolConfig;
 
@@ -19,6 +19,23 @@ impl ClusterRouterPool {
   /// Creates a pool router with config and initial routees.
   #[must_use]
   pub const fn new(config: ClusterRouterPoolConfig, routees: Vec<String>) -> Self {
+    Self { config, routees, next_index: 0 }
+  }
+
+  /// Creates a pool router by allocating routees across the given candidate node
+  /// authorities.
+  ///
+  /// Candidates are expected to be distinct node authorities, pre-filtered by
+  /// [`ClusterRouterPoolConfig::satisfies_roles`] and node availability. Routees
+  /// are distributed least-loaded first, capped at
+  /// [`ClusterRouterPoolConfig::total_instances`] in total and at
+  /// [`ClusterRouterPoolConfig::max_instances_per_node`] per authority. Ties for
+  /// the least-loaded authority are broken in favor of the earliest entry in
+  /// `candidates`, so the allocation is deterministic for a given candidate
+  /// order.
+  #[must_use]
+  pub fn from_candidates(config: ClusterRouterPoolConfig, candidates: &[String]) -> Self {
+    let routees = allocate_routees(&config, candidates);
     Self { config, routees, next_index: 0 }
   }
 
@@ -53,4 +70,36 @@ impl ClusterRouterPool {
     self.next_index = (self.next_index + 1) % effective_count;
     Some(self.routees[index].as_str())
   }
+}
+
+/// Distributes routees across candidate authorities honoring the total and
+/// per-node caps, using least-loaded round-robin placement.
+fn allocate_routees(config: &ClusterRouterPoolConfig, candidates: &[String]) -> Vec<String> {
+  let total = config.total_instances();
+  let max_per_node = config.max_instances_per_node();
+  if candidates.is_empty() {
+    return Vec::new();
+  }
+  let mut counts = vec![0usize; candidates.len()];
+  let mut routees: Vec<String> = Vec::new();
+  while routees.len() < total {
+    let mut best: Option<usize> = None;
+    for (index, &count) in counts.iter().enumerate() {
+      if count >= max_per_node {
+        continue;
+      }
+      match best {
+        | Some(best_index) if counts[best_index] <= count => {},
+        | _ => best = Some(index),
+      }
+    }
+    match best {
+      | Some(index) => {
+        routees.push(candidates[index].clone());
+        counts[index] += 1;
+      },
+      | None => break,
+    }
+  }
+  routees
 }
