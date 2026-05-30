@@ -151,6 +151,22 @@ fn join_compatibility_reports_sbr_settings_mismatch_against_missing_sbr_settings
 }
 
 #[test]
+fn sbr_settings_checker_ignores_non_sbr_provider_pairs() {
+  let sbr = SplitBrainResolverSettings::new(
+    Duration::from_secs(20),
+    SplitBrainResolverStrategy::KeepOldest,
+    Duration::from_secs(15),
+  );
+  let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+  );
+  let joining =
+    ClusterExtensionConfig::new().with_downing_provider_compatibility(DowningProviderCompatibility::new("noop"));
+
+  assert!(split_brain_resolver_settings_are_compatible(&local, &joining));
+}
+
+#[test]
 fn join_compatibility_reports_sbr_timing_mismatch_when_strategy_matches() {
   let local_sbr = SplitBrainResolverSettings::new(
     Duration::from_secs(20),
