@@ -56,7 +56,7 @@
 
 固定スコープ対象ディレクトリを `src/main` ベースで raw 抽出すると、Pekko 側は型宣言 857 件、主要 `def` 3027 件が見つかる。Pekko submodule は `2dc8960074bfe269da1686609eb88663cb50ad8b` を参照した。これには private / internal / JVM 固有 / DSL wrapper / serializer 実装が含まれるため、parity カバレッジ分母には使わない。
 
-fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kernel: 183, core-typed: 9, std: 12)、公開メソッド 474 件 (core-kernel: 404, core-typed: 32, std: 38)。ただし、この数には `pub(crate)` の helper も含まれる。
+fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kernel: 183, core-typed: 9, std: 12)、公開メソッド 485 件 (core-kernel: 415, core-typed: 32, std: 38)。ただし、この数には `pub(crate)` の helper も含まれる。
 
 ## サマリー
 
@@ -312,7 +312,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 45% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
+今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 47% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
 
 次版で構造分析へ進む場合の観点は以下になる。
 
