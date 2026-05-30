@@ -69,9 +69,10 @@ impl ClusterRouterPool {
   /// surviving distinct authorities are then placed honoring the total and
   /// per-node caps, exactly as in [`ClusterRouterPool::from_candidates`].
   ///
-  /// This is the core routing policy; the std cluster runtime drives it from
-  /// `ClusterEvent` membership snapshots (the subscription wiring is a separate
-  /// adapter concern).
+  /// This is the core routing policy. The core cluster runtime drives it on
+  /// membership changes, obtaining `ClusterEvent` snapshots through a core port
+  /// whose std adapter is injected via DI (core drives the adapter, never the
+  /// reverse).
   pub fn update_from_members(&mut self, members: &[NodeRecord], self_authority: &str) {
     let mut candidates: Vec<String> = Vec::new();
     for member in members {
