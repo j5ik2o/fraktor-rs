@@ -61,18 +61,30 @@ fn downing_provider_compatibility_is_preserved() {
 }
 
 #[test]
-fn join_compatibility_key_manifest_lists_only_required_non_sensitive_keys() {
+fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensitive_keys() {
   let required_keys = ClusterExtensionConfig::required_join_compatibility_keys();
+  let conditional_keys = ClusterExtensionConfig::conditional_join_compatibility_keys();
 
   assert_eq!(required_keys, &[
     "fraktor.cluster.pubsub.subscriber-timeout",
     "fraktor.cluster.pubsub.suspended-ttl",
     "fraktor.cluster.downing-provider.provider-key",
+  ]);
+  assert_eq!(conditional_keys, &[
     "fraktor.cluster.downing-provider.split-brain-resolver.stable-after",
     "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy",
     "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable",
   ]);
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.downing-provider.provider-key"));
+  assert!(!ClusterExtensionConfig::is_required_join_compatibility_key(
+    "fraktor.cluster.downing-provider.split-brain-resolver.stable-after"
+  ));
+  assert!(ClusterExtensionConfig::is_conditional_join_compatibility_key(
+    "fraktor.cluster.downing-provider.split-brain-resolver.stable-after"
+  ));
+  assert!(!ClusterExtensionConfig::is_conditional_join_compatibility_key(
+    "fraktor.cluster.downing-provider.provider-key"
+  ));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.advertised-address"));
   assert!(ClusterExtensionConfig::sensitive_join_compatibility_keys().is_empty());
   assert!(!ClusterExtensionConfig::is_sensitive_join_compatibility_key(

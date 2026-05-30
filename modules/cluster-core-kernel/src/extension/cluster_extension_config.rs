@@ -26,14 +26,10 @@ const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain
 const SBR_ACTIVE_STRATEGY_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy";
 const SBR_DOWN_ALL_WHEN_UNSTABLE_KEY: &str =
   "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable";
-const JOIN_COMPATIBILITY_KEYS: &[&str] = &[
-  PUBSUB_SUBSCRIBER_TIMEOUT_KEY,
-  PUBSUB_SUSPENDED_TTL_KEY,
-  DOWNING_PROVIDER_KEY,
-  SBR_STABLE_AFTER_KEY,
-  SBR_ACTIVE_STRATEGY_KEY,
-  SBR_DOWN_ALL_WHEN_UNSTABLE_KEY,
-];
+const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] =
+  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY];
+const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
+  &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
 const SENSITIVE_JOIN_COMPATIBILITY_KEYS: &[&str] = &[];
 
 struct JoinCompatibilityCheck {
@@ -188,10 +184,16 @@ impl ClusterExtensionConfig {
     &self.downing_provider
   }
 
-  /// Returns non-sensitive configuration keys that must match before accepting a join.
+  /// Returns non-sensitive configuration keys that must always match before accepting a join.
   #[must_use]
   pub const fn required_join_compatibility_keys() -> &'static [&'static str] {
-    JOIN_COMPATIBILITY_KEYS
+    REQUIRED_JOIN_COMPATIBILITY_KEYS
+  }
+
+  /// Returns non-sensitive configuration keys that must match only when their provider is active.
+  #[must_use]
+  pub const fn conditional_join_compatibility_keys() -> &'static [&'static str] {
+    CONDITIONAL_JOIN_COMPATIBILITY_KEYS
   }
 
   /// Returns configuration keys excluded from advertised join compatibility metadata.
@@ -200,10 +202,16 @@ impl ClusterExtensionConfig {
     SENSITIVE_JOIN_COMPATIBILITY_KEYS
   }
 
-  /// Returns whether the key participates in join compatibility checks.
+  /// Returns whether the key participates in unconditional join compatibility checks.
   #[must_use]
   pub fn is_required_join_compatibility_key(key: &str) -> bool {
-    JOIN_COMPATIBILITY_KEYS.contains(&key)
+    REQUIRED_JOIN_COMPATIBILITY_KEYS.contains(&key)
+  }
+
+  /// Returns whether the key participates in provider-conditional join compatibility checks.
+  #[must_use]
+  pub fn is_conditional_join_compatibility_key(key: &str) -> bool {
+    CONDITIONAL_JOIN_COMPATIBILITY_KEYS.contains(&key)
   }
 
   /// Returns whether the key must not be advertised in join compatibility metadata.

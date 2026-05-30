@@ -116,7 +116,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 | config compatibility full key set | `JoinConfigCompatChecker.scala:25`, `JoinConfigCompatCheckCluster.scala:27` | 実装済み | core/config | easy | `ClusterExtensionConfig` が required key manifest、sensitive key exclusion、composable checker を持つ。現時点の比較対象は pubsub、downing provider、SBR settings |
 | failure detector implementation choice | `Cluster.scala:124`, `Cluster.scala:131` | 部分実装 | core/failure_detector | easy | registry はあるが cluster config から deadline/phi などを選ぶ設定 contract がない |
 
-実装済みとして扱うもの: `MembershipTable`、`MembershipDelta`、`MembershipVersion`、`VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、`TokioGossipTransport`、join config compatibility key manifest / checker composition。
+実装済みとして扱うもの: `MembershipTable`、`MembershipDelta`、`MembershipVersion`、`VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、`TokioGossipTransport`、join config compatibility key manifest（required / provider-conditional） / checker composition。
 
 ### 3. Downing / Split Brain Resolver　✅ 実装済み 5/8 (63%)
 
@@ -325,6 +325,6 @@ Deferred Pekko concepts はこの候補から外す。CRDT / Distributed Data、
 
 cluster は membership、gossip delta、downing provider boundary、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR 実行ロジック、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度より低い。
 
-Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、std `ClusterApi` wrapper の再公開、failure detector implementation choice である。router role/max-per-node 設定、remote actor path helper、join config compatibility の checker composition は、Pekko public API parity ではなく現行 cluster contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
+Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、std `ClusterApi` wrapper の再公開、failure detector implementation choice である。router role/max-per-node 設定、remote actor path helper、join config compatibility の required / provider-conditional key manifest と checker composition は、Pekko public API parity ではなく現行 cluster contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 
 主要な comparison gap は、Split Brain Resolver、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、cluster/sharding/pubsub serializer contract である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
