@@ -56,7 +56,7 @@
 
 固定スコープ対象ディレクトリを `src/main` ベースで raw 抽出すると、Pekko 側は型宣言 857 件、主要 `def` 3027 件が見つかる。Pekko submodule は `2dc8960074bfe269da1686609eb88663cb50ad8b` を参照した。これには private / internal / JVM 固有 / DSL wrapper / serializer 実装が含まれるため、parity カバレッジ分母には使わない。
 
-fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kernel: 183, core-typed: 9, std: 12)、公開メソッド 474 件 (core-kernel: 404, core-typed: 32, std: 38)。ただし、この数には `pub(crate)` の helper も含まれる。
+fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kernel: 183, core-typed: 9, std: 12)、公開メソッド 485 件 (core-kernel: 415, core-typed: 32, std: 38)。ただし、この数には `pub(crate)` の helper も含まれる。
 
 ## サマリー
 
@@ -66,7 +66,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kerne
 | fraktor-rs 固定スコープ対応概念 | 約 57 |
 | 固定スコープ概念カバレッジ | 約 57/121 (47%) |
 | raw public type declarations | 204 (core-kernel: 183, core-typed: 9, std: 12) |
-| raw public method declarations | 474 (core-kernel: 404, core-typed: 32, std: 38) |
+| raw public method declarations | 485 (core-kernel: 415, core-typed: 32, std: 38) |
 | hard gap | 18 |
 | medium gap | 24 |
 | easy gap | 14 |
@@ -312,7 +312,7 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 45% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
+今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 47% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
 
 次版で構造分析へ進む場合の観点は以下になる。
 
@@ -328,6 +328,6 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 cluster は membership、gossip delta、downing provider boundary、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR 実行ロジック、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度より低い。
 
-Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、router role/max-per-node 設定、基本 CRDT、std `ClusterApi` wrapper の再公開、join config compatibility の checker composition である。ただし、これらの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
+Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、基本 CRDT、std `ClusterApi` wrapper の再公開、join config compatibility の checker composition である。router role/max-per-node 設定は、Pekko public API parity ではなく現行 router contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 
 主要な comparison gap は、Split Brain Resolver、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、cluster/sharding/pubsub serializer contract である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
