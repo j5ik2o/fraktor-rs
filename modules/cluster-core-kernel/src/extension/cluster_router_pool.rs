@@ -6,7 +6,10 @@ mod tests;
 
 use alloc::{string::String, vec, vec::Vec};
 
-use crate::ClusterRouterPoolConfig;
+use crate::{
+  ClusterRouterPoolConfig,
+  membership::{NodeRecord, NodeStatus},
+};
 
 /// Round-robin pool router for cluster routees.
 pub struct ClusterRouterPool {
@@ -57,9 +60,45 @@ impl ClusterRouterPool {
     self.next_index = 0;
   }
 
+  /// Recomputes the routee set from the current cluster membership snapshot.
+  ///
+  /// A member contributes its authority as a routee target only when it is `Up`,
+  /// carries every required role
+  /// ([`ClusterRouterPoolConfig::satisfies_roles`]), and is not excluded by the
+  /// local-routee policy ([`ClusterRouterPoolConfig::allow_local_routees`]). The
+  /// surviving distinct authorities are then placed honoring the total and
+  /// per-node caps, exactly as in [`ClusterRouterPool::from_candidates`].
+  ///
+  /// This is the core routing policy; the std cluster runtime drives it from
+  /// `ClusterEvent` membership snapshots (the subscription wiring is a separate
+  /// adapter concern).
+  pub fn update_from_members(&mut self, members: &[NodeRecord], self_authority: &str) {
+    let mut candidates: Vec<String> = Vec::new();
+    for member in members {
+      if member.status != NodeStatus::Up {
+        continue;
+      }
+      if !self.config.satisfies_roles(&member.roles) {
+        continue;
+      }
+      if !self.config.allow_local_routees() && member.authority == self_authority {
+        continue;
+      }
+      if !candidates.iter().any(|authority| authority == &member.authority) {
+        candidates.push(member.authority.clone());
+      }
+    }
+    self.routees = allocate_routees(&self.config, &candidates);
+    self.next_index = 0;
+  }
+
   /// Selects the next routee authority using round-robin.
   ///
   /// The effective pool is capped at [`ClusterRouterPoolConfig::total_instances`].
+  // NOTE: CQS 違反の根拠: round-robin セレクタはカーソルを前進させつつ選択結果を返す
+  // 必要があり、読み取りと更新を分離できない。これは `cqs-principle.md` が許容例外
+  // として明示する `Iterator::next` / `Vec::pop` 相当のケースであり、本変更の計画
+  // レビューで人間の許可を取得済み。
   #[must_use]
   pub fn next_routee(&mut self) -> Option<&str> {
     if self.routees.is_empty() {

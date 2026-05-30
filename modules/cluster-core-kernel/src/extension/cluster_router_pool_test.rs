@@ -1,6 +1,20 @@
 use alloc::{string::String, vec};
 
-use crate::extension::{ClusterRouterPool, ClusterRouterPoolConfig};
+use crate::{
+  extension::{ClusterRouterPool, ClusterRouterPoolConfig},
+  membership::{MembershipVersion, NodeRecord, NodeStatus},
+};
+
+fn member(authority: &str, status: NodeStatus, roles: &[&str]) -> NodeRecord {
+  NodeRecord::new(
+    String::from(authority),
+    String::from(authority),
+    status,
+    MembershipVersion::new(1),
+    String::from("1.0.0"),
+    roles.iter().map(|role| String::from(*role)).collect(),
+  )
+}
 
 #[test]
 fn next_routee_uses_round_robin() {
@@ -73,4 +87,80 @@ fn from_candidates_one_per_node_then_round_robins() {
   assert_eq!(router.next_routee(), Some("n1"));
   assert_eq!(router.next_routee(), Some("n2"));
   assert_eq!(router.next_routee(), Some("n1"));
+}
+
+#[test]
+fn update_from_members_collects_only_up_authorities() {
+  let mut router = ClusterRouterPool::new(ClusterRouterPoolConfig::new(10), vec![]);
+  let members = [
+    member("n1", NodeStatus::Up, &[]),
+    member("joining", NodeStatus::Joining, &[]),
+    member("suspect", NodeStatus::Suspect, &[]),
+    member("leaving", NodeStatus::Leaving, &[]),
+    member("exiting", NodeStatus::Exiting, &[]),
+    member("n3", NodeStatus::Up, &[]),
+    member("removed", NodeStatus::Removed, &[]),
+    member("dead", NodeStatus::Dead, &[]),
+  ];
+  router.update_from_members(&members, "self:0");
+  // Only Up members contribute; every non-Up status is excluded.
+  assert_eq!(router.routees(), &[String::from("n1"), String::from("n3")]);
+}
+
+#[test]
+fn update_from_members_filters_by_roles() {
+  let config = ClusterRouterPoolConfig::new(10).with_use_roles(vec![String::from("backend")]);
+  let mut router = ClusterRouterPool::new(config, vec![]);
+  let members = [
+    member("n1", NodeStatus::Up, &["backend"]),
+    member("n2", NodeStatus::Up, &["web"]),
+    member("n3", NodeStatus::Up, &["backend", "web"]),
+  ];
+  router.update_from_members(&members, "self:0");
+  assert_eq!(router.routees(), &[String::from("n1"), String::from("n3")]);
+}
+
+#[test]
+fn update_from_members_excludes_self_when_local_routees_disallowed() {
+  let config = ClusterRouterPoolConfig::new(10).with_allow_local_routees(false);
+  let mut router = ClusterRouterPool::new(config, vec![]);
+  let members = [member("self:0", NodeStatus::Up, &[]), member("n1", NodeStatus::Up, &[])];
+  router.update_from_members(&members, "self:0");
+  assert_eq!(router.routees(), &[String::from("n1")]);
+}
+
+#[test]
+fn update_from_members_includes_self_when_local_routees_allowed() {
+  let mut router = ClusterRouterPool::new(ClusterRouterPoolConfig::new(10), vec![]);
+  let members = [member("self:0", NodeStatus::Up, &[]), member("n1", NodeStatus::Up, &[])];
+  router.update_from_members(&members, "self:0");
+  assert_eq!(router.routees(), &[String::from("self:0"), String::from("n1")]);
+}
+
+#[test]
+fn update_from_members_applies_per_node_cap() {
+  let config = ClusterRouterPoolConfig::new(10).with_max_instances_per_node(2);
+  let mut router = ClusterRouterPool::new(config, vec![]);
+  let members = [member("n1", NodeStatus::Up, &[]), member("n2", NodeStatus::Up, &[])];
+  router.update_from_members(&members, "self:0");
+  // 2 nodes * 2 routees per node = 4, placed least-loaded round-robin in member order.
+  assert_eq!(router.routees(), &[String::from("n1"), String::from("n2"), String::from("n1"), String::from("n2")]);
+}
+
+#[test]
+fn update_from_members_deduplicates_repeated_authorities() {
+  let config = ClusterRouterPoolConfig::new(10).with_max_instances_per_node(1);
+  let mut router = ClusterRouterPool::new(config, vec![]);
+  // Two snapshot records share one authority; it must be placed once, not twice.
+  let members = [member("n1", NodeStatus::Up, &[]), member("n1", NodeStatus::Up, &[])];
+  router.update_from_members(&members, "self:0");
+  assert_eq!(router.routees(), &[String::from("n1")]);
+}
+
+#[test]
+fn update_from_members_with_empty_snapshot_yields_empty_routees() {
+  let mut router = ClusterRouterPool::new(ClusterRouterPoolConfig::new(5), vec![String::from("stale")]);
+  router.update_from_members(&[], "self:0");
+  assert!(router.routees().is_empty());
+  assert_eq!(router.next_routee(), None);
 }
