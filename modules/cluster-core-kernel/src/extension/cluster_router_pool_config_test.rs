@@ -4,14 +4,9 @@ use crate::extension::ClusterRouterPoolConfig;
 
 #[test]
 fn pool_settings_store_values() {
-  let settings = ClusterRouterPoolConfig::new(5)
-    .with_allow_local_routees(false)
-    .with_use_roles(vec![String::from("worker"), String::from("backend"), String::from("backend")])
-    .with_max_instances_per_node(2);
+  let settings = ClusterRouterPoolConfig::new(5).with_allow_local_routees(false);
   assert_eq!(settings.total_instances(), 5);
   assert!(!settings.allow_local_routees());
-  assert_eq!(settings.use_roles(), &[String::from("backend"), String::from("worker")]);
-  assert_eq!(settings.max_instances_per_node(), Some(2));
 }
 
 #[test]

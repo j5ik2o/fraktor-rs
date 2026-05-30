@@ -110,22 +110,6 @@ impl ClusterRouterPool {
     self.next_index = (self.next_index + 1) % effective_count;
     Some(self.routees[index].as_str())
   }
-
-  fn accepts_member(&self, member: &NodeRecord, local_authority: Option<&str>) -> bool {
-    if !member.status.is_active() {
-      return false;
-    }
-    if !self.config.allow_local_routees()
-      && local_authority.is_some_and(|authority| authority == member.authority.as_str())
-    {
-      return false;
-    }
-    self.config.use_roles().is_empty() || self.config.use_roles().iter().any(|role| member.roles.contains(role))
-  }
-
-  fn instances_for_member(&self, remaining: usize) -> usize {
-    self.config.max_instances_per_node().unwrap_or(1).min(remaining)
-  }
 }
 
 /// Distributes routees across candidate authorities honoring the total and

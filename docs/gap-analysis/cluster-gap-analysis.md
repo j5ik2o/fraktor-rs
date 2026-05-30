@@ -66,7 +66,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kerne
 | fraktor-rs 固定スコープ対応概念 | 約 57 |
 | 固定スコープ概念カバレッジ | 約 57/121 (47%) |
 | raw public type declarations | 204 (core-kernel: 183, core-typed: 9, std: 12) |
-| raw public method declarations | 481 (core-kernel: 411, core-typed: 32, std: 38) |
+| raw public method declarations | 485 (core-kernel: 415, core-typed: 32, std: 38) |
 | hard gap | 18 |
 | medium gap | 24 |
 | easy gap | 14 |
