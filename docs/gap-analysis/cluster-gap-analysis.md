@@ -63,13 +63,13 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象概念 | 約 121 |
-| fraktor-rs 固定スコープ対応概念 | 約 54 |
-| 固定スコープ概念カバレッジ | 約 54/121 (45%) |
+| fraktor-rs 固定スコープ対応概念 | 約 57 |
+| 固定スコープ概念カバレッジ | 約 57/121 (47%) |
 | raw public type declarations | 204 (core-kernel: 183, core-typed: 9, std: 12) |
 | raw public method declarations | 474 (core-kernel: 404, core-typed: 32, std: 38) |
 | hard gap | 18 |
-| medium gap | 25 |
-| easy gap | 16 |
+| medium gap | 24 |
+| easy gap | 14 |
 | trivial gap | 2 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
@@ -130,15 +130,15 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 実装済みとして扱うもの: `DowningProvider` trait、`DowningInput` / `DowningDecision` / `FailureObservation`、`NoopDowningProvider`、`SplitBrainResolverSettings`、`SplitBrainResolverStrategy`、明示 `ClusterApi::down` hook、downing provider / SBR settings の join compatibility。
 
-### 4. Cluster router pool / group　✅ 実装済み 3/6 (50%)
+### 4. Cluster router pool / group　✅ 実装済み 6/6 (100%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| role-filtered routee selection | `ClusterRouterConfig.scala:80`, `ClusterRouterConfig.scala:190` | 部分実装 | core/router | easy | config に `useRoles` 相当がない |
-| max instances per node | `ClusterRouterConfig.scala:190` | 未対応 | core/router | easy | pool config は total_instances だけ |
-| membership-driven routee add/remove | `ClusterRouterConfig.scala:586`, `ClusterRouterConfig.scala:591` | 部分実装 | core/router + event integration | medium | routee selection type はあるが ClusterEvent 連携で自動更新する runtime がない |
+| role-filtered routee selection | `ClusterRouterConfig.scala:80`, `ClusterRouterConfig.scala:190` | 実装済み | core/router | easy | `ClusterRouterPoolConfig` / `ClusterRouterGroupConfig` に `use_roles` + `satisfies_roles`（Pekko `useRoles.subsetOf`）|
+| max instances per node | `ClusterRouterConfig.scala:190` | 実装済み | core/router | easy | pool config に `max_instances_per_node`。`ClusterRouterPool::from_candidates` が per-node / total cap を尊重した least-loaded 配置を行う |
+| membership-driven routee add/remove | `ClusterRouterConfig.scala:586`, `ClusterRouterConfig.scala:591` | 実装済み (core policy) | core/router | medium | `ClusterRouterPool::update_from_members`（status==Up / role / allow-local フィルタ → 再配置）と group `local_routee_paths`。ClusterEvent 購読 loop の std 配線は別途のアダプタ作業 |
 
-実装済みとして扱うもの: `ClusterRouterPool`、`ClusterRouterGroup`、pool/group settings の分離。
+実装済みとして扱うもの: `ClusterRouterPool`、`ClusterRouterGroup`、pool/group settings の分離、`use_roles` / `satisfies_roles`、`max_instances_per_node`、`ClusterRouterPool::from_candidates` / `update_from_members`、group `local_routee_paths`。
 
 ### 5. Cluster Typed API　✅ 実装済み 6/7 (86%)
 
@@ -246,8 +246,6 @@ cluster は、membership table、gossip dissemination、failure detector registr
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
 | `SplitBrainResolverProvider` | std/provider | カテゴリ3 |
-| role-filtered router config | core/router | カテゴリ4 |
-| max instances per node | core/router | カテゴリ4 |
 | `Flag` CRDT | core/ddata | カテゴリ9 |
 | `Key[T]` / consistency levels | core/ddata | カテゴリ9 |
 | `GCounter` / `PNCounter` / `PNCounterMap` | core/ddata | カテゴリ9 |
@@ -268,7 +266,6 @@ cluster は、membership table、gossip dissemination、failure detector registr
 | dedicated cluster heartbeat protocol | std + core/membership | カテゴリ2 |
 | `SeedNodeProcess` | std/provider | カテゴリ2 |
 | indirect connection handling | core/membership | カテゴリ3 |
-| membership-driven router update | core/router + event integration | カテゴリ4 |
 | `SingletonActor[M]` | core/typed | カテゴリ6 |
 | `ClusterSingletonSettings` | core/config | カテゴリ6 |
 | `ClusterSingletonProxy` | std + core | カテゴリ6 |
