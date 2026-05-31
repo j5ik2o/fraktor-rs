@@ -241,38 +241,64 @@ cluster は、membership table、gossip dissemination、failure detector registr
 
 この section は、Pekko 側の概念を将来採用する場合の難易度メモであり、現在の cluster roadmap ではない。直近の作業順は [cluster Grain runtime roadmap](../plan/2026-05-25_cluster-grain-runtime-roadmap.md) と個別の OpenSpec change を正とする。
 
-### Phase 1: trivial / easy
+以下では、現在の Grain runtime roadmap に隣接する比較材料と、OpenSpec change が立つまで優先度を落とす `Deferred Pekko concepts` を分ける。deferred 側は fixed-scope gap の evidence として保持するが、active comparison follow-up と同じ backlog には入れない。
+
+### Active comparison follow-up: trivial / easy
 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
 | `SplitBrainResolverProvider` | std/provider | カテゴリ3 |
-| `Flag` CRDT | core/ddata | カテゴリ9 |
-| `Key[T]` / consistency levels | core/ddata | カテゴリ9 |
-| `GCounter` / `PNCounter` / `PNCounterMap` | core/ddata | カテゴリ9 |
-| std `ClusterApi` wrapper parity | std/api | カテゴリ10 |
 | config compatibility full key set | core/config | カテゴリ2 |
 | `remotePathOf` | core or actor-core integration | カテゴリ1 |
+| transport lifecycle bridge retention | std/provider | カテゴリ10 |
 
-### Phase 2: medium
+### Active comparison follow-up: medium
 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
 | `UniqueAddress` semantics | core/membership | カテゴリ1 |
 | data center membership | core/membership | カテゴリ1 |
 | `WeaklyUp` compatibility | core/membership | カテゴリ1 |
-| `prepareForFullClusterShutdown` | core + std | カテゴリ1 |
 | `Reachability` matrix | core/membership | カテゴリ2 |
 | `GossipEnvelope` | core/membership + std/wire | カテゴリ2 |
 | dedicated cluster heartbeat protocol | std + core/membership | カテゴリ2 |
 | `SeedNodeProcess` | std/provider | カテゴリ2 |
 | indirect connection handling | core/membership | カテゴリ3 |
+| `DistributedPubSubMediator` protocol | core/pub_sub + std | カテゴリ7 |
+| `DistributedPubSubSettings` | core/pub_sub | カテゴリ7 |
+| `Send` / `SendToAll` path semantics | core/pub_sub + actor-core | カテゴリ7 |
+| generic discovery adapter | std/provider | カテゴリ10 |
+
+### Active comparison follow-up: hard
+
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| full `Gossip` merge / tombstone / seen digest | core/membership | カテゴリ2 |
+| `CrossDcClusterHeartbeat` | core/membership + std | カテゴリ2 |
+| `SplitBrainResolver` | core + std | カテゴリ3 |
+| `DowningStrategy` / decision model | core/downing_provider | カテゴリ3 |
+| lease-based majority | core + std | カテゴリ3 |
+| topic registry gossip / delta collection | core/pub_sub + membership | カテゴリ7 |
+| cluster message serializer contract | std/wire + actor-core serialization | カテゴリ10 |
+
+### Deferred Pekko concepts: trivial / easy
+
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| `Flag` CRDT | core/ddata | カテゴリ9 |
+| `Key[T]` / consistency levels | core/ddata | カテゴリ9 |
+| `GCounter` / `PNCounter` / `PNCounterMap` | core/ddata | カテゴリ9 |
+| std `ClusterApi` wrapper parity | std/api | カテゴリ10 |
+
+### Deferred Pekko concepts: medium
+
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
+| `prepareForFullClusterShutdown` | core + std | カテゴリ1 |
 | `SingletonActor[M]` | core/typed | カテゴリ6 |
 | `ClusterSingletonSettings` | core/config | カテゴリ6 |
 | `ClusterSingletonProxy` | std + core | カテゴリ6 |
 | `ClusterReceptionistSettings` | core/config | カテゴリ6 |
-| `DistributedPubSubMediator` protocol | core/pub_sub + std | カテゴリ7 |
-| `DistributedPubSubSettings` | core/pub_sub | カテゴリ7 |
-| `Send` / `SendToAll` path semantics | core/pub_sub + actor-core | カテゴリ7 |
 | classic `ClusterSharding.start/startProxy` API | core/grain + std | カテゴリ8 |
 | typed `ClusterSharding` extension | core/typed | カテゴリ8 |
 | `Entity[M, E]` / `EntityContext` | core/typed + grain | カテゴリ8 |
@@ -284,23 +310,15 @@ cluster は、membership table、gossip dissemination、failure detector registr
 | `LWWRegister` / `LWWMap` | core/ddata | カテゴリ9 |
 | `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 |
 | typed DistributedData API | core/typed | カテゴリ9 |
-| generic discovery adapter | std/provider | カテゴリ10 |
-| transport lifecycle bridge retention | std/provider | カテゴリ10 |
 
-### Phase 3: hard
+### Deferred Pekko concepts: hard
 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
-| full `Gossip` merge / tombstone / seen digest | core/membership | カテゴリ2 |
-| `CrossDcClusterHeartbeat` | core/membership + std | カテゴリ2 |
-| `SplitBrainResolver` | core + std | カテゴリ3 |
-| `DowningStrategy` / decision model | core/downing_provider | カテゴリ3 |
-| lease-based majority | core + std | カテゴリ3 |
 | typed `ClusterSingleton` extension | core/typed + std | カテゴリ6 |
 | classic `ClusterSingletonManager` | std + core | カテゴリ6 |
 | `ClusterClient` | std | カテゴリ6 |
 | `ClusterClientReceptionist` | std + pub_sub | カテゴリ6 |
-| topic registry gossip / delta collection | core/pub_sub + membership | カテゴリ7 |
 | shard allocation / rebalance strategy | core/placement | カテゴリ8 |
 | remembered entities | core/placement + persistence integration | カテゴリ8 |
 | `ShardedDaemonProcess` | core/typed + placement | カテゴリ8 |
@@ -308,7 +326,6 @@ cluster は、membership table、gossip dissemination、failure detector registr
 | sharding delivery controllers | core/typed + actor-core/delivery | カテゴリ8 |
 | `DistributedData` extension | core + std | カテゴリ9 |
 | `Replicator` / `ReplicatorSettings` | core + std | カテゴリ9 |
-| cluster message serializer contract | std/wire + actor-core serialization | カテゴリ10 |
 
 ## 内部モジュール構造ギャップ
 
