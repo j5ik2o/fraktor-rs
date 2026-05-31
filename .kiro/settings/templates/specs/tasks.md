@@ -1,24 +1,24 @@
-# Implementation Plan
+# 実装計画
 
-## Task Format Template
+## タスク形式テンプレート
 
-Use whichever pattern fits the work breakdown:
+作業分解に合う形式を使う:
 
-### Major task only
+### 主要タスクのみ
 - [ ] {{NUMBER}}. {{TASK_DESCRIPTION}}{{PARALLEL_MARK}}
-  - {{DETAIL_ITEM_1}} *(Include details only when needed. If the task stands alone, omit bullet items.)*
+  - {{DETAIL_ITEM_1}} *(詳細が必要な場合だけ書く。単独で十分なタスクではdetail bulletを省略する。)*
   - _Requirements: {{REQUIREMENT_IDS}}_
 
-### Major + Sub-task structure
+### 主要タスク + サブタスク構造
 - [ ] {{MAJOR_NUMBER}}. {{MAJOR_TASK_SUMMARY}}
 - [ ] {{MAJOR_NUMBER}}.{{SUB_NUMBER}} {{SUB_TASK_DESCRIPTION}}{{SUB_PARALLEL_MARK}}
   - {{DETAIL_ITEM_1}}
   - {{DETAIL_ITEM_2}}
-  - {{OBSERVABLE_COMPLETION_ITEM}} *(At least one detail item should state the observable completion condition for this task.)*
-  - _Requirements: {{REQUIREMENT_IDS}}_ *(IDs only; do not add descriptions or parentheses.)*
-  - _Boundary: {{COMPONENT_NAMES}}_ *(Only for (P) tasks. Omit when scope is obvious.)*
-  - _Depends: {{TASK_IDS}}_ *(Only for non-obvious cross-boundary dependencies. Most tasks omit this.)*
+  - {{OBSERVABLE_COMPLETION_ITEM}} *(少なくとも1つのdetail itemで、このタスクの観測可能な完了条件を書く。)*
+  - _Requirements: {{REQUIREMENT_IDS}}_ *(IDだけを書く。説明や括弧書きを追加しない。)*
+  - _Boundary: {{COMPONENT_NAMES}}_ *((P) タスクでは必須。scopeが明らかな場合は省略する。)*
+  - _Depends: {{TASK_IDS}}_ *(非自明な境界横断依存がある場合だけ書く。多くのタスクでは省略する。)*
 
-> **Parallel marker**: Append ` (P)` only to tasks that can be executed in parallel. Omit the marker when running in `--sequential` mode.
+> **並列マーカー**: 並列実行可能なタスクにだけ ` (P)` を付ける。`--sequential` modeでは省略する。
 >
-> **Optional test coverage**: When a sub-task is deferrable test work tied to acceptance criteria, mark the checkbox as `- [ ]*` and explain the referenced requirements in the detail bullets.
+> **任意のテストカバレッジ**: サブタスクが受け入れ条件に紐づく延期可能なテスト作業である場合だけ、checkboxを `- [ ]*` にし、参照する要件をdetail bulletで説明する。
