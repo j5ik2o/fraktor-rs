@@ -66,32 +66,30 @@ impl GossipStateModel {
         outcome.stale_records_suppressed.push(remote_record);
         continue;
       }
-      if is_live_incarnation_status(remote_record.status) {
-        if records.values().any(|record| {
+      if records.values().any(|record| {
+        record.unique_address != remote_record.unique_address
+          && record.authority == remote_record.authority
+          && is_live_incarnation_status(record.status)
+          && record.join_version > remote_record.join_version
+      }) {
+        outcome.stale_records_suppressed.push(remote_record);
+        continue;
+      }
+      let superseded_keys = records
+        .iter()
+        .filter(|(_, record)| {
           record.unique_address != remote_record.unique_address
             && record.authority == remote_record.authority
-            && is_live_incarnation_status(record.status)
-            && record.join_version > remote_record.join_version
-        }) {
-          outcome.stale_records_suppressed.push(remote_record);
-          continue;
-        }
-        let superseded_keys = records
-          .iter()
-          .filter(|(_, record)| {
-            record.unique_address != remote_record.unique_address
-              && record.authority == remote_record.authority
-              && record.status.is_active()
-              && record.join_version < remote_record.join_version
-          })
-          .map(|(key, _)| key.clone())
-          .collect::<Vec<_>>();
-        for key in superseded_keys {
-          if let Some(record) = records.get_mut(&key) {
-            record.status = NodeStatus::Dead;
-            record.version = remote_record.version;
-            outcome.stale_records_suppressed.push(record.clone());
-          }
+            && record.status.is_active()
+            && record.join_version < remote_record.join_version
+        })
+        .map(|(key, _)| key.clone())
+        .collect::<Vec<_>>();
+      for key in superseded_keys {
+        if let Some(record) = records.get_mut(&key) {
+          record.status = NodeStatus::Dead;
+          record.version = max_version(record.version, remote_record.version);
+          outcome.stale_records_suppressed.push(record.clone());
         }
       }
 
@@ -256,16 +254,19 @@ fn merge_reachability(left: &ReachabilitySnapshot, right: &ReachabilitySnapshot)
   }
 
   for record in right.records.iter().cloned() {
-    if left.observer_versions.get(&record.observer).is_some_and(|local_version| *local_version > record.version) {
+    let key = (record.observer.clone(), record.subject.clone());
+    if left.observer_versions.get(&record.observer).is_some_and(|local_version| *local_version > record.version)
+      && !records.contains_key(&key)
+    {
       continue;
     }
-    match records.get(&(record.observer.clone(), record.subject.clone())) {
+    match records.get(&key) {
       | Some(existing) if existing.version > record.version => {},
       | Some(existing)
         if existing.version == record.version
           && reachability_status_rank(existing.status) >= reachability_status_rank(record.status) => {},
       | _ => {
-        records.insert((record.observer.clone(), record.subject.clone()), record);
+        records.insert(key, record);
       },
     }
   }

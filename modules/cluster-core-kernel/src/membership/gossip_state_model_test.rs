@@ -149,6 +149,31 @@ fn full_state_merge_supersedes_older_active_incarnation_with_newer_leaving_incar
 }
 
 #[test]
+fn full_state_merge_supersedes_older_active_incarnation_with_newer_terminal_incarnation() {
+  let older = unique_address("node-a", 10);
+  let newer = unique_address("node-a", 11);
+  let mut older_record = record(older.clone(), NodeStatus::Up, 1);
+  older_record.version = MembershipVersion::new(10);
+  let local = state(10, vec![older_record]);
+  let remote = state(2, vec![record(newer.clone(), NodeStatus::Dead, 2)]);
+
+  let mut model = GossipStateModel::new(local);
+  let outcome = model.merge(remote);
+
+  let entries = &model.snapshot().membership.entries;
+  assert_eq!(entries.len(), 2);
+  assert!(entries.iter().any(|record| record.unique_address == newer && record.status == NodeStatus::Dead));
+  assert!(entries.iter().any(|record| {
+    record.unique_address == older && record.status == NodeStatus::Dead && record.version == MembershipVersion::new(10)
+  }));
+  assert_eq!(outcome.stale_records_suppressed.len(), 1);
+  assert_eq!(
+    model.snapshot().tombstones.get(&older).expect("older incarnation should be tombstoned").version,
+    MembershipVersion::new(10)
+  );
+}
+
+#[test]
 fn tombstone_suppresses_stale_active_reappearance() {
   let identity = unique_address("node-a", 10);
   let local = state(3, vec![record(identity.clone(), NodeStatus::Removed, 3)]);
@@ -436,6 +461,55 @@ fn full_state_merge_uses_stronger_reachability_status_for_equal_versions() {
     unreachable_first.snapshot().membership.reachability.aggregate_status(&subject),
     ReachabilityStatus::Terminated
   );
+}
+
+#[test]
+fn full_state_merge_preserves_newer_subject_reachability_when_local_row_version_is_ahead() {
+  let observer = unique_address("node-a", 10);
+  let subject = unique_address("node-b", 11);
+  let mut local_observer_versions = BTreeMap::new();
+  local_observer_versions.insert(observer.clone(), 5);
+  let local = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(5),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      ReachabilitySnapshot::new(
+        vec![ReachabilityRecord {
+          observer: observer.clone(),
+          subject:  subject.clone(),
+          status:   ReachabilityStatus::Unreachable,
+          version:  3,
+        }],
+        local_observer_versions,
+      ),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let mut remote_observer_versions = BTreeMap::new();
+  remote_observer_versions.insert(observer.clone(), 4);
+  let remote = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(4),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      ReachabilitySnapshot::new(
+        vec![ReachabilityRecord {
+          observer: observer.clone(),
+          subject:  subject.clone(),
+          status:   ReachabilityStatus::Terminated,
+          version:  4,
+        }],
+        remote_observer_versions,
+      ),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let mut model = GossipStateModel::new(local);
+
+  model.merge(remote);
+
+  assert_eq!(model.snapshot().membership.reachability.records[0].status, ReachabilityStatus::Terminated);
+  assert_eq!(model.snapshot().membership.reachability.aggregate_status(&subject), ReachabilityStatus::Terminated);
+  assert_eq!(model.snapshot().membership.reachability.observer_versions.get(&observer), Some(&5));
 }
 
 #[test]

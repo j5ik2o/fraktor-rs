@@ -322,6 +322,42 @@ fn apply_incoming_keeps_newer_incarnation_endpoint_seen_mapping_after_supersede(
 }
 
 #[test]
+fn disseminate_keeps_newer_active_seen_mapping_when_delta_contains_superseded_old_record() {
+  let older_peer = unique_address("node-b", 11);
+  let newer_peer = unique_address("node-b", 12);
+  let table = MembershipTable::new(3);
+  let mut coordinator =
+    GossipDisseminationCoordinator::new(table, None, vec![GossipTransportHandoff::endpoint_for_identity(&newer_peer)]);
+  let newer_record = NodeRecord::new_with_identity(
+    newer_peer.clone(),
+    DataCenter::new("dc-a"),
+    "node-b".to_string(),
+    NodeStatus::Up,
+    MembershipVersion::new(2),
+    "1.0.0".to_string(),
+    vec!["member".to_string()],
+  );
+  let old_dead_record = NodeRecord::new_with_identity(
+    older_peer.clone(),
+    DataCenter::new("dc-a"),
+    "node-b".to_string(),
+    NodeStatus::Dead,
+    MembershipVersion::new(2),
+    "1.0.0".to_string(),
+    vec!["member".to_string()],
+  );
+  let delta =
+    MembershipDelta::new(MembershipVersion::new(1), MembershipVersion::new(2), vec![newer_record, old_dead_record]);
+  let peer_endpoint = GossipTransportHandoff::endpoint_for_identity(&newer_peer);
+
+  let _ = coordinator.disseminate(&delta);
+  let _ = coordinator.handle_ack(peer_endpoint.as_str());
+
+  assert_eq!(coordinator.seen_digest().observed_version(&newer_peer), Some(MembershipVersion::new(2)));
+  assert_eq!(coordinator.seen_digest().observed_version(&older_peer), None);
+}
+
+#[test]
 fn disseminate_marks_self_as_seen_in_single_node_cluster() {
   let mut table = MembershipTable::new(3);
   let delta = table

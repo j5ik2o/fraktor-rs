@@ -6,8 +6,6 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_remote_core_rs::address::UniqueAddress;
-
 use super::{
   GossipEvent, GossipOutbound, GossipSeenDigest, GossipState, GossipTransportHandoff, MembershipDelta, MembershipTable,
   MembershipVersion, NodeRecord, VectorClock,
@@ -26,7 +24,7 @@ pub struct GossipDisseminationCoordinator {
   vector_clock:     VectorClock,
   seen_by:          BTreeSet<String>,
   seen_digest:      GossipSeenDigest,
-  seen_identities:  BTreeMap<String, UniqueAddress>,
+  seen_identities:  BTreeMap<String, NodeRecord>,
   state:            GossipState,
   inflight_version: MembershipVersion,
   events:           Vec<GossipEvent>,
@@ -220,8 +218,8 @@ impl GossipDisseminationCoordinator {
     let Some(authority) = authority else {
       return;
     };
-    if let Some(identity) = self.seen_identities.get(authority.as_str()) {
-      self.seen_digest.mark_seen(identity.clone(), version);
+    if let Some(record) = self.seen_identities.get(authority.as_str()) {
+      self.seen_digest.mark_seen(record.unique_address.clone(), version);
     }
   }
 
@@ -234,7 +232,7 @@ impl GossipDisseminationCoordinator {
 
 const LOCAL_VECTOR_CLOCK_NODE: &str = "$local";
 
-fn seen_identity_index(table: &MembershipTable) -> BTreeMap<String, UniqueAddress> {
+fn seen_identity_index(table: &MembershipTable) -> BTreeMap<String, NodeRecord> {
   let mut index = BTreeMap::new();
   for record in table.records() {
     index_seen_identity(&mut index, record);
@@ -242,7 +240,29 @@ fn seen_identity_index(table: &MembershipTable) -> BTreeMap<String, UniqueAddres
   index
 }
 
-fn index_seen_identity(index: &mut BTreeMap<String, UniqueAddress>, record: &NodeRecord) {
-  index.insert(record.authority.clone(), record.unique_address.clone());
-  index.insert(GossipTransportHandoff::endpoint_for_identity(&record.unique_address), record.unique_address.clone());
+fn index_seen_identity(index: &mut BTreeMap<String, NodeRecord>, record: &NodeRecord) {
+  index_seen_identity_key(index, record.authority.clone(), record);
+  index_seen_identity_key(index, GossipTransportHandoff::endpoint_for_identity(&record.unique_address), record);
+}
+
+fn index_seen_identity_key(index: &mut BTreeMap<String, NodeRecord>, key: String, record: &NodeRecord) {
+  match index.get(&key) {
+    | Some(existing) if !seen_identity_candidate_wins(existing, record) => {},
+    | _ => {
+      index.insert(key, record.clone());
+    },
+  }
+}
+
+fn seen_identity_candidate_wins(existing: &NodeRecord, candidate: &NodeRecord) -> bool {
+  if existing.status.is_active() != candidate.status.is_active() {
+    return candidate.status.is_active();
+  }
+  if existing.join_version != candidate.join_version {
+    return candidate.join_version > existing.join_version;
+  }
+  if existing.version != candidate.version {
+    return candidate.version > existing.version;
+  }
+  candidate.unique_address > existing.unique_address
 }
