@@ -132,6 +132,23 @@ fn full_state_merge_supersedes_older_active_incarnation_for_same_authority() {
 }
 
 #[test]
+fn full_state_merge_supersedes_older_active_incarnation_with_newer_leaving_incarnation() {
+  let older = unique_address("node-a", 10);
+  let newer = unique_address("node-a", 11);
+  let local = state(2, vec![record(older.clone(), NodeStatus::Up, 2)]);
+  let remote = state(3, vec![record(newer.clone(), NodeStatus::Leaving, 3)]);
+
+  let mut model = GossipStateModel::new(local);
+  let outcome = model.merge(remote);
+
+  let entries = &model.snapshot().membership.entries;
+  assert_eq!(entries.len(), 2);
+  assert!(entries.iter().any(|record| record.unique_address == newer && record.status == NodeStatus::Leaving));
+  assert!(entries.iter().any(|record| record.unique_address == older && record.status == NodeStatus::Dead));
+  assert_eq!(outcome.stale_records_suppressed.len(), 1);
+}
+
+#[test]
 fn tombstone_suppresses_stale_active_reappearance() {
   let identity = unique_address("node-a", 10);
   let local = state(3, vec![record(identity.clone(), NodeStatus::Removed, 3)]);

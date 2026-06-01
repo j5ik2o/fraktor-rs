@@ -66,11 +66,11 @@ impl GossipStateModel {
         outcome.stale_records_suppressed.push(remote_record);
         continue;
       }
-      if remote_record.status.is_active() {
+      if is_live_incarnation_status(remote_record.status) {
         if records.values().any(|record| {
           record.unique_address != remote_record.unique_address
             && record.authority == remote_record.authority
-            && record.status.is_active()
+            && is_live_incarnation_status(record.status)
             && record.join_version > remote_record.join_version
         }) {
           outcome.stale_records_suppressed.push(remote_record);
@@ -207,6 +207,10 @@ const fn status_rank(status: NodeStatus) -> u8 {
     | NodeStatus::WeaklyUp => 1,
     | NodeStatus::Joining => 0,
   }
+}
+
+const fn is_live_incarnation_status(status: NodeStatus) -> bool {
+  !matches!(status, NodeStatus::Removed | NodeStatus::Dead)
 }
 
 fn record_tie_breaks_left(left: &NodeRecord, right: &NodeRecord) -> bool {
