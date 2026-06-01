@@ -8,7 +8,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
   - _Boundary: GossipEnvelope_
 
-- [ ] 2. full gossip state merge と tombstone を membership core に追加する
+- [x] 2. full gossip state merge と tombstone を membership core に追加する
   - full gossip state が membership snapshot、reachability snapshot、tombstone set を同じ merge unit として扱えるようにする。
   - 同じ member identity の conflict が deterministic precedence rule で解決されるようにする。
   - removed/dead member の tombstone が stale member reappearance を抑止し、retention 条件で prune できる。
